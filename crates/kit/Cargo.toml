@@ -5,6 +5,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+# The layout lint: windows and tables as they're made, not as someone left them.
+lint = []
+
 [dependencies]
 olo-app.workspace = true
 olo-interface.workspace = true
@@ -25,3 +29,7 @@ olo-images.workspace = true
 libc = "0.2"
 smallvec = "1.6"
 unicode-segmentation = "1.12"
+
+[[test]]
+name = "lint"
+required-features = ["lint"]

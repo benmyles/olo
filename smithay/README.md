@@ -20,7 +20,14 @@ What Olo changed, so far (see "Every frame on time" in
 - No default features: Olo is Wayland only, and a workspace build
   unifies a package's features across members, so upstream's default
   (X11, Xwayland, winit with X11) reached app_server. It names what it
-  uses.
+  uses. And winit itself is asked for Wayland alone (`Cargo.toml`:
+  upstream's `winit` dependency had its "x11" feature too, so
+  `backend_winit`, which app_server's nested development run uses,
+  still built winit-x11, x11rb and x11-dl into app_server until
+  2026-11-12). The X11 backend and Xwayland sources are upstream's,
+  behind features nothing turns on: not built, kept so the tree stays
+  upstream's to merge with (their optional `x11rb` is why that name is
+  still in Cargo.lock, in no build).
 - Where a frame's time goes is told to `backend::renderer::PHASE_HOOK`:
   the DRM compositor's "planes", "atomic test" and "render_output", the
   damage tracker's "draws" and "finish" (the flush to the GPU and its
@@ -38,6 +45,9 @@ What Olo changed, so far (see "Every frame on time" in
   all when the pointer is wholly off the display. apple-drm's overlay
   plane standing in for a cursor plane refused one hanging off the
   display with EINVAL.
+- `DrmCompositor::cursor_plane`: the cursor plane and where it is in
+  the newest frame (rendered, queued, flipping or shown), so
+  app_server's input thread can move it while the loop is held.
 - Locks in one order (found by lockbud and olo-sync's tracing-mutex in
   debug builds): the popup manager's tree lock is a leaf, nothing else
   locked under it and it never under a surface's (`PopupManager`

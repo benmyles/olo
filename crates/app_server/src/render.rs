@@ -1010,6 +1010,44 @@ where
     (size.w > 0 && size.h > 0).then_some((elements, size, scale))
 }
 
+/// A picture of one of `output`'s workspaces while it shows another, for
+/// a share of that workspace: as `space_elements` would draw it if it
+/// showed, the layer surfaces over windows (Deskbar, banners; never a
+/// recording's controls, and no menus) over `windows` (front first, each
+/// where it is, `at`, and drawn from what it showed last, parked) over
+/// the layer surfaces under windows, over the wallpaper. With a
+/// recording's caption, as a capture of the display has.
+pub fn workspace_picture<R>(renderer: &mut R, output: &Output, space: &Space<WindowElement>, windows: &[(WindowElement, Point<i32, Logical>)]) -> Vec<FrameElements<R, WindowRenderElement<R>>>
+where
+    R: Renderer + ImportAll + ImportMem,
+    R::TextureId: smithay::backend::renderer::Texture + Clone + Send + 'static,
+{
+    let scale = output.current_scale().fractional_scale();
+    let Some(region) = space.output_geometry(output) else { return Vec::new() };
+    let layers: Vec<(LayerSurface, Point<i32, Logical>)> = {
+        let map = layer_map_for_output(output);
+        map.layers().rev().filter(|l| l.namespace() != olo_protocol::recording::CONTROLS_NAMESPACE).filter_map(|l| map.layer_geometry(l).map(|g| (l.clone(), g.loc))).collect()
+    };
+    let mut out: Vec<OutputRenderElements<R, WindowRenderElement<R>>> = Vec::new();
+    let surfaces = |renderer: &mut R, out: &mut Vec<_>, of: &[Layer]| {
+        for (l, at) in layers.iter().filter(|(l, _)| of.contains(&l.layer())) {
+            let elements: Vec<WaylandSurfaceRenderElement<R>> = render_elements_from_surface_tree(renderer, l.wl_surface(), at.to_physical_precise_round(scale), scale, 1.0, Kind::Unspecified);
+            out.extend(elements.into_iter().map(|e| OutputRenderElements::Space(SpaceRenderElements::Surface(e))));
+        }
+    };
+    surfaces(renderer, &mut out, &[Layer::Overlay, Layer::Top]);
+    for (w, at) in windows {
+        let location = (*at - SpaceElement::geometry(w).loc - region.loc).to_physical_precise_round(scale);
+        let elements: Vec<WindowRenderElement<R>> = w.render_parts(renderer, location, scale.into(), 1.0, false);
+        out.extend(elements.into_iter().map(|e| OutputRenderElements::Space(SpaceRenderElements::Element(Wrap::from(e)))));
+    }
+    surfaces(renderer, &mut out, &[Layer::Bottom, Layer::Background]);
+    out.extend(crate::wallpaper::element(renderer, output).into_iter().map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))));
+    let size = crate::capture::size(output).unwrap_or_default();
+    let caption = crate::showing::caption_elements(renderer, size, scale).into_iter().map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e)));
+    caption.chain(out).map(FrameElements::Normal).collect()
+}
+
 /// The pointer as a capture of `output` draws it, if it is over it.
 pub fn pointer_elements<R>(
     renderer: &mut R,

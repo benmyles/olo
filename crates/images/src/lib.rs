@@ -395,7 +395,7 @@ pub mod av1 {
             }
         }
 
-        /// Its planes as a GPU draws them (`gpui::YuvFrame`): 4:2:0 only,
+        /// Its planes as a GPU draws them (`olo_yuv::YuvFrame`): 4:2:0 only,
         /// and only a picture an RGB conversion needs nothing more for (not
         /// HDR, not wide, an ordinary matrix); None otherwise. Luma rows
         /// packed; Cb and Cr interleaved; 8-bit samples as bytes, deeper

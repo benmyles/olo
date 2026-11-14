@@ -16,7 +16,7 @@ use std::{
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD as B64};
 use chrono::{DateTime, Utc};
 use olo_keychain::{Incoming, Request, Response};
-use olo_ui::Proxy;
+use olo_kit::Proxy;
 use onepassword::{AutofillBehavior, Error, Item, ItemCategory, ItemCreateParams, ItemField, ItemFieldType, ItemOverview, VaultOverview, Website};
 
 use crate::{
@@ -29,7 +29,7 @@ use crate::{
 /// redone, its step's name, and for an edit the item as it was.
 #[derive(Clone, Debug)]
 pub struct Tag {
-    pub purpose: olo_ui::undo::Purpose,
+    pub purpose: olo_kit::undo::Purpose,
     pub name: String,
     pub before: Option<Box<Item>>,
 }

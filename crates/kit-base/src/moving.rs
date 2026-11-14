@@ -5,7 +5,7 @@
 //! whole app re-executes with its state saved and the environment of the
 //! display it goes to, as for an upgrade; a window alone is opened by a
 //! copy of the app started there with that window's state (an app that
-//! can, `olo_ui::on_move_window`), and let go here.
+//! can, `olo_kit::on_move_window`), and let go here.
 //!
 //! The person's app on an agent screen remembers where it came from
 //! (`OLO_HOME`: what its environment was), and goes back there if the

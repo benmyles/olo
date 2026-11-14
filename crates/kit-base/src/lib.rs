@@ -5,6 +5,7 @@
 //! (`commands`), with what the layout review finds (`review`), a list's
 //! selection (`list`) and the keyboard profile's keys (`keys`).
 
+pub mod airplay;
 pub mod clipboard;
 pub mod clock;
 pub mod commands;
@@ -27,6 +28,7 @@ pub mod spell;
 pub mod store;
 pub mod tracker;
 pub mod watch;
+pub mod workspaces;
 
 use std::{any::Any, sync::Arc};
 

@@ -1,6 +1,8 @@
 //! Rescue's terminal: a shell in a pseudo-terminal of this process's
 //! own, alacritty_terminal's emulator read and written on its own thread
-//! (`EventLoop`), drawn on the cell grid here. Deliberately apart from
+//! (`EventLoop`), drawn on the cell grid here. The shell and its screen
+//! are a [`Session`], the program's (made once, whichever display Rescue
+//! shows on); a [`Terminal`] is the view of it in a window. Deliberately apart from
 //! Terminal (apps/terminal): no olo-termd, no saved windows or settings,
 //! nothing of the person's session to depend on. The shell is bash
 //! without its startup files (`bash --noprofile --norc`: a broken
@@ -17,7 +19,6 @@
 use std::{
     borrow::Cow,
     cell::Cell as StdCell,
-    rc::Rc,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -35,21 +36,15 @@ use alacritty_terminal::{
     tty,
     vte::ansi::{Color, CursorShape, NamedColor, Rgb},
 };
-use olo_ui::{
-    Proxy,
-    gpui::{
-        self, App, Bounds, ClipboardItem, Context, FocusHandle, Focusable, FontStyle, FontWeight, Hsla, InteractiveElement as _, IntoElement, Keystroke, MouseButton, MouseDownEvent, MouseMoveEvent,
-        MouseUpEvent, ParentElement as _, Pixels, Render, ScrollWheelEvent, Styled as _, TextRun, Window, canvas, div, point, px, size,
-    },
-    style, theme,
+use olo_kit::{
+    Bounds, ClipboardItem, Cx, Element, FocusHandle, FontStyle, FontWeight, Hsla, InteractiveElement as _, KeyDownEvent, Keystroke, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Painter,
+    ParentElement as _, Pixels, Proxy, ScrollWheelEvent, Styled as _, TextRun, View, clipboard, div, point, px, size, style, theme, view_canvas,
 };
 
 /// The text's size, points.
 const TEXT_SIZE: f32 = 12.0;
 /// Between the well's edge and the text.
 const PAD: f32 = 4.0;
-/// The key context whose Tab is the shell's, not the window's.
-pub const CONTEXT: &str = "RescueTerminal";
 
 /// The shell printed (at most one in flight: `Listener::pending`).
 pub struct Wake;
@@ -57,7 +52,7 @@ pub struct Wake;
 pub struct Exited;
 
 #[derive(Clone)]
-struct Listener {
+pub struct Listener {
     proxy: Proxy,
     pending: Arc<AtomicBool>,
     writer: Arc<std::sync::OnceLock<EventLoopSender>>,
@@ -88,9 +83,9 @@ struct Metrics {
 }
 
 impl Metrics {
-    fn new(window: &Window) -> Metrics {
-        let scale = window.scale_factor();
-        let ts = window.text_system();
+    fn new(g: &Painter) -> Metrics {
+        let scale = g.scale_factor();
+        let ts = g.text_system();
         let id = ts.resolve_font(&style::mono_font(FontWeight::NORMAL));
         let fs = px(TEXT_SIZE);
         let advance = ts.advance(id, fs, 'M').map_or(TEXT_SIZE * 0.6, |a| f32::from(a.width));
@@ -110,17 +105,14 @@ impl Metrics {
 /// Where the text was last drawn, and its cells.
 type Drawn = (Bounds<Pixels>, Metrics);
 
-pub struct Terminal {
+/// The shell and its screen: the program's, shown by whichever window
+/// has Rescue (its [`Terminal`]).
+#[derive(Clone)]
+pub struct Session {
     term: Arc<FairMutex<Emulator<Listener>>>,
     tx: Option<EventLoopSender>,
     pending: Arc<AtomicBool>,
-    pub focus: FocusHandle,
-    /// The grid's columns and rows, as the shell was last told.
-    grid: Rc<StdCell<(usize, usize)>>,
-    /// Where the text starts and a cell's size, as last drawn.
-    drawn: Rc<StdCell<Option<Drawn>>>,
-    selecting: bool,
-    pub exited: bool,
+    exited: Arc<AtomicBool>,
     /// What went wrong starting the shell.
     pub error: Option<String>,
 }
@@ -133,8 +125,9 @@ fn shell() -> tty::Shell {
     }
 }
 
-impl Terminal {
-    pub fn new(proxy: Proxy, cx: &mut Context<Self>) -> Terminal {
+impl Session {
+    /// Starts the shell; `proxy` hears [`Wake`] and [`Exited`].
+    pub fn new(proxy: Proxy) -> Session {
         let (cols, rows) = (100, 30);
         let pending = Arc::new(AtomicBool::new(false));
         let writer = Arc::new(std::sync::OnceLock::new());
@@ -161,13 +154,21 @@ impl Terminal {
                 (None, Some(format!("The shell didn't start: {e}")))
             }
         };
-        Terminal { term, tx, pending, focus: cx.focus_handle(), grid: Rc::new(StdCell::new((cols, rows))), drawn: Rc::default(), selecting: false, exited: false, error }
+        Session { term, tx, pending, exited: Arc::default(), error }
     }
 
-    /// The shell printed: drawn again.
-    pub fn woke(&mut self, cx: &mut Context<Self>) {
+    /// The shell has ended.
+    pub fn set_exited(&self) {
+        self.exited.store(true, Ordering::Release);
+    }
+
+    pub fn exited(&self) -> bool {
+        self.exited.load(Ordering::Acquire)
+    }
+
+    /// What the shell printed is about to be shown: it may say so again.
+    pub fn shown(&self) {
         self.pending.store(false, Ordering::Release);
-        cx.notify();
     }
 
     fn write(&self, bytes: Vec<u8>) {
@@ -186,31 +187,73 @@ impl Terminal {
         self.write(bytes);
     }
 
-    fn copy(&self, cx: &mut App) {
-        if let Some(text) = self.term.lock().selection_to_string().filter(|t| !t.is_empty()) {
-            cx.write_to_clipboard(ClipboardItem::new_string(text));
-        }
-    }
-
-    fn paste(&self, cx: &mut App) {
-        let Some(text) = cx.read_from_clipboard().and_then(|c| c.text()) else { return };
+    /// `text` typed as a paste (in brackets, if the program asked).
+    fn pasted(&self, text: String) {
         let bracketed = self.term.lock().mode().contains(TermMode::BRACKETED_PASTE);
         let text = text.replace("\r\n", "\r").replace('\n', "\r");
         let bytes = if bracketed { format!("\x1b[200~{}\x1b[201~", text.replace('\x1b', "")) } else { text };
         self.typed(bytes.into_bytes());
     }
+}
 
-    fn key(&mut self, k: &Keystroke, cx: &mut Context<Self>) -> bool {
+/// The terminal in a window: the session's screen drawn, and what's
+/// typed and pointed at there.
+pub struct Terminal {
+    session: Session,
+    pub focus: FocusHandle,
+    /// The grid's columns and rows, as the shell was last told.
+    grid: StdCell<(usize, usize)>,
+    /// Where the text starts and a cell's size, as last drawn.
+    drawn: StdCell<Option<Drawn>>,
+    selecting: bool,
+}
+
+impl Terminal {
+    pub fn new(session: Session) -> Terminal {
+        // (What the shell has printed so far is in the first drawing: it
+        // says so again from here. Printed before there was a window to
+        // tell, its one word of it went nowhere, and it never said
+        // another.)
+        session.shown();
+        // (No size the shell was told yet: the first drawing tells it this
+        // window's.)
+        Terminal { session, focus: FocusHandle::new(), grid: StdCell::new((0, 0)), drawn: StdCell::new(None), selecting: false }
+    }
+
+    /// The shell printed: drawn again.
+    pub fn woke(&mut self, cx: &mut Cx<Self>) {
+        self.session.shown();
+        cx.invalidate();
+    }
+
+    fn copy(&self) {
+        if let Some(text) = self.session.term.lock().selection_to_string().filter(|t| !t.is_empty()) {
+            clipboard::write(ClipboardItem::new_string(text));
+        }
+    }
+
+    /// What's on the clipboard typed, once it has come (the program that
+    /// has it is asked: nothing here waits).
+    fn paste(&self) {
+        let session = self.session.clone();
+        clipboard::paste_item(move |item| {
+            if let Some(text) = item.and_then(|c| c.text()) {
+                session.pasted(text);
+            }
+        });
+    }
+
+    fn key(&mut self, k: &Keystroke, cx: &mut Cx<Self>) -> bool {
         let m = &k.modifiers;
         // ⌃⇧C, ⌃⇧V (what the keymap makes ⌘C and ⌘V for a terminal), ⇧Insert.
         if m.control && m.shift && !m.alt {
             match k.key.as_str() {
                 "c" | "C" => {
-                    self.copy(cx);
+                    self.copy();
                     return true;
                 }
                 "v" | "V" => {
-                    self.paste(cx);
+                    self.paste();
                     return true;
                 }
                 _ => {}
@@ -220,17 +263,17 @@ impl Terminal {
             let lines = self.grid.get().1 as i32 - 1;
             match k.key.as_str() {
                 "insert" => {
-                    self.paste(cx);
+                    self.paste();
                     return true;
                 }
                 "pageup" => {
-                    self.term.lock().scroll_display(Scroll::Delta(lines));
-                    cx.notify();
+                    self.session.term.lock().scroll_display(Scroll::Delta(lines));
+                    cx.invalidate();
                     return true;
                 }
                 "pagedown" => {
-                    self.term.lock().scroll_display(Scroll::Delta(-lines));
-                    cx.notify();
+                    self.session.term.lock().scroll_display(Scroll::Delta(-lines));
+                    cx.invalidate();
                     return true;
                 }
                 _ => {}
@@ -239,32 +282,32 @@ impl Terminal {
         if m.platform {
             return false;
         }
-        let mode = *self.term.lock().mode();
+        let mode = *self.session.term.lock().mode();
         if let Some(bytes) = key_bytes(k, mode) {
-            self.typed(bytes);
+            self.session.typed(bytes);
             return true;
         }
         if let Some(text) = k.key_char.as_ref().filter(|t| !t.is_empty() && !m.control) {
-            self.typed(text.clone().into_bytes());
+            self.session.typed(text.clone().into_bytes());
             return true;
         }
         false
     }
 
-    fn cell_at(&self, at: gpui::Point<Pixels>) -> Option<(Point, Side)> {
+    fn cell_at(&self, at: olo_kit::Point<Pixels>) -> Option<(Point, Side)> {
         let (b, m) = self.drawn.get()?;
         let (cols, rows) = self.grid.get();
         let x = (f32::from(at.x - b.left()) - PAD).max(0.0);
         let y = (f32::from(at.y - b.top()) - PAD).max(0.0);
-        let col = ((x / m.cell.0) as usize).min(cols - 1);
-        let row = ((y / m.cell.1) as usize).min(rows - 1);
+        let col = ((x / m.cell.0) as usize).min(cols.saturating_sub(1));
+        let row = ((y / m.cell.1) as usize).min(rows.saturating_sub(1));
         let side = if x - col as f32 * m.cell.0 < m.cell.0 / 2.0 { Side::Left } else { Side::Right };
-        let offset = self.term.lock().grid().display_offset() as i32;
+        let offset = self.session.term.lock().grid().display_offset() as i32;
         Some((Point::new(Line(row as i32 - offset), Column(col)), side))
     }
 
-    fn mouse_down(&mut self, e: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        window.focus(&self.focus);
+    fn mouse_down(&mut self, e: &MouseDownEvent, cx: &mut Cx<Self>) {
+        self.focus.focus(cx);
         if e.button != MouseButton::Left {
             return;
         }
@@ -274,40 +317,42 @@ impl Terminal {
             3 => SelectionType::Lines,
             _ => SelectionType::Simple,
         };
-        self.term.lock().selection = Some(Selection::new(kind, p, side));
+        self.session.term.lock().selection = Some(Selection::new(kind, p, side));
         self.selecting = true;
-        cx.notify();
+        cx.invalidate();
     }
 
-    fn mouse_move(&mut self, e: &MouseMoveEvent, cx: &mut Context<Self>) {
+    fn mouse_move(&mut self, e: &MouseMoveEvent, cx: &mut Cx<Self>) {
         if !self.selecting || e.pressed_button != Some(MouseButton::Left) {
             return;
         }
         let Some((p, side)) = self.cell_at(e.position) else { return };
-        if let Some(s) = self.term.lock().selection.as_mut() {
+        if let Some(s) = self.session.term.lock().selection.as_mut() {
             s.update(p, side);
         }
-        cx.notify();
+        cx.invalidate();
     }
 
-    fn mouse_up(&mut self, _: &MouseUpEvent, cx: &mut Context<Self>) {
+    fn mouse_up(&mut self, _: &MouseUpEvent, cx: &mut Cx<Self>) {
         self.selecting = false;
         // A click alone selects nothing.
-        let mut t = self.term.lock();
-        if t.selection.as_ref().is_some_and(|s| s.is_empty()) {
-            t.selection = None;
+        {
+            let mut t = self.session.term.lock();
+            if t.selection.as_ref().is_some_and(|s| s.is_empty()) {
+                t.selection = None;
+            }
         }
-        cx.notify();
+        cx.invalidate();
     }
 
-    fn scroll(&mut self, e: &ScrollWheelEvent, cx: &mut Context<Self>) {
+    fn scroll(&mut self, e: &ScrollWheelEvent, cx: &mut Cx<Self>) {
         let Some((_, m)) = self.drawn.get() else { return };
         let dy = f32::from(e.delta.pixel_delta(px(m.cell.1)).y);
         let lines = (dy / m.cell.1).round() as i32;
         if lines == 0 {
             return;
         }
-        let mode = *self.term.lock().mode();
+        let mode = *self.session.term.lock().mode();
         // A full-screen program (less, an editor) scrolls by its arrows.
         if mode.contains(TermMode::ALT_SCREEN | TermMode::ALTERNATE_SCROLL) {
             let arrow: &[u8] = match (lines > 0, mode.contains(TermMode::APP_CURSOR)) {
@@ -316,17 +361,11 @@ impl Terminal {
                 (false, true) => b"\x1bOB",
                 (false, false) => b"\x1b[B",
             };
-            self.write(arrow.repeat(lines.unsigned_abs() as usize));
+            self.session.write(arrow.repeat(lines.unsigned_abs() as usize));
             return;
         }
-        self.term.lock().scroll_display(Scroll::Delta(lines));
-        cx.notify();
-    }
-}
-
-impl Focusable for Terminal {
-    fn focus_handle(&self, _: &App) -> FocusHandle {
-        self.focus.clone()
+        self.session.term.lock().scroll_display(Scroll::Delta(lines));
+        cx.invalidate();
     }
 }
 
@@ -403,164 +442,170 @@ struct Run {
     wide: bool,
 }
 
-impl Render for Terminal {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = theme::palette(cx);
+impl View for Terminal {
+    type Message = ();
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let p = theme::palette();
         let look = Look::new(&p.terminal);
-        let (term, grid, drawn, tx, focus) = (self.term.clone(), self.grid.clone(), self.drawn.clone(), self.tx.clone(), self.focus.clone());
+        let focused = self.focus.is_focused(cx);
         let bg = hsla(look.bg);
-        let screen = canvas(
-            |_, _, _| {},
-            move |well, _, window, cx| {
-                let m = Metrics::new(window);
-                // The screen in a sunken well, inside its two lines.
-                let focused = focus.is_focused(window);
-                window.paint_quad(gpui::fill(style::snap(window, well), bg));
-                style::sunken(window, well, &p, focused);
-                let line = 2.0 / m.scale;
-                let b = Bounds::from_corners(point(well.left() + px(line), well.top() + px(line)), point(well.right() - px(line), well.bottom() - px(line)));
-                drawn.set(Some((b, m)));
-                // The well's size in cells: the shell told when it changes.
-                let (cols, rows) = m.grid(f32::from(b.size.width), f32::from(b.size.height));
-                if grid.get() != (cols, rows) {
-                    grid.set((cols, rows));
-                    term.lock().resize(TermSize::new(cols, rows));
-                    if let Some(tx) = &tx {
-                        let cell = ((m.cell.0 * m.scale).round() as u16, (m.cell.1 * m.scale).round() as u16);
-                        let _ = tx.send(Msg::Resize(WindowSize { num_lines: rows as u16, num_cols: cols as u16, cell_width: cell.0, cell_height: cell.1 }));
-                    }
+        let screen = view_canvas(move |t_view: &Terminal, g, well| {
+            let term = &t_view.session.term;
+            let m = Metrics::new(g);
+            // The screen in a sunken well, inside its two lines.
+            g.paint_quad(olo_kit::fill(style::snap(g, well), bg));
+            style::sunken(g, well, &p, focused);
+            let line = 2.0 / m.scale;
+            let b = Bounds::from_corners(point(well.left() + px(line), well.top() + px(line)), point(well.right() - px(line), well.bottom() - px(line)));
+            t_view.drawn.set(Some((b, m)));
+            // The well's size in cells: the shell told when it changes.
+            let (cols, rows) = m.grid(f32::from(b.size.width), f32::from(b.size.height));
+            // (Not a well too small for a prompt: two columns told to the
+            // shell wrap its prompt, and it doesn't come back as it was.
+            // Its window, a point square until app_server sizes it, isn't
+            // laid out or drawn before: `awaits_size`.)
+            if t_view.grid.get() != (cols, rows) && cols >= 20 && rows >= 4 {
+                t_view.grid.set((cols, rows));
+                term.lock().resize(TermSize::new(cols, rows));
+                if let Some(tx) = &t_view.session.tx {
+                    let cell = ((m.cell.0 * m.scale).round() as u16, (m.cell.1 * m.scale).round() as u16);
+                    let _ = tx.send(Msg::Resize(WindowSize { num_lines: rows as u16, num_cols: cols as u16, cell_width: cell.0, cell_height: cell.1 }));
                 }
-                let t = term.lock();
-                let content = t.renderable_content();
-                let offset = content.display_offset as i32;
-                let (ox, oy) = (f32::from(b.left()) + PAD, f32::from(b.top()) + PAD);
-                let (cw, ch) = m.cell;
-                let snap = |v: f32| px((v * m.scale).round() / m.scale);
-                let at = |line: i32, col: usize| (snap(ox + col as f32 * cw), snap(oy + (line + offset) as f32 * ch));
-                let selection = content.selection;
-                let cursor = content.cursor;
-                let colors = content.colors;
-                let mut runs: Vec<(i32, Run)> = Vec::new();
-                for item in content.display_iter {
-                    let (pt, cell) = (item.point, item.cell);
-                    if cell.flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER) {
-                        continue;
+            }
+            let t = term.lock();
+            let content = t.renderable_content();
+            let offset = content.display_offset as i32;
+            let (ox, oy) = (f32::from(b.left()) + PAD, f32::from(b.top()) + PAD);
+            let (cw, ch) = m.cell;
+            let snap = |v: f32| px((v * m.scale).round() / m.scale);
+            let at = |line: i32, col: usize| (snap(ox + col as f32 * cw), snap(oy + (line + offset) as f32 * ch));
+            let selection = content.selection;
+            let cursor = content.cursor;
+            let colors = content.colors;
+            let mut runs: Vec<(i32, Run)> = Vec::new();
+            for item in content.display_iter {
+                let (pt, cell) = (item.point, item.cell);
+                if cell.flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER) {
+                    continue;
+                }
+                let (mut fg, mut cbg) = (look.resolve(cell.fg, colors), look.resolve(cell.bg, colors));
+                if cell.flags.contains(Flags::INVERSE) {
+                    std::mem::swap(&mut fg, &mut cbg);
+                }
+                if cell.flags.contains(Flags::DIM) {
+                    fg = dim(fg);
+                }
+                let wide = cell.flags.contains(Flags::WIDE_CHAR);
+                let w = if wide { 2.0 * cw } else { cw };
+                let selected = selection.is_some_and(|s| s.contains(pt));
+                let fill = if selected { Some(look.selection) } else { (cbg != look.bg).then_some(cbg) };
+                if let Some(c) = fill {
+                    let (x, y) = at(pt.line.0, pt.column.0);
+                    g.paint_quad(olo_kit::fill(Bounds { origin: point(x, y), size: size(px(w), px(ch)) }, hsla(c)));
+                }
+                if cell.c == ' ' || cell.c == '\t' || cell.flags.contains(Flags::HIDDEN) {
+                    // (A space ends nothing: it's in the run, if one's going.)
+                    if let Some((line, r)) = runs.last_mut()
+                        && *line == pt.line.0
+                        && !r.wide
+                        && r.col + r.text.chars().count() == pt.column.0
+                    {
+                        r.text.push(' ');
                     }
-                    let (mut fg, mut cbg) = (look.resolve(cell.fg, colors), look.resolve(cell.bg, colors));
-                    if cell.flags.contains(Flags::INVERSE) {
-                        std::mem::swap(&mut fg, &mut cbg);
-                    }
-                    if cell.flags.contains(Flags::DIM) {
-                        fg = dim(fg);
-                    }
-                    let wide = cell.flags.contains(Flags::WIDE_CHAR);
-                    let w = if wide { 2.0 * cw } else { cw };
-                    let selected = selection.is_some_and(|s| s.contains(pt));
-                    let fill = if selected { Some(look.selection) } else { (cbg != look.bg).then_some(cbg) };
-                    if let Some(c) = fill {
-                        let (x, y) = at(pt.line.0, pt.column.0);
-                        window.paint_quad(gpui::fill(Bounds { origin: point(x, y), size: size(px(w), px(ch)) }, hsla(c)));
-                    }
-                    if cell.c == ' ' || cell.c == '\t' || cell.flags.contains(Flags::HIDDEN) {
-                        // (A space ends nothing: it's in the run, if one's going.)
-                        if let Some((line, r)) = runs.last_mut()
-                            && *line == pt.line.0
+                    continue;
+                }
+                let color = hsla(fg);
+                let weight = if cell.flags.contains(Flags::BOLD) { FontWeight::BOLD } else { FontWeight::NORMAL };
+                let italic = cell.flags.contains(Flags::ITALIC);
+                let underline = cell.flags.intersects(Flags::ALL_UNDERLINES);
+                let mut text = cell.c.to_string();
+                if let Some(z) = cell.zerowidth() {
+                    text.extend(z);
+                }
+                match runs.last_mut() {
+                    Some((line, r))
+                        if *line == pt.line.0
+                            && !wide
                             && !r.wide
-                            && r.col + r.text.chars().count() == pt.column.0
-                        {
-                            r.text.push(' ');
-                        }
-                        continue;
+                            && r.color == color
+                            && r.weight == weight
+                            && r.italic == italic
+                            && r.underline == underline
+                            && r.col + r.text.chars().count() == pt.column.0 =>
+                    {
+                        r.text.push_str(&text);
                     }
-                    let color = hsla(fg);
-                    let weight = if cell.flags.contains(Flags::BOLD) { FontWeight::BOLD } else { FontWeight::NORMAL };
-                    let italic = cell.flags.contains(Flags::ITALIC);
-                    let underline = cell.flags.intersects(Flags::ALL_UNDERLINES);
-                    let mut text = cell.c.to_string();
-                    if let Some(z) = cell.zerowidth() {
-                        text.extend(z);
-                    }
-                    match runs.last_mut() {
-                        Some((line, r))
-                            if *line == pt.line.0
-                                && !wide
-                                && !r.wide
-                                && r.color == color
-                                && r.weight == weight
-                                && r.italic == italic
-                                && r.underline == underline
-                                && r.col + r.text.chars().count() == pt.column.0 =>
-                        {
-                            r.text.push_str(&text);
-                        }
-                        _ => runs.push((pt.line.0, Run { col: pt.column.0, text, color, weight, italic, underline, wide })),
-                    }
+                    _ => runs.push((pt.line.0, Run { col: pt.column.0, text, color, weight, italic, underline, wide })),
                 }
-                for (line, r) in runs {
-                    let text = r.text.trim_end().to_owned();
-                    if text.is_empty() {
-                        continue;
-                    }
-                    let mut font = style::mono_font(r.weight);
-                    if r.italic {
-                        font.style = FontStyle::Italic;
-                    }
-                    let underline = r.underline.then(|| gpui::UnderlineStyle { thickness: px(1.0), color: Some(r.color), wavy: false });
-                    let run = TextRun { len: text.len(), font, color: r.color, background_color: None, underline, strikethrough: None, size: None };
-                    let w = if r.wide { 2.0 * cw } else { cw };
-                    let shaped = window.text_system().shape_line(text.into(), px(TEXT_SIZE), &[run], Some(px(w)));
-                    let (x, y) = at(line, r.col);
-                    let _ = shaped.paint(point(x, y + px(m.baseline) - shaped.ascent), shaped.ascent + shaped.descent, window, cx);
+            }
+            for (line, r) in runs {
+                let text = r.text.trim_end().to_owned();
+                if text.is_empty() {
+                    continue;
                 }
-                // The cursor: a block while the keyboard is here, an
-                // outline while it isn't.
-                if cursor.shape != CursorShape::Hidden && offset == 0 {
-                    let (x, y) = at(cursor.point.line.0, cursor.point.column.0);
-                    let r = Bounds { origin: point(x, y), size: size(px(cw), px(ch)) };
-                    let c = hsla(look.cursor);
-                    let line = px(1.0 / m.scale).max(px(1.0));
-                    match (focused, cursor.shape) {
-                        (true, CursorShape::Beam) => window.paint_quad(gpui::fill(Bounds { origin: r.origin, size: size(line * 2.0, r.size.height) }, c)),
-                        (true, CursorShape::Underline) => window.paint_quad(gpui::fill(Bounds { origin: point(r.left(), r.bottom() - line * 2.0), size: size(r.size.width, line * 2.0) }, c)),
-                        (true, _) => {
-                            window.paint_quad(gpui::fill(r, c));
-                            let under = t.grid()[cursor.point].c;
-                            if under != ' ' {
-                                let run = TextRun {
-                                    len: under.len_utf8(),
-                                    font: style::mono_font(FontWeight::NORMAL),
-                                    color: hsla(look.bg),
-                                    background_color: None,
-                                    underline: None,
-                                    strikethrough: None,
-                                    size: None,
-                                };
-                                let shaped = window.text_system().shape_line(under.to_string().into(), px(TEXT_SIZE), &[run], Some(px(cw)));
-                                let _ = shaped.paint(point(x, y + px(m.baseline) - shaped.ascent), shaped.ascent + shaped.descent, window, cx);
-                            }
+                let mut font = style::mono_font(r.weight);
+                if r.italic {
+                    font.style = FontStyle::Italic;
+                }
+                let underline = r.underline.then(|| olo_kit::UnderlineStyle { thickness: px(1.0), color: Some(r.color), wavy: false });
+                let run = TextRun { len: text.len(), font, color: r.color, background_color: None, underline, strikethrough: None, size: None };
+                let w = if r.wide { 2.0 * cw } else { cw };
+                let shaped = g.text_system().shape_line(text.into(), px(TEXT_SIZE), &[run], Some(px(w)));
+                let (x, y) = at(line, r.col);
+                let _ = shaped.paint(point(x, y + px(m.baseline) - shaped.ascent), shaped.ascent + shaped.descent, g);
+            }
+            // The cursor: a block while the keyboard is here, an
+            // outline while it isn't.
+            if cursor.shape != CursorShape::Hidden && offset == 0 {
+                let (x, y) = at(cursor.point.line.0, cursor.point.column.0);
+                let r = Bounds { origin: point(x, y), size: size(px(cw), px(ch)) };
+                let c = hsla(look.cursor);
+                let line = px(1.0 / m.scale).max(px(1.0));
+                match (focused, cursor.shape) {
+                    (true, CursorShape::Beam) => g.paint_quad(olo_kit::fill(Bounds { origin: r.origin, size: size(line * 2.0, r.size.height) }, c)),
+                    (true, CursorShape::Underline) => g.paint_quad(olo_kit::fill(Bounds { origin: point(r.left(), r.bottom() - line * 2.0), size: size(r.size.width, line * 2.0) }, c)),
+                    (true, _) => {
+                        g.paint_quad(olo_kit::fill(r, c));
+                        let under = t.grid()[cursor.point].c;
+                        if under != ' ' {
+                            let run = TextRun {
+                                len: under.len_utf8(),
+                                font: style::mono_font(FontWeight::NORMAL),
+                                color: hsla(look.bg),
+                                background_color: None,
+                                underline: None,
+                                strikethrough: None,
+                                size: None,
+                            };
+                            let shaped = g.text_system().shape_line(under.to_string().into(), px(TEXT_SIZE), &[run], Some(px(cw)));
+                            let _ = shaped.paint(point(x, y + px(m.baseline) - shaped.ascent), shaped.ascent + shaped.descent, g);
                         }
-                        (false, _) => window.paint_quad(gpui::outline(r, c, gpui::BorderStyle::Solid)),
                     }
+                    (false, _) => g.paint_quad(olo_kit::outline(r, c, olo_kit::BorderStyle::Solid)),
                 }
-                olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Terminal", name: Some("Terminal".into()), bounds: well, enabled: true, ..Default::default() });
-            },
-        )
+            }
+            g.agent(olo_kit::agent::Node { role: "Terminal", name: Some("Terminal".into()), bounds: well, enabled: true, ..Default::default() });
+        })
         .size_full();
-        let me = cx.entity();
-        let (down, moved, up, wheel) = (me.clone(), me.clone(), me.clone(), me.clone());
         div()
             .size_full()
-            .key_context(CONTEXT)
             .track_focus(&self.focus)
-            .on_key_down(cx.listener(|t, e: &gpui::KeyDownEvent, _, cx| {
+            .focusable()
+            // (Its cursor shows whether the keyboard is here.)
+            .on_focus_changed(cx.listener(|_: &mut Self, _, cx| cx.invalidate()))
+            // Every key is the shell's while the keyboard is here: Tab
+            // too (the window's own Tab, to the next control, isn't
+            // reached).
+            .on_key_down(cx.listener(|t: &mut Self, e: &KeyDownEvent, cx| {
                 if t.key(&e.keystroke, cx) {
                     cx.stop_propagation();
                 }
             }))
-            .on_mouse_down(MouseButton::Left, move |e, window, cx| down.update(cx, |t, cx| t.mouse_down(e, window, cx)))
-            .on_mouse_move(move |e, _, cx| moved.update(cx, |t, cx| t.mouse_move(e, cx)))
-            .on_mouse_up(MouseButton::Left, move |e, _, cx| up.update(cx, |t, cx| t.mouse_up(e, cx)))
-            .on_scroll_wheel(move |e, _, cx| wheel.update(cx, |t, cx| t.scroll(e, cx)))
+            .on_mouse_down(MouseButton::Left, cx.listener(Self::mouse_down))
+            .on_mouse_move(cx.listener(Self::mouse_move))
+            .on_mouse_up(MouseButton::Left, cx.listener(Self::mouse_up))
+            .on_scroll_wheel(cx.listener(Self::scroll))
             .child(screen)
     }
 }
@@ -649,7 +694,7 @@ fn ctrl_byte(name: &str, shift: bool) -> Option<u8> {
     if c.is_ascii_alphabetic() {
         return Some(c.to_ascii_lowercase() as u8 & 0x1f);
     }
-    let c = if shift { olo_ui::keys::shifted(c).unwrap_or(c) } else { c };
+    let c = if shift { olo_kit::keys::shifted(c).unwrap_or(c) } else { c };
     Some(match c {
         '2' | '@' => 0,
         '3' | '[' | '{' => 0x1b,

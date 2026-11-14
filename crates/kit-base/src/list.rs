@@ -1,4 +1,4 @@
-//! A list's selection and sort, for the kit's list views (olo-ui's
+//! A list's selection and sort, for the kit's list views (its
 //! `ColumnListView`, Tracker's icon view): the selection every file
 //! manager has ([`ListState::click`], [`ListState::move_to`] for the
 //! keyboard, [`ListState::band`] for a selection band, select all,

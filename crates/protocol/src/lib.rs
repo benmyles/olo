@@ -13,6 +13,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+pub mod airplay;
 pub mod airpods;
 pub mod app_keys;
 pub mod color;
@@ -24,6 +25,7 @@ pub mod mice;
 pub mod notifications;
 pub mod panels;
 pub mod performance;
+pub mod pool;
 pub mod power_button;
 pub mod recording;
 pub mod rescue;
@@ -70,6 +72,10 @@ pub enum Request {
         keys: Vec<(String, String)>,
     },
     ListWindows,
+    /// Each layer surface's process and namespace ([`Reply::LayerClients`]):
+    /// olo-session's check that Deskbar and the desktop came back after
+    /// app_server did.
+    LayerClients,
     Activate {
         id: WindowId,
     },
@@ -534,6 +540,13 @@ pub enum Request {
         #[serde(default)]
         quiet: bool,
     },
+    /// For tests only (a test app_server: `OLO_TEST_SEAT`): app_server's
+    /// loop held `ms` (at most 2000), as a slow frame or a lock in the GPU
+    /// driver holds it. The pointer should keep moving meanwhile (the
+    /// input thread: `tools/dev/cursor-thread-check`).
+    HoldLoop {
+        ms: u32,
+    },
     /// How each display keeps up ([`DisplayFrames`]: its frames a second,
     /// the ones presented late, what its frames cost), for Activity
     /// Monitor's Displays. Counted always, at no cost worth measuring.
@@ -669,6 +682,11 @@ pub enum Reply {
     },
     Windows {
         windows: Vec<WindowInfo>,
+    },
+    /// Each layer surface (Deskbar's, the desktop's, a banner…): the
+    /// process it's of (behind olo-wlproxy too) and its namespace.
+    LayerClients {
+        clients: Vec<(i32, String)>,
     },
     /// How many workspaces each display has, the one showing on the
     /// active display (`current`), and each display's (`displays`).
@@ -1096,6 +1114,10 @@ pub struct PowerStatus {
     pub app_inhibitors: u32,
     /// The built-in display's backlight, 0.0–1.0, if there is one.
     pub brightness: Option<f32>,
+    /// The built-in display is switched off: its brightness is at the
+    /// bottom (the next step up brings it back).
+    #[serde(default)]
+    pub panel_off: bool,
     /// The screen saver is running.
     #[serde(default)]
     pub screen_saver: bool,
@@ -1559,6 +1581,11 @@ pub struct Settings {
     pub startup_sound: bool,
     /// Which start-up sound.
     pub startup_chime: StartupChime,
+    /// libinput read, and the pointer moved while app_server's loop is
+    /// held, on a thread of its own (Preferences ▸ Performance ▸
+    /// Scheduler; `OLO_INPUT_THREAD` 1 or 0 overrides it). Off while it's
+    /// tried.
+    pub input_thread: bool,
     pub terminal: TerminalSettings,
     pub security: SecuritySettings,
     pub ai: AiSettings,
@@ -1792,13 +1819,15 @@ impl StartupChime {
 #[serde(default)]
 pub struct ScreenRecordingSettings {
     /// "auto" (the most powerful there is: an NVIDIA GPU's encoder
-    /// where it opens, else, for AV1, an Intel or AMD GPU's through
-    /// VA-API, else the processor), "nvidia", "vaapi" (AV1 only) or
-    /// "cpu".
+    /// where it opens, else an Intel or AMD GPU's through VA-API, for AV1
+    /// and, where its driver makes it, H.264, else the processor; on
+    /// battery the built-in GPU first), "nvidia", "vaapi" (AV1, and H.264
+    /// where the driver makes it) or "cpu".
     pub encoder: String,
     /// What recordings are coded as: "h264" (plays everywhere), "hevc"
-    /// or "av1" (smaller, on NVIDIA's encoder; the processor makes
-    /// H.264 whatever this says).
+    /// (smaller, on NVIDIA's encoder) or "av1" (on NVIDIA's encoder or
+    /// an Intel or AMD GPU's); the processor makes H.264 whatever this
+    /// says.
     pub codec: String,
     /// The sound recorded with the screen: "computer" (what it plays),
     /// "microphone", "both" or "none".
@@ -2505,6 +2534,7 @@ impl Default for Settings {
             video: VideoSettings::default(),
             startup_sound: true,
             startup_chime: StartupChime::default(),
+            input_thread: false,
             terminal: TerminalSettings::default(),
             security: SecuritySettings::default(),
             ai: AiSettings::default(),

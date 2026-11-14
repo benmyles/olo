@@ -53,20 +53,20 @@ use chacha20poly1305::{
     XChaCha20Poly1305, XNonce,
     aead::{Aead, KeyInit, Payload},
 };
+use olo_kit::{
+    Child, ClickEvent, Cx, Element, FontWeight, IntoElement as _, ParentElement as _, ScrollHandle, Styled as _, WindowCx, canvas, div,
+    file_panel::{self, FilePanel, PanelResult},
+    metrics as m, px,
+    style::{self, c},
+    theme,
+    widgets::{Button, CheckBox, ScrollView, StatusBar, StringView, TextControl, TextField},
+};
 use olo_protocol::Settings;
 use olo_system::{
     gpu_tuning::{self, Tuning},
     meters,
     network::{self, SavedWifi},
     secrets::{self, Carry},
-};
-use olo_ui::{
-    file_panel::{self, FilePanel, PanelResult},
-    gpui::{Context, Entity, FontWeight, IntoElement as _, ParentElement as _, ScrollHandle, Styled as _, canvas, div, px},
-    metrics as m,
-    style::{self, c},
-    theme,
-    widgets::{Button, CheckBox, ScrollView, StatusBar, StringView, TextControl, TextField},
 };
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
@@ -494,7 +494,7 @@ fn app_of(path: &str) -> String {
 
 /// The directories a backup holds, by their name in it.
 pub fn roots() -> Vec<(&'static str, PathBuf)> {
-    vec![("config", olo_ui::config_dir()), ("state", olo_ui::state_dir())]
+    vec![("config", olo_kit::config_dir()), ("state", olo_kit::state_dir())]
 }
 
 /// Where automatic backups go (left out of backups themselves).
@@ -1257,11 +1257,11 @@ pub struct State {
     /// Passwords and sign-ins go in the export, sealed with the password
     /// typed twice.
     sealed: bool,
-    password: Entity<TextField>,
-    again: Entity<TextField>,
+    password: Child<TextField>,
+    again: Child<TextField>,
     /// A sealed backup's password, to import it.
-    unlock: Entity<TextField>,
-    proxy: olo_ui::Proxy,
+    unlock: Child<TextField>,
+    proxy: olo_kit::Proxy,
     scroll: ScrollHandle,
     /// What an export holds, part by part (read on a thread as the panel
     /// opens, and after each export and import), and those left out.
@@ -1291,11 +1291,11 @@ impl State {
         }
     }
 
-    pub fn new(cx: &mut Context<PanelView>) -> State {
-        let field = |cx: &mut Context<PanelView>| {
-            let f = olo_ui::widgets::text_field(cx, |f| f.password(true));
+    pub fn new(cx: &mut Cx<PanelView>) -> State {
+        let field = |cx: &mut Cx<PanelView>| {
+            let f = crate::form::text_field(cx, |f| f.password(true));
             // (The buttons it enables, redrawn as it's typed in.)
-            cx.subscribe(&f, |_, _, _: &olo_ui::widgets::TextFieldEvent, cx| cx.notify()).detach();
+            cx.subscribe(&f, |_, _: &olo_kit::widgets::TextFieldEvent, cx| cx.notify());
             f
         };
         let mut st = State {
@@ -1310,7 +1310,7 @@ impl State {
             password: field(cx),
             again: field(cx),
             unlock: field(cx),
-            proxy: olo_ui::proxy(cx),
+            proxy: olo_kit::proxy(),
             scroll: ScrollHandle::new(),
             parts: None,
             parts_rx: None,
@@ -1375,7 +1375,7 @@ impl State {
     }
 
     /// The file panel chose where to export to.
-    pub fn export_to(&mut self, dest: PathBuf, cx: &mut Context<PanelView>) {
+    pub fn export_to(&mut self, dest: PathBuf, cx: &mut Cx<PanelView>) {
         let how = if self.sealed { Seal::Passphrase(Zeroizing::new(self.password.read(cx).text().to_owned())) } else { Seal::Open };
         for f in [&self.password, &self.again] {
             f.update(cx, |f, cx| f.set_text("", cx));
@@ -1400,7 +1400,7 @@ impl State {
         });
     }
 
-    fn import(&mut self, cx: &mut Context<PanelView>) {
+    fn import(&mut self, cx: &mut Cx<PanelView>) {
         let Some((src, _)) = self.chosen.clone() else { return };
         let words = Zeroizing::new(self.unlock.read(cx).text().to_owned());
         self.unlock.update(cx, |f, cx| f.set_text("", cx));
@@ -1496,16 +1496,17 @@ pub fn suggested_name() -> String {
 
 /// A file panel for the backup (to export to, or to import), its answer
 /// to this panel's window.
-fn ask(ui: &Ui, export: bool) -> impl Fn(&mut olo_ui::gpui::Window, &mut olo_ui::gpui::App) + 'static {
-    let view = ui.cx.entity().downgrade();
-    move |_, cx| {
+fn ask(ui: &Ui, export: bool) -> impl Fn(&ClickEvent, &mut WindowCx) + 'static {
+    // (The panel answers on a looper of its own.)
+    let view = ui.cx.doer();
+    move |_, _| {
         let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
         let (title, panel) =
             if export { ("Export Settings", FilePanel::save(home, suggested_name()).types(&[EXTENSION])) } else { ("Import Settings", FilePanel::open(home).types(&[EXTENSION, OLD_EXTENSION])) };
         let view = view.clone();
-        file_panel::show(cx, title, panel, move |a, cx| {
+        file_panel::show(title, panel, move |a| {
             let PanelResult::Chosen(path) = a.result else { return };
-            let _ = view.update(cx, |v, cx| {
+            view.run(move |v, cx| {
                 if let Some(st) = state_of(v) {
                     if export {
                         st.export_to(path, cx);
@@ -1520,21 +1521,18 @@ fn ask(ui: &Ui, export: bool) -> impl Fn(&mut olo_ui::gpui::Window, &mut olo_ui:
 }
 
 /// A line of text cut short to fit (an ellipsis), in `color`.
-fn line(text: String, color: olo_ui::gpui::Hsla) -> impl olo_ui::gpui::IntoElement {
-    canvas(
-        |_, _, _| {},
-        move |r, _, window, cx| {
-            let font = style::ui_font(FontWeight::NORMAL);
-            let shown = style::fit(window, text.clone().into(), style::PLAIN_SIZE, &font, r.size.width);
-            style::label(window, cx, r.left(), r.center().y, style::Align::Left, shown, style::PLAIN_SIZE, font, color);
-        },
-    )
+fn line(text: String, color: olo_kit::Hsla) -> impl olo_kit::IntoElement {
+    canvas(move |g, r| {
+        let font = style::ui_font(FontWeight::NORMAL);
+        let shown = style::fit(g, text.clone().into(), style::PLAIN_SIZE, &font, r.size.width);
+        style::label(g, r.left(), r.center().y, style::Align::Left, shown, style::PLAIN_SIZE, font, color);
+    })
     .w_full()
     .h(px(m::CONTROL_HEIGHT))
 }
 
 /// Progress, and Cancel if it can be.
-fn progress(done: u64, total: u64, cancel: &Arc<AtomicBool>, cancellable: bool) -> olo_ui::gpui::Div {
+fn progress(done: u64, total: u64, cancel: &Arc<AtomicBool>, cancellable: bool) -> Element {
     let fraction = if total > 0 { done as f32 / total as f32 } else { 0.0 };
     let mut row = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().child(StatusBar::new(fraction)));
     if cancellable {
@@ -1547,33 +1545,27 @@ fn progress(done: u64, total: u64, cancel: &Arc<AtomicBool>, cancellable: bool) 
 
 /// A part of a backup in a list: its check box, and what it holds on the
 /// right (small, dim).
-fn part_row(id: String, part: String, detail: String, on: bool, enabled: bool, toggle: impl Fn(bool, &mut olo_ui::gpui::Window, &mut olo_ui::gpui::App) + 'static) -> olo_ui::gpui::AnyElement {
-    let detail = canvas(
-        |_, _, _| {},
-        move |r, _, window, cx| {
-            let p = theme::palette(cx);
-            // On the check box's label's baseline (its size, centred in
-            // the row): centred itself, the smaller text sat a point high.
-            let baseline = style::baseline_at(window, r.center().y, style::PLAIN_SIZE);
-            style::label_on_baseline(window, cx, r.right(), baseline, style::Align::Right, detail.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
-        },
-    )
+fn part_row(id: String, part: String, detail: String, on: bool, enabled: bool, toggle: impl Fn(&bool, &mut WindowCx) + 'static) -> olo_kit::Element {
+    let detail = canvas(move |g, r| {
+        let p = theme::palette();
+        // On the check box's label's baseline (its size, centred in
+        // the row): centred itself, the smaller text sat a point high.
+        let baseline = style::baseline_at(g, r.center().y, style::PLAIN_SIZE);
+        style::label_on_baseline(g, r.right(), baseline, style::Align::Right, detail.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
+    })
     .w(px(140.0))
     .h_full()
     .flex_shrink_0();
     // An item of a list to agents (and so, being what's in it on this
     // computer, not one of the panel's settings to the palette's index).
     let name = part.clone();
-    let item = canvas(
-        |_, _, _| {},
-        move |b, _, window, cx| {
-            // (As much of it as shows: scrolled out of the list, none.)
-            let shown = b.intersect(&window.content_mask().bounds);
-            if shown.size.height > px(0.0) {
-                olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "ListItem", name: Some(name.clone().into()), bounds: shown, enabled: true, ..Default::default() });
-            }
-        },
-    )
+    let item = canvas(move |g, b| {
+        // (As much of it as shows: scrolled out of the list, none.)
+        let shown = b.intersect(&g.content_mask().bounds);
+        if shown.size.height > px(0.0) {
+            olo_kit::agent::record(g, olo_kit::agent::Node { role: "ListItem", name: Some(name.clone().into()), bounds: shown, enabled: true, ..Default::default() });
+        }
+    })
     .absolute()
     .inset_0();
     div()
@@ -1589,7 +1581,7 @@ fn part_row(id: String, part: String, detail: String, on: bool, enabled: bool, t
         // baseline is taken: 20 points in 26, it sat a pixel off at 1.25×.)
         .child(div().flex_1().min_w_0().child(CheckBox::new(part, on).id(id).height(PART_ROW).enabled(enabled).on_toggle(toggle)))
         .child(detail)
-        .into_any_element()
+        .into_element()
 }
 
 /// The rows of `PART_ROW` a list scrolled by `scroll` shows (its height,
@@ -1610,16 +1602,16 @@ fn shown_rows(scroll: &ScrollHandle, rows: f32) -> std::ops::Range<usize> {
 /// Select All and Select None over a list of parts (`id` tells the two
 /// lists' apart): all of `parts` in, or none; each enabled while it would
 /// change something.
-fn all_or_none(ui: &Ui, id: &str, parts: Vec<String>, choice: &Choice, enabled: bool, set: fn(&mut State) -> &mut Choice) -> olo_ui::gpui::AnyElement {
+fn all_or_none(ui: &Ui, id: &str, parts: Vec<String>, choice: &Choice, enabled: bool, set: fn(&mut State) -> &mut Choice) -> olo_kit::Element {
     let some_out = parts.iter().any(|p| !choice.has(p));
     let some_in = parts.iter().any(|p| choice.has(p));
-    let all = ui.on_click_view(move |v, _, cx| {
+    let all = ui.on_click_view(move |v, cx| {
         if let Some(st) = state_of(v) {
             *set(st) = Choice::all();
         }
         cx.notify();
     });
-    let none = ui.on_click_view(move |v, _, cx| {
+    let none = ui.on_click_view(move |v, cx| {
         if let Some(st) = state_of(v) {
             set(st).left_out = parts.iter().cloned().collect();
         }
@@ -1630,9 +1622,9 @@ fn all_or_none(ui: &Ui, id: &str, parts: Vec<String>, choice: &Choice, enabled: 
         .flex_row()
         .justify_end()
         .gap(px(m::SPACING))
-        .child(olo_ui::widgets::LinkButton::new("Select All").id(format!("{id}-all")).enabled(enabled && some_out).on_click(all))
-        .child(olo_ui::widgets::LinkButton::new("Select None").id(format!("{id}-none")).enabled(enabled && some_in).on_click(none))
-        .into_any_element()
+        .child(olo_kit::widgets::LinkButton::new("Select All").id(format!("{id}-all")).enabled(enabled && some_out).on_click(all))
+        .child(olo_kit::widgets::LinkButton::new("Select None").id(format!("{id}-none")).enabled(enabled && some_in).on_click(none))
+        .into_element()
 }
 
 /// "3 files, 12 KB", or what a part with none is.
@@ -1643,15 +1635,12 @@ fn part_detail(files: usize, bytes: u64, none: &str) -> String {
 pub fn ui(ui: &mut Ui, st: &mut State) {
     if let Some(s) = st.poll() {
         // app_server keeps its own copy: hand it the backup's.
-        let prefs = ui.prefs();
-        ui.cx.defer(move |cx| {
-            let _ = prefs.update(cx, |p, cx| p.edit_as(cx, "", "Restore from Backup", |now| *now = s));
-        });
+        crate::prefs().edit_as("", "Restore from Backup", |now| *now = s);
     }
-    let p = theme::palette(ui.cx);
+    let p = theme::palette();
     let idle = matches!(st.phase, Phase::Idle);
     let (export_it, choose_it) = (ask(ui, true), ask(ui, false));
-    let divider = crate::form::divider_for(ui.window, &["Password:", "Again:"]);
+    let divider = crate::form::divider_for(&["Password:", "Again:"]);
     let (password, again) = (st.password.read(ui.cx).text().to_owned(), st.again.read(ui.cx).text().to_owned());
     let sealed = st.sealed;
     let ready = !sealed || (!password.is_empty() && password == again);
@@ -1665,18 +1654,18 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 ui.note("Saves Olo's settings and what apps keep between runs in one file, to bring back here or to another computer. What goes in:");
                 // A check box for each part (passwords, sign-ins and Wi-Fi
                 // networks only in a sealed one).
-                let mut rows: Vec<olo_ui::gpui::AnyElement> = Vec::new();
+                let mut rows: Vec<olo_kit::Element> = Vec::new();
                 let shown = shown_rows(&st.export_scroll, PARTS_ROWS);
                 for (i, (part, files, bytes)) in st.parts.clone().unwrap_or_default().into_iter().enumerate() {
                     if !shown.contains(&i) {
-                        rows.push(div().h(px(PART_ROW)).into_any_element());
+                        rows.push(div().h(px(PART_ROW)).into_element());
                         continue;
                     }
                     let toggle = ui.on_view({
                         let part = part.clone();
-                        move |v, on: bool, _, cx| {
+                        move |v: &mut PanelView, on: &bool, cx: &mut Cx<PanelView>| {
                             if let Some(st) = state_of(v) {
-                                st.export_choice.set(&part, on);
+                                st.export_choice.set(&part, *on);
                             }
                             cx.notify();
                         }
@@ -1686,36 +1675,41 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                     rows.push(part_row(format!("export-part-{part}"), part.clone(), detail, usable && st.export_choice.has(&part), idle && usable, toggle));
                 }
                 if st.parts.is_none() {
-                    rows.push(div().pl(px(m::TEXT_INSET)).py(px(m::STACK / 2.0)).child(StringView::new("Looking…").color(style::disabled_text(&p))).into_any_element());
+                    rows.push(div().pl(px(m::TEXT_INSET)).py(px(m::STACK / 2.0)).child(StringView::new("Looking…").color(style::disabled_text(&p))).into_element());
                 }
                 // (Those a backup that isn't sealed can't hold aren't counted.)
                 let usable: Vec<String> = st.parts.iter().flatten().filter(|(_, files, _)| *files > 0 || sealed).map(|(p, ..)| p.clone()).collect();
                 let links = all_or_none(ui, "export-parts", usable, &st.export_choice, idle && st.parts.is_some(), |st| &mut st.export_choice);
                 ui.add(links);
                 ui.add(
-                    div()
-                        .h(px(PARTS_ROWS * PART_ROW + 4.0))
-                        .child(ScrollView::new("backup-parts", &st.export_scroll).background(p.document_background).auto_hide(true).child(div().flex().flex_col().py(px(2.0)).children(rows))),
+                    div().h(px(PARTS_ROWS * PART_ROW + 4.0)).child(
+                        ScrollView::new(&st.export_scroll)
+                            .background(p.document_background)
+                            .auto_hide(true)
+                            // (Its rows in view are made as it scrolls: `shown_rows`.)
+                            .on_scroll(ui.cx.listener(|_: &mut PanelView, _: &olo_kit::Point<olo_kit::Pixels>, cx| cx.notify()))
+                            .child(div().flex().flex_col().py(px(2.0)).children(rows)),
+                    ),
                 );
-                let toggle = ui.on_view(|v, on: bool, _, cx| {
+                let toggle = ui.on_view(|v, on: &bool, cx| {
                     if let Some(st) = state_of(v) {
-                        st.sealed = on;
+                        st.sealed = *on;
                     }
                     cx.notify();
                 });
                 ui.add(CheckBox::new("Include passwords and sign-ins, sealed with a password", sealed).enabled(idle).on_toggle(toggle));
                 ui.enabled_if(idle && sealed, |ui| {
-                    ui.add(TextControl::new(st.password.clone()).label("Password:").divider(divider));
-                    ui.add(TextControl::new(st.again.clone()).label("Again:").divider(divider));
+                    ui.add(TextControl::new(ui.cx, &st.password).label("Password:").divider(divider));
+                    ui.add(TextControl::new(ui.cx, &st.again).label("Again:").divider(divider));
                 });
                 // How it's going, or went, beside the button (the box keeps its
                 // height).
                 let status = match &st.phase {
-                    Phase::Working { export: true, done, total, cancel, cancellable } => progress(*done, *total, cancel, *cancellable).into_any_element(),
-                    _ if sealed && !again.is_empty() && password != again => line("The two passwords aren't the same.".into(), c(p.failure)).into_any_element(),
+                    Phase::Working { export: true, done, total, cancel, cancellable } => progress(*done, *total, cancel, *cancellable).into_element(),
+                    _ if sealed && !again.is_empty() && password != again => line("The two passwords aren't the same.".into(), c(p.failure)).into_element(),
                     _ => match &st.exported {
-                        Some((ok, text)) => line(text.clone(), ink(*ok)).into_any_element(),
-                        None => div().into_any_element(),
+                        Some((ok, text)) => line(text.clone(), ink(*ok)).into_element(),
+                        None => div().into_element(),
                     },
                 };
                 let export = Button::new("Export…").enabled(idle && ready && st.export_has_some()).on_click(export_it);
@@ -1726,10 +1720,10 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             ui.bbox("Import", |ui| {
                 ui.note("Puts what you choose from a backup in place of what's here; the rest stays as it is. What you have now is saved first.");
                 // What the backup chosen holds; else what the last import did.
-                let mut rows: Vec<olo_ui::gpui::AnyElement> = Vec::new();
+                let mut rows: Vec<olo_kit::Element> = Vec::new();
                 // (Paragraphs a `STACK` apart, as notes are from what follows, and
                 // clear of the scroll bar.)
-                let text = |t: String, color| div().pl(px(m::TEXT_INSET)).pr(px(m::SPACING)).py(px(m::STACK / 2.0)).child(StringView::new(t).wrap(true).color(color)).into_any_element();
+                let text = |t: String, color| div().pl(px(m::TEXT_INSET)).pr(px(m::SPACING)).py(px(m::STACK / 2.0)).child(StringView::new(t).wrap(true).color(color)).into_element();
                 if let Some((src, manifest)) = &st.chosen {
                     let from = if manifest.from_elsewhere(&Origin::here()) { ", on another computer" } else { "" };
                     ui.add(StringView::new(format!("“{}”, made {}{from}. What's checked comes back:", name_of(src), manifest.created_text())).wrap(true));
@@ -1739,14 +1733,14 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                     let shown = shown_rows(&st.scroll, WELL_ROWS * m::LIST_ROW / PART_ROW);
                     for (i, (part, files, bytes)) in manifest.parts().into_iter().enumerate() {
                         if !shown.contains(&i) {
-                            rows.push(div().h(px(PART_ROW)).into_any_element());
+                            rows.push(div().h(px(PART_ROW)).into_element());
                             continue;
                         }
                         let toggle = ui.on_view({
                             let part = part.clone();
-                            move |v, on: bool, _, cx| {
+                            move |v: &mut PanelView, on: &bool, cx: &mut Cx<PanelView>| {
                                 if let Some(st) = state_of(v) {
-                                    st.import_choice.set(&part, on);
+                                    st.import_choice.set(&part, *on);
                                 }
                                 cx.notify();
                             }
@@ -1764,28 +1758,32 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                     rows.push(text("Choose a backup to see what it holds before importing it.".into(), style::disabled_text(&p)));
                 }
                 ui.add(
-                    div()
-                        .h(px(WELL_ROWS * m::LIST_ROW + 4.0))
-                        .child(ScrollView::new("backup-well", &st.scroll).background(p.document_background).auto_hide(true).child(div().flex().flex_col().py(px(2.0)).children(rows))),
+                    div().h(px(WELL_ROWS * m::LIST_ROW + 4.0)).child(
+                        ScrollView::new(&st.scroll)
+                            .background(p.document_background)
+                            .auto_hide(true)
+                            .on_scroll(ui.cx.listener(|_: &mut PanelView, _: &olo_kit::Point<olo_kit::Pixels>, cx| cx.notify()))
+                            .child(div().flex().flex_col().py(px(2.0)).children(rows)),
+                    ),
                 );
                 let locked = st.chosen.as_ref().is_some_and(|(_, m)| m.needs_passphrase());
-                ui.enabled_if(idle && locked, |ui| ui.add(TextControl::new(st.unlock.clone()).label("Password:").divider(divider)));
+                ui.enabled_if(idle && locked, |ui| ui.add(TextControl::new(ui.cx, &st.unlock).label("Password:").divider(divider)));
                 let some = st.chosen.as_ref().is_some_and(|(_, m)| m.parts().iter().any(|(part, ..)| st.import_choice.has(part)));
                 let can = idle && some && (!locked || !st.unlock.read(ui.cx).text().is_empty());
                 let status = match &st.phase {
-                    Phase::Working { export: false, done, total, cancel, cancellable } => progress(*done, *total, cancel, *cancellable).into_any_element(),
+                    Phase::Working { export: false, done, total, cancel, cancellable } => progress(*done, *total, cancel, *cancellable).into_element(),
                     _ => match st.before.clone() {
-                        Some(before) if st.chosen.is_none() => Button::new(olo_ui::tracker::LABEL)
+                        Some(before) if st.chosen.is_none() => Button::new(olo_kit::tracker::LABEL)
                             .on_click(move |_, _| {
-                                if let Err(e) = olo_ui::tracker::open(&before) {
+                                if let Err(e) = olo_kit::tracker::open(&before) {
                                     tracing::warn!("couldn't open Tracker: {e}");
                                 }
                             })
-                            .into_any_element(),
-                        _ => div().into_any_element(),
+                            .into_element(),
+                        _ => div().into_element(),
                     },
                 };
-                let go = ui.on_click_view(move |v, _, cx| {
+                let go = ui.on_click_view(move |v, cx| {
                     if let Some(st) = state_of(v) {
                         st.import(cx);
                     }

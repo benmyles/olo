@@ -1,95 +1,115 @@
-//! Menu shortcuts on GPUI keystrokes: the keyboard profile's keys
-//! ([`olo_kit_base::keys`], evdev codes) named as GPUI names them, and
+//! Menu shortcuts on the kit's keystrokes: the keyboard profile's keys
+//! ([`olo_kit_base::keys`], evdev codes) named as a `Keystroke` names
+//! them, and
 //! whether a keystroke presses one.
 
 use olo_interface::Keystroke;
 pub use olo_kit_base::keys::{Shortcut, profile, shortcut};
 
-/// GPUI's name for an evdev key (the keys a shortcut can have).
-pub fn gpui_key(code: u32) -> Option<&'static str> {
-    const KEYS: &[(u32, &str)] = &[
-        (30, "a"),
-        (48, "b"),
-        (46, "c"),
-        (32, "d"),
-        (18, "e"),
-        (33, "f"),
-        (34, "g"),
-        (35, "h"),
-        (23, "i"),
-        (36, "j"),
-        (37, "k"),
-        (38, "l"),
-        (50, "m"),
-        (49, "n"),
-        (24, "o"),
-        (25, "p"),
-        (16, "q"),
-        (19, "r"),
-        (31, "s"),
-        (20, "t"),
-        (22, "u"),
-        (47, "v"),
-        (17, "w"),
-        (45, "x"),
-        (21, "y"),
-        (44, "z"),
-        (1, "escape"),
-        (2, "1"),
-        (3, "2"),
-        (4, "3"),
-        (5, "4"),
-        (6, "5"),
-        (7, "6"),
-        (8, "7"),
-        (9, "8"),
-        (10, "9"),
-        (11, "0"),
-        (12, "-"),
-        (13, "="),
-        (14, "backspace"),
-        (15, "tab"),
-        (26, "["),
-        (27, "]"),
-        (28, "enter"),
-        (39, ";"),
-        (40, "'"),
-        (41, "`"),
-        (43, "\\"),
-        (51, ","),
-        (52, "."),
-        (53, "/"),
-        (57, "space"),
-        (59, "f1"),
-        (60, "f2"),
-        (61, "f3"),
-        (62, "f4"),
-        (63, "f5"),
-        (64, "f6"),
-        (65, "f7"),
-        (66, "f8"),
-        (67, "f9"),
-        (68, "f10"),
-        (87, "f11"),
-        (88, "f12"),
-        (96, "enter"),
-        (102, "home"),
-        (103, "up"),
-        (104, "pageup"),
-        (105, "left"),
-        (106, "right"),
-        (107, "end"),
-        (108, "down"),
-        (109, "pagedown"),
-        (111, "delete"),
-    ];
+/// The keys shortcuts name, by their evdev codes.
+const KEYS: &[(u32, &str)] = &[
+    (30, "a"),
+    (48, "b"),
+    (46, "c"),
+    (32, "d"),
+    (18, "e"),
+    (33, "f"),
+    (34, "g"),
+    (35, "h"),
+    (23, "i"),
+    (36, "j"),
+    (37, "k"),
+    (38, "l"),
+    (50, "m"),
+    (49, "n"),
+    (24, "o"),
+    (25, "p"),
+    (16, "q"),
+    (19, "r"),
+    (31, "s"),
+    (20, "t"),
+    (22, "u"),
+    (47, "v"),
+    (17, "w"),
+    (45, "x"),
+    (21, "y"),
+    (44, "z"),
+    (1, "escape"),
+    (2, "1"),
+    (3, "2"),
+    (4, "3"),
+    (5, "4"),
+    (6, "5"),
+    (7, "6"),
+    (8, "7"),
+    (9, "8"),
+    (10, "9"),
+    (11, "0"),
+    (12, "-"),
+    (13, "="),
+    (14, "backspace"),
+    (15, "tab"),
+    (26, "["),
+    (27, "]"),
+    (28, "enter"),
+    (39, ";"),
+    (40, "'"),
+    (41, "`"),
+    (43, "\\"),
+    (51, ","),
+    (52, "."),
+    (53, "/"),
+    (57, "space"),
+    (59, "f1"),
+    (60, "f2"),
+    (61, "f3"),
+    (62, "f4"),
+    (63, "f5"),
+    (64, "f6"),
+    (65, "f7"),
+    (66, "f8"),
+    (67, "f9"),
+    (68, "f10"),
+    (87, "f11"),
+    (88, "f12"),
+    (96, "enter"),
+    (102, "home"),
+    (103, "up"),
+    (104, "pageup"),
+    (105, "left"),
+    (106, "right"),
+    (107, "end"),
+    (108, "down"),
+    (109, "pagedown"),
+    (111, "delete"),
+];
+
+/// A keystroke's name for an evdev key (the keys a shortcut can have).
+pub fn key_name(code: u32) -> Option<&'static str> {
     KEYS.iter().find(|(c, _)| *c == code).map(|(_, k)| *k)
 }
 
-/// The evdev key GPUI names `key` ("w", "f3", "delete"); 0 if none.
+/// The evdev key a keystroke names `key` ("w", "f3", "delete"); 0 if none.
 pub fn evdev(key: &str) -> u32 {
-    let key = key.to_ascii_lowercase();
-    (1..=111).find(|&c| gpui_key(c) == Some(key.as_str())).unwrap_or(0)
+    // (Looked up, not searched for: it's asked for every item with a
+    // shortcut each time a menu bar is said again, which is every time
+    // its window is: 140 times a step of a Tracker window resized.
+    // Through `key_name` for each code in turn, as it was, that was up
+    // to a hundred passes over the table and a new string each time.)
+    static BY_NAME: std::sync::LazyLock<std::collections::HashMap<&'static str, u32>> = std::sync::LazyLock::new(|| {
+        let mut by_name = std::collections::HashMap::new();
+        for &(code, name) in KEYS {
+            let lowest = by_name.entry(name).or_insert(code);
+            *lowest = (*lowest).min(code);
+        }
+        by_name
+    });
+    match BY_NAME.get(key) {
+        Some(code) => *code,
+        // (Named in capitals: as its small letters.)
+        None if key.bytes().any(|b| b.is_ascii_uppercase()) => BY_NAME.get(key.to_ascii_lowercase().as_str()).copied().unwrap_or(0),
+        None => 0,
+    }
 }
 
 /// Whether `k` presses `s` (the command key is Ctrl to an app). ⇧= types
@@ -104,10 +124,10 @@ pub fn mac_command() -> bool {
 }
 
 pub fn pressed(s: &Shortcut, k: &Keystroke) -> bool {
-    let Some(name) = gpui_key(s.key) else { return false };
+    let Some(name) = key_name(s.key) else { return false };
     let key = k.key.to_ascii_lowercase();
     let plus = name == "=" && key == "+";
-    // (GPUI names a shifted symbol as itself, without Shift: ⇧- is "_".)
+    // (A keystroke names a shifted symbol as itself, without Shift: ⇧- is "_".)
     let (key, shifted) = unshifted(&key);
     let m = &k.modifiers;
     (key == name || plus) && (s.shift == (m.shift || shifted) || plus) && s.command == m.control && s.alt == m.alt && !m.platform
@@ -138,7 +158,7 @@ const SHIFTED: &[(char, char)] = &[
     ('~', '`'),
 ];
 
-/// The key GPUI's name `key` is on, and whether it took Shift: GPUI names
+/// The key a keystroke's name `key` is on, and whether it took Shift: it names
 /// a shifted symbol as itself and drops Shift from it ("_" for ⇧-), so
 /// ("-", true); anything else as it is, (key, false).
 pub fn unshifted(key: &str) -> (&str, bool) {
@@ -172,5 +192,26 @@ mod tests {
         for (s, base) in SHIFTED {
             assert_eq!(unshifted(&s.to_string()).0, base.to_string());
         }
+    }
+}
+
+#[cfg(test)]
+mod lookup_tests {
+    use super::*;
+
+    /// `evdev` is `key_name` the other way round, for every key there
+    /// is, whatever its case: as it was when it tried each code in turn.
+    #[test]
+    fn evdev_is_key_name_backwards() {
+        for &(code, name) in KEYS {
+            let slow = (1..=111).find(|&c| key_name(c) == Some(name)).unwrap_or(0);
+            assert_eq!(evdev(name), slow, "{name}");
+            assert_eq!(evdev(&name.to_ascii_uppercase()), slow, "{name} in capitals");
+            assert_eq!(key_name(evdev(name)), Some(name));
+            assert!((1..=111).contains(&code));
+        }
+        assert_eq!(evdev("w"), 17);
+        assert_eq!(evdev("no such key"), 0);
+        assert_eq!(evdev(""), 0);
     }
 }

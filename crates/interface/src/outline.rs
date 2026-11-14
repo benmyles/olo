@@ -28,6 +28,10 @@ pub(crate) struct PathOutline {
     /// Stroked with these, else filled.
     pub stroke: Option<StrokeOptions>,
     pub fill_rule: FillRule,
+    /// A filled polygon whose triangles weren't made as it was built:
+    /// what they're made with, if it comes to be drawn by them
+    /// (`PathBuilder::build`, `Painter::paint_path`).
+    pub unmade: Option<lyon::tessellation::FillOptions>,
 }
 
 impl PartialEq for PathOutline {

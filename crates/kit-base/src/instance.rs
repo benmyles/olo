@@ -16,7 +16,7 @@ pub struct Launch {
     pub args: Vec<String>,
     /// The launching process's working directory.
     pub cwd: Option<PathBuf>,
-    /// Told when the app's UI thread has taken it (olo-ui does, as it
+    /// Told when the app's UI thread has taken it (olo-kit does, as it
     /// hands it to the app): the launching process waits for that, and
     /// starts a copy of its own if it doesn't come.
     #[serde(skip)]

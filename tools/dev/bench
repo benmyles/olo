@@ -8,14 +8,13 @@ below 120 frames a second.
         [--size WxH] [--json FILE] [--keep] [--list] [--env K=V ...]
 
 `--env K=V` (again for more) is given to every app: an A/B of a switch
-without a rebuild (`--env OLO_PAINT_MEMO=0`).
+without a rebuild (`--env OLO_FRAME_PHASES=1`: where each frame went,
+in the app's log under /var/tmp/olo-dev/bench with `--keep`).
 
 Build first: `cargo build --release --workspace` (the apps), then
-`cargo build --release -p olo-ui --examples` (the kit's gallery), apart:
-built in one go, cargo gives the apps the examples' dev-dependencies'
-features (GPUI's test support), and apps built so mark no frames, so
-nothing is measured; a launch with no frames marked fails, saying so.
-A build older than the sources is named before anything runs.
+`cargo build --release -p olo-kit --examples` (the kit's gallery). A
+launch with no frames marked fails, saying so (nothing it did would be
+measured). A build older than the sources is named before anything runs.
 It starts a session of its own ("bench", the shell's Deskbar and
 desktop, a sandbox home under /var/tmp/olo-bench filled with what makes
 apps work: a 20,000-line document, a folder of 3,000 files, photos, 200
@@ -35,6 +34,10 @@ notifications, a terminal's worth of output), one 3456×2234 screen (a
   open). The overview (⌃Space): four windows on two
   workspaces, opened, its windows walked with the arrows, left. The
   screen savers: each module run.
+
+Each step also says how long the app's process ran for it, every
+thread (`cpu_ms`, from the scheduler's own count): the fair measure
+between two builds, however each makes its frames' marks.
 
 Every frame an app draws is in its `{"frames":true}` marks
 (olo_kit::commands::FrameMark); app_server's own frames and event loop
@@ -350,6 +353,26 @@ def parts(m):
     return ", ".join(f"{name} {m.get(k, 0) / 1000:.1f}" for k, name in PARTS)
 
 
+def cpu_ns(pid):
+    """How long a process has run, every thread of it, in nanoseconds
+    (the scheduler's own count, /proc/PID/task/*/schedstat): what a step
+    cost it is the difference across the step. However a frame's mark is
+    made (the kit's count the looper's work for it; GPUI's left out what
+    an input handler did before the frame), this is the processor's
+    time, so two builds are compared by it."""
+    total = 0
+    try:
+        for t in os.listdir(f"/proc/{pid}/task"):
+            try:
+                with open(f"/proc/{pid}/task/{t}/schedstat") as f:
+                    total += int(f.read().split()[0])
+            except (OSError, ValueError, IndexError):
+                pass
+    except OSError:
+        pass
+    return total
+
+
 class Step:
     """One thing done to an app, and the frames it drew meanwhile."""
 
@@ -375,13 +398,19 @@ class Bench:
         self.s, self.budget_us, self.hz = s, budget_ms * 1000, hz
         self.results = []
 
-    def measure(self, app, step, pids, act, transition=False):
+    def measure(self, app, step, pids, act, transition=False, since_us=None):
         """Do `act`, collecting the frames `pids` drew meanwhile and
-        app_server's timings, and judge them."""
+        app_server's timings, and judge them. `since_us`: the frames
+        they drew from then on count too (an app's first frames, drawn
+        before its window was listed: with nothing to load it draws once
+        and is done)."""
         st = Step(app, step, transition)
         for p in pids:
-            self.s.marks(p)
+            early = self.s.marks(p)
+            if since_us is not None:
+                st.frames += [m for m in early if m["at_us"] >= since_us]
         self.s.timings()
+        cpu0 = sum(cpu_ns(p) for p in pids)
         t0 = now_us()
         try:
             act(st)
@@ -389,6 +418,7 @@ class Bench:
             st.notes.append(f"couldn't: {e}")
         time.sleep(0.25)
         t1 = now_us()
+        st.extra["cpu_ms"] = round((sum(cpu_ns(p) for p in pids) - cpu0) / 1e6, 1)
         for p in pids:
             st.frames += [m for m in self.s.marks(p) if max(t0, st.from_us or 0) <= m["at_us"] <= t1]
         tm = self.s.timings() or {}
@@ -398,7 +428,7 @@ class Bench:
         if step == "launch and load" and not st.frames:
             # (A window up, and not one frame marked: nothing it does
             # will be measured.)
-            st.failures.append("no frames marked: built with the examples in one go (GPUI's test support)? Build the apps alone")
+            st.failures.append("no frames marked since it was started: nothing it does can be measured")
         if st.transition:
             worst = max(st.frames, key=lambda m: m["us"], default=None)
             if worst and worst["us"] > self.budget_us:
@@ -421,7 +451,7 @@ class Bench:
         flag = "FAIL" if st.failures else ("    " if not st.transition else "  ~ ")
         srv = r["server"] or {}
         line = f"{flag} {r['app']:<18} {r['step']:<22} {r['frames']:>5} fr  p50 {r['p50_ms']:5.2f}  p99 {r['p99_ms']:5.2f}  max {r['max_ms']:6.2f} ms  (ui {r['ui_max_ms']:5.2f})  server {srv.get('frame_max_ms', 0):5.2f} ({srv.get('frames', 0)} fr)"
-        extra = [f"{k} {v}" for k, v in r.items() if k in ("launch_ms", "idle_fps", "even", "glide")]
+        extra = [f"{k} {v}" for k, v in r.items() if k in ("cpu_ms", "launch_ms", "idle_fps", "even", "glide")]
         print(line + ("  " + ", ".join(extra) if extra else ""))
         for f in st.failures:
             print(f"       ✗ {f}")
@@ -471,7 +501,7 @@ def scroll_targets(tree, content):
     return out[:2] or [(cx + cw / 2, cy + ch / 2)]
 
 
-def scroll_at(s, st, at, pid):
+def scroll_at(s, st, at, pid, scale=2.0):
     """Two fingers, a flick and wheel notches at `at`, judged as
     tools/dev/scroll-check does: down, or up when it can't go down (a
     list that starts at its end, as Logs' does)."""
@@ -526,7 +556,7 @@ def scroll_at(s, st, at, pid):
         k = max(moved, key=moved.get)
         n = len(marks[0]["scrolls"])
         ms = [dict(m, scrolls=[[q[0], sign * q[1], *([q[2], sign * q[3]] if len(q) >= 4 else [])] for q in [m["scrolls"][k]]]) for m in marks if len(m["scrolls"]) == n]
-        r = scroll_check.analyse(kind, ms, start, 900 if kind == "drag" else None,
+        r = scroll_check.analyse(kind, ms, start, 900 if kind == "drag" else None, pixel=1.0 / scale,
                                  flick_lift=start + 13 * period * 1e6 if kind == "flick" else None)
         results[kind] = r
     return results
@@ -557,6 +587,7 @@ def run_app(b, app, scale):
     s = b.s
     before = {w["id"] for w in s.windows()}
     t0 = time.monotonic()
+    started_us = now_us()
     tsession("run", NAME, *app.env, *EXTRA_ENV, *app.cmd)
     if app.key == "notifications":
         time.sleep(1.0)
@@ -588,7 +619,7 @@ def run_app(b, app, scale):
             s.req({"type": "toggle_zoom", "id": wid})
         time.sleep(app.settle)
 
-    b.measure(tag, "launch and load", [pid], settle, transition=True)
+    b.measure(tag, "launch and load", [pid], settle, transition=True, since_us=started_us)
     # (A window just zoomed may be listed before its new frame is.)
     c = None
     for _ in range(20):
@@ -619,7 +650,7 @@ def run_app(b, app, scale):
     b.measure(tag, "pointer over it", [pid], lambda st: hover(s, content))
     tree = tree_of(s, pid, w.get("title"))
     for i, at in enumerate(scroll_targets(tree, content)):
-        b.measure(tag, f"scroll {i + 1}", [pid], lambda st, at=at: judge_scroll(st, scroll_at(s, st, at, pid), b.hz))
+        b.measure(tag, f"scroll {i + 1}", [pid], lambda st, at=at: judge_scroll(st, scroll_at(s, st, at, pid, scale), b.hz))
 
     nodes = tree.get("nodes", []) if tree else []
     tabs = [n for n in nodes if n.get("role") == "Tab" and n.get("enabled", True)][:8]
@@ -903,10 +934,10 @@ def main():
     only = set(only.split(",")) if only else None
     for exe in ("olo-app-server", "olo-session", "olo-deskbar", os.path.join("examples", "gallery")):
         if not os.path.exists(os.path.join(RELEASE, exe)):
-            sys.exit(f"no target/release/{exe}: cargo build --release --workspace, then cargo build --release -p olo-ui --examples")
+            sys.exit(f"no target/release/{exe}: cargo build --release --workspace, then cargo build --release -p olo-kit --examples")
     stale = stale_builds()
     if stale:
-        print(f"warning: older than the sources (cargo build --release --workspace, then -p olo-ui --examples): {', '.join(stale)}", flush=True)
+        print(f"warning: older than the sources (cargo build --release --workspace, then -p olo-kit --examples): {', '.join(stale)}", flush=True)
     os.makedirs(SCRATCH, exist_ok=True)
     print("fixtures…", flush=True)
     fixtures()

@@ -1,11 +1,15 @@
 #!/usr/bin/python3
-"""Compares two builds of the same window pixel for pixel: an app on the
-GPUI kit (olo-ui) and the same app on Olo's own (olo-kit), while apps
-move from one to the other.
+"""Compares two builds of the same window pixel for pixel: an app or a
+kit example before a change and after it (a build kept from before,
+`cp --reflink=always` into /var/tmp, against the one in target/), to
+show a change to something global (hinting, a kit size, how a control
+draws) changes what was meant and nothing else. (Made to move the apps
+from the GPUI kit to Olo's own, each compared with what it had been.)
 
   kit-compare OLD NEW [ARGS...] [--scales 1,1.5,2] [--themes light,dark]
               [--size WxH] [--out DIR] [--tolerance N] [--settle SECONDS]
-              [--do STEPS]
+              [--do STEPS] [--env VAR=VAL]... [--window TITLE]
+              [--then TITLE]
 
 OLD and NEW are programs as `tsession run` takes them (a name in
 target/<profile> or its examples, or a path). Each is started alone in a
@@ -37,23 +41,23 @@ def windows():
         return []
 
 
-def shot(program, args, scale, theme, size, settle, path, steps=()):
+def shot(program, args, scale, theme, size, settle, path, steps=(), env=(), title=None, then=None):
     tsession("stop", NAME, check=False)
     tsession("start", NAME, size, f"--{theme}", "--scale", str(scale))
     try:
-        tsession("run", NAME, program, *args)
+        tsession("run", NAME, *env, program, *args)
         deadline = time.time() + 20
         win = None
+        pick = lambda ws: next((w for w in ws if title is None or w.get("title") == title), None)
         while time.time() < deadline:
-            ws = windows()
-            if ws:
-                win = ws[0]
+            win = pick(windows())
+            if win:
                 break
             time.sleep(0.1)
         if not win:
             sys.exit(f"{program}: no window after 20 s (see /var/tmp/olo-dev/{NAME}/)")
         time.sleep(settle)
-        win = (windows() or [win])[0]
+        win = pick(windows()) or win
         c = win["content"]
         # (The pointer out of the way: nothing lit under it.)
         tsession("move", NAME, "2", "2")
@@ -73,6 +77,18 @@ def shot(program, args, scale, theme, size, settle, path, steps=()):
                 words = ["type", step.split(None, 1)[1]]
             tsession(words[0], NAME, *words[1:])
             time.sleep(0.15)
+        if then:
+            # The window the steps opened (a panel, an alert) is the one
+            # shot.
+            deadline = time.time() + 10
+            opened = None
+            while time.time() < deadline and not opened:
+                opened = next((w for w in windows() if w.get("title") == then), None)
+                time.sleep(0.1)
+            if not opened:
+                sys.exit(f"{program}: no window titled {then!r} after the steps")
+            time.sleep(settle)
+            c = next((w for w in windows() if w.get("title") == then), opened)["content"]
         tsession("shot", NAME, path, str(c["x"]), str(c["y"]), str(c["width"]), str(c["height"]))
         return c
     finally:
@@ -93,10 +109,15 @@ def main():
     scales = opt("--scales", "1,1.5,2").split(",")
     themes = opt("--themes", "light,dark").split(",")
     size = opt("--size", "1000x800")
+    then = opt("--then", None)
     out = opt("--out", "/var/tmp/olo-kit-compare")
     tolerance = int(opt("--tolerance", "0"))
     settle = float(opt("--settle", "1.0"))
     steps = [w.strip() for w in opt("--do", "").split(";")]
+    title = opt("--window", None)
+    env = []
+    while "--env" in a:
+        env.append(opt("--env", ""))
     if len(a) < 2:
         sys.exit(__doc__)
     old, new, args = a[0], a[1], a[2:]
@@ -108,8 +129,8 @@ def main():
         for theme in themes:
             tag = f"{scale}x-{theme}"
             po, pn = os.path.join(out, f"old-{tag}.png"), os.path.join(out, f"new-{tag}.png")
-            co = shot(old, args, scale, theme, size, settle, po, steps)
-            cn = shot(new, args, scale, theme, size, settle, pn, steps)
+            co = shot(old, args, scale, theme, size, settle, po, steps, env, title, then)
+            cn = shot(new, args, scale, theme, size, settle, pn, steps, env, title, then)
             io, inew = Image.open(po).convert("RGB"), Image.open(pn).convert("RGB")
             if io.size != inew.size:
                 print(f"DIFF {tag}: sizes differ, {io.size} and {inew.size} (content {co['width']}x{co['height']} and {cn['width']}x{cn['height']})")

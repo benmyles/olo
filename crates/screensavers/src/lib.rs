@@ -4,7 +4,7 @@
 //!
 //! A module draws a whole frame into a rect through a [`Canvas`], so the
 //! same code runs full screen in `olo-screensaver` and in the little
-//! monitor of Preferences ▸ Screen Saver, through `gpui_canvas` (or any
+//! monitor of Preferences ▸ Screen Saver, through `kit_canvas` (or any
 //! other canvas). Sizes scale with the rect ([`Frame::k`]); motion is simulated in
 //! fixed steps, so it looks the same at any frame rate.
 
@@ -13,8 +13,8 @@ use std::collections::BTreeMap;
 mod basic;
 mod desktop;
 pub mod geom;
-#[cfg(feature = "gpui")]
-pub mod gpui_canvas;
+#[cfg(feature = "kit")]
+pub mod kit_canvas;
 mod lines;
 mod message;
 

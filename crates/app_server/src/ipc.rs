@@ -333,6 +333,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             req,
             Request::Ping
                 | Request::ListWindows
+                | Request::LayerClients
                 | Request::Subscribe
                 | Request::SubscribeTo { .. }
                 | Request::GetSettings
@@ -341,6 +342,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 | Request::PowerStatus
                 | Request::ActivationToken
                 | Request::Timings { .. }
+                | Request::HoldLoop { .. }
                 | Request::Frames
                 | Request::PointerTrace { .. }
                 | Request::CaptureDrops { .. }
@@ -363,6 +365,17 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Reply::Ok
             }
             Request::ListWindows => Reply::Windows { windows: self.window_infos_with_frames() },
+            Request::LayerClients => {
+                use smithay::reexports::wayland_server::Resource;
+                let dh = self.display_handle.clone();
+                let of = |l: &smithay::desktop::LayerSurface| {
+                    let pid = l.wl_surface().client().and_then(|c| crate::state::client_pid(&c, &dh))?;
+                    Some((pid, l.namespace().to_owned()))
+                };
+                let mut clients: Vec<(i32, String)> = self.space.outputs().flat_map(|o| smithay::desktop::layer_map_for_output(o).layers().filter_map(of).collect::<Vec<_>>()).collect();
+                clients.extend(self.homeless_layers.iter().filter_map(of));
+                Reply::LayerClients { clients }
+            }
             Request::ArrangementUndo => {
                 let (undo, redo) = self.arrangement_names();
                 Reply::ArrangementUndo { undo, redo }
@@ -843,6 +856,14 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Reply::Ok
             }
             Request::Timings { quiet } => Reply::Timings { timings: self.take_timings(quiet) },
+            Request::HoldLoop { ms } => {
+                if std::env::var_os("OLO_TEST_SEAT").is_none() {
+                    Reply::Error { message: "only a test app_server (OLO_TEST_SEAT) holds its loop".into() }
+                } else {
+                    std::thread::sleep(std::time::Duration::from_millis(ms.min(2000) as u64));
+                    Reply::Ok
+                }
+            }
             Request::Frames => {
                 let mut touch = self.backend_data.touch_health();
                 crate::touch_health::scheduling(&mut touch);

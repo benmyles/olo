@@ -2,7 +2,7 @@
 //! tint of the keyboard's blue, theirs on the left on the card colour),
 //! with who sent it in a group, what it forwards or answers, its picture
 //! or file, its text (bold, italic, code, links, spoilers; emoji in
-//! colour, as Olo's GPUI draws them), its time (edited, read ticks,
+//! colour, as the kit draws them), its time (edited, read ticks,
 //! views) and reactions under it. Stickers and a few emoji alone stand on
 //! the background with no balloon; service messages are a pill in the
 //! middle. Laying out is done once per message and width (`Laid`, cached
@@ -10,14 +10,13 @@
 
 use std::sync::Arc;
 
-use olo_tg::{EntityKind, Media, Message, Pending};
-use olo_ui::{
-    gpui::{
-        App, BorderStyle, Bounds, Corners, Font, FontStyle, FontWeight, Hsla, PathBuilder, Pixels, Point, RenderImage, ShapedLine, SharedString, StrikethroughStyle, TextAlign, TextRun,
-        UnderlineStyle, Window, WrappedLine, hsla, point, px, quad, rgb, size, transparent_black, white,
-    },
+use olo_kit::{
+    BorderStyle, Bounds, Corners, Font, FontStyle, FontWeight, Hsla, Painter, PathBuilder, Pixels, Point, RenderImage, ShapedLine, SharedString, StrikethroughStyle, TextAlign, TextRun,
+    UnderlineStyle, WrappedLine, hsla, point, px, quad, rgb, size,
     style::{self, Align},
+    transparent_black, white,
 };
+use olo_tg::{EntityKind, Media, Message, Pending};
 
 /// Message text's size.
 pub const TEXT: f32 = 13.0;
@@ -85,23 +84,23 @@ pub struct Look {
 }
 
 impl Look {
-    pub fn of(p: &olo_ui::palette::Palette) -> Look {
+    pub fn of(p: &olo_kit::palette::Palette) -> Look {
         let ink = style::card_ink(p);
-        let dark = p.mode == olo_ui::palette::ThemeMode::Dark;
+        let dark = p.mode == olo_kit::palette::ThemeMode::Dark;
         let (_, card) = style::card_paper(p);
-        let ours = olo_ui::palette::mix(card, p.keyboard_navigation, if dark { 0.30 } else { 0.15 });
-        let link = olo_ui::palette::mix(p.keyboard_navigation, p.document_text, if dark { 0.0 } else { 0.15 });
+        let ours = olo_kit::palette::mix(card, p.keyboard_navigation, if dark { 0.30 } else { 0.15 });
+        let link = olo_kit::palette::mix(p.keyboard_navigation, p.document_text, if dark { 0.0 } else { 0.15 });
         Look {
             ground: ink.gutter,
             theirs: ink.card,
             theirs_edge: ink.edge,
             ours: style::c(ours),
-            ours_edge: style::c(olo_ui::palette::mix(ours, p.keyboard_navigation, 0.35)),
+            ours_edge: style::c(olo_kit::palette::mix(ours, p.keyboard_navigation, 0.35)),
             text: ink.text,
             dim: ink.dim,
             link: style::c(link),
             accent: style::c(p.keyboard_navigation),
-            pill: style::c(olo_ui::palette::mix(p.document_text, p.document_background, if dark { 0.75 } else { 0.62 })).opacity(0.85),
+            pill: style::c(olo_kit::palette::mix(p.document_text, p.document_background, if dark { 0.75 } else { 0.62 })).opacity(0.85),
             pill_text: if dark { style::c([235, 235, 235, 255]) } else { white() },
             dark,
         }
@@ -120,24 +119,24 @@ pub fn peer_color(id: i64, dark: bool) -> (Hsla, Hsla) {
 
 /// A person's or chat's picture: their photo when it's here, else their
 /// initials on their colour, round.
-pub fn avatar(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, id: i64, name: &str, img: Option<&Arc<RenderImage>>, dark: bool) {
-    let r = style::snap(window, r);
+pub fn avatar(gr: &mut Painter, r: Bounds<Pixels>, id: i64, name: &str, img: Option<&Arc<RenderImage>>, dark: bool) {
+    let r = style::snap(gr, r);
     let radius = r.size.width.min(r.size.height) / 2.0;
     let c = r.center();
     if let Some(img) = img {
-        let _ = window.paint_image(r, Corners::all(radius), img.clone(), 0, false);
-        let hair = style::hairline(window);
-        window.paint_sector(c, radius - hair, radius, 0.0, std::f32::consts::TAU, hsla(0.0, 0.0, 0.0, 30.0 / 255.0));
+        let _ = gr.paint_image(r, Corners::all(radius), img.clone(), 0, false);
+        let hair = style::hairline(gr);
+        gr.paint_sector(c, radius - hair, radius, 0.0, std::f32::consts::TAU, hsla(0.0, 0.0, 0.0, 30.0 / 255.0));
         return;
     }
     let (fill, _) = peer_color(id, dark);
-    window.paint_sector(c, px(0.0), radius, 0.0, std::f32::consts::TAU, fill);
+    gr.paint_sector(c, px(0.0), radius, 0.0, std::f32::consts::TAU, fill);
     // Lit from above: a lighter top half of the same colour.
-    window.paint_sector(c, px(0.0), radius, 1.5 * std::f32::consts::PI, std::f32::consts::PI, hsla(0.0, 0.0, 1.0, 28.0 / 255.0));
+    gr.paint_sector(c, px(0.0), radius, 1.5 * std::f32::consts::PI, std::f32::consts::PI, hsla(0.0, 0.0, 1.0, 28.0 / 255.0));
     let letters = initials(name);
     let h = f32::from(r.size.height);
     let size = (h * if letters.chars().count() > 1 { 0.38 } else { 0.44 }).round();
-    style::label(window, cx, c.x, c.y, Align::Center, letters, size, style::ui_font(FontWeight::BOLD), white());
+    style::label(gr, c.x, c.y, Align::Center, letters, size, style::ui_font(FontWeight::BOLD), white());
 }
 
 /// "MO" for "Mira Okafor", "D" for "Design".
@@ -190,7 +189,7 @@ pub struct Line {
     pub shaped: ShapedLine,
     pub w: f32,
     pub h: f32,
-    /// The whole text, if it's cut short: its tip (`olo_ui::cut`).
+    /// The whole text, if it's cut short: its tip (`olo_kit::cut`).
     pub full: Option<SharedString>,
 }
 
@@ -201,10 +200,10 @@ impl Line {
         (self.h - a - d) / 2.0 + a
     }
 
-    pub fn paint(&self, window: &mut Window, cx: &mut App, at: Point<Pixels>) {
-        let _ = self.shaped.paint(at, px(self.h), window, cx);
+    pub fn paint(&self, gr: &mut Painter, at: Point<Pixels>) {
+        let _ = self.shaped.paint(at, px(self.h), gr);
         if let Some(full) = &self.full {
-            olo_ui::cut::note(window, full.clone(), Bounds { origin: at, size: size(px(self.w), px(self.h)) });
+            olo_kit::cut::note(gr, full.clone(), Bounds { origin: at, size: size(px(self.w), px(self.h)) });
         }
     }
 }
@@ -223,15 +222,15 @@ pub fn italic() -> Font {
 }
 
 /// `text` on one line, cut short with "…" past `max_w`.
-pub fn line(window: &mut Window, text: &str, size: f32, font: Font, color: Hsla, max_w: Option<f32>) -> Line {
+pub fn line(text: &str, size: f32, font: Font, color: Hsla, max_w: Option<f32>) -> Line {
     let whole: SharedString = text.replace('\n', " ").into();
     let text = match max_w {
-        Some(w) => style::fit(window, whole.clone(), size, &font, px(w.max(10.0))),
+        Some(w) => style::fit_with(&olo_kit::thread_text_system(), whole.clone(), size, &font, px(w.max(10.0))),
         None => whole.clone(),
     };
     let full = (text != whole).then_some(whole);
     let run = TextRun { len: text.len(), font, color, background_color: None, underline: None, strikethrough: None, size: None };
-    let shaped = window.text_system().shape_line(text, px(size), &[run], None);
+    let shaped = olo_kit::thread_text_system().shape_line(text, px(size), &[run], None);
     Line { w: f32::from(shaped.width), h: line_height(size), shaped, full }
 }
 
@@ -252,9 +251,10 @@ fn row_starts(p: &WrappedLine) -> Vec<usize> {
 }
 
 impl Para {
-    pub fn new(window: &mut Window, text: &str, size: f32, runs: &[TextRun], width: f32, lines_at_most: Option<usize>) -> Para {
+    pub fn new(text: &str, size: f32, runs: &[TextRun], width: f32, lines_at_most: Option<usize>) -> Para {
         let lh = line_height(size);
-        let lines: Vec<WrappedLine> = window.text_system().shape_text(SharedString::from(text.to_owned()), px(size), runs, Some(px(width)), lines_at_most).map(|l| l.into_vec()).unwrap_or_default();
+        let lines: Vec<WrappedLine> =
+            olo_kit::thread_text_system().shape_text(SharedString::from(text.to_owned()), px(size), runs, Some(px(width)), lines_at_most).map(|l| l.into_vec()).unwrap_or_default();
         // As wide as its widest line (not the width it was wrapped to).
         let mut w: f32 = 0.0;
         let mut rows = 0;
@@ -273,9 +273,9 @@ impl Para {
     }
 
     /// One run of `color` over all of `text`.
-    pub fn plain(window: &mut Window, text: &str, size: f32, font: Font, color: Hsla, width: f32, lines_at_most: Option<usize>) -> Para {
+    pub fn plain(text: &str, size: f32, font: Font, color: Hsla, width: f32, lines_at_most: Option<usize>) -> Para {
         let run = TextRun { len: text.len(), font, color, background_color: None, underline: None, strikethrough: None, size: None };
-        Para::new(window, text, size, &[run], width, lines_at_most)
+        Para::new(text, size, &[run], width, lines_at_most)
     }
 
     fn tops(&self) -> Vec<(usize, f32)> {
@@ -291,14 +291,14 @@ impl Para {
             .collect()
     }
 
-    pub fn paint(&self, window: &mut Window, cx: &mut App, at: Point<Pixels>) {
+    pub fn paint(&self, gr: &mut Painter, at: Point<Pixels>) {
         let width = px(self.w);
         for (p, (_, y)) in self.lines.iter().zip(self.tops()) {
             let origin = point(at.x, at.y + px(y));
             let bounds = (self.align != TextAlign::Left).then(|| Bounds { origin, size: size(width, px(self.lh)) });
             // (Code's and a hidden spoiler's grounds, under the glyphs.)
-            let _ = p.paint_background(origin, px(self.lh), self.align, bounds, window, cx);
-            let _ = p.paint(origin, px(self.lh), self.align, bounds, window, cx);
+            let _ = p.paint_background(origin, px(self.lh), self.align, bounds, gr);
+            let _ = p.paint(origin, px(self.lh), self.align, bounds, gr);
         }
     }
 
@@ -467,13 +467,13 @@ fn big_emoji(m: &Message) -> bool {
 
 /// Lay out `m` for a column `col` wide.
 #[allow(clippy::too_many_arguments)]
-pub fn lay(window: &mut Window, m: &Message, place: Place, look: &Look, col: f32, time: &str, sender_name: Option<&str>, revealed: bool) -> Laid {
+pub fn lay(m: &Message, place: Place, look: &Look, col: f32, time: &str, sender_name: Option<&str>, revealed: bool) -> Laid {
     let normal = font(FontWeight::NORMAL);
     let bold = font(FontWeight::BOLD);
     let ours = m.out;
     let left_room = if place.many && !ours { AVATAR + 8.0 } else { 0.0 };
     let max_w = (col - left_room - 48.0).clamp(120.0, MAX_WIDTH);
-    let meta_g = line(window, &meta_text(m, time), META, normal.clone(), look.dim, None);
+    let meta_g = line(&meta_text(m, time), META, normal.clone(), look.dim, None);
     let meta_w = meta_g.w + if ours { TICKS + 2.0 } else { 0.0 };
     let empty = |meta_g: Line| Laid {
         shape: Shape::Service,
@@ -496,7 +496,7 @@ pub fn lay(window: &mut Window, m: &Message, place: Place, look: &Look, col: f32
 
     // A service message: a pill in the middle.
     if let Some(s) = &m.service {
-        let mut g = Para::plain(window, s, META + 0.5, normal.clone(), look.pill_text, (col - 80.0).max(100.0), None);
+        let mut g = Para::plain(s, META + 0.5, normal.clone(), look.pill_text, (col - 80.0).max(100.0), None);
         g.align = TextAlign::Center;
         let (w, h) = (g.w + 20.0, g.h + 8.0);
         let r = R::new(col / 2.0 - w / 2.0, 0.0, w, h);
@@ -515,7 +515,7 @@ pub fn lay(window: &mut Window, m: &Message, place: Place, look: &Look, col: f32
         } else {
             let n = olo_emoji::clusters(m.text.trim()).len();
             let size = [48.0, 40.0, 32.0][n.clamp(1, 3) - 1];
-            let g = line(window, m.text.trim(), size, normal.clone(), look.text, None);
+            let g = line(m.text.trim(), size, normal.clone(), look.text, None);
             ((g.w, g.h), Some(g))
         };
         let meta_size = (meta_g.w + 12.0 + if ours { TICKS } else { 0.0 }, meta_g.h + 4.0);
@@ -525,7 +525,7 @@ pub fn lay(window: &mut Window, m: &Message, place: Place, look: &Look, col: f32
         let bubble = R::new(x, 0.0, bw, h);
         let media = R::new(if ours { bubble.right() - content.0 } else { x }, 0.0, content.0, content.1);
         let meta_pos = (if ours { bubble.right() - meta_size.0 } else { x }, content.1 + 4.0);
-        let reactions = lay_reactions(window, m, look, bubble.x, h + 4.0, MAX_WIDTH);
+        let reactions = lay_reactions(m, look, bubble.x, h + 4.0, MAX_WIDTH);
         let height = reactions.last().map_or(h, |r| r.0.bottom());
         return Laid {
             shape: Shape::Bare,
@@ -537,7 +537,7 @@ pub fn lay(window: &mut Window, m: &Message, place: Place, look: &Look, col: f32
             reactions,
             big_emoji: big.map(|g| (g, (media.x, media.y))),
             avatar: place.many && !ours && place.last,
-            ..empty(line(window, "", META, normal.clone(), look.dim, None))
+            ..empty(line("", META, normal.clone(), look.dim, None))
         };
     }
 
@@ -550,7 +550,7 @@ pub fn lay(window: &mut Window, m: &Message, place: Place, look: &Look, col: f32
         .then(|| {
             sender_name.map(|n| {
                 let ink = peer_color(m.from.as_ref().map_or(0, |f| f.id), look.dark).1;
-                line(window, n, META + 1.0, bold.clone(), ink, Some(inner))
+                line(n, META + 1.0, bold.clone(), ink, Some(inner))
             })
         })
         .flatten()
@@ -561,7 +561,7 @@ pub fn lay(window: &mut Window, m: &Message, place: Place, look: &Look, col: f32
             (g, p)
         });
     let forward = m.forwarded.as_ref().map(|f| {
-        let g = line(window, &format!("Forwarded from {f}"), META + 0.5, bold.clone(), look.link, Some(inner));
+        let g = line(&format!("Forwarded from {f}"), META + 0.5, bold.clone(), look.link, Some(inner));
         let p = (pad_x, y);
         y += g.h + 3.0;
         width = width.max(g.w);
@@ -569,8 +569,8 @@ pub fn lay(window: &mut Window, m: &Message, place: Place, look: &Look, col: f32
     });
     let reply = m.reply_to.as_ref().map(|r| {
         let who = r.from.clone().unwrap_or_else(|| "Message".into());
-        let ng = line(window, &who, META + 0.5, bold.clone(), look.link, Some(inner - 12.0));
-        let tg = line(window, r.text.as_deref().unwrap_or("…"), META + 1.0, normal.clone(), look.text, Some(inner - 12.0));
+        let ng = line(&who, META + 0.5, bold.clone(), look.link, Some(inner - 12.0));
+        let tg = line(r.text.as_deref().unwrap_or("…"), META + 1.0, normal.clone(), look.text, Some(inner - 12.0));
         let w = ng.w.max(tg.w) + 14.0;
         let h = ng.h + tg.h + 8.0;
         let rect = R::new(pad_x, y, w, h);
@@ -605,7 +605,7 @@ pub fn lay(window: &mut Window, m: &Message, place: Place, look: &Look, col: f32
         }
         Some(Media::Voice { duration, .. }) => {
             let r = R::new(pad_x, y, inner.min(240.0), 40.0);
-            media_text = Some((line(window, "", META, normal.clone(), look.text, None), line(window, &olo_tg::clock(*duration), META, normal.clone(), look.dim, None)));
+            media_text = Some((line("", META, normal.clone(), look.text, None), line(&olo_tg::clock(*duration), META, normal.clone(), look.dim, None)));
             media = Some(r);
             y += r.h + 4.0;
             width = width.max(r.w);
@@ -616,8 +616,8 @@ pub fn lay(window: &mut Window, m: &Message, place: Place, look: &Look, col: f32
                 Some(Media::Audio { duration, .. }) => format!("{} · {}", olo_tg::clock(*duration), olo_tg::bytes(*bytes)),
                 _ => olo_tg::bytes(*bytes),
             };
-            let tg = line(window, &label, TEXT - 0.5, bold.clone(), look.text, Some(inner - 52.0));
-            let dg = line(window, &detail, META, normal.clone(), look.dim, Some(inner - 52.0));
+            let tg = line(&label, TEXT - 0.5, bold.clone(), look.text, Some(inner - 52.0));
+            let dg = line(&detail, META, normal.clone(), look.dim, Some(inner - 52.0));
             let w = 52.0 + tg.w.max(dg.w);
             let r = R::new(pad_x, y, w.min(inner), 42.0);
             media_text = Some((tg, dg));
@@ -630,17 +630,17 @@ pub fn lay(window: &mut Window, m: &Message, place: Place, look: &Look, col: f32
             page = Some((site.clone(), title.clone(), description.clone()));
         }
         Some(Media::Poll { question, answers, voters, closed, quiz }) => {
-            let qg = Para::plain(window, question, TEXT, bold.clone(), look.text, inner, None);
+            let qg = Para::plain(question, TEXT, bold.clone(), look.text, inner, None);
             let total: u32 = answers.iter().map(|a| a.1).sum::<u32>().max(1);
             let kind = format!("{}{} · {} votes", if *closed { "Final results · " } else { "" }, if *quiz { "Quiz" } else { "Poll" }, voters);
-            let kg = line(window, &kind, META, normal.clone(), look.dim, Some(inner));
+            let kg = line(&kind, META, normal.clone(), look.dim, Some(inner));
             let head = R::new(pad_x, y, inner, qg.h);
             let mut py = y + qg.h + 4.0 + kg.h + 6.0;
             let mut rows = Vec::new();
             for (text, votes) in answers {
                 let share = *votes as f32 / total as f32;
-                let tg = line(window, text, TEXT - 0.5, normal.clone(), look.text, Some(inner - 44.0));
-                let pg = line(window, &format!("{:.0}%", share * 100.0), META + 0.5, bold.clone(), look.text, Some(40.0));
+                let tg = line(text, TEXT - 0.5, normal.clone(), look.text, Some(inner - 44.0));
+                let pg = line(&format!("{:.0}%", share * 100.0), META + 0.5, bold.clone(), look.text, Some(40.0));
                 let row = R::new(pad_x, py, inner.min(300.0), tg.h + 10.0);
                 py = row.bottom() + 4.0;
                 rows.push((tg, pg, share, row));
@@ -658,8 +658,8 @@ pub fn lay(window: &mut Window, m: &Message, place: Place, look: &Look, col: f32
                 Media::Dice { emoji, value } => (emoji.clone(), format!("rolled {value}")),
                 other => (other.label(), String::new()),
             };
-            let tg = line(window, &label, TEXT - 0.5, bold.clone(), look.text, Some(inner));
-            let dg = line(window, &detail, META, normal.clone(), look.dim, Some(inner));
+            let tg = line(&label, TEXT - 0.5, bold.clone(), look.text, Some(inner));
+            let dg = line(&detail, META, normal.clone(), look.dim, Some(inner));
             let r = R::new(pad_x, y, tg.w.max(dg.w).min(inner), tg.h + dg.h + 2.0);
             media_text = Some((tg, dg));
             media = Some(r);
@@ -682,7 +682,7 @@ pub fn lay(window: &mut Window, m: &Message, place: Place, look: &Look, col: f32
     let mut meta_y;
     let mut meta_over = false;
     if !m.text.is_empty() {
-        let g = Para::new(window, &m.text, TEXT, &text_runs(m, look, revealed), inner, None);
+        let g = Para::new(&m.text, TEXT, &text_runs(m, look, revealed), inner, None);
         let (last_w, last_base) = g.last_line();
         let fits_inline = last_w + 10.0 + meta_w <= inner;
         width = width.max(g.w);
@@ -717,7 +717,7 @@ pub fn lay(window: &mut Window, m: &Message, place: Place, look: &Look, col: f32
         let w = inner - 10.0;
         for (t, f, ink, rows, sz) in [(site, bold.clone(), look.link, 1, META + 0.5), (title, bold.clone(), look.text, 2, TEXT - 0.5), (description, normal.clone(), look.text, 4, TEXT - 1.0)] {
             let Some(t) = t else { continue };
-            let g = Para::plain(window, &t, sz, f, ink, w, Some(rows));
+            let g = Para::plain(&t, sz, f, ink, w, Some(rows));
             let h = g.h;
             width = width.max(g.w + 10.0);
             parts.push((g, (x, y)));
@@ -739,7 +739,7 @@ pub fn lay(window: &mut Window, m: &Message, place: Place, look: &Look, col: f32
     let x = if ours { col - w } else { left_room };
     let bubble = R::new(x, 0.0, w, h);
     let meta_x = bubble.right() - pad_x - meta_w + if meta_over { -6.0 } else { 0.0 };
-    let reactions = lay_reactions(window, m, look, bubble.x, bubble.bottom() + 4.0, max_w);
+    let reactions = lay_reactions(m, look, bubble.x, bubble.bottom() + 4.0, max_w);
     let height = reactions.last().map_or(bubble.bottom(), |r| r.0.bottom());
     let at = |p: (f32, f32)| (p.0 + x, p.1);
     Laid {
@@ -762,12 +762,12 @@ pub fn lay(window: &mut Window, m: &Message, place: Place, look: &Look, col: f32
     }
 }
 
-fn lay_reactions(window: &mut Window, m: &Message, look: &Look, x: f32, y: f32, max_w: f32) -> Vec<(R, Line, Line, String, bool)> {
+fn lay_reactions(m: &Message, look: &Look, x: f32, y: f32, max_w: f32) -> Vec<(R, Line, Line, String, bool)> {
     let mut out = Vec::new();
     let (mut cx, mut cy) = (x, y);
     for r in &m.reactions {
-        let g = line(window, &short_count(r.count), META + 0.5, font(FontWeight::BOLD), if r.mine { white() } else { look.link }, None);
-        let e = line(window, &r.emoji, 13.0, font(FontWeight::NORMAL), look.text, None);
+        let g = line(&short_count(r.count), META + 0.5, font(FontWeight::BOLD), if r.mine { white() } else { look.link }, None);
+        let e = line(&r.emoji, 13.0, font(FontWeight::NORMAL), look.text, None);
         // (Its emoji in from the chip's edge as the bubble's text is from
         // the bubble's, so they line up.)
         let w = PAD.0 + 18.0 + 4.0 + g.w + PAD.0;
@@ -806,12 +806,12 @@ pub struct Paint<'a> {
     pub selected: bool,
 }
 
-fn fill(window: &mut Window, b: Bounds<Pixels>, radius: impl Into<Corners<Pixels>>, color: Hsla) {
-    window.paint_quad(quad(b, radius.into(), color, px(0.0), transparent_black(), BorderStyle::Solid));
+fn fill(gr: &mut Painter, b: Bounds<Pixels>, radius: impl Into<Corners<Pixels>>, color: Hsla) {
+    gr.paint_quad(quad(b, radius.into(), color, px(0.0), transparent_black(), BorderStyle::Solid));
 }
 
-fn disc(window: &mut Window, c: Point<Pixels>, r: f32, color: Hsla) {
-    window.paint_sector(c, px(0.0), px(r), 0.0, std::f32::consts::TAU, color);
+fn disc(gr: &mut Painter, c: Point<Pixels>, r: f32, color: Hsla) {
+    gr.paint_sector(c, px(0.0), px(r), 0.0, std::f32::consts::TAU, color);
 }
 
 fn pt(o: Point<Pixels>, p: (f32, f32)) -> Point<Pixels> {
@@ -884,15 +884,15 @@ pub fn hit_at(o: Point<Pixels>, m: &Message, laid: &Laid, q: Point<Pixels>) -> O
 }
 
 /// Paint `laid` with its top-left at `o`.
-pub fn paint(window: &mut Window, cx: &mut App, o: Point<Pixels>, m: &Message, laid: &Laid, pp: &Paint) {
+pub fn paint(gr: &mut Painter, o: Point<Pixels>, m: &Message, laid: &Laid, pp: &Paint) {
     let look = pp.look;
     let bubble = laid.bubble.at(o);
     match laid.shape {
         Shape::Service => {
-            let b = style::snap(window, bubble);
-            fill(window, b, b.size.height / 2.0, look.pill);
+            let b = style::snap(gr, bubble);
+            fill(gr, b, b.size.height / 2.0, look.pill);
             if let Some((g, p)) = &laid.text {
-                g.paint(window, cx, pt(o, *p));
+                g.paint(gr, pt(o, *p));
             }
             return;
         }
@@ -900,33 +900,33 @@ pub fn paint(window: &mut Window, cx: &mut App, o: Point<Pixels>, m: &Message, l
             if let Some(r) = laid.media {
                 let r = r.at(o);
                 match &pp.picture {
-                    Some(img) => sticker_picture(window, r, img),
+                    Some(img) => sticker_picture(gr, r, img),
                     None => {
                         let label = match &m.media {
                             Some(Media::Sticker { emoji, .. }) | Some(Media::Dice { emoji, .. }) => emoji.clone(),
                             _ => String::new(),
                         };
                         if label.is_empty() {
-                            fill(window, r, px(12.0), look.theirs.opacity(0.6));
+                            fill(gr, r, px(12.0), look.theirs.opacity(0.6));
                         } else {
                             let size = f32::from(r.size.width) * 0.5;
-                            style::label(window, cx, r.center().x, r.center().y, Align::Center, label, size, font(FontWeight::NORMAL), look.text);
+                            style::label(gr, r.center().x, r.center().y, Align::Center, label, size, font(FontWeight::NORMAL), look.text);
                         }
                     }
                 }
             }
             if let Some((g, p)) = &laid.big_emoji {
-                g.paint(window, cx, pt(o, *p));
+                g.paint(gr, pt(o, *p));
             }
             let (g, mp) = &laid.meta;
             let mr = Bounds { origin: pt(o, *mp), size: size(px(g.w + 12.0 + if m.out { TICKS } else { 0.0 }), px(g.h + 4.0)) };
-            let mr = style::snap(window, mr);
-            fill(window, mr, mr.size.height / 2.0, look.pill);
-            g.paint(window, cx, point(mr.origin.x + px(6.0), mr.origin.y + px(2.0)));
+            let mr = style::snap(gr, mr);
+            fill(gr, mr, mr.size.height / 2.0, look.pill);
+            g.paint(gr, point(mr.origin.x + px(6.0), mr.origin.y + px(2.0)));
             if m.out {
-                ticks(window, cx, point(mr.right() - px(6.0 + TICKS - 2.0), mr.center().y), pp.read, m.pending, look.pill_text);
+                ticks(gr, point(mr.right() - px(6.0 + TICKS - 2.0), mr.center().y), pp.read, m.pending, look.pill_text);
             }
-            paint_reactions(window, cx, o, laid, look);
+            paint_reactions(gr, o, laid, look);
             return;
         }
         Shape::Bubble => {}
@@ -937,55 +937,55 @@ pub fn paint(window: &mut Window, cx: &mut App, o: Point<Pixels>, m: &Message, l
         && let Some(f) = &m.from
     {
         let r = Bounds { origin: point(o.x, bubble.bottom() - px(AVATAR)), size: size(px(AVATAR), px(AVATAR)) };
-        avatar(window, cx, r, f.id, &f.name, pp.sender_pic.as_ref(), look.dark);
+        avatar(gr, r, f.id, &f.name, pp.sender_pic.as_ref(), look.dark);
     }
     let (fill_c, edge) = if m.out { (look.ours, look.ours_edge) } else { (look.theirs, look.theirs_edge) };
     let corners = corners(pp.place, m.out);
-    let br = style::snap(window, bubble);
+    let br = style::snap(gr, bubble);
     // A soft lift, as a card's: a whole device pixel or two down.
-    let s = window.scale_factor();
+    let s = gr.scale_factor();
     let lift = Bounds { origin: point(br.origin.x, br.origin.y + px(s.round().max(1.0) / s)), size: br.size };
-    fill(window, lift, corners, hsla(0.0, 0.0, 0.0, if look.dark { 50.0 } else { 14.0 } / 255.0));
+    fill(gr, lift, corners, hsla(0.0, 0.0, 0.0, if look.dark { 50.0 } else { 14.0 } / 255.0));
     let face = if pp.selected { blend(fill_c, look.accent, 0.25) } else { fill_c };
-    window.paint_quad(quad(br, corners, face, style::hairline(window), edge, BorderStyle::Solid));
+    gr.paint_quad(quad(br, corners, face, style::hairline(gr), edge, BorderStyle::Solid));
 
     if let Some((g, p)) = &laid.name {
-        g.paint(window, cx, pt(o, *p));
+        g.paint(gr, pt(o, *p));
     }
     if let Some((g, p)) = &laid.forward {
-        g.paint(window, cx, pt(o, *p));
+        g.paint(gr, pt(o, *p));
     }
     if let Some((r, ng, tg)) = &laid.reply {
-        let r = style::snap(window, r.at(o));
-        fill(window, r, px(4.0), look.link.opacity(0.10));
-        let bar = style::snap(window, Bounds { origin: r.origin, size: size(px(3.0), r.size.height) });
-        fill(window, bar, Corners { top_left: px(4.0), bottom_left: px(4.0), top_right: px(0.0), bottom_right: px(0.0) }, look.link);
-        ng.paint(window, cx, point(r.origin.x + px(9.0), r.origin.y + px(3.0)));
-        tg.paint(window, cx, point(r.origin.x + px(9.0), r.origin.y + px(4.0 + ng.h)));
+        let r = style::snap(gr, r.at(o));
+        fill(gr, r, px(4.0), look.link.opacity(0.10));
+        let bar = style::snap(gr, Bounds { origin: r.origin, size: size(px(3.0), r.size.height) });
+        fill(gr, bar, Corners { top_left: px(4.0), bottom_left: px(4.0), top_right: px(0.0), bottom_right: px(0.0) }, look.link);
+        ng.paint(gr, point(r.origin.x + px(9.0), r.origin.y + px(3.0)));
+        tg.paint(gr, point(r.origin.x + px(9.0), r.origin.y + px(4.0 + ng.h)));
     }
     if let Some(r) = laid.media {
         let r = r.at(o);
-        paint_media(window, cx, r, m, laid, pp, corners);
+        paint_media(gr, r, m, laid, pp, corners);
     }
     if let Some((r, parts)) = &laid.page {
-        let rr = style::snap(window, r.at(o));
-        fill(window, rr, px(1.5), look.link);
+        let rr = style::snap(gr, r.at(o));
+        fill(gr, rr, px(1.5), look.link);
         for (g, p) in parts {
-            g.paint(window, cx, pt(o, *p));
+            g.paint(gr, pt(o, *p));
         }
     }
     if let Some((qg, kg, head, rows)) = &laid.poll {
         let h = head.at(o);
-        qg.paint(window, cx, h.origin);
-        kg.paint(window, cx, point(h.origin.x, h.origin.y + px(qg.h + 2.0)));
+        qg.paint(gr, h.origin);
+        kg.paint(gr, point(h.origin.x, h.origin.y + px(qg.h + 2.0)));
         for (a, b, share, r) in rows {
             let r = r.at(o);
             // The answer and its share on one baseline.
-            let baseline = style::snap_coord(window, r.origin.y + px(a.baseline()));
-            a.paint(window, cx, point(r.origin.x + px(40.0), baseline - px(a.baseline())));
-            b.paint(window, cx, point(r.origin.x + px(34.0 - b.w), baseline - px(b.baseline())));
+            let baseline = style::snap_coord(gr, r.origin.y + px(a.baseline()));
+            a.paint(gr, point(r.origin.x + px(40.0), baseline - px(a.baseline())));
+            b.paint(gr, point(r.origin.x + px(34.0 - b.w), baseline - px(b.baseline())));
             let bar = Bounds { origin: point(r.origin.x + px(40.0), r.bottom() - px(5.0)), size: size((r.size.width - px(40.0)) * share.max(0.02), px(3.0)) };
-            fill(window, style::snap(window, bar), px(1.5), look.link);
+            fill(gr, style::snap(gr, bar), px(1.5), look.link);
         }
     }
     if let Some((g, p)) = &laid.text {
@@ -993,14 +993,14 @@ pub fn paint(window: &mut Window, cx: &mut App, o: Point<Pixels>, m: &Message, l
         for e in m.entities.iter().filter(|e| matches!(e.kind, EntityKind::Pre(_))) {
             if let Some((top, bottom)) = g.rows_of(e.start..e.end) {
                 let r = Bounds::from_corners(point(at.x - px(4.0), at.y + px(top - 2.0)), point(at.x + px(g.w + 4.0), at.y + px(bottom + 2.0)));
-                fill(window, style::snap(window, r), px(6.0), look.text.opacity(0.06));
+                fill(gr, style::snap(gr, r), px(6.0), look.text.opacity(0.06));
             }
         }
-        g.paint(window, cx, at);
+        g.paint(gr, at);
     }
     let (g, mp) = &laid.meta;
     let mp = pt(o, *mp);
-    let mp = point(style::snap_coord(window, mp.x), style::snap_coord(window, mp.y));
+    let mp = point(style::snap_coord(gr, mp.x), style::snap_coord(gr, mp.y));
     let ink = if laid.meta_over {
         white()
     } else if m.pending == Some((0, Pending::Failed)) {
@@ -1010,13 +1010,13 @@ pub fn paint(window: &mut Window, cx: &mut App, o: Point<Pixels>, m: &Message, l
     };
     if laid.meta_over {
         let mr = Bounds { origin: point(mp.x - px(6.0), mp.y - px(2.0)), size: size(px(g.w + 12.0 + if m.out { TICKS } else { 0.0 }), px(g.h + 4.0)) };
-        let mr = style::snap(window, mr);
-        fill(window, mr, mr.size.height / 2.0, hsla(0.0, 0.0, 0.0, 110.0 / 255.0));
+        let mr = style::snap(gr, mr);
+        fill(gr, mr, mr.size.height / 2.0, hsla(0.0, 0.0, 0.0, 110.0 / 255.0));
     }
     if m.views.is_some() {
-        eye(window, point(mp.x - px(9.0), mp.y + px(g.h / 2.0)), ink);
+        eye(gr, point(mp.x - px(9.0), mp.y + px(g.h / 2.0)), ink);
     }
-    g.paint(window, cx, mp);
+    g.paint(gr, mp);
     if m.out {
         let tick_ink = if laid.meta_over {
             white()
@@ -1025,45 +1025,45 @@ pub fn paint(window: &mut Window, cx: &mut App, o: Point<Pixels>, m: &Message, l
         } else {
             look.dim
         };
-        ticks(window, cx, point(mp.x + px(g.w + 3.0), mp.y + px(g.h / 2.0)), pp.read, m.pending, tick_ink);
+        ticks(gr, point(mp.x + px(g.w + 3.0), mp.y + px(g.h / 2.0)), pp.read, m.pending, tick_ink);
     }
-    paint_reactions(window, cx, o, laid, look);
+    paint_reactions(gr, o, laid, look);
 }
 
 /// `a` taken `t` of the way to `b`.
 pub fn blend(a: Hsla, b: Hsla, t: f32) -> Hsla {
     let (a, b) = (a.to_rgb(), b.to_rgb());
-    olo_ui::gpui::Rgba { r: a.r + (b.r - a.r) * t, g: a.g + (b.g - a.g) * t, b: a.b + (b.b - a.b) * t, a: a.a + (b.a - a.a) * t }.into()
+    olo_kit::Rgba { r: a.r + (b.r - a.r) * t, g: a.g + (b.g - a.g) * t, b: a.b + (b.b - a.b) * t, a: a.a + (b.a - a.a) * t }.into()
 }
 
-fn paint_reactions(window: &mut Window, cx: &mut App, o: Point<Pixels>, laid: &Laid, look: &Look) {
+fn paint_reactions(gr: &mut Painter, o: Point<Pixels>, laid: &Laid, look: &Look) {
     for (r, e, g, _, mine) in &laid.reactions {
-        let r = style::snap(window, r.at(o));
+        let r = style::snap(gr, r.at(o));
         let face = if *mine { look.accent } else { look.link.opacity(0.14) };
-        fill(window, r, r.size.height / 2.0, face);
+        fill(gr, r, r.size.height / 2.0, face);
         // The count centred in the chip by its figures, the emoji on
         // their middle (as a mark beside text is).
         let size_ = META + 0.5;
-        let baseline = style::baseline_at(window, r.center().y, size_);
+        let baseline = style::baseline_at(gr, r.center().y, size_);
         let caps = baseline - px(size_ * style::CAP_HEIGHT / 2.0);
         let ex = r.origin.x + px(PAD.0);
-        e.paint(window, cx, point(ex, caps - px(e.h / 2.0)));
-        g.paint(window, cx, point(ex + px(18.0 + 4.0), baseline - px(g.baseline())));
+        e.paint(gr, point(ex, caps - px(e.h / 2.0)));
+        g.paint(gr, point(ex + px(18.0 + 4.0), baseline - px(g.baseline())));
     }
 }
 
-fn triangle(window: &mut Window, pts: [(f32, f32); 3], c: Point<Pixels>, color: Hsla) {
+fn triangle(gr: &mut Painter, pts: [(f32, f32); 3], c: Point<Pixels>, color: Hsla) {
     let mut path = PathBuilder::fill();
     path.move_to(point(c.x + px(pts[0].0), c.y + px(pts[0].1)));
     path.line_to(point(c.x + px(pts[1].0), c.y + px(pts[1].1)));
     path.line_to(point(c.x + px(pts[2].0), c.y + px(pts[2].1)));
     path.close();
     if let Ok(path) = path.build() {
-        window.paint_path(path, color);
+        gr.paint_path(path, color);
     }
 }
 
-fn paint_media(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, m: &Message, laid: &Laid, pp: &Paint, corners: Corners<Pixels>) {
+fn paint_media(gr: &mut Painter, r: Bounds<Pixels>, m: &Message, laid: &Laid, pp: &Paint, corners: Corners<Pixels>) {
     let look = pp.look;
     match &m.media {
         Some(Media::Photo { .. }) | Some(Media::Video { .. }) => {
@@ -1073,10 +1073,10 @@ fn paint_media(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, m: &Message
             if leads && laid.text.is_none() && laid.page.is_none() {
                 c = corners;
             }
-            let rr = style::snap(window, r);
+            let rr = style::snap(gr, r);
             match &pp.picture {
                 Some(img) if round => {
-                    let _ = window.paint_image(rr, Corners::all(rr.size.width / 2.0), img.clone(), 0, false);
+                    let _ = gr.paint_image(rr, Corners::all(rr.size.width / 2.0), img.clone(), 0, false);
                 }
                 Some(img) => {
                     // Filling the box, cut to it where its shape differs.
@@ -1085,43 +1085,43 @@ fn paint_media(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, m: &Message
                     let (bw, bh) = (f32::from(rr.size.width), f32::from(rr.size.height).max(1.0));
                     let k = (bw / bh) / (iw / ih);
                     if (k - 1.0).abs() < 0.02 {
-                        let _ = window.paint_image(rr, c, img.clone(), 0, false);
+                        let _ = gr.paint_image(rr, c, img.clone(), 0, false);
                     } else {
                         let (w, h) = if k > 1.0 { (bw, bw * ih / iw) } else { (bh * iw / ih, bh) };
                         let full = Bounds { origin: point(rr.center().x - px(w / 2.0), rr.center().y - px(h / 2.0)), size: size(px(w), px(h)) };
-                        window.with_content_mask(Some(olo_ui::gpui::ContentMask { bounds: rr }), |window| {
-                            let _ = window.paint_image(full, Corners::default(), img.clone(), 0, false);
+                        gr.with_content_mask(Some(olo_kit::ContentMask { bounds: rr }), |gr| {
+                            let _ = gr.paint_image(full, Corners::default(), img.clone(), 0, false);
                         });
                     }
                 }
-                None => fill(window, rr, if round { Corners::all(rr.size.width / 2.0) } else { c }, look.text.opacity(0.08)),
+                None => fill(gr, rr, if round { Corners::all(rr.size.width / 2.0) } else { c }, look.text.opacity(0.08)),
             }
             if let Some(Media::Video { duration, .. }) = &m.media {
                 // A play button and the length.
                 let cc = rr.center();
-                disc(window, cc, 22.0, hsla(0.0, 0.0, 0.0, 120.0 / 255.0));
-                triangle(window, [(-6.0, -9.0), (-6.0, 9.0), (10.0, 0.0)], cc, white());
-                let g = line(window, &olo_tg::clock(*duration), META, font(FontWeight::NORMAL), white(), None);
+                disc(gr, cc, 22.0, hsla(0.0, 0.0, 0.0, 120.0 / 255.0));
+                triangle(gr, [(-6.0, -9.0), (-6.0, 9.0), (10.0, 0.0)], cc, white());
+                let g = line(&olo_tg::clock(*duration), META, font(FontWeight::NORMAL), white(), None);
                 let tr = Bounds { origin: point(rr.origin.x + px(6.0), rr.origin.y + px(6.0)), size: size(px(g.w + 10.0), px(g.h + 4.0)) };
-                fill(window, tr, tr.size.height / 2.0, hsla(0.0, 0.0, 0.0, 120.0 / 255.0));
-                g.paint(window, cx, point(tr.origin.x + px(5.0), tr.origin.y + px(2.0)));
+                fill(gr, tr, tr.size.height / 2.0, hsla(0.0, 0.0, 0.0, 120.0 / 255.0));
+                g.paint(gr, point(tr.origin.x + px(5.0), tr.origin.y + px(2.0)));
             }
             if let Some(f) = pp.progress {
-                ring(window, rr.center(), 20.0, f, white());
+                ring(gr, rr.center(), 20.0, f, white());
             }
         }
         Some(Media::Voice { waveform, duration, .. }) => {
             let c = point(r.origin.x + px(20.0), r.center().y);
-            disc(window, c, 18.0, look.accent);
+            disc(gr, c, 18.0, look.accent);
             if pp.playing.is_some() {
                 for dx in [-4.0, 4.0] {
-                    fill(window, Bounds { origin: point(c.x + px(dx - 2.0), c.y - px(6.5)), size: size(px(4.0), px(13.0)) }, px(1.0), white());
+                    fill(gr, Bounds { origin: point(c.x + px(dx - 2.0), c.y - px(6.5)), size: size(px(4.0), px(13.0)) }, px(1.0), white());
                 }
             } else {
-                triangle(window, [(-5.0, -8.0), (-5.0, 8.0), (9.0, 0.0)], c, white());
+                triangle(gr, [(-5.0, -8.0), (-5.0, 8.0), (9.0, 0.0)], c, white());
             }
             if let Some(f) = pp.progress {
-                ring(window, c, 18.0, f, white());
+                ring(gr, c, 18.0, f, white());
             }
             // The waveform: bars of its samples, the part played in the
             // accent; each on device pixels, two points wide, its height
@@ -1130,45 +1130,45 @@ fn paint_media(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, m: &Message
             let wh = 20.0;
             let n = ((f32::from(right - left) / 3.0) as usize).max(1);
             let played = pp.playing.unwrap_or(0.0);
-            let s = window.scale_factor();
-            let bottom = style::snap_coord(window, top + px(wh));
+            let s = gr.scale_factor();
+            let bottom = style::snap_coord(gr, top + px(wh));
             let (w, step) = ((2.0 * s).round() / s, (3.0 * s).round() / s);
-            let x0 = style::snap_coord(window, left);
+            let x0 = style::snap_coord(gr, left);
             for i in 0..n {
                 let v = if waveform.is_empty() { 4 } else { waveform[i * waveform.len() / n] } as f32;
                 let h = ((2.0 + v / 31.0 * wh).min(wh) * s).round().max(1.0) / s;
                 let x = x0 + px(i as f32 * step);
                 let ink = if (i as f32 / n as f32) < played { look.accent } else { look.accent.opacity(0.35) };
-                fill(window, Bounds::from_corners(point(x, bottom - px(h)), point(x + px(w), bottom)), px(1.0), ink);
+                fill(gr, Bounds::from_corners(point(x, bottom - px(h)), point(x + px(w), bottom)), px(1.0), ink);
             }
             let t = match pp.playing {
                 Some(f) => olo_tg::clock(f * duration),
                 None => olo_tg::clock(*duration),
             };
-            let g = line(window, &t, META, font(FontWeight::NORMAL), look.dim, None);
-            g.paint(window, cx, point(left, bottom + px(3.0)));
+            let g = line(&t, META, font(FontWeight::NORMAL), look.dim, None);
+            g.paint(gr, point(left, bottom + px(3.0)));
         }
         Some(Media::Audio { .. }) | Some(Media::File { .. }) => {
             let ic = point(r.origin.x + px(21.0), r.origin.y + px(21.0));
-            disc(window, ic, 20.0, look.accent);
+            disc(gr, ic, 20.0, look.accent);
             match pp.progress {
-                Some(f) => ring(window, ic, 15.0, f, white()),
-                None if matches!(m.media, Some(Media::Audio { .. })) => triangle(window, [(-5.0, -8.0), (-5.0, 8.0), (9.0, 0.0)], ic, white()),
-                None => document(window, ic, white()),
+                Some(f) => ring(gr, ic, 15.0, f, white()),
+                None if matches!(m.media, Some(Media::Audio { .. })) => triangle(gr, [(-5.0, -8.0), (-5.0, 8.0), (9.0, 0.0)], ic, white()),
+                None => document(gr, ic, white()),
             }
             if let Some((tg, dg)) = &laid.media_text {
-                tg.paint(window, cx, point(r.origin.x + px(52.0), r.origin.y + px(3.0)));
-                dg.paint(window, cx, point(r.origin.x + px(52.0), r.origin.y + px(5.0 + tg.h)));
+                tg.paint(gr, point(r.origin.x + px(52.0), r.origin.y + px(3.0)));
+                dg.paint(gr, point(r.origin.x + px(52.0), r.origin.y + px(5.0 + tg.h)));
             }
         }
         Some(Media::Sticker { .. }) => match &pp.picture {
-            Some(img) => sticker_picture(window, r, img),
-            None => fill(window, r, px(8.0), look.text.opacity(0.06)),
+            Some(img) => sticker_picture(gr, r, img),
+            None => fill(gr, r, px(8.0), look.text.opacity(0.06)),
         },
         _ => {
             if let Some((tg, dg)) = &laid.media_text {
-                tg.paint(window, cx, r.origin);
-                dg.paint(window, cx, point(r.origin.x, r.origin.y + px(tg.h + 2.0)));
+                tg.paint(gr, r.origin);
+                dg.paint(gr, point(r.origin.x, r.origin.y + px(tg.h + 2.0)));
             }
         }
     }
@@ -1178,35 +1178,35 @@ fn paint_media(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, m: &Message
 /// for that box at the window's scale (`stickers.rs`), at whole device
 /// pixels its own size, one to one; anything else fitted, its own shape
 /// kept (a video sticker's file may not be the shape Telegram says).
-fn sticker_picture(window: &mut Window, r: Bounds<Pixels>, img: &Arc<RenderImage>) {
+fn sticker_picture(gr: &mut Painter, r: Bounds<Pixels>, img: &Arc<RenderImage>) {
     let px = img.size(0);
     let (iw, ih) = ((px.width.0 as f32).max(1.0), (px.height.0 as f32).max(1.0));
     let (w, h) = (f32::from(r.size.width), f32::from(r.size.height));
-    let s = window.scale_factor();
+    let s = gr.scale_factor();
     let (dw, dh) = if (iw - w * s).abs() <= 1.0 && (ih - h * s).abs() <= 1.0 {
         (iw / s, ih / s)
     } else {
         let k = (w / iw).min(h / ih);
         (iw * k, ih * k)
     };
-    let _ = window.paint_image(style::snap_centred(window, r.center(), dw, dh), Corners::default(), img.clone(), 0, false);
+    let _ = gr.paint_image(style::snap_centred(gr, r.center(), dw, dh), Corners::default(), img.clone(), 0, false);
 }
 
 /// One tick (sent) or two (read); a clock while sending, "!" if it failed.
-fn ticks(window: &mut Window, cx: &mut App, left_mid: Point<Pixels>, read: bool, pending: Option<(u64, Pending)>, ink: Hsla) {
+fn ticks(gr: &mut Painter, left_mid: Point<Pixels>, read: bool, pending: Option<(u64, Pending)>, ink: Hsla) {
     let at = |x: f32, y: f32| point(left_mid.x + px(x), left_mid.y + px(y));
     let w = px(1.3);
     match pending {
         Some((_, Pending::Sending)) => {
             let c = at(6.0, 0.0);
-            window.paint_sector(c, px(4.5 - 0.65), px(4.5 + 0.65), 0.0, std::f32::consts::TAU, ink);
-            window.paint_segment(c, at(6.0, -3.0), w, false, ink);
-            window.paint_segment(c, at(8.0, 0.0), w, false, ink);
+            gr.paint_sector(c, px(4.5 - 0.65), px(4.5 + 0.65), 0.0, std::f32::consts::TAU, ink);
+            gr.paint_segment(c, at(6.0, -3.0), w, false, ink);
+            gr.paint_segment(c, at(8.0, 0.0), w, false, ink);
         }
         Some((_, Pending::Failed)) => {
             let c = at(6.0, 0.0);
-            disc(window, c, 5.5, rgb(0xE53E3E).into());
-            style::label(window, cx, c.x, c.y, Align::Center, "!", 9.0, font(FontWeight::BOLD), white());
+            disc(gr, c, 5.5, rgb(0xE53E3E).into());
+            style::label(gr, c.x, c.y, Align::Center, "!", 9.0, font(FontWeight::BOLD), white());
         }
         None => {
             let mut path = PathBuilder::stroke(w);
@@ -1218,14 +1218,14 @@ fn ticks(window: &mut Window, cx: &mut App, left_mid: Point<Pixels>, read: bool,
                 path.line_to(at(13.0, -3.5));
             }
             if let Ok(path) = path.build() {
-                window.paint_path(path, ink);
+                gr.paint_path(path, ink);
             }
         }
     }
 }
 
 /// A small eye (a channel post's views), centred at `c`.
-fn eye(window: &mut Window, c: Point<Pixels>, ink: Hsla) {
+fn eye(gr: &mut Painter, c: Point<Pixels>, ink: Hsla) {
     let mut path = PathBuilder::stroke(px(1.0));
     for side in [-1.0f32, 1.0] {
         for i in 0..=12 {
@@ -1235,15 +1235,15 @@ fn eye(window: &mut Window, c: Point<Pixels>, ink: Hsla) {
         }
     }
     if let Ok(path) = path.build() {
-        window.paint_path(path, ink);
+        gr.paint_path(path, ink);
     }
-    disc(window, c, 1.4, ink);
+    disc(gr, c, 1.4, ink);
 }
 
 /// A page with a folded corner (a file), centred at `c`: its edges whole
 /// device pixels, each down the middle of its pixels so it's crisp.
-fn document(window: &mut Window, c: Point<Pixels>, ink: Hsla) {
-    let s = window.scale_factor();
+fn document(gr: &mut Painter, c: Point<Pixels>, ink: Hsla) {
+    let s = gr.scale_factor();
     let dev = (1.5 * s).round().max(1.0);
     let at = |v: f32| ((v * s - dev / 2.0).round() + dev / 2.0) / s;
     let (cx_, cy_) = (f32::from(c.x), f32::from(c.y));
@@ -1261,13 +1261,13 @@ fn document(window: &mut Window, c: Point<Pixels>, ink: Hsla) {
     path.line_to(p(r - fold, t + fold));
     path.line_to(p(r, t + fold));
     if let Ok(path) = path.build() {
-        window.paint_path(path, ink);
+        gr.paint_path(path, ink);
     }
 }
 
 /// A ring of progress round `c`, from 12 o'clock.
-pub fn ring(window: &mut Window, c: Point<Pixels>, radius: f32, fraction: f32, ink: Hsla) {
-    window.paint_sector(c, px(radius - 1.0), px(radius + 1.0), 0.0, fraction.clamp(0.02, 1.0) * std::f32::consts::TAU, ink);
+pub fn ring(gr: &mut Painter, c: Point<Pixels>, radius: f32, fraction: f32, ink: Hsla) {
+    gr.paint_sector(c, px(radius - 1.0), px(radius + 1.0), 0.0, fraction.clamp(0.02, 1.0) * std::f32::consts::TAU, ink);
 }
 
 #[cfg(test)]

@@ -12,16 +12,15 @@
 //! defaults, the probes change them only if the box was changed, and
 //! where they change them is what Reset puts back.
 
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, rc::Rc, time::Duration};
 
-use olo_protocol::Settings;
-use olo_ui::{
-    gpui::{AnyElement, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, SharedString, Styled as _, WeakEntity, Window, div, px},
-    metrics as m,
+use olo_kit::{
+    Child, ClickEvent, Cx, Element, IntoElement, ParentElement as _, SharedString, Styled as _, ViewRef, WindowCx, div, metrics as m, px,
     widgets::{BBox, Button, CheckBox, MenuField, RadioButton, Slider, StringView, TextControl, TextField, TextFieldEvent},
 };
+use olo_protocol::Settings;
 
-use crate::{PanelView, Prefs};
+use crate::{PanelView, prefs};
 
 /// A change to the settings, from a control.
 type Set<T> = Rc<dyn Fn(&mut Settings, T)>;
@@ -39,22 +38,20 @@ thread_local! {
 }
 
 /// A panel's text fields, by id, and what each sets as it is typed in
-/// (the latest render's: a field's setter can depend on what is shown,
+/// (the latest `body`'s: a field's setter can depend on what is shown,
 /// a workspace's number).
 #[derive(Default)]
 pub struct Fields {
-    fields: HashMap<SharedString, Entity<TextField>>,
+    fields: HashMap<SharedString, Child<TextField>>,
     setters: HashMap<SharedString, Set<String>>,
 }
 
-pub struct Ui<'a, 'b> {
-    pub window: &'a mut Window,
-    pub cx: &'a mut Context<'b, PanelView>,
+pub struct Ui<'a, 'b, 'c> {
+    pub cx: &'a mut Cx<'b, 'c, PanelView>,
     /// The settings as they are now.
     pub s: &'a Settings,
-    prefs: WeakEntity<Prefs>,
     fields: &'a mut Fields,
-    items: Vec<AnyElement>,
+    items: Vec<Element>,
     enabled: bool,
     /// The boxes being built, the innermost last: their controls' probes.
     boxes: Vec<Vec<Probe>>,
@@ -67,9 +64,9 @@ pub struct Ui<'a, 'b> {
     in_row: bool,
 }
 
-impl<'a, 'b> Ui<'a, 'b> {
-    pub fn new(window: &'a mut Window, cx: &'a mut Context<'b, PanelView>, s: &'a Settings, prefs: WeakEntity<Prefs>, fields: &'a mut Fields) -> Self {
-        Ui { window, cx, s, prefs, fields, items: Vec::new(), enabled: true, boxes: Vec::new(), resets: false, titles: Vec::new(), in_row: false }
+impl<'a, 'b, 'c> Ui<'a, 'b, 'c> {
+    pub fn new(cx: &'a mut Cx<'b, 'c, PanelView>, s: &'a Settings, fields: &'a mut Fields) -> Self {
+        Ui { cx, s, fields, items: Vec::new(), enabled: true, boxes: Vec::new(), resets: false, titles: Vec::new(), in_row: false }
     }
 
     /// Boxes whose settings aren't their defaults get a Reset.
@@ -89,18 +86,12 @@ impl<'a, 'b> Ui<'a, 'b> {
     }
 
     /// What was added, top to bottom.
-    pub fn take(&mut self) -> Vec<AnyElement> {
+    pub fn take(&mut self) -> Vec<Element> {
         std::mem::take(&mut self.items)
     }
 
     pub fn add(&mut self, element: impl IntoElement) {
-        self.items.push(element.into_any_element());
-    }
-
-    /// The app's settings, for a callback that changes them later (a
-    /// file panel's answer).
-    pub fn prefs(&self) -> WeakEntity<Prefs> {
-        self.prefs.clone()
+        self.items.push(element.into_element());
     }
 
     pub fn enabled(&self) -> bool {
@@ -123,32 +114,29 @@ impl<'a, 'b> Ui<'a, 'b> {
 
     /// A change to the settings, for a control's callback (kept for Undo
     /// by its box's name).
-    pub fn edit<T: 'static>(&self, set: impl Fn(&mut Settings, T) + 'static) -> impl Fn(T, &mut Window, &mut App) + 'static {
+    pub fn edit<T: Clone + 'static>(&self, set: impl Fn(&mut Settings, T) + 'static) -> impl Fn(&T, &mut WindowCx) + 'static {
         let (run, name) = self.step(None, false);
         self.edit_as(run, name, set)
     }
 
     /// `edit`, kept for Undo as `name`, part of `run` (none: a step of its
     /// own).
-    fn edit_as<T: 'static>(&self, run: String, name: String, set: impl Fn(&mut Settings, T) + 'static) -> impl Fn(T, &mut Window, &mut App) + 'static {
-        let prefs = self.prefs.clone();
-        move |v, _, cx| {
-            let _ = prefs.update(cx, |p, cx| p.edit_as(cx, &run, &name, |s| set(s, v)));
+    fn edit_as<T: Clone + 'static>(&self, run: String, name: String, set: impl Fn(&mut Settings, T) + 'static) -> impl Fn(&T, &mut WindowCx) + 'static {
+        move |v: &T, _: &mut WindowCx| {
+            let v = v.clone();
+            prefs().edit_as(&run, &name, |s| set(s, v));
         }
     }
 
     /// A change to the settings on a click.
-    pub fn edit_click(&self, set: impl Fn(&mut Settings) + 'static) -> impl Fn(&mut Window, &mut App) + 'static {
+    pub fn edit_click<E: ?Sized + 'static>(&self, set: impl Fn(&mut Settings) + 'static) -> impl Fn(&E, &mut WindowCx) + 'static {
         let (run, name) = self.step(None, false);
-        let prefs = self.prefs.clone();
-        move |_, cx| {
-            let _ = prefs.update(cx, |p, cx| p.edit_as(cx, &run, &name, &set));
-        }
+        move |_: &E, _: &mut WindowCx| prefs().edit_as(&run, &name, &set)
     }
 
     /// [`Ui::edit`] for a control built by hand showing `now`: its box's
     /// Reset puts it back too.
-    pub fn bind<T: Clone + 'static>(&mut self, now: T, set: impl Fn(&mut Settings, T) + 'static) -> impl Fn(T, &mut Window, &mut App) + 'static {
+    pub fn bind<T: Clone + 'static>(&mut self, now: T, set: impl Fn(&mut Settings, T) + 'static) -> impl Fn(&T, &mut WindowCx) + 'static {
         let set = Rc::new(set);
         let probe = set.clone();
         self.probe(move |s| probe(s, now.clone()));
@@ -159,7 +147,7 @@ impl<'a, 'b> Ui<'a, 'b> {
 
     /// [`Ui::edit_click`] for one of a set of choices built by hand (a
     /// card, a row): Reset puts back the `chosen` one's.
-    pub fn bind_click(&mut self, chosen: bool, set: impl Fn(&mut Settings) + 'static) -> impl Fn(&mut Window, &mut App) + 'static {
+    pub fn bind_click<E: ?Sized + 'static>(&mut self, chosen: bool, set: impl Fn(&mut Settings) + 'static) -> impl Fn(&E, &mut WindowCx) + 'static {
         let set = Rc::new(set);
         if chosen {
             let probe = set.clone();
@@ -169,23 +157,17 @@ impl<'a, 'b> Ui<'a, 'b> {
     }
 
     /// Something to do to the panel's window (its state), for a control.
-    pub fn on_view<T: 'static>(&self, f: impl Fn(&mut PanelView, T, &mut Window, &mut Context<PanelView>) + 'static) -> impl Fn(T, &mut Window, &mut App) + 'static {
-        let view = self.cx.entity().downgrade();
-        move |v, window, cx| {
-            let _ = view.update(cx, |p, cx| f(p, v, window, cx));
-        }
+    pub fn on_view<T: ?Sized + 'static>(&self, f: impl Fn(&mut PanelView, &T, &mut Cx<PanelView>) + 'static) -> impl Fn(&T, &mut WindowCx) + 'static {
+        self.cx.listener(f)
     }
 
     /// [`Ui::on_view`] on a click.
-    pub fn on_click_view(&self, f: impl Fn(&mut PanelView, &mut Window, &mut Context<PanelView>) + 'static) -> impl Fn(&mut Window, &mut App) + 'static {
-        let view = self.cx.entity().downgrade();
-        move |window, cx| {
-            let _ = view.update(cx, |p, cx| f(p, window, cx));
-        }
+    pub fn on_click_view<E: ?Sized + 'static>(&self, f: impl Fn(&mut PanelView, &mut Cx<PanelView>) + 'static) -> impl Fn(&E, &mut WindowCx) + 'static {
+        self.cx.listener(move |v: &mut PanelView, _: &E, cx| f(v, cx))
     }
 
     /// What `build` adds, for the caller to lay out.
-    pub fn collect(&mut self, build: impl FnOnce(&mut Self)) -> Vec<AnyElement> {
+    pub fn collect(&mut self, build: impl FnOnce(&mut Self)) -> Vec<Element> {
         let outer = std::mem::take(&mut self.items);
         build(self);
         std::mem::replace(&mut self.items, outer)
@@ -201,11 +183,8 @@ impl<'a, 'b> Ui<'a, 'b> {
         let probes = self.boxes.pop().unwrap_or_default();
         let mut b = if title.is_empty() { BBox::plain() } else { BBox::new(SharedString::from(title.to_owned())) };
         if self.enabled && (changed(&probes) || every_reset() && !probes.is_empty()) {
-            let prefs = self.prefs.clone();
             let name = if title.is_empty() { "Reset".to_owned() } else { format!("Reset of “{title}”") };
-            b = b.action("Reset", move |_, cx| {
-                let _ = prefs.update(cx, |p, cx| p.edit_as(cx, "", &name, |s| reset(s, &probes)));
-            });
+            b = b.action("Reset", move |_: &ClickEvent, _: &mut WindowCx| prefs().edit_as("", &name, |s| reset(s, &probes)));
         }
         self.add(b.children(items));
     }
@@ -227,8 +206,8 @@ impl<'a, 'b> Ui<'a, 'b> {
     }
 
     /// [`Ui::columns`] of what was collected ([`Ui::collect`]) for each.
-    pub fn add_columns(&mut self, left: Vec<AnyElement>, right: Vec<AnyElement>) {
-        let column = |items: Vec<AnyElement>| div().flex_1().min_w(px(0.0)).flex().flex_col().gap(px(m::SPACING)).children(items);
+    pub fn add_columns(&mut self, left: Vec<Element>, right: Vec<Element>) {
+        let column = |items: Vec<Element>| div().flex_1().min_w(px(0.0)).flex().flex_col().gap(px(m::SPACING)).children(items);
         self.add(div().flex().flex_row().items_start().gap(px(m::SPACING)).child(column(left)).child(column(right)));
     }
 
@@ -337,72 +316,98 @@ impl<'a, 'b> Ui<'a, 'b> {
         });
     }
 
-    pub fn button(&mut self, label: impl Into<SharedString>, on_click: impl Fn(&mut Window, &mut App) + 'static) {
+    /// A pop-up menu of several values (`MenuField::many`): `choices`,
+    /// those in `chosen` on, `none` what none chosen means; choosing one
+    /// turns it on or off, kept in `choices`' order.
+    pub fn choose_many(&mut self, id: &str, choices: &[String], chosen: &[String], none: &str, with: impl FnOnce(MenuField) -> MenuField, set: impl Fn(&mut Settings, Vec<String>) + 'static) {
+        let names: Vec<SharedString> = choices.iter().map(|c| SharedString::from(c.clone())).collect();
+        let on: Vec<bool> = choices.iter().map(|c| chosen.contains(c)).collect();
+        let set = Rc::new(set);
+        let (probe, now) = (set.clone(), chosen.to_vec());
+        self.probe(move |s| probe(s, now.clone()));
+        let f = with(MenuField::many(SharedString::from(id.to_owned()), names, on, none.to_owned()));
+        let title = f.title().map(|t| t.to_string());
+        let (run, name) = self.step(title.as_deref(), false);
+        let (choices, chosen) = (choices.to_vec(), chosen.to_vec());
+        let f = f.enabled(self.enabled).on_change(self.edit_as(run, name, move |s, i: usize| {
+            let mut now: Vec<String> = match choices.get(i) {
+                None => Vec::new(),
+                Some(c) if chosen.contains(c) => chosen.iter().filter(|o| *o != c).cloned().collect(),
+                Some(c) => chosen.iter().cloned().chain([c.clone()]).collect(),
+            };
+            now.sort_by_key(|o| choices.iter().position(|x| x == o).unwrap_or(usize::MAX));
+            set(s, now);
+        }));
+        self.add(f);
+    }
+
+    pub fn button(&mut self, label: impl Into<SharedString>, on_click: impl Fn(&ClickEvent, &mut WindowCx) + 'static) {
         let b = Button::new(label).enabled(self.enabled).on_click(on_click);
         self.add(b);
     }
 
     /// The text field `id` (made the first time), showing `value` unless
-    /// it has the keyboard; typing in it sets what `set` says.
-    pub fn field(&mut self, id: &str, value: &str, build: impl FnOnce(TextField) -> TextField, set: impl Fn(&mut Settings, String) + 'static) -> Entity<TextField> {
+    /// it has the keyboard; typing in it sets what `set` says. (The
+    /// field is the panel's: what's handed back shows it, `element`.)
+    pub fn field(&mut self, id: &str, value: &str, build: impl FnOnce(TextField) -> TextField, set: impl Fn(&mut Settings, String) + 'static) -> ViewRef<TextField> {
         let id = SharedString::from(id.to_owned());
         let set: Set<String> = Rc::new(set);
         let (probe, now) = (set.clone(), value.to_owned());
         self.probe(move |s| probe(s, now.clone()));
         self.fields.setters.insert(id.clone(), set);
-        let field = match self.fields.fields.get(&id) {
-            Some(f) => f.clone(),
-            None => {
-                let f = self.cx.new(|cx| build(TextField::new(cx)));
-                f.update(self.cx, |f, cx| f.set_text(value.to_owned(), cx));
-                let key = id.clone();
-                let prefs = self.prefs.clone();
-                // (Typed in: a run is one step.)
-                let (_, name) = self.step(None, false);
-                let run = format!("field:{id}");
-                self.cx
-                    .subscribe(&f, move |view, field, e: &TextFieldEvent, cx| {
-                        if !matches!(e, TextFieldEvent::Changed) {
-                            return;
-                        }
-                        let text = field.read(cx).text().to_owned();
-                        let Some(set) = view.fields.setters.get(&key).cloned() else { return };
-                        let _ = prefs.update(cx, |p, cx| p.edit_as(cx, &run, &name, |s| set(s, text.clone())));
-                    })
-                    .detach();
-                self.fields.fields.insert(id.clone(), f.clone());
-                f
-            }
-        };
+        if !self.fields.fields.contains_key(&id) {
+            let f = self.cx.new_view(|_| build(TextField::new()));
+            f.update(self.cx, |f, cx| f.set_text(value.to_owned(), cx));
+            let key = id.clone();
+            // (Typed in: a run is one step.)
+            let (_, name) = self.step(None, false);
+            let run = format!("field:{id}");
+            self.cx.subscribe(&f, move |view: &mut PanelView, e: &TextFieldEvent, cx| {
+                if !matches!(e, TextFieldEvent::Changed) {
+                    return;
+                }
+                let Some(text) = view.fields.fields.get(&key).map(|f| f.read(cx).text().to_owned()) else { return };
+                let Some(set) = view.fields.setters.get(&key).cloned() else { return };
+                prefs().edit_as(&run, &name, |s| set(s, text.clone()));
+            });
+            self.fields.fields.insert(id.clone(), f);
+        }
         let enabled = self.enabled;
-        let focused = field.read(self.cx).is_focused(self.window);
+        let field = &self.fields.fields[&id];
+        let focused = field.is_focused(self.cx);
         field.update(self.cx, |f, cx| {
             if !focused && f.text() != value {
                 f.set_text(value.to_owned(), cx);
             }
             f.set_enabled(enabled, cx);
         });
-        field
+        field.downgrade()
+    }
+
+    /// A text control for the field `id` made by [`Ui::field`], for a
+    /// row built by hand.
+    pub fn control_of(&self, id: &str) -> TextControl {
+        TextControl::new(self.cx, &self.fields.fields[id])
     }
 
     /// A labelled text control bound to a setting; `with` sets its label,
     /// divider and width.
     pub fn text(&mut self, id: &str, value: &str, build: impl FnOnce(TextField) -> TextField, with: impl FnOnce(TextControl) -> TextControl, set: impl Fn(&mut Settings, String) + 'static) {
-        let field = self.field(id, value, build, set);
-        self.add(with(TextControl::new(field)));
+        self.field(id, value, build, set);
+        let control = with(TextControl::new(self.cx, &self.fields.fields[id]));
+        self.add(control);
     }
 }
 
+/// Every box with settings shows its Reset (the layout lint's second
+/// pass: a long title beside it must still fit). (The lint's windows are
+/// made on loopers of their own.)
 #[cfg(test)]
-thread_local! {
-    /// Every box with settings shows its Reset (the layout lint's second
-    /// pass: a long title beside it must still fit).
-    pub static EVERY_RESET: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
+pub static EVERY_RESET: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[cfg(test)]
 fn every_reset() -> bool {
-    EVERY_RESET.with(|c| c.get())
+    EVERY_RESET.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 #[cfg(not(test))]
@@ -505,12 +510,40 @@ fn same(a: &serde_json::Value, b: &serde_json::Value) -> bool {
 
 /// The widest of `labels`, and the gap after it: where controls in a
 /// column of labelled ones begin.
-pub fn divider_for(window: &mut Window, labels: &[&str]) -> f32 {
+pub fn divider_for(labels: &[&str]) -> f32 {
     labels
         .iter()
-        .map(|l| f32::from(olo_ui::style::text_width(window, SharedString::from(l.to_string()), olo_ui::style::PLAIN_SIZE, olo_ui::style::ui_font(olo_ui::gpui::FontWeight::NORMAL))).ceil())
+        .map(|l| f32::from(olo_kit::style::text_width(SharedString::from(l.to_string()), olo_kit::style::PLAIN_SIZE, olo_kit::style::ui_font(olo_kit::FontWeight::NORMAL))).ceil())
         .fold(0.0, f32::max)
         + m::LABEL_GAP
+}
+
+/// How long a slider's dragged value is shown in place of what its
+/// server says (the server's echoes are a little older: the knob would
+/// jump), and after which the panel says what it shows again, so what
+/// the server made of it shows (the GPUI kit drew a window again whenever
+/// the pointer left a control; a view draws again when told).
+pub const HELD: Duration = Duration::from_millis(600);
+
+/// The panel says what it shows again once a value held for [`HELD`] is
+/// let go.
+pub fn again_once_let_go(cx: &mut Cx<PanelView>) {
+    cx.after_do(HELD + Duration::from_millis(50), |_, cx| cx.notify());
+}
+
+/// A text field of a panel's own (not bound to a setting: a password, a
+/// name to save under): the panel says what it shows again as it's
+/// typed in, for what it enables by the text (a Save that wants a name).
+/// (A view is told: nothing draws it again because something it read
+/// changed, as GPUI did.)
+pub fn text_field(cx: &mut Cx<PanelView>, build: impl FnOnce(TextField) -> TextField) -> Child<TextField> {
+    let f = olo_kit::widgets::text_field(cx, build);
+    cx.subscribe(&f, |_: &mut PanelView, e: &TextFieldEvent, cx| {
+        if matches!(e, TextFieldEvent::Changed) {
+            cx.notify();
+        }
+    });
+    f
 }
 
 #[cfg(test)]

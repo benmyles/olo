@@ -1469,6 +1469,26 @@ impl Default for _VAEncMiscParameterFrameRate {
 pub type VAEncMiscParameterFrameRate = _VAEncMiscParameterFrameRate;
 #[repr(C)]
 #[derive(Default, Copy, Clone)]
+pub struct _VAEncMiscParameterHRD {
+    pub initial_buffer_fullness: u32,
+    pub buffer_size: u32,
+    pub va_reserved: [u32; 4usize],
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAEncMiscParameterHRD"][::std::mem::size_of::<_VAEncMiscParameterHRD>() - 24usize];
+    ["Alignment of _VAEncMiscParameterHRD"]
+        [::std::mem::align_of::<_VAEncMiscParameterHRD>() - 4usize];
+    ["Offset of field: _VAEncMiscParameterHRD::initial_buffer_fullness"]
+        [::std::mem::offset_of!(_VAEncMiscParameterHRD, initial_buffer_fullness) - 0usize];
+    ["Offset of field: _VAEncMiscParameterHRD::buffer_size"]
+        [::std::mem::offset_of!(_VAEncMiscParameterHRD, buffer_size) - 4usize];
+    ["Offset of field: _VAEncMiscParameterHRD::va_reserved"]
+        [::std::mem::offset_of!(_VAEncMiscParameterHRD, va_reserved) - 8usize];
+};
+pub type VAEncMiscParameterHRD = _VAEncMiscParameterHRD;
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
 pub struct _VAPictureH264 {
     pub picture_id: VASurfaceID,
     pub frame_idx: u32,
@@ -10147,6 +10167,1628 @@ const _: () = {
         [::std::mem::offset_of!(_VASliceParameterBufferAV1, va_reserved) - 24usize];
 };
 pub type VASliceParameterBufferAV1 = _VASliceParameterBufferAV1;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _VAEncSequenceParameterBufferH264 {
+    pub seq_parameter_set_id: u8,
+    pub level_idc: u8,
+    pub intra_period: u32,
+    pub intra_idr_period: u32,
+    pub ip_period: u32,
+    pub bits_per_second: u32,
+    pub max_num_ref_frames: u32,
+    pub picture_width_in_mbs: u16,
+    pub picture_height_in_mbs: u16,
+    pub seq_fields: _VAEncSequenceParameterBufferH264__bindgen_ty_1,
+    pub bit_depth_luma_minus8: u8,
+    pub bit_depth_chroma_minus8: u8,
+    pub num_ref_frames_in_pic_order_cnt_cycle: u8,
+    pub offset_for_non_ref_pic: i32,
+    pub offset_for_top_to_bottom_field: i32,
+    pub offset_for_ref_frame: [i32; 256usize],
+    pub frame_cropping_flag: u8,
+    pub frame_crop_left_offset: u32,
+    pub frame_crop_right_offset: u32,
+    pub frame_crop_top_offset: u32,
+    pub frame_crop_bottom_offset: u32,
+    pub vui_parameters_present_flag: u8,
+    pub vui_fields: _VAEncSequenceParameterBufferH264__bindgen_ty_2,
+    pub aspect_ratio_idc: u8,
+    pub sar_width: u32,
+    pub sar_height: u32,
+    pub num_units_in_tick: u32,
+    pub time_scale: u32,
+    pub va_reserved: [u32; 4usize],
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union _VAEncSequenceParameterBufferH264__bindgen_ty_1 {
+    pub bits: _VAEncSequenceParameterBufferH264__bindgen_ty_1__bindgen_ty_1,
+    pub value: u32,
+}
+#[repr(C)]
+#[repr(align(4))]
+#[derive(Default, Copy, Clone)]
+pub struct _VAEncSequenceParameterBufferH264__bindgen_ty_1__bindgen_ty_1 {
+    pub _bitfield_align_1: [u8; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 3usize]>,
+    pub __bindgen_padding_0: u8,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAEncSequenceParameterBufferH264__bindgen_ty_1__bindgen_ty_1"][::std::mem::size_of::<
+        _VAEncSequenceParameterBufferH264__bindgen_ty_1__bindgen_ty_1,
+    >() - 4usize];
+    ["Alignment of _VAEncSequenceParameterBufferH264__bindgen_ty_1__bindgen_ty_1"]
+        [::std::mem::align_of::<_VAEncSequenceParameterBufferH264__bindgen_ty_1__bindgen_ty_1>()
+            - 4usize];
+};
+impl _VAEncSequenceParameterBufferH264__bindgen_ty_1__bindgen_ty_1 {
+    #[inline]
+    pub fn chroma_format_idc(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(0usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_chroma_format_idc(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(0usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn chroma_format_idc_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 3usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_chroma_format_idc_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 3usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn frame_mbs_only_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(2usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_frame_mbs_only_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(2usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn frame_mbs_only_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 3usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                2usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_frame_mbs_only_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 3usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                2usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mb_adaptive_frame_field_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(3usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_mb_adaptive_frame_field_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(3usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mb_adaptive_frame_field_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 3usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                3usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mb_adaptive_frame_field_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 3usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                3usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn seq_scaling_matrix_present_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(4usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_seq_scaling_matrix_present_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(4usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn seq_scaling_matrix_present_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 3usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                4usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_seq_scaling_matrix_present_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 3usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                4usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn direct_8x8_inference_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(5usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_direct_8x8_inference_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(5usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn direct_8x8_inference_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 3usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                5usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_direct_8x8_inference_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 3usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                5usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn log2_max_frame_num_minus4(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(6usize, 4u8) as u32) }
+    }
+    #[inline]
+    pub fn set_log2_max_frame_num_minus4(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(6usize, 4u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn log2_max_frame_num_minus4_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 3usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                6usize,
+                4u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_log2_max_frame_num_minus4_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 3usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                6usize,
+                4u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn pic_order_cnt_type(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(10usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_pic_order_cnt_type(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(10usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn pic_order_cnt_type_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 3usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                10usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_pic_order_cnt_type_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 3usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                10usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn log2_max_pic_order_cnt_lsb_minus4(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(12usize, 4u8) as u32) }
+    }
+    #[inline]
+    pub fn set_log2_max_pic_order_cnt_lsb_minus4(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(12usize, 4u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn log2_max_pic_order_cnt_lsb_minus4_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 3usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                12usize,
+                4u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_log2_max_pic_order_cnt_lsb_minus4_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 3usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                12usize,
+                4u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn delta_pic_order_always_zero_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(16usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_delta_pic_order_always_zero_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(16usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn delta_pic_order_always_zero_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 3usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                16usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_delta_pic_order_always_zero_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 3usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                16usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        chroma_format_idc: u32,
+        frame_mbs_only_flag: u32,
+        mb_adaptive_frame_field_flag: u32,
+        seq_scaling_matrix_present_flag: u32,
+        direct_8x8_inference_flag: u32,
+        log2_max_frame_num_minus4: u32,
+        pic_order_cnt_type: u32,
+        log2_max_pic_order_cnt_lsb_minus4: u32,
+        delta_pic_order_always_zero_flag: u32,
+    ) -> __BindgenBitfieldUnit<[u8; 3usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 3usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 2u8, {
+            let chroma_format_idc: u32 = unsafe { ::std::mem::transmute(chroma_format_idc) };
+            chroma_format_idc as u64
+        });
+        __bindgen_bitfield_unit.set(2usize, 1u8, {
+            let frame_mbs_only_flag: u32 = unsafe { ::std::mem::transmute(frame_mbs_only_flag) };
+            frame_mbs_only_flag as u64
+        });
+        __bindgen_bitfield_unit.set(3usize, 1u8, {
+            let mb_adaptive_frame_field_flag: u32 =
+                unsafe { ::std::mem::transmute(mb_adaptive_frame_field_flag) };
+            mb_adaptive_frame_field_flag as u64
+        });
+        __bindgen_bitfield_unit.set(4usize, 1u8, {
+            let seq_scaling_matrix_present_flag: u32 =
+                unsafe { ::std::mem::transmute(seq_scaling_matrix_present_flag) };
+            seq_scaling_matrix_present_flag as u64
+        });
+        __bindgen_bitfield_unit.set(5usize, 1u8, {
+            let direct_8x8_inference_flag: u32 =
+                unsafe { ::std::mem::transmute(direct_8x8_inference_flag) };
+            direct_8x8_inference_flag as u64
+        });
+        __bindgen_bitfield_unit.set(6usize, 4u8, {
+            let log2_max_frame_num_minus4: u32 =
+                unsafe { ::std::mem::transmute(log2_max_frame_num_minus4) };
+            log2_max_frame_num_minus4 as u64
+        });
+        __bindgen_bitfield_unit.set(10usize, 2u8, {
+            let pic_order_cnt_type: u32 = unsafe { ::std::mem::transmute(pic_order_cnt_type) };
+            pic_order_cnt_type as u64
+        });
+        __bindgen_bitfield_unit.set(12usize, 4u8, {
+            let log2_max_pic_order_cnt_lsb_minus4: u32 =
+                unsafe { ::std::mem::transmute(log2_max_pic_order_cnt_lsb_minus4) };
+            log2_max_pic_order_cnt_lsb_minus4 as u64
+        });
+        __bindgen_bitfield_unit.set(16usize, 1u8, {
+            let delta_pic_order_always_zero_flag: u32 =
+                unsafe { ::std::mem::transmute(delta_pic_order_always_zero_flag) };
+            delta_pic_order_always_zero_flag as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAEncSequenceParameterBufferH264__bindgen_ty_1"]
+        [::std::mem::size_of::<_VAEncSequenceParameterBufferH264__bindgen_ty_1>() - 4usize];
+    ["Alignment of _VAEncSequenceParameterBufferH264__bindgen_ty_1"]
+        [::std::mem::align_of::<_VAEncSequenceParameterBufferH264__bindgen_ty_1>() - 4usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264__bindgen_ty_1::bits"]
+        [::std::mem::offset_of!(_VAEncSequenceParameterBufferH264__bindgen_ty_1, bits) - 0usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264__bindgen_ty_1::value"]
+        [::std::mem::offset_of!(_VAEncSequenceParameterBufferH264__bindgen_ty_1, value) - 0usize];
+};
+impl Default for _VAEncSequenceParameterBufferH264__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union _VAEncSequenceParameterBufferH264__bindgen_ty_2 {
+    pub bits: _VAEncSequenceParameterBufferH264__bindgen_ty_2__bindgen_ty_1,
+    pub value: u32,
+}
+#[repr(C)]
+#[repr(align(4))]
+#[derive(Default, Copy, Clone)]
+pub struct _VAEncSequenceParameterBufferH264__bindgen_ty_2__bindgen_ty_1 {
+    pub _bitfield_align_1: [u16; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 4usize]>,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAEncSequenceParameterBufferH264__bindgen_ty_2__bindgen_ty_1"][::std::mem::size_of::<
+        _VAEncSequenceParameterBufferH264__bindgen_ty_2__bindgen_ty_1,
+    >() - 4usize];
+    ["Alignment of _VAEncSequenceParameterBufferH264__bindgen_ty_2__bindgen_ty_1"]
+        [::std::mem::align_of::<_VAEncSequenceParameterBufferH264__bindgen_ty_2__bindgen_ty_1>()
+            - 4usize];
+};
+impl _VAEncSequenceParameterBufferH264__bindgen_ty_2__bindgen_ty_1 {
+    #[inline]
+    pub fn aspect_ratio_info_present_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(0usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_aspect_ratio_info_present_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(0usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn aspect_ratio_info_present_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_aspect_ratio_info_present_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn timing_info_present_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(1usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_timing_info_present_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(1usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn timing_info_present_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                1usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_timing_info_present_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                1usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn bitstream_restriction_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(2usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_bitstream_restriction_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(2usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn bitstream_restriction_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                2usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_bitstream_restriction_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                2usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn log2_max_mv_length_horizontal(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(3usize, 5u8) as u32) }
+    }
+    #[inline]
+    pub fn set_log2_max_mv_length_horizontal(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(3usize, 5u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn log2_max_mv_length_horizontal_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                3usize,
+                5u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_log2_max_mv_length_horizontal_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                3usize,
+                5u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn log2_max_mv_length_vertical(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(8usize, 5u8) as u32) }
+    }
+    #[inline]
+    pub fn set_log2_max_mv_length_vertical(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(8usize, 5u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn log2_max_mv_length_vertical_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                8usize,
+                5u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_log2_max_mv_length_vertical_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                8usize,
+                5u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn fixed_frame_rate_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(13usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_fixed_frame_rate_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(13usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn fixed_frame_rate_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                13usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_fixed_frame_rate_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                13usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn low_delay_hrd_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(14usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_low_delay_hrd_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(14usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn low_delay_hrd_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                14usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_low_delay_hrd_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                14usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn motion_vectors_over_pic_boundaries_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(15usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_motion_vectors_over_pic_boundaries_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(15usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn motion_vectors_over_pic_boundaries_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                15usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_motion_vectors_over_pic_boundaries_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                15usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn reserved(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(16usize, 16u8) as u32) }
+    }
+    #[inline]
+    pub fn set_reserved(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(16usize, 16u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn reserved_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 4usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                16usize,
+                16u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_reserved_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 4usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                16usize,
+                16u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        aspect_ratio_info_present_flag: u32,
+        timing_info_present_flag: u32,
+        bitstream_restriction_flag: u32,
+        log2_max_mv_length_horizontal: u32,
+        log2_max_mv_length_vertical: u32,
+        fixed_frame_rate_flag: u32,
+        low_delay_hrd_flag: u32,
+        motion_vectors_over_pic_boundaries_flag: u32,
+        reserved: u32,
+    ) -> __BindgenBitfieldUnit<[u8; 4usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 4usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 1u8, {
+            let aspect_ratio_info_present_flag: u32 =
+                unsafe { ::std::mem::transmute(aspect_ratio_info_present_flag) };
+            aspect_ratio_info_present_flag as u64
+        });
+        __bindgen_bitfield_unit.set(1usize, 1u8, {
+            let timing_info_present_flag: u32 =
+                unsafe { ::std::mem::transmute(timing_info_present_flag) };
+            timing_info_present_flag as u64
+        });
+        __bindgen_bitfield_unit.set(2usize, 1u8, {
+            let bitstream_restriction_flag: u32 =
+                unsafe { ::std::mem::transmute(bitstream_restriction_flag) };
+            bitstream_restriction_flag as u64
+        });
+        __bindgen_bitfield_unit.set(3usize, 5u8, {
+            let log2_max_mv_length_horizontal: u32 =
+                unsafe { ::std::mem::transmute(log2_max_mv_length_horizontal) };
+            log2_max_mv_length_horizontal as u64
+        });
+        __bindgen_bitfield_unit.set(8usize, 5u8, {
+            let log2_max_mv_length_vertical: u32 =
+                unsafe { ::std::mem::transmute(log2_max_mv_length_vertical) };
+            log2_max_mv_length_vertical as u64
+        });
+        __bindgen_bitfield_unit.set(13usize, 1u8, {
+            let fixed_frame_rate_flag: u32 =
+                unsafe { ::std::mem::transmute(fixed_frame_rate_flag) };
+            fixed_frame_rate_flag as u64
+        });
+        __bindgen_bitfield_unit.set(14usize, 1u8, {
+            let low_delay_hrd_flag: u32 = unsafe { ::std::mem::transmute(low_delay_hrd_flag) };
+            low_delay_hrd_flag as u64
+        });
+        __bindgen_bitfield_unit.set(15usize, 1u8, {
+            let motion_vectors_over_pic_boundaries_flag: u32 =
+                unsafe { ::std::mem::transmute(motion_vectors_over_pic_boundaries_flag) };
+            motion_vectors_over_pic_boundaries_flag as u64
+        });
+        __bindgen_bitfield_unit.set(16usize, 16u8, {
+            let reserved: u32 = unsafe { ::std::mem::transmute(reserved) };
+            reserved as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAEncSequenceParameterBufferH264__bindgen_ty_2"]
+        [::std::mem::size_of::<_VAEncSequenceParameterBufferH264__bindgen_ty_2>() - 4usize];
+    ["Alignment of _VAEncSequenceParameterBufferH264__bindgen_ty_2"]
+        [::std::mem::align_of::<_VAEncSequenceParameterBufferH264__bindgen_ty_2>() - 4usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264__bindgen_ty_2::bits"]
+        [::std::mem::offset_of!(_VAEncSequenceParameterBufferH264__bindgen_ty_2, bits) - 0usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264__bindgen_ty_2::value"]
+        [::std::mem::offset_of!(_VAEncSequenceParameterBufferH264__bindgen_ty_2, value) - 0usize];
+};
+impl Default for _VAEncSequenceParameterBufferH264__bindgen_ty_2 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAEncSequenceParameterBufferH264"]
+        [::std::mem::size_of::<_VAEncSequenceParameterBufferH264>() - 1132usize];
+    ["Alignment of _VAEncSequenceParameterBufferH264"]
+        [::std::mem::align_of::<_VAEncSequenceParameterBufferH264>() - 4usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::seq_parameter_set_id"]
+        [::std::mem::offset_of!(_VAEncSequenceParameterBufferH264, seq_parameter_set_id) - 0usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::level_idc"]
+        [::std::mem::offset_of!(_VAEncSequenceParameterBufferH264, level_idc) - 1usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::intra_period"]
+        [::std::mem::offset_of!(_VAEncSequenceParameterBufferH264, intra_period) - 4usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::intra_idr_period"]
+        [::std::mem::offset_of!(_VAEncSequenceParameterBufferH264, intra_idr_period) - 8usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::ip_period"]
+        [::std::mem::offset_of!(_VAEncSequenceParameterBufferH264, ip_period) - 12usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::bits_per_second"]
+        [::std::mem::offset_of!(_VAEncSequenceParameterBufferH264, bits_per_second) - 16usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::max_num_ref_frames"]
+        [::std::mem::offset_of!(_VAEncSequenceParameterBufferH264, max_num_ref_frames) - 20usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::picture_width_in_mbs"]
+        [::std::mem::offset_of!(_VAEncSequenceParameterBufferH264, picture_width_in_mbs) - 24usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::picture_height_in_mbs"][::std::mem::offset_of!(
+        _VAEncSequenceParameterBufferH264,
+        picture_height_in_mbs
+    ) - 26usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::seq_fields"]
+        [::std::mem::offset_of!(_VAEncSequenceParameterBufferH264, seq_fields) - 28usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::bit_depth_luma_minus8"][::std::mem::offset_of!(
+        _VAEncSequenceParameterBufferH264,
+        bit_depth_luma_minus8
+    ) - 32usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::bit_depth_chroma_minus8"][::std::mem::offset_of!(
+        _VAEncSequenceParameterBufferH264,
+        bit_depth_chroma_minus8
+    ) - 33usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::num_ref_frames_in_pic_order_cnt_cycle"][::std::mem::offset_of!(
+        _VAEncSequenceParameterBufferH264,
+        num_ref_frames_in_pic_order_cnt_cycle
+    )
+        - 34usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::offset_for_non_ref_pic"][::std::mem::offset_of!(
+        _VAEncSequenceParameterBufferH264,
+        offset_for_non_ref_pic
+    ) - 36usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::offset_for_top_to_bottom_field"][::std::mem::offset_of!(
+        _VAEncSequenceParameterBufferH264,
+        offset_for_top_to_bottom_field
+    )
+        - 40usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::offset_for_ref_frame"]
+        [::std::mem::offset_of!(_VAEncSequenceParameterBufferH264, offset_for_ref_frame) - 44usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::frame_cropping_flag"][::std::mem::offset_of!(
+        _VAEncSequenceParameterBufferH264,
+        frame_cropping_flag
+    ) - 1068usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::frame_crop_left_offset"][::std::mem::offset_of!(
+        _VAEncSequenceParameterBufferH264,
+        frame_crop_left_offset
+    ) - 1072usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::frame_crop_right_offset"][::std::mem::offset_of!(
+        _VAEncSequenceParameterBufferH264,
+        frame_crop_right_offset
+    ) - 1076usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::frame_crop_top_offset"][::std::mem::offset_of!(
+        _VAEncSequenceParameterBufferH264,
+        frame_crop_top_offset
+    ) - 1080usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::frame_crop_bottom_offset"][::std::mem::offset_of!(
+        _VAEncSequenceParameterBufferH264,
+        frame_crop_bottom_offset
+    ) - 1084usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::vui_parameters_present_flag"][::std::mem::offset_of!(
+        _VAEncSequenceParameterBufferH264,
+        vui_parameters_present_flag
+    )
+        - 1088usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::vui_fields"]
+        [::std::mem::offset_of!(_VAEncSequenceParameterBufferH264, vui_fields) - 1092usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::aspect_ratio_idc"]
+        [::std::mem::offset_of!(_VAEncSequenceParameterBufferH264, aspect_ratio_idc) - 1096usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::sar_width"]
+        [::std::mem::offset_of!(_VAEncSequenceParameterBufferH264, sar_width) - 1100usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::sar_height"]
+        [::std::mem::offset_of!(_VAEncSequenceParameterBufferH264, sar_height) - 1104usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::num_units_in_tick"]
+        [::std::mem::offset_of!(_VAEncSequenceParameterBufferH264, num_units_in_tick) - 1108usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::time_scale"]
+        [::std::mem::offset_of!(_VAEncSequenceParameterBufferH264, time_scale) - 1112usize];
+    ["Offset of field: _VAEncSequenceParameterBufferH264::va_reserved"]
+        [::std::mem::offset_of!(_VAEncSequenceParameterBufferH264, va_reserved) - 1116usize];
+};
+impl Default for _VAEncSequenceParameterBufferH264 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type VAEncSequenceParameterBufferH264 = _VAEncSequenceParameterBufferH264;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _VAEncPictureParameterBufferH264 {
+    pub CurrPic: VAPictureH264,
+    pub ReferenceFrames: [VAPictureH264; 16usize],
+    pub coded_buf: VABufferID,
+    pub pic_parameter_set_id: u8,
+    pub seq_parameter_set_id: u8,
+    pub last_picture: u8,
+    pub frame_num: u16,
+    pub pic_init_qp: u8,
+    pub num_ref_idx_l0_active_minus1: u8,
+    pub num_ref_idx_l1_active_minus1: u8,
+    pub chroma_qp_index_offset: i8,
+    pub second_chroma_qp_index_offset: i8,
+    pub pic_fields: _VAEncPictureParameterBufferH264__bindgen_ty_1,
+    pub va_reserved: [u32; 4usize],
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union _VAEncPictureParameterBufferH264__bindgen_ty_1 {
+    pub bits: _VAEncPictureParameterBufferH264__bindgen_ty_1__bindgen_ty_1,
+    pub value: u32,
+}
+#[repr(C)]
+#[repr(align(4))]
+#[derive(Default, Copy, Clone)]
+pub struct _VAEncPictureParameterBufferH264__bindgen_ty_1__bindgen_ty_1 {
+    pub _bitfield_align_1: [u8; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 2usize]>,
+    pub __bindgen_padding_0: u16,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAEncPictureParameterBufferH264__bindgen_ty_1__bindgen_ty_1"][::std::mem::size_of::<
+        _VAEncPictureParameterBufferH264__bindgen_ty_1__bindgen_ty_1,
+    >() - 4usize];
+    ["Alignment of _VAEncPictureParameterBufferH264__bindgen_ty_1__bindgen_ty_1"]
+        [::std::mem::align_of::<_VAEncPictureParameterBufferH264__bindgen_ty_1__bindgen_ty_1>()
+            - 4usize];
+};
+impl _VAEncPictureParameterBufferH264__bindgen_ty_1__bindgen_ty_1 {
+    #[inline]
+    pub fn idr_pic_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(0usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_idr_pic_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(0usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn idr_pic_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_idr_pic_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn reference_pic_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(1usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_reference_pic_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(1usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn reference_pic_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                1usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_reference_pic_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                1usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn entropy_coding_mode_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(3usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_entropy_coding_mode_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(3usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn entropy_coding_mode_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                3usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_entropy_coding_mode_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                3usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn weighted_pred_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(4usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_weighted_pred_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(4usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn weighted_pred_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                4usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_weighted_pred_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                4usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn weighted_bipred_idc(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(5usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_weighted_bipred_idc(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(5usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn weighted_bipred_idc_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                5usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_weighted_bipred_idc_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                5usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn constrained_intra_pred_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(7usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_constrained_intra_pred_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(7usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn constrained_intra_pred_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                7usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_constrained_intra_pred_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                7usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn transform_8x8_mode_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(8usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_transform_8x8_mode_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(8usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn transform_8x8_mode_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                8usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_transform_8x8_mode_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                8usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn deblocking_filter_control_present_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(9usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_deblocking_filter_control_present_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(9usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn deblocking_filter_control_present_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                9usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_deblocking_filter_control_present_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                9usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn redundant_pic_cnt_present_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(10usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_redundant_pic_cnt_present_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(10usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn redundant_pic_cnt_present_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                10usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_redundant_pic_cnt_present_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                10usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn pic_order_present_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(11usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_pic_order_present_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(11usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn pic_order_present_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                11usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_pic_order_present_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                11usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn pic_scaling_matrix_present_flag(&self) -> u32 {
+        unsafe { ::std::mem::transmute(self._bitfield_1.get(12usize, 1u8) as u32) }
+    }
+    #[inline]
+    pub fn set_pic_scaling_matrix_present_flag(&mut self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            self._bitfield_1.set(12usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn pic_scaling_matrix_present_flag_raw(this: *const Self) -> u32 {
+        unsafe {
+            ::std::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::std::ptr::addr_of!((*this)._bitfield_1),
+                12usize,
+                1u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_pic_scaling_matrix_present_flag_raw(this: *mut Self, val: u32) {
+        unsafe {
+            let val: u32 = ::std::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::std::ptr::addr_of_mut!((*this)._bitfield_1),
+                12usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        idr_pic_flag: u32,
+        reference_pic_flag: u32,
+        entropy_coding_mode_flag: u32,
+        weighted_pred_flag: u32,
+        weighted_bipred_idc: u32,
+        constrained_intra_pred_flag: u32,
+        transform_8x8_mode_flag: u32,
+        deblocking_filter_control_present_flag: u32,
+        redundant_pic_cnt_present_flag: u32,
+        pic_order_present_flag: u32,
+        pic_scaling_matrix_present_flag: u32,
+    ) -> __BindgenBitfieldUnit<[u8; 2usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 2usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 1u8, {
+            let idr_pic_flag: u32 = unsafe { ::std::mem::transmute(idr_pic_flag) };
+            idr_pic_flag as u64
+        });
+        __bindgen_bitfield_unit.set(1usize, 2u8, {
+            let reference_pic_flag: u32 = unsafe { ::std::mem::transmute(reference_pic_flag) };
+            reference_pic_flag as u64
+        });
+        __bindgen_bitfield_unit.set(3usize, 1u8, {
+            let entropy_coding_mode_flag: u32 =
+                unsafe { ::std::mem::transmute(entropy_coding_mode_flag) };
+            entropy_coding_mode_flag as u64
+        });
+        __bindgen_bitfield_unit.set(4usize, 1u8, {
+            let weighted_pred_flag: u32 = unsafe { ::std::mem::transmute(weighted_pred_flag) };
+            weighted_pred_flag as u64
+        });
+        __bindgen_bitfield_unit.set(5usize, 2u8, {
+            let weighted_bipred_idc: u32 = unsafe { ::std::mem::transmute(weighted_bipred_idc) };
+            weighted_bipred_idc as u64
+        });
+        __bindgen_bitfield_unit.set(7usize, 1u8, {
+            let constrained_intra_pred_flag: u32 =
+                unsafe { ::std::mem::transmute(constrained_intra_pred_flag) };
+            constrained_intra_pred_flag as u64
+        });
+        __bindgen_bitfield_unit.set(8usize, 1u8, {
+            let transform_8x8_mode_flag: u32 =
+                unsafe { ::std::mem::transmute(transform_8x8_mode_flag) };
+            transform_8x8_mode_flag as u64
+        });
+        __bindgen_bitfield_unit.set(9usize, 1u8, {
+            let deblocking_filter_control_present_flag: u32 =
+                unsafe { ::std::mem::transmute(deblocking_filter_control_present_flag) };
+            deblocking_filter_control_present_flag as u64
+        });
+        __bindgen_bitfield_unit.set(10usize, 1u8, {
+            let redundant_pic_cnt_present_flag: u32 =
+                unsafe { ::std::mem::transmute(redundant_pic_cnt_present_flag) };
+            redundant_pic_cnt_present_flag as u64
+        });
+        __bindgen_bitfield_unit.set(11usize, 1u8, {
+            let pic_order_present_flag: u32 =
+                unsafe { ::std::mem::transmute(pic_order_present_flag) };
+            pic_order_present_flag as u64
+        });
+        __bindgen_bitfield_unit.set(12usize, 1u8, {
+            let pic_scaling_matrix_present_flag: u32 =
+                unsafe { ::std::mem::transmute(pic_scaling_matrix_present_flag) };
+            pic_scaling_matrix_present_flag as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAEncPictureParameterBufferH264__bindgen_ty_1"]
+        [::std::mem::size_of::<_VAEncPictureParameterBufferH264__bindgen_ty_1>() - 4usize];
+    ["Alignment of _VAEncPictureParameterBufferH264__bindgen_ty_1"]
+        [::std::mem::align_of::<_VAEncPictureParameterBufferH264__bindgen_ty_1>() - 4usize];
+    ["Offset of field: _VAEncPictureParameterBufferH264__bindgen_ty_1::bits"]
+        [::std::mem::offset_of!(_VAEncPictureParameterBufferH264__bindgen_ty_1, bits) - 0usize];
+    ["Offset of field: _VAEncPictureParameterBufferH264__bindgen_ty_1::value"]
+        [::std::mem::offset_of!(_VAEncPictureParameterBufferH264__bindgen_ty_1, value) - 0usize];
+};
+impl Default for _VAEncPictureParameterBufferH264__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAEncPictureParameterBufferH264"]
+        [::std::mem::size_of::<_VAEncPictureParameterBufferH264>() - 648usize];
+    ["Alignment of _VAEncPictureParameterBufferH264"]
+        [::std::mem::align_of::<_VAEncPictureParameterBufferH264>() - 4usize];
+    ["Offset of field: _VAEncPictureParameterBufferH264::CurrPic"]
+        [::std::mem::offset_of!(_VAEncPictureParameterBufferH264, CurrPic) - 0usize];
+    ["Offset of field: _VAEncPictureParameterBufferH264::ReferenceFrames"]
+        [::std::mem::offset_of!(_VAEncPictureParameterBufferH264, ReferenceFrames) - 36usize];
+    ["Offset of field: _VAEncPictureParameterBufferH264::coded_buf"]
+        [::std::mem::offset_of!(_VAEncPictureParameterBufferH264, coded_buf) - 612usize];
+    ["Offset of field: _VAEncPictureParameterBufferH264::pic_parameter_set_id"]
+        [::std::mem::offset_of!(_VAEncPictureParameterBufferH264, pic_parameter_set_id) - 616usize];
+    ["Offset of field: _VAEncPictureParameterBufferH264::seq_parameter_set_id"]
+        [::std::mem::offset_of!(_VAEncPictureParameterBufferH264, seq_parameter_set_id) - 617usize];
+    ["Offset of field: _VAEncPictureParameterBufferH264::last_picture"]
+        [::std::mem::offset_of!(_VAEncPictureParameterBufferH264, last_picture) - 618usize];
+    ["Offset of field: _VAEncPictureParameterBufferH264::frame_num"]
+        [::std::mem::offset_of!(_VAEncPictureParameterBufferH264, frame_num) - 620usize];
+    ["Offset of field: _VAEncPictureParameterBufferH264::pic_init_qp"]
+        [::std::mem::offset_of!(_VAEncPictureParameterBufferH264, pic_init_qp) - 622usize];
+    ["Offset of field: _VAEncPictureParameterBufferH264::num_ref_idx_l0_active_minus1"][::std::mem::offset_of!(
+        _VAEncPictureParameterBufferH264,
+        num_ref_idx_l0_active_minus1
+    )
+        - 623usize];
+    ["Offset of field: _VAEncPictureParameterBufferH264::num_ref_idx_l1_active_minus1"][::std::mem::offset_of!(
+        _VAEncPictureParameterBufferH264,
+        num_ref_idx_l1_active_minus1
+    )
+        - 624usize];
+    ["Offset of field: _VAEncPictureParameterBufferH264::chroma_qp_index_offset"][::std::mem::offset_of!(
+        _VAEncPictureParameterBufferH264,
+        chroma_qp_index_offset
+    ) - 625usize];
+    ["Offset of field: _VAEncPictureParameterBufferH264::second_chroma_qp_index_offset"][::std::mem::offset_of!(
+        _VAEncPictureParameterBufferH264,
+        second_chroma_qp_index_offset
+    )
+        - 626usize];
+    ["Offset of field: _VAEncPictureParameterBufferH264::pic_fields"]
+        [::std::mem::offset_of!(_VAEncPictureParameterBufferH264, pic_fields) - 628usize];
+    ["Offset of field: _VAEncPictureParameterBufferH264::va_reserved"]
+        [::std::mem::offset_of!(_VAEncPictureParameterBufferH264, va_reserved) - 632usize];
+};
+impl Default for _VAEncPictureParameterBufferH264 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type VAEncPictureParameterBufferH264 = _VAEncPictureParameterBufferH264;
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct _VAEncSliceParameterBufferH264 {
+    pub macroblock_address: u32,
+    pub num_macroblocks: u32,
+    pub macroblock_info: VABufferID,
+    pub slice_type: u8,
+    pub pic_parameter_set_id: u8,
+    pub idr_pic_id: u16,
+    pub pic_order_cnt_lsb: u16,
+    pub delta_pic_order_cnt_bottom: i32,
+    pub delta_pic_order_cnt: [i32; 2usize],
+    pub direct_spatial_mv_pred_flag: u8,
+    pub num_ref_idx_active_override_flag: u8,
+    pub num_ref_idx_l0_active_minus1: u8,
+    pub num_ref_idx_l1_active_minus1: u8,
+    pub RefPicList0: [VAPictureH264; 32usize],
+    pub RefPicList1: [VAPictureH264; 32usize],
+    pub luma_log2_weight_denom: u8,
+    pub chroma_log2_weight_denom: u8,
+    pub luma_weight_l0_flag: u8,
+    pub luma_weight_l0: [::std::os::raw::c_short; 32usize],
+    pub luma_offset_l0: [::std::os::raw::c_short; 32usize],
+    pub chroma_weight_l0_flag: u8,
+    pub chroma_weight_l0: [[::std::os::raw::c_short; 2usize]; 32usize],
+    pub chroma_offset_l0: [[::std::os::raw::c_short; 2usize]; 32usize],
+    pub luma_weight_l1_flag: u8,
+    pub luma_weight_l1: [::std::os::raw::c_short; 32usize],
+    pub luma_offset_l1: [::std::os::raw::c_short; 32usize],
+    pub chroma_weight_l1_flag: u8,
+    pub chroma_weight_l1: [[::std::os::raw::c_short; 2usize]; 32usize],
+    pub chroma_offset_l1: [[::std::os::raw::c_short; 2usize]; 32usize],
+    pub cabac_init_idc: u8,
+    pub slice_qp_delta: i8,
+    pub disable_deblocking_filter_idc: u8,
+    pub slice_alpha_c0_offset_div2: i8,
+    pub slice_beta_offset_div2: i8,
+    pub va_reserved: [u32; 4usize],
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAEncSliceParameterBufferH264"]
+        [::std::mem::size_of::<_VAEncSliceParameterBufferH264>() - 3140usize];
+    ["Alignment of _VAEncSliceParameterBufferH264"]
+        [::std::mem::align_of::<_VAEncSliceParameterBufferH264>() - 4usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::macroblock_address"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, macroblock_address) - 0usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::num_macroblocks"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, num_macroblocks) - 4usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::macroblock_info"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, macroblock_info) - 8usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::slice_type"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, slice_type) - 12usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::pic_parameter_set_id"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, pic_parameter_set_id) - 13usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::idr_pic_id"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, idr_pic_id) - 14usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::pic_order_cnt_lsb"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, pic_order_cnt_lsb) - 16usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::delta_pic_order_cnt_bottom"][::std::mem::offset_of!(
+        _VAEncSliceParameterBufferH264,
+        delta_pic_order_cnt_bottom
+    ) - 20usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::delta_pic_order_cnt"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, delta_pic_order_cnt) - 24usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::direct_spatial_mv_pred_flag"][::std::mem::offset_of!(
+        _VAEncSliceParameterBufferH264,
+        direct_spatial_mv_pred_flag
+    ) - 32usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::num_ref_idx_active_override_flag"][::std::mem::offset_of!(
+        _VAEncSliceParameterBufferH264,
+        num_ref_idx_active_override_flag
+    )
+        - 33usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::num_ref_idx_l0_active_minus1"][::std::mem::offset_of!(
+        _VAEncSliceParameterBufferH264,
+        num_ref_idx_l0_active_minus1
+    ) - 34usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::num_ref_idx_l1_active_minus1"][::std::mem::offset_of!(
+        _VAEncSliceParameterBufferH264,
+        num_ref_idx_l1_active_minus1
+    ) - 35usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::RefPicList0"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, RefPicList0) - 36usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::RefPicList1"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, RefPicList1) - 1188usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::luma_log2_weight_denom"][::std::mem::offset_of!(
+        _VAEncSliceParameterBufferH264,
+        luma_log2_weight_denom
+    ) - 2340usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::chroma_log2_weight_denom"][::std::mem::offset_of!(
+        _VAEncSliceParameterBufferH264,
+        chroma_log2_weight_denom
+    ) - 2341usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::luma_weight_l0_flag"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, luma_weight_l0_flag) - 2342usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::luma_weight_l0"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, luma_weight_l0) - 2344usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::luma_offset_l0"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, luma_offset_l0) - 2408usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::chroma_weight_l0_flag"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, chroma_weight_l0_flag) - 2472usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::chroma_weight_l0"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, chroma_weight_l0) - 2474usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::chroma_offset_l0"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, chroma_offset_l0) - 2602usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::luma_weight_l1_flag"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, luma_weight_l1_flag) - 2730usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::luma_weight_l1"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, luma_weight_l1) - 2732usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::luma_offset_l1"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, luma_offset_l1) - 2796usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::chroma_weight_l1_flag"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, chroma_weight_l1_flag) - 2860usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::chroma_weight_l1"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, chroma_weight_l1) - 2862usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::chroma_offset_l1"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, chroma_offset_l1) - 2990usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::cabac_init_idc"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, cabac_init_idc) - 3118usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::slice_qp_delta"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, slice_qp_delta) - 3119usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::disable_deblocking_filter_idc"][::std::mem::offset_of!(
+        _VAEncSliceParameterBufferH264,
+        disable_deblocking_filter_idc
+    )
+        - 3120usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::slice_alpha_c0_offset_div2"][::std::mem::offset_of!(
+        _VAEncSliceParameterBufferH264,
+        slice_alpha_c0_offset_div2
+    ) - 3121usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::slice_beta_offset_div2"][::std::mem::offset_of!(
+        _VAEncSliceParameterBufferH264,
+        slice_beta_offset_div2
+    ) - 3122usize];
+    ["Offset of field: _VAEncSliceParameterBufferH264::va_reserved"]
+        [::std::mem::offset_of!(_VAEncSliceParameterBufferH264, va_reserved) - 3124usize];
+};
+pub type VAEncSliceParameterBufferH264 = _VAEncSliceParameterBufferH264;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union _VAConfigAttribValEncAV1 {

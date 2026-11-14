@@ -90,6 +90,8 @@ use smithay_drm_extras::{
 };
 use tracing::{debug, error, info, trace, warn};
 
+mod shared_probe;
+
 // we cannot simply pick the first supported format of the intersection of *all* formats, because:
 // - we do not want something like Abgr4444, which looses color information, if something better is available
 // - some formats might perform terribly
@@ -131,6 +133,9 @@ pub struct UdevData {
     /// The screens are off for idleness: nothing is rendered (a frame
     /// would turn them back on).
     displays_off: bool,
+    /// Displays switched off one by one, by connector (the built-in
+    /// panel at the bottom of its brightness: `set_output_on`).
+    outputs_off: std::collections::HashSet<String>,
     loop_handle: smithay::reexports::calloop::LoopHandle<'static, AnvilState<UdevData>>,
     /// libinput and its event source (started again when Olo's touch
     /// filter changes: `touch_filter`).
@@ -145,6 +150,13 @@ pub struct UdevData {
     /// (`contacts`), and each pad's watch on the loop.
     pads_opened: smithay::reexports::calloop::channel::Sender<crate::contacts::Pad>,
     pad_watches: HashMap<std::path::PathBuf, RegistrationToken>,
+    /// libinput on a thread of its own (`input_thread`, when wanted): the
+    /// thread, the keyboards and pointing devices it last said it has, and
+    /// the way its events and asks come to the loop (for its start).
+    input_thread: Option<crate::input_thread::Handle>,
+    thread_keyboards: Vec<crate::input_thread::Dev>,
+    thread_pointers: Vec<crate::input_thread::Dev>,
+    thread_senders: Option<(smithay::reexports::calloop::channel::Sender<Vec<crate::input_thread::Item>>, smithay::reexports::calloop::channel::Sender<crate::contacts::Request>)>,
     /// GPUs left asleep: nothing is plugged into them (`left_asleep`).
     /// Opened when a display is.
     dormant: HashMap<DrmNode, std::path::PathBuf>,
@@ -175,7 +187,20 @@ fn left_asleep(path: &Path) -> bool {
     statuses.iter().all(|s| s == "disconnected")
 }
 
+/// The seat a test app_server takes (`OLO_TEST_SEAT`): its devices only
+/// (a virtual display and mouse put on a seat of their own,
+/// `tools/dev/cursor-thread-check`), never the person's. libseat's noop
+/// session, which such a test runs in, calls every seat "seat0".
+fn test_seat() -> Option<String> {
+    std::env::var("OLO_TEST_SEAT").ok().filter(|s| !s.is_empty())
+}
+
 impl UdevData {
+    /// The seat: the session's, or a test's.
+    fn seat(&self) -> String {
+        test_seat().unwrap_or_else(|| self.session.seat())
+    }
+
     pub fn set_debug_flags(&mut self, flags: DebugFlags) {
         if self.debug_flags != flags {
             self.debug_flags = flags;
@@ -238,6 +263,43 @@ impl UdevData {
     /// touch filter for the current settings and any plugins installed
     /// system-wide.
     fn start_libinput(&mut self) {
+        let threaded = self.thread_senders.is_some() && crate::input_thread::wanted(self.input_settings.as_ref());
+        // From the thread back to the loop: once the thread has closed
+        // every device (`Request::Stopped`), as logind gives each once.
+        if !threaded && let Some(thread) = self.input_thread.take() {
+            self.thread_keyboards.clear();
+            self.thread_pointers.clear();
+            if thread.send(crate::input_thread::Command::Quit) {
+                info!("libinput back to the loop, once the input thread has let go of the devices");
+                return;
+            }
+        }
+        // On the input thread: there, or there again (from the loop).
+        if threaded && let Some((events, requests)) = self.thread_senders.clone() {
+            if let Some((_, token)) = self.libinput.take() {
+                self.loop_handle.remove(token);
+                self.keyboards.clear();
+                self.pointers.clear();
+            }
+            let touchpad = self.input_settings.as_ref().map(|s| s.touchpad.clone()).unwrap_or_default();
+            self.touch_filter = crate::touch_filter::install(&touchpad);
+            let plugins = self.touch_filter.is_some();
+            match &self.input_thread {
+                // (The thread says when its devices are gone: in order.)
+                Some(thread) => {
+                    thread.send(crate::input_thread::Command::Restart { plugins });
+                }
+                None => match crate::input_thread::spawn(self.seat(), plugins, self.input_settings.clone(), requests, self.pads_opened.clone(), events) {
+                    Ok(thread) => self.input_thread = Some(thread),
+                    Err(e) => {
+                        error!(%e, "the input thread didn't start: libinput on the loop");
+                        self.thread_senders = None;
+                        return self.start_libinput();
+                    }
+                },
+            }
+            return;
+        }
         if let Some((_, token)) = self.libinput.take() {
             self.loop_handle.remove(token);
             // They went with the old context, and come back as added.
@@ -255,7 +317,7 @@ impl UdevData {
             warn!(%e, "libinput plugins not loaded");
         }
         let mut seat_context = context.clone();
-        if seat_context.udev_assign_seat(&self.session.seat()).is_err() {
+        if seat_context.udev_assign_seat(&self.seat()).is_err() {
             error!("libinput could not take the seat");
         }
         let backend = LibinputInputBackend::new(context.clone());
@@ -348,6 +410,95 @@ fn on_input_event(data: &mut AnvilState<UdevData>, mut event: InputEvent<Libinpu
     data.process_input_event(&dh, event)
 }
 
+/// The input thread's events: keep track of the devices, handle them as
+/// libinput's own are, then tell the thread where the pointer is now.
+fn on_thread_input(data: &mut AnvilState<UdevData>, items: Vec<crate::input_thread::Item>) {
+    use crate::input_thread::Item;
+    use smithay::backend::input::DeviceCapability as C;
+    let dh = data.backend_data.dh.clone();
+    let mut handled = None;
+    for item in items {
+        let (seq, event) = match item {
+            Item::Restarted => {
+                data.backend_data.thread_keyboards.clear();
+                data.backend_data.thread_pointers.clear();
+                continue;
+            }
+            Item::Event(seq, event) => (seq, event),
+        };
+        let devices = data.backend_data.thread_keyboards.len() + data.backend_data.thread_pointers.len();
+        match &event {
+            InputEvent::DeviceAdded { device } => {
+                if device.has(C::Keyboard) {
+                    data.backend_data.thread_keyboards.push(device.clone());
+                    // Its lights as the others' (the thread lights them all).
+                    if let (Some(keyboard), Some(thread)) = (data.seat.get_keyboard(), &data.backend_data.input_thread) {
+                        thread.send(crate::input_thread::Command::Leds(keyboard.led_state().into()));
+                    }
+                }
+                if device.has(C::Pointer) {
+                    data.backend_data.thread_pointers.push(device.clone());
+                }
+            }
+            InputEvent::DeviceRemoved { device } => {
+                data.backend_data.thread_keyboards.retain(|d| d != device);
+                data.backend_data.thread_pointers.retain(|d| d != device);
+            }
+            _ => {}
+        }
+        // (Preferences ▸ Keyboard and ▸ Touchpad & Mouse follow them.)
+        if data.backend_data.thread_keyboards.len() + data.backend_data.thread_pointers.len() != devices {
+            data.ipc.broadcast(olo_protocol::Event::InputDevicesChanged { devices: data.backend_data.input_devices() });
+        }
+        note_thread_touch(&mut data.backend_data.touch, &event);
+        data.process_input_event(&dh, event);
+        handled = Some(seq);
+    }
+    if let Some(seq) = handled {
+        tell_input_thread(data, Some(seq));
+    }
+}
+
+/// The input thread told where the pointer is (after event `handled`), on
+/// which screens, and that it mustn't move it when only the loop may (a
+/// window holds it, a finger is the pointer, a drag shows its icon).
+fn tell_input_thread(data: &mut AnvilState<UdevData>, handled: Option<u64>) {
+    let Some(thread) = &data.backend_data.input_thread else { return };
+    let mut view = thread.view.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(seq) = handled {
+        view.handled = seq;
+    }
+    view.pointer = data.pointer.current_location();
+    let screens = || data.space.outputs().filter_map(|o| data.space.output_geometry(o));
+    if !screens().eq(view.screens.iter().copied()) {
+        view.screens = screens().collect();
+    }
+    if data.pointer_constrained || data.touch_hides_pointer || data.dnd_icon.is_some() {
+        view.plane = None;
+    }
+    // (Holding the cursor while the loop was held: it can let go now.)
+    if handled.is_some() && view.taken {
+        drop(view);
+        thread.send(crate::input_thread::Command::Look);
+    }
+}
+
+/// `note_touch` for the input thread's events.
+fn note_thread_touch(track: &mut crate::touch_health::Track, event: &InputEvent<crate::input_thread::Threaded>) {
+    use smithay::backend::input::Event as _;
+    let (device, at) = match event {
+        InputEvent::PointerMotion { event } => (&event.device, event.time()),
+        InputEvent::PointerButton { event } => (&event.device, event.time()),
+        InputEvent::PointerAxis { event } => (&event.device, event.time()),
+        InputEvent::GestureSwipeUpdate { event } => (&event.device, event.time()),
+        InputEvent::GesturePinchUpdate { event } => (&event.device, event.time()),
+        _ => return,
+    };
+    if device.tap_fingers > 0 {
+        track.note(crate::contacts::now_us(), at.micros());
+    }
+}
+
 /// A touchpad's report (what libinput made of its frame, after Olo's
 /// touch filter): how long it took to get here.
 fn note_touch(track: &mut crate::touch_health::Track, event: &InputEvent<LibinputInputBackend>) {
@@ -367,26 +518,26 @@ fn note_touch(track: &mut crate::touch_health::Track, event: &InputEvent<Libinpu
 }
 
 /// What Preferences shows of a pointing device.
-fn device_info(device: &smithay::reexports::input::Device) -> olo_protocol::touchpad::InputDeviceInfo {
+fn device_info(device: &crate::input_thread::DevInfo) -> olo_protocol::touchpad::InputDeviceInfo {
     use olo_protocol::touchpad::{DeviceKind, InputDeviceInfo};
-    let touchpad = device.config_tap_finger_count() > 0;
-    let kind = DeviceKind::detect(&device.name(), device.id_vendor(), device.id_product(), touchpad);
-    let pressure = touchpad && abs_capable(device.sysname(), 0x3a);
+    let touchpad = device.tap_fingers > 0;
+    let kind = DeviceKind::detect(&device.name, device.vendor, device.product, touchpad);
+    let pressure = touchpad && abs_capable(&device.sysname, 0x3a);
     let driver_click = matches!(kind, DeviceKind::AppleMtp).then(|| {
         let param = |name: &str| std::fs::read_to_string(format!("/sys/module/hid_magicmouse/parameters/{name}")).ok()?.trim().parse::<u32>().ok();
         Some((param("haptic_press_threshold")?, param("haptic_release_threshold")?))
     });
-    let (bus, dpi, may_sleep) = device_facts(device.sysname());
-    let pointing_stick = pointing_stick(device);
+    let (bus, dpi, may_sleep) = device_facts(&device.sysname);
+    let pointing_stick = pointing_stick(&device.name, device.scroll_on_button, &device.sysname);
     InputDeviceInfo {
-        name: device.name().into_owned(),
+        name: device.name.clone(),
         kind,
-        size_mm: device.size(),
+        size_mm: device.size,
         pressure,
         recommended: kind.recommended().to_owned(),
         driver_click: driver_click.flatten(),
-        vendor: device.id_vendor(),
-        product: device.id_product(),
+        vendor: device.vendor,
+        product: device.product,
         bus,
         dpi,
         may_sleep,
@@ -399,13 +550,11 @@ fn device_info(device: &smithay::reexports::input::Device) -> olo_protocol::touc
 /// mouse on a ThinkPad's keyboard controller, which is its TrackPoint
 /// when the kernel didn't know it as one (the P1 Gen 9's comes as "PS/2
 /// Logitech Mouse"). Read from sysfs when asked, never per event.
-fn pointing_stick(device: &smithay::reexports::input::Device) -> bool {
-    use smithay::reexports::input::ScrollMethod;
-    let name = device.name();
-    if ["TrackPoint", "Pointing Stick", "PointingStick", "TPPS/2"].iter().any(|n| name.contains(n)) || device.config_scroll_default_method() == Some(ScrollMethod::OnButtonDown) {
+fn pointing_stick(name: &str, scroll_on_button: bool, sysname: &str) -> bool {
+    if ["TrackPoint", "Pointing Stick", "PointingStick", "TPPS/2"].iter().any(|n| name.contains(n)) || scroll_on_button {
         return true;
     }
-    let phys = std::fs::read_to_string(format!("/sys/class/input/{}/device/phys", device.sysname())).unwrap_or_default();
+    let phys = std::fs::read_to_string(format!("/sys/class/input/{sysname}/device/phys")).unwrap_or_default();
     let thinkpad = std::fs::read_to_string("/sys/class/dmi/id/product_version").unwrap_or_default().contains("ThinkPad");
     name.starts_with("PS/2 ") && phys.starts_with("isa0060/serio1") && thinkpad
 }
@@ -482,7 +631,7 @@ impl Backend for UdevData {
     }
 
     fn seat_name(&self) -> String {
-        self.session.seat()
+        self.seat()
     }
 
     fn reset_buffers(&mut self, output: &Output) {
@@ -543,6 +692,10 @@ impl Backend for UdevData {
     }
 
     fn update_led_state(&mut self, led_state: LedState) {
+        if let Some(thread) = &self.input_thread {
+            thread.send(crate::input_thread::Command::Leds(led_state.into()));
+            return;
+        }
         for keyboard in self.keyboards.iter_mut() {
             keyboard.led_update(led_state.into());
         }
@@ -568,7 +721,37 @@ impl Backend for UdevData {
                 }
             }
         }
+        if let Some(thread) = &self.input_thread {
+            thread.view.lock().unwrap_or_else(|e| e.into_inner()).plane = None;
+        }
         info!("displays off");
+    }
+
+    fn set_output_on(&mut self, output: &Output, on: bool) {
+        let name = output.name();
+        // (As it is already.)
+        if on != self.outputs_off.contains(&name) {
+            return;
+        }
+        let Some(id) = output.user_data().get::<UdevOutputId>().copied() else { return };
+        if on {
+            self.outputs_off.remove(&name);
+            // The next frame on it turns it back on, as after the
+            // displays slept.
+            self.loop_handle.insert_idle(move |state| state.render(id.device_id, Some(id.crtc), state.clock.now()));
+            info!(name, "display on");
+            return;
+        }
+        self.outputs_off.insert(name.clone());
+        if let Some(thread) = &self.input_thread {
+            thread.view.lock().unwrap_or_else(|e| e.into_inner()).plane = None;
+        }
+        if let Some(surface) = self.backends.get_mut(&id.device_id).and_then(|b| b.surfaces.get_mut(&id.crtc))
+            && let Err(e) = surface.drm_output.with_compositor(|c| c.clear())
+        {
+            warn!(?e, name, "couldn't turn the display off");
+        }
+        info!(name, "display off");
     }
 
     fn set_white_point(&mut self, gains: [f64; 3]) {
@@ -584,8 +767,10 @@ impl Backend for UdevData {
         self.input_settings = Some(settings.clone());
         // The touch filter is read when libinput starts: start it again,
         // once a slider has settled and nothing is held (the new context
-        // would never send the release of a button the old one pressed).
-        if self.libinput.is_some() && crate::touch_filter::render(&settings.touchpad) != self.touch_filter {
+        // would never send the release of a button the old one pressed);
+        // so too when it moves to its own thread or back.
+        let moved = self.thread_senders.is_some() && crate::input_thread::wanted(Some(settings)) != self.input_thread.is_some();
+        if (self.libinput.is_some() || self.input_thread.is_some()) && (crate::touch_filter::render(&settings.touchpad) != self.touch_filter || moved) {
             self.filter_restart += 1;
             let generation = self.filter_restart;
             let _ = self.loop_handle.insert_source(Timer::from_duration(Duration::from_millis(400)), move |_, _, data| {
@@ -600,13 +785,19 @@ impl Backend for UdevData {
                 TimeoutAction::Drop
             });
         }
+        if let Some(thread) = &self.input_thread {
+            thread.send(crate::input_thread::Command::Configure(Box::new(settings.clone())));
+        }
         for device in self.pointers.iter_mut() {
             configure_pointer(device, settings);
         }
     }
 
     fn input_devices(&self) -> Vec<olo_protocol::touchpad::InputDeviceInfo> {
-        self.pointers.iter().map(device_info).collect()
+        if self.input_thread.is_some() {
+            return self.thread_pointers.iter().map(|d| device_info(d)).collect();
+        }
+        self.pointers.iter().map(|d| device_info(&crate::input_thread::DevInfo::of(d, 0))).collect()
     }
 
     fn render_node(&self) -> Option<std::path::PathBuf> {
@@ -616,8 +807,11 @@ impl Backend for UdevData {
     fn keyboards(&self) -> Vec<String> {
         // (KEY_A: a keyboard to type on; not a security key typing its
         // codes.)
-        let mut names: Vec<String> =
-            self.keyboards.iter().filter(|d| d.keyboard_has_key(30) == Ok(true) && !olo_protocol::keyboards::security_key(&d.name(), d.id_vendor())).map(|d| d.name().to_string()).collect();
+        let mut names: Vec<String> = if self.input_thread.is_some() {
+            self.thread_keyboards.iter().filter(|d| d.has_key_a && !olo_protocol::keyboards::security_key(&d.name, d.vendor)).map(|d| d.name.clone()).collect()
+        } else {
+            self.keyboards.iter().filter(|d| d.keyboard_has_key(30) == Ok(true) && !olo_protocol::keyboards::security_key(&d.name(), d.id_vendor())).map(|d| d.name().to_string()).collect()
+        };
         names.sort();
         names.dedup();
         names
@@ -921,7 +1115,7 @@ struct Ctm {
 /// and acceleration for mice. Options a device lacks are skipped.
 /// (Momentum and scrolling distance are app_server's own: `momentum.rs`,
 /// `scroll.rs`; palm and hover filtering is `touch_filter`.)
-fn configure_pointer(device: &mut smithay::reexports::input::Device, settings: &olo_protocol::Settings) {
+pub(crate) fn configure_pointer(device: &mut smithay::reexports::input::Device, settings: &olo_protocol::Settings) {
     use smithay::reexports::input::{AccelProfile, ClickMethod, ClickfingerButtonMap, DragLockState, ScrollMethod, SendEventsMode, TapButtonMap, ThreeFingerDragState};
     let t = &settings.touchpad;
     let touchpad = device.config_tap_finger_count() > 0;
@@ -968,7 +1162,10 @@ fn configure_pointer(device: &mut smithay::reexports::input::Device, settings: &
     }
     // A pointing stick scrolls while its middle button is held (libinput
     // does so for those it knows; one the kernel took for a mouse, too).
-    if !touchpad && pointing_stick(device) && device.config_scroll_methods().contains(&ScrollMethod::OnButtonDown) {
+    if !touchpad
+        && pointing_stick(&device.name(), device.config_scroll_default_method() == Some(ScrollMethod::OnButtonDown), device.sysname())
+        && device.config_scroll_methods().contains(&ScrollMethod::OnButtonDown)
+    {
         let method = if t.pointing_stick_scroll { ScrollMethod::OnButtonDown } else { ScrollMethod::NoScroll };
         let _ = device.config_scroll_set_method(method);
         if t.pointing_stick_scroll {
@@ -1065,6 +1262,76 @@ pub fn probe_gpus() {
     }
 }
 
+/// `--probe-shared [FOLDER]`: a window's picture drawn by one GPU and
+/// composed by another, as the session does for a window shown on a
+/// display wired to a GPU its app doesn't draw with (a hybrid laptop:
+/// apps draw with Intel's, the HDMI port is NVIDIA's). For each pair of
+/// GPUs and a few sizes, a pattern is drawn into a buffer as an app's
+/// would be, imported by the other GPU's renderer (`single_renderer`,
+/// what `render_surface` composes with), drawn there, read back and
+/// compared with what was drawn, pixel by pixel. It says what differs
+/// and, given a folder, keeps both pictures there. It opens the devices
+/// unprivileged and touches no display: safe beside a running desktop
+/// (a sleeping GPU is awake for as long as it runs).
+pub fn probe_shared(folder: Option<&str>, sizes: Option<&str>) {
+    // (The sizes tried: a display's, two windows' and a small one's, of
+    // which only the first two have rows a multiple of 64 bytes long; or
+    // those given, "964x507,333x217".)
+    let sizes: Vec<(u32, u32)> = match sizes {
+        Some(given) => given.split(',').filter_map(|s| s.split_once('x')).filter_map(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?))).filter(|(w, h)| *w >= 8 && *h >= 8).collect(),
+        None => vec![(1920, 1080), (1408, 984), (964, 507), (333, 217)],
+    };
+    let seat = std::env::var("XDG_SEAT").unwrap_or_else(|_| "seat0".into());
+    let mut gpus = GpuManager::new(GbmGlesBackend::with_factory(|display| {
+        let context = EGLContext::new_with_priority(display, ContextPriority::High)?;
+        let capabilities = unsafe { GlesRenderer::supported_capabilities(&context)? };
+        Ok(unsafe { GlesRenderer::with_capabilities(context, capabilities)? })
+    }))
+    .unwrap();
+    let mut cards: Vec<(DrmNode, GbmDevice<DrmDeviceFd>, String)> = Vec::new();
+    for path in all_gpus(&seat).unwrap_or_default() {
+        let name = path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned());
+        let Ok(node) = DrmNode::from_path(&path) else { continue };
+        let Ok(file) = std::fs::OpenOptions::new().read(true).write(true).open(&path) else {
+            println!("{name}: can't be opened");
+            continue;
+        };
+        let Ok(gbm) = GbmDevice::new(DrmDeviceFd::new(DeviceFd::from(std::os::fd::OwnedFd::from(file)))) else { continue };
+        let render = unsafe { EGLDisplay::new(gbm.clone()) }.ok().and_then(|display| {
+            let device = EGLDevice::device_for_display(&display).ok()?;
+            (!device.is_software()).then(|| device.try_get_render_node().ok().flatten().unwrap_or(node))
+        });
+        match render {
+            Some(render) if gpus.as_mut().add_node(render, gbm.clone()).is_ok() => cards.push((render, gbm, name)),
+            _ => println!("{name}: can't render"),
+        }
+    }
+    let keep = folder.map(std::path::PathBuf::from);
+    if let Some(keep) = &keep {
+        let _ = std::fs::create_dir_all(keep);
+    }
+    for (from, from_gbm, from_name) in &cards {
+        for (to, to_gbm, to_name) in &cards {
+            println!("drawn by {from_name}, composed by {to_name}:");
+            use shared_probe::Buffer;
+            for (how, said_how) in [(Buffer::Its, "its own layout"), (Buffer::Linear, "linear"), (Buffer::LinearForComposer, "linear, for the composing GPU")] {
+                // (A buffer for the composing GPU means something only
+                // between two GPUs.)
+                if how == Buffer::LinearForComposer && from == to {
+                    continue;
+                }
+                for &(w, h) in &sizes {
+                    let kept = keep.as_ref().map(|k| k.join(format!("{from_name}-to-{to_name}-{how:?}-{w}x{h}")));
+                    match shared_probe::once(&mut gpus, (*from, from_gbm), (*to, to_gbm), w, h, how, kept.as_deref()) {
+                        Ok(said) => println!("  {w} × {h}, {said_how}: {said}"),
+                        Err(why) => println!("  {w} × {h}, {said_how}: couldn't be tried ({why})"),
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// The GPU to render with: the boot GPU's render node, or else the first
 /// device that has a render node. (On Apple silicon there is no boot GPU,
 /// and the display controller, apple-drm, is a DRM device that can't
@@ -1103,7 +1370,7 @@ pub fn run_udev() {
     /*
      * Initialize the compositor
      */
-    let Some(primary_gpu) = choose_primary_gpu(&session.seat()) else {
+    let Some(primary_gpu) = choose_primary_gpu(&test_seat().unwrap_or_else(|| session.seat())) else {
         error!("No GPU!");
         return;
     };
@@ -1120,6 +1387,13 @@ pub fn run_udev() {
     .unwrap();
 
     let (pads_opened, pads) = smithay::reexports::calloop::channel::channel::<crate::contacts::Pad>();
+    // libinput on a thread of its own (`input_thread`): its events, and
+    // its asks for devices opened (the session is the loop's).
+    // (Always: the switch can be turned on at any time. Two event sources
+    // that cost nothing while there's nothing on them.)
+    let ((events, events_in), (requests, requests_in)) =
+        (smithay::reexports::calloop::channel::channel::<Vec<crate::input_thread::Item>>(), smithay::reexports::calloop::channel::channel::<crate::contacts::Request>());
+    let (thread_senders, thread_receivers) = (Some((events, requests)), Some((events_in, requests_in)));
     let data = UdevData {
         dh: display_handle.clone(),
         dmabuf_state: None,
@@ -1138,6 +1412,7 @@ pub fn run_udev() {
         input_settings: None,
         white_point: [1.0; 3],
         displays_off: false,
+        outputs_off: Default::default(),
         loop_handle: event_loop.handle(),
         libinput: None,
         touch_filter: None,
@@ -1145,6 +1420,10 @@ pub fn run_udev() {
         filter_restart: 0,
         pads_opened,
         pad_watches: HashMap::new(),
+        input_thread: None,
+        thread_keyboards: Vec::new(),
+        thread_pointers: Vec::new(),
+        thread_senders,
         dormant: HashMap::new(),
     };
     let mut state = AnvilState::init(display, event_loop.handle(), data, true);
@@ -1170,6 +1449,30 @@ pub fn run_udev() {
         }
     };
 
+    if let Some((events, requests)) = thread_receivers {
+        let handle = event_loop.handle();
+        let asked = handle.insert_source(requests, |event, _, state| match event {
+            // The thread has let go of the devices: libinput on the loop
+            // now (unless it went to a thread again meanwhile).
+            smithay::reexports::calloop::channel::Event::Msg(crate::contacts::Request::Stopped) => {
+                if state.backend_data.input_thread.is_none() && state.backend_data.libinput.is_none() {
+                    state.backend_data.start_libinput();
+                }
+            }
+            smithay::reexports::calloop::channel::Event::Msg(request) => request.answer(&mut state.backend_data.session),
+            smithay::reexports::calloop::channel::Event::Closed => {}
+        });
+        let read = handle.insert_source(events, |event, _, state| {
+            if let smithay::reexports::calloop::channel::Event::Msg(items) = event {
+                on_thread_input(state, items);
+            }
+        });
+        if asked.is_err() || read.is_err() {
+            error!("the input thread can't be heard: libinput on the loop");
+            state.backend_data.thread_senders = None;
+        }
+    }
+
     /*
      * Initialize libinput backend
      */
@@ -1181,6 +1484,11 @@ pub fn run_udev() {
             SessionEvent::PauseSession => {
                 if let Some((libinput, _)) = data.backend_data.libinput.as_mut() {
                     libinput.suspend();
+                }
+                if let Some(thread) = &data.backend_data.input_thread {
+                    thread.send(crate::input_thread::Command::Suspend);
+                    // (Another's screens now: no cursor of ours to move.)
+                    thread.view.lock().unwrap_or_else(|e| e.into_inner()).plane = None;
                 }
                 info!("pausing session");
 
@@ -1199,6 +1507,9 @@ pub fn run_udev() {
                     && let Err(err) = libinput.resume()
                 {
                     error!("Failed to resume libinput context: {:?}", err);
+                }
+                if let Some(thread) = &data.backend_data.input_thread {
+                    thread.send(crate::input_thread::Command::Resume);
                 }
                 for (node, backend) in data.backend_data.backends.iter_mut().map(|(handle, backend)| (*handle, backend)) {
                     // if we do not care about flicking (caused by modesetting) we could just
@@ -1505,6 +1816,10 @@ struct SurfaceData {
     /// The timer for its next look when no frame is on its way (resting,
     /// woken, or after a frame with nothing new); a look sooner cancels it.
     retest: Option<RegistrationToken>,
+    /// When a frame last couldn't be put on it and its card was looked
+    /// at again for that (`frame_finish`): not again for a while, however
+    /// many frames fail.
+    doubted: Option<Instant>,
     /// When it last looked, so a wake comes no sooner than a frame after.
     last_look: Option<Instant>,
     /// Its frames' pacing and record (frames.rs).
@@ -1512,6 +1827,14 @@ struct SurfaceData {
     /// The display refused a frame's commit (planes it wouldn't take):
     /// from then on everything is drawn into the frame, the pointer too.
     planes_refused: bool,
+    /// The colours the pointer's pixels were last said to be copied into
+    /// on its cursor plane (`color::cursor_pixels`; None inside: as they
+    /// are). None: not said yet.
+    cursor_color: Option<Option<smithay::backend::renderer::gles::color::ColorTarget>>,
+    /// Its cursor plane is the CRTC's own (not an overlay plane standing in
+    /// for one): the kernel's legacy cursor move reaches it
+    /// (`input_thread`).
+    real_cursor_plane: bool,
     /// HDR's blending buffer while it shows HDR (`color`).
     hdr: Option<crate::color::HdrFrame>,
     /// Its connector's HDR signal still to be set (a commit refused while
@@ -1572,7 +1895,25 @@ struct BackendData {
     /// Tiles of a monitor shown whole through another of its connectors,
     /// left off (`tiles`): connector, the screen it was given.
     covered: Vec<(connector::Handle, crtc::Handle)>,
+    /// The card is being looked at again by itself, a display having
+    /// left it (`look_again`): which of `LOOKS_AFTER_LEAVING` is next,
+    /// and its timer.
+    looking_again: Option<(usize, RegistrationToken)>,
 }
+
+/// After a display leaves a card, the card is looked at again, this long
+/// after and then after each look, without being told to. A dock's
+/// displays don't all leave in the one event, and the kernel doesn't
+/// always say when the rest have: Ben's ThinkPad, 2026-11-10, a dock
+/// unplugged with two displays on it. The scan its events asked for found
+/// one gone; eleven seconds later the kernel gave up on the other ("Failed
+/// to enable link training") and sent nothing, and for five minutes Olo
+/// had a desktop on a display that wasn't there (and logind a computer
+/// that was "docked", which wouldn't have slept with its lid shut).
+/// Looking is a forced probe of the card's connectors, which says what's
+/// so. Nothing runs unless a display has just left, or a frame couldn't
+/// be put on one.
+const LOOKS_AFTER_LEAVING: [Duration; 4] = [Duration::from_millis(1500), Duration::from_secs(4), Duration::from_secs(10), Duration::from_secs(20)];
 
 /// How long a display is waited for to tell who it is (its EDID) before
 /// it is set up by its connector alone.
@@ -1604,7 +1945,26 @@ fn get_surface_dmabuf_feedback(
     surface: &DrmSurface,
 ) -> Option<SurfaceDmabufFeedback> {
     let primary_formats = gpus.single_renderer(&primary_gpu).ok()?.dmabuf_formats();
-    let render_formats = if let Some(render_node) = render_node { gpus.single_renderer(&render_node).ok()?.dmabuf_formats() } else { FormatSet::default() };
+    let render_formats = if let Some(render_node) = render_node {
+        let mut renderer = gpus.single_renderer(&render_node).ok()?;
+        let formats = renderer.dmabuf_formats();
+        // A display on a GPU apps don't draw with, whose driver reads a
+        // linear buffer only where its rows are a length it takes
+        // (NVIDIA's: `GlesRenderer::linear_rows`): apps aren't offered
+        // linear buffers for it. An app drawing with the primary GPU
+        // would take the offer (linear is the one layout both know), draw
+        // slower for it, and its window come out sheared at most widths;
+        // without it the app keeps its own layout and the frame is copied
+        // into a buffer that GPU reads. An app drawing with that GPU
+        // itself never chose linear (it can't draw into it).
+        if render_node != primary_gpu && AsMut::<GlesRenderer>::as_mut(&mut renderer).linear_rows() > 1 {
+            formats.iter().filter(|f| f.modifier != Modifier::Linear).copied().collect()
+        } else {
+            formats
+        }
+    } else {
+        FormatSet::default()
+    };
 
     let all_render_formats = primary_formats.iter().chain(render_formats.iter()).copied().collect::<FormatSet>();
 
@@ -1673,7 +2033,9 @@ impl AnvilState<UdevData> {
             let display = unsafe { EGLDisplay::new(gbm.clone()).map_err(DeviceAddError::AddNode)? };
             let egl_device = EGLDevice::device_for_display(&display).map_err(DeviceAddError::AddNode)?;
 
-            if egl_device.is_software() {
+            // (A test app_server's virtual display renders in software:
+            // vkms has no GPU, and the person's isn't on its seat.)
+            if egl_device.is_software() && test_seat().is_none() {
                 return Err(DeviceAddError::NoRenderNode);
             }
 
@@ -1703,16 +2065,19 @@ impl AnvilState<UdevData> {
 
         let framebuffer_exporter = GbmFramebufferExporter::new(gbm.clone(), render_node.into());
 
-        // A display this GPU drives but another composes for (a hybrid
-        // laptop's panel, wired to Intel's, with NVIDIA's chosen): 8-bit,
-        // which both can share as a plain linear buffer (NVIDIA renders the
-        // frame into it, Intel imports it), where 10-bit had no layout in
-        // common and every frame went through the CPU (11 ms: 30 Hz).
-        let composed_elsewhere = render_node.is_some_and(|n| n != self.backend_data.primary_gpu);
-        if composed_elsewhere {
-            info!(device = ?node, "composed on another GPU: 8-bit frames, shared linear");
+        // A GPU that isn't the one apps draw with (a hybrid laptop's
+        // NVIDIA, wired to the HDMI port) composes its own displays, at
+        // 8-bit: 10-bit had no layout two GPUs share when one composed for
+        // the other, and on a second GPU's own displays it hasn't been
+        // tried. (A device that can't render, a USB display adapter, has
+        // the primary GPU compose for it, in the primary's formats.)
+        let second = render_node.is_some_and(|n| n != self.backend_data.primary_gpu);
+        if second {
+            info!(device = ?node, "a second GPU: it composes its own displays (8-bit frames); windows drawn by the primary are copied to it");
+        } else if render_node.is_none() {
+            info!(device = ?node, "can't render: the primary GPU composes its displays");
         }
-        let color_formats = if std::env::var("ANVIL_DISABLE_10BIT").is_ok() || composed_elsewhere { SUPPORTED_FORMATS_8BIT_ONLY } else { SUPPORTED_FORMATS };
+        let color_formats = if std::env::var("ANVIL_DISABLE_10BIT").is_ok() || second { SUPPORTED_FORMATS_8BIT_ONLY } else { SUPPORTED_FORMATS };
         let mut renderer = self.backend_data.gpus.single_renderer(&render_node.unwrap_or(self.backend_data.primary_gpu)).unwrap();
         let render_formats =
             renderer.as_mut().egl_context().dmabuf_render_formats().iter().filter(|format| render_node.is_some() || format.modifier == Modifier::Linear).copied().collect::<FormatSet>();
@@ -1727,6 +2092,7 @@ impl AnvilState<UdevData> {
                 drm_scanner: DrmScanner::new(),
                 non_desktop_connectors: Vec::new(),
                 covered: Vec::new(),
+                looking_again: None,
                 render_node,
                 surfaces: HashMap::new(),
                 leasing_global: DrmLeaseState::new::<AnvilState<UdevData>>(&self.display_handle, &node)
@@ -1834,6 +2200,13 @@ impl AnvilState<UdevData> {
         // Its colours and light, and whether it takes HDR (`color`).
         let display_color = edid_blob(drm_device, connector.handle()).or_else(|| olo_system::edid::bytes_for_connector(&output_name)).map(|b| olo_system::edid::color(&b)).unwrap_or_default();
         let takes_hdr = connector_takes_hdr(drm_device, connector.handle());
+        // A test seat's display (vkms) may pretend to be wide or HDR, as a
+        // headless screen does (`OLO_HEADLESS_COLOR`): its connector takes
+        // no HDR signal, but it's drawn as one would be.
+        let (display_color, takes_hdr) = match test_seat().and(crate::color::simulated()) {
+            Some((display, hdr)) => (display, hdr),
+            None => (display_color, takes_hdr),
+        };
 
         // A monitor not telling yet who it is (Apple's DCP has its EDID a
         // second after a new app_server takes the displays over, as on an
@@ -1967,6 +2340,7 @@ impl AnvilState<UdevData> {
             // an edge, tested when its size changes), a refused commit is
             // drawn again without planes (`planes_refused`), and
             // OLO_CURSOR_PLANE=0 leaves the overlay planes as they are.
+            let real_cursor_plane = !planes.cursor.is_empty();
             if planes.cursor.is_empty() && std::env::var_os("OLO_CURSOR_PLANE").is_none_or(|v| v != "0") {
                 let wanted = smithay::backend::allocator::Format { code: Fourcc::Argb8888, modifier: Modifier::Linear };
                 let topmost = planes.overlay.iter().enumerate().filter(|(_, p)| p.formats.contains(&wanted)).max_by_key(|(_, p)| p.zpos.unwrap_or_default()).map(|(i, _)| i);
@@ -2033,9 +2407,12 @@ impl AnvilState<UdevData> {
                 idle_frames: 0,
                 asleep: false,
                 retest: None,
+                doubted: None,
                 last_look: None,
                 pacing: Default::default(),
                 planes_refused: false,
+                cursor_color: None,
+                real_cursor_plane,
                 hdr: None,
                 color_pending: false,
                 hdr_blob: 0,
@@ -2189,12 +2566,14 @@ impl AnvilState<UdevData> {
             }
         };
 
+        let mut left = false;
         for event in scan_result {
             match event {
                 DrmScanEvent::Connected { connector, crtc: Some(crtc) } => {
                     self.connector_connected(node, connector, crtc);
                 }
                 DrmScanEvent::Disconnected { connector, crtc: Some(crtc) } => {
+                    left = true;
                     self.connector_disconnected(node, connector, crtc);
                 }
                 // The connector's mode list changed while it stayed connected (e.g. EDID
@@ -2212,6 +2591,38 @@ impl AnvilState<UdevData> {
         self.follow_main_output();
         // Windows back before their display was found go to it now.
         self.displays_changed();
+        // One left: others on its dock may be leaving without a word.
+        if left {
+            self.look_again(node, 0);
+        }
+    }
+
+    /// Have the card looked at again by itself, `LOOKS_AFTER_LEAVING[n]`
+    /// from now and then at each time after it (a look already due is
+    /// put off for this one: the last display to leave starts them
+    /// over). A look that finds another gone starts them over too
+    /// (`device_changed`).
+    fn look_again(&mut self, node: DrmNode, n: usize) {
+        let Some(device) = self.backend_data.backends.get_mut(&node) else { return };
+        if let Some((_, timer)) = device.looking_again.take() {
+            self.handle.remove(timer);
+        }
+        let Some(after) = LOOKS_AFTER_LEAVING.get(n).copied() else { return };
+        let timer = self.handle.insert_source(Timer::from_duration(after), move |_, _, data| {
+            if let Some(device) = data.backend_data.backends.get_mut(&node) {
+                device.looking_again = None;
+            }
+            data.device_changed(node);
+            // (Nothing more left: the next look. Something did: they've
+            // started over.)
+            if data.backend_data.backends.get(&node).is_some_and(|d| d.looking_again.is_none()) {
+                data.look_again(node, n + 1);
+            }
+            TimeoutAction::Drop
+        });
+        if let (Ok(timer), Some(device)) = (timer, self.backend_data.backends.get_mut(&node)) {
+            device.looking_again = Some((n, timer));
+        }
     }
 
     fn device_removed(&mut self, node: DrmNode) {
@@ -2351,6 +2762,17 @@ impl AnvilState<UdevData> {
             }
             Err(err) => {
                 warn!("Error during rendering: {:?}", err);
+                // A frame that couldn't be put on a display is reason to
+                // doubt it's there: its card looked at again, once in ten
+                // seconds however many frames fail (a look is a probe of
+                // every connector, on this thread).
+                if !matches!(err, SwapBuffersError::AlreadySwapped) && surface.doubted.is_none_or(|at| at.elapsed() > Duration::from_secs(10)) {
+                    surface.doubted = Some(Instant::now());
+                    let _ = self.handle.insert_source(Timer::from_duration(Duration::from_millis(300)), move |_, _, data| {
+                        data.device_changed(dev_id);
+                        TimeoutAction::Drop
+                    });
+                }
                 match err {
                     SwapBuffersError::AlreadySwapped => true,
                     // If the device has been deactivated do not reschedule, this will be done
@@ -2469,11 +2891,17 @@ impl AnvilState<UdevData> {
             // somehow we got called with an invalid output
             return;
         };
+        // Switched off by itself (the panel at the bottom of its
+        // brightness): nothing is drawn on it. (What mirrors it draws.)
+        if self.backend_data.outputs_off.contains(&screen.name()) {
+            return;
+        }
         // (Something of ours moving: it doesn't rest.)
         let awake = self.keeps_awake();
         // A mirror draws its source's frame, fitted to its own mode.
         let source = crate::render::mirror_source(&screen);
         let fit = source.as_ref().map(|s| crate::render::fit_outputs(&screen, s, &self.space));
+        let mirroring = fit.is_some();
         let output = source.unwrap_or(screen);
 
         let t = Instant::now();
@@ -2485,6 +2913,7 @@ impl AnvilState<UdevData> {
         let output_size = output_geo.size;
         // The windows whose shares this frame draws (only while one waits).
         let here = if self.captures.pending() { self.capture_windows_on(&output, self.lock.locked()) } else { Vec::new() };
+        let desk = if self.captures.workspace_pending() { self.capture_desk(&output) } else { Default::default() };
 
         let device = if let Some(device) = self.backend_data.backends.get_mut(&node) {
             device
@@ -2510,10 +2939,12 @@ impl AnvilState<UdevData> {
 
         // Each display is composed by the GPU wired to it (a hybrid laptop:
         // the built-in panel and USB-C ports by Intel's, the HDMI port by
-        // NVIDIA's): no frame crosses between GPUs. Only a device that
-        // can't render (a USB display adapter) has its frames composed on
-        // the primary GPU and copied over. Windows' buffers from another
-        // GPU are imported as they come (`single_renderer` has the others).
+        // NVIDIA's): no display's frame crosses between GPUs. Only a device
+        // that can't render (a USB display adapter) has its frames composed
+        // on the primary GPU and copied over. A window's buffer from
+        // another GPU is copied to this one as it's imported
+        // (`single_renderer` has the others; HACKING, "A window drawn by
+        // one GPU, shown by another").
         let primary_gpu = self.backend_data.primary_gpu;
         let mut renderer = match surface.render_node {
             Some(own) => self.backend_data.gpus.single_renderer(&own),
@@ -2553,8 +2984,9 @@ impl AnvilState<UdevData> {
             let (space, overview, lock) = (&self.space, self.overview.as_ref(), &self.lock);
             let parked = self.parked.0.borrow();
             self.captures.take(&mut renderer, &output, now, on_output, |renderer, what, cursor| {
-                let overlays = if locked && what == crate::capture::Target::Output { crate::lock::elements(lock, renderer, &output) } else { Vec::new() };
-                crate::capture::picture(renderer, &output, space, &parked, what, locked, || (overlays, overview, desktop_color, cursor.then_some((pointer.0, &pointer.1))))
+                // (Locked, a workspace's picture is the display's: the lock.)
+                let overlays = if locked && !matches!(what, crate::capture::Target::Window(_)) { crate::lock::elements(lock, renderer, &output) } else { Vec::new() };
+                crate::capture::picture(renderer, &output, space, &parked, &desk, what, locked, || (overlays, overview, desktop_color, cursor.then_some((pointer.0, &pointer.1))))
             });
         }
         // The cursor, apart, for those following it.
@@ -2653,6 +3085,34 @@ impl AnvilState<UdevData> {
                         info!(target: "frames", output = output.name(), scanout = %scanout, "scan-out changed");
                     }
                     surface.pacing.scanout = scanout;
+                }
+                // Where the pointer's plane is, for the input thread to move
+                // it from while the loop is held: a display's own cursor
+                // plane, with the pointer where this frame drew it; none
+                // while a mirror shows this display (its cursor wouldn't
+                // follow) or only the loop may move the pointer.
+                if let Some(thread) = &self.backend_data.input_thread {
+                    let movable = cursor_on_plane && surface.real_cursor_plane && !surface.planes_refused && !mirroring && self.mirrors.is_empty();
+                    let place = movable.then(|| surface.drm_output.with_compositor(|c| c.cursor_plane())).flatten();
+                    let held = self.pointer_constrained || self.touch_hides_pointer || self.dnd_icon.is_some();
+                    let mut view = thread.view.lock().unwrap_or_else(|e| e.into_inner());
+                    match place {
+                        Some((_, dst)) if !held => {
+                            let place = crate::input_thread::Place {
+                                output: output_geo,
+                                scale: output.current_scale().fractional_scale(),
+                                transform: output.current_transform(),
+                                dst: dst.loc,
+                                at: pointer_drawn,
+                            };
+                            view.plane = Some(crate::input_thread::Plane { fd: device.drm_output_manager.device().device_fd().clone(), crtc, place });
+                        }
+                        _ => {
+                            if held || view.plane.as_ref().is_some_and(|p| p.crtc == crtc) {
+                                view.plane = None;
+                            }
+                        }
+                    }
                 }
                 if cursor_on_plane != surface.pacing.cursor_plane {
                     surface.pacing.cursor_plane = cursor_on_plane;
@@ -2845,6 +3305,18 @@ fn render_surface<'a>(
     if !matches!(drawing, crate::color::Drawing::Hdr { .. }) {
         surface.hdr = None;
     }
+    // The pointer on the cursor plane is scanned out as its pixels are,
+    // never through the renderer: copied into the display's colours
+    // (its PQ signal in HDR, its gamut when converted).
+    let cursor_color = match drawing {
+        crate::color::Drawing::Plain => None,
+        crate::color::Drawing::Sdr(target) => Some(target),
+        crate::color::Drawing::Hdr { signal, .. } => Some(signal),
+    };
+    if surface.cursor_color != Some(cursor_color) {
+        surface.cursor_color = Some(cursor_color);
+        surface.drm_output.with_compositor(|c| c.set_cursor_pixels(cursor_color.map(crate::color::cursor_pixels)));
+    }
     let (rendered, states, cursor_on_plane) = match drawing {
         crate::color::Drawing::Plain | crate::color::Drawing::Sdr(_) => {
             let (target, mode) = match drawing {
@@ -2876,15 +3348,23 @@ fn render_surface<'a>(
                 surface.drm_output.reset_buffers();
             }
             let hdr = surface.hdr.as_mut().expect("made above");
+            // The pointer isn't composed: it goes to the display with the
+            // encoded frame, onto its cursor plane (its pixels encoded into
+            // the signal as they're copied there: `cursor_pixels`), so
+            // moving it draws nothing; where the plane can't hold it (a
+            // client's cursor), drawn over the frame, encoded as it's
+            // drawn. (It's in front already, but for the keep-warm pixel.
+            // A mirror's frame composes its source's pointer with the
+            // rest.)
+            let (pointer, rest): (Vec<_>, Vec<_>) =
+                elements.into_iter().partition(|e| matches!(e, crate::render::FrameElements::Normal(OutputRenderElements::Custom(CustomRenderElements::Pointer(_)))));
             // Composed into the blending buffer (what changed)...
             AsMut::<GlesRenderer>::as_mut(renderer).set_color_target(Some(blend));
             let composed = match smithay::backend::renderer::Bind::bind(renderer, &mut hdr.texture) {
-                Ok(mut fb) => {
-                    hdr.tracker.render_output(renderer, &mut fb, 1, &elements, clear_color).map(|r| (r.damage.cloned(), r.states)).map_err(|e| SwapBuffersError::TemporaryFailure(Box::new(e)))
-                }
+                Ok(mut fb) => hdr.tracker.render_output(renderer, &mut fb, 1, &rest, clear_color).map(|r| (r.damage.cloned(), r.states)).map_err(|e| SwapBuffersError::TemporaryFailure(Box::new(e))),
                 Err(e) => Err(SwapBuffersError::TemporaryFailure(Box::new(e))),
             };
-            let (damage, states) = match composed {
+            let (damage, mut states) = match composed {
                 Ok(c) => c,
                 Err(e) => {
                     AsMut::<GlesRenderer>::as_mut(renderer).set_color_target(None);
@@ -2892,15 +3372,19 @@ fn render_surface<'a>(
                 }
             };
             hdr.drawn(damage.as_ref());
-            // ...and that encoded into the display's signal.
+            // ...and that encoded into the display's signal, the pointer
+            // over it.
             AsMut::<GlesRenderer>::as_mut(renderer).set_color_target(Some(signal));
-            let element = [hdr.element()];
-            let r = surface.drm_output.render_frame(renderer, &element, smithay::backend::renderer::Color32F::BLACK, FrameFlags::empty());
+            let signal_elements: Vec<HdrSignalElements<'_>> = pointer.into_iter().map(HdrSignalElements::Pointer).chain([HdrSignalElements::Hdr(hdr.element())]).collect();
+            let r = surface.drm_output.render_frame(renderer, &signal_elements, smithay::backend::renderer::Color32F::BLACK, frame_mode & FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT);
             AsMut::<GlesRenderer>::as_mut(renderer).set_color_target(None);
             let r = r.map_err(failed)?;
             crate::render::frame_done(!r.is_empty);
             crate::render::part("drm render_frame", t);
-            (!r.is_empty, states, false)
+            // (The pointer's state with the rest's: a client's cursor
+            // surface is told where it showed.)
+            states.states.extend(r.states.states);
+            (!r.is_empty, states, r.cursor_element.is_some())
         }
     };
 
@@ -2921,6 +3405,15 @@ fn render_surface<'a>(
     }
 
     Ok((rendered, states, cursor_on_plane))
+}
+
+smithay::backend::renderer::element::render_elements! {
+    /// An HDR display's frame as it goes to the display: the pointer
+    /// (onto its cursor plane, else drawn over), then HDR's blending
+    /// buffer encoded into the signal.
+    HdrSignalElements<='a, UdevRenderer<'a>>;
+    Pointer=crate::render::FrameElements<UdevRenderer<'a>, WindowRenderElement<UdevRenderer<'a>>>,
+    Hdr=crate::color::HdrElement,
 }
 
 // HDR's blending buffer drawn into a display's signal, by the GLES

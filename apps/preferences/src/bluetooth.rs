@@ -14,13 +14,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use olo_sync::Mutex;
-use olo_system::bluetooth::{self as bt, Agent, AgentEvent, Ask, Question, Status};
-use olo_ui::{
-    gpui::{AppContext as _, Context, Entity, ParentElement as _, Styled as _, div, px},
-    metrics as m,
+use olo_kit::{
+    Child, Cx, ParentElement as _, Styled as _, ViewRef, WindowCx, div, metrics as m, px,
     widgets::{Button, CheckBox, Column, ColumnListView, EmptyState, ListModel, StringView, TextControl, TextField, TextFieldEvent},
 };
+use olo_sync::Mutex;
+use olo_system::bluetooth::{self as bt, Agent, AgentEvent, Ask, Question, Status};
 
 use crate::{Msg, PanelView, form::Ui, panel};
 
@@ -45,7 +44,7 @@ struct Shared {
 struct Link {
     shared: Arc<Mutex<Shared>>,
     tx: Sender<Request>,
-    proxy: olo_ui::Proxy,
+    proxy: olo_kit::Proxy,
 }
 
 /// Test data: this computer's adapter, two paired devices and one nearby.
@@ -89,7 +88,7 @@ fn test_status() -> Status {
 
 /// BlueZ's watcher and pairing agent (one for the app), telling the
 /// windows through `proxy` when anything changes.
-fn link(proxy: olo_ui::Proxy) -> &'static Link {
+fn link(proxy: olo_kit::Proxy) -> &'static Link {
     static LINK: OnceLock<Link> = OnceLock::new();
     LINK.get_or_init(|| {
         let shared: Arc<Mutex<Shared>> = Default::default();
@@ -188,7 +187,7 @@ fn cancel_pairing(device: String) {
 }
 
 /// Answers BlueZ's question (None: no), and clears the code typed.
-fn answer(link: &'static Link, typed: &Entity<TextField>, a: Option<String>, cx: &mut olo_ui::gpui::App) {
+fn answer(link: &'static Link, typed: ViewRef<TextField>, a: Option<String>, cx: &mut WindowCx) {
     if let Some(q) = link.shared.lock().unwrap().question.take() {
         q.answer(a);
     }
@@ -196,31 +195,32 @@ fn answer(link: &'static Link, typed: &Entity<TextField>, a: Option<String>, cx:
 }
 
 pub struct State {
-    list: Entity<ListModel>,
+    list: ListModel,
     /// The selected device's path (the list reorders).
     selected: Option<String>,
     /// A search was started when the panel first showed.
     searched: bool,
     /// What's typed for a PIN or passkey.
-    typed: Entity<TextField>,
+    typed: Child<TextField>,
     link: &'static Link,
 }
 
 impl State {
-    pub fn new(cx: &mut Context<PanelView>) -> State {
-        let link = link(olo_ui::proxy(cx));
-        let typed = cx.new(TextField::new);
+    pub fn new(cx: &mut Cx<PanelView>) -> State {
+        let link = link(olo_kit::proxy());
+        let typed = crate::form::text_field(cx, |f| f);
         // Return answers with the code.
-        cx.subscribe(&typed, move |_, field, e: &TextFieldEvent, cx| {
-            if matches!(e, TextFieldEvent::Entered) {
-                let code = field.read(cx).text().to_owned();
+        cx.subscribe(&typed, move |v: &mut PanelView, e: &TextFieldEvent, cx| {
+            if matches!(e, TextFieldEvent::Entered)
+                && let panel::State::Bluetooth(st) = &v.state
+            {
+                let code = st.typed.read(cx).text().to_owned();
                 if !code.is_empty() {
-                    answer(link, &field, Some(code), cx);
+                    answer(link, st.typed.downgrade(), Some(code), cx);
                 }
             }
-        })
-        .detach();
-        State { list: ListModel::new(cx, false), selected: None, searched: false, typed, link }
+        });
+        State { list: ListModel::new(false), selected: None, searched: false, typed, link }
     }
 }
 
@@ -259,8 +259,8 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             .flex_row()
             .items_center()
             .gap(px(m::SPACING * 3.0))
-            .child(CheckBox::new("Bluetooth", adapter.powered).on_toggle(move |on, _, _| {
-                let _ = link.tx.send(Request::Power(path.clone(), on));
+            .child(CheckBox::new("Bluetooth", adapter.powered).on_toggle(move |on, _| {
+                let _ = link.tx.send(Request::Power(path.clone(), *on));
             }))
             .child(StringView::new(text).dim(true)),
     );
@@ -269,12 +269,12 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     // doesn't reach it. Olo Doctor starts its hardware again.
     if adapter.not_answering() {
         ui.add(
-            olo_ui::widgets::Banner::new(
-                olo_ui::widgets::Tone::Failure,
+            olo_kit::widgets::Banner::new(
+                olo_kit::widgets::Tone::Failure,
                 "Bluetooth's hardware isn't answering",
                 "Nothing connects until it starts again. Olo Doctor restarts it (it asks for your password).",
             )
-            .trailing(olo_ui::widgets::Button::new("Open Olo Doctor").on_click(|_, _| {
+            .trailing(olo_kit::widgets::Button::new("Open Olo Doctor").on_click(|_, _| {
                 let _ = olo_xdg::spawn_detached("olo-doctor");
             })),
         );
@@ -291,18 +291,19 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let pods_of = |d: &bt::Device| d.modalias.as_deref().is_some_and(olo_system::airpods::is_airpods).then(|| pods.by_address(&d.address).cloned()).flatten();
     let pods_rows: Vec<Option<olo_protocol::airpods::AirPods>> = devs.iter().map(pods_of).collect();
     let at = st.selected.as_ref().and_then(|s| devs.iter().position(|d| d.path == *s));
-    st.list.update(ui.cx, |l, _| {
-        l.state.selected.clear();
+    {
+        let mut l = st.list.state_mut();
+        l.selected.clear();
         if let Some(i) = at {
-            l.state.select(i);
+            l.select(i);
         }
-    });
+    }
     let columns = vec![Column::new("Device", 200.0), Column::new("Type", 110.0), Column::new("Status", 90.0)];
     let (cells, doing2) = (devs.clone(), doing.clone());
     let paths: Vec<String> = devs.iter().map(|d| d.path.clone()).collect();
     let model = st.list.clone();
-    let pick = ui.on_view(move |v, _: (), _, cx| {
-        let row = model.read(cx).state.single();
+    let pick = ui.on_view(move |v, _: &(), cx| {
+        let row = model.state().single();
         if let Some(st) = state_of(v) {
             st.selected = row.and_then(|i| paths.get(i).cloned());
         }
@@ -312,7 +313,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     // A double click (or Return) pairs or connects, as the button would.
     let open = {
         let picked = picked.clone();
-        move |_: usize, _: &mut olo_ui::gpui::Window, _: &mut olo_ui::gpui::App| {
+        move |_: &usize, _: &mut WindowCx| {
             if let Some(d) = &picked
                 && !doing2.contains_key(&d.path)
                 && !d.connected
@@ -327,12 +328,12 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     };
     let doing3 = doing.clone();
     let rows = pods_rows.clone();
-    let list = ColumnListView::new("bt-devices", &st.list, columns, devs.len(), move |cell, window, cx| {
+    let list = ColumnListView::new(ui.cx, "bt-devices", &st.list, columns, devs.len(), move |_: &PanelView, cell, g| {
         let d = &cells[cell.row];
         let pod = rows[cell.row].as_ref();
         match cell.column {
-            0 => cell.text(window, cx, d.name.clone()),
-            1 => cell.text(window, cx, pod.map_or(d.kind().to_owned(), |p| p.model.split(" (").next().unwrap_or("AirPods").to_owned())),
+            0 => cell.text(g, d.name.clone()),
+            1 => cell.text(g, pod.map_or(d.kind().to_owned(), |p| p.model.split(" (").next().unwrap_or("AirPods").to_owned())),
             _ => {
                 let text = match (doing3.get(&d.path), d.connected, d.paired) {
                     (Some(doing), ..) => (*doing).to_owned(),
@@ -341,11 +342,11 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                     (None, false, true) => "Paired".to_owned(),
                     _ => String::new(),
                 };
-                cell.text(window, cx, text);
+                cell.text(g, text);
             }
         }
     })
-    .on_select(move |window, cx| pick((), window, cx))
+    .on_select(move |_window, cx| pick(&(), cx))
     .on_open(open);
     ui.add(div().flex_1().min_h(px(90.0)).child(list));
 
@@ -378,9 +379,8 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 }));
             }
             if d.paired && d.modalias.as_deref().is_some_and(olo_system::airpods::is_airpods) {
-                let prefs = ui.prefs();
-                row = row.child(Button::new("AirPods Settings…").on_click(move |_, cx| {
-                    let _ = prefs.update(cx, |p, cx| p.open("airpods", cx));
+                row = row.child(Button::new("AirPods Settings…").on_click(move |_, _cx| {
+                    crate::prefs().open("airpods");
                 }));
             }
             if busy && doing.get(&d.path) == Some(&"Pairing…") {
@@ -411,28 +411,30 @@ fn question(ui: &mut Ui, st: &mut State) {
         };
         (text, typed, matches!(q.ask, Ask::ShowPasskey(_) | Ask::ShowPin(_)), q.path.clone())
     };
-    let field = st.typed.clone();
-    let code = field.read(ui.cx).text().to_owned();
+    let field = st.typed.downgrade();
+    let code = st.typed.read(ui.cx).text().to_owned();
+    let typed_field = &st.typed;
     ui.bbox("Pairing", |ui| {
         ui.label(q_text);
         if typed {
-            ui.add(TextControl::new(field.clone()).label("Code:").divider(72.0));
+            ui.add(TextControl::new(ui.cx, typed_field).label("Code:").divider(72.0));
         }
         let mut row = div().flex().flex_row().gap(px(m::SPACING));
         if only_ok {
-            let f = field.clone();
             row = row.child(Button::new("Cancel").on_click(move |_, cx| {
                 cancel_pairing(path.clone());
-                answer(link, &f, None, cx);
+                answer(link, field, None, cx);
             }));
         } else {
-            let (no, yes) = (field.clone(), field.clone());
-            row = row.child(Button::new(if typed { "Cancel" } else { "Reject" }).on_click(move |_, cx| answer(link, &no, None, cx))).child(
-                Button::new(if typed { "Pair" } else { "Accept" }).default(true).enabled(!typed || !code.is_empty()).on_click(move |_, cx| {
-                    let code = yes.read(cx).text().to_owned();
-                    answer(link, &yes, Some(code), cx);
-                }),
-            );
+            let pair = ui.on_click_view(move |v, cx| {
+                if let Some(st) = state_of(v) {
+                    let code = st.typed.read(cx).text().to_owned();
+                    answer(link, st.typed.downgrade(), Some(code), cx);
+                }
+            });
+            row = row
+                .child(Button::new(if typed { "Cancel" } else { "Reject" }).on_click(move |_, cx| answer(link, field, None, cx)))
+                .child(Button::new(if typed { "Pair" } else { "Accept" }).default(true).enabled(!typed || !code.is_empty()).on_click(pair));
         }
         ui.add(row);
     });

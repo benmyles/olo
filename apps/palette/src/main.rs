@@ -4,7 +4,10 @@
 //! desktop's shortcuts (with their keys, so it doubles as a reminder),
 //! preference panels, settings, Passwords' items and files, and works out
 //! sums. Return does the selected one; Escape, a click outside or ⌘Space
-//! again puts it away. On the GPUI kit (olo-ui).
+//! again puts it away. On Olo's own kit (olo-kit): what lasts between its
+//! showings (the applications, what was chosen, the model, the workers)
+//! is a `Hub` on the program's looper; each showing is a window with a
+//! `Palette` view of its own, told what's found.
 //!
 //! Slash commands (Ben, 2026-11-07): `/ws TEXT` searches the web;
 //! `/ask QUESTION` asks the AI (Preferences ▸ AI's Ask: `ask.rs`) and
@@ -28,23 +31,27 @@ mod sheet;
 mod sources;
 mod window_menu;
 
-use std::{collections::HashMap, path::PathBuf};
-
-use olo_protocol::WindowInfo;
-use olo_ui::{
-    Frame, WindowOptions,
-    gpui::{
-        App, AppContext as _, Bounds, ClipboardItem, Context, Entity, Focusable as _, FontWeight, HitboxBehavior, InteractiveElement as _, IntoElement, KeyDownEvent, LayerKeyboard, LayerShellLayer,
-        ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Render, ScrollWheelEvent, Styled as _, Subscription, Window, WindowHandle, canvas, div, point,
-        px, size,
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    path::PathBuf,
+    rc::Rc,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
-    icons,
+};
+
+use olo_kit::{
+    Bounds, Child, ClipboardItem, Cx, Element, FontWeight, InteractiveElement as _, IntoElement as _, KeyDownEvent, LayerKeyboard, LayerShellLayer, ModifiersChangedEvent, MouseButton, MouseDownEvent,
+    MouseMoveEvent, Painter, ParentElement as _, Pixels, Point, ScrollWheelEvent, Styled as _, View, WindowHandle, WindowOptions, clipboard, div, icons,
     instance::{self, Launch},
-    metrics as m,
+    metrics as m, point, px, size,
     style::{self, c},
     theme, tracker,
     widgets::{KeyHint, TextField, TextFieldEvent, text_field},
 };
+use olo_protocol::WindowInfo;
 use serde::{Deserialize, Serialize};
 use sources::{Action, Found, Item, Kind, Workers};
 
@@ -70,7 +77,7 @@ impl Recents {
         olo_xdg::config_dir().join("palette.json")
     }
     fn load() -> Recents {
-        let read = |p: PathBuf| olo_ui::store::load::<Recents>(&p);
+        let read = |p: PathBuf| olo_kit::store::load::<Recents>(&p);
         // Before the rename (Tabula) it was kept a folder deeper, and named
         // our programs by their old names.
         read(Self::path())
@@ -82,7 +89,7 @@ impl Recents {
             .unwrap_or_default()
     }
     fn save(&self) {
-        olo_ui::store::save(Self::path(), self);
+        olo_kit::store::save(Self::path(), self);
     }
     fn now() -> u64 {
         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
@@ -115,11 +122,188 @@ impl Recents {
     }
 }
 
-struct Palette {
-    win: Option<WindowHandle<Frame>>,
+/// What lasts between showings, shared by the hub and each window's
+/// palette.
+#[derive(Clone)]
+struct Shared {
+    /// Applications, preference panels and settings.
+    fixed: Arc<Vec<Item>>,
+    recents: Arc<Mutex<Recents>>,
+    /// The model ranking what's typed, and what it knows of the choices.
+    ranker: Arc<Mutex<model::Ranker>>,
+    /// A tune on its way (one at a time).
+    tuning: Arc<AtomicBool>,
+    workers: Workers,
+}
+
+/// Counts the questions to the model, whichever window asked (each
+/// one's updates carry its number: a late answer is to no one).
+static ASKS: AtomicU64 = AtomicU64::new(0);
+
+/// A palette's window has closed.
+struct Closed;
+
+/// On the program's looper: what's shared, and the windows showing.
+struct Hub {
+    shared: Shared,
+    win: Option<WindowHandle<Palette>>,
     /// Asked to show; opens once the window in front is known.
     opening: bool,
-    query: Entity<TextField>,
+    /// A window's menu, while it shows.
+    window_menu: Option<WindowHandle<window_menu::Layer>>,
+    /// The shortcuts sheet, while it shows.
+    sheet: Option<WindowHandle<sheet::Sheet>>,
+}
+
+impl Hub {
+    fn showing(&self) -> Option<&WindowHandle<Palette>> {
+        self.win.as_ref().filter(|w| w.is_open())
+    }
+
+    fn hide(&mut self) {
+        if let Some(w) = self.win.take() {
+            w.close();
+        }
+    }
+
+    fn toggle(&mut self) {
+        if self.showing().is_some() {
+            return self.hide();
+        }
+        if self.opening {
+            return;
+        }
+        self.opening = true;
+        // Learn which window is in front before taking the keyboard from it.
+        let proxy = olo_kit::proxy();
+        let _ = std::thread::Builder::new().name("palette-context".into()).spawn(move || {
+            let (front, items) = sources::context();
+            proxy.send(Found::Context { front: front.clone(), items });
+            if let Some(f) = front {
+                proxy.send(Found::Menus(sources::menus(&f)));
+            }
+        });
+    }
+
+    /// The shortcuts sheet, or away with it if it shows.
+    fn toggle_sheet(&mut self) {
+        // (Unless it put itself away: Escape, a click outside.)
+        if let Some(old) = self.sheet.take()
+            && old.is_open()
+        {
+            return old.close();
+        }
+        self.hide();
+        sheet::learn(olo_kit::proxy());
+    }
+
+    /// A right-click on a window's tab: put the palette away and learn
+    /// what the menu needs.
+    fn ask_window_menu(&mut self, ask: window_menu::Ask) {
+        self.hide();
+        if let Some(old) = self.window_menu.take() {
+            old.close();
+        }
+        window_menu::learn(ask, olo_kit::proxy());
+    }
+
+    fn message(&mut self, message: Box<dyn std::any::Any + Send>) {
+        let message = match message.downcast::<Launch>() {
+            Ok(launch) if launch.args.iter().any(|a| a == "--toggle") => return self.toggle(),
+            Ok(launch) if launch.args.iter().any(|a| a == "--shortcuts") => return self.toggle_sheet(),
+            Ok(launch) => {
+                if let Some(ask) = window_menu::Ask::parse(&launch.args) {
+                    self.ask_window_menu(ask);
+                }
+                return;
+            }
+            Err(m) => m,
+        };
+        let message = match message.downcast::<Closed>() {
+            Ok(_) => {
+                // (Unless another has come up since.)
+                if self.showing().is_none() {
+                    self.win = None;
+                }
+                return;
+            }
+            Err(m) => m,
+        };
+        let message = match message.downcast::<sheet::Learned>() {
+            Ok(learned) => {
+                if let Some(old) = self.sheet.take() {
+                    old.close();
+                }
+                self.sheet = Some(sheet::open(*learned));
+                return;
+            }
+            Err(m) => m,
+        };
+        let message = match message.downcast::<window_menu::Facts>() {
+            Ok(facts) => {
+                if let Some(old) = self.window_menu.take() {
+                    old.close();
+                }
+                self.window_menu = Some(window_menu::open(*facts));
+                return;
+            }
+            Err(m) => m,
+        };
+        let message = match message.downcast::<ask::Asked>() {
+            Ok(asked) => {
+                if let Some(w) = self.showing() {
+                    w.messenger().send(Msg::Asked(*asked));
+                }
+                return;
+            }
+            Err(m) => m,
+        };
+        let message = match message.downcast::<model::Retuned>() {
+            Ok(r) => {
+                self.shared.tuning.store(false, Ordering::Relaxed);
+                if let Some(w) = r.0 {
+                    self.shared.ranker.lock().unwrap_or_else(|e| e.into_inner()).weights = w;
+                }
+                return;
+            }
+            Err(m) => m,
+        };
+        let Ok(found) = message.downcast::<Found>() else { return };
+        match *found {
+            Found::Fixed(items) => {
+                self.shared.fixed = Arc::new(items);
+                if let Some(w) = self.showing() {
+                    w.messenger().send(Msg::Fixed(self.shared.fixed.clone()));
+                }
+            }
+            Found::Context { front, items } => {
+                if std::mem::take(&mut self.opening) {
+                    let shared = self.shared.clone();
+                    self.win = Some(olo_kit::open_window(overlay("Command Palette", "palette", None), move |cx| Palette::new(shared, front, items, cx)));
+                }
+            }
+            found => {
+                if let Some(w) = self.showing() {
+                    w.messenger().send(Msg::Found(found));
+                }
+            }
+        }
+    }
+}
+
+/// Where the palette's parts are in its window (the whole display).
+#[derive(Clone, Copy, Default)]
+struct Geo {
+    panel: Bounds<Pixels>,
+    field: Bounds<Pixels>,
+    glass: Bounds<Pixels>,
+    list: Bounds<Pixels>,
+}
+
+/// A showing of the palette: its window's view.
+struct Palette {
+    shared: Shared,
+    query: Child<TextField>,
     /// The query's text, as last seen.
     query_text: String,
     /// Bumped with each change to the query, so late answers are dropped.
@@ -141,37 +325,41 @@ struct Palette {
     /// Ctrl, its press before the window had the keyboard), and letting
     /// it go is no tap (it opened on files: Ben, 2026-11-04).
     ctrl_free: bool,
-    fixed: Vec<Item>,
+    fixed: Arc<Vec<Item>>,
     context: Vec<Item>,
     menus: Vec<Item>,
     files: Vec<Item>,
     passwords: Vec<Item>,
-    /// Go to the path in the clipboard, if it holds one that's there.
+    /// Go to the path in the clipboard, if it holds one that's there
+    /// (asked for once, when the window has the keyboard).
     copied: Option<Item>,
+    read_copied: bool,
     /// Go to the path typed, for the query numbered so.
     typed: Option<(u64, Item)>,
-    /// Following the window's activation: the clipboard is read once it
-    /// has the keyboard.
-    activation: Option<Subscription>,
     results: Vec<Item>,
     /// Each result's features, as the model ranked it (None: not its,
     /// a sum, a path typed, a web search): what a choice is learnt from.
     features: Vec<Option<[f32; model::F]>>,
     front: Option<WindowInfo>,
-    recents: Recents,
-    /// The model ranking what's typed, and what it knows of the choices.
-    ranker: model::Ranker,
-    /// A tune on its way (one at a time).
-    tuning: bool,
-    workers: Workers,
-    /// A window's menu, while it shows.
-    window_menu: Option<WindowHandle<Frame>>,
-    /// The shortcuts sheet, while it shows.
-    sheet: Option<WindowHandle<Frame>>,
-    /// An answer showing (/ask), and how many have been asked (each
-    /// one's updates carry its number).
+    recents: Arc<Mutex<Recents>>,
+    ranker: Arc<Mutex<model::Ranker>>,
+    /// An answer showing (/ask).
     answer: Option<answer::Answering>,
-    asks: u64,
+    /// Where its parts were last laid out (the results are drawn there,
+    /// not where layout rounds their box to: at 1.5× that's a pixel off).
+    geo: Geo,
+}
+
+/// What a palette is told.
+enum Msg {
+    Fixed(Arc<Vec<Item>>),
+    /// The front app's menus, files or passwords, found.
+    Found(Found),
+    Asked(ask::Asked),
+    /// The path in the clipboard, if it's there.
+    Copied(Item),
+    /// The path typed for query number this, if it's there.
+    Typed(u64, Option<Item>),
 }
 
 /// The slash commands: what's typed, what it does, its icon.
@@ -205,11 +393,6 @@ fn slash(query: &str) -> Option<Vec<Item>> {
     }
 }
 
-/// Closes `w`.
-fn close(w: WindowHandle<Frame>, cx: &mut App) {
-    cx.close_window(w);
-}
-
 /// The overlay over a whole output that the palette, the sheet and a
 /// window's menu sit on: the keyboard is theirs.
 fn overlay(title: &str, namespace: &str, output: Option<String>) -> WindowOptions {
@@ -225,94 +408,97 @@ fn overlay(title: &str, namespace: &str, output: Option<String>) -> WindowOption
     options
 }
 
-impl Palette {
-    fn toggle(&mut self, cx: &mut Context<Self>) {
-        if self.win.is_some() {
-            return self.hide(cx);
-        }
-        if self.opening {
-            return;
-        }
-        self.opening = true;
-        // Learn which window is in front before taking the keyboard from it.
-        let proxy = olo_ui::proxy(cx);
-        let _ = std::thread::Builder::new().name("palette-context".into()).spawn(move || {
-            let (front, items) = sources::context();
-            proxy.send(Found::Context { front: front.clone(), items });
-            if let Some(f) = front {
-                proxy.send(Found::Menus(sources::menus(&f)));
-            }
-        });
-    }
+/// `v` on the device pixel grid at `scale` (`style::snap_coord`, where
+/// there's no painter: laying out).
+fn snap_at(scale: f32, v: Pixels) -> Pixels {
+    px((f32::from(v) * scale).round() / scale)
+}
 
-    fn show(&mut self, cx: &mut Context<Self>) {
-        self.opening = false;
-        // (Setting the field's text sends no change.)
-        self.query.update(cx, |f, cx| f.set_text("", cx));
-        self.query_text.clear();
-        self.asked += 1;
-        self.files.clear();
-        self.passwords.clear();
-        self.copied = None;
-        self.typed = None;
-        self.selected = 0;
-        self.top = 0;
-        self.command = false;
-        self.files_mode = false;
-        self.ctrl_tap = false;
-        self.ctrl_free = false;
-        self.query.update(cx, |f, cx| f.set_hint(hint(false), cx));
-        self.refresh();
-        let me = cx.entity();
-        let query = self.query.clone();
-        cx.defer(move |cx| {
-            let view = me.clone();
-            let w = olo_ui::open_window(cx, overlay("Command Palette", "palette", None), move |window, cx| {
-                window.focus(&query.focus_handle(cx));
-                // (The clipboard's offer comes to the client with the
-                // keyboard, so it's read once the window has that.)
-                view.update(cx, |p, cx| {
-                    p.activation = Some(cx.observe_window_activation(window, |p, window, cx| {
-                        if window.is_window_active() && p.copied.is_none() {
-                            p.read_copied(cx);
-                        }
-                    }));
-                });
-                view
-            });
-            me.update(cx, |p, _| p.win = w);
+/// `b`'s edges on the device pixel grid (`style::snap`).
+pub(crate) fn snapped(scale: f32, b: Bounds<Pixels>) -> Bounds<Pixels> {
+    Bounds::from_corners(point(snap_at(scale, b.left()), snap_at(scale, b.top())), point(snap_at(scale, b.right()), snap_at(scale, b.bottom())))
+}
+
+/// A box centred on `center`, on whole device pixels (`style::snap_centred`).
+fn snapped_centred(scale: f32, center: Point<Pixels>, w: f32, h: f32) -> Bounds<Pixels> {
+    let (dw, dh) = ((w * scale).round(), (h * scale).round());
+    let min = point(px(((f32::from(center.x) * scale - dw / 2.0).round()) / scale), px(((f32::from(center.y) * scale - dh / 2.0).round()) / scale));
+    Bounds { origin: min, size: size(px(dw / scale), px(dh / scale)) }
+}
+
+impl Palette {
+    fn new(shared: Shared, front: Option<WindowInfo>, context: Vec<Item>, cx: &mut Cx<Self>) -> Palette {
+        let query = text_field(cx, |f| f.name("Search").font_size(QUERY_SIZE).hint(hint(false)));
+        query.focus(cx);
+        cx.subscribe(&query, |p: &mut Palette, e: &TextFieldEvent, cx| match e {
+            TextFieldEvent::Entered => {
+                // (An answer's Return copies: the field has the key
+                // before any listener does.)
+                match p.answer.as_ref().map(|a| a.following) {
+                    Some(true) => return p.follow_up(cx),
+                    Some(false) => {
+                        p.copy_answer(true, cx);
+                        return;
+                    }
+                    None => {}
+                }
+                let i = p.selected;
+                p.choose(i, cx);
+            }
+            _ => p.query_changed(cx),
         });
+        let mut p = Palette {
+            fixed: shared.fixed.clone(),
+            recents: shared.recents.clone(),
+            ranker: shared.ranker.clone(),
+            shared,
+            query,
+            query_text: String::new(),
+            asked: 0,
+            selected: 0,
+            top: 0,
+            command: false,
+            files_mode: false,
+            ctrl_tap: false,
+            ctrl_free: false,
+            context,
+            menus: Vec::new(),
+            files: Vec::new(),
+            passwords: Vec::new(),
+            copied: None,
+            read_copied: false,
+            typed: None,
+            results: Vec::new(),
+            features: Vec::new(),
+            front,
+            answer: None,
+            geo: Geo::default(),
+        };
+        p.refresh();
+        p
     }
 
     /// Offer to go to the path in the clipboard, if it holds one that's
-    /// there: read and looked for off the UI thread (a program slow to
-    /// give what it copied, a slow disk, never hold the palette up).
-    fn read_copied(&mut self, cx: &mut Context<Self>) {
-        // (A turn of the event loop first: the keyboard's arrival and the
-        // clipboard's offer come together, the offer after.)
-        cx.spawn(async move |this, cx| {
-            let Ok(read) = this.update(cx, |_, cx| cx.paste_as(&sources::TEXT)) else { return };
-            let Some((_, bytes)) = read.await else { return };
-            let found = cx.background_spawn(async move { sources::go_to(std::str::from_utf8(&bytes).ok()?, true) }).await;
-            let _ = this.update(cx, |p, cx| {
-                if found.is_some() && p.win.is_some() {
-                    p.copied = found;
-                    p.refresh();
-                    cx.notify();
+    /// there: read and looked for off the window's looper (a program slow
+    /// to give what it copied, a slow disk, never hold the palette up).
+    fn read_copied(&mut self, cx: &mut Cx<Self>) {
+        if std::mem::replace(&mut self.read_copied, true) {
+            return;
+        }
+        let to = cx.messenger();
+        clipboard::paste_as(sources::TEXT.iter().map(|t| t.to_string()).collect(), move |read| {
+            let Some((_, bytes)) = read else { return };
+            let _ = std::thread::Builder::new().name("palette-copied".into()).spawn(move || {
+                if let Some(found) = std::str::from_utf8(&bytes).ok().and_then(|text| sources::go_to(text, true)) {
+                    to.send(Msg::Copied(found));
                 }
             });
-        })
-        .detach();
+        });
     }
 
-    fn hide(&mut self, cx: &mut Context<Self>) {
-        if let Some(w) = self.win.take() {
-            cx.defer(move |cx| close(w, cx));
-        }
+    fn hide(&mut self, cx: &mut Cx<Self>) {
         self.stop_asking();
-        self.menus.clear();
-        self.front = None;
-        cx.notify();
+        cx.close_window();
     }
 
     /// The results for the query now.
@@ -333,7 +519,9 @@ impl Palette {
         if words.is_empty() {
             // Nothing typed: what was chosen lately.
             let all = self.fixed.iter().chain(&self.context);
-            let mut recent: Vec<(i32, Item)> = all.filter_map(|i| i.action.key().map(|k| (self.recents.boost(&k), i.clone()))).filter(|(b, _)| *b > 0).collect();
+            let recents = self.recents.lock().unwrap_or_else(|e| e.into_inner());
+            let mut recent: Vec<(i32, Item)> = all.filter_map(|i| i.action.key().map(|k| (recents.boost(&k), i.clone()))).filter(|(b, _)| *b > 0).collect();
+            drop(recents);
             recent.sort_by_key(|r| std::cmp::Reverse(r.0));
             // The path in the clipboard first: likeliest wanted.
             scored = self.copied.iter().map(|i| (0, i.clone())).chain(recent).take(ROWS).collect();
@@ -359,8 +547,9 @@ impl Palette {
             let typed = query.trim().to_lowercase();
             let front_app = self.front.as_ref().map(|f| f.app_id.clone()).unwrap_or_default();
             let now = model::Now::new(Recents::now(), &typed, &front_app);
-            let open: std::collections::HashSet<&str> = self.context.iter().chain(&self.fixed).filter(|i| i.kind == Kind::Window).map(|i| i.subtitle.as_str()).collect();
-            let ranker = &self.ranker;
+            let open: std::collections::HashSet<&str> = self.context.iter().chain(self.fixed.iter()).filter(|i| i.kind == Kind::Window).map(|i| i.subtitle.as_str()).collect();
+            let ranker = self.ranker.lock().unwrap_or_else(|e| e.into_inner());
+            let ranker = &*ranker;
             let mut rows: Vec<[f32; model::F]> = Vec::new();
             let by_model = |found: &[(&Item, i32)]| -> Vec<i32> {
                 rows = found
@@ -394,7 +583,7 @@ impl Palette {
         }
     }
 
-    fn query_changed(&mut self, cx: &mut Context<Self>) {
+    fn query_changed(&mut self, cx: &mut Cx<Self>) {
         let text = self.query.read(cx).text().to_owned();
         if text == self.query_text {
             return;
@@ -406,54 +595,44 @@ impl Palette {
         // Files are searched only while they're what's shown (a tap of
         // Ctrl); commands are found here, as typed.
         if self.files_mode {
-            let _ = self.workers.files.send((self.asked, rank::words(&self.query_text)));
+            let _ = self.shared.workers.files.send((self.asked, rank::words(&self.query_text)));
         }
-        let _ = self.workers.passwords.send((self.asked, self.query_text.clone()));
-        // A path written whole: looked for off the UI thread, offered if
-        // it's there.
-        if olo_ui::files::written_path(&self.query_text).is_some() {
+        let _ = self.shared.workers.passwords.send((self.asked, self.query_text.clone()));
+        // A path written whole: looked for on a worker, offered if it's
+        // there.
+        if olo_kit::files::written_path(&self.query_text).is_some() {
             let (text, asked) = (self.query_text.clone(), self.asked);
-            cx.spawn(async move |this, cx| {
-                let Some(item) = cx.background_spawn(async move { sources::go_to(&text, false) }).await else { return };
-                let _ = this.update(cx, |p, cx| {
-                    if p.asked == asked {
-                        p.typed = Some((asked, item));
-                        p.refresh();
-                        cx.notify();
-                    }
-                });
-            })
-            .detach();
+            cx.work(move || sources::go_to(&text, false), move |item| Msg::Typed(asked, item));
         }
         self.refresh();
-        cx.notify();
+        cx.invalidate();
     }
 
     /// Files and folders, or back to the rest (a tap of Ctrl).
-    fn switch_files(&mut self, cx: &mut Context<Self>) {
+    fn switch_files(&mut self, cx: &mut Cx<Self>) {
         self.files_mode = !self.files_mode;
         let files = self.files_mode;
         // To files: what's typed, looked for now (not while commands were
         // shown); their answer keeps to this query's number.
         if files {
             self.files.clear();
-            let _ = self.workers.files.send((self.asked, rank::words(&self.query_text)));
+            let _ = self.shared.workers.files.send((self.asked, rank::words(&self.query_text)));
         }
         self.query.update(cx, |f, cx| f.set_hint(hint(files), cx));
         self.selected = 0;
         self.top = 0;
         self.refresh();
-        cx.notify();
+        cx.invalidate();
     }
 
     /// The modifiers changed: ⌘ held (Open in Tracker), and a tap of
     /// Ctrl on its own (not ⌘, which comes as the right Ctrl with a
     /// command key) switches to files and back.
-    fn modifiers(&mut self, e: &ModifiersChangedEvent, cx: &mut Context<Self>) {
+    fn modifiers(&mut self, e: &ModifiersChangedEvent, cx: &mut Cx<Self>) {
         let held = e.modifiers.platform || e.modifiers.control;
         if self.command != held {
             self.command = held;
-            cx.notify();
+            cx.invalidate();
         }
         let m = e.modifiers;
         if !m.control {
@@ -464,7 +643,7 @@ impl Palette {
             self.ctrl_tap = false;
             return;
         }
-        let ctrl = m.control && !(olo_kit_base::keys::command_key() && olo_ui::gpui::right_control_held());
+        let ctrl = m.control && !(olo_kit_base::keys::command_key() && olo_kit::right_control_held());
         let alone = ctrl && !m.shift && !m.alt && !m.platform;
         if alone && !self.ctrl_tap {
             self.ctrl_tap = true;
@@ -476,13 +655,17 @@ impl Palette {
         }
     }
 
-    fn choose(&mut self, index: usize, cx: &mut Context<Self>) {
+    fn note(&self, key: String) {
+        self.recents.lock().unwrap_or_else(|e| e.into_inner()).note(key);
+    }
+
+    fn choose(&mut self, index: usize, cx: &mut Cx<Self>) {
         let Some(item) = self.results.get(index).cloned() else { return };
         if !item.enabled {
             return;
         }
         if let Some(k) = item.action.key() {
-            self.recents.note(k);
+            self.note(k);
         }
         match &item.action {
             // (The palette's own: the query filled, or asked here.)
@@ -498,9 +681,9 @@ impl Palette {
             }
             _ => {}
         }
-        self.learn(index, cx);
+        self.learn(index);
         if let Action::Copy(text) = &item.action {
-            cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
+            clipboard::write(ClipboardItem::new_string(text.clone()));
         }
         let front = self.front.as_ref().map(|f| f.id);
         self.hide(cx);
@@ -510,7 +693,7 @@ impl Palette {
     /// The model learns that result `index` was chosen: the choice noted,
     /// with what was shown, and the model tuned again on a worker (a few
     /// milliseconds; one at a time).
-    fn learn(&mut self, index: usize, cx: &mut Context<Self>) {
+    fn learn(&mut self, index: usize) {
         let Some(item) = self.results.get(index) else { return };
         let front_app = self.front.as_ref().map(|f| f.app_id.clone()).unwrap_or_default();
         let Some(key) = model::key_of(item, &front_app) else { return };
@@ -520,12 +703,15 @@ impl Palette {
         let rows: Vec<[f32; model::F]> = self.features.iter().flatten().copied().collect();
         let chosen = self.features[..index.min(self.features.len())].iter().flatten().count();
         let chosen = if self.features.get(index).is_some_and(Option::is_some) { chosen } else { usize::MAX };
-        self.ranker.chose(choice, &rows, chosen);
-        if self.tuning {
+        let start = {
+            let mut ranker = self.ranker.lock().unwrap_or_else(|e| e.into_inner());
+            ranker.chose(choice, &rows, chosen);
+            ranker.weights.clone()
+        };
+        if self.shared.tuning.swap(true, Ordering::Relaxed) {
             return;
         }
-        self.tuning = true;
-        let (start, proxy) = (self.ranker.weights.clone(), olo_ui::proxy(cx));
+        let proxy = olo_kit::proxy();
         std::thread::Builder::new()
             .name("palette tune".into())
             .spawn(move || {
@@ -541,44 +727,17 @@ impl Palette {
 
     /// ⌘↩ or ⌘-click: a file or folder found shown in Tracker rather than
     /// opened; anything else chosen as usual.
-    fn reveal(&mut self, index: usize, cx: &mut Context<Self>) {
+    fn reveal(&mut self, index: usize, cx: &mut Cx<Self>) {
         let Some(Item { action: Action::Open(path), enabled: true, .. }) = self.results.get(index).cloned() else {
             return self.choose(index, cx);
         };
         if let Some(k) = Action::Open(path.clone()).key() {
-            self.recents.note(k);
+            self.note(k);
         }
         self.hide(cx);
         if let Err(e) = tracker::open(&path) {
             tracing::warn!("couldn't show {} in Tracker: {e}", path.display());
         }
-    }
-
-    /// The shortcuts sheet, or away with it if it shows.
-    fn toggle_sheet(&mut self, cx: &mut Context<Self>) {
-        // (Unless it put itself away: Escape, a click outside.)
-        if let Some(old) = self.sheet.take()
-            && cx.windows().iter().any(|w| w.window_id() == old.window_id())
-        {
-            cx.defer(move |cx| close(old, cx));
-            return;
-        }
-        if self.win.is_some() {
-            self.hide(cx);
-        }
-        sheet::learn(olo_ui::proxy(cx));
-    }
-
-    /// A right-click on a window's tab: put the palette away and learn
-    /// what the menu needs.
-    fn ask_window_menu(&mut self, ask: window_menu::Ask, cx: &mut Context<Self>) {
-        if self.win.is_some() {
-            self.hide(cx);
-        }
-        if let Some(old) = self.window_menu.take() {
-            cx.defer(move |cx| close(old, cx));
-        }
-        window_menu::learn(ask, olo_ui::proxy(cx));
     }
 
     fn step(&mut self, by: isize) {
@@ -603,14 +762,14 @@ impl Palette {
 
     /// Arrows, Page Up and Down, Escape and ⌘↩ belong to the list, not
     /// the text (Return comes as the field's).
-    fn key(&mut self, e: &KeyDownEvent, cx: &mut Context<Self>) -> bool {
+    fn key(&mut self, e: &KeyDownEvent, cx: &mut Cx<Self>) -> bool {
         let k = &e.keystroke;
         // (Ctrl with a key isn't a tap.)
         self.ctrl_tap = false;
         if self.answer.is_some() {
             return self.answer_key(e, cx);
         }
-        if olo_kit_base::keys::shortcut("alternate").is_some_and(|s| olo_ui::keys::pressed(&s, k)) {
+        if olo_kit_base::keys::shortcut("alternate").is_some_and(|s| olo_kit::keys::pressed(&s, k)) {
             let i = self.selected;
             self.reveal(i, cx);
             return true;
@@ -626,113 +785,30 @@ impl Palette {
             "pagedown" => self.step(ROWS as isize),
             _ => return false,
         }
-        cx.notify();
+        cx.invalidate();
         true
     }
 
-    fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
-        let message = match message.downcast::<Launch>() {
-            Ok(launch) if launch.args.iter().any(|a| a == "--toggle") => return self.toggle(cx),
-            Ok(launch) if launch.args.iter().any(|a| a == "--shortcuts") => return self.toggle_sheet(cx),
-            Ok(launch) => {
-                if let Some(ask) = window_menu::Ask::parse(&launch.args) {
-                    self.ask_window_menu(ask, cx);
-                }
-                return;
-            }
-            Err(m) => m,
-        };
-        let message = match message.downcast::<sheet::Learned>() {
-            Ok(learned) => {
-                if let Some(old) = self.sheet.take() {
-                    cx.defer(move |cx| close(old, cx));
-                }
-                let me = cx.entity();
-                cx.defer(move |cx| {
-                    let w = sheet::open(*learned, cx);
-                    me.update(cx, |p, _| p.sheet = w);
-                });
-                return;
-            }
-            Err(m) => m,
-        };
-        let message = match message.downcast::<window_menu::Facts>() {
-            Ok(facts) => {
-                if let Some(old) = self.window_menu.take() {
-                    cx.defer(move |cx| close(old, cx));
-                }
-                let me = cx.entity();
-                cx.defer(move |cx| {
-                    let w = window_menu::open(*facts, cx);
-                    me.update(cx, |p, _| p.window_menu = w);
-                });
-                return;
-            }
-            Err(m) => m,
-        };
-        let message = match message.downcast::<ask::Asked>() {
-            Ok(asked) => return self.asked(*asked, cx),
-            Err(m) => m,
-        };
-        let message = match message.downcast::<model::Retuned>() {
-            Ok(r) => {
-                self.tuning = false;
-                if let Some(w) = r.0 {
-                    self.ranker.weights = w;
-                }
-                return;
-            }
-            Err(m) => m,
-        };
-        let Ok(found) = message.downcast::<Found>() else { return };
-        match *found {
-            Found::Fixed(items) => self.fixed = items,
-            Found::Context { front, items } => {
-                self.front = front;
-                self.context = items;
-                if self.opening {
-                    self.show(cx);
-                }
-            }
-            Found::Menus(items) => self.menus = items,
-            Found::Files(n, items) if n == self.asked => self.files = items,
-            Found::Passwords(n, items) if n == self.asked => self.passwords = items,
-            Found::Files(..) | Found::Passwords(..) => return,
-        }
-        if self.win.is_some() {
-            let keep = self.results.get(self.selected).map(|i| i.action.clone());
-            self.refresh();
-            // Keep what was selected selected as more results come.
-            if let Some(a) = keep
-                && let Some(i) = self.results.iter().position(|r| r.action == a)
-            {
-                self.selected = i;
-            }
-            cx.notify();
-        }
-    }
-}
-
-impl Palette {
     /// Ask `question` (after `history`): the answer shows in the panel as
     /// it comes, the question in the field as asked.
-    fn start_ask(&mut self, question: String, history: Vec<olo_ai::Turn>, cx: &mut Context<Self>) {
+    fn start_ask(&mut self, question: String, history: Vec<olo_ai::Turn>, cx: &mut Cx<Self>) {
         self.stop_asking();
-        self.asks += 1;
-        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        ask::ask(self.asks, question.clone(), history.clone(), cancel.clone(), olo_ui::proxy(cx));
-        self.answer = Some(answer::Answering::new(self.asks, question.clone(), history, cancel));
+        let n = ASKS.fetch_add(1, Ordering::Relaxed) + 1;
+        let cancel = Arc::new(AtomicBool::new(false));
+        ask::ask(n, question.clone(), history.clone(), cancel.clone(), olo_kit::proxy());
+        self.answer = Some(answer::Answering::new(n, question.clone(), history, cancel));
         self.show_question(cx);
-        cx.notify();
+        cx.invalidate();
     }
 
     /// The question asked, in the field (where typing goes only for a
     /// follow-up).
-    fn show_question(&mut self, cx: &mut Context<Self>) {
+    fn show_question(&mut self, cx: &mut Cx<Self>) {
         let Some(a) = &self.answer else { return };
         let text = format!("/ask {}", a.question);
+        let shown = text.clone();
         self.query.update(cx, |f, cx| {
-            f.set_text(text.clone(), cx);
+            f.set_text(shown, cx);
             f.set_hint(hint(false), cx);
         });
         self.query_text = text;
@@ -741,12 +817,12 @@ impl Palette {
     /// The answer let go of (its reply too, if it's still coming).
     fn stop_asking(&mut self) {
         if let Some(a) = self.answer.take() {
-            a.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+            a.cancel.store(true, Ordering::Relaxed);
         }
     }
 
     /// The answer as it comes.
-    fn asked(&mut self, asked: ask::Asked, cx: &mut Context<Self>) {
+    fn asked(&mut self, asked: ask::Asked, cx: &mut Cx<Self>) {
         let Some(a) = self.answer.as_mut() else { return };
         match asked {
             ask::Asked::Model(n, model) if n == a.n => a.model = model,
@@ -761,28 +837,28 @@ impl Palette {
             },
             _ => return,
         }
-        cx.notify();
+        cx.invalidate();
     }
 
     /// Return (or ⌘C) on an answer: the snippet shown copied, else the
     /// only one, else the answer's words; then with Return the palette
     /// goes (Ben: "if i press enter to copy a snippet it should close the
     /// command pallette too"), with ⌘C it stays and says so in the foot.
-    fn copy_answer(&mut self, close: bool, cx: &mut Context<Self>) -> bool {
+    fn copy_answer(&mut self, close: bool, cx: &mut Cx<Self>) -> bool {
         let Some(a) = self.answer.as_mut() else { return false };
         let Some((what, text)) = a.to_copy() else { return false };
-        cx.write_to_clipboard(ClipboardItem::new_string(text));
+        clipboard::write(ClipboardItem::new_string(text));
         if close {
             self.hide(cx);
         } else {
             a.copied = Some(what);
-            cx.notify();
+            cx.invalidate();
         }
         true
     }
 
     /// A follow-up typed (Return): asked in the same conversation.
-    fn follow_up(&mut self, cx: &mut Context<Self>) {
+    fn follow_up(&mut self, cx: &mut Cx<Self>) {
         let text = self.query.read(cx).text().trim().to_owned();
         let Some(a) = &self.answer else { return };
         if text.is_empty() {
@@ -803,7 +879,7 @@ impl Palette {
     /// copies it (with none shown: the only one, else the answer), Escape
     /// goes back a step (to the answer, then to the palette: stopping it
     /// if it's still coming), Space asks a follow-up, the arrows scroll.
-    fn answer_key(&mut self, e: &KeyDownEvent, cx: &mut Context<Self>) -> bool {
+    fn answer_key(&mut self, e: &KeyDownEvent, cx: &mut Cx<Self>) -> bool {
         let k = &e.keystroke;
         let Some(a) = self.answer.as_mut() else { return false };
         if a.following {
@@ -811,7 +887,7 @@ impl Palette {
             if k.key == "escape" && !k.modifiers.modified() {
                 a.following = false;
                 self.show_question(cx);
-                cx.notify();
+                cx.invalidate();
                 return true;
             }
             return false;
@@ -863,21 +939,150 @@ impl Palette {
             }
             _ => {}
         }
-        cx.notify();
+        cx.invalidate();
         true
     }
 }
 
-impl Render for Palette {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let me = cx.entity();
-        let screen = window.viewport_size();
+impl Palette {
+    /// The panel, the query's well and the glass.
+    fn paint_backdrop(&self, g: &mut Painter) {
+        let (Geo { panel, field, glass, .. }, p) = (self.geo, theme::palette());
+        // A soft shadow, then the BeOS panel.
+        style::soft_shadow(g, panel, &p);
+        style::fill_rect(g, panel, c(p.panel_background));
+        style::frame_rect(g, panel, style::tint(p.panel_background, 1.6));
+        style::raised(g, style::inset(g, panel, 1.0), &p);
+        // The query's well, and the glass.
+        style::fill_rect(g, field, c(p.document_background));
+        style::sunken(g, field, &p, true);
+        icons::paint(g, glass, "query");
+    }
+
+    /// The row at `y` of the results drawn at `list`.
+    fn row_at(list: Bounds<Pixels>, y: Pixels) -> Option<usize> {
+        let k = (f32::from(y - list.top()) - m::TIGHT) / ROW;
+        (k >= 0.0).then_some(k as usize)
+    }
+
+    fn paint_results(&self, g: &mut Painter, list: Bounds<Pixels>) {
+        let p = theme::palette();
+        for (n, (index, item)) in (self.top..self.results.len()).take(ROWS).map(|i| (i, &self.results[i])).enumerate() {
+            let r = Bounds { origin: point(list.left(), list.top() + px(m::TIGHT + n as f32 * ROW)), size: size(list.size.width, px(ROW)) };
+            let is_selected = index == self.selected;
+            let (fg, dim) = if is_selected {
+                style::fill_rect(g, r, c(p.menu_selected_background));
+                (c(p.menu_selected_item_text), c(p.menu_selected_item_text).opacity(0.75))
+            } else {
+                (c(p.panel_text), style::disabled_text(&p))
+            };
+            let fg = if item.enabled { fg } else { dim };
+            // One middle on the device grid for the icon and the
+            // words (a row can start between pixels at 1.25×).
+            let mid = style::snap_coord(g, r.center().y);
+            let icon_r = style::snap_centred(g, point(r.left() + px(8.0 + ICON / 2.0), mid), ICON, ICON);
+            let drew = item.icon.as_deref().is_some_and(|i| if item.enabled { icons::paint(g, icon_r, i) } else { icons::paint_faded(g, icon_r, i, 110.0 / 255.0) });
+            if !drew {
+                icons::paint(g, icon_r, "application");
+            }
+            // The smaller words (subtitle, kind) stand on the
+            // title's baseline.
+            let detail_y = mid + px((style::PLAIN_SIZE - style::DETAIL_SIZE) * style::CAP_HEIGHT / 2.0);
+            // Right side: the kind (on the subtitle's line), and keys
+            // before it.
+            let label = if is_selected && self.command && matches!(item.action, Action::Open(_)) { tracker::LABEL } else { item.kind.label() };
+            let small = style::ui_font(FontWeight::NORMAL);
+            let kind = style::label(g, r.right() - px(8.0), detail_y, style::Align::Right, label, style::DETAIL_SIZE, small.clone(), dim);
+            let mut right = kind.left() - px(m::SPACING);
+            if let Some(keys) = &item.keys {
+                let w = style::key_combo_width(keys);
+                style::key_combo(g, point(right, mid), keys, fg);
+                right -= px(w + m::SPACING);
+            }
+            // Title, and the subtitle after it in grey.
+            let x = icon_r.right() + px(10.0);
+            let avail = (right - x).max(px(40.0));
+            let title = style::label_fit(g, x, mid, style::Align::Left, item.title.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), fg, avail);
+            let sx = title.right() + px(8.0);
+            if !item.subtitle.is_empty() && right - sx > px(40.0) {
+                style::label_fit(g, sx, detail_y, style::Align::Left, item.subtitle.clone(), style::DETAIL_SIZE, small, dim, right - sx);
+            }
+            // For agents: the title, and what else the row says.
+            let said: Vec<&str> = [item.subtitle.as_str(), item.keys.as_deref().unwrap_or(""), label].into_iter().filter(|s| !s.is_empty()).collect();
+            olo_kit::agent::record(
+                g,
+                olo_kit::agent::Node {
+                    role: "Row",
+                    name: Some(item.title.clone().into()),
+                    value: Some(said.join(" · ").into()),
+                    bounds: r,
+                    enabled: item.enabled,
+                    clickable: item.enabled,
+                    selected: Some(is_selected),
+                    ..Default::default()
+                },
+            );
+        }
+    }
+
+    /// The result at `at` in the list, if one that can be chosen is.
+    fn result_at(&self, at: Point<Pixels>, cx: &Cx<Self>) -> Option<usize> {
+        let _ = cx;
+        let n = Self::row_at(self.geo.list, at.y)?;
+        let index = self.top + n;
+        (n < ROWS && self.results.get(index).is_some_and(|i| i.enabled)).then_some(index)
+    }
+}
+
+impl View for Palette {
+    type Message = Msg;
+
+    fn message(&mut self, message: Msg, cx: &mut Cx<Self>) {
+        match message {
+            Msg::Fixed(items) => self.fixed = items,
+            Msg::Found(Found::Menus(items)) => self.menus = items,
+            Msg::Found(Found::Files(n, items)) if n == self.asked => self.files = items,
+            Msg::Found(Found::Passwords(n, items)) if n == self.asked => self.passwords = items,
+            Msg::Found(_) => return,
+            Msg::Asked(asked) => return self.asked(asked, cx),
+            Msg::Copied(item) => self.copied = Some(item),
+            Msg::Typed(n, item) => {
+                let Some(item) = item.filter(|_| n == self.asked) else { return };
+                self.typed = Some((n, item));
+            }
+        }
+        let keep = self.results.get(self.selected).map(|i| i.action.clone());
+        self.refresh();
+        // Keep what was selected selected as more results come.
+        if let Some(a) = keep
+            && let Some(i) = self.results.iter().position(|r| r.action == a)
+        {
+            self.selected = i;
+        }
+        cx.invalidate();
+    }
+
+    /// (The clipboard's offer comes to the client with the keyboard, so
+    /// it's read once the window has that.)
+    fn window_activated(&mut self, active: bool, cx: &mut Cx<Self>) {
+        if active && self.copied.is_none() {
+            self.read_copied(cx);
+        }
+    }
+
+    fn window_closing(&mut self, _: &mut Cx<Self>) {
+        self.stop_asking();
+        olo_kit::proxy().send(Closed);
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let screen = cx.viewport_size();
+        let scale = cx.scale_factor();
         let shown = self.results.len().min(ROWS);
         let width = WIDTH.min(f32::from(screen.width) - 32.0);
         // An answer (/ask): as tall as it is, up to most of the screen
         // under the panel's top, its keys along the foot.
-        let laid =
-            self.answer.as_ref().map(|a| answer::lay_out(a, width - 2.0 * m::SPACING, (f32::from(screen.height) * (0.92 - TOP) - FIELD_HEIGHT - 4.0 * m::SPACING - answer::FOOT).max(120.0), cx));
+        let laid = self.answer.as_ref().map(|a| answer::lay_out(a, width - 2.0 * m::SPACING, (f32::from(screen.height) * (0.92 - TOP) - FIELD_HEIGHT - 4.0 * m::SPACING - answer::FOOT).max(120.0)));
         if let (Some(a), Some(l)) = (self.answer.as_mut(), &laid) {
             a.scroll = l.scroll;
         }
@@ -888,42 +1093,26 @@ impl Render for Palette {
                 (list_h, FIELD_HEIGHT + 2.0 * m::SPACING + list_h + if self.results.is_empty() { 0.0 } else { m::SPACING })
             }
         };
-        let panel = style::snap(window, Bounds { origin: point((screen.width - px(width)) / 2.0, (screen.height * TOP).round()), size: size(px(width), px(height)) });
+        let panel = snapped(scale, Bounds { origin: point((screen.width - px(width)) / 2.0, (screen.height * TOP).round()), size: size(px(width), px(height)) });
         let field = Bounds { origin: point(panel.left() + px(m::SPACING), panel.top() + px(m::SPACING)), size: size(px(width - 2.0 * m::SPACING), px(FIELD_HEIGHT)) };
-        let glass = style::snap_centred(window, point(field.left() + px(8.0 + 12.0), field.center().y), 24.0, 24.0);
+        let glass = snapped_centred(scale, point(field.left() + px(8.0 + 12.0), field.center().y), 24.0, 24.0);
         let list = Bounds { origin: point(field.left(), field.bottom() + px(m::SPACING)), size: size(field.size.width, px(list_h)) };
+        self.geo = Geo { panel, field, glass, list };
 
         // The panel, and the clicks around it (outside: put away).
-        let backdrop_me = me.clone();
-        let backdrop = canvas(
-            move |b, window, _| window.insert_hitbox(b, HitboxBehavior::Normal),
-            move |_, hitbox, window, cx| {
-                let p = theme::palette(cx);
-                // A soft shadow, then the BeOS panel.
-                style::soft_shadow(window, panel, &p);
-                style::fill_rect(window, panel, c(p.panel_background));
-                style::frame_rect(window, panel, style::tint(p.panel_background, 1.6));
-                style::raised(window, style::inset(window, panel, 1.0), &p);
-                // The query's well, and the glass.
-                style::fill_rect(window, field, c(p.document_background));
-                style::sunken(window, field, &p, true);
-                icons::paint(window, glass, "query");
-                let m2 = backdrop_me.clone();
-                window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
-                    if phase.bubble() && hitbox.is_hovered(window) && !panel.contains(&e.position) {
-                        m2.update(cx, |p, cx| p.hide(cx));
-                    }
-                });
+        let backdrop = cx.canvas(|p: &Palette, g, _| p.paint_backdrop(g)).id("palette-backdrop").absolute().left(px(0.0)).top(px(0.0)).size_full().on_any_mouse_down(cx.listener(
+            |p: &mut Self, e: &MouseDownEvent, cx| {
+                if !p.geo.panel.contains(&e.position) {
+                    p.hide(cx);
+                }
             },
-        )
-        .absolute()
-        .inset_0();
+        ));
 
         // The query, its capitals on the field's middle as the glass is.
         // (Where the results' titles start: the glass is as wide as their
         // icons. On the device grid: from between two pixels, at 1.25×,
         // the field's edge cut the first letter's side.)
-        let text_left = style::snap_coord(window, glass.right() + px(10.0));
+        let text_left = snap_at(scale, glass.right() + px(10.0));
         let line = px((QUERY_SIZE * style::LINE_HEIGHT).ceil());
         // After it, what a tap of Ctrl shows instead, there as it's typed.
         let other = if self.files_mode { "Commands" } else { "Files" };
@@ -935,161 +1124,75 @@ impl Render for Palette {
         let query = div()
             .absolute()
             .left(text_left)
-            .top(style::snap_coord(window, field.center().y - room / 2.0))
+            .top(snap_at(scale, field.center().y - room / 2.0))
             .w(field.right() - px(m::TEXT_INSET + m::TIGHT) - text_left)
             .h(room)
             .flex()
             .flex_row()
             .items_center()
             .gap(px(m::SPACING))
-            .child(div().flex_1().h(room).child(self.query.clone()))
+            .child(div().flex_1().h(room).child(&self.query))
             .child(KeyHint::new("Ctrl", other));
 
-        // The results (none while an answer shows).
-        let rows: Vec<(usize, Item)> = if laid.is_some() { Vec::new() } else { (self.top..self.results.len()).take(ROWS).map(|i| (i, self.results[i].clone())).collect() };
-        let (selected, command) = (self.selected, self.command);
-        let rows_me = me.clone();
-        let total = self.results.len();
-        let results = canvas(
-            move |_, window, _| window.insert_hitbox(list, HitboxBehavior::Normal),
-            move |_, hitbox, window, cx| {
-                let p = theme::palette(cx);
-                let row_at = move |y: Pixels| {
-                    let k = (f32::from(y - list.top()) - m::TIGHT) / ROW;
-                    (k >= 0.0).then_some(k as usize)
-                };
-                for (n, (index, item)) in rows.iter().enumerate() {
-                    let r = Bounds { origin: point(list.left(), list.top() + px(m::TIGHT + n as f32 * ROW)), size: size(list.size.width, px(ROW)) };
-                    let is_selected = *index == selected;
-                    let (fg, dim) = if is_selected {
-                        style::fill_rect(window, r, c(p.menu_selected_background));
-                        (c(p.menu_selected_item_text), c(p.menu_selected_item_text).opacity(0.75))
-                    } else {
-                        (c(p.panel_text), style::disabled_text(&p))
-                    };
-                    let fg = if item.enabled { fg } else { dim };
-                    // One middle on the device grid for the icon and the
-                    // words (a row can start between pixels at 1.25×).
-                    let mid = style::snap_coord(window, r.center().y);
-                    let icon_r = style::snap_centred(window, point(r.left() + px(8.0 + ICON / 2.0), mid), ICON, ICON);
-                    let drew = item.icon.as_deref().is_some_and(|i| if item.enabled { icons::paint(window, icon_r, i) } else { icons::paint_faded(window, icon_r, i, 110.0 / 255.0) });
-                    if !drew {
-                        icons::paint(window, icon_r, "application");
-                    }
-                    // The smaller words (subtitle, kind) stand on the
-                    // title's baseline.
-                    let detail_y = mid + px((style::PLAIN_SIZE - style::DETAIL_SIZE) * style::CAP_HEIGHT / 2.0);
-                    // Right side: the kind (on the subtitle's line), and keys
-                    // before it.
-                    let label = if is_selected && command && matches!(item.action, Action::Open(_)) { tracker::LABEL } else { item.kind.label() };
-                    let small = style::ui_font(FontWeight::NORMAL);
-                    let kind = style::label(window, cx, r.right() - px(8.0), detail_y, style::Align::Right, label, style::DETAIL_SIZE, small.clone(), dim);
-                    let mut right = kind.left() - px(m::SPACING);
-                    if let Some(keys) = &item.keys {
-                        let w = style::key_combo_width(window, keys);
-                        style::key_combo(window, cx, point(right, mid), keys, fg);
-                        right -= px(w + m::SPACING);
-                    }
-                    // Title, and the subtitle after it in grey.
-                    let x = icon_r.right() + px(10.0);
-                    let avail = (right - x).max(px(40.0));
-                    let title = style::label_fit(window, cx, x, mid, style::Align::Left, item.title.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), fg, avail);
-                    let sx = title.right() + px(8.0);
-                    if !item.subtitle.is_empty() && right - sx > px(40.0) {
-                        style::label_fit(window, cx, sx, detail_y, style::Align::Left, item.subtitle.clone(), style::DETAIL_SIZE, small, dim, right - sx);
-                    }
-                    // For agents: the title, and what else the row says.
-                    let said: Vec<&str> = [item.subtitle.as_str(), item.keys.as_deref().unwrap_or(""), label].into_iter().filter(|s| !s.is_empty()).collect();
-                    olo_ui::agent::record(
-                        window,
-                        cx,
-                        olo_ui::agent::Node {
-                            role: "Row",
-                            name: Some(item.title.clone().into()),
-                            value: Some(said.join(" · ").into()),
-                            bounds: r,
-                            enabled: item.enabled,
-                            clickable: item.enabled,
-                            selected: Some(is_selected),
-                            ..Default::default()
-                        },
-                    );
-                }
-                // The pointer moving over a row selects it; a click
-                // chooses (with ⌘, shows a file in Tracker); the wheel
-                // scrolls.
-                let first = rows.first().map_or(0, |r| r.0);
-                let enabled: Vec<bool> = rows.iter().map(|r| r.1.enabled).collect();
-                let (m1, hb) = (rows_me.clone(), hitbox.clone());
-                let en = enabled.clone();
-                window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, cx| {
-                    if phase.bubble()
-                        && hb.is_hovered(window)
-                        && let Some(n) = row_at(e.position.y).filter(|n| en.get(*n).copied().unwrap_or(false))
-                        && first + n != selected
-                    {
-                        m1.update(cx, |p, cx| {
-                            p.selected = first + n;
-                            cx.notify();
-                        });
-                    }
-                });
-                let (m2, hb) = (rows_me.clone(), hitbox.clone());
-                window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
-                    if phase.bubble()
-                        && e.button == MouseButton::Left
-                        && hb.is_hovered(window)
-                        && let Some(n) = row_at(e.position.y).filter(|n| *n < enabled.len())
-                    {
-                        let cmd = e.modifiers.platform || e.modifiers.control;
-                        m2.update(cx, |p, cx| if cmd { p.reveal(first + n, cx) } else { p.choose(first + n, cx) });
-                    }
-                });
-                let (m3, hb) = (rows_me.clone(), hitbox.clone());
-                window.on_mouse_event(move |e: &ScrollWheelEvent, phase, window, cx| {
-                    if !phase.bubble() || !hb.is_hovered(window) {
-                        return;
-                    }
-                    let dy = f32::from(e.delta.pixel_delta(px(ROW)).y);
-                    if dy.abs() < 0.5 {
-                        return;
-                    }
-                    m3.update(cx, |p, cx| {
-                        let max_top = total.saturating_sub(ROWS);
-                        let rows = (-dy / ROW).round() as isize;
-                        p.top = (p.top as isize + rows.signum() * rows.abs().max(1)).clamp(0, max_top as isize) as usize;
-                        cx.notify();
-                    });
-                });
-            },
-        )
-        .absolute()
-        .inset_0();
-
-        let answer_parts: Vec<olo_ui::gpui::AnyElement> = match (&self.answer, &laid) {
+        let mut root = div().size_full().relative().child(backdrop);
+        match (&self.answer, &laid) {
             (Some(a), Some(l)) => {
                 let foot = Bounds { origin: point(field.left(), list.bottom() + px(m::SPACING)), size: size(field.size.width, px(answer::FOOT)) };
-                vec![answer::view(a, l, list, me.clone(), cx), answer::foot(a, foot, cx)]
+                root = root.child(answer::view(a, l, list, cx)).child(answer::foot(a, foot));
             }
-            _ => Vec::new(),
-        };
-        let keys = me.clone();
-        let mods = me.clone();
-        div()
-            .size_full()
-            .relative()
-            .child(backdrop)
-            .child(results)
-            .children(answer_parts)
-            .child(query)
-            .capture_key_down(move |e: &KeyDownEvent, _, cx| {
-                if keys.update(cx, |p, cx| p.key(e, cx)) {
+            // The results (none while an answer shows): the pointer moving
+            // over a row selects it; a click chooses (with ⌘, shows a file
+            // in Tracker); the wheel scrolls.
+            _ if list_h > 0.0 => {
+                let results = cx
+                    .canvas(|p: &Palette, g, _| p.paint_results(g, p.geo.list))
+                    .id("palette-results")
+                    .absolute()
+                    .left(list.left())
+                    .top(list.top())
+                    .w(list.size.width)
+                    .h(list.size.height)
+                    .on_mouse_move(cx.listener(|p: &mut Self, e: &MouseMoveEvent, cx| {
+                        if let Some(index) = p.result_at(e.position, cx).filter(|i| *i != p.selected) {
+                            p.selected = index;
+                            cx.invalidate();
+                        }
+                    }))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|p: &mut Self, e: &MouseDownEvent, cx| {
+                            let Some(n) = Self::row_at(p.geo.list, e.position.y).filter(|n| p.top + *n < p.results.len() && *n < ROWS) else { return };
+                            let index = p.top + n;
+                            if e.modifiers.platform || e.modifiers.control {
+                                p.reveal(index, cx)
+                            } else {
+                                p.choose(index, cx)
+                            }
+                            cx.stop_propagation();
+                        }),
+                    )
+                    .on_scroll_wheel(cx.listener(|p: &mut Self, e: &ScrollWheelEvent, cx| {
+                        let dy = f32::from(e.delta.pixel_delta(px(ROW)).y);
+                        if dy.abs() < 0.5 {
+                            return;
+                        }
+                        let max_top = p.results.len().saturating_sub(ROWS);
+                        let rows = (-dy / ROW).round() as isize;
+                        p.top = (p.top as isize + rows.signum() * rows.abs().max(1)).clamp(0, max_top as isize) as usize;
+                        cx.invalidate();
+                    }));
+                root = root.child(results);
+            }
+            _ => {}
+        }
+        root.child(query)
+            .capture_key_down(cx.listener(|p: &mut Self, e: &KeyDownEvent, cx| {
+                if p.key(e, cx) {
                     cx.stop_propagation();
                 }
-            })
-            .on_modifiers_changed(move |e: &ModifiersChangedEvent, _, cx| {
-                mods.update(cx, |p, cx| p.modifiers(e, cx));
-            })
+            }))
+            .on_modifiers_changed(cx.listener(|p: &mut Self, e: &ModifiersChangedEvent, cx| p.modifiers(e, cx)))
+            .into_element()
     }
 }
 
@@ -1115,90 +1218,43 @@ fn main() {
     let toggle = args.iter().any(|a| a == "--toggle");
     let shortcuts = args.iter().any(|a| a == "--shortcuts");
     let ask = window_menu::Ask::parse(&args);
-    olo_ui::run(APP_ID, move |cx| {
-        olo_ui::stay_resident(cx);
-        instance::listen(APP_ID, olo_ui::proxy(cx));
-        let proxy = olo_ui::proxy(cx);
+    olo_kit::run(APP_ID, move |app| {
+        olo_kit::stay_resident();
+        instance::listen(APP_ID, olo_kit::proxy());
+        let proxy = olo_kit::proxy();
         let _ = std::thread::Builder::new().name("palette-fixed".into()).spawn(move || {
             proxy.send(Found::Fixed(sources::fixed()));
             // Applications installed or removed: listed again at once.
-            if let Some(w) = olo_ui::watch::watch(olo_xdg::desktop_entry::app_dirs(), move |_| proxy.send(Found::Fixed(sources::fixed()))) {
+            if let Some(w) = olo_kit::watch::watch(olo_xdg::desktop_entry::app_dirs(), move |_| proxy.send(Found::Fixed(sources::fixed()))) {
                 std::mem::forget(w);
             }
         });
-        let query = text_field(cx, |f| f.name("Search").font_size(QUERY_SIZE).hint(hint(false)));
-        let workers = sources::workers(olo_ui::proxy(cx));
-        let palette = cx.new(|cx| {
-            cx.subscribe(&query, |p: &mut Palette, _, e: &TextFieldEvent, cx| match e {
-                TextFieldEvent::Entered => {
-                    // (An answer's Return copies: the field has the key
-                    // before any listener does.)
-                    match p.answer.as_ref().map(|a| a.following) {
-                        Some(true) => return p.follow_up(cx),
-                        Some(false) => {
-                            p.copy_answer(true, cx);
-                            return;
-                        }
-                        None => {}
-                    }
-                    let i = p.selected;
-                    p.choose(i, cx);
-                }
-                _ => p.query_changed(cx),
-            })
-            .detach();
-            Palette {
-                win: None,
-                opening: false,
-                query,
-                query_text: String::new(),
-                asked: 0,
-                selected: 0,
-                top: 0,
-                command: false,
-                files_mode: false,
-                ctrl_tap: false,
-                ctrl_free: false,
-                fixed: Vec::new(),
-                context: Vec::new(),
-                menus: Vec::new(),
-                files: Vec::new(),
-                passwords: Vec::new(),
-                copied: None,
-                typed: None,
-                activation: None,
-                results: Vec::new(),
-                features: Vec::new(),
-                front: None,
-                recents: Recents::load(),
-                ranker: model::Ranker::load(),
-                tuning: false,
-                workers,
-                window_menu: None,
-                sheet: None,
-                answer: None,
-                asks: 0,
-            }
-        });
-        let messages = palette.clone();
-        olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |p, cx| p.message(message, cx)));
+        let shared = Shared {
+            fixed: Arc::default(),
+            recents: Arc::new(Mutex::new(Recents::load())),
+            ranker: Arc::new(Mutex::new(model::Ranker::load())),
+            tuning: Arc::default(),
+            workers: sources::workers(olo_kit::proxy()),
+        };
+        let hub = Rc::new(RefCell::new(Hub { shared, win: None, opening: false, window_menu: None, sheet: None }));
+        let messages = hub.clone();
+        olo_kit::message_handler(app, move |message, _| messages.borrow_mut().message(message));
         // Nothing to keep but that this is a new version of a running
         // copy: it re-executes with the arguments it first started with
         // (`--toggle`, from the first ⌘Space), which must not open it
         // again by themselves.
-        olo_ui::on_upgrade(cx, |_| Some("{}".into()));
-        if olo_ui::restored_state().is_none() {
-            palette.update(cx, |p, cx| {
-                if let Some(ask) = ask {
-                    p.ask_window_menu(ask, cx);
-                }
-                if toggle {
-                    p.toggle(cx);
-                }
-                if shortcuts {
-                    p.toggle_sheet(cx);
-                }
-            });
+        olo_kit::on_upgrade(|_| Some("{}".into()));
+        if olo_kit::restored_state().is_none() {
+            let mut hub = hub.borrow_mut();
+            if let Some(ask) = ask {
+                hub.ask_window_menu(ask);
+            }
+            if toggle {
+                hub.toggle();
+            }
+            if shortcuts {
+                hub.toggle_sheet();
+            }
         }
     });
 }

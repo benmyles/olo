@@ -7,6 +7,7 @@
 
 use std::{
     path::{Path, PathBuf},
+    sync::Arc,
     time::UNIX_EPOCH,
 };
 
@@ -158,8 +159,10 @@ fn picture_path(dir: &Path, id: u32) -> PathBuf {
 
 #[derive(Debug, Default)]
 pub struct History {
-    /// Oldest first.
-    pub entries: Vec<Entry>,
+    /// Oldest first. Shared: the History window lays out what it holds
+    /// without copying 200 notes at each step of a resize; a change made
+    /// while it holds them copies them once (`entries_mut`).
+    pub entries: Arc<Vec<Entry>>,
     path: Option<PathBuf>,
 }
 
@@ -188,14 +191,19 @@ impl History {
                 }
             });
         }
-        History { entries, path }
+        History { entries: Arc::new(entries), path }
+    }
+
+    /// The entries, to change: copied first if anything else holds them.
+    pub fn entries_mut(&mut self) -> &mut Vec<Entry> {
+        Arc::make_mut(&mut self.entries)
     }
 
     /// Keep `picture` for the newest entry with `id`: scaled down and
     /// written as a PNG off the UI thread.
     pub fn keep_picture(&mut self, id: u32, picture: &Picture) {
         let Some(dir) = self.path.as_ref().and_then(|p| p.parent()).map(Path::to_owned) else { return };
-        let Some(e) = self.entries.iter_mut().rev().find(|e| e.id == id) else { return };
+        let Some(e) = self.entries_mut().iter_mut().rev().find(|e| e.id == id) else { return };
         let path = picture_path(&dir, id);
         e.picture = Some(path.to_string_lossy().into_owned());
         let p = picture.clone();
@@ -222,24 +230,25 @@ impl History {
     pub fn save(&self) {
         let Some(path) = self.path.clone() else { return };
         // (Compact: it's long.)
-        let Ok(bytes) = serde_json::to_vec(&self.entries) else { return };
-        olo_ui::store::save_bytes(path, bytes);
+        let Ok(bytes) = serde_json::to_vec(&*self.entries) else { return };
+        olo_kit::store::save_bytes(path, bytes);
     }
 
     /// Add `e`, or update the entry with its id still open (a replacement).
     pub fn put(&mut self, e: Entry) {
-        match self.entries.iter_mut().rev().find(|x| x.id == e.id && x.live) {
+        let entries = self.entries_mut();
+        match entries.iter_mut().rev().find(|x| x.id == e.id && x.live) {
             Some(old) => {
                 // A replacement keeps being pinned, or snoozed.
                 let (unread, pinned, snoozed_until) = (old.unread || e.unread, old.pinned || e.pinned, old.snoozed_until.or(e.snoozed_until));
                 *old = Entry { unread, pinned, snoozed_until, ..e };
             }
-            None => self.entries.push(e),
+            None => entries.push(e),
         }
         // The oldest go, but those pinned or snoozed.
-        let mut extra = self.entries.len().saturating_sub(KEEP);
+        let mut extra = entries.len().saturating_sub(KEEP);
         if extra > 0 {
-            self.entries.retain(|e| {
+            entries.retain(|e| {
                 let goes = extra > 0 && !e.pinned && !e.snoozed();
                 if goes {
                     extra -= 1;
@@ -251,12 +260,15 @@ impl History {
     }
 
     pub fn get_mut(&mut self, id: u32) -> Option<&mut Entry> {
-        self.entries.iter_mut().rev().find(|e| e.id == id && e.live)
+        // (Looked for first: a note that isn't there copies nothing.)
+        let at = self.entries.iter().rposition(|e| e.id == id && e.live)?;
+        Some(&mut self.entries_mut()[at])
     }
 
     /// The newest entry with `id`, open at its app or not.
     pub fn newest_mut(&mut self, id: u32) -> Option<&mut Entry> {
-        self.entries.iter_mut().rev().find(|e| e.id == id)
+        let at = self.entries.iter().rposition(|e| e.id == id)?;
+        Some(&mut self.entries_mut()[at])
     }
 
     pub fn newest(&self, id: u32) -> Option<&Entry> {
@@ -295,18 +307,20 @@ impl History {
 
     /// Mark them all read; whether any wasn't.
     pub fn mark_read(&mut self) -> bool {
-        let mut changed = false;
-        for e in &mut self.entries {
-            changed |= std::mem::take(&mut e.unread);
+        if !self.entries.iter().any(|e| e.unread) {
+            return false;
         }
-        changed
+        for e in self.entries_mut() {
+            e.unread = false;
+        }
+        true
     }
 
     /// Mark the newest entry with `id` read (or unread); whether it changed.
     pub fn set_read(&mut self, id: u32, read: bool) -> bool {
-        match self.entries.iter_mut().rev().find(|e| e.id == id) {
-            Some(e) if e.unread == read => {
-                e.unread = !read;
+        match self.entries.iter().rposition(|e| e.id == id) {
+            Some(at) if self.entries[at].unread == read => {
+                self.entries_mut()[at].unread = !read;
                 true
             }
             _ => false,
@@ -316,7 +330,7 @@ impl History {
     /// Forget the entry at `index`.
     pub fn remove(&mut self, index: usize) {
         if index < self.entries.len() {
-            Self::drop_picture(&self.entries.remove(index));
+            Self::drop_picture(&self.entries_mut().remove(index));
         }
     }
 
@@ -326,10 +340,10 @@ impl History {
     pub fn take_out(&mut self, keep: impl Fn(usize, &Entry) -> bool) -> Vec<(usize, Entry)> {
         let mut gone = Vec::new();
         let mut kept = Vec::with_capacity(self.entries.len());
-        for (i, e) in std::mem::take(&mut self.entries).into_iter().enumerate() {
+        for (i, e) in Arc::unwrap_or_clone(std::mem::take(&mut self.entries)).into_iter().enumerate() {
             if keep(i, &e) { kept.push(e) } else { gone.push((i, e)) }
         }
-        self.entries = kept;
+        self.entries = Arc::new(kept);
         gone
     }
 
@@ -340,15 +354,15 @@ impl History {
             e.live = false;
             e.shown = false;
             let i = i.min(self.entries.len());
-            self.entries.insert(i, e);
+            self.entries_mut().insert(i, e);
         }
     }
 
     /// Forget all but those `keep` says to.
     pub fn retain(&mut self, keep: impl Fn(&Entry) -> bool) {
-        let (kept, gone): (Vec<Entry>, Vec<Entry>) = std::mem::take(&mut self.entries).into_iter().partition(|e| keep(e));
+        let (kept, gone): (Vec<Entry>, Vec<Entry>) = Arc::unwrap_or_clone(std::mem::take(&mut self.entries)).into_iter().partition(|e| keep(e));
         gone.iter().for_each(Self::drop_picture);
-        self.entries = kept;
+        self.entries = Arc::new(kept);
     }
 
     /// Forget what has faded away by `now` (not what is on screen); the
@@ -384,6 +398,26 @@ mod tests {
 
     fn entry(id: u32, summary: &str) -> Entry {
         Entry { id, app: "App".into(), summary: summary.into(), unread: true, live: true, ..Default::default() }
+    }
+
+    #[test]
+    fn what_the_window_holds_stays_as_it_was() {
+        let mut h = History::load(None);
+        h.put(entry(1, "One"));
+        // The History window's (a step of a resize takes no copy).
+        let held = h.entries.clone();
+        assert!(h.set_read(1, true));
+        assert!(held[0].unread && !h.entries[0].unread);
+        // Held by nothing else: changed in place, and a note that isn't
+        // there copies nothing.
+        drop(held);
+        let at = Arc::as_ptr(&h.entries);
+        assert!(h.set_read(1, false));
+        let held = h.entries.clone();
+        assert!(h.get_mut(9).is_none() && !h.set_read(9, true));
+        assert!(Arc::ptr_eq(&held, &h.entries));
+        drop(held);
+        assert_eq!(Arc::as_ptr(&h.entries), at);
     }
 
     #[test]

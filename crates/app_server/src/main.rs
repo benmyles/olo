@@ -7,6 +7,7 @@ static POSSIBLE_BACKENDS: &[&str] = &[
     "--headless [WxH] : Render offscreen with no display (automated UI tests).",
     #[cfg(feature = "udev")]
     "--probe-gpus : List the DRM devices and what each can do (safe beside a running desktop).",
+    "--probe-shared [FOLDER [SIZES]] : Draw a window's picture on each GPU and compose it on each other, as for a display on another GPU; say what differs, keeping the pictures in FOLDER; SIZES as 964x507,333x217 (safe beside a running desktop).",
     "--plymouth-theme DIR [--scale S] : Make Olo's boot splash (a Plymouth theme, plymouth.rs) in DIR.",
 ];
 
@@ -47,18 +48,25 @@ fn main() {
     tracing_subscriber::fmt().compact().with_env_filter(env_filter).finish().with(tracing_subscriber::filter::filter_fn(|m| !bogus_error(m))).init();
 
     // Every input event and every frame go through this thread: above
-    // everything else (olo_protocol::performance::tier).
-    match olo_system::priority::raise_self(olo_protocol::performance::CORE_NICE) {
-        Ok(nice) => tracing::info!(nice, "the main thread's priority (rtkit)"),
-        Err(e) => tracing::info!("the main thread stays at its nice: {e}"),
-    }
-    // ...and on a fast core at a high clock, not where the scheduler puts
-    // a mostly idle thread.
-    let util_min = std::env::var("OLO_UTIL_MIN").ok().and_then(|v| v.parse().ok()).unwrap_or(olo_protocol::performance::CORE_UTIL_MIN);
-    if util_min > 0
-        && let Err(e) = olo_system::priority::util_min_self(util_min)
-    {
-        tracing::info!("the main thread keeps the scheduler's choice of core: {e}");
+    // everything else (olo_protocol::performance::tier). Only the
+    // person's own: a headless one (an agent's screen, a test session) is
+    // background work beside it, and stays at its nice.
+    let headless = ::std::env::args().nth(1).as_deref() == Some("--headless");
+    if headless {
+        tracing::info!("the main thread stays at its nice: headless, beside the person's desktop");
+    } else {
+        match olo_system::priority::raise_self(olo_protocol::performance::CORE_NICE) {
+            Ok(nice) => tracing::info!(nice, "the main thread's priority (rtkit)"),
+            Err(e) => tracing::info!("the main thread stays at its nice: {e}"),
+        }
+        // ...and on a fast core at a high clock, not where the scheduler
+        // puts a mostly idle thread.
+        let util_min = std::env::var("OLO_UTIL_MIN").ok().and_then(|v| v.parse().ok()).unwrap_or(olo_protocol::performance::CORE_UTIL_MIN);
+        if util_min > 0
+            && let Err(e) = olo_system::priority::util_min_self(util_min)
+        {
+            tracing::info!("the main thread keeps the scheduler's choice of core: {e}");
+        }
     }
 
     profiling::register_thread!("Main Thread");
@@ -77,6 +85,8 @@ fn main() {
         }
         #[cfg(feature = "udev")]
         Some("--probe-gpus") => app_server::udev::probe_gpus(),
+        #[cfg(feature = "udev")]
+        Some("--probe-shared") => app_server::udev::probe_shared(::std::env::args().nth(2).as_deref(), ::std::env::args().nth(3).as_deref()),
         #[cfg(feature = "udev")]
         Some("--headless") => {
             let size = ::std::env::args().nth(2);

@@ -25,16 +25,13 @@ use std::{
     time::Instant,
 };
 
+use olo_kit::{
+    Child, Cx, Element, IntoElement, Messenger, ParentElement as _, Styled as _, View, WindowCx, canvas, div, metrics as m, px, style, theme,
+    widgets::{Button, Column, ColumnListView, LegendItem, ListModel, RadioButton, Spectrum, SpectrumSeries, StatusBar, StringView, legend, legend_height},
+};
 use olo_protocol::voice::{self, Settings};
 use olo_sync::Mutex;
 use olo_system::recording::{Player, Recording};
-use olo_ui::{
-    gpui::{AnyView, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, StyleRefinement, Styled as _, WeakEntity, Window, canvas, div, px},
-    metrics as m, style, theme,
-    widgets::{Button, Column, ColumnListView, LegendItem, ListModel, RadioButton, Spectrum, SpectrumSeries, StatusBar, StringView, legend, legend_height},
-};
-
-use crate::Msg;
 
 /// How long a recording runs, at most (seconds).
 pub const SECONDS: f32 = 6.0;
@@ -102,27 +99,45 @@ pub struct TryWindow {
     player: Arc<Mutex<Option<Player>>>,
     /// Hearing the chosen setting's sound (else the original).
     processed: bool,
-    list: Entity<ListModel>,
+    list: ListModel,
     /// What moves while recording and playing (the spectrum, the status
-    /// line), drawn each frame then; and the rest, drawn again only when
-    /// it changes (`AnyView::cached`): every frame of all of it was 1.8 ms.
-    live: Entity<LivePane>,
-    controls: Entity<Controls>,
-    proxy: olo_ui::Proxy,
+    /// line): a view of its own, saying what it shows each frame then,
+    /// while the rest says it again only when it changes (every frame of
+    /// all of it was 1.8 ms).
+    live: Child<LivePane>,
+    /// The workers' news: the window says what it shows again.
+    news: Messenger<()>,
 }
 
-/// The spectrum and the status line.
+/// The spectrum and the status line. It reads what the workers share
+/// with the window itself; what's the window's own (when recording
+/// began, which sound is heard) it is told (`TryWindow::changed`).
 pub struct LivePane {
-    win: WeakEntity<TryWindow>,
+    shared: Arc<Mutex<Shared>>,
+    player: Arc<Mutex<Option<Player>>>,
+    list: ListModel,
+    started: Option<Instant>,
+    processed: bool,
     /// The spectra shown, smoothed: the original's and the processed's.
     shown: (Vec<f32>, Vec<f32>),
     /// Playing when last drawn (its end changes the buttons).
     was_playing: bool,
 }
 
-/// The settings tried, the buttons and the note.
-pub struct Controls {
-    win: WeakEntity<TryWindow>,
+/// Playing came to its end (the live pane saw it): the buttons change.
+struct PlayEnded;
+
+/// Where it is: recording, trying, tried, or nothing yet.
+fn phase_of(s: &Shared, started: Option<Instant>) -> Phase {
+    if s.recording.is_some() || (started.is_some() && s.original.is_none() && s.error.is_none()) {
+        Phase::Recording
+    } else if s.trying {
+        Phase::Trying
+    } else if s.original.is_some() {
+        Phase::Tried
+    } else {
+        Phase::Ready
+    }
 }
 
 impl Drop for TryWindow {
@@ -139,60 +154,41 @@ impl Drop for TryWindow {
 }
 
 /// Open it.
-pub fn open(prefs: Entity<crate::Prefs>, settings: Settings, microphone: Option<String>, cx: &mut App) {
-    let options = olo_ui::WindowOptions::new("Try Voice Processing", 760.0, 600.0);
-    let _ = olo_ui::open_window(cx, options, move |_, cx| {
-        let proxy = olo_ui::proxy(cx);
-        cx.new(|cx| TryWindow::new(prefs, settings, microphone, proxy, cx))
-    });
+pub fn open(settings: Settings, microphone: Option<String>, _: &mut WindowCx) {
+    let options = olo_kit::WindowOptions::new("Try Voice Processing", 760.0, 600.0);
+    olo_kit::open_window(options, move |cx| TryWindow::new(settings, microphone, cx));
 }
 
 impl TryWindow {
-    fn new(prefs: Entity<crate::Prefs>, settings: Settings, microphone: Option<String>, proxy: olo_ui::Proxy, cx: &mut Context<Self>) -> TryWindow {
-        // The workers' news comes as the settings' does (`Msg::Redraw`).
-        cx.observe(&prefs, |w, _, cx| w.changed(cx)).detach();
-        let me = cx.weak_entity();
-        let live = cx.new(|_| LivePane { win: me.clone(), shown: (vec![-120.0; BANDS], vec![-120.0; BANDS]), was_playing: false });
-        let controls = cx.new(|_| Controls { win: me });
-        TryWindow {
-            settings,
-            microphone,
-            shared: Default::default(),
-            started: None,
-            stop: Default::default(),
-            enough: Default::default(),
-            player: Default::default(),
-            processed: true,
-            list: ListModel::new(cx, false),
-            live,
-            controls,
-            proxy,
-        }
+    fn new(settings: Settings, microphone: Option<String>, cx: &mut Cx<Self>) -> TryWindow {
+        let (shared, player): (Arc<Mutex<Shared>>, Arc<Mutex<Option<Player>>>) = Default::default();
+        let list = ListModel::new(false);
+        let live = {
+            let (shared, player, list) = (shared.clone(), player.clone(), list.clone());
+            cx.new_view(|_| LivePane { shared, player, list, started: None, processed: true, shown: (vec![-120.0; BANDS], vec![-120.0; BANDS]), was_playing: false })
+        };
+        cx.subscribe(&live, |w: &mut TryWindow, _: &PlayEnded, cx| w.changed(cx));
+        TryWindow { settings, microphone, shared, started: None, stop: Default::default(), enough: Default::default(), player, processed: true, list, live, news: cx.messenger() }
     }
 
-    /// Something shown changed: every part draws again.
-    fn changed(&mut self, cx: &mut Context<Self>) {
+    /// Something shown changed: every part says what it shows again.
+    fn changed(&mut self, cx: &mut Cx<Self>) {
         cx.notify();
-        self.live.update(cx, |_, cx| cx.notify());
-        self.controls.update(cx, |_, cx| cx.notify());
+        let (started, processed) = (self.started, self.processed);
+        self.live.update(cx, |l, cx| {
+            l.started = started;
+            l.processed = processed;
+            cx.notify();
+        });
     }
 
     pub fn phase(&self) -> Phase {
-        let s = self.shared.lock().unwrap();
-        if s.recording.is_some() || (self.started.is_some() && s.original.is_none() && s.error.is_none()) {
-            Phase::Recording
-        } else if s.trying {
-            Phase::Trying
-        } else if s.original.is_some() {
-            Phase::Tried
-        } else {
-            Phase::Ready
-        }
+        phase_of(&self.shared.lock().unwrap(), self.started)
     }
 
     /// Record, from the microphone voice processing listens to (not its
     /// own cleaned-up source); then try each setting on it.
-    fn record(&mut self, cx: &mut Context<Self>) {
+    fn record(&mut self, cx: &mut Cx<Self>) {
         self.stop_playing();
         {
             let mut s = self.shared.lock().unwrap();
@@ -200,17 +196,17 @@ impl TryWindow {
         }
         self.started = Some(Instant::now());
         self.enough.store(false, Ordering::Relaxed);
-        let (shared, stop, cut, proxy, mic, settings) = (self.shared.clone(), self.stop.clone(), self.enough.clone(), self.proxy.clone(), self.microphone.clone(), self.settings);
+        let (shared, stop, cut, news, mic, settings) = (self.shared.clone(), self.stop.clone(), self.enough.clone(), self.news.clone(), self.microphone.clone(), self.settings);
         std::thread::spawn(move || {
             match Recording::start(mic.as_deref()) {
                 Ok(r) => shared.lock().unwrap().recording = Some(r),
                 Err(e) => {
                     shared.lock().unwrap().error = Some(e);
-                    proxy.send(Msg::Redraw);
+                    news.send(());
                     return;
                 }
             }
-            proxy.send(Msg::Redraw);
+            news.send(());
             let enough = (olo_system::recording::RATE as f32 * SECONDS) as usize;
             while !stop.load(Ordering::Relaxed) && !cut.load(Ordering::Relaxed) && shared.lock().unwrap().recording.as_ref().is_some_and(|r| r.len() < enough) {
                 std::thread::sleep(std::time::Duration::from_millis(20));
@@ -220,7 +216,7 @@ impl TryWindow {
             got.truncate(enough);
             if got.len() < olo_system::recording::RATE as usize / 2 {
                 shared.lock().unwrap().error = Some("Nothing came from the microphone.".into());
-                proxy.send(Msg::Redraw);
+                news.send(());
                 return;
             }
             let original: Arc<[f32]> = got.into();
@@ -230,7 +226,7 @@ impl TryWindow {
                 s.tried = variants(settings).into_iter().map(|(name, settings)| Tried { name, settings, trial: None }).collect();
                 s.trying = true;
             }
-            proxy.send(Msg::Redraw);
+            news.send(());
             // Each setting in turn, each shown as it's done, after a short
             // one untimed: the first chain in a process sets up what every
             // later one shares (a 27 ms first frame, the rest 0.4).
@@ -244,16 +240,16 @@ impl TryWindow {
                 if let Some(row) = shared.lock().unwrap().tried.get_mut(i) {
                     row.trial = Some(t);
                 }
-                proxy.send(Msg::Redraw);
+                news.send(());
             }
             shared.lock().unwrap().trying = false;
-            proxy.send(Msg::Redraw);
+            news.send(());
         });
         self.changed(cx);
     }
 
     /// Stop recording now (it's tried as far as it went).
-    fn stop_recording(&mut self, cx: &mut Context<Self>) {
+    fn stop_recording(&mut self, cx: &mut Cx<Self>) {
         self.enough.store(true, Ordering::Relaxed);
         self.changed(cx);
     }
@@ -272,20 +268,20 @@ impl TryWindow {
     }
 
     /// The setting chosen in the list.
-    fn chosen(&self, cx: &App) -> usize {
-        self.list.read(cx).state.single().unwrap_or(0)
+    fn chosen(&self) -> usize {
+        self.list.state().single().unwrap_or(0)
     }
 
     /// The take to hear: the original, or the chosen setting's.
-    fn take_now(&self, cx: &App) -> usize {
-        if self.processed { 1 + self.chosen(cx) } else { 0 }
+    fn take_now(&self) -> usize {
+        if self.processed { 1 + self.chosen() } else { 0 }
     }
 
     fn playing(&self) -> bool {
         self.player.lock().unwrap().as_ref().is_some_and(|p| !p.finished())
     }
 
-    fn play(&mut self, cx: &mut Context<Self>) {
+    fn play(&mut self, cx: &mut Cx<Self>) {
         if self.playing() {
             self.stop_playing();
             self.changed(cx);
@@ -295,15 +291,15 @@ impl TryWindow {
         if takes.is_empty() {
             return;
         }
-        let (which, slot, shared, proxy) = (self.take_now(cx), self.player.clone(), self.shared.clone(), self.proxy.clone());
+        let (which, slot, shared, news) = (self.take_now(), self.player.clone(), self.shared.clone(), self.news.clone());
         std::thread::spawn(move || match Player::start(takes, which, 0) {
             Ok(p) => {
                 *slot.lock().unwrap() = Some(p);
-                proxy.send(Msg::Redraw);
+                news.send(());
             }
             Err(e) => {
                 shared.lock().unwrap().error = Some(e);
-                proxy.send(Msg::Redraw);
+                news.send(());
             }
         });
         self.changed(cx);
@@ -315,9 +311,9 @@ impl TryWindow {
     }
 
     /// Hear the original or the processed, from where it is.
-    fn hear(&mut self, processed: bool, cx: &mut Context<Self>) {
+    fn hear(&mut self, processed: bool, cx: &mut Cx<Self>) {
         self.processed = processed;
-        let which = self.take_now(cx);
+        let which = self.take_now();
         if let Some(p) = self.player.lock().unwrap().as_ref() {
             p.choose(which);
         }
@@ -325,8 +321,8 @@ impl TryWindow {
     }
 
     /// Make the chosen setting the one in use.
-    fn use_chosen(&mut self, cx: &mut Context<Self>) {
-        let chosen = self.chosen(cx);
+    fn use_chosen(&mut self, cx: &mut Cx<Self>) {
+        let chosen = self.chosen();
         let Some(settings) = self.shared.lock().unwrap().tried.get(chosen).map(|t| t.settings) else { return };
         let settings = Settings { enabled: true, echo_cancellation: self.settings.echo_cancellation, ..settings };
         if let Err(e) = settings.save() {
@@ -350,15 +346,15 @@ fn db(v: f64) -> String {
 impl LivePane {
     /// The spectra now: of what's coming in while recording, of the
     /// original and the processed where they're playing.
-    fn spectra(&mut self, w: &TryWindow, cx: &App) -> bool {
+    fn spectra(&mut self) -> bool {
         let (original, processed) = {
-            let s = w.shared.lock().unwrap();
+            let s = self.shared.lock().unwrap();
             if let Some(r) = &s.recording {
                 (Some(olo_voice::spectrum(&r.tail(olo_voice::SPECTRUM_WINDOW), BANDS)), None)
-            } else if let Some(p) = w.player.lock().unwrap().as_ref().filter(|p| !p.finished()) {
+            } else if let Some(p) = self.player.lock().unwrap().as_ref().filter(|p| !p.finished()) {
                 let at = p.position();
                 let o = s.original.as_ref().map(|o| olo_voice::spectrum(&o[..at.min(o.len())], BANDS));
-                let chosen = w.list.read(cx).state.single().unwrap_or(0);
+                let chosen = self.list.state().single().unwrap_or(0);
                 let pr = s.tried.get(chosen).and_then(|t| t.trial.as_ref()).and_then(|t| t.as_ref().ok()).map(|t| olo_voice::spectrum(&t.out[..at.min(t.out.len())], BANDS));
                 (o, pr)
             } else {
@@ -379,10 +375,18 @@ impl LivePane {
     }
 }
 
-impl Render for TryWindow {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = theme::palette(cx);
+impl View for TryWindow {
+    /// The workers' news.
+    type Message = ();
+
+    fn message(&mut self, _: (), cx: &mut Cx<Self>) {
+        self.changed(cx);
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let p = theme::palette();
         let lead = "Record a few seconds as you talk on a call, with the room as it is; then hear and see what each setting does to it. The recording stays in memory and goes when you close this.";
+        let controls = self.controls(cx);
         let col = div()
             .flex()
             .flex_col()
@@ -390,41 +394,40 @@ impl Render for TryWindow {
             .size_full()
             .p(px(m::WINDOW_INSET))
             .child(StringView::new(lead).wrap(true))
-            .child(self.live.clone())
-            .child(div().flex_1().min_h(px(0.0)).child(AnyView::from(self.controls.clone()).cached(StyleRefinement::default().size_full())));
+            .child(self.live.element())
+            .child(div().flex_1().min_h(px(0.0)).child(controls));
         div().size_full().bg(style::c(p.panel_background)).child(col)
     }
 }
 
-impl Render for LivePane {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let Some(win) = self.win.upgrade() else { return div().into_any_element() };
-        let w = win.read(cx);
-        let phase = w.phase();
-        let live = self.spectra(w, cx);
+impl View for LivePane {
+    type Message = ();
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let live = self.spectra();
+        // (Each frame while something moves: recording, playing, the
+        // spectrum settling.)
         if live {
-            window.request_animation_frame();
+            let again = cx.invalidator();
+            cx.on_next_frame(move |_| again.invalidate());
         }
-        let playing = w.playing();
-        let (error, recorded, rows, done) = {
-            let s = w.shared.lock().unwrap();
-            (s.error.clone(), s.recording.as_ref().map(|r| r.len()).unwrap_or(0), s.tried.len(), s.tried.iter().filter(|t| t.trial.is_some()).count())
+        let playing = self.player.lock().unwrap().as_ref().is_some_and(|p| !p.finished());
+        let (phase, error, recorded, rows, done) = {
+            let s = self.shared.lock().unwrap();
+            (phase_of(&s, self.started), s.error.clone(), s.recording.as_ref().map(|r| r.len()).unwrap_or(0), s.tried.len(), s.tried.iter().filter(|t| t.trial.is_some()).count())
         };
-        let (processed, at) = (w.processed, w.player.lock().unwrap().as_ref().filter(|p| !p.finished()).map(|p| p.position()));
-        // Its end changes the buttons (Stop to Play): after this frame.
+        let (processed, at) = (self.processed, self.player.lock().unwrap().as_ref().filter(|p| !p.finished()).map(|p| p.position()));
+        // Its end changes the buttons (Stop to Play): the window hears.
         if self.was_playing && !playing {
-            let win = self.win.clone();
-            cx.defer(move |cx| {
-                let _ = win.update(cx, |w, cx| w.changed(cx));
-            });
+            cx.emit(PlayEnded);
         }
         self.was_playing = playing;
-        let p = theme::palette(cx);
+        let p = theme::palette();
         let (grey, blue) = (style::c(olo_theme::mix(p.document_text, p.document_background, 0.45)), style::c(p.navigation_base));
         let series = vec![SpectrumSeries::new("Original", grey, self.shown.0.clone()).fill(true), SpectrumSeries::new("Processed", blue, self.shown.1.clone())];
         // Which line is which.
         let items = vec![LegendItem { color: grey, name: "Original".into(), value: "".into() }, LegendItem { color: blue, name: "Processed: the setting chosen below".into(), value: "".into() }];
-        let tall = legend_height(cx, 728.0, &items);
+        let tall = legend_height(728.0, &items);
         // What's going on, in a line.
         let rate = olo_system::recording::RATE as f32;
         let status: (String, Option<f32>) = match (phase, &error) {
@@ -442,28 +445,26 @@ impl Render for LivePane {
             .flex_col()
             .gap(px(m::SPACING))
             .w_full()
-            .child(canvas(|_, _, _| {}, move |b, _, window, cx| legend(window, cx, b, &items)).w_full().h(px(tall)))
+            .child(canvas(move |g, b| legend(g, b, &items)).w_full().h(px(tall)))
             .child(div().w_full().h(px(170.0)).child(Spectrum::new(series, olo_voice::SPECTRUM_LOW, olo_voice::SPECTRUM_HIGH).floor(-100.0)))
             .child(match status.1 {
-                Some(f) => StatusBar::new(f).label(status.0).into_any_element(),
-                None => div().h(px(m::CONTROL_HEIGHT)).flex().items_center().child(StringView::new(status.0)).into_any_element(),
+                Some(f) => StatusBar::new(f).label(status.0).into_element(),
+                None => div().h(px(m::CONTROL_HEIGHT)).flex().items_center().child(StringView::new(status.0)),
             })
-            .into_any_element()
     }
 }
 
-impl Render for Controls {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let Some(win) = self.win.upgrade() else { return div().into_any_element() };
-        let me = self.win.clone();
-        let w = win.read(cx);
-        let phase = w.phase();
-        let (error, rows) = {
-            let s = w.shared.lock().unwrap();
+impl TryWindow {
+    /// The settings tried, the buttons and the note.
+    fn controls(&mut self, cx: &mut Cx<Self>) -> Element {
+        let phase = self.phase();
+        let (error, rows, tried) = {
+            let s = self.shared.lock().unwrap();
             let rows: Vec<(String, Option<Result<olo_voice::Trial, String>>)> = s.tried.iter().map(|t| (t.name.clone(), t.trial.clone())).collect();
-            (s.error.clone(), rows)
+            let tried: Vec<Settings> = s.tried.iter().map(|t| t.settings).collect();
+            (s.error.clone(), rows, tried)
         };
-        let (processed, list_model, settings, playing) = (w.processed, w.list.clone(), w.settings, w.playing());
+        let (processed, list_model, settings, playing) = (self.processed, self.list.clone(), self.settings, self.playing());
         let mut col = div().flex().flex_col().gap(px(m::SPACING)).size_full();
         // Each setting tried.
         let columns = vec![
@@ -475,80 +476,63 @@ impl Render for Controls {
             Column::new("Level", 92.0).right(),
         ];
         let in_use = settings;
-        let rows2 = rows.clone();
-        let tried: Vec<Settings> = win.read(cx).shared.lock().unwrap().tried.iter().map(|t| t.settings).collect();
-        let list = ColumnListView::new("voice-tried", &list_model, columns, rows.len(), move |cell, window, cx| {
+        let same = move |s: &Settings| Settings { echo_cancellation: in_use.echo_cancellation, enabled: true, ..*s } == Settings { enabled: true, ..in_use };
+        let (rows2, tried2) = (rows.clone(), tried.clone());
+        let list = ColumnListView::new(cx, "voice-tried", &list_model, columns, rows.len(), move |_: &Self, cell, g| {
             let (name, trial) = &rows2[cell.row];
             let ok = trial.as_ref().and_then(|t| t.as_ref().ok());
-            let using = tried.get(cell.row).is_some_and(|s| Settings { echo_cancellation: in_use.echo_cancellation, enabled: true, ..*s } == Settings { enabled: true, ..in_use });
+            let using = tried2.get(cell.row).is_some_and(same);
             match cell.column {
-                0 => cell.text(window, cx, if using { format!("{name} (in use)") } else { name.clone() }),
-                1 => cell.text(window, cx, ok.map(|t| ms(t.latency)).unwrap_or_else(|| if trial.is_some() { "failed".into() } else { "…".into() })),
-                2 => cell.text(window, cx, ok.map(|t| ms(t.frame_median)).unwrap_or_default()),
-                3 => cell.text(window, cx, ok.map(|t| ms(t.frame_worst)).unwrap_or_default()),
-                4 => cell.text(window, cx, ok.map(|t| db(t.measured.noise.change_db())).unwrap_or_default()),
-                5 => cell.text(window, cx, ok.map(|t| db(t.measured.level.change_db())).unwrap_or_default()),
+                0 => cell.text(g, if using { format!("{name} (in use)") } else { name.clone() }),
+                1 => cell.text(g, ok.map(|t| ms(t.latency)).unwrap_or_else(|| if trial.is_some() { "failed".into() } else { "…".into() })),
+                2 => cell.text(g, ok.map(|t| ms(t.frame_median)).unwrap_or_default()),
+                3 => cell.text(g, ok.map(|t| ms(t.frame_worst)).unwrap_or_default()),
+                4 => cell.text(g, ok.map(|t| db(t.measured.noise.change_db())).unwrap_or_default()),
+                5 => cell.text(g, ok.map(|t| db(t.measured.level.change_db())).unwrap_or_default()),
                 _ => {}
             }
         })
         .empty_text("Each setting tried shows here.")
-        .on_select({
-            let me = me.clone();
-            move |_, cx| {
-                let _ = me.update(cx, |w, cx| {
-                    let which = w.take_now(cx);
-                    if let Some(p) = w.player.lock().unwrap().as_ref() {
-                        p.choose(which);
-                    }
-                    cx.notify();
-                });
+        .on_select(cx.listener(|w: &mut TryWindow, _: &(), cx| {
+            let which = w.take_now();
+            if let Some(p) = w.player.lock().unwrap().as_ref() {
+                p.choose(which);
             }
-        });
+            w.changed(cx);
+        }));
         col = col.child(div().flex_1().min_h(px(120.0)).child(list));
         // The buttons.
         let recording = phase == Phase::Recording;
         let can_play = matches!(phase, Phase::Tried | Phase::Trying) && error.is_none();
         // (The first chosen until another is.)
-        if !rows.is_empty() && list_model.read(cx).state.single().is_none() {
-            list_model.update(cx, |l, _| l.state.select(0));
+        if !rows.is_empty() && list_model.state().single().is_none() {
+            list_model.state_mut().select(0);
         }
-        let chosen = list_model.read(cx).state.single().unwrap_or(0);
-        let chosen_in_use = win
-            .read(cx)
-            .shared
-            .lock()
-            .unwrap()
-            .tried
-            .get(chosen)
-            .is_some_and(|t| Settings { echo_cancellation: in_use.echo_cancellation, enabled: true, ..t.settings } == Settings { enabled: true, ..in_use });
+        let chosen = list_model.state().single().unwrap_or(0);
+        let chosen_in_use = tried.get(chosen).is_some_and(same);
         let chosen_done = rows.get(chosen).is_some_and(|r| matches!(r.1, Some(Ok(_)))) && !chosen_in_use;
-        let act = |me: &WeakEntity<TryWindow>, f: fn(&mut TryWindow, &mut Context<TryWindow>)| {
-            let me = me.clone();
-            move |_: &mut Window, cx: &mut App| {
-                let _ = me.update(cx, |w, cx| f(w, cx));
-            }
-        };
+        fn act<E: ?Sized + 'static>(cx: &Cx<TryWindow>, f: fn(&mut TryWindow, &mut Cx<TryWindow>)) -> impl Fn(&E, &mut WindowCx) + 'static {
+            cx.listener(move |w: &mut TryWindow, _: &E, cx| f(w, cx))
+        }
         let row = div()
             .flex()
             .flex_row()
             .items_center()
             .gap(px(m::SPACING))
             .child(if recording {
-                Button::new("Stop Recording").on_click(act(&me, TryWindow::stop_recording))
+                Button::new("Stop Recording").on_click(act(cx, TryWindow::stop_recording))
             } else {
-                Button::new(if phase == Phase::Ready { "Record" } else { "Record Again" }).enabled(phase != Phase::Trying).default(phase == Phase::Ready).on_click(act(&me, TryWindow::record))
+                Button::new(if phase == Phase::Ready { "Record" } else { "Record Again" }).enabled(phase != Phase::Trying).default(phase == Phase::Ready).on_click(act(cx, TryWindow::record))
             })
-            .child(Button::new(if playing { "Stop" } else { "Play" }).enabled(can_play).on_click(act(&me, TryWindow::play)))
+            .child(Button::new(if playing { "Stop" } else { "Play" }).enabled(can_play).on_click(act(cx, TryWindow::play)))
             // What playing plays (switched as it plays, at the same place),
             // as tall as the buttons, so their text shares a baseline.
-            .child(RadioButton::new("Original", !processed).height(m::CONTROL_HEIGHT).enabled(can_play).on_select(act(&me, |w, cx| w.hear(false, cx))))
-            .child(RadioButton::new("Processed", processed).height(m::CONTROL_HEIGHT).enabled(can_play).on_select(act(&me, |w, cx| w.hear(true, cx))))
+            .child(RadioButton::new("Original", !processed).height(m::CONTROL_HEIGHT).enabled(can_play).on_select(act(cx, |w, cx| w.hear(false, cx))))
+            .child(RadioButton::new("Processed", processed).height(m::CONTROL_HEIGHT).enabled(can_play).on_select(act(cx, |w, cx| w.hear(true, cx))))
             .child(div().flex_1())
-            .child(Button::new("Use This Setting").enabled(chosen_done).on_click(act(&me, TryWindow::use_chosen)));
+            .child(Button::new("Use This Setting").enabled(chosen_done).on_click(act(cx, TryWindow::use_chosen)));
         col = col.child(row);
-        col = col
-            .child(StringView::new(format!("Run by {}. Echo cancellation isn't tried: a recording has no speakers' sound beside it to take out.", olo_voice::accelerated_by())).dim(true).wrap(true));
-        col.into_any_element()
+        col.child(StringView::new(format!("Run by {}. Echo cancellation isn't tried: a recording has no speakers' sound beside it to take out.", olo_voice::accelerated_by())).dim(true).wrap(true))
     }
 }
 
@@ -563,9 +547,8 @@ pub(crate) fn lint_states() -> Vec<(&'static str, Phase)> {
 impl TryWindow {
     /// The window in `phase`, with made-up figures (the longest each
     /// column shows) and a voice-like spectrum.
-    pub(crate) fn for_lint(prefs: Entity<crate::Prefs>, phase: Phase, cx: &mut Context<Self>) -> TryWindow {
-        let proxy = olo_ui::Proxy::new(|_| {});
-        let mut w = TryWindow::new(prefs, Settings::default(), None, proxy, cx);
+    pub(crate) fn for_lint(phase: Phase, cx: &mut Cx<Self>) -> TryWindow {
+        let mut w = TryWindow::new(Settings::default(), None, cx);
         let voice: Vec<f32> = (0..BANDS).map(|b| -30.0 - (b as f32 - 10.0).abs() * 1.2).collect();
         let shown = (voice.clone(), voice.iter().map(|v| v - 8.0).collect());
         w.live.update(cx, |l, _| l.shown = shown);
@@ -594,6 +577,8 @@ impl TryWindow {
             }
         }
         drop(s);
+        let started = w.started;
+        w.live.update(cx, |l, _| l.started = started);
         w
     }
 }

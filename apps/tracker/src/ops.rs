@@ -517,12 +517,13 @@ pub fn amount(job: &Job) -> String {
     }
 }
 
-/// The line under the bar: the current item, how many items, time left.
-pub fn detail(job: &Job) -> String {
+/// The line under the bar: the current item (cut short to fit, as it
+/// changes), and how many items and the time left (shown whole).
+pub fn detail(job: &Job) -> (String, String) {
     let p = &job.progress;
     let current = p.current.lock().map(|c| c.clone()).unwrap_or_default();
     let (tb, ti, di) = (p.total_bytes.load(Ordering::Relaxed), p.total_items.load(Ordering::Relaxed), p.done_items.load(Ordering::Relaxed));
-    let mut parts = vec![current];
+    let mut parts = Vec::new();
     if p.counting.load(Ordering::Relaxed) {
         parts.push(format!("{} found so far", plural(ti, "item")));
     } else {
@@ -537,8 +538,7 @@ pub fn detail(job: &Job) -> String {
             parts.push(if left < 60.0 { format!("about {} s left", left.ceil().max(1.0)) } else { format!("about {} min left", (left / 60.0).ceil()) });
         }
     }
-    parts.retain(|s| !s.is_empty());
-    parts.join(" · ")
+    (current, parts.join(" · "))
 }
 
 /// 12,345

@@ -9,14 +9,13 @@
 use olo_sync::Mutex;
 use std::sync::Arc;
 
+use olo_kit::{
+    Child, ClickEvent, Cx, Element, IntoElement, Painter, ParentElement as _, Styled as _, WindowCx, canvas, div, metrics as m, point, px, size, style, theme,
+    widgets::{BBox, Button, StringView, TextControl, TextField, TextFieldEvent},
+};
 use olo_tg::{
     account::{self, Api},
     signin::{SignIn, Step, Update},
-};
-use olo_ui::{
-    gpui::{AnyElement, App, Context, Entity, IntoElement, ParentElement as _, Styled as _, Window, canvas, div, point, px, size},
-    metrics as m, style, theme,
-    widgets::{BBox, Button, StringView, TextControl, TextField, TextFieldEvent},
 };
 
 use crate::{
@@ -41,17 +40,17 @@ enum Known {
 pub struct State {
     known: Arc<Mutex<Known>>,
     /// Typing an API ID and hash.
-    api_id: Entity<TextField>,
-    api_hash: Entity<TextField>,
+    api_id: Child<TextField>,
+    api_hash: Child<TextField>,
     editing_api: bool,
     /// Signing in: the flow, where it is, and what's typed.
     signin: Option<SignIn>,
     step: Arc<Mutex<Option<Update>>>,
-    phone: Entity<TextField>,
-    code: Entity<TextField>,
-    password: Entity<TextField>,
+    phone: Child<TextField>,
+    code: Child<TextField>,
+    password: Child<TextField>,
     problem: Option<String>,
-    proxy: olo_ui::Proxy,
+    proxy: olo_kit::Proxy,
     /// A frame is due (the QR code changes now and then).
     ticking: bool,
 }
@@ -62,12 +61,12 @@ fn state_of(v: &mut PanelView) -> Option<&mut State> {
 }
 
 impl State {
-    pub fn new(cx: &mut Context<PanelView>) -> State {
-        let field = |cx: &mut Context<PanelView>, hint: &str, password: bool| {
+    pub fn new(cx: &mut Cx<PanelView>) -> State {
+        let field = |cx: &mut Cx<PanelView>, hint: &str, password: bool| {
             let hint = hint.to_owned();
-            let f = olo_ui::widgets::text_field(cx, |f| f.hint(hint).password(password));
+            let f = crate::form::text_field(cx, |f| f.hint(hint).password(password));
             // Return does what the step's default button does.
-            cx.subscribe(&f, |v, _, e: &TextFieldEvent, cx| match e {
+            cx.subscribe(&f, |v, e: &TextFieldEvent, cx| match e {
                 TextFieldEvent::Entered => {
                     if let Some(st) = state_of(v) {
                         st.enter(cx);
@@ -76,8 +75,7 @@ impl State {
                 }
                 TextFieldEvent::Changed => cx.notify(),
                 _ => {}
-            })
-            .detach();
+            });
             f
         };
         let api_id = field(cx, "1234567", false);
@@ -86,7 +84,7 @@ impl State {
         let code = field(cx, "12345", false);
         let password = field(cx, "", true);
         let mut st =
-            State { known: Arc::default(), api_id, api_hash, editing_api: false, signin: None, step: Arc::default(), phone, code, password, problem: None, proxy: olo_ui::proxy(cx), ticking: false };
+            State { known: Arc::default(), api_id, api_hash, editing_api: false, signin: None, step: Arc::default(), phone, code, password, problem: None, proxy: olo_kit::proxy(), ticking: false };
         // (Tests, the layout lint, never read the keyring.)
         if cfg!(test) {
             *st.known.lock().unwrap() = Known::NoApi;
@@ -111,8 +109,8 @@ fn status() -> Known {
 
 /// Tell a running Telegram to use the account as it is now.
 fn tell_telegram() {
-    if olo_ui::instance::running("olo.telegram") {
-        olo_ui::instance::forward("olo.telegram", &["--reconnect".to_owned()]);
+    if olo_kit::instance::running("olo.telegram") {
+        olo_kit::instance::forward("olo.telegram", &["--reconnect".to_owned()]);
     }
 }
 
@@ -125,7 +123,7 @@ impl State {
         });
     }
 
-    fn save_api(&mut self, cx: &mut Context<PanelView>) {
+    fn save_api(&mut self, cx: &mut Cx<PanelView>) {
         let Ok(id) = self.api_id.read(cx).text().trim().parse::<i32>() else {
             self.problem = Some("The API ID is a number.".into());
             return;
@@ -149,7 +147,7 @@ impl State {
         });
     }
 
-    fn start_signin(&mut self, api: Api, cx: &mut Context<PanelView>) {
+    fn start_signin(&mut self, api: Api, cx: &mut Cx<PanelView>) {
         let (step, proxy) = (self.step.clone(), self.proxy.clone());
         *step.lock().unwrap() = Some(Update { step: Step::Starting, problem: None });
         self.code.update(cx, |f, cx| f.set_text("", cx));
@@ -182,7 +180,7 @@ impl State {
     }
 
     /// Return in a field: the step's default button, if it can be used.
-    fn enter(&mut self, cx: &mut Context<PanelView>) {
+    fn enter(&mut self, cx: &mut Cx<PanelView>) {
         let step = self.step.lock().unwrap().clone().map(|u| u.step);
         match (&step, &self.signin) {
             (Some(Step::Phone), Some(s)) if self.phone_ready(cx) => s.phone(self.phone.read(cx).text()),
@@ -196,39 +194,39 @@ impl State {
         }
     }
 
-    fn phone_ready(&self, cx: &App) -> bool {
+    fn phone_ready(&self, cx: &WindowCx) -> bool {
         self.phone.read(cx).text().chars().filter(char::is_ascii_digit).count() >= 6
     }
 
-    fn code_ready(&self, cx: &App) -> bool {
+    fn code_ready(&self, cx: &WindowCx) -> bool {
         self.code.read(cx).text().chars().filter(char::is_ascii_digit).count() >= 4
     }
 }
 
 /// `url` as a QR code in `r`, black on white with a quiet zone, each
 /// module whole device pixels.
-fn qr(window: &mut Window, r: olo_ui::gpui::Bounds<olo_ui::gpui::Pixels>, url: &str) {
-    window.paint_quad(olo_ui::gpui::fill(r, olo_ui::gpui::white()).corner_radii(px(8.0)));
+fn qr(g: &mut Painter, r: olo_kit::Bounds<olo_kit::Pixels>, url: &str) {
+    g.paint_quad(olo_kit::fill(r, olo_kit::white()).corner_radii(px(8.0)));
     let Ok(code) = qrcode::QrCode::new(url.as_bytes()) else { return };
     let n = code.width();
     let colors = code.to_colors();
-    let s = window.scale_factor();
+    let s = g.scale_factor();
     let module = (((f32::from(r.size.width) - 16.0) / n as f32) * s).floor().max(1.0) / s;
     let total = module * n as f32;
     let origin = point(px(((f32::from(r.center().x) - total / 2.0) * s).round() / s), px(((f32::from(r.center().y) - total / 2.0) * s).round() / s));
     for y in 0..n {
         for x in 0..n {
             if colors[y * n + x] == qrcode::Color::Dark {
-                let b = olo_ui::gpui::Bounds { origin: point(origin.x + px(x as f32 * module), origin.y + px(y as f32 * module)), size: size(px(module), px(module)) };
-                style::fill_rect(window, b, olo_ui::gpui::black());
+                let b = olo_kit::Bounds { origin: point(origin.x + px(x as f32 * module), origin.y + px(y as f32 * module)), size: size(px(module), px(module)) };
+                style::fill_rect(g, b, olo_kit::black());
             }
         }
     }
 }
 
 /// Something done to the Telegram part's state from a button.
-fn act(ui: &Ui, f: impl Fn(&mut State, &mut Context<PanelView>) + 'static) -> impl Fn(&mut Window, &mut App) + 'static {
-    ui.on_click_view(move |v, _, cx| {
+fn act(ui: &Ui, f: impl Fn(&mut State, &mut Cx<PanelView>) + 'static) -> impl Fn(&ClickEvent, &mut WindowCx) + 'static {
+    ui.on_click_view(move |v, cx| {
         if let Some(st) = state_of(v) {
             f(st, cx);
         }
@@ -237,7 +235,7 @@ fn act(ui: &Ui, f: impl Fn(&mut State, &mut Context<PanelView>) + 'static) -> im
 }
 
 /// Cancel: the sign-in given up.
-fn cancel(ui: &Ui) -> impl Fn(&mut Window, &mut App) + 'static {
+fn cancel(ui: &Ui) -> impl Fn(&ClickEvent, &mut WindowCx) + 'static {
     act(ui, |st, _| st.end_signin())
 }
 
@@ -248,7 +246,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         tell_telegram();
         st.end_signin();
     }
-    let failure = style::c(theme::palette(ui.cx).failure);
+    let failure = style::c(theme::palette().failure);
     let status = match &known {
         Known::Checking => "Checking…".to_owned(),
         Known::NoApi => "Not set up: Telegram needs an API ID to sign in with.".to_owned(),
@@ -259,11 +257,11 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         },
         Known::Failed(why) => why.clone(),
     };
-    let mut items: Vec<AnyElement> = vec![
-        service("telegram", "Telegram (in Applications) shows your chats and messages, and notifies you of new ones. Olo keeps the sign-in in your login keyring.", status).into_any_element(),
-        div().h(px(m::TIGHT)).into_any_element(),
+    let mut items: Vec<Element> = vec![
+        service("telegram", "Telegram (in Applications) shows your chats and messages, and notifies you of new ones. Olo keeps the sign-in in your login keyring.", status).into_element(),
+        div().h(px(m::TIGHT)).into_element(),
     ];
-    let problem_text = |p: &Option<String>| p.as_ref().map(|p| StringView::new(p.clone()).color(failure).wrap(true).into_any_element());
+    let problem_text = |p: &Option<String>| p.as_ref().map(|p| StringView::new(p.clone()).color(failure).wrap(true).into_element());
 
     // Signing in.
     if let Some(Update { step, problem }) = &step
@@ -272,11 +270,11 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         let problem = problem.clone().or(st.problem.clone());
         match step {
             Step::Starting | Step::Working => {
-                items.push(StringView::new("Asking Telegram…").dim(true).into_any_element());
-                items.push(buttons(vec![Button::new("Cancel").on_click(cancel(ui)).into_any_element()]).into_any_element());
+                items.push(StringView::new("Asking Telegram…").dim(true).into_element());
+                items.push(buttons(vec![Button::new("Cancel").on_click(cancel(ui)).into_element()]).into_element());
             }
             Step::Phone => {
-                items.push(TextControl::new(st.phone.clone()).label("Phone number:").into_any_element());
+                items.push(TextControl::new(ui.cx, &st.phone).label("Phone number:").into_element());
                 items.extend(problem_text(&problem));
                 let ready = st.phone_ready(ui.cx);
                 let send = act(ui, |st, cx| {
@@ -291,16 +289,16 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 });
                 items.push(
                     buttons(vec![
-                        Button::new("Send Code").default(true).enabled(ready).on_click(send).into_any_element(),
-                        Button::new("Use a QR Code").on_click(qr_code).into_any_element(),
-                        Button::new("Cancel").on_click(cancel(ui)).into_any_element(),
+                        Button::new("Send Code").default(true).enabled(ready).on_click(send).into_element(),
+                        Button::new("Use a QR Code").on_click(qr_code).into_element(),
+                        Button::new("Cancel").on_click(cancel(ui)).into_element(),
                     ])
-                    .into_any_element(),
+                    .into_element(),
                 );
             }
             Step::Code { .. } => {
-                items.push(StringView::new("Telegram sent a code to Telegram on your other devices (or by text message). Type it here.").dim(true).wrap(true).into_any_element());
-                items.push(TextControl::new(st.code.clone()).label("Code:").into_any_element());
+                items.push(StringView::new("Telegram sent a code to Telegram on your other devices (or by text message). Type it here.").dim(true).wrap(true).into_element());
+                items.push(TextControl::new(ui.cx, &st.code).label("Code:").into_element());
                 items.extend(problem_text(&problem));
                 let ready = st.code_ready(ui.cx);
                 let sign_in = act(ui, |st, cx| {
@@ -309,15 +307,14 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                     }
                 });
                 items.push(
-                    buttons(vec![Button::new("Sign In").default(true).enabled(ready).on_click(sign_in).into_any_element(), Button::new("Cancel").on_click(cancel(ui)).into_any_element()])
-                        .into_any_element(),
+                    buttons(vec![Button::new("Sign In").default(true).enabled(ready).on_click(sign_in).into_element(), Button::new("Cancel").on_click(cancel(ui)).into_element()]).into_element(),
                 );
             }
             Step::Password { hint } => {
-                items.push(StringView::new("This account has a two-step password.").dim(true).wrap(true).into_any_element());
+                items.push(StringView::new("This account has a two-step password.").dim(true).wrap(true).into_element());
                 let h = hint.clone().map(|h| format!("Hint: {h}")).unwrap_or_default();
                 st.password.update(ui.cx, |f, cx| f.set_hint(h, cx));
-                items.push(TextControl::new(st.password.clone()).label("Password:").into_any_element());
+                items.push(TextControl::new(ui.cx, &st.password).label("Password:").into_element());
                 items.extend(problem_text(&problem));
                 let ready = !st.password.read(ui.cx).text().is_empty();
                 let sign_in = act(ui, |st, cx| {
@@ -327,56 +324,47 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                     st.password.update(cx, |f, cx| f.clear_secret(cx));
                 });
                 items.push(
-                    buttons(vec![Button::new("Sign In").default(true).enabled(ready).on_click(sign_in).into_any_element(), Button::new("Cancel").on_click(cancel(ui)).into_any_element()])
-                        .into_any_element(),
+                    buttons(vec![Button::new("Sign In").default(true).enabled(ready).on_click(sign_in).into_element(), Button::new("Cancel").on_click(cancel(ui)).into_element()]).into_element(),
                 );
             }
             Step::Qr { url } => {
-                items.push(StringView::new("On your phone, open Telegram ▸ Settings ▸ Devices ▸ Link Desktop Device, and point it at this code.").dim(true).wrap(true).into_any_element());
+                items.push(StringView::new("On your phone, open Telegram ▸ Settings ▸ Devices ▸ Link Desktop Device, and point it at this code.").dim(true).wrap(true).into_element());
                 let url = url.clone();
                 items.push(
                     div()
                         .flex()
                         .justify_center()
                         .child(
-                            canvas(
-                                |_, _, _| {},
-                                move |b, _, window, cx| {
-                                    qr(window, b, &url);
-                                    if !url.is_empty() {
-                                        olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Image", name: Some(format!("QR code: {url}").into()), bounds: b, ..Default::default() });
-                                    }
-                                },
-                            )
+                            canvas(move |g, b| {
+                                qr(g, b, &url);
+                                if !url.is_empty() {
+                                    olo_kit::agent::record(g, olo_kit::agent::Node { role: "Image", name: Some(format!("QR code: {url}").into()), bounds: b, ..Default::default() });
+                                }
+                            })
                             .w(px(188.0))
                             .h(px(188.0)),
                         )
                         .h(px(196.0))
-                        .into_any_element(),
+                        .into_element(),
                 );
                 items.extend(problem_text(&problem));
                 let phone = act(ui, |st, _| *st.step.lock().unwrap() = Some(Update { step: Step::Phone, problem: None }));
-                items.push(buttons(vec![Button::new("Use a Phone Number").on_click(phone).into_any_element(), Button::new("Cancel").on_click(cancel(ui)).into_any_element()]).into_any_element());
+                items.push(buttons(vec![Button::new("Use a Phone Number").on_click(phone).into_element(), Button::new("Cancel").on_click(cancel(ui)).into_element()]).into_element());
                 // The code changes now and then.
                 if !st.ticking {
                     st.ticking = true;
-                    ui.cx
-                        .spawn(async move |view, cx| {
-                            cx.background_executor().timer(std::time::Duration::from_secs(1)).await;
-                            let _ = view.update(cx, |v, cx| {
-                                if let Some(st) = state_of(v) {
-                                    st.ticking = false;
-                                }
-                                cx.notify();
-                            });
-                        })
-                        .detach();
+                    ui.cx.after_do(std::time::Duration::from_secs(1), |v, cx| {
+                        if let Some(st) = state_of(v) {
+                            st.ticking = false;
+                        }
+                        cx.notify();
+                    });
                 }
             }
             Step::Done(_) => {}
             Step::Failed(why) => {
-                items.push(StringView::new(why.clone()).color(failure).wrap(true).into_any_element());
-                items.push(buttons(vec![Button::new("OK").default(true).on_click(cancel(ui)).into_any_element()]).into_any_element());
+                items.push(StringView::new(why.clone()).color(failure).wrap(true).into_element());
+                items.push(buttons(vec![Button::new("OK").default(true).on_click(cancel(ui)).into_element()]).into_element());
             }
         }
         ui.add(BBox::new("Telegram").children(items));
@@ -389,14 +377,14 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             StringView::new("Make one at my.telegram.org ▸ API development tools (sign in there with your phone number), then copy its App api_id and api_hash here.")
                 .dim(true)
                 .wrap(true)
-                .into_any_element(),
+                .into_element(),
         );
-        let divider = divider_for(ui.window, &["API ID:", "API hash:"]);
-        items.push(TextControl::new(st.api_id.clone()).label("API ID:").divider(divider).into_any_element());
-        items.push(TextControl::new(st.api_hash.clone()).label("API hash:").divider(divider).into_any_element());
+        let divider = divider_for(&["API ID:", "API hash:"]);
+        items.push(TextControl::new(ui.cx, &st.api_id).label("API ID:").divider(divider).into_element());
+        items.push(TextControl::new(ui.cx, &st.api_hash).label("API hash:").divider(divider).into_element());
         items.extend(problem_text(&st.problem));
         let ready = !st.api_id.read(ui.cx).text().trim().is_empty() && !st.api_hash.read(ui.cx).text().trim().is_empty();
-        let mut row = vec![Button::new("Save").default(true).enabled(ready).on_click(act(ui, |st, cx| st.save_api(cx))).into_any_element()];
+        let mut row = vec![Button::new("Save").default(true).enabled(ready).on_click(act(ui, |st, cx| st.save_api(cx))).into_element()];
         if known != Known::NoApi {
             row.push(
                 Button::new("Cancel")
@@ -404,7 +392,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                         st.editing_api = false;
                         st.problem = None;
                     }))
-                    .into_any_element(),
+                    .into_element(),
             );
         }
         row.push(
@@ -412,24 +400,24 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 .on_click(|_, _| {
                     let _ = olo_xdg::open::open(&olo_xdg::open::Target::Url(MY_TELEGRAM.into()));
                 })
-                .into_any_element(),
+                .into_element(),
         );
-        items.push(buttons(row).into_any_element());
+        items.push(buttons(row).into_element());
         ui.add(BBox::new("Telegram").children(items));
         return;
     }
-    let row: Vec<AnyElement> = match &known {
+    let row: Vec<Element> = match &known {
         Known::SignedOut(api) => {
             let (a, b) = (api.clone(), api.clone());
             vec![
-                Button::new("Sign In…").default(true).on_click(act(ui, move |st, cx| st.start_signin(a.clone(), cx))).into_any_element(),
+                Button::new("Sign In…").default(true).on_click(act(ui, move |st, cx| st.start_signin(a.clone(), cx))).into_element(),
                 Button::new("Change API ID…")
                     .on_click(act(ui, move |st, cx| {
                         st.api_id.update(cx, |f, cx| f.set_text(b.id.to_string(), cx));
                         st.api_hash.update(cx, |f, cx| f.clear_secret(cx));
                         st.editing_api = true;
                     }))
-                    .into_any_element(),
+                    .into_element(),
             ]
         }
         Known::SignedIn(..) => vec![
@@ -437,12 +425,12 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 .on_click(|_, _| {
                     let _ = olo_xdg::open::spawn_app(&["olo-telegram".into()], "olo.telegram");
                 })
-                .into_any_element(),
-            Button::new("Sign Out").on_click(act(ui, |st, _| st.sign_out())).into_any_element(),
+                .into_element(),
+            Button::new("Sign Out").on_click(act(ui, |st, _| st.sign_out())).into_element(),
         ],
-        Known::Failed(_) => vec![Button::new("Check Again").on_click(act(ui, |st, _| st.check())).into_any_element()],
+        Known::Failed(_) => vec![Button::new("Check Again").on_click(act(ui, |st, _| st.check())).into_element()],
         _ => Vec::new(),
     };
-    items.push(buttons(row).into_any_element());
+    items.push(buttons(row).into_element());
     ui.add(BBox::new("Telegram").children(items));
 }

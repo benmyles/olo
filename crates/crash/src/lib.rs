@@ -1,6 +1,6 @@
 //! What every Olo program leaves when it crashes, so the crash can be
 //! looked into after: [`install`], the first thing `main` does
-//! (`olo_ui::run` does it for the kit's apps; a test checks every
+//! (`olo_kit::run` does it for the kit's apps; a test checks every
 //! program does, tests/every_program.rs).
 //!
 //! - **A report**, one JSON file a crash in `~/.local/state/olo/crashes/`
@@ -235,7 +235,7 @@ fn prune(dir: &Path, program: &str) {
             Some((at, e.path()))
         })
         .collect();
-    ours.sort_by(|a, b| b.0.cmp(&a.0));
+    ours.sort_by_key(|a| std::cmp::Reverse(a.0));
     for (_, path) in ours.into_iter().skip(KEPT) {
         let _ = std::fs::remove_file(path);
     }

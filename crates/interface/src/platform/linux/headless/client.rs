@@ -93,8 +93,10 @@ impl LinuxClient for HeadlessClient {
         None
     }
 
-    fn open_window(&self, _handle: WindowId, _params: WindowParams) -> anyhow::Result<Box<dyn PlatformWindow>> {
-        anyhow::bail!("neither DISPLAY nor WAYLAND_DISPLAY is set. You can run in headless mode");
+    /// A window with no display (`HeadlessWindow`): laid out and drawn
+    /// to nothing, for the layout lint's tests.
+    fn open_window(&self, _handle: WindowId, params: WindowParams) -> anyhow::Result<Box<dyn PlatformWindow>> {
+        Ok(Box::new(super::HeadlessWindow::new(params)))
     }
 
     fn compositor_name(&self) -> &'static str {

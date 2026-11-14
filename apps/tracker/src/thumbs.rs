@@ -11,7 +11,7 @@ use std::{
     time::SystemTime,
 };
 
-use olo_ui::{Proxy, gpui::RenderImage};
+use olo_kit::{Proxy, RenderImage};
 
 type Key = (PathBuf, u32, Option<SystemTime>);
 
@@ -23,7 +23,7 @@ enum Slot {
 static CACHE: Mutex<Option<HashMap<Key, Slot>>> = Mutex::new(None);
 static WAKE: OnceLock<Proxy> = OnceLock::new();
 
-/// Who to tell when one is ready (sent [`crate::Msg::Thumb`]).
+/// Who to tell when one is ready (sent [`crate::ToHub::Thumb`]).
 pub fn init(proxy: Proxy) {
     let _ = WAKE.set(proxy);
 }
@@ -32,7 +32,7 @@ pub fn init(proxy: Proxy) {
 /// AppImage's icon).
 pub fn wake() {
     if let Some(p) = WAKE.get() {
-        p.send(crate::Msg::Thumb);
+        p.send(crate::ToHub::Thumb);
     }
 }
 
@@ -54,7 +54,7 @@ fn worker() -> &'static Mutex<mpsc::Sender<Key>> {
 }
 
 /// The picture at `path` no bigger than `px` pixels on a side, its shape
-/// kept, as GPUI draws it (BGRA).
+/// kept, as the kit draws it (BGRA).
 fn make(path: &Path, px: u32) -> Option<Arc<RenderImage>> {
     let (img, _) = olo_images::open(path).ok()?;
     let mut img = img.thumbnail(px, px).to_rgba8();

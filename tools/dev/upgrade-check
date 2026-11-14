@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Upgrade check: windows must come back from an Olo upgrade exactly as
-they were (display, workspace, frame, minimized), auto-tiled ones too.
+they were (display, workspace, frame, minimized, and which is over
+which), auto-tiled ones too.
 
   upgrade-check NAME [--times N] [--reload-only] [--no-touch] [--auto-tiled]
 
@@ -12,8 +13,12 @@ one, outside programs). Then each round:
   * snapshots every window: each workspace of each display is shown in
     turn (a window on one not showing has no frame), then the ones
     showing before;
-  * upgrades as olo-session does: every Olo binary in target/debug is
-    touched (so each program sees itself replaced), every Olo program of
+  * upgrades as olo-session does: every Olo binary of the build the
+    session runs is touched (so each program sees itself replaced:
+    target/debug, or as tsession is told, `TSESSION_PROFILE` and
+    `CARGO_TARGET_DIR`; touching target/release has the person's own
+    session offer an upgrade, so run a release build from a copy in
+    another target directory), every Olo program of
     this session gets SIGURG and re-executes, and app_server is restarted
     in place at once (`tsession reload`), so the apps' windows close and
     come back while app_server goes;
@@ -23,8 +28,8 @@ one, outside programs). Then each round:
 a Terminal, a StyledEdit and a Tracker opened into it if it has fewer
 than three windows (an in-place reload put them in each other's tiles
 for a while, the kit claiming its place only after a window's first
-commit; run it so after changing the kit's windows or GPUI's Wayland
-platform too).
+commit; run it so after changing the kit's windows or the Interface
+Kit's Wayland platform too).
 
 --reload-only restarts app_server without the SIGURGs (the apps
 re-execute as they reconnect: windows all come back at once);
@@ -35,6 +40,9 @@ XDG_CONFIG_HOME in their environment, never anyone else's.
 import json, os, subprocess, sys, time
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# (As tsession finds the build it runs.)
+TARGET = os.environ.get("CARGO_TARGET_DIR", os.path.join(REPO, "target"))
+BUILD = os.path.join(TARGET, os.environ.get("TSESSION_PROFILE", "debug"))
 TS = ["env", "-u", "WAYLAND_DISPLAY", sys.executable, os.path.join(REPO, "tools/dev/tsession")]
 
 
@@ -79,6 +87,10 @@ def snapshot(name):
         snap.setdefault(key(w), []).append(shape(w))
     for v in snap.values():
         v.sort(key=lambda s: json.dumps(s, sort_keys=True))
+    # Which is over which, of those showing: bottom first, by what each
+    # is (two windows of one title are told apart by their frames).
+    stack = [(w["app_id"], w["title"], json.dumps(w.get("frame"), sort_keys=True)) for w in sorted((w for w in now if w.get("stack") is not None), key=lambda w: -w["stack"])]
+    snap[("", "the stacking, bottom first")] = [f"{a} “{t}”" for a, t, _ in stack] if len(set(stack)) == len(stack) else stack
     return snap, now, ipc(name, {"type": "workspaces"})
 
 
@@ -120,7 +132,7 @@ def nudge(name):
         except OSError:
             continue
         prog = os.path.basename(exe)
-        if exe.startswith(REPO + "/target/") and prog.startswith("olo-") and prog not in ("olo-app-server", "olo-session", "olo-wlproxy") and want <= envs:
+        if exe.startswith(os.path.join(TARGET, "")) and prog.startswith("olo-") and prog not in ("olo-app-server", "olo-session", "olo-wlproxy") and want <= envs:
             os.kill(int(pid), 23)  # SIGURG, as olo-session's nudge
 
 
@@ -147,7 +159,7 @@ def main():
     bad = 0
     for i in range(times):
         if touch:
-            d = os.path.join(REPO, "target/debug")
+            d = BUILD
             for f in os.listdir(d):
                 p = os.path.join(d, f)
                 if f.startswith("olo-") and "." not in f and os.path.isfile(p):

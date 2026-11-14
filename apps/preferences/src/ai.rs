@@ -3,8 +3,8 @@
 //! the command palette's /ask, and the emoji picker's suggestions; and
 //! the model and effort Olo starts Claude Code with for a task.
 
+use olo_kit::SharedString;
 use olo_protocol::{AI_EFFORTS, AI_MODELS, AiFeature, CLAUDE_MODELS, Settings, shortcuts};
-use olo_ui::gpui::SharedString;
 
 use crate::form::Ui;
 

@@ -2,10 +2,9 @@
 //! touchpad pull the content past an end against a spring (the further,
 //! the harder: Apple's rubber band, a third of the view at most), and it
 //! springs back when they lift; the glide after them, reaching an end,
-//! bounces off it as fast as it came. A wheel stops at the ends. GPUI's
-//! scrolling (`div`'s `overflow_scroll`, `uniform_list`) keeps one for
-//! each scroller, and a view that scrolls itself (the GPUI kit's editor)
-//! keeps its own.
+//! bounces off it as fast as it came. A wheel stops at the ends. The
+//! display thread keeps one for each scroller (`Stage`), and a view that
+//! scrolls itself (the kit's editor, Terminal) keeps its own.
 
 use std::time::Instant;
 

@@ -30,7 +30,8 @@ pub fn set_app_id(app_id: &str) {
     let _ = APP_ID.set(app_id.to_owned());
 }
 
-fn app_id() -> &'static str {
+/// The program's id ("olo.deskcalc"), as `set_app_id` was given it.
+pub fn app_id() -> &'static str {
     APP_ID.get().map_or("", String::as_str)
 }
 
@@ -135,23 +136,28 @@ pub struct Known {
 /// The keys `command` has in this app (as a terminal-style window, `raw`,
 /// presses them): None if the profile doesn't know the command.
 pub fn known(command: &str, raw: bool) -> Option<Known> {
-    type Cache = (u64, HashMap<(String, bool), Option<Known>>);
+    // (A map for each of `raw`, so a command is looked up as it's given:
+    // menus ask for every item at every body, and nothing is made to ask.)
+    type Cache = (u64, [HashMap<String, Option<Known>>; 2]);
     static CACHE: Mutex<Option<Cache>> = Mutex::new(None);
     let generation = GENERATION.load(Ordering::Relaxed);
     let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
     if cache.as_ref().is_none_or(|(g, _)| *g != generation) {
-        *cache = Some((generation, HashMap::new()));
+        *cache = Some((generation, Default::default()));
     }
-    let (_, map) = cache.as_mut()?;
-    map.entry((command.to_owned(), raw))
-        .or_insert_with(|| {
-            let entry = app_keys::app_key(app_id(), command)?;
-            let p = profile();
-            let chords = shortcuts::entry(entry.id).map(|e| e.keys(&p)).unwrap_or_default();
-            let keys = chords.iter().find_map(|c| Some((app_side(c, p.command_key, raw)?, c.label(p.platform))));
-            Some(Known { own: entry.app.is_some(), keys })
-        })
-        .clone()
+    let (_, maps) = cache.as_mut()?;
+    let map = &mut maps[raw as usize];
+    if let Some(known) = map.get(command) {
+        return known.clone();
+    }
+    let known = app_keys::app_key(app_id(), command).map(|entry| {
+        let p = profile();
+        let chords = shortcuts::entry(entry.id).map(|e| e.keys(&p)).unwrap_or_default();
+        let keys = chords.iter().find_map(|c| Some((app_side(c, p.command_key, raw)?, c.label(p.platform))));
+        Known { own: entry.app.is_some(), keys }
+    });
+    map.insert(command.to_owned(), known.clone());
+    known
 }
 
 /// The shortcut `command` has in this app (from the profile), if any.

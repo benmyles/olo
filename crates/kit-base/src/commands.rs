@@ -29,7 +29,7 @@
 //! tab's menu (Open in Tracker);
 //! `{"lose_gpu":true}` → `{"ok":bool}`: debug builds only, mark the
 //! GPU device lost, as a driver reset loses it, to test that the app
-//! comes back (olo-ui's `upgrade::lost_compositor`);
+//! comes back (olo-kit's `upgrade::lost_compositor`);
 //! `{"window_over":{"window":ID,"onto":ID|null,"x":X,"y":Y}}` and
 //! `{"window_dropped":{…}}` → `{"ok":true}`: from app_server, a window of
 //! ours moved over another of ours (surface ids, `onto`'s coordinates),
@@ -183,20 +183,24 @@ pub const MARKS: usize = 1200;
 /// One frame a window drew.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct FrameMark {
-    /// When it took its input, in CLOCK_MONOTONIC microseconds (the
-    /// clock app_server and input events go by).
+    /// When it began to be drawn (olo-kit: by the display thread, with
+    /// what had come in by then), in CLOCK_MONOTONIC microseconds (the
+    /// clock app_server and input events go by): how evenly frames come
+    /// is read from these (`tools/dev/scroll-check`, the benchmark).
     pub at_us: u64,
-    /// How long it took to draw, to handing it to the GPU.
+    /// How long it took, to handing it to the GPU (olo-kit: the
+    /// looper's work on what it shows, and the display thread's drawing
+    /// of it).
     pub us: u32,
     /// Of that, the toolkit's and the app's own code (laying out and
-    /// painting).
+    /// painting: on olo-kit, the looper's work).
     #[serde(default)]
     pub ui_us: u32,
     /// Setting the GPU surface up (made, or its swapchain configured
     /// for a new size).
     #[serde(default)]
     pub setup_us: u32,
-    /// Turning shapes into triangles (none on GPUI, which draws its
+    /// Turning shapes into triangles (none: the Interface Kit draws its
     /// primitives as they are).
     #[serde(default)]
     pub tessellate_us: u32,
@@ -231,6 +235,12 @@ pub struct WindowReview {
     /// A layer surface's namespace ("deskbar"); None for a window.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layer: Option<String>,
+    /// The window is on its way to another size (one that follows what
+    /// it shows, laid out for what just came but not yet as tall): what
+    /// was found is of a window nobody is shown, so a lint asks again
+    /// rather than report it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub resizing: bool,
     pub findings: Vec<crate::review::Finding>,
 }
 
@@ -244,6 +254,7 @@ pub enum Ask {
     Tree(bool),
     Hints(Vec<u32>),
     Focus(u64),
+    FocusIn(FocusIn),
     Frames(bool),
     Review(bool),
     Path(u32),
@@ -251,6 +262,15 @@ pub enum Ask {
     WindowOver(WindowAt),
     WindowDropped(WindowAt),
     Move(crate::moving::MoveTo),
+}
+
+/// A widget of one window to give the keyboard to: `node` is its id in
+/// the tree of the window whose surface has protocol id `surface` (a
+/// tree's ids are its window's own).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct FocusIn {
+    pub surface: u32,
+    pub node: u64,
 }
 
 /// A command to choose in one window's menus.
@@ -281,7 +301,11 @@ pub enum Query {
     Tree(mpsc::Sender<Vec<WindowTree>>),
     /// The trees of the surfaces with these protocol ids, pickable only.
     Hints(Vec<u32>, mpsc::Sender<Vec<WindowTree>>),
+    /// Give the keyboard to the widget with this tree id (in the window
+    /// with the keyboard, else the first that has it).
     Focus(u64),
+    /// The same in the window with this surface; whether it took it.
+    FocusIn(FocusIn, mpsc::Sender<bool>),
     Frames(mpsc::Sender<Vec<FrameTimes>>),
     Review(mpsc::Sender<Vec<WindowReview>>),
     /// The path of the window with the surface with this protocol id.
@@ -395,6 +419,11 @@ pub fn listen(to: impl Fn(Query) + Send + 'static) -> Option<Listening> {
                         to(Query::Focus(id));
                         serde_json::to_string(&serde_json::json!({ "ok": true }))
                     }
+                    Ok(Ask::FocusIn(ask)) => {
+                        let (tx, rx) = mpsc::channel();
+                        to(Query::FocusIn(ask, tx));
+                        serde_json::to_string(&serde_json::json!({ "ok": rx.recv_timeout(WAIT).unwrap_or(false) }))
+                    }
                     Ok(Ask::Tree(_)) => {
                         let (tx, rx) = mpsc::channel();
                         to(Query::Tree(tx));
@@ -495,7 +524,7 @@ pub fn serve(pid: u32, served: Served) -> std::io::Result<()> {
                     tracing::info!(command = %cmd, by = %peer(&s), "asked to choose a command");
                     serde_json::to_string(&serde_json::json!({ "ok": (served.invoke)(&cmd) }))
                 }
-                Ok(Ask::Focus(_) | Ask::LoseGpu(_) | Ask::WindowOver(_) | Ask::WindowDropped(_)) => serde_json::to_string(&serde_json::json!({ "ok": false })),
+                Ok(Ask::Focus(_) | Ask::FocusIn(_) | Ask::LoseGpu(_) | Ask::WindowOver(_) | Ask::WindowDropped(_)) => serde_json::to_string(&serde_json::json!({ "ok": false })),
                 Ok(Ask::Frames(_)) => serde_json::to_string(&Vec::<FrameTimes>::new()),
                 Ok(Ask::Review(_)) => serde_json::to_string(&Vec::<WindowReview>::new()),
                 Ok(Ask::Move(_)) => serde_json::to_string(&crate::moving::Moved::failed(crate::moving::NOT_KIT)),
@@ -563,6 +592,14 @@ pub fn invoke_in(pid: u32, surface: u32, command: &str) -> bool {
 /// with process id `pid`. Blocks briefly: call it off the UI thread.
 pub fn focus(pid: u32, node: u64) -> bool {
     ask(pid, &Ask::Focus(node)).and_then(|a| serde_json::from_str::<serde_json::Value>(&a).ok()).is_some_and(|v| v["ok"] == true)
+}
+
+/// Give the keyboard to the widget with tree id `node` of the window
+/// whose surface has protocol id `surface`, in the kit app with process
+/// id `pid`; whether it took it. Blocks briefly: call it off the UI
+/// thread.
+pub fn focus_in(pid: u32, surface: u32, node: u64) -> bool {
+    ask(pid, &Ask::FocusIn(FocusIn { surface, node })).and_then(|a| serde_json::from_str::<serde_json::Value>(&a).ok()).is_some_and(|v| v["ok"] == true)
 }
 
 /// What the windows of the kit app with process id `pid` show (None if

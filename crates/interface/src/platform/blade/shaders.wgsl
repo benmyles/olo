@@ -1484,13 +1484,21 @@ fn vs_poly_sprite(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index
 
 @fragment
 fn fs_poly_sprite(input: PolySpriteVarying) -> @location(0) vec4<f32> {
-    let sample = textureSample(t_sprite, s_sprite, input.tile_position);
+    let sprite = b_poly_sprites[input.sprite_id];
+    // Olo: sampled within the image's own texels. Drawn bigger or
+    // smaller than it is, its edge pixels would blend with whatever
+    // lies beside it in the atlas (a line at each edge of a zoomed
+    // picture's tiles, another from run to run); a texel a device pixel,
+    // every sample is at a texel's middle already, and stays there.
+    let atlas = vec2<f32>(textureDimensions(t_sprite, 0));
+    let first = (vec2<f32>(sprite.tile.bounds.origin) + vec2<f32>(0.5)) / atlas;
+    let last = (vec2<f32>(sprite.tile.bounds.origin + sprite.tile.bounds.size) - vec2<f32>(0.5)) / atlas;
+    let sample = textureSample(t_sprite, s_sprite, clamp(input.tile_position, first, max(first, last)));
     // Alpha clip after using the derivatives.
     if (any(input.clip_distances < vec4<f32>(0.0))) {
         return vec4<f32>(0.0);
     }
 
-    let sprite = b_poly_sprites[input.sprite_id];
     let distance = quad_sdf(input.position.xy, sprite.bounds, sprite.corner_radii);
 
     var color = sample;

@@ -13,7 +13,7 @@ path = "src/main.rs"
 olo-crash.workspace = true
 olo-greet = { path = "../../crates/greet" }
 olo-theme.workspace = true
-olo-ui.workspace = true
+olo-kit.workspace = true
 olo-xdg.workspace = true
 serde.workspace = true
 serde_json.workspace = true

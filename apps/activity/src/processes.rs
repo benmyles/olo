@@ -6,11 +6,10 @@
 
 use std::rc::Rc;
 
-use olo_ui::{
-    Menu,
+use olo_kit::{
+    Bounds, ClickEvent, Cx, Element, FontWeight, IntoElement as _, Menu, Painter, ParentElement as _, PathBuilder, Pixels, Point, SharedString, Styled as _, canvas, div,
     files::format_size,
-    gpui::{AnyElement, AnyView, Bounds, Context, FontWeight, IntoElement, ParentElement as _, PathBuilder, Pixels, SharedString, StyleRefinement, Styled as _, Window, canvas, div, point, px},
-    menu, metrics as m,
+    menu, metrics as m, point, px,
     search::{Facet, FilterBar, Query},
     style::{self, c},
     theme,
@@ -103,7 +102,7 @@ fn matches(q: &Query, p: &Proc) -> bool {
 
 fn compare(col: usize, a: &Proc, b: &Proc) -> std::cmp::Ordering {
     let o = match col {
-        0 => olo_ui::files::natural_cmp(&a.name, &b.name),
+        0 => olo_kit::files::natural_cmp(&a.name, &b.name),
         1 => a.pid.cmp(&b.pid),
         2 => a.user.cmp(&b.user),
         3 => a.cpu.total_cmp(&b.cpu),
@@ -272,7 +271,7 @@ fn row_menu(app: &Activity, pids: &[i32]) -> Menu {
 }
 
 /// The filters' menus for the processes now (made again when they change).
-fn facets_now(app: &mut Activity, cx: &mut Context<Activity>) -> Rc<Vec<Facet>> {
+fn facets_now(app: &mut Activity, cx: &mut Cx<Activity>) -> Rc<Vec<Facet>> {
     if let Some((g, f)) = &app.facets
         && *g == app.generation
     {
@@ -342,7 +341,7 @@ fn short_gpu_name(name: &str) -> String {
 }
 
 /// An open triangle points down, a closed one right.
-fn triangle(window: &mut Window, mid: olo_ui::gpui::Point<Pixels>, open: bool, color: olo_ui::gpui::Hsla) {
+fn triangle(g: &mut Painter, mid: Point<Pixels>, open: bool, color: olo_kit::Hsla) {
     let pts = if open { [(-4.0, -2.0), (4.0, -2.0), (0.0, 3.0)] } else { [(-2.0, -4.0), (3.0, 0.0), (-2.0, 4.0)] };
     let mut path = PathBuilder::fill();
     path.move_to(mid + point(px(pts[0].0), px(pts[0].1)));
@@ -350,13 +349,12 @@ fn triangle(window: &mut Window, mid: olo_ui::gpui::Point<Pixels>, open: bool, c
     path.line_to(mid + point(px(pts[2].0), px(pts[2].1)));
     path.close();
     if let Ok(path) = path.build() {
-        window.paint_path(path, color);
+        g.paint_path(path, color);
     }
 }
 
-/// The list of processes, for a cached `Part` of its own.
-pub fn list(app: &mut Activity, _: &mut Window, cx: &mut Context<Activity>) -> AnyElement {
-    let me = cx.entity();
+/// The list of processes.
+fn list(app: &mut Activity, cx: &mut Cx<Activity>) -> Element {
     let rows = rows_now(app);
     // The selection follows its processes as rows move, and each goes
     // when it leaves the list (filtered out or quit), so an action never
@@ -367,24 +365,24 @@ pub fn list(app: &mut Activity, _: &mut Window, cx: &mut Context<Activity>) -> A
     let at: std::collections::BTreeSet<usize> = app.selected.iter().filter_map(|pid| rows.pids.iter().position(|p| p == pid)).collect();
     let first = at.iter().next().copied();
     let reveal = std::mem::take(&mut app.reveal_selected);
-    let sort = app.settings.sort;
-    app.list.update(cx, |l, _| {
-        l.state.sort = sort;
-        l.state.selected = at.clone();
+    {
+        let mut state = app.list.state_mut();
+        state.sort = app.settings.sort;
         // (The keyboard's place and a range's start stay where they were
         // while still chosen: they move with their rows.)
-        if l.state.cursor.is_none_or(|c| !at.contains(&c)) {
-            l.state.cursor = first;
+        if state.cursor.is_none_or(|c| !at.contains(&c)) {
+            state.cursor = first;
         }
-        if l.state.anchor.is_none_or(|c| !at.contains(&c)) {
-            l.state.anchor = first;
+        if state.anchor.is_none_or(|c| !at.contains(&c)) {
+            state.anchor = first;
         }
-        if reveal && let Some(r) = first {
-            l.reveal(r);
-        }
-    });
+        state.selected = at;
+    }
+    if reveal && let Some(r) = first {
+        app.list.reveal(cx, r);
+    }
 
-    let columns = vec![
+    let mut columns = vec![
         Column::new("Name", 200.0),
         Column::new("ID", 64.0).right(),
         Column::new("User", 72.0),
@@ -403,7 +401,6 @@ pub fn list(app: &mut Activity, _: &mut Window, cx: &mut Context<Activity>) -> A
     // A column for each GPU (% of it this process keeps busy), after the
     // rest (so a sort kept from before is the same column), named by the
     // GPU: "Intel GPU", "NVIDIA GPU".
-    let mut columns = columns;
     let gpu_names: Vec<String> = app.system.gpus.iter().map(|g| short_gpu_name(&g.name)).collect();
     for (i, name) in gpu_names.iter().enumerate() {
         let taken = gpu_names[..i].contains(name);
@@ -417,22 +414,17 @@ pub fn list(app: &mut Activity, _: &mut Window, cx: &mut Context<Activity>) -> A
         columns.push(Column::new(SharedString::from(title), 96.0).right());
     }
     let triangles = app.triangles.clone();
-    let (cell_me, cell_rows, cell_triangles) = (me.clone(), rows.clone(), triangles.clone());
-    let (key_me, key_rows, columns_n) = (me.clone(), rows.clone(), columns.len());
-    let names = rows.clone();
-    let (press_me, press_rows) = (me.clone(), rows.clone());
-    let (select_me, select_rows) = (me.clone(), rows.clone());
-    let (open_me, open_rows) = (me.clone(), rows.clone());
-    let (menu_me, menu_rows) = (me.clone(), rows.clone());
-    let sort_me = me.clone();
-    let list = ColumnListView::new("activity-processes", &app.list, columns, rows.refs.len(), move |cell, window, cx| {
+    let (cell_rows, cell_triangles) = (rows.clone(), triangles.clone());
+    let (key_rows, columns_n) = (rows.clone(), columns.len());
+    let (names, select_rows, press_rows, open_rows, menu_rows) = (rows.clone(), rows.clone(), rows.clone(), rows.clone(), rows.clone());
+    let list = ColumnListView::new(cx, "activity-processes", &app.list, columns, rows.refs.len(), move |app: &Activity, cell, g| {
         let Some(&r) = cell_rows.refs.get(cell.row) else { return };
-        let (text, tree) = cell_text(cell_me.read(cx), r, cell.column);
+        let (text, tree) = cell_text(app, r, cell.column);
         if let Some((depth, open)) = tree {
             let x = cell.bounds.left() + px(m::CELL_INSET - 4.0 + depth as f32 * INDENT);
             if let Some(open) = open {
                 let mid = point(x + px(TRIANGLE / 2.0), cell.bounds.center().y);
-                triangle(window, mid, open, cell.text_color);
+                triangle(g, mid, open, cell.text_color);
                 let hit = Bounds::from_corners(point(x - px(2.0), cell.bounds.top()), point(x + px(TRIANGLE + 2.0), cell.bounds.bottom()));
                 cell_triangles.borrow_mut().insert(cell.row, hit);
             } else {
@@ -440,117 +432,100 @@ pub fn list(app: &mut Activity, _: &mut Window, cx: &mut Context<Activity>) -> A
             }
             cell.bounds = Bounds::from_corners(point(x + px(TRIANGLE + 2.0 - m::CELL_INSET), cell.bounds.top()), cell.bounds.bottom_right());
         }
-        cell.text(window, cx, text);
+        cell.text(g, text);
     })
     .empty_text("No processes match.")
     // A row is drawn again only when what it says does (most of a second's
     // samples change a few rows' figures).
-    .row_key(move |row, cx| {
+    .row_key(move |app: &Activity, row| {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
         if let Some(&r) = key_rows.refs.get(row) {
-            let app = key_me.read(cx);
             for column in 0..columns_n {
                 cell_text(app, r, column).hash(&mut h);
             }
         }
         h.finish()
     })
-    .type_select(move |i| names.names.get(i).cloned().unwrap_or_default())
-    .on_sort(move |_, cx| {
-        sort_me.update(cx, |a, cx| {
-            a.settings.sort = a.list.read(cx).state.sort;
-            a.rows_cache = None;
-            a.store();
-            cx.notify();
-        })
-    })
-    .on_select(move |_, cx| {
-        let pids: Vec<i32> = select_me.read(cx).list.read(cx).state.selected.iter().filter_map(|&r| select_rows.pids.get(r).copied()).collect();
-        select_me.update(cx, |a, cx| {
-            a.selected = pids;
-            cx.notify();
-        });
-    })
+    .type_select(move |_: &Activity, i| names.names.get(i).cloned().unwrap_or_default())
+    .on_sort(cx.listener(|a: &mut Activity, _: &(), cx| {
+        a.settings.sort = a.list.state().sort;
+        a.rows_cache = None;
+        a.store();
+        cx.invalidate();
+    }))
+    .on_select(cx.listener(move |a: &mut Activity, _: &(), cx| {
+        let pids: Vec<i32> = a.list.state().selected.iter().filter_map(|&r| select_rows.pids.get(r).copied()).collect();
+        a.selected = pids;
+        cx.invalidate();
+    }))
     // A press on a tree row's triangle opens or closes it.
-    .on_press(move |row, at, _, cx| {
+    .on_press(cx.asks(move |a: &mut Activity, &(row, at): &(usize, Point<Pixels>), cx| {
         let hit = triangles.borrow().get(&row).is_some_and(|b| b.contains(&at));
-        if !hit {
-            return false;
+        let Some(&pid) = press_rows.pids.get(row).filter(|_| hit) else { return false };
+        if !a.collapsed.remove(&pid) {
+            a.collapsed.insert(pid);
         }
-        let Some(&pid) = press_rows.pids.get(row) else { return false };
-        press_me.update(cx, |a, cx| {
-            if !a.collapsed.remove(&pid) {
-                a.collapsed.insert(pid);
-            }
-            a.rows_cache = None;
-            cx.notify();
-        });
+        a.rows_cache = None;
+        cx.invalidate();
         true
-    })
-    .on_open(move |row, _, cx| {
-        if let Some(&pid) = open_rows.pids.get(row) {
-            open_me.update(cx, |a, cx| a.inspect(pid, cx));
+    }))
+    .on_open(cx.listener(move |a: &mut Activity, row: &usize, cx| {
+        if let Some(&pid) = open_rows.pids.get(*row) {
+            a.inspect(pid, cx);
         }
-    })
-    .on_context(move |row, at, window, cx| {
+    }))
+    .on_context(cx.listener(move |a: &mut Activity, &(row, at): &(usize, Point<Pixels>), cx| {
         let Some(&pid) = menu_rows.pids.get(row) else { return };
         // On a chosen row: for every one chosen; else that row, chosen.
-        let menu = menu_me.update(cx, |a, cx| {
-            if !a.selected.contains(&pid) {
-                a.selected = vec![pid];
-            }
-            cx.notify();
-            let pids = a.chosen_pids();
-            (!pids.is_empty()).then(|| row_menu(a, &pids))
-        });
-        let Some(menu) = menu else { return };
-        let to = menu_me.clone();
-        menu::context_menu(window, cx, menu, at, move |cmd, window, cx| to.update(cx, |a, cx| a.command(cmd, Some(window), cx)));
-    });
+        if !a.selected.contains(&pid) {
+            a.selected = vec![pid];
+        }
+        cx.invalidate();
+        let pids = a.chosen_pids();
+        if pids.is_empty() {
+            return;
+        }
+        let (menu, to) = (row_menu(a, &pids), cx.view_ref());
+        menu::context_menu(cx, menu, at, crate::runs(to));
+    }));
 
     div().size_full().flex().flex_col().child(list).into_any_element()
 }
 
-pub fn view(app: &mut Activity, width: f32, list: AnyView, window: &mut Window, cx: &mut Context<Activity>) -> AnyElement {
-    let me = cx.entity();
-    let p = theme::palette(cx);
+pub fn view(app: &mut Activity, width: f32, cx: &mut Cx<Activity>) -> Element {
+    let p = theme::palette();
     let inset = m::WINDOW_INSET - 2.0;
     let inner_w = width - 2.0 * inset;
 
     // The search, its filters and Tree, over the list.
     let facets = facets_now(app, cx);
     let tree_w = 64.0;
-    let bar_w = FilterBar::width(cx, &app.settings.search, &facets) + m::SPACING + 40.0;
+    let bar_w = FilterBar::width(&app.settings.search, &facets) + m::SPACING + 40.0;
     let one_row = inner_w - bar_w - tree_w - 2.0 * m::SPACING >= 220.0;
-    let filters_me = me.clone();
     // (The search field clears it all.)
-    let filters = FilterBar::new("activity-processes", app.settings.search.clone(), facets).no_clear().on_change(move |text, _, cx| {
-        filters_me.update(cx, |a, cx| {
-            a.search.update(cx, |s, cx| s.set_text(text.clone(), cx));
-            a.settings.search = text;
-            a.rows_cache = None;
-            a.store();
-            cx.notify();
-        })
-    });
-    let tree_me = me.clone();
-    let tree = div().w(px(tree_w)).flex_shrink_0().child(CheckBox::new("Tree", app.settings.tree).id("activity-tree").height(m::CONTROL_HEIGHT).on_toggle(move |on, _, cx| {
-        tree_me.update(cx, |a, cx| {
-            a.settings.tree = on;
-            a.rows_cache = None;
-            a.store();
-            cx.notify();
-        })
+    let filters = FilterBar::new("activity-processes", app.settings.search.clone(), facets).no_clear().on_change(cx.listener(|a: &mut Activity, text: &String, cx| {
+        let to = text.clone();
+        a.search.update(cx, |s, cx| s.set_text(to, cx));
+        a.settings.search = text.clone();
+        a.rows_cache = None;
+        a.store();
+        cx.invalidate();
     }));
-    let search = div().flex_1().min_w_0().child(app.search.clone());
+    let tree =
+        div().w(px(tree_w)).flex_shrink_0().child(CheckBox::new("Tree", app.settings.tree).id("activity-tree").height(m::CONTROL_HEIGHT).on_toggle(cx.listener(|a: &mut Activity, on: &bool, cx| {
+            a.settings.tree = *on;
+            a.rows_cache = None;
+            a.store();
+            cx.invalidate();
+        })));
+    let search = div().flex_1().min_w_0().child(&app.search);
     let controls = if one_row {
         div().flex().flex_row().items_center().gap(px(m::SPACING)).child(search).child(filters.max_width(bar_w)).child(tree)
     } else {
         // Under the search, its first menu's text over the list's first
         // column's (inside the list's two lines of frame), as Logs has it.
-        let frame = f32::from(style::inset(window, Bounds::default(), 2.0).left());
-        let indent = frame + m::CELL_INSET - m::TEXT_INSET;
+        let indent = olo_kit::search::list_indent(cx);
         div()
             .flex()
             .flex_col()
@@ -568,20 +543,16 @@ pub fn view(app: &mut Activity, width: f32, list: AnyView, window: &mut Window, 
     let sel = app.chosen_pids();
     let bw = 96.0;
     let button = |label: &'static str, cmd: &'static str| {
-        let me = me.clone();
         let pids = pids_text(&sel);
-        Button::new(label).min_width(bw).enabled(!sel.is_empty()).on_click(move |window, cx| {
-            me.update(cx, |a, cx| a.command(&format!("{cmd}:{pids}"), Some(window), cx));
-        })
+        Button::new(label).min_width(bw).enabled(!sel.is_empty()).on_click(cx.listener(move |a: &mut Activity, _: &ClickEvent, cx| a.run(&format!("{cmd}:{pids}"), cx)))
     };
     let text = style::c(p.panel_text);
-    let summary_el = canvas(
-        |_, _, _| {},
-        move |b, _, window, cx| {
-            let r = style::label_fit(window, cx, b.left(), b.center().y, style::Align::Left, summary.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), text, b.size.width);
-            olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(summary.clone(), r));
-        },
-    )
+    let key = style::key(&summary);
+    let summary_el = canvas(move |g, b| {
+        let r = style::label_fit(g, b.left(), b.center().y, style::Align::Left, summary.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), text, b.size.width);
+        olo_kit::agent::record(g, olo_kit::agent::Node::label(summary.clone(), r));
+    })
+    .paint_key(key)
     .flex_1()
     .min_w_0()
     .h_full();
@@ -596,19 +567,8 @@ pub fn view(app: &mut Activity, width: f32, list: AnyView, window: &mut Window, 
         .child(button("Inspect", "inspect"))
         .child(button("Quit", "quit"))
         .child(button("Force Quit…", "force-quit"));
-    div()
-        .size_full()
-        .flex()
-        .flex_col()
-        .gap(px(m::SPACING))
-        .p(px(inset))
-        .bg(c(p.panel_background))
-        .child(controls)
-        // (Its own part, cached: a caret blinking in the search above
-        // doesn't draw the rows again.)
-        .child(div().flex_1().min_h_0().child(list.cached(StyleRefinement::default().size_full())))
-        .child(foot)
-        .into_any_element()
+    let list = list(app, cx);
+    div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(inset)).bg(c(p.panel_background)).child(controls).child(div().flex_1().min_h_0().child(list)).child(foot).into_any_element()
 }
 
 #[cfg(test)]

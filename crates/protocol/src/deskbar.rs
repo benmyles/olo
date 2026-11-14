@@ -81,10 +81,13 @@ impl Widget {
     pub fn new(id: u32, measure: Measure) -> Widget {
         let look = match measure {
             Measure::Cpu { cores: true } => Look::Bars,
-            Measure::Space { .. } | Measure::Memory { .. } => Look::Meter,
+            Measure::Space { .. } | Measure::Memory { .. } | Measure::Pool { .. } => Look::Meter,
             _ => Look::Graph,
         };
-        Widget { id, hue: Some(measure.hue()), measure, place: Place::Top, look, size: Size::Medium, label: true, value: true, every_ms: 1000, span_s: 60, beside: false }
+        // (A quota moves over minutes and hours: read each minute, as
+        // well as whenever the pool says it changed, its graph an hour.)
+        let (every_ms, span_s) = if matches!(measure, Measure::Pool { .. }) { (60_000, 3600) } else { (1000, 60) };
+        Widget { id, hue: Some(measure.hue()), measure, place: Place::Top, look, size: Size::Medium, label: true, value: true, every_ms, span_s, beside: false }
     }
 
     /// `every_ms` within what's allowed.
@@ -122,9 +125,87 @@ pub enum Measure {
     Temperature { sensor: Option<String> },
     /// What the computer draws from its battery, in watts.
     Power,
+    /// Token Pool's quotas (`crate::pool`): what's left of a provider's
+    /// quotas across its accounts.
+    Pool {
+        /// "claude" or "codex".
+        provider: String,
+        /// The quotas as the pool calls them ("5-hour", "Weekly", "Weekly
+        /// Fable"), each a series of its own (Ben, 2026-11-13: "make the
+        /// quota type a multi-select"); none: whichever leaves each
+        /// account least of those for every request (what holds it back
+        /// now). (Read from a single `quota` too, as first written.)
+        #[serde(default, alias = "quota", deserialize_with = "one_or_more")]
+        quotas: Vec<String>,
+        /// All the accounts together, each one, or the one answering now.
+        #[serde(default)]
+        view: PoolView,
+        /// What's used, rather than what's left.
+        #[serde(default)]
+        used: bool,
+        /// Accounts turned off or signed out counted in the whole (as
+        /// having none left).
+        #[serde(default)]
+        count_off: bool,
+        /// Drawn orange, then red, as what's left runs low.
+        #[serde(default = "yes")]
+        warn: bool,
+        /// A notification when it's out on every account, and when it's
+        /// back.
+        #[serde(default)]
+        notify: bool,
+    },
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// A list, or one (a string), or none (null).
+fn one_or_more<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Either {
+        One(Option<String>),
+        More(Vec<String>),
+    }
+    Ok(match Either::deserialize(d)? {
+        Either::One(one) => one.into_iter().collect(),
+        Either::More(more) => more,
+    })
+}
+
+/// What a Token Pool widget shows of its quota.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PoolView {
+    /// What's left across every account, as one.
+    #[default]
+    Together,
+    /// Each account's own (a bar or a cell each).
+    Each,
+    /// The account answering now: each of its quotas.
+    Serving,
+}
+
+impl PoolView {
+    pub const ALL: [PoolView; 3] = [PoolView::Together, PoolView::Each, PoolView::Serving];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            PoolView::Together => "All accounts together",
+            PoolView::Each => "Each account",
+            PoolView::Serving => "The account answering now",
+        }
+    }
 }
 
 impl Measure {
+    /// A Token Pool widget for `provider`'s `quotas`, as it comes.
+    pub fn pool(provider: &str, quotas: &[&str]) -> Measure {
+        Measure::Pool { provider: provider.to_owned(), quotas: quotas.iter().map(|q| q.to_string()).collect(), view: PoolView::Together, used: false, count_off: false, warn: true, notify: false }
+    }
+
     /// Its kind's name ("CPU"), for menus and labels.
     pub fn kind_name(&self) -> &'static str {
         match self {
@@ -136,6 +217,7 @@ impl Measure {
             Measure::Network { .. } => "Network",
             Measure::Temperature { .. } => "Temperature",
             Measure::Power => "Power",
+            Measure::Pool { .. } => "Token Pool",
         }
     }
 
@@ -150,6 +232,8 @@ impl Measure {
             Measure::Network { .. } => Hue::Teal,
             Measure::Temperature { .. } => Hue::Red,
             Measure::Power => Hue::Yellow,
+            Measure::Pool { provider, .. } if provider == "codex" => Hue::Teal,
+            Measure::Pool { .. } => Hue::Brown,
         }
     }
 
@@ -164,6 +248,7 @@ impl Measure {
             Measure::Network { interface: None, down: true, up: true },
             Measure::Temperature { sensor: None },
             Measure::Power,
+            Measure::pool("claude", &[]),
         ]
     }
 }
@@ -267,6 +352,22 @@ mod tests {
         let s = DeskbarSettings { widgets: vec![w.clone(), Widget::new(7, Measure::Power)] };
         assert_eq!(s.next_id(), 8);
         assert_eq!(serde_json::from_str::<DeskbarSettings>(&serde_json::to_string(&s).unwrap()).unwrap(), s);
+    }
+
+    /// A Token Pool widget written with only what it's for reads the
+    /// rest as it comes: warning as it runs low, nothing else.
+    #[test]
+    fn a_pool_widget_read_whole() {
+        let w: Widget = serde_json::from_str(r#"{"id": 2, "measure": {"kind": "pool", "provider": "codex", "quota": "Weekly"}}"#).unwrap();
+        assert_eq!(w.measure, Measure::pool("codex", &["Weekly"]));
+        // Several, as chosen now; none.
+        let w: Widget = serde_json::from_str(r#"{"id": 2, "measure": {"kind": "pool", "provider": "claude", "quotas": ["5-hour", "Weekly"], "view": "each"}}"#).unwrap();
+        assert!(matches!(&w.measure, Measure::Pool { quotas, view: PoolView::Each, .. } if quotas == &["5-hour", "Weekly"]));
+        let w: Widget = serde_json::from_str(r#"{"id": 2, "measure": {"kind": "pool", "provider": "claude", "quota": null}}"#).unwrap();
+        assert_eq!(w.measure, Measure::pool("claude", &[]));
+        let made = Widget::new(3, Measure::pool("claude", &["5-hour"]));
+        assert_eq!((made.look, made.every_ms, made.span_s, made.hue), (Look::Meter, 60_000, 3600, Some(Hue::Brown)));
+        assert_eq!(serde_json::from_str::<Widget>(&serde_json::to_string(&made).unwrap()).unwrap(), made);
     }
 
     /// A graph keeps as many readings as its span holds at its rate.

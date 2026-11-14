@@ -1,0 +1,27 @@
+# olo-fans: a ThinkPad's fans run ahead of the heat, so the processor
+# isn't throttled for it (apps/fans). Installed by Preferences > Power's
+# Fan Profile (Olo Doctor's helper: `olo-doctor --fans cool`), which
+# also keeps /etc/olo/fans: "cool" (this service's curve) or "auto" (the
+# firmware's own; the service sleeps). If it stops, the firmware takes
+# the fans back by itself (its watchdog, 30 seconds). To go back for
+# good:
+#   sudo systemctl disable --now olo-fans.service
+[Unit]
+Description=Olo's fan profile (the fans run ahead of the heat)
+ConditionPathExists=/proc/acpi/ibm/fan
+StartLimitIntervalSec=120
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/olo/olo-fans
+Restart=on-failure
+RestartSec=5
+RuntimeDirectory=olo-fans
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateNetwork=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

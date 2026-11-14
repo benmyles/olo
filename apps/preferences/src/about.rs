@@ -7,13 +7,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use olo_sync::Mutex;
-use olo_ui::{
-    brand,
-    gpui::{Bounds, Context, IntoElement as _, ParentElement as _, Styled as _, canvas, div, point, px, size},
-    icons, metrics as m, style, theme,
+use olo_kit::{
+    Bounds, Cx, IntoElement as _, ParentElement as _, Styled as _, brand, canvas, div, icons, metrics as m, point, px, size, style, theme,
     widgets::{BBox, Button, StringView, heading},
 };
+use olo_sync::Mutex;
 
 use crate::{Msg, PanelView, form::Ui, panel};
 
@@ -48,7 +46,7 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(cx: &mut Context<PanelView>) -> State {
+    pub fn new(_cx: &mut Cx<PanelView>) -> State {
         let facts = Arc::new(Mutex::new(None));
         // (Tests, the layout lint: a machine described at length, not
         // this one.)
@@ -56,7 +54,7 @@ impl State {
             *facts.lock().unwrap() = Some(test_facts());
             return State { facts, restarted: None, error: None, ticking: false };
         }
-        let (out, proxy) = (facts.clone(), olo_ui::proxy(cx));
+        let (out, proxy) = (facts.clone(), olo_kit::proxy());
         std::thread::spawn(move || {
             *out.lock().unwrap() = Some(gather());
             proxy.send(Msg::Redraw);
@@ -154,29 +152,23 @@ pub fn uptime_text(d: Duration) -> String {
 }
 
 pub fn ui(ui: &mut Ui, st: &mut State) {
-    let dark = theme::palette(ui.cx).mode == olo_ui::palette::ThemeMode::Dark;
+    let dark = theme::palette().mode == olo_kit::palette::ThemeMode::Dark;
     let word_w = brand::wordmark_width(30.0, dark);
-    let icon = canvas(
-        |_, _, _| {},
-        |b, _, window, _| {
-            icons::paint(window, b, "olo");
-        },
-    )
+    let icon = canvas(|g, b| {
+        icons::paint(g, b, "olo");
+    })
     .w(px(64.0))
     .h(px(64.0))
     .flex_shrink_0();
     let title = match word_w {
-        Some(w) => canvas(
-            |_, _, _| {},
-            move |b, _, window, _| {
-                let at = Bounds { origin: point(b.left(), b.top()), size: size(px(w), px(30.0)) };
-                brand::wordmark_left(window, at, dark);
-            },
-        )
+        Some(w) => canvas(move |g, b| {
+            let at = Bounds { origin: point(b.left(), b.top()), size: size(px(w), px(30.0)) };
+            brand::wordmark_left(g, at, dark);
+        })
         .w(px(w))
         .h(px(30.0))
-        .into_any_element(),
-        None => heading("Olo Desktop").into_any_element(),
+        .into_element(),
+        None => heading("Olo Desktop").into_element(),
     };
     ui.add(
         div()
@@ -210,17 +202,12 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     // Uptime counts seconds.
     if !st.ticking {
         st.ticking = true;
-        ui.cx
-            .spawn(async move |view, cx| {
-                cx.background_executor().timer(Duration::from_secs(1)).await;
-                let _ = view.update(cx, |v, cx| {
-                    if let Some(st) = state_of(v) {
-                        st.ticking = false;
-                    }
-                    cx.notify();
-                });
-            })
-            .detach();
+        ui.cx.after_do(Duration::from_secs(1), |v, cx| {
+            if let Some(st) = state_of(v) {
+                st.ticking = false;
+            }
+            cx.notify();
+        });
     }
     ui.space(m::SPACING);
     let pid = session_pid();
@@ -232,7 +219,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         (None, Some(_), true) => "Restarting…".to_owned(),
         (None, Some(_), false) => String::new(),
     };
-    let restart_now = ui.on_click_view(move |v, _, cx| {
+    let restart_now = ui.on_click_view(move |v, cx| {
         if let (Some(st), Some(pid)) = (state_of(v), pid) {
             st.error = restart(pid).err();
             st.restarted = Some(Instant::now());

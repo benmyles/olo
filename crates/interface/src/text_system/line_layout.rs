@@ -141,7 +141,7 @@ impl LineLayout {
         None
     }
 
-    pub(crate) fn compute_wrap_boundaries(&self, text: &str, wrap_width: Pixels, max_lines: Option<usize>) -> SmallVec<[WrapBoundary; 1]> {
+    pub(crate) fn compute_wrap_boundaries(&self, text: &str, wrap_width: Pixels, max_lines: Option<usize>) -> WrapBoundaries {
         let mut boundaries = SmallVec::new();
         let mut first_non_whitespace_ix = None;
         let mut last_candidate_ix = None;
@@ -221,11 +221,34 @@ pub struct WrappedLineLayout {
     pub unwrapped_layout: Arc<LineLayout>,
 
     /// The boundaries at which the line was wrapped
-    pub wrap_boundaries: SmallVec<[WrapBoundary; 1]>,
+    pub wrap_boundaries: WrapBoundaries,
 
     /// The width of the line, if it was wrapped
     pub wrap_width: Option<Pixels>,
 }
+
+/// Text lent for a look in the cache (`layout_line`): made a
+/// [`SharedString`], a copy, only when its layout turns out new.
+pub(crate) struct Lent<'a>(pub(crate) &'a str);
+
+impl AsRef<str> for Lent<'_> {
+    fn as_ref(&self) -> &str {
+        self.0
+    }
+}
+
+impl From<Lent<'_>> for SharedString {
+    fn from(lent: Lent<'_>) -> Self {
+        SharedString::new(lent.0)
+    }
+}
+
+/// Where a wrapped line breaks: three kept in the layout itself (a
+/// paragraph of up to four rows, as most are), more on the heap. With
+/// one, as GPUI had, every paragraph of three rows or more grew its
+/// list twice as it was wrapped (a history of 200 notifications laid
+/// out for a new width: 430 allocations for it).
+pub type WrapBoundaries = SmallVec<[WrapBoundary; 3]>;
 
 /// A boundary at which a line was wrapped
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]

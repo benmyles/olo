@@ -5,6 +5,13 @@ use derive_more::{Deref, DerefMut};
 use smallvec::SmallVec;
 use std::sync::Arc;
 
+/// A line's decoration runs: one kept in the line itself, more on the
+/// heap. Nearly every line has one (a label, a cell, a menu's item), and
+/// a shaped line is handed about by value: with room for 32 in it, as
+/// GPUI had, a line was 3 KB and every label painted copied that twice
+/// (a list resized live: 1.3 MB of it a frame).
+pub(crate) type DecorationRuns = SmallVec<[DecorationRun; 1]>;
+
 /// Set the text decoration for a run of text.
 #[derive(Debug, Clone)]
 pub struct DecorationRun {
@@ -32,7 +39,7 @@ pub struct ShapedLine {
     pub(crate) layout: Arc<LineLayout>,
     /// The text that was shaped for this line.
     pub text: SharedString,
-    pub(crate) decoration_runs: SmallVec<[DecorationRun; 32]>,
+    pub(crate) decoration_runs: DecorationRuns,
 }
 
 impl ShapedLine {
@@ -74,7 +81,7 @@ pub struct WrappedLine {
     pub(crate) layout: Arc<WrappedLineLayout>,
     /// The text that was shaped for this line.
     pub text: SharedString,
-    pub(crate) decoration_runs: SmallVec<[DecorationRun; 32]>,
+    pub(crate) decoration_runs: DecorationRuns,
 }
 
 impl WrappedLine {

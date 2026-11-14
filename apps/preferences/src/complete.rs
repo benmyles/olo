@@ -19,12 +19,11 @@ use olo_complete::{
     protocol::{self, Reply, Request, Settings, Stats},
     train::Tuned,
 };
-use olo_sync::Mutex;
-use olo_ui::{
-    gpui::SharedString,
-    style, theme,
+use olo_kit::{
+    SharedString, style, theme,
     widgets::{Button, CheckBox, StringView},
 };
+use olo_sync::Mutex;
 
 use crate::{Msg, form::Ui};
 
@@ -105,7 +104,7 @@ fn turn_on() -> Result<(), String> {
 }
 
 /// The worker, and what it last found (one for the app).
-fn link(proxy: olo_ui::Proxy) -> &'static Link {
+fn link(proxy: olo_kit::Proxy) -> &'static Link {
     static LINK: OnceLock<Link> = OnceLock::new();
     LINK.get_or_init(|| {
         let shared: Arc<Mutex<Shared>> = Default::default();
@@ -208,7 +207,7 @@ fn learned(t: &Tuned, at: i64) -> String {
 }
 
 pub fn ui(ui: &mut Ui) {
-    let link = link(olo_ui::proxy(ui.cx));
+    let link = link(olo_kit::proxy());
     let (shell, on, learning, stats, error) = if cfg!(test) {
         lint_state(LINT.with(|l| l.get()))
     } else {
@@ -219,8 +218,8 @@ pub fn ui(ui: &mut Ui) {
     ui.bbox("Command Suggestions", |ui| {
         let tx = link.tx.clone();
         let enabled = ui.enabled() && usable && !learning;
-        ui.add(CheckBox::new(LABEL, on).enabled(enabled).on_toggle(move |v, _, _| {
-            let _ = tx.send(Job::Turn(v));
+        ui.add(CheckBox::new(LABEL, on).enabled(enabled).on_toggle(move |v, _| {
+            let _ = tx.send(Job::Turn(*v));
         }));
         let mut text = match (&shell, on) {
             (Shell::Unknown, _) => String::new(),
@@ -242,7 +241,7 @@ pub fn ui(ui: &mut Ui) {
             ui.note(text);
         }
         if let Some(e) = error {
-            let p = theme::palette(ui.cx);
+            let p = theme::palette();
             ui.add(StringView::new(SharedString::from(e)).color(style::c(p.failure)).wrap(true));
         }
         if matches!(shell, Shell::Other(_) | Shell::OldBrush) {

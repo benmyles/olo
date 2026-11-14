@@ -66,8 +66,8 @@ pub enum Picture {
     /// Its planes as decoded (4:2:0 Y'CbCr), for a window's GPU to make
     /// RGB of (`Window::paint_yuv`): an SDR picture whose viewer asked
     /// (`Options::yuv`).
-    #[cfg(feature = "gpui")]
-    Yuv(Arc<olo_ui::gpui::YuvFrame>),
+    #[cfg(feature = "gpu")]
+    Yuv(Arc<olo_yuv::YuvFrame>),
 }
 
 impl Picture {
@@ -77,7 +77,7 @@ impl Picture {
             Picture::Rgba(i) => i,
             Picture::Bgra { size, data, p3 } => Arc::new(Bitmap { p3, ..Bitmap::from_bgra_unmultiplied(size, &data) }),
             Picture::Deep { size, data } => Arc::new(Bitmap::from_rgba_unmultiplied(size, &deep_to_srgb(&data))),
-            #[cfg(feature = "gpui")]
+            #[cfg(feature = "gpu")]
             Picture::Yuv(f) => Arc::new(Bitmap::from_rgba_unmultiplied([f.width as usize, f.height as usize], &yuv_to_rgba(&f))),
         }
     }
@@ -88,7 +88,7 @@ impl Picture {
             Picture::Rgba(i) => i.p3,
             Picture::Bgra { p3, .. } => *p3,
             Picture::Deep { .. } => false,
-            #[cfg(feature = "gpui")]
+            #[cfg(feature = "gpu")]
             Picture::Yuv(_) => false,
         }
     }
@@ -96,8 +96,8 @@ impl Picture {
 
 /// A YUV picture as RGBA (a still of it, a copy: rare; the window's GPU
 /// draws it otherwise).
-#[cfg(feature = "gpui")]
-fn yuv_to_rgba(f: &olo_ui::gpui::YuvFrame) -> Vec<u8> {
+#[cfg(feature = "gpu")]
+fn yuv_to_rgba(f: &olo_yuv::YuvFrame) -> Vec<u8> {
     let m = f.rgb_matrix();
     let (w, h) = (f.width as usize, f.height as usize);
     // (Wherever its planes are: rows at their pitch.)
@@ -163,7 +163,7 @@ impl Pic {
             Pic::Ready(Picture::Rgba(i)) => i.rgba.len(),
             Pic::Ready(Picture::Bgra { data, .. }) => data.len(),
             Pic::Ready(Picture::Deep { data, .. }) => data.len() * 2,
-            #[cfg(feature = "gpui")]
+            #[cfg(feature = "gpu")]
             Pic::Ready(Picture::Yuv(f)) => f.bytes(),
         }
     }
@@ -171,9 +171,9 @@ impl Pic {
     /// Its planes for the GPU (`Picture::Yuv`, of stream `stream`), if it
     /// can be drawn so: 4:2:0, and not an HDR picture to be drawn as HDR10
     /// (`hdr`), nor one whose colours need converting.
-    #[cfg(feature = "gpui")]
-    fn yuv(&self, stream: u64, hdr: bool) -> Option<olo_ui::gpui::YuvFrame> {
-        use olo_ui::gpui::{YuvFrame, YuvMatrix};
+    #[cfg(feature = "gpu")]
+    fn yuv(&self, stream: u64, hdr: bool) -> Option<olo_yuv::YuvFrame> {
+        use olo_yuv::{YuvFrame, YuvMatrix};
         match self {
             // (OpenH264's: limited-range BT.601, as `Planar::convert`.)
             Pic::H264(p) => {
@@ -201,11 +201,11 @@ impl Pic {
     /// (`Picture::Deep`); `yuv`, as planes for the GPU where it can be
     /// (`Picture::Yuv`, of that stream).
     fn picture(&self, bgra: bool, hdr: bool, yuv: Option<u64>) -> Picture {
-        #[cfg(feature = "gpui")]
+        #[cfg(feature = "gpu")]
         if let Some(f) = yuv.and_then(|stream| self.yuv(stream, hdr)) {
             return Picture::Yuv(Arc::new(f));
         }
-        #[cfg(not(feature = "gpui"))]
+        #[cfg(not(feature = "gpu"))]
         let _ = yuv;
         match self {
             Pic::Planes(f) if hdr && f.is_hdr() => match f.to_pq_half() {
@@ -374,9 +374,9 @@ impl Video {
     /// Start `input` as `opts` say: playing or paused (showing its first
     /// picture), with pictures and sound or only one of them.
     pub fn start_with(input: &Input, duration: f64, opts: Options) -> Video {
-        #[cfg(feature = "gpui")]
-        let yuv = opts.yuv.then(olo_ui::gpui::YuvFrame::new_stream);
-        #[cfg(not(feature = "gpui"))]
+        #[cfg(feature = "gpu")]
+        let yuv = opts.yuv.then(olo_yuv::YuvFrame::new_stream);
+        #[cfg(not(feature = "gpu"))]
         let yuv = None;
         let shared = Arc::new((Mutex::new(Shared { eof: !opts.picture, bgra: opts.bgra, yuv, device: opts.device, ..Default::default() }), Condvar::new()));
         let (i, s) = (input.clone(), shared.clone());
@@ -693,7 +693,7 @@ pub struct Options {
     /// Pictures as BGRA bytes ([`Video::tick_picture`]).
     pub bgra: bool,
     /// Pictures as Y'CbCr planes for a window's GPU where they can be
-    /// (`Picture::Yuv`; a build with the `gpui` feature): a 4K picture is
+    /// (`Picture::Yuv`; a build with the `gpu` feature): a 4K picture is
     /// 12 MB rather than 33, and nothing converts it on the CPU.
     pub yuv: bool,
     /// What decodes (a GPU only with `yuv`: its pictures are planes).
@@ -732,12 +732,12 @@ pub struct Decoders {
 }
 
 impl Decoders {
-    #[cfg(feature = "gpui")]
+    #[cfg(feature = "gpu")]
     fn of(planes: bool, codec: Codec) -> Decoders {
         Decoders { nvidia: planes && olo_video::nvdec::available(), intel: planes && olo_vaapi::decode::available(va_codec(codec)) }
     }
 
-    #[cfg(not(feature = "gpui"))]
+    #[cfg(not(feature = "gpu"))]
     fn of(_: bool, _: Codec) -> Decoders {
         Decoders::default()
     }
@@ -936,15 +936,15 @@ enum Decoder {
     Vp9(vp9::Decoder),
     Hevc(hevc::Decoder),
     /// NVIDIA's GPU (pictures as planes for the window's GPU).
-    #[cfg(feature = "gpui")]
+    #[cfg(feature = "gpu")]
     Nv(Box<Nv>),
     /// Intel's or AMD's GPU through VA-API (as planes too).
-    #[cfg(feature = "gpui")]
+    #[cfg(feature = "gpu")]
     Va(Box<Va>),
 }
 
 /// VA-API's decoder, and what it needs of the stream, as NVDEC does.
-#[cfg(feature = "gpui")]
+#[cfg(feature = "gpu")]
 struct Va {
     dec: olo_vaapi::decode::Decoder,
     hevc: Option<hevc::Config>,
@@ -952,7 +952,7 @@ struct Va {
 }
 
 /// The codec as VA-API's decoder names it.
-#[cfg(feature = "gpui")]
+#[cfg(feature = "gpu")]
 fn va_codec(codec: Codec) -> olo_vaapi::decode::Codec {
     match codec {
         Codec::Av1 => olo_vaapi::decode::Codec::Av1,
@@ -965,7 +965,7 @@ fn va_codec(codec: Codec) -> olo_vaapi::decode::Codec {
 /// A sample as a GPU's parser takes it: HEVC's NAL units Annex B (start
 /// codes, not lengths), with its parameter sets first after a start or
 /// a seek (`fresh`); others as they are.
-#[cfg(feature = "gpui")]
+#[cfg(feature = "gpu")]
 fn annex_b<'a>(hevc: Option<&hevc::Config>, fresh: &mut bool, data: &'a [u8]) -> std::borrow::Cow<'a, [u8]> {
     let Some(cfg) = hevc else { return std::borrow::Cow::Borrowed(data) };
     let mut out = Vec::with_capacity(data.len() + 128);
@@ -982,14 +982,14 @@ fn annex_b<'a>(hevc: Option<&hevc::Config>, fresh: &mut bool, data: &'a [u8]) ->
 /// NVDEC, and what it needs of the stream: HEVC's parameter sets and its
 /// NAL units' length size (its samples made Annex B), and whether the
 /// next packet starts a stream (after a seek: the sets first).
-#[cfg(feature = "gpui")]
+#[cfg(feature = "gpu")]
 struct Nv {
     dec: olo_video::nvdec::Nvdec,
     hevc: Option<hevc::Config>,
     fresh: bool,
 }
 
-#[cfg(feature = "gpui")]
+#[cfg(feature = "gpu")]
 impl Nv {
     /// `data` as NVDEC's parser takes it.
     fn packet<'a>(&mut self, data: &'a [u8]) -> std::borrow::Cow<'a, [u8]> {
@@ -1006,17 +1006,17 @@ const ON_PROCESSOR: &str = "the processor";
 /// A GPU decoder's pictures left in the memory they're copied into, for
 /// the window's GPU to copy from as they are (`YuvMemory`); the processor
 /// copies them out into planes with `OLO_VIDEO_HELD=0`, to compare.
-#[cfg(feature = "gpui")]
+#[cfg(feature = "gpu")]
 fn held() -> bool {
     std::env::var_os("OLO_VIDEO_HELD").is_none_or(|v| v != "0")
 }
 
 /// A picture as a GPU decoded it, for the window to draw: its matrix
 /// from H.273's number (else by its height, as players guess).
-#[cfg(feature = "gpui")]
+#[cfg(feature = "gpu")]
 #[allow(clippy::too_many_arguments)]
-fn gpu_picture(stream: u64, width: u32, height: u32, deep: bool, (y, uv, memory): (Vec<u8>, Vec<u8>, Option<olo_ui::gpui::YuvMemory>), matrix: u8, full_range: bool) -> olo_ui::gpui::YuvFrame {
-    use olo_ui::gpui::YuvMatrix;
+fn gpu_picture(stream: u64, width: u32, height: u32, deep: bool, (y, uv, memory): (Vec<u8>, Vec<u8>, Option<olo_yuv::YuvMemory>), matrix: u8, full_range: bool) -> olo_yuv::YuvFrame {
+    use olo_yuv::YuvMatrix;
     let matrix = match matrix {
         1 => YuvMatrix::Bt709,
         9 | 10 => YuvMatrix::Bt2020,
@@ -1024,17 +1024,17 @@ fn gpu_picture(stream: u64, width: u32, height: u32, deep: bool, (y, uv, memory)
         _ if height >= 720 => YuvMatrix::Bt709,
         _ => YuvMatrix::Bt601,
     };
-    olo_ui::gpui::YuvFrame { stream, width, height, deep, y, uv, matrix, full_range, memory }
+    olo_yuv::YuvFrame { stream, width, height, deep, y, uv, matrix, full_range, memory }
 }
 
 impl Decoder {
     /// A decoder on `device` (NVIDIA's GPU only for pictures as planes,
     /// `planes`), else on the processor; and what it is.
     fn on(device: Device, planes: bool, codec: Codec, demux: &dyn Demux) -> Result<(Decoder, &'static str), String> {
-        #[cfg(feature = "gpui")]
+        #[cfg(feature = "gpu")]
         {
             // (The person's choice, read here: off the window's thread.)
-            let video = olo_ui::settings::current().map(|s| s.video.clone()).unwrap_or_default();
+            let video = olo_kit_base::settings::current().map(|s| s.video.clone()).unwrap_or_default();
             let device = match device {
                 Device::Default => Device::parse(&video.decoder).filter(|d| *d != Device::Default).unwrap_or(Device::Automatic),
                 d => d,
@@ -1080,7 +1080,7 @@ impl Decoder {
                 }
             }
         }
-        #[cfg(not(feature = "gpui"))]
+        #[cfg(not(feature = "gpu"))]
         let _ = (device, planes);
         Ok((Decoder::new(codec, demux)?, ON_PROCESSOR))
     }
@@ -1120,9 +1120,9 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
         sh.decoding = decoding;
         sh.decoders = Decoders::of(planes, codec);
     }
-    #[cfg(feature = "gpui")]
+    #[cfg(feature = "gpu")]
     let mut nv_out: Vec<olo_video::nvdec::Picture> = Vec::new();
-    #[cfg(feature = "gpui")]
+    #[cfg(feature = "gpu")]
     let mut va_out: Vec<olo_vaapi::decode::Picture> = Vec::new();
     let colour = demux.colour();
     // Presentation times of packets sent and not yet out: decoders hand
@@ -1205,12 +1205,12 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
                     // (Its workers kept.)
                     Decoder::Vp9(d) => d.reset(),
                     Decoder::Hevc(d) => d.reset(),
-                    #[cfg(feature = "gpui")]
+                    #[cfg(feature = "gpu")]
                     Decoder::Nv(n) => {
                         n.dec.reset();
                         n.fresh = true;
                     }
-                    #[cfg(feature = "gpui")]
+                    #[cfg(feature = "gpu")]
                     Decoder::Va(v) => {
                         v.dec.reset();
                         v.fresh = true;
@@ -1262,7 +1262,7 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
             // NVIDIA's GPU: pictures in display order, as planes. One it
             // can't decode (a format its NVDEC hasn't): the processor from
             // where this stream started.
-            #[cfg(feature = "gpui")]
+            #[cfg(feature = "gpu")]
             (Decoder::Nv(n), p) => {
                 nv_out.clear();
                 let failed = match &p {
@@ -1290,7 +1290,7 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
                             let (ptr, len, y, uv) = (held.ptr(), held.len(), held.y, held.uv);
                             // SAFETY: the decoder's memory, unchanged while
                             // `held` (kept with it) lives.
-                            (Vec::new(), Vec::new(), Some(unsafe { olo_ui::gpui::YuvMemory::new(ptr, len, y, uv, Box::new(held)) }))
+                            (Vec::new(), Vec::new(), Some(unsafe { olo_yuv::YuvMemory::new(ptr, len, y, uv, Box::new(held)) }))
                         }
                         None => (pic.y, pic.uv, None),
                     };
@@ -1303,7 +1303,7 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
             // Intel's GPU: a picture for each sample shown, with its
             // time (as VP9's on the processor). One it can't decode: the
             // processor from where this stream started.
-            #[cfg(feature = "gpui")]
+            #[cfg(feature = "gpu")]
             (Decoder::Va(v), p) => {
                 va_out.clear();
                 let failed = match &p {
@@ -1335,7 +1335,7 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
                             let (ptr, len, y, uv) = (held.ptr(), held.len(), held.y, held.uv);
                             // SAFETY: the decoder's memory, unchanged while
                             // `held` (kept with it) lives.
-                            (Vec::new(), Vec::new(), Some(unsafe { olo_ui::gpui::YuvMemory::new(ptr, len, y, uv, Box::new(held)) }))
+                            (Vec::new(), Vec::new(), Some(unsafe { olo_yuv::YuvMemory::new(ptr, len, y, uv, Box::new(held)) }))
                         }
                         None => (pic.y, pic.uv, None),
                     };

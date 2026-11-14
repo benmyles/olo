@@ -1,15 +1,12 @@
 //! The installed font families, and the faces a document's styles are
-//! drawn in. GPUI's text system finds any installed family by name; a
+//! drawn in. The kit's text system finds any installed family by name; a
 //! worker has it read the system's fonts once at the start (so the first
 //! text in a face only the system has doesn't wait on a frame for them)
 //! and lists the families for the Font menu.
 
 use std::sync::Arc;
 
-use olo_ui::{
-    gpui::{Font, FontStyle, FontWeight, TextSystem},
-    style,
-};
+use olo_kit::{Font, FontStyle, FontWeight, TextSystem, style};
 
 use crate::doc::{MONOSPACE, Style};
 

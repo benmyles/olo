@@ -30,9 +30,11 @@
 //!
 //! `--codec` codes it as H.264 (plays everywhere: the default), HEVC
 //! (about half the size) or AV1 (for players that want it: no smaller on
-//! screens), the last two on NVIDIA's encoder only (`--encoder auto` on the processor makes H.264 then;
-//! `codec` in what's printed says which), as asked, else as Preferences ▸
-//! GPUs has it.
+//! screens), HEVC on NVIDIA's encoder only, AV1 on it or the Intel or
+//! AMD GPU's through VA-API (`--encoder auto` on the processor makes
+//! H.264 then; `codec` in what's printed says which), as asked, else as
+//! Preferences ▸ GPUs has it. `--encoder vaapi` makes H.264 where the
+//! GPU's driver does (RPM Fusion's), else AV1.
 //!
 //! `--sound` records what the computer plays, the microphone, both or
 //! neither (`sound.rs`: AAC beside the video), as asked, else as the
@@ -111,9 +113,9 @@
 //! in `$XDG_RUNTIME_DIR/olo-recording-<display>.json` (so an Agent
 //! Screen's and the person's don't meet).
 //!
-//! The whole display recorded on the GPU that draws it (VA-API's AV1 on
-//! the Intel GPU app_server draws with, as on battery or `--encoder
-//! vaapi`), its frames go from app_server to the encoder in the GPU's
+//! The whole display recorded on the GPU that draws it (VA-API's H.264 or
+//! AV1 on the Intel GPU app_server draws with, as on battery or
+//! `--encoder vaapi`), its frames go from app_server to the encoder in the GPU's
 //! memory, never through the processor: captured into a few dmabufs in
 //! turn (`Capture::lend_frames`), each made NV12 by VA-API's video
 //! processor and encoded (`frames_on_gpu` in what it prints). Otherwise,
@@ -595,7 +597,7 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
     let backdrop = match &source {
         Source::Window { id, .. } if args.iter().any(|a| a == "--background") || settings.as_ref().is_some_and(|s| s.background) => Some(crate::backdrop::Look {
             wallpaper: all.as_ref().and_then(|s| s.wallpaper.clone()),
-            dark: all.as_ref().is_some_and(|s| s.appearance.effective_theme == olo_ui::palette::ThemeMode::Dark),
+            dark: all.as_ref().is_some_and(|s| s.appearance.effective_theme == olo_kit::palette::ThemeMode::Dark),
             colour: all.as_ref().and_then(|s| s.workspace_colors.first().copied()).unwrap_or([51, 102, 152]),
             scale: window_scale(*id),
         }),
@@ -625,10 +627,14 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
     };
     // H.264, HEVC or AV1: as asked, else as Preferences ▸ Power ▸ Graphics has it (on
     // the processor, H.264 whatever it says: the processor makes only that;
-    // through VA-API, AV1, the only one Fedora's drivers make).
+    // through VA-API, H.264 where the driver makes it, else AV1, the only
+    // one Fedora's own drivers make).
     let codec = match option(args, "--codec") {
         Some(c) => olo_video::Codec::parse(c).ok_or("--codec is h264, hevc or av1")?,
-        None if choice == olo_video::Choice::Vaapi => olo_video::Codec::Av1,
+        None if choice == olo_video::Choice::Vaapi => match settings.as_ref().and_then(|s| olo_video::Codec::parse(&s.codec)) {
+            Some(olo_video::Codec::H264) if olo_video::vaapi::h264::node().is_some() => olo_video::Codec::H264,
+            _ => olo_video::Codec::Av1,
+        },
         None => match settings.as_ref().and_then(|s| olo_video::Codec::parse(&s.codec)) {
             Some(_) if choice == olo_video::Choice::Cpu => olo_video::Codec::H264,
             Some(c) => c,
@@ -666,6 +672,7 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         Source::Window { id, .. } => format!("window {id}"),
         Source::Output(_) if crop.is_some() => "region".into(),
         Source::Output(_) | Source::Display(_) => "display".into(),
+        Source::Workspace { index, .. } => format!("workspace {}", index + 1),
     };
     let now_secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
     let g = Going {
@@ -779,7 +786,7 @@ impl Drop for Status {
 fn wait_finished(g: &Going) {
     let (tx, rx) = std::sync::mpsc::channel();
     let watched = tx.clone();
-    let _watch = olo_ui::watch::watch([going_path()], move |_| {
+    let _watch = olo_kit::watch::watch([going_path()], move |_| {
         let _ = watched.send(());
     });
     let pid = g.pid;
@@ -1228,7 +1235,8 @@ struct Coded {
 /// its first picture a key frame, its stream going on in the same file
 /// (in a sample entry of its own if its parameter sets differ). Failing
 /// again, the next encoder that makes the same codec takes over (NVIDIA's
-/// for the Intel GPU's AV1, the processor for NVIDIA's H.264: `others`),
+/// for the Intel GPU's AV1, the Intel GPU's or the processor for
+/// NVIDIA's H.264: `others`),
 /// and the recording says so. With none, what was recorded is kept: the
 /// recording stops there, the file finished. (`OLO_RECORDING_FAIL_AT=N`,
 /// for tests: picture N fails; `N!`, the encoder opened again fails too;
@@ -1376,7 +1384,7 @@ pub fn toggle(args: &[String]) -> i32 {
     // A person's start: counted down, as the settings say (unless given).
     let mut args = args.to_vec();
     if option(&args, "--countdown").is_none() {
-        let n = olo_ui::settings::current().map_or(3, |s| s.screen_recording.countdown);
+        let n = olo_kit::settings::current().map_or(3, |s| s.screen_recording.countdown);
         args.extend(["--countdown".to_owned(), n.to_string()]);
     }
     // The controls on the screen (never in the recording), for as long
@@ -1414,7 +1422,7 @@ pub fn toggle(args: &[String]) -> i32 {
 /// A notification that the recording was saved, with Show in Tracker
 /// (a person's recording; an agent's is said on its command line).
 fn tell(made: &Made) {
-    use olo_ui::notify::{Note, NoteEvent, Notifier};
+    use olo_kit::notify::{Note, NoteEvent, Notifier};
     let (tx, rx) = std::sync::mpsc::channel();
     let notes = Notifier::with_events("Screenshot", "olo-screenshot", move |e| {
         let _ = tx.send(e);
@@ -1428,7 +1436,7 @@ fn tell(made: &Made) {
     while let Ok(e) = rx.recv_timeout(Duration::from_secs(60)) {
         match e {
             NoteEvent::Action { .. } => {
-                let _ = olo_ui::tracker::open(&path);
+                let _ = olo_kit::tracker::open(&path);
                 return;
             }
             NoteEvent::Closed { .. } => return,

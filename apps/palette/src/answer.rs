@@ -7,15 +7,11 @@
 
 use std::sync::{Arc, atomic::AtomicBool};
 
-use olo_ui::{
-    gpui::{
-        self, AnyElement, App, Bounds, Entity, HighlightStyle, InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Pixels, ScrollWheelEvent, Styled as _, StyledText, canvas, div,
-        px,
-    },
-    metrics as m,
+use olo_kit::{
+    Bounds, Cx, Element, FontWeight, InteractiveElement as _, IntoElement as _, MouseButton, MouseDownEvent, ParentElement as _, Pixels, ScrollWheelEvent, Styled as _, canvas, div, metrics as m, px,
     style::{self, c},
-    theme,
-    widgets::{KeyHint, paragraph_height},
+    styled_text, theme,
+    widgets::{KeyHint, paragraph, paragraph_height},
 };
 
 use crate::{Palette, ask::Snippet};
@@ -102,13 +98,13 @@ pub struct Laid {
     pub scroll: f32,
 }
 
-pub fn lay_out(a: &Answering, width: f32, most: f32, cx: &App) -> Laid {
+pub fn lay_out(a: &Answering, width: f32, most: f32) -> Laid {
     let mut blocks = Vec::new();
     match a.open.and_then(|i| a.snippets.get(i)) {
         Some(s) => blocks.push(snippet_height(s.lines().count().max(1), false)),
         None => {
             let words = if a.prose.is_empty() { a.status() } else { a.prose.clone() };
-            blocks.push(paragraph_height(cx, &words, width));
+            blocks.push(paragraph_height(&words, width));
             for s in &a.snippets {
                 let n = s.lines().count().max(1);
                 blocks.push(snippet_height(n.min(PREVIEW), n > PREVIEW));
@@ -122,38 +118,41 @@ pub fn lay_out(a: &Answering, width: f32, most: f32, cx: &App) -> Laid {
 }
 
 /// The answer drawn in `at` (the panel's, under the field).
-pub fn view(a: &Answering, laid: &Laid, at: Bounds<Pixels>, me: Entity<Palette>, cx: &App) -> AnyElement {
-    let p = theme::palette(cx);
+pub fn view(a: &Answering, laid: &Laid, at: Bounds<Pixels>, cx: &mut Cx<Palette>) -> Element {
+    let p = theme::palette();
     let (text, dim) = (c(p.panel_text), style::disabled_text(&p));
-    let snippet = |i: usize, s: &Snippet, whole: bool, h: f32| -> AnyElement {
+    let mono = style::mono_font(FontWeight::NORMAL);
+    let snippet = |i: usize, s: &Snippet, whole: bool, h: f32| -> Element {
         let lines: Vec<&str> = s.lines().collect();
         let shown = if whole { lines.len() } else { lines.len().min(PREVIEW) };
         let more = lines.len() - shown;
         // Each line in its language's colours, the theme's as the editor's.
-        let line = |n: usize, l: &str| -> AnyElement {
+        let line = |n: usize, l: &str| -> Element {
             if l.is_empty() {
-                return div().child(" ").into_any_element();
+                return div().child(" ");
             }
-            let marks: Vec<(std::ops::Range<usize>, HighlightStyle)> = s
+            let spans: Vec<(std::ops::Range<usize>, olo_kit::Hsla)> = s
                 .classes
                 .get(n)
                 .into_iter()
                 .flatten()
                 .filter(|(r, _)| r.end <= l.len() && l.is_char_boundary(r.start) && l.is_char_boundary(r.end))
-                .map(|(r, k)| (r.clone(), HighlightStyle { color: Some(c(p.syntax(*k))), ..Default::default() }))
+                .map(|(r, k)| (r.clone(), c(p.syntax(*k))))
                 .collect();
-            div().whitespace_nowrap().overflow_hidden().child(StyledText::new(l.to_string()).with_highlights(marks)).into_any_element()
+            let runs = olo_kit::search::runs(l, &mono, c(p.document_text), &spans, &[], c(p.document_text));
+            div().whitespace_nowrap().overflow_hidden().child(styled_text(l.to_string(), runs))
         };
-        let code = div()
+        let mut code = div()
             .font_family(style::MONO_FONT)
             .text_size(px(style::MONO_SIZE))
             .line_height(px(mono_line()))
             .text_color(c(p.document_text))
-            .children(lines.iter().take(shown).enumerate().map(|(n, l)| line(n, l)))
-            .when(more > 0, |d| d.child(div().text_color(dim).child(format!("{more} more line{}", if more == 1 { "" } else { "s" }))));
+            .children(lines.iter().take(shown).enumerate().map(|(n, l)| line(n, l)));
+        if more > 0 {
+            code = code.child(div().text_color(dim).child(format!("{more} more line{}", if more == 1 { "" } else { "s" })));
+        }
         let title = if s.title.is_empty() { "Code".to_string() } else { s.title.clone() };
         let (said, value) = (title.clone(), s.code.clone());
-        let open = me.clone();
         div()
             .relative()
             .w_full()
@@ -164,17 +163,17 @@ pub fn view(a: &Answering, laid: &Laid, at: Bounds<Pixels>, me: Entity<Palette>,
             .pt(px(PAD - 4.0))
             // A sunken well, as the field's (on whole device pixels).
             .child(
-                canvas(
-                    |_, _, _| {},
-                    |b, _, window, cx| {
-                        let p = theme::palette(cx);
-                        let r = style::snap(window, b);
-                        style::fill_rect(window, r, c(p.document_background));
-                        style::sunken(window, r, &p, false);
-                    },
-                )
+                canvas(|g, b| {
+                    let p = theme::palette();
+                    let r = style::snap(g, b);
+                    style::fill_rect(g, r, c(p.document_background));
+                    style::sunken(g, r, &p, false);
+                })
+                .paint_key(0)
                 .absolute()
-                .inset_0(),
+                .left(px(0.0))
+                .top(px(0.0))
+                .size_full(),
             )
             .child(
                 div()
@@ -189,68 +188,57 @@ pub fn view(a: &Answering, laid: &Laid, at: Bounds<Pixels>, me: Entity<Palette>,
             )
             .child(code)
             // A click on it shows it whole.
-            .on_mouse_down(MouseButton::Left, move |_, _, cx| {
-                open.update(cx, |p, cx| {
+            .id(("palette-snippet", i))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |p: &mut Palette, _: &MouseDownEvent, cx| {
                     if let Some(a) = p.answer.as_mut() {
                         a.open = Some(i);
                         a.scroll = 0.0;
-                        cx.notify();
+                        cx.invalidate();
                     }
-                })
-            })
+                }),
+            )
             // For agents: the snippet and its code.
             .child(
-                canvas(
-                    |_, _, _| {},
-                    move |b, _, window, cx| {
-                        olo_ui::agent::record(
-                            window,
-                            cx,
-                            olo_ui::agent::Node { role: "Item", name: Some(said.clone().into()), value: Some(value.clone().into()), bounds: b, enabled: true, clickable: true, ..Default::default() },
-                        )
-                    },
-                )
+                canvas(move |g, b| {
+                    olo_kit::agent::record(
+                        g,
+                        olo_kit::agent::Node { role: "Item", name: Some(said.clone().into()), value: Some(value.clone().into()), bounds: b, enabled: true, clickable: true, ..Default::default() },
+                    )
+                })
                 .absolute()
-                .inset_0(),
+                .left(px(0.0))
+                .top(px(0.0))
+                .size_full(),
             )
-            .into_any_element()
     };
-    let mut column = div().absolute().left_0().w_full().top(px(-laid.scroll)).flex().flex_col().gap(px(m::SPACING));
+    let mut column = div().absolute().left(px(0.0)).w_full().top(px(-laid.scroll)).flex().flex_col().gap(px(m::SPACING));
     match a.open.and_then(|i| a.snippets.get(i).map(|s| (i, s))) {
         Some((i, s)) => column = column.child(snippet(i, s, true, laid.blocks[0])),
         None => {
             let waiting = a.prose.is_empty();
             let words = if waiting { a.status() } else { a.prose.clone() };
-            column = column.child(div().w_full().h(px(laid.blocks[0])).text_color(if waiting && a.error.is_none() { dim } else { text }).child(olo_ui::widgets::paragraph(words)));
+            column = column.child(div().w_full().h(px(laid.blocks[0])).text_color(if waiting && a.error.is_none() { dim } else { text }).child(paragraph(words)));
             for (i, s) in a.snippets.iter().enumerate() {
                 column = column.child(snippet(i, s, false, laid.blocks[i + 1]));
             }
         }
     }
-    let wheel = me.clone();
-    div()
-        .absolute()
-        .left(at.left())
-        .top(at.top())
-        .w(at.size.width)
-        .h(at.size.height)
-        .overflow_hidden()
-        .child(column)
-        .on_scroll_wheel(move |e: &ScrollWheelEvent, _, cx| {
+    div().id("palette-answer").absolute().left(at.left()).top(at.top()).w(at.size.width).h(at.size.height).overflow_hidden().child(column).on_scroll_wheel(cx.listener(
+        |p: &mut Palette, e: &ScrollWheelEvent, cx| {
             let dy = f32::from(e.delta.pixel_delta(px(mono_line())).y);
-            wheel.update(cx, |p, cx| {
-                if let Some(a) = p.answer.as_mut() {
-                    a.scroll = (a.scroll - dy).max(0.0);
-                    cx.notify();
-                }
-            });
-        })
-        .into_any_element()
+            if let Some(a) = p.answer.as_mut() {
+                a.scroll = (a.scroll - dy).max(0.0);
+                cx.invalidate();
+            }
+        },
+    ))
 }
 
 /// The keys that work now, along the foot (and what was just copied).
-pub fn foot(a: &Answering, at: Bounds<Pixels>, cx: &App) -> AnyElement {
-    let p = theme::palette(cx);
+pub fn foot(a: &Answering, at: Bounds<Pixels>) -> Element {
+    let p = theme::palette();
     let mut hints: Vec<KeyHint> = Vec::new();
     if a.following {
         hints.push(KeyHint::new("Return", "Ask"));
@@ -277,10 +265,7 @@ pub fn foot(a: &Answering, at: Bounds<Pixels>, cx: &App) -> AnyElement {
         .flex_row()
         .items_center()
         .gap(px(m::SPACING))
-        .children(hints)
+        .children(hints.into_iter().map(|h| h.into_element()))
         .child(div().flex_1())
         .children(a.copied.map(|what| div().text_size(px(style::DETAIL_SIZE)).text_color(c(p.panel_text)).child(what)))
-        .into_any_element()
 }
-
-use gpui::prelude::FluentBuilder as _;

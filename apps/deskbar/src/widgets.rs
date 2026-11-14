@@ -20,23 +20,24 @@ use std::{
     cell::RefCell,
     collections::{HashMap, VecDeque},
     rc::Rc,
+    sync::Arc,
     sync::{OnceLock, mpsc},
     time::Instant,
 };
 
+use olo_kit::palette::Rgba;
+use olo_kit::{
+    Bounds, Cx, Element, FontWeight, Hsla, Painter, Pixels, Styled as _, View, agent, canvas, metrics as m,
+    palette::Palette,
+    point, px,
+    style::{self, Align, c},
+    theme,
+    widgets::charts,
+};
 use olo_protocol::deskbar::{Look, MAX_SPAN_S, Measure, Size, Widget};
 use olo_system::{
     meters::{self, Reader, Reading, Unit},
     procs::{Rank, Sampler},
-};
-use olo_ui::{
-    agent,
-    gpui::{App, Bounds, Context, Entity, FontWeight, Hsla, IntoElement, Pixels, Render, Styled, Window, canvas, point, px},
-    metrics as m,
-    palette::Palette,
-    style::{self, Align, c},
-    theme,
-    widgets::charts,
 };
 
 /// Seconds since Deskbar started: when each reading was made, and the
@@ -72,9 +73,10 @@ pub struct Shown {
     /// When the latest reading was made (`clock`); None, nothing read.
     at: Option<f64>,
     pub value: String,
-    /// Shorter, for a row whose value and label don't both fit: "↓4.1K
-    /// ↑674".
-    compact: String,
+    /// Shorter, each shorter than the one before, for a row whose
+    /// value and label don't both fit: "↓4.1K ↑674"; a Token Pool
+    /// widget's of several quotas "24% · 46%", then the least "24%".
+    shorter: Vec<String>,
     short: String,
     latest: Option<Reading>,
 }
@@ -91,13 +93,27 @@ impl Shown {
         let series = (0..n).map(|i| readings.iter().map(|(t, r)| (*t, (if cores { Some(mean(r)) } else { r.values.get(i).copied() }).map_or(f32::NAN, |v| r.level(v, top)))).collect()).collect();
         let now = latest.as_ref().map(|r| r.values.iter().map(|v| r.level(*v, top)).collect()).unwrap_or_default();
         let value = latest.as_ref().map_or_else(|| "–".into(), |r| meters::value_text(&w.measure, r));
-        let short = latest.as_ref().map_or_else(|| "–".into(), |r| short_value(r, if cores { Some(mean(r)) } else { r.values.first().copied() }));
-        let compact = match (&w.measure, latest.as_ref()) {
-            (Measure::Network { .. }, Some(r)) if r.values.len() == 2 => format!("↓{} ↑{}", short_value(r, Some(r.values[0])), short_value(r, Some(r.values[1]))),
-            (Measure::Disk { .. }, Some(r)) if r.values.len() == 2 => format!("R{} W{}", short_value(r, Some(r.values[0])), short_value(r, Some(r.values[1]))),
-            _ => value.clone(),
+        // (A quota's: what's left of it all, or used, in figures.)
+        let pool = match (&w.measure, latest.as_ref().and_then(|r| r.left)) {
+            (Measure::Pool { used, .. }, Some(left)) => Some(if *used { 100.0 - left * 100.0 } else { left * 100.0 }),
+            _ => None,
         };
-        Shown { widget: w.clone(), series, now, was, at, value, compact, short, latest }
+        let short = match pool {
+            Some(v) => format!("{v:.0}"),
+            None => latest.as_ref().map_or_else(|| "–".into(), |r| short_value(r, if cores { Some(mean(r)) } else { r.values.first().copied() })),
+        };
+        let shorter = match (&w.measure, latest.as_ref()) {
+            (_, Some(r)) if pool.is_some() => {
+                let least = format!("{:.0}%", pool.unwrap_or(0.0));
+                // (Several quotas' words, "24% · 46% left": their figures.)
+                let each = r.words.as_deref().filter(|w| w.contains(" · ")).map(|w| w.trim_end_matches(" left").trim_end_matches(" used").to_owned());
+                each.into_iter().chain([least]).collect()
+            }
+            (Measure::Network { .. }, Some(r)) if r.values.len() == 2 => vec![format!("↓{} ↑{}", short_value(r, Some(r.values[0])), short_value(r, Some(r.values[1])))],
+            (Measure::Disk { .. }, Some(r)) if r.values.len() == 2 => vec![format!("R{} W{}", short_value(r, Some(r.values[0])), short_value(r, Some(r.values[1])))],
+            _ => Vec::new(),
+        };
+        Shown { widget: w.clone(), series, now, was, at, value, shorter, short, latest }
     }
 
     /// Seconds between its readings.
@@ -186,6 +202,14 @@ impl Shown {
         let w = &self.widget;
         let mut out = meters::describe(&w.measure, sources);
         let Some(r) = &self.latest else { return out };
+        // (Said in full by what read it: a quota's accounts.)
+        if !r.detail.is_empty() {
+            for line in &r.detail {
+                out.push('\n');
+                out.push_str(line);
+            }
+            return out;
+        }
         if r.values.len() > 1 && !matches!(w.measure, Measure::Cpu { cores: true }) {
             for (name, v) in r.names.iter().zip(&r.values) {
                 out.push_str(&format!("\n{name}: {}", meters::unit_text(r.unit, *v)));
@@ -206,28 +230,34 @@ pub struct Live {
     /// What each has read, newest last, with when, and as what (another
     /// measure or rate starts again).
     readings: HashMap<u32, (VecDeque<(f64, Reading)>, (Measure, u32))>,
-    shown: HashMap<u32, Rc<Shown>>,
+    shown: HashMap<u32, Arc<Shown>>,
     worker: Option<mpsc::Sender<Tell>>,
     paused: bool,
     /// The widget the pointer is on, and the processes using most of
     /// what it measures (None until known).
     hovered: Option<u32>,
     top: Option<Vec<(String, f64)>>,
+    /// Token Pool's meters followed while a widget shows them: the
+    /// worker reads those widgets again as the pool writes.
+    pool_watch: Option<olo_kit::watch::Watch>,
+    /// Each Token Pool widget's quota: out on every account as last read
+    /// (for a notification as that changes).
+    out: HashMap<u32, bool>,
 }
 
 impl Live {
     pub fn new() -> Live {
-        Live { widgets: Vec::new(), readings: HashMap::new(), shown: HashMap::new(), worker: None, paused: false, hovered: None, top: None }
+        Live { widgets: Vec::new(), readings: HashMap::new(), shown: HashMap::new(), worker: None, paused: false, hovered: None, top: None, pool_watch: None, out: HashMap::new() }
     }
 
     /// What widget `w` shows (nothing read yet: nothing).
-    pub fn shown(&self, w: &Widget) -> Rc<Shown> {
-        self.shown.get(&w.id).filter(|s| s.widget == *w).cloned().unwrap_or_else(|| Rc::new(Shown::of(w, &VecDeque::new(), Vec::new())))
+    pub fn shown(&self, w: &Widget) -> Arc<Shown> {
+        self.shown.get(&w.id).filter(|s| s.widget == *w).cloned().unwrap_or_else(|| Arc::new(Shown::of(w, &VecDeque::new(), Vec::new())))
     }
 
     /// The widgets as the settings now say: what each read kept if it
     /// measures the same at the same rate.
-    pub fn set(&mut self, widgets: Vec<Widget>, proxy: &olo_ui::Proxy) {
+    pub fn set(&mut self, widgets: Vec<Widget>, proxy: &olo_kit::Proxy) {
         if widgets == self.widgets {
             return;
         }
@@ -238,7 +268,7 @@ impl Live {
                 while r.len() > kept(w) {
                     r.pop_front();
                 }
-                self.shown.insert(w.id, Rc::new(Shown::of(w, r, Vec::new())));
+                self.shown.insert(w.id, Arc::new(Shown::of(w, r, Vec::new())));
             }
         }
         self.widgets = widgets;
@@ -246,15 +276,18 @@ impl Live {
     }
 
     /// Nothing read while the displays are asleep or the screen locked.
-    pub fn pause(&mut self, on: bool, proxy: &olo_ui::Proxy) {
+    pub fn pause(&mut self, on: bool, proxy: &olo_kit::Proxy) {
         if self.paused != on {
             self.paused = on;
             self.tell(proxy);
         }
     }
 
-    fn tell(&mut self, proxy: &olo_ui::Proxy) {
+    fn tell(&mut self, proxy: &olo_kit::Proxy) {
         let wanted = if self.paused { Vec::new() } else { self.widgets.clone() };
+        if !wanted.iter().any(|w| matches!(w.measure, Measure::Pool { .. })) {
+            self.pool_watch = None;
+        }
         if wanted.is_empty() {
             // (Its sender gone, the worker ends.)
             self.worker = None;
@@ -268,6 +301,12 @@ impl Live {
             }
             tx
         });
+        if self.pool_watch.is_none() && wanted.iter().any(|w| matches!(w.measure, Measure::Pool { .. })) {
+            let tx = std::sync::Mutex::new(worker.clone());
+            self.pool_watch = olo_kit::watch::watch([olo_protocol::pool::PoolMeters::path()], move |_| {
+                let _ = tx.lock().unwrap_or_else(|e| e.into_inner()).send(Tell::Pool);
+            });
+        }
         let _ = worker.send(Tell::Widgets(wanted));
     }
 
@@ -303,18 +342,64 @@ impl Live {
     }
 
     /// Readings come in, each with when it was made: each widget's
-    /// drawing made again, moving on from where it's drawn now.
-    pub fn add(&mut self, batch: Vec<(u32, f64, Reading)>) {
+    /// drawing made again, moving on from where it's drawn now. What to
+    /// tell the person: a Token Pool widget's quota (one asking to say
+    /// so) out on every account, or back.
+    pub fn add(&mut self, batch: Vec<(u32, f64, Reading)>) -> Vec<PoolNews> {
         let t = clock();
+        let mut news = Vec::new();
         for (id, at, r) in batch {
             let Some(w) = self.widgets.iter().find(|w| w.id == id) else { continue };
+            if let Measure::Pool { notify: true, .. } = &w.measure
+                && let Some(left) = r.left
+            {
+                let out = left <= 0.0005;
+                // (Not as it's first read: only a change.)
+                if self.out.insert(id, out).is_some_and(|was| was != out) {
+                    news.push(PoolNews { measure: w.measure.clone(), out, back: r.note.clone() });
+                }
+            }
             let was = self.shown.get(&id).filter(|s| s.widget == *w).map(|s| s.levels_at(t)).unwrap_or_default();
             let (readings, _) = self.readings.entry(id).or_insert_with(|| (VecDeque::new(), (w.measure.clone(), w.every_ms)));
             readings.push_back((at, r));
             while readings.len() > kept(w) {
                 readings.pop_front();
             }
-            self.shown.insert(id, Rc::new(Shown::of(w, readings, was)));
+            self.shown.insert(id, Arc::new(Shown::of(w, readings, was)));
+        }
+        news
+    }
+}
+
+/// A Token Pool quota out on every account, or back: told as a
+/// notification (`Measure::Pool`'s `notify`).
+pub struct PoolNews {
+    pub measure: Measure,
+    pub out: bool,
+    /// When the first account comes back ("Work back in 2 h").
+    pub back: Option<String>,
+}
+
+impl PoolNews {
+    /// Its notification's words: summary and body.
+    pub fn said(&self) -> (String, String) {
+        let Measure::Pool { provider, quotas, .. } = &self.measure else { return (String::new(), String::new()) };
+        let name = olo_protocol::pool::provider_name(provider);
+        let what = match quotas.as_slice() {
+            [q] => format!("{name}'s {q} quota"),
+            [] => format!("{name}'s quota"),
+            _ => format!("One of {name}'s quotas"),
+        };
+        if self.out {
+            (
+                format!("{what} is used up on every account"),
+                match &self.back {
+                    Some(b) => format!("{b}. Until then Token Pool asks {} to wait.", olo_protocol::pool::client_name(provider)),
+                    None => format!("Token Pool asks {} to wait until one resets.", olo_protocol::pool::client_name(provider)),
+                },
+            )
+        } else {
+            (format!("{what} is back"), "An account can answer again.".into())
         }
     }
 }
@@ -354,6 +439,8 @@ pub fn rank(w: &Widget) -> Option<Rank> {
 pub enum Tell {
     Widgets(Vec<Widget>),
     Hover(Option<(u32, Rank)>),
+    /// Token Pool wrote its meters: its widgets are read again now.
+    Pool,
 }
 
 /// How many processes a tip lists.
@@ -373,7 +460,7 @@ fn kept(w: &Widget) -> usize {
 /// The worker: each widget read when it's due, the readings sent
 /// together; waits for the next due (or a new list) and does nothing
 /// else.
-fn read_widgets(rx: mpsc::Receiver<Tell>, proxy: olo_ui::Proxy) {
+fn read_widgets(rx: mpsc::Receiver<Tell>, proxy: olo_kit::Proxy) {
     let mut widgets: Vec<Widget> = Vec::new();
     let mut readers: HashMap<u32, (Measure, Reader)> = HashMap::new();
     // When each is next read, and what it was set to read then.
@@ -391,6 +478,15 @@ fn read_widgets(rx: mpsc::Receiver<Tell>, proxy: olo_ui::Proxy) {
         match got {
             Ok(Tell::Hover(on)) => {
                 hover = on.map(|(id, rank)| (id, rank, Sampler::new(), Instant::now()));
+                continue;
+            }
+            Ok(Tell::Pool) => {
+                let now = Instant::now();
+                for w in widgets.iter().filter(|w| matches!(w.measure, Measure::Pool { .. })) {
+                    if let Some((_, at)) = due.get_mut(&w.id) {
+                        *at = now;
+                    }
+                }
                 continue;
             }
             Ok(Tell::Widgets(list)) => {
@@ -483,37 +579,76 @@ pub fn cells(r: Bounds<Pixels>, n: usize, inset: f32) -> Vec<Bounds<Pixels>> {
     (0..n).map(|i| Bounds::from_corners(point(px(left + i as f32 * (w + m::TIGHT)), r.top()), point(px(left + i as f32 * (w + m::TIGHT) + w), r.bottom()))).collect()
 }
 
-/// A widget's colours: its hue (the accent with none), and a second
-/// series' (up after down, writes after reads, swap after memory).
-fn colors(w: &Widget, p: &Palette) -> (Hsla, Hsla) {
-    use olo_ui::palette::Hue;
-    let first = w.hue.map_or(p.control_highlight, |h| p.hue(h));
+/// A widget's colours: its hue (the accent with none; a quota running
+/// low, orange under a quarter left and red under a tenth, if it
+/// warns), and a second series' (up after down, writes after reads,
+/// swap after memory).
+fn colors(s: &Shown, p: &Palette) -> (Hsla, Hsla) {
+    use olo_kit::palette::Hue;
+    let w = &s.widget;
     let second = match w.hue {
         Some(Hue::Orange) => p.hue(Hue::Purple),
         _ => p.hue(Hue::Orange),
     };
-    (c(first), c(second))
+    (c(base(s, p)), c(second))
 }
 
-/// Its label in a row ("CPU", "Network").
-pub fn label(w: &Widget) -> &'static str {
-    match w.measure {
-        Measure::Temperature { .. } => "Temp",
-        _ => w.measure.kind_name(),
+/// What a quota left under is drawn in, as it runs low.
+const LOW: f64 = 0.25;
+const VERY_LOW: f64 = 0.10;
+
+/// A widget's own colour as it is now (see `colors`).
+fn base(s: &Shown, p: &Palette) -> Rgba {
+    use olo_kit::palette::Hue;
+    let w = &s.widget;
+    if let Measure::Pool { warn: true, .. } = w.measure
+        && let Some(left) = s.latest.as_ref().and_then(|r| r.left)
+    {
+        if left < VERY_LOW {
+            return p.hue(Hue::Red);
+        }
+        if left < LOW {
+            return p.hue(Hue::Orange);
+        }
+    }
+    w.hue.map_or(p.control_highlight, |h| p.hue(h))
+}
+
+/// Its label in a row ("CPU", "Network", "Claude 5-hour").
+pub fn label(w: &Widget) -> String {
+    match &w.measure {
+        Measure::Temperature { .. } => "Temp".into(),
+        Measure::Pool { provider, quotas, .. } if quotas.is_empty() => olo_protocol::pool::provider_name(provider),
+        Measure::Pool { provider, quotas, .. } => format!("{} {}", olo_protocol::pool::provider_name(provider), quotas.join(", ")),
+        m => m.kind_name().into(),
     }
 }
 
-/// Its label where there's less room, beside others: "Mem", "Net".
-fn short_label(w: &Widget) -> &'static str {
-    match w.measure {
-        Measure::Cpu { .. } => "CPU",
-        Measure::Memory { .. } => "Mem",
-        Measure::Gpu { .. } => "GPU",
-        Measure::Disk { .. } => "I/O",
-        Measure::Space { .. } => "Disk",
-        Measure::Network { .. } => "Net",
-        Measure::Temperature { .. } => "Temp",
-        Measure::Power => "Pwr",
+/// Its label where there's less room, beside others: "Mem", "Net",
+/// "Claude 5h".
+fn short_label(w: &Widget) -> String {
+    match &w.measure {
+        Measure::Cpu { .. } => "CPU".into(),
+        Measure::Memory { .. } => "Mem".into(),
+        Measure::Gpu { .. } => "GPU".into(),
+        Measure::Disk { .. } => "I/O".into(),
+        Measure::Space { .. } => "Disk".into(),
+        Measure::Network { .. } => "Net".into(),
+        Measure::Temperature { .. } => "Temp".into(),
+        Measure::Power => "Pwr".into(),
+        Measure::Pool { provider, quotas, .. } => {
+            let name = olo_protocol::pool::provider_name(provider);
+            if quotas.is_empty() { name } else { format!("{name} {}", quotas.iter().map(|q| short_quota(q)).collect::<Vec<_>>().join("/")) }
+        }
+    }
+}
+
+/// A quota said short: "5h", "Wk", "Wk Fable".
+fn short_quota(q: &str) -> String {
+    let q = q.replace("-hour", "h").replace(" hour", "h").replace("-day", "d");
+    match q.strip_prefix("Weekly") {
+        Some(rest) => format!("Wk{rest}"),
+        None => q,
     }
 }
 
@@ -542,11 +677,11 @@ fn short_value(r: &Reading, v: Option<f64>) -> String {
 /// bars, a heatmap or a meter in a sunken well; and, while it moves, ask
 /// for the frame where it has moved a device pixel (the window's one
 /// clock, `charts::tick_within`), none once it's still.
-fn paint_drawing(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, s: &Shown, p: &Palette, t: f64) {
-    let inner = charts::paint_well(window, r, p);
+fn paint_drawing(g: &mut Painter, r: Bounds<Pixels>, s: &Shown, p: &Palette, t: f64) {
+    let inner = charts::paint_well(g, r, p);
     let w = &s.widget;
-    let (first, second) = colors(w, p);
-    let scale = window.scale_factor();
+    let (first, second) = colors(s, p);
+    let scale = g.scale_factor();
     let (wide, tall) = (f32::from(inner.size.width) * scale, f32::from(inner.size.height) * scale);
     // How far its levels move from nothing to all: device pixels (a
     // heatmap's cells, steps of colour).
@@ -555,48 +690,58 @@ fn paint_drawing(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, s: &Shown
             let (now, span) = (s.graph_now(t), w.span_s.clamp(1, MAX_SPAN_S) as f64);
             // (The second under the first: up under down.)
             for (i, points) in s.series.iter().enumerate().rev() {
-                charts::paint_trace(window, inner, points, now, span, if i == 0 { first } else { second }, i == 0);
+                charts::paint_trace(g, inner, points, now, span, if i == 0 { first } else { second }, i == 0);
             }
             if s.at.is_some_and(|at| t - at < s.every()) {
-                charts::tick_within(window, cx, span / wide.max(1.0) as f64);
+                g.paint_again_within(span / wide.max(1.0) as f64);
             }
             return;
         }
         Look::Bars => {
-            charts::paint_bars(window, inner, &s.levels_at(t), first);
+            charts::paint_bars(g, inner, &s.levels_at(t), first);
             tall
         }
-        // (Idle, the well's own ground; busy, the widget's hue.)
+        // (Idle, the well's own ground; busy, the widget's hue. A Token
+        // Pool widget's quotas each by how used it is: green to red; Ben,
+        // 2026-11-13: "show each selected quota type as a different color
+        // with the color representing usage where red is 100% used and
+        // green is 0% used".)
         Look::Heatmap => {
-            charts::paint_heatmap(window, inner, &s.levels_at(t), p.document_background, w.hue.map_or(p.control_highlight, |h| p.hue(h)));
+            match w.measure {
+                Measure::Pool { used, .. } => {
+                    let ground = p.document_background;
+                    charts::paint_heatmap_by(g, inner, &s.levels_at(t), |v| if v.is_finite() { charts::usage_colour(p, if used { v } else { 1.0 - v }) } else { ground });
+                }
+                _ => charts::paint_heatmap(g, inner, &s.levels_at(t), p.document_background, base(s, p)),
+            }
             16.0
         }
         Look::Meter => {
-            charts::paint_meter(window, inner, &s.levels_at(t), first);
+            charts::paint_meter(g, inner, &s.levels_at(t), first);
             wide
         }
         Look::Number => return,
     };
     if let Some(next) = s.next_frame(t, extent) {
-        charts::tick_within(window, cx, next);
+        g.paint_again_within(next);
     }
 }
 
 /// Paint `s` in a tray slot `r` (an icon's square): its drawing, or its
 /// value in small figures.
-fn paint_tray(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, s: &Shown, p: &Palette, t: f64) {
+fn paint_tray(g: &mut Painter, r: Bounds<Pixels>, s: &Shown, p: &Palette, t: f64) {
     if s.widget.look == Look::Number {
-        let (first, _) = colors(&s.widget, p);
-        style::label(window, cx, r.center().x, r.center().y, Align::Center, s.short.clone(), 9.0, style::ui_font(FontWeight::BOLD), first);
+        let (first, _) = colors(s, p);
+        style::label(g, r.center().x, r.center().y, Align::Center, s.short.clone(), 9.0, style::ui_font(FontWeight::BOLD), first);
         return;
     }
-    paint_drawing(window, cx, r, s, p, t);
+    paint_drawing(g, r, s, p, t);
 }
 
 /// Paint `s`'s row `r`: its label at the left, its value at the right,
 /// and its drawing: between them in a small row, under them in a medium
 /// or large one, the whole row's with neither.
-fn paint_row(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, s: &Shown, p: &Palette, inset: f32, t: f64) {
+fn paint_row(g: &mut Painter, r: Bounds<Pixels>, s: &Shown, p: &Palette, inset: f32, t: f64) {
     let w = &s.widget;
     let left = r.left() + px(inset);
     let right = r.right() - px(inset);
@@ -611,18 +756,26 @@ fn paint_row(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, s: &Shown, p:
     let text_y = if number || w.size == Size::Small || !words { r.center().y } else { r.top() + px(4.0 + m::LABEL_ROW / 2.0) };
     let (bold, plain) = (style::ui_font(FontWeight::BOLD), style::ui_font(FontWeight::NORMAL));
     // Its value in full if it fits beside its label (a small row's
-    // drawing between them too), else shorter, else without the label.
+    // drawing between them too), else shorter; then beside its short
+    // label ("Claude 5h/Wk"), longest first; else the shortest without.
     let room = f32::from(right - left) - if w.size == Size::Small && !number { 24.0 } else { 0.0 };
-    let label_w = if w.label { style::text_width_app(cx, label(w), style::PLAIN_SIZE, &bold) + m::SPACING } else { 0.0 };
-    let value = if !w.label || style::text_width_app(cx, &s.value, size, &plain) + label_w <= room { s.value.clone() } else { s.compact.clone() };
-    let show_label = w.label && style::text_width_app(cx, &value, size, &plain) + label_w <= room;
+    let values: Vec<&String> = std::iter::once(&s.value).chain(&s.shorter).collect();
+    let shown_w = |value: &str| if w.value || number { style::text_width_app(value, size, &plain) + m::SPACING } else { 0.0 };
+    let fits = |value: &str, name: &str| shown_w(value) + style::text_width_app(name, style::PLAIN_SIZE, &bold) <= room;
+    let names = if w.label { vec![label(w), short_label(w)] } else { Vec::new() };
+    let chosen = names.iter().find_map(|name| values.iter().find(|v| fits(v, name)).map(|v| ((*v).clone(), Some(name.clone()))));
+    let (value, name) = chosen.unwrap_or_else(|| {
+        let shortest = if w.label { values.last() } else { values.first() };
+        (shortest.map_or_else(String::new, |v| (*v).clone()), None)
+    });
+    let show_label = name.is_some();
     let mut label_w = px(0.0);
-    if show_label {
-        label_w = style::label(window, cx, left, text_y, Align::Left, label(w), style::PLAIN_SIZE, bold, c(p.panel_text)).size.width;
+    if let Some(name) = name {
+        label_w = style::label(g, left, text_y, Align::Left, name, style::PLAIN_SIZE, bold, c(p.panel_text)).size.width;
     }
     let mut value_w = px(0.0);
     if w.value || number {
-        value_w = style::label(window, cx, right, text_y, Align::Right, value, size, plain, c(p.panel_text)).size.width;
+        value_w = style::label(g, right, text_y, Align::Right, value, size, plain, c(p.panel_text)).size.width;
     }
     if number {
         return;
@@ -636,7 +789,7 @@ fn paint_row(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, s: &Shown, p:
     } else {
         Bounds::from_corners(point(left, r.top() + px(8.0 + m::LABEL_ROW)), point(right, r.bottom() - px(4.0)))
     };
-    paint_drawing(window, cx, drawing, s, p, t);
+    paint_drawing(g, drawing, s, p, t);
 }
 
 /// The line a cell's words are on, from its top.
@@ -645,43 +798,43 @@ const CELL_WORDS: f32 = 14.0;
 /// Paint `s` in cell `r` of a row it shares, small: its label over its
 /// drawing, its value at the label's right if both fit (else in its
 /// tip); a number's value under its label.
-fn paint_cell(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, s: &Shown, p: &Palette, t: f64) {
+fn paint_cell(g: &mut Painter, r: Bounds<Pixels>, s: &Shown, p: &Palette, t: f64) {
     let w = &s.widget;
     let number = w.look == Look::Number;
     let (bold, plain) = (style::ui_font(FontWeight::BOLD), style::ui_font(FontWeight::NORMAL));
     let size = style::SMALL_SIZE;
     let room = f32::from(r.size.width);
     let text_y = r.top() + px(4.0 + CELL_WORDS / 2.0);
-    let width = |cx: &mut App, text: &str, font| style::text_width_app(cx, text, size, font);
-    let name = [label(w), short_label(w)].into_iter().find(|l| width(cx, l, &bold) <= room).unwrap_or(short_label(w));
-    let name_w = if w.label { width(cx, name, &bold) + m::TIGHT } else { 0.0 };
+    let width = |text: &str, font| style::text_width_app(text, size, font);
+    let name = [label(w), short_label(w)].into_iter().find(|l| width(l, &bold) <= room).unwrap_or_else(|| short_label(w));
+    let name_w = if w.label { width(&name, &bold) + m::TIGHT } else { 0.0 };
     // (In the words' line unless it's a number, whose value is under;
     // never the tray's figures without their unit, "3" for 3%.)
-    let value = (w.value && !number).then(|| [&s.value, &s.compact].into_iter().find(|v| width(cx, v, &plain) + name_w <= room).cloned()).flatten();
-    window.with_content_mask(Some(olo_ui::gpui::ContentMask { bounds: r }), |window| {
+    let value = (w.value && !number).then(|| std::iter::once(&s.value).chain(&s.shorter).find(|v| width(v, &plain) + name_w <= room).cloned()).flatten();
+    g.with_content_mask(Some(olo_kit::ContentMask { bounds: r }), |g| {
         if w.label {
-            style::label(window, cx, r.left(), text_y, Align::Left, name, size, bold.clone(), c(p.panel_text));
+            style::label(g, r.left(), text_y, Align::Left, name, size, bold.clone(), c(p.panel_text));
         }
         if let Some(value) = value {
             let (x, align) = if w.label { (r.right(), Align::Right) } else { (r.left(), Align::Left) };
-            style::label(window, cx, x, text_y, align, value, size, plain.clone(), c(p.panel_text));
+            style::label(g, x, text_y, align, value, size, plain.clone(), c(p.panel_text));
         }
     });
     let body = Bounds::from_corners(point(r.left(), r.top() + px(6.0 + CELL_WORDS)), point(r.right(), r.bottom() - px(4.0)));
     if number {
-        let (first, _) = colors(w, p);
+        let (first, _) = colors(s, p);
         let big = match w.size {
             Size::Small => style::PLAIN_SIZE,
             Size::Medium => 14.0,
             Size::Large => 16.0,
         };
-        let text = if width(cx, &s.value, &bold) * big / size <= room { s.value.clone() } else { s.short.clone() };
-        window.with_content_mask(Some(olo_ui::gpui::ContentMask { bounds: r }), |window| {
-            style::label(window, cx, body.left(), body.center().y, Align::Left, text, big, bold, first);
+        let text = if width(&s.value, &bold) * big / size <= room { s.value.clone() } else { s.short.clone() };
+        g.with_content_mask(Some(olo_kit::ContentMask { bounds: r }), |g| {
+            style::label(g, body.left(), body.center().y, Align::Left, text, big, bold, first);
         });
         return;
     }
-    paint_drawing(window, cx, body, s, p, t);
+    paint_drawing(g, body, s, p, t);
 }
 
 /// Where on the bar a widget is drawn.
@@ -715,56 +868,51 @@ impl Shelf {
     }
 }
 
-/// A bar's widgets, drawn over it as a view of their own (both cached:
-/// see `BarRoot`). Drawn again when Deskbar's model changes (so the bar
-/// may have moved them), as a reading comes, and as they move.
+/// A bar's widgets, drawn over it as a view of their own: drawn again
+/// when the bar says a reading came (or lays them out anew: the bar's
+/// `body` runs first), and as they move (each asks for its next frame),
+/// without the bar under them being drawn.
 pub struct Layer {
     shelf: Shelf,
-    model: Entity<crate::Deskbar>,
+    model: crate::Model,
 }
 
 impl Layer {
-    pub fn new(shelf: Shelf, model: Entity<crate::Deskbar>, cx: &mut Context<Layer>) -> Layer {
-        cx.observe(&model, |_, _, cx| cx.notify()).detach();
+    pub fn new(shelf: Shelf, model: crate::Model) -> Layer {
         Layer { shelf, model }
     }
 }
 
-impl Render for Layer {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+impl View for Layer {
+    type Message = ();
+
+    fn body(&mut self, _: &mut Cx<Self>) -> Element {
+        use crate::ModelExt as _;
         let (shelf, model) = (self.shelf.clone(), self.model.clone());
-        canvas(
-            |_, _, _| {},
-            move |_, _, window, cx| {
-                // (What the bar put there in this frame: it's laid out
-                // first.)
-                let placed = shelf.0.borrow().clone();
-                let (t, p) = (clock(), theme::palette(cx));
-                for Placed { widget, spot } in placed {
-                    let s = model.read(cx).live.shown(&widget);
-                    let r = match spot {
-                        Spot::Tray(r) => {
-                            paint_tray(window, cx, r, &s, &p, t);
-                            r
-                        }
-                        Spot::Row(r) => {
-                            paint_row(window, cx, r, &s, &p, crate::TRAY_TEXT, t);
-                            r
-                        }
-                        Spot::Cell(r) => {
-                            paint_cell(window, cx, r, &s, &p, t);
-                            r
-                        }
-                    };
-                    let name = label(&s.widget);
-                    agent::record(
-                        window,
-                        cx,
-                        agent::Node { role: "Meter", name: Some(name.into()), value: Some(s.value.clone().into()), bounds: r, enabled: true, clickable: true, ..Default::default() },
-                    );
-                }
-            },
-        )
+        canvas(move |g, _| {
+            // (What the bar put there as it was last laid out.)
+            let placed = shelf.0.borrow().clone();
+            let (t, p) = (clock(), theme::palette());
+            for Placed { widget, spot } in placed {
+                let s = model.read().live.shown(&widget);
+                let r = match spot {
+                    Spot::Tray(r) => {
+                        paint_tray(g, r, &s, &p, t);
+                        r
+                    }
+                    Spot::Row(r) => {
+                        paint_row(g, r, &s, &p, crate::TRAY_TEXT, t);
+                        r
+                    }
+                    Spot::Cell(r) => {
+                        paint_cell(g, r, &s, &p, t);
+                        r
+                    }
+                };
+                let name = label(&s.widget);
+                agent::record(g, agent::Node { role: "Meter", name: Some(name.into()), value: Some(s.value.clone().into()), bounds: r, enabled: true, clickable: true, ..Default::default() });
+            }
+        })
         .size_full()
     }
 }
@@ -776,7 +924,7 @@ mod tests {
     fn moving(was: f32, now: f32, every_ms: u32) -> Shown {
         let mut widget = Widget::new(1, Measure::Cpu { cores: true });
         widget.every_ms = every_ms;
-        Shown { widget, series: Vec::new(), now: vec![now], was: vec![was], at: Some(10.0), value: String::new(), compact: String::new(), short: String::new(), latest: None }
+        Shown { widget, series: Vec::new(), now: vec![now], was: vec![was], at: Some(10.0), value: String::new(), shorter: Vec::new(), short: String::new(), latest: None }
     }
 
     /// Read every second, a level is on its way all that second: from

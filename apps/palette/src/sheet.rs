@@ -8,19 +8,15 @@
 //! editing's, then the desktop's (app_server's), each group a
 //! card in columns. Esc, a click outside or the keys again put it away.
 
-use olo_kit_base::masonry;
-use olo_protocol::{Chord, Client, KeyboardProfile, Platform, Reply, Request, shortcuts};
-use olo_ui::{
-    Frame, Proxy, agent, commands,
-    gpui::{
-        App, AppContext as _, Bounds, Context, FocusHandle, FontWeight, HitboxBehavior, InteractiveElement as _, IntoElement, KeyDownEvent, MouseDownEvent, ParentElement as _, Render, ScrollHandle,
-        Styled as _, Window, WindowHandle, canvas, div, point, px, size,
-    },
-    metrics as m,
+use olo_kit::{
+    Bounds, Cx, Element, FocusHandle, FontWeight, InteractiveElement as _, KeyDownEvent, MouseButton, MouseDownEvent, Painter, ParentElement as _, Pixels, Proxy, ScrollHandle, Styled as _, View,
+    WindowHandle, agent, commands, div, metrics as m, point, px, size,
     style::{self, c},
     theme,
     widgets::{SCROLL_BAR, ScrollView},
 };
+use olo_kit_base::masonry;
+use olo_protocol::{Chord, Client, KeyboardProfile, Platform, Reply, Request, shortcuts};
 use olo_xdg::apps::our_app;
 
 /// One card: a heading and its shortcuts (title, keys as the platform
@@ -158,20 +154,23 @@ fn text_editing(platform: Platform) -> Group {
 }
 
 /// The sheet's window.
-struct Sheet {
+pub struct Sheet {
     profile: String,
     groups: Vec<Group>,
     scroll: ScrollHandle,
     focus: FocusHandle,
+    /// Where it was last laid out: the panel, and each card in it.
+    panel: Bounds<Pixels>,
+    places: Vec<masonry::Place>,
+    scrolls: bool,
 }
 
 /// Covers the screen with the sheet.
-pub fn open(learned: Learned, cx: &mut App) -> Option<WindowHandle<Frame>> {
-    let sheet = cx.new(|cx| Sheet { profile: learned.profile, groups: learned.groups, scroll: ScrollHandle::new(), focus: cx.focus_handle() });
-    let focus = sheet.read(cx).focus.clone();
-    olo_ui::open_window(cx, crate::overlay("Keyboard Shortcuts", "shortcuts", None), move |window, _| {
-        window.focus(&focus);
-        sheet
+pub fn open(learned: Learned) -> WindowHandle<Sheet> {
+    olo_kit::open_window(crate::overlay("Keyboard Shortcuts", "shortcuts", None), move |cx| {
+        let focus = FocusHandle::new();
+        focus.focus(cx);
+        Sheet { profile: learned.profile, groups: learned.groups, scroll: ScrollHandle::new(), focus, panel: Bounds::default(), places: Vec::new(), scrolls: false }
     })
 }
 
@@ -184,9 +183,54 @@ const HEADING: f32 = ROW;
 const TITLE: f32 = 40.0;
 const FOOT: f32 = 30.0;
 
-impl Render for Sheet {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let screen = window.viewport_size();
+impl Sheet {
+    /// The panel, its title and foot.
+    fn paint_panel(&self, g: &mut Painter) {
+        let (panel, p) = (self.panel, theme::palette());
+        style::soft_shadow(g, panel, &p);
+        style::fill_rect(g, panel, c(p.panel_background));
+        style::frame_rect(g, panel, style::tint(p.panel_background, 1.6));
+        style::raised(g, style::inset(g, panel, 1.0), &p);
+        let (fg, dim) = (c(p.panel_text), style::disabled_text(&p));
+        let title_y = panel.top() + px(TITLE / 2.0 + 2.0);
+        style::label(g, panel.left() + px(GAP), title_y, style::Align::Left, "Keyboard Shortcuts", 15.0, style::ui_font(FontWeight::BOLD), fg);
+        style::label(g, panel.right() - px(GAP), title_y, style::Align::Right, format!("{} keys", self.profile), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim);
+        // Where to change them.
+        let foot_y = panel.bottom() - px(FOOT / 2.0);
+        let small = style::ui_font(FontWeight::NORMAL);
+        style::label(g, panel.left() + px(GAP), foot_y, style::Align::Left, "Change them in Preferences ▸ Keyboard ▸ Shortcuts.", style::DETAIL_SIZE, small.clone(), dim);
+        let more = if self.scrolls { "Scroll for more · Esc closes" } else { "Esc closes" };
+        style::label(g, panel.right() - px(GAP), foot_y, style::Align::Right, more, style::DETAIL_SIZE, small, dim);
+    }
+
+    /// The cards, from the panel's edge (so they line up with the title).
+    fn paint_cards(&self, g: &mut Painter, b: Bounds<Pixels>) {
+        let p = theme::palette();
+        let fg = c(p.panel_text);
+        let font = style::ui_font(FontWeight::NORMAL);
+        for (group, place) in self.groups.iter().zip(&self.places) {
+            let r = Bounds { origin: point(self.panel.left() + px(place.x), b.top() - px(GAP) + px(place.y)), size: size(px(place.w), px(place.h)) };
+            let heading = Bounds { origin: r.origin, size: size(r.size.width, px(HEADING)) };
+            style::label_fit(g, r.left(), r.top() + px(HEADING / 2.0), style::Align::Left, group.title.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), fg, r.size.width);
+            agent::record(g, agent::Node { role: "Heading", name: Some(group.title.clone().into()), bounds: heading, enabled: true, ..Default::default() });
+            for (i, (title, keys)) in group.rows.iter().enumerate() {
+                let y = r.top() + px(HEADING + i as f32 * ROW + ROW / 2.0);
+                let keys_w = style::key_combo_width(keys);
+                style::key_combo(g, point(r.right(), y), keys, fg);
+                style::label_fit(g, r.left(), y, style::Align::Left, title.clone(), style::PLAIN_SIZE, font.clone(), fg, (r.size.width - px(keys_w + m::SPACING)).max(px(40.0)));
+                // For agents: each shortcut and its keys.
+                let row = Bounds { origin: point(r.left(), y - px(ROW / 2.0)), size: size(r.size.width, px(ROW)) };
+                agent::record(g, agent::Node { role: "Row", name: Some(title.clone().into()), value: Some(keys.clone().into()), bounds: row, enabled: true, ..Default::default() });
+            }
+        }
+    }
+}
+
+impl View for Sheet {
+    type Message = ();
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let screen = cx.viewport_size();
         let room = (f32::from(screen.width) - 4.0 * GAP, f32::from(screen.height) - 4.0 * GAP);
         let (cols, col_w) = masonry::columns(room.0.min(COLUMN * 4.0 + GAP * 5.0), COLUMN, GAP);
         let cols = cols.min(self.groups.len().max(1));
@@ -198,74 +242,27 @@ impl Render for Sheet {
         let bar = if scrolls { SCROLL_BAR } else { 0.0 };
         let width = masonry::span_width(cols, col_w, GAP) + 2.0 * GAP + bar;
         let height = TITLE + body_h + FOOT;
-        let panel = style::snap(window, Bounds { origin: point((screen.width - px(width)) / 2.0, (screen.height - px(height)) / 2.0), size: size(px(width), px(height)) });
-        let profile = self.profile.clone();
-        let window_handle = window.window_handle();
+        let panel = crate::snapped(cx.scale_factor(), Bounds { origin: point((screen.width - px(width)) / 2.0, (screen.height - px(height)) / 2.0), size: size(px(width), px(height)) });
+        (self.panel, self.places, self.scrolls) = (panel, places, scrolls);
 
         // The panel, its title and foot; a click outside puts it away.
-        let backdrop = canvas(
-            move |b, window, _| window.insert_hitbox(b, HitboxBehavior::Normal),
-            move |_, hitbox, window, cx| {
-                let p = theme::palette(cx);
-                style::soft_shadow(window, panel, &p);
-                style::fill_rect(window, panel, c(p.panel_background));
-                style::frame_rect(window, panel, style::tint(p.panel_background, 1.6));
-                style::raised(window, style::inset(window, panel, 1.0), &p);
-                let (fg, dim) = (c(p.panel_text), style::disabled_text(&p));
-                let title_y = panel.top() + px(TITLE / 2.0 + 2.0);
-                style::label(window, cx, panel.left() + px(GAP), title_y, style::Align::Left, "Keyboard Shortcuts", 15.0, style::ui_font(FontWeight::BOLD), fg);
-                style::label(window, cx, panel.right() - px(GAP), title_y, style::Align::Right, format!("{profile} keys"), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim);
-                // Where to change them.
-                let foot_y = panel.bottom() - px(FOOT / 2.0);
-                let small = style::ui_font(FontWeight::NORMAL);
-                style::label(window, cx, panel.left() + px(GAP), foot_y, style::Align::Left, "Change them in Preferences ▸ Keyboard ▸ Shortcuts.", style::DETAIL_SIZE, small.clone(), dim);
-                let more = if scrolls { "Scroll for more · Esc closes" } else { "Esc closes" };
-                style::label(window, cx, panel.right() - px(GAP), foot_y, style::Align::Right, more, style::DETAIL_SIZE, small, dim);
-                window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
-                    if phase.bubble() && hitbox.is_hovered(window) && !panel.contains(&e.position) {
-                        cx.close_window(window_handle);
-                    }
-                });
-            },
-        )
-        .absolute()
-        .inset_0();
-
-        // The cards (from the panel's edge, so they line up with the
-        // title), in a scroll view if they don't all fit.
-        let groups = self.groups.clone();
-        let cards = canvas(
-            |_, _, _| {},
-            move |b, _, window, cx| {
-                let p = theme::palette(cx);
-                let fg = c(p.panel_text);
-                let font = style::ui_font(FontWeight::NORMAL);
-                for (group, place) in groups.iter().zip(&places) {
-                    let r = Bounds { origin: point(panel.left() + px(place.x), b.top() - px(GAP) + px(place.y)), size: size(px(place.w), px(place.h)) };
-                    let heading = Bounds { origin: r.origin, size: size(r.size.width, px(HEADING)) };
-                    style::label_fit(window, cx, r.left(), r.top() + px(HEADING / 2.0), style::Align::Left, group.title.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), fg, r.size.width);
-                    agent::record(window, cx, agent::Node { role: "Heading", name: Some(group.title.clone().into()), bounds: heading, enabled: true, ..Default::default() });
-                    for (i, (title, keys)) in group.rows.iter().enumerate() {
-                        let y = r.top() + px(HEADING + i as f32 * ROW + ROW / 2.0);
-                        let keys_w = style::key_combo_width(window, keys);
-                        style::key_combo(window, cx, point(r.right(), y), keys, fg);
-                        style::label_fit(window, cx, r.left(), y, style::Align::Left, title.clone(), style::PLAIN_SIZE, font.clone(), fg, (r.size.width - px(keys_w + m::SPACING)).max(px(40.0)));
-                        // For agents: each shortcut and its keys.
-                        let row = Bounds { origin: point(r.left(), y - px(ROW / 2.0)), size: size(r.size.width, px(ROW)) };
-                        agent::record(window, cx, agent::Node { role: "Row", name: Some(title.clone().into()), value: Some(keys.clone().into()), bounds: row, enabled: true, ..Default::default() });
-                    }
+        let backdrop = cx.canvas(|s: &Sheet, g, _| s.paint_panel(g)).id("sheet-backdrop").absolute().left(px(0.0)).top(px(0.0)).size_full().on_mouse_down(
+            MouseButton::Left,
+            cx.listener(|s: &mut Self, e: &MouseDownEvent, cx| {
+                if !s.panel.contains(&e.position) {
+                    cx.close_window();
                 }
-            },
-        )
-        .w(px(width - 4.0 - bar))
-        .h(px(content_h - GAP));
+            }),
+        );
+        // The cards, in a scroll view if they don't all fit.
+        let cards = cx.canvas(|s: &Sheet, g, b| s.paint_cards(g, b)).w(px(width - 4.0 - bar)).h(px(content_h - GAP));
         let body = div().absolute().left(panel.left() + px(2.0)).top(panel.top() + px(TITLE)).w(px(width - 4.0)).h(px(body_h));
-        let body = if scrolls { body.child(ScrollView::new("shortcuts-sheet", &self.scroll).background(theme::palette(cx).panel_background).child(cards)) } else { body.child(cards) };
-        div().size_full().relative().track_focus(&self.focus).child(backdrop).child(body).on_key_down(move |e: &KeyDownEvent, window, _| {
+        let body = if scrolls { body.child(ScrollView::new(&self.scroll).border(false).background(theme::palette().panel_background).child(cards)) } else { body.child(cards) };
+        div().size_full().relative().track_focus(&self.focus).child(backdrop).child(body).on_key_down(cx.listener(|_: &mut Self, e: &KeyDownEvent, cx| {
             if e.keystroke.key == "escape" {
-                window.remove_window();
+                cx.close_window();
             }
-        })
+        }))
     }
 }
 

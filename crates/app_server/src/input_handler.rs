@@ -1130,8 +1130,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     /// Whether what a finger came down on takes touch: a client's
     /// surface whose client has `wl_touch` (Chrome, GTK). Not app_server's
-    /// own frames and tabs, nor an app without it (every GPUI app, so
-    /// every Olo app): there the finger is the pointer.
+    /// own frames and tabs, nor an app without it (every Olo
+    /// app): there the finger is the pointer.
     fn takes_touch(&self, under: &Option<(PointerFocusTarget, Point<f64, Logical>)>) -> bool {
         use smithay::reexports::wayland_server::Resource as _;
         let (Some(touch), Some((PointerFocusTarget::WlSurface(surface), _))) = (self.seat.get_touch(), under) else { return false };
@@ -1806,9 +1806,16 @@ impl AnvilState<UdevData> {
             InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. } => "device",
             _ => "gesture or touch",
         };
+        // How long after the kernel stamped it (libinput's clock is the
+        // monotonic one): the pointer stood still that long.
+        let stamped = event_time(&event);
         self.handle_input_event(dh, event);
         if pointing {
             self.wake_under_pointer(before);
+        }
+        if let Some(stamped) = stamped {
+            let now = std::time::Duration::from(self.clock.now()).as_micros() as u64;
+            self.timings.input(kind, std::time::Duration::from_micros(now.saturating_sub(stamped)));
         }
         self.timings.handled(|| format!("input {kind}"), start);
         self.timings.phase("input", start);
@@ -1986,6 +1993,8 @@ impl AnvilState<UdevData> {
             });
         }
 
+        // (The input thread leaves a held or fenced pointer alone.)
+        self.pointer_constrained = pointer_locked || pointer_confined;
         pointer.relative_motion(self, under.clone(), &RelativeMotionEvent { delta: evt.delta(), delta_unaccel: evt.delta_unaccel(), time: evt.time() });
 
         // If pointer is locked, only emit relative motion
@@ -2188,8 +2197,28 @@ impl AnvilState<UdevData> {
     }
 }
 
+/// When the kernel stamped an input event, in microseconds of the
+/// monotonic clock (libinput's): for the ones whose lateness is felt.
+fn event_time<B: InputBackend>(event: &InputEvent<B>) -> Option<u64> {
+    use smithay::backend::input::{Device as _, DeviceCapability, Event as _};
+    Some(match event {
+        InputEvent::Keyboard { event } => event.time().micros(),
+        InputEvent::PointerMotion { event } => event.time().micros(),
+        InputEvent::PointerMotionAbsolute { event } => event.time().micros(),
+        // Not a touchpad's (one with gestures): libinput sends a tap's
+        // click as the finger lifts, stamped when it touched (and with
+        // tap-and-drag on, only after its tap timeout): "late" by the tap
+        // itself. (Ben's log, 2026-11-13: 18 "pointer button came 104 to
+        // 160 ms late", nothing else late, the loop idle.)
+        InputEvent::PointerButton { event } if event.device().has_capability(DeviceCapability::Gesture) => return None,
+        InputEvent::PointerButton { event } => event.time().micros(),
+        InputEvent::PointerAxis { event } => event.time().micros(),
+        _ => return None,
+    })
+}
+
 /// `pos` if it is on one of `screens`, else the nearest point that is.
-fn clamp_to_screens(screens: &[smithay::utils::Rectangle<i32, Logical>], pos: Point<f64, Logical>) -> Point<f64, Logical> {
+pub(crate) fn clamp_to_screens(screens: &[smithay::utils::Rectangle<i32, Logical>], pos: Point<f64, Logical>) -> Point<f64, Logical> {
     screens
         .iter()
         .map(|g| {

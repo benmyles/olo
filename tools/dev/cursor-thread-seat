@@ -1,0 +1,169 @@
+#!/usr/bin/python3 -I
+"""The root half of tools/dev/cursor-thread-check: a virtual display (vkms,
+with a cursor plane) and a virtual mouse (uinput), both on a seat of their
+own ("seat-olotest"), never the person's: their session (seat0) doesn't see
+either. Run by the check through sudo; not by hand.
+
+  cursor-thread-seat DIR OWNER
+
+Puts a udev rule in /run/udev/rules.d giving the two devices that seat and
+OWNER, loads vkms (refused if it's loaded already), makes the mouse, and
+checks udev put each on the test seat before anything moves (else it
+undoes everything and stops). Then it says the card's path in DIR/ready
+and does what DIR/cmd says, a line at a time, each answered in DIR/ack:
+
+  move DX DY COUNT INTERVAL_US   the mouse moved COUNT times
+  stop                           everything undone, and it exits
+
+It undoes everything on any exit too (and after 10 minutes at most): the
+mouse, vkms, the rule.
+"""
+import fcntl, os, struct, subprocess, sys, time
+
+DIR, OWNER = sys.argv[1], sys.argv[2]
+SEAT = "seat-olotest"
+NAME = "Olo cursor test mouse"
+RULE = "/run/udev/rules.d/61-olo-cursor-check.rules"
+
+# linux/uinput.h, linux/input-event-codes.h
+UI_SET_EVBIT = 0x40045564
+UI_SET_KEYBIT = 0x40045565
+UI_SET_RELBIT = 0x40045566
+UI_DEV_SETUP = 0x405c5503
+UI_DEV_CREATE = 0x5501
+UI_DEV_DESTROY = 0x5502
+EV_SYN, EV_KEY, EV_REL = 0, 1, 2
+REL_X, REL_Y = 0, 1
+BTN_LEFT, BTN_RIGHT = 0x110, 0x111
+BUS_VIRTUAL = 0x06
+
+loaded = False
+mouse = None
+
+
+def say(name, text):
+    path = os.path.join(DIR, name)
+    with open(path + ".tmp", "w") as f:
+        f.write(text)
+    os.chown(path + ".tmp", *owner_ids())
+    os.rename(path + ".tmp", path)
+
+
+def owner_ids():
+    import pwd
+    p = pwd.getpwnam(OWNER)
+    return p.pw_uid, p.pw_gid
+
+
+def cleanup():
+    global mouse, loaded
+    if mouse is not None:
+        try:
+            fcntl.ioctl(mouse, UI_DEV_DESTROY)
+        except OSError:
+            pass
+        os.close(mouse)
+        mouse = None
+    if loaded:
+        # (The check lets go of the card first; up to a minute more for
+        # whatever still holds it.)
+        for _ in range(300):
+            if subprocess.run(["modprobe", "-r", "vkms"], capture_output=True).returncode == 0:
+                loaded = False
+                break
+            time.sleep(0.2)
+    # The rule only once vkms is gone: while it's loaded, the rule keeps its
+    # card off the person's seat (an event for it would otherwise put it
+    # on seat0, and their session would take it as a display).
+    if loaded:
+        print("vkms is still in use: left loaded, and its rule with it (sudo modprobe -r vkms, then sudo rm " + RULE + ")", file=sys.stderr)
+    elif os.path.exists(RULE):
+        os.remove(RULE)
+        subprocess.run(["udevadm", "control", "--reload"])
+
+
+def seat_of(sysfs):
+    out = subprocess.run(["udevadm", "info", "--query=property", "--path", sysfs], capture_output=True, text=True).stdout
+    return next((l.split("=", 1)[1] for l in out.splitlines() if l.startswith("ID_SEAT=")), "seat0")
+
+
+def main():
+    global loaded, mouse
+    if subprocess.run(["sh", "-c", "lsmod | grep -q '^vkms '"]).returncode == 0:
+        sys.exit("vkms is loaded already: not touching it")
+    os.makedirs(os.path.dirname(RULE), exist_ok=True)
+    with open(RULE, "w") as f:
+        f.write("# tools/dev/cursor-thread-check: its display and mouse on a seat of their own. Removed when it ends.\n")
+        f.write(f'SUBSYSTEM=="drm", KERNEL=="card[0-9]*", KERNELS=="vkms", ENV{{ID_SEAT}}="{SEAT}", OWNER:="{OWNER}", MODE:="0600"\n')
+        f.write(f'SUBSYSTEM=="input", ATTRS{{name}}=="{NAME}", ENV{{ID_SEAT}}="{SEAT}", OWNER:="{OWNER}", MODE:="0600"\n')
+    subprocess.run(["udevadm", "control", "--reload"], check=True)
+    subprocess.run(["modprobe", "vkms", "enable_cursor=1"], check=True)
+    loaded = True
+    subprocess.run(["udevadm", "settle"])
+    card = next((f"/dev/dri/{c}" for c in sorted(os.listdir("/sys/class/drm")) if c.startswith("card") and "-" not in c and "vkms" in os.path.realpath(f"/sys/class/drm/{c}")), None)
+    if card is None:
+        sys.exit("vkms made no card")
+    if seat_of(f"/sys/class/drm/{os.path.basename(card)}") != SEAT:
+        sys.exit("udev didn't put vkms on the test seat: undone")
+
+    mouse = os.open("/dev/uinput", os.O_WRONLY | os.O_NONBLOCK)
+    fcntl.ioctl(mouse, UI_SET_EVBIT, EV_KEY)
+    fcntl.ioctl(mouse, UI_SET_EVBIT, EV_REL)
+    fcntl.ioctl(mouse, UI_SET_KEYBIT, BTN_LEFT)
+    fcntl.ioctl(mouse, UI_SET_KEYBIT, BTN_RIGHT)
+    fcntl.ioctl(mouse, UI_SET_RELBIT, REL_X)
+    fcntl.ioctl(mouse, UI_SET_RELBIT, REL_Y)
+    # struct uinput_setup { struct input_id id; char name[80]; __u32 ff_effects_max; }
+    fcntl.ioctl(mouse, UI_DEV_SETUP, struct.pack("HHHH80sI", BUS_VIRTUAL, 0x1234, 0x5678, 1, NAME.encode(), 0))
+    fcntl.ioctl(mouse, UI_DEV_CREATE)
+    subprocess.run(["udevadm", "settle"])
+    events = []
+    for d in os.listdir("/sys/class/input"):
+        try:
+            name = open(f"/sys/class/input/{d}/device/name").read().strip()
+        except OSError:
+            continue
+        if name == NAME and d.startswith("event"):
+            events.append(d)
+    if not events or any(seat_of(f"/sys/class/input/{e}") != SEAT for e in events):
+        sys.exit("udev didn't put the mouse on the test seat: undone before it moved")
+
+    say("ready", f"{card} /dev/input/{events[0]}\n")
+    started = time.monotonic()
+    done = 0
+    while time.monotonic() - started < 600:
+        try:
+            lines = open(os.path.join(DIR, "cmd")).read().splitlines()
+        except OSError:
+            lines = []
+        for n, line in enumerate(lines[done:], done + 1):
+            words = line.split()
+            if not words:
+                continue
+            if words[0] == "stop":
+                say("ack", f"{n} stop\n")
+                return
+            if words[0] == "move":
+                dx, dy, count, interval = int(words[1]), int(words[2]), int(words[3]), int(words[4]) / 1e6
+                t = time.monotonic()
+                for i in range(count):
+                    now = time.time()
+                    sec, usec = int(now), int((now % 1) * 1e6)
+                    ev = b""
+                    if dx:
+                        ev += struct.pack("llHHi", sec, usec, EV_REL, REL_X, dx)
+                    if dy:
+                        ev += struct.pack("llHHi", sec, usec, EV_REL, REL_Y, dy)
+                    ev += struct.pack("llHHi", sec, usec, EV_SYN, 0, 0)
+                    os.write(mouse, ev)
+                    t += interval
+                    time.sleep(max(0.0, t - time.monotonic()))
+            say("ack", f"{n} {line}\n")
+        done = len(lines)
+        time.sleep(0.005)
+
+
+try:
+    main()
+finally:
+    cleanup()

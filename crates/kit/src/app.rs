@@ -6,7 +6,20 @@
 //! view inside a [`Frame`], which paints the panel behind it and sets
 //! Olo's font and the palette's text colour.
 
-use olo_interface::{AnyChild, AppCx, Cx, Element, InteractiveElement as _, IntoElement as _, ParentElement as _, SharedString, Styled as _, View, WindowHandle, WindowSpec, div, px};
+use std::{
+    any::Any,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
+    time::{Duration, Instant},
+};
+
+use olo_interface::{
+    AnyChild, AppCx, Bounds, Cx, Element, FocusHandle, InteractiveElement as _, IntoElement as _, ParentElement as _, Pixels, ScrollHandle, SharedString, Size, Styled as _, View, WindowCx,
+    WindowHandle, WindowId, WindowSpec, div, px, size,
+};
+use olo_kit_base::Proxy;
 
 use crate::{style, theme};
 
@@ -267,19 +280,310 @@ impl WindowOptions {
 }
 
 /// A window's first view: the panel behind the app's view, Olo's font
-/// and the palette's text colour for what it draws.
+/// and the palette's text colour for what it draws, the window's own
+/// keys, and, for a window that follows what it shows
+/// (`WindowOptions::fits_content`), its size.
 pub struct Frame {
     content: AnyChild,
     panel: bool,
+    /// Has the keyboard when nothing in the window does, so the menu
+    /// bar's keys reach it.
+    focus: FocusHandle,
+    /// Its size is noted as it changes (`WindowOptions::keep_size`).
+    keep: Option<SharedString>,
+    /// The height what it shows needs, and where it's scrolled to in a
+    /// window less tall (`WindowOptions::content_height`).
+    content_height: Option<f32>,
+    scroll: ScrollHandle,
+    /// The window follows what it shows (`WindowOptions::fits_content`).
+    fit: Option<Fit>,
+    /// A control lit to say "here" (`spotlight`): where, and since when.
+    lit: Option<(Bounds<Pixels>, Instant)>,
+}
+
+/// A window that follows what it shows: its size as designed, what its
+/// content needed as last laid out, and the size last asked for.
+struct Fit {
+    design: (f32, f32),
+    /// Its size is its content's, not the person's.
+    fixed: bool,
+    need: Option<f32>,
+    /// The size last asked for (so each is asked once).
+    asked: Option<(f32, f32)>,
+    /// A resize asked for and not made yet: the size it was then, and
+    /// when (nothing is shown until it's another, or `RESIZE_WAIT`).
+    resizing: Option<(Size<Pixels>, Instant)>,
+    /// What it shows needs more than the screen has room for: scrolled.
+    scrolls: bool,
+    /// What it waits for before it's first shown ([`hold_first_show`]).
+    first: Arc<FirstShow>,
+}
+
+/// What a window's frame is told.
+#[derive(Clone)]
+pub enum FrameMessage {
+    /// What it shows was laid out this tall.
+    Measured(f32),
+    /// The window is another size, or held another way.
+    Sized,
+    /// A hold on its first showing was let go, or its wait is over.
+    HoldLetGo,
+    /// A display came or went: the room there is may be another.
+    Displays,
+    /// What it shows needs this height (`set_content_height`).
+    ContentHeight(Option<f32>),
+    /// A control here is lit for a moment (`spotlight::show`).
+    Light(Bounds<Pixels>),
+    /// The lit control's moment is over.
+    Unlit,
+}
+
+/// The longest a window that fits what it shows holds back what it
+/// shows for a resize it asked for: a compositor that keeps it at its
+/// size (a tile, Focus's zoom) never makes it, and the window was never
+/// seen (DiskBackup in Focus, Ben 2026-11-08: "an entry in the deskbar
+/// but no windows").
+pub const RESIZE_WAIT: Duration = Duration::from_millis(300);
+
+/// How long a window that fits what it shows waits, at most, for what it
+/// asked for as it opened before it's first shown ([`hold_first_show`]):
+/// an answer slower than this shows it as it is, and it grows when the
+/// answer comes.
+pub const FIRST_SHOW_WAIT: Duration = Duration::from_millis(150);
+
+/// A window's first showing, held ([`hold_first_show`]).
+pub struct FirstShow {
+    opened: Instant,
+    /// The holds not let go yet.
+    waiting: AtomicUsize,
+    /// It was shown (or stopped waiting): no more holds.
+    over: AtomicBool,
+    /// Its frame, told as each hold is let go (from any thread).
+    frame: olo_interface::app_kit::Messenger<FrameMessage>,
+}
+
+impl FirstShow {
+    /// Whether what it shows is held back (something asked for is still
+    /// to come, and there's time to wait for it).
+    fn holding(&self) -> bool {
+        if self.over.load(Ordering::SeqCst) {
+            return false;
+        }
+        if self.waiting.load(Ordering::SeqCst) > 0 && self.opened.elapsed() < FIRST_SHOW_WAIT {
+            return true;
+        }
+        self.over.store(true, Ordering::SeqCst);
+        false
+    }
+}
+
+/// A hold on a window's first showing ([`hold_first_show`]): let go by
+/// dropping it, on any thread.
+pub struct FirstShowHold(Arc<FirstShow>);
+
+impl Drop for FirstShowHold {
+    fn drop(&mut self) {
+        self.0.waiting.fetch_sub(1, Ordering::SeqCst);
+        self.0.frame.send(FrameMessage::HoldLetGo);
+    }
+}
+
+/// The windows not shown yet that fit what they show: their holds.
+#[derive(Default)]
+struct FirstShows(std::collections::HashMap<WindowId, Arc<FirstShow>>);
+
+/// Hold a window that fits what it shows (`WindowOptions::fits_content`)
+/// from being first shown until what it asked for as it opened has come
+/// (a worker's answer that adds to what it shows: drop the hold when it's
+/// in), for [`FIRST_SHOW_WAIT`] at most: so it opens at the size of what
+/// it shows, not at a size it grows from a moment later. Nothing waits
+/// for it: what the window would have shown before is held back. None
+/// once it has been shown, and for other windows.
+pub fn hold_first_show(cx: &mut WindowCx) -> Option<FirstShowHold> {
+    let id = cx.window_id();
+    let first = cx.looper().state::<FirstShows>()?.0.get(&id).cloned()?;
+    if first.over.load(Ordering::SeqCst) {
+        return None;
+    }
+    first.waiting.fetch_add(1, Ordering::SeqCst);
+    Some(FirstShowHold(first))
+}
+
+/// The size a window that follows what it shows should be (`viewport` now,
+/// its content needing `need`), and whether its content scrolls there.
+fn fitted(design: (f32, f32), fixed: bool, viewport: Size<Pixels>, need: f32, room: f32) -> ((f32, f32), bool) {
+    // (One the person sizes keeps their size when it's enough.)
+    let least = if fixed { design.1 } else { f32::from(viewport.height) };
+    let need = need.ceil().max(least);
+    let scrolls = need > room + 0.5;
+    let width = if fixed { design.0 } else { f32::from(viewport.width) };
+    let size = if scrolls { (width + if fixed { crate::widgets::SCROLL_BAR } else { 0.0 }, room.floor()) } else { (width, need) };
+    (size, scrolls)
+}
+
+/// Room left above a window's tab and around it on a screen.
+const SCREEN_EDGES: f32 = 64.0;
+
+/// The tallest a window may be: the shortest display's height in points,
+/// less room for the window's tab and edges (never under 240).
+pub fn screen_room() -> f32 {
+    olo_interface::displays().iter().map(|d| f32::from(d.size.height)).fold(f32::INFINITY, f32::min).max(240.0 + SCREEN_EDGES) - SCREEN_EDGES
+}
+
+/// Next Tab (+1: ⌃Tab, ⌃Page Down) or Previous Tab (−1: ⌃⇧Tab, ⌃Page Up);
+/// 0 for any other key.
+pub fn tab_step(k: &olo_interface::Keystroke) -> i32 {
+    let m = &k.modifiers;
+    if !m.control || m.alt || m.platform {
+        return 0;
+    }
+    match k.key.as_str() {
+        "tab" if m.shift => -1,
+        "tab" => 1,
+        "pageup" if !m.shift => -1,
+        "pagedown" if !m.shift => 1,
+        _ => 0,
+    }
+}
+
+impl Frame {
+    /// A window that follows what it shows is brought in line with what
+    /// its content needs now: asked to be that size (held back until it
+    /// is, so it's never seen at the wrong one), or, past the screen's
+    /// room, or where the compositor holds its size, scrolled.
+    fn follow(&mut self, cx: &mut Cx<Self>) {
+        let Some(fit) = self.fit.as_mut() else { return };
+        let Some(need) = fit.need else { return };
+        // (Not shown at all while what it asked for as it opened is
+        // still to come: `hold_first_show`.)
+        if !fit.first.over.load(Ordering::SeqCst) {
+            if fit.first.holding() {
+                let left = FIRST_SHOW_WAIT.saturating_sub(fit.first.opened.elapsed());
+                cx.hold_commit(left);
+                cx.after(left + Duration::from_millis(2), FrameMessage::HoldLetGo);
+                return;
+            }
+            // (Shown from now: no more holds.)
+            let id = cx.window_id();
+            if let Some(shows) = cx.looper().state_mut::<FirstShows>() {
+                shows.0.remove(&id);
+            }
+        }
+        let now = cx.viewport_size();
+        // Its size the compositor's (a tile, a zoom): as given, asking
+        // for nothing (and asking again once it isn't), scrolled if what
+        // it shows needs more.
+        let scrolls = if cx.held_state().held() {
+            fit.resizing = None;
+            fit.asked = None;
+            need > f32::from(now.height) + 0.5
+        } else {
+            let ((w, h), scrolls) = fitted(fit.design, fit.fixed, now, need, screen_room());
+            let off = (f32::from(now.width) - w).abs() > 0.5 || (f32::from(now.height) - h).abs() > 0.5;
+            // (The resize asked for is made when its size is another:
+            // laid out at it, or at what the compositor gave instead; or
+            // it never comes, and the window is shown as it is after
+            // `RESIZE_WAIT`.)
+            if fit.resizing.is_some_and(|(then, at)| then != now || at.elapsed() > RESIZE_WAIT) {
+                fit.resizing = None;
+            }
+            if off && fit.asked != Some((w, h)) {
+                fit.asked = Some((w, h));
+                fit.resizing = Some((now, Instant::now()));
+                cx.resize_window(size(px(w), px(h)));
+                cx.hold_commit(RESIZE_WAIT);
+            }
+            scrolls
+        };
+        if std::mem::replace(&mut fit.scrolls, scrolls) != scrolls {
+            cx.invalidate();
+        }
+        if fit.resizing.is_none() {
+            cx.release_commit();
+        }
+    }
 }
 
 impl View for Frame {
-    type Message = ();
+    type Message = FrameMessage;
 
-    fn body(&mut self, _: &mut Cx<Self>) -> Element {
+    fn message(&mut self, message: FrameMessage, cx: &mut Cx<Self>) {
+        match message {
+            FrameMessage::Measured(need) => {
+                if let Some(fit) = self.fit.as_mut() {
+                    fit.need = Some(need);
+                }
+                self.follow(cx);
+            }
+            FrameMessage::Sized => {
+                // Its size noted as the person changes it (not one the
+                // compositor chose: a tile, maximized, full screen).
+                if let Some(name) = &self.keep
+                    && !cx.held_state().held()
+                {
+                    let s = cx.viewport_size();
+                    crate::kept::note_size(name, (f32::from(s.width).round(), f32::from(s.height).round()));
+                }
+                if self.content_height.is_some() {
+                    cx.invalidate();
+                }
+                self.follow(cx);
+            }
+            FrameMessage::HoldLetGo => self.follow(cx),
+            FrameMessage::Displays => {
+                if let Some(fit) = self.fit.as_mut() {
+                    fit.asked = None;
+                }
+                self.follow(cx);
+            }
+            FrameMessage::ContentHeight(height) => {
+                if self.content_height != height {
+                    self.content_height = height;
+                    cx.invalidate();
+                }
+            }
+            FrameMessage::Light(bounds) => {
+                self.lit = Some((bounds, Instant::now()));
+                cx.after(crate::spotlight::LIT, FrameMessage::Unlit);
+                cx.invalidate();
+            }
+            // (Lit again since: that one's own end comes.)
+            FrameMessage::Unlit => {
+                if self.lit.is_some_and(|(_, since)| since.elapsed() >= crate::spotlight::LIT) {
+                    self.lit = None;
+                    cx.invalidate();
+                }
+            }
+        }
+    }
+
+    fn window_closing(&mut self, _: &mut Cx<Self>) {
+        crate::kept::write();
+    }
+
+    // (A display come or gone changes the room there is.)
+    fn displays_changed(&mut self, cx: &mut Cx<Self>) {
+        self.message(FrameMessage::Displays, cx);
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let shown = self.shown(cx);
+        // Over all of it: a control lit to say "here" (`spotlight`).
+        match self.lit {
+            Some((bounds, since)) => shown.relative().child(crate::spotlight::ring(bounds, since)),
+            None => shown,
+        }
+    }
+}
+
+impl Frame {
+    /// The window's ground, its keys, and what it shows.
+    fn shown(&mut self, cx: &mut Cx<Self>) -> Element {
         let p = theme::palette();
         let mut root = div()
             .size_full()
+            .track_focus(&self.focus)
+            .on_bounds_changed(cx.msg(FrameMessage::Sized))
             // A press anywhere in the window puts away a menu open over it
             // (and a cut text's tip).
             .on_window_mouse_down(|e, cx| {
@@ -313,6 +617,13 @@ impl View for Frame {
                     cx.stop_propagation();
                     return;
                 }
+                // Undo and Redo (the profile's keys) where no menu has
+                // them: the window's own view's `undo` and `redo`.
+                if let Some(redo) = crate::undo::pressed(&e.keystroke) {
+                    crate::menu::on_command(if redo { "redo" } else { "undo" }, cx);
+                    cx.stop_propagation();
+                    return;
+                }
                 // ⌘W (the profile's Close) on a window whose app has no
                 // Close of its own: closed as its tab's close button does,
                 // the app's confirmations first.
@@ -328,29 +639,241 @@ impl View for Frame {
         if self.panel {
             root = root.bg(style::c(p.panel_background));
         }
-        root.child(self.content.element())
+        // Following what it shows: laid out at what it needs (its size
+        // as designed at least), measured as it's laid out, and scrolled
+        // past the screen's room.
+        if let Some(fit) = &self.fit {
+            // (A flex item based at the designed height, its minimum what
+            // its content needs: so as tall as the larger. One the person
+            // or the app sizes: as the window, or what its content needs
+            // if more.)
+            let basis = if fit.fixed { fit.design.1 } else { 0.0 };
+            let mut laid = div()
+                .relative()
+                .w_full()
+                .flex_basis(px(basis))
+                .flex_shrink_0()
+                .flex()
+                .flex_col()
+                .on_bounds_changed(cx.msg_with(|b: &Bounds<Pixels>| FrameMessage::Measured(f32::from(b.size.height))))
+                .child(self.content.element());
+            if !fit.fixed {
+                laid = laid.flex_grow();
+            }
+            let content = if fit.scrolls { crate::widgets::ScrollView::new(&self.scroll).border(false).child(div().w_full().flex().flex_col().child(laid)).into_element() } else { laid };
+            return root.flex().flex_col().child(content);
+        }
+        // Taller than the window (a short screen): laid out at its own
+        // height all the same, and scrolled.
+        let height = cx.viewport_size().height;
+        match self.content_height {
+            Some(h) if f32::from(height) + 0.5 < h => {
+                let sized = div().w_full().h(px(h)).flex().flex_col().child(self.content.element());
+                root.child(crate::widgets::ScrollView::new(&self.scroll).border(false).child(sized))
+            }
+            _ => root.child(self.content.element()),
+        }
+    }
+}
+
+/// A window's content needs `height` (None: just the window's): taller
+/// than the window, the Frame lays it out at that height and scrolls it
+/// (`WindowOptions::content_height`, changed as what it shows changes).
+pub fn set_content_height(cx: &mut WindowCx, height: Option<f32>) {
+    cx.send_root::<Frame>(FrameMessage::ContentHeight(height));
+}
+
+/// Moves the window with the pointer, as if dragged by its tab, while the
+/// button pressed in another of the app's windows is still held: a tab
+/// torn off a strip, now a window (opened [`WindowOptions::under_pointer`]),
+/// follows the pointer, and let go over another window's strip goes in
+/// there. Once it has drawn (a window that isn't on screen yet can't be
+/// moved).
+pub fn begin_move(cx: &mut WindowCx) {
+    cx.on_next_frame(|cx| cx.on_next_frame(|cx| cx.start_window_move()));
+}
+
+/// The app's id ("olo.deskcalc"), as [`run`] was given it.
+pub fn app_id() -> &'static str {
+    olo_interface::app_id()
+}
+
+/// Brings `window` forward if it's still open: whether it was (a window
+/// an app keeps one of, asked for again or launched again).
+pub fn raise<V: View>(window: Option<&WindowHandle<V>>) -> bool {
+    match window {
+        Some(window) if window.is_open() => {
+            window.with(|cx| cx.activate_window());
+            true
+        }
+        _ => false,
+    }
+}
+
+/// A window the app keeps one of (its main window, History, a review):
+/// `kept` brought forward, or, if it isn't open, one opened with
+/// `options` showing what `build` makes and kept there.
+pub fn open_or_raise<V: View>(kept: &mut Option<WindowHandle<V>>, options: WindowOptions, build: impl FnOnce(&mut Cx<V>) -> V + Send + 'static) {
+    if !raise(kept.as_ref()) {
+        *kept = Some(open_window(options, build));
     }
 }
 
 /// Opens a window on a looper of its own, showing the view `build`
 /// makes there (the view the window's handle reaches).
 pub fn open_window<V: View>(options: WindowOptions, build: impl FnOnce(&mut Cx<V>) -> V + Send + 'static) -> WindowHandle<V> {
-    let panel = options.panel;
+    let (spec, frame) = framed(options, build);
+    olo_interface::open_window(spec, frame).retyped()
+}
+
+/// Opens a window on this window's own looper, showing the view `build`
+/// makes: one that belongs to this window and is told things by it at
+/// once, and tells it (an alert, a panel of its own), where a window of
+/// its own work gets a looper of its own ([`open_window`]). It closes
+/// with this window.
+pub fn open_window_here<V: View>(cx: &mut WindowCx, options: WindowOptions, build: impl FnOnce(&mut Cx<V>) -> V + 'static) -> Option<olo_interface::LocalWindow<V>> {
+    let (spec, frame) = framed(options, build);
+    cx.open_window_here(spec, frame).map(|window| window.retyped())
+}
+
+/// What a window is opened with: what the display thread is asked for,
+/// and its frame round the view `build` makes.
+fn framed<V: View, B: FnOnce(&mut Cx<V>) -> V>(mut options: WindowOptions, build: B) -> (WindowSpec, impl FnOnce(&mut Cx<Frame>) -> Frame + use<V, B>) {
+    // The size it was last left at, held to what it may be now.
+    if let Some(size) = options.keep_size.as_ref().and_then(|name| crate::kept::size(name)) {
+        options.size = size;
+    }
+    let designed_height = options.size.1;
+    // (Not a layer's, a lock screen's or a full screen one's: the screen
+    // or the app sizes those.)
+    let fit_content = options.fit_content && options.layer.is_none() && options.lock_output.is_none() && !options.fullscreen;
+    // (One that follows what it shows opens no taller than the screen.)
+    if fit_content {
+        options.size.1 = options.size.1.min(screen_room());
+    }
+    let spec = options.spec();
+    let design = (spec.size.0, designed_height);
+    let (panel, fixed, keep, content_height) = (options.panel, options.fixed, options.keep_size.clone(), options.content_height);
     let namespace = options.layer.as_ref().map(|l| l.namespace.clone());
-    olo_interface::open_window(options.spec(), move |cx: &mut Cx<Frame>| {
+    let frame = move |cx: &mut Cx<Frame>| {
         if let Some(namespace) = &namespace {
             crate::agent::set_layer(cx, namespace);
         }
+        // (Its first showing can be held from now: its content may ask
+        // as it's made.)
+        let first = Arc::new(FirstShow { opened: Instant::now(), waiting: AtomicUsize::new(0), over: AtomicBool::new(!fit_content), frame: cx.messenger() });
+        if fit_content {
+            let id = cx.window_id();
+            let looper = cx.looper();
+            if looper.state::<FirstShows>().is_none() {
+                looper.set_state(FirstShows::default());
+            }
+            if let Some(shows) = looper.state_mut::<FirstShows>() {
+                shows.0.insert(id, first.clone());
+            }
+        }
         let content = cx.new_view(build);
         cx.set_main_view(&content);
-        Frame { content: content.into(), panel }
-    })
-    .retyped()
+        let focus = FocusHandle::new();
+        // (The keyboard is the frame's until something in it takes it,
+        // and again whenever nothing has it.)
+        focus.focus_if_none(cx);
+        Frame {
+            content: content.into(),
+            panel,
+            focus,
+            keep,
+            content_height,
+            scroll: ScrollHandle::new(),
+            fit: fit_content.then(|| Fit { design, fixed, need: None, asked: None, resizing: None, scrolls: false, first }),
+            lit: None,
+        }
+    };
+    (spec, frame)
 }
 
-/// Runs the program as `app_id` ("olo.deskcalc"): `build` opens its
-/// windows; this returns when it quits.
+/// What the app does with messages from other threads ([`proxy`]).
+#[derive(Default)]
+struct Messages {
+    handler: Option<Box<dyn FnMut(Box<dyn Any + Send>, &mut AppCx)>>,
+}
+
+static PROXY: std::sync::OnceLock<Proxy> = std::sync::OnceLock::new();
+
+/// Something any thread can send messages to the app with (a launch
+/// forwarded by another copy, a worker's result); [`message_handler`]
+/// takes them on the app's looper.
+pub fn proxy() -> Proxy {
+    PROXY.get().cloned().unwrap_or_else(|| Proxy::new(|_| {}))
+}
+
+/// Takes the messages sent through [`proxy`], on the app's looper.
+pub fn message_handler(app: &mut AppCx, handler: impl FnMut(Box<dyn Any + Send>, &mut AppCx) + 'static) {
+    let looper = app.looper();
+    if looper.state::<Messages>().is_none() {
+        looper.set_state(Messages::default());
+    }
+    if let Some(messages) = looper.state_mut::<Messages>() {
+        messages.handler = Some(Box::new(handler));
+    }
+}
+
+/// Keeps the app running with no windows open (an agent that opens them
+/// when asked: the polkit agent, Notifications).
+pub fn stay_resident() {
+    olo_interface::stay_resident()
+}
+
+/// Called (on the app's looper) when a display came or went, as the
+/// compositor told this app (`olo_interface::displays()` lists it
+/// then). A window for a display the app is told of some other way
+/// (app_server's `OutputsChanged`) may be asked for before that, and
+/// refused: ask again from here.
+pub fn on_displays_changed(f: impl Fn() + Send + Sync + 'static) {
+    olo_interface::on_displays_changed(f)
+}
+
+/// How many arenas glibc's malloc keeps for a kit app's threads.
+const ARENAS: libc::c_int = 4;
+
+/// glibc's malloc gives each thread that allocates an arena of its own
+/// (eight for each core, at most), and what a thread frees stays in its
+/// arena: a kit app has a looper for each window, the display's thread
+/// and its workers (18 to 29 threads), and rested 7 to 17 MB bigger for
+/// it than with [`ARENAS`] between them (2026-11-11, release, resident:
+/// Terminal with three tabs 153 → 136 MB, StyledEdit 103 → 96, Tracker
+/// 99 → 91), its frames costing the same (Terminal's 329 → 342 µs,
+/// StyledEdit's 925 → 907, within what two takes differ by). Two saved
+/// no more on Terminal and its frames ran slower (415 µs): threads
+/// waiting on each other's arena.
+/// Not if the environment says how many (`MALLOC_ARENA_MAX`): to
+/// measure another number without a build.
+fn few_arenas() {
+    #[cfg(target_env = "gnu")]
+    if std::env::var_os("MALLOC_ARENA_MAX").is_none() {
+        // SAFETY: sets a number malloc reads as it makes an arena.
+        unsafe { libc::mallopt(libc::M_ARENA_MAX, ARENAS) };
+    }
+}
+
+/// Runs the program as `app_id` ("olo.deskcalc"): its theme, its socket
+/// for agents, and `build`, which opens its windows. It returns when the
+/// program quits: when its last window closes, unless it's
+/// [`stay_resident`].
 pub fn run(app_id: &str, build: impl FnOnce(&mut AppCx)) {
+    few_arenas();
+    // Olo's apps render with the GPU the compositor's primary is (the one
+    // the computer started on, which the renderer takes first): a device
+    // chosen for it (`ZED_DEVICE_ID`), as briefly Olo did and its
+    // programs' children inherit, would have each frame copied between
+    // GPUs.
+    // SAFETY: the app's first act, before any thread is started.
+    unsafe { std::env::remove_var("ZED_DEVICE_ID") };
+    // The state an upgrade handed over, its file gone whether or not the
+    // app asks for it.
+    olo_kit_base::restore::claim();
+    olo_kit_base::moving::claim();
+    crate::upgrade::claim();
     // Olo's own crates keep their info (what is rare and worth knowing
     // after), dependencies only their warnings.
     // (Ready for a crash first: its report, and stderr to the journal
@@ -363,9 +886,46 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut AppCx)) {
     let _ = tracing_subscriber::fmt().with_env_filter(filter).with_ansi(ansi).with_writer(std::io::stderr).try_init();
     olo_kit_base::keys::set_app_id(app_id);
     theme::init();
+    // (Quit with what it copied still on the clipboard, it runs on for
+    // that alone: launches start a copy of their own meanwhile, and what
+    // it keeps is on disk.)
+    olo_interface::before_lingering(|| {
+        olo_kit_base::instance::close();
+        crate::kept::write();
+        olo_kit_base::store::flush();
+    });
     olo_interface::run(app_id, |app| {
         crate::agent::init();
+        crate::upgrade::init();
+        // What other threads send the app, taken on its looper.
+        let messenger = olo_interface::app_kit::Messenger::new(app.looper().handle(), |looper, message: Box<dyn Any + Send>| {
+            // A launch forwarded from another process is told the app
+            // took it, or dropped unanswered (so that process opens a
+            // copy of its own) if the app is ending or has nothing to
+            // take it with, or the process gave up.
+            let has_handler = looper.state::<Messages>().is_some_and(|m| m.handler.is_some());
+            if let Some(launch) = message.downcast_ref::<olo_kit_base::instance::Launch>()
+                && (olo_interface::is_quitting() || !has_handler || !launch.take())
+            {
+                return;
+            }
+            let Some(mut handler) = looper.state_mut::<Messages>().and_then(|m| m.handler.take()) else { return };
+            handler(message, &mut AppCx::on(looper));
+            if let Some(messages) = looper.state_mut::<Messages>()
+                && messages.handler.is_none()
+            {
+                messages.handler = Some(handler);
+            }
+        });
+        let _ = PROXY.set(Proxy::new(move |message| {
+            messenger.send(message);
+        }));
         build(app)
     });
+    // (Launches from now on start a copy of their own at once.) What the
+    // app saved (`store::save`), and how its windows were left, is on
+    // disk before it goes.
+    olo_kit_base::instance::close();
+    crate::kept::write();
     olo_kit_base::store::flush();
 }

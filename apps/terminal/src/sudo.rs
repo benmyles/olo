@@ -16,12 +16,11 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use olo_kit_base::Proxy;
-use olo_ui::{
-    gpui::{AnyElement, App, Entity, FocusHandle, InteractiveElement as _, IntoElement, ParentElement as _, Styled as _, Window, div, px},
-    metrics as m, style,
-    widgets::{self, Button, Conversation, ConversationField, TextField, TextFieldEvent},
+use olo_kit::{
+    ClickEvent, Element, FontWeight, InteractiveElement as _, KeyDownEvent, ParentElement as _, Styled as _, div, metrics as m, px, style,
+    widgets::{self, Button, Conversation, ConversationField},
 };
+use olo_kit_base::Proxy;
 
 use zeroize::{Zeroize, Zeroizing};
 
@@ -29,7 +28,7 @@ use crate::{
     Terminal, Win,
     agent::Agent,
     sudo_wire::{self, Ask, Reply},
-    ui::{Cx, WinOps as _, WindowId},
+    ui::{Cx, Shell, ShellCx, WindowId, on, terminal},
     wire,
 };
 
@@ -260,8 +259,6 @@ pub struct Request {
     /// As typed: `sudo …`.
     command: String,
     pub conv: Conversation,
-    /// Where the person types the answer (once its window is open).
-    field: Option<Entity<TextField>>,
     /// Approved without asking: the password is given at sudo's prompt
     /// (once: should it be asked again, a window asks the person, unless
     /// `quiet`).
@@ -308,7 +305,6 @@ impl Request {
             tab,
             command,
             conv: Conversation::default(),
-            field: None,
             approval: None,
             quiet: false,
             answered: false,
@@ -362,33 +358,20 @@ impl Request {
     }
 
     /// The window's height for its message and command.
-    pub fn height(&self, cx: &App) -> u32 {
-        let message = widgets::paragraph_height(cx, &self.message(), COLUMN);
+    pub fn height(&self) -> u32 {
+        let message = widgets::alert::paragraph_height(&self.message(), COLUMN);
         // Monospaced, so its rows go by the count of characters.
         let command = (self.command.chars().count() as f32 * 7.3 / (COLUMN - 2.0 * PAD)).ceil().clamp(1.0, COMMAND_ROWS as f32);
         let fixed = 2.0 * m::WINDOW_INSET + m::LABEL_ROW + 2.0 * m::TIGHT + 2.0 * PAD + 3.0 * m::SPACING + 2.0 * m::CONTROL_HEIGHT + m::LABEL_ROW;
         (fixed + message + command * LINE).ceil() as u32
     }
 
-    /// Its answer field, for window `id` (Return in it answers), with the
-    /// keyboard.
-    pub fn focus_field(&mut self, cx: &mut Cx, id: WindowId) {
-        let field = widgets::text_field(cx, |f| f.password(true));
-        cx.subscribe(&field, move |t: &mut Terminal, _, e: &TextFieldEvent, cx| match e {
-            TextFieldEvent::Entered => t.sudo_choice(cx, id, Choice::Authenticate),
-            TextFieldEvent::Changed => cx.redraw(id),
-            TextFieldEvent::Typed(_) => {}
-        })
-        .detach();
-        let f = field.clone();
-        cx.with_window(id, move |_, window, cx| f.read(cx).focus(window));
-        self.field = Some(field);
-    }
-
-    /// Forgets what was typed.
-    pub fn clear(&mut self, cx: &mut App) {
-        if let Some(f) = &self.field {
-            f.update(cx, |f, cx| f.clear_secret(cx));
+    /// Forgets what was typed in its window `id` (the field is its
+    /// window's view's).
+    pub fn clear(&mut self, cx: &mut Cx, id: Option<WindowId>) {
+        if let Some(id) = id {
+            drop(zeroized(cx.take_field_text(id)));
+            cx.with_window(id, |sh, cx| sh.clear_field(cx));
         }
     }
 
@@ -398,13 +381,14 @@ impl Request {
         line.fill(0);
     }
 
-    /// Send the answer typed.
-    pub fn answer(&mut self, cx: &mut App) {
+    /// Send the answer typed in its window `id` (as its view just said:
+    /// `Shell::tell_text`).
+    pub fn answer(&mut self, cx: &mut Cx, id: WindowId) {
         if !self.conv.ready() {
             return;
         }
-        let typed = self.field.as_ref().map(|f| f.read(cx).text().to_owned()).unwrap_or_default();
-        self.clear(cx);
+        let typed = cx.take_field_text(id);
+        self.clear(cx, Some(id));
         let mut r = Reply::Answer(typed);
         self.reply(&r);
         if let Reply::Answer(a) = &mut r {
@@ -497,13 +481,13 @@ impl Request {
 
     /// The security key's answer: its password goes to sudo now if sudo
     /// is asking, else when it asks; or why it didn't.
-    pub fn key_said(&mut self, r: Result<Zeroizing<String>, String>, cx: &mut App) {
+    pub fn key_said(&mut self, r: Result<Zeroizing<String>, String>, cx: &mut Cx, id: Option<WindowId>) {
         self.key_waiting = false;
         self.key = None;
         match r {
             Ok(password) => {
                 self.key_password = Some(password);
-                self.answer_with_key(cx);
+                self.answer_with_key(cx, id);
             }
             Err(why) => {
                 if !self.conv.checking {
@@ -515,12 +499,12 @@ impl Request {
 
     /// The key's password to sudo, if sudo is asking and the key gave one
     /// (once: asked again, the person types it).
-    pub fn answer_with_key(&mut self, cx: &mut App) {
+    pub fn answer_with_key(&mut self, cx: &mut Cx, id: Option<WindowId>) {
         if !self.conv.ready() {
             return;
         }
         let Some(password) = self.key_password.take() else { return };
-        self.clear(cx);
+        self.clear(cx, id);
         let mut r = Reply::Answer(password.to_string());
         self.reply(&r);
         if let Reply::Answer(a) = &mut r {
@@ -530,47 +514,61 @@ impl Request {
     }
 }
 
+/// `s`, zeroed (what was typed, done with).
+fn zeroized(mut s: String) -> String {
+    s.zeroize();
+    s
+}
+
 impl Terminal {
     /// sudo's password window: who asks, the command, sudo's conversation.
-    pub(crate) fn render_sudo(&mut self, id: WindowId, focus: FocusHandle, _: &mut Window, cx: &mut Cx) -> AnyElement {
-        let Some(Win::Sudo(r)) = self.windows.get(&id) else { return div().into_any_element() };
-        let Some(field) = r.field.clone() else { return div().into_any_element() };
+    pub(crate) fn render_sudo(&mut self, sh: &mut Shell, cx: &mut ShellCx) -> Element {
+        let id = sh.id;
+        let Some(Win::Sudo(r)) = self.windows.get(&id) else { return div() };
+        let Some(field) = &sh.field else { return div() };
         let ready = r.conv.ready();
         field.update(cx, |f, cx| f.set_enabled(ready, cx));
-        let p = olo_ui::theme::palette(cx);
+        let p = olo_kit::theme::palette();
         let command = div()
             .w_full()
             .p(px(PAD))
             .bg(style::c(p.document_background))
             .border_1()
             .border_color(style::shade(&p, p.panel_background, 1.3))
-            .font(style::mono_font(olo_ui::gpui::FontWeight::NORMAL))
+            .font(style::mono_font(FontWeight::NORMAL))
             .text_color(style::c(p.document_text))
             .line_clamp(COMMAND_ROWS)
             .child(r.command.clone());
-        let cancel = cx.listener(move |t, _: &(), _, cx| t.sudo_choice(cx, id, Choice::Cancel));
-        let go = cx.listener(move |t, _: &(), _, cx| t.sudo_choice(cx, id, Choice::Authenticate));
+        // (What's typed is the field's until it's sent: its view says it
+        // as Authenticate is pressed, and Terminal takes it.)
+        let go = cx.listener(move |sh: &mut Shell, _: &ClickEvent, cx| {
+            sh.tell_text(cx);
+            terminal().sudo_choice(&mut Cx, id, Choice::Authenticate);
+        });
         let row = widgets::button_row()
-            .child(Button::new("Cancel").on_click(move |window, cx| cancel(&(), window, cx)))
-            .child(Button::new("Authenticate").default(true).enabled(ready).on_click(move |window, cx| go(&(), window, cx)));
+            .child(Button::new("Cancel").on_click(on(move |t, _: &ClickEvent, _| t.sudo_choice(&mut Cx, id, Choice::Cancel))))
+            .child(Button::new("Authenticate").default(true).enabled(ready).on_click(go));
         div()
             .size_full()
-            .key_context(widgets::alert::CONTEXT)
-            .track_focus(&focus)
-            .on_action(cx.listener(move |t, _: &widgets::alert::Cancel, _, cx| t.sudo_choice(cx, id, Choice::Cancel)))
+            .track_focus(&sh.focus)
+            .on_key_down(on(move |t, e: &KeyDownEvent, w| {
+                if e.keystroke.key == "escape" && !e.keystroke.modifiers.modified() {
+                    w.stop_propagation();
+                    t.sudo_choice(&mut Cx, id, Choice::Cancel);
+                }
+            }))
             .child(
                 widgets::AlertFrame::new(ICON)
-                    .child(widgets::alert_title("Authentication Required"))
+                    .child(widgets::alert::alert_title("Authentication Required"))
                     .child(div().h(px(m::TIGHT)))
                     .child(widgets::paragraph(r.message()))
                     .child(div().h(px(m::TIGHT)))
                     .child(command)
                     .child(div().h(px(m::SPACING)))
-                    .child(ConversationField::new(&r.conv, field, DIVIDER))
+                    .child(ConversationField::new(cx, &r.conv, field, DIVIDER))
                     .child(div().flex_1())
                     .child(row),
             )
-            .into_any_element()
     }
 }
 

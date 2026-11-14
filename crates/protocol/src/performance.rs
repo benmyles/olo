@@ -264,6 +264,10 @@ pub const SHELL_NICE: i32 = -5;
 /// the compositor's even, as it's what's left when something has taken
 /// the computer. It sleeps until the person does something.
 pub const RESCUE_NICE: i32 = -15;
+/// app_server's input thread's (`OLO_INPUT_THREAD=1`): libinput read and
+/// the cursor moved while the compositor's loop is held. As high as rtkit
+/// gives; it sleeps until an event comes.
+pub const INPUT_NICE: i32 = -15;
 
 /// How busy the scheduler takes a frame's thread to be, at least, while
 /// it runs (its `uclamp.min`, of 1024): app_server's main thread (every
@@ -272,10 +276,11 @@ pub const RESCUE_NICE: i32 = -15;
 /// on a slow core at a low clock, and a frame's work there takes three
 /// or four times as long: Activity's first frame of its processes, 13–17
 /// ms; 3.7–4.6 with this. Nothing while the thread sleeps: idle costs
-/// nothing. (Taken by `olo_system::priority::util_min_self`, and GPUI's
-/// for its windows' threads.)
+/// nothing. (Taken by `olo_system::priority::util_min_self`, and the
+/// Interface Kit's for its windows' threads.)
 pub const CORE_UTIL_MIN: u32 = 1024;
-/// A window's thread's (GPUI's main thread, in every app): as fast as
+/// A window's thread's (its looper's and the display thread's, in
+/// every app): as fast as
 /// 1024 there (a fast core near its top clock), 512 no faster than a
 /// slow core's top.
 pub const UI_UTIL_MIN: u32 = 768;

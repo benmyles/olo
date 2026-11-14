@@ -24,10 +24,23 @@ enum Slot {
     Missing,
 }
 
+/// The pictures, by theme and size and then by name: found by the name
+/// as it's given, with nothing copied to ask (an icon is asked for at
+/// every painting of every row that shows one).
 #[derive(Default)]
 struct Cache {
-    map: HashMap<Key, Slot>,
+    map: HashMap<(&'static str, u32), HashMap<String, Slot>>,
     theme: &'static str,
+}
+
+impl Cache {
+    fn get(&self, theme: &'static str, name: &str, px: u32) -> Option<&Slot> {
+        self.map.get(&(theme, px))?.get(name)
+    }
+
+    fn put(&mut self, key: Key, slot: Slot) {
+        self.map.entry((key.0, key.2)).or_default().insert(key.1, slot);
+    }
 }
 
 fn cache() -> &'static Mutex<Cache> {
@@ -109,7 +122,7 @@ fn worker() -> &'static Mutex<mpsc::Sender<Key>> {
                 for key in rx {
                     let image = olo_xdg::load_icon_in(key.0, &key.1, key.2).and_then(|img| to_render_image(img, key.2));
                     let mut c = cache().lock().unwrap();
-                    c.map.insert(key, image.map_or(Slot::Missing, Slot::Ready));
+                    c.put(key, image.map_or(Slot::Missing, Slot::Ready));
                     drop(c);
                     wake();
                 }
@@ -148,19 +161,19 @@ fn image(name: &str, px: u32) -> Option<Arc<RenderImage>> {
 /// [`image`] in theme `theme` (another theme's, for Preferences ▸ Themes:
 /// kept until the current theme changes).
 fn image_in(theme: &'static str, name: &str, px: u32) -> Option<Arc<RenderImage>> {
-    let key: Key = (theme, name.to_owned(), px);
     let mut c = cache().lock().unwrap();
     let current = olo_xdg::themes::current().id;
     if c.theme != current {
         c.theme = current;
         c.map.retain(|k, _| k.0 == current);
     }
-    match c.map.get(&key) {
+    match c.get(theme, name, px) {
         Some(Slot::Ready(img)) => return Some(img.clone()),
         Some(Slot::Loading | Slot::Missing) => return None,
         None => {}
     }
-    c.map.insert(key.clone(), Slot::Loading);
+    let key: Key = (theme, name.to_owned(), px);
+    c.put(key.clone(), Slot::Loading);
     drop(c);
     let _ = worker().lock().unwrap().send(key);
     None
@@ -207,7 +220,7 @@ fn paint_themed(g: &mut Painter, b: Bounds<Pixels>, theme: &'static str, name: &
     let px_size = (logical * scale).round().max(1.0) as u32;
     let Some(img) = image_in(theme, name, px_size) else {
         let c = cache().lock().unwrap();
-        let loading = !matches!(c.map.get(&(theme, name.to_owned(), px_size)), Some(Slot::Missing));
+        let loading = !matches!(c.get(theme, name, px_size), Some(Slot::Missing));
         if loading {
             // (What's painted now isn't what will show: not kept.)
             g.paint_unfinished();

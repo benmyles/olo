@@ -38,6 +38,8 @@ pub struct Control {
     default: bool,
     /// No wider than what it's in (`shrinks`).
     shrinks: bool,
+    /// What its tip says, once the pointer has rested on it.
+    tip: Option<SharedString>,
 }
 
 /// A control `width` by `height`, drawn by `paint`.
@@ -56,6 +58,7 @@ pub fn control(id: impl Into<ElementId>, width: f32, height: f32, paint: impl Fn
         focusable: false,
         default: false,
         shrinks: false,
+        tip: None,
     }
 }
 
@@ -111,6 +114,13 @@ impl Control {
         self
     }
 
+    /// A tip saying `text`, once the pointer has rested on it (a tool's
+    /// name and keys).
+    pub fn tip(mut self, text: impl Into<SharedString>) -> Self {
+        self.tip = Some(text.into());
+        self
+    }
+
     /// The pointing hand over it (a link), not the arrow.
     pub fn pointing(mut self) -> Self {
         self.pointing = true;
@@ -129,6 +139,7 @@ impl Control {
 impl IntoElement for Control {
     fn into_element(self) -> Element {
         let paint = self.paint;
+        let tip_key = self.id.clone();
         let mut element = control_canvas(move |g, bounds, state| paint(g, bounds, state)).id(self.id).w(self.width).h(self.height).flex_shrink_0().disabled(!self.enabled);
         if let Some(key) = self.paint_key {
             element = element.paint_key(key);
@@ -155,6 +166,9 @@ impl IntoElement for Control {
         }
         if let Some(f) = self.on_click {
             element = element.on_click(move |event, cx| f(event, cx));
+        }
+        if let Some(text) = self.tip {
+            element = crate::tip::on(element, format!("{tip_key:?}"), text);
         }
         element
     }

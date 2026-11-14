@@ -8,8 +8,8 @@
 //! and only in front of the computer (`olo_system::env::readers_here`:
 //! not in a test session or on an agent's screen).
 
+use olo_kit::Proxy;
 use olo_system::{auth, fingerprint};
-use olo_ui::Proxy;
 use zeroize::{Zeroize, Zeroizing};
 
 pub enum LockMsg {

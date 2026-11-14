@@ -126,7 +126,7 @@ pub fn read_all() -> Option<Snapshot> {
 /// Keep `s` for the hook (a new file put in place of the old, for this
 /// user only).
 pub fn write(s: &Snapshot) -> std::io::Result<()> {
-    olo_ui::store::write(&snapshot_path(), &serde_json::to_vec(s).map_err(std::io::Error::other)?)
+    olo_kit::store::write(&snapshot_path(), &serde_json::to_vec(s).map_err(std::io::Error::other)?)
 }
 
 /// Off: no file for the hook to find.
@@ -194,7 +194,7 @@ pub fn set_hooks(on: bool, exe: &Path) -> Result<(), String> {
         }
         let mut bytes = serde_json::to_vec_pretty(&v).map_err(|e| e.to_string())?;
         bytes.push(b'\n');
-        olo_ui::store::write(&path, &bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+        olo_kit::store::write(&path, &bytes).map_err(|e| format!("{}: {e}", path.display()))?;
         tracing::info!(file = %path.display(), on, "coding agents' hook for tab groups");
     }
     Ok(())

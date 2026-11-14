@@ -38,12 +38,12 @@ fn settings_path() -> PathBuf {
 
 impl Settings {
     pub fn load() -> Settings {
-        olo_ui::store::load(&settings_path()).unwrap_or_default()
+        olo_kit::store::load(&settings_path()).unwrap_or_default()
     }
 
     /// Off the UI thread.
     pub fn store(&self) {
-        olo_ui::store::save(settings_path(), self);
+        olo_kit::store::save(settings_path(), self);
     }
 
     /// Where pictures go: the chosen folder, else Pictures, else home.

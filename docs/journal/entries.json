@@ -4588,5 +4588,191 @@
   "title": "Browser: SVG selection survives cancelled rendering",
   "caption": "Retained SVG sources refresh changed style inputs, and animation completion commits with its rendered scene. Jobber's painted selection matches Chrome in all 15 final theme/scale captures; Stripe's remaining page-layout and journey gaps stay open.",
   "image": "2026-11-10/105443-browser-svg-selection-survives-cancelled-renderi.png"
+ },
+ {
+  "time": "2026-11-11T02:45:15",
+  "title": "Screenshot: New screenshot shows the new picture",
+  "caption": "Screenshot moved to Olo's own kit. Its preview was kept while the picture's size was the same, so New screenshot went on showing the one before; a preview is now of one picture. The region and colour pickers show the screen a pixel to a device pixel at 1.5\u00d7 and 1.75\u00d7 too (the overlay's whole-point size was half a device pixel off the screen's, and the frozen picture was stretched by it).",
+  "image": "2026-11-11/024515-screenshot-new-screenshot-shows-the-new-picture.png"
+ },
+ {
+  "time": "2026-11-11T04:00:27",
+  "title": "Activity Monitor: the fans against what they cool",
+  "caption": "Sensors has a Fans card in place of a small graph a fan: each fan's speed, the processor's temperature and how often it was throttled for heat on one graph (each to its own scale, the fans to one), the fan profile in use and the level Olo's fan service holds, and the throttling counted since the computer started and since the window opened, so a fan curve can be seen to work. (Activity Monitor is on olo-kit as of today.)",
+  "image": "2026-11-11/040027-activity-monitor-the-fans-against-what-they-cool.png"
+ },
+ {
+  "time": "2026-11-11T12:08:40",
+  "title": "Passwords on olo-kit",
+  "caption": "Passwords moved from GPUI to Olo's own kits: its state is the app's, behind a lock, since it runs with no window as the SSH agent and the keychain; the main window, Review Sync, Sync Problems, the generator and a passkey's question are views that read it. The same to the pixel as before at 1\u00d7, 1.5\u00d7 and 2\u00d7, light and dark, but for what was wrong: the item pane's scroll bar is there as an item opens (it came with the first scroll), Sync Problems' icons are level with their items at 1\u00d7, and \u201cSynced a minute ago\u201d counts the minutes by itself. A frame typing in the editor went from 1.9 ms to 0.3, the arrows down a list of 508 from 1.8 to 0.8.",
+  "image": "2026-11-11/120840-passwords-on-olo-kit.png"
+ },
+ {
+  "time": "2026-11-11T15:05:02",
+  "title": "Terminal on olo-kit",
+  "caption": "Terminal on Olo's own kit: one Terminal behind a lock, each window a view on a looper of its own, its screens a view of their own drawn once a frame however much a shell prints. The same to the pixel as before at every scale, light and dark; a frame of typing 475 to 240 \u00b5s, of steady output 532 to 305 \u00b5s.",
+  "image": "2026-11-11/150502-terminal-on-olo-kit.png"
+ },
+ {
+  "time": "2026-11-11T22:34:17",
+  "title": "Preferences on olo-kit",
+  "caption": "Preferences, every panel, on Olo's own kits: each panel's window a view on a looper of its own. The same to the pixel as it was but for two things meant: the launcher's cells are wider (the longest names ran into the cell beside them) and Notifications' From and to line up with the words above them. Typing in a field draws in a quarter of the time, a slider in half.",
+  "image": "2026-11-11/223417-preferences-on-olo-kit.png"
+ },
+ {
+  "time": "2026-11-12T03:59:13",
+  "title": "The Installer, at work",
+  "caption": "Olo Setup redone after BeOS's Installer (Ben: \"redo the installer to be reminiscent of the beos installer instead of windows 95\"): one window on the BeOS desktop's blue, with Olo's mark, a box of words saying what is being done, Install from and Onto as pop-ups, More Options opening the optional parts under a latch, a status bar, and Begin, which is Stop while it works. Shown in its demo mode (a made-up computer; nothing is installed).",
+  "image": "2026-11-12/035913-the-installer-at-work.png"
+ },
+ {
+  "time": "2026-11-12T03:59:14",
+  "title": "The Installer",
+  "caption": "As it opens once the licence is agreed to: what will happen, where from and onto what, More Options closed, About, Quit and Begin. BeOS's Installer for Olo, in place of the Windows 95 wizard of five pages.",
+  "image": "2026-11-12/035914-the-installer.png"
+ },
+ {
+  "time": "2026-11-12T04:20:22",
+  "title": "Preferences \u25b8 Power: the fan profile",
+  "caption": "Battery & Idle has a Fans box on a ThinkPad (Ben: \"have in the power prefs the option for the default auto and this new cooler/louder auto profile\"): Automatic, the firmware's own curve, or Cool, Olo's olo-fans running the fans ahead of the heat so the processor isn't throttled, with what the fans are doing now under it. Choosing one asks Olo Doctor to set it (an administrator's password). Shown with a made-up ThinkPad in a scratch folder.",
+  "image": "2026-11-12/042022-preferences-power-the-fan-profile.png"
+ },
+ {
+  "time": "2026-11-12T04:38:04",
+  "title": "Preferences \u25b8 Performance: the scheduler",
+  "caption": "A Scheduler tab (Ben: \"add to olo the ability to pick a custom scheduler in preferences -> performance and the recommendation should be scx_lavd\"): the kernel's own or LAVD (recommended), what each is for, and what is scheduling now as the kernel says it. Choosing one has Olo Doctor install and start it, or stop it (an administrator's password). Shown with a made-up kernel in a scratch folder.",
+  "image": "2026-11-12/043804-preferences-performance-the-scheduler.png"
+ },
+ {
+  "time": "2026-11-12T11:07:51",
+  "title": "Olo Doctor: the Cool fan profile that isn't in force",
+  "caption": "Cool chosen and the fans' driver taking no levels (it had been told to by hand, which a restart undid): found, with the fix that tells it to at every start. Also found: the fan service stopped, and one an upgrade has left older.",
+  "image": "2026-11-12/110751-olo-doctor-the-cool-fan-profile-that-isn-t-in-fo.png"
+ },
+ {
+  "time": "2026-11-12T11:08:02",
+  "title": "Activity Monitor: a fan profile that isn't in force says so",
+  "caption": "The Fans card said \"the fan service isn't running\" of a service that was running and couldn't set the fans. It reads the service's state through olo_system::fans now: not in force and why (the driver, until the next start; the service stopped), or the level held.",
+  "image": "2026-11-12/110802-activity-monitor-a-fan-profile-that-isn-t-in-for.png"
+ },
+ {
+  "time": "2026-11-12T13:56:42",
+  "title": "Activity Monitor: an NVIDIA card's encoder and decoder",
+  "caption": "The card's video encoder and decoder are engines of their own, which its library counts apart from graphics: a screen recording encoding on it read as an idle GPU. Each is a series now (here a 4K encode: the encoder at half, graphics at a seventh), and the card, in Activity Monitor and Deskbar's widget, is as busy as its busiest engine. Intel's render and media engines the same.",
+  "image": "2026-11-12/135642-activity-monitor-an-nvidia-card-s-encoder-and-de.png"
+ },
+ {
+  "time": "2026-11-12T15:43:56",
+  "title": "Deskbar: a film playing on an AirPlay receiver",
+  "caption": "While olo-airplay plays a film on a receiver, Deskbar's tray has a screen with a play mark on it (two bars while paused, a count when there are several). Its menu says what plays where, with Pause (or Resume) and Stop for each, and Stop All. The mark is placed in device pixels inside the screen's frame: centred at 1\u00d7, 1.25\u00d7, 1.5\u00d7, 1.75\u00d7 and 2\u00d7. Tried against a receiver of the test's own, on the loopback.",
+  "image": "2026-11-12/154356-deskbar-a-film-playing-on-an-airplay-receiver.png"
+ },
+ {
+  "time": "2026-11-12T18:03:42",
+  "title": "Preferences \u25b8 AirPlay: pairing with a receiver",
+  "caption": "A new panel: the AirPlay receivers on the network and those paired with, each with its kind and how it is; Pair\u2026 asks one to show its code and the field takes the keyboard. Check, Forget, Show Display and Stop for one paired with. Test receivers on the loopback.",
+  "image": "2026-11-12/180342-preferences-airplay-pairing-with-a-receiver.png"
+ },
+ {
+  "time": "2026-11-12T18:03:43",
+  "title": "Show on AirPlay in a window's tab menu",
+  "caption": "Right-click a window's tab: Show on AirPlay \u25b8 lists the receivers paired with (the kit's Menu::airplay); the same is in Deskbar's app rows, Agent Screens and Deskbar's agent screens item.",
+  "image": "2026-11-12/180343-show-on-airplay-in-a-window-s-tab-menu.png"
+ },
+ {
+  "time": "2026-11-12T18:03:43",
+  "title": "Play On in Viewer's File menu",
+  "caption": "A film in Viewer (and in Tracker's menu) has Play On \u25b8: the receiver fetches and plays the file itself.",
+  "image": "2026-11-12/180343-play-on-in-viewer-s-file-menu.png"
+ },
+ {
+  "time": "2026-11-12T18:03:43",
+  "title": "Deskbar's tray says a screen shown on AirPlay",
+  "caption": "A window shown live on a receiver: its title, the receiver, Pause and Stop, and AirPlay Preferences\u2026",
+  "image": "2026-11-12/180343-deskbar-s-tray-says-a-screen-shown-on-airplay.png"
+ },
+ {
+  "time": "2026-11-12T18:48:23",
+  "title": "Show a workspace on AirPlay from its Deskbar heading",
+  "caption": "A workspace heading's menu in Deskbar has Show on AirPlay \u25b8 (the receivers paired with, then AirPlay Settings\u2026): that workspace is shown live on the television though its display shows another, its windows where they were left, drawing on (Olo's own workspace capture source).",
+  "image": "2026-11-12/184823-show-a-workspace-on-airplay-from-its-deskbar-hea.png"
+ },
+ {
+  "time": "2026-11-12T18:48:25",
+  "title": "A workspace not shown, as AirPlay gets it",
+  "caption": "What a share of workspace 2 is while the display shows workspace 1 (the desktop alone): its Terminal where it was left, under Deskbar, over the desktop and the wallpaper, drawing on (a clock printing ten lines a second kept going in the frames that followed).",
+  "image": "2026-11-12/184825-a-workspace-not-shown-as-airplay-gets-it.png"
+ },
+ {
+  "time": "2026-11-12T21:06:26",
+  "title": "Recordings and AirPlay in H.264 on the Intel GPU",
+  "caption": "Preferences \u25b8 Power \u25b8 Graphics: where the Intel GPU's driver encodes H.264 (RPM Fusion's iHD, as here), Encode on says Intel Graphics (VA-API), not \"AV1 only\", and offers H.264 or AV1, measured: a 2560 \u00d7 1600 screen in about 8 ms a frame as H.264, 9 as AV1, about the same size. The same encoder shows a screen on AirPlay from frames lent by app_server, never copied: 5.0% of a core for a busy 1728 \u00d7 1080 Terminal at 60 a second, where NVENC with copies took 11.9%.",
+  "image": "2026-11-12/210626-recordings-and-airplay-in-h-264-on-the-intel-gpu.png"
+ },
+ {
+  "time": "2026-11-12T21:56:03",
+  "title": "AirPlay's sound on the television only",
+  "caption": "A showing makes an output of its own (Den (AirPlay)), listed with the others while it's shown, and moves to it the sound that goes with what's shown: a window's app's, an agent screen's programs', a display's the computer's. It plays on the television and not on the speakers; back where it was when paused or stopped.",
+  "image": "2026-11-12/215603-airplay-s-sound-on-the-television-only.png"
+ },
+ {
+  "time": "2026-11-13T00:12:56",
+  "title": "Preferences \u25b8 Performance: the pointer on a thread of its own",
+  "caption": "A Pointer box on the Scheduler tab: 'Move the pointer on a thread of its own' reads libinput on a thread of app_server's own that moves the hardware cursor while the desktop is busy, so the pointer never stops or loses motion. Off until tried; takes effect at once.",
+  "image": "2026-11-13/001256-preferences-performance-the-pointer-on-a-thread-.png"
+ },
+ {
+  "time": "2026-11-13T01:04:13",
+  "title": "Tracker Status: names cut, Stop always in place",
+  "caption": "Fixed at 540 points and as tall as its jobs. Under the bar, the current item's name is cut short with '\u2026' and the counts and time left show whole at the right, so a long or changing name never pushes Stop out of the window (Ben: 'it doesn't fit in the space when the names etc are changing').",
+  "image": "2026-11-13/010413-tracker-status-names-cut-stop-always-in-place.png"
+ },
+ {
+  "time": "2026-11-13T01:50:22",
+  "title": "Preferences \u25b8 Sound: as tall as its devices",
+  "caption": "The Sound panel's height was a 466-point minimum sized for the most devices a machine shows, so with fewer (or no sound server) the window kept empty space below. Now its height is what its devices need.",
+  "image": "2026-11-13/015022-preferences-sound-as-tall-as-its-devices.png"
+ },
+ {
+  "time": "2026-11-13T02:43:19",
+  "title": "Tracker list view: Edit Name shows its field",
+  "caption": "Before (top): F2 in the list view blanked the name and showed no field, so typing went nowhere. After: the rename field sits over the Name cell, inside the column (a longer name scrolls in it); clicks in it place the caret. The kit's ColumnListView::over_cell.",
+  "image": "2026-11-13/024319-tracker-list-view-edit-name-shows-its-field.png"
+ },
+ {
+  "time": "2026-11-13T12:38:45",
+  "title": "Power Modes: the processors' top speed",
+  "caption": "Preferences \u25b8 Power \u25b8 Power Modes gets a Top speed row: how fast the processors may go in each mode and on battery, Balanced 75% by default (Ben: Balanced ran too hot, Power Saver too slow). On the ThinkPad a loaded P-core now tops out at 3.6 GHz of its 4.7 in Balanced.",
+  "image": "2026-11-13/123845-power-modes-the-processors-top-speed.png"
+ },
+ {
+  "time": "2026-11-13T12:53:07",
+  "title": "Power Modes: an SSD row",
+  "caption": "Each NVMe drive gets a row in Preferences \u25b8 Power \u25b8 Power Modes: As It Is by default (untouched), or Cooler and Coolest, its own lower working power states, with their watts once the follower has read the drive (Ben: \"add the ability to adjust/customize nvme power for each profile\").",
+  "image": "2026-11-13/125307-power-modes-an-ssd-row.png"
+ },
+ {
+  "time": "2026-11-13T20:37:21",
+  "title": "Token Pool widgets: several quotas, a heatmap coloured by use",
+  "caption": "A Token Pool widget takes any of a provider's quotas (5-hour, Weekly): a heatmap cell for each account's each, green unused to red used up; its value each quota's, shortened with its short label ('Claude 5h/Wk 24% \u00b7 45%') where the column is narrow. Made-up meters in a headless session.",
+  "image": "2026-11-13/203721-token-pool-widgets-several-quotas-a-heatmap-colo.png"
+ },
+ {
+  "time": "2026-11-13T20:37:23",
+  "title": "Preferences \u25b8 Deskbar: a Token Pool widget's quotas as check boxes",
+  "caption": "Quotas: each of the provider's, checked to show (none: whichever holds each account back). For a heatmap, Colour and 'Orange, then red' are dimmed: its cells are coloured by use.",
+  "image": "2026-11-13/203723-preferences-deskbar-a-token-pool-widget-s-quotas.png"
+ },
+ {
+  "time": "2026-11-13T21:27:39",
+  "title": "Token Pool widget: Quotas is a menu field of any number",
+  "caption": "The Deskbar widget editor's quotas were a row of check boxes, which a real Claude account's quota names ran past Preferences' right edge. Now a MenuField::many: it says the chosen ones, cut with \u2026 to fit, and its menu checks any of them, Whichever holds each back first. The Preferences lint now draws the editor for every widget kind with the longest quota names the services use.",
+  "image": "2026-11-13/212739-token-pool-widget-quotas-is-a-menu-field-of-any-.png"
+ },
+ {
+  "time": "2026-11-13T22:11:56",
+  "title": "Every app's first menu: About, Keyboard Shortcuts, its settings, Close and Quit",
+  "caption": "Every Olo app's bar now starts the same way, as BeOS's did: About the app, Keyboard Shortcuts (the palette's sheet, the app's keys first), then the Preferences panels that go with it (\"Performance Settings\u2026\"), and ends with Close and Quit; Edit holds Undo to Find Previous in one order, View the zooms. The kit runs these items itself, and every window's review fails a bar that strays (olo_kit::app_menu).",
+  "image": "2026-11-13/221156-every-app-s-first-menu-about-keyboard-shortcuts-.png"
  }
 ]

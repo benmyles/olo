@@ -13,7 +13,7 @@ use std::{any::Any, fmt::Display, rc::Rc, sync::Arc};
 use smallvec::SmallVec;
 
 use crate::{
-    Bounds, ClickEvent, KeyDownEvent, KeyUpEvent, ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Painter, Pixels, ScrollWheelEvent, SharedString, Size,
+    Bounds, ClickEvent, KeyDownEvent, KeyUpEvent, ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Painter, Pixels, Point, ScrollWheelEvent, SharedString, Size,
     StyleRefinement, Styled, TextRun, WindowCx, tree::ViewId,
 };
 
@@ -157,8 +157,13 @@ pub(crate) struct CanvasSpec {
     /// last time (and the same size and state), it isn't drawn again when
     /// its view's `body` runs.
     pub(crate) key: Option<u64>,
+    /// The key, worked out from the view when the element takes its
+    /// place in the tree (`key_by`).
+    pub(crate) key_by: Option<KeyFn>,
     pub(crate) measure: Option<MeasureFn>,
 }
+
+pub(crate) type KeyFn = Rc<dyn Fn(&dyn Any) -> u64>;
 
 pub(crate) struct TextSpec {
     pub(crate) text: SharedString,
@@ -208,6 +213,10 @@ pub(crate) struct Interactivity {
     pub(crate) mouse_up_out: SmallVec<[(Option<MouseButton>, Listener<MouseUpEvent>); 1]>,
     pub(crate) mouse_move: SmallVec<[Listener<MouseMoveEvent>; 1]>,
     pub(crate) scroll_wheel: SmallVec<[Listener<ScrollWheelEvent>; 1]>,
+    /// Two fingers pinching over it.
+    pub(crate) pinch: SmallVec<[Listener<crate::PinchEvent>; 1]>,
+    /// Files dropped on it, dragged from somewhere else.
+    pub(crate) file_drop: SmallVec<[Listener<crate::ExternalPaths>; 1]>,
     pub(crate) click: SmallVec<[Listener<ClickEvent>; 1]>,
     pub(crate) hover: SmallVec<[Listener<bool>; 1]>,
     pub(crate) key_down: SmallVec<[Listener<KeyDownEvent>; 1]>,
@@ -220,6 +229,9 @@ pub(crate) struct Interactivity {
     pub(crate) window_mouse_down: SmallVec<[Listener<MouseDownEvent>; 1]>,
     pub(crate) window_mouse_up: SmallVec<[Listener<MouseUpEvent>; 1]>,
     pub(crate) window_mouse_move: SmallVec<[Listener<MouseMoveEvent>; 1]>,
+    /// Keys nothing with the keyboard took (the window's own: its tab
+    /// keys), wherever the keyboard is in the window.
+    pub(crate) window_key_down: SmallVec<[Listener<KeyDownEvent>; 1]>,
     pub(crate) focus_changed: SmallVec<[Listener<bool>; 1]>,
     /// It takes typing while it has the keyboard.
     pub(crate) text_input: Option<Listener<TextInputEvent>>,
@@ -228,12 +240,37 @@ pub(crate) struct Interactivity {
     pub(crate) focus_style: Option<Box<StyleRefinement>>,
     /// What's under it gets nothing of the pointer.
     pub(crate) occlude: bool,
+    /// Drawn over everything else in the window, and first under the
+    /// pointer ([`InteractiveElement::raised`]).
+    pub(crate) raised: bool,
     /// It can have the keyboard.
     pub(crate) focusable: bool,
+    /// A click on it gives it the keyboard.
+    pub(crate) click_focus: bool,
+    /// A press on it leaves the keyboard where it is
+    /// ([`InteractiveElement::keeps_focus`]).
+    pub(crate) keeps_focus: bool,
     /// Tab reaches it.
     pub(crate) tab_stop: bool,
     /// It counts as having the keyboard while anything it holds has it.
     pub(crate) focus_within: bool,
+    /// Its scroller, if a view keeps one for it (`track_scroll`).
+    pub(crate) scroll: Option<crate::ScrollHandle>,
+    /// It hears where it's scrolled to, when that changes.
+    pub(crate) scroll_listeners: SmallVec<[Listener<Point<Pixels>>; 1]>,
+    /// It hears where a scroller it doesn't hold is, when that moves
+    /// (`on_scroll_of`).
+    pub(crate) scroll_of_listeners: SmallVec<[(crate::ScrollHandle, Listener<Point<Pixels>>); 1]>,
+    /// It hears where layout put it, when that changes.
+    pub(crate) bounds_listeners: SmallVec<[Listener<Bounds<Pixels>>; 1]>,
+    /// Scrollers it draws by (a scroll bar): it's drawn again when one
+    /// moves or its ends do.
+    pub(crate) watches: SmallVec<[(u64, u8); 1]>,
+    /// The name the keyboard is given to it by (`track_focus`).
+    pub(crate) focus_handle: Option<u64>,
+    /// Its text isn't told to agents as a label of its own (what holds
+    /// it says what it is: a document's text).
+    pub(crate) unlabelled: bool,
     /// It's drawn anew when the pointer comes over it, presses it or
     /// leaves, or the keyboard comes or goes.
     pub(crate) paints_by_state: bool,
@@ -245,17 +282,30 @@ pub(crate) struct Interactivity {
 }
 
 impl Interactivity {
-    /// Whether the pointer being over it matters to anything.
+    /// Whether the pointer being over it matters to anything. (What a
+    /// click gives the keyboard, `track_focus`, too, though nothing of
+    /// its own hears the pointer: a press on it found the next thing
+    /// behind that takes the keyboard, the window's frame, and a terminal
+    /// clicked in stopped taking keys.)
     pub(crate) fn takes_pointer(&self) -> bool {
         self.occlude
+            || self.click_focus
             || self.paints_by_state
             || self.hover_style.is_some()
             || self.active_style.is_some()
-            || !(self.mouse_down.is_empty() && self.mouse_up.is_empty() && self.mouse_move.is_empty() && self.scroll_wheel.is_empty() && self.click.is_empty() && self.hover.is_empty())
+            || !(self.mouse_down.is_empty()
+                && self.mouse_up.is_empty()
+                && self.mouse_move.is_empty()
+                && self.scroll_wheel.is_empty()
+                && self.click.is_empty()
+                && self.hover.is_empty()
+                && self.file_drop.is_empty()
+                && self.pinch.is_empty())
     }
 
     pub(crate) fn hears_window(&self) -> bool {
-        self.default_key || !(self.window_mouse_down.is_empty() && self.window_mouse_up.is_empty() && self.window_mouse_move.is_empty() && self.mouse_up_out.is_empty())
+        self.default_key
+            || !(self.window_mouse_down.is_empty() && self.window_mouse_up.is_empty() && self.window_mouse_move.is_empty() && self.mouse_up_out.is_empty() && self.window_key_down.is_empty())
     }
 }
 
@@ -269,6 +319,33 @@ pub struct Element {
     pub(crate) key: Option<ElementId>,
     pub(crate) children: Vec<Element>,
     pub(crate) inter: Option<Box<Interactivity>>,
+    /// What it holds is rows made as they come into view
+    /// ([`uniform_rows`]).
+    pub(crate) rows: Option<RowsSpec>,
+}
+
+/// Rows of one height, made as they come near what shows.
+#[derive(Clone)]
+pub(crate) struct RowsSpec {
+    pub(crate) count: usize,
+    pub(crate) row_height: Pixels,
+    pub(crate) make: Rc<dyn Fn(std::ops::Range<usize>) -> Vec<Element>>,
+}
+
+/// `count` rows, each `row_height` tall, one under the other: only
+/// those near what can be seen are in the window's tree. `make` is
+/// asked for the elements of a run of rows (give each its row as its
+/// id, `.id(row)`, so those that stay keep what they drew); each is
+/// placed at its row. As what holds it scrolls, the window asks for
+/// more, a run at a time with some to spare, without the view that
+/// holds it saying what it shows again; the stage scrolls the ones
+/// there with nothing drawn. A list of a hundred thousand rows costs
+/// what a screenful does.
+pub fn uniform_rows(count: usize, row_height: Pixels, make: impl Fn(std::ops::Range<usize>) -> Vec<Element> + 'static) -> Element {
+    use crate::Styled as _;
+    let mut element = div().relative().w_full().h(row_height * count as f32).flex_shrink_0();
+    element.rows = Some(RowsSpec { count, row_height, make: Rc::new(make) });
+    element
 }
 
 /// (The name GPUI had for an element of any kind: here there is one.)
@@ -276,11 +353,22 @@ pub type AnyElement = Element;
 
 impl Element {
     pub(crate) fn new(kind: Kind) -> Element {
-        Element { kind, style: StyleRefinement::default(), key: None, children: Vec::new(), inter: None }
+        Element { kind, style: StyleRefinement::default(), key: None, children: Vec::new(), inter: None, rows: None }
     }
 
     pub(crate) fn inter(&mut self) -> &mut Interactivity {
         self.inter.get_or_insert_with(Default::default)
+    }
+
+    /// [`Self::paint_key`], worked out from the view (of type `V`) when
+    /// the element takes its place in the window's tree: for what's
+    /// built where the view isn't to hand (a list's rows, keyed by what
+    /// the view says each shows).
+    pub fn key_by<V: 'static>(mut self, key: impl Fn(&V) -> u64 + 'static) -> Self {
+        if let Kind::Canvas(canvas) = &mut self.kind {
+            canvas.key_by = Some(Rc::new(move |view| view.downcast_ref::<V>().map_or(0, &key)));
+        }
+        self
     }
 
     /// What its drawing depends on (hash what it shows): with the same
@@ -314,7 +402,23 @@ pub fn div() -> Element {
 /// style gave it. It's kept, and drawn again only when the view's `body`
 /// next runs (see [`Element::paint_key`]) or its size changes.
 pub fn canvas(paint: impl Fn(&mut Painter, Bounds<Pixels>) + 'static) -> Element {
-    Element::new(Kind::Canvas(CanvasSpec { paint: Rc::new(move |_, p, bounds, _| paint(p, bounds)), key: None, measure: None }))
+    Element::new(Kind::Canvas(CanvasSpec { paint: Rc::new(move |_, p, bounds, _| paint(p, bounds)), key: None, key_by: None, measure: None }))
+}
+
+/// A drawing by a view of type `V` (an element for its `body`, or for
+/// what builds elements for it): `paint` is handed the view as it is
+/// when the drawing is wanted. (`Cx::canvas`, without the view to hand.)
+pub fn view_canvas<V: 'static>(paint: impl Fn(&V, &mut Painter, Bounds<Pixels>) + 'static) -> Element {
+    Element::new(Kind::Canvas(CanvasSpec {
+        paint: Rc::new(move |view, p, bounds, _| {
+            if let Some(view) = view.downcast_ref::<V>() {
+                paint(view, p, bounds)
+            }
+        }),
+        key: None,
+        key_by: None,
+        measure: None,
+    }))
 }
 
 /// A drawing that follows the pointer and the keyboard: `paint` is told
@@ -322,7 +426,7 @@ pub fn canvas(paint: impl Fn(&mut Painter, Bounds<Pixels>) + 'static) -> Element
 /// the keyboard, and it's drawn again when any of those changes (only
 /// it: nothing else in the window is touched).
 pub fn control_canvas(paint: impl Fn(&mut Painter, Bounds<Pixels>, ControlState) + 'static) -> Element {
-    let mut element = Element::new(Kind::Canvas(CanvasSpec { paint: Rc::new(move |_, p, bounds, state| paint(p, bounds, state)), key: None, measure: None }));
+    let mut element = Element::new(Kind::Canvas(CanvasSpec { paint: Rc::new(move |_, p, bounds, state| paint(p, bounds, state)), key: None, key_by: None, measure: None }));
     element.inter().paints_by_state = true;
     element
 }
@@ -444,6 +548,23 @@ pub trait InteractiveElement: Sized {
         self
     }
 
+    /// Two fingers pinching over it (a touchpad's, a touch screen's):
+    /// how far apart against how they began, and since the last event.
+    fn on_pinch(mut self, listener: impl Fn(&crate::PinchEvent, &mut WindowCx) + 'static) -> Self {
+        self.interactivity().pinch.push(Rc::new(listener));
+        self
+    }
+
+    /// Files were dropped on it, dragged from another program (or
+    /// another window): the topmost thing under the pointer that takes
+    /// drops gets them, and nothing under it does. While they're over
+    /// the window it's hovered as under the pointer (`on_hover`, its
+    /// hover style), so what would take them can show it.
+    fn on_drop(mut self, listener: impl Fn(&crate::ExternalPaths, &mut WindowCx) + 'static) -> Self {
+        self.interactivity().file_drop.push(Rc::new(listener));
+        self
+    }
+
     /// Pressed and released on it (or Space while it has the keyboard).
     fn on_click(mut self, listener: impl Fn(&ClickEvent, &mut WindowCx) + 'static) -> Self {
         self.interactivity().click.push(Rc::new(listener));
@@ -505,7 +626,18 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// The keyboard came to it (true) or left.
+    /// A key nothing with the keyboard took, wherever the keyboard is in
+    /// the window (after what has it and everything that holds it; the
+    /// first such element in the window to stop it has it): the keys a
+    /// part of the window answers for all of it (a tab view's Next and
+    /// Previous Tab).
+    fn on_window_key_down(mut self, listener: impl Fn(&KeyDownEvent, &mut WindowCx) + 'static) -> Self {
+        self.interactivity().window_key_down.push(Rc::new(listener));
+        self
+    }
+
+    /// The keyboard came to it, or into it (to something it holds), or
+    /// left it: true while it's there.
     fn on_focus_changed(mut self, listener: impl Fn(&bool, &mut WindowCx) + 'static) -> Self {
         self.interactivity().focus_changed.push(Rc::new(listener));
         self
@@ -536,17 +668,115 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// It can have the keyboard (a click gives it; `Cx::focus` too).
+    /// Drawn over everything else in the window, wherever it is in the
+    /// tree, cut by nothing but the window, and first under the pointer:
+    /// a list that drops from a field over what's below it (a search's
+    /// suggestions). Laid out where it is as anything else. With
+    /// [`Self::occlude`] nothing under it gets the pointer.
+    fn raised(mut self) -> Self {
+        self.interactivity().raised = true;
+        self
+    }
+
+    /// A press on it leaves the keyboard where it is, whatever it's in
+    /// that a click gives the keyboard to: a menu bar's titles (a
+    /// window's menus work on what has its keyboard, and never take it).
+    fn keeps_focus(mut self) -> Self {
+        self.interactivity().keeps_focus = true;
+        self
+    }
+
+    /// It can have the keyboard, and a click on it gives it (something
+    /// typed into; `Cx::focus` gives it too).
     fn focusable(mut self) -> Self {
-        self.interactivity().focusable = true;
+        let inter = self.interactivity();
+        inter.focusable = true;
+        inter.click_focus = true;
         self
     }
 
     /// In the window's tab order: Tab and ⇧Tab move the keyboard to it.
+    /// (A click doesn't, as BeOS's controls: pressing a button leaves
+    /// the keyboard where it was.)
     fn tab_stop(mut self) -> Self {
         let inter = self.interactivity();
         inter.focusable = true;
         inter.tab_stop = true;
+        self
+    }
+
+    /// The scroller this element is, when its style says it scrolls
+    /// (`overflow_y_scroll`): kept by its view, to know where it is and
+    /// to move it. (Without one it keeps its own.)
+    fn track_scroll(mut self, handle: &crate::ScrollHandle) -> Self {
+        self.interactivity().scroll = Some(handle.clone());
+        self
+    }
+
+    /// Hears where it's scrolled to (its offset) whenever that changes,
+    /// whoever moved it.
+    fn on_scroll(mut self, listener: impl Fn(&Point<Pixels>, &mut WindowCx) + 'static) -> Self {
+        self.interactivity().scroll_listeners.push(Rc::new(listener));
+        self
+    }
+
+    /// Hears where it is (in the window) and how big, whenever layout
+    /// changes either: for what follows the size of what it holds (a
+    /// window that fits its content). Told once layout is done, before
+    /// anything is drawn; what it changes is laid out in the same turn.
+    fn on_bounds_changed(mut self, listener: impl Fn(&Bounds<Pixels>, &mut WindowCx) + 'static) -> Self {
+        self.interactivity().bounds_listeners.push(Rc::new(listener));
+        self
+    }
+
+    /// It's drawn again whenever `handle`'s scroller moves or its ends
+    /// do (a scroll bar's knob follows its view).
+    fn watch_scroll(mut self, handle: &crate::ScrollHandle) -> Self {
+        self.interactivity().watches.push((handle.id(), crate::scroll::ANY));
+        self
+    }
+
+    /// Hears where `handle` is scrolled to whenever that changes,
+    /// whoever moved it (and is drawn again): for content that scrolls
+    /// itself by a handle its scroll bars drive
+    /// (`ScrollHandle::set_extent`), which tracks no scroller of its
+    /// own to hear of with [`Self::on_scroll`].
+    fn on_scroll_of(mut self, handle: &crate::ScrollHandle, listener: impl Fn(&Point<Pixels>, &mut WindowCx) + 'static) -> Self {
+        let inter = self.interactivity();
+        inter.watches.push((handle.id(), crate::scroll::ANY));
+        inter.scroll_of_listeners.push((handle.clone(), Rc::new(listener)));
+        self
+    }
+
+    /// It's drawn again whenever `handle`'s scroller moves across (a
+    /// table's header, over its rows), not when it moves up or down.
+    fn watch_scroll_x(mut self, handle: &crate::ScrollHandle) -> Self {
+        self.interactivity().watches.push((handle.id(), crate::scroll::ACROSS | crate::scroll::ENDS));
+        self
+    }
+
+    /// It's drawn again whenever how far `handle`'s scroller goes, or
+    /// its view, changes: not for its moving (a scroll bar's arrows,
+    /// grey with nothing to scroll).
+    fn watch_scroll_ends(mut self, handle: &crate::ScrollHandle) -> Self {
+        self.interactivity().watches.push((handle.id(), crate::scroll::ENDS));
+        self
+    }
+
+    /// A text that agents aren't told of as a label of its own: what
+    /// holds it says what it is (a document, read whole as its value).
+    fn unlabelled(mut self) -> Self {
+        self.interactivity().unlabelled = true;
+        self
+    }
+
+    /// It can have the keyboard (a click gives it), and `handle` is how
+    /// its view gives it the keyboard and knows whether it has it.
+    fn track_focus(mut self, handle: &crate::FocusHandle) -> Self {
+        let inter = self.interactivity();
+        inter.focusable = true;
+        inter.click_focus = true;
+        inter.focus_handle = Some(handle.id());
         self
     }
 

@@ -1,6 +1,6 @@
 [package]
 name = "olo-vaapi"
-description = "AV1 encoded, and AV1 and VP9 decoded, on Intel's and AMD's GPUs through VA-API (libva opened at run time), and what each GPU's driver can do"
+description = "AV1 and H.264 encoded, and AV1, VP9, H.264 and HEVC decoded, on Intel's and AMD's GPUs through VA-API (libva opened at run time), and what each GPU's driver can do"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

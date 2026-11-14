@@ -1,0 +1,8 @@
+[package]
+name = "olo-yuv"
+description = "A video's picture as its decoder made it (Y'CbCr planes), as a window's GPU draws it: shared by olo-interface and what decodes"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]

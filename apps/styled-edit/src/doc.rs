@@ -7,14 +7,15 @@
 //! other programs see an ordinary text file.
 
 use std::{
+    cell::Cell,
     ops::Range,
     path::Path,
     time::{Duration, Instant},
 };
 
-use olo_ui::{
+use olo_kit::{
+    Font, Hsla, Rgba,
     editor::{self, PICTURE, Span},
-    gpui::{Font, Hsla, Rgba},
     widgets::ruler,
 };
 use serde::{Deserialize, Serialize};
@@ -305,20 +306,34 @@ pub const MAX_LEVEL: u8 = 8;
 pub const INDENT: f32 = 24.0;
 pub const MARKER_ROOM: f32 = INDENT;
 
-/// A step to undo: bytes `at..at + now` of the text were `was`, and the
-/// runs were `runs`. (Only what changed: a long document isn't copied
-/// for every word typed.)
+/// A step to undo: bytes `at..at + now` of the text were `was`, and of
+/// the runs and the paragraphs' settings, what the step changed. (Only
+/// what changed: a long document isn't copied for every word typed.)
 #[derive(Clone)]
 struct State {
     at: usize,
     now: usize,
     was: String,
-    runs: Vec<Run>,
-    paras: Vec<Para>,
+    /// The runs over the bytes the step changed (its text, the styles it
+    /// set), by bytes.
+    runs: Window<Run>,
+    /// The paragraphs it changed, by index.
+    paras: Window<Para>,
     /// Selection to restore.
     selection: Range<usize>,
     /// What to call it (Edit ▸ Undo *Typing*).
     name: String,
+}
+
+/// Part of a list as a step found it: from `at` to `tail` before the end
+/// (in bytes for the runs, in paragraphs for theirs), `was`. What follows
+/// is untouched by the step, so counting from the end finds the part
+/// again, before the step or after it, however long it became.
+#[derive(Clone)]
+struct Window<T> {
+    at: usize,
+    tail: usize,
+    was: Vec<T>,
 }
 
 /// What an edit did to the text: bytes `removed` became `inserted` bytes
@@ -364,9 +379,12 @@ pub struct Doc {
     pub generation: u64,
     /// The generation that was last saved or loaded.
     pub saved_generation: u64,
+    /// Whether every paragraph is set as plain text, once found (asked
+    /// at every body, by the Language menu).
+    plain_paras: Cell<Option<bool>>,
     /// Each change to the text since last taken, where its lines are
     /// (for source code's syntax: `take_edits`); None: not kept.
-    edits: Option<Vec<olo_ui::code::Edit>>,
+    edits: Option<Vec<olo_kit::code::Edit>>,
 }
 
 /// What each printed page shows above and below its text: left, centre
@@ -462,6 +480,7 @@ impl Doc {
             last_edit: None,
             generation: 1,
             saved_generation: 1,
+            plain_paras: Cell::new(None),
             edits: None,
         };
         d.index_runs();
@@ -483,7 +502,17 @@ impl Doc {
     /// Whether it's plain text: no styles, paragraph settings or
     /// alignment of its own (nothing lost shown as code or Markdown).
     pub fn is_plain(&self) -> bool {
-        self.runs.iter().all(|r| r.style == Style::default()) && self.paras.iter().all(|p| *p == Para::default()) && self.align == Align::Left
+        // (Runs side by side differ, so this looks at two at most.)
+        self.align == Align::Left && self.runs.iter().all(|r| r.style == Style::default()) && self.plain_paras()
+    }
+
+    fn plain_paras(&self) -> bool {
+        if let Some(plain) = self.plain_paras.get() {
+            return plain;
+        }
+        let plain = self.paras.iter().all(|p| *p == Para::default());
+        self.plain_paras.set(Some(plain));
+        plain
     }
 
     /// Keep each change to the text, for [`take_edits`](Self::take_edits)
@@ -493,7 +522,7 @@ impl Doc {
     }
 
     /// The changes to the text since last taken, in order.
-    pub fn take_edits(&mut self) -> Vec<olo_ui::code::Edit> {
+    pub fn take_edits(&mut self) -> Vec<olo_kit::code::Edit> {
         self.edits.as_mut().map(std::mem::take).unwrap_or_default()
     }
 
@@ -507,7 +536,7 @@ impl Doc {
             let i = self.para_index(at);
             (i, at - self.para_starts[i])
         };
-        let e = olo_ui::code::Edit::new(removed.clone(), inserted, place(removed.start), place(removed.end));
+        let e = olo_kit::code::Edit::new(removed.clone(), inserted, place(removed.start), place(removed.end));
         if let Some(v) = self.edits.as_mut() {
             v.push(e);
         }
@@ -593,16 +622,18 @@ impl Doc {
     /// undo.
     pub fn set_paras(&mut self, range: Range<usize>, selection: Range<usize>, f: impl Fn(&mut Para)) {
         let r = self.paras_in(range);
-        let mut changed = self.paras.clone();
-        for p in &mut changed[r] {
+        let mut changed = self.paras[r.clone()].to_vec();
+        for p in &mut changed {
             f(p);
         }
-        if changed == self.paras {
+        if changed[..] == self.paras[r.clone()] {
             return;
         }
-        self.push_undo(selection.start..selection.start, 0, selection, "Paragraph");
+        let bytes = self.para_range(r.start).start..self.para_range(r.end - 1).end;
+        self.push_undo(selection.start..selection.start, 0, selection, "Paragraph", bytes);
         self.last_edit = None;
-        self.paras = changed;
+        self.paras.splice(r, changed);
+        self.plain_paras.set(None);
         self.redo.clear();
         self.generation += 1;
     }
@@ -612,11 +643,12 @@ impl Doc {
     pub fn set_kind(&mut self, range: Range<usize>, selection: Range<usize>, kind: Kind) {
         let r = self.paras_in(range.clone());
         let bytes = self.para_range(r.start).start..self.para_range(r.end - 1).end;
-        self.push_undo(selection.start..selection.start, 0, selection, "Paragraph Style");
+        self.push_undo(selection.start..selection.start, 0, selection, "Paragraph Style", bytes.clone());
         self.last_edit = None;
         for p in &mut self.paras[r] {
             p.kind = kind;
         }
+        self.plain_paras.set(None);
         if !bytes.is_empty() {
             let start = split_at(&mut self.runs, bytes.start);
             let end = split_at(&mut self.runs, bytes.end);
@@ -708,7 +740,7 @@ impl Doc {
                 EditKind::Other if inserted.is_empty() => "Delete",
                 EditKind::Other => "Typing",
             };
-            self.push_undo(removed.clone(), inserted.len(), selection, name);
+            self.push_undo(removed.clone(), inserted.len(), selection, name, removed.clone());
         }
         self.last_edit = Some((kind, Instant::now(), p + inserted.len()));
         self.splice(removed, inserted);
@@ -761,6 +793,13 @@ impl Doc {
             *last = next;
         }
         let delta = inserted.len() as isize - removed.len() as isize;
+        // Still plain if what came was (what went was); still not if
+        // none went (only some came).
+        match self.plain_paras.get() {
+            Some(true) if added_paras.iter().all(|p| *p == Para::default()) => {}
+            Some(false) if p1 == p0 => {}
+            _ => self.plain_paras.set(None),
+        }
         self.paras.splice(p0 + 1..p1 + 1, added_paras);
         let n = new_starts.len();
         self.para_starts.splice(p0 + 1..p1 + 1, new_starts);
@@ -783,7 +822,7 @@ impl Doc {
         let (first, last) = (ranges.first()?, ranges.last()?);
         let removed = first.start..last.end;
         let inserted = removed.len() + ranges.len() * with.len() - ranges.iter().map(|r| r.len()).sum::<usize>();
-        self.push_undo(removed.clone(), inserted, selection, if ranges.len() > 1 { "Replace All" } else { "Replace" });
+        self.push_undo(removed.clone(), inserted, selection, if ranges.len() > 1 { "Replace All" } else { "Replace" }, removed.clone());
         self.last_edit = None;
         self.typing = None;
         for r in ranges.iter().rev() {
@@ -794,13 +833,28 @@ impl Doc {
         Some(Change { removed, inserted })
     }
 
-    /// Before bytes `removed` become `inserted` bytes: a step to undo it.
-    fn push_undo(&mut self, removed: Range<usize>, inserted: usize, selection: Range<usize>, name: &str) {
-        // (Text alone, source code's or Markdown's, has no paragraph
-        // settings to keep: a long one's aren't copied for each step.)
-        let paras = if self.edits.is_some() { Vec::new() } else { self.paras.clone() };
+    /// Before bytes `removed` become `inserted` bytes, and the styles and
+    /// paragraphs over bytes `touched` change: a step to undo it.
+    fn push_undo(&mut self, removed: Range<usize>, inserted: usize, selection: Range<usize>, name: &str, touched: Range<usize>) {
         let name = self.naming.take().unwrap_or_else(|| name.to_owned());
-        self.undo.push(State { at: removed.start, now: inserted, was: self.text[removed].to_owned(), runs: self.runs.clone(), paras, selection, name });
+        // (A step that leaves the text alone is where it sets, wherever
+        // the selection is.)
+        let text = !removed.is_empty() || inserted > 0;
+        let bytes = if text { removed.start.min(touched.start)..removed.end.max(touched.end) } else { touched };
+        let p = self.para_index(bytes.start);
+        let mut step = State {
+            at: removed.start,
+            now: inserted,
+            was: self.text[removed].to_owned(),
+            runs: Window { at: bytes.start, tail: self.text.len() - bytes.start, was: Vec::new() },
+            paras: Window { at: p, tail: self.paras.len() - p, was: Vec::new() },
+            selection,
+            name,
+        };
+        if text || !bytes.is_empty() {
+            self.widen(&mut step, bytes);
+        }
+        self.undo.push(step);
         // Plenty, without keeping every keystroke of a long session.
         if self.undo.len() > 500 {
             self.undo.remove(0);
@@ -810,16 +864,68 @@ impl Doc {
     /// Before bytes `removed` become `inserted` bytes, next to (or in) what
     /// the last step changed: that step takes this in too.
     fn extend_undo(&mut self, removed: Range<usize>, inserted: usize) {
-        let text = &self.text;
-        let Some(top) = self.undo.last_mut() else { return };
+        let Some(mut top) = self.undo.pop() else { return };
         let (lo, hi) = (removed.start.min(top.at), removed.end.max(top.at + top.now));
         let mut was = String::with_capacity(hi - lo);
-        was.push_str(&text[lo..top.at]);
+        was.push_str(&self.text[lo..top.at]);
         was.push_str(&top.was);
-        was.push_str(&text[(top.at + top.now).min(hi)..hi]);
+        was.push_str(&self.text[(top.at + top.now).min(hi)..hi]);
         top.was = was;
         top.now = hi - lo - removed.len() + inserted;
         top.at = lo;
+        self.widen(&mut top, removed);
+        self.undo.push(top);
+    }
+
+    /// Step `s` (the one being taken) takes in the runs over bytes `bytes`
+    /// and the paragraphs they touch, as they are (the step hasn't changed
+    /// them yet).
+    fn widen(&self, s: &mut State, bytes: Range<usize>) {
+        let (at, end) = (s.runs.at, self.text.len() - s.runs.tail);
+        let (lo, hi) = (bytes.start.min(at), bytes.end.max(end));
+        if (lo, hi) != (at, end) {
+            let mut was = self.runs_over(lo..at);
+            was.append(&mut s.runs.was);
+            was.extend(self.runs_over(end..hi));
+            s.runs = Window { at: lo, tail: self.text.len() - hi, was };
+        }
+        self.widen_paras(s, self.paras_in(bytes));
+    }
+
+    /// Step `s` takes in paragraphs `r` as they are.
+    fn widen_paras(&self, s: &mut State, r: Range<usize>) {
+        let (at, end) = (s.paras.at, self.paras.len() - s.paras.tail);
+        if at == end && s.paras.was.is_empty() {
+            // None yet: these, wherever they are.
+            s.paras = Window { at: r.start, tail: self.paras.len() - r.end, was: self.paras[r].to_vec() };
+            return;
+        }
+        let (lo, hi) = (r.start.min(at), r.end.max(end));
+        if (lo, hi) == (at, end) {
+            return;
+        }
+        let mut was = Vec::with_capacity(hi - lo - (end - at) + s.paras.was.len());
+        was.extend_from_slice(&self.paras[lo..at]);
+        was.append(&mut s.paras.was);
+        was.extend_from_slice(&self.paras[end..hi]);
+        s.paras = Window { at: lo, tail: self.paras.len() - hi, was };
+    }
+
+    /// The runs over bytes `r`, cut to it.
+    fn runs_over(&self, r: Range<usize>) -> Vec<Run> {
+        let mut out = Vec::new();
+        if r.is_empty() {
+            return out;
+        }
+        let mut i = self.starts.partition_point(|&s| s <= r.start).saturating_sub(1);
+        while i < self.runs.len() && self.starts[i] < r.end {
+            let (a, b) = (self.starts[i].max(r.start), (self.starts[i] + self.runs[i].len).min(r.end));
+            if b > a {
+                out.push(Run { len: b - a, style: self.runs[i].style.clone() });
+            }
+            i += 1;
+        }
+        out
     }
 
     /// Change the style over `range` (bytes) with `f`. With nothing
@@ -831,7 +937,7 @@ impl Doc {
             self.typing = Some((range.start, style));
             return;
         }
-        self.push_undo(range.start..range.start, 0, selection, "Style");
+        self.push_undo(range.start..range.start, 0, selection, "Style", range.clone());
         self.last_edit = None;
         let start = split_at(&mut self.runs, range.start);
         let end = split_at(&mut self.runs, range.end);
@@ -855,7 +961,7 @@ impl Doc {
         let clip = self.clip.take();
         self.copied(from.clone());
         let region = from.start.min(to)..from.end.max(to);
-        self.push_undo(region.clone(), region.len(), selection, "Move");
+        self.push_undo(region.clone(), region.len(), selection, "Move", region.clone());
         self.last_edit = None;
         self.typing = None;
         self.splice(from.clone(), "");
@@ -906,26 +1012,18 @@ impl Doc {
     /// Put `s` back, keeping what it replaces on the other stack.
     fn restore(&mut self, s: State, selection: Range<usize>, redoing: bool) -> (Range<usize>, Change) {
         let removed = s.at..s.at + s.now;
-        // (A step taken of text alone keeps no paragraph settings: there
-        // is always one a line otherwise.)
-        let text_only = s.paras.is_empty();
-        let back = State {
-            at: s.at,
-            now: s.was.len(),
-            was: self.text[removed.clone()].to_owned(),
-            runs: std::mem::replace(&mut self.runs, s.runs),
-            paras: if text_only { Vec::new() } else { std::mem::replace(&mut self.paras, s.paras) },
-            selection,
-            name: s.name,
-        };
+        // Each window as it is now, swapped for what it was.
+        let (a, b) = (s.runs.at, self.text.len() - s.runs.tail);
+        let (i, j) = (split_at(&mut self.runs, a), split_at(&mut self.runs, b));
+        let runs: Vec<Run> = self.runs.splice(i..j, s.runs.was).collect();
+        normalize(&mut self.runs);
+        let paras: Vec<Para> = self.paras.splice(s.paras.at..self.paras.len() - s.paras.tail, s.paras.was).collect();
+        self.plain_paras.set(None);
+        let back =
+            State { at: s.at, now: s.was.len(), was: self.text[removed.clone()].to_owned(), runs: Window { was: runs, ..s.runs }, paras: Window { was: paras, ..s.paras }, selection, name: s.name };
         self.note_edit(&removed, &s.was);
         self.text.replace_range(removed.clone(), &s.was);
         self.index_runs();
-        if text_only {
-            // One plain paragraph a line, as many as there are now.
-            let n = self.text.bytes().filter(|&b| b == b'\n').count() + 1;
-            self.paras.resize(n, Para::default());
-        }
         self.index_paras();
         if redoing {
             self.undo.push(back)
@@ -945,7 +1043,7 @@ impl Doc {
         style.picture = Some(pic);
         style.link = None;
         let ch = PICTURE.to_string();
-        self.push_undo(range.clone(), ch.len(), selection, "Insert Picture");
+        self.push_undo(range.clone(), ch.len(), selection, "Insert Picture", range.clone());
         self.last_edit = None;
         let clip = self.clip.take();
         self.typing = Some((range.start, style));
@@ -988,7 +1086,8 @@ impl Doc {
     pub fn replace_paras(&mut self, ranges: &[Range<usize>], with: &str, selection: Range<usize>, after: impl Fn(&Doc) -> Range<usize>, set: impl Fn(usize, &mut Para)) -> Option<Change> {
         let change = if ranges.iter().all(|r| r.is_empty()) && with.is_empty() {
             // Only the paragraphs: a step of its own still.
-            self.push_undo(selection.start..selection.start, 0, selection, "Table");
+            let at = selection.start;
+            self.push_undo(at..at, 0, selection, "Table", at..at);
             self.redo.clear();
             self.generation += 1;
             Change { removed: 0..0, inserted: 0 }
@@ -997,9 +1096,15 @@ impl Doc {
         };
         self.last_edit = None;
         let r = self.paras_in(after(self));
+        // The step takes in what's set, as it was.
+        if let Some(mut top) = self.undo.pop() {
+            self.widen_paras(&mut top, r.clone());
+            self.undo.push(top);
+        }
         for (k, i) in r.enumerate() {
             set(k, &mut self.paras[i]);
         }
+        self.plain_paras.set(None);
         Some(change)
     }
 
@@ -1344,6 +1449,92 @@ mod tests {
         assert_eq!(d.text(), "one ab");
         let (sel, _) = d.undo(6..6).unwrap();
         assert_eq!((d.text(), sel), ("one two", 4..7));
+    }
+
+    /// Every kind of step, in a long styled document: undone and done
+    /// again to the byte, styles and paragraphs too, and none keeping
+    /// more of them than it touched.
+    #[test]
+    fn undo_keeps_just_the_styles_and_paragraphs_a_step_changed() {
+        let line = "a line of text\n";
+        let mut d = Doc::new(line.repeat(2000) + "end", None);
+        let at = |i: usize| i * line.len();
+        type Snap = (String, Vec<Run>, Vec<Para>);
+        let snap = |d: &Doc| -> Snap { (d.text().to_owned(), d.runs().to_vec(), d.paras().to_vec()) };
+        let mut snaps = vec![snap(&d)];
+        d.restyle(at(3) + 2..at(3) + 6, 0..0, |s| s.bold = true);
+        snaps.push(snap(&d));
+        d.set_kind(at(5)..at(5), 0..0, Kind::Heading1);
+        snaps.push(snap(&d));
+        d.set_paras(at(10)..at(12), 0..0, |p| {
+            p.list = List::Bullet;
+            p.level = 1;
+        });
+        snaps.push(snap(&d));
+        // Typing in the heading, a space, a new paragraph after it.
+        let h = at(5) + 6;
+        d.edit(h..h, "x", h..h);
+        d.edit(h + 1..h + 1, "y", h + 1..h + 1);
+        snaps.push(snap(&d));
+        d.edit(h + 2..h + 2, " ", h + 2..h + 2);
+        snaps.push(snap(&d));
+        let e = d.para_range(5).end;
+        d.edit(e..e, "\n", e..e);
+        snaps.push(snap(&d));
+        // Backspacing into the list's first paragraph, then on (one step).
+        let b = d.para_range(11).start;
+        d.edit(b - 1..b, "", b..b);
+        d.edit(b - 2..b - 1, "", b - 1..b - 1);
+        snaps.push(snap(&d));
+        d.move_text(at(3)..at(3) + 8, at(40), 0..0);
+        snaps.push(snap(&d));
+        let lines: Vec<Range<usize>> = find_all(d.text(), "line", true).into_iter().skip(400).take(30).collect();
+        d.replace_all(&lines, "row\nof", 0..0);
+        snaps.push(snap(&d));
+        let r = d.para_range(700);
+        d.replace_paras(&[r.start..r.start], "", r.clone(), |d| d.para_range(700).start..d.para_range(703).end, |_, p| p.level = 2);
+        snaps.push(snap(&d));
+        d.insert_picture(at(900)..at(900) + 1, Picture { path: "a.png".into(), width: 10.0, height: 10.0, alt: String::new() }, 0..0);
+        snaps.push(snap(&d));
+        for (k, step) in d.undo.iter().enumerate() {
+            assert!(step.runs.was.len() <= 8 && step.paras.was.len() <= 60, "step {k} ({}) keeps {} runs, {} paragraphs", step.name, step.runs.was.len(), step.paras.was.len());
+        }
+        assert_eq!(d.undo.len(), snaps.len() - 1);
+        for k in (0..snaps.len() - 1).rev() {
+            d.undo(0..0).unwrap();
+            assert!(snap(&d) == snaps[k], "undone to step {k}");
+            assert_eq!(d.para_starts.len(), d.paras.len());
+        }
+        for k in 1..snaps.len() {
+            d.redo(0..0).unwrap();
+            assert!(snap(&d) == snaps[k], "done again to step {k}");
+        }
+        assert!(!d.is_plain());
+    }
+
+    #[test]
+    fn is_plain_follows_the_paragraphs() {
+        let mut d = Doc::new("one\ntwo\nthree".into(), None);
+        assert!(d.is_plain());
+        d.edit(3..3, "\n", 3..3);
+        assert!(d.is_plain());
+        d.set_kind(0..0, 0..0, Kind::Quote);
+        assert!(!d.is_plain());
+        // Typing doesn't make it plain; taking away the quote does.
+        d.edit(1..1, "x", 1..1);
+        assert!(!d.is_plain());
+        d.undo(0..0);
+        d.undo(0..0);
+        assert!(d.is_plain());
+        d.set_paras(0..0, 0..0, |p| p.level = 1);
+        assert!(!d.is_plain());
+        // Joining the set paragraph into the one before it (its setting
+        // goes with it): plain again.
+        d.set_paras(0..0, 0..0, |p| p.level = 0);
+        d.set_paras(5..5, 0..0, |p| p.level = 1);
+        assert!(!d.is_plain());
+        d.edit(4..5, "", 5..5);
+        assert!(d.is_plain());
     }
 
     #[test]

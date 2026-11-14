@@ -520,3 +520,22 @@ pub fn sample(account: &str) -> FakeAccount {
     }
     FakeAccount { account: account.into(), uuid: UUID.into(), vaults, others: Vec::new() }
 }
+
+/// `n` more made-up logins in the account's first vault ("Site 001" at
+/// site-001.example, one of five tags each): for measuring Passwords
+/// with as many items as a person has, where the sample's eight say
+/// little about a list or a search.
+pub fn add_logins(account: &mut FakeAccount, n: usize) {
+    const TAGS: [&str; 5] = ["work", "home", "money", "travel", "games"];
+    let Some(vault) = account.vaults.first_mut() else { return };
+    for i in 1..=n {
+        let mut p = ItemCreateParams::new(ItemCategory::Login, "", format!("Site {i:03}"));
+        p.fields = vec![
+            ItemField::new("username", "username", ItemFieldType::Text, format!("jane{i}@example.com")),
+            ItemField::new("password", "password", ItemFieldType::Concealed, format!("made-up-{i:03}-Passphrase")),
+        ];
+        p.websites = vec![crate::Website { url: format!("https://site-{i:03}.example"), label: "website".into(), autofill_behavior: crate::AutofillBehavior::AnywhereOnWebsite }];
+        p.tags = vec![TAGS[i % TAGS.len()].into()];
+        create(vault, p);
+    }
+}

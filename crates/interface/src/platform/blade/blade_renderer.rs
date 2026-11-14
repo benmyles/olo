@@ -403,24 +403,69 @@ pub struct BladeSurfaceConfig {
 // the format and alpha mode.
 /// What one of a swapchain's images holds, for drawing only what a
 /// frame needs.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 enum Held {
     /// Not known (never drawn, or the swapchain was made again): drawn
     /// whole.
     Nothing,
-    /// The window as it was, but for this rectangle, changed since
-    /// (None: all of it is as the window is now).
-    AllBut(Option<[i32; 4]>),
+    /// The window as it was, but for these rectangles (apart), changed
+    /// since (none: all of it is as the window is now).
+    AllBut(Vec<[i32; 4]>),
 }
 
 /// How much of a frame is to be drawn (`BladeRenderer::begin_frame`).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum FrameRegion {
     /// No frame can be drawn now.
     None,
     All,
-    /// Only this, in device pixels (the rest is kept).
-    Part(Bounds<ScaledPixels>),
+    /// Only these, in device pixels, none over another (the rest is
+    /// kept).
+    Part(Vec<Bounds<ScaledPixels>>),
+}
+
+/// At most this many rectangles a frame draws apart: past it, the two
+/// whose joining adds least are joined (each is a scissor the frame's
+/// draws are made again for, and app_server is told each).
+const MOST_APART: usize = 6;
+
+/// Rectangles (x, y, width, height) joined until none is over another
+/// (a thing drawn twice where two overlap would be blended twice), and
+/// then until there are at most `MOST_APART`; empty ones dropped.
+fn apart(mut rects: Vec<[i32; 4]>) -> Vec<[i32; 4]> {
+    let over = |a: &[i32; 4], b: &[i32; 4]| a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3];
+    let area = |r: &[i32; 4]| r[2] as i64 * r[3] as i64;
+    rects.retain(|r| r[2] > 0 && r[3] > 0);
+    loop {
+        let mut joined = false;
+        'look: for i in 0..rects.len() {
+            for j in i + 1..rects.len() {
+                if over(&rects[i], &rects[j]) {
+                    rects[i] = union(rects[i], rects[j]);
+                    rects.swap_remove(j);
+                    joined = true;
+                    break 'look;
+                }
+            }
+        }
+        if joined {
+            continue;
+        }
+        if rects.len() <= MOST_APART {
+            return rects;
+        }
+        let mut best = (0, 1, i64::MAX);
+        for i in 0..rects.len() {
+            for j in i + 1..rects.len() {
+                let added = area(&union(rects[i], rects[j])) - area(&rects[i]) - area(&rects[j]);
+                if added < best.2 {
+                    best = (i, j, added);
+                }
+            }
+        }
+        rects[best.0] = union(rects[best.0], rects[best.1]);
+        rects.swap_remove(best.1);
+    }
 }
 
 /// Whether frames draw only what changed (`OLO_DAMAGE=0`: all of the
@@ -445,9 +490,9 @@ pub struct BladeRenderer {
     /// What each of the swapchain's images holds (`Held`).
     images: Vec<Held>,
     /// A frame begun (`begin_frame`) and not drawn yet: its image, the
-    /// part of it to draw (None: all), and what changed in it for the
+    /// parts of it to draw (None: all), and what changed in it for the
     /// compositor.
-    begun: Option<(gpu::Frame, Option<[i32; 4]>, Option<[i32; 4]>)>,
+    begun: Option<(gpu::Frame, Option<Vec<[i32; 4]>>, Option<Vec<[i32; 4]>>)>,
     /// Olo: the part of the swapchain drawn in: all of it, or less while
     /// it has room to grow (`update_drawable_size_within`).
     drawn: gpu::Extent,
@@ -991,16 +1036,24 @@ impl BladeRenderer {
     /// frame, in device pixels; None: everything) has to draw: an image
     /// keeps what was drawn into it, so only what changed since it was
     /// last drawn is missing from it.
-    fn acquire(&mut self, damage: Option<Bounds<ScaledPixels>>) -> (gpu::Frame, Option<[i32; 4]>, Option<[i32; 4]>) {
+    fn acquire(&mut self, damage: Option<&[Bounds<ScaledPixels>]>) -> (gpu::Frame, Option<Vec<[i32; 4]>>, Option<Vec<[i32; 4]>>) {
         let frame = {
             profiling::scope!("acquire frame");
             self.surface.acquire_frame()
         };
         let (width, height) = (self.surface_config.size.width as i32, self.surface_config.size.height as i32);
-        let changed = damage.filter(|_| damage_enabled()).map(|d| {
-            let (x0, y0) = ((d.origin.x.0.floor() as i32).clamp(0, width), (d.origin.y.0.floor() as i32).clamp(0, height));
-            let (x1, y1) = (((d.origin.x.0 + d.size.width.0).ceil() as i32).clamp(0, width), ((d.origin.y.0 + d.size.height.0).ceil() as i32).clamp(0, height));
-            [x0, y0, x1 - x0, y1 - y0]
+        // (Whole pixels first: two apart can meet once rounded out.)
+        let changed = damage.filter(|_| damage_enabled()).map(|rects| {
+            apart(
+                rects
+                    .iter()
+                    .map(|d| {
+                        let (x0, y0) = ((d.origin.x.0.floor() as i32).clamp(0, width), (d.origin.y.0.floor() as i32).clamp(0, height));
+                        let (x1, y1) = (((d.origin.x.0 + d.size.width.0).ceil() as i32).clamp(0, width), ((d.origin.y.0 + d.size.height.0).ceil() as i32).clamp(0, height));
+                        [x0, y0, x1 - x0, y1 - y0]
+                    })
+                    .collect(),
+            )
         });
         let Some(index) = frame.image_index().filter(|_| !frame.is_lost()) else {
             self.images.clear();
@@ -1013,35 +1066,40 @@ impl BladeRenderer {
         // Every image misses what this frame changes, on top of what it
         // missed already.
         for image in &mut self.images {
-            *image = match (*image, changed) {
-                (Held::AllBut(missing), Some(now)) => Held::AllBut(Some(missing.map_or(now, |m| union(m, now)))),
+            *image = match (std::mem::replace(image, Held::Nothing), &changed) {
+                (Held::AllBut(mut missing), Some(now)) => {
+                    missing.extend_from_slice(now);
+                    Held::AllBut(apart(missing))
+                }
                 _ => Held::Nothing,
             };
         }
-        let part = match self.images[index] {
-            Held::AllBut(missing) => Some(missing.unwrap_or([0, 0, 0, 0])),
+        let part = match std::mem::replace(&mut self.images[index], Held::AllBut(Vec::new())) {
+            Held::AllBut(missing) => Some(missing),
             Held::Nothing => None,
         };
-        self.images[index] = Held::AllBut(None);
-        (frame, part, changed.filter(|_| part.is_some()))
+        let shown = changed.filter(|_| part.is_some());
+        (frame, part, shown)
     }
 
     /// Begins a frame that shows `damage` (what changed since the last
     /// one; None: everything): how much of it is to be drawn. The scene
     /// then handed to [`Self::draw`] need hold no more than that.
-    pub fn begin_frame(&mut self, damage: Option<Bounds<ScaledPixels>>) -> FrameRegion {
+    pub fn begin_frame(&mut self, damage: Option<&[Bounds<ScaledPixels>]>) -> FrameRegion {
         if gpu::device_lost() {
             return FrameRegion::None;
         }
         if self.begun.is_none() {
             self.begun = Some(self.acquire(damage));
         }
-        match self.begun {
+        match &self.begun {
             Some((frame, _, _)) if frame.is_lost() => FrameRegion::All,
-            Some((_, Some(part), _)) => FrameRegion::Part(Bounds {
-                origin: crate::point(ScaledPixels(part[0] as f32), ScaledPixels(part[1] as f32)),
-                size: crate::size(ScaledPixels(part[2] as f32), ScaledPixels(part[3] as f32)),
-            }),
+            Some((_, Some(parts), _)) => FrameRegion::Part(
+                parts
+                    .iter()
+                    .map(|p| Bounds { origin: crate::point(ScaledPixels(p[0] as f32), ScaledPixels(p[1] as f32)), size: crate::size(ScaledPixels(p[2] as f32), ScaledPixels(p[3] as f32)) })
+                    .collect(),
+            ),
             _ => FrameRegion::All,
         }
     }
@@ -1120,7 +1178,24 @@ impl BladeRenderer {
             self.remake_surface();
             return;
         }
-        let scissor = part.map(|[x, y, w, h]| gpu::ScissorRect { x, y, w: w.max(0) as u32, h: h.max(0) as u32 });
+        // Each part apart, its own scissor, every draw made for each (they
+        // don't overlap, so nothing is blended twice).
+        let scissor: Option<Vec<gpu::ScissorRect>> = part.map(|parts| parts.iter().map(|&[x, y, w, h]| gpu::ScissorRect { x, y, w: w.max(0) as u32, h: h.max(0) as u32 }).collect());
+        macro_rules! each_part {
+            ($encoder:ident, $draw:expr) => {
+                match &scissor {
+                    Some(rects) => {
+                        for rect in rects {
+                            $encoder.set_scissor_rect(rect);
+                            $draw;
+                        }
+                    }
+                    None => {
+                        $draw;
+                    }
+                }
+            };
+        }
         match scissor {
             // (Its contents are kept: only `scissor` is drawn again.)
             Some(_) => self.command_encoder.init_texture_kept(frame.texture()),
@@ -1152,11 +1227,10 @@ impl BladeRenderer {
                 depth_stencil: None,
             },
         );
-        if let Some(rect) = &scissor {
+        if let Some(rects) = &scissor {
             // What changed starts afresh, as a whole frame's clear would
             // have it; nothing outside it is touched.
-            pass.set_scissor_rect(rect);
-            if rect.w > 0 && rect.h > 0 {
+            for rect in rects.iter().filter(|r| r.w > 0 && r.h > 0) {
                 pass.clear_rect(rect);
             }
         }
@@ -1168,13 +1242,13 @@ impl BladeRenderer {
                     let instance_buf = unsafe { self.instance_belt.alloc_typed(quads, &self.gpu) };
                     let mut encoder = pass.with(&self.pipelines.quads);
                     encoder.bind(0, &ShaderQuadsData { globals, b_quads: instance_buf });
-                    encoder.draw(0, 4, 0, quads.len() as u32);
+                    each_part!(encoder, encoder.draw(0, 4, 0, quads.len() as u32));
                 }
                 PrimitiveBatch::Shadows(shadows) => {
                     let instance_buf = unsafe { self.instance_belt.alloc_typed(shadows, &self.gpu) };
                     let mut encoder = pass.with(&self.pipelines.shadows);
                     encoder.bind(0, &ShaderShadowsData { globals, b_shadows: instance_buf });
-                    encoder.draw(0, 4, 0, shadows.len() as u32);
+                    each_part!(encoder, encoder.draw(0, 4, 0, shadows.len() as u32));
                 }
                 PrimitiveBatch::Paths(paths) => {
                     let Some(first_path) = paths.first() else {
@@ -1187,9 +1261,6 @@ impl BladeRenderer {
                         "main",
                         gpu::RenderTargetSet { colors: &[gpu::RenderTarget { view: frame.texture_view(), init_op: gpu::InitOp::Load, finish_op: gpu::FinishOp::Store }], depth_stencil: None },
                     );
-                    if let Some(rect) = &scissor {
-                        pass.set_scissor_rect(rect);
-                    }
                     let mut encoder = pass.with(&self.pipelines.paths);
                     // When copying paths from the intermediate texture to the drawable,
                     // each pixel must only be copied once, in case of transparent paths.
@@ -1209,25 +1280,25 @@ impl BladeRenderer {
                     };
                     let instance_buf = unsafe { self.instance_belt.alloc_typed(&sprites, &self.gpu) };
                     encoder.bind(0, &ShaderPathsData { globals, t_sprite: path_view, s_sprite: self.atlas_sampler, b_path_sprites: instance_buf });
-                    encoder.draw(0, 4, 0, sprites.len() as u32);
+                    each_part!(encoder, encoder.draw(0, 4, 0, sprites.len() as u32));
                 }
                 PrimitiveBatch::Underlines(underlines) => {
                     let instance_buf = unsafe { self.instance_belt.alloc_typed(underlines, &self.gpu) };
                     let mut encoder = pass.with(&self.pipelines.underlines);
                     encoder.bind(0, &ShaderUnderlinesData { globals, b_underlines: instance_buf });
-                    encoder.draw(0, 4, 0, underlines.len() as u32);
+                    each_part!(encoder, encoder.draw(0, 4, 0, underlines.len() as u32));
                 }
                 PrimitiveBatch::Segments(segments) => {
                     let instance_buf = unsafe { self.instance_belt.alloc_typed(segments, &self.gpu) };
                     let mut encoder = pass.with(&self.pipelines.segments);
                     encoder.bind(0, &ShaderSegmentsData { globals, b_segments: instance_buf });
-                    encoder.draw(0, 4, 0, segments.len() as u32);
+                    each_part!(encoder, encoder.draw(0, 4, 0, segments.len() as u32));
                 }
                 PrimitiveBatch::Sectors(sectors) => {
                     let instance_buf = unsafe { self.instance_belt.alloc_typed(sectors, &self.gpu) };
                     let mut encoder = pass.with(&self.pipelines.sectors);
                     encoder.bind(0, &ShaderSectorsData { globals, b_sectors: instance_buf });
-                    encoder.draw(0, 4, 0, sectors.len() as u32);
+                    each_part!(encoder, encoder.draw(0, 4, 0, sectors.len() as u32));
                 }
                 PrimitiveBatch::MonochromeSprites { texture_id, sprites } => {
                     let tex_info = self.atlas.get_texture_info(texture_id);
@@ -1248,21 +1319,21 @@ impl BladeRenderer {
                             b_mono_sprites: instance_buf,
                         },
                     );
-                    encoder.draw(0, 4, 0, sprites.len() as u32);
+                    each_part!(encoder, encoder.draw(0, 4, 0, sprites.len() as u32));
                 }
                 PrimitiveBatch::PolychromeSprites { texture_id, sprites } => {
                     let tex_info = self.atlas.get_texture_info(texture_id);
                     let instance_buf = unsafe { self.instance_belt.alloc_typed(sprites, &self.gpu) };
                     let mut encoder = pass.with(&self.pipelines.poly_sprites);
                     encoder.bind(0, &ShaderPolySpritesData { globals, t_sprite: tex_info.raw_view, s_sprite: self.atlas_sampler, b_poly_sprites: instance_buf });
-                    encoder.draw(0, 4, 0, sprites.len() as u32);
+                    each_part!(encoder, encoder.draw(0, 4, 0, sprites.len() as u32));
                 }
                 PrimitiveBatch::ImageTriangles { texture_id, triangles } => {
                     let tex_info = self.atlas.get_texture_info(texture_id);
                     let instance_buf = unsafe { self.instance_belt.alloc_typed(triangles, &self.gpu) };
                     let mut encoder = pass.with(&self.pipelines.image_triangles);
                     encoder.bind(0, &ShaderImageTrianglesData { globals, t_sprite: tex_info.raw_view, s_sprite: self.atlas_sampler, b_image_triangles: instance_buf });
-                    encoder.draw(0, 3, 0, triangles.len() as u32);
+                    each_part!(encoder, encoder.draw(0, 3, 0, triangles.len() as u32));
                 }
                 PrimitiveBatch::Surfaces(surfaces) => {
                     let mut _encoder = pass.with(&self.pipelines.surfaces);
@@ -1285,7 +1356,7 @@ impl BladeRenderer {
                                     s_surface: self.atlas_sampler,
                                 },
                             );
-                            _encoder.draw(0, 4, 0, 1);
+                            each_part!(_encoder, _encoder.draw(0, 4, 0, 1));
                             continue;
                         };
 
@@ -1362,7 +1433,7 @@ impl BladeRenderer {
         drop(pass);
 
         if let Some(shown) = shown {
-            self.command_encoder.set_present_damage(&[shown]);
+            self.command_encoder.set_present_damage(&shown);
         }
         self.command_encoder.present(frame);
         let sync_point = self.gpu.submit(&mut self.command_encoder);
@@ -1477,5 +1548,38 @@ impl RenderingParameters {
         let ratios = GAMMA_INCORRECT_TARGET_RATIOS[index];
 
         [ratios[0] * NORM13, ratios[1] * NORM24, ratios[2] * NORM13, ratios[3] * NORM24]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Rectangles a frame draws apart: those over one another joined,
+    /// never more than `MOST_APART`, the two joined each time the ones
+    /// that add least, and everything given still covered.
+    #[test]
+    fn rectangles_apart_cover_all_and_never_overlap() {
+        // A line typed in, the status line far below: two.
+        assert_eq!(apart(vec![[30, 120, 400, 33], [0, 1700, 2000, 32]]), vec![[30, 120, 400, 33], [0, 1700, 2000, 32]]);
+        // Two over each other: one; an empty one: gone.
+        assert_eq!(apart(vec![[0, 0, 10, 10], [5, 5, 10, 10], [50, 50, 0, 7]]), vec![[0, 0, 15, 15]]);
+        let mut seed = 99u64;
+        let mut next = |n: i32| {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((seed >> 33) % n as u64) as i32
+        };
+        for _ in 0..300 {
+            let given: Vec<[i32; 4]> = (0..1 + next(14)).map(|_| [next(900), next(700), 1 + next(120), 1 + next(80)]).collect();
+            let got = apart(given.clone());
+            assert!(got.len() <= MOST_APART, "{got:?}");
+            let over = |a: &[i32; 4], b: &[i32; 4]| a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3];
+            for (i, a) in got.iter().enumerate() {
+                assert!(got[i + 1..].iter().all(|b| !over(a, b)), "{got:?}");
+            }
+            for g in &given {
+                assert!(got.iter().any(|r| r[0] <= g[0] && r[1] <= g[1] && g[0] + g[2] <= r[0] + r[2] && g[1] + g[3] <= r[1] + r[3]), "{g:?} not in {got:?}");
+            }
+        }
     }
 }

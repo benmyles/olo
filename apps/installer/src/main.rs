@@ -1,7 +1,8 @@
-//! olo-installer: Olo Setup. One program, downloaded from Olo's
-//! releases and run on a stock Fedora Workstation, that makes it Olo:
-//! full screen, Windows 95's Setup in BeOS's look (ui.rs), a wizard of
-//! five pages; what Olo needs installed from Fedora through PackageKit,
+//! olo-installer: the Installer (Olo Setup, as it was first called).
+//! One program, downloaded from Olo's releases and run on a stock
+//! Fedora Workstation, that makes it Olo: full screen, BeOS's Installer
+//! for Olo (ui.rs: the licence to agree to, then one window with Begin
+//! in it); what Olo needs installed from Fedora through PackageKit,
 //! Olo itself downloaded, checked and put in the home folder, Olo on the
 //! login screen's menu, and, if chosen, Olo's login screen, boot splash
 //! and RPM Fusion (plan.rs). What needs root is Olo Doctor's privileged
@@ -14,8 +15,8 @@
 //! ```text
 //! olo-installer                    the window
 //! olo-installer --yes [--login-screen] [--boot-splash] [--rpm-fusion]
-//!                                  through the pages by itself, those
-//!                                  chosen (tests; an agent)
+//!                                  agrees, begins and quits by itself,
+//!                                  those chosen (tests; an agent)
 //! olo-installer --bundle URL|FILE  that archive (its .sha256 beside it),
 //!                                  not the newest release's
 //! olo-installer --check            whether this computer can have Olo,
@@ -29,7 +30,7 @@ mod plan;
 mod session;
 mod ui;
 
-use olo_ui::{WindowOptions, gpui::AppContext as _};
+use olo_kit::WindowOptions;
 
 const APP_ID: &str = "olo.installer";
 
@@ -57,25 +58,21 @@ fn main() {
         // SAFETY: single-threaded, before anything else starts.
         unsafe { std::env::set_var("OLO_DATA", dir) };
     }
-    olo_ui::run(APP_ID, move |cx| {
-        let proxy = olo_ui::proxy(cx);
-        let setup = cx.new(|_| ui::Setup::new(proxy.clone(), given, auto, choices));
-        let view = setup.clone();
-        olo_ui::open_window(cx, WindowOptions { fullscreen: true, ..WindowOptions::new("Olo Setup", 1024.0, 768.0) }, move |_, _| view);
-        let messages = setup.clone();
-        olo_ui::message_handler(cx, move |message, cx| {
-            if let Ok(t) = message.downcast::<ui::Told>() {
-                messages.update(cx, |s, cx| s.told(t.0, cx));
-            } else {
-                messages.update(cx, |s, cx| s.advance(cx));
+    olo_kit::run(APP_ID, move |app| {
+        let window = olo_kit::open_window(WindowOptions { fullscreen: true, ..WindowOptions::new("Olo Installer", 1024.0, 768.0) }, move |_| ui::Setup::new(given, auto, choices));
+        // What the worker says (and `--yes`), to the window.
+        olo_kit::message_handler(app, move |message, _| {
+            if let Ok(message) = message.downcast::<ui::Msg>() {
+                window.messenger().send(*message);
             }
         });
-        // --yes: a page every few seconds (each shown long enough to see).
+        // --yes: on every few seconds (each thing shown long enough to see).
         if auto {
+            let proxy = olo_kit::proxy();
             std::thread::spawn(move || {
                 loop {
                     std::thread::sleep(std::time::Duration::from_secs(4));
-                    proxy.send(ui::Advance);
+                    proxy.send(ui::Msg::Advance);
                 }
             });
         }

@@ -6,7 +6,7 @@ mod serial;
 mod window;
 
 pub(crate) use client::*;
-pub use client::{lock_session, unlock_session};
+pub(crate) use client::{lock_session_on_display, unlock_session_on_display};
 pub use window::ImeInput;
 
 use wayland_protocols::wp::cursor_shape::v1::client::wp_cursor_shape_device_v1::Shape;

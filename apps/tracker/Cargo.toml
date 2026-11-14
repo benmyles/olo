@@ -12,8 +12,9 @@ path = "src/main.rs"
 [dependencies]
 olo-crash.workspace = true
 olo-sync.workspace = true
-olo-ui.workspace = true
+olo-kit.workspace = true
 olo-kit-base.workspace = true
+olo-theme.workspace = true
 olo-xdg.workspace = true
 olo-appimage.workspace = true
 olo-images.workspace = true
@@ -29,4 +30,4 @@ ignore = "0.4"
 grep-searcher = "0.1"
 grep-regex = "0.1"
 grep-matcher = "0.1"
-olo-preview = { workspace = true, features = ["gpui"] }
+olo-preview = { workspace = true, features = ["kit"] }

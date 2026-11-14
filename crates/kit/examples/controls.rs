@@ -1,9 +1,8 @@
-//! The kit's BeOS controls in one window, the same as olo-ui's
-//! `controls` example draws them on GPUI: the two are compared pixel
-//! for pixel (`tools/dev/kit-compare`).
+//! The kit's BeOS controls in one window (to compare with a build from
+//! before a change, pixel for pixel: `tools/dev/kit-compare`).
 
 use olo_kit::{
-    Child, Cx, Element, InteractiveElement as _, IntoElement as _, Menu, MenuBar, MouseButton, ParentElement as _, Styled as _, View, WindowOptions, div, menu, metrics as m, px,
+    Child, Cx, Element, InteractiveElement as _, Menu, MenuBar, MouseButton, ParentElement as _, Styled as _, View, WindowOptions, div, menu, metrics as m, px,
     widgets::{BBox, Button, CheckBox, LinkButton, MenuField, RadioButton, StringView, TextControl, TextField, TextFieldEvent, heading, separator, text_field},
 };
 
@@ -48,6 +47,7 @@ impl View for Controls {
         match command {
             "count" => self.clicks += 1,
             "reset" => self.clicks = 0,
+            "close" => cx.close_window(),
             "quit" => olo_kit::quit(),
             _ => return false,
         }
@@ -72,7 +72,7 @@ impl View for Controls {
 /// The window's menus.
 fn menus() -> Vec<Menu> {
     vec![
-        Menu::new("File").item("Count", "count").key("k").separator().item("Quit", "quit").key("q"),
+        Menu::new("File").app_items(&[]).item("Count", "count").key("k").close_quit(),
         Menu::new("Edit").item("Reset", "reset").item("Disabled", "none").enabled(false).separator().submenu(Menu::new("More").item("One", "one").item("Two", "two").checked(true)),
     ]
 }

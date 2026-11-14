@@ -1,10 +1,4 @@
-use std::{
-    env,
-    path::{Path, PathBuf},
-    process::Command,
-    rc::Rc,
-    sync::Arc,
-};
+use std::{env, path::PathBuf, rc::Rc, sync::Arc};
 use std::{
     ffi::OsString,
     fs::File,
@@ -13,10 +7,8 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Context as _, anyhow};
 use async_task::Runnable;
 use calloop::{LoopSignal, channel::Channel};
-use futures::channel::oneshot;
 use util::ResultExt as _;
 use xkbcommon::xkb::{self, Keycode, Keysym, State};
 
@@ -146,7 +138,9 @@ impl LinuxCommon {
 /// priority): their work isn't a frame's.
 pub(crate) fn util_floor() {
     let min = env::var("OLO_UTIL_MIN").ok().and_then(|v| v.parse().ok()).unwrap_or(olo_protocol::performance::UI_UTIL_MIN);
-    if min == 0 {
+    // (Not on an agent's screen: background work beside the person's
+    // desktop, `olo_system::priority::not_the_persons`.)
+    if min == 0 || env::var_os("OLO_SCREEN").is_some() {
         return;
     }
     #[repr(C)]

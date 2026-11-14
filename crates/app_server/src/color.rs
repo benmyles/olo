@@ -219,6 +219,35 @@ pub fn simulated() -> Option<(DisplayColor, bool)> {
     Some((display, hdr))
 }
 
+/// The pointer's pixels for a display's cursor plane, which the display
+/// scans out as they are, never through the renderer's conversion: from
+/// sRGB into `target` as the renderer would draw them (an HDR display's
+/// PQ signal, where sRGB's white would read as 10,000 cd/m²; a wide
+/// display's gamut). Premultiplied ARGB8888, B, G, R, A in memory; run
+/// when the pointer's picture changes, not as it moves (a pointer is a
+/// few colours: each converted once).
+pub fn cursor_pixels(target: ColorTarget) -> smithay::backend::drm::compositor::CursorPixels {
+    smithay::backend::drm::compositor::CursorPixels(std::sync::Arc::new(move |px: &mut [u8], stride: usize, width: usize, height: usize| {
+        let mut seen: std::collections::HashMap<[u8; 4], [u8; 4]> = std::collections::HashMap::new();
+        for row in 0..height {
+            let Some(line) = px.get_mut(row * stride..row * stride + width * 4) else { break };
+            for p in line.chunks_exact_mut(4) {
+                if p[3] == 0 {
+                    continue;
+                }
+                let was = [p[0], p[1], p[2], p[3]];
+                let now = *seen.entry(was).or_insert_with(|| {
+                    let f = |v: u8| f32::from(v) / 255.0;
+                    let c = smithay::backend::renderer::gles::color::convert([f(was[2]), f(was[1]), f(was[0]), f(was[3])], &ColorSource::SRGB, &target);
+                    let b = |v: f32| (v * 255.0).round().clamp(0.0, 255.0) as u8;
+                    [b(c[2]), b(c[1]), b(c[0]), was[3]]
+                });
+                p.copy_from_slice(&now);
+            }
+        }
+    }))
+}
+
 /// HDR's blending buffer for a display, kept from frame to frame: what's
 /// on screen, in BT.2020 at gamma 2.2 relative to SDR's white (float,
 /// so highlights go above 1), unrotated (the display's compositor turns
@@ -379,6 +408,33 @@ mod tests {
         let Drawing::Hdr { signal, .. } = drawing_for(&monitor, true, &applied) else { panic!("HDR") };
         assert_eq!(signal.primaries, Primaries::BT2020);
         assert!(signal_is_bt2020(&monitor));
+    }
+
+    /// The pointer on an HDR display's cursor plane: encoded into its PQ
+    /// signal as the renderer encodes what it draws (white at SDR's white,
+    /// not PQ's 10,000), its edges' alpha kept, nothing past the width
+    /// touched.
+    #[test]
+    fn the_pointers_pixels_in_the_displays_colours() {
+        let Drawing::Hdr { signal, .. } = drawing_for(&oled(), true, &Applied { hdr: true, ..Applied::default() }) else { panic!("HDR") };
+        // White, half-covered grey, black, clear; then a stride's padding.
+        let mut px = vec![255, 255, 255, 255, 64, 64, 64, 128, 0, 0, 0, 255, 0, 0, 0, 0, 9, 9, 9, 9];
+        (cursor_pixels(signal).0)(&mut px, 20, 4, 1);
+        let want = |rgba: [f32; 4]| {
+            let c = smithay::backend::renderer::gles::color::convert(rgba, &ColorSource::SRGB, &signal);
+            [c[2], c[1], c[0], c[3]].map(|v| (v * 255.0).round() as u8)
+        };
+        assert_eq!(px[0..4], want([1.0, 1.0, 1.0, 1.0]));
+        // SDR's white, 203 cd/m², is PQ's 0.58 or so: far from 1.0.
+        assert!((140..160).contains(&px[0]), "{}", px[0]);
+        assert_eq!(px[4..8], want([64.0 / 255.0, 64.0 / 255.0, 64.0 / 255.0, 128.0 / 255.0]));
+        assert_eq!(px[7], 128);
+        assert_eq!(px[8..16], [0, 0, 0, 255, 0, 0, 0, 0]);
+        assert_eq!(px[16..20], [9, 9, 9, 9], "the stride's padding");
+        // Plain sRGB into the same: nothing changes.
+        let mut same = vec![255, 128, 0, 255];
+        (cursor_pixels(ColorTarget::SRGB).0)(&mut same, 4, 1, 1);
+        assert_eq!(same, [255, 128, 0, 255]);
     }
 
     #[test]

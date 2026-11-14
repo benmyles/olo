@@ -1,19 +1,21 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "apps/*", "gpui/*", "smithay/*"]
-exclude = ["vendor"]
+members = ["crates/*", "apps/*", "smithay/*"]
+# The browser is moving onto olo-kit (GPUI went with main): back in the
+# workspace once it is.
+exclude = ["vendor", "apps/browser"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-repository = "https://example.invalid/olo"
 
 [workspace.dependencies]
 olo-protocol = { path = "crates/protocol" }
 olo-kit-base = { path = "crates/kit-base" }
 olo-color = { path = "crates/color" }
 olo-sync = { path = "crates/sync" }
+olo-yuv = { path = "crates/yuv" }
 olo-app = { path = "crates/app" }
 olo-interface = { path = "crates/interface" }
 olo-kit = { path = "crates/kit" }
@@ -23,8 +25,6 @@ olo-video = { path = "crates/video" }
 olo-vaapi = { path = "crates/vaapi" }
 olo-syntax = { path = "crates/syntax" }
 olo-camera = { path = "crates/camera" }
-olo-ui = { path = "crates/ui" }
-gpui = { path = "gpui/gpui" }
 olo-theme = { path = "crates/theme" }
 olo-preview = { path = "crates/preview" }
 olo-richtext = { path = "crates/richtext" }
@@ -43,6 +43,7 @@ olo-palm = { path = "crates/palm" }
 olo-complete = { path = "crates/complete" }
 olo-images = { path = "crates/images" }
 olo-token-pool = { path = "crates/pool" }
+olo-airplay = { path = "crates/airplay", default-features = false }
 olo-ai = { path = "crates/ai" }
 olo-eld = { path = "crates/eld" }
 olo-voice = { path = "crates/voice" }
@@ -66,7 +67,7 @@ path = "smithay/smithay-drm-extras"
 
 # See vendor/README.md.
 [patch.crates-io]
-blade-graphics = { path = "gpui/blade-graphics" }
+blade-graphics = { path = "vendor/blade-graphics" }
 matroska-demuxer = { path = "vendor/matroska-demuxer" }
 rustls = { path = "vendor/rustls" }
 blocking = { path = "vendor/blocking" }
@@ -75,6 +76,7 @@ rust_h265 = { path = "vendor/rust_h265" }
 h2 = { path = "vendor/h2" }
 velato = { path = "vendor/velato" }
 mp4 = { path = "vendor/mp4" }
+taffy = { path = "vendor/taffy" }
 
 [profile.release]
 debug = "line-tables-only"

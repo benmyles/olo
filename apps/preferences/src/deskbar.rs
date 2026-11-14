@@ -11,19 +11,22 @@
 
 use std::sync::{Arc, Mutex};
 
-use olo_protocol::deskbar::{Look, Measure, Place, Size, Widget};
-use olo_system::meters::{self, Sources};
-use olo_ui::{
-    gpui::{Context, Entity, ParentElement as _, SharedString, Styled as _, div, px},
-    metrics as m,
+use olo_kit::{
+    Cx, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m,
     palette::Hue,
+    px,
     widgets::{BBox, Button, Column, ColumnListView, ListModel, MenuField},
 };
+use olo_protocol::{
+    deskbar::{Look, Measure, Place, PoolView, Size, Widget},
+    pool,
+};
+use olo_system::meters::{self, Sources};
 
 use crate::{PanelView, form::Ui, panel};
 
 pub struct State {
-    list: Entity<ListModel>,
+    list: ListModel,
     /// What there is to measure, read off the UI thread as the panel
     /// opens.
     sources: Arc<Mutex<Option<Sources>>>,
@@ -32,15 +35,26 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(cx: &mut Context<PanelView>) -> State {
+    pub fn new(_cx: &mut Cx<PanelView>) -> State {
         let sources = Arc::new(Mutex::new(None));
-        let (found, proxy) = (sources.clone(), olo_ui::proxy(cx));
+        let (found, proxy) = (sources.clone(), olo_kit::proxy());
         std::thread::spawn(move || {
             *found.lock().unwrap_or_else(|e| e.into_inner()) = Some(meters::sources());
             proxy.send(crate::Msg::Redraw);
         });
-        State { list: ListModel::new(cx, false), sources, add: 0 }
+        State { list: ListModel::new(false), sources, add: 0 }
     }
+}
+
+/// For the lint: what there is to measure made up (`sources`, as long as
+/// real machines' and pools' come), and widget `chosen` chosen, its
+/// editor showing.
+#[cfg(test)]
+pub fn for_lint(st: &mut State, sources: Sources, chosen: usize) {
+    // (A new one: the real machine's, read as the panel opened, go to the
+    // old.)
+    st.sources = Arc::new(Mutex::new(Some(sources)));
+    st.list.state_mut().select(chosen);
 }
 
 fn state_of(v: &mut PanelView) -> Option<&mut State> {
@@ -83,21 +97,21 @@ fn shares(widgets: &[Widget], i: usize) -> bool {
 pub fn ui(ui: &mut Ui, st: &mut State) {
     let widgets = ui.s.deskbar.widgets.clone();
     let sources = st.sources.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_default();
-    let selected = st.list.read(ui.cx).state.single().filter(|i| *i < widgets.len());
+    let selected = st.list.state().single().filter(|i| *i < widgets.len());
     let list_model = st.list.clone();
     let left = ui.collect(|ui| {
         let rows: Vec<String> = widgets.iter().enumerate().map(|(i, w)| summary(w, shares(&widgets, i), &sources)).collect();
         let n = rows.len();
-        let list = ColumnListView::new("deskbar-widgets", &list_model, vec![Column::new("Widget", 290.0)], n, move |cell, window, cx| cell.text(window, cx, rows[cell.row].clone()))
+        let list = ColumnListView::new(ui.cx, "deskbar-widgets", &list_model, vec![Column::new("Widget", 290.0)], n, move |_: &PanelView, cell, g| cell.text(g, rows[cell.row].clone()))
             .no_header()
             .empty_text("No widgets: add one below.")
-            .on_select(|_, cx| cx.refresh_windows());
+            .on_select(ui.cx.listener(|_: &mut PanelView, _: &(), cx| cx.notify()));
         // Add: one of the chosen kind, after the chosen widget (else at
         // the end), chosen.
         let kinds: Vec<SharedString> = Measure::kinds().iter().map(|k| SharedString::from(k.kind_name())).collect();
-        let pick = ui.on_view(|v, i: usize, _, cx| {
+        let pick = ui.on_view(|v, i: &usize, cx| {
             if let Some(st) = state_of(v) {
-                st.add = i;
+                st.add = *i;
             }
             cx.notify();
         });
@@ -111,9 +125,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         });
         let select_after_add = {
             let n = widgets.len();
-            move |cx: &mut olo_ui::gpui::App| {
+            move |_cx: &mut WindowCx| {
                 let at = selected.map_or(n, |i| i + 1);
-                lm2.update(cx, |l, _| l.state.select(at));
+                lm2.state_mut().select(at);
             }
         };
         let remove = ui.edit_click(move |s| {
@@ -148,12 +162,12 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                         .gap(px(m::SPACING))
                         .child(Button::new("Remove").enabled(selected.is_some()).on_click(move |window, cx| {
                             remove(window, cx);
-                            lm3.update(cx, |l, _| l.state.selected.clear());
+                            lm3.state_mut().selected.clear();
                         }))
                         .child(Button::new("Move Up").enabled(selected.is_some_and(|i| i > 0)).on_click(move |window, cx| {
                             up(window, cx);
                             if let Some(i) = selected.filter(|i| *i > 0) {
-                                lm4.update(cx, |l, _| l.state.select(i - 1));
+                                lm4.state_mut().select(i - 1);
                             }
                         }))
                         .child(Button::new("Move Down").enabled(selected.is_some_and(|i| i + 1 < count)).on_click({
@@ -161,13 +175,13 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                             move |window, cx| {
                                 down(window, cx);
                                 if let Some(i) = selected.filter(|i| i + 1 < count) {
-                                    lm.update(cx, |l, _| l.state.select(i + 1));
+                                    lm.state_mut().select(i + 1);
                                 }
                             }
                         })),
                 ),
         );
-        ui.note("Each shows in the Deskbar as it changes. Click one there for Activity Monitor.");
+        ui.note("Each shows in the Deskbar as it changes. Click one there for Activity Monitor (a Token Pool one, Token Pool).");
     });
     let right = ui.collect(|ui| match selected.and_then(|i| widgets.get(i)) {
         Some(w) => editor(ui, w, selected.is_some_and(|i| widgets[..i].iter().any(|o| o.place == w.place)), &sources),
@@ -230,7 +244,15 @@ fn editor(ui: &mut Ui, w: &Widget, after: bool, sources: &Sources) {
         });
         let mut hues: Vec<(Option<Hue>, &str)> = vec![(None, "Accent")];
         hues.extend(Hue::ALL.iter().map(|h| (Some(*h), h.name())));
-        ui.choose("widget-hue", &hues, &w.hue, |f| f.label("Colour:").divider(DIVIDER), move |s, v| change(id, move |w| w.hue = v)(s));
+        // (A Token Pool heatmap's cells are coloured by how used each
+        // quota is, green to red: no colour of its own.)
+        let by_use = w.look == Look::Heatmap && matches!(w.measure, Measure::Pool { .. });
+        ui.enabled_if(!by_use, |ui| {
+            ui.choose("widget-hue", &hues, &w.hue, |f| f.label("Colour:").divider(DIVIDER), move |s, v| change(id, move |w| w.hue = v)(s));
+        });
+        if by_use {
+            ui.note("Coloured by use: green unused, red used up.");
+        }
     });
 }
 
@@ -318,5 +340,75 @@ fn measure_options(ui: &mut Ui, w: &Widget, sources: &Sources, divider: f32) {
         }
         Measure::Temperature { sensor } => pick(ui, "widget-sensor", "Sensor:", Some("The processor"), &sources.sensors, sensor, |m, v| *m = Measure::Temperature { sensor: v }),
         Measure::Power => ui.note(if sources.battery { "What it draws from the battery; on power, it says so." } else { "This computer has no battery." }),
+        Measure::Pool { provider, quotas, view, used, count_off, warn, notify } => {
+            pool_options(ui, id, provider, quotas, *view, [*used, *count_off, *warn, *notify], w.look == Look::Heatmap, sources, divider)
+        }
+    }
+}
+
+/// A Token Pool widget's options: whose quotas, which (any of them:
+/// Ben, 2026-11-13, "make the quota type a multi-select"), how they're
+/// shown, and whether it warns and tells.
+#[allow(clippy::too_many_arguments)]
+fn pool_options(ui: &mut Ui, id: u32, provider: &str, chosen: &[String], view: PoolView, [used, count_off, warn, notify]: [bool; 4], by_use: bool, sources: &Sources, divider: f32) {
+    // A change to the widget's Pool measure.
+    fn set(id: u32, f: impl Fn(&mut Vec<String>, &mut String, &mut PoolView, &mut [&mut bool; 4]) + 'static) -> impl Fn(&mut olo_protocol::Settings) + 'static {
+        move |s| {
+            if let Some(w) = s.deskbar.get_mut(id)
+                && let Measure::Pool { provider, quotas, view, used, count_off, warn, notify } = &mut w.measure
+            {
+                f(quotas, provider, view, &mut [used, count_off, warn, notify]);
+            }
+        }
+    }
+    let names: Vec<(String, String)> = pool::PROVIDERS.iter().map(|p| (p.to_string(), pool::provider_name(p))).collect();
+    let providers: Vec<(String, &str)> = names.iter().map(|(p, n)| (p.clone(), n.as_str())).collect();
+    ui.choose(
+        "widget-pool-provider",
+        &providers,
+        &provider.to_owned(),
+        |f| f.label("Provider:").divider(divider),
+        move |s, v: String| {
+            set(id, move |quotas, provider, _, _| {
+                if *provider != v {
+                    // (Another provider's quotas are its own.)
+                    *provider = v.clone();
+                    quotas.clear();
+                }
+            })(s)
+        },
+    );
+    // Its quotas as the pool last said them, and those chosen even if the
+    // pool doesn't say them now (not running, or no account has one): a
+    // pop-up field of several, each checked or not.
+    let mut offered: Vec<String> = sources.pool.iter().find(|(p, _)| p == provider).map(|(_, q)| q.clone()).unwrap_or_default();
+    for q in chosen {
+        if !offered.contains(q) {
+            offered.push(q.clone());
+        }
+    }
+    if !offered.is_empty() {
+        // (One field however many: as many and as long as the pool says.)
+        ui.choose_many(
+            "widget-pool-quotas",
+            &offered,
+            chosen,
+            "Whichever holds each back",
+            |f| f.label("Quotas:").divider(divider),
+            move |s, now| set(id, move |quotas, _, _, _| *quotas = now.clone())(s),
+        );
+    }
+    ui.choose("widget-pool-view", &PoolView::ALL.map(|v| (v, v.name())), &view, |f| f.label("Accounts:").divider(divider), move |s, v| set(id, move |_, _, view, _| *view = v)(s));
+    ui.check("Show what's used, not what's left", used, move |s, v| set(id, move |_, _, _, b| *b[0] = v)(s));
+    ui.enabled_if(view == PoolView::Together, |ui| {
+        ui.check("Count accounts turned off or signed out", count_off, move |s, v| set(id, move |_, _, _, b| *b[1] = v)(s));
+    });
+    // (A heatmap's cells are coloured by use already: `editor`.)
+    ui.enabled_if(!by_use, |ui| {
+        ui.check("Orange, then red, as it runs low", warn, move |s, v| set(id, move |_, _, _, b| *b[2] = v)(s));
+    });
+    ui.check("Tell me when it runs out, and when it's back", notify, move |s, v| set(id, move |_, _, _, b| *b[3] = v)(s));
+    if sources.pool.is_empty() {
+        ui.note("Token Pool isn't running: its quotas are listed once it is.");
     }
 }

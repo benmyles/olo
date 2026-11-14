@@ -1,11 +1,7 @@
 use crate::{
-    self as gpui, AbsoluteLength, AlignContent, AlignItems, BorderStyle, CursorStyle, DefiniteLength, Display, Fill, FlexDirection, FlexWrap, Font, FontStyle, FontWeight, GridPlacement, Hsla,
-    JustifyContent, Length, SharedString, StrikethroughStyle, StyleRefinement, TextAlign, TextOverflow, TextStyleRefinement, UnderlineStyle, WhiteSpace, px, relative, rems,
+    AbsoluteLength, AlignContent, AlignItems, BorderStyle, CursorStyle, DefiniteLength, Display, Fill, FlexDirection, FlexWrap, Font, FontStyle, FontWeight, GridPlacement, Hsla, JustifyContent,
+    Length, SharedString, StrikethroughStyle, StyleRefinement, TextAlign, TextOverflow, TextStyleRefinement, UnderlineStyle, WhiteSpace, px, relative, rems,
 };
-pub use gpui_macros::{
-    border_style_methods, box_shadow_style_methods, cursor_style_methods, margin_style_methods, overflow_style_methods, padding_style_methods, position_style_methods, visibility_style_methods,
-};
-
 const ELLIPSIS: SharedString = SharedString::new_static("…");
 
 /// A trait for elements that can be styled.
@@ -98,6 +94,28 @@ pub trait Styled: Sized {
     /// Sets the text alignment to right
     fn text_right(mut self) -> Self {
         self.text_align(TextAlign::Right)
+    }
+
+    /// What it holds scrolls in it, both ways: laid out at its full
+    /// size, shown from wherever it's scrolled to (the wheel and the
+    /// touchpad scroll it; `track_scroll` to know where it is and to
+    /// move it).
+    fn overflow_scroll(mut self) -> Self {
+        self.style().overflow.x = Some(crate::Overflow::Scroll);
+        self.style().overflow.y = Some(crate::Overflow::Scroll);
+        self
+    }
+
+    /// What it holds scrolls across it.
+    fn overflow_x_scroll(mut self) -> Self {
+        self.style().overflow.x = Some(crate::Overflow::Scroll);
+        self
+    }
+
+    /// What it holds scrolls up and down in it.
+    fn overflow_y_scroll(mut self) -> Self {
+        self.style().overflow.y = Some(crate::Overflow::Scroll);
+        self
     }
 
     /// Sets the truncate to prevent text from wrapping and truncate overflowing text with an ellipsis (…) if needed.

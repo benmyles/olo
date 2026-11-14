@@ -4,8 +4,18 @@ use std::sync::Arc;
 use schemars::{JsonSchema, json_schema};
 
 /// The OpenType features that can be configured for a given font.
-#[derive(Default, Clone, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, PartialEq, Hash)]
 pub struct FontFeatures(pub Arc<Vec<(String, u32)>>);
+
+impl Default for FontFeatures {
+    /// None: one empty list shared by every font that has none (an
+    /// allocation of its own for each, as a derived default made, was
+    /// one for every `font()` asked for: every label a kit app draws).
+    fn default() -> Self {
+        static NONE: std::sync::LazyLock<Arc<Vec<(String, u32)>>> = std::sync::LazyLock::new(|| Arc::new(Vec::new()));
+        FontFeatures(NONE.clone())
+    }
+}
 
 impl FontFeatures {
     /// Disables `calt`.

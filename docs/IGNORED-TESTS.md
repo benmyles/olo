@@ -45,13 +45,13 @@ Ways in that keep the person's session out of it:
 | `udev::tests::left_asleep_here` | as is (sysfs) | pass: card1 left asleep |
 | `wallpaper::tests::wallpaper_cost` | as is | pass: SDR 70 ms, HDR 90 ms (HACKING: 73, 94) |
 
-## gpui, crash, DiskBackup, Doctor
+## The kits, crash, DiskBackup, Doctor
 
 | Test | How | 2026-11-08 |
 |---|---|---|
-| gpui `bounds_tree::tests::bounds_tree_cards` | as is | pass: 0.164 ms a frame |
-| gpui `…text_system::tests::shaping_cost` | as is | pass: 2.34 µs a line |
-| gpui `text_system::olo_shaping_speed::shaping_speed` | as is | pass: 140 ns a character |
+| olo-interface `bounds_tree::tests::bounds_tree_cards` | as is | pass: 0.164 ms a frame |
+| olo-interface `…text_system::tests::shaping_cost` | as is | pass: 2.34 µs a line |
+| olo-interface `text_system::olo_shaping_speed::shaping_speed` | as is | pass: 140 ns a character |
 | olo-crash `install_cost` | as is | pass: 18 µs median (HACKING: 18) |
 | olo-diskbackup `throughput` | as is (backs up `crates/` into /var/tmp) | pass: 138 MB/s first, unchanged again |
 | olo-diskbackup-app `serve_google` | the fake Google it serves (`OLO_FAKE_GOOGLE_AT`); the build's DiskBackup on an agent screen with its own HOME and config, `OLO_DISKBACKUP_DIR`, `_KEY`, `_GOOGLE_API`, `_GOOGLE`; the browser played as `set_up_drive` plays it | pass: the setup window from the client's ID through the sign-in to "Backed up … 2 snapshots kept" in the fake Drive |
@@ -72,7 +72,7 @@ Ways in that keep the person's session out of it:
 | olo-preview `video::tests::plays_across_another_encoders_entry` | `OLO_FALLBACK_MP4`: olo-video's `a_recording_goes_on_with_another_encoder` kept (`OLO_KEEP_TEST_VIDEO=1`) | pass |
 | olo-video `export::tests::make_4k60`, `make_fixture`, `make_4k60_y4m` | `OLO_FIXTURE_DIR`, `OLO_FIXTURE`; `OLO_Y4M` a FIFO ffmpeg's libvpx reads | pass; the 4K60 clips played by the Viewer headless to their end on Intel's GPU, nothing dropped (H.264, HEVC, AV1, VP9) |
 | olo-video `tests::encode_cost`, `encoder_opening`, `nvenc_cost_by_codec`, `nvenc_makes_h264_that_decodes`, `nvenc_makes_hevc_and_av1_mp4s` | as is (wakes NVIDIA's GPU) | pass: NVENC 4K 12–15 ms a frame, every picture decoded back |
-| olo-video `tests::codec_sizes`, `tests::vaapi_sizes` | `OLO_BENCH_SCREEN` a screen-like PNG | pass |
+| olo-video `tests::codec_sizes`, `tests::vaapi_sizes`, `tests::vaapi_h264_sizes` | `OLO_BENCH_SCREEN` a screen-like PNG | pass |
 | olo-eld `decodes_a_capture_as_libfdk_does` | a speech stream libfdk's encoder made with AirPods' config (f8e63000, ctypes on libfdk-aac.so.2) and libfdk's decode of it | pass: 709 frames, SNR 82.6 dB (50 wanted) |
 | olo-face `model::tests::recognises_a_face_in_grey` | `OLO_FACE_SAMPLES`: the installed models and four NASA portraits (Commons, public domain) | pass: 0.592 alike, 0.09–0.26 apart |
 | olo-face `emitter::tests::this_machines_units` | opens every /dev/video node | **not run: the person's cameras** (Blocked) |
@@ -88,7 +88,7 @@ Ways in that keep the person's session out of it:
 | olo-passwords `vault::tests::through_a_backup` | private keyring; `XDG_CONFIG_HOME` in /var/tmp; `OLO_BACKUP_TEST=make`, then `check` | pass |
 | olo-screenshot `inset::timing::draw_per_frame` | as is | pass: 0.147 ms a frame |
 | olo-terminal, olo-termd `io::tests::scan_cost`; olo-terminal `tile_group_tests::tile_rows_cost` | as is | pass: 1.5 GB/s scanned; 186 ns |
-| olo-ui `widgets::image_view::resample_timing::filters` | as is | pass |
+| olo-kit `widgets::image_view::resample_timing::filters` | as is | pass |
 | olo-kit-base `spell::tests::check_cost` | as is (this machine's Hunspell dictionary) | pass: 20,000 words in 3.81–3.91 ms |
 | olo-voice `tests::allocations_a_frame`, `tests::live_frame_time`; `least_delay_against_deepfilternet` | as is | pass: 245 µs a frame median |
 | olo-viewer `pdfdoc::tests::write_fixture`, `dump_fields`, `render_png`, `pdftext::live::reads_a_real_pdf`, `pdfdoc::sample::sample_pdf` | `OUT`, `PDF`, `OLO_PDF`, `OLO_SAMPLE_PDF` in /var/tmp: the fixture made, then read, drawn and its text read | pass |
@@ -123,9 +123,11 @@ Ways in that keep the person's session out of it:
 
 ## Not tests
 
-Seventeen documentation examples are fenced `ignore` (gpui-macros 1,
-olo-kit-base 3, olo-ui 3, Smithay 10, two of them in generated
-bindings): illustrations, not meant to compile.
+Documentation examples fenced `ignore` (olo-kit-base's, Smithay's,
+two of them in generated bindings) are illustrations, not meant to
+compile. (The table's results are 2026-11-08's, when the first three
+rows were GPUI's and the kit's was olo-ui's: the same tests, moved
+with the code on 2026-11-11.)
 
 Of the 115 tests: 111 pass as run above, 4 haven't run (the cameras;
 the Mac's palm captures). The Viewer's sample tests ran on clips made as

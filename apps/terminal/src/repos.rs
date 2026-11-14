@@ -7,21 +7,19 @@
 
 use std::{collections::HashMap, path::PathBuf, sync::Arc, sync::atomic::Ordering};
 
-use olo_theme::Hue;
-use olo_ui::{
-    Menu,
-    gpui::{AnyElement, App, Bounds, Entity, FocusHandle, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Styled as _, Window, div, px},
-    metrics as m,
+use olo_kit::{
+    Bounds, ClickEvent, Element, InteractiveElement as _, IntoElement as _, KeyDownEvent, Menu, Painter, ParentElement as _, Pixels, Styled as _, div, metrics as m, px,
     style::{self, PullRequestShape},
-    widgets::{self, Button, StatusBar, StringView, TextControl, TextField},
+    widgets::{self, Button, StatusBar, StringView, TextControl},
 };
+use olo_theme::Hue;
 
 use crate::{
     Tab, Terminal, Win, git,
     groups::Group,
     links,
     session::Start,
-    ui::{Cx, WinOps as _, WindowId, WindowOptions},
+    ui::{Cx, FieldSpec, Shell, ShellCx, WindowId, WindowOptions, on},
 };
 
 /// New Worktree… or Rename Worktree…, for a window of the repository.
@@ -33,7 +31,6 @@ pub struct Dialog {
     rename: Option<PathBuf>,
     /// The branch a new one starts from (the main worktree's).
     from: Option<String>,
-    name: Entity<TextField>,
     error: Option<String>,
     job: Option<Arc<git::Progress>>,
 }
@@ -81,11 +78,11 @@ pub fn pr_of<'a>(prs: &'a HashMap<git::PrKey, git::Pr>, tab: &Tab) -> Option<&'a
 /// A pull request's mark for its tab: GitHub's, in its state's colour,
 /// its commit filled with its checks' (green passing, red failing, orange
 /// running).
-pub fn pr_badge(pr: &git::Pr) -> olo_ui::widgets::strip::PaintFn {
+pub fn pr_badge(pr: &git::Pr) -> olo_kit::widgets::strip::PaintFn {
     let (state, checks) = (pr.state, pr.checks);
-    std::rc::Rc::new(move |window: &mut Window, cx: &mut App, r: Bounds<Pixels>| {
+    std::rc::Rc::new(move |g: &mut Painter, r: Bounds<Pixels>| {
         use git::{Checks, PrState};
-        let p = olo_ui::theme::palette(cx);
+        let p = olo_kit::theme::palette();
         let (shape, color) = match state {
             PrState::Open => (PullRequestShape::Open, style::c(p.success)),
             PrState::Draft => (PullRequestShape::Draft, style::disabled_text(&p)),
@@ -97,7 +94,7 @@ pub fn pr_badge(pr: &git::Pr) -> olo_ui::widgets::strip::PaintFn {
             Checks::Failing => style::c(p.failure),
             Checks::Pending => style::c(p.hue(Hue::Orange)),
         });
-        style::pull_request_mark(window, r, shape, color, node);
+        style::pull_request_mark(g, r, shape, color, node);
     })
 }
 
@@ -332,25 +329,25 @@ impl Terminal {
             return cx.activate(id);
         }
         let name = rename.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        let name = Terminal::field(cx, &name, |f| f.hint("fix-tabs").font(style::mono_font(FontWeight::NORMAL)));
         let from = self.worktrees.get(&main).and_then(|l| l.iter().find(|w| w.main)).and_then(|w| w.branch.clone());
         let title = if rename.is_some() { "Rename Worktree" } else { "New Worktree" };
         let (w, h) = (DIALOG_W as u32, DIALOG_H as u32);
-        let id = cx.open_window(WindowOptions::new(title, w, h).min_size(w, h).max_size(w, h));
-        cx.subscribe(&name, move |t: &mut Terminal, _, e: &widgets::TextFieldEvent, cx| match e {
-            widgets::TextFieldEvent::Entered => t.worktree_submit(cx, id),
-            widgets::TextFieldEvent::Changed => {
+        // (Its name's field is its view's: Return in it creates, and what
+        // was wrong with the last name goes as another is typed.)
+        let field = FieldSpec {
+            text: name,
+            hint: Some("fix-tabs".into()),
+            mono: true,
+            entered: Some(|t, cx, id| t.worktree_submit(cx, id)),
+            changed: Some(|t, _, id| {
                 if let Some(Win::Worktree(d)) = t.windows.get_mut(&id) {
                     d.error = None;
                 }
-                cx.redraw(id);
-            }
-            widgets::TextFieldEvent::Typed(_) => {}
-        })
-        .detach();
-        let f = name.clone();
-        cx.with_window(id, move |_, window, cx| f.read(cx).focus(window));
-        self.windows.insert(id, Win::Worktree(Box::new(Dialog { target: win, main, repo, rename, from, name, error: None, job: None })));
+            }),
+            ..Default::default()
+        };
+        let id = cx.open_window(WindowOptions::new(title, w, h).min_size(w, h).max_size(w, h).field(field));
+        self.windows.insert(id, Win::Worktree(Box::new(Dialog { target: win, main, repo, rename, from, error: None, job: None })));
     }
 
     /// What the worktree dialog says of the name typed: where it goes,
@@ -396,53 +393,51 @@ impl Terminal {
 
     /// New Worktree… or Rename Worktree…: the name, where it goes, how
     /// it's going.
-    pub(crate) fn render_worktree(&mut self, id: WindowId, focus: FocusHandle, _: &mut Window, cx: &mut Cx) -> AnyElement {
-        let Some(Win::Worktree(d)) = self.windows.get(&id) else { return div().into_any_element() };
+    pub(crate) fn render_worktree(&mut self, sh: &mut Shell, cx: &mut ShellCx) -> Element {
+        let id = sh.id;
+        let Some(Win::Worktree(d)) = self.windows.get(&id) else { return div() };
+        let Some(field) = &sh.field else { return div() };
         let busy = d.job.is_some();
-        let name = d.name.read(cx).text().trim().to_owned();
+        let name = field.read(cx).text().trim().to_owned();
         let (note, invalid) = self.worktree_note(d, &name);
         let ready = !busy && !name.is_empty() && invalid.is_none() && d.rename.as_ref().is_none_or(|p| p.file_name().is_none_or(|n| n.to_string_lossy() != name));
-        d.name.update(cx, |f, cx| f.set_enabled(!busy, cx));
-        let p = olo_ui::theme::palette(cx);
+        field.update(cx, |f, cx| f.set_enabled(!busy, cx));
+        let p = olo_kit::theme::palette();
         let status = if let Some(job) = &d.job {
             let (done, total) = (job.done.load(Ordering::Relaxed), job.total.load(Ordering::Relaxed));
             let text = if total == 0 { "Making it…".to_owned() } else { format!("Checking out {done} of {total} files") };
             let f = if total == 0 { 0.0 } else { done as f32 / total as f32 };
             // (Its progress, drawn again while it goes.)
-            cx.spawn(async move |me, cx| {
-                cx.background_executor().timer(std::time::Duration::from_millis(50)).await;
-                let _ = me.update(cx, |_, cx| cx.redraw(id));
-            })
-            .detach();
+            Cx.later(std::time::Duration::from_millis(50), move |_, cx| cx.redraw(id));
             StatusBar::new(f).label(text).into_any_element()
         } else if let Some(e) = d.error.clone().or(invalid) {
             StringView::new(e).color(style::c(p.failure)).wrap(true).into_any_element()
         } else {
-            div().into_any_element()
+            div()
         };
         let label = if d.rename.is_some() { "Rename" } else { "Create" };
-        let field = d.name.clone();
-        let cancel = cx.listener(move |t, _: &(), _, cx| t.worktree_cancel(cx, id));
-        let ok = cx.listener(move |t, _: &(), _, cx| t.worktree_submit(cx, id));
         let row = widgets::button_row()
-            .child(Button::new(if busy { "Stop" } else { "Cancel" }).on_click(move |window, cx| cancel(&(), window, cx)))
-            .child(Button::new(label).default(true).enabled(ready).on_click(move |window, cx| ok(&(), window, cx)));
+            .child(Button::new(if busy { "Stop" } else { "Cancel" }).on_click(on(move |t, _: &ClickEvent, _| t.worktree_cancel(&mut Cx, id))))
+            .child(Button::new(label).default(true).enabled(ready).on_click(on(move |t, _: &ClickEvent, _| t.worktree_submit(&mut Cx, id))));
         div()
             .size_full()
-            .key_context(widgets::alert::CONTEXT)
-            .track_focus(&focus)
-            .on_action(cx.listener(move |t, _: &widgets::alert::Cancel, _, cx| t.worktree_cancel(cx, id)))
+            .track_focus(&sh.focus)
+            .on_key_down(on(move |t, e: &KeyDownEvent, w| {
+                if e.keystroke.key == "escape" && !e.keystroke.modifiers.modified() {
+                    w.stop_propagation();
+                    t.worktree_cancel(&mut Cx, id);
+                }
+            }))
             .p(px(m::WINDOW_INSET))
             .flex()
             .flex_col()
-            .child(TextControl::new(field).label("Name:").divider(50.0))
+            .child(TextControl::new(cx, field).label("Name:").divider(50.0))
             .child(div().h(px(m::SPACING)))
             .child(div().h(px(NOTE_H)).child(StringView::new(note).dim(true).wrap(true)))
             .child(div().h(px(m::SPACING)))
             .child(div().h(px(STATUS_H)).child(status))
             .child(div().flex_1())
             .child(row)
-            .into_any_element()
     }
 
     fn worktree_cancel(&mut self, cx: &mut Cx, window: WindowId) {
@@ -456,7 +451,7 @@ impl Terminal {
     /// Create (or Rename): on a thread.
     fn worktree_submit(&mut self, cx: &mut Cx, window: WindowId) {
         let Some(Win::Worktree(d)) = self.windows.get(&window) else { return };
-        let name = d.name.read(cx).text().trim().to_owned();
+        let name = cx.field_text(window).trim().to_owned();
         let (_, invalid) = self.worktree_note(d, &name);
         if d.job.is_some() || name.is_empty() || invalid.is_some() {
             return;

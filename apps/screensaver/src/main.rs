@@ -1,9 +1,10 @@
 //! olo-screensaver: app_server starts it after idleness (see
 //! app_server's saver.rs) on a connection of its own and ends it at the
 //! first input. It covers every output with an overlay and runs the chosen
-//! module from olo-screensavers on each, with the pointer hidden, drawn on
-//! Olo's GPUI (`olo_screensavers::gpui_canvas`), a frame each time the
-//! display can show one.
+//! module from olo-screensavers on each, with the pointer hidden, drawn
+//! with Olo's kit (`olo_screensavers::kit_canvas`), a frame each time the
+//! display can show one: each screen is a window on a looper of its own,
+//! so one screen's show doesn't wait for another's.
 //!
 //! `--module NAME --options JSON [--desktop PNG]`: the desktop picture,
 //! for Lens and Flip, is written by app_server as the saver starts; it is
@@ -12,16 +13,12 @@
 use std::{
     cell::{Cell, RefCell},
     path::PathBuf,
-    rc::Rc,
     sync::Arc,
     time::{Duration, Instant},
 };
 
-use olo_screensavers::{Frame, Info, Module, Options, gpui_canvas::GpuiCanvas, pos2};
-use olo_ui::{
-    WindowOptions,
-    gpui::{self, AppContext as _, Context, CursorStyle, Entity, HitboxBehavior, IntoElement, LayerKeyboard, LayerShellLayer, Render, RenderImage, Styled as _, Window, canvas},
-};
+use olo_kit::{CursorStyle, Cx, Element, LayerKeyboard, LayerShellLayer, RenderImage, Styled as _, View, WindowHandle, WindowOptions, view_canvas};
+use olo_screensavers::{Frame, Info, Module, Options, kit_canvas::KitCanvas, pos2};
 
 const APP_ID: &str = "olo.screensaver";
 
@@ -38,16 +35,11 @@ enum Desktop {
     None,
 }
 
-/// What every screen shares.
-struct Saver {
-    desktop: Desktop,
-}
-
 /// A screen's show.
 struct Screen {
-    saver: Entity<Saver>,
-    module: Rc<RefCell<Box<dyn Module>>>,
-    last: Rc<Cell<Option<Instant>>>,
+    desktop: Desktop,
+    module: RefCell<Box<dyn Module>>,
+    last: Cell<Option<Instant>>,
 }
 
 fn args() -> (String, Options, Option<PathBuf>) {
@@ -82,7 +74,7 @@ fn halve(rgba: &[u8], w: u32, h: u32) -> (Vec<u8>, u32, u32) {
 }
 
 /// Read the picture once app_server has written all of it.
-fn read_desktop(path: PathBuf, proxy: olo_ui::Proxy) {
+fn read_desktop(path: PathBuf, proxy: olo_kit::Proxy) {
     std::thread::Builder::new()
         .name("desktop".into())
         .spawn(move || {
@@ -94,7 +86,7 @@ fn read_desktop(path: PathBuf, proxy: olo_ui::Proxy) {
                     while w.max(h) > MAX_SIDE {
                         (rgba, w, h) = halve(&rgba, w, h);
                     }
-                    proxy.send(olo_screensavers::gpui_canvas::desktop_image(rgba, w, h));
+                    proxy.send(olo_screensavers::kit_canvas::desktop_image(rgba, w, h));
                     return;
                 }
                 std::thread::sleep(Duration::from_millis(40));
@@ -104,33 +96,41 @@ fn read_desktop(path: PathBuf, proxy: olo_ui::Proxy) {
         .expect("thread");
 }
 
-impl Render for Screen {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        let (saver, module, last) = (self.saver.clone(), self.module.clone(), self.last.clone());
-        canvas(
-            move |b, window, _| window.insert_hitbox(b, HitboxBehavior::Normal),
-            move |b, hitbox, window, cx| {
-                window.set_cursor_style(CursorStyle::None, &hitbox);
-                // A frame each time the display can show one, for as long
-                // as the saver runs.
-                window.request_animation_frame();
-                let rect = olo_screensavers::Rect::from_min_max(pos2(f32::from(b.left()), f32::from(b.top())), pos2(f32::from(b.right()), f32::from(b.bottom())));
-                let desktop = match &saver.read(cx).desktop {
-                    Desktop::Waiting(since) if since.elapsed() < DESKTOP_WAIT => {
-                        window.paint_quad(gpui::fill(b, gpui::black()));
-                        return;
-                    }
-                    Desktop::Ready(image) => Some(image.clone()),
-                    _ => None,
-                };
-                let now = Instant::now();
-                let dt = last.get().map_or(0.0, |t| (now - t).as_secs_f32());
-                last.set(Some(now));
-                let canvas = GpuiCanvas::new(window, cx, rect, desktop);
-                module.borrow_mut().draw(&Frame { canvas: &canvas, rect, dt });
-                canvas.finish();
-            },
-        )
+impl View for Screen {
+    /// The desktop picture, read (or none after all).
+    type Message = Option<Arc<RenderImage>>;
+
+    fn message(&mut self, image: Self::Message, cx: &mut Cx<Self>) {
+        self.desktop = match image {
+            Some(image) => Desktop::Ready(image),
+            None => Desktop::None,
+        };
+        cx.invalidate();
+    }
+
+    fn body(&mut self, _: &mut Cx<Self>) -> Element {
+        view_canvas(|screen: &Screen, g, b| {
+            g.set_cursor_style(CursorStyle::None, b);
+            // A frame each time the display can show one, for as long
+            // as the saver runs (only this drawing: nothing else is
+            // worked out between frames).
+            g.paint_again_within(0.0);
+            let rect = olo_screensavers::Rect::from_min_max(pos2(f32::from(b.left()), f32::from(b.top())), pos2(f32::from(b.right()), f32::from(b.bottom())));
+            let desktop = match &screen.desktop {
+                Desktop::Waiting(since) if since.elapsed() < DESKTOP_WAIT => {
+                    g.paint_quad(olo_kit::fill(b, olo_kit::black()));
+                    return;
+                }
+                Desktop::Ready(image) => Some(image.clone()),
+                _ => None,
+            };
+            let now = Instant::now();
+            let dt = screen.last.get().map_or(0.0, |t| (now - t).as_secs_f32());
+            screen.last.set(Some(now));
+            let canvas = KitCanvas::new(g, rect, desktop);
+            screen.module.borrow_mut().draw(&Frame { canvas: &canvas, rect, dt });
+            canvas.finish();
+        })
         .size_full()
     }
 }
@@ -146,53 +146,44 @@ fn main() {
     olo_xdg::legacy::adopt();
     let (module, options, desktop) = args();
     let info: &'static Info = olo_screensavers::find(&module).unwrap_or(&olo_screensavers::MODULES[0]);
-    olo_ui::run(APP_ID, move |cx| {
-        let desktop = match desktop {
-            Some(path) if info.uses_desktop => {
-                read_desktop(path, olo_ui::proxy(cx));
-                Desktop::Waiting(Instant::now())
-            }
-            _ => Desktop::None,
-        };
-        let saver = cx.new(|_| Saver { desktop });
-        let messages = saver.clone();
-        olo_ui::message_handler(cx, move |m, cx| {
-            if let Ok(image) = m.downcast::<Option<Arc<RenderImage>>>() {
-                messages.update(cx, |s, cx| {
-                    s.desktop = match *image {
-                        Some(image) => Desktop::Ready(image),
-                        None => Desktop::None,
-                    };
-                    cx.notify();
-                });
-            }
-        });
-        let mut outputs: Vec<Option<String>> = cx.displays().iter().filter_map(|d| d.name()).map(Some).collect();
+    olo_kit::run(APP_ID, move |app| {
+        if !olo_kit::has_compositor() {
+            // Nothing to draw on: nothing to do.
+            eprintln!("olo-screensaver: no screen to cover");
+            return olo_kit::quit();
+        }
+        let waits = desktop.is_some() && info.uses_desktop;
+        let mut outputs: Vec<Option<String>> = olo_kit::display_names().into_iter().flatten().map(Some).collect();
         if outputs.is_empty() {
             outputs.push(None);
         }
+        let mut screens: Vec<WindowHandle<Screen>> = Vec::new();
         for (index, output) in outputs.into_iter().enumerate() {
             let seed = olo_screensavers::seed() ^ screen_seed(&output, index);
             let options_for = options.clone();
-            let saver = saver.clone();
             let window = WindowOptions::new("Screen Saver", 1.0, 1.0).layer("screensaver", LayerShellLayer::Overlay, (true, true, true, true)).no_panel().layer_options(|l| {
                 // Over the Deskbar too.
                 l.exclusive_zone = -1;
                 l.keyboard = LayerKeyboard::OnDemand;
                 l.output = output;
             });
-            olo_ui::open_window(cx, window, move |_, cx| {
-                cx.new(|cx| {
-                    cx.observe(&saver, |_, _, cx| cx.notify()).detach();
-                    Screen { saver, module: Rc::new(RefCell::new(info.make(&options_for, seed))), last: Rc::default() }
-                })
-            });
+            screens.push(olo_kit::open_window(window, move |_| Screen {
+                desktop: if waits { Desktop::Waiting(Instant::now()) } else { Desktop::None },
+                module: RefCell::new(info.make(&options_for, seed)),
+                last: Cell::new(None),
+            }));
         }
-        // Nothing to draw on (no compositor): nothing to do.
-        if cx.windows().is_empty() {
-            eprintln!("olo-screensaver: no screen to cover");
-            cx.quit();
+        // The desktop picture, once read, to every screen.
+        if let (Some(path), true) = (desktop, waits) {
+            read_desktop(path, olo_kit::proxy());
         }
+        olo_kit::message_handler(app, move |m, _| {
+            if let Ok(image) = m.downcast::<Option<Arc<RenderImage>>>() {
+                for screen in &screens {
+                    let _ = screen.messenger().send((*image).clone());
+                }
+            }
+        });
     });
 }
 

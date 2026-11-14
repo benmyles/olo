@@ -42,6 +42,40 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
   `avc1.rs`, `hev1.rs` and `vp09.rs`, marked "Olo:") looks through the
   entry's boxes for it. Its sample-file doc example fails as published
   (the file isn't in the crate).
+- **taffy 0.9.0** (MIT): layout for a tree kept from one layout to the
+  next went wrong when part of it was laid out again. GPUI never met it
+  (it built the tree anew for every frame); olo-interface keeps its
+  tree. Two faults, both in how a node's results are kept
+  (`src/tree/cache.rs`, `src/tree/taffy_tree.rs`, each marked "Olo:"):
+  - A node's results were told apart by its known size and the space it
+    had, not by its parent's size, which its percentages are of. A
+    `height: 100%` child laid out once while its parent was only being
+    measured (no height to be a part of: none) was handed that layout
+    back when the parent had its height: Rescue's terminal, filling the
+    pane over its list of processes, had no height once the list's rows
+    changed. The patch keys every kept result by what it was worked out
+    in too (`CacheContext`: the parent's size, whether the node's own
+    style's size counted, whether its margins may collapse), as later
+    releases do.
+  - Working out a container's size lays some of its children out as it
+    goes, for that pass's sizes (a block's in-flow children; a flex or
+    grid container's baseline-aligned ones), and the final layout then
+    puts them right. But when only the measuring had new inputs, the
+    final one came from the cache and the children stayed as the
+    measuring left them: a text view in a 90-point box had no width
+    once its window was made shorter. The patch
+    (`TaffyView::compute_child_layout`, `Cache::forget_final_layout`)
+    drops a node's kept final layout when measuring it placed a child,
+    and tells what holds it, on up, that something under it is out of
+    place, so each final layout on the way is done again; nothing else
+    is worked out twice (dropping it on every measuring pass cost
+    GPUI's list a steady 13% a frame; this, nothing measurable).
+  olo-interface's `a_kept_tree_lays_out_again_as_a_new_one_would` and
+  `what_fills_a_pane_keeps_its_size_when_a_neighbour_changes` fail
+  without them. Its examples are left out. Later releases (0.15) key
+  the cache much as the first does (their code read, not tried); drop
+  the patch when olo-interface moves to one and both tests still pass
+  (GPUI, while it's here, pins 0.9.0).
 - **brush-interactive 0.4.0** (MIT): brush's line editor gives no way in
   for its hints or for the lines entered. The patch adds `src/hooks.rs`
   (`set_hooks`: a program's own hinter, given the shell's folder and last
@@ -137,3 +171,38 @@ Owned here outright (path dependencies), not tracking a release.
   first SETTINGS frame (`client::Builder::new`), and no max frame size
   announced when it is the protocol's default (`max_frame_size`). Not upstream's to fix:
   keep while the browser presents as Chrome.
+
+# From GPUI
+
+Olo's apps were once drawn with GPUI (Zed Industries' UI framework,
+GPUI 0.2.2 from crates.io, Apache-2.0), as Olo had changed it. They are
+on Olo's own kits now (`crates/interface`, `crates/kit`: docs/HACKING.md
+and the Olo Book), and GPUI and the kit built on it (`gpui/`,
+`crates/ui`) are gone. The lower half of the Interface Kit (its Wayland
+client, text system, scene and renderer) began as that code and carries
+its licence (`crates/interface/LICENSE-APACHE`). What it still uses of
+the crates GPUI was published with is here, each under the licence in
+its own folder, changed as Olo needs and never synced with upstream:
+
+- **gpui_collections 0.2.2** (Apache-2.0): the hash maps and sets'
+  aliases.
+- **gpui-macros 0.2.2** (Apache-2.0): the `Styled` helpers (`.flex()`,
+  `.p_2()`, `.border_1()`…), generated as GPUI's are (`styles.rs`, as
+  published but for the name its generated code calls the crate by:
+  `crate::`, olo-interface being its one user, where upstream's says
+  `gpui::`). Its other macros (actions, `Render`, the app and window
+  contexts, test contexts, the inspector) were GPUI's own and are
+  removed, with their dependency on heck; its tests needed GPUI and
+  went with it.
+- **gpui_refineable 0.2.2** and **gpui_derive_refineable 0.2.2**
+  (Apache-2.0): a style laid over another (`Refineable`).
+- **gpui_util 0.2.2** (Apache-2.0): the few helpers GPUI used from
+  Zed's `util`.
+- **blade-graphics 0.7.1** (MIT; Dzmitry Malyshau and the Blade
+  contributors, https://github.com/kvark/blade): the GPU layer the
+  Interface Kit draws with (Vulkan here). It replaces the crates.io
+  release for the whole workspace (`[patch.crates-io]`).
+- **blade-util 0.3.0** (MIT, same authors): its buffer belt (per-frame
+  GPU buffers): chunks are made a power of two in size, so a frame that
+  grows reuses them rather than making a new one every frame (none is
+  ever freed).

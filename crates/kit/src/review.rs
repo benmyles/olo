@@ -15,6 +15,11 @@ use olo_kit_base::{
     layout_review::{self as checks, Control, CutText, Fill, Icon, Parts, Text},
 };
 
+/// A window the review leaves out (a menu showing: not a window's
+/// layout), said as the window is made.
+#[derive(Default)]
+pub(crate) struct NotReviewed(pub(crate) bool);
+
 /// Closer than this, two things count as lined up (a rounding).
 const SAME: f32 = 0.5;
 
@@ -23,15 +28,27 @@ pub(crate) fn recording(g: &Painter) -> bool {
     g.has_ext()
 }
 
+thread_local! {
+    /// How far what's being recorded shows from where it was drawn
+    /// (`Painter::scrolled_by`): the review goes by where things show.
+    static SHIFT: std::cell::Cell<(f32, f32)> = const { std::cell::Cell::new((0.0, 0.0)) };
+}
+
 fn with_parts(g: &mut Painter, f: impl FnOnce(&mut Parts, checks::Rect)) {
+    let by = g.scrolled_by();
+    SHIFT.set((f32::from(by.x), f32::from(by.y)));
     let clip = kb(g.clip());
     if let Some(parts) = g.ext::<Parts>() {
         f(parts, clip);
     }
+    SHIFT.set((0.0, 0.0));
 }
 
+/// `b` as the checks take it, where it shows (within [`with_parts`]:
+/// moved by what scrolls round it).
 fn kb(b: Bounds<Pixels>) -> checks::Rect {
-    let (x, y) = (f32::from(b.origin.x), f32::from(b.origin.y));
+    let (dx, dy) = SHIFT.get();
+    let (x, y) = (f32::from(b.origin.x) + dx, f32::from(b.origin.y) + dy);
     checks::Rect::from_min_max(checks::pos2(x, y), checks::pos2(x + f32::from(b.size.width), y + f32::from(b.size.height)))
 }
 
@@ -89,7 +106,7 @@ pub(crate) fn text(g: &mut Painter, rect: Bounds<Pixels>, baseline: Pixels, text
             }
             return;
         }
-        let baseline = f32::from(baseline);
+        let baseline = f32::from(baseline) + SHIFT.get().1;
         parts.texts.push(Text { rect: r, baseline, middle: baseline - size * checks::CAP_HEIGHT / 2.0, left: r.min.x, label, size });
     });
 }
@@ -119,22 +136,40 @@ pub fn own_grid(g: &mut Painter, b: Bounds<Pixels>) {
 /// `b` is a box or a pane what's in it must fit in (a BBox's frame, a tab
 /// view's pane): the review finds what runs out of it.
 pub fn container(g: &mut Painter, b: Bounds<Pixels>) {
-    with_parts(g, |parts, _| parts.containers.push(kb(b)));
+    with_parts(g, |parts, clip| {
+        if let Some(r) = shown(b, clip) {
+            parts.containers.push(r);
+        }
+    });
+}
+
+/// What shows of `b` in `clip` (a box half scrolled out of sight is, to
+/// the review, the half that shows: what's below isn't in it), if any
+/// does.
+fn shown(b: Bounds<Pixels>, clip: checks::Rect) -> Option<checks::Rect> {
+    let r = kb(b).intersect(clip);
+    r.is_positive().then_some(r)
 }
 
 /// `b` is a tab view's pane: what's in it must fit, and a window's pages
 /// are measured in it (the lint's fit check).
 pub fn pane(g: &mut Painter, b: Bounds<Pixels>) {
-    with_parts(g, |parts, _| {
-        parts.containers.push(kb(b));
-        parts.panes.push(kb(b));
+    with_parts(g, |parts, clip| {
+        if let Some(r) = shown(b, clip) {
+            parts.containers.push(r);
+            parts.panes.push(r);
+        }
     });
 }
 
 /// `b` is a control's frame, round its agent rect (a text field's well):
 /// what the eye goes by in a row of controls.
 pub fn frame(g: &mut Painter, b: Bounds<Pixels>) {
-    with_parts(g, |parts, _| parts.frames.push(kb(b)));
+    with_parts(g, |parts, clip| {
+        if let Some(r) = shown(b, clip) {
+            parts.frames.push(r);
+        }
+    });
 }
 
 /// `b` is a scroll view's viewport: what it cuts is scrolled out of
@@ -175,7 +210,17 @@ pub(crate) fn review_window(cx: &mut WindowCx, dark: bool) -> (WindowReview, (f3
         .collect();
     let (w, h) = (f32::from(size.width), f32::from(size.height));
     let scale = cx.scale_factor();
-    let findings = checks::review(&parts, w, h, scale);
+    let mut findings = checks::review(&parts, w, h, scale);
+    // Its menus, as every app's are (the Olo Book, "Menus").
+    findings.extend(crate::app_menu::review(&crate::menu::bar_menus(cx)).into_iter().map(|(kind, text)| olo_kit_base::review::Finding {
+        level: olo_kit_base::review::Level::Error,
+        kind,
+        text,
+        x: 0.0,
+        y: 0.0,
+        width: 0.0,
+        height: 0.0,
+    }));
     let fit = (checks::overflow_depth(&parts, scale), checks::bottom_slack(&parts, w, h));
-    (WindowReview { title: cx.window_title().to_string(), width: w as u32, height: h as u32, scale, dark, layer: None, findings }, fit)
+    (WindowReview { title: cx.window_title().to_string(), width: w as u32, height: h as u32, scale, dark, layer: None, resizing: cx.commit_is_held(), findings }, fit)
 }

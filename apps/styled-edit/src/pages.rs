@@ -1,7 +1,7 @@
 //! The document set on pages, for printing and PDF: each paragraph laid
-//! out as the editor lays it out (`olo_ui::editor`'s layout, with its
+//! out as the editor lays it out (`olo_kit::editor`'s layout, with its
 //! indents, spacing, alignment and marker: `Doc::format`) at the page's
-//! text width, by GPUI's text system (the app's, on a worker: the faces
+//! text width, by the kit's text system (the app's, on a worker: the faces
 //! the window draws with), and its rows set down the pages, a row that
 //! doesn't fit starting the next. Each word is placed where the layout
 //! put it, in its own font, size and colour. The document's header and
@@ -12,11 +12,11 @@
 
 use std::sync::Arc;
 
-use olo_print::{Font, Item, Page, Paper};
-use olo_ui::{
+use olo_kit::{
+    TextSystem,
     editor::{self, Laid, Params, Shaper, Span, TabStops},
-    gpui::TextSystem,
 };
+use olo_print::{Font, Item, Page, Paper};
 
 use crate::doc::{Align, Doc, MONOSPACE, Page as Margins, Para, Run, Style};
 

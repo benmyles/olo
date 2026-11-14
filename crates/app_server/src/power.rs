@@ -97,7 +97,32 @@ struct External {
 
 /// Whether a connector is the built-in panel.
 pub fn is_internal(connector: &str) -> bool {
+    // (A test's stand-in for the built-in panel: `OLO_INTERNAL_OUTPUT`,
+    // a headless screen's name.)
+    static STAND_IN: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    if STAND_IN.get_or_init(|| std::env::var("OLO_INTERNAL_OUTPUT").ok().filter(|n| !n.is_empty())).as_deref() == Some(connector) {
+        return true;
+    }
     ["eDP", "LVDS", "DSI"].iter().any(|p| connector.starts_with(p))
+}
+
+/// The bottom of the built-in display's brightness is off (Ben,
+/// 2026-11-12: "putting the screen on min brightness should turn the
+/// screen off: right now it just gets dim but not off"), as a
+/// MacBook's: the last step down switches the panel off, and it stays
+/// off until its brightness is raised again (the key, a slider, an
+/// agent), or until the displays have slept for idleness and someone
+/// touches the computer again (`panel_back_on`). It isn't the display
+/// asleep: nothing locks, its windows stay where they are, other
+/// displays are untouched.
+pub fn off_at(level: f32) -> bool {
+    level <= 0.0
+}
+
+/// A brightness kept as off isn't how a session starts: nobody should
+/// sit down to a dark screen and not know why. The first step instead.
+pub fn starting_level(kept: f32) -> f32 {
+    if off_at(kept) { STEP } else { kept }
 }
 
 pub struct Power {
@@ -107,6 +132,9 @@ pub struct Power {
     caffeinated_until: Option<SystemTime>,
     caffeinated_lid: bool,
     display_asleep: bool,
+    /// The built-in display is switched off, its brightness at the
+    /// bottom (`off_at`).
+    panel_off: bool,
     /// Sleep was asked for in this idle stretch (don't ask again).
     slept: bool,
     inhibitors: Vec<WlSurface>,
@@ -195,6 +223,7 @@ impl Power {
             caffeinated_until: None,
             caffeinated_lid: false,
             display_asleep: false,
+            panel_off: false,
             looked_away_since: None,
             dimmed: false,
             slept: false,
@@ -265,6 +294,7 @@ impl Power {
             dimmed: self.dimmed,
             app_inhibitors: (self.inhibitors.len() + self.keep_awake.len()) as u32,
             brightness: self.brightness,
+            panel_off: self.panel_off,
             screen_saver: false,
             caffeinated_until: self.caffeinated_until.and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs()),
             caffeinated_lid: self.caffeinated_lid,
@@ -582,6 +612,8 @@ impl<B: Backend> AnvilState<B> {
         self.idle_notifier_state.notify_activity(&seat);
         let p = &mut self.power;
         p.last_activity = Instant::now();
+        // (Whoever touches it now may not be who left it: below.)
+        let came_back = p.display_asleep || p.slept;
         p.slept = false;
         // (Touching anything is looking: dimmed, it's back.)
         if p.dimmed {
@@ -608,7 +640,28 @@ impl<B: Backend> AnvilState<B> {
             self.backend_data.set_displays_on(true);
             self.power_changed();
         }
+        if came_back {
+            self.panel_back_on();
+        }
         self.saver_activity();
+    }
+
+    /// The built-in display, switched off at the bottom of its
+    /// brightness, back on at the first step. Off lasts while whoever
+    /// chose it is there: once the displays have slept for idleness (or
+    /// the computer was put to sleep for it: `slept`), the first touch
+    /// brings the panel back with them, so nobody comes back to a dark
+    /// screen and can't tell why. (A sleep the person asked for, the lid
+    /// or the power button, isn't known here: it comes back as it was.)
+    fn panel_back_on(&mut self) {
+        if !self.power.panel_off {
+            return;
+        }
+        let internal = self.space.outputs().find(|o| is_internal(&o.name())).cloned();
+        match internal {
+            Some(o) if matches!(crate::color::drawing(&o), crate::color::Drawing::Hdr { .. }) => self.step_sdr_white(&o, STEP),
+            _ => self.set_brightness(STEP),
+        }
     }
 
     /// Every [`TICK`]: turn displays off or sleep if idle long enough.
@@ -718,7 +771,20 @@ impl<B: Backend> AnvilState<B> {
         if let Some(o) = internal {
             self.keep_brightness(&o, level);
         }
+        self.set_panel_off(off_at(level));
         self.power_changed();
+    }
+
+    /// The built-in display switched off (its brightness at the bottom),
+    /// or back on.
+    fn set_panel_off(&mut self, off: bool) {
+        if self.power.panel_off == off {
+            return;
+        }
+        let Some(o) = self.space.outputs().find(|o| is_internal(&o.name())).cloned() else { return };
+        self.power.panel_off = off;
+        info!(output = o.name(), off, "the built-in display, at the bottom of its brightness");
+        self.backend_data.set_output_on(&o, !off);
     }
 
     /// Any display's brightness, by connector (kept for it).
@@ -763,7 +829,7 @@ impl<B: Backend> AnvilState<B> {
             && let Some(o) = internal
         {
             self.power.internal_set = true;
-            let level = self.settings.display.brightness_for(&crate::desktop::display_key(&o), &o.name());
+            let level = starting_level(self.settings.display.brightness_for(&crate::desktop::display_key(&o), &o.name()));
             if self.power.brightness.is_some() {
                 info!(level, "built-in display brightness");
                 self.power.brightness = Some(level);
@@ -959,6 +1025,13 @@ impl<B: Backend> AnvilState<B> {
         }
         // Saved on the next tick (keys repeat).
         self.power.unsaved = true;
+        // (The built-in panel's bottom step is off here too: in HDR its
+        // backlight isn't what's moved, and the least of SDR's white is
+        // still light.)
+        if is_internal(&output.name()) {
+            self.set_panel_off(off_at(level));
+            self.power_changed();
+        }
         self.show_indicator(crate::osd::Indicator::Brightness(level));
         self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
         self.remote_displays_changed();
@@ -1024,6 +1097,22 @@ mod tests {
         // Full, like every display with no level kept.
         assert_eq!(p.status().brightness, Some(1.0));
         assert!(!p.status().caffeinated);
+        assert!(!p.status().panel_off);
+    }
+
+    #[test]
+    fn the_bottom_of_the_brightness_is_off_and_a_session_never_starts_there() {
+        assert!(off_at(0.0));
+        assert!(!off_at(STEP));
+        // (Sixteen steps down from full land on it exactly.)
+        let mut level = 1.0_f32;
+        for _ in 0..16 {
+            level = (((level - STEP) / STEP).round() * STEP).clamp(0.0, 1.0);
+        }
+        assert!(off_at(level));
+        assert_eq!(starting_level(0.0), STEP);
+        assert_eq!(starting_level(0.5), 0.5);
+        assert_eq!(starting_level(STEP), STEP);
     }
 
     #[test]

@@ -42,18 +42,1226 @@ something nobody here has is in "Blocked", with what it waits for.
      scroll layers and damage); a looper a window; the retained view
      tree, layout and painting; input, focus, keys, text input; popups,
      layers, drags, the clipboard; the agent tree, frame marks, the
-     layout review.
-  3. **The kit's widgets** on it (everything in olo-ui today).
+     layout review. *Done so far:* all of that but drags; scrolling on
+     the display thread (the wheel and touchpad scroll there, elastic
+     ends; `ScrollHandle`), rows made as they come near (`uniform_rows`),
+     element state, window keys, held commits, window state, upgrade
+     hooks; several damage rectangles a frame, a drawing made again
+     damaged only where it differs (2026-11-13); drag and drop (a
+     view's parts take drops, files dropped on an element), moving a
+     window to another display (`on_move_window`), the layout lint's
+     headless window, and agents' `Menus` by surface, `Move`,
+     `WindowOver`, `WindowDropped`, `Focus` and `FocusIn` (checked
+     2026-11-13). *Still to do:* pictures as elements (`img`) and
+     animated ones; animations stepped on the stage; a frame drawn
+     straight from the kept drawings (no copy into a scene: ~50 µs of
+     a ~200 µs frame, and 5% of a Logs resize step's cycles); a
+     scroll bar's knob moved by the stage; rows of differing heights
+     (GPUI's `list`). *Done 2026-11-13:* nothing worked out or drawn
+     for a layer surface stretched across its output, or a lock
+     surface, before app_server has given it its size (they opened
+     1 × 1 and were laid out and painted so once: the emoji picker
+     16 ms of a 20 ms start that way).
+  3. **The kit's widgets** on it (everything in olo-ui today). *Done:*
+     theme, style, review, icons, cut, tip, keys, menu (bars, popups,
+     context menus), agent, app (Frame, fits_content, kept sizes,
+     upgrade), and the widgets control, buttons, views, text_field,
+     text_control, menu_field, scroll, list, alert, status, key_hint,
+     banner, find_bar, slider, tabs, side_pane, sidebar, color, thumbs,
+     toolbar, text_view, charts, dashboard, slim_scroll: each pixel for pixel the same as olo-ui's at
+     1×, 1.5× and 2×, light and dark (`tools/dev/kit-compare`, the
+     `*_gpui` examples beside the kit's). Tips are `tip::on` everywhere
+     (a popup under its widget, free of its window's edges; olo-ui's
+     tool bar used GPUI's, at the pointer, inside the window). *Still
+     to do:* strip, image_view, ruler; undo, spotlight,
+     dnd, open_with, file_panel, search, code, brand, pictures,
+     workspaces, lock, copy, due, part, spell, lint; the editor;
+     `crates/preview`, `print`, `screensavers`.
   4. **Every app**, one at a time, each compared pixel for pixel and
-     benched against its GPUI build before it moves.
-  5. **Tools, HACKING and the Olo Book**; GPUI and olo-ui leave the
-     workspace (the `browser` and `olo-coder` branches build on them:
-     they stay until those have moved).
+     benched against its GPUI build before it moves. *Done:* DeskCalc
+     (hover 0.3% of a core against 1.0%, typing 1.5% against 2.0%, the
+     same to the pixel); the screen saver (each screen a window on a
+     looper of its own; a frame 410-550 µs against 500-790); the lock screen (typing
+     0.6% of a core against 1.0%); the greeter (its caret's frame 775 µs
+     against 2,511). Both are as the GPUI ones to the pixel but for
+     glyphs GPUI put a part of a pixel off: it drew their text first
+     left of a window not yet given its size, and kept those places.
+     The polkit agent and its keyring prompts (the same to the pixel;
+     typing 381 µs a frame against 602).
+     The supervisor (its alert the same to the pixel). Olo Rescue (its
+     shell a session of the program's, shown by whichever display has
+     Rescue; a busy shell 946 µs a frame against 3,468).
+     The emoji picker (each showing a new window with a picker of its
+     own; scrolling 3.2% of a core against 4.4%).
+     Olo Setup (its pages the same to the pixel).
+     Token Pool (both windows the same to the pixel; a window told
+     what the app keeps, reading the pool itself).
+     The file panels and Open With, in the kit (the same to the pixel).
+     Drive Setup (its window and its forms that fit the same to the
+     pixel; the forms that didn't fit, Format and Create, now do).
+     Undo, in the kit. Disk Usage (the same to a level in 255 of a
+     few of the chart's pixels; a redraw as the pointer crosses the
+     chart 578 µs against 793).
+     Search, in the kit, its suggestions raised over the window
+     (`InteractiveElement::raised`). Log Viewer (the same to the pixel;
+     a frame as the search is typed in 211 µs against 975).
+     Chrome's offer to download it (the same to the pixel).
+     The command palette, its shortcuts sheet and a window's menu (the
+     palette the same to the pixel; typing in it 620 µs a frame against
+     562, the same 0.4% of a core; /ask's answers not tried: they need
+     the model).
+     *Screenshot* (its window, the region and colour pickers, the
+     recording controls, the camera bubble, the after-recording card
+     and the recordings library) is on it too; the kit got `dnd`
+     (dragging out), pictures that take their textures with them when
+     they go, windows that go at quit while the process carries on,
+     and views' timers that stop with them. Left of it: the camera
+     bubble wasn't run (it turns the camera on: try Record ▸ Show
+     Camera); the region picker's four shape buttons' labels are
+     anti-aliased a fraction of a pixel differently from the GPUI
+     build's (same place, same extent; not explained); and a Wayland
+     protocol error makes a kit app start again, over and over (a
+     1 × 1 point layer surface at 1.25× did, fixed where it came
+     from: the restart itself should give up after a few).
+     *The portal* (olo-portal: the permission dialog, Open With, the
+     screen-share picker, Keyboard Shortcuts, Desktop Background, the
+     file and Print panels it shows for other programs) is on it, with
+     the Print panel (`olo_print::panel::kit`; StyledEdit still shows
+     the GPUI one). Each dialog asked for over a test bus is the same
+     to the pixel as before at 1×, 1.5× and 2×, but the default
+     button's ring in Desktop Background at 1.5× (a device pixel
+     lower: nine spare pixels round it, and the odd one is under it
+     now). The picker's remote-control wording and a real share
+     (xdg-desktop-portal, PipeWire) weren't run again.
+     *Olo Doctor and Olo Suggestions* (one window for both) are on it:
+     the same to the pixel as before at 1×, 1.5× and 2×, light and
+     dark; Ignore, Check Again and the menus tried, no Fix pressed.
+     *Notifications* (the banners and the History window) is on it:
+     what it keeps is one model behind a lock, shared by the app's
+     looper and the two windows; each line and card of the history is
+     a kept drawing of its own, and only those near what shows are in
+     the window. The banners and all four views are the same to the
+     pixel as before at 1×, 1.5× and 2×, light and dark (the times
+     and the fade apart); a 150-note history scrolls at 2.4% of a
+     core against 3.8–4.2%. Not tried: a reply typed in a banner
+     (needs an app that asks for one), a link clicked (it opens the
+     browser), snoozing through its time.
+     **Activity Monitor** (2026-11-11): the app's looper is a hub
+     that feeds the main window and each inspector by messages
+     (HACKING's Activity Monitor); every section, the process list
+     (search, filters, Tree, the row menu, Force Quit's alert), an
+     inspector's seven tabs and menus, the Tune dialog, a graph's
+     menu and looking back from a graph were run old against new in
+     a test session, the same but for the live figures, light and
+     dark, with nothing in the layout review at 1×, 1.5× and 2×;
+     3.7% of a core at the Overview against 4.1%, 5.1% at Processes
+     against 5.2%, the same memory. It found three things in the kit,
+     fixed: a scroll bar kept showing the scroller it was first given
+     when its view swapped handles; a search field's ring stayed lit
+     after a click elsewhere took the keyboard (`on_focus_changed` now
+     tells what holds the keyboard's element too); and no kit app's
+     window came forward when asked to (the window's app id wasn't
+     kept for `activate`'s token: every app ported so far, until
+     rebuilt). Full access was run unelevated
+     (`OLO_ACTIVITY_HELPER=direct`: the helper's samples and details,
+     a sleep of the test's own quit through it). Not tried: the helper
+     through pkexec (only ever asked for in the person's own session),
+     an upgrade in place with inspectors open (they don't come back,
+     as before).
+     **Deskbar** (2026-11-11): its model behind a lock, kept by the
+     app's looper and drawn by each display's bar on its own (HACKING's
+     Deskbar). The same to the pixel as the GPUI build at rest (2×
+     light; two displays at 1.5× dark), and in the Olo menu, a row's,
+     a heading's, the windowing modes' and every tray icon's menu,
+     Restart's alert and Approve Without Asking's window (both
+     cancelled), a clock's minute and the live figures apart; five
+     live widgets and a widget's tip look the same and cost half
+     (0.7% of a core against 1.4%). For it the kit got the wordmark
+     (`olo_kit::brand`), files dropped on an element (`on_drop`,
+     `files_dragged_over`), and a fix: a window hovered what lay
+     under its corner until the pointer first came (a new Deskbar's
+     Olo tile was lit). Not tried: files dropped on an application's
+     row (needs a drag from another program in the test session); a
+     row dragged out was started (the old and the new the same) but
+     dropped nowhere; the power button's alert. Run after: each of
+     two displays unplugged and plugged back (`plug_display`: its bar
+     goes and comes, the other stays), and a reload in place under
+     olo-session (the bar back as it was, its applications in their
+     order).
+     **Telegram** (2026-11-11; HACKING's Telegram, "On olo-kit"):
+     the demo account only (no network, a made-up home, a fake sound
+     server). For it the kit got `olo_kit::due`, `Cx::after_do`,
+     `WindowCx::cancel` and `activate_window_with_token`. Not tried:
+     a voice message recorded or played, a file attached or dropped,
+     forwarding, a notification answered, the real account, dark
+     mode, an upgrade in place; its 6 MB more of memory isn't
+     explained; glyphs aren't drawn ahead as the GPUI build's were.
+     **Agent Screens** (2026-11-11; the window only: `olo-screen`'s
+     commands are as they were). Run old against new in a test
+     session watching a screen of the test's own (`kit-test`, its
+     history kept in scratch; the person's screens listed beside it
+     and left alone): Live shown from the GPU, Take Control (the
+     pointer, typing and Tab reach the screen; ⌘K lets go), History
+     (search, a row chosen, played, stepped), Stats, a name's field,
+     a row's menu, Archive, Delete (to the test home's Trash), Export
+     Video, Stop and Start, and an app_server restarted in place
+     under it (the window back, Live going on). The same to the
+     pixel but for the times and the live picture, at 1×, 1.5× and
+     2×, light and dark. Watching a busy screen 0.4% of a core
+     against 0.6%; its history playing 1.8% against 2.5%; following
+     0.2% against 0.3%; 104 MB against 102. For it the kit got
+     `olo_kit::external_modifiers`. The layout review's one error at
+     1.5× (the action under the picture cut by its row, the GPUI
+     build's too) is fixed; its "near-level" notes on History set a
+     list's row against the text beside the list, as before. Not
+     tried: the Passwords tab with Passwords answering (only "isn't
+     open": a test never asks the person's own; to run against a
+     made-up vault when Passwords is ported), Passwords for Every
+     Screen's window, Move Windows To, New Screen (Start Screen, the
+     same way in, was), a rename kept, several screens chosen at
+     once, an upgrade in place.
+     **Viewer** (2026-11-11; HACKING's Viewer), with olo-preview's
+     views as kit views (`olo_preview::kit`, beside the GPUI ones
+     Tracker's Quick Look still uses). Run old against new in a test
+     session on made-up files (a picture, a text, code, Markdown, a
+     CSV, a zip, a sound, a three-page PDF with a form field, a font,
+     and a recording of the test session itself as its video): each
+     kind as it opens, the same to the pixel at 1×, 1.5× and 2×, light
+     and dark; a picture zoomed, rotated, cropped, full screen, the
+     save question; a text selected and found in; a sheet sorted and
+     searched; a PDF's field typed in, text added, drawn on, zoomed,
+     paged, found in, saved (the same bytes' length), signed (the pad,
+     the Sign menu); Save As and Open panels; a sound paused; a look
+     put away with Space; a video sought, trimmed (a copy), its editor
+     (a stretch chosen and cut, a mark, undo, the export panel and an
+     export, Done's question), full screen with and without it; a
+     second start handed to the first; a file changed on disk shown
+     again; app_server restarted in place under two windows. At rest
+     0.0% of a core both; a video playing 0.5% against 1.5% (frames
+     314 µs against 611); a text scrolled 418 µs a frame against 575,
+     a document 250 against 468. It found, fixed in the kit: what the
+     list of what shows didn't reach kept its place from the list
+     before, so a hidden element's next drawing took another's (full
+     screen with the editor open, the hidden menu bar showed and the
+     video didn't); pictures drawn bigger than they are blended their
+     edge pixels with their neighbours in the atlas (a line at each
+     edge of a zoomed picture's tiles, different each run; GPUI's
+     does the same, in one order); a view that draws by whether the
+     window is active or full screen is told again when that changes;
+     work that goes on with nothing to draw runs on a timer, not the
+     next frame (a document's layout stopped part way until the
+     pointer moved, as GPUI's did; Agent Screens' search the same).
+     Differences left: the old build's document stops laying out
+     below the view until something draws (its scroll bar's thumb is
+     longer than the page warrants; the new one's is right); a page
+     just out of view above shows its shadow's two lines (the old
+     build left a page's shadow out with the page); a zoomed
+     picture's edges (above). The layout review's findings are the
+     old build's too, to the pixel: a text's first row 4.9 points
+     under the menu bar at 2× (its line numbers and the menus' titles
+     a point apart on the left at 1× and 1.5×), and a sheet's bar's
+     rule three points from its header's edge. Not explained: at 2× a
+     picture's window holds 43 MB of its own against 29 (the same at
+     1×). Not tried: a picture dragged out, files dropped on a
+     window, a look following its panel (`--follow`), HDR and wide
+     pictures (no such display in a test session), an upgrade in
+     place with documents open, a video's sound (no sound server in
+     a test), the GPU decoders' choice.
+     **StyledEdit** (2026-11-11): each document its window's own view
+     (`DocView`, the `EditorHost`) on its own looper, doing for itself
+     what the app did for it (load, save, export, print, find and
+     replace, the save question, its file panels answering as
+     messages; Find, Replace and Header & Footer windows of its own);
+     the app's looper a `Hub` of the windows open, their files
+     followed on disk, new and imported documents; the search,
+     spelling and fonts shared behind a lock; `markdown::parse`
+     through a `Doer`; each document's pictures told to its window.
+     Old against new on made-up files (each kind of document at 1×,
+     1.5× and 2×, light and dark; the rest at 2×): plain text, a styled
+     document (read from RTF), Markdown (as it looks, as source, with
+     and without line numbers, scrolled to its picture), source code,
+     typing, bold and italic, undo, every menu and tool-bar picker,
+     the context menu, Find, Replace, Header & Footer, Page View, a
+     table, a picture put in, the Save panel, the save question, the
+     Print panel: the same to the pixel (but the caret's blink). The
+     files saved are the same (text and attributes); exported
+     Markdown, HTML, RTF, Word and OpenDocument the same bytes, the PDF
+     the same rendered. Over an in-place reload both windows, unsaved
+     text, its styles and the selection come back. The review: nothing
+     at 1×, 1.5× and 2×, light and dark (three findings both builds
+     had are gone: see below). *Measured* (release, 2×, old → new):
+     at rest 0.0% both (the caret's blink, 0.8 frames/s); a frame
+     typing in a 1 MB text 1444 → 1140 µs (8.0 → 5.8% of a core), in
+     350 KB of Markdown 1213 → 1127 µs (6.5 → 6.3%), in 450 KB of
+     Rust 1390 → 1192 µs (8.8 → 10.6%, with 167 frames drawn against
+     126); a frame scrolling 1431 → 770, 866 → 764, 971 → 675 µs;
+     resident 86 → 90 MB, 88 → 92, 107 → 112 (3–5 MB more).
+     *Differences, meant:* a window that isn't active (its Find
+     window, an alert, has the keyboard) shows its text without the
+     keyboard's ring (the old one's ring stayed, drawn before); a
+     Markdown document's scroll bar is right when it opens (the old
+     one's was once scrolled). *Found on the way, in the kit:* the
+     ruler drew at the window's top until the pointer first moved
+     over it; spelling marks drew over descenders; a window lost its
+     active look while its own menu was open, and a press on the
+     menu bar took the keyboard from what had it
+     (`InteractiveElement::keeps_focus`); the ruler's last number
+     ran past a window narrower than the page; the review called
+     rows of check boxes that touch crowded at 1× and 1.5×. *Not
+     tried:* printing to a printer (only the panel), files dropped
+     on a window, pictures on the web, a link opened, typing
+     through an input method in this app (the kit's editor was),
+     Learn and Ignore Spelling.
+     *Found, not fixed:* the Viewer's text preview, reviewed at 2×
+     in a 535 × 656 window, has its first line 4.9 pt under the menu
+     bar's titles ("crowded", six findings; there before this
+     change): the text view wants the document's inset under a menu
+     bar, or the review to know a document's lines as it knows the
+     document.
+     **Tracker** (2026-11-11): every window its own view on a looper
+     of its own, the app's looper a hub (HACKING, "Tracker"). For it,
+     in the kit: drops a window's view takes part by part
+     (`View::takes_drops`, `drop_over`, `dropped`), `workspaces`
+     (kit-base), `on_move_window` and agents' `Move`. Old against new
+     at 2× on a made-up home: a folder as icons, mini icons, a list
+     and columns, typing to select, every menu, both context menus, a
+     folder opened, columns browsed; New Folder and its name edited,
+     Duplicate, Copy and Paste, Trash, Undo, a name edited, a file
+     dragged onto a folder, Quick Look (and its arrows), Get Info,
+     Find, Go to File or Folder; the desktop, an icon selected, its
+     menus, a file dragged out of a window onto it, Undo, and a
+     reload in place: the same to the pixel but for what a run makes
+     its own (a file's creation time, the free space, the order
+     Find's workers answer in), and the same files on disk. The
+     review: nothing at 1×, 1.5× and 2× in any of its windows.
+     *Measured* (release, 2×, a folder of 5,000, old → new): at rest
+     0.0% both; a frame scrolling as icons 514 → 370 µs, as mini
+     icons 825 → 517, as a list 781 → 342; the arrows in a list 826
+     → 669 µs; resident 98 → 102 MB at rest, 100 → 112 after. (Its
+     first build drew every item once, not those in view: 1,400 µs
+     a frame and 124 MB.) *Difference, meant:* Home and the volumes
+     can be moved about the desktop (they said "can't go inside
+     itself": taken as going into ~/Desktop). *Not tried:* a window
+     moved to another display (the kit's `Move` is in, untested),
+     Tracker Status (a long job), spring-loaded folders, a
+     secondary-button drag's menu, text and pictures dropped from
+     other programs, Open With, the list view's drag, a band in
+     each view, a name's edit ended by clicking another window (it
+     ends as the window loses the keyboard, not as the field does),
+     dark mode against the old build, the D-Bus file manager.
+     **Passwords** (2026-11-11): its state is the app's, behind a
+     lock (it runs with no window, as the SSH agent and the keychain),
+     and its windows are views that read it (HACKING, "Passwords").
+     Old against new, each in a session of its own with a fake
+     1Password, a stand-in PAM check, its own keychain socket and a
+     scratch home: the setup, Review Sync, the items, a field's hover,
+     Show, Copy and its menu, an item with a one-time code, the editor
+     (typed in, a secret shown, scrolled, cancelled), every menu, New
+     Item's, a search, the filters' menu, an item's menu, a category,
+     the generator, locking, a wrong password and the right one, a
+     locked start; a new login (the generator's Use, a field added),
+     saved, undone, redone, deleted, an item archived, changes
+     discarded; a field dragged out, `op` allowed, a passkey made and
+     signed with (and its question closing as its asker went), Sync
+     Problems, a copied secret outliving the window and the app
+     ending once it left, opened again meanwhile, a reload in place:
+     the same to the pixel at 1×, 1.5× and 2×, light and dark, but for
+     a caret's blink, a code's pie and the generator's password, and
+     the same answers to `op` and the passkey client. The review:
+     nothing at any scale in any window, light or dark. What agents
+     read is the same (a secret's dots, never its value). *Measured*
+     (release builds that take the test PAM service, 2×, 508 items,
+     old → new): at rest 0.0% both; a frame as the arrows go down the
+     list 1807 → 810 µs, the list scrolled 1192 → 319, a search typed
+     1520 → 1369, a code counting down 851 → 346, the pointer over an
+     item's fields 1059 → 620, typing in the editor 1923 → 318;
+     resident 104 → 106 MB at rest, 105 → 108 after. (An item's
+     details coming in no longer has the list and every filter worked
+     out again: the arrows were 1101 µs before that.) *Differences,
+     meant:* the item pane's scroll bar is there as a long item opens
+     (it came with the first scroll); "Synced a minute ago" counts the
+     minutes by itself; Escape closes Sync Problems and ⌘N works
+     after an editor is cancelled (nothing had the keyboard); the
+     list loses its focused look at once when the editor takes the
+     keyboard; Sync Problems' icons are level with their items at 1×.
+     *Found on the way, in the kits:* what hears a scroller wasn't
+     told of one laid out for the first time, so a bar that shows only
+     while there is something to scroll came with the first scroll;
+     the review took a scroll bar's arrow for what follows a form's
+     Save, and a thin level bar's edges for crowded lines. *For
+     tests:* `onepassword-fake --items N`, `olo-keychain-ask`. *Not
+     tried:* Touch ID, a security key and a look (a test session
+     leaves the readers alone), a real 1Password, Chrome's extension,
+     the SSH agent signing, the auto-lock's time passing, a link's
+     value opened (it starts a browser), several accounts, Reset, on
+     an agent screen (what's shared with it).
+     **Terminal** (2026-11-11): one `Terminal` behind a lock, each
+     window a view that has it say what it shows, a terminal window's
+     screens a view of their own so a shell's output draws them alone
+     (HACKING, "Terminal", "On olo-kit"). For it, in the kit: the
+     grouped tab strip (`widgets::strip`, one drawing with its state in
+     the element's own), a window of the app moved over another's
+     strip (`WindowOver`, `WindowDropped`), `agent::invoking`, and a
+     program that has quit running on, asleep, for what it copied
+     (`olo_interface::before_lingering`: every kit app's, as GPUI's
+     did). Old against new, each in a session of its own with its own
+     olo-termd and a scratch home: output, colours, box drawing and
+     emoji, a long output, the scrollback by the wheel (a notch, five
+     at once), typing back to the end, a selection dragged, single,
+     double and triple clicks, copy and paste, every menu, the screen's
+     and a tab's menus, tabs made, hovered, chosen, dragged along the
+     strip, undone, torn off into a window and let go on another's
+     strip, Tile All Tabs, a pane picked, a divider dragged, Find and
+     a search, tabs down the side, the text bigger and back, Always
+     Dark, the Group window (a name, a colour), a group's menu, a busy
+     tab's "Close it anyway?", the daemon's window, a reload in place,
+     Quit and its windows back the next time; sudo's password window
+     (a stand-in sudo, `OLO_SUDO_REAL`, and a made-up password: asked,
+     a wrong one, the right one, Escape, Cancel, the close box), a
+     working agent's badge and Keep It Going ▸ Custom Message…: the
+     same to the pixel at 1×, 1.5× and 2×, light and dark, but for
+     what is meant below. The review: nothing at 1×, 1.5× and 2× in
+     any of them (sudo's at 1.25× and 1.75× too).
+     *Measured* (release, 2×, back to back on a busy machine, old →
+     new): at rest 0.0% both; a frame with twenty lines a second
+     printed 532 → 305 µs (1.6 → 1.2% of a core), typing 475 → 240 µs
+     (2.0 → 1.6%); the scrollback scrolled 539 → 292 µs; three panes
+     printing 580 → 366 µs; a flood (`seq 1 3000000`, three takes): the
+     same time to print (1.12 → 1.06 s) and the same CPU (1.19 → 1.19
+     s of Terminal's), its frames 643 → 353 µs; resident 91 → 108 MB at
+     rest. *Differences, meant:* the
+     cursor stays solid, and the program isn't told the window lost
+     the keyboard, while the window's own menu is open (the kit's
+     windows stay active under their menus); a key pressed draws
+     nothing itself; sudo's command box has a border of one device
+     pixel at 1.25×, 1.5× and 1.75× (it was a pixel and a smear).
+     *Found on the way, in the kits:* an element that
+     takes the keyboard on a click (`track_focus`) and hears nothing
+     of the pointer itself wasn't under the pointer to a press, so the
+     press gave the keyboard to the window's frame behind it (a
+     terminal clicked in stopped taking keys). A flood's frames cost
+     15.5 ms of laying out each (the old build's 3.1): the looper laid
+     the screens out for every burst of output, a hundred times
+     between two frames; now once a frame, as the compositor asks for
+     it (`Cx::invalidate_at_frame`, HACKING "Fast and light"), and a
+     window out of sight lays out nothing. A window's viewport was a
+     point short where its buffer rounded down (1.25× and 1.75×: 487
+     points at 1.75× came out 486, every kit app's), and a box's
+     one-point border was a pixel and a half at 1.5× (HACKING,
+     "Fractional scaling"). *Memory:* the kit's looper for each window and the display's
+     thread each had a malloc arena of glibc's (8 MB more at rest than
+     the old build); every kit app keeps four now (`few_arenas`,
+     HACKING "Fast and light"): Terminal at rest 88 MB (the old
+     build: 95), with three tabs 153 → 136, StyledEdit 103 → 96,
+     Tracker 99 → 91, frames the same. *Not tried:* sudo with a fingerprint or a
+     security key, New Worktree… (its dialog), Keep It Going and Auto
+     Approve answering an agent (they want a real one in the tab), an
+     input method,
+     files and text dropped on a screen, pictures (kitty, sixel), a
+     link opened, a tab moved to an agent screen, the scroll check
+     (`tools/dev/scroll-check` reads marks the kit's own scrollers
+     make; the scrollback scrolls itself and makes none).
+     **Preferences** (2026-11-11): `Prefs` behind a lock, each panel's
+     window a view on a looper of its own that takes it to say what it
+     shows and to change a setting; the panels' `ui` functions built
+     through `form::Ui` as before, its callbacks in the kit's shapes
+     (HACKING, "Preferences", "On olo-kit"). Its sub-windows (the palm
+     trainer, Try Voice Processing, a Wi-Fi network's enterprise sheet)
+     are views of their own, told by their own messengers. For it, in
+     the kit: `olo_kit::spotlight` (a control lit, drawn by the
+     window's `Frame`), `pictures::thumbnail_soon` (a picture for a
+     view's own `body`), and a control that counts the keyboard as its
+     own while it's inside (`focus_within`) made anew round the field
+     that has it is found to have it (a field's ring went as its panel
+     was laid out again round it). Two things look different on
+     purpose: the launcher's cells are 120 wide (at 104 "Touchpad &
+     Mouse" and "About Olo Desktop" ran into the cell beside them),
+     and Notifications' From/to row lines up with the check box's
+     words above it. Not tried live, since they act on the real
+     computer: Bluetooth and AirPods (opening Bluetooth starts the
+     adapter looking), a fingerprint or a face enrolled, Power ▸
+     Apply, an integration connected, Backup's import, About's
+     restart, a display mode kept (the headless output has one mode).
+     *Next:* the tools (bench, ui-lint, lockcheck), then HACKING and
+     the Olo Book.
+  8. **AirPlay: send a window, a workspace, an agent screen or a video
+     file to an AirPlay display** (Ben, 2026-11-12: "after this work
+     please add airplay support to olo so that i can broadcast/stream
+     either a specific window, a specific workspace, an agent screen or
+     a video file to an airplay compatible display/receiver. it must
+     support high quality video and audio"). After the kits' work
+     (items 5 to 7). Native, as everything is (no wrapped tools): find
+     receivers (mDNS, `_airplay._tcp` and `_raop._tcp`), pair and set
+     up (AirPlay 2's HomeKit pairing where a receiver wants it, the
+     older FairPlay-less paths where it doesn't), then two ways to
+     send. *Mirroring* for a window, a workspace or an agent screen:
+     what app_server's capture already hands the portal and Screenshot
+     (`capture.rs`: a window, a display, a headless screen's frames as
+     dmabufs), encoded H.264 or HEVC on the GPU (olo-video's NVENC,
+     olo-vaapi) at the receiver's size and rate, with the sound that
+     goes with it (the session's output, or the window's own stream)
+     as AAC or ALAC, kept in step with the picture. *A video file* is
+     better sent as itself where the receiver plays its format (the
+     receiver fetches it from a server Olo runs for the length of the
+     play: its own picture and sound, never re-encoded), mirrored
+     through the Viewer's player otherwise. Where it's asked for: a
+     window's tab menu and the Viewer (Send to ▸ the receivers found),
+     Deskbar for a workspace, Agent Screens for a screen; a tray item
+     while something is being sent, with Stop. Agents the same
+     (`olo-airplay list|send|stop`). To find out first: what today's
+     receivers (Apple TV, AirPlay 2 televisions, HomePods for sound)
+     accept from a sender that isn't Apple's, since "high quality"
+     depends on which path they allow; tests against a receiver of
+     the test's own on a private network, never the person's.
+     *Found out, 2026-11-12* (from what's published; nothing was run
+     against a receiver), and it decides the design, so **waiting for
+     Ben** on the two questions below:
+     - *Mirroring as Apple's devices do it is closed to Olo.* AirPlay
+       2's mirroring begins with a FairPlay exchange (`fp-setup`)
+       whose sender's side is Apple's own. What's open is the other
+       end: receivers that pass for an Apple TV (UxPlay, RPiPlay, the
+       shairplay crates, with the "playfair" code). The one open
+       sender for a Wayland compositor found
+       (rabits/wlroots-airplay-screen-mirror) speaks the first
+       AirPlay's mirroring, unencrypted, without sound, to MiraScreen
+       dongles, and says of AirPlay 2 "w/o fp-setup". So low-latency
+       mirroring to an Apple TV or a licensed television isn't to be
+       had.
+     - *Playing a URL is open, and is the high-quality path.* The
+       sender asks the receiver to play an address and the receiver
+       fetches it and decodes it itself: a file's own picture and
+       sound, untouched. pyatv does this to Apple TVs today ("AirPlay
+       play URL (including local files)"), after pairing once with a
+       PIN the television shows (Apple TV 4 and later ask for it).
+       tvOS 26.2 is reported to answer its status question with an
+       error (pyatv issue 2821, open, a fix proposed): to be watched.
+     - *So, the design:* a video file is played as itself from a
+       server Olo runs for the length of the play. A window, a
+       workspace or an agent screen is sent the same way, as a live
+       stream (HLS: what capture hands over, encoded on the GPU as
+       recordings are, with the session's or the window's sound as
+       AAC, in segments the receiver fetches). That is full quality
+       with sound, and it is **seconds behind** (a segment or two):
+       right for showing a film, a presentation, an agent at work;
+       not for pointing at something while talking, nor for playing.
+       All of it native: mDNS, HomeKit's pairing (SRP, Ed25519,
+       X25519, ChaCha20-Poly1305), the HTTP server, the segmenter.
+     - *Begun 2026-11-12: finding the receivers* (HACKING,
+       "AirPlay"): `crates/airplay` asks by mDNS itself and reads
+       what each receiver says it is and takes; `olo-airplay list`.
+       On the network Ben's computer was on that day it found 28 in
+       three seconds (Avahi, listening longer, 32): Apple TV 4Ks of
+       three generations (`srcvers` 960 and 1005), Macs, one
+       television with AirPlay built in; every one plays video, shows
+       screens and asks to be paired with first (its flags' "pair
+       once" bit). So the first question below is answered in kind
+       (Apple TVs and Macs, all wanting HomeKit's pairing), though
+       not which one is his: a shared network, and only he pairs, at
+       the screen.
+     - *Then the pairing, 2026-11-12* (HACKING, "AirPlay"):
+       pair-setup with the code the receiver shows, pair-verify at
+       each connection, the enciphered channel after it, and the
+       pairings kept in a file only the person reads
+       (`olo-airplay pair|check|paired|unpair`). **Never yet tried on
+       a real receiver**: tests pair with one of their own, and the
+       first real one is Ben's to do at its screen: `olo-airplay
+       list`, then `olo-airplay pair "ITS NAME"` and the code it
+       shows; `olo-airplay check "ITS NAME"` then says whether it
+       knows the computer. What it says if it fails is what's needed
+       to fix it. The keys could move into Passwords.
+     - *Then a film played by its address, 2026-11-12* (HACKING,
+       "AirPlay"): `olo-airplay play "ITS NAME" film.mp4` (or an
+       address on the web; `--from 1:02:03`; Ctrl-C stops it there).
+       The receiver fetches the file from this computer, by ranges,
+       for the length of the play, and plays its own picture and
+       sound. Reading on found that **today's tvOS no longer takes
+       pyatv's released way** (26.2 answers `/playback-info` with
+       500, 27.0 with 403: pyatv issues 2821 and 2906), and that the
+       way it does take (commands on a stream of their own, state by
+       events: pyatv's pull request 2846 and its rework, reported
+       working on tvOS 26.5 and 27.0, Apple TV 4K of the 2nd and 3rd
+       generations, and a 2025 Samsung) is unmerged there; Olo does
+       the newer way first and the older where a receiver doesn't
+       take it. **Never yet tried on a real receiver** (tests play to
+       one of their own, both ways): Ben's to try after pairing, with
+       `--trace` so that what a real one answers is seen. What a
+       receiver doesn't play by itself (Matroska, WebM, AVI, Ogg) is
+       refused with the reason.
+     - *Then what shows while one plays, 2026-11-12:* each play says
+       how it goes (`olo_protocol::airplay`), `olo-airplay playing`,
+       `stop`, `pause` and `resume` act on plays from anywhere, and
+       Deskbar's tray has a screen with a play mark while a film
+       plays, its menu Pause (Resume) and Stop.
+     - *Ben, 2026-11-12:* "for the airplay stuff please add the
+       proper gui integration with a preferences panel, integrated
+       airplay from relevant app menus and by right clicking the
+       window title / deskbar row / workspace etc. cli alone is not
+       enough". So, **next, in this order:** (1) Preferences ▸
+       AirPlay: the receivers found, Pair… with the code a receiver
+       shows, Forget, and what plays now; (2) "Play On" where a film
+       is at hand: the Viewer's and Tracker's menus (a file's
+       context menu too), the receivers paired with as its items;
+       (3) sending what's live, which needs the live path first (what
+       capture hands over, encoded on the GPU, as HLS the receiver
+       fetches, with the sound that goes with it): a window from its
+       title's menu and its Deskbar row, a workspace from its heading
+       in Deskbar, an agent screen from Agent Screens, each "Send to
+       ▸ a receiver", with Stop where it was started and in the
+       tray. The command stays the way under all of it (and for
+       agents).
+     - *Low latency, 2026-11-12* (Ben: "see if there's a way to get
+       low latency airplay working … i want video and audio";
+       HACKING, "AirPlay"): not HLS but AirPlay's own mirroring, as
+       doubletake (LGPL, Go) has found it works with today's Apple
+       TVs: over a HomeKit pair-verified connection the picture and
+       sound are keyed from the pairing, so **no FairPlay** is
+       needed (the objevovat FairPlay-SAP code Ben pointed at is
+       Apple-derived tables under the LGPL, and its README says both
+       Apple TVs it was tried on refused it; Olo is MIT, so bringing
+       any of it in is Ben's to decide, and nothing needs it now).
+       `olo-airplay show` sends a window, a display or an agent
+       screen with its sound, 8 ms from capture to sent,
+       a lead of 40 ms wired (75 on Wi-Fi) at the receiver.
+     - *The desktop's way to it, 2026-11-12* (HACKING, "AirPlay" and
+       "Show on AirPlay and Play On"): Preferences ▸ AirPlay (the
+       receivers, Pair… with the code typed, Check, Forget, Show
+       Display, Stop); Play On ▸ in Viewer and Tracker for a film;
+       Show on AirPlay ▸ in a window's tab menu, Deskbar's app rows,
+       Agent Screens' Screen menu and Deskbar's agent screens item;
+       the tray says a showing, with Pause and Stop. All tried on a
+       headless session against the test receivers.
+     - *A workspace, 2026-11-12* (HACKING, "Screen sharing" ▸
+       Workspaces): Olo's own Wayland protocol makes a capture source
+       of one of a display's workspaces, live though the display
+       shows another (its windows where they were left, drawing on);
+       `olo-airplay show --workspace N`, and Show on AirPlay ▸ on
+       Deskbar's workspace headings.
+     - *Frames fitted by app_server, 2026-11-12* (HACKING, "Screen
+       sharing" ▸ Fitted): a busy screen shown costs olo-airplay 13.7%
+       of a core, not 32.4%, and 4.7 ms from capture to sent, not 8.1.
+     - *Frames kept on the GPU, 2026-11-12* (HACKING, "AV1 and H.264
+       on Intel's and AMD's GPUs" and the showing): H.264 through
+       VA-API (`olo_vaapi::H264`, its parameter sets written by us,
+       quality 18 with a cap: 46.7 dB in 199 KB where NVENC kept 46.4
+       in 322), frames lent to it by app_server as dmabufs: a busy
+       screen shown costs olo-airplay 5.0% of a core rather than
+       NVENC's 11.9%, the NVIDIA GPU asleep, for 7.3 ms from capture to
+       sent rather than 4.7. Recordings take it too (`--encoder
+       vaapi`, Preferences ▸ Graphics' Format).
+     - *The sound on the television only, 2026-11-12* (HACKING,
+       "AirPlay", the showing): an output of the showing's own,
+       made in process, and the sound that goes with what's shown
+       moved to it: a window's app's, an agent screen's programs', a
+       display's the computer's; back where it was when paused or
+       ended, by WirePlumber when killed. Half the cost of the monitor
+       recording it replaces (2.3% of a core against 4.4% with sound
+       playing).
+     - *The television's own volume, 2026-11-12* (Ben: "yes use tv"):
+       the volume keys set the receiver's volume (AirPlay's `volume`
+       parameter, from the computer's at the start, as it changes),
+       the sound sent at full scale. Tried on the test receiver; a
+       real television is the test of how it takes it.
+     - *The encoder, 2026-11-12* (Ben: "stay with intel"): Auto keeps
+       Intel's VA-API H.264 on mains too (2.6 ms more from capture to
+       sent than NVENC, inside the 40 ms lead; less than half the
+       processor; the NVIDIA GPU asleep). `--encoder nvidia` stays.
+     - *Ben's to say:* (1) which receiver it's for (an Apple TV and
+       its tvOS, a television with AirPlay built in, something else):
+       it has to be tried against the real one, paired by him at the
+       television, since no test can stand in for Apple's end; (2)
+       only if a real receiver refuses the mirroring without it,
+       whether FairPlay is wanted (LGPL, Apple-derived).
+  7. **The installer, as BeOS's Installer** (Ben, 2026-11-11: "also can
+     you redo the installer to be reminiscent of the beos installer
+     instead of windows 95"). Done 2026-11-12 (HACKING, "The
+     Installer"): `apps/installer`'s window is BeOS's Installer for
+     Olo, on the BeOS desktop's blue: the licence first (Disagree,
+     Agree), then one window, "Installer": Olo's mark and a white box
+     of words that says what to do and then what is being done,
+     "Install from:" and "Onto:" as pop-ups, "More Options" (a latch:
+     the kit's new `PaneSwitch`) opening the optional parts under it
+     with the window growing downwards, a status bar while it works,
+     About… and Begin, which is Stop while it works (stopped, it can
+     be begun again). The wizard's five pages, Back and Next are gone,
+     and it's called the Installer (the name Olo Setup was Windows').
+     What it installs and how (`plan.rs`) is as it was.
+     `OLO_SETUP_DEMO=done|restart|fail` plays an install without one,
+     on a made-up computer, with Log Out and Restart only printed:
+     every state was walked with it (the licence, ready, fewer
+     options, the wait for the password, a failure, at work, stopped,
+     About, installed) at 1×, 1.25×, 1.5×, 1.75× and 2× in light, and
+     1×, 1.5× and 2× in dark, on a 1280 × 800 screen: the layout
+     review finds nothing in any; `--yes` agrees, begins and quits by
+     itself. *Not tried:* a real install with it
+     (`tools/dev/installer-check`, in its virtual machine: the next
+     release's check), and so the real password wait and Log Out.
+  6. **The build from before all this, on the login screen** (Ben,
+     2026-11-11: "when you finish can you also make the pre-refactor
+     known good build available as a login option in the display
+     manager so that if there are any problems i can go back to that").
+     Done 2026-11-12: the last commit before the kits (`cc785d65`
+     of 2026-11-09) is "Olo Desktop (before the kits)" on the login
+     screen's session menu: 56 programs and their data in
+     `~/.local/olo-kept/before-kits` (2.1 GB, stripped), its entry
+     `/usr/share/wayland-sessions/olo-kept-before-kits.desktop` (one
+     sudo). It finds its own programs and data, shares the settings
+     and state of the current build, and never upgrades itself
+     (`tools/keep-build.sh`; HACKING, "A build kept to fall back
+     to"). Its session was started headless from that folder in a
+     test (the desktop, Deskbar and DeskCalc came up); *not tried:*
+     choosing it on the login screen and logging in, which is Ben's
+     to do. To remove it: `tools/keep-build.sh --remove before-kits`
+     (asks for sudo, for the entry). The worktree and target it was
+     built in (/var/tmp/olo-pre, 28 GB) are gone; to measure against
+     it again, its `bin/` serves as the old build.
+  5. **Tools, HACKING and the Olo Book; GPUI and olo-ui gone** (Ben,
+     2026-11-11: "you can also remove GPUI and olo-ui as soon as you're
+     done we don't need to wait for the coder and browser branches":
+     those branches built on them, and move to the kits as they're
+     merged up). Done 2026-11-12: `crates/ui` and `gpui/gpui` (with
+     `sum_tree` and `semantic_version`) are deleted; what olo-interface
+     still uses of GPUI's helper crates and Blade is in `vendor/`
+     (`vendor/README.md`, "From GPUI"); `crates/preview`, `print` and
+     `screensavers` have only their `kit` views; `cargo ui-lint`, the
+     hooks, bench, hdr-check, ui-lint, lockcheck and kit-compare know
+     only the kits (`tools/reentry` and `lockcheck reentry` went with
+     GPUI: a `Child` has one owner, so nothing reaches a view that's
+     busy); the kit has its own `gallery`, `hdr_probe`, `hdr_card`,
+     `lines`, `layer` and `book` examples and the two tests of olo-ui's
+     it lacked; a frame's marks are right on olo-kit (where its
+     scrollers were, marked when drawn, nothing left by a commit that
+     drew nothing) and a view that scrolls itself says where it is
+     (`Painter::note_scroll`: the editor, Terminal); HACKING.md speaks
+     of the kits throughout (its GPUI mentions are history), and the
+     Olo Book is `docs/OLO-BOOK.md`, its example
+     `crates/kit/examples/book.rs`.
+     *Measured against the build from before the kits* (`cc785d65`,
+     built under /var/tmp/olo-pre; the whole benchmark at 2× on each,
+     by what each step cost the process, 2026-11-12): the kits use 88%
+     of its processor time overall (scrolling 80%, typing 76%, an idle
+     second 52%, tabs 62%, menus 93%, a live resize 98%; the gallery
+     39%, Notifications 70%, Logs 78%); a click to a menu's picture
+     takes what it took (4 ms, Tracker's and Deskbar's).
+     *Left, where the kits cost more* (each within a frame's budget;
+     to be brought down):
+     - A whole window drawn again every frame costs more than GPUI's
+       one thread did: the looper paints each node's drawing, the
+       display thread copies them into the frame, then draws. A
+       list-heavy window resized live: Logs 65 → 95 ms for 36 steps,
+       Notifications 128 → 195, Tracker 27 → 43; a drawing that moves
+       every frame: StringTheme 44 → 70 ms for 210 frames (0.12 ms a
+       frame more: two threads woken, the drawing copied once more).
+       To try: a drawing that's the only thing changed handed to the
+       frame without the copy; `Scene::append` moving a recording
+       whose clip holds all of it without looking at each thing in it;
+       `finish` swapping the glyphs' list in when the runs are in
+       order already; a list's rows of text keeping their recordings
+       when only their width grew.
+       Where a frame's time goes (Logs resized live, 2×, 40 frames,
+       `OLO_FRAME_PHASES=1`, 2026-11-12): the looper 1.39 ms (the
+       views' bodies 0.35, layout 0.24, painting 81 of 108 nodes
+       0.80: some 2,900 glyphs recorded again though no row's text
+       changed, nothing shaped or rasterized), the display thread
+       0.41 (putting the recordings in the frame 0.19, drawing 0.19),
+       and some 0.4 ms a frame that neither counts (2.2 ms a frame
+       by the process's own time).
+       *Followed further, 2026-11-12* (perf, which does work for a
+       program it starts itself, and `tools/dev/memhist`: HACKING,
+       "Whose time it is"): a quarter of a resize frame was libc's,
+       copying and allocating, and most of that was the kits' own
+       waste, now gone (a 3 KB shaped line copied twice a label, an
+       allocation a `font()`, a line's text copied for every cache
+       lookup, a drawing's lists grown from nothing at every
+       repaint). Before and after in turn, three runs each, by cycles
+       a resize step, the middle run [the least]: Notifications'
+       history 17.1 [16.4] → 14.5 [12.9] million, Tracker on 3,000
+       files 5.0 [4.3] → 4.2 [4.2], StyledEdit on 100,000 lines of
+       code 10.3 [9.2] → 9.4 [9.4]; the same to the pixel in 36
+       shots. Logs' resize copies 2.7 MB a step where it copied 4.0,
+       and allocates 3,900 times where it did 5,400.
+       *And then, the same day:* a kept drawing's orders by what's
+       over what (a draw a kind, not a draw a change of kind: Tracker
+       108 → 5 draws a frame), a frame taking whole drawings without
+       cutting each thing, menus' shortcuts looked up, the standard
+       folders kept two seconds. Against the build from before the
+       kits, in turn, three runs each, the middle run, a live resize
+       by instructions and by cycles a step: Notifications' history
+       +5% and −10%, StyledEdit on 100,000 lines of code −4% and −5%,
+       Tracker on 3,000 files +18% and +15% (it was +78% and +43%
+       before any of this). Loading that source file is 5.8 G
+       instructions against the old build's 7.1 to 8.5: the "395 →
+       525 ms" above was the machine, not the kits (one parse, 520
+       ms, on a worker, in both).
+       *Left, found the same way:*
+       - *Tracker's resize, done 2026-11-12.* (What was written here
+         before, that half of it was the display thread cutting the
+         list's glyphs, was true of the day before: the orders and
+         whole drawings took that away, and the display thread is a
+         sixth of it.) Looked at again, the window measured is the
+         column view, fifty folders, and its cost was the window's
+         looper painting them (0.61 of a 1.12 ms flush,
+         `OLO_FRAME_PHASES`) and allocating: 2,808 times and 756 KB a
+         step (memhist). Half of the bytes and a fifth of the calls
+         were each row's little arrow, a path of three corners whose
+         triangles lyon made every painting and nothing drew (a small
+         shape in a plain colour is drawn from its outline's mask):
+         a polygon's triangles are made only if it's drawn by them
+         (`PathBuilder::build`, for every app). Also: an icon looked
+         up with its name copied for the asking (`icons`), three
+         paths made and taken apart to ask whether a folder is Home,
+         Desktop or the Trash (`items::icon_of`), and the app's own
+         looper woken at every step for the window's size, to work
+         out every window's watches again (`tell_app`, a sixth of the
+         cycles). After: a flush 0.90 ms, painting 0.40; 1,289
+         allocations and 321 KB a step. Against the build from before
+         the kits, each step given time to be drawn by both, four
+         runs each in turn, by instructions and cycles a step
+         (medians): before the kits 3.48 M and 3.21 M, this morning's
+         3.68 and 3.66, now 2.47 and 2.85: 29% and 11% under the old
+         build, and under it in each of the four rounds. The same to
+         the pixel (the column view, two menus, three Preferences
+         panels, DeskCalc). *Left of it:* Tracker's own drawings (a
+         column, the icons, the Desktop) have no key, so each is
+         painted again whenever its window says anything (HACKING's
+         rule; a key needs every row's look in it, and the place
+         each kept for the pointer told when it moves without being
+         drawn); the column and icon views as rows of their own
+         (`uniform_rows`), so a taller window paints only the rows it
+         uncovers; the menus made again at every body (33 strings).
+       - Disk Usage is still 35 draws for 520 things (its chart's
+         sectors and labels, over one another).
+       - *Notifications' cards, done 2026-11-13.* They were laid out
+         anew for every width with everything made again: every note
+         copied out of the model at each step (`lay_out`), again for
+         each card's key, the laid card (824 bytes) moved and copied
+         by value, each text copied five times on its way to be
+         shaped. Now the notes are shared (`History::entries` an
+         `Arc`, copied on write), keys compared in place, laid rows
+         and cards behind an `Rc`, look.rs's text shared as given. A
+         live resize of 200 cards (memhist, exact, a step): 9,128 →
+         5,476 allocations, 3,586 → 2,348 KB copied; the list view
+         10,344 → 6,660. Release, perf stat, three runs each in turn,
+         medians: cards 19.52 → 17.73 M instructions, 16.19 → 13.24 M
+         cycles a step; the list view no change above its spread (six
+         runs each, 18 to 24 M for both builds). The same to the pixel
+         in both views at 1×, 1.5× and 2×, light and dark. Left: what
+         a resize must do, each text wrapped again for the new width
+         (450 shapings a step).
+       - *Tracker's list view, done 2026-11-13.* (The above is its
+         column view.) Its rows had no key, so every row showing was
+         painted again whenever the window said anything (a step of
+         the selection, a file changing in the folder, Find's results
+         coming in, a key typed in Go To), each cell's text formatted
+         again (sizes, dates, a name copied). Now the list, Find and Go
+         To key their rows by what each shows (`folder::row_key`) and
+         an entry keeps its texts once drawn (`Entry::shown`). A step
+         of the selection in a folder of 3,050 items, 47 rows showing
+         (release, perf stat of the app, three runs each in turn,
+         medians): 4.91 → 1.91 M instructions, 5.70 → 3.41 M cycles;
+         a live resize paints every row either way, and what the
+         texts save it (some 0.1 M a step) is under the runs' spread
+         (3.1 to 6.0 M for the same build at a load of 8). Found on
+         the way: renaming in the list view showed no field at all
+         (the name went blank and typing went nowhere), in the build
+         before this too; the field is now over the Name cell
+         (`ColumnListView::over_cell`, the kit's).
+       - *Logs' cells, done 2026-11-13.* It made a `String` for each
+         cell and then a shared string of it (two allocations a cell),
+         the program's name copied from the shared one it had and the
+         level's from a fixed one. Now those two are shared as they
+         are and the message copied once. Found with it, in the kit,
+         for every app: every label drawn copied its text twice to note
+         it for cut text's tips (`note_if_clipped`: now the label's own
+         shared text), and a list's row joined its cells' texts in a
+         list, a `String` and a copy to name it for agents (now one
+         allocation, a lone cell's text shared as it is). A live resize
+         of Logs on 20,000 lines (memhist, exact): 3,850 → 2,964
+         allocations a step, 8,130 → 7,494 copies; release, perf stat,
+         five runs each in turn, medians: 10.43 → 8.28 M instructions,
+         7.83 → 5.80 M cycles a step. The same to the pixel at 1×,
+         1.5× and 2×, light and dark; the rows' names the same.
+       - An element is 800 bytes (its style, 632 of them) and is
+         moved six or seven times on its way into the tree: 0.6 MB a
+         step in Logs. A boxed style would trade those for an
+         allocation an element: about even, not done.
+       - taffy makes a list a block container a layout (260 a step
+         in Logs): the vendored taffy's, left.
+       - *Logs' live resize, measured again 2026-11-13*
+         (`tools/dev/resize-cost`, 3456 × 2234 at 2×, three runs each
+         in turn, medians): the build from before the kits 4.87 M
+         instructions and 6.15 M cycles a step, now 8.61 and 7.88.
+         Its body reads the window's width (the Message column's, and
+         the search header's choice of one row or two), so every step
+         makes the window again: the menus, the header and 75 rows'
+         elements (2,797 allocations and 2.4 MB copied a step,
+         memhist); the profile is flat after that (text recorded again
+         7%, the rows' glyphs copied into the frame 4%, taffy 8%,
+         allocating 14%). *Done 2026-11-13:* the Message column is
+         the list's last, which fills what the others leave, and the
+         search header lays its row out by itself (the field takes
+         what the row leaves; the view says it again only when the
+         header's own width changes it from one row to two,
+         `search::header_width`), so a step runs no body of Logs'
+         (bodies 0.17–0.30 → 0.014 ms a step: the Frame's alone). On
+         `sample.log` (20,000 lines), three runs each in turn,
+         medians: 10.09 → 8.74 M instructions and 8.44 → 6.86 M
+         cycles a step. What's left is painting: every row is wider,
+         so drawn again (sprites into the scene 8%, copying them 5%,
+         a glyph's tile looked up 3%, Logs' highlight spans 2%).
+         Drawing a row's text as glyph runs (`paint_glyph_run`, found
+         once, then moved) would take most of that; a row whose width
+         alone changed could keep its cells but the last.
+       - *The editor's heights, done 2026-11-13.* It walked every
+         paragraph when the width it wraps to changed (`set_look`
+         estimated each one's height again, `ensure_tops` added them
+         up: 41% of a resize's samples on 100,000 lines of code) and
+         added them all up again whenever one changed (every key
+         typed). Now they're in a tree that sums (`editor/heights.rs`:
+         a change, a top, the paragraph at a place, each log n), and a
+         new wrap width guesses again only the paragraphs wider than
+         the narrower width. A live resize of long.rs (release, perf
+         stat, in turn): 10.8–12.3 → 4.9 M instructions, 8.0–12.5 →
+         4.8–6.6 M cycles a step; typing in 100,000 lines of plain
+         text, medians of three: 23.1 → 18.4 M instructions, 31.1 →
+         26.6 M cycles a key. The same to the pixel (code at 2×,
+         prose at 1.5×, Markdown at 1×, page view; the top, the end,
+         pages up, after a resize, after typing). On pages the tops
+         are still added up in order.
+       - *Typing in a long document, done 2026-11-13.* Each key went
+         over all of it several times: StyledEdit's Language menu asked
+         `Doc::is_plain` at every body (every paragraph's settings
+         compared), its undo copied every paragraph's settings and
+         every run at each step (two a word: typing 24 words into
+         100,000 lines grew the app by 348 MB, 3.6 GB at the 500 steps
+         it keeps), the editor moved every later paragraph's start
+         along through 8 MB of paragraphs, copied the whole text twice
+         for the agents' value, and menus made a `String` for every
+         item's keys looked up (`keys::known`, 566 a key). Now a step
+         keeps only the runs and paragraphs it changed (`doc::Window`),
+         `is_plain` remembers, the starts are a vector of their own,
+         the agents' text is copied once, and keys are looked up as
+         given. Words typed into 100,000 lines (release, perf stat,
+         three runs each in turn, medians): on line 30, 21.7 → 12.3 M
+         instructions and 25.1 → 12.4 M cycles a key; at the end, 18.1
+         → 8.7 M and 22.4 → 12.9 M; the app grew by 4 to 10 MB where
+         it grew 348. memhist, a key at the end: 11,202 → 7,020 KB
+         copied, 4,367 → 3,882 allocations (12,478 → 5,871 KB). The
+         same to the pixel (code at 2×, prose at 1.5×, Markdown at 1×:
+         the top, the end, pages up, resized, typed, undone, home);
+         undone and done again to the byte, styles and paragraphs too
+         (`undo_keeps_just_the_styles_and_paragraphs_a_step_changed`).
+         *Left of it*, each still a pass over the text at a key: the
+         text is one `String`, so a key moves what follows it (4 MB on
+         line 30; a rope or gap would mean the editor reading text in
+         pieces); the agents' value is the whole text copied once a
+         change (to make it when an agent asks: the tree's question
+         flushes each window first, `agent::trees`, but what holds the
+         text, the app's document, isn't reachable from there: the
+         editor would need a source the app gives it, or the view to
+         draw again for the question); menus are made again at every
+         body (`Menu::item`, some 600 small allocations a key);
+         code's tree-sitter reparse, on a worker, is most of a key in
+         code.
+       (app_server sending each size of a live resize twice wasn't
+       seen again: 38 configures for 36 steps, DeskCalc, 2026-11-12.
+       The app commits twice a step, once to acknowledge the size
+       and once with its picture.)
+     - What's first shown as a program starts, by the processor
+       time of launching and loading (not by how soon the window
+       comes, which is as soon or sooner on the kits: Tracker 43 →
+       35 ms, StyledEdit 124 → 85, the Viewer 126 → 78, Logs 102 →
+       76, Screenshot 258 → 206, StyledEdit's code 75 → 82):
+       StyledEdit's code 395 → 525 ms (100,000 lines coloured: its
+       typing 700 → 486 and live resize 106 → 96 are the kits' gain),
+       the emoji picker 258 → 353; a few milliseconds more in most
+       (Tracker 2 → 13, Screenshot 5.5 → 17). In the code's load
+       (`OLO_FRAME_PHASES=1`, 2026-11-12) the document's first frames
+       are `DocView`'s body, 8.3 ms and then 2.4, with 15 ms more of
+       the looper's before them that no flush counts (the opened
+       file taken in): to be followed into the editor's first layout
+       of 100,000 paragraphs. Logs' 622 → 929 is its window coming up
+       sooner, with more of the journal still being read (from its
+       start: 1,110 → 921).
+     - The pointer moved over a window wakes two threads where it
+       woke one (Tracker 10 → 15 ms for a sweep that changes nothing).
+       Counted 2026-11-12 (perf stat, a sweep's 480 motions, three
+       runs each in turn): half the instructions of the build from
+       before the kits (0.056 M a motion against 0.11) and a tenth
+       more cycles (0.26 M against 0.23), four or five cycles an
+       instruction: the waking itself. To do: the stage keeps motion
+       from the looper where nothing under the pointer hears it (as
+       it does the wheel), which needs the commit to say where
+       something does (hover, a cursor, a tip, a window's own
+       listeners while a button is down). *Looked at 2026-11-13:* the
+       stage has what it needs from the wheel's pattern (a commit's
+       regions in its layers' coordinates, `WheelRegion`), and a press
+       finds what's under it at its own place, so skipped motion can't
+       send a click astray; but every kit window's `Frame` hears
+       motion window-wide (`on_window_mouse_move`, for cut text's tips),
+       as do 22 more listeners in 20 files (scroll bars, sliders, list
+       dividers, the ruler, slim scroll bars, text fields), most of them
+       for drags only. So first: a window-wide listener that hears only
+       what the window gets (while a button is held, over what notes
+       motion matters, leaving it) for the drags and the tips (their
+       regions from the painter's `cuts`), each listener sorted into
+       that or "everywhere"; then the commit's motion regions (hover and
+       active styles, hover and motion listeners, `paints_by_state`, a
+       cursor of its own or noted), the stage forwarding motion in
+       them, the motion that leaves one, all of it while a button is
+       held and the first after the pointer comes in; and the latest
+       place kept where the looper reads it when it looks again under
+       a still pointer (`hover_stale`: something moved or scrolled).
+     - Scrolling fails the benchmark's evenness now and then in both
+       builds (a frame skipped in a drag or a glide), and the
+       Viewer's live resize its budget in both. Looked into
+       2026-11-12 with Notifications' history (3456 × 2234 at 1.5×,
+       120 Hz, the Wayland messages timed): in the cycle of a skipped
+       frame app_server sends the scroll's step and no frame
+       callback. It holds a commit until its buffer's GPU work is
+       done (`shell/mod.rs`, the dmabuf gate), and a frame whose
+       work isn't done by the next tick gets its callback a tick
+       late: on a GPU shared with the live desktop and other
+       sessions, as the benchmark's is. Under the same load, ten
+       drags each, back to back: the build from before the kits
+       skipped 73 frames (0 to 23 a drag), the kits 7 (0 to 2). So
+       it isn't the kits'; what's left is to run the whole benchmark
+       with the machine to itself (it never was, the night it was
+       measured), and to see whether a client can be told to draw
+       while its last frame's GPU work is still finishing.
+     *Found by the benchmark at three scales, and fixed, 2026-11-12*
+     (HACKING, "Fast and light", the frame that waits for input's
+     answer): a wheel's notch in the editor and Terminal drew one
+     frame, 180 ms late, with a core busy (the frame's hold and the
+     wheel's ease fed each other: the ease makes a step a display
+     frame now, the hold lasts 4 ms from the first input not yet
+     answered and a timer ends it); a scroll step shown a frame late
+     while a document was still being laid out (a worker's commit
+     taken for the answer: input is numbered and a commit says how
+     far the looper had got); the checker took a glide's last pixels
+     at 1× and 1.5× for hitches (two frames' worth in one frame, of
+     a view that draws only when what it shows moves). The scrolling
+     apps at 1×, 1.5× and 2× afterwards (174 steps, the machine
+     busy): 7 fail, each a frame or two skipped or one of 9 ms, as
+     above; before the fixes 21 of 465, every editor and Terminal
+     scroll among them.
+     - A window's making blocks its opener's looper while the display
+       thread makes the surface and renderer (2 to 3 ms of a menu's
+       4): the looper could build the view meanwhile. Measured
+       2026-11-13 on Tracker's menus (`window made in`, median 1.88
+       ms, 1.5 to 3.1): the Vulkan surface and its swapchain are 1.4 to
+       2.3 ms of it, everything else 0.1 ms, and the opener's own work
+       on the popup 0.3 ms; making the swapchain later would save only
+       that 0.3 ms, so it wasn't done.
+     Also left:
+     *Done 2026-11-12:* the vendored Smithay asked winit for its
+     "x11" feature, which built winit-x11, x11rb and x11-dl into
+     app_server itself (not only its tests, as was thought): winit is
+     Wayland alone now, and no X11 crate is in any build
+     (`cargo tree -i x11rb`: none; the name stays in Cargo.lock as
+     Smithay's optional dependency for a backend nothing turns on).
+     `vendor/gpui-macros` is the style helpers alone (GPUI's macros
+     for actions, `Render`, contexts, tests and the inspector, 1,300
+     lines, removed), generating `crate::` paths, so olo-interface's
+     `extern crate self as gpui` is gone too.
+     *For the Book, learned porting (each cost a bug):* a drawing only
+     looks (`Cx::canvas(|v: &V, g, b|)`): what it lacks it asks of its
+     view by a message, and what it finds (where something went) goes
+     in a `Cell`; lay out in `body`, for the width
+     `on_bounds_changed` says, and draw what `Painter::visible_bounds`
+     shows, with a `paint_key` so work below the view draws nothing;
+     work that goes on with nothing to draw runs on a timer
+     (`Cx::after_do`), never `on_next_frame` (no frame comes to a
+     window that drew nothing); a pointer's place in scrolled content
+     is `cx.listener_bounds()`, a drawing's own bounds are where it's
+     laid out; a parent that says something of its child (a title, a
+     tool bar, menus) hears it as an event the child emits when that
+     changes, since the parent's `body` doesn't run with the child's;
+     `ViewRef::update` runs later and reaches a view in another window
+     of the looper, `Child::update` runs now; a scroll asked for as the
+     content's size changes is `set_offset_once_laid_out`; windows of a
+     document's own are `open_window_here`, documents' windows
+     `open_window`, with the app's looper (a `Hub`) told through the
+     proxy; test old against new with the pointer moved off, then
+     look at one shot of each batch: the same to the pixel can be the
+     same failure. A drawing's place is the bounds it's handed,
+     never what a pointer handler last kept (nothing has moved over a
+     window just opened); what's shared between windows is behind a
+     lock in an `Arc`, each window keeping a flag the app reads (a
+     save under way) rather than the app reading its views; a window
+     the app must outlive (an error for a file that wouldn't open)
+     is opened before the one it's about is closed, or the app ends
+     between them; a test that drives a file panel types a name, not
+     a path, and checks the file is there before believing the shot.
+     An app that runs with no window keeps its state behind a lock
+     the windows' views take to say what they show and to act
+     (Passwords): never taken while it's held (a handler takes what
+     it needs, lets go, then calls the kit), what's drawn later (a
+     list's cells) drawn from what the view kept, and what the app
+     wants of a view's own things (a field emptied, the keyboard
+     moved) left as asks the view takes in `body`. `olo_kit::quit`
+     ends the program at once: one that must outlive its windows a
+     while (a copied secret) closes them, stays resident and quits at
+     its own time. What reads differently as time passes ("a minute
+     ago", a code's pie) wakes its own view for it (`Due`): nothing
+     draws again by itself. What must hold after an event is over
+     (which field has the keyboard, once a press beside it has taken
+     it) is decided in `body` after an `invalidate`, not in the
+     event's handler. A test session keeps what its app kept between
+     starts; Return on a list opens things (a browser, in a test):
+     press it only with the alert up; a difference from the old
+     build may be the old build's (look before fixing).
+     An app whose windows trade what they hold (Terminal's tabs)
+     keeps one state behind a lock too, and its windows' own things
+     (a text field, a list) are made by the window's view from what
+     the app asked for as it opened the window (`FieldSpec`), their
+     text read back through a copy the view keeps current, never a
+     password's (the view says it only as it's sent). What draws
+     often (a screen's output) is a view of its own, so the rest of
+     the window (menus, a strip) isn't said again for it. What turns
+     or fades by the clock asks to be drawn again from its drawing
+     (`paint_again_within`), not by a timer that redraws the window.
+     A widget that is one drawing keeps where it put things in its
+     element's state as it draws, and its handlers go by that. Test
+     keys after a click, not only before: the keyboard's place is
+     what a click changes. What's fed faster than frames (a shell's
+     output) is invalidated for the frame (`invalidate_at_frame`),
+     and its cost measured where it's fed fastest (a flood, by the
+     process's own CPU time around it: `tools/dev/cost` starts too
+     late for a burst) as well as steadily. Old against new at 1.25×
+     and 1.75× too: a window a point short and a border's smear
+     showed only there. Something that asks for a password is tested
+     with a stand-in for what checks it (`OLO_SUDO_REAL`, a made-up
+     password), behind a guard that runs nothing when the stand-in
+     isn't the one in place. GPUI drew a window's whole view again
+     whenever anything shown in it changed (a field typed in, a list's
+     choice); a kit view says what it shows again when it's told:
+     what a view shows by a child's state (a Save enabled by a field's
+     text) needs the child's event (`subscribe`, `on_select`). A
+     drawing that took the pointer itself in GPUI (`on_mouse_event` in
+     its paint) only draws in the kit: its element has the listeners,
+     and they go by where the drawing put things (a `Rc<RefCell>` it
+     fills) or by `listener_bounds`. A name the old code used for a
+     colour's green (`g`) is the painter's now: look for what a
+     mechanical rename shadows. A port that compiles is compared
+     before it's believed: a script that opened nothing compared two
+     empty desktops and found them the same.
 
 ## Not started (highest priority first)
 
-(Nothing: the leftovers the 2026-11-08 audit found in finished entries
-are all done, and are in Done, newest first.)
+- **A rolled-up window ends at its tab** (Ben, 2026-11-13, with a
+  screenshot of "Network" rolled up: "when a window is rolled up it
+  looks weird b/c it doesn't have the bottom bar that it should have").
+  Rolled up, only the tab is drawn (app_server's decorator,
+  `shell/deco.rs`, "Rolled up: only the tab shows"), so it reads as a
+  tab cut loose rather than a window folded away: under the tab there
+  should be the window's frame closed off, a bar as wide as the window
+  with its border, bevel and shadow, as the window's top edge is
+  drawn. Measured at 1×, 1.25×, 1.5×, 1.75× and 2×, light, dark and
+  night, active and not, a lone window and one in a group of tabs, and
+  fanned out in a tile (`tiling.rs`, rolled-up windows sharing a cell);
+  what takes the pointer follows what's drawn.
+- **Captive portals: seen, said and opened** (Ben, 2026-11-13: "add
+  captive portal recognition in network settings so that when a
+  connection requires portal signin the link is available to click in
+  the network settings and also a tray icon + notification should
+  appear about it and clicking the tray icon or link in notification
+  should open the portal page"). Olo's network code
+  (`olo_system::network`, Preferences ▸ Network) says nothing of one
+  today.
+  - *Knowing:* NetworkManager's own connectivity check (its
+    `Connectivity` going to `portal`, per device and overall, as its
+    signals say: nothing polled), and the portal's address: where the
+    check's request was sent on to (its redirect, or the address the
+    network names in its DHCP option 114 / RFC 8910 Captive Portal
+    API, `user-portal-url`, which is better when given). Asked again
+    after the person signs in, so the warning goes as soon as the
+    network lets traffic through.
+  - *Preferences ▸ Network:* the connection's row says "Sign-in
+    needed" with a link to the portal page (and Open Sign-In Page).
+  - *The tray:* an icon while a portal waits (the Wi-Fi glyph with a
+    mark, or a small sign of its own), its tip naming the network; a
+    click opens the portal page.
+  - *A notification* as it's first seen on a network ("Sign in to
+    Airport Wi-Fi"), with Open Sign-In Page; clicking it opens the
+    page too. Not again for the same network until it's been signed
+    in to and needs it again.
+  - *Opening the page:* in the default browser, as a page of its own
+    (a portal page is often plain HTTP and expects no proxy): a
+    browser set to a proxy (the Token Pool's isn't one for web
+    pages, but a VPN's may be) or DNS over HTTPS can't reach it, so
+    the page opens past them where the browser allows.
+  - Agents read it too: the network's portal state and its address in
+    the tray's and Preferences' trees.
+- **The computer starts with Olo's start-up screen and chime, not
+  Lenovo's and Fedora's logos** (Ben, 2026-11-13: "when the os starts
+  it still shows the lenovo + fedora logos on bootup. i want that
+  changed to the beos-inspired olo startup screen with the olo sound
+  played like how a mac plays the apple sound"). Olo's boot splash is
+  built (HACKING, "The login screen and boot splash": the start-up
+  screen's picture as a Plymouth theme, checked in a VM at every scale)
+  but not installed on the ThinkPad: it boots Fedora's theme, which
+  draws the firmware's logo (the BGRT image, Lenovo's) with Fedora's
+  under it.
+  - *Installing it* takes root (`tools/install-login.sh --plymouth`:
+    the theme, and the initramfs made again so it's there from the
+    start): Ben's say and his sudo, with `--revert-plymouth` as the
+    way back. Checked after: the theme draws no BGRT image; a LUKS
+    passphrase (if any) is asked in Olo's field; the hand-over to the
+    login screen without a flash, on the panel and the external
+    displays.
+  - *The firmware's own logo* (Lenovo's, before the bootloader) isn't
+    the OS's to draw over: what's possible on this ThinkPad is to be
+    found out (its setup's "Boot Logo" and the custom logo Lenovo's
+    BIOS update tool can write), said to Ben, and done only if he
+    says so (it writes the firmware).
+  - *The chime at power-on, as a Mac's*: today it plays as the
+    session's start-up screen shows (Preferences ▸ Sound ▸ Starting
+    Up). Played as early as the sound card can (a small unit of Olo's
+    own early in boot, ALSA straight to the card before PipeWire, at
+    the volume last set, silent when muted or chosen off), once a boot,
+    so the session's start-up screen doesn't play it again; measured
+    from power-on to the chime on the ThinkPad.
+
+- **Olo Doctor offers to install the start-up screen and chime**
+  (Ben, 2026-11-13: "olo doctor should offer to install the boot
+  stuff"). A check that the boot splash (Olo's Plymouth theme, in the
+  initramfs) and the early chime unit are installed and current, and
+  if not, Install, through Doctor's helper (`pkexec olo-doctor
+  --helper`: one administrator request), with live progress (making
+  the initramfs again takes a while) and a way back (Revert). Not the
+  firmware's logo (above).
+- **One Olo Doctor: Suggestions folded into it** (Ben, 2026-11-13:
+  "combine the olo suggestions app into olo doctor: just have it be one
+  unified olo doctor app where each item has a type showing whether
+  it's e.g. a suggestion or something critical and any of them can be
+  put on the ignored list"). Every finding of either app in one list,
+  each with its kind (critical, a problem, a suggestion, …) shown, and
+  any of them ignorable (Ignore, and an Ignored list to bring one
+  back); Suggestions' app, its Deskbar entry and its notifications go
+  to Doctor's; agents read and act on the same items.
+- **Olo Doctor looked over and tidied** (Ben, 2026-11-13: "also spruce
+  up olo doctor it's a bit of a mess right now"): its window laid out
+  again around the one list (grouped by kind, what's wrong first, each
+  item's fix at hand), at every scale and theme.
+- **Every app's menus the same where they can be, and its settings a
+  menu away** (Ben, 2026-11-13: "also in all the olo apps make it so
+  that if there is one or more recommended settings apps/panels that
+  are related then those should also be launchable from that app's
+  menus. also standardize the olo apps menus (and patterns in the olo
+  book) so that kb shortcuts are consistent and always available and
+  the menu locations/options where applicable are consistent").
+  - *Related settings in the menus:* an app whose behaviour some
+    Preferences panel (or another app) sets has a menu item opening it
+    straight at that panel (Mail: Accounts; Terminal: its Profiles and
+    Keyboard; Deskbar: its own; …), where the app's own settings are.
+  - *One menu layout:* the app menu, File, Edit, View, then the app's
+    own, Window and Help, each with the same items in the same places
+    and the same shortcuts (⌘N, ⌘O, ⌘W, ⌘Q, ⌘Z, ⌘F, ⌘G, ⌘, …), a
+    shortcut always shown beside its item and always working, even
+    with the menu bar hidden; checked by a lint over every app's menus.
+  - *The Olo Book* says the layout and the shortcuts, as a pattern for
+    apps to follow, with the kit building the shared menus so an app
+    adds only its own.
 
 ## Done, waiting for Ben to try or confirm
 
@@ -112,6 +1320,310 @@ AirPods' config, f8e63000: 82.6 dB SNR, 50 wanted) and the
 accessibility tree test on an agent screen (GTK's Text Editor, 30
 nodes). What's left needs Ben: in Blocked, "The ignored tests that
 need Ben".)
+
+- **Deskbar widgets for the Token Pool** (Ben, 2026-11-13: "deskbar
+  widget support for showing token pool usage / quotas etc. i want to
+  be able to have it show the aggregate availability for each provider
+  x quota type and any other options/views you think might be useful
+  and make sense", then "make the quota type a multi-select and then in
+  e.g. heatmap show each selected quota type as a different color with
+  the color representing usage where red is 100% used and green is 0%
+  used"). Done (HACKING, "Live widgets", Token Pool): a Token Pool kind
+  in Preferences ▸ Deskbar, any of a provider's quotas, all accounts
+  together, each account or the one answering; left or used; orange
+  then red as it runs low; a notification when a quota is out on every
+  account and when it's back; a tip with every account, the next reset
+  and the pace; a click opens Token Pool. The pool writes its meters
+  only when they change, and the widget reads them as the file
+  changes. A heatmap's quotas are green to red by use. Not done: a
+  ready-made row button in Preferences (adding the widgets by hand
+  does it). For Ben: add one in Preferences ▸ Deskbar (Add, Token Pool).
+- **An NVMe drive kept cooler, chosen for each power mode** (Ben,
+  2026-11-13: "also add the ability to adjust/customize nvme power for
+  each profile for when a user wants to get their nvme drive to run a
+  bit cooler (but default should be whatever it is now / by
+  default)"). Done: an SSD row in Preferences ▸ Power ▸ Power Modes, As
+  It Is unless chosen (the drive untouched), Cooler and Coolest its own
+  lower working power states (NVMe Set Features, natively through the
+  kernel's admin passthrough), set by the follower on each mode and
+  supply change and again after a resume. Tested on made-up Identify
+  data and in Preferences at every scale; the passthrough itself is
+  root's, so it first runs on the real drive in Ben's follower. For
+  Ben: after the upgrade, Apply in Preferences ▸ Power (or Olo Doctor's
+  Update It); the SSD menus then show each state's watts, and choosing
+  Cooler logs "power state 1 (… W at most)" in olo-gpu-follow's journal.
+- **Balanced keeps the processors out of their hottest top speed, and
+  Olo Doctor sees that the modes are set as planned** (Ben, 2026-11-13:
+  "right now the cpu on it ends up still being too high, but on power
+  saving it's too low. can we make it so that the cpu is limited to
+  like 75% of what it gets now on balanced instead?", then "olo doctor
+  should make sure those profiles get set/customized properly"). Done:
+  a Top speed per mode and on battery in Preferences ▸ Power ▸ Power
+  Modes (intel_pstate's `max_perf_pct`), Balanced's 75% by default;
+  Balanced on battery leans to saving (balance_power, as tuned's
+  balanced-battery; Olo's follower had set balance_performance over it).
+  The follower says what it did in `/run/olo-gpu-follow.json`, and Olo
+  Doctor checks it's installed, current, running, refused nothing and
+  that nothing changed the processors since, each with its fix. On the
+  ThinkPad, after Ben's upgrade at 12:36: Balanced set "top speed 75%",
+  and a loaded P-core held 3.6 GHz of its 4.7. For Ben: whether
+  Balanced now runs as cool as he wants (60% and 50% are there too).
+- **A security key doesn't unlock a locked or logged-out computer**
+  (Ben, 2026-11-13: "the yubikey should not work at the login screen
+  (but face recognition and fingerprint should, as well as password).
+  once logged in then the yubikey should work for elevated permission
+  requests etc. it's just that if someone found the laptop and got the
+  login screen we can't have them just pressing the yubikey to get
+  access"). Done: the lock screen (olo-lock) has no key code any more
+  (`olo-fido` gone from it), and the login screen never had any (nor is
+  there `pam_u2f` in the system's PAM stack); both keep the password,
+  the fingerprint and the face. The key still approves what asks once
+  someone is in: Terminal's sudo, the polkit agent, Passwords' unlock
+  and Approve Without Asking. Preferences ▸ Security ▸ Sign In says so.
+  Checked in a test session (a stand-in PAM service, a made-up
+  password): no key prompt on the lock, a wrong password refused, the
+  right one unlocking. For Ben, after the upgrade: lock with the
+  YubiKey in and touch it (nothing happens), then `sudo -v` in
+  Terminal (a touch approves it).
+- **The pointer never stops under load** (Ben, 2026-11-12: "under
+  load the mouse still gets unresponsive for a few seconds every now
+  and then. i've got LAVD off b/c that made it even worse, as did the
+  supervisor. how else can we improve desktop responsiveness even
+  under load?", then "wouldn't it be better to give the cursor its own
+  thread anyway?"). Looked at first, read-only, on his session: during
+  a build (load 15–23) app_server's main thread waited at most 33 ms
+  to run, but twice sat 78 and 142 ms inside an ioctl in the xe GPU
+  driver's buffer lock (`drm_exec_lock_contended`), with the pointer
+  stopped meanwhile; the freezes of seconds weren't caught. *Done
+  2026-11-12:* app_server says in its log when input reaches it late
+  and what held its loop (HACKING, "{"type":"timings"}"), so the next
+  freeze names its cause; agent screens and test sessions no longer
+  raise their app_server above everything. *Done 2026-11-13:* the
+  pointer on a thread of its own (HACKING, "The pointer on a thread of
+  its own"): Preferences ▸ Performance ▸ Scheduler ▸ Pointer, "Move the
+  pointer on a thread of its own", off until Ben has tried it. libinput
+  is read on a thread at nice −15, which moves the hardware cursor
+  itself when the loop hasn't taken a motion for 12 ms; the loop
+  catches up from the same events. Tried on a real seat of the check's
+  own (`tools/dev/cursor-thread-check`: vkms and a virtual mouse on
+  "seat-olotest", his session never sees them): with the loop held
+  400 ms, on the loop the pointer stood still 260 ms and ended at 162
+  of 302 px (the kernel drops a device's unread events past 64); on the
+  thread it never stood still more than 20 ms and ended where it
+  should; switched on and off live, both ways. Costs nothing idle, and
+  about 3% of a core more while a 1000 Hz mouse moves. *Ben's to try:*
+  after upgrading, turn the switch on and use the machine under load
+  as when it froze: the pointer should keep moving even when windows
+  stop drawing. **Not tried on his machine**: his Intel panel (PSR2)
+  may take the kernel's slow path for a legacy cursor move, which only
+  it shows; if the pointer is worse with it on, turn it off and say so.
+  *Found on his session, 2026-11-13* (read-only: its log and
+  `{"type":"frames"}`): with the switch on, the loop was held 106 to 170
+  ms three times while drawing, and the thread never took over, because
+  on his OLED in HDR the pointer was never on the cursor plane: it was
+  composed into the HDR frame, so every move was a compose and an
+  encode on the GPU. *Done:* in HDR the pointer goes on the cursor
+  plane, its pixels encoded into the PQ signal as they're copied there
+  (HACKING, "HDR"); on a simulated HDR display (`cursor-thread-check
+  --hdr`) the thread moved it 129 px through a 400 ms hold, and moving
+  the pointer cost app_server 3.2–4.0% of a core where it cost
+  12.4–15.3%. *Ben's to try after upgrading:* the pointer in HDR looks
+  as it did (white as bright as a window's white, its edges clean), and
+  `{"type":"frames"}` says `cursor_plane: true` for eDP-1.
+  (LAVD is running again: an Authenticate dialog on his session, for
+  `olo-doctor --helper`, started `olo-scheduler.service` on 2026-11-12
+  at 22:44.)
+
+- **A window on the HDMI display was scrambled** (Ben, 2026-11-12:
+  "when i plugged in an hdmi cable earlier to try show a video on the
+  tv the graphics/image was all messed up / scrambled. fix."). What it
+  was is in HACKING ("Each display on its own GPU", "A window drawn by
+  one GPU, shown by another"): the HDMI port is NVIDIA's, apps draw
+  with Intel's, each window's picture is copied into a buffer both
+  read, and NVIDIA's driver reads such a buffer as if its rows were the
+  window's width rounded down to 8 pixels: sheared, a few pixels a row,
+  at every width that isn't a multiple of 8. *Done 2026-11-12:* the
+  copy is made with rows of a whole multiple of 16 pixels; a buffer
+  NVIDIA would misread is never read by it directly; apps aren't
+  offered linear buffers for NVIDIA's displays. Found and checked
+  without a television, by `olo-app-server --probe-shared`, which
+  draws on one GPU and composes on the other as the session does and
+  compares, pixel by pixel: before, right at 1920 and 1408 wide and
+  wrong at 964 and 333 (and at every width between multiples of 8, of
+  91 tried); after, the same at all of them, for each kind of buffer,
+  a picture replaced and a part redrawn (175 tries, none wrong).
+  *Ben's to try:* after upgrading, plug the television in again and
+  move a window to it (a film in the Viewer, a browser): it should
+  look as it does on the panel. **Not seen on a television**: none
+  was plugged in while this was fixed, so what the probe can't see is
+  untried: the frames NVIDIA sends to the display itself (they were
+  NVIDIA's own all along, and the wallpaper and the windows' frames
+  there were its too), and anything else that was wrong with the
+  picture that day. If it still looks wrong: which part (the whole
+  screen, the wallpaper, or only windows), and
+  `olo-app-server --probe-shared /var/tmp/shared` says whether the
+  copies are still right.
+
+- **A display that left with its dock is still "plugged in"** (Ben,
+  2026-11-10: "there are no externals just my builtin display now why
+  does it think there's still an external"). What happened is in
+  HACKING ("A display that leaves without a word"): the dock's second
+  display was still `connected` to the kernel when Olo scanned, the
+  kernel gave up on it eleven seconds later and sent no event, and
+  nothing looked again. *Done 2026-11-12:* app_server looks at a card
+  again by itself after a display leaves it (1.5, 4, 10 and 20 seconds
+  after, each a forced probe, starting over if a look finds another
+  gone), and once in ten seconds for a display a frame couldn't be put
+  on. Nothing runs otherwise. *Ben's to try, with the dock:* unplug it
+  with two displays on it; within some twenty seconds Olo should have
+  let both go (`journalctl`: "Failed to enable link training" from the
+  kernel, then Olo's output gone; `loginctl show-session` says
+  `Docked=no`). Not known: whether the kernel says "disconnected" to a
+  forced probe before it gives up on the link (if not, the look at
+  twenty seconds is the one that finds it; if even that is too soon,
+  the times want stretching), and whether closing the lid should look
+  too. Not tried at all: there is no dock here to pull, and a test's
+  session has no connectors.
+
+- **The lowest brightness is off** (Ben, 2026-11-12: "putting the
+  screen on min brightness should turn the screen off: right now it
+  just gets dim but not off"). *Done 2026-11-12, waiting for Ben to
+  try on the real panel* (HACKING, "The bottom of the built-in
+  display's brightness is off"): the last step down switches the
+  built-in panel off ("Display off"), in HDR too; it stays off until
+  the brightness is raised (the key, a slider, an agent), then is back
+  at the first step; a session never starts with it off, and once the
+  displays have slept for idleness the first touch brings it back. Found: the
+  bottom step already wrote 0 to the backlight (`to_raw(0.0)`), which
+  the ThinkPad's panel shows as its dimmest, and in HDR the keys stop
+  at SDR white's least: neither is off, so the panel is switched off
+  as it is for idleness, by itself. Tried in a headless session only
+  (a test screen named as the built-in one: the steps, the state, the
+  indicator, back after a minute's idle sleep). *Not tried, and it can only be tried on the computer's
+  own screen:* that the panel goes dark and comes back with the next
+  brightness-up (it's the call idle display sleep makes and undoes
+  every day, for one display instead of all); the lid closed and
+  opened, a suspend, an external display plugged in while it's off.
+  If it didn't come back: brightness up again, then a restart of the
+  session, where it starts lit.
+- **A fan profile, in Preferences ▸ Power, and the fans in Activity
+  Monitor** (Ben, 2026-11-10: "on auto settings the thinkpad is too slow
+  to ramp up the fans, it gets behind the thermal curve and then starts
+  throttling cpu … add under prefs -> power in the fan settings for the
+  fan profile an option to choose a different auto curve … still
+  adaptive like auto but ramps up quicker and keeps everything cooler
+  with the goal of avoiding any cpu throttling"; "make sure the fan
+  daemon looks at all the temps, cpu cores and both gpus and whatever
+  else we have"; "activity monitor should get updated to show stats and
+  details around this and graph temps to fan speeds and profile in use";
+  and, in place of the full-speed option asked for earlier the same day:
+  "we don't need to add the option for enabling full speed fans just
+  have in the power prefs the option for the default auto and this new
+  cooler/louder auto profile"). *Done:* the service, `olo-fans`
+  (`apps/fans`; its doc comment says how it decides), put in by hand on
+  Ben's ThinkPad as root (`/usr/local/libexec/olo/olo-fans`,
+  `olo-fans.service`, enabled; `/etc/olo/fans` says `cool`) and running:
+  24 sensors (the package each second; each core, the board's SEN zones,
+  whose 65 °C passive trip is the throttling, every three; the discrete
+  GPU as the firmware reads it; the SSD and the memory), the
+  processor's power as what's coming, the firmware's watchdog so a
+  stopped service hands the fans back in 30 seconds. `olo-fans
+  --status` prints what it reads and would do. Activity Monitor ▸
+  Sensors has the Fans card (2026-11-11; HACKING's Activity Monitor):
+  the fans' speeds, the package's temperature and its throttling for
+  heat on one graph, the profile, the level held and what the service
+  says asked for it, and the throttling counted (19,497 times, seven
+  minutes in all, between this start of the computer and the service
+  going in). It shows the service's status as it is now, whose "why"
+  while a level is held on the way down is what would ask now (a
+  level 5 "because 8 W"): the status grown, below, is to say what set
+  the level and each zone over its trip. Found: the firmware's
+  `auto` had the fans at 2,880 rpm with the package at 89–91 °C and
+  SEN1 at 67 °C, over its trip; level 7 is about 5,070 rpm.
+  *Done 2026-11-12:* Fan Profile in Preferences ▸ Power ▸ Battery &
+  Idle (Automatic: the firmware's; Cool: cooler and louder), shown
+  only where the fans can be set, with what they're doing now;
+  choosing one has Olo Doctor set it (`olo-doctor --fans auto|cool`,
+  the way in for agents too: its helper installs `olo-fans` and its
+  unit as root where they're missing or older, tells thinkpad_acpi to
+  take levels where it doesn't, writes `/etc/olo/fans`, enables and
+  starts the service); HACKING, "The fans". Tried only on a made-up
+  ThinkPad in a scratch folder (`OLO_FANS_ROOT`). *Not tried:* chosen
+  from the panel on the real computer (the service there was put in
+  by hand on 2026-11-10 and says `cool`; the first choice of Cool
+  from the panel will ask for the password and replace root's copy of
+  the program with this build's), and a computer whose driver doesn't
+  take levels yet. *2026-11-12:* that computer turned out to be Ben's
+  own after a restart (levels had been turned on by hand, not kept):
+  the service ended at its first write and then sat running and
+  useless, and Activity Monitor said it wasn't running. Put right on
+  the computer by hand as root at Ben's asking (the driver's file
+  written, the driver loaded again, the service started again), and
+  in the code: the service doesn't end for it, keeps the file itself
+  and says its status from the start; `olo_system::fans` knows
+  running from in force (`Amiss`); Olo Doctor finds each case and an
+  older service, with a fix (HACKING, "The fans"). The new service
+  has run on the real computer since 09:56 that day (Ben took the
+  build and Doctor's helper copied it over root's: 17 changes of
+  level in its first half hour, none refused), and the real session's
+  own mark was written at his upgrade of 11:10 (`olo-real-session`:
+  HACKING, "The person's own session").
+  *To do:* the service's status
+  (`/run/olo-fans/status`) grown to what the panels need (each
+  sensor's reading and room, what set the level), written only while
+  something reads it; the curve's numbers tuned from that (where each
+  kind of sensor starts the fans and has them at full speed: `span`),
+  and other machines by their hwmon `pwm*`; levels in force without a
+  restart where the driver was loaded without them (loading it again
+  from Doctor's helper: `delete_module` and `finit_module` ourselves,
+  with the way back thought through first, since a driver that doesn't
+  come back takes the Fn keys with it).
+
+- **A scheduler of the person's choosing, in Preferences ▸ Performance**
+  (Ben, 2026-11-10: "add to olo the ability to pick a custom scheduler
+  in preferences -> performance and the recommendation should be
+  scx_lavd and if the user enables it then olo should handle installing
+  (if we can vendor it great and then just install and activate it if
+  the user enables)"). *Done 2026-11-12* (HACKING, "The scheduler"):
+  Preferences ▸ Performance ▸ Scheduler, the kernel's own or LAVD
+  (recommended), with what is scheduling now as the kernel says it;
+  choosing has Olo Doctor install, enable and start it, or stop it
+  (`olo-doctor --scheduler kernel|lavd`, for agents too);
+  `tools/build-scheduler.sh` builds scx_lavd 1.1.4 from its published
+  source and puts it beside Olo's programs (`olo-scx-lavd`), built
+  once here: an upgrade carries it. Tried only against a made-up
+  kernel in a scratch folder (`OLO_SCHEDULER_ROOT`). On Ben's
+  ThinkPad the panel will show LAVD chosen and scheduling, as it was
+  put in by hand on 2026-11-10 (`olo-scheduler.service`: the same
+  name, place and unit, so Olo's choice takes it over as it is); the
+  kernel's own and back hasn't been chosen there (it's his machine's
+  scheduler: his to try). To go back by hand:
+  `sudo systemctl disable --now olo-scheduler.service`.
+  *Left, each Ben's to decide or needing his machine:*
+  - **In a release or not.** scx_lavd is GPL-2.0, Olo is MIT: it's a
+    separate program, so carrying it is allowed, but whoever passes
+    its binary on must pass its source on too. For now a release
+    leaves it out (`tools/release.sh`) and the Installer's Olo says
+    "LAVD isn't with this copy of Olo". To carry it: the exact source
+    (the crates of 1.1.4 and their lock file) put beside the release,
+    with its licence; or its source vendored in the tree as others'
+    work is (`vendor/`), which is the "vendor it" asked for and is
+    its six crates, 84,000 lines of someone else's GPL code (Rust
+    and C, counted in the published crates) in the repository.
+  - tools/setup.sh has what it needs to build (libelf's headers
+    added) but doesn't run `tools/build-scheduler.sh`: two minutes
+    and 4 GB more for a setup, for something off by default. To be
+    run by setup, or by Doctor's "LAVD isn't here" as an offer.
+  - Olo Doctor saying when root's copy is older than the one beside
+    it, as for the login screen's parts; and a finding when LAVD is
+    chosen and the kernel has put it out (`nr_rejected`, the unit
+    failed), with what its log said.
+  - app_server's and the windows' asking for a fast core while they
+    draw (`util_floor`) measured under LAVD against the kernel's own
+    (LAVD decides by its own measure of latency-criticality): needs
+    the scheduler switched on the real machine, with Ben.
+  (Costs measured since 2026-11-10 are under LAVD, not EEVDF: an app
+  is compared with its other build in the same sitting.)
 
 - **DiskBackup: unfinished backups, validation, the Drive connection**
   (Ben, 2026-11-08: "it needs to track in-progress / unfinished backups
@@ -1986,7 +3498,11 @@ need Ben".)
     15 ms: no cache needed). Then: the frames as dmabufs to VA-API
     (DRM PRIME import, its video processor making NV12: 0676a351, 2.2%
     of a core recording 4K), and auto preferring the Intel GPU for AV1 on
-    battery, both done. NVENC (2026-11-08): CUDA imports only its own
+    battery, both done. *H.264 too* (2026-11-12, with RPM Fusion's iHD
+    on this computer since): `olo_vaapi::H264`, its sequence and picture
+    parameter sets written by us, the driver writing the slices; auto
+    prefers it on battery as AV1, and AirPlay's showing takes it first
+    with frames lent from the GPU. NVENC (2026-11-08): CUDA imports only its own
     GPU's memory and app_server draws on the Intel GPU, so frames cross
     to the NVIDIA GPU through the processor either way. The crossing was
     made half as dear: a 4K recording on NVENC went from 40.1% of a core
@@ -2620,6 +4136,69 @@ people.
 
 ## Done (most recently finished first)
 
+- **What Doctor fixes stays fixed through a restart** (Ben,
+  2026-11-10, with a picture of the YubiKey's finding back again:
+  "this comes up after every reboot olo should just set ephemeral
+  stuff like that as needed on startup"; done 2026-11-12). Every fix
+  was read: three wrote a value that a restart or a replugging undoes.
+  - *The security key put to sleep.* Olo's input rule was installed
+    and had set it; the smart-card readers' rule (92_pcscd_ccid.rules)
+    set it back when the key's driver bound, after its interfaces had
+    come, because the key is a smart card too. Olo's rule comes after
+    that one now (95-olo-input.rules, at every event of the device);
+    Doctor finds the old one out of date and replaces it.
+  - *The Thunderbolt 5 ports' USB controller*, kept awake "for now":
+    by a rule (75-olo-thunderbolt-usb.rules), with a way back in
+    Doctor (Let It Sleep).
+  - *A Thunderbolt device let in*: boltd is told to remember it, so
+    it's let in whenever it comes.
+  HACKING ("A fix lasts"). Checked by udev's own dry run on the P1
+  (which rule writes what at the key's events) and its verifier for
+  the two rule files, and Doctor's tests. *Ben's:* Doctor will show
+  "Olo's input rule is out of date" once (Install the Rule), and the
+  Thunderbolt 5 finding once more if he wants it kept awake; after
+  the next restart neither should be back. *Not tried:* the rules
+  on the real udev (they need root to install), and boltd's
+  remembering (no device was waiting).
+
+- **The NVIDIA GPU's video encoding shows in Activity Monitor and
+  Deskbar's GPU widgets** (Ben, 2026-11-10: "when the nvidia chip is
+  doing video encoding it doesn't properly show up in activity monitor
+  stats or the deskbar widgets whereas normal gpu usage does"; done
+  2026-11-12). The card's figure was its graphics engine's alone:
+  NVIDIA's library counts the encoder and the decoder apart. A GPU is
+  as busy as its busiest engine now, NVIDIA's three and Intel's two
+  (its media GT wasn't in Deskbar's figure either); Activity Monitor
+  graphs each engine (Graphics, Encoder, Decoder; Render, Media), and
+  a program's share of the card counts what it encodes and decodes.
+  An idle card is asked every time for 8 s after it wakes (a recording
+  begun on a sleeping card read as nothing for 20 s). Tried on the
+  P1's RTX PRO 2000, with olo-video's NVENC test encoding 4K beside
+  it: graphics 13 to 15%, encoder 46 to 53% (it would have read 14%).
+  *Not tried:* a screen recording or a call of Ben's own, and the
+  decoder's figure with something decoding on the card.
+
+- **The stacking comes back through an upgrade** (found 2026-11-11:
+  two windows of one app changed places under a third; done
+  2026-11-12). It was app_server's, as thought, and not only for one
+  app's windows: a window that had gone before app_server saved the
+  layout (its app already becoming its new version), or was back and
+  not shown yet, was saved without its place in the stacking, and came
+  back in whatever order it was shown. Every window gets a depth now,
+  by one order worked out from what each that went says was around it
+  and what the others say of it (HACKING, "The stacking comes back
+  through an upgrade"). `tools/dev/upgrade-check` compares the
+  stacking too, and follows tsession's build (run a release session
+  from a copy: touching target/release offers the person an upgrade).
+  Three Preferences windows: 12 upgrades of 12 (4 of 6 failed before);
+  six windows of three apps: 25 of 26; the auto-tiled check, 6 of 6.
+  Found on the way and fixed: Tracker came back without its folder
+  windows when told to re-execute twice a moment apart, one upgrade in
+  three with other apps open (a window saved what it had last told its
+  app, and one not drawn yet had told nothing). *Left:* the one in 26
+  (a window one place higher a few seconds after it was put back
+  rightly: not explained).
+
 - ~~**A computer Olo's login screen can't show on was left at the
   console**~~ (found 2026-11-08 in the installer check's VM on a plain
   GPU). *Done* (same day, a6e4f95d): olo-login stepped aside but, as a
@@ -3005,7 +4584,7 @@ people.
   mouse's reports (Razer Viper V2 Pro, 2.4 GHz receiver on a hub,
   USB autosuspend on): 429 gaps over 5 ms a minute, the longest 39 ms,
   673 of 1000 reports a second (`PointerHealth`, Activity Monitor ▸
-  Displays ▸ Pointer). `71-olo-input.rules` keeps receivers awake;
+  Displays ▸ Pointer). `95-olo-input.rules` (then 71) keeps receivers awake;
   the radio is the person's to fix (the receiver nearer, its
   extender, a lower polling rate). **Next**: windows on overlay
   planes (OLO_OVERLAY_PLANES=1) once the pointer and such a plane

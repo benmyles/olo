@@ -20,15 +20,12 @@ use std::{
     time::SystemTime,
 };
 
-use olo_ui::{
-    WindowOptions,
-    gpui::{self, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _, Render, RenderImage, Styled as _, Window, div, point, px, size},
-    instance, metrics as m, style, theme,
-    widgets::{
-        Button, StringView, TextControl, TextField, TextFieldEvent,
-        list::{Column, ColumnListView, ListModel},
-        text_field,
-    },
+use olo_kit::app_kit::Messenger;
+use olo_kit::{
+    Bounds, Child, ClickEvent, Corners, Cx, Element, InteractiveElement as _, KeyDownEvent, ParentElement as _, RenderImage, Styled as _, View, WindowOptions, div, instance, metrics as m, point, px,
+    size, style, theme,
+    undo::{History, Purpose},
+    widgets::{Button, Column, ColumnListView, ListModel, StringView, TextControl, TextField, TextFieldEvent, button_width, text_field},
 };
 
 const APP_ID: &str = "olo.screenshot-library";
@@ -55,6 +52,8 @@ enum Msg {
     Read(PathBuf, Option<f64>, Option<(u32, u32)>, Option<(f32, Arc<RenderImage>)>),
     /// The folder changed.
     Changed,
+    /// Rename… renamed one.
+    Renamed { from: PathBuf, to: PathBuf },
 }
 
 /// Where recordings go (the Videos folder).
@@ -136,6 +135,8 @@ fn read(path: &Path, scale: f32) -> (Option<f64>, Option<(u32, u32)>, Option<Arc
 enum Change {
     /// Deleted: where it was, and where it is in the Trash.
     Trashed {
+        /// (Said when a change is logged.)
+        #[allow(dead_code)]
         from: PathBuf,
         at: PathBuf,
     },
@@ -149,67 +150,42 @@ enum Change {
 
 struct Library {
     /// Undo and Redo (⌘Z, ⇧⌘Z: the window has no menu bar).
-    history: olo_ui::undo::History<Change>,
+    history: History<Change>,
     all: Vec<Recording>,
     /// The rows shown (indexes into `all`), as found and sorted.
     shown: Vec<usize>,
     pictures: HashMap<PathBuf, (f32, Arc<RenderImage>)>,
     /// Asked for (a worker reading it), by path, for a scale.
     asked: HashMap<PathBuf, f32>,
-    dropped: Vec<Arc<RenderImage>>,
-    list: Entity<ListModel>,
-    search: Entity<TextField>,
-    _watch: Option<olo_ui::watch::Watch>,
+    list: ListModel,
+    search: Child<TextField>,
+    _watch: Option<olo_kit::watch::Watch>,
     scale: f32,
 }
 
 impl Library {
-    fn message(&mut self, m: Msg, cx: &mut Context<Self>) {
-        match m {
-            Msg::Listed(all) => {
-                // (What was read of those still here kept.)
-                let known: HashMap<PathBuf, (Option<f64>, Option<(u32, u32)>)> = self.all.iter().map(|r| (r.path.clone(), (r.seconds, r.pixels))).collect();
-                self.all = all
-                    .into_iter()
-                    .map(|mut r| {
-                        if let Some((s, p)) = known.get(&r.path) {
-                            (r.seconds, r.pixels) = (*s, *p);
-                        }
-                        r
-                    })
-                    .collect();
-                let here: std::collections::HashSet<&PathBuf> = self.all.iter().map(|r| &r.path).collect();
-                let gone: Vec<PathBuf> = self.pictures.keys().filter(|p| !here.contains(p)).cloned().collect();
-                for p in gone {
-                    self.dropped.extend(self.pictures.remove(&p).map(|(_, i)| i));
-                }
-                self.refilter(cx);
-            }
-            Msg::Read(path, seconds, pixels, picture) => {
-                self.asked.remove(&path);
-                if let Some(r) = self.all.iter_mut().find(|r| r.path == path) {
-                    r.seconds = seconds.or(r.seconds);
-                    r.pixels = pixels.or(r.pixels);
-                }
-                if let Some(p) = picture {
-                    self.dropped.extend(self.pictures.insert(path, p).map(|(_, i)| i));
-                }
-                self.refilter(cx);
-            }
-            Msg::Changed => {
-                let proxy = olo_ui::proxy(cx);
-                std::thread::spawn(move || proxy.send(Msg::Listed(list(&folder()))));
-            }
-        }
-        cx.notify();
+    fn new(cx: &mut Cx<Self>) -> Library {
+        let list = ListModel::new(false);
+        list.state_mut().sort = Some((4, false));
+        let search = text_field(cx, |f| f.name("Search").hint("Search"));
+        cx.subscribe(&search, |l: &mut Library, _: &TextFieldEvent, cx| {
+            l.refilter(cx);
+            cx.invalidate();
+        });
+        let to = cx.messenger();
+        let watch = olo_kit::watch::watch([folder()], move |_| {
+            to.send(Msg::Changed);
+        });
+        cx.send(Msg::Changed);
+        Library { history: History::default(), all: Vec::new(), shown: Vec::new(), pictures: HashMap::new(), asked: HashMap::new(), list, search, _watch: watch, scale: 0.0 }
     }
 
     /// The rows: those whose name has what's typed, sorted as the header
     /// says (newest first until it says otherwise).
-    fn refilter(&mut self, cx: &mut Context<Self>) {
+    fn refilter(&mut self, cx: &mut Cx<Self>) {
         let typed = self.search.read(cx).text().to_lowercase();
         let mut shown: Vec<usize> = (0..self.all.len()).filter(|&i| typed.is_empty() || self.all[i].name.to_lowercase().contains(&typed)).collect();
-        let sort = self.list.read(cx).state.sort;
+        let sort = self.list.state().sort;
         let all = &self.all;
         if let Some((col, up)) = sort {
             shown.sort_by(|&a, &b| {
@@ -224,14 +200,14 @@ impl Library {
             });
         }
         if shown != self.shown {
-            self.list.update(cx, |l, _| l.state.selected.clear());
+            self.list.state_mut().selected.clear();
         }
         self.shown = shown;
     }
 
     /// Those not yet read (or read for another scale) read, a worker each
     /// few at a time.
-    fn ask(&mut self, cx: &mut Context<Self>) {
+    fn ask(&mut self, cx: &mut Cx<Self>) {
         let scale = self.scale;
         let want: Vec<PathBuf> =
             self.shown.iter().map(|&i| self.all[i].path.clone()).filter(|p| self.pictures.get(p).is_none_or(|(s, _)| *s != scale) && self.asked.get(p) != Some(&scale)).take(64).collect();
@@ -241,22 +217,22 @@ impl Library {
         for p in &want {
             self.asked.insert(p.clone(), scale);
         }
-        let proxy = olo_ui::proxy(cx);
+        let to = cx.messenger();
         std::thread::spawn(move || {
             for p in want {
                 let (seconds, pixels, picture) = read(&p, scale);
-                proxy.send(Msg::Read(p, seconds, pixels, picture.map(|i| (scale, i))));
+                to.send(Msg::Read(p, seconds, pixels, picture.map(|i| (scale, i))));
             }
         });
     }
 
-    fn chosen(&self, cx: &Context<Self>) -> Option<PathBuf> {
-        let row = self.list.read(cx).state.single()?;
+    fn chosen(&self) -> Option<PathBuf> {
+        let row = self.list.state().single()?;
         self.shown.get(row).map(|&i| self.all[i].path.clone())
     }
 
-    fn command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(path) = self.chosen(cx) else { return };
+    fn act(&mut self, command: &str, cx: &mut Cx<Self>) {
+        let Some(path) = self.chosen() else { return };
         let viewer = |args: &[&std::ffi::OsStr]| match olo_xdg::find_program("olo-viewer") {
             Some(v) => {
                 let mut argv = vec![v.into_os_string()];
@@ -271,29 +247,23 @@ impl Library {
             "play" => viewer(&[path.as_os_str()]),
             "edit" => viewer(&["--edit".as_ref(), path.as_os_str()]),
             "show" => {
-                let _ = olo_ui::tracker::open(&path);
+                let _ = olo_kit::tracker::open(&path);
             }
             "delete" => match crate::after::to_trash(&path) {
                 Ok(at) => self.history.done("Delete", Change::Trashed { from: path, at }),
                 Err(e) => eprintln!("olo-screenshot: couldn't move {} to the Trash: {e}", path.display()),
             },
             "rename" => {
-                let me = cx.entity();
-                cx.defer(move |cx| {
-                    olo_ui::open_window(cx, WindowOptions::new("Rename", 360.0, 120.0).dialog(), move |window, cx| cx.new(|cx| Rename::new(me, path, window, cx)));
-                });
+                let to = cx.messenger();
+                olo_kit::open_window_here(cx, WindowOptions::new("Rename", 360.0, 120.0).dialog(), move |cx| Rename::new(to, path, cx));
             }
             _ => {}
         }
-        let _ = window;
     }
-}
 
-impl Library {
     /// ⌘Z (`redo` false) or ⇧⌘Z: a Delete or a Rename… taken back, or
     /// done again. (The folder is followed: the list shows it.)
-    fn undo_redo(&mut self, redo: bool, cx: &mut Context<Self>) {
-        use olo_ui::undo::Purpose;
+    fn undo_redo(&mut self, redo: bool, cx: &mut Cx<Self>) {
         let Some(step) = (if redo { self.history.take_redo() } else { self.history.take_undo() }) else { return };
         let purpose = if redo { Purpose::Redo } else { Purpose::Undo };
         let done = match step.change {
@@ -311,36 +281,63 @@ impl Library {
             Ok(change) => self.history.record(purpose, step.name, change),
             Err(e) => eprintln!("olo-screenshot: couldn't {} {}: {e}", if redo { "redo" } else { "undo" }, step.name),
         }
-        cx.notify();
+        cx.invalidate();
     }
 }
 
-impl Render for Library {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if window.scale_factor() != self.scale {
-            self.scale = window.scale_factor();
+impl View for Library {
+    type Message = Msg;
+
+    fn message(&mut self, m: Msg, cx: &mut Cx<Self>) {
+        match m {
+            Msg::Listed(all) => {
+                // (What was read of those still here kept.)
+                let known: HashMap<PathBuf, (Option<f64>, Option<(u32, u32)>)> = self.all.iter().map(|r| (r.path.clone(), (r.seconds, r.pixels))).collect();
+                self.all = all
+                    .into_iter()
+                    .map(|mut r| {
+                        if let Some((s, p)) = known.get(&r.path) {
+                            (r.seconds, r.pixels) = (*s, *p);
+                        }
+                        r
+                    })
+                    .collect();
+                // (A picture let go of takes its texture with it.)
+                let here: std::collections::HashSet<&PathBuf> = self.all.iter().map(|r| &r.path).collect();
+                self.pictures.retain(|p, _| here.contains(p));
+                self.refilter(cx);
+            }
+            Msg::Read(path, seconds, pixels, picture) => {
+                self.asked.remove(&path);
+                if let Some(r) = self.all.iter_mut().find(|r| r.path == path) {
+                    r.seconds = seconds.or(r.seconds);
+                    r.pixels = pixels.or(r.pixels);
+                }
+                if let Some(p) = picture {
+                    self.pictures.insert(path, p);
+                }
+                self.refilter(cx);
+            }
+            Msg::Changed => cx.work(|| list(&folder()), Msg::Listed),
+            Msg::Renamed { from, to } => self.history.done("Rename", Change::Renamed { from, to }),
         }
+        cx.invalidate();
+    }
+
+    /// Edit's Undo and Redo (⌘Z, ⇧⌘Z: the window has no menu bar).
+    fn command(&mut self, name: &str, cx: &mut Cx<Self>) -> bool {
+        match name {
+            "undo" => self.undo_redo(false, cx),
+            "redo" => self.undo_redo(true, cx),
+            _ => return false,
+        }
+        true
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        self.scale = cx.scale_factor();
         self.ask(cx);
-        let p = theme::palette(cx);
-        let rows: Arc<Vec<(String, String, String, String, String, Option<Arc<RenderImage>>)>> = Arc::new(
-            self.shown
-                .iter()
-                .map(|&i| {
-                    let r = &self.all[i];
-                    let picture = self.pictures.get(&r.path).filter(|(s, _)| *s == self.scale).map(|(_, img)| img.clone());
-                    let pixels = r.pixels.map(|(w, h)| format!("{w} × {h}")).unwrap_or_default();
-                    (
-                        r.name.clone(),
-                        r.seconds.map(length).unwrap_or_else(|| if r.name.to_lowercase().ends_with(".gif") { "GIF".into() } else { String::new() }),
-                        bytes(r.bytes),
-                        when(r.modified),
-                        pixels,
-                        picture,
-                    )
-                })
-                .collect(),
-        );
-        let dropped = std::mem::take(&mut self.dropped);
+        let p = theme::palette();
         let columns = vec![
             Column::new("Picture", PICTURE.0 + 2.0 * m::CELL_INSET),
             Column::new("Name", 300.0),
@@ -348,59 +345,44 @@ impl Render for Library {
             Column::new("Size", 80.0).right(),
             Column::new("Date", 150.0),
         ];
-        let me = cx.entity();
-        let (open_me, sort_me) = (me.clone(), me.clone());
-        let cells = rows.clone();
-        let first = std::cell::RefCell::new(Some(dropped));
-        let list = ColumnListView::new("recordings", &self.list, columns, rows.len(), move |cell, window, cx| {
-            for img in first.borrow_mut().take().into_iter().flatten() {
-                let _ = window.drop_image(img);
-            }
-            let (name, len, size_s, date, pixels, picture) = &cells[cell.row];
+        let list = ColumnListView::new(cx, "recordings", &self.list, columns, self.shown.len(), |l: &Library, cell, g| {
+            let Some(r) = l.shown.get(cell.row).map(|&i| &l.all[i]) else { return };
             match cell.column {
                 0 => {
                     let b = cell.bounds;
-                    let frame = style::snap(window, gpui::Bounds::centered_at(b.center(), size(px(PICTURE.0), px(PICTURE.1))));
-                    let p = theme::palette(cx);
-                    style::fill_rect(window, frame, gpui::black());
-                    if let Some(img) = picture {
-                        let s = window.scale_factor();
+                    let frame = style::snap(g, Bounds::centered_at(b.center(), size(px(PICTURE.0), px(PICTURE.1))));
+                    let p = theme::palette();
+                    style::fill_rect(g, frame, olo_kit::black());
+                    let s = g.scale_factor();
+                    if let Some((_, img)) = l.pictures.get(&r.path).filter(|(made, _)| *made == s) {
                         let sz = img.size(0);
                         let (w, h) = (sz.width.0 as f32 / s, sz.height.0 as f32 / s);
-                        let at = style::snap(window, gpui::Bounds::new(point(frame.center().x - px(w / 2.0), frame.center().y - px(h / 2.0)), size(px(w), px(h))));
-                        let _ = window.paint_image(gpui::Bounds::new(at.origin, size(px(w), px(h))), gpui::Corners::default(), img.clone(), 0, false);
+                        let at = style::snap(g, Bounds::new(point(frame.center().x - px(w / 2.0), frame.center().y - px(h / 2.0)), size(px(w), px(h))));
+                        let _ = g.paint_image(Bounds::new(at.origin, size(px(w), px(h))), Corners::default(), img.clone(), 0, false);
                     }
-                    style::frame_rect(window, frame, style::tint(p.panel_background, 1.4));
-                    cell.say(if pixels.is_empty() { "Picture".to_owned() } else { format!("Picture, {pixels}") });
+                    style::frame_rect(g, frame, style::tint(p.panel_background, 1.4));
+                    cell.say(match r.pixels {
+                        Some((w, h)) => format!("Picture, {w} × {h}"),
+                        None => "Picture".to_owned(),
+                    });
                 }
-                1 => cell.text(window, cx, name.clone()),
-                2 => cell.text(window, cx, len.clone()),
-                3 => cell.text(window, cx, size_s.clone()),
-                _ => cell.text(window, cx, date.clone()),
+                1 => cell.text(g, r.name.clone()),
+                2 => cell.text(g, r.seconds.map(length).unwrap_or_else(|| if r.name.to_lowercase().ends_with(".gif") { "GIF".into() } else { String::new() })),
+                3 => cell.text(g, bytes(r.bytes)),
+                _ => cell.text(g, when(r.modified)),
             }
         })
         .row_height(ROW_H)
         .empty_text("No screen recordings yet. Record one with ⌘⇧6.")
-        .type_select({
-            let rows = rows.clone();
-            move |i| rows[i].0.clone().into()
-        })
-        .on_open(move |_, window, cx| open_me.update(cx, |l, cx| l.command("play", window, cx)))
-        .on_sort(move |_, cx| {
-            sort_me.update(cx, |l, cx| {
-                l.refilter(cx);
-                cx.notify();
-            })
-        })
-        .on_select({
-            let me = me.clone();
-            move |_, cx| me.update(cx, |_, cx| cx.notify())
-        });
-        let chosen = self.list.read(cx).state.single().is_some();
-        let cmd = |c: &'static str| {
-            let me = me.clone();
-            move |window: &mut Window, cx: &mut gpui::App| me.update(cx, |l, cx| l.command(c, window, cx))
-        };
+        .type_select(|l: &Library, i| l.shown.get(i).map(|&i| l.all[i].name.clone()).unwrap_or_default().into())
+        .on_open(cx.listener(|l: &mut Library, _: &usize, cx| l.act("play", cx)))
+        .on_sort(cx.listener(|l: &mut Library, _: &(), cx| {
+            l.refilter(cx);
+            cx.invalidate();
+        }))
+        .on_select(cx.listener(|_: &mut Library, _: &(), cx| cx.invalidate()));
+        let chosen = self.list.state().single().is_some();
+        let cmd = |c: &'static str| cx.listener(move |l: &mut Library, _: &ClickEvent, cx| l.act(c, cx));
         let count = match (self.shown.len(), self.all.len()) {
             (n, t) if n == t => format!("{n} recording{}", if n == 1 { "" } else { "s" }),
             (n, t) => format!("{n} of {t} recordings"),
@@ -416,7 +398,7 @@ impl Render for Library {
                     .flex()
                     .items_center()
                     .gap(px(m::SPACING))
-                    .child(div().w(px(240.0)).child(TextControl::new(self.search.clone())))
+                    .child(div().w(px(240.0)).child(TextControl::new(cx, &self.search)))
                     .child(div().flex_1().child(StringView::new(count).color(style::disabled_text(&p)))),
             )
             .child(div().flex_1().min_h_0().child(list))
@@ -436,30 +418,29 @@ impl Render for Library {
 
 /// Rename…: a recording's new name (its extension kept).
 struct Rename {
-    library: Entity<Library>,
+    /// The library, told what was renamed (for Undo).
+    library: Messenger<Msg>,
     path: PathBuf,
-    field: Entity<TextField>,
+    field: Child<TextField>,
     error: Option<String>,
 }
 
 impl Rename {
-    fn new(library: Entity<Library>, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Rename {
+    fn new(library: Messenger<Msg>, path: PathBuf, cx: &mut Cx<Self>) -> Rename {
         let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-        let field = text_field(cx, |f| f.name("Name"));
-        field.update(cx, |f, cx| f.set_text(stem, cx));
-        cx.subscribe_in(&field, window, |r, _, e: &TextFieldEvent, window, cx| match e {
-            TextFieldEvent::Entered => r.done(true, window, cx),
+        let field = text_field(cx, |f| f.name("Name").with_text(stem));
+        cx.subscribe(&field, |r: &mut Rename, e: &TextFieldEvent, cx| match e {
+            TextFieldEvent::Entered => r.done(true, cx),
             _ => {
                 r.error = None;
-                cx.notify();
+                cx.invalidate();
             }
-        })
-        .detach();
-        field.read(cx).focus(window);
+        });
+        field.focus(cx);
         Rename { library, path, field, error: None }
     }
 
-    fn done(&mut self, rename: bool, window: &mut Window, cx: &mut Context<Self>) {
+    fn done(&mut self, rename: bool, cx: &mut Cx<Self>) {
         if rename {
             let name = self.field.read(cx).text().trim().replace('/', "-");
             if name.is_empty() {
@@ -470,39 +451,36 @@ impl Rename {
             if to != self.path {
                 if to.exists() {
                     self.error = Some(format!("“{name}{ext}” is taken."));
-                    cx.notify();
-                    return;
+                    return cx.invalidate();
                 }
                 if let Err(e) = std::fs::rename(&self.path, &to) {
                     self.error = Some(e.to_string());
-                    cx.notify();
-                    return;
+                    return cx.invalidate();
                 }
-                let from = self.path.clone();
-                self.library.update(cx, |l, _| l.history.done("Rename", Change::Renamed { from, to }));
+                self.library.send(Msg::Renamed { from: self.path.clone(), to });
             }
         }
-        window.remove_window();
+        cx.close_window();
     }
 }
 
-impl Render for Rename {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let (ok, cancel) = (cx.entity(), cx.entity());
-        let p = theme::palette(cx);
-        let bw = olo_ui::widgets::buttons::button_width(window, "Rename", false).max(olo_ui::widgets::buttons::button_width(window, "Cancel", false));
+impl View for Rename {
+    type Message = ();
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let p = theme::palette();
+        let bw = button_width("Rename", false).max(button_width("Cancel", false));
         div()
             .p(px(m::WINDOW_INSET))
             .flex()
             .flex_col()
             .gap(px(m::STACK))
-            .on_key_down(cx.listener(|r, e: &gpui::KeyDownEvent, window, cx| {
+            .on_key_down(cx.listener(|r: &mut Rename, e: &KeyDownEvent, cx| {
                 if e.keystroke.key == "escape" {
-                    r.done(false, window, cx);
-                    cx.stop_propagation();
+                    r.done(false, cx);
                 }
             }))
-            .child(TextControl::new(self.field.clone()))
+            .child(TextControl::new(cx, &self.field))
             .child(StringView::new(self.error.clone().unwrap_or_else(|| "Its file’s name, in its folder.".into())).color(if self.error.is_some() {
                 style::c(p.failure)
             } else {
@@ -513,8 +491,8 @@ impl Render for Rename {
                     .flex()
                     .justify_end()
                     .gap(px(m::SPACING))
-                    .child(Button::new("Cancel").min_width(bw).on_click(move |window, cx| cancel.update(cx, |r, cx| r.done(false, window, cx))))
-                    .child(Button::new("Rename").default(true).min_width(bw).on_click(move |window, cx| ok.update(cx, |r, cx| r.done(true, window, cx)))),
+                    .child(Button::new("Cancel").min_width(bw).on_click(cx.listener(|r: &mut Rename, _: &ClickEvent, cx| r.done(false, cx))))
+                    .child(Button::new("Rename").default(true).min_width(bw).on_click(cx.listener(|r: &mut Rename, _: &ClickEvent, cx| r.done(true, cx)))),
             )
     }
 }
@@ -542,48 +520,13 @@ pub fn run(args: &[String]) -> std::process::ExitCode {
     if instance::forward(APP_ID, args) {
         return std::process::ExitCode::SUCCESS;
     }
-    olo_ui::run(APP_ID, move |cx| {
-        instance::listen(APP_ID, olo_ui::proxy(cx));
-        let list_model = ListModel::new(cx, false);
-        list_model.update(cx, |l, _| l.state.sort = Some((4, false)));
-        let search = text_field(cx, |f| f.name("Search").hint("Search"));
-        let proxy = olo_ui::proxy(cx);
-        let watch = olo_ui::watch::watch([folder()], move |_| proxy.send(Msg::Changed));
-        let library = cx.new(|cx| {
-            cx.subscribe(&search, |l: &mut Library, _, _: &TextFieldEvent, cx| {
-                l.refilter(cx);
-                cx.notify();
-            })
-            .detach();
-            Library {
-                history: Default::default(),
-                all: Vec::new(),
-                shown: Vec::new(),
-                pictures: HashMap::new(),
-                asked: HashMap::new(),
-                dropped: Vec::new(),
-                list: list_model,
-                search,
-                _watch: watch,
-                scale: 0.0,
-            }
-        });
-        let messages = library.clone();
-        olo_ui::message_handler(cx, move |m, cx| {
+    olo_kit::run(APP_ID, move |app| {
+        instance::listen(APP_ID, olo_kit::proxy());
+        let window = olo_kit::open_window(WindowOptions::new("Recordings", 760.0, 520.0).min_size(560.0, 360.0).keep_size("recordings"), Library::new);
+        olo_kit::message_handler(app, move |m, _| {
             if m.downcast_ref::<instance::Launch>().is_some() {
-                olo_ui::raise(None::<gpui::AnyWindowHandle>, cx);
-                return;
+                olo_kit::raise(Some(&window));
             }
-            if let Ok(m) = m.downcast::<Msg>() {
-                messages.update(cx, |l, cx| l.message(*m, cx));
-            }
-        });
-        library.update(cx, |l, cx| l.message(Msg::Changed, cx));
-        let view = library.clone();
-        olo_ui::open_window(cx, WindowOptions::new("Recordings", 760.0, 520.0).min_size(560.0, 360.0).keep_size("recordings"), move |window, cx| {
-            let keys = view.clone();
-            olo_ui::undo::keys(window, cx, move |redo, _, cx| keys.update(cx, |l, cx| l.undo_redo(redo, cx)));
-            view
         });
     });
     std::process::ExitCode::SUCCESS

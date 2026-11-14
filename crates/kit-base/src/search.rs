@@ -1,7 +1,7 @@
 //! Searching and filtering, the same in every app: a query language
 //! with matching and ranking ([`Query`]), the filters an app offers
 //! ([`Facet`]) and what to suggest as one is typed ([`suggest`]). The
-//! kit's search field and filter bar draw them (`olo_ui::search`); what
+//! kit's search field and filter bar draw them (`olo_kit::search`); what
 //! is typed and
 //! what is chosen edit the same text, so they always agree (and an agent
 //! can just type a query).

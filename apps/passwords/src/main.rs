@@ -2,11 +2,15 @@
 //! (`vault.rs`), and synced both ways with a 1Password account if asked
 //! (`sync.rs`, through `olo-onepassword`). Locked with Touch ID.
 //!
-//! On olo-ui: the app's state is a [`Passwords`] entity, which is the
-//! main window's view too; its panes are cached parts of it
-//! (`olo_ui::part`), so a one-time code counting down redraws the item
-//! pane alone. The generator, Review Sync and Sync Problems windows and
-//! the alerts are views of their own that read it.
+//! On olo-kit. Passwords runs with no window (started at login as the
+//! SSH agent and the keychain, locked) and its window comes and goes, so
+//! its state and logic are the app's: one [`Passwords`] behind a lock
+//! ([`app`]). The app's looper takes what the proxy brings (the store's
+//! replies, the lock's, other programs' requests, settings, what's due)
+//! and the windows' views lock it to draw and to act (`view.rs`); what
+//! changed is told to the windows ([`Passwords::changed`]). What only a
+//! window has (its text fields, lists, scrolls) is its view's, and what
+//! the logic wants of those it leaves in [`Ui`] for the view to take.
 
 mod agent;
 mod allow;
@@ -22,37 +26,36 @@ mod vault;
 mod view;
 
 use std::{
-    cell::RefCell,
     collections::{HashMap, HashSet},
-    rc::Rc,
-    sync::Arc,
+    sync::{
+        Arc, Mutex, MutexGuard, OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
 use olo_keychain::{Incoming, Request, Response};
-use olo_protocol::PasswordsSecurity;
-use olo_ui::{
-    Frame, Menu, MenuBar, Proxy, WindowOptions,
-    due::{Due, Notice},
-    gpui::{
-        AnyElement, App, AppContext as _, Context, Entity, FocusHandle, InteractiveElement as _, IntoElement, KeyDownEvent, MouseDownEvent, OutgoingDrag, ParentElement as _, Render, ScrollHandle,
-        SharedString, StyleRefinement, Styled as _, Subscription, Task, Window, WindowHandle, div, point, px,
-    },
+use olo_kit::{
+    ClickEvent, ClipboardItem, Cx, Element, FocusHandle, InteractiveElement as _, IntoElement as _, KeyDownEvent, Menu, ParentElement as _, Proxy, SharedString, Styled as _, View, WindowHandle,
+    WindowOptions, div,
+    due::Notice,
     instance::{self, Launch},
-    menu, metrics as m,
+    metrics as m,
     notify::{Note, Notifier},
-    part::{self, Part},
-    search::{self, Facet, Needle, Query, SearchEvent, SearchField, search_field},
-    widgets::{AlertFrame, Button, ListModel, RadioButton, TextField, TextFieldEvent, alert, button_row, open_alert, paragraph, text_field},
+    px,
+    search::{self, Facet, Needle, Query},
+    widgets::{Alert, AlertFrame, Button, RadioButton, alert, button_row, open_app_alert, paragraph},
 };
+use olo_protocol::PasswordsSecurity;
 use onepassword::{Item, ItemCategory, ItemFieldType, ItemOverview, ItemState, VaultOverview, totp::Totp};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    edit::{EditForm, Editor},
-    generator::{Generator, GeneratorView},
+    edit::Editor,
+    generator::{Generator, GeneratorMsg, GeneratorView},
     lock::{Lock, LockMsg},
     store::{FieldText, FromStore, Job, Reply, Searchable, Store, SyncState},
+    view::{MainMsg, MainView, ProblemsView, ReviewView},
 };
 
 const APP_ID: &str = "olo.passwords";
@@ -103,7 +106,7 @@ pub(crate) fn on_screen() -> bool {
 const SHARED_ONLY: &str = "Shared with this screen: change it in your own Passwords.";
 
 fn settings_path() -> std::path::PathBuf {
-    olo_ui::config_dir().join("passwords.json")
+    olo_kit::config_dir().join("passwords.json")
 }
 
 /// Where the list's items come from.
@@ -147,6 +150,13 @@ struct Saved {
     unlocked: bool,
     #[serde(default)]
     idle_secs: u64,
+    /// Its window was open (not running for the SSH agent alone).
+    #[serde(default = "yes")]
+    window: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 /// The accounts in the 1Password app, for the setup panel.
@@ -175,7 +185,7 @@ struct Approval {
 /// opened), the touch, finger or look also waited for, and what's said
 /// when one of them allows it.
 struct Allowing {
-    window: Option<WindowHandle<Frame>>,
+    window: Option<WindowHandle<Alert>>,
     _waits: allow::Waits,
     command: String,
     ssh: bool,
@@ -240,12 +250,12 @@ pub struct Review {
     pub rows: Vec<sync::Row>,
     pub problems: Vec<sync::Problem>,
     /// The Review Sync window, while it's open.
-    pub window: Option<WindowHandle<Frame>>,
+    pub window: Option<WindowHandle<ReviewView>>,
 }
 
 /// The Sync Problems window and what it lists.
 pub struct Problems {
-    pub window: Option<WindowHandle<Frame>>,
+    pub window: Option<WindowHandle<ProblemsView>>,
     pub list: Vec<sync::Problem>,
 }
 
@@ -261,70 +271,85 @@ const SYNC_AFTER_CHANGE: Duration = Duration::from_secs(3);
 /// How long something said in the status line stays.
 const STATUS_FOR: Duration = Duration::from_secs(6);
 
-/// The main window's cached parts.
-pub struct Parts {
-    menus: Entity<Part<Passwords>>,
-    pub sources: Entity<Part<Passwords>>,
-    pub items: Entity<Part<Passwords>>,
-    pub detail: Entity<Part<Passwords>>,
+/// What the logic wants of the main window's own things (its text
+/// fields, its lists, its scrolls), left here for its views to take as
+/// they next show.
+#[derive(Default)]
+pub struct Ui {
+    /// The password field lets go of what was typed.
+    pub clear_lock: bool,
+    /// The setup's account field is emptied.
+    pub clear_account: bool,
+    /// The search field shows the app's search (set here, not typed).
+    pub push_search: bool,
+    /// The search field takes the keyboard (Edit ▸ Find).
+    pub focus_search: bool,
+    /// The item's pane starts at its top again (another item).
+    pub detail_top: bool,
+    /// The editor starts at its top (just opened), or shows its end (why
+    /// it can't be saved is said there).
+    pub editor_top: bool,
+    pub editor_bottom: bool,
+    /// The editor's fields came or went: counted, and its form is made
+    /// again when this moves.
+    pub form: u64,
+    /// A value put in the form from outside (the generator's Use): the
+    /// field, and its text.
+    pub form_value: Option<(usize, String)>,
 }
 
 pub struct Passwords {
     /// Edit ▸ Undo and Redo (`undo.rs`): items as they were. Secrets: gone
     /// when it locks.
-    history: olo_ui::undo::History<undo::Change>,
-    settings: Settings,
+    history: olo_kit::undo::History<undo::Change>,
+    pub settings: Settings,
     /// Preferences ▸ Security's choices for Passwords (followed live).
     security: PasswordsSecurity,
     store: Store,
-    conn: Conn,
+    pub conn: Conn,
     /// The setup's choices: listed accounts ticked, and one named by hand.
     pub chosen: Vec<String>,
-    pub account_field: Entity<TextField>,
-    accounts: Accounts,
+    pub accounts: Accounts,
     /// Naming an account by hand rather than choosing a listed one.
     pub other_account: bool,
-    vaults: Vec<VaultOverview>,
+    pub vaults: Vec<VaultOverview>,
     /// Which account each synced vault is in.
     pub vault_accounts: HashMap<String, String>,
-    items: Vec<ItemOverview>,
-    loading: bool,
-    details: HashMap<String, Item>,
+    pub items: Vec<ItemOverview>,
+    pub loading: bool,
+    pub details: HashMap<String, Item>,
     /// What search and the filters need of every item (store.rs).
     index: HashMap<String, Searchable>,
     /// The filters, made again when the items change.
-    facets: RefCell<Option<Rc<Vec<Facet>>>>,
-    /// The list as last worked out: for which items (`rev`), source and
-    /// search.
-    /// The list worked out last (see `visible`), and where in each item
-    /// the search found what it did (`found_in`).
-    listed: RefCell<Option<(u64, Source, String, Rc<Vec<ItemOverview>>, Rc<Vec<Option<String>>>)>>,
+    facets: Mutex<Option<Arc<Vec<Facet>>>>,
+    /// The list worked out last (see `visible`), for which items
+    /// (`rev`), source and search, and where in each item the search
+    /// found what it did (`found_in`).
+    #[allow(clippy::type_complexity)]
+    listed: Mutex<Option<(u64, Source, String, Arc<Vec<ItemOverview>>, Arc<Vec<Option<String>>>)>>,
     /// Counts changes to the items (and what's known of them).
-    rev: std::cell::Cell<u64>,
-    missing: HashMap<String, String>,
-    source: Source,
-    selected: Option<String>,
-    reveal_selection: bool,
-    search: String,
-    pub search_field: Entity<SearchField>,
+    pub rev: u64,
+    pub missing: HashMap<String, String>,
+    pub source: Source,
+    pub selected: Option<String>,
+    pub reveal_selection: bool,
+    pub search: String,
     revealed: HashSet<String>,
     pub editor: Option<Editor>,
-    /// The editor's fields (made again when its fields come or go).
-    pub form: Option<EditForm>,
     /// The editor just opened: its title takes the keyboard.
     pub focus_title: bool,
     /// The editor's field to focus when next drawn (one just added).
     pub focus_field: Option<usize>,
-    lock: Lock,
-    pub lock_field: Entity<TextField>,
-    main: Option<WindowHandle<Frame>>,
-    parts: Option<Parts>,
-    generator: Option<(WindowHandle<Frame>, Entity<GeneratorView>)>,
+    pub lock: Lock,
+    /// The main window, while it's open.
+    main: Option<WindowHandle<MainView>>,
+    generator: Option<WindowHandle<GeneratorView>>,
     /// The terminal sessions being asked about (an alert showing).
     allow_shown: HashMap<cli::Session, Allowing>,
-    status: Notice,
+    pub status: Notice,
     last_use: Instant,
-    /// Just unlocked: the password field gives up the keyboard.
+    /// Just unlocked: the list takes the keyboard from the password
+    /// field.
     pub unlocked: bool,
     /// Other apps' requests waiting for an unlock or the item list.
     pub waiting: Vec<Incoming>,
@@ -348,25 +373,38 @@ pub struct Passwords {
     /// Open the review as soon as the sync asked for has one (the person
     /// asked; automatic syncs only say so in the status line).
     pub show_review: bool,
-    pub items_list: Entity<ListModel>,
-    /// The field under the pointer (its Copy and Show showing).
-    pub hover_field: Option<String>,
-    /// The field pressed, and where (a click copies it, a drag takes its
-    /// value out).
-    pub field_press: Option<(String, olo_ui::gpui::Point<olo_ui::gpui::Pixels>)>,
-    pub detail_scroll: ScrollHandle,
-    pub editor_scroll: ScrollHandle,
-    pub sources_scroll: ScrollHandle,
-    /// The next time something is due (an auto-lock, a sync, the status
-    /// line clearing): its timer.
-    wake: Due,
-    /// One-time codes counting down in the item pane: its tick.
-    countdown: Option<Task<()>>,
+    /// What the main window's views are to do with their own things.
+    pub ui: Ui,
+    /// A secret copied here is on the clipboard until then.
+    secret_until: Option<Instant>,
+    /// Closed with a secret still on the clipboard: running on without
+    /// its windows until that has left (`quit`).
+    leaving: bool,
     proxy: Proxy,
-    _subs: Vec<Subscription>,
     /// On an agent screen: what's shared with it, followed (the person's
     /// Passwords writes it again as they share more or less).
-    _shared: Option<olo_ui::watch::Watch>,
+    _shared: Option<olo_kit::watch::Watch>,
+}
+
+/// The app: its state and what it does, the one of it, behind a lock
+/// (the app's looper and each window's take it in turn, briefly; nothing
+/// that waits is done under it).
+static APP: OnceLock<Mutex<Passwords>> = OnceLock::new();
+
+pub fn app() -> MutexGuard<'static, Passwords> {
+    APP.get().expect("made as it starts").lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Something is due to be looked at on the app's looper (a timer set for
+/// what's next due): asked once until it has been.
+static SCHEDULING: AtomicBool = AtomicBool::new(false);
+
+/// What the app's looper is told by the app itself.
+enum Tell {
+    /// Look at what's next due, and set a timer for it.
+    Schedule,
+    /// A timer came due.
+    Tick,
 }
 
 /// `s` as a filter value: lower case, words joined by `-`
@@ -387,6 +425,30 @@ fn host(url: &str) -> Option<String> {
 }
 
 impl Passwords {
+    /// Something the windows show changed: they are told (each says what
+    /// it shows again), and what's next due is looked at on the app's
+    /// looper.
+    pub fn changed(&self) {
+        if let Some(w) = &self.main {
+            w.messenger().send(MainMsg::Refresh);
+        }
+        if let Some(w) = self.review.as_ref().and_then(|r| r.window.as_ref()) {
+            w.messenger().send(());
+        }
+        if let Some(w) = self.problems.as_ref().and_then(|p| p.window.as_ref()) {
+            w.messenger().send(());
+        }
+        if !SCHEDULING.swap(true, Ordering::AcqRel) {
+            self.proxy.send(Tell::Schedule);
+        }
+    }
+
+    /// The person did something in the main window: the auto-lock is put
+    /// off.
+    pub fn used(&mut self) {
+        self.last_use = Instant::now();
+    }
+
     /// A vault's name, with its account's when there are several.
     pub fn vault_title(&self, id: &str) -> String {
         self.vaults.iter().find(|v| v.id == id).map_or(String::new(), |v| self.vault_name(v))
@@ -405,26 +467,26 @@ impl Passwords {
 
     /// The items (or what's known of them) changed: the list and the
     /// filters are worked out again when next wanted.
-    fn invalidate(&self) {
-        self.rev.set(self.rev.get() + 1);
-        *self.facets.borrow_mut() = None;
+    fn invalidate(&mut self) {
+        self.rev += 1;
+        *self.facets.lock().unwrap_or_else(|e| e.into_inner()) = None;
     }
 
     /// The list for the current source and search: best matches first
     /// while searching, else by title. (Worked out once for each.)
-    pub fn visible(&self) -> Rc<Vec<ItemOverview>> {
+    pub fn visible(&self) -> Arc<Vec<ItemOverview>> {
         self.listing().0
     }
 
     /// For each item `visible` lists, where the search found what it
     /// looks for when that's inside it (`found_in`).
-    pub fn found(&self) -> Rc<Vec<Option<String>>> {
+    pub fn found(&self) -> Arc<Vec<Option<String>>> {
         self.listing().1
     }
 
-    fn listing(&self) -> (Rc<Vec<ItemOverview>>, Rc<Vec<Option<String>>>) {
-        if let Some((rev, source, search, list, found)) = &*self.listed.borrow()
-            && *rev == self.rev.get()
+    fn listing(&self) -> (Arc<Vec<ItemOverview>>, Arc<Vec<Option<String>>>) {
+        if let Some((rev, source, search, list, found)) = &*self.listed.lock().unwrap_or_else(|e| e.into_inner())
+            && *rev == self.rev
             && *source == self.source
             && *search == self.search
         {
@@ -457,9 +519,9 @@ impl Passwords {
             })
             .collect();
         list.sort_by_cached_key(|(score, i)| (std::cmp::Reverse(*score), i.title.to_lowercase(), i.id.clone()));
-        let found: Rc<Vec<Option<String>>> = Rc::new(list.iter().map(|(_, i)| self.found_in(i, &q)).collect());
-        let list: Rc<Vec<ItemOverview>> = Rc::new(list.into_iter().map(|(_, i)| i.clone()).collect());
-        *self.listed.borrow_mut() = Some((self.rev.get(), self.source.clone(), self.search.clone(), list.clone(), found.clone()));
+        let found: Arc<Vec<Option<String>>> = Arc::new(list.iter().map(|(_, i)| self.found_in(i, &q)).collect());
+        let list: Arc<Vec<ItemOverview>> = Arc::new(list.into_iter().map(|(_, i)| i.clone()).collect());
+        *self.listed.lock().unwrap_or_else(|e| e.into_inner()) = Some((self.rev, self.source.clone(), self.search.clone(), list.clone(), found.clone()));
         (list, found)
     }
 
@@ -530,8 +592,8 @@ impl Passwords {
     /// The list's filters: typed (`type:`, `vault:`, `tag:`, `site:`,
     /// `user:`, `has:`) and, for tags and what items have, in the bar;
     /// with how many items have each value.
-    pub fn facets_rc(&self) -> Rc<Vec<Facet>> {
-        if let Some(f) = &*self.facets.borrow() {
+    pub fn facets_rc(&self) -> Arc<Vec<Facet>> {
+        if let Some(f) = &*self.facets.lock().unwrap_or_else(|e| e.into_inner()) {
             return f.clone();
         }
         let active: Vec<&ItemOverview> = self.items.iter().filter(|i| i.state == ItemState::Active).collect();
@@ -591,8 +653,8 @@ impl Passwords {
         for (key, (name, n)) in labels {
             field = field.value(key, name, Some(n));
         }
-        let facets = Rc::new(vec![tag, has, ty, vault, Facet::new("site", "Website").typed_only(), Facet::new("user", "Username").typed_only(), section, field]);
-        *self.facets.borrow_mut() = Some(facets.clone());
+        let facets = Arc::new(vec![tag, has, ty, vault, Facet::new("site", "Website").typed_only(), Facet::new("user", "Username").typed_only(), section, field]);
+        *self.facets.lock().unwrap_or_else(|e| e.into_inner()) = Some(facets.clone());
         facets
     }
 
@@ -609,19 +671,19 @@ impl Passwords {
         item.category.label().to_string()
     }
 
-    pub fn select(&mut self, id: Option<String>, cx: &mut Context<Self>) {
+    pub fn select(&mut self, id: Option<String>) {
         if self.editor.as_ref().is_some_and(|e| e.changed()) && self.selected != id {
-            self.ask_discard(Then::Select(id), cx);
+            self.ask_discard(Then::Select(id));
             return;
         }
         if self.selected != id {
             self.close_editor();
             self.revealed.clear();
             self.selected = id;
-            self.detail_scroll.set_offset(point(px(0.0), px(0.0)));
+            self.ui.detail_top = true;
             self.fetch_selected();
         }
-        cx.notify();
+        self.changed();
     }
 
     fn fetch_selected(&mut self) {
@@ -633,29 +695,29 @@ impl Passwords {
         }
     }
 
-    pub fn set_source(&mut self, source: Source, cx: &mut Context<Self>) {
+    pub fn set_source(&mut self, source: Source) {
         if self.editor.as_ref().is_some_and(|e| e.changed()) {
-            self.ask_discard(Then::Source(source), cx);
+            self.ask_discard(Then::Source(source));
             return;
         }
         self.close_editor();
         self.source = source;
         self.keep_selection_listed();
-        cx.notify();
+        self.changed();
     }
 
     /// The search (or a filter) changed; `from_bar`: not typed, so the
     /// field is told.
-    pub fn set_search(&mut self, text: String, from_bar: bool, cx: &mut Context<Self>) {
+    pub fn set_search(&mut self, text: String, from_bar: bool) {
         if from_bar {
-            self.search_field.update(cx, |f, cx| f.set_text(text.clone(), cx));
+            self.ui.push_search = true;
         }
         if text == self.search {
             return;
         }
         self.search = text;
         self.keep_selection_listed();
-        cx.notify();
+        self.changed();
     }
 
     /// Keep the selection if it's still listed, else the first.
@@ -676,16 +738,16 @@ impl Passwords {
     }
 
     /// Open the store (the setup comes first if it hasn't been done).
-    pub fn connect(&mut self, cx: &mut Context<Self>) {
+    pub fn connect(&mut self) {
         if !self.set_up() {
             self.conn = Conn::Setup;
-            cx.notify();
+            self.changed();
             return;
         }
         self.conn = Conn::Connecting;
         self.loading = true;
         self.store.connect();
-        cx.notify();
+        self.changed();
     }
 
     /// Sync with 1Password now, if there's an account and the store is open.
@@ -703,77 +765,65 @@ impl Passwords {
     }
 
     /// Sync now because the person asked: its changes open for review.
-    pub fn sync_and_review(&mut self, cx: &mut Context<Self>) {
+    pub fn sync_and_review(&mut self) {
         if self.review.as_ref().is_some_and(|r| r.window.is_some()) {
-            return self.open_review(cx);
+            return self.open_review();
         }
         self.show_review = true;
         self.sync_now();
-        cx.notify();
+        self.changed();
     }
 
     /// Show the waiting changes.
-    pub fn open_review(&mut self, cx: &mut Context<Self>) {
-        let Some(review) = &self.review else { return };
-        let view = cx.entity();
+    pub fn open_review(&mut self) {
+        let Some(review) = &mut self.review else { return };
+        if let Some(w) = review.window.as_ref().filter(|w| w.is_open()) {
+            olo_kit::raise(Some(w));
+            return;
+        }
         let options = WindowOptions::new("Review Sync", 560.0, 440.0).min_size(420.0, 300.0).floating();
-        olo_ui::open_or_raise(
-            review.window,
-            cx,
-            options,
-            move |window, cx| {
-                let closing = view.clone();
-                window.on_window_should_close(cx, move |_, cx| {
-                    // Closed from its tab: as Cancel.
-                    closing.update(cx, |a, cx| {
-                        if let Some(r) = &mut a.review {
-                            r.window = None;
-                        }
-                        a.store.send(Job::Decline);
-                        a.end_review(cx);
-                    });
-                    true
-                });
-                cx.new(|cx| view::ReviewView::new(view.clone(), cx))
-            },
-            |a, w| {
-                if let Some(r) = &mut a.review {
-                    r.window = w;
-                }
-            },
-        );
+        review.window = Some(olo_kit::open_window(options, ReviewView::new));
+    }
+
+    /// The Review Sync window was closed from its tab: as Cancel.
+    pub fn review_closed(&mut self) {
+        if let Some(r) = &mut self.review
+            && r.window.take().is_some()
+        {
+            self.store.send(Job::Decline);
+            self.review = None;
+            self.changed();
+        }
     }
 
     /// The review is over (applied, declined, or overtaken).
-    pub fn end_review(&mut self, cx: &mut Context<Self>) {
+    pub fn end_review(&mut self) {
         if let Some(w) = self.review.take().and_then(|r| r.window) {
-            cx.defer(move |cx| {
-                let _ = w.update(cx, |_, window, _| window.remove_window());
-            });
+            w.messenger().send(());
+            w.close();
         }
-        cx.notify();
+        self.changed();
     }
 
     /// Ask, then erase everything kept here (nothing in 1Password).
-    fn confirm_reset(&mut self, cx: &mut Context<Self>) {
-        let me = cx.entity();
-        self.alert("Reset Passwords", "warning", RESET.to_owned(), &["Cancel", "Erase and Start Again"], cx, move |choice, cx| {
+    fn confirm_reset(&mut self) {
+        self.alert("Reset Passwords", "warning", RESET.to_owned(), &["Cancel", "Erase and Start Again"], |choice| {
             if choice == Some(1) {
-                me.update(cx, |a, _| a.store.send(Job::Reset));
+                app().store.send(Job::Reset);
             }
         });
     }
 
-    /// Opens an alert (once this update is over).
-    fn alert(&self, title: &'static str, icon: &'static str, message: String, buttons: &'static [&'static str], cx: &mut Context<Self>, on_choose: impl Fn(Option<usize>, &mut App) + 'static) {
-        cx.defer(move |cx| {
-            open_alert(cx, title, icon, &message, buttons, on_choose);
-        });
+    /// Opens an alert (the app's: over whichever of its windows has the
+    /// keyboard). Its answer comes on the alert's looper, with the app
+    /// not held.
+    fn alert(&self, title: &'static str, icon: &'static str, message: String, buttons: &'static [&'static str], on_choose: impl Fn(Option<usize>) + Send + Sync + 'static) {
+        let _ = open_app_alert(title, icon, &message, buttons, on_choose);
     }
 
     /// The store was erased: back to the start.
-    fn after_reset(&mut self, cx: &mut Context<Self>) {
-        self.end_review(cx);
+    fn after_reset(&mut self) {
+        self.end_review();
         self.close_editor();
         self.vaults.clear();
         self.items.clear();
@@ -788,7 +838,7 @@ impl Passwords {
         self.sync = None;
         self.sync_due = None;
         self.sync_asked = None;
-        self.account_field.update(cx, |f, cx| f.set_text("", cx));
+        self.ui.clear_account = true;
         self.chosen.clear();
         self.accounts = Accounts::Unknown;
         self.conn = Conn::Setup;
@@ -797,60 +847,59 @@ impl Passwords {
     }
 
     /// Keep items only here from now on (no syncing).
-    pub fn keep_local(&mut self, cx: &mut Context<Self>) {
+    pub fn keep_local(&mut self) {
         self.settings.accounts.clear();
         self.settings.local_only = true;
         self.sync = None;
         self.save_settings();
-        self.connect(cx);
+        self.connect();
     }
 
     /// Back to choosing the accounts (listing the app's afresh).
-    pub fn change_account(&mut self, cx: &mut Context<Self>) {
+    pub fn change_account(&mut self) {
         self.chosen = self.settings.accounts.iter().map(|l| l.id.clone()).collect();
-        self.account_field.update(cx, |f, cx| f.set_text("", cx));
+        self.ui.clear_account = true;
         self.other_account = false;
         self.accounts = Accounts::Unknown;
         self.conn = Conn::Setup;
-        cx.notify();
+        self.changed();
     }
 
     /// The setup's Sync: the accounts ticked and any named by hand.
-    pub fn sync_chosen(&mut self, cx: &mut Context<Self>) {
+    pub fn sync_chosen(&mut self, typed: &str) {
         let listed = view::listed_accounts(self);
         let mut chosen: Vec<Linked> = listed.iter().filter(|a| self.chosen.iter().any(|c| view::same(a, c))).map(|a| Linked { id: view::linked_id(self, a), label: a.name.clone() }).collect();
-        let typed = self.account_field.read(cx).text().trim().to_string();
+        let typed = typed.trim().to_string();
         if (listed.is_empty() || self.other_account) && !typed.is_empty() && !chosen.iter().any(|c| c.id == typed) {
             chosen.push(Linked { id: typed.clone(), label: typed });
         }
         if chosen.is_empty() && !self.set_up() {
             return;
         }
-        self.choose_accounts(chosen, cx);
+        self.choose_accounts(chosen);
     }
 
     /// The setup's choice: sync with `chosen` (the accounts kept keep
     /// their order, so the first stays first). Dropping any asks first.
-    pub fn choose_accounts(&mut self, chosen: Vec<Linked>, cx: &mut Context<Self>) {
+    pub fn choose_accounts(&mut self, chosen: Vec<Linked>) {
         let mut keep: Vec<Linked> = self.settings.accounts.iter().filter(|l| chosen.iter().any(|c| c.id == l.id)).cloned().collect();
         keep.extend(chosen.into_iter().filter(|c| !self.settings.accounts.iter().any(|l| l.id == c.id)));
         let removed: Vec<Linked> = self.settings.accounts.iter().filter(|l| !keep.iter().any(|k| k.id == l.id)).cloned().collect();
         if removed.is_empty() {
-            return self.link_accounts(Vec::new(), keep, cx);
+            return self.link_accounts(Vec::new(), keep);
         }
-        let me = cx.entity();
         let message = remove_message(&removed);
-        let what = RefCell::new(Some((removed, keep)));
-        self.alert("Remove Account", "warning", message, &["Cancel", "Remove"], cx, move |choice, cx| {
+        let what = Mutex::new(Some((removed, keep)));
+        self.alert("Remove Account", "warning", message, &["Cancel", "Remove"], move |choice| {
             if choice == Some(1)
-                && let Some((removed, keep)) = what.borrow_mut().take()
+                && let Some((removed, keep)) = what.lock().unwrap_or_else(|e| e.into_inner()).take()
             {
-                me.update(cx, |a, cx| a.link_accounts(removed, keep, cx));
+                app().link_accounts(removed, keep);
             }
         });
     }
 
-    fn link_accounts(&mut self, removed: Vec<Linked>, keep: Vec<Linked>, cx: &mut Context<Self>) {
+    fn link_accounts(&mut self, removed: Vec<Linked>, keep: Vec<Linked>) {
         for l in &removed {
             self.store.send(Job::RemoveAccount { account: l.id.clone() });
         }
@@ -863,11 +912,11 @@ impl Passwords {
         self.show_review = true;
         self.sync_asked = None;
         if first || self.vaults.is_empty() {
-            self.connect(cx);
+            self.connect();
         } else {
             self.conn = Conn::Ready;
             self.sync_now();
-            cx.notify();
+            self.changed();
         }
     }
 
@@ -900,12 +949,12 @@ impl Passwords {
         if on_screen() {
             return;
         }
-        olo_ui::store::save(settings_path(), &self.settings);
+        olo_kit::store::save(settings_path(), &self.settings);
     }
 
     /// Another app asks (Chrome's extension for a page's logins, the
     /// palette, op).
-    fn keychain(&mut self, incoming: Incoming, cx: &mut Context<Self>) {
+    fn keychain(&mut self, incoming: Incoming) {
         // What's shared with agent screens is the person's to choose, from
         // their own display: never an agent's on a screen (which could
         // share itself more), nor a screen's Passwords' to say.
@@ -951,7 +1000,7 @@ impl Passwords {
             // key); else come forward to be unlocked. The answer follows.
             self.waiting.push(incoming);
             self.ask_approval(None);
-            cx.notify();
+            self.changed();
             return;
         }
         if let Conn::Failed(message) = &self.conn {
@@ -1028,13 +1077,13 @@ impl Passwords {
             Request::Show { id, .. } => {
                 let id = id.clone();
                 if self.overview(&id).is_some() {
-                    self.set_source(Source::All, cx);
-                    self.set_search(String::new(), true, cx);
-                    self.select(Some(id), cx);
+                    self.set_source(Source::All);
+                    self.set_search(String::new(), true);
+                    self.select(Some(id));
                     self.reveal_selection = true;
                 }
-                self.open_main(cx);
-                cx.notify();
+                self.open_main();
+                self.changed();
                 return incoming.reply(Response::Shown);
             }
             // Credit cards: every one for the menu (not kept for sites);
@@ -1081,7 +1130,7 @@ impl Passwords {
                     _ => format!("Sign in to {rp} with which passkey?"),
                 };
                 let choices = found.iter().map(|p| ((p.vault.clone(), p.id.clone()), label(p))).collect();
-                return self.ask_passkey(incoming, message, choices, Vec::new(), cx);
+                return self.ask_passkey(incoming, message, choices, Vec::new());
             }
             Request::PasskeyCreate { url, rp_id, user_name, exclude, .. } => {
                 if !olo_keychain::rp_id_fits(rp_id, url) {
@@ -1106,7 +1155,7 @@ impl Passwords {
                     None => format!("Save a passkey{who} on {rp_id} in Passwords?"),
                 };
                 let candidates = near.iter().map(|i| (i.vault_id.clone(), i.id.clone())).collect();
-                return self.ask_passkey(incoming, message, Vec::new(), candidates, cx);
+                return self.ask_passkey(incoming, message, Vec::new(), candidates);
             }
         };
         let candidates: Vec<(String, String)> = self.items.iter().filter(|i| i.state == ItemState::Active && i.websites.iter().any(&fits)).map(|i| (i.vault_id.clone(), i.id.clone())).collect();
@@ -1139,9 +1188,8 @@ impl Passwords {
 
     /// Ask the person about a page's passkey, in an alert in front: to
     /// sign in with one of `choices`, or (with none) to save a new one.
-    fn ask_passkey(&mut self, incoming: Incoming, message: String, choices: Vec<((String, String), String)>, candidates: Vec<(String, String)>, cx: &mut Context<Self>) {
-        let me = cx.entity();
-        cx.defer(move |cx| PasskeyAsk::open(me, incoming, message, choices, candidates, cx));
+    fn ask_passkey(&mut self, incoming: Incoming, message: String, choices: Vec<((String, String), String)>, candidates: Vec<(String, String)>) {
+        PasskeyAsk::open(incoming, message, choices, candidates);
     }
 
     /// The person answered a passkey alert with button `choice` (None:
@@ -1160,21 +1208,19 @@ impl Passwords {
 
     /// A touch, a finger or a look allowed a terminal session: its alert
     /// goes, and a quiet notification says so.
-    fn allowed(&mut self, allow::Allowed { session, how }: allow::Allowed, cx: &mut Context<Self>) {
+    fn allowed(&mut self, allow::Allowed { session, how }: allow::Allowed) {
         let Some(asked) = self.allow_shown.remove(&session) else { return };
         tracing::info!(command = asked.command, how, "op allowed");
         let what = if asked.ssh { "sign in with your SSH keys" } else { "use your passwords" };
         quietly(&self.notifier, &format!("Allowed with {how}"), format!("“{}” can {what}.", asked.command));
         if let Some(w) = asked.window {
-            cx.defer(move |cx| {
-                let _ = w.update(cx, |_, window, _| window.remove_window());
-            });
+            w.close();
         }
-        self.answer_cli(session, true, cx);
+        self.answer_cli(session, true);
     }
 
     /// The person allowed (or denied) a terminal session's `op`.
-    fn answer_cli(&mut self, session: cli::Session, allow: bool, cx: &mut Context<Self>) {
+    fn answer_cli(&mut self, session: cli::Session, allow: bool) {
         self.allow_shown.remove(&session);
         if allow {
             self.grants.allow(session);
@@ -1183,7 +1229,7 @@ impl Passwords {
         self.cli_waiting = rest;
         for (_, incoming) in theirs {
             if allow {
-                self.keychain(incoming, cx);
+                self.keychain(incoming);
             } else {
                 incoming.reply(Response::Error { message: "Passwords: not allowed".into() });
             }
@@ -1208,10 +1254,10 @@ impl Passwords {
 
     /// Unlocked or allowed without asking, said in a quiet notification;
     /// else asked as usual.
-    fn approval(&mut self, Approval { about, on, ways }: Approval, cx: &mut Context<Self>) {
+    fn approval(&mut self, Approval { about, on, ways }: Approval) {
         self.asking.remove(&about);
         match about {
-            None if !self.lock.locked => self.serve_waiting(cx),
+            None if !self.lock.locked => self.serve_waiting(),
             None if self.waiting.is_empty() => {}
             None if on => {
                 let mut from: Vec<&str> = self.waiting.iter().map(|i| i.from.as_str()).collect();
@@ -1220,10 +1266,10 @@ impl Passwords {
                 tracing::info!(%from, "unlocked without asking");
                 quietly(&self.notifier, "Passwords unlocked without asking", format!("For {from}."));
                 if self.lock.approved() {
-                    self.now_unlocked(cx);
+                    self.now_unlocked();
                 }
             }
-            None => self.open_main(cx),
+            None => self.open_main(),
             Some(session) => {
                 let Some(pid) = self.cli_waiting.iter().find(|(s, _)| *s == session).map(|(_, i)| i.pid) else { return };
                 let ssh = self.cli_waiting.iter().any(|(s, i)| *s == session && matches!(i.request, Request::SshSign { .. }));
@@ -1231,24 +1277,13 @@ impl Passwords {
                 if on {
                     tracing::info!(command = asker.command, "op allowed without asking");
                     quietly(&self.notifier, "op allowed without asking", asker.command.clone());
-                    self.answer_cli(session, true, cx);
+                    self.answer_cli(session, true);
                 } else {
                     // Allowed by its button, or by what unlocks Passwords.
                     let message = allow_message(&asker, ssh, ways.sentence());
                     let waits = allow::Waits::start(ways, self.lock.user(), session, &self.proxy);
-                    self.allow_shown.insert(session, Allowing { window: None, _waits: waits, command: asker.command, ssh });
-                    let me = cx.entity();
-                    cx.defer(move |cx| {
-                        let answer = me.clone();
-                        let window = open_alert(cx, "Passwords", "warning", &message, &["Deny", "Allow"], move |choice, cx| {
-                            answer.update(cx, |a, cx| a.answer_cli(session, choice == Some(1), cx));
-                        });
-                        // (Already allowed by a touch: it goes again.)
-                        let open = me.update(cx, |a, _| a.allow_shown.get_mut(&session).map(|a| a.window = window).is_some());
-                        if !open && let Some(w) = window {
-                            let _ = w.update(cx, |_, window, _| window.remove_window());
-                        }
-                    });
+                    let window = open_app_alert("Passwords", "warning", &message, &["Deny", "Allow"], move |choice| app().answer_cli(session, choice == Some(1)));
+                    self.allow_shown.insert(session, Allowing { window: Some(window), _waits: waits, command: asker.command, ssh });
                 }
             }
         }
@@ -1256,40 +1291,40 @@ impl Passwords {
 
     /// Just unlocked (Touch ID, the password, or approved): the store
     /// opens and what waited is answered.
-    fn now_unlocked(&mut self, cx: &mut Context<Self>) {
+    fn now_unlocked(&mut self) {
         self.last_use = Instant::now();
         self.unlocked = true;
-        self.lock_field.update(cx, |f, cx| f.clear_secret(cx));
+        self.ui.clear_lock = true;
         // The store opens (again) now its secrets are wanted.
-        self.connect(cx);
+        self.connect();
         if self.selected.is_none() {
             self.selected = self.visible().first().map(|i| i.id.clone());
         }
         self.fetch_selected();
-        self.serve_waiting(cx);
+        self.serve_waiting();
     }
 
     /// Answer what waited for an unlock or for the items.
-    fn serve_waiting(&mut self, cx: &mut Context<Self>) {
+    fn serve_waiting(&mut self) {
         for incoming in std::mem::take(&mut self.waiting) {
-            self.keychain(incoming, cx);
+            self.keychain(incoming);
         }
     }
 
     /// The password typed in the lock panel, checked.
-    pub fn submit_password(&mut self, cx: &mut Context<Self>) {
+    pub fn submit_password(&mut self) {
         self.lock.submit();
         // (The lock took the password; the field lets go of it too.)
-        self.lock_field.update(cx, |f, cx| f.clear_secret(cx));
-        cx.notify();
+        self.ui.clear_lock = true;
+        self.changed();
     }
 
-    fn do_lock(&mut self, cx: &mut Context<Self>) {
+    fn do_lock(&mut self) {
         if on_screen() {
             return;
         }
         if self.editor.as_ref().is_some_and(|e| e.changed()) {
-            self.ask_discard(Then::Lock, cx);
+            self.ask_discard(Then::Lock);
             return;
         }
         self.close_editor();
@@ -1297,68 +1332,55 @@ impl Passwords {
         self.details.clear();
         self.revealed.clear();
         self.invalidate();
-        if let Some((w, _)) = self.generator.take() {
-            cx.defer(move |cx| {
-                let _ = w.update(cx, |_, window, _| window.remove_window());
-            });
+        if let Some(w) = self.generator.take() {
+            w.messenger().send(GeneratorMsg::Close);
         }
         // A waiting plan holds secrets too; it is worked out again later.
-        self.end_review(cx);
+        self.end_review();
         // The store lets go of its secrets (after a running sync), and
         // `op` must be allowed again; Undo's steps hold them too.
         self.store.send(Job::Close);
         self.history.clear();
         self.grants.clear();
         self.lock.lock();
-        self.lock_field.update(cx, |f, cx| f.clear_secret(cx));
-        cx.notify();
+        self.ui.clear_lock = true;
+        self.changed();
     }
 
     /// A secret on the clipboard, taken off again after the time chosen
     /// in Preferences ▸ Security.
-    pub fn copy_secret(&mut self, what: &str, text: &str, cx: &mut Context<Self>) {
+    pub fn copy_secret(&mut self, what: &str, text: &str) {
         let seconds = self.security.clear_seconds;
-        olo_ui::copy::secret(cx, text, Duration::from_secs(seconds as u64));
+        olo_kit::copy::secret(text, Duration::from_secs(seconds as u64));
+        self.secret_until = Some(Instant::now() + Duration::from_secs(seconds as u64));
         self.flash(format!("Copied {what}. It leaves the clipboard in {seconds} seconds."));
-        cx.notify();
+        self.changed();
     }
 
-    /// Drag a field's value out, onto another app's field: the value
-    /// (a one-time password's current code), drawn as the field's name,
-    /// never the secret. `field` is `url:…` for a website.
-    pub fn drag_field(&mut self, item: &str, field: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let (value, label) = match field.strip_prefix("url:") {
-            Some(url) => (url.to_owned(), "website".to_owned()),
+    /// What dragging a field out takes (onto another app's field): its
+    /// value (a one-time password's current code) and its name, which
+    /// the drag's picture shows, never the secret. `field` is `url:…`
+    /// for a website.
+    pub fn dragged_field(&self, item: &str, field: &str) -> Option<(String, String)> {
+        match field.strip_prefix("url:") {
+            Some(url) => Some((url.to_owned(), "website".to_owned())),
             None => {
-                let Some(f) = self.details.get(item).and_then(|i| i.field(field)).cloned() else { return };
+                let f = self.details.get(item).and_then(|i| i.field(field))?;
                 let label = if f.title.is_empty() { edit::kind_label(f.field_type).to_lowercase() } else { f.title.clone() };
                 let value = match f.field_type {
-                    ItemFieldType::Totp => match otp_code(&f.value).or_else(|| f.otp().and_then(|o| o.code.clone())) {
-                        Some(code) => code,
-                        None => return,
-                    },
+                    ItemFieldType::Totp => otp_code(&f.value).or_else(|| f.otp().and_then(|o| o.code.clone()))?,
                     _ => f.value.clone(),
                 };
-                (value, label)
+                Some((value, label))
             }
-        };
-        let icon = olo_ui::dnd::picture(window, cx, "passwords", 32.0, Some(&label), point(px(16.0), px(16.0)));
-        let bytes: Arc<[u8]> = Arc::from(value.into_bytes());
-        let drag = OutgoingDrag {
-            types: vec![("text/plain;charset=utf-8".into(), bytes.clone()), ("text/plain".into(), bytes.clone()), ("UTF8_STRING".into(), bytes)],
-            copy: true,
-            move_: false,
-            ask: false,
-            icon,
-        };
-        olo_ui::dnd::start(window, cx, drag, |_, _| {});
+        }
     }
 
-    pub fn copy_field(&mut self, item: &str, field: &str, cx: &mut Context<Self>) {
+    pub fn copy_field(&mut self, item: &str, field: &str) {
         if let Some(url) = field.strip_prefix("url:") {
-            cx.write_to_clipboard(olo_ui::gpui::ClipboardItem::new_string(url.to_owned()));
+            olo_kit::clipboard::write(ClipboardItem::new_string(url.to_owned()));
             self.flash("Copied the website.");
-            cx.notify();
+            self.changed();
             return;
         }
         let Some(f) = self.details.get(item).and_then(|i| i.field(field)).cloned() else { return };
@@ -1366,24 +1388,24 @@ impl Passwords {
         match f.field_type {
             ItemFieldType::Totp => {
                 if let Some(code) = otp_code(&f.value).or_else(|| f.otp().and_then(|o| o.code.clone())) {
-                    self.copy_secret("the one-time password", &code, cx);
+                    self.copy_secret("the one-time password", &code);
                 }
             }
-            t if edit::concealed(t) || t == ItemFieldType::CreditCardNumber => self.copy_secret(&format!("the {label}"), &f.value, cx),
+            t if edit::concealed(t) || t == ItemFieldType::CreditCardNumber => self.copy_secret(&format!("the {label}"), &f.value),
             _ => {
-                cx.write_to_clipboard(olo_ui::gpui::ClipboardItem::new_string(f.value.clone()));
+                olo_kit::clipboard::write(ClipboardItem::new_string(f.value.clone()));
                 self.flash(format!("Copied the {label}."));
-                cx.notify();
+                self.changed();
             }
         }
     }
 
     /// A secret field shown, or hidden again.
-    pub fn toggle_revealed(&mut self, field: String, cx: &mut Context<Self>) {
+    pub fn toggle_revealed(&mut self, field: String) {
         if !self.revealed.remove(&field) {
             self.revealed.insert(field);
         }
-        cx.notify();
+        self.changed();
     }
 
     pub fn revealed(&self, field: &str) -> bool {
@@ -1395,7 +1417,7 @@ impl Passwords {
     /// None: `cli::main_field`), for the `op` command (Ben, 2026-11-05:
     /// "right click and get a reference that will work in the op cli
     /// shim"): copied as plain text, no secret in it.
-    pub fn copy_reference(&mut self, item: &str, field: Option<&str>, cx: &mut Context<Self>) {
+    pub fn copy_reference(&mut self, item: &str, field: Option<&str>) {
         let Some(i) = self.details.get(item).cloned() else { return };
         let vault = self.vaults.iter().find(|v| v.id == i.vault_id).map_or_else(|| i.vault_id.clone(), |v| v.title.clone());
         let found = match field {
@@ -1405,18 +1427,18 @@ impl Passwords {
         };
         match found {
             Some((reference, what)) => {
-                cx.write_to_clipboard(olo_ui::gpui::ClipboardItem::new_string(reference));
+                olo_kit::clipboard::write(ClipboardItem::new_string(reference));
                 self.flash(format!("Copied the reference to “{}”’s {what}.", i.title));
             }
             None => self.flash(format!("“{}” has nothing to refer to.", i.title)),
         }
-        cx.notify();
+        self.changed();
     }
 
-    fn copy_selected(&mut self, kind: &str, cx: &mut Context<Self>) {
+    fn copy_selected(&mut self, kind: &str) {
         if kind == "reference" {
             if let Some(id) = self.selected.clone() {
-                self.copy_reference(&id, None, cx);
+                self.copy_reference(&id, None);
             }
             return;
         }
@@ -1429,47 +1451,44 @@ impl Passwords {
             _ => item.fields.iter().find(|f| f.field_type == ItemFieldType::Totp),
         };
         match field {
-            Some(f) => self.copy_field(&item.id, &f.id.clone(), cx),
+            Some(f) => self.copy_field(&item.id, &f.id.clone()),
             None => self.flash(format!("“{}” has no {}.", item.title, if kind == "otp" { "one-time password" } else { kind })),
         }
-        cx.notify();
+        self.changed();
     }
 
-    pub fn open_website(&mut self, cx: &mut Context<Self>) {
+    pub fn open_website(&mut self) {
         let Some(url) = self.selected.as_ref().and_then(|s| self.overview(s)).and_then(|o| o.websites.first()).map(|w| w.url.clone()) else { return };
         open_url(&url);
         self.flash(format!("Opening {}", host(&url).unwrap_or(url)));
-        cx.notify();
+        self.changed();
     }
 
     /// The editor closed (saved, cancelled or overtaken).
     fn close_editor(&mut self) {
         self.editor = None;
-        self.form = None;
+        self.ui.form += 1;
     }
 
-    /// The editor opened on `editor`: its fields made, the title given
-    /// the keyboard.
-    fn open_editor(&mut self, editor: Editor, cx: &mut Context<Self>) {
-        self.form = Some(EditForm::new(&editor, cx));
+    /// The editor opened on `editor`: its fields are made (by the item
+    /// pane, as it next shows), the title given the keyboard.
+    fn open_editor(&mut self, editor: Editor) {
         // A new item's title takes the keyboard (an item edited keeps it
         // where it was).
         self.focus_title = editor.base.is_none();
         self.editor = Some(editor);
-        self.hover_field = None;
-        self.editor_scroll.set_offset(point(px(0.0), px(0.0)));
-        cx.notify();
+        self.ui.form += 1;
+        self.ui.editor_top = true;
+        self.changed();
     }
 
     /// The editor's fields came or went: its form made again.
-    fn rebuild_form(&mut self, cx: &mut Context<Self>) {
-        if let Some(e) = &self.editor {
-            self.form = Some(EditForm::new(e, cx));
-        }
-        cx.notify();
+    fn rebuild_form(&mut self) {
+        self.ui.form += 1;
+        self.changed();
     }
 
-    fn new_item(&mut self, category: ItemCategory, cx: &mut Context<Self>) {
+    fn new_item(&mut self, category: ItemCategory) {
         if on_screen() {
             return self.flash(SHARED_ONLY);
         }
@@ -1477,7 +1496,7 @@ impl Passwords {
             return;
         }
         if self.editor.as_ref().is_some_and(|e| e.changed()) {
-            self.ask_discard(Then::New(category), cx);
+            self.ask_discard(Then::New(category));
             return;
         }
         // The vault being looked at, else the first (Personal).
@@ -1485,10 +1504,10 @@ impl Passwords {
             Source::Vault(v) => self.vaults.iter().position(|x| &x.id == v).unwrap_or(0),
             _ => 0,
         };
-        self.open_editor(Editor::new_item(category, vault, None), cx);
+        self.open_editor(Editor::new_item(category, vault, None));
     }
 
-    pub fn edit_selected(&mut self, cx: &mut Context<Self>) {
+    pub fn edit_selected(&mut self) {
         if on_screen() {
             return self.flash(SHARED_ONLY);
         }
@@ -1498,24 +1517,24 @@ impl Passwords {
         }
         let vault = self.vaults.iter().position(|v| v.id == item.vault_id).unwrap_or(0);
         let editor = Editor::edit(item, vault);
-        self.open_editor(editor, cx);
+        self.open_editor(editor);
     }
 
-    pub fn save_editor(&mut self, cx: &mut Context<Self>) {
+    pub fn save_editor(&mut self) {
         let Some(editor) = &mut self.editor else { return };
         if editor.base.is_some() && !editor.changed() {
             self.close_editor();
-            cx.notify();
+            self.changed();
             return;
         }
         // What 1Password wouldn't take is said here, not found at sync,
         // under the form (scrolled to: it's below the fold on a long item).
         if !editor.ready() {
-            self.editor_scroll.scroll_to_bottom();
-            cx.notify();
+            self.ui.editor_bottom = true;
+            self.changed();
             return;
         }
-        let tag = |name: String, before: Option<Box<onepassword::Item>>| Some(store::Tag { purpose: olo_ui::undo::Purpose::Do, name, before });
+        let tag = |name: String, before: Option<Box<onepassword::Item>>| Some(store::Tag { purpose: olo_kit::undo::Purpose::Do, name, before });
         if let Some(base) = editor.base.clone() {
             if let Some(item) = editor.to_item() {
                 let name = format!("Changes to “{}”", base.title);
@@ -1527,70 +1546,66 @@ impl Passwords {
             self.store.send(Job::Create(Box::new(params), tag(name, None)));
             self.flash("Saving…");
         }
-        cx.notify();
+        self.changed();
     }
 
-    pub fn cancel_editor(&mut self, cx: &mut Context<Self>) {
+    pub fn cancel_editor(&mut self) {
         self.close_editor();
-        cx.notify();
+        self.changed();
     }
 
     /// The generator, opened for an editor's field (its New).
-    pub fn generate_for(&mut self, field: String, cx: &mut Context<Self>) {
+    pub fn generate_for(&mut self, field: String) {
         let item = self.editor.as_ref().and_then(|e| e.item_id()).unwrap_or("").to_string();
-        self.open_generator(Some((item, field)), cx);
+        self.open_generator(Some((item, field)));
     }
 
-    pub fn toggle_edit_reveal(&mut self, i: usize, cx: &mut Context<Self>) {
+    pub fn toggle_edit_reveal(&mut self, i: usize) {
         let Some(f) = self.editor.as_mut().and_then(|e| e.fields.get_mut(i)) else { return };
         f.reveal = !f.reveal;
-        let on = f.reveal;
-        if let Some(form) = &self.form {
-            form.reveal(i, on, cx);
-        }
-        cx.notify();
+        self.changed();
     }
 
-    pub fn remove_edit_field(&mut self, i: usize, cx: &mut Context<Self>) {
+    pub fn remove_edit_field(&mut self, i: usize) {
         if let Some(e) = self.editor.as_mut()
             && i < e.fields.len()
         {
             e.fields.remove(i);
-            self.rebuild_form(cx);
+            self.rebuild_form();
         }
     }
 
     /// A field of `kind` added to `section` (a titled one; `None`: the
     /// first group), and focused: its label if it has none yet, else its
     /// value.
-    pub fn add_edit_field(&mut self, kind: ItemFieldType, section: Option<&str>, cx: &mut Context<Self>) {
+    pub fn add_edit_field(&mut self, kind: ItemFieldType, section: Option<&str>) {
         if let Some(e) = self.editor.as_mut() {
             let at = e.add_field(kind, section);
             self.focus_field = Some(at);
-            self.rebuild_form(cx);
+            self.rebuild_form();
         }
     }
 
-    pub fn remove_edit_website(&mut self, i: usize, cx: &mut Context<Self>) {
+    pub fn remove_edit_website(&mut self, i: usize) {
         if let Some(e) = self.editor.as_mut()
             && i < e.websites.len()
         {
             e.websites.remove(i);
-            self.rebuild_form(cx);
+            self.rebuild_form();
         }
     }
 
-    pub fn add_edit_website(&mut self, cx: &mut Context<Self>) {
+    pub fn add_edit_website(&mut self) {
         if let Some(e) = self.editor.as_mut() {
             e.websites.push((String::new(), "website".into(), onepassword::AutofillBehavior::AnywhereOnWebsite));
-            self.rebuild_form(cx);
+            self.rebuild_form();
         }
     }
 
-    /// The generator's Use: its password into the field it was opened for.
-    pub fn use_generated(&mut self, password: String, cx: &mut Context<Self>) {
-        let Some(target) = self.generator.as_ref().and_then(|(_, g)| g.read(cx).generator.target.clone()) else { return };
-        let (item, field) = target;
+    /// The generator's Use: its password into the field it was opened
+    /// for (`target`: the item and the field).
+    pub fn use_generated(&mut self, password: String, target: Option<(String, String)>) {
+        let Some((item, field)) = target else { return };
         let Some(editor) = &mut self.editor else { return };
         if editor.item_id().unwrap_or("") != item {
             return;
@@ -1598,10 +1613,8 @@ impl Passwords {
         let Some(i) = editor.fields.iter().position(|f| f.id == field) else { return };
         editor.fields[i].value = password.clone();
         editor.fields[i].reveal = true;
-        if let Some(form) = &self.form {
-            form.set_value(i, &password, true, cx);
-        }
-        cx.notify();
+        self.ui.form_value = Some((i, password));
+        self.changed();
     }
 
     /// The generator's window went.
@@ -1610,89 +1623,75 @@ impl Passwords {
         self.save_settings();
     }
 
-    fn ask_discard(&mut self, then: Then, cx: &mut Context<Self>) {
-        let me = cx.entity();
-        let then = RefCell::new(Some(then));
-        self.alert("Passwords", "warning", "Discard the changes to this item?".into(), &["Keep Editing", "Discard"], cx, move |choice, cx| {
+    fn ask_discard(&mut self, then: Then) {
+        let then = Mutex::new(Some(then));
+        self.alert("Passwords", "warning", "Discard the changes to this item?".into(), &["Keep Editing", "Discard"], move |choice| {
             if choice == Some(1)
-                && let Some(then) = then.borrow_mut().take()
+                && let Some(then) = then.lock().unwrap_or_else(|e| e.into_inner()).take()
             {
-                me.update(cx, |a, cx| a.after_discard(then, cx));
+                app().after_discard(then);
             }
         });
     }
 
-    fn show_error(&mut self, message: String, cx: &mut Context<Self>) {
-        self.alert("Passwords", "stop", message, &["OK"], cx, |_, _| {});
+    fn show_error(&mut self, message: String) {
+        self.alert("Passwords", "stop", message, &["OK"], |_| {});
     }
 
     /// The whole of a sync problem, from the status line.
-    pub fn show_problem(&mut self, message: String, cx: &mut Context<Self>) {
-        self.show_error(message, cx);
+    pub fn show_problem(&mut self, message: String) {
+        self.show_error(message);
     }
 
     /// What a sync couldn't do, item by item, grouped by vault.
-    pub fn show_problems(&mut self, list: Vec<sync::Problem>, cx: &mut Context<Self>) {
+    pub fn show_problems(&mut self, list: Vec<sync::Problem>) {
         let list = sync::grouped(list);
-        if let Some(p) = &mut self.problems {
-            p.list = list;
-            if let Some(w) = p.window
-                && olo_ui::raise(Some(w), cx)
-            {
-                cx.notify();
-                return;
+        let open = self.problems.as_ref().and_then(|p| p.window.as_ref()).filter(|w| w.is_open()).cloned();
+        match open {
+            Some(w) => {
+                self.problems = Some(Problems { window: Some(w.clone()), list });
+                olo_kit::raise(Some(&w));
             }
-        } else {
-            self.problems = Some(Problems { window: None, list });
+            None => {
+                let window = olo_kit::open_window(WindowOptions::new("Sync Problems", 520.0, 400.0).min_size(400.0, 260.0).dialog().child(), ProblemsView::new);
+                self.problems = Some(Problems { window: Some(window), list });
+            }
         }
-        let me = cx.entity();
-        cx.defer(move |cx| {
-            let view = me.clone();
-            let handle = olo_ui::open_window(cx, WindowOptions::new("Sync Problems", 520.0, 400.0).min_size(400.0, 260.0).dialog().child(), move |window, cx| {
-                let closing = view.clone();
-                window.on_window_should_close(cx, move |_, cx| {
-                    closing.update(cx, |a, _| a.problems = None);
-                    true
-                });
-                cx.new(|cx| view::ProblemsView::new(view.clone(), cx))
-            });
-            me.update(cx, |a, _| {
-                if let Some(p) = &mut a.problems {
-                    p.window = handle;
-                }
-            });
-        });
+        self.changed();
+    }
+
+    /// The Sync Problems window went (closed from its tab, or by us).
+    pub fn problems_gone(&mut self) {
+        self.problems = None;
     }
 
     /// The Sync Problems window closed from its buttons.
-    pub fn close_problems(&mut self, cx: &mut Context<Self>) {
+    pub fn close_problems(&mut self) {
         if let Some(w) = self.problems.take().and_then(|p| p.window) {
-            cx.defer(move |cx| {
-                let _ = w.update(cx, |_, window, _| window.remove_window());
-            });
+            w.close();
         }
     }
 
     /// The review's Apply or Cancel.
-    pub fn answer_review(&mut self, apply: bool, cx: &mut Context<Self>) {
+    pub fn answer_review(&mut self, apply: bool) {
         let Some(plan) = self.review.as_ref().map(|r| r.plan) else { return };
         self.store.send(if apply { Job::Approve { plan } } else { Job::Decline });
-        self.end_review(cx);
+        self.end_review();
     }
 
     /// Edit ▸ Undo (or Redo): the step's inverse as a save, a creation or
     /// a deletion, its reply recording what it did for the other way.
-    fn undo_redo(&mut self, redo: bool, cx: &mut Context<Self>) {
+    fn undo_redo(&mut self, redo: bool) {
         let step = if redo { self.history.take_redo() } else { self.history.take_undo() };
         let Some(step) = step else { return };
-        let purpose = if redo { olo_ui::undo::Purpose::Redo } else { olo_ui::undo::Purpose::Undo };
+        let purpose = if redo { olo_kit::undo::Purpose::Redo } else { olo_kit::undo::Purpose::Undo };
         let name = step.name.clone();
         self.store.send(step.change.inverse(|before| Some(store::Tag { purpose, name, before })));
         self.flash(if redo { "Redoing…" } else { "Undoing…" });
-        cx.notify();
+        self.changed();
     }
 
-    fn confirm_delete(&mut self, cx: &mut Context<Self>) {
+    fn confirm_delete(&mut self) {
         if on_screen() {
             return self.flash(SHARED_ONLY);
         }
@@ -1704,111 +1703,97 @@ impl Passwords {
         } else {
             format!("Delete “{}” for good? Its attached files can’t come back.", o.title)
         };
-        let tag = back.then(|| store::Tag { purpose: olo_ui::undo::Purpose::Do, name: format!("Delete “{}”", o.title), before: None });
-        let me = cx.entity();
-        self.alert("Delete Item", "warning", message, &["Cancel", "Delete"], cx, move |choice, cx| {
+        let tag = back.then(|| store::Tag { purpose: olo_kit::undo::Purpose::Do, name: format!("Delete “{}”", o.title), before: None });
+        self.alert("Delete Item", "warning", message, &["Cancel", "Delete"], move |choice| {
             if choice == Some(1) {
-                me.update(cx, |a, _| a.store.send(Job::Delete { vault: o.vault_id.clone(), item: o.id.clone(), tag: tag.clone() }));
+                app().store.send(Job::Delete { vault: o.vault_id.clone(), item: o.id.clone(), tag: tag.clone() });
             }
         });
     }
 
-    fn after_discard(&mut self, then: Then, cx: &mut Context<Self>) {
+    fn after_discard(&mut self, then: Then) {
         self.close_editor();
         match then {
-            Then::Select(id) => self.select(id, cx),
-            Then::Source(s) => self.set_source(s, cx),
-            Then::New(c) => self.new_item(c, cx),
-            Then::Close => self.quit(cx),
-            Then::Lock => self.do_lock(cx),
+            Then::Select(id) => self.select(id),
+            Then::Source(s) => self.set_source(s),
+            Then::New(c) => self.new_item(c),
+            Then::Close => self.quit(),
+            Then::Lock => self.do_lock(),
         }
-        cx.notify();
+        self.changed();
     }
 
     /// Passwords ends (its main window closed, or Quit): the generator's
-    /// recipe and the window's size kept.
-    fn quit(&mut self, cx: &mut Context<Self>) {
+    /// recipe kept. With a secret it copied still on the clipboard it
+    /// runs on without its windows until that has left (so it can still
+    /// be pasted), and ends then; opened meanwhile, it carries on.
+    fn quit(&mut self) {
         self.save_settings();
-        self.main = None;
-        cx.defer(|cx| cx.quit());
-    }
-
-    pub fn open_generator(&mut self, target: Option<(String, String)>, cx: &mut Context<Self>) {
-        if let Some((w, g)) = &self.generator {
-            g.update(cx, |g, cx| {
-                g.generator.target = target;
-                cx.notify();
-            });
-            olo_ui::raise(Some(*w), cx);
+        if self.secret_until.is_some_and(|t| t > Instant::now()) {
+            // (Its windows go; nothing else of it does.)
+            olo_kit::stay_resident();
+            self.leaving = true;
+            if let Some(w) = self.main.take() {
+                w.close();
+            }
+            if let Some(w) = self.generator.take() {
+                w.messenger().send(GeneratorMsg::Close);
+            }
+            if let Some(w) = self.problems.take().and_then(|p| p.window) {
+                w.close();
+            }
+            if let Some(w) = self.review.as_mut().and_then(|r| r.window.take()) {
+                w.close();
+            }
+            self.changed();
             return;
         }
-        let me = cx.entity();
+        self.main = None;
+        olo_kit::quit();
+    }
+
+    pub fn open_generator(&mut self, target: Option<(String, String)>) {
+        if let Some(w) = self.generator.as_ref().filter(|w| w.is_open()) {
+            w.messenger().send(GeneratorMsg::Target(target));
+            return;
+        }
         let generator = Generator::new(self.settings.generator.clone(), target);
         // (A panel beside the app's window: it floats, never a tab.)
-        cx.defer(move |cx| {
-            let view = cx.new(|cx| GeneratorView::new(generator, me.clone(), cx));
-            let shown = view.clone();
-            let closing = me.clone();
-            let handle = olo_ui::open_window(cx, WindowOptions::new("Password Generator", 380.0, 330.0).min_size(340.0, 300.0).dialog(), move |window, cx| {
-                window.on_window_should_close(cx, move |_, cx| {
-                    closing.update(cx, |a, _| a.generator_closed());
-                    true
-                });
-                shown.read(cx).focus(window);
-                shown
-            });
-            me.update(cx, |a, _| a.generator = handle.map(|h| (h, view)));
-        });
+        self.generator = Some(olo_kit::open_window(WindowOptions::new("Password Generator", 380.0, 330.0).min_size(340.0, 300.0).dialog(), move |cx| GeneratorView::new(generator, cx)));
     }
 
-    fn open_main(&mut self, cx: &mut Context<Self>) {
+    fn open_main(&mut self) {
+        self.leaving = false;
         // (Gone if it was closed while we hold the clipboard.)
-        if let Some(w) = self.main
-            && olo_ui::raise(Some(w), cx)
-        {
+        if let Some(w) = self.main.as_ref().filter(|w| w.is_open()) {
+            olo_kit::raise(Some(w));
             return;
         }
-        self.main = None;
-        let me = cx.entity();
         let (w, h) = self.settings.size.unwrap_or((920, 580));
-        cx.defer(move |cx| {
-            if me.read(cx).parts.is_none() {
-                let parts = Parts::new(&me, cx);
-                me.update(cx, |a, _| a.parts = Some(parts));
-            }
-            let view = me.clone();
-            let handle = olo_ui::open_window(cx, WindowOptions::new("Passwords", w as f32, h as f32).min_size(680.0, 420.0).keep_size("main"), move |window, cx| {
-                let closing = view.clone();
-                window.on_window_should_close(cx, move |window, cx| closing.update(cx, |a, cx| a.close_requested(window, cx)));
-                view.update(cx, |a, cx| {
-                    let sub = cx.observe_window_activation(window, |a, window, cx| {
-                        a.lock.focus(window.is_window_active());
-                        cx.notify();
-                    });
-                    a._subs.push(sub);
-                    a.lock.focus(window.is_window_active());
-                });
-                view
-            });
-            me.update(cx, |a, _| a.main = handle);
-        });
+        self.main = Some(olo_kit::open_window(WindowOptions::new("Passwords", w as f32, h as f32).min_size(680.0, 420.0).keep_size("main"), MainView::new));
     }
 
     /// The main window's close: asks about an edit first; else Passwords
     /// ends (and so do its other windows).
-    fn close_requested(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let _ = window;
+    pub fn close_requested(&mut self) -> bool {
         if self.editor.as_ref().is_some_and(|e| e.changed()) {
-            self.ask_discard(Then::Close, cx);
+            self.ask_discard(Then::Close);
             return false;
         }
-        self.quit(cx);
+        self.quit();
         true
     }
 
-    fn apply_reply(&mut self, reply: Reply, cx: &mut Context<Self>) {
-        // (The list and the filters' values and counts follow the items.)
-        self.invalidate();
+    fn apply_reply(&mut self, reply: Reply) {
+        // (The list and the filters' values and counts follow the items.
+        // Not an item's own details coming in, for one the index has:
+        // what the list and the filters show of it they have from
+        // there, and each item the arrows pass would have had the whole
+        // list and every filter worked out again.)
+        let listed = !matches!(&reply, Reply::Item(item) if self.index.contains_key(&item.id));
+        if listed {
+            self.invalidate();
+        }
         match reply {
             Reply::Index(index) => self.index = index,
             Reply::Connected => {
@@ -1839,7 +1824,7 @@ impl Passwords {
                     }
                 }
                 if !matches!(state, SyncState::Review { .. }) {
-                    self.end_review(cx);
+                    self.end_review();
                 }
                 if !matches!(state, SyncState::Running | SyncState::Review { .. }) {
                     self.show_review = false;
@@ -1848,16 +1833,17 @@ impl Passwords {
             }
             Reply::Review { plan, rows, problems } => {
                 let window = self.review.take().and_then(|r| r.window);
+                let open = window.is_some();
                 self.review = Some(Review { plan, rows, problems, window });
-                if std::mem::take(&mut self.show_review) || window.is_some() {
-                    self.open_review(cx);
+                if std::mem::take(&mut self.show_review) || open {
+                    self.open_review();
                 }
             }
-            Reply::Reset => self.after_reset(cx),
+            Reply::Reset => self.after_reset(),
             Reply::Failed(message) => {
                 self.conn = Conn::Failed(message);
                 self.loading = false;
-                self.serve_waiting(cx);
+                self.serve_waiting();
             }
             Reply::Vaults { vaults, accounts } => {
                 let ids: HashSet<&str> = vaults.iter().map(|v| v.id.as_str()).collect();
@@ -1890,7 +1876,7 @@ impl Passwords {
                     self.reveal_selection = true;
                     self.fetch_selected();
                 }
-                self.serve_waiting(cx);
+                self.serve_waiting();
             }
             Reply::Item(item) => {
                 self.missing.remove(&item.id);
@@ -1928,7 +1914,7 @@ impl Passwords {
                 }
                 if created && !self.visible().iter().any(|i| Some(&i.id) == self.selected.as_ref()) {
                     self.source = Source::All;
-                    self.set_search(String::new(), true, cx);
+                    self.set_search(String::new(), true);
                 }
                 self.flash(format!("Saved “{title}”."));
                 self.changed_here();
@@ -1964,13 +1950,13 @@ impl Passwords {
                 if self.status.says("Saving…") {
                     self.status.clear();
                 }
-                self.show_error(message, cx);
+                self.show_error(message);
             }
         }
-        self.invalidate();
-        let facets = self.facets_rc();
-        self.search_field.update(cx, |f, cx| f.set_facets(facets, cx));
-        cx.notify();
+        if listed {
+            self.invalidate();
+        }
+        self.changed();
     }
 
     /// Once `gone` (listed at `row`) leaves the list, select what took
@@ -1998,28 +1984,32 @@ impl Passwords {
     /// line clearing.
     fn next_due(&self) -> Option<Instant> {
         let mut due: Vec<Instant> = Vec::new();
-        if self.security.auto_sync && !self.lock.locked && self.conn == Conn::Ready && !self.settings.accounts.is_empty() {
+        // (Only what the tick would do something about: a sync not while
+        // one runs or its review is open, the lock not over an edit.
+        // Each is looked at again when those change.)
+        let reviewing = self.review.as_ref().is_some_and(|r| r.window.is_some());
+        if self.security.auto_sync && !self.lock.locked && self.conn == Conn::Ready && !self.settings.accounts.is_empty() && self.sync != Some(SyncState::Running) && !reviewing {
             due.extend(self.sync_due);
             due.extend(self.sync_asked.map(|t| t + SYNC_EVERY));
         }
-        if !self.lock.locked && self.security.lock_minutes > 0 && !on_screen() {
+        if !self.lock.locked && self.security.lock_minutes > 0 && !on_screen() && self.editor.as_ref().is_none_or(|e| !e.changed()) {
             due.push(self.last_use + Duration::from_secs(self.security.lock_minutes as u64 * 60));
         }
         due.extend(self.status.until());
+        if self.leaving {
+            due.extend(self.secret_until);
+        }
         due.into_iter().min()
     }
 
-    /// A timer for the next thing due (none while nothing is: idle costs
-    /// nothing).
-    fn schedule(&mut self, cx: &mut Context<Self>) {
-        let due = self.next_due();
-        let mut wake = std::mem::take(&mut self.wake);
-        wake.at(due, cx, |a, cx| a.tick(cx));
-        self.wake = wake;
-    }
-
-    fn tick(&mut self, cx: &mut Context<Self>) {
+    /// What's next due has come (the app's looper's timer).
+    fn tick(&mut self) {
         let now = Instant::now();
+        // Closed with a secret copied: that has left the clipboard now.
+        if self.leaving && self.secret_until.is_none_or(|t| now >= t) {
+            self.main = None;
+            return olo_kit::quit();
+        }
         // (Syncing only when asked: File ▸ Sync Now.)
         let due = self.security.auto_sync && (self.sync_due.is_some_and(|t| now >= t) || self.sync_asked.is_some_and(|t| now >= t + SYNC_EVERY));
         // Not while the person is looking at what the last one found.
@@ -2028,36 +2018,9 @@ impl Passwords {
         }
         let idle = now.saturating_duration_since(self.last_use);
         if !self.lock.locked && self.security.lock_minutes > 0 && idle >= Duration::from_secs(self.security.lock_minutes as u64 * 60) && self.editor.as_ref().is_none_or(|e| !e.changed()) {
-            self.do_lock(cx);
+            self.do_lock();
         }
-        cx.notify();
-    }
-
-    /// One-time codes count down in the item pane, which alone is drawn
-    /// again each second while one shows.
-    fn follow_countdown(&mut self, cx: &mut Context<Self>) {
-        let showing = self.main.is_some()
-            && !self.lock.locked
-            && self.editor.is_none()
-            && self.selected.as_ref().and_then(|s| self.details.get(s)).is_some_and(|d| d.fields.iter().any(|f| f.field_type == ItemFieldType::Totp));
-        match (showing, &self.countdown, &self.parts) {
-            (true, None, Some(parts)) => {
-                let detail = parts.detail.downgrade();
-                self.countdown = Some(cx.spawn(async move |_, cx| {
-                    loop {
-                        // On the second, as the codes' periods turn.
-                        let since = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
-                        let to_next = Duration::from_millis(1000 - (since.as_millis() % 1000) as u64);
-                        cx.background_executor().timer(to_next).await;
-                        if detail.update(cx, |_, cx| cx.notify()).is_err() {
-                            return;
-                        }
-                    }
-                }));
-            }
-            (false, Some(_), _) => self.countdown = None,
-            _ => {}
-        }
+        self.changed();
     }
 
     pub fn menus(&self) -> Vec<Menu> {
@@ -2072,6 +2035,8 @@ impl Passwords {
 
         let shared = on_screen();
         let file = Menu::new("File")
+            // (Its settings are Security's Passwords tab.)
+            .app_items(&["security/Passwords"])
             .submenu(category_menu(Menu::new("New Item"), "new:"))
             .enabled(ready && !shared)
             .separator()
@@ -2087,11 +2052,7 @@ impl Passwords {
             .enabled(!self.lock.locked && !shared)
             .item("Reset Passwords…", "reset")
             .enabled(!self.lock.locked && self.set_up() && !shared)
-            .separator()
-            .item("Close", "close")
-            .key("w")
-            .item("Quit", "quit")
-            .key("q");
+            .close_quit();
         let edit = self
             .history
             .edit_items(Menu::new("Edit"))
@@ -2108,14 +2069,14 @@ impl Passwords {
             .item("Copy Reference", "copy:reference")
             .enabled(has && details.is_some())
             .separator()
-            .item("Find", "find")
+            .item("Find…", "find")
             .key("f")
             .enabled(ready);
         let item = Menu::new("Item")
             .item("Edit", "edit")
             .key("e")
             .enabled(has && details.is_some() && !archived && !shared)
-            .item("Open Website", "open")
+            .item("Open Website", "open-website")
             .key("o")
             .enabled(has && has_site)
             .separator()
@@ -2139,11 +2100,6 @@ impl Passwords {
         vec![file, edit, item, view]
     }
 
-    fn menu_bar(&mut self, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let me = cx.entity();
-        MenuBar::new(self.menus(), move |cmd, window, cx| me.update(cx, |a, cx| a.command(cmd, window, cx))).into_any_element()
-    }
-
     /// The item menu, for a right-click on `id` in the list.
     pub fn item_menu(&self, id: &str) -> Option<Menu> {
         let o = self.overview(id)?;
@@ -2162,7 +2118,7 @@ impl Passwords {
                 .enabled(has(ItemFieldType::Totp))
                 .item("Copy Reference", "copy:reference")
                 .separator()
-                .item("Open Website", "open")
+                .item("Open Website", "open-website")
                 .enabled(!o.websites.is_empty())
                 .item("Edit", "edit")
                 .enabled(!archived)
@@ -2173,65 +2129,65 @@ impl Passwords {
         )
     }
 
-    pub fn command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn command(&mut self, command: &str) {
         self.last_use = Instant::now();
         match command {
             "quit" | "close" => {
                 if self.editor.as_ref().is_some_and(|e| e.changed()) {
-                    self.ask_discard(Then::Close, cx);
+                    self.ask_discard(Then::Close);
                 } else {
-                    self.quit(cx);
+                    self.quit();
                 }
             }
             "sync" | "account" | "reset" | "lock" if on_screen() => {}
-            "lock" => self.do_lock(cx),
-            "account" => self.change_account(cx),
-            "sync" => self.sync_and_review(cx),
-            "reset" => self.confirm_reset(cx),
-            "generator" => self.open_generator(None, cx),
-            "find" => self.search_field.clone().update(cx, |f, cx| f.focus(window, cx)),
-            "edit" => self.edit_selected(cx),
-            "open" => self.open_website(cx),
+            "lock" => self.do_lock(),
+            "account" => self.change_account(),
+            "sync" => self.sync_and_review(),
+            "reset" => self.confirm_reset(),
+            "generator" => self.open_generator(None),
+            "find" => self.ui.focus_search = true,
+            "edit" => self.edit_selected(),
+            "open-website" => self.open_website(),
             "archive" if on_screen() => self.flash(SHARED_ONLY),
             "archive" => {
                 if let Some(o) = self.selected.as_ref().and_then(|s| self.overview(s)) {
                     self.store.send(Job::Archive { vault: o.vault_id.clone(), item: o.id.clone() });
                 }
             }
-            "delete" => self.confirm_delete(cx),
+            "delete" => self.confirm_delete(),
             "undo" | "redo" if on_screen() => self.flash(SHARED_ONLY),
-            "undo" | "redo" => self.undo_redo(command == "redo", cx),
-            c if c.starts_with("copy:") => self.copy_selected(&c[5..], cx),
+            "undo" | "redo" => self.undo_redo(command == "redo"),
+            c if c.starts_with("copy:") => self.copy_selected(&c[5..]),
             c if c.starts_with("new:") => {
                 if let Some(cat) = ItemCategory::ALL.iter().find(|x| x.as_str() == &c[4..]) {
-                    self.new_item(*cat, cx);
+                    self.new_item(*cat);
                 }
             }
-            "source:all" => self.set_source(Source::All, cx),
-            "source:archive" => self.set_source(Source::Archive, cx),
-            c if c.starts_with("source:vault:") => self.set_source(Source::Vault(c[13..].to_string()), cx),
+            "source:all" => self.set_source(Source::All),
+            "source:archive" => self.set_source(Source::Archive),
+            c if c.starts_with("source:vault:") => self.set_source(Source::Vault(c[13..].to_string())),
             c if c.starts_with("vault:") => {
                 if let Some(v) = c[6..].parse::<usize>().ok().and_then(|i| self.vaults.get(i)) {
                     let id = v.id.clone();
-                    self.set_source(Source::Vault(id), cx);
+                    self.set_source(Source::Vault(id));
                 }
             }
             c if c.starts_with("lockafter:") => {
                 // The same choice as Preferences ▸ Security's.
                 let minutes = c[10..].parse().unwrap_or(10);
                 self.security.lock_minutes = minutes;
-                olo_ui::settings::update(move |s| s.security.passwords.lock_minutes = minutes);
+                olo_kit::settings::update(move |s| s.security.passwords.lock_minutes = minutes);
             }
             _ => {}
         }
-        cx.notify();
+        self.changed();
     }
 
-    fn message(&mut self, msg: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
+    fn message(&mut self, msg: Box<dyn std::any::Any + Send>) {
         let msg = match msg.downcast::<FromStore>() {
             Ok(m) => {
                 if m.generation == self.store.generation {
-                    self.apply_reply(m.reply, cx);
+                    self.apply_reply(m.reply);
                 }
                 return;
             }
@@ -2240,9 +2196,9 @@ impl Passwords {
         let msg = match msg.downcast::<LockMsg>() {
             Ok(m) => {
                 if self.lock.message(*m) {
-                    self.now_unlocked(cx);
+                    self.now_unlocked();
                 }
-                cx.notify();
+                self.changed();
                 return;
             }
             Err(m) => m,
@@ -2259,7 +2215,7 @@ impl Passwords {
                     self.other_account = list.is_empty();
                 }
                 self.accounts = *found;
-                cx.notify();
+                self.changed();
                 return;
             }
             Err(m) => m,
@@ -2270,7 +2226,7 @@ impl Passwords {
                     self.sync_due = None;
                 }
                 self.security = *security;
-                cx.notify();
+                self.changed();
                 return;
             }
             Err(m) => m,
@@ -2279,7 +2235,7 @@ impl Passwords {
             Ok(_) => {
                 self.store.send(Job::Close);
                 self.history.clear();
-                self.connect(cx);
+                self.connect();
                 return;
             }
             Err(m) => m,
@@ -2288,24 +2244,24 @@ impl Passwords {
             Ok(_) => {
                 // Not with changes still unsaved: they'd be lost.
                 if self.security.lock_with_screen && !self.lock.locked && self.editor.as_ref().is_none_or(|e| !e.changed()) {
-                    self.do_lock(cx);
+                    self.do_lock();
                 }
                 return;
             }
             Err(m) => m,
         };
         let msg = match msg.downcast::<Incoming>() {
-            Ok(incoming) => return self.keychain(*incoming, cx),
+            Ok(incoming) => return self.keychain(*incoming),
             Err(m) => m,
         };
         let msg = match msg.downcast::<allow::Allowed>() {
-            Ok(a) => return self.allowed(*a, cx),
+            Ok(a) => return self.allowed(*a),
             Err(m) => m,
         };
         let msg = match msg.downcast::<Approval>() {
             Ok(a) => {
-                self.approval(*a, cx);
-                cx.notify();
+                self.approval(*a);
+                self.changed();
                 return;
             }
             Err(m) => m,
@@ -2315,21 +2271,12 @@ impl Passwords {
         if let Ok(launch) = msg.downcast::<Launch>()
             && launch.args.first().map(String::as_str) != Some(AGENT_FLAG)
         {
-            self.open_main(cx);
+            self.open_main();
         }
     }
 
-    /// Up and Down in the search field move the list's selection.
-    fn arrows(&mut self, e: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        let up = match e.keystroke.key.as_str() {
-            "up" => true,
-            "down" => false,
-            _ => return,
-        };
-        let field = self.search_field.read(cx);
-        if e.keystroke.modifiers.modified() || self.editor.is_some() || !field.is_focused(window, cx) || field.suggesting(window, cx) {
-            return;
-        }
+    /// Up or Down in the search field: the list's selection moves.
+    pub fn step_selection(&mut self, up: bool) {
         let visible = self.visible();
         if visible.is_empty() {
             return;
@@ -2342,45 +2289,9 @@ impl Passwords {
         };
         if Some(next) != row {
             let id = visible[next].id.clone();
-            self.select(Some(id), cx);
+            self.select(Some(id));
             self.reveal_selection = true;
         }
-        cx.stop_propagation();
-    }
-}
-
-impl Parts {
-    fn new(app: &Entity<Passwords>, cx: &mut App) -> Parts {
-        let list = app.read(cx).items_list.clone();
-        Parts {
-            menus: cx.new(|cx| Part::new(app, Passwords::menu_bar, cx)),
-            sources: cx.new(|cx| Part::new(app, view::sources, cx)),
-            items: cx.new(|cx| Part::new(app, view::items, cx).observe(&list, cx)),
-            detail: cx.new(|cx| Part::new(app, view::detail, cx)),
-        }
-    }
-}
-
-impl Render for Passwords {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let Some(parts) = &self.parts else { return div().into_any_element() };
-        let mut bar = StyleRefinement::default();
-        bar.size.height = Some(px(menu::BAR_HEIGHT).into());
-        let menus = part::cached(&parts.menus, bar);
-        let body = view::main(self, window, cx);
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            // Anything the person does puts off the auto-lock.
-            .capture_any_mouse_down(cx.listener(|a, _: &MouseDownEvent, _, _| a.last_use = Instant::now()))
-            .capture_key_down(cx.listener(|a, e: &KeyDownEvent, window, cx| {
-                a.last_use = Instant::now();
-                a.arrows(e, window, cx);
-            }))
-            .child(menus)
-            .child(div().flex_1().min_h_0().child(body))
-            .into_any_element()
     }
 }
 
@@ -2388,112 +2299,89 @@ impl Render for Passwords {
 /// than one), save a new one, or use another device; its answer goes to
 /// the page. The page giving up (gone, or its time out) closes it.
 struct PasskeyAsk {
-    app: Entity<Passwords>,
     incoming: Option<Box<Incoming>>,
     message: SharedString,
     choices: Vec<((String, String), String)>,
     chosen: usize,
     candidates: Vec<(String, String)>,
     focus: FocusHandle,
-    _watch: Task<()>,
 }
 
 impl PasskeyAsk {
-    fn open(app: Entity<Passwords>, incoming: Incoming, message: String, choices: Vec<((String, String), String)>, candidates: Vec<(String, String)>, cx: &mut App) {
+    fn open(incoming: Incoming, message: String, choices: Vec<((String, String), String)>, candidates: Vec<(String, String)>) {
         let buttons = ["Use Another Device…", "Cancel", if choices.is_empty() { "Save Passkey" } else { "Sign In" }];
-        let width = alert::alert_width(cx, &buttons);
+        let width = alert::alert_width(&buttons);
         let radios = if choices.is_empty() { 0.0 } else { m::SPACING + choices.len() as f32 * (m::CONTROL_HEIGHT + m::TIGHT) };
-        let height = alert::alert_height(cx, &message, width) + radios;
-        let view = cx.new(|cx| PasskeyAsk { app, incoming: Some(Box::new(incoming)), message: message.into(), choices, chosen: 0, candidates, focus: cx.focus_handle(), _watch: Task::ready(()) });
-        let shown = view.clone();
-        let handle = olo_ui::open_window(cx, WindowOptions::alert("Passwords", width, height), move |window, cx| {
-            window.activate_window();
-            let closing = shown.clone();
-            window.on_window_should_close(cx, move |_, cx| {
-                closing.update(cx, |p, cx| p.answer(None, cx));
-                true
-            });
-            window.focus(&shown.read(cx).focus);
-            shown
-        });
-        let Some(handle) = handle else {
-            return view.update(cx, |p, cx| p.answer(None, cx));
-        };
-        // The page may give up (gone, or its time out): looked for twice
-        // a second while asking, and the question goes with it.
-        view.update(cx, |p, cx| {
-            p._watch = cx.spawn(async move |this, cx| {
-                loop {
-                    cx.background_executor().timer(Duration::from_millis(500)).await;
-                    match this.update(cx, |p, cx| {
-                        let gone = p.incoming.as_ref().is_some_and(|i| i.gone());
-                        if gone {
-                            p.answer(None, cx);
-                        }
-                        gone || p.incoming.is_none()
-                    }) {
-                        Ok(false) => {}
-                        Ok(true) => {
-                            let _ = handle.update(cx, |_, window, _| window.remove_window());
-                            return;
-                        }
-                        Err(_) => return,
-                    }
-                }
-            });
+        let height = alert::alert_height(&message, width) + radios;
+        olo_kit::open_window(WindowOptions::alert("Passwords", width, height), move |cx| {
+            cx.activate_window();
+            let focus = FocusHandle::new();
+            focus.focus(cx);
+            // The page may give up (gone, or its time out): looked for
+            // twice a second while asking, and the question goes with it.
+            cx.every(Duration::from_millis(500), || ());
+            PasskeyAsk { incoming: Some(Box::new(incoming)), message: message.into(), choices, chosen: 0, candidates, focus }
         });
     }
 
     /// Answered with button `choice` (None: closed, or the page gave
     /// up: declined).
-    fn answer(&mut self, choice: Option<usize>, cx: &mut Context<Self>) {
+    fn answer(&mut self, choice: Option<usize>) {
         let Some(incoming) = self.incoming.take() else { return };
         let (choices, candidates, chosen) = (std::mem::take(&mut self.choices), std::mem::take(&mut self.candidates), self.chosen);
-        self.app.update(cx, |a, _| a.answer_passkey(incoming, choices, chosen, candidates, choice));
+        app().answer_passkey(incoming, choices, chosen, candidates, choice);
     }
 }
 
-impl Render for PasskeyAsk {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let me = cx.entity();
+impl View for PasskeyAsk {
+    type Message = ();
+
+    fn message(&mut self, _: (), cx: &mut Cx<Self>) {
+        if self.incoming.as_ref().is_some_and(|i| i.gone()) {
+            self.answer(None);
+            cx.close_window();
+        }
+    }
+
+    fn window_closing(&mut self, _: &mut Cx<Self>) {
+        self.answer(None);
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let mut col = AlertFrame::new("key").child(paragraph(self.message.clone()));
         if !self.choices.is_empty() {
             let mut radios = div().mt(px(m::SPACING)).flex().flex_col().gap(px(m::TIGHT));
             for (i, (_, label)) in self.choices.iter().enumerate() {
-                let to = me.clone();
-                radios = radios.child(RadioButton::new(label.clone(), i == self.chosen).id(format!("passkey-{i}")).on_select(move |_, cx| {
-                    to.update(cx, |p, cx| {
-                        p.chosen = i;
-                        cx.notify();
-                    })
-                }));
+                radios = radios.child(RadioButton::new(label.clone(), i == self.chosen).id(format!("passkey-{i}")).on_select(cx.listener(move |p: &mut PasskeyAsk, _: &(), cx| {
+                    p.chosen = i;
+                    cx.invalidate();
+                })));
             }
             col = col.child(radios);
         }
         let done = if self.choices.is_empty() { "Save Passkey" } else { "Sign In" };
         let mut row = button_row();
         for (i, label) in ["Use Another Device…", "Cancel", done].into_iter().enumerate() {
-            let to = me.clone();
-            row = row.child(Button::new(label).default(i == 2).on_click(move |window, cx| {
-                to.update(cx, |p, cx| p.answer(Some(i), cx));
-                window.remove_window();
-            }));
+            row = row.child(Button::new(label).default(i == 2).on_click(cx.listener(move |p: &mut PasskeyAsk, _: &ClickEvent, cx| {
+                p.answer(Some(i));
+                cx.close_window();
+            })));
         }
-        let keys = me.clone();
         div()
             .size_full()
             .track_focus(&self.focus)
-            .on_key_down(move |e: &KeyDownEvent, window, cx| {
+            .on_key_down(cx.listener(|p: &mut PasskeyAsk, e: &KeyDownEvent, cx| {
                 let choice = match e.keystroke.key.as_str() {
                     "escape" => 1,
                     "enter" => 2,
                     _ => return,
                 };
                 cx.stop_propagation();
-                keys.update(cx, |p, cx| p.answer(Some(choice), cx));
-                window.remove_window();
-            })
+                p.answer(Some(choice));
+                cx.close_window();
+            }))
             .child(col.child(div().flex_1()).child(row))
+            .into_any_element()
     }
 }
 
@@ -2538,8 +2426,8 @@ fn main() {
         return;
     }
     let agent_only = args.first().map(String::as_str) == Some(AGENT_FLAG);
-    olo_ui::run(APP_ID, move |cx| {
-        let proxy = olo_ui::proxy(cx);
+    olo_kit::run(APP_ID, move |cx| {
+        let proxy = olo_kit::proxy();
         instance::listen(APP_ID, proxy.clone());
         // Logins for Chrome's pages, the palette's search and op.
         let keychain = proxy.clone();
@@ -2556,7 +2444,7 @@ fn main() {
         }
         // Preferences ▸ Security, carrying over what was chosen here
         // before it moved there.
-        let mut security = olo_ui::settings::current().map(|s| s.security.passwords).unwrap_or_default();
+        let mut security = olo_kit::settings::current().map(|s| s.security.passwords).unwrap_or_default();
         // The SSH agent (on by default): its socket served while Passwords
         // runs, and Passwords kept running without a window for it.
         if agent_only && !security.ssh_agent {
@@ -2565,7 +2453,7 @@ fn main() {
         if security.ssh_agent {
             let to = proxy.clone();
             match agent::serve(&olo_xdg::ssh_agent_socket(), move |incoming| to.send(incoming)) {
-                Ok(()) => olo_ui::stay_resident(cx),
+                Ok(()) => olo_kit::stay_resident(),
                 Err(e) => tracing::warn!("ssh agent: {e}"),
             }
         }
@@ -2574,23 +2462,23 @@ fn main() {
             security.lock_minutes = old_lock.unwrap_or(security.lock_minutes);
             security.clear_seconds = old_clear.unwrap_or(security.clear_seconds);
             let carried = security.clone();
-            olo_ui::settings::update(move |s| s.security.passwords = carried);
+            olo_kit::settings::update(move |s| s.security.passwords = carried);
         }
         {
             let proxy_lock = proxy.clone();
             let proxy = proxy.clone();
-            olo_ui::settings::watch(move |s| proxy.send(s.security.passwords));
-            let was = std::sync::atomic::AtomicBool::new(false);
-            olo_ui::settings::watch_power(move |status| {
+            olo_kit::settings::watch(move |s| proxy.send(s.security.passwords));
+            let was = AtomicBool::new(false);
+            olo_kit::settings::watch_power(move |status| {
                 // Only as it locks, not every time something else changes.
-                if status.locked && !was.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                if status.locked && !was.swap(true, Ordering::Relaxed) {
                     proxy_lock.send(ScreenLocked);
                 } else if !status.locked {
-                    was.store(false, std::sync::atomic::Ordering::Relaxed);
+                    was.store(false, Ordering::Relaxed);
                 }
             });
         }
-        let saved: Option<Saved> = olo_ui::restored_state().and_then(|s| serde_json::from_str(&s).ok());
+        let saved: Option<Saved> = olo_kit::restored_state().and_then(|s| serde_json::from_str(&s).ok());
         // On an agent screen: what's shared with it, no account of its own.
         if on_screen() {
             settings.accounts.clear();
@@ -2599,138 +2487,149 @@ fn main() {
         // Locked from the start once there are items to protect (never
         // what's shared with a screen: the person chose to give it).
         let locked = !on_screen() && (!settings.accounts.is_empty() || settings.local_only);
-        let account_field = text_field(cx, |f| f.name("Account").hint("as in 1Password's sidebar, or its UUID"));
-        let lock_field = text_field(cx, |f| f.name("Password").password(true));
-        let search = search_field(cx, "Search");
-        let items_list = ListModel::new(cx, false);
         let notifier = Notifier::new(proxy.clone(), "Passwords", "olo-passwords");
-        let app = cx.new(|cx| {
-            let mut subs = Vec::new();
-            subs.push(cx.subscribe(&lock_field, |a: &mut Passwords, f, e: &TextFieldEvent, cx| match e {
-                TextFieldEvent::Changed => {
-                    a.lock.password = f.read(cx).text().to_owned();
-                    cx.notify();
-                }
-                TextFieldEvent::Entered => a.submit_password(cx),
-                TextFieldEvent::Typed(_) => {}
-            }));
-            subs.push(cx.subscribe(&account_field, |a: &mut Passwords, _, e: &TextFieldEvent, cx| match e {
-                TextFieldEvent::Entered => a.sync_chosen(cx),
-                _ => cx.notify(),
-            }));
-            subs.push(cx.subscribe(&search, |a: &mut Passwords, f, e: &SearchEvent, cx| {
-                if let SearchEvent::Changed = e {
-                    let text = f.read(cx).text(cx).to_owned();
-                    a.set_search(text, false, cx);
-                }
-            }));
-            // Whatever changed, the next thing due is looked at again.
-            subs.push(cx.observe_self(|a, cx| {
-                a.schedule(cx);
-                a.follow_countdown(cx);
-            }));
-            let mut app = Passwords {
-                history: Default::default(),
-                chosen: settings.accounts.iter().map(|l| l.id.clone()).collect(),
-                account_field: account_field.clone(),
-                accounts: Accounts::Unknown,
-                other_account: false,
-                store: Store::new(proxy.clone()),
-                lock: Lock::new(proxy.clone(), locked),
-                conn: if locked { Conn::Connecting } else { Conn::Setup },
-                settings,
-                security,
-                vaults: Vec::new(),
-                vault_accounts: HashMap::new(),
-                items: Vec::new(),
-                loading: false,
-                details: HashMap::new(),
-                index: HashMap::new(),
-                facets: Default::default(),
-                listed: Default::default(),
-                rev: Default::default(),
-                missing: HashMap::new(),
-                source: Source::All,
-                selected: None,
-                reveal_selection: true,
-                search: String::new(),
-                search_field: search.clone(),
-                revealed: HashSet::new(),
-                editor: None,
-                form: None,
-                focus_title: false,
-                focus_field: None,
-                lock_field: lock_field.clone(),
-                main: None,
-                parts: None,
-                generator: None,
-                allow_shown: HashMap::new(),
-                status: Notice::default(),
-                last_use: Instant::now(),
-                unlocked: false,
-                waiting: Vec::new(),
-                cli_waiting: Vec::new(),
-                grants: cli::Grants::default(),
-                asking: HashSet::new(),
-                notifier,
-                sync: None,
-                sync_asked: None,
-                sync_due: None,
-                review: None,
-                problems: None,
-                show_review: false,
-                items_list,
-                hover_field: None,
-                field_press: None,
-                detail_scroll: ScrollHandle::new(),
-                editor_scroll: ScrollHandle::new(),
-                sources_scroll: ScrollHandle::new(),
-                wake: Due::default(),
-                countdown: None,
-                proxy: proxy.clone(),
-                _subs: subs,
-                _shared: olo_keychain::shared::this_screen().and_then(|screen| {
-                    let proxy = proxy.clone();
-                    let copies = [olo_keychain::shared::copy_path(Some(&screen)), olo_keychain::shared::copy_path(None)];
-                    olo_ui::watch::watch(copies, move |_| proxy.send(SharedChanged))
-                }),
-            };
-            let mut unlocked_before = false;
-            // Started for the SSH agent, no window: unless it's coming back
-            // from an upgrade with its window open.
-            let show = !agent_only || saved.is_some();
-            if let Some(saved) = saved {
-                app.source = saved.source;
-                app.selected = saved.selected;
-                app.search = saved.search.clone();
-                search.update(cx, |f, cx| f.set_text(saved.search, cx));
-                // Still within its lock-after time: as unlocked as it was.
-                let within = app.security.lock_minutes == 0 || saved.idle_secs < app.security.lock_minutes as u64 * 60;
-                if saved.unlocked && within && app.lock.approved() {
-                    app.last_use = Instant::now() - Duration::from_secs(saved.idle_secs);
-                    unlocked_before = true;
-                    tracing::info!("unlocked as before the upgrade");
-                }
+        let mut app = Passwords {
+            history: Default::default(),
+            chosen: settings.accounts.iter().map(|l| l.id.clone()).collect(),
+            accounts: Accounts::Unknown,
+            other_account: false,
+            store: Store::new(proxy.clone()),
+            lock: Lock::new(proxy.clone(), locked),
+            conn: if locked { Conn::Connecting } else { Conn::Setup },
+            settings,
+            security,
+            vaults: Vec::new(),
+            vault_accounts: HashMap::new(),
+            items: Vec::new(),
+            loading: false,
+            details: HashMap::new(),
+            index: HashMap::new(),
+            facets: Default::default(),
+            listed: Default::default(),
+            rev: 0,
+            missing: HashMap::new(),
+            source: Source::All,
+            selected: None,
+            reveal_selection: true,
+            search: String::new(),
+            revealed: HashSet::new(),
+            editor: None,
+            focus_title: false,
+            focus_field: None,
+            main: None,
+            generator: None,
+            allow_shown: HashMap::new(),
+            status: Notice::default(),
+            last_use: Instant::now(),
+            unlocked: false,
+            waiting: Vec::new(),
+            cli_waiting: Vec::new(),
+            grants: cli::Grants::default(),
+            asking: HashSet::new(),
+            notifier,
+            sync: None,
+            sync_asked: None,
+            sync_due: None,
+            review: None,
+            problems: None,
+            show_review: false,
+            ui: Ui::default(),
+            secret_until: None,
+            leaving: false,
+            proxy: proxy.clone(),
+            _shared: olo_keychain::shared::this_screen().and_then(|screen| {
+                let proxy = proxy.clone();
+                let copies = [olo_keychain::shared::copy_path(Some(&screen)), olo_keychain::shared::copy_path(None)];
+                olo_kit::watch::watch(copies, move |_| proxy.send(SharedChanged))
+            }),
+        };
+        let mut unlocked_before = false;
+        // Started for the SSH agent, no window: unless it's coming back
+        // from an upgrade with its window open.
+        let show = saved.as_ref().map_or(!agent_only, |s| s.window);
+        if let Some(saved) = saved {
+            app.source = saved.source;
+            app.selected = saved.selected;
+            app.search = saved.search;
+            // Still within its lock-after time: as unlocked as it was.
+            let within = app.security.lock_minutes == 0 || saved.idle_secs < app.security.lock_minutes as u64 * 60;
+            if saved.unlocked && within && app.lock.approved() {
+                app.last_use = Instant::now() - Duration::from_secs(saved.idle_secs);
+                unlocked_before = true;
+                tracing::info!("unlocked as before the upgrade");
             }
+        }
+        if APP.set(Mutex::new(app)).is_err() {
+            return;
+        }
+        {
+            let mut app = crate::app();
             if show {
-                app.open_main(cx);
+                app.open_main();
             }
             if unlocked_before {
-                app.now_unlocked(cx);
+                app.now_unlocked();
             }
             // Locked, the store opens at the unlock.
             if !locked {
-                app.connect(cx);
+                app.connect();
             }
-            app
+            app.changed();
+        }
+        // What the proxy brings is the app's, on its looper; and its one
+        // timer, for what's next due (none while nothing is: idle costs
+        // nothing).
+        let mut timer: Option<olo_kit::app_kit::TimerId> = None;
+        let mut ticked: Option<(Instant, Instant)> = None;
+        olo_kit::message_handler(cx, move |message, cx| {
+            let message = match message.downcast::<Tell>() {
+                Ok(tell) => {
+                    match *tell {
+                        Tell::Tick => {
+                            timer = None;
+                            crate::app().tick();
+                        }
+                        Tell::Schedule => {
+                            SCHEDULING.store(false, Ordering::Release);
+                            if let Some(t) = timer.take() {
+                                cx.looper().cancel(t);
+                            }
+                            let due = crate::app().next_due();
+                            if let Some(at) = due {
+                                let now = Instant::now();
+                                let mut delay = at.saturating_duration_since(now);
+                                // (Due already, and just looked at: the
+                                // tick left it, so not round and round.)
+                                if delay.is_zero() && ticked.is_some_and(|(for_, when)| for_ == at && now.saturating_duration_since(when) < Duration::from_secs(1)) {
+                                    delay = Duration::from_secs(1);
+                                }
+                                if delay.is_zero() {
+                                    ticked = Some((at, now));
+                                }
+                                let proxy = olo_kit::proxy();
+                                timer = Some(cx.looper().after(delay, move |_| proxy.send(Tell::Tick)));
+                            }
+                        }
+                    }
+                    return;
+                }
+                Err(m) => m,
+            };
+            crate::app().message(message);
         });
-        let messages = app.clone();
-        olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |a, cx| a.message(message, cx)));
-        let saving = app.clone();
-        olo_ui::on_upgrade(cx, move |cx| {
-            let a = saving.read(cx);
+        olo_kit::on_upgrade(|_| {
+            let a = crate::app();
             a.save_settings();
-            serde_json::to_string(&Saved { source: a.source.clone(), selected: a.selected.clone(), search: a.search.clone(), unlocked: !a.lock.locked, idle_secs: a.last_use.elapsed().as_secs() }).ok()
+            let window = a.main.as_ref().is_some_and(|w| w.is_open());
+            serde_json::to_string(&Saved {
+                source: a.source.clone(),
+                selected: a.selected.clone(),
+                search: a.search.clone(),
+                unlocked: !a.lock.locked,
+                idle_secs: a.last_use.elapsed().as_secs(),
+                window,
+            })
+            .ok()
         });
     });
 }

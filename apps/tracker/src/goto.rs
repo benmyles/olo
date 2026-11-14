@@ -12,20 +12,21 @@ use std::{
     sync::Arc,
 };
 
-use olo_kit_base::metrics as m;
-use olo_ui::{
-    gpui::{Context, Entity, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, SharedString, Styled as _, Subscription, WeakEntity, Window, div, px},
+use olo_kit::{
+    Child, ClickEvent, Cx, Element, InteractiveElement as _, IntoElement as _, KeyDownEvent, ParentElement as _, SharedString, Styled as _, View, WindowCx, div, px,
     widgets::{
         Button, StringView, TextControl, TextField, TextFieldEvent,
         list::{Column, ColumnListView, ListModel},
         text_field,
     },
 };
+use olo_kit_base::metrics as m;
 
 use crate::{
-    Tracker,
+    ToHub,
     folder::name_cell,
     fs::{self, Entry},
+    to_hub,
 };
 
 /// The window's size: the field, a few names, the buttons.
@@ -89,13 +90,20 @@ fn completion(matches: &[Entry]) -> Option<String> {
     Some(first.name.chars().take(agree).collect())
 }
 
+/// What the window is told by its workers.
+pub enum GoMsg {
+    /// A path in the clipboard, as the window opened.
+    Copied(String),
+    /// A folder read.
+    Read(PathBuf, Vec<Entry>),
+}
+
 pub struct GoToWin {
-    pub app: WeakEntity<Tracker>,
-    field: Entity<TextField>,
+    field: Child<TextField>,
     /// Where a relative path starts (the folder of the window it was
     /// asked in).
     base: PathBuf,
-    list: Entity<ListModel>,
+    list: ListModel,
     /// What the typed path's last name could be, in its folder.
     pub matches: Vec<Entry>,
     /// Folders read, each once.
@@ -104,57 +112,44 @@ pub struct GoToWin {
     /// A row chosen with ↑↓, which Return takes.
     chosen: bool,
     error: Option<String>,
-    _subs: Vec<Subscription>,
 }
 
 impl GoToWin {
-    pub fn new(app: WeakEntity<Tracker>, base: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> GoToWin {
+    pub fn new(base: PathBuf, cx: &mut Cx<Self>) -> GoToWin {
         let field = text_field(cx, |f| f.hint("A path: /…, ~/… or a name here").name("Go to"));
-        // A path copied, ready to go to (read off the UI thread:
-        // `paste_item`; put in unless something's been typed by then).
-        let read = cx.paste_item();
-        cx.spawn(async move |this, cx| {
-            let Some(p) = read.await.and_then(|c| c.text()).as_deref().and_then(clipboard_path) else { return };
-            let _ = this.update(cx, |g, cx| {
-                if g.text(cx).is_empty() {
-                    g.field.update(cx, |f, cx| {
-                        f.set_text(p, cx);
-                        f.select_all_text(cx);
-                    });
-                    g.update_matches(cx);
-                }
-            });
-        })
-        .detach();
-        field.read(cx).focus(window);
-        let list = ListModel::new(cx, false);
-        let subs = vec![
-            cx.subscribe(&field, |g: &mut GoToWin, _, e: &TextFieldEvent, cx| match e {
-                TextFieldEvent::Changed => {
-                    g.error = None;
-                    g.chosen = false;
-                    g.update_matches(cx);
-                }
-                TextFieldEvent::Entered => g.go(cx),
-                TextFieldEvent::Typed(_) => {}
-            }),
-            cx.observe(&list, |_, _, cx| cx.notify()),
-        ];
-        let mut g = GoToWin { app, field, base, list, matches: Vec::new(), read: HashMap::new(), reading: HashSet::new(), chosen: false, error: None, _subs: subs };
+        // A path copied, ready to go to (read off the looper; put in
+        // unless something's been typed by then).
+        let to = cx.messenger();
+        olo_kit::clipboard::paste_item(move |item| {
+            if let Some(p) = item.and_then(|c| c.text()).as_deref().and_then(clipboard_path) {
+                to.send(GoMsg::Copied(p));
+            }
+        });
+        field.focus(cx);
+        cx.subscribe(&field, |g: &mut GoToWin, e: &TextFieldEvent, cx| match e {
+            TextFieldEvent::Changed => {
+                g.error = None;
+                g.chosen = false;
+                g.update_matches(cx);
+            }
+            TextFieldEvent::Entered => g.go(cx),
+            TextFieldEvent::Typed(_) => {}
+        });
+        let mut g = GoToWin { field, base, list: ListModel::new(false), matches: Vec::new(), read: HashMap::new(), reading: HashSet::new(), chosen: false, error: None };
         g.update_matches(cx);
         g
     }
 
-    fn text(&self, cx: &Context<Self>) -> String {
+    fn text(&self, cx: &WindowCx) -> String {
         self.field.read(cx).text().to_owned()
     }
 
     /// The names the typed path could go on to, from its folder as read
     /// (read now, on a worker, if it hasn't been).
-    fn update_matches(&mut self, cx: &mut Context<Self>) {
+    fn update_matches(&mut self, cx: &mut Cx<Self>) {
         let Some((dir, prefix)) = split(&self.text(cx), &self.base) else {
             self.matches.clear();
-            cx.notify();
+            cx.invalidate();
             return;
         };
         match self.read.get(&dir) {
@@ -162,28 +157,24 @@ impl GoToWin {
             None => {
                 self.matches.clear();
                 if self.reading.insert(dir.clone()) {
-                    cx.spawn(async move |me, cx| {
-                        let d = dir.clone();
-                        let entries = cx.background_executor().spawn(async move { fs::list(&d, true).unwrap_or_default() }).await;
-                        let _ = me.update(cx, |g, cx| {
-                            g.reading.remove(&dir);
-                            g.read.insert(dir, Arc::new(entries));
-                            g.update_matches(cx);
-                        });
-                    })
-                    .detach();
+                    let to = cx.messenger();
+                    std::thread::spawn(move || {
+                        let entries = fs::list(&dir, true).unwrap_or_default();
+                        to.send(GoMsg::Read(dir, entries));
+                    });
                 }
             }
         }
-        self.list.update(cx, |l, _| {
-            l.state.selected.clear();
-            l.state.cursor = None;
-        });
-        cx.notify();
+        {
+            let mut st = self.list.state_mut();
+            st.selected.clear();
+            st.cursor = None;
+        }
+        cx.invalidate();
     }
 
     /// The typed path's last name as `name` (a folder's with `/`).
-    fn put(&mut self, name: &str, cx: &mut Context<Self>) {
+    fn put(&mut self, name: &str, cx: &mut Cx<Self>) {
         let text = self.text(cx);
         let keep = match text.rfind('/') {
             Some(i) => &text[..=i],
@@ -202,8 +193,8 @@ impl GoToWin {
 
     /// Tab: the chosen name, else as far as the names agree. False with
     /// none to complete to (Tab goes on to the next control then).
-    fn complete(&mut self, cx: &mut Context<Self>) -> bool {
-        let chosen = self.list.read(cx).state.single().and_then(|i| self.matches.get(i)).cloned();
+    fn complete(&mut self, cx: &mut Cx<Self>) -> bool {
+        let chosen = self.list.state().single().and_then(|i| self.matches.get(i)).cloned();
         let name = match chosen {
             Some(e) => Some(if e.is_dir { format!("{}/", e.name) } else { e.name }),
             None => completion(&self.matches),
@@ -218,25 +209,24 @@ impl GoToWin {
     }
 
     /// ↑↓: the next name up or down.
-    fn step(&mut self, by: isize, cx: &mut Context<Self>) {
+    fn step(&mut self, by: isize, cx: &mut Cx<Self>) {
         if self.matches.is_empty() {
             return;
         }
         let last = self.matches.len() as isize - 1;
-        let at = self.list.read(cx).state.single().map_or(if by > 0 { 0 } else { last }, |i| (i as isize + by).clamp(0, last)) as usize;
-        self.list.update(cx, |l, _| {
-            l.state.select(at);
-            l.reveal(at);
-        });
+        let at = self.list.state().single().map_or(if by > 0 { 0 } else { last }, |i| (i as isize + by).clamp(0, last)) as usize;
+        self.list.state_mut().select(at);
+        self.list.reveal(cx, at);
         self.chosen = true;
-        cx.notify();
+        cx.invalidate();
     }
 
     /// Return or Go: the name chosen with ↑↓ (put in first), else what's
     /// typed. What's there is shown; nothing there, it says so.
-    fn go(&mut self, cx: &mut Context<Self>) {
+    fn go(&mut self, cx: &mut Cx<Self>) {
+        let chosen = self.list.state().single().and_then(|i| self.matches.get(i)).cloned();
         if self.chosen
-            && let Some(e) = self.list.read(cx).state.single().and_then(|i| self.matches.get(i)).cloned()
+            && let Some(e) = chosen
         {
             self.chosen = false;
             return self.put(&if e.is_dir { format!("{}/", e.name) } else { e.name.clone() }, cx);
@@ -245,41 +235,53 @@ impl GoToWin {
         let Some(path) = parse(&text, &self.base) else { return };
         if std::fs::symlink_metadata(&path).is_err() {
             self.error = Some(format!("There's nothing at {}.", fs::display_path(&path)));
-            cx.notify();
+            cx.invalidate();
             return;
         }
-        if let Some(app) = self.app.upgrade() {
-            app.update(cx, |t, cx| t.go_to(&path, cx));
-        }
-        cx.emit(GoToEvent::Done);
+        // Gone where it was asked: the window closes.
+        to_hub(ToHub::Reveal(path, false));
+        cx.close_window();
     }
 }
 
-/// Gone where it was asked: the window closes.
-pub enum GoToEvent {
-    Done,
-    Cancelled,
-}
+impl View for GoToWin {
+    type Message = GoMsg;
 
-impl olo_ui::gpui::EventEmitter<GoToEvent> for GoToWin {}
+    fn message(&mut self, message: GoMsg, cx: &mut Cx<Self>) {
+        match message {
+            GoMsg::Copied(p) => {
+                if self.text(cx).is_empty() {
+                    self.field.update(cx, |f, cx| {
+                        f.set_text(p, cx);
+                        f.select_all_text(cx);
+                    });
+                    self.update_matches(cx);
+                }
+            }
+            GoMsg::Read(dir, entries) => {
+                self.reading.remove(&dir);
+                self.read.insert(dir, Arc::new(entries));
+                self.update_matches(cx);
+            }
+        }
+    }
 
-impl Render for GoToWin {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let me = cx.entity();
-        let (cell_me, open_me, go_me, cancel_me) = (me.clone(), me.clone(), me.clone(), me.clone());
-        let list = ColumnListView::new("go-to-names", &self.list, vec![Column::new("Name", 120.0)], self.matches.len(), move |cell, window, cx| {
-            let Some(e) = cell_me.read(cx).matches.get(cell.row).cloned() else { return };
-            name_cell(cell, window, cx, &e, true);
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let list = ColumnListView::new(cx, "go-to-names", &self.list, vec![Column::new("Name", 120.0)], self.matches.len(), |g: &GoToWin, cell, painter| {
+            let Some(e) = g.matches.get(cell.row) else { return };
+            name_cell(cell, painter, e, true);
         })
+        // (Each key typed says what the window shows: a name still
+        // matching isn't drawn again.)
+        .row_key(|g: &GoToWin, row| g.matches.get(row).map_or(0, crate::folder::row_key))
         .no_header()
         .empty_text(SharedString::from(""))
-        .on_open(move |i, _, cx| {
-            open_me.update(cx, |g, cx| {
-                if let Some(e) = g.matches.get(i).cloned() {
-                    g.put(&if e.is_dir { format!("{}/", e.name) } else { e.name }, cx);
-                }
-            })
-        });
+        .on_select(cx.listener(|_: &mut GoToWin, _: &(), cx| cx.invalidate()))
+        .on_open(cx.listener(|g: &mut GoToWin, i: &usize, cx| {
+            if let Some(e) = g.matches.get(*i).cloned() {
+                g.put(&if e.is_dir { format!("{}/", e.name) } else { e.name }, cx);
+            }
+        }));
         let note: SharedString = match &self.error {
             Some(e) => e.clone().into(),
             None => "Tab completes a name; ↑↓ choose one.".into(),
@@ -291,23 +293,23 @@ impl Render for GoToWin {
             .flex_col()
             .gap(px(m::SPACING))
             // Tab completes, while there's a name to complete to, rather
-            // than taking the keyboard to the next control.
-            .capture_action(cx.listener(|g, _: &olo_ui::FocusNext, _, cx| {
-                if g.complete(cx) {
-                    cx.stop_propagation();
-                }
-            }))
-            .capture_key_down(cx.listener(|g, e: &KeyDownEvent, window, cx| {
-                match e.keystroke.key.as_str() {
+            // than taking the keyboard to the next control; ↑↓ choose.
+            .capture_key_down(cx.listener(|g: &mut GoToWin, e: &KeyDownEvent, cx| {
+                let k = &e.keystroke;
+                match k.key.as_str() {
+                    "tab" if !k.modifiers.shift && !k.modifiers.modified() => {
+                        if !g.complete(cx) {
+                            return;
+                        }
+                    }
                     "down" => g.step(1, cx),
                     "up" => g.step(-1, cx),
-                    "escape" => cx.emit(GoToEvent::Cancelled),
+                    "escape" => cx.close_window(),
                     _ => return,
                 }
-                let _ = window;
                 cx.stop_propagation();
             }))
-            .child(TextControl::new(self.field.clone()).label("Go to:"))
+            .child(TextControl::new(cx, &self.field).label("Go to:"))
             .child(div().flex_1().min_h_0().flex().flex_col().child(list))
             .child(
                 div()
@@ -316,9 +318,10 @@ impl Render for GoToWin {
                     .gap(px(m::SPACING))
                     .items_center()
                     .child(div().flex_1().child(StringView::new(note).dim(self.error.is_none())))
-                    .child(Button::new("Cancel").min_width(80.0).on_click(move |_, cx| cancel_me.update(cx, |_, cx| cx.emit(GoToEvent::Cancelled))))
-                    .child(Button::new("Go").default(true).min_width(80.0).on_click(move |_, cx| go_me.update(cx, |g, cx| g.go(cx)))),
+                    .child(Button::new("Cancel").min_width(80.0).on_click(|_: &ClickEvent, cx| cx.close_window()))
+                    .child(Button::new("Go").default(true).min_width(80.0).on_click(cx.listener(|g: &mut GoToWin, _: &ClickEvent, cx| g.go(cx)))),
             )
+            .into_any_element()
     }
 }
 
@@ -362,6 +365,7 @@ mod tests {
             kind: if is_dir { fs::Kind::Folder } else { fs::Kind::Document },
             app_icon: None,
             downloading: None,
+            shown: Default::default(),
         };
         let all = vec![e("Documents", true), e("Downloads", true), e("dotfile", false), e(".config", true), e("Music", true)];
         let names = |v: Vec<Entry>| v.into_iter().map(|e| e.name).collect::<Vec<_>>();

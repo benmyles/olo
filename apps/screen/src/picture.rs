@@ -15,11 +15,8 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 
-use olo_ui::{
-    agent,
-    gpui::{AppContext as _, Bounds, Context, FontWeight, IntoElement, ParentElement as _, Pixels, Render, RenderImage, SharedString, Styled as _, Task, Window, canvas, div, point, px},
-    metrics as m, style, theme,
-    widgets::image_view::{self, Rgba},
+use olo_kit::{
+    Bounds, Cx, Element, FontWeight, Painter, ParentElement as _, Pixels, RenderImage, SharedString, Styled as _, View, agent, div, metrics as m, point, px, style, theme, widgets::image_view::Rgba,
 };
 
 /// A screen's pixels: RGBA, opaque (so as good as premultiplied).
@@ -40,6 +37,13 @@ impl Rgba for Shot {
 /// A resampling: of which frame, at what device size.
 type Made = (u64, (u32, u32));
 
+/// What the well is told: its drawing wants a frame resampled, or a
+/// worker made one.
+pub enum Msg {
+    Asked,
+    Made(Made, Option<Arc<RenderImage>>),
+}
+
 pub struct PictureWell {
     shot: Option<Arc<Shot>>,
     /// Counts frames shown, so what was made for one isn't kept for the
@@ -50,11 +54,13 @@ pub struct PictureWell {
     /// Said in the picture's place.
     text: Option<SharedString>,
     exact: Option<(Made, Arc<RenderImage>)>,
-    making: Option<(Made, Task<()>)>,
-    /// Pictures to take out of the window's atlas when next painted.
-    dropped: Vec<Arc<RenderImage>>,
+    making: Option<Made>,
+    /// What the last drawing lacked (a drawing can only look): made by
+    /// the view, off its looper.
+    asked: std::cell::Cell<Option<Made>>,
+    me: olo_kit::Messenger<Msg>,
     /// Where the picture went when last painted.
-    shown: Option<Bounds<Pixels>>,
+    shown: std::rc::Rc<std::cell::Cell<Option<Bounds<Pixels>>>>,
     name: SharedString,
     /// Frames shown live, of this size (pixels), under `key`.
     live: Option<(u32, u32)>,
@@ -62,7 +68,7 @@ pub struct PictureWell {
 }
 
 impl PictureWell {
-    pub fn new(name: impl Into<SharedString>) -> PictureWell {
+    pub fn new(name: impl Into<SharedString>, cx: &mut Cx<Self>) -> PictureWell {
         static KEYS: AtomicU64 = AtomicU64::new(1);
         PictureWell {
             shot: None,
@@ -71,8 +77,9 @@ impl PictureWell {
             text: None,
             exact: None,
             making: None,
-            dropped: Vec::new(),
-            shown: None,
+            asked: Default::default(),
+            me: cx.messenger(),
+            shown: Default::default(),
             name: name.into(),
             live: None,
             key: KEYS.fetch_add(1, Ordering::Relaxed),
@@ -82,15 +89,15 @@ impl PictureWell {
     /// Show frames live, of `size` (`Window::set_external_buffer` under
     /// [`PictureWell::external_key`] gives them): drawn again only when
     /// that changes.
-    pub fn set_live(&mut self, size: (u32, u32), cx: &mut Context<Self>) {
+    pub fn set_live(&mut self, size: (u32, u32), cx: &mut Cx<Self>) {
         if self.live != Some(size) || self.text.is_some() || self.shot.is_some() {
             self.live = Some(size);
             self.text = None;
             self.shot = None;
             self.generation += 1;
             self.making = None;
-            self.dropped.extend(self.exact.take().map(|(_, i)| i));
-            cx.notify();
+            self.exact = None;
+            cx.invalidate();
         }
     }
 
@@ -100,33 +107,33 @@ impl PictureWell {
     }
 
     /// Show `shot` (a new frame).
-    pub fn set_shot(&mut self, shot: Arc<Shot>, cx: &mut Context<Self>) {
+    pub fn set_shot(&mut self, shot: Arc<Shot>, cx: &mut Cx<Self>) {
         self.shot = Some(shot);
         self.live = None;
         self.generation += 1;
         self.text = None;
-        cx.notify();
+        cx.invalidate();
     }
 
     /// Show nothing: `text` in its place (None: just the well).
-    pub fn clear(&mut self, text: Option<SharedString>, cx: &mut Context<Self>) {
+    pub fn clear(&mut self, text: Option<SharedString>, cx: &mut Cx<Self>) {
         if self.shot.is_some() || self.live.is_some() || self.text != text {
             self.shot = None;
             self.live = None;
             self.generation += 1;
             self.making = None;
-            self.dropped.extend(self.exact.take().map(|(_, i)| i));
+            self.exact = None;
             self.text = text;
-            cx.notify();
+            cx.invalidate();
         }
     }
 
     /// Say `text` in the picture's place, keeping the frame for when it's
     /// wanted again (None: show the frame).
-    pub fn set_text(&mut self, text: Option<SharedString>, cx: &mut Context<Self>) {
+    pub fn set_text(&mut self, text: Option<SharedString>, cx: &mut Cx<Self>) {
         if self.text != text {
             self.text = text;
-            cx.notify();
+            cx.invalidate();
         }
     }
 
@@ -139,19 +146,18 @@ impl PictureWell {
         self.shot.is_some() || self.live.is_some()
     }
 
-    /// Where the picture was last drawn (None: no picture showed).
-    pub fn shown(&self) -> Option<Bounds<Pixels>> {
-        self.shown
+    /// Where the picture was last drawn (None: no picture showed), for
+    /// what's drawn over it to read as it draws (after the well has, in
+    /// the same frame) and for what's pressed on it.
+    pub fn shown_at(&self) -> std::rc::Rc<std::cell::Cell<Option<Bounds<Pixels>>>> {
+        self.shown.clone()
     }
 
-    fn paint(&mut self, well: Bounds<Pixels>, window: &mut Window, cx: &mut Context<Self>) {
-        for img in self.dropped.drain(..) {
-            let _ = window.drop_image(img);
-        }
-        let p = theme::palette(cx);
-        style::sunken(window, well, &p, false);
-        let inner = style::inset(window, well, 2.0);
-        style::fill_rect(window, inner, style::shade(&p, p.panel_background, 1.18));
+    fn paint(&self, well: Bounds<Pixels>, g: &mut Painter) {
+        let p = theme::palette();
+        style::sunken(g, well, &p, false);
+        let inner = style::inset(g, well, 2.0);
+        style::fill_rect(g, inner, style::shade(&p, p.panel_background, 1.18));
         let picture = self.shot.as_ref().filter(|_| self.text.is_none()).cloned();
         let live = self.live.filter(|_| self.text.is_none());
         let (w, h) = match (&picture, live) {
@@ -163,24 +169,23 @@ impl PictureWell {
         let room = Bounds::from_corners(inner.origin + point(px(m::SPACING), px(m::SPACING)), inner.bottom_right() - point(px(m::SPACING), px(m::SPACING)));
         let (rw, rh) = (f32::from(room.size.width).max(1.0), f32::from(room.size.height).max(1.0));
         let (pw, ph) = if rw / rh > aspect { (rh * aspect, rh) } else { (rw, rw / aspect) };
-        let pic = style::snap_centred(window, room.center(), pw, ph);
+        let pic = style::snap_centred(g, room.center(), pw, ph);
         if let Some((lw, lh)) = live {
             // Where the compositor can show it: at whole points.
-            let pic = window.external_bounds(pic);
-            self.shown = Some(pic);
-            let hair = style::hairline(window);
-            style::fill_rect(window, Bounds::from_corners(pic.origin - point(hair, hair), pic.bottom_right() + point(hair, hair)), style::c(p.control_border));
-            window.place_external(self.key, pic);
-            agent::record(window, cx, agent::Node { role: "Image", name: Some(self.name.clone()), value: Some(format!("{lw} × {lh}").into()), bounds: pic, enabled: true, ..Default::default() });
+            let pic = g.external_bounds(pic);
+            self.shown.set(Some(pic));
+            let hair = style::hairline(g);
+            style::fill_rect(g, Bounds::from_corners(pic.origin - point(hair, hair), pic.bottom_right() + point(hair, hair)), style::c(p.control_border));
+            g.place_external(self.key, pic);
+            agent::record(g, agent::Node { role: "Image", name: Some(self.name.clone()), value: Some(format!("{lw} × {lh}").into()), bounds: pic, enabled: true, ..Default::default() });
             return;
         }
         let Some(shot) = picture else {
-            self.shown = None;
+            self.shown.set(None);
             let text = self.text.clone().unwrap_or_default();
             if !text.is_empty() {
                 let r = style::label_fit(
-                    window,
-                    cx,
+                    g,
                     inner.center().x,
                     inner.center().y,
                     style::Align::Center,
@@ -190,50 +195,58 @@ impl PictureWell {
                     style::disabled_text(&p),
                     inner.size.width - px(2.0 * m::SPACING),
                 );
-                agent::record(window, cx, agent::Node::label(text, r));
+                agent::record(g, agent::Node::label(text, r));
             }
             return;
         };
-        self.shown = Some(pic);
-        let frame = Bounds::from_corners(pic.origin - point(style::hairline(window), style::hairline(window)), pic.bottom_right() + point(style::hairline(window), style::hairline(window)));
-        style::fill_rect(window, frame, style::c(p.control_border));
-        let s = window.scale_factor();
+        self.shown.set(Some(pic));
+        let hair = style::hairline(g);
+        let frame = Bounds::from_corners(pic.origin - point(hair, hair), pic.bottom_right() + point(hair, hair));
+        style::fill_rect(g, frame, style::c(p.control_border));
+        let s = g.scale_factor();
         let device = ((f32::from(pic.size.width) * s).round().max(1.0) as u32, (f32::from(pic.size.height) * s).round().max(1.0) as u32);
         let want = (self.generation, device);
         // Made for this frame at this size: drawn as it is. Else the last
         // one stands in (stretched, for the moment it takes) and this one
-        // is made.
+        // is asked for.
         if let Some((_, img)) = &self.exact {
-            let _ = window.paint_image(pic, Default::default(), img.clone(), 0, false);
+            let _ = g.paint_image(pic, Default::default(), img.clone(), 0, false);
         }
-        if self.exact.as_ref().is_none_or(|(made, _)| *made != want) && self.making.as_ref().is_none_or(|(made, _)| *made != want) {
-            let src = shot.clone();
-            let task = cx.background_spawn(async move { image_view::resampled(&*src, device) });
-            let making = cx.spawn(async move |me, cx| {
-                let img = task.await;
-                let _ = me.update(cx, |v, cx| {
-                    v.making = None;
-                    if let Some(img) = img {
-                        if let Some((_, old)) = v.exact.replace((want, img)) {
-                            v.dropped.push(old);
-                        }
-                        cx.notify();
-                    }
-                });
-            });
-            self.making = Some((want, making));
+        if self.exact.as_ref().is_none_or(|(made, _)| *made != want) && self.making != Some(want) && self.asked.replace(Some(want)) != Some(want) {
+            self.me.send(Msg::Asked);
         }
         agent::record(
-            window,
-            cx,
+            g,
             agent::Node { role: "Image", name: Some(self.name.clone()), value: Some(format!("{} × {}", shot.size[0], shot.size[1]).into()), bounds: pic, enabled: true, ..Default::default() },
         );
     }
 }
 
-impl Render for PictureWell {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let me = cx.entity();
-        div().size_full().child(canvas(|_, _, _| {}, move |b, _, window, cx| me.update(cx, |v, cx| v.paint(b, window, cx))).size_full())
+impl View for PictureWell {
+    type Message = Msg;
+
+    fn message(&mut self, msg: Msg, cx: &mut Cx<Self>) {
+        match msg {
+            Msg::Asked => {
+                let Some(want) = self.asked.take() else { return };
+                let Some(src) = self.shot.clone().filter(|_| want.0 == self.generation && self.making != Some(want)) else { return };
+                self.making = Some(want);
+                let from = (src.size[0] as u32, src.size[1] as u32);
+                cx.work(move || olo_kit::pictures::resampled(&src.rgba, from, want.1), move |img| Msg::Made(want, img));
+            }
+            Msg::Made(want, img) => {
+                if self.making == Some(want) {
+                    self.making = None;
+                }
+                if let Some(img) = img {
+                    self.exact = Some((want, img));
+                    cx.invalidate();
+                }
+            }
+        }
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        div().size_full().child(cx.canvas(|v: &PictureWell, g, b| v.paint(b, g)).size_full())
     }
 }

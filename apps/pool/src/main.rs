@@ -29,13 +29,13 @@ use std::{
     time::Duration,
 };
 
+use olo_kit::instance;
 use olo_token_pool::{
     clients, codex_daemon,
     gateway::{self, Shared},
     model::{Provider, now},
     running,
 };
-use olo_ui::instance;
 use serde_json::Value;
 
 const APP_ID: &str = "olo.pool";
@@ -225,7 +225,7 @@ fn clients_now(as_json: bool) -> std::process::ExitCode {
 fn keeper() -> std::process::ExitCode {
     use std::os::unix::process::CommandExt as _;
     // (Its pid waited for the copy before it handed over: not any more.)
-    olo_ui::restore::mark_waiting(false);
+    olo_kit::restore::mark_waiting(false);
     let port = gateway::port();
     // SAFETY: prctl, sigprocmask, signalfd, pidfd_open, poll and read with
     // valid arguments; waitpid on our own children; kill on the copies
@@ -316,13 +316,13 @@ fn become_keeper() -> std::io::Error {
         Ok(e) => std::path::PathBuf::from(e.to_string_lossy().trim_end_matches(" (deleted)")),
         Err(e) => return e,
     };
-    std::process::Command::new(exe).env(ui::KEEPER_ENV, "1").env_remove(ui::KEPT_ENV).env_remove(olo_ui::restore::ENV).exec()
+    std::process::Command::new(exe).env(ui::KEEPER_ENV, "1").env_remove(ui::KEPT_ENV).env_remove(olo_kit::restore::ENV).exec()
 }
 
 /// Whether the version before this one (re-executing in place) had its
 /// window open; its file read and removed.
 fn window_was_open() -> bool {
-    let Some(path) = std::env::var_os(olo_ui::restore::ENV) else { return false };
+    let Some(path) = std::env::var_os(olo_kit::restore::ENV) else { return false };
     let text = std::fs::read_to_string(&path).unwrap_or_default();
     let _ = std::fs::remove_file(&path);
     serde_json::from_str::<Value>(&text).is_ok_and(|v| v["open"] == true)
@@ -392,7 +392,7 @@ fn main() -> std::process::ExitCode {
     let service = has("--service");
     // One gateway per computer: a test or nested session runs its own
     // only on a port of its own.
-    if service && std::env::var_os("OLO_REAL_SESSION").is_none() && std::env::var_os("OLO_POOL_PORT").is_none() {
+    if service && !olo_xdg::session::real() && std::env::var_os("OLO_POOL_PORT").is_none() {
         eprintln!("olo-pool: --service is for the real session (set OLO_POOL_PORT to try it)");
         return std::process::ExitCode::FAILURE;
     }
@@ -424,7 +424,7 @@ fn main() -> std::process::ExitCode {
     // an upgrade hands over to it): it is asked over the gateway, not
     // given a copy beside it with no gateway. (One from before
     // `/pool/open`: its launches, once it takes them.)
-    if !service && !handed && std::env::var_os(olo_ui::restore::ENV).is_none() && !olo_token_pool::drain::serving(port).is_empty() {
+    if !service && !handed && std::env::var_os(olo_kit::restore::ENV).is_none() && !olo_token_pool::drain::serving(port).is_empty() {
         if ask_to_open(port) {
             return std::process::ExitCode::SUCCESS;
         }
@@ -435,9 +435,9 @@ fn main() -> std::process::ExitCode {
             }
         }
     }
-    olo_ui::run(APP_ID, move |cx| {
-        olo_ui::stay_resident(cx);
-        let proxy = olo_ui::proxy(cx);
+    olo_kit::run(APP_ID, move |app| {
+        olo_kit::stay_resident();
+        let proxy = olo_kit::proxy();
         instance::listen(APP_ID, proxy.clone());
         let to_ui = proxy.clone();
         let shared = Shared::launch(port, move || to_ui.send(ui::Msg::Changed));
@@ -449,8 +449,8 @@ fn main() -> std::process::ExitCode {
         std::thread::spawn(move || clients::migrate(proxy_port));
         // Codex's daemon, which outlives its windows, kept on the settings.
         codex_daemon::keep_following(Duration::from_secs(10));
-        // (The app's state lives in the handlers it gives olo-ui.)
-        ui::start(cx, ui::PoolApp::new(shared, proxy_port, proxy), service);
+        // (The app's state lives in the hub the app's looper keeps.)
+        ui::start(app, ui::Hub::new(shared, proxy_port, proxy), service);
     });
     std::process::ExitCode::SUCCESS
 }

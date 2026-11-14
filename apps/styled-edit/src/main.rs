@@ -2,11 +2,11 @@
 //! colours and styles kept beside the text in attributes (doc.rs), so
 //! other programs still see plain text. One window per document; Find and
 //! Replace windows as in Haiku; unsaved work survives a reload. On Olo's
-//! GPUI: the document in the kit's editor (`olo_ui::editor`), its
+//! kit: the document in the kit's editor (`olo_kit::editor`), its
 //! paragraphs' indents and tabs on the kit's ruler.
 //!
 //! A file's kind sets how it's shown ([`Mode`]): source code (by its name
-//! or `#!` line) in the kit's code view (`olo_ui::code`: coloured by its
+//! or `#!` line) in the kit's code view (`olo_kit::code`: coloured by its
 //! language, line numbers), Markdown as it looks or as its source
 //! (markdown.rs), anything else as a styled document.
 
@@ -22,28 +22,30 @@ use std::{
     cell::RefCell,
     ops::Range,
     path::{Path, PathBuf},
-    rc::Rc,
+    sync::{
+        Arc, Mutex, MutexGuard, Weak,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
-use doc::{Align, Change, Doc, Run, Style};
-use olo_ui::{
-    Frame, Menu, MenuBar, MenuItem, WindowOptions,
+use olo_kit::{
+    Child, ClickEvent, ClipboardEntry, ClipboardItem, Cx, Element, ExternalPaths, FontWeight, InteractiveElement as _, IntoElement as _, KeyDownEvent, LocalWindow, Menu, MenuBar, MenuItem,
+    ParentElement as _, Pixels, Point, Styled as _, View, ViewRef, WindowHandle, WindowOptions, canvas,
     code::{self, Code},
+    div,
     editor::{self, EditKey, Editor, EditorHost},
-    file_panel::{FilePanel, Filter, PanelResult},
-    gpui::{
-        self, App, AppContext as _, ClipboardEntry, ClipboardItem, Context, Entity, EntityId, ExternalPaths, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _,
-        Pixels, Point, Render, Styled as _, Subscription, WeakEntity, Window, WindowHandle, canvas, div, px,
-    },
+    file_panel::{self, FilePanel, Filter, PanelResult},
     instance::{self, Launch},
-    metrics as m, style, theme,
+    metrics as m, px, style, theme,
     widgets::{
-        Button, CheckBox, SCROLL_BAR, TextControl, TextField, TextFieldEvent, ToolBar, ToolBarView, Unsaved, ask_to_save, button_row, heading, open_alert,
+        Button, CheckBox, SCROLL_BAR, TextControl, TextField, TextFieldEvent, ToolBar, Unsaved, ask_to_save, button_row, heading, open_alert, open_app_alert,
         ruler::{self, Ruler, RulerEvent},
         text_field,
     },
 };
 use serde::{Deserialize, Serialize};
+
+use doc::{Align, Change, Doc, Run, Style};
 
 const APP_ID: &str = "olo.styled-edit";
 
@@ -65,22 +67,58 @@ const FAMILY_GROUP: usize = 24;
 /// An imported document: its text, runs, paragraphs, header and footer.
 type Imported = (String, Vec<Run>, Vec<doc::Para>, Option<doc::Page>);
 
-enum Msg {
+/// What a window (or a worker of the app's) asks of the app, through the
+/// proxy, on its looper.
+enum ToHub {
     Fonts(fonts::Event),
-    Loaded(EntityId, PathBuf, Result<doc::Loaded, String>),
-    /// Saved the document as it was at generation `.1` to `.2`.
-    Saved(EntityId, u64, PathBuf, Result<(), String>),
+    /// A file to show in a window of its own (or its window forward).
+    Open(PathBuf),
+    /// A new, untitled document.
+    New,
+    /// A formatted document to read in as a new one, and what was read.
+    Import(PathBuf),
+    Imported(PathBuf, Box<Result<Imported, String>>),
+    /// A window's document is this file now (saved under another name).
+    Showing(u64, Option<PathBuf>),
+    /// A window couldn't read its file: it goes, and this is said.
+    Failed(u64, String),
+    Closed(u64),
     /// Open documents' files changed on disk (another program wrote one).
     OnDisk(Vec<PathBuf>),
-    /// A formatted document read in: its text, runs and paragraphs.
-    Imported(PathBuf, Result<Imported, String>),
-    /// A picture to put in document `.0` at its selection: its file and
-    /// its size in pixels.
-    Picture(EntityId, PathBuf, Option<(u32, u32)>),
+    /// Something every window shows changed (spelling on or off, a word
+    /// learnt): each says what it shows again (`true`: checks its
+    /// spelling again).
+    Again(bool),
+    /// Quit: every window asked to close.
+    Quit,
+}
+
+/// What a document's window is told: by its workers, its panels and the
+/// app.
+enum DocMsg {
+    Loaded(PathBuf, Result<doc::Loaded, String>),
+    /// Saved the document as it was at generation `.0` to `.1`.
+    Saved(u64, PathBuf, Result<(), String>),
+    OnDisk(Vec<PathBuf>),
+    /// A picture to put in at the selection: its file and its size in
+    /// pixels.
+    Picture(PathBuf, Option<(u32, u32)>),
+    /// One of its pictures decoded: drawn from now on.
+    PictureLoaded(pictures::Loaded),
     /// A copy written in another format.
     Exported(PathBuf, Result<(), String>),
-    /// A document sent to a printer (its title).
+    /// The document sent to a printer (its title).
     Printed(String, Result<(), String>),
+    /// A file panel of this window's answered (None: cancelled).
+    Chosen(Purpose, Option<PathBuf>),
+    /// The Print panel answered.
+    Print(Option<olo_print::panel::Choice>),
+    /// Asked to close (Quit), as its close box asks.
+    Leave,
+    /// Closed, nothing asked (its file couldn't be read).
+    Close,
+    /// Something every window shows changed (`ToHub::Again`).
+    Again(bool),
 }
 
 /// What to do once the document is saved (or its changes discarded).
@@ -97,6 +135,8 @@ type Words = (Option<usize>, usize);
 /// How a document is shown and edited (Ben, 2026-11-05: "when opening a
 /// markdown file StyledEdit should natively support the Markdown … and
 /// in source mode it should be like a code editor").
+// (One to a document: nothing is saved by boxing its parts.)
+#[allow(clippy::large_enum_variant)]
 enum Mode {
     /// A styled document: its styles its own, kept beside the file.
     Styled,
@@ -224,8 +264,10 @@ fn markdown_picture(src: &str, folder: Option<&Path>) -> Option<PathBuf> {
 
 /// A document's window.
 struct DocView {
-    app: WeakEntity<StyledEdit>,
-    win: Option<WindowHandle<Frame>>,
+    id: u64,
+    shared: Arc<Shared>,
+    /// A save is under way (an upgrade waits: `Shared::saving`).
+    saving_said: Arc<AtomicBool>,
     /// None until first saved.
     path: Option<PathBuf>,
     /// "Untitled N" for a new document.
@@ -234,10 +276,7 @@ struct DocView {
     /// Shows and edits `doc` (a paragraph at a time: documents of any
     /// length stay quick).
     editor: Editor,
-    ruler_view: Entity<Ruler>,
-    /// The tool bars, along the top and down the side, each drawn only as
-    /// what it shows changes.
-    bar_views: (Entity<ToolBarView>, Entity<ToolBarView>),
+    ruler_view: Child<Ruler>,
     loading: bool,
     saving: bool,
     after_save: After,
@@ -262,8 +301,13 @@ struct DocView {
     page_view: bool,
     /// The tool bars show (Document ▸ Show Toolbars).
     tool_bars: bool,
-    pictures: Rc<RefCell<pictures::Pictures>>,
-    common: Rc<RefCell<Common>>,
+    pictures: RefCell<pictures::Pictures>,
+    /// The paper and pages the next PDF is made with (the Print panel's,
+    /// when it chose a PDF).
+    pdf_setup: Option<(olo_print::Paper, Option<(u32, u32)>)>,
+    /// Its Find and Replace windows, and its Header & Footer one.
+    finds: [Option<LocalWindow<FindView>>; 2],
+    margins: Option<LocalWindow<MarginsView>>,
     /// A picture pasted (its bytes), to put in once kept.
     pasted: Option<Vec<u8>>,
     /// Styled, source code or Markdown.
@@ -272,7 +316,8 @@ struct DocView {
     link: Option<String>,
     /// Source shows line numbers (Document ▸ Line Numbers).
     line_numbers: bool,
-    _subs: Vec<Subscription>,
+    /// Where a marker held on the ruler goes (a line down the text).
+    guide: Option<f32>,
 }
 
 /// The document as the editor sees it: its text, styles in the fonts
@@ -504,48 +549,55 @@ impl editor::Document for Styled<'_> {
 }
 
 impl EditorHost for DocView {
-    fn editor(&mut self, _: usize, cx: &mut Context<Self>, f: &mut dyn FnMut(&mut Editor, &mut dyn editor::Document, &mut Context<Self>)) {
+    fn editor(&mut self, _: usize, cx: &mut Cx<Self>, f: &mut dyn FnMut(&mut Editor, &mut dyn editor::Document, &mut Cx<Self>)) {
         let editable = !self.read_only && !self.loading;
         let folder = self.path.as_deref().and_then(Path::parent);
-        let palette = theme::palette(cx);
+        let palette = theme::palette();
         let width = self.editor.text_span().map_or(400.0, |s| s.1);
         let mut styled = Styled { doc: &mut self.doc, pictures: &self.pictures, folder, pasted: &mut self.pasted, editable, mode: &mut self.mode, palette: &palette, width };
         f(&mut self.editor, &mut styled, cx);
         styled.sync();
     }
 
-    fn text_moved(&mut self, _: usize, (origin, width): (f32, f32), cx: &mut Context<Self>) {
-        self.ruler_view.update(cx, |r, _| r.follow(origin, width));
+    fn editor_shown(&self, _: usize) -> Option<(&Editor, &str)> {
+        Some((&self.editor, self.doc.text()))
     }
 
-    fn edited(&mut self, _: usize, cx: &mut Context<Self>) {
+    fn text_moved(&mut self, _: usize, (origin, width): (f32, f32), cx: &mut Cx<Self>) {
+        self.ruler_view.update(cx, |r, cx| {
+            r.follow(origin, width);
+            cx.invalidate();
+        });
+    }
+
+    fn edited(&mut self, _: usize, cx: &mut Cx<Self>) {
         // A picture pasted: kept as a file (on a worker), then put in.
         if let Some(data) = self.pasted.take() {
-            let (proxy, id) = (olo_ui::proxy(cx), cx.entity_id());
+            let to = cx.messenger();
             std::thread::spawn(move || {
                 if let Some(path) = pictures::hold(&data) {
                     let px = pictures::pixels(&path);
-                    proxy.send(Msg::Picture(id, path, px));
+                    to.send(DocMsg::Picture(path, px));
                 }
             });
         }
-        cx.notify();
+        cx.invalidate();
     }
 
-    fn open_link(&mut self, _: usize, link: String, _: &mut Window, _: &mut Context<Self>) {
+    fn open_link(&mut self, _: usize, link: String, _: &mut Cx<Self>) {
         self.open(link);
     }
 
-    fn context_menu(&mut self, _: usize, at: Point<Pixels>, window: &mut Window, cx: &mut Context<Self>) {
+    fn context_menu(&mut self, _: usize, at: Point<Pixels>, cx: &mut Cx<Self>) {
         let editable = !self.read_only && !self.loading;
-        let spelling = self.common.borrow().spelling;
+        let spelling = self.shared.common().spelling;
         // On a misspelled word (the editor has put the caret in it): what
         // it might be, first.
         self.spell = None;
         if spelling
             && editable
-            && let Some(checker) = olo_ui::spell::checker(cx)
-            && let Some(r) = olo_ui::spell::word_at(self.doc.text(), self.editor.caret())
+            && let Some(checker) = olo_kit::spell::checker(&cx.invalidator())
+            && let Some(r) = olo_kit::spell::word_at(self.doc.text(), self.editor.caret())
             && !checker.check(&self.doc.text()[r.clone()])
         {
             let guesses = checker.suggest(&self.doc.text()[r.clone()]);
@@ -587,11 +639,10 @@ impl EditorHost for DocView {
             .separator()
             .item("Select All", "select-all")
             .keys("⌘A");
-        let (app, me) = (self.app.clone(), cx.entity());
-        olo_ui::menu::context_menu(window, cx, menu, at, move |cmd, window, cx| {
-            if let Some(app) = app.upgrade() {
-                app.update(cx, |a, cx| a.doc_command(&me, cmd, window, cx));
-            }
+        let me = cx.view_ref();
+        olo_kit::menu::context_menu(cx, menu, at, move |cmd, cx| {
+            let cmd = cmd.to_owned();
+            me.update(cx, move |d, cx| d.run(&cmd, cx));
         });
     }
 }
@@ -616,18 +667,31 @@ impl DocView {
         });
     }
 
-    fn new(app: WeakEntity<StyledEdit>, path: Option<PathBuf>, untitled: usize, pictures: Rc<RefCell<pictures::Pictures>>, common: Rc<RefCell<Common>>, cx: &mut Context<Self>) -> DocView {
-        let ruler_view = cx.new(|_| Ruler::new());
-        let sub = cx.subscribe(&ruler_view, |d: &mut DocView, _, e: &RulerEvent, cx| d.ruled(e, cx));
+    fn new(id: u64, shared: Arc<Shared>, path: Option<PathBuf>, untitled: usize, cx: &mut Cx<Self>) -> DocView {
+        let ruler_view = cx.new_view(|_| Ruler::new());
+        cx.subscribe(&ruler_view, |d: &mut DocView, e: &RulerEvent, cx| d.ruled(e, cx));
+        let saving_said = Arc::new(AtomicBool::new(false));
+        {
+            let mut saving = shared.saving.lock().unwrap_or_else(|e| e.into_inner());
+            saving.retain(|s| s.strong_count() > 0);
+            saving.push(Arc::downgrade(&saving_said));
+        }
+        // Its pictures, decoded on workers, come to it.
+        let mut pictures = pictures::Pictures::default();
+        let to = cx.messenger();
+        pictures.set_sender(move |loaded| {
+            to.send(DocMsg::PictureLoaded(loaded));
+        });
+        let (ruler, tool_bars) = (shared.ruler.load(Ordering::Relaxed), shared.tool_bars.load(Ordering::Relaxed));
         DocView {
-            app,
-            win: None,
+            id,
+            shared,
+            saving_said,
             path,
             untitled,
             doc: Doc::new(String::new(), None),
-            editor: Editor::new(cx),
+            editor: Editor::new(),
             ruler_view,
-            bar_views: (cx.new(|_| ToolBarView::default()), cx.new(|_| ToolBarView::default())),
             loading: false,
             saving: false,
             after_save: After::Nothing,
@@ -638,22 +702,24 @@ impl DocView {
             on_disk: None,
             spell: None,
             words: None,
-            ruler: true,
+            ruler,
             page_view: false,
-            tool_bars: true,
-            pictures,
-            common,
+            tool_bars,
+            pictures: RefCell::new(pictures),
+            pdf_setup: None,
+            finds: [None, None],
+            margins: None,
             pasted: None,
             mode: Mode::Styled,
             link: None,
             line_numbers: true,
-            _subs: vec![sub],
+            guide: None,
         }
     }
 
     /// The ruler changed the caret's paragraph's indents and tabs: the
     /// selected paragraphs take them (one step to undo).
-    fn ruled(&mut self, e: &RulerEvent, cx: &mut Context<Self>) {
+    fn ruled(&mut self, e: &RulerEvent, cx: &mut Cx<Self>) {
         if let RulerEvent::Changed(s) = e
             && !self.read_only
             && !self.loading
@@ -668,7 +734,7 @@ impl DocView {
             });
             self.editor.restyled(whole);
         }
-        cx.notify();
+        cx.invalidate();
     }
 
     /// The words in the selection (if any) and in all of it, counted again
@@ -702,13 +768,8 @@ impl DocView {
     }
 
     /// The window's title, as the document is now called.
-    fn set_title(&self, cx: &mut Context<Self>) {
-        if let Some(win) = self.win {
-            let title = self.title();
-            cx.defer(move |cx| {
-                let _ = win.update(cx, |f, window, _| f.set_title(title, window));
-            });
-        }
+    fn set_title(&self, cx: &mut Cx<Self>) {
+        cx.set_window_title(self.title());
     }
 
     /// The selection (bytes of the text).
@@ -887,18 +948,18 @@ impl DocView {
     }
 
     /// A command about the document itself (its styles, layout, undo).
-    fn command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) {
+    fn edit_command(&mut self, command: &str, cx: &mut Cx<Self>) {
         match command {
             "source" => {
                 if let Mode::Markdown(look) = &mut self.mode {
                     look.source = !look.source;
                     self.editor.relayout();
                 }
-                return cx.notify();
+                return cx.invalidate();
             }
             "line-numbers" => {
                 self.line_numbers = !self.line_numbers;
-                return cx.notify();
+                return cx.invalidate();
             }
             "open-link" => {
                 // A link to a file is from the document's folder; opened by
@@ -911,12 +972,12 @@ impl DocView {
             }
             c if c.starts_with("language:") => {
                 self.choose_language(&c["language:".len()..]);
-                return cx.notify();
+                return cx.invalidate();
             }
             _ => {}
         }
         if matches!(self.mode, Mode::Markdown(_)) && self.markdown_command(command) {
-            return cx.notify();
+            return cx.invalidate();
         }
         // (Styles are a styled document's alone.)
         let style_command = ["bold", "italic", "underline", "strikeout", "indent-more", "indent-less", "list-bullet", "list-number"].contains(&command)
@@ -927,14 +988,14 @@ impl DocView {
         // The step it makes, named for it (Edit ▸ Undo Bold); a paste's
         // name is taken by the paste, which comes after.
         self.doc.name_next(step_name(command));
-        self.doc_command(command, window, cx);
+        self.doc_command(command, cx);
         if command != "paste" {
             self.doc.name_next(None);
         }
     }
 
     /// The document's part of `command`: undo, the clipboard, styles.
-    fn doc_command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) {
+    fn doc_command(&mut self, command: &str, cx: &mut Cx<Self>) {
         let selection = self.bytes();
         let bytes = selection.clone();
         let restyle = |d: &mut DocView, f: &dyn Fn(&mut Style)| {
@@ -950,15 +1011,14 @@ impl DocView {
             }
             "copy" | "cut" => {
                 self.doc.copied(bytes.clone());
-                cx.write_to_clipboard(ClipboardItem::new_string(self.selected_text().to_owned()));
+                olo_kit::clipboard::write(ClipboardItem::new_string(self.selected_text().to_owned()));
                 if command == "cut" && !self.read_only {
                     let change = self.doc.replace(bytes, "", selection.clone());
                     self.changed(change, selection.start..selection.start);
                 }
             }
             "paste" => {
-                let me = cx.entity();
-                window.defer(cx, move |window, cx| editor::edit(&me, 0, editor::Edit::Paste, window, cx));
+                editor::edit(self, 0, editor::Edit::Paste, cx);
             }
             "clear" if !self.read_only => {
                 let change = self.doc.replace(bytes, "", selection.clone());
@@ -1084,7 +1144,7 @@ impl DocView {
                 }
             }
         }
-        cx.notify();
+        cx.invalidate();
     }
 }
 
@@ -1123,7 +1183,7 @@ fn size_menu(cur: &Style) -> Menu {
 
 /// Font ▸ Color, each with its swatch (Black the document's text colour,
 /// `ink`, as it shows).
-fn color_menu(cur: &Style, ink: gpui::Hsla) -> Menu {
+fn color_menu(cur: &Style, ink: olo_kit::Hsla) -> Menu {
     let mut color = Menu::new("Color");
     for (k, (name, rgb)) in COLORS.iter().enumerate() {
         color = color.item(*name, format!("color:{k}")).checked(cur.color == *rgb).swatch(rgb.map_or(ink, rgb_color));
@@ -1131,8 +1191,8 @@ fn color_menu(cur: &Style, ink: gpui::Hsla) -> Menu {
     color
 }
 
-fn rgb_color([r, g, b]: [u8; 3]) -> gpui::Hsla {
-    gpui::Rgba { r: r as f32 / 255.0, g: g as f32 / 255.0, b: b as f32 / 255.0, a: 1.0 }.into()
+fn rgb_color([r, g, b]: [u8; 3]) -> olo_kit::Hsla {
+    olo_kit::Rgba { r: r as f32 / 255.0, g: g as f32 / 255.0, b: b as f32 / 255.0, a: 1.0 }.into()
 }
 
 /// `menu` with the font families after it: the system font, those the
@@ -1165,18 +1225,19 @@ fn families(mut font: Menu, app: &Common, d: &DocView, cur: &Style) -> Menu {
 /// the text's style (wrapping to a second row in a narrow window); down
 /// the side, what goes in and how the document shows. Every tool is one
 /// of `menus`' commands.
-fn tool_bars(me: &Entity<DocView>, d: &DocView, menus: &[Menu], ink: gpui::Hsla, on_command: impl Fn(&str, &mut Window, &mut App) + Clone + 'static) -> (ToolBar, ToolBar) {
+fn tool_bars(cx: &Cx<DocView>, d: &DocView, menus: &[Menu], ink: olo_kit::Hsla) -> (ToolBar, ToolBar) {
     let editable = !d.read_only && !d.loading;
     let cur = d.doc.style_at(d.bytes().start);
     // (The pickers' menus are made as they open, from the document then.)
-    let style_now = |me: &Entity<DocView>, cx: &App| {
-        let d = me.read(cx);
+    fn style_now(d: &DocView) -> Style {
         d.doc.style_at(d.bytes().start)
-    };
-    let (fonts, common, sizes, colors) = (me.clone(), d.common.clone(), me.clone(), me.clone());
+    }
+    let fonts = cx.asks(|d: &mut DocView, _: &(), _| families(Menu::new("Font"), &d.shared.common(), d, &style_now(d)));
+    let sizes = cx.asks(|d: &mut DocView, _: &(), _| size_menu(&style_now(d)));
+    let colors = cx.asks(move |d: &mut DocView, _: &(), _| color_menu(&style_now(d), ink));
     let family = if cur.family.is_empty() { "System Font".to_owned() } else { cur.family.clone() };
     let color = COLORS.iter().find(|(_, rgb)| *rgb == cur.color).map_or("Other", |(name, _)| name);
-    let top = ToolBar::new("tools", "Tools", on_command.clone())
+    let top = ToolBar::new("tools", "Tools", cx.listener(|d: &mut DocView, command: &str, cx| d.run(command, cx)))
         .command("new", "new-document")
         .command("open", "folder-open")
         .command("save", "save-document")
@@ -1197,11 +1258,11 @@ fn tool_bars(me: &Entity<DocView>, d: &DocView, menus: &[Menu], ink: gpui::Hsla,
         .toggle("underline", "format-underline")
         .toggle("strikeout", "format-strikeout")
         .separator()
-        .picker("Font", family, 132.0, move |cx| families(Menu::new("Font"), &common.borrow(), fonts.read(cx), &style_now(&fonts, cx)))
+        .picker("Font", family, 132.0, move |cx| fonts(&(), cx).unwrap_or_else(|| Menu::new("Font")))
         .enabled(editable)
-        .picker("Size", format!("{}", cur.size), 52.0, move |cx| size_menu(&style_now(&sizes, cx)))
+        .picker("Size", format!("{}", cur.size), 52.0, move |cx| sizes(&(), cx).unwrap_or_else(|| Menu::new("Size")))
         .enabled(editable)
-        .colors("Color", color, Some(cur.color.map_or(ink, rgb_color)), move |cx| color_menu(&style_now(&colors, cx), ink))
+        .colors("Color", color, Some(cur.color.map_or(ink, rgb_color)), move |cx| colors(&(), cx).unwrap_or_else(|| Menu::new("Color")))
         .enabled(editable)
         .separator()
         .toggle("align-left", "align-left")
@@ -1216,7 +1277,7 @@ fn tool_bars(me: &Entity<DocView>, d: &DocView, menus: &[Menu], ink: gpui::Hsla,
         .command("indent-more", "indent-more")
         .rows(2)
         .menus(menus);
-    let side = ToolBar::new("insert", "Insert", on_command)
+    let side = ToolBar::new("insert", "Insert", cx.listener(|d: &mut DocView, command: &str, cx| d.run(command, cx)))
         .vertical()
         .command("insert-picture", "image")
         .command("table:insert", "insert-table")
@@ -1231,10 +1292,12 @@ fn tool_bars(me: &Entity<DocView>, d: &DocView, menus: &[Menu], ink: gpui::Hsla,
 
 /// The menus a document's window has (`ink`: the document's text colour,
 /// for Font ▸ Color's Black).
-fn doc_menus(app: &Common, d: &DocView, ink: gpui::Hsla) -> Vec<Menu> {
+fn doc_menus(app: &Common, d: &DocView, ink: olo_kit::Hsla) -> Vec<Menu> {
     let has_sel = !d.bytes().is_empty();
     let editable = !d.read_only && !d.loading;
+    // (Its settings: fonts, and which app opens which documents.)
     let file = Menu::new("File")
+        .app_items(&["appearance", "default-apps"])
         .item("New", "new")
         .key("n")
         .item("Open…", "open")
@@ -1264,17 +1327,13 @@ fn doc_menus(app: &Common, d: &DocView, ink: gpui::Hsla) -> Vec<Menu> {
                 .item("Web Page (HTML)…", "export:html"),
         )
         .separator()
-        .item(olo_ui::tracker::LABEL, olo_ui::tracker::COMMAND)
+        .item(olo_kit::tracker::LABEL, olo_kit::tracker::COMMAND)
         .enabled(d.path.is_some())
-        .separator()
-        .item("Close", "close")
-        .key("w")
-        .item("Quit", "quit")
-        .key("q");
+        .close_quit();
     // The picture selected, alone.
     let picked = picture_selected(&d.doc, d.bytes());
     // (Each step named, as every app's: Undo Typing, Redo Bold.)
-    let edit = olo_ui::undo::edit_items_named(Menu::new("Edit"), d.doc.undo_name().filter(|_| editable), d.doc.redo_name().filter(|_| editable))
+    let edit = olo_kit::undo::edit_items_named(Menu::new("Edit"), d.doc.undo_name().filter(|_| editable), d.doc.redo_name().filter(|_| editable))
         .separator()
         .item("Cut", "cut")
         .key("x")
@@ -1511,27 +1570,133 @@ fn all_enabled(mut menu: Menu, on: bool) -> Menu {
     menu
 }
 
-impl Render for DocView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if window.focused(cx).is_none() {
-            self.editor.focus(window);
-        }
-        let p = theme::palette(cx);
-        let me = cx.entity();
-        let ink = style::c(p.document_text);
-        let menus = doc_menus(&self.common.borrow(), self, ink);
-        let spelling = self.common.borrow().spelling;
-        let (weak, doc) = (self.app.clone(), me.clone());
-        let on_command = move |cmd: &str, window: &mut Window, cx: &mut App| {
-            if let Some(app) = weak.upgrade() {
-                app.update(cx, |a, cx| a.doc_command(&doc, cmd, window, cx));
+impl View for DocView {
+    type Message = DocMsg;
+
+    fn message(&mut self, message: DocMsg, cx: &mut Cx<Self>) {
+        match message {
+            DocMsg::Loaded(path, result) => self.loaded(path, result, cx),
+            DocMsg::Saved(generation, path, result) => self.saved(generation, path, result, cx),
+            DocMsg::OnDisk(paths) => {
+                // Written by another program (not our own save): read again
+                // if nothing here is unsaved, keeping the place in it.
+                let Some(path) = self.path.clone().filter(|p| paths.contains(p)) else { return };
+                let now = stamp(&path);
+                if now.is_none() || now == self.on_disk || self.doc.edited() || self.saving || self.loading {
+                    return;
+                }
+                self.on_disk = now;
+                self.restore = Some((self.editor.selection(), self.editor.view()));
+                self.load(path, cx);
             }
+            DocMsg::Picture(path, px) => {
+                let Some(px) = px else {
+                    return self.error(format!("“{}” isn't a picture StyledEdit can read.", file_name(&path)), cx);
+                };
+                let (width, height) = pictures::fit(px, PICTURE_ROOM.0, PICTURE_ROOM.1);
+                let alt = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                let sel = self.bytes();
+                let pic = doc::Picture { path: path.to_string_lossy().into_owned(), width, height, alt };
+                let change = self.doc.insert_picture(sel.clone(), pic, sel.clone());
+                let after = sel.start + change.inserted;
+                self.changed(change, after..after);
+                cx.invalidate();
+            }
+            DocMsg::PictureLoaded(l) => {
+                self.pictures.borrow_mut().loaded(l);
+                self.editor.relayout();
+                cx.invalidate();
+            }
+            DocMsg::Exported(path, result) => {
+                if let Err(e) = result {
+                    self.error(format!("“{}” couldn't be written. {e}", file_name(&path)), cx);
+                }
+            }
+            DocMsg::Printed(title, result) => {
+                if let Err(e) = result {
+                    self.error(format!("“{title}” couldn't be printed. {e}"), cx);
+                }
+            }
+            DocMsg::Chosen(purpose, path) => self.chosen(purpose, path, cx),
+            DocMsg::Print(choice) => {
+                let Some(choice) = choice else { return };
+                match choice.printer.clone() {
+                    // A PDF: where to, first.
+                    None => {
+                        self.pdf_setup = Some((choice.paper, choice.pages));
+                        self.ask_panel(Purpose::Export(Format::Pdf), cx);
+                    }
+                    Some(printer) => self.print(printer, choice, cx),
+                }
+            }
+            DocMsg::Leave => self.leave(After::Close, cx),
+            DocMsg::Close => cx.close_window(),
+            DocMsg::Again(respell) => {
+                if respell {
+                    self.editor.respell();
+                }
+                cx.invalidate();
+            }
+        }
+    }
+
+    fn command(&mut self, command: &str, cx: &mut Cx<Self>) -> bool {
+        self.run(command, cx);
+        true
+    }
+
+    /// The window's close: asks about unsaved changes first.
+    fn close_requested(&mut self, cx: &mut Cx<Self>) -> bool {
+        if self.doc.edited() {
+            self.leave(After::Close, cx);
+            return false;
+        }
+        true
+    }
+
+    fn window_closing(&mut self, _: &mut Cx<Self>) {
+        self.saving_said.store(false, Ordering::Relaxed);
+        to_hub(ToHub::Closed(self.id));
+    }
+
+    /// The document, kept for an upgrade (unsaved work too).
+    fn save_state(&mut self, _: &mut Cx<Self>) -> Option<String> {
+        let d = self;
+        let dirty = d.doc.edited() || d.path.is_none();
+        serde_json::to_string(&SavedDoc {
+            path: d.path.clone(),
+            untitled: d.untitled,
+            edited: dirty.then(|| (d.doc.text().to_owned(), d.doc.runs().to_vec())),
+            paras: if dirty { d.doc.paras().to_vec() } else { Vec::new() },
+            align: d.doc.align,
+            wrap: d.doc.wrap,
+            selection: (d.bytes().start, d.bytes().end),
+            view: d.editor.view(),
+            ruler: d.ruler,
+            page_view: d.page_view,
+            tool_bars: d.tool_bars,
+            page: d.doc.page.clone(),
+            mode: Some(d.mode.id()),
+            line_numbers: d.line_numbers,
+        })
+        .ok()
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        // The editor has the keyboard (else the window's frame does).
+        self.editor.focus_handle().focus_if_none(cx);
+        self.saving_said.store(self.saving, Ordering::Relaxed);
+        let p = theme::palette();
+        let ink = style::c(p.document_text);
+        let (menus, spelling) = {
+            let common = self.shared.common();
+            (doc_menus(&common, self, ink), common.spelling)
         };
         let styled = self.mode.is_styled();
         let source = self.mode.is_source();
         // (Styles are a styled document's: its tool bars and ruler too.)
-        let bars = (self.tool_bars && styled).then(|| tool_bars(&me, self, &menus, ink, on_command.clone()));
-        let bar = MenuBar::new(menus, on_command);
+        let bars = (self.tool_bars && styled).then(|| tool_bars(cx, self, &menus, ink));
+        let bar = MenuBar::new(cx, menus);
         let editable = !self.read_only && !self.loading;
         // Markdown: the lines the selection is on show their marks.
         if let Mode::Markdown(look) = &mut self.mode {
@@ -1572,23 +1737,19 @@ impl Render for DocView {
             let setting = self.doc.paras()[here].ruler();
             self.ruler_view.update(cx, |r, cx| r.set(&setting, origin, width, cx));
         }
+        self.guide = self.ruler_view.read(cx).guide().filter(|_| show_ruler);
         let status = self.status();
-        let body = editor::view(&me, 0, &self.editor, options, window);
+        let body = editor::view(self, 0, options, cx);
         // Over the text: the header and footer on each sheet, as printed,
         // and where a marker held on the ruler goes.
-        let (over, ruler_view) = (me.clone(), self.ruler_view.clone());
-        let overlay = canvas(
-            |_, _, _| {},
-            move |b, _, window, cx| {
-                let p = theme::palette(cx);
-                let d = over.read(cx);
+        let overlay = cx
+            .canvas(|d: &DocView, g, b| {
+                let p = theme::palette();
                 let (sheets, n) = d.editor.sheets();
-                let page = d.doc.page.clone();
-                let sheets: Vec<_> = sheets.to_vec();
                 let ink = style::c(p.document_text).opacity(0.6);
-                window.with_content_mask(Some(gpui::ContentMask { bounds: b }), |window| {
-                    for (k, sheet) in &sheets {
-                        for (i, (text, y)) in pages::margin_lines(page.as_ref(), *k, n).into_iter().enumerate() {
+                g.with_content_mask(Some(olo_kit::ContentMask { bounds: b }), |g| {
+                    for (k, sheet) in sheets {
+                        for (i, (text, y)) in pages::margin_lines(d.doc.page.as_ref(), *k, n).into_iter().enumerate() {
                             if text.trim().is_empty() {
                                 continue;
                             }
@@ -1599,54 +1760,45 @@ impl Render for DocView {
                             };
                             // (Its baseline where print has it.)
                             let center = sheet.top() + px(y - pages::MARGIN_TEXT * style::CAP_HEIGHT / 2.0);
-                            style::label(window, cx, x, center, align, text, pages::MARGIN_TEXT, style::ui_font(FontWeight::NORMAL), ink);
+                            style::label(g, x, center, align, text, pages::MARGIN_TEXT, style::ui_font(FontWeight::NORMAL), ink);
                         }
                     }
-                    if let Some(x) = ruler_view.read(cx).guide() {
-                        style::vline(window, px(x), b.top(), b.bottom(), style::c(p.keyboard_navigation));
+                    if let Some(x) = d.guide {
+                        style::vline(g, px(x), b.top(), b.bottom(), style::c(p.keyboard_navigation));
                     }
                 });
-            },
-        )
-        .absolute()
-        .inset_0();
-        let status_line = canvas(
-            |_, _, _| {},
-            move |b, _, window, cx| {
-                let p = theme::palette(cx);
-                style::fill_rect(window, b, style::c(p.panel_background));
-                style::hline(window, b.left(), b.right(), b.top(), style::shade(&p, p.panel_background, 1.3));
-                // Centred under the line along the top.
-                let y = b.center().y + style::hairline(window) / 2.0;
-                let at = style::label(window, cx, b.left() + px(m::TIGHT + 2.0), y, style::Align::Left, status.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), style::c(p.panel_text));
-                olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(status.clone(), at));
-            },
-        )
+            })
+            .absolute()
+            .inset_0();
+        let status_line = canvas(move |g, b| {
+            let p = theme::palette();
+            style::fill_rect(g, b, style::c(p.panel_background));
+            style::hline(g, b.left(), b.right(), b.top(), style::shade(&p, p.panel_background, 1.3));
+            // Centred under the line along the top.
+            let y = b.center().y + style::hairline(g) / 2.0;
+            let at = style::label(g, b.left() + px(m::TIGHT + 2.0), y, style::Align::Left, status.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), style::c(p.panel_text));
+            olo_kit::agent::record(g, olo_kit::agent::Node::label(status.clone(), at));
+        })
         .w_full()
         .h(px(STATUS_H));
         // The side bar as tall as what's between the top one and the
         // status line.
         let (top, side) = match bars {
             Some((top, side)) => {
-                let view = window.viewport_size();
-                let below = olo_ui::menu::BAR_HEIGHT + top.extent(window, f32::from(view.width)) + STATUS_H;
+                let view = cx.viewport_size();
+                let below = olo_kit::menu::BAR_HEIGHT + top.extent(f32::from(view.width)) + STATUS_H;
                 let side = side.length(f32::from(view.height) - below);
-                let (top_view, side_view) = self.bar_views.clone();
-                (Some(top.cached(&top_view, window, cx)), Some(side.cached(&side_view, window, cx)))
+                (Some(top), Some(side))
             }
             None => (None, None),
         };
-        let (dropper, weak) = (me.clone(), self.app.clone());
+        let scale = cx.scale_factor();
+        let ruler_h = (ruler::HEIGHT * scale).round() / scale;
         div()
             .size_full()
             .flex()
             .flex_col()
-            .on_drop(move |paths: &ExternalPaths, _, cx| {
-                let paths: Vec<PathBuf> = paths.paths().to_vec();
-                if let Some(app) = weak.upgrade() {
-                    app.update(cx, |a, cx| a.dropped(&dropper, paths, cx));
-                }
-            })
+            .on_drop(cx.listener(|d: &mut DocView, paths: &ExternalPaths, cx| d.dropped(paths.paths().to_vec(), cx)))
             .child(bar)
             .children(top)
             .child(
@@ -1656,11 +1808,12 @@ impl Render for DocView {
                         .min_w_0()
                         .flex()
                         .flex_col()
-                        .children(show_ruler.then(|| div().w_full().h(style::snap_coord(window, px(ruler::HEIGHT))).child(self.ruler_view.clone())))
+                        .children(show_ruler.then(|| div().w_full().h(px(ruler_h)).child(&self.ruler_view)))
                         .child(div().flex_1().min_h_0().relative().child(body).child(overlay)),
                 ),
             )
             .child(status_line)
+            .into_any_element()
     }
 }
 
@@ -1710,8 +1863,7 @@ struct Search {
     all: bool,
 }
 
-/// What the app and its documents' windows both read (a window drawn
-/// while the app is busy can't read the app itself).
+/// What every document's window reads and sets.
 struct Common {
     search: Search,
     /// Misspelled words are underlined (Edit ▸ Check Spelling While
@@ -1720,27 +1872,40 @@ struct Common {
     fonts: fonts::Fonts,
 }
 
-struct StyledEdit {
-    docs: Vec<Entity<DocView>>,
-    common: Rc<RefCell<Common>>,
+/// What the app and its windows (each on its own looper) share.
+struct Shared {
+    common: Mutex<Common>,
+    /// New windows show the ruler (as the last one shown or hidden).
+    ruler: AtomicBool,
+    /// New windows show the tool bars (as the last one shown or hidden).
+    tool_bars: AtomicBool,
+    /// Each window's "a save is under way" (an upgrade waits for them).
+    saving: Mutex<Vec<Weak<AtomicBool>>>,
+}
+
+impl Shared {
+    fn common(&self) -> MutexGuard<'_, Common> {
+        self.common.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
+/// A window open, as the app knows it.
+struct Open {
+    id: u64,
+    path: Option<PathBuf>,
+    window: WindowHandle<DocView>,
+}
+
+/// The app's looper: the windows open and the files they show, followed
+/// as they change on disk.
+struct Hub {
+    docs: Vec<Open>,
+    shared: Arc<Shared>,
     untitled: usize,
     /// The open documents' files, followed as they change: one changed
     /// by another program is read again if it has no unsaved changes here.
-    watch: Option<olo_ui::watch::Watch>,
-    /// The paper and pages the next PDF is made with (the Print panel's,
-    /// when it chose a PDF).
-    pdf_setup: Option<(olo_print::Paper, Option<(u32, u32)>)>,
-    /// New windows show the ruler (as the last one shown or hidden).
-    ruler: bool,
-    /// New windows show the tool bars (as the last one shown or hidden).
-    tool_bars: bool,
-    /// The documents' pictures.
-    pictures: Rc<RefCell<pictures::Pictures>>,
-    /// File panels and alerts open with no document (to quit when they go).
-    panels: usize,
-    /// Each document's Find and Replace windows, and its Header & Footer
-    /// one (`true` for Replace; None for Header & Footer).
-    tools: Vec<(EntityId, Option<bool>, WindowHandle<Frame>)>,
+    watch: Option<olo_kit::watch::Watch>,
+    next: u64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -1798,136 +1963,373 @@ fn home() -> PathBuf {
     std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from)
 }
 
-impl StyledEdit {
-    fn doc(&self, id: EntityId) -> Option<Entity<DocView>> {
-        self.docs.iter().find(|d| d.entity_id() == id).cloned()
-    }
+fn to_hub(message: ToHub) {
+    olo_kit::proxy().send(message);
+}
 
-    fn new_doc(&mut self, cx: &mut Context<Self>) -> Entity<DocView> {
+/// Says something went wrong, with no window to say it over.
+fn app_error(message: String) {
+    let _ = open_app_alert("StyledEdit", "warning", &message, &["OK"], |_| {});
+}
+
+impl Hub {
+    fn new_doc(&mut self) {
         self.untitled += 1;
         let n = self.untitled;
-        self.add_window(None, n, |_| {}, cx)
+        self.add_window(None, n, |_, _| {});
     }
 
-    /// A window for a document (`setup` gives it its text).
-    fn add_window(&mut self, path: Option<PathBuf>, untitled: usize, setup: impl FnOnce(&mut DocView), cx: &mut Context<Self>) -> Entity<DocView> {
-        let (app, pictures, common, ruler, tool_bars) = (cx.weak_entity(), self.pictures.clone(), self.common.clone(), self.ruler, self.tool_bars);
-        let doc = cx.new(|cx| {
-            let mut d = DocView::new(app, path, untitled, pictures, common, cx);
-            d.ruler = ruler;
-            d.tool_bars = tool_bars;
-            setup(&mut d);
+    /// A window for a document (`setup` gives it its text, or starts its
+    /// file's reading).
+    fn add_window(&mut self, path: Option<PathBuf>, untitled: usize, setup: impl FnOnce(&mut DocView, &mut Cx<DocView>) + Send + 'static) {
+        self.next += 1;
+        let (id, shared, opened) = (self.next, self.shared.clone(), path.clone());
+        let title = match &path {
+            Some(p) => file_name(p),
+            None => format!("Untitled {untitled}"),
+        };
+        let window = olo_kit::open_window(WindowOptions::new(title, 560.0, 440.0).min_size(280.0, 180.0).keep_size("document"), move |cx| {
+            let mut d = DocView::new(id, shared, opened, untitled, cx);
+            setup(&mut d, cx);
             d
         });
-        let title = doc.read(cx).title();
-        let view = doc.clone();
-        let win = olo_ui::open_window(cx, WindowOptions::new(title, 560.0, 440.0).min_size(280.0, 180.0).keep_size("document"), move |window, cx| {
-            // The editor has the keyboard (else the window's frame does).
-            view.read(cx).editor.focus(window);
-            view
-        });
-        doc.update(cx, |d, _| d.win = win);
-        if let Some(win) = win {
-            // The window's close: asks about unsaved changes first.
-            let (closing, me) = (doc.clone(), cx.entity());
-            let _ = win.update(cx, |_, window, cx| {
-                window.on_window_should_close(cx, move |_, cx| {
-                    me.update(cx, |a, cx| a.leave(&closing, After::Close, cx));
-                    false
-                });
-            });
-        }
-        self.docs.push(doc.clone());
-        doc
+        self.docs.push(Open { id, path, window });
+        self.follow_files();
     }
 
     /// Follow the open documents' files (as they are now).
-    fn follow_files(&mut self, cx: &mut Context<Self>) {
-        let paths: Vec<PathBuf> = self.docs.iter().filter_map(|d| d.read(cx).path.clone()).collect();
+    fn follow_files(&mut self) {
+        let paths: Vec<PathBuf> = self.docs.iter().filter_map(|d| d.path.clone()).collect();
         match &self.watch {
             Some(w) => w.set(paths),
-            None => {
-                let proxy = olo_ui::proxy(cx);
-                self.watch = olo_ui::watch::watch(paths, move |changed| proxy.send(Msg::OnDisk(changed.to_vec())));
+            None => self.watch = olo_kit::watch::watch(paths, |changed| to_hub(ToHub::OnDisk(changed.to_vec()))),
+        }
+    }
+
+    fn open_file(&mut self, path: PathBuf) {
+        // Word, OpenDocument and RTF aren't plain text: in as a new
+        // document.
+        if olo_richtext::format_of(&path).is_some() {
+            return self.import(path);
+        }
+        self.docs.retain(|d| d.window.is_open());
+        if let Some(d) = self.docs.iter().find(|d| d.path.as_ref() == Some(&path)) {
+            olo_kit::raise(Some(&d.window));
+            return;
+        }
+        // A folder (dropped, named): said so, no window opened for it.
+        if path.is_dir() {
+            return app_error(format!("“{}” is a folder: StyledEdit opens files.", file_name(&path)));
+        }
+        let file = path.clone();
+        self.add_window(Some(path), 0, move |d, cx| d.load(file, cx));
+    }
+
+    /// A formatted document read in (on a worker) as a new, untitled one:
+    /// saving it writes a StyledEdit file, never over what it came from.
+    fn import(&mut self, path: PathBuf) {
+        std::thread::spawn(move || {
+            let r = match olo_richtext::format_of(&path) {
+                Some(_) => olo_richtext::read(&path).map(|doc| {
+                    let page = convert::page_of(&doc);
+                    let (text, runs, paras) = convert::from_rich(doc);
+                    (text, runs, paras, page)
+                }),
+                None => std::fs::read(&path).map_err(|e| e.to_string()).map(|bytes| {
+                    let (text, runs, paras) = convert::from_markdown_in(&String::from_utf8_lossy(&bytes), path.parent());
+                    (text, runs, paras, None)
+                }),
+            };
+            to_hub(ToHub::Imported(path, Box::new(r)));
+        });
+    }
+
+    fn handle_args(&mut self, args: &[String], cwd: Option<&Path>) {
+        let mut opened = false;
+        for a in args.iter().filter(|a| !a.starts_with("--")) {
+            let p = PathBuf::from(a);
+            let p = match (p.is_absolute(), cwd) {
+                (false, Some(cwd)) => cwd.join(p),
+                _ => p,
+            };
+            self.open_file(p);
+            opened = true;
+        }
+        self.docs.retain(|d| d.window.is_open());
+        // Tracker's New Window: always a new document.
+        if !opened && args.iter().any(|a| a == "--new-window") {
+            self.new_doc();
+        } else if !opened {
+            // A document there is, else a new one.
+            match self.docs.first() {
+                Some(d) => {
+                    olo_kit::raise(Some(&d.window));
+                }
+                None => self.new_doc(),
             }
         }
     }
 
-    fn open_file(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        // Word, OpenDocument and RTF aren't plain text: in as a new
-        // document.
-        if olo_richtext::format_of(&path).is_some() {
-            return self.import(path, cx);
+    fn tell_all(&mut self, message: impl Fn() -> DocMsg) {
+        self.docs.retain(|d| d.window.is_open());
+        for d in &self.docs {
+            d.window.messenger().send(message());
         }
-        if let Some(d) = self.docs.iter().find(|d| d.read(cx).path.as_ref() == Some(&path)) {
-            activate(d, cx);
-            return;
-        }
-        // A folder (dropped, named): said so, no window opened for it
-        // first (one flashed open and shut, its alert after it).
-        if path.is_dir() {
-            return self.show_error(format!("“{}” is a folder: StyledEdit opens files.", file_name(&path)), cx);
-        }
-        let doc = self.add_window(Some(path.clone()), 0, |d| d.loading = true, cx);
-        self.load(&doc, path, cx);
     }
 
-    fn load(&mut self, doc: &Entity<DocView>, path: PathBuf, cx: &mut Context<Self>) {
-        doc.update(cx, |d, cx| {
-            d.loading = true;
-            cx.notify();
-        });
-        let (proxy, id) = (olo_ui::proxy(cx), doc.entity_id());
+    fn message(&mut self, message: Box<dyn std::any::Any + Send>) {
+        let message = match message.downcast::<Launch>() {
+            Ok(launch) => return self.handle_args(&launch.args, launch.cwd.as_deref()),
+            Err(m) => m,
+        };
+        let Ok(msg) = message.downcast::<ToHub>() else { return };
+        match *msg {
+            ToHub::Fonts(fonts::Event::Families(f)) => {
+                self.shared.common().fonts.families = f;
+                self.tell_all(|| DocMsg::Again(false));
+            }
+            ToHub::Open(path) => self.open_file(path),
+            ToHub::New => self.new_doc(),
+            ToHub::Import(path) => self.import(path),
+            ToHub::Imported(path, result) => match *result {
+                Ok((text, runs, paras, page)) => {
+                    self.untitled += 1;
+                    let n = self.untitled;
+                    self.add_window(None, n, move |d, _| {
+                        let mut doc = Doc::with_paras(text, Some(runs), Some(paras));
+                        doc.page = page;
+                        // Not saved anywhere yet.
+                        doc.saved_generation = 0;
+                        d.reset(doc, 0..0);
+                    });
+                }
+                Err(e) => app_error(format!("“{}” couldn't be imported. {e}", file_name(&path))),
+            },
+            ToHub::Showing(id, path) => {
+                if let Some(d) = self.docs.iter_mut().find(|d| d.id == id) {
+                    d.path = path;
+                }
+                self.follow_files();
+            }
+            // A file that couldn't be read: said (first: the app stays
+            // for it), and its window goes.
+            ToHub::Failed(id, message) => {
+                app_error(message);
+                if let Some(d) = self.docs.iter().find(|d| d.id == id) {
+                    d.window.messenger().send(DocMsg::Close);
+                }
+            }
+            ToHub::Closed(id) => {
+                self.docs.retain(|d| d.id != id);
+                self.follow_files();
+            }
+            ToHub::OnDisk(paths) => self.tell_all(|| DocMsg::OnDisk(paths.clone())),
+            ToHub::Again(respell) => self.tell_all(|| DocMsg::Again(respell)),
+            ToHub::Quit => self.tell_all(|| DocMsg::Leave),
+        }
+    }
+
+    fn restore(&mut self, docs: Vec<SavedDoc>) {
+        for s in docs {
+            self.untitled = self.untitled.max(s.untitled);
+            match s.edited {
+                Some((text, runs)) => {
+                    let path = s.path.clone();
+                    self.add_window(s.path, s.untitled, move |d, _| {
+                        d.ruler = s.ruler;
+                        d.page_view = s.page_view;
+                        d.tool_bars = s.tool_bars;
+                        d.line_numbers = s.line_numbers;
+                        let styled = runs.iter().any(|r| r.style != Style::default()) || !s.paras.is_empty();
+                        d.mode = s.mode.as_deref().and_then(|m| Mode::named(m, &text)).unwrap_or_else(|| Mode::for_file(path.as_deref().unwrap_or(Path::new("")), &text, styled));
+                        let mut doc = Doc::with_paras(text, Some(runs), Some(s.paras).filter(|p| !p.is_empty()));
+                        doc.align = s.align;
+                        doc.wrap = s.wrap;
+                        doc.page = s.page;
+                        // Unsaved work stays unsaved (an empty new one is clean).
+                        if !(doc.text().is_empty() && path.is_none()) {
+                            doc.saved_generation = 0;
+                        }
+                        d.reset(doc, s.selection.0..s.selection.1);
+                        d.editor.set_view(d.doc.text(), s.view);
+                    });
+                }
+                None => {
+                    let Some(path) = s.path else { continue };
+                    let file = path.clone();
+                    self.add_window(Some(path), s.untitled, move |d, cx| {
+                        d.ruler = s.ruler;
+                        d.page_view = s.page_view;
+                        d.tool_bars = s.tool_bars;
+                        d.line_numbers = s.line_numbers;
+                        // (As it showed; its text, read, decides the rest.)
+                        if let Some(m) = s.mode.as_deref().and_then(|m| Mode::named(m, "")) {
+                            d.mode = m;
+                        }
+                        d.restore = Some((s.selection.0..s.selection.1, s.view));
+                        d.load(file, cx);
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// What the document's window does with its file, its panels and its
+/// tool windows.
+impl DocView {
+    fn error(&self, message: String, cx: &mut Cx<Self>) {
+        let _ = open_alert(cx, "StyledEdit", "warning", &message, &["OK"], |_, _| {});
+    }
+
+    /// Reads `path` (on a worker) as this window's document.
+    fn load(&mut self, path: PathBuf, cx: &mut Cx<Self>) {
+        self.loading = true;
+        cx.invalidate();
+        let to = cx.messenger();
         std::thread::spawn(move || {
             let r = doc::load(&path);
-            proxy.send(Msg::Loaded(id, path, r));
+            to.send(DocMsg::Loaded(path, r));
         });
     }
 
-    /// A document's window goes (and its Find, Replace and Header & Footer
-    /// windows with it).
-    fn close(&mut self, doc: &Entity<DocView>, cx: &mut Context<Self>) {
-        let id = doc.entity_id();
-        if let Some(win) = doc.read(cx).win {
-            cx.defer(move |cx| {
-                let _ = win.update(cx, |_, window, _| window.remove_window());
-            });
+    fn loaded(&mut self, path: PathBuf, result: Result<doc::Loaded, String>, cx: &mut Cx<Self>) {
+        if self.path.as_ref() != Some(&path) {
+            return;
         }
-        self.docs.retain(|d| d.entity_id() != id);
-        for (_, _, w) in self.tools.iter().filter(|(d, ..)| *d == id) {
-            let w = *w;
-            cx.defer(move |cx| {
-                let _ = w.update(cx, |_, window, _| window.remove_window());
-            });
+        self.loading = false;
+        cx.invalidate();
+        match result {
+            Ok(l) => {
+                // How it shows: by its kind (Markdown and code as they
+                // were, when it's read again).
+                let styled = l.runs.is_some() || l.paras.is_some();
+                self.mode = match (std::mem::replace(&mut self.mode, Mode::Styled), Mode::for_file(&path, &l.text, styled)) {
+                    (Mode::Markdown(old), Mode::Markdown(_)) => Mode::Markdown(markdown::Look::new(old.source)),
+                    (Mode::Code { code, .. }, _) if !styled => Mode::code(code.language(), &l.text),
+                    (_, m) => m,
+                };
+                let mut doc = Doc::with_paras(l.text, l.runs, l.paras);
+                doc.align = l.align;
+                doc.wrap = l.wrap;
+                doc.page = l.page;
+                let (select, view) = self.restore.take().unwrap_or_default();
+                self.reset(doc, select);
+                self.editor.set_view(self.doc.text(), view);
+                self.latin1 = l.latin1;
+                self.read_only = l.read_only;
+                self.on_disk = stamp(&path);
+            }
+            // A new file: it's made on the first save.
+            Err(_) if !path.exists() => {}
+            Err(e) => to_hub(ToHub::Failed(self.id, format!("“{}” couldn't be opened. {e}", file_name(&path)))),
         }
-        self.tools.retain(|(d, ..)| *d != id);
-        self.quit_if_done(cx);
-        self.follow_files(cx);
     }
 
-    /// Nothing open any more: StyledEdit quits.
-    fn quit_if_done(&self, cx: &mut Context<Self>) {
-        if self.docs.is_empty() && self.panels == 0 {
-            cx.quit();
-        }
-    }
-
-    fn show_error(&mut self, message: String, cx: &mut Context<Self>) {
-        self.panels += 1;
-        let me = cx.entity();
-        let _ = open_alert(cx, "StyledEdit", "warning", &message, &["OK"], move |_, cx| {
-            me.update(cx, |a, cx| {
-                a.panels = a.panels.saturating_sub(1);
-                a.quit_if_done(cx);
-            })
+    /// Write the document to `to` (its own file when None, or ask where).
+    fn save(&mut self, to: Option<PathBuf>, after: After, cx: &mut Cx<Self>) {
+        let Some(path) = to.or_else(|| self.path.clone().filter(|_| !self.read_only)) else {
+            self.after_save = after;
+            return self.ask_panel(Purpose::SaveAs, cx);
+        };
+        // (Source code and Markdown are their text alone.)
+        let d = &*self;
+        let styled = d.mode.is_styled();
+        let (text, runs, paras, align, wrap, page, generation) = (
+            d.doc.text().to_owned(),
+            if styled { d.doc.runs().to_vec() } else { Vec::new() },
+            if styled { d.doc.paras().to_vec() } else { Vec::new() },
+            if styled { d.doc.align } else { Align::Left },
+            d.doc.wrap,
+            d.doc.page.clone(),
+            d.doc.generation,
+        );
+        self.saving = true;
+        self.saving_said.store(true, Ordering::Relaxed);
+        self.after_save = after;
+        cx.invalidate();
+        let to = cx.messenger();
+        std::thread::spawn(move || {
+            let r = doc::save(&path, &text, &runs, &paras, align, wrap, page.as_ref());
+            to.send(DocMsg::Saved(generation, path, r));
         });
     }
 
-    fn open_panel(&mut self, doc: Option<Entity<DocView>>, purpose: Purpose, cx: &mut Context<Self>) {
-        let d = doc.as_ref().map(|d| d.read(cx));
-        let path = d.and_then(|d| d.path.clone());
-        let title = d.map(|d| d.title()).unwrap_or_default();
-        let dir = path.as_deref().and_then(Path::parent).map_or_else(home, Path::to_path_buf);
+    fn saved(&mut self, generation: u64, path: PathBuf, result: Result<(), String>, cx: &mut Cx<Self>) {
+        self.saving = false;
+        self.saving_said.store(false, Ordering::Relaxed);
+        cx.invalidate();
+        let after = std::mem::replace(&mut self.after_save, After::Nothing);
+        match result {
+            Ok(()) => {
+                self.on_disk = stamp(&path);
+                if self.path.as_ref() != Some(&path) {
+                    self.path = Some(path.clone());
+                    self.read_only = false;
+                    self.set_title(cx);
+                    // Plain text saved as Markdown or code shows as that now.
+                    if self.mode.is_styled() && self.doc.is_plain() {
+                        let mode = Mode::for_file(&path, self.doc.text(), false);
+                        if !mode.is_styled() {
+                            self.set_mode(mode);
+                        }
+                    }
+                }
+                self.latin1 = false;
+                self.doc.saved_generation = generation;
+                to_hub(ToHub::Showing(self.id, self.path.clone()));
+                self.finish(after, cx);
+            }
+            Err(e) => self.error(format!("“{}” couldn't be saved. {e}", file_name(&path)), cx),
+        }
+    }
+
+    /// Close or revert, asking about unsaved changes.
+    fn leave(&mut self, after: After, cx: &mut Cx<Self>) {
+        if !self.doc.edited() {
+            return self.finish(after, cx);
+        }
+        if self.asking {
+            return cx.activate_window();
+        }
+        let title = self.title();
+        let doing = match after {
+            After::Revert => "reverting",
+            _ => "closing",
+        };
+        self.asking = true;
+        let doc = cx.view_ref();
+        let _ = ask_to_save(cx, "StyledEdit", &title, doing, move |choice, cx| {
+            let choice = *choice;
+            doc.update(cx, move |d, cx| {
+                d.asking = false;
+                match choice {
+                    Some(Unsaved::DontSave) => d.finish(after, cx),
+                    Some(Unsaved::Save) => d.save(None, after, cx),
+                    None => {}
+                }
+            });
+        });
+    }
+
+    fn finish(&mut self, after: After, cx: &mut Cx<Self>) {
+        match after {
+            After::Nothing => {}
+            // (The app hears as the window goes: `window_closing`.)
+            After::Close => cx.close_window(),
+            After::Revert => {
+                if let Some(p) = self.path.clone() {
+                    self.load(p, cx);
+                }
+            }
+        }
+    }
+
+    /// A file panel for this document: what's chosen comes back to it
+    /// (`DocMsg::Chosen`).
+    fn ask_panel(&self, purpose: Purpose, cx: &mut Cx<Self>) {
+        let title = self.title();
+        let dir = self.path.as_deref().and_then(Path::parent).map_or_else(home, Path::to_path_buf);
         let (name, panel) = match purpose {
             Purpose::Open => ("Open", FilePanel::open(dir)),
             Purpose::SaveAs => ("Save As", FilePanel::save(dir, title)),
@@ -1971,100 +2373,85 @@ impl StyledEdit {
                 ("Export", FilePanel::save(dir, format!("{stem}.{}", f.extension())))
             }
         };
-        self.panels += 1;
-        let me = cx.entity();
-        olo_ui::file_panel::show(cx, name, panel, move |answer, cx| {
-            me.update(cx, |a, cx| {
-                a.panels = a.panels.saturating_sub(1);
-                let PanelResult::Chosen(path) = answer.result else {
-                    // Cancelling a Save As drops what was to follow it.
-                    if let Some(d) = &doc {
-                        d.update(cx, |d, _| d.after_save = After::Nothing);
-                    }
-                    a.quit_if_done(cx);
-                    return;
-                };
-                match (purpose, doc) {
-                    (Purpose::Open, _) => a.open_file(path, cx),
-                    (Purpose::SaveAs, Some(doc)) => {
-                        let after = doc.read(cx).after_save;
-                        a.save(&doc, Some(path), after, cx);
-                    }
-                    (Purpose::SaveAs, None) | (Purpose::Export(_), None) | (Purpose::Picture, None) => {}
-                    (Purpose::Picture, Some(doc)) => a.put_picture(&doc, path, None, cx),
-                    (Purpose::Import, _) => a.import(path, cx),
-                    (Purpose::Export(f), Some(doc)) => a.export(&doc, path, f, cx),
-                }
-            })
+        let to = cx.messenger();
+        file_panel::show(name, panel, move |answer| {
+            to.send(DocMsg::Chosen(
+                purpose,
+                match answer.result {
+                    PanelResult::Chosen(path) => Some(path),
+                    _ => None,
+                },
+            ));
         });
     }
 
-    /// A formatted document read in (on a worker) as a new, untitled one:
-    /// saving it writes a StyledEdit file, never over what it came from.
-    fn import(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        let proxy = olo_ui::proxy(cx);
-        std::thread::spawn(move || {
-            let r = match olo_richtext::format_of(&path) {
-                Some(_) => olo_richtext::read(&path).map(|doc| {
-                    let page = convert::page_of(&doc);
-                    let (text, runs, paras) = convert::from_rich(doc);
-                    (text, runs, paras, page)
-                }),
-                None => std::fs::read(&path).map_err(|e| e.to_string()).map(|bytes| {
-                    let (text, runs, paras) = convert::from_markdown_in(&String::from_utf8_lossy(&bytes), path.parent());
-                    (text, runs, paras, None)
-                }),
-            };
-            proxy.send(Msg::Imported(path, r));
-        });
+    /// What a file panel of this document's chose (None: cancelled).
+    fn chosen(&mut self, purpose: Purpose, path: Option<PathBuf>, cx: &mut Cx<Self>) {
+        let Some(path) = path else {
+            // Cancelling a Save As drops what was to follow it.
+            if !self.saving {
+                self.after_save = After::Nothing;
+            }
+            return;
+        };
+        match purpose {
+            Purpose::Open => to_hub(ToHub::Open(path)),
+            Purpose::SaveAs => {
+                let after = self.after_save;
+                self.save(Some(path), after, cx);
+            }
+            Purpose::Picture => self.put_picture(path, cx),
+            Purpose::Import => to_hub(ToHub::Import(path)),
+            Purpose::Export(f) => self.export(path, f, cx),
+        }
     }
 
-    /// What a worker needs to set document `doc` on pages (as its window
+    /// What a worker needs to set the document on pages (as its window
     /// draws it).
-    fn page_input(&self, doc: &Entity<DocView>, cx: &App) -> (pages::Input, String) {
-        let d = doc.read(cx);
+    fn page_input(&self) -> (pages::Input, String) {
+        let d = self;
         let input = pages::Input {
             text: d.doc.text().to_owned(),
             runs: d.doc.runs().to_vec(),
             paras: d.doc.paras().to_vec(),
             align: d.doc.align,
             page: d.doc.page.clone(),
-            text_system: cx.text_system().clone(),
+            text_system: olo_kit::text_system(),
             source: d.source(),
         };
         (input, d.title())
     }
 
-    /// Print document `doc` on `printer` (set, made a PDF and sent on a
+    /// Print the document on `printer` (set, made a PDF and sent on a
     /// worker).
-    fn print(&mut self, doc: &Entity<DocView>, printer: String, choice: olo_print::panel::Choice, cx: &mut Context<Self>) {
-        let (input, title) = self.page_input(doc, cx);
-        let proxy = olo_ui::proxy(cx);
+    fn print(&mut self, printer: String, choice: olo_print::panel::Choice, cx: &mut Cx<Self>) {
+        let (input, title) = self.page_input();
+        let to = cx.messenger();
         std::thread::spawn(move || {
             let pages = chosen(pages::pages(input, choice.paper), choice.pages);
             let r = olo_print::pdf(&pages, &title).and_then(|pdf| {
                 let job = olo_print::ipp::Job { name: title.clone(), copies: choice.copies, media: Some(choice.paper.pwg.into()), pages: None, two_sided: false };
                 olo_print::ipp::print(&printer, &pdf, &job)
             });
-            proxy.send(Msg::Printed(title, r.map(|_| ())));
+            to.send(DocMsg::Printed(title, r.map(|_| ())));
         });
     }
 
     /// A copy of the document in `format` at `to` (on a worker); the
     /// document stays as it is, and where.
-    fn export(&mut self, doc: &Entity<DocView>, to: PathBuf, format: Format, cx: &mut Context<Self>) {
-        let proxy = olo_ui::proxy(cx);
+    fn export(&mut self, to: PathBuf, format: Format, cx: &mut Cx<Self>) {
+        let done = cx.messenger();
         if format == Format::Pdf {
             let (paper, range) = self.pdf_setup.take().unwrap_or((olo_print::local_paper(), None));
-            let (input, title) = self.page_input(doc, cx);
+            let (input, title) = self.page_input();
             std::thread::spawn(move || {
                 let pages = chosen(pages::pages(input, paper), range);
                 let r = olo_print::pdf(&pages, &title).and_then(|pdf| std::fs::write(&to, pdf).map_err(|e| e.to_string()));
-                proxy.send(Msg::Exported(to, r));
+                done.send(DocMsg::Exported(to, r));
             });
             return;
         }
-        let d = doc.read(cx);
+        let d = &*self;
         let (mut text, mut runs, mut paras, mut align, title) = (d.doc.text().to_owned(), d.doc.runs().to_vec(), d.doc.paras().to_vec(), d.doc.align, d.title());
         let page = d.doc.page.clone();
         let source = d.source();
@@ -2086,627 +2473,234 @@ impl StyledEdit {
                 Format::Pdf => unreachable!("made above"),
             };
             let r = out.and_then(|bytes| std::fs::write(&to, bytes).map_err(|e| e.to_string()));
-            proxy.send(Msg::Exported(to, r));
+            done.send(DocMsg::Exported(to, r));
         });
     }
 
-    /// Write the document to `to` (its own file when None, or ask where).
-    fn save(&mut self, doc: &Entity<DocView>, to: Option<PathBuf>, after: After, cx: &mut Context<Self>) {
-        let d = doc.read(cx);
-        let Some(path) = to.or_else(|| d.path.clone().filter(|_| !d.read_only)) else {
-            doc.update(cx, |d, _| d.after_save = after);
-            return self.open_panel(Some(doc.clone()), Purpose::SaveAs, cx);
-        };
-        // (Source code and Markdown are their text alone.)
-        let styled = d.mode.is_styled();
-        let (text, runs, paras, align, wrap, page, generation) = (
-            d.doc.text().to_owned(),
-            if styled { d.doc.runs().to_vec() } else { Vec::new() },
-            if styled { d.doc.paras().to_vec() } else { Vec::new() },
-            if styled { d.doc.align } else { Align::Left },
-            d.doc.wrap,
-            d.doc.page.clone(),
-            d.doc.generation,
-        );
-        doc.update(cx, |d, cx| {
-            d.saving = true;
-            d.after_save = after;
-            cx.notify();
-        });
-        let (proxy, id) = (olo_ui::proxy(cx), doc.entity_id());
-        std::thread::spawn(move || {
-            let r = doc::save(&path, &text, &runs, &paras, align, wrap, page.as_ref());
-            proxy.send(Msg::Saved(id, generation, path, r));
-        });
-    }
-
-    /// Close or revert a document, asking about unsaved changes.
-    fn leave(&mut self, doc: &Entity<DocView>, after: After, cx: &mut Context<Self>) {
-        let d = doc.read(cx);
-        if !d.doc.edited() {
-            return self.finish(doc, after, cx);
-        }
-        if d.asking {
-            return activate(doc, cx);
-        }
-        let title = d.title();
-        let doing = match after {
-            After::Revert => "reverting",
-            _ => "closing",
-        };
-        doc.update(cx, |d, _| d.asking = true);
-        let (me, doc) = (cx.entity(), doc.clone());
-        let _ = ask_to_save(cx, "StyledEdit", &title, doing, move |choice, cx| {
-            doc.update(cx, |d, _| d.asking = false);
-            me.update(cx, |a, cx| match choice {
-                Some(Unsaved::DontSave) => a.finish(&doc, after, cx),
-                Some(Unsaved::Save) => a.save(&doc, None, after, cx),
-                None => {}
-            })
-        });
-    }
-
-    fn finish(&mut self, doc: &Entity<DocView>, after: After, cx: &mut Context<Self>) {
-        match after {
-            After::Nothing => {}
-            After::Close => self.close(doc, cx),
-            After::Revert => {
-                if let Some(p) = doc.read(cx).path.clone() {
-                    self.load(doc, p, cx);
-                }
-            }
-        }
-    }
-
-    /// The Find or Replace window for document `doc` (one each).
-    fn open_find(&mut self, doc: &Entity<DocView>, replace: bool, cx: &mut Context<Self>) {
-        if self.bring_tool(doc.entity_id(), Some(replace), cx) {
+    /// The Find or Replace window for this document (one each).
+    fn open_find(&mut self, replace: bool, cx: &mut Cx<Self>) {
+        let k = usize::from(replace);
+        if let Some(w) = &self.finds[k]
+            && w.is_open(cx)
+        {
+            w.with(cx, |cx| cx.activate_window());
             return;
         }
         let (title, h) = if replace { ("Replace", REPLACE_H) } else { ("Find", FIND_H) };
-        let (app, d, search) = (cx.weak_entity(), doc.downgrade(), self.common.borrow().search.clone());
-        let win = olo_ui::open_window(cx, WindowOptions::new(title, FIND_W, h).min_size(FIND_W, h).child(), move |window, cx| cx.new(|cx| FindView::new(app, d, replace, &search, window, cx)));
-        if let Some(win) = win {
-            self.tools.push((doc.entity_id(), Some(replace), win));
-        }
+        let (doc, shared) = (cx.view_ref(), self.shared.clone());
+        self.finds[k] = olo_kit::open_window_here(cx, WindowOptions::new(title, FIND_W, h).min_size(FIND_W, h).child(), move |cx| FindView::new(shared, doc, replace, cx));
     }
 
-    /// Brings document `doc`'s tool window forward, if it's still open.
-    fn bring_tool(&mut self, doc: EntityId, kind: Option<bool>, cx: &mut Context<Self>) -> bool {
-        let Some(k) = self.tools.iter().position(|(d, t, _)| *d == doc && *t == kind) else { return false };
-        let win = self.tools[k].2;
-        if olo_ui::raise(Some(win), cx) {
-            return true;
-        }
-        self.tools.remove(k);
-        false
-    }
-
-    /// Document ▸ Header & Footer… for document `doc` (one window each).
-    fn open_margins(&mut self, doc: &Entity<DocView>, cx: &mut Context<Self>) {
-        if self.bring_tool(doc.entity_id(), None, cx) {
+    /// Document ▸ Header & Footer… (one window).
+    fn open_margins(&mut self, cx: &mut Cx<Self>) {
+        if let Some(w) = &self.margins
+            && w.is_open(cx)
+        {
+            w.with(cx, |cx| cx.activate_window());
             return;
         }
         // Pages numbered at the foot until it's set otherwise.
-        let page = doc.read(cx).doc.page.clone().unwrap_or_else(|| doc::Page { footer: [String::new(), "{page}".into(), String::new()], ..doc::Page::default() });
-        let d = doc.downgrade();
-        let win = olo_ui::open_window(cx, WindowOptions::new("Header & Footer", MARGINS_W, MARGINS_H).dialog(), move |window, cx| cx.new(|cx| MarginsView::new(d, &page, window, cx)));
-        if let Some(win) = win {
-            self.tools.push((doc.entity_id(), None, win));
-        }
+        let page = self.doc.page.clone().unwrap_or_else(|| doc::Page { footer: [String::new(), "{page}".into(), String::new()], ..doc::Page::default() });
+        let doc = cx.view_ref();
+        self.margins = olo_kit::open_window_here(cx, WindowOptions::new("Header & Footer", MARGINS_W, MARGINS_H).dialog(), move |cx| MarginsView::new(doc, &page, cx));
     }
 
-    /// Put the picture at `path` in document `doc` (at its selection), its
-    /// size read on a worker; `px` if known already.
-    fn put_picture(&mut self, doc: &Entity<DocView>, path: PathBuf, px: Option<(u32, u32)>, cx: &mut Context<Self>) {
-        let (proxy, id) = (olo_ui::proxy(cx), doc.entity_id());
+    /// Put the picture at `path` in the document (at its selection), its
+    /// size read on a worker.
+    fn put_picture(&mut self, path: PathBuf, cx: &mut Cx<Self>) {
+        let to = cx.messenger();
         std::thread::spawn(move || {
-            let px = px.or_else(|| pictures::pixels(&path));
-            proxy.send(Msg::Picture(id, path, px));
+            let px = pictures::pixels(&path);
+            to.send(DocMsg::Picture(path, px));
         });
-        activate(doc, cx);
+        cx.activate_window();
     }
 
     /// Find the search text from the selection; false if it isn't there.
-    fn find_next(&mut self, doc: &Entity<DocView>, cx: &mut Context<Self>) -> bool {
-        let s = self.common.borrow().search.clone();
-        doc.update(cx, |d, cx| {
-            let sel = d.bytes();
-            let from = if s.backwards { sel.start } else { sel.end };
-            let found = doc::find(d.doc.text(), &s.find, from, s.backwards, s.case, s.wrap);
-            if let Some(r) = &found {
-                d.select_bytes(r.clone());
-                cx.notify();
-            }
-            found.is_some()
-        })
+    fn find_next(&mut self, cx: &mut Cx<Self>) -> bool {
+        let s = self.shared.common().search.clone();
+        let sel = self.bytes();
+        let from = if s.backwards { sel.start } else { sel.end };
+        let found = doc::find(self.doc.text(), &s.find, from, s.backwards, s.case, s.wrap);
+        if let Some(r) = &found {
+            self.select_bytes(r.clone());
+            cx.invalidate();
+        }
+        found.is_some()
     }
 
     /// Replace the next match (or all of them), selecting what went in.
-    fn replace(&mut self, doc: &Entity<DocView>, cx: &mut Context<Self>) {
-        let s = self.common.borrow().search.clone();
-        doc.update(cx, |d, cx| {
-            if d.read_only || s.find.is_empty() {
-                return;
+    fn replace(&mut self, cx: &mut Cx<Self>) {
+        let s = self.shared.common().search.clone();
+        if self.read_only || s.find.is_empty() {
+            return;
+        }
+        let selection = self.bytes();
+        if s.all {
+            let ranges = doc::find_all(self.doc.text(), &s.find, s.case);
+            if let Some(change) = self.doc.replace_all(&ranges, &s.replace, selection.clone()) {
+                let at = selection.start.min(self.doc.text().len());
+                self.changed(change, at..at);
             }
-            let selection = d.bytes();
-            if s.all {
-                let ranges = doc::find_all(d.doc.text(), &s.find, s.case);
-                if let Some(change) = d.doc.replace_all(&ranges, &s.replace, selection.clone()) {
-                    let at = selection.start.min(d.doc.text().len());
-                    d.changed(change, at..at);
-                }
-                cx.notify();
-                return;
-            }
-            // The selection itself if it's a match, else the next one.
-            let from = if s.backwards { selection.end } else { selection.start };
-            let Some(r) = doc::find(d.doc.text(), &s.find, from, s.backwards, s.case, s.wrap) else { return };
-            let change = d.doc.replace(r.clone(), &s.replace, selection);
-            d.changed(change, r.start..r.start + s.replace.len());
-            cx.notify();
-        });
+            cx.invalidate();
+            return;
+        }
+        // The selection itself if it's a match, else the next one.
+        let from = if s.backwards { selection.end } else { selection.start };
+        let Some(r) = doc::find(self.doc.text(), &s.find, from, s.backwards, s.case, s.wrap) else { return };
+        let change = self.doc.replace(r.clone(), &s.replace, selection);
+        self.changed(change, r.start..r.start + s.replace.len());
+        cx.invalidate();
     }
 
-    /// A command from a document's menus (or its text's right-click menu).
-    fn doc_command(&mut self, doc: &Entity<DocView>, command: &str, window: &mut Window, cx: &mut Context<Self>) {
+    /// A command from the menus, the tool bars or the text's right-click
+    /// menu.
+    fn run(&mut self, command: &str, cx: &mut Cx<Self>) {
         match command {
-            "new" => {
-                self.new_doc(cx);
-            }
-            "open" => self.open_panel(Some(doc.clone()), Purpose::Open, cx),
-            "import" => self.open_panel(Some(doc.clone()), Purpose::Import, cx),
-            "export:pdf" => self.open_panel(Some(doc.clone()), Purpose::Export(Format::Pdf), cx),
-            "export:md" => self.open_panel(Some(doc.clone()), Purpose::Export(Format::Markdown), cx),
-            "export:html" => self.open_panel(Some(doc.clone()), Purpose::Export(Format::Html), cx),
-            "export:docx" => self.open_panel(Some(doc.clone()), Purpose::Export(Format::Word), cx),
-            "export:odt" => self.open_panel(Some(doc.clone()), Purpose::Export(Format::OpenDocument), cx),
-            "export:rtf" => self.open_panel(Some(doc.clone()), Purpose::Export(Format::Rtf), cx),
-            "insert-picture" => self.open_panel(Some(doc.clone()), Purpose::Picture, cx),
+            "new" => to_hub(ToHub::New),
+            "open" => self.ask_panel(Purpose::Open, cx),
+            "import" => self.ask_panel(Purpose::Import, cx),
+            "export:pdf" => self.ask_panel(Purpose::Export(Format::Pdf), cx),
+            "export:md" => self.ask_panel(Purpose::Export(Format::Markdown), cx),
+            "export:html" => self.ask_panel(Purpose::Export(Format::Html), cx),
+            "export:docx" => self.ask_panel(Purpose::Export(Format::Word), cx),
+            "export:odt" => self.ask_panel(Purpose::Export(Format::OpenDocument), cx),
+            "export:rtf" => self.ask_panel(Purpose::Export(Format::Rtf), cx),
+            "insert-picture" => self.ask_panel(Purpose::Picture, cx),
             "print" => {
-                let (me, d) = (cx.entity(), doc.clone());
-                olo_print::panel::view::show(cx, olo_print::panel::view::window_options("Print"), None, move |choice, cx| {
-                    let Some(choice) = choice else { return };
-                    me.update(cx, |a, cx| match choice.printer.clone() {
-                        // A PDF: where to, first.
-                        None => {
-                            a.pdf_setup = Some((choice.paper, choice.pages));
-                            a.open_panel(Some(d.clone()), Purpose::Export(Format::Pdf), cx);
-                        }
-                        Some(printer) => a.print(&d, printer, choice, cx),
-                    });
+                let to = cx.messenger();
+                olo_print::panel::kit::show(olo_print::panel::kit::window_options("Print"), None, move |choice| {
+                    to.send(DocMsg::Print(choice));
                 });
             }
-            "margins" => self.open_margins(doc, cx),
-            "save" => self.save(doc, None, After::Nothing, cx),
-            "save-as" => self.open_panel(Some(doc.clone()), Purpose::SaveAs, cx),
-            "close" => self.leave(doc, After::Close, cx),
-            "quit" => {
-                for d in self.docs.clone() {
-                    self.leave(&d, After::Close, cx);
-                }
-            }
-            olo_ui::tracker::COMMAND => {
-                if let Some(path) = doc.read(cx).path.clone()
-                    && let Err(e) = olo_ui::tracker::open(&path)
+            "margins" => self.open_margins(cx),
+            "save" => self.save(None, After::Nothing, cx),
+            "save-as" => self.ask_panel(Purpose::SaveAs, cx),
+            "close" => self.leave(After::Close, cx),
+            "quit" => to_hub(ToHub::Quit),
+            olo_kit::tracker::COMMAND => {
+                if let Some(path) = self.path.clone()
+                    && let Err(e) = olo_kit::tracker::open(&path)
                 {
-                    self.show_error(format!("“{}” couldn't be shown in Tracker. {e}", file_name(&path)), cx);
+                    self.error(format!("“{}” couldn't be shown in Tracker. {e}", file_name(&path)), cx);
                 }
             }
             "revert" => {
-                let message = format!("Revert to the last saved version of “{}”?", doc.read(cx).title());
-                let (me, d) = (cx.entity(), doc.clone());
+                let message = format!("Revert to the last saved version of “{}”?", self.title());
+                let doc = cx.view_ref();
                 let _ = open_alert(cx, "StyledEdit", "warning", &message, &["Cancel", "Revert"], move |choice, cx| {
-                    if choice == Some(1) {
-                        me.update(cx, |a, cx| a.finish(&d, After::Revert, cx));
+                    if *choice == Some(1) {
+                        doc.update(cx, |d, cx| d.finish(After::Revert, cx));
                     }
                 });
             }
-            "find" => self.open_find(doc, false, cx),
-            "replace" => self.open_find(doc, true, cx),
+            "find" => self.open_find(false, cx),
+            "replace" => self.open_find(true, cx),
             "find-again" => {
-                self.find_next(doc, cx);
+                self.find_next(cx);
             }
-            "replace-same" => self.replace(doc, cx),
+            "replace-same" => self.replace(cx),
             "find-selection" => {
-                self.common.borrow_mut().search.find = doc.read(cx).selected_text().to_owned();
-                self.find_next(doc, cx);
+                self.shared.common().search.find = self.selected_text().to_owned();
+                self.find_next(cx);
             }
             "spelling" => {
-                let mut c = self.common.borrow_mut();
-                c.spelling = !c.spelling;
-                drop(c);
-                for d in &self.docs {
-                    d.update(cx, |_, cx| cx.notify());
+                {
+                    let mut c = self.shared.common();
+                    c.spelling = !c.spelling;
                 }
+                cx.invalidate();
+                to_hub(ToHub::Again(false));
             }
             "spell:learn" | "spell:ignore" => {
-                let checker = olo_ui::spell::loaded(cx);
-                let word = doc.read(cx).spell.as_ref().map(|(r, _)| doc.read(cx).doc.text()[r.clone()].to_owned());
-                if let (Some(c), Some(word)) = (checker, word) {
+                let word = self.spell.as_ref().map(|(r, _)| self.doc.text()[r.clone()].to_owned());
+                if let (Some(c), Some(word)) = (olo_kit::spell::loaded(), word) {
                     if command == "spell:learn" { c.learn(&word) } else { c.ignore(&word) }
                 }
-                for d in &self.docs {
-                    d.update(cx, |d, cx| {
-                        d.editor.respell();
-                        cx.notify();
-                    });
-                }
+                self.editor.respell();
+                cx.invalidate();
+                to_hub(ToHub::Again(true));
             }
             "ruler" => {
-                doc.update(cx, |d, cx| d.command(command, window, cx));
-                self.ruler = doc.read(cx).ruler;
+                self.edit_command(command, cx);
+                self.shared.ruler.store(self.ruler, Ordering::Relaxed);
             }
             "tool-bars" => {
-                doc.update(cx, |d, cx| d.command(command, window, cx));
-                self.tool_bars = doc.read(cx).tool_bars;
+                self.edit_command(command, cx);
+                self.shared.tool_bars.store(self.tool_bars, Ordering::Relaxed);
             }
-            _ => doc.update(cx, |d, cx| d.command(command, window, cx)),
+            _ => self.edit_command(command, cx),
         }
     }
 
-    /// Files dropped on document `doc`'s window: a picture goes in it (at
+    /// Files dropped on the window: a picture goes in the document (at
     /// the caret); anything else opens.
-    fn dropped(&mut self, doc: &Entity<DocView>, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
-        let editable = {
-            let d = doc.read(cx);
-            !d.loading && !d.read_only
-        };
+    fn dropped(&mut self, paths: Vec<PathBuf>, cx: &mut Cx<Self>) {
+        let editable = !self.loading && !self.read_only;
         for p in paths {
             if editable && is_picture(&p) {
-                self.put_picture(doc, p, None, cx);
+                self.put_picture(p, cx);
             } else {
-                self.open_file(p, cx);
+                to_hub(ToHub::Open(p));
             }
         }
-    }
-
-    fn handle_args(&mut self, args: &[String], cwd: Option<&Path>, cx: &mut Context<Self>) {
-        let mut opened = false;
-        for a in args.iter().filter(|a| !a.starts_with("--")) {
-            let p = PathBuf::from(a);
-            let p = match (p.is_absolute(), cwd) {
-                (false, Some(cwd)) => cwd.join(p),
-                _ => p,
-            };
-            self.open_file(p, cx);
-            opened = true;
-        }
-        // Tracker's New Window: always a new document.
-        if !opened && args.iter().any(|a| a == "--new-window") {
-            self.new_doc(cx);
-        } else if !opened {
-            // A document there is, else a new one.
-            match self.docs.first().cloned() {
-                Some(d) => activate(&d, cx),
-                None => {
-                    self.new_doc(cx);
-                }
-            }
-        }
-    }
-
-    fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
-        let message = match message.downcast::<Launch>() {
-            Ok(launch) => return self.handle_args(&launch.args, launch.cwd.as_deref(), cx),
-            Err(m) => m,
-        };
-        // A picture decoded: drawn from now on.
-        let message = match message.downcast::<pictures::Loaded>() {
-            Ok(l) => {
-                self.pictures.borrow_mut().loaded(*l);
-                for d in &self.docs {
-                    d.update(cx, |_, cx| cx.notify());
-                }
-                return;
-            }
-            Err(m) => m,
-        };
-        let Ok(msg) = message.downcast::<Msg>() else { return };
-        match *msg {
-            Msg::Fonts(fonts::Event::Families(f)) => {
-                self.common.borrow_mut().fonts.families = f;
-                for d in &self.docs {
-                    d.update(cx, |_, cx| cx.notify());
-                }
-            }
-            Msg::Loaded(id, path, result) => {
-                let Some(doc) = self.doc(id) else { return };
-                if doc.read(cx).path.as_ref() != Some(&path) {
-                    return;
-                }
-                let failed = doc.update(cx, |d, cx| {
-                    d.loading = false;
-                    cx.notify();
-                    match result {
-                        Ok(l) => {
-                            // How it shows: by its kind (Markdown and code
-                            // as they were, when it's read again).
-                            let styled = l.runs.is_some() || l.paras.is_some();
-                            d.mode = match (std::mem::replace(&mut d.mode, Mode::Styled), Mode::for_file(&path, &l.text, styled)) {
-                                (Mode::Markdown(old), Mode::Markdown(_)) => Mode::Markdown(markdown::Look::new(old.source)),
-                                (Mode::Code { code, .. }, _) if !styled => Mode::code(code.language(), &l.text),
-                                (_, m) => m,
-                            };
-                            let mut doc = Doc::with_paras(l.text, l.runs, l.paras);
-                            doc.align = l.align;
-                            doc.wrap = l.wrap;
-                            doc.page = l.page;
-                            let (select, view) = d.restore.take().unwrap_or_default();
-                            d.reset(doc, select);
-                            d.editor.set_view(d.doc.text(), view);
-                            d.latin1 = l.latin1;
-                            d.read_only = l.read_only;
-                            d.on_disk = stamp(&path);
-                            None
-                        }
-                        // A new file: it's made on the first save.
-                        Err(_) if !path.exists() => None,
-                        Err(e) => Some(format!("“{}” couldn't be opened. {e}", file_name(&path))),
-                    }
-                });
-                if let Some(message) = failed {
-                    self.close(&doc, cx);
-                    self.show_error(message, cx);
-                    return;
-                }
-                self.follow_files(cx);
-            }
-            Msg::Saved(id, generation, path, result) => {
-                let Some(doc) = self.doc(id) else { return };
-                let after = doc.update(cx, |d, cx| {
-                    d.saving = false;
-                    cx.notify();
-                    std::mem::replace(&mut d.after_save, After::Nothing)
-                });
-                match result {
-                    Ok(()) => {
-                        doc.update(cx, |d, cx| {
-                            d.on_disk = stamp(&path);
-                            if d.path.as_ref() != Some(&path) {
-                                d.path = Some(path.clone());
-                                d.read_only = false;
-                                d.set_title(cx);
-                                // Plain text saved as Markdown or code shows as that now.
-                                if d.mode.is_styled() && d.doc.is_plain() {
-                                    let mode = Mode::for_file(&path, d.doc.text(), false);
-                                    if !mode.is_styled() {
-                                        d.set_mode(mode);
-                                    }
-                                }
-                            }
-                            d.latin1 = false;
-                            d.doc.saved_generation = generation;
-                        });
-                        self.follow_files(cx);
-                        self.finish(&doc, after, cx);
-                    }
-                    Err(e) => self.show_error(format!("“{}” couldn't be saved. {e}", file_name(&path)), cx),
-                }
-            }
-            Msg::Imported(path, result) => match result {
-                Ok((text, runs, paras, page)) => {
-                    self.untitled += 1;
-                    let n = self.untitled;
-                    self.add_window(
-                        None,
-                        n,
-                        move |d| {
-                            let mut doc = Doc::with_paras(text, Some(runs), Some(paras));
-                            doc.page = page;
-                            // Not saved anywhere yet.
-                            doc.saved_generation = 0;
-                            d.reset(doc, 0..0);
-                        },
-                        cx,
-                    );
-                }
-                Err(e) => self.show_error(format!("“{}” couldn't be imported. {e}", file_name(&path)), cx),
-            },
-            Msg::Picture(id, path, px) => {
-                let Some(doc) = self.doc(id) else { return };
-                let Some(px) = px else {
-                    return self.show_error(format!("“{}” isn't a picture StyledEdit can read.", file_name(&path)), cx);
-                };
-                let (width, height) = pictures::fit(px, PICTURE_ROOM.0, PICTURE_ROOM.1);
-                let alt = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-                doc.update(cx, |d, cx| {
-                    let sel = d.bytes();
-                    let pic = doc::Picture { path: path.to_string_lossy().into_owned(), width, height, alt };
-                    let change = d.doc.insert_picture(sel.clone(), pic, sel.clone());
-                    let after = sel.start + change.inserted;
-                    d.changed(change, after..after);
-                    cx.notify();
-                });
-            }
-            Msg::Printed(title, result) => {
-                if let Err(e) = result {
-                    self.show_error(format!("“{title}” couldn't be printed. {e}"), cx);
-                }
-            }
-            Msg::Exported(path, result) => {
-                if let Err(e) = result {
-                    self.show_error(format!("“{}” couldn't be written. {e}", file_name(&path)), cx);
-                }
-            }
-            Msg::OnDisk(paths) => {
-                // Written by another program (not our own save): read again
-                // where nothing here is unsaved, keeping the place in it.
-                let mut reload = Vec::new();
-                for doc in &self.docs {
-                    let path = doc.update(cx, |d, _| {
-                        let path = d.path.clone().filter(|p| paths.contains(p))?;
-                        let now = stamp(&path);
-                        if now.is_none() || now == d.on_disk || d.doc.edited() || d.saving || d.loading {
-                            return None;
-                        }
-                        d.on_disk = now;
-                        d.restore = Some((d.editor.selection(), d.editor.view()));
-                        Some(path)
-                    });
-                    if let Some(p) = path {
-                        reload.push((doc.clone(), p));
-                    }
-                }
-                for (doc, path) in reload {
-                    self.load(&doc, path, cx);
-                }
-            }
-        }
-    }
-
-    /// What's open, kept for an upgrade (unsaved work too).
-    fn save_state(&self, cx: &App) -> Option<String> {
-        let docs: Vec<SavedDoc> = self
-            .docs
-            .iter()
-            .map(|d| {
-                let d = d.read(cx);
-                let dirty = d.doc.edited() || d.path.is_none();
-                SavedDoc {
-                    path: d.path.clone(),
-                    untitled: d.untitled,
-                    edited: dirty.then(|| (d.doc.text().to_owned(), d.doc.runs().to_vec())),
-                    paras: if dirty { d.doc.paras().to_vec() } else { Vec::new() },
-                    align: d.doc.align,
-                    wrap: d.doc.wrap,
-                    selection: (d.bytes().start, d.bytes().end),
-                    view: d.editor.view(),
-                    ruler: d.ruler,
-                    page_view: d.page_view,
-                    tool_bars: d.tool_bars,
-                    page: d.doc.page.clone(),
-                    mode: Some(d.mode.id()),
-                    line_numbers: d.line_numbers,
-                }
-            })
-            .collect();
-        serde_json::to_string(&docs).ok()
-    }
-
-    fn restore(&mut self, docs: Vec<SavedDoc>, cx: &mut Context<Self>) {
-        for s in docs {
-            self.untitled = self.untitled.max(s.untitled);
-            match s.edited {
-                Some((text, runs)) => {
-                    let path = s.path.clone();
-                    self.add_window(
-                        s.path,
-                        s.untitled,
-                        move |d| {
-                            d.ruler = s.ruler;
-                            d.page_view = s.page_view;
-                            d.tool_bars = s.tool_bars;
-                            d.line_numbers = s.line_numbers;
-                            let styled = runs.iter().any(|r| r.style != Style::default()) || !s.paras.is_empty();
-                            d.mode = s.mode.as_deref().and_then(|m| Mode::named(m, &text)).unwrap_or_else(|| Mode::for_file(path.as_deref().unwrap_or(Path::new("")), &text, styled));
-                            let mut doc = Doc::with_paras(text, Some(runs), Some(s.paras).filter(|p| !p.is_empty()));
-                            doc.align = s.align;
-                            doc.wrap = s.wrap;
-                            doc.page = s.page;
-                            // Unsaved work stays unsaved (an empty new one is clean).
-                            if !(doc.text().is_empty() && path.is_none()) {
-                                doc.saved_generation = 0;
-                            }
-                            d.reset(doc, s.selection.0..s.selection.1);
-                            d.editor.set_view(d.doc.text(), s.view);
-                        },
-                        cx,
-                    );
-                }
-                None => {
-                    let Some(path) = s.path else { continue };
-                    let doc = self.add_window(
-                        Some(path.clone()),
-                        s.untitled,
-                        |d| {
-                            d.ruler = s.ruler;
-                            d.page_view = s.page_view;
-                            d.tool_bars = s.tool_bars;
-                            d.line_numbers = s.line_numbers;
-                            // (As it showed; its text, read, decides the rest.)
-                            if let Some(m) = s.mode.as_deref().and_then(|m| Mode::named(m, "")) {
-                                d.mode = m;
-                            }
-                            d.loading = true;
-                            d.restore = Some((s.selection.0..s.selection.1, s.view));
-                        },
-                        cx,
-                    );
-                    self.load(&doc, path, cx);
-                }
-            }
-        }
-    }
-}
-
-/// Brings document `doc`'s window forward.
-fn activate(doc: &Entity<DocView>, cx: &mut App) {
-    if let Some(win) = doc.read(cx).win {
-        olo_ui::raise(Some(win), cx);
     }
 }
 
 /// The Find or Replace window.
 struct FindView {
-    app: WeakEntity<StyledEdit>,
-    doc: WeakEntity<DocView>,
+    shared: Arc<Shared>,
+    doc: ViewRef<DocView>,
     replace: bool,
-    find: Entity<TextField>,
-    with: Entity<TextField>,
+    find: Child<TextField>,
+    with: Child<TextField>,
     s: Search,
-    _subs: Vec<Subscription>,
 }
 
 impl FindView {
-    fn new(app: WeakEntity<StyledEdit>, doc: WeakEntity<DocView>, replace: bool, search: &Search, window: &mut Window, cx: &mut Context<Self>) -> FindView {
+    fn new(shared: Arc<Shared>, doc: ViewRef<DocView>, replace: bool, cx: &mut Cx<Self>) -> FindView {
+        let search = shared.common().search.clone();
         let find = text_field(cx, |f| f.name("Find"));
         let with = text_field(cx, |f| f.name("Replace with"));
         find.update(cx, |f, cx| {
             f.set_text(search.find.clone(), cx);
             f.select_all_text(cx);
-            f.focus(window);
         });
+        find.focus(cx);
         with.update(cx, |f, cx| f.set_text(search.replace.clone(), cx));
-        let subs = vec![cx.subscribe(&find, |_, _, _: &TextFieldEvent, cx| cx.notify())];
-        FindView { app, doc, replace, find, with, s: search.clone(), _subs: subs }
+        cx.subscribe(&find, |_: &mut FindView, _: &TextFieldEvent, cx| cx.invalidate());
+        FindView { shared, doc, replace, find, with, s: search }
     }
 
-    fn done(&mut self, go: bool, window: &mut Window, cx: &mut Context<Self>) {
+    fn done(&mut self, go: bool, cx: &mut Cx<Self>) {
         if go && !self.find.read(cx).text().is_empty() {
             self.s.find = self.find.read(cx).text().to_owned();
             self.s.replace = self.with.read(cx).text().to_owned();
-            let (s, replace) = (self.s.clone(), self.replace);
-            if let (Some(app), Some(doc)) = (self.app.upgrade(), self.doc.upgrade()) {
-                cx.defer(move |cx| {
-                    app.update(cx, |a, cx| {
-                        a.common.borrow_mut().search = s;
-                        if replace {
-                            a.replace(&doc, cx);
-                        } else {
-                            a.find_next(&doc, cx);
-                        }
-                    });
-                    activate(&doc, cx);
-                });
-            }
+            self.shared.common().search = self.s.clone();
+            let replace = self.replace;
+            self.doc.update(cx, move |d, cx| {
+                if replace {
+                    d.replace(cx);
+                } else {
+                    d.find_next(cx);
+                }
+                cx.activate_window();
+            });
         }
-        window.remove_window();
+        cx.close_window();
     }
 }
 
-impl Render for FindView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let me = cx.entity();
+impl View for FindView {
+    type Message = ();
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let divider = if self.replace { 86.0 } else { 40.0 };
         let check = |label: &'static str, on: bool, set: fn(&mut Search, bool)| {
-            let me = me.clone();
-            CheckBox::new(label, on).on_toggle(move |on, _, cx| {
-                me.update(cx, |v, cx| {
-                    set(&mut v.s, on);
-                    cx.notify();
-                })
-            })
+            CheckBox::new(label, on).on_toggle(cx.listener(move |v: &mut FindView, on: &bool, cx| {
+                set(&mut v.s, *on);
+                cx.invalidate();
+            }))
         };
         let label = match (self.replace, self.s.all) {
             (false, _) => "Find",
@@ -2714,10 +2708,9 @@ impl Render for FindView {
             (true, true) => "Replace All",
         };
         let ready = !self.find.read(cx).text().is_empty();
-        let (go, cancel) = (me.clone(), me.clone());
-        let mut fields = div().flex().flex_col().gap(px(m::TIGHT)).child(TextControl::new(self.find.clone()).label("Find:").divider(divider));
+        let mut fields = div().flex().flex_col().gap(px(m::TIGHT)).child(TextControl::new(cx, &self.find).label("Find:").divider(divider));
         if self.replace {
-            fields = fields.child(TextControl::new(self.with.clone()).label("Replace with:").divider(divider));
+            fields = fields.child(TextControl::new(cx, &self.with).label("Replace with:").divider(divider));
         }
         let mut checks = div().flex().flex_col().child(check("Case-sensitive", self.s.case, |s, on| s.case = on)).child(check("Wrap-around search", self.s.wrap, |s, on| s.wrap = on)).child(check(
             "Search backwards",
@@ -2732,9 +2725,9 @@ impl Render for FindView {
             .p(px(m::WINDOW_INSET))
             .flex()
             .flex_col()
-            .on_key_down(cx.listener(|v, e: &KeyDownEvent, window, cx| {
+            .on_key_down(cx.listener(|v: &mut FindView, e: &KeyDownEvent, cx| {
                 if e.keystroke.key == "escape" {
-                    v.done(false, window, cx);
+                    v.done(false, cx);
                     cx.stop_propagation();
                 }
             }))
@@ -2744,70 +2737,69 @@ impl Render for FindView {
             .child(div().flex_1())
             .child(
                 button_row()
-                    .child(Button::new("Cancel").on_click(move |window, cx| cancel.update(cx, |v, cx| v.done(false, window, cx))))
-                    .child(Button::new(label).default(true).enabled(ready).on_click(move |window, cx| go.update(cx, |v, cx| v.done(true, window, cx)))),
+                    .child(Button::new("Cancel").on_click(cx.listener(|v: &mut FindView, _: &ClickEvent, cx| v.done(false, cx))))
+                    .child(Button::new(label).default(true).enabled(ready).on_click(cx.listener(|v: &mut FindView, _: &ClickEvent, cx| v.done(true, cx)))),
             )
+            .into_any_element()
     }
 }
 
 /// Document ▸ Header & Footer…: three parts of each, and where `{page}`
 /// and `{pages}` go.
 struct MarginsView {
-    doc: WeakEntity<DocView>,
-    fields: [Entity<TextField>; 6],
+    doc: ViewRef<DocView>,
+    fields: [Child<TextField>; 6],
 }
 
 impl MarginsView {
-    fn new(doc: WeakEntity<DocView>, page: &doc::Page, window: &mut Window, cx: &mut Context<Self>) -> MarginsView {
+    fn new(doc: ViewRef<DocView>, page: &doc::Page, cx: &mut Cx<Self>) -> MarginsView {
         let names = ["Header Left", "Header Center", "Header Right", "Footer Left", "Footer Center", "Footer Right"];
         let texts: Vec<String> = page.header.iter().chain(page.footer.iter()).cloned().collect();
-        let fields: [Entity<TextField>; 6] = std::array::from_fn(|k| {
+        let fields: [Child<TextField>; 6] = std::array::from_fn(|k| {
             let f = text_field(cx, |f| f.name(names[k]));
             f.update(cx, |f, cx| f.set_text(texts[k].clone(), cx));
             f
         });
-        fields[0].update(cx, |f, _| f.focus(window));
+        fields[0].focus(cx);
         MarginsView { doc, fields }
     }
 
-    fn done(&mut self, ok: bool, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(doc) = self.doc.upgrade() {
-            let t: Vec<String> = self.fields.iter().map(|f| f.read(cx).text().to_owned()).collect();
-            let page = doc::Page { header: [t[0].clone(), t[1].clone(), t[2].clone()], footer: [t[3].clone(), t[4].clone(), t[5].clone()] };
-            doc.update(cx, |d, cx| {
-                if ok && d.doc.page.as_ref() != Some(&page) {
-                    d.doc.page = Some(page);
-                    d.doc.generation += 1;
-                }
-                cx.notify();
-            });
-            cx.defer(move |cx| activate(&doc, cx));
-        }
-        window.remove_window();
+    fn done(&mut self, ok: bool, cx: &mut Cx<Self>) {
+        let t: Vec<String> = self.fields.iter().map(|f| f.read(cx).text().to_owned()).collect();
+        let page = doc::Page { header: [t[0].clone(), t[1].clone(), t[2].clone()], footer: [t[3].clone(), t[4].clone(), t[5].clone()] };
+        self.doc.update(cx, move |d, cx| {
+            if ok && d.doc.page.as_ref() != Some(&page) {
+                d.doc.page = Some(page);
+                d.doc.generation += 1;
+            }
+            cx.invalidate();
+            cx.activate_window();
+        });
+        cx.close_window();
     }
 }
 
-impl Render for MarginsView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let me = cx.entity();
-        let p = theme::palette(cx);
-        let group = |title: &'static str, fields: &[Entity<TextField>]| {
+impl View for MarginsView {
+    type Message = ();
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let p = theme::palette();
+        let group = |title: &'static str, fields: &[Child<TextField>]| {
             let mut g = div().flex().flex_col().gap(px(m::TIGHT)).child(heading(title));
             for (f, label) in fields.iter().zip(["Left:", "Center:", "Right:"]) {
-                g = g.child(TextControl::new(f.clone()).label(label).divider(MARGINS_DIVIDER));
+                g = g.child(TextControl::new(cx, f).label(label).divider(MARGINS_DIVIDER));
             }
             g
         };
-        let (ok, cancel) = (me.clone(), me.clone());
         div()
             .size_full()
             .p(px(m::WINDOW_INSET))
             .flex()
             .flex_col()
             .gap(px(m::SPACING))
-            .on_key_down(cx.listener(|v, e: &KeyDownEvent, window, cx| {
+            .on_key_down(cx.listener(|v: &mut MarginsView, e: &KeyDownEvent, cx| {
                 if e.keystroke.key == "escape" {
-                    v.done(false, window, cx);
+                    v.done(false, cx);
                     cx.stop_propagation();
                 }
             }))
@@ -2817,9 +2809,10 @@ impl Render for MarginsView {
             .child(div().flex_1())
             .child(
                 button_row()
-                    .child(Button::new("Cancel").on_click(move |window, cx| cancel.update(cx, |v, cx| v.done(false, window, cx))))
-                    .child(Button::new("OK").default(true).on_click(move |window, cx| ok.update(cx, |v, cx| v.done(true, window, cx)))),
+                    .child(Button::new("Cancel").on_click(cx.listener(|v: &mut MarginsView, _: &ClickEvent, cx| v.done(false, cx))))
+                    .child(Button::new("OK").default(true).on_click(cx.listener(|v: &mut MarginsView, _: &ClickEvent, cx| v.done(true, cx)))),
             )
+            .into_any_element()
     }
 }
 
@@ -2883,37 +2876,36 @@ fn main() {
     if instance::forward(APP_ID, &args) {
         return;
     }
-    olo_ui::run(APP_ID, move |cx| {
-        instance::listen(APP_ID, olo_ui::proxy(cx));
-        let proxy = olo_ui::proxy(cx);
-        let fonts = fonts::Fonts::start(cx.text_system().clone(), move |e| proxy.send(Msg::Fonts(e)));
-        let mut pictures = pictures::Pictures::default();
-        pictures.set_proxy(olo_ui::proxy(cx));
-        let app = cx.new(|_| StyledEdit {
-            docs: Vec::new(),
-            common: Rc::new(RefCell::new(Common { search: Search { wrap: true, ..Search::default() }, spelling: true, fonts })),
-            untitled: 0,
-            watch: None,
-            pdf_setup: None,
-            ruler: true,
-            tool_bars: true,
-            pictures: Rc::new(RefCell::new(pictures)),
-            panels: 0,
-            tools: Vec::new(),
+    olo_kit::run(APP_ID, move |app| {
+        instance::listen(APP_ID, olo_kit::proxy());
+        let fonts = fonts::Fonts::start(olo_kit::text_system(), |e| to_hub(ToHub::Fonts(e)));
+        let shared = Arc::new(Shared {
+            common: Mutex::new(Common { search: Search { wrap: true, ..Search::default() }, spelling: true, fonts }),
+            ruler: AtomicBool::new(true),
+            tool_bars: AtomicBool::new(true),
+            saving: Mutex::default(),
         });
-        let messages = app.clone();
-        olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |a, cx| a.message(message, cx)));
-        // The documents open (unsaved work too), kept for an upgrade.
-        let saving = app.clone();
-        olo_ui::on_upgrade(cx, move |cx| saving.read(cx).save_state(cx));
+        let mut hub = Hub { docs: Vec::new(), shared: shared.clone(), untitled: 0, watch: None, next: 0 };
+        // The documents open (unsaved work too), kept for an upgrade:
+        // what each window keeps, as one list.
+        olo_kit::on_upgrade(|windows| {
+            let docs: Vec<serde_json::Value> = windows.iter().filter_map(|s| serde_json::from_str(s).ok()).collect();
+            serde_json::to_string(&docs).ok()
+        });
         // A save under way: the new version waits.
-        let busy = app.clone();
-        olo_ui::upgrade_waits_while(cx, move |cx| busy.read(cx).docs.iter().any(|d| d.read(cx).saving));
-        let restored = olo_ui::restored_state().and_then(|s| serde_json::from_str::<Vec<SavedDoc>>(&s).ok());
-        app.update(cx, |a, cx| match restored {
-            Some(docs) if !docs.is_empty() => a.restore(docs, cx),
-            _ => a.handle_args(&args, None, cx),
-        });
+        let busy = shared.clone();
+        olo_kit::upgrade_waits_while(move || busy.saving.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|b| b.upgrade().is_some_and(|b| b.load(Ordering::Relaxed))));
+        let restored = olo_kit::restored_state().and_then(|s| serde_json::from_str::<Vec<SavedDoc>>(&s).ok());
+        match restored {
+            Some(docs) if !docs.is_empty() => {
+                hub.restore(docs);
+                if hub.docs.is_empty() {
+                    hub.new_doc();
+                }
+            }
+            _ => hub.handle_args(&args, None),
+        }
+        olo_kit::message_handler(app, move |message, _| hub.message(message));
     });
 }
 

@@ -170,14 +170,20 @@ fn answer(query: Query) {
         }
         Query::Review(reply) => {
             let dark = crate::theme::palette().mode != olo_theme::ThemeMode::Light;
-            let _ = reply.send(olo_interface::ask_windows(Duration::from_millis(3000), move |cx| Some(crate::review::review_window(cx, dark).0)));
+            let _ =
+                reply.send(olo_interface::ask_windows(Duration::from_millis(3000), move |cx| (!cx.window_state::<crate::review::NotReviewed>().0).then(|| crate::review::review_window(cx, dark).0)));
         }
         Query::Path(surface, reply) => {
             let found = olo_interface::ask_windows(WAIT, move |cx| (cx.surface_id() == Some(surface)).then(|| cx.window_state::<Shown>().path.clone())).into_iter().next().flatten();
             let _ = reply.send(found);
         }
-        Query::Menus(reply) | Query::MenusIn(_, reply) => {
-            let _ = reply.send(Menus { app_id: olo_interface::app_id().to_owned(), entries: Vec::new() });
+        // The menus of the window with the keyboard (else the first that
+        // has any), or of the one app_server names.
+        Query::Menus(reply) => {
+            let _ = reply.send(menus(None));
+        }
+        Query::MenusIn(surface, reply) => {
+            let _ = reply.send(menus(Some(surface)));
         }
         Query::Invoke(command, reply) => {
             // The window with the keyboard takes it, else the first that
@@ -200,18 +206,94 @@ fn answer(query: Query) {
             }
             let _ = reply.send(lose);
         }
-        Query::WindowOver(_) | Query::WindowDropped(_) | Query::Focus(_) => {}
-        Query::Move(_, reply) => {
-            drop(reply);
+        // app_server says one of the app's windows, being moved, is over
+        // another of its windows, or was let go there: the strip there
+        // marks the place, or takes its tabs.
+        Query::WindowOver(at) => crate::widgets::strip::window_over(at.onto, olo_interface::point(olo_interface::px(at.x as f32), olo_interface::px(at.y as f32))),
+        Query::WindowDropped(at) => {
+            let point = olo_interface::point(olo_interface::px(at.x as f32), olo_interface::px(at.y as f32));
+            match at.onto {
+                Some(onto) => crate::widgets::strip::window_dropped(at.window, onto, point),
+                None => crate::widgets::strip::window_over(None, point),
+            }
         }
+        // app_server's keyboard hints picked a text field, a slider or a
+        // scroll bar (a click would change it): it gets the keyboard. A
+        // tree's ids are its window's: by surface, else the window with
+        // the keyboard.
+        Query::Focus(node) => {
+            let mut windows = olo_interface::ask_windows(WAIT, |cx| Some((cx.is_window_active(), cx.window_id())));
+            windows.sort_by_key(|(active, _)| !*active);
+            if let Some((_, id)) = windows.first().copied() {
+                olo_interface::ask_windows(WAIT, move |cx| (cx.window_id() == id).then(|| focus_node(cx, node)));
+            }
+        }
+        Query::FocusIn(ask, reply) => {
+            let taken = olo_interface::ask_windows(WAIT, move |cx| (cx.surface_id() == Some(ask.surface)).then(|| focus_node(cx, ask.node)));
+            let _ = reply.send(taken.into_iter().any(|t| t));
+        }
+        Query::Move(to, reply) => crate::upgrade::move_to(to, reply),
     }
+}
+
+/// Gives the keyboard to the widget with tree id `node` ([`tree`]: 1 is
+/// the window, its agent nodes follow from 2; labels after those take
+/// no keyboard). Whether anything took it.
+fn focus_node(cx: &mut WindowCx, node: u64) -> bool {
+    // (Its nodes as the tree said them: what changed shown first.)
+    cx.flush_now();
+    node >= 2 && cx.focus_agent_node((node - 2) as usize)
+}
+
+/// A window's menus, flattened for the command palette: the window
+/// app_server names by its surface, else the one with the keyboard, else
+/// the first that has any.
+fn menus(surface: Option<u32>) -> Menus {
+    let app_id = olo_interface::app_id().to_owned();
+    let mut found = olo_interface::ask_windows(WAIT, move |cx| {
+        if surface.is_some_and(|s| cx.surface_id() != Some(s)) {
+            return None;
+        }
+        let menus = crate::menu::window_menus(cx);
+        (!menus.is_empty()).then(|| (cx.is_window_active(), menus))
+    });
+    found.sort_by_key(|(active, _)| !*active);
+    let entries = found.into_iter().next().map(|(_, menus)| menus.iter().flat_map(|menu| menu.entries(&app_id).entries).collect()).unwrap_or_default();
+    Menus { app_id, entries }
 }
 
 /// Gives `command` to the window in front among those that answered.
 fn invoke(mut windows: Vec<(bool, olo_interface::WindowId, String)>, _surface: Option<u32>) -> bool {
     windows.sort_by_key(|(active, ..)| !*active);
     let Some((_, id, command)) = windows.into_iter().next() else { return false };
-    olo_interface::ask_windows(WAIT, move |cx| (cx.window_id() == id).then(|| cx.command(&command))).into_iter().next().unwrap_or(false)
+    olo_interface::ask_windows(WAIT, move |cx| {
+        (cx.window_id() == id).then(|| {
+            INVOKING.with(|i| i.set(true));
+            // (About, Keyboard Shortcuts, a settings item: the kit's own.)
+            let taken = crate::app_menu::run(&command, cx) || cx.command(&command);
+            INVOKING.with(|i| i.set(false));
+            taken
+        })
+    })
+    .into_iter()
+    .next()
+    .unwrap_or(false)
+}
+
+thread_local! {
+    /// The command this looper is running came through the commands
+    /// socket ([`invoking`]).
+    static INVOKING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Whether the menu command being run now (`View::command`, on this
+/// looper) was asked for through the commands socket (an agent's
+/// `invoke`, the command palette), not chosen by a hand on this display
+/// (a click, a key). For the few commands a program must not give itself:
+/// Terminal's Auto Approve, which answers its agent's questions for it,
+/// asks the person first when it's turned on this way.
+pub fn invoking() -> bool {
+    INVOKING.with(|i| i.get())
 }
 
 /// Starts answering on the app's socket.

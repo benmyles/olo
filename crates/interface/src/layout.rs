@@ -144,7 +144,12 @@ impl ToTaffy<taffy::style::Style> for Style {
             aspect_ratio: self.aspect_ratio,
             margin: self.margin.to_taffy(rem_size, scale_factor),
             padding: self.padding.to_taffy(rem_size, scale_factor),
-            border: self.border_widths.to_taffy(rem_size, scale_factor),
+            // Olo: whole device pixels, as it's drawn (`Style::border_pixels`).
+            border: {
+                let w = self.border_widths.to_pixels(rem_size);
+                let on = |v: Pixels| taffy::style::LengthPercentage::length(crate::style::border_device_pixels(v, scale_factor));
+                taffy::Rect { top: on(w.top), right: on(w.right), bottom: on(w.bottom), left: on(w.left) }
+            },
             align_items: self.align_items.map(|x| x.into()),
             align_self: self.align_self.map(|x| x.into()),
             align_content: self.align_content.map(|x| x.into()),
@@ -345,7 +350,7 @@ impl AvailableSpace {
     /// # Examples
     ///
     /// ```
-    /// use gpui::AvailableSpace;
+    /// use olo_interface::AvailableSpace;
     /// let min_content_size = AvailableSpace::min_size();
     /// assert_eq!(min_content_size.width, AvailableSpace::MinContent);
     /// assert_eq!(min_content_size.height, AvailableSpace::MinContent);
@@ -384,5 +389,105 @@ impl From<Pixels> for AvailableSpace {
 impl From<Size<Pixels>> for Size<AvailableSpace> {
     fn from(size: Size<Pixels>) -> Self {
         Size { width: AvailableSpace::Definite(size.width), height: AvailableSpace::Definite(size.height) }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{AvailableSpace, ParentElement as _, Styled as _, div, px};
+
+    fn style(element: crate::Element) -> Style {
+        let mut style = Style::default();
+        crate::Refineable::refine(&mut style, &element.style);
+        style
+    }
+
+    /// A tree kept between layouts comes out as a new one would. A
+    /// window's tool bar, and under it a side bar beside a column: a
+    /// part that takes what's left, and a fixed-height block holding
+    /// what fills it. The window is resized: the column is measured
+    /// again by its content (the block with it, its children laid out
+    /// as it goes with no size to fill), then placed, the block at the
+    /// size it had. What fills it must still be its size (taffy 0.9.0
+    /// took the block's layout from its cache and left its children as
+    /// the measuring pass had: no width).
+    #[test]
+    fn a_kept_tree_lays_out_again_as_a_new_one_would() {
+        let mut layout: Layout<u32> = Layout::new();
+        let rem = px(16.0);
+        let mut add = |element: crate::Element, children: &[LayoutId]| {
+            let id = layout_add(&mut layout, &style(element), rem);
+            layout.set_children(id, children);
+            id
+        };
+        let within = add(div().size_full(), &[]);
+        let over = add(div().absolute().inset_0(), &[]);
+        let fills = add(div().relative().size_full(), &[within, over]);
+        let fixed = add(div().h(px(90.0)), &[fills]);
+        let grows = add(div().flex_1().min_h_0(), &[]);
+        let leaf = add(div().w(px(70.0)).h(px(24.0)).flex_shrink_0(), &[]);
+        let column = add(div().flex_1().min_w_0().p(px(16.0)).flex().flex_col().gap(px(16.0)), &[grows, fixed, leaf]);
+        let side = add(div().w(px(37.0)).h_full().flex_shrink_0(), &[]);
+        let row = add(div().flex_1().min_h_0().flex(), &[side, column]);
+        let bar = add(div().w_full().h(px(67.0)).flex_shrink_0(), &[]);
+        let root = add(div().size_full().flex().flex_col(), &[bar, row]);
+        for height in [400.0, 353.0, 500.0, 353.0] {
+            let available = size(AvailableSpace::Definite(px(420.0)), AvailableSpace::Definite(px(height)));
+            layout.compute(root, available, 1.0, |_, _, _| Size::default());
+            for node in [fills, within, over] {
+                assert_eq!(layout.placed(node, 1.0).0.size, size(px(351.0), px(90.0)), "in a window {height} tall");
+            }
+            assert_eq!(layout.placed(grows, 1.0).0.size.height, px(height - 67.0 - 32.0 - 32.0 - 90.0 - 24.0));
+        }
+    }
+
+    /// What fills a pane by percentage keeps the pane's size when
+    /// something beside it is laid out again. Rescue's terminal, a view
+    /// filling the pane over its list of processes: the list's rows
+    /// changed, the column was measured again (its panes asked their
+    /// size with no height to be a part of), and the terminal was handed
+    /// back the layout it had been given in that asking: no height
+    /// (taffy 0.9.0 told a node's layouts apart without its parent's
+    /// size).
+    #[test]
+    fn what_fills_a_pane_keeps_its_size_when_a_neighbour_changes() {
+        let mut layout: Layout<u32> = Layout::new();
+        let rem = px(16.0);
+        let mut add = |element: crate::Element, children: &[LayoutId], measured: Option<u32>| {
+            let id = layout.add(&style(element), rem, 1.0, measured);
+            layout.set_children(id, children);
+            id
+        };
+        let screen = add(div().size_full(), &[], None);
+        let fills = add(div().size_full(), &[screen], None);
+        let pane = add(div().flex_1().min_h_0(), &[fills], None);
+        let heading = add(div().w(px(53.0)).h(px(16.0)), &[], None);
+        let shell = add(div().flex_1().min_h_0().flex().flex_col().gap(px(6.0)), &[heading, pane], None);
+        let text = add(div(), &[], Some(1));
+        let row = add(div().flex().items_center().gap(px(8.0)), &[text], None);
+        let list = add(div().flex_1().min_h_0(), &[], None);
+        let processes = add(div().h(px(300.0)).flex_shrink_0().flex().flex_col().gap(px(6.0)), &[list, row], None);
+        let right = add(div().flex_1().min_w_0().flex().flex_col().gap(px(12.0)), &[shell, processes], None);
+        let left = add(div().w(px(300.0)).flex_shrink_0(), &[], None);
+        let both = add(div().flex_1().min_h_0().flex().gap(px(16.0)), &[left, right], None);
+        let root = add(div().size_full().flex().flex_col().p(px(16.0)), &[both], None);
+        let available = size(AvailableSpace::Definite(px(1280.0)), AvailableSpace::Definite(px(800.0)));
+        let mut wide = 40.0;
+        for round in 0..4 {
+            layout.compute(root, available, 1.0, |_, _, _| size(px(wide), px(16.0)));
+            let pane_size = layout.placed(pane, 1.0).0.size;
+            assert!(pane_size.height > px(300.0), "{pane_size:?}");
+            for node in [fills, screen] {
+                assert_eq!(layout.placed(node, 1.0).0.size, pane_size, "round {round}");
+            }
+            // (The note beside the buttons says something else.)
+            wide += 25.0;
+            layout.mark_dirty(text);
+        }
+    }
+
+    fn layout_add(layout: &mut Layout<u32>, style: &Style, rem: Pixels) -> LayoutId {
+        layout.add(style, rem, 1.0, None)
     }
 }

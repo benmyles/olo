@@ -78,6 +78,14 @@ where
 
     /// `new_bounds`' order: one more than the highest of what it overlaps.
     pub fn insert(&mut self, new_bounds: Bounds<U>) -> u32 {
+        self.insert_run(new_bounds, 1)
+    }
+
+    /// A run of `depth` orders for something in `new_bounds` that's
+    /// ordered within itself (a kept drawing): the first of them, one
+    /// more than the highest of what it overlaps. What comes over it
+    /// goes above them all.
+    pub fn insert_run(&mut self, new_bounds: Bounds<U>, depth: u32) -> u32 {
         let (x0, x1, y0, y1) = Self::span(&new_bounds);
         let mut max = 0;
         for y in y0..=y1 {
@@ -96,7 +104,8 @@ where
                 }
             }
         }
-        let order = max + 1;
+        let first = max + 1;
+        let order = max + depth.max(1);
         let index = self.things.len() as u32;
         self.things.push((new_bounds, order));
         for y in y0..=y1 {
@@ -106,7 +115,7 @@ where
                 cell.max = cell.max.max(order);
             }
         }
-        order
+        first
     }
 }
 
@@ -148,7 +157,7 @@ mod tests {
 
     /// Olo: a frame of cards in columns as Notifications' history paints
     /// it (a ground, then each card's shadow, plate, icon and lines of
-    /// text), timed: `cargo test -p gpui --release bounds_tree_cards --
+    /// text), timed: `cargo test -p olo-interface --release bounds_tree_cards --
     /// --ignored --nocapture`.
     #[test]
     #[ignore]
@@ -179,15 +188,17 @@ mod tests {
 
     #[test]
     fn test_random_iterations() {
-        random_iterations(1.0);
-        // (Olo: spread over many cells, far outside too.)
-        random_iterations(40.0);
-        random_iterations(1000.0);
+        random_iterations(1.0, 1000);
+        // (Olo: spread over many cells, far outside too. Fewer of
+        // them: something 50,000 across is in tens of thousands of cells,
+        // and a thousand such trees took a minute of every test run.)
+        random_iterations(40.0, 100);
+        random_iterations(1000.0, 10);
     }
 
-    fn random_iterations(spread: f32) {
+    fn random_iterations(spread: f32, seeds: u64) {
         let max_bounds = 100;
-        for seed in 1..=1000 {
+        for seed in 1..=seeds {
             // let seed = 44;
             let mut tree = BoundsTree::default();
             let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);

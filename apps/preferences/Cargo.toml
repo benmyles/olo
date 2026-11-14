@@ -11,7 +11,7 @@ path = "src/main.rs"
 [dependencies]
 olo-crash.workspace = true
 olo-net.workspace = true
-olo-ui.workspace = true
+olo-kit.workspace = true
 olo-xdg.workspace = true
 # (The ssh configuration's agent, for Security's SSH agent setting.)
 olo-keychain.workspace = true
@@ -20,8 +20,11 @@ olo-voice.workspace = true
 olo-theme.workspace = true
 olo-protocol.workspace = true
 olo-color.workspace = true
-olo-screensavers = { workspace = true, features = ["gpui"] }
+olo-screensavers = { workspace = true, features = ["kit"] }
 olo-system.workspace = true
+# AirPlay: finding receivers, pairing with one, checking, forgetting (not
+# the showing of a screen, which `olo-airplay show` does).
+olo-airplay = { workspace = true, default-features = false }
 # What the GPUs' VA-API drivers encode (Screen Recordings).
 olo-vaapi.workspace = true
 olo-fido.workspace = true
@@ -49,4 +52,4 @@ olo-tg.workspace = true
 qrcode = { version = "0.14", default-features = false }
 
 [dev-dependencies]
-olo-ui = { workspace = true, features = ["lint"] }
+olo-kit = { workspace = true, features = ["lint"] }

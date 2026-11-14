@@ -39,6 +39,76 @@ struct Shared {
 
 static SHARED: OnceLock<Shared> = OnceLock::new();
 
+type Hook = std::sync::Arc<dyn Fn() + Send + Sync>;
+
+/// What the program does when app_server's connection is lost, and
+/// when a display comes or goes.
+static LOST: Mutex<Option<Hook>> = Mutex::new(None);
+static DISPLAYS_CHANGED: Mutex<Vec<Hook>> = Mutex::new(Vec::new());
+
+/// What the program does when its connection to app_server is gone (it
+/// restarted in place, or the GPU device was lost): `f` runs on the
+/// app's looper. Without it, the program ends.
+pub fn on_compositor_lost(f: impl Fn() + Send + Sync + 'static) {
+    *LOST.lock().unwrap_or_else(|e| e.into_inner()) = Some(std::sync::Arc::new(f));
+}
+
+/// Has `f` run (on the app's looper) whenever a display comes, goes or
+/// changes: [`displays`] lists them then.
+pub fn on_displays_changed(f: impl Fn() + Send + Sync + 'static) {
+    DISPLAYS_CHANGED.lock().unwrap_or_else(|e| e.into_inner()).push(std::sync::Arc::new(f));
+}
+
+/// Whether there's a compositor to show windows on (not a headless
+/// run: tests, the layout lint).
+pub fn has_compositor() -> bool {
+    !crate::display::display().headless
+}
+
+/// Every display's bounds, in points, as app_server last said.
+pub fn displays() -> Vec<Bounds<Pixels>> {
+    crate::display::display().displays()
+}
+
+/// Every display's name (its output's: "eDP-1"), in [`displays`]' order:
+/// what a layer surface is put on by (`LayerShellOptions::output`).
+pub fn display_names() -> Vec<Option<String>> {
+    crate::display::display().display_names()
+}
+
+/// The modifiers the compositor takes dmabufs of format `fourcc` with
+/// (empty: another program's pictures can't be shown from the GPU,
+/// `WindowCx::set_external_buffer`). Asked of the display thread once,
+/// as a view that shows such pictures starts.
+pub fn external_modifiers(fourcc: u32) -> Vec<u64> {
+    use crate::platform::LinuxClient as _;
+    crate::display::display().ask(move |on| on.client.wayland().map(|c| c.external_modifiers(fourcc)).unwrap_or_default()).unwrap_or_default()
+}
+
+/// Who hears of the session lock, on the app's looper.
+struct LockHandler(std::rc::Rc<std::cell::RefCell<dyn FnMut(crate::SessionLockEvent, &mut AppCx)>>);
+
+/// Locks the session (ext-session-lock; app_server lets only its lock
+/// screen): `on_event` hears, on the app's looper, when it's locked
+/// (then a window with `WindowSpec::session_lock_output` is opened on
+/// each of [`display_names`]), when outputs change while it is (cover
+/// the new ones), and when app_server ends or refuses it.
+pub fn lock_session(app: &mut AppCx, on_event: impl FnMut(crate::SessionLockEvent, &mut AppCx) + 'static) -> anyhow::Result<()> {
+    app.looper.set_state(LockHandler(std::rc::Rc::new(std::cell::RefCell::new(on_event))));
+    display().lock_session()
+}
+
+/// Ends the session lock (the lock screen was answered): app_server has
+/// been told by the time this returns, so the program may end.
+pub fn unlock_session() {
+    display().unlock_session()
+}
+
+/// Whether the program is ending.
+pub fn is_quitting() -> bool {
+    shared().is_some_and(|s| s.quitting.load(Ordering::Acquire))
+}
+
 fn shared() -> Option<&'static Shared> {
     SHARED.get()
 }
@@ -149,6 +219,11 @@ pub fn refresh_all_windows() {
     all_windows(|cx| cx.refresh());
 }
 
+/// Whether the program stays running with no windows ([`stay_resident`]).
+pub fn is_resident() -> bool {
+    shared().is_some_and(|shared| shared.resident.load(Ordering::Acquire))
+}
+
 /// Keeps the program running with no windows (a service; something that
 /// opens windows when it's asked to).
 pub fn stay_resident() {
@@ -227,6 +302,7 @@ impl WindowSpec {
             app_id: Some(app_id().to_owned()).filter(|id| !id.is_empty()),
             layer_shell: self.layer_shell.clone(),
             dialog: self.dialog,
+            fullscreen: self.fullscreen,
             foreign_parent: self.foreign_parent.clone(),
             session_lock_output: self.session_lock_output.clone(),
             background: self.background,
@@ -318,6 +394,13 @@ pub struct AppCx<'a> {
     pub(crate) looper: &'a mut Looper,
 }
 
+impl<'a> AppCx<'a> {
+    /// The program, on its own looper (from a message taken there).
+    pub fn on(looper: &'a mut Looper) -> AppCx<'a> {
+        AppCx { looper }
+    }
+}
+
 impl AppCx<'_> {
     /// Opens a window on a looper of its own, around the view `build`
     /// makes there. Returns at once: the window is opened by its looper.
@@ -379,13 +462,32 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut AppCx)) {
     let handle = looper.handle();
     display.set_events(Some(Messenger::new(handle, |_looper, event: DisplayEvent| match event {
         DisplayEvent::CompositorLost => {
-            tracing::warn!("the display is gone");
-            quit();
+            let lost = LOST.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            match lost {
+                Some(lost) => lost(),
+                None => {
+                    tracing::warn!("the display is gone");
+                    quit();
+                }
+            }
         }
         // What may be pasted changed: every window's own view says what
         // it shows again (its menus' Paste).
         DisplayEvent::ClipboardChanged => all_windows(|cx| cx.invalidate_main_view()),
-        DisplayEvent::DisplaysChanged | DisplayEvent::KeyboardLayoutChanged => {}
+        DisplayEvent::DisplaysChanged => {
+            let hooks: Vec<Hook> = DISPLAYS_CHANGED.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            for hook in hooks {
+                hook();
+            }
+            all_windows(|cx| cx.displays_changed());
+        }
+        DisplayEvent::KeyboardLayoutChanged => {}
+        DisplayEvent::SessionLock(event) => {
+            let handler = _looper.state::<LockHandler>().map(|h| h.0.clone());
+            if let Some(handler) = handler {
+                (handler.borrow_mut())(event, &mut AppCx { looper: _looper });
+            }
+        }
     })));
     build(&mut AppCx { looper: &mut looper });
     looper.run();
@@ -396,7 +498,47 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut AppCx)) {
         }
     }
     display.set_events(None);
-    display.post(|on| on.stop());
+    // The windows go while the display thread still turns (a window's
+    // going is finished by a task of its, and sent as it next flushes),
+    // then it stops, and is waited for: a program that carries on with
+    // no windows (holding the clipboard after a screenshot) has none on
+    // the screen. (Upstream's went as the app was dropped; here the
+    // region picker's overlays stayed over the screen until the
+    // clipboard changed.)
+    display.post(|on| on.close_all());
+    // With what it copied still on the clipboard it runs on, windowless
+    // and asleep, until that's gone (something else copied, or taken
+    // off): what was copied can be pasted after the program quit, as it
+    // could while it ran.
+    let (said, lingers) = std::sync::mpsc::channel();
+    display.post(move |_| {
+        crate::display::display().post(move |_| {
+            crate::display::display().post(move |on| {
+                let _ = said.send(on.stop_or_linger());
+            })
+        })
+    });
+    if lingers.recv_timeout(std::time::Duration::from_secs(2)).unwrap_or(false) {
+        let hook = BEFORE_LINGERING.lock().unwrap_or_else(|e| e.into_inner()).take();
+        if let Some(hook) = hook {
+            hook();
+        }
+        display.wait_until_ended(None);
+    } else {
+        display.wait_until_ended(Some(std::time::Duration::from_secs(2)));
+    }
+}
+
+/// What to do once the program has quit, if it then runs on for what it
+/// copied (no windows, nothing of it running but the clipboard's
+/// answers): what it would do as it ends (let go of the name it takes
+/// launches by, write what it keeps).
+static BEFORE_LINGERING: Mutex<Option<Box<dyn FnOnce() + Send>>> = Mutex::new(None);
+
+/// Has `f` run when the program has quit but runs on for what it copied
+/// (`run` returns only once that's gone).
+pub fn before_lingering(f: impl FnOnce() + Send + 'static) {
+    *BEFORE_LINGERING.lock().unwrap_or_else(|e| e.into_inner()) = Some(Box::new(f));
 }
 
 /// The size a window is given when nothing says.

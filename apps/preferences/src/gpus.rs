@@ -14,16 +14,15 @@ use std::{
     sync::Arc,
 };
 
+use olo_kit::{
+    Cx, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m, px, style, theme,
+    widgets::{Button, CheckBox, EmptyState, MenuField, Slider, StringView},
+};
 use olo_sync::Mutex;
 use olo_system::{
-    cpu_tuning::CpuPreset,
+    cpu_tuning::{CpuPreset, TOPS},
     gpu_tuning::{self, Caps, GpuTune, Preset, Tuning, When},
     gpus::{self, Gpu},
-};
-use olo_ui::{
-    gpui::{Context, ParentElement as _, SharedString, Styled as _, Window, div, px},
-    metrics as m, style, theme,
-    widgets::{Button, CheckBox, EmptyState, MenuField, Slider, StringView},
 };
 
 use crate::{Msg, PanelView, form::Ui};
@@ -33,7 +32,7 @@ pub struct State {
     shared: Arc<Mutex<Shared>>,
     asked: bool,
     /// The tuning kept, followed: the power mode's follower changes it.
-    watch: Option<olo_ui::watch::Watch>,
+    watch: Option<olo_kit::watch::Watch>,
 }
 
 impl State {
@@ -43,10 +42,8 @@ impl State {
 }
 
 /// The root service that puts the GPUs on the power mode's preset
-/// (`olo-gpu-tune follow`, installed by `olo-gpu-tune set`), and the
-/// program it runs.
-const FOLLOWER: &str = "/etc/systemd/system/olo-gpu-follow.service";
-const INSTALLED: &str = "/usr/local/libexec/olo-gpu-tune";
+/// (`olo-gpu-tune follow`, installed by `olo-gpu-tune set`).
+const FOLLOWER: &str = olo_system::gpu_tuning::FOLLOWER_UNIT_PATH;
 
 /// Whether the power mode's follower is installed, and from this build.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -58,20 +55,17 @@ enum Follower {
     Current,
 }
 
-/// The follower as installed, against the `olo-gpu-tune` beside this
-/// program (on the reading thread: the two compared byte for byte only
-/// when they're one size).
+/// The follower as installed: out of date when what it last did says an
+/// older version of what it does (`gpu_tuning::FOLLOWER_VERSION`, raised
+/// as that changes, not with every build: a new build of the same
+/// follower isn't worth an administrator's password), or says nothing.
 fn follower() -> Follower {
+    use olo_system::gpu_tuning::{FOLLOWER_VERSION, Followed};
     if !std::path::Path::new(FOLLOWER).exists() {
         return Follower::Missing;
     }
-    let Ok(exe) = std::env::current_exe() else { return Follower::Current };
-    let ours = std::path::PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)")).with_file_name("olo-gpu-tune");
-    let len = |p: &std::path::Path| std::fs::metadata(p).map(|m| m.len()).ok();
-    match (len(std::path::Path::new(INSTALLED)), len(&ours)) {
-        // (Ours not here to compare: as it is.)
-        (_, None) => Follower::Current,
-        (Some(a), Some(b)) if a == b && std::fs::read(INSTALLED).ok() == std::fs::read(&ours).ok() => Follower::Current,
+    match Followed::load(std::path::Path::new("/")) {
+        Some(f) if f.version >= FOLLOWER_VERSION => Follower::Current,
         _ => Follower::Old,
     }
 }
@@ -94,12 +88,17 @@ struct Shared {
     /// The power mode now (None: no daemon), and whether on battery.
     mode: Option<olo_system::power_profile::Mode>,
     on_battery: bool,
-    /// The GPUs whose VA-API driver encodes AV1 (Intel's, AMD's), by
-    /// name: screen recordings can be made on them.
+    /// The GPUs whose VA-API driver encodes AV1 (Intel's, AMD's), and
+    /// those whose driver encodes H.264 (RPM Fusion's), by name: screen
+    /// recordings can be made on them.
     av1: Vec<String>,
+    h264: Vec<String>,
     /// The GPU that decodes video through VA-API (its name), and whether
     /// its driver has H.264 and HEVC (Fedora's has only AV1 and VP9).
     decodes: Option<(String, bool)>,
+    /// Each NVMe drive, and its power states as the follower found them
+    /// (none until it has: reading them is root's).
+    drives: Vec<(olo_system::nvme_power::Drive, Vec<olo_system::nvme_power::PowerState>)>,
 }
 
 #[derive(Clone)]
@@ -117,7 +116,7 @@ struct Entry {
 /// Read every GPU, what each allows and the tuning kept, on a thread
 /// (`wake`: that GPU asked even if it's asleep). The window isn't shown
 /// until it's in, briefly (`hold`).
-fn read(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy, wake: Option<String>, hold: Option<olo_ui::FirstShowHold>) {
+fn read(shared: Arc<Mutex<Shared>>, proxy: olo_kit::Proxy, wake: Option<String>, hold: Option<olo_kit::FirstShowHold>) {
     // Tests (the layout lint): a hybrid laptop's two, as the ThinkPad P1
     // Gen 9's are.
     if cfg!(test) {
@@ -139,7 +138,16 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy, wake: Option<String>, 
         s.follower = Follower::Current;
         s.mode = Some(olo_system::power_profile::Mode::Balanced);
         s.av1 = vec!["Intel Graphics".into()];
+        s.h264 = vec!["Intel Graphics".into()];
         s.decodes = Some(("Intel Graphics".into(), false));
+        {
+            use olo_system::nvme_power::{Drive, PowerState};
+            let state = |index: u8, max_watts: f32, operational: bool| PowerState { index, max_watts, operational };
+            s.drives = vec![(
+                Drive { name: "nvme0".into(), model: "SKHynix_HFS002TFM9X179N".into(), serial: "SJ0001".into() },
+                vec![state(0, 8.25, true), state(1, 6.3, true), state(2, 5.4, true), state(3, 0.05, false)],
+            )];
+        }
         s.gpus = Some(vec![
             Entry { gpu: gpu("0000:00:02.0", "Intel Graphics", "xe", true, &["eDP-1", "DP-1", "HDMI-A-1"]), caps: Some(xe), asleep: false, unanswered: None, power_failed: false },
             Entry {
@@ -165,15 +173,23 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy, wake: Option<String>, 
                 .collect();
             let kept = Tuning::load();
             let follower = follower();
+            // The drives here, each with the power states the follower
+            // last found it has.
+            let found = olo_system::gpu_tuning::Followed::load(std::path::Path::new("/")).unwrap_or_default();
+            let drives = olo_system::nvme_power::drives()
+                .into_iter()
+                .map(|d| {
+                    let states = found.drives.iter().find(|f| f.serial == d.serial).map(|f| f.states.clone()).unwrap_or_default();
+                    (d, states)
+                })
+                .collect::<Vec<_>>();
             let mode = olo_system::power_profile::modes().ok().flatten().map(|m| m.active);
             let on_battery = !olo_system::battery::on_ac();
             // (Each driver asked, NVIDIA's left asleep: about 15 ms.)
-            let av1: Vec<String> = olo_vaapi::abilities()
-                .into_iter()
-                .filter(|a| a.av1.is_some())
-                .map(|a| gpus.iter().find(|e| e.gpu.render.as_deref() == Some(a.node.as_path())).map_or_else(|| "The GPU".to_owned(), |e| e.gpu.name.clone()))
-                .collect();
             let name_of = |node: &std::path::Path| gpus.iter().find(|e| e.gpu.render.as_deref() == Some(node)).map_or_else(|| "The GPU".to_owned(), |e| e.gpu.name.clone());
+            let abilities = olo_vaapi::abilities();
+            let av1: Vec<String> = abilities.iter().filter(|a| a.av1.is_some()).map(|a| name_of(&a.node)).collect();
+            let h264: Vec<String> = abilities.iter().filter(|a| a.h264.is_some()).map(|a| name_of(&a.node)).collect();
             use olo_vaapi::decode::{Codec, decoder_for};
             let all = decoder_for(Codec::H264).is_some() && decoder_for(Codec::Hevc).is_some();
             let decodes = decoder_for(Codec::Av1).or_else(|| decoder_for(Codec::Vp9)).or_else(|| decoder_for(Codec::H264)).map(|(node, _)| (name_of(&node), all));
@@ -183,7 +199,9 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy, wake: Option<String>, 
                 s.mode = mode;
                 s.on_battery = on_battery;
                 s.av1 = av1;
+                s.h264 = h264;
                 s.decodes = decodes;
+                s.drives = drives;
                 // (What's being edited stays; a first read starts it.)
                 if s.gpus.is_none() || s.edited == s.kept {
                     s.edited = kept.clone();
@@ -199,7 +217,7 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy, wake: Option<String>, 
 }
 
 /// Apply what's edited: `olo-gpu-tune set`, as root through polkit.
-fn apply(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy) {
+fn apply(shared: Arc<Mutex<Shared>>, proxy: olo_kit::Proxy) {
     let tuning = {
         let mut s = shared.lock().unwrap();
         s.applying = true;
@@ -249,21 +267,27 @@ pub(crate) fn run_tune(tuning: &Tuning) -> Result<String, String> {
 
 /// What screen recordings encode on: the most powerful there is (an
 /// NVIDIA GPU's encoder where there's one), that GPU, an Intel or AMD
-/// GPU through VA-API (AV1 only: what Fedora's drivers encode), or the
-/// processor (`Settings::screen_recording`, read by olo-screenshot's
-/// recorder).
-fn recordings(ui: &mut Ui, gpus: &[Entry], av1: &[String]) {
+/// GPU through VA-API (AV1, and H.264 where its driver makes it: RPM
+/// Fusion's), or the processor (`Settings::screen_recording`, read by
+/// olo-screenshot's recorder).
+fn recordings(ui: &mut Ui, gpus: &[Entry], av1: &[String], h264: &[String]) {
     let nvidia = gpus.iter().find(|e| e.gpu.vendor == 0x10de).map(|e| e.gpu.name.clone());
-    let vaapi = av1.first().cloned();
+    // (The GPU that makes the most of the two.)
+    let vaapi = h264.iter().find(|g| av1.contains(g)).or(h264.first()).or(av1.first()).cloned();
+    let (v_h264, v_av1) = vaapi.as_ref().map_or((false, false), |v| (h264.contains(v), av1.contains(v)));
     let current = ui.s.screen_recording.encoder.clone();
     let codec = ui.s.screen_recording.codec.clone();
     let most = match (&nvidia, &vaapi) {
         (Some(n), _) => format!("The most powerful ({n})"),
-        (None, Some(v)) if codec == "av1" => format!("The most powerful ({v})"),
+        (None, Some(v)) if (codec == "av1" && v_av1) || (codec == "h264" && v_h264) => format!("The most powerful ({v})"),
         _ => "The most powerful (the processor)".to_owned(),
     };
     let on_nvidia = nvidia.as_ref().map(|n| format!("{n} (NVENC)"));
-    let on_vaapi = vaapi.as_ref().map(|v| format!("{v} (AV1 only, VA-API)"));
+    let on_vaapi = vaapi.as_ref().map(|v| match (v_h264, v_av1) {
+        (true, true) => format!("{v} (VA-API)"),
+        (true, false) => format!("{v} (H.264 only, VA-API)"),
+        _ => format!("{v} (AV1 only, VA-API)"),
+    });
     let mut choices: Vec<(String, &str)> = vec![("auto".into(), most.as_str())];
     if let Some(n) = &on_nvidia {
         choices.push(("nvidia".into(), n.as_str()));
@@ -275,18 +299,27 @@ fn recordings(ui: &mut Ui, gpus: &[Entry], av1: &[String]) {
     ui.bbox("Screen Recordings", |ui| {
         ui.choose("recording-encoder", &choices, &current, |f| f.label("Encode on:").divider(100.0), |s, v| s.screen_recording.encoder = v);
         // NVIDIA's encoder: H.264 or HEVC (AV1, no smaller on screens
-        // there, is olo-screenshot's `--codec av1`). Without one, H.264 on
-        // the processor or AV1 on the Intel or AMD GPU.
-        let av1_label = vaapi.as_ref().map(|v| format!("AV1 (on {v})"));
-        let formats: Vec<(String, &str)> = match (&nvidia, &av1_label) {
-            (Some(_), _) if current != "cpu" && current != "vaapi" => vec![("h264".into(), "H.264 (plays everywhere)"), ("hevc".into(), "HEVC (about half the size)")],
-            (None, Some(a)) if current == "auto" => vec![("h264".into(), "H.264 (plays everywhere, on the processor)"), ("av1".into(), a.as_str())],
+        // there, is olo-screenshot's `--codec av1`). The Intel or AMD GPU
+        // chosen: H.264 or AV1, where its driver makes both. Neither
+        // chosen, without NVIDIA's: H.264 (on that GPU where it makes it,
+        // else the processor) or AV1 on that GPU.
+        let v = vaapi.as_deref().unwrap_or("the GPU");
+        let auto_h264 = if v_h264 { format!("H.264 (plays everywhere, on {v})") } else { "H.264 (plays everywhere, on the processor)".to_owned() };
+        let auto_av1 = format!("AV1 (on {v})");
+        let formats: Vec<(String, &str)> = match &nvidia {
+            Some(_) if current != "cpu" && current != "vaapi" => vec![("h264".into(), "H.264 (plays everywhere)"), ("hevc".into(), "HEVC (about half the size)")],
+            _ if current == "vaapi" && v_h264 && v_av1 => vec![("h264".into(), "H.264 (plays everywhere)"), ("av1".into(), "AV1 (for players that want it)")],
+            None if current == "auto" && v_av1 => vec![("h264".into(), auto_h264.as_str()), ("av1".into(), auto_av1.as_str())],
             _ => Vec::new(),
         };
         if !formats.is_empty() {
             ui.choose("recording-codec", &formats, &codec, |f| f.label("Format:").divider(100.0), |s, v| s.screen_recording.codec = v);
         }
-        ui.note(if current == "vaapi" {
+        ui.note(if current == "vaapi" && v_h264 && v_av1 {
+            "A 2560 × 1600 screen takes this GPU about 8 ms a frame as H.264 and 9 as AV1, which comes out about the same size on a screen; H.264 plays everywhere."
+        } else if current == "vaapi" && v_h264 {
+            "Recordings are H.264, which plays everywhere: a 2560 × 1600 screen takes this GPU about 8 ms a frame."
+        } else if current == "vaapi" {
             "Recordings are AV1, the only format Fedora's driver for this GPU encodes: a 2560 × 1600 screen takes it about 9 ms a frame, and most players and browsers play it."
         } else if nvidia.is_some() || vaapi.is_some() {
             "A GPU's encoder takes a 4K screen in about 15 ms a frame, the processor about 110: recordings of a lot of motion keep every frame on the GPU, about nine a second on the processor."
@@ -351,11 +384,11 @@ fn drives(g: &Gpu) -> String {
 fn ensure_read(ui: &mut Ui, st: &mut State) {
     if !st.asked {
         st.asked = true;
-        let hold = olo_ui::hold_first_show(ui.window);
-        read(st.shared.clone(), olo_ui::proxy(ui.cx), None, hold);
-        let (shared, proxy) = (st.shared.clone(), olo_ui::proxy(ui.cx));
+        let hold = olo_kit::hold_first_show(ui.cx);
+        read(st.shared.clone(), olo_kit::proxy(), None, hold);
+        let (shared, proxy) = (st.shared.clone(), olo_kit::proxy());
         if !cfg!(test) {
-            st.watch = olo_ui::watch::watch([std::path::PathBuf::from(gpu_tuning::FILE), std::path::PathBuf::from(FOLLOWER)], move |_| read(shared.clone(), proxy.clone(), None, None));
+            st.watch = olo_kit::watch::watch([std::path::PathBuf::from(gpu_tuning::FILE), std::path::PathBuf::from(FOLLOWER)], move |_| read(shared.clone(), proxy.clone(), None, None));
         }
     }
 }
@@ -384,9 +417,9 @@ fn when_name(w: When) -> &'static str {
 /// running on battery, puts the processors and each GPU on.
 pub fn modes(ui: &mut Ui, st: &mut State) {
     ensure_read(ui, st);
-    let (gpus, kept, edited, follower, mode, on_battery) = {
+    let (gpus, kept, edited, follower, mode, on_battery, drives) = {
         let s = st.shared.lock().unwrap();
-        (s.gpus.clone(), s.kept.clone(), s.edited.clone(), s.follower, s.mode, s.on_battery)
+        (s.gpus.clone(), s.kept.clone(), s.edited.clone(), s.follower, s.mode, s.on_battery, s.drives.clone())
     };
     let Some(gpus) = gpus else {
         ui.note("Reading…");
@@ -399,7 +432,7 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
     // half pixel at 1.25× and the gaps came out 11.2 and 12.8.)
     const LABEL_W: f32 = 152.0;
     const CELL_W: f32 = 144.0;
-    let plain = theme::palette(ui.cx).panel_text;
+    let plain = theme::palette().panel_text;
     ui.bbox("What Each Mode Sets", |ui| {
         // The columns: each mode, and running on battery (bold: in force).
         let mut head = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().w(px(LABEL_W)).flex_shrink_0());
@@ -416,7 +449,7 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
             let mut r = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().w(px(LABEL_W)).flex_shrink_0().child(StringView::new(name.clone()).color(style::c(plain))));
             for (k, (options, chosen, set)) in cells.into_iter().enumerate() {
                 let shared = st.shared.clone();
-                let on = ui.on_view(move |_, i: usize, _, cx: &mut Context<PanelView>| {
+                let on = ui.on_view(move |_, &i: &usize, cx: &mut Cx<PanelView>| {
                     let mut s = shared.lock().unwrap();
                     set(&mut s.edited, i);
                     s.said = None;
@@ -445,6 +478,21 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
             })
             .collect();
         row(ui, "cpu", "Processors".into(), cells);
+        // Their top speed.
+        let top_names = |battery: bool| -> Vec<SharedString> { battery.then(|| SharedString::from("As the Mode")).into_iter().chain(TOPS.iter().map(|t| SharedString::from(format!("{t}%")))).collect() };
+        let cells = When::ALL
+            .into_iter()
+            .map(|w| {
+                let battery = w == When::Battery;
+                let chosen = edited.plan.cpu_top(w).and_then(|t| TOPS.iter().position(|q| *q == t)).map_or(0, |i| i + usize::from(battery));
+                let set: Box<dyn Fn(&mut Tuning, usize)> = Box::new(move |t: &mut Tuning, i: usize| {
+                    let top = if battery { i.checked_sub(1).map(|i| TOPS[i]) } else { Some(TOPS[i]) };
+                    t.plan.set_cpu_top(w, top);
+                });
+                (top_names(battery), chosen, set)
+            })
+            .collect();
+        row(ui, "cpu-top", "Top speed".into(), cells);
         // Each GPU that can be tuned.
         for e in gpus.iter().filter(|e| !matches!(e.caps, Some(Caps::None))) {
             let (pci, nvidia) = (e.gpu.pci.clone(), e.gpu.vendor == 0x10de);
@@ -464,14 +512,43 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
                 .collect();
             row(ui, &e.gpu.pci, short_name(&e.gpu), cells);
         }
-        ui.note("Processors: Saving Power slows them and turns turbo off, Fastest keeps them quick; a GPU's Cooler and Quieter caps its clocks, Fastest lifts them, Custom is its own settings (Graphics). On battery, whatever the mode, a row set to something other than As the Mode is on that: NVIDIA's GPU saves power then, as video wakes it on battery too.");
+        // Each NVMe drive: As It Is unless chosen; with the watts each
+        // choice allows once the follower has read them.
+        for (k, (d, states)) in drives.iter().enumerate() {
+            use olo_system::nvme_power::{NvmePreset, choice_name};
+            // (A drive with one working state has nothing cooler.)
+            let offered: Vec<NvmePreset> = NvmePreset::ALL.into_iter().filter(|p| states.is_empty() || *p == NvmePreset::AsIs || p.state(states).is_some()).collect();
+            let names = |battery: bool| -> Vec<SharedString> { battery.then(|| SharedString::from("As the Mode")).into_iter().chain(offered.iter().map(|p| SharedString::from(choice_name(*p, states)))).collect() };
+            let cells = When::ALL
+                .into_iter()
+                .map(|w| {
+                    let battery = w == When::Battery;
+                    let chosen = edited.plan.nvme(w, &d.serial).and_then(|p| offered.iter().position(|q| *q == p)).map_or(0, |i| i + usize::from(battery));
+                    let (serial, offered) = (d.serial.clone(), offered.clone());
+                    let set: Box<dyn Fn(&mut Tuning, usize)> = Box::new(move |t: &mut Tuning, i: usize| {
+                        let preset = if battery { i.checked_sub(1).map(|i| offered[i]) } else { Some(offered[i]) };
+                        t.plan.set_nvme(w, &serial, preset);
+                    });
+                    (names(battery), chosen, set)
+                })
+                .collect();
+            let name = if drives.len() == 1 { "SSD".to_owned() } else { format!("SSD {}", k + 1) };
+            row(ui, &format!("nvme-{}", d.serial), name, cells);
+        }
+        ui.note("Saving Power slows the processors and turns turbo off, Balanced speeds them up for work (leaning to saving on battery), Fastest keeps them quick; Top speed caps them (Balanced's 75% leaves out their hottest quarter). A GPU's Cooler and Quieter caps its clocks (Custom: its own, on Graphics), an SSD's Cooler and Coolest the power it may draw. On battery, a row not As the Mode holds whatever the mode.");
         match (mode, follower) {
             (_, Follower::Missing) => ui.note("Apply once to let Olo follow the mode and the power supply: an administrator's password is asked, this once."),
             (_, Follower::Old) => ui.note("What follows them is from an older Olo: Apply to bring it up to date (an administrator's password is asked)."),
             (Some(m), Follower::Current) => {
                 let gpus_now: Vec<String> = gpus.iter().filter(|e| !matches!(e.caps, Some(Caps::None))).map(|e| format!("{} {}", short_name(&e.gpu), kept.plan.gpu_now(m, on_battery, &e.gpu.pci, e.gpu.vendor == 0x10de).name())).collect();
                 let cpu = kept.plan.cpu_now(m, on_battery).name();
-                ui.note(format!("Now {}{}: the processors {cpu}, {}.", m.label(), if on_battery { ", on battery" } else { "" }, gpus_now.join(", ")));
+                let top = kept.plan.cpu_top_now(m, on_battery);
+                let mut now: Vec<String> = gpus_now;
+                for (k, (d, _)) in drives.iter().enumerate() {
+                    let name = if drives.len() == 1 { "the SSD".to_owned() } else { format!("SSD {}", k + 1) };
+                    now.push(format!("{name} {}", kept.plan.nvme_now(m, on_battery, &d.serial).name()));
+                }
+                ui.note(format!("Now {}{}: the processors {cpu} at up to {top}%, {}.", m.label(), if on_battery { ", on battery" } else { "" }, now.join(", ")));
             }
             (None, Follower::Current) => ui.note("No power profiles daemon is running, so there's no power mode to follow."),
         }
@@ -495,8 +572,8 @@ pub fn graphics(ui: &mut Ui, st: &mut State) {
         ui.add(EmptyState::new("No GPUs found.").icon("gpu"));
     } else {
         // Side by side, two to a row.
-        let mut boxes: Vec<Vec<olo_ui::gpui::AnyElement>> = gpus.iter().map(|e| ui.collect(|ui| gpu_box(ui, e, &edited, &st.shared))).collect();
-        let column = |items: Vec<olo_ui::gpui::AnyElement>| div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(items);
+        let mut boxes: Vec<Vec<olo_kit::Element>> = gpus.iter().map(|e| ui.collect(|ui| gpu_box(ui, e, &edited, &st.shared))).collect();
+        let column = |items: Vec<olo_kit::Element>| div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(items);
         while !boxes.is_empty() {
             let left = boxes.remove(0);
             let right = if boxes.is_empty() { Vec::new() } else { boxes.remove(0) };
@@ -507,13 +584,13 @@ pub fn graphics(ui: &mut Ui, st: &mut State) {
         // applied with the tuning.)
         ui.space(m::SECTION - 2.0 * m::STACK);
     }
-    let (av1, decodes) = {
+    let (av1, h264, decodes) = {
         let s = st.shared.lock().unwrap();
-        (s.av1.clone(), s.decodes.clone())
+        (s.av1.clone(), s.h264.clone(), s.decodes.clone())
     };
     // (Side by side: under each other, the pane is taller than the
     // smallest screen.)
-    ui.columns(|ui| recordings(ui, &gpus, &av1), |ui| playback(ui, &gpus, decodes.as_ref().map(|(n, all)| (n.as_str(), *all))));
+    ui.columns(|ui| recordings(ui, &gpus, &av1, &h264), |ui| playback(ui, &gpus, decodes.as_ref().map(|(n, all)| (n.as_str(), *all))));
 }
 
 /// Apply and Revert, for the plan and the GPUs' Custom settings (root's:
@@ -526,13 +603,13 @@ fn apply_row(ui: &mut Ui, st: &mut State, follower: Follower) {
     // (Nothing installed to follow it yet, or an older one: Apply
     // installs it.)
     let changed = edited != kept || follower != Follower::Current;
-    let (s1, s2, p1) = (st.shared.clone(), st.shared.clone(), olo_ui::proxy(ui.cx));
-    let failure = style::c(theme::palette(ui.cx).failure);
-    let on_apply = ui.on_click_view(move |_, _, cx| {
+    let (s1, s2, p1) = (st.shared.clone(), st.shared.clone(), olo_kit::proxy());
+    let failure = style::c(theme::palette().failure);
+    let on_apply = ui.on_click_view(move |_, cx| {
         apply(s1.clone(), p1.clone());
         cx.notify();
     });
-    let on_revert = ui.on_click_view(move |_, _, cx| {
+    let on_revert = ui.on_click_view(move |_, cx| {
         let mut s = s2.lock().unwrap();
         s.edited = s.kept.clone();
         s.said = None;
@@ -558,15 +635,9 @@ fn apply_row(ui: &mut Ui, st: &mut State, follower: Follower) {
 /// Change GPU `pci`'s Custom settings. With `switch` (where it is now,
 /// whether it's NVIDIA's, and the settings it runs at now, `from`), it
 /// isn't on Custom yet: it's made Custom there, from those.
-fn edit(
-    ui: &Ui,
-    shared: &Arc<Mutex<Shared>>,
-    pci: &str,
-    switch: Option<(When, bool, GpuTune)>,
-    f: impl Fn(&mut GpuTune, f32) + 'static,
-) -> impl Fn(f32, &mut Window, &mut olo_ui::gpui::App) + 'static {
+fn edit(ui: &Ui, shared: &Arc<Mutex<Shared>>, pci: &str, switch: Option<(When, bool, GpuTune)>, f: impl Fn(&mut GpuTune, f32) + 'static) -> impl Fn(&f32, &mut WindowCx) + 'static {
     let (shared, pci) = (shared.clone(), pci.to_owned());
-    ui.on_view(move |_, v: f32, _, cx: &mut Context<PanelView>| {
+    ui.on_view(move |_, &v: &f32, cx: &mut Cx<PanelView>| {
         let mut s = shared.lock().unwrap();
         let mut t = match &switch {
             Some((when, nvidia, from)) => {
@@ -637,8 +708,8 @@ fn gpu_box(ui: &mut Ui, e: &Entry, edited: &Tuning, shared: &Arc<Mutex<Shared>>)
                 (None, _) => "What it can be set to isn't known yet: asking it wakes it for a moment.".to_owned(),
             };
             ui.note(words);
-            let (shared, proxy, pci) = (shared.clone(), olo_ui::proxy(ui.cx), pci.clone());
-            let wake = ui.on_click_view(move |_, _, cx| {
+            let (shared, proxy, pci) = (shared.clone(), olo_kit::proxy(), pci.clone());
+            let wake = ui.on_click_view(move |_, cx| {
                 shared.lock().unwrap().asking = Some(pci.clone());
                 read(shared.clone(), proxy.clone(), Some(pci.clone()), None);
                 cx.notify();
@@ -733,7 +804,7 @@ fn knobs(ui: &mut Ui, caps: &Caps, tune: &GpuTune, driver: Option<&gpu_tuning::D
             if x.profiles {
                 let saving = tune.power_saving.unwrap_or(false);
                 let on = edit(ui, shared, pci, switch.clone(), |t, v| t.power_saving = Some(v > 0.5));
-                ui.add(CheckBox::new("Power-saving profile", saving).id(format!("gpu-{pci}-saving")).on_toggle(move |b, w, cx| on(if b { 1.0 } else { 0.0 }, w, cx)));
+                ui.add(CheckBox::new("Power-saving profile", saving).id(format!("gpu-{pci}-saving")).on_toggle(move |b: &bool, cx| on(&(if *b { 1.0 } else { 0.0 }), cx)));
             }
         }
         Caps::Nvidia(n) => {
@@ -750,7 +821,7 @@ fn knobs(ui: &mut Ui, caps: &Caps, tune: &GpuTune, driver: Option<&gpu_tuning::D
             ui.add(Slider::new(format!("gpu-{pci}-max"), max, n.min_gpu_mhz as f32..=n.max_gpu_mhz as f32).step(15.0).label("Highest clock").value_text(mhz(max)).on_change(on));
             let persistent = tune.persistent.unwrap_or(n.persistent_now.unwrap_or(false));
             let on = edit(ui, shared, pci, switch.clone(), |t, v| t.persistent = Some(v > 0.5));
-            ui.add(CheckBox::new("Keep its driver ready", persistent).id(format!("gpu-{pci}-persistent")).on_toggle(move |b, w, cx| on(if b { 1.0 } else { 0.0 }, w, cx)));
+            ui.add(CheckBox::new("Keep its driver ready", persistent).id(format!("gpu-{pci}-persistent")).on_toggle(move |b: &bool, cx| on(&(if *b { 1.0 } else { 0.0 }), cx)));
             ui.add(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).child(StringView::new("Its work starts sooner, but it never sleeps: more power, more warmth.").dim(true).wrap(true)));
         }
         Caps::None => {}

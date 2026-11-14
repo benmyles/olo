@@ -335,6 +335,77 @@ impl IntoElement for CheckBox {
     }
 }
 
+/// BeOS's Installer's pane switch ("More Options"): a latch and, beside
+/// it, what it opens. A click (Space, with the keyboard on it) turns it;
+/// whoever shows it keeps whether it's open, says so in its label if it
+/// likes ("Fewer Options"), and puts the pane under it. For a part of a
+/// window most people leave alone, shown only when asked for, the window
+/// growing to hold it (its window follows its content).
+pub struct PaneSwitch {
+    id: SharedString,
+    label: SharedString,
+    open: bool,
+    enabled: bool,
+    on_toggle: Option<Rc<dyn Fn(&bool, &mut WindowCx)>>,
+}
+
+/// The room a pane switch's latch takes, before its label.
+const LATCH: f32 = 12.0;
+
+impl PaneSwitch {
+    pub fn new(label: impl Into<SharedString>, open: bool) -> PaneSwitch {
+        let label = label.into();
+        PaneSwitch { id: label.clone(), label, open, enabled: true, on_toggle: None }
+    }
+
+    /// An id that stays while its label changes with what it shows
+    /// ("More Options", "Fewer Options"): the keyboard stays on it.
+    pub fn id(mut self, id: impl Into<SharedString>) -> Self {
+        self.id = id.into();
+        self
+    }
+
+    pub fn enabled(mut self, on: bool) -> Self {
+        self.enabled = on;
+        self
+    }
+
+    /// Gets whether it's open now, when clicked.
+    pub fn on_toggle(mut self, f: impl Fn(&bool, &mut WindowCx) + 'static) -> Self {
+        self.on_toggle = Some(Rc::new(f));
+        self
+    }
+}
+
+impl IntoElement for PaneSwitch {
+    fn into_element(self) -> Element {
+        let tw = f32::from(style::text_width(self.label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))).ceil();
+        let w = LATCH + m::MARK_GAP + tw;
+        let (label, open) = (self.label.clone(), self.open);
+        let mut c = control(self.id.clone(), w, m::MARK_ROW, move |g, r, s| {
+            let p = theme::palette();
+            let color = if s.enabled { style::c(p.panel_text) } else { style::disabled_text(&p) };
+            // (Held down, the latch is the keyboard's colour: BeOS drew
+            // its own darker while pressed.)
+            let ink = if s.pressed && s.enabled { style::c(p.keyboard_navigation) } else { color };
+            style::latch(g, Bounds::centered_at(point(r.left() + px(LATCH / 2.0), r.center().y), size(px(LATCH), px(LATCH))), open, ink);
+            let text = style::label(g, r.left() + px(LATCH + m::MARK_GAP), r.center().y, style::Align::Left, label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color);
+            if s.focused {
+                focus_underline(g, text, &p);
+            }
+        })
+        .look((&self.label, open))
+        .enabled(self.enabled)
+        .focusable()
+        .agent("DisclosureTriangle", self.label.clone(), Some(open));
+        if let Some(f) = self.on_toggle {
+            let next = !open;
+            c = c.on_click(move |_, cx| f(&next, cx));
+        }
+        c.into_element()
+    }
+}
+
 /// A check box's look alone, in `well` (`MARK_SIZE` square), checked or
 /// not: what isn't a control but shows one (a document's task list).
 pub fn check_box_look(g: &mut Painter, well: Bounds<Pixels>, p: &olo_theme::Palette, checked: bool) {

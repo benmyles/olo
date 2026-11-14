@@ -9,7 +9,6 @@ use std::{
 use blade_graphics as gpu;
 use calloop::LoopHandle;
 use collections::HashMap;
-use futures::channel::oneshot::Receiver;
 
 use anyhow::Context as _;
 use raw_window_handle as rwh;
@@ -31,8 +30,8 @@ use wayland_protocols_plasma::blur::client::org_kde_kwin_blur;
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 use crate::{
-    Bounds, Decorations, DevicePixels, Globals, GpuSpecs, Modifiers, Output, Pixels, PlatformDisplay, PlatformInput, Point, PromptButton, PromptLevel, RequestFrameOptions, ResizeEdge, Size, Tiling,
-    WaylandClientStatePtr, WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControls, WindowDecorations, WindowId, WindowParams, px, size,
+    Bounds, Decorations, DevicePixels, Globals, GpuSpecs, Modifiers, Output, Pixels, PlatformDisplay, PlatformInput, Point, RequestFrameOptions, ResizeEdge, Size, Tiling, WaylandClientStatePtr,
+    WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControls, WindowDecorations, WindowId, WindowParams, px, size,
 };
 use crate::{
     Capslock,
@@ -296,13 +295,21 @@ struct FrameLoop {
     text_rendering: Cell<crate::TextRendering>,
     text_generation: Cell<u64>,
     handle: LoopHandle<'static, WaylandClientStatePtr>,
-    /// Wakes the loop for the frame queued: GPUI runs the main thread's
-    /// tasks in idle callbacks, and calloop doesn't wake for an idle
+    /// Wakes the loop for the frame queued: the display thread's tasks
+    /// run in idle callbacks, and calloop doesn't wake for an idle
     /// queued from one (a task's `refresh`), so without it the frame
     /// would wait for the next input.
     signal: calloop::LoopSignal,
     /// A wheel's notches being eased in.
     wheel: RefCell<Option<WheelEase>>,
+    /// The step just handed out is with a looper: what's left isn't
+    /// dropped for nothing drawn in this frame (`hold_wheel`).
+    wheel_held: Cell<bool>,
+    /// A frame was kept back and is to be drawn in a moment whatever
+    /// happens (`frame_after`): its timer, taken away if one is drawn
+    /// first (so a frame kept back and drawn half a millisecond later,
+    /// as most are, wakes nothing).
+    frame_after: Cell<Option<calloop::RegistrationToken>>,
     /// Olo: the window is gone (its surface destroyed): a frame queued
     /// before draws nothing.
     closed: Cell<bool>,
@@ -394,7 +401,10 @@ impl WaylandWindowState {
             acknowledged_first_configure: false,
             surface,
             decoration,
-            app_id: None,
+            // (Kept as it's given to the toplevel: `activate` asks for
+            // its token by it, and does nothing without. Left unset, no
+            // window of a kit app ever came forward when asked to.)
+            app_id: options.app_id.clone(),
             blur: None,
             inhibitor: None,
             fractional_scale: None,
@@ -518,7 +528,7 @@ impl Drop for WaylandWindow {
     fn drop(&mut self) {
         self.0.frames.closed.set(true);
         // Olo: what the window's callbacks hold (its views, through
-        // GPUI's handlers and an app's close-from-its-tab) goes with it,
+        // the kit's handlers and an app's close-from-its-tab) goes with it,
         // not once the task below runs: nothing may come after that to
         // release them (a dialog's view, answering no as it goes, didn't
         // until the next event). The close callback that task runs stays.
@@ -816,6 +826,8 @@ impl WaylandWindow {
                 handle: loop_handle,
                 signal,
                 wheel: RefCell::new(None),
+                wheel_held: Cell::new(false),
+                frame_after: Cell::new(None),
                 closed: Cell::new(false),
                 in_frame: Cell::new(false),
                 wanted: Cell::new(false),
@@ -1037,7 +1049,12 @@ impl WaylandWindowStatePtr {
         frames.in_frame.set(false);
         drop(cb);
         log::trace!(target: "olo_frames", "frame: drew {drew}, callback {:?}", frames.callback.get());
-        if wheel.is_some() && !drew {
+        if drew {
+            if let Some(timer) = frames.frame_after.take() {
+                frames.handle.remove(timer);
+            }
+        }
+        if wheel.is_some() && !drew && !frames.wheel_held.take() {
             // Nothing moved (an edge): the rest goes.
             frames.wheel.take();
         }
@@ -1065,6 +1082,10 @@ impl WaylandWindowStatePtr {
     /// frames to come, scrolling what is at `position`.
     pub fn add_wheel(&self, delta: Point<f32>, position: Point<Pixels>, modifiers: Modifiers) {
         let mut wheel = self.frames.wheel.borrow_mut();
+        // (What a looper never drew the rest of is long done with.)
+        if wheel.as_ref().is_some_and(|w| w.last.is_some_and(|t| t.elapsed() > std::time::Duration::from_millis(150))) {
+            *wheel = None;
+        }
         match wheel.as_mut() {
             Some(w) => {
                 w.left = Point { x: w.left.x + delta.x, y: w.left.y + delta.y };
@@ -1082,9 +1103,26 @@ impl WaylandWindowStatePtr {
     /// and the last of it is under a device pixel rather than a jump.
     fn wheel_step(&self) -> Option<crate::ScrollWheelEvent> {
         let mut slot = self.frames.wheel.borrow_mut();
-        let w = slot.as_mut()?;
         let now = std::time::Instant::now();
+        // (Held for a looper that drew nothing for its last step: what
+        // was left of it then is no longer wanted.)
+        if slot.as_ref().is_some_and(|w| w.last.is_some_and(|t| now.duration_since(t) > std::time::Duration::from_millis(150))) {
+            *slot = None;
+        }
+        let w = slot.as_mut()?;
         let interval = self.frame_interval();
+        // A step a display frame, no more. A step for a view that
+        // scrolls itself goes to its looper, whose answer asks for a
+        // frame at once, within the same display frame, to be drawn in:
+        // that frame takes no step of its own. (It did, half a
+        // millisecond's worth: that sliver's commit was what the next
+        // display frame drew, so every real step showed a frame late;
+        // and each sliver kept a frame back for its answer
+        // (`stage::INPUT_HOLD`), whose answer asked for a frame, which
+        // took a sliver: nothing was drawn until the ease ran out.)
+        if w.last.is_some_and(|t| (now - t).as_secs_f64() < interval / 2.0) {
+            return None;
+        }
         let dt = w.last.map_or(interval, |t| (now - t).as_secs_f64().min(4.0 * interval));
         w.last = Some(now);
         let k = (1.0 - (-dt / WHEEL_EASE).exp()) as f32;
@@ -1293,6 +1331,20 @@ impl WaylandWindowStatePtr {
         if rendering != self.frames.text_rendering.replace(rendering) {
             self.frames.force.set(true);
             self.schedule_frame();
+            // Olo: whoever draws the window's text is told (its looper
+            // keeps what it drew: under GPUI every frame asked again).
+            // A layer surface's is LCD text until it's on its output and
+            // plain after, and its looper, not told, kept whichever it
+            // had drawn first: the same window came out either way from
+            // one run to the next.
+            let told = self.callbacks.borrow_mut().appearance_changed.take();
+            if let Some(mut told) = told {
+                told();
+                let mut callbacks = self.callbacks.borrow_mut();
+                if callbacks.appearance_changed.is_none() {
+                    callbacks.appearance_changed = Some(told);
+                }
+            }
         }
     }
 
@@ -1524,7 +1576,15 @@ impl WaylandWindowStatePtr {
             } else {
                 state.renderer.update_drawable_size(device_bounds.size);
             }
-            (state.bounds.size, state.scale)
+            // Olo: as big as its buffer (`content_size`): at a fractional
+            // scale the logical size times the scale rounds to whole
+            // device pixels, and laid out to the logical size the last
+            // row was never painted (a greeter's at 1.5×: 533 points are
+            // 799.5 of the buffer's 800 rows, and what was behind it
+            // showed along its bottom). GPUI asked `content_size` at each
+            // resize; the stage goes by what it's handed here.
+            let fits = Size { width: px(device_bounds.size.width.0 as f32 / state.scale), height: px(device_bounds.size.height.0 as f32 / state.scale) };
+            (fits, state.scale)
         };
 
         if let Some(ref mut fun) = self.callbacks.borrow_mut().resize {
@@ -1534,7 +1594,19 @@ impl WaylandWindowStatePtr {
         {
             let state = self.state.borrow();
             if let Some(viewport) = &state.viewport {
-                viewport.set_destination(size.width.0 as i32, size.height.0 as i32);
+                // (A point at least each way: a size under one, a 1 × 1
+                // point window at 1.25×, a layer surface before it's
+                // given its screen, is no viewport at all: a protocol
+                // error, the connection gone, and the app started again,
+                // over and over.)
+                // The window's own size in points, not the buffer's
+                // (`size`, what's laid out): where the buffer is the
+                // smaller by its rounding (487 points at 1.75× are
+                // 852.25 pixels: 852, or 486.86 points), cut to whole
+                // points it was a point short, and the compositor drew
+                // 852 rows in the room of 850.5.
+                let own = state.bounds.size;
+                viewport.set_destination((own.width.0.round() as i32).max(1), (own.height.0.round() as i32).max(1));
             }
         }
     }
@@ -1558,6 +1630,26 @@ impl WaylandWindowStatePtr {
         popup.reposition(&positioner, 0);
         positioner.destroy();
         state.popup_placed = size;
+    }
+
+    /// Olo: a frame, `after` from now, unless one is drawn first (what
+    /// the stage kept back for its looper's answer is drawn with or
+    /// without it). One timer, and only while something is kept back.
+    /// Asked again, it's from then.
+    fn frame_after(&self, after: std::time::Duration) {
+        if let Some(timer) = self.frames.frame_after.take() {
+            self.frames.handle.remove(timer);
+        }
+        let this = self.downgrade();
+        let timer = self.frames.handle.insert_source(calloop::timer::Timer::from_duration(after), move |_, _, _| {
+            if let Some(this) = this.upgrade() {
+                // (Its source goes with this call: nothing to take away.)
+                this.frames.frame_after.set(None);
+                this.schedule_frame();
+            }
+            calloop::timer::TimeoutAction::Drop
+        });
+        self.frames.frame_after.set(timer.ok());
     }
 
     /// Olo: a resize by hand ended: once the size has rested, the
@@ -1696,6 +1788,15 @@ impl PlatformWindow for WaylandWindow {
             drop(state);
             WindowBounds::Windowed(self.bounds().inset(inset))
         }
+    }
+
+    fn awaits_size(&self) -> bool {
+        let state = self.borrow();
+        let stretched = state.layer_shell.as_ref().is_some_and(|o| {
+            let (top, bottom, left, right) = o.anchor;
+            (top && bottom) || (left && right)
+        });
+        !state.acknowledged_first_configure && (state.lock_surface.is_some() || (state.layer_surface.is_some() && stretched))
     }
 
     fn content_size(&self) -> Size<Pixels> {
@@ -2111,7 +2212,7 @@ impl PlatformWindow for WaylandWindow {
         self.0.callbacks.borrow_mut().ime = Some(callback);
     }
 
-    fn begin_frame(&self, damage: Option<Bounds<crate::ScaledPixels>>) -> crate::FrameRegion {
+    fn begin_frame(&self, damage: Option<&[Bounds<crate::ScaledPixels>]>) -> crate::FrameRegion {
         // (As `draw`: nothing before the first configure.)
         if self.0.frames.closed.get() || !self.0.state.borrow().acknowledged_first_configure {
             return crate::FrameRegion::None;
@@ -2204,6 +2305,14 @@ impl PlatformWindow for WaylandWindow {
         let mut state = self.borrow_mut();
         state.ime_area = Some(bounds);
         state.client.update_ime_position(bounds);
+    }
+
+    fn hold_wheel(&self) {
+        self.0.frames.wheel_held.set(true);
+    }
+
+    fn frame_after(&self, after: std::time::Duration) {
+        self.0.frame_after(after);
     }
 
     fn gpu_specs(&self) -> Option<GpuSpecs> {

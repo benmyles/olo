@@ -27,7 +27,7 @@ use std::{
 
 use olo_interface::{
     Bounds, ContentMask, Corner, Cx, Element, FontWeight, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, LocalWindow, MouseButton, MouseMoveEvent, MouseUpEvent, NodeRef, Painter,
-    ParentElement as _, PathBuilder, Pixels, Point, ScrollWheelEvent, SharedString, Size, Styled as _, TimerId, View, WindowCx, WindowId, WindowKind, WindowSpec, canvas, div, point, px, size,
+    ParentElement as _, PathBuilder, Pixels, Point, ScrollWheelEvent, SharedString, Styled as _, TimerId, View, WindowCx, WindowId, WindowKind, WindowSpec, canvas, div, point, px, size,
 };
 
 use crate::{
@@ -194,6 +194,26 @@ impl Menu {
         m.item("New Agent Screen", format!("{prefix}{}", olo_kit_base::moving::NEW_SCREEN_COMMAND))
     }
 
+    /// Show on AirPlay ▸ or Play On ▸ (titled `title`): each AirPlay
+    /// receiver paired with, by name (`olo_protocol::airplay::paired`: a
+    /// small file, no network asked), then AirPlay Settings… to pair with
+    /// another (greyed "No Receivers Paired" above it when there are
+    /// none). Commands are `prefix` and `airplay::MENU_COMMAND` with the
+    /// receiver's key, or `airplay::SETTINGS_COMMAND`, as
+    /// `airplay::menu_command` reads them; the app runs `show_on` or
+    /// `play_on` with the key, or `open_settings`.
+    pub fn airplay(title: &str, paired: &[olo_protocol::airplay::Paired], prefix: &str) -> Menu {
+        use olo_protocol::airplay::{MENU_COMMAND, SETTINGS_COMMAND};
+        let mut m = Menu::new(title);
+        if paired.is_empty() {
+            m = m.item("No Receivers Paired", "none").enabled(false);
+        }
+        for p in paired {
+            m = m.item(p.name.clone(), format!("{prefix}{MENU_COMMAND}{}", p.key()));
+        }
+        m.separator().item("AirPlay Settings…", format!("{prefix}{SETTINGS_COMMAND}"))
+    }
+
     /// Move to Window ▸ (titled `title`): every tabbed app's tab, and tab
     /// group, offers its app's other windows by their titles, in
     /// alphabetical order, each item's command what `others` gives with
@@ -281,7 +301,7 @@ impl Menu {
         self
     }
 
-    /// The last item pressed with the command key and `key` (as GPUI
+    /// The last item pressed with the command key and `key` (as the kit
     /// names it: "w", "f3", "="): ⌘W on a Mac's keys, Ctrl+W on
     /// Windows'; the profile's keys for its command win ([`resolve`]).
     pub fn key(self, key: &str) -> Menu {
@@ -622,20 +642,10 @@ fn open(cx: &mut WindowCx, menu: Menu, place: Place, on_choose: OnChoose, parent
     }
     let owner = cx.window_id();
     let spec = WindowSpec { kind: WindowKind::Popup { parent: owner, anchor, corner, offset }, ..WindowSpec::new(menu.title.clone(), w, h) };
-    cx.open_window_here(spec, move |_| MenuPopup {
-        menu,
-        selected,
-        on_choose,
-        origin,
-        parent_menu,
-        sub: None,
-        pressed_inside: false,
-        scroll,
-        content,
-        view_h: h - 2.0 * POPUP_PAD,
-        scrolling: None,
-        pointer: None,
-        on_close,
+    cx.open_window_here(spec, move |cx| {
+        // (A menu isn't a window's layout: the review leaves it out.)
+        cx.window_state::<crate::review::NotReviewed>().0 = true;
+        MenuPopup { menu, selected, on_choose, origin, parent_menu, sub: None, pressed_inside: false, scroll, content, view_h: h - 2.0 * POPUP_PAD, scrolling: None, pointer: None, on_close }
     })
 }
 
@@ -1124,11 +1134,13 @@ struct Bar {
     shared: Rc<BarShared>,
     /// The bar's element, to draw again when the open menu changes.
     node: Option<NodeRef>,
+    /// Its keys are a terminal-style window's ([`MenuBar::raw`]).
+    raw: bool,
 }
 
 impl Default for Bar {
     fn default() -> Bar {
-        Bar { menus: Vec::new(), on_command: Rc::new(on_command), open: None, pressed: false, closed: None, shared: Rc::default(), node: None }
+        Bar { menus: Vec::new(), on_command: Rc::new(on_command), open: None, pressed: false, closed: None, shared: Rc::default(), node: None, raw: false }
     }
 }
 
@@ -1174,9 +1186,30 @@ impl MenuBar {
         let titles = menus.iter().map(|m| (SharedString::from(m.title.clone()), f32::from(style::text_width(m.title.clone(), style::PLAIN_SIZE, font.clone())) + 2.0 * BAR_PAD)).collect();
         let bar = cx.window_state::<Bar>();
         bar.menus = menus;
-        bar.on_command = Rc::new(on_command);
+        bar.raw = raw;
+        // (The kit's own first: About, Keyboard Shortcuts, settings.)
+        bar.on_command = Rc::new(move |command: &str, cx: &mut WindowCx| {
+            if !crate::app_menu::run(command, cx) {
+                on_command(command, cx);
+            }
+        });
         MenuBar { titles, shared: bar.shared.clone() }
     }
+}
+
+/// The window's bar's menus as things are now, said outside its body and
+/// without drawing it: BeOS's `MenusBeginning`, for a view that looks a
+/// shortcut up itself ([`shortcut_command`]). A bar's menus are as the
+/// window's last body left them, and an item that's off has no
+/// shortcut, so its keystroke goes on to whatever takes it next. Where
+/// an item's `enabled` goes by something that may have changed a moment
+/// ago (Terminal's Copy, by a selection just made), asking for the
+/// window's body isn't soon enough on a busy computer: say the menus
+/// first, then look. The bar's titles are as they were.
+pub fn menus_beginning(cx: &mut WindowCx, mut menus: Vec<Menu>) {
+    let bar = cx.window_state::<Bar>();
+    resolve(&mut menus, bar.raw);
+    bar.menus = menus;
 }
 
 /// Where each title is in a bar at `b`.
@@ -1206,12 +1239,32 @@ pub fn shortcut_command(cx: &mut WindowCx, k: &olo_interface::Keystroke) -> Opti
     bar_shortcut(cx, k).map(|(command, _)| command)
 }
 
-/// The menus of the window's bar (for the command palette) and where its
-/// commands go.
-pub(crate) fn bar_menus(cx: &mut WindowCx) -> Option<(Vec<Menu>, OnChoose)> {
-    let bar = cx.window_state::<Bar>();
-    (!bar.menus.is_empty()).then(|| (bar.menus.clone(), bar.on_command.clone()))
+/// The window's bar's menus, as its last body said them (none without a
+/// bar): what the window review checks (`app_menu::review`).
+pub(crate) fn bar_menus(cx: &mut WindowCx) -> Vec<Menu> {
+    cx.window_state::<Bar>().menus.clone()
 }
+
+/// The window's menus, for the command palette and agents: its bar's,
+/// else what it offers without one ([`set_menus`]).
+pub(crate) fn window_menus(cx: &mut WindowCx) -> Vec<Menu> {
+    let bar = cx.window_state::<Bar>().menus.clone();
+    if !bar.is_empty() {
+        return bar;
+    }
+    cx.window_state::<Offered>().0.clone()
+}
+
+/// The menus a window with no menu bar offers the command palette and
+/// agents (a calculator's context menu): said as its view says what it
+/// shows. Their commands go to the window's own view (`View::command`).
+pub fn set_menus(cx: &mut WindowCx, menus: Vec<Menu>) {
+    cx.window_state::<Offered>().0 = menus;
+}
+
+/// What a window offers without a bar ([`set_menus`]).
+#[derive(Default)]
+struct Offered(Vec<Menu>);
 
 /// Opens bar menu `i` under its title `title` (in the window), by a
 /// press on it or sliding onto it.
@@ -1259,6 +1312,18 @@ impl IntoElement for MenuBar {
     fn into_element(self) -> Element {
         let (titles, shared) = (Rc::new(self.titles), self.shared);
         let (down, slide) = (titles.clone(), titles.clone());
+        // Kept while the titles and the open one are the same (a key
+        // typed in the window draws its line, not the bar too); a menu
+        // opening or put away paints it again itself (`repaint_bar`).
+        let look = {
+            use std::hash::{Hash as _, Hasher as _};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            for (title, width) in titles.iter() {
+                (title, width.to_bits()).hash(&mut hasher);
+            }
+            shared.open.get().hash(&mut hasher);
+            hasher.finish()
+        };
         canvas(move |g, b| {
             let p = theme::palette();
             style::fill_rect(g, b, style::c(p.menu_background));
@@ -1281,6 +1346,10 @@ impl IntoElement for MenuBar {
                 g.agent(agent::Node { role: "MenuBarItem", name: Some(title.clone()), bounds: r, enabled: true, clickable: true, selected: Some(open == Some(i)), ..Default::default() });
             }
         })
+        .paint_key(look)
+        // (A window's menus work on what has its keyboard: the bar
+        // never takes it.)
+        .keeps_focus()
         // Menus open on the press, as on BeOS.
         .on_mouse_down(MouseButton::Left, move |e, cx| {
             let b = cx.listener_bounds();
@@ -1338,6 +1407,32 @@ mod tests {
         assert_eq!(items, [("Build".into(), "to:b".into(), true), ("notes 2".into(), "to:2".into(), true), ("Notes 10".into(), "to:10".into(), true)]);
         let none = Menu::move_to_window("Move Group to Window", std::iter::empty());
         assert!(matches!(&none.items[..], [MenuItem::Action(a)] if a.label.to_string() == "No Other Windows" && !a.enabled));
+    }
+
+    /// Show on AirPlay ▸: each receiver paired with, its command the
+    /// receiver's key (its id, or its name without one), then the way to
+    /// pair another; none, a greyed line above it.
+    #[test]
+    fn airplay_lists_the_receivers_paired_with() {
+        use olo_protocol::airplay::{Paired, menu_command};
+        let said = |m: &Menu| -> Vec<(String, String, bool)> {
+            m.items
+                .iter()
+                .filter_map(|i| match i {
+                    MenuItem::Action(a) => Some((a.label.to_string(), a.command.clone(), a.enabled)),
+                    _ => None,
+                })
+                .collect()
+        };
+        let paired = [Paired { device_id: "AA:BB:CC:DD:EE:FF".into(), name: "Front Room".into() }, Paired { device_id: String::new(), name: "Den".into() }];
+        let m = Menu::airplay("Show on AirPlay", &paired, "w:");
+        assert_eq!(
+            said(&m),
+            [("Front Room".into(), "w:airplay-on:AA:BB:CC:DD:EE:FF".into(), true), ("Den".into(), "w:airplay-on:Den".into(), true), ("AirPlay Settings…".into(), "w:airplay-settings".into(), true)]
+        );
+        assert_eq!(menu_command(&said(&m)[0].1["w:".len()..]), Some(Some("AA:BB:CC:DD:EE:FF")));
+        let none = said(&Menu::airplay("Play On", &[], ""));
+        assert_eq!(none, [("No Receivers Paired".into(), "none".into(), false), ("AirPlay Settings…".into(), "airplay-settings".into(), true)]);
     }
 
     #[test]

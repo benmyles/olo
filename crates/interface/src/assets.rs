@@ -153,8 +153,75 @@ impl RenderImage {
     }
 }
 
+/// The atlases pictures are put in (one a GPU), to take a picture's
+/// tiles out of when it goes.
+static ATLASES: std::sync::Mutex<Vec<std::sync::Weak<dyn crate::PlatformAtlas>>> = std::sync::Mutex::new(Vec::new());
+
+/// `atlas` holds pictures' tiles from now on.
+pub(crate) fn holds_images(atlas: &std::sync::Arc<dyn crate::PlatformAtlas>) {
+    let mut atlases = ATLASES.lock().unwrap_or_else(|e| e.into_inner());
+    atlases.retain(|a| a.strong_count() > 0);
+    atlases.push(std::sync::Arc::downgrade(atlas));
+}
+
+/// Olo: a picture gone (nothing shows it or keeps it: a frame and a kept
+/// drawing hold the pictures they show, `Scene::images`), its tiles in
+/// the atlas go with it. Upstream left that to whoever replaced a picture
+/// (`Window::drop_image`); a video, a camera or a preview that forgot
+/// filled the atlas a frame at a time (35 GB once).
+impl Drop for RenderImage {
+    fn drop(&mut self) {
+        let atlases: Vec<_> = ATLASES.lock().unwrap_or_else(|e| e.into_inner()).iter().filter_map(std::sync::Weak::upgrade).collect();
+        for atlas in atlases {
+            for frame_index in 0..self.frame_count() {
+                atlas.remove(&RenderImageParams { image_id: self.id, frame_index, deep: self.deep.is_some() }.into());
+            }
+        }
+    }
+}
+
 impl fmt::Debug for RenderImage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ImageData").field("id", &self.id).field("size", &self.size(0)).finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{AtlasKey, AtlasTile, PlatformAtlas};
+    use std::{borrow::Cow, sync::Mutex};
+
+    /// An atlas that only says what was taken out of it.
+    #[derive(Default)]
+    struct Told(Mutex<Vec<(usize, usize)>>);
+
+    impl PlatformAtlas for Told {
+        fn get_or_insert_with<'a>(&self, _: &AtlasKey, _: &mut dyn FnMut() -> Result<Option<(Size<DevicePixels>, Cow<'a, [u8]>)>>) -> Result<Option<AtlasTile>> {
+            Ok(None)
+        }
+
+        fn remove(&self, key: &AtlasKey) {
+            if let AtlasKey::Image(p) = key {
+                self.0.lock().unwrap().push((p.image_id.0, p.frame_index));
+            }
+        }
+    }
+
+    /// A picture's tiles leave the atlas when the last of it goes, each
+    /// frame's; an atlas gone is forgotten.
+    #[test]
+    fn a_picture_dropped_leaves_the_atlas() {
+        let told = std::sync::Arc::new(Told::default());
+        let atlas: std::sync::Arc<dyn PlatformAtlas> = told.clone();
+        holds_images(&atlas);
+        let frame = || Frame::new(image::RgbaImage::new(2, 2));
+        let picture = std::sync::Arc::new(RenderImage::new(SmallVec::from_vec(vec![frame(), frame()])));
+        let (id, shown) = (picture.id.0, picture.clone());
+        drop(picture);
+        assert!(!told.0.lock().unwrap().iter().any(|(i, _)| *i == id), "still shown: kept");
+        drop(shown);
+        let gone: Vec<usize> = told.0.lock().unwrap().iter().filter(|(i, _)| *i == id).map(|(_, f)| *f).collect();
+        assert_eq!(gone, [0, 1]);
     }
 }

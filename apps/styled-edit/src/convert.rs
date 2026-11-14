@@ -25,7 +25,7 @@ pub enum Source {
     /// Markdown, its pictures from this folder.
     Markdown(Option<std::path::PathBuf>),
     /// Source code in this language.
-    Code(&'static olo_ui::code::Language),
+    Code(&'static olo_kit::code::Language),
 }
 
 /// `text`, shown as `source`, as a styled document: Markdown as it looks
@@ -38,7 +38,7 @@ pub fn styled_copy(text: &str, source: &Source) -> (String, Vec<Run>, Vec<Para>)
         Source::Code(lang) => {
             let base = Style { family: crate::doc::MONOSPACE.into(), size: 10.0, ..Style::default() };
             let paper = olo_theme::Palette::light();
-            let mut hl = olo_ui::code::syntax::Highlighter::new(lang);
+            let mut hl = olo_kit::code::syntax::Highlighter::new(lang);
             if let Some(job) = hl.job(text) {
                 hl.done(job.run());
             }
@@ -182,7 +182,7 @@ pub fn from_markdown_in(source: &str, dir: Option<&std::path::Path>) -> (String,
                     let (width, height) = crate::pictures::fit(px, 468.0, 600.0);
                     let picture = crate::doc::Picture { path: path.to_string_lossy().into_owned(), width, height, alt };
                     let style = Style { picture: Some(picture), ..b.base() };
-                    b.text(&olo_ui::editor::PICTURE.to_string(), &style);
+                    b.text(&olo_kit::editor::PICTURE.to_string(), &style);
                 }
             }
             Event::Start(Tag::Link { dest_url, .. }) => links.push(dest_url.to_string()),
@@ -349,7 +349,7 @@ pub fn from_rich(doc: olo_richtext::Document) -> (String, Vec<Run>, Vec<Para>) {
                         if let Some(path) = crate::pictures::hold(&pic.data) {
                             let picture = crate::doc::Picture { path: path.to_string_lossy().into_owned(), width: pic.width, height: pic.height, alt: pic.alt.clone() };
                             let style = Style { picture: Some(picture), ..b.base() };
-                            b.text(&olo_ui::editor::PICTURE.to_string(), &style);
+                            b.text(&olo_kit::editor::PICTURE.to_string(), &style);
                         }
                     }
                     None => rich_spans(&mut b, &p.spans),
@@ -431,7 +431,7 @@ fn rich_spans(b: &mut Builder, spans: &[olo_richtext::Span]) {
 pub fn to_rich(text: &str, runs: &[Run], paras: &[Para], align: Align) -> olo_richtext::Document {
     use olo_richtext as rt;
     // Text in the system font is in Olo's.
-    let mut doc = rt::Document { font: olo_ui::palette::fonts::UI.first().map(|f| f.to_string()), ..rt::Document::default() };
+    let mut doc = rt::Document { font: olo_kit::palette::fonts::UI.first().map(|f| f.to_string()), ..rt::Document::default() };
     let rich = |r: Range<usize>| -> Vec<rt::Span> {
         spans(runs, r)
             .map(|(r, s)| rt::Span {
@@ -508,7 +508,7 @@ pub fn to_rich(text: &str, runs: &[Run], paras: &[Para], align: Align) -> olo_ri
         // (as Word and the others have them here).
         let pictures: Vec<(usize, &crate::doc::Picture)> = spans(runs, r.clone())
             .filter_map(|(sr, st)| st.picture.as_ref().map(|pic| (sr, pic)))
-            .flat_map(|(sr, pic)| text[sr.clone()].match_indices(olo_ui::editor::PICTURE).map(move |(k, _)| (sr.start + k, pic)).collect::<Vec<_>>())
+            .flat_map(|(sr, pic)| text[sr.clone()].match_indices(olo_kit::editor::PICTURE).map(move |(k, _)| (sr.start + k, pic)).collect::<Vec<_>>())
             .collect();
         if pictures.is_empty() {
             doc.paragraphs.push(para(rich(r)));
@@ -523,7 +523,7 @@ pub fn to_rich(text: &str, runs: &[Run], paras: &[Para], align: Align) -> olo_ri
                 let picture = rt::Picture { data, width: pic.width, height: pic.height, alt: pic.alt.clone() };
                 doc.paragraphs.push(rt::Paragraph { align: a, picture: Some(picture), ..rt::Paragraph::default() });
             }
-            from = at + olo_ui::editor::PICTURE.len_utf8();
+            from = at + olo_kit::editor::PICTURE.len_utf8();
         }
         if !text[from..r.end].trim().is_empty() {
             doc.paragraphs.push(para(rich(from..r.end)));
@@ -537,7 +537,7 @@ pub fn to_rich(text: &str, runs: &[Run], paras: &[Para], align: Align) -> olo_ri
 
 /// A row's cells: the bytes of `range` (a paragraph) between its tabs.
 fn cells(text: &str, range: Range<usize>) -> Vec<Range<usize>> {
-    olo_ui::editor::cells(&text[range.clone()]).into_iter().map(|(s, l)| range.start + s..range.start + s + l).collect()
+    olo_kit::editor::cells(&text[range.clone()]).into_iter().map(|(s, l)| range.start + s..range.start + s + l).collect()
 }
 
 /// Each paragraph's bytes (without its newline), with its setting.
@@ -651,7 +651,7 @@ fn inline_markdown(text: &str, runs: &[Run], range: Range<usize>, heading: bool,
     let mut raw: Vec<usize> = Vec::new();
     for (r, s) in spans(runs, range) {
         if let Some(pic) = &s.picture {
-            for _ in text[r].chars().filter(|&c| c == olo_ui::editor::PICTURE) {
+            for _ in text[r].chars().filter(|&c| c == olo_kit::editor::PICTURE) {
                 raw.push(parts.len());
                 let alt = pic.alt.replace(['[', ']'], "");
                 parts.push((format!("![{alt}]({})", pic.path.replace(' ', "%20").replace(')', "%29")), (false, false, false, false, None)));
@@ -864,7 +864,7 @@ fn inline_html(t: &str, s: &Style, heading: bool, kind: Kind) -> String {
             let mime = olo_richtext::kind_of_image(&data).map_or("image/png", |k| k.1);
             format!("<img src=\"data:{mime};base64,{}\" width=\"{}\" height=\"{}\" alt=\"{}\">", base64(&data), pic.width.round(), pic.height.round(), escape_html(&pic.alt))
         });
-        return t.chars().filter(|&c| c == olo_ui::editor::PICTURE).map(|_| img.clone().unwrap_or_default()).collect();
+        return t.chars().filter(|&c| c == olo_kit::editor::PICTURE).map(|_| img.clone().unwrap_or_default()).collect();
     }
     let mut css = Vec::new();
     // What the paragraph's kind gives it isn't said again.
@@ -913,7 +913,7 @@ mod tests {
 
     #[test]
     fn code_and_markdown_set_as_they_look() {
-        let rust = olo_ui::code::by_name("rust").unwrap();
+        let rust = olo_kit::code::by_name("rust").unwrap();
         let text = "fn main() {}\n// c\n";
         let (t, runs, paras) = styled_copy(text, &Source::Code(rust));
         assert_eq!(t, text);

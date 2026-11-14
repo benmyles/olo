@@ -56,7 +56,7 @@ impl Bitmap {
         self.size[1]
     }
 
-    /// Its bytes, as straight-alpha BGRA (what GPUI's images take).
+    /// Its bytes, as straight-alpha BGRA (what the kit's pictures take).
     pub fn to_bgra_unmultiplied(&self) -> Vec<u8> {
         let mut out = self.rgba.clone();
         for p in out.as_chunks_mut::<4>().0 {

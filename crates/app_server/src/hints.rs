@@ -101,8 +101,9 @@ impl Rect {
 pub enum Node {
     /// A control, menu item, icon…: picking it clicks its middle, or gives
     /// it the keyboard (a slider or text field, which a click would
-    /// change). `node` is its id in process `pid`'s tree.
-    Leaf { rect: Rect, name: Option<String>, role: String, pid: u32, node: u64 },
+    /// change). `node` is its id in process `pid`'s tree of the window
+    /// whose surface has protocol id `surface` (if the app said).
+    Leaf { rect: Rect, name: Option<String>, role: String, pid: u32, node: u64, surface: Option<u32> },
     /// A part of a window (a box, Deskbar): picking it letters what's inside.
     /// Outlined, unless it is a layer surface's (windows may cover it).
     Group { rect: Rect, name: Option<String>, kids: Vec<Node>, outline: bool },
@@ -155,7 +156,7 @@ impl Node {
     }
 }
 
-/// The parts of the kit's tree (`olo_ui::commands`) hints need.
+/// The parts of the kit's tree (`olo_kit::commands`) hints need.
 #[derive(Debug, Clone, Deserialize)]
 pub struct UiNode {
     pub id: u64,
@@ -229,6 +230,7 @@ pub fn build(tree: &WindowTree, origin: (f64, f64), pid: u32) -> Vec<Node> {
         targets: Vec<bool>,
         origin: (f64, f64),
         pid: u32,
+        surface: Option<u32>,
     }
     impl Walk<'_> {
         fn walk(&self, i: usize, depth: usize) -> Vec<Node> {
@@ -237,7 +239,7 @@ pub fn build(tree: &WindowTree, origin: (f64, f64), pid: u32) -> Vec<Node> {
             let inner: Vec<Node> = if depth > 64 { Vec::new() } else { self.kids[i].iter().flat_map(|&k| self.walk(k, depth + 1)).collect() };
             if self.targets[i] {
                 let rect = Rect { x: n.x, y: n.y, w: n.width, h: n.height }.offset(self.origin.0, self.origin.1);
-                let leaf = Node::Leaf { rect, name: n.name.clone(), role: n.role.clone(), pid: self.pid, node: n.id };
+                let leaf = Node::Leaf { rect, name: n.name.clone(), role: n.role.clone(), pid: self.pid, node: n.id, surface: self.surface };
                 if inner.is_empty() {
                     return vec![leaf];
                 }
@@ -247,7 +249,7 @@ pub fn build(tree: &WindowTree, origin: (f64, f64), pid: u32) -> Vec<Node> {
             if inner.len() > 1 { vec![Node::group(n.name.clone(), inner)] } else { inner }
         }
     }
-    let walk = Walk { nodes, kids, targets, origin, pid };
+    let walk = Walk { nodes, kids, targets, origin, pid, surface: tree.surface };
     let mut out: Vec<Node> = roots.iter().flat_map(|&r| walk.walk(r, 0)).collect();
     if menu {
         // A menu's items, however they nest.
@@ -406,13 +408,26 @@ fn ask(pid: u32, surfaces: &[u32]) -> Option<Vec<WindowTree>> {
     serde_json::from_str(&line).ok()
 }
 
-/// Give the keyboard to widget `node` of process `pid`. Blocks.
-fn focus(pid: u32, node: u64) {
-    let Ok(s) = UnixStream::connect(socket_path(pid)) else { return };
-    let _ = s.set_write_timeout(Some(WAIT));
-    let _ = s.set_read_timeout(Some(WAIT));
-    if (&s).write_all(format!("{{\"focus\":{node}}}\n").as_bytes()).is_ok() {
-        let _ = BufReader::new(&s).read_line(&mut String::new());
+/// Give the keyboard to widget `node` of process `pid`, in the window
+/// whose surface has protocol id `surface` (a tree's ids are its
+/// window's). Blocks.
+fn focus(pid: u32, surface: Option<u32>, node: u64) {
+    // The answer; empty if the app hung up without one.
+    let say = |q: String| -> Option<String> {
+        let s = UnixStream::connect(socket_path(pid)).ok()?;
+        s.set_write_timeout(Some(WAIT)).ok()?;
+        s.set_read_timeout(Some(WAIT * 2)).ok()?;
+        (&s).write_all(q.as_bytes()).ok()?;
+        let mut line = String::new();
+        BufReader::new(&s).read_line(&mut line).ok()?;
+        Some(line)
+    };
+    // An app from before `focus_in` (not restarted since an upgrade)
+    // hangs up on it: then by the id alone, in its window with the
+    // keyboard (the one just brought forward).
+    let answered = surface.and_then(|surface| say(format!("{{\"focus_in\":{{\"surface\":{surface},\"node\":{node}}}}}\n"))).is_some_and(|line| !line.is_empty());
+    if !answered {
+        let _ = say(format!("{{\"focus\":{node}}}\n"));
     }
 }
 
@@ -671,9 +686,14 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.restore(&w);
                 self.fetch_hints(Purpose::Window(id), Some(w));
             }
-            Node::Leaf { role, pid, node, .. } if FOCUSED.contains(&role.as_str()) => {
+            Node::Leaf { role, pid, node, surface, rect, .. } if FOCUSED.contains(&role.as_str()) => {
                 self.hints.close();
-                std::thread::spawn(move || focus(pid, node));
+                // Its window brought forward with the keyboard, as a click
+                // would (the hints may be over a window behind).
+                if let Some((window, _)) = self.space.element_under(rect.centre()).map(|(w, p)| (w.clone(), p)) {
+                    self.focus_window(&window);
+                }
+                std::thread::spawn(move || focus(pid, surface, node));
             }
             Node::Leaf { rect, .. } => {
                 self.hints.close();
@@ -1042,7 +1062,7 @@ mod tests {
     }
 
     fn leaf(name: &str) -> Node {
-        Node::Leaf { rect: Rect { x: 0.0, y: 0.0, w: 10.0, h: 10.0 }, name: Some(name.into()), role: "Button".into(), pid: 1, node: 0 }
+        Node::Leaf { rect: Rect { x: 0.0, y: 0.0, w: 10.0, h: 10.0 }, name: Some(name.into()), role: "Button".into(), pid: 1, node: 0, surface: None }
     }
 
     #[test]

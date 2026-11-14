@@ -9,12 +9,11 @@
 
 use std::collections::HashMap;
 
-use olo_ui::{
-    Frame, WindowOptions,
-    gpui::{App, Bounds, Context, FocusHandle, InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled as _, Window, WindowHandle, canvas, div, point, px, size},
-    metrics as m,
+use olo_kit::{
+    Bounds, ClickEvent, Cx, Element, InteractiveElement as _, KeyDownEvent, ParentElement as _, SharedString, Styled as _, View, WindowHandle, WindowOptions, canvas, div, metrics as m, point, px,
+    size, style,
     widgets::{
-        AlertFrame, Button, CheckBox, MenuField, alert,
+        AlertFrame, Button, CheckBox, MenuField,
         alert::{ALERT_ICON, ALERT_TEXT_X, alert_title, button_row, paragraph, paragraph_height},
     },
 };
@@ -123,16 +122,15 @@ pub struct Dialog {
     /// Each choice's state: yes/no, or which option.
     on: Vec<bool>,
     picked: Vec<usize>,
-    focus: FocusHandle,
 }
 
 /// Its height for `ask`: the question, what it means, the choices, the
 /// buttons.
-fn height(cx: &App, ask: &Ask) -> f32 {
+fn height(ask: &Ask) -> f32 {
     let mut text = m::LABEL_ROW + m::TIGHT;
     for t in [&ask.subtitle, &ask.body] {
         if !t.is_empty() {
-            text += paragraph_height(cx, t, COLUMN) + m::TIGHT;
+            text += paragraph_height(t, COLUMN) + m::TIGHT;
         }
     }
     let choices = ask.choices.iter().map(|ch| if ch.options.is_empty() { m::MARK_ROW } else { m::CONTROL_HEIGHT }).sum::<f32>() + ask.choices.len() as f32 * m::SPACING;
@@ -145,13 +143,11 @@ fn icon(named: &str) -> &'static str {
     ["camera", "microphone", "screenshot", "display", "people"].into_iter().find(|n| named.contains(n)).filter(|n| olo_xdg::find_icon(n, 32).is_some()).unwrap_or(ICON)
 }
 
-pub fn open(cx: &mut App, ask: Ask) -> Option<WindowHandle<Frame>> {
-    let options = ui::over(WindowOptions::alert("Permission", WIDTH, height(cx, &ask)), &ask.parent);
-    ui::open(cx, options, move |window, cx| {
+pub fn open(ask: Ask) -> WindowHandle<Dialog> {
+    let options = ui::over(WindowOptions::alert("Permission", WIDTH, height(&ask)), &ask.parent);
+    ui::open(options, move |_| {
         let on = ask.choices.iter().map(|ch| ch.initial == "true").collect();
         let picked = ask.choices.iter().map(|ch| ch.options.iter().position(|(o, _)| *o == ch.initial).unwrap_or(0)).collect();
-        let focus = cx.focus_handle();
-        window.focus(&focus);
         Dialog {
             answer: Answer::new(ask.reply, None),
             title: ask.title,
@@ -164,14 +160,13 @@ pub fn open(cx: &mut App, ask: Ask) -> Option<WindowHandle<Frame>> {
             choices: ask.choices,
             on,
             picked,
-            focus,
         }
     })
 }
 
 impl Dialog {
     /// Answered: granted with the choices made, or denied; the window goes.
-    fn finish(&mut self, granted: bool, window: &mut Window) {
+    fn finish(&mut self, granted: bool, cx: &mut Cx<Self>) {
         let made = granted.then(|| {
             self.choices
                 .iter()
@@ -183,13 +178,14 @@ impl Dialog {
                 .collect()
         });
         self.answer.give(made);
-        window.remove_window();
+        cx.close_window();
     }
 }
 
-impl Render for Dialog {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let me = cx.entity();
+impl View for Dialog {
+    type Message = ();
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         // A picture (the Account portal's: the person's) where the icon
         // goes, as it is (pictures of people are often round, with clear
         // corners); else the portal's icon by its freedesktop name.
@@ -197,22 +193,21 @@ impl Render for Dialog {
         let mut frame = AlertFrame::new(if picture.is_some() { "" } else { self.named });
         if let Some(path) = picture {
             frame = frame.child(
-                canvas(
-                    |_, _, _| {},
-                    move |b, _, window, cx| {
-                        let s = window.scale_factor();
-                        let side = (ALERT_ICON * s).round() as u32;
-                        // Where the alert's icon goes: straddling its stripe.
-                        let place = Bounds { origin: point(b.left() - px(ALERT_TEXT_X - m::WINDOW_INSET + ALERT_ICON / 2.0), b.top()), size: size(px(ALERT_ICON), px(ALERT_ICON)) };
-                        if let Some(img) = crate::pictures::get(cx, &path, (side, side)) {
-                            let isz = img.size(0);
-                            let at = olo_ui::style::snap_centred(window, place.center(), isz.width.0 as f32 / s, isz.height.0 as f32 / s);
-                            let _ = window.paint_image(at, Default::default(), img, 0, false);
-                        }
-                    },
-                )
+                canvas(move |g, b| {
+                    let s = g.scale_factor();
+                    let side = (ALERT_ICON * s).round() as u32;
+                    // Where the alert's icon goes: straddling its stripe.
+                    let place = Bounds { origin: point(b.left() - px(ALERT_TEXT_X - m::WINDOW_INSET + ALERT_ICON / 2.0), b.top()), size: size(px(ALERT_ICON), px(ALERT_ICON)) };
+                    if let Some(img) = olo_kit::pictures::fitted(g, &path, (side, side)) {
+                        let isz = img.size(0);
+                        let at = style::snap_centred(g, place.center(), isz.width.0 as f32 / s, isz.height.0 as f32 / s);
+                        let _ = g.paint_image(at, Default::default(), img, 0, false);
+                    }
+                })
                 .absolute()
-                .inset_0(),
+                .left(px(0.0))
+                .top(px(0.0))
+                .size_full(),
             );
         }
         frame = frame.child(alert_title(SharedString::from(self.title.clone())));
@@ -225,42 +220,33 @@ impl Render for Dialog {
         // `height` reckons.)
         let mut choices = div().flex().flex_col().gap(px(m::SPACING)).mt(px(m::TIGHT + m::SPACING));
         for (i, ch) in self.choices.iter().enumerate() {
-            let me = me.clone();
             if ch.options.is_empty() {
-                choices = choices.child(CheckBox::new(SharedString::from(ch.label.clone()), self.on[i]).on_toggle(move |on, _, cx| {
-                    me.update(cx, |d, cx| {
-                        d.on[i] = on;
-                        cx.notify();
-                    })
-                }));
+                choices = choices.child(CheckBox::new(SharedString::from(ch.label.clone()), self.on[i]).on_toggle(cx.listener(move |d: &mut Dialog, on: &bool, cx| {
+                    d.on[i] = *on;
+                    cx.invalidate();
+                })));
             } else {
                 let labels: Vec<SharedString> = ch.options.iter().map(|(_, l)| SharedString::from(l.clone())).collect();
                 choices = choices.child(MenuField::new(SharedString::from(format!("choice-{i}")), labels, self.picked[i]).label(SharedString::from(ch.label.clone())).width(COLUMN).on_change(
-                    move |k, _, cx| {
-                        me.update(cx, |d, cx| {
-                            d.picked[i] = k;
-                            cx.notify();
-                        })
-                    },
+                    cx.listener(move |d: &mut Dialog, k: &usize, cx| {
+                        d.picked[i] = *k;
+                        cx.invalidate();
+                    }),
                 ));
             }
         }
         let deny = if self.deny.is_empty() { "Deny".to_owned() } else { self.deny.clone() };
         let grant = if self.grant.is_empty() { "Allow".to_owned() } else { self.grant.clone() };
-        let no = Button::new(deny).on_click({
-            let me = me.clone();
-            move |window, cx| me.update(cx, |d, _| d.finish(false, window))
-        });
-        let yes = Button::new(grant).default(true).on_click({
-            let me = me.clone();
-            move |window, cx| me.update(cx, |d, _| d.finish(true, window))
-        });
+        let no = Button::new(deny).on_click(cx.listener(|d: &mut Dialog, _: &ClickEvent, cx| d.finish(false, cx)));
+        // (Return grants: the default button. Escape denies.)
+        let yes = Button::new(grant).default(true).on_click(cx.listener(|d: &mut Dialog, _: &ClickEvent, cx| d.finish(true, cx)));
         div()
             .size_full()
-            .key_context(alert::CONTEXT)
-            .track_focus(&self.focus)
-            .on_action(cx.listener(|d, _: &alert::Default, window, _| d.finish(true, window)))
-            .on_action(cx.listener(|d, _: &alert::Cancel, window, _| d.finish(false, window)))
+            .on_window_key_down(cx.listener(|d: &mut Dialog, e: &KeyDownEvent, cx| {
+                if e.keystroke.key == "escape" && !e.keystroke.modifiers.modified() {
+                    d.finish(false, cx);
+                }
+            }))
             .child(frame.child(div().min_h(px(0.0)).child(choices)).child(div().flex_1()).child(button_row().child(no).child(yes)))
     }
 }

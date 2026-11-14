@@ -1,21 +1,22 @@
 //! The panels: names, icons, sizes, and the frame they share (content above,
 //! Defaults and Revert along the bottom, as on BeOS).
 
-use olo_protocol::Settings;
-use olo_ui::{
-    gpui::{AnyElement, Context, IntoElement, ParentElement as _, Styled as _, Window, div, px},
-    metrics as m, style, theme,
+use olo_kit::{
+    Cx, Element, ParentElement as _, Styled as _, div, metrics as m, px, style, theme,
     widgets::{Button, StringView},
 };
+use olo_protocol::Settings;
 
 use crate::{
-    PanelView, about, ai, airpods, appearance, backup, bluetooth, datetime, default_apps, deskbar, display, form::Ui, integrations, keyboard, network, notifications, performance, power, screensaver,
-    security, sound, terminal, themes, touchpad, tracker, windows, workspaces,
+    PanelView, about, ai, airplay, airpods, appearance, backup, bluetooth, datetime, default_apps, deskbar, display, form::Ui, integrations, keyboard, network, notifications, performance, power,
+    prefs, screensaver, security, sound, terminal, themes, touchpad, tracker, windows, workspaces,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
     Ai,
+    /// The receivers: pairing, checking, forgetting, showing the display.
+    AirPlay,
     /// Opened from Bluetooth, Sound and Deskbar (not in the launcher's
     /// grid: it's about one device).
     AirPods,
@@ -50,6 +51,7 @@ pub enum Panel {
 impl Panel {
     pub const ALL: &[Panel] = &[
         Panel::Ai,
+        Panel::AirPlay,
         Panel::Appearance,
         Panel::Backgrounds,
         Panel::Backup,
@@ -90,9 +92,10 @@ impl Panel {
             "touchid" | "fingerprint" | "touch-id" | "fingerprints" | "face" | "face-unlock" | "security-keys" | "yubikey" | "sign-in" => Some(Panel::Security),
             "bt" => Some(Panel::Bluetooth),
             "airpods" | "airpod" | "headphones" => Some(Panel::AirPods),
+            "air-play" | "mirroring" | "screen-mirroring" | "apple-tv" | "tv" => Some(Panel::AirPlay),
             "wifi" | "wi-fi" | "networks" => Some(Panel::Network),
             "notification" | "dnd" | "do-not-disturb" => Some(Panel::Notifications),
-            "supervisor" | "responsiveness" | "watchdog" => Some(Panel::Performance),
+            "supervisor" | "responsiveness" | "watchdog" | "pointer-thread" | "input-thread" => Some(Panel::Performance),
             "time" | "date" | "clock" | "date-time" => Some(Panel::DateTime),
             "open-with" | "file-types" | "filetypes" | "default-applications" => Some(Panel::DefaultApps),
             "passwords" | "privacy" => Some(Panel::Security),
@@ -107,6 +110,7 @@ impl Panel {
     pub fn arg(self) -> &'static str {
         match self {
             Panel::Ai => "ai",
+            Panel::AirPlay => "airplay",
             Panel::AirPods => "airpods",
             Panel::Appearance => "appearance",
             Panel::Backgrounds => "backgrounds",
@@ -138,6 +142,7 @@ impl Panel {
     pub fn title(self) -> &'static str {
         match self {
             Panel::Ai => "AI",
+            Panel::AirPlay => "AirPlay",
             Panel::AirPods => "AirPods",
             Panel::Appearance => "Appearance",
             Panel::Backgrounds => "Backgrounds",
@@ -169,6 +174,7 @@ impl Panel {
     pub fn icon(self) -> &'static str {
         match self {
             Panel::Ai => "ai",
+            Panel::AirPlay => "airplay",
             Panel::AirPods => "airpods",
             Panel::Appearance => "appearance",
             Panel::Backgrounds => "backgrounds",
@@ -204,6 +210,9 @@ impl Panel {
     pub fn size(self) -> (u32, u32) {
         match self {
             Panel::Ai => (760, 408),
+            // The receivers (their names, kinds and how each is), pairing's
+            // code beneath while a receiver shows one.
+            Panel::AirPlay => (500, 360),
             Panel::AirPods => (960, 622),
             Panel::Appearance => (420, 482),
             Panel::Backgrounds => (640, 604),
@@ -232,7 +241,11 @@ impl Panel {
             Panel::ScreenSaver => (500, 400),
             // Passwords' settings, security keys beside them.
             Panel::Security => (880, 440),
-            Panel::Sound => (800, 466),
+            // As tall as its devices need, which is a machine's own (no
+            // list in it shrinks): the height is only its least. The
+            // lint's test devices, the most a machine shows, need 466; a
+            // machine with fewer kept that, empty below (Ben's).
+            Panel::Sound => (800, 160),
             // Coding Agents beside Git Worktrees and Command Suggestions.
             Panel::Terminal => (900, 600),
             // The themes, the chosen one's colour sets beside them.
@@ -250,7 +263,17 @@ impl Panel {
     pub fn needs_server(self) -> bool {
         !matches!(
             self,
-            Panel::About | Panel::AirPods | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::Notifications | Panel::Performance | Panel::Backup | Panel::Integrations | Panel::DefaultApps
+            Panel::About
+                | Panel::AirPlay
+                | Panel::AirPods
+                | Panel::Sound
+                | Panel::Network
+                | Panel::Bluetooth
+                | Panel::Notifications
+                | Panel::Performance
+                | Panel::Backup
+                | Panel::Integrations
+                | Panel::DefaultApps
         )
     }
 
@@ -259,6 +282,7 @@ impl Panel {
         !matches!(
             self,
             Panel::About
+                | Panel::AirPlay
                 | Panel::AirPods
                 | Panel::Display
                 | Panel::Sound
@@ -320,6 +344,7 @@ impl Panel {
             Panel::Display
             | Panel::Backup
             | Panel::About
+            | Panel::AirPlay
             | Panel::AirPods
             | Panel::Sound
             | Panel::Network
@@ -348,6 +373,7 @@ pub enum State {
     Backup(Box<backup::State>),
     Bluetooth(Box<bluetooth::State>),
     AirPods(Box<airpods::State>),
+    AirPlay(Box<airplay::State>),
     Touchpad(touchpad::State),
     Power(power::State),
     ScreenSaver(screensaver::State),
@@ -357,7 +383,7 @@ pub enum State {
 }
 
 impl State {
-    pub fn new(panel: Panel, window: &mut Window, cx: &mut Context<PanelView>) -> State {
+    pub fn new(panel: Panel, cx: &mut Cx<PanelView>) -> State {
         match panel {
             Panel::Keyboard => State::Keyboard(keyboard::State::new(cx)),
             Panel::Backgrounds => State::Backgrounds(Default::default()),
@@ -372,9 +398,10 @@ impl State {
             Panel::Backup => State::Backup(Box::new(backup::State::new(cx))),
             Panel::Bluetooth => State::Bluetooth(Box::new(bluetooth::State::new(cx))),
             Panel::AirPods => State::AirPods(Box::new(airpods::State::new(cx))),
+            Panel::AirPlay => State::AirPlay(Box::new(airplay::State::new(cx))),
             Panel::Touchpad => State::Touchpad(touchpad::State::new(cx)),
             Panel::Power => State::Power(power::State::new(cx)),
-            Panel::ScreenSaver => State::ScreenSaver(screensaver::State::new(window, cx)),
+            Panel::ScreenSaver => State::ScreenSaver(screensaver::State::new(cx)),
             Panel::About => State::About(about::State::new(cx)),
             Panel::Integrations => State::Integrations(Box::new(integrations::State::new(cx))),
             Panel::Security => State::Security(Box::new(security::State::new(cx))),
@@ -386,68 +413,70 @@ impl State {
 /// A panel's window: the panel's controls, and Defaults and Revert along
 /// the bottom for those that change settings (each enabled only when it
 /// would change something).
-pub fn render(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView>) -> AnyElement {
+pub fn render(v: &mut PanelView, cx: &mut Cx<PanelView>) -> Element {
     // (Its window follows what it shows: `WindowOptions::fits_content`.)
-    layout(v, window, cx).into_any_element()
-}
-
-fn layout(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView>) -> olo_ui::gpui::Div {
     let panel = v.panel;
     let (settings, outputs, outputs_in, power, server) = {
-        let p = v.prefs.read(cx);
+        let p = prefs();
         (p.settings.clone(), p.outputs.clone(), p.outputs_in, p.power.clone(), p.server.clone())
     };
     // (Not shown until what it shows from app_server is in, briefly: else
     // it opens waiting, or without its displays, and grows.)
     if ((settings.is_none() && panel.needs_server()) || (panel == Panel::Display && !outputs_in))
-        && let Some(hold) = olo_ui::hold_first_show(window)
+        && let Some(hold) = olo_kit::hold_first_show(cx)
     {
-        v.prefs.update(cx, |p, _| p.holds.push(hold));
+        let mut p = prefs();
+        // (In since it was looked at: nothing to wait for.)
+        if !(p.settings.is_some() && p.outputs_in) {
+            p.holds.push(hold);
+        }
     }
     let root = div().size_full().flex().flex_col();
     // Not connected (yet): panels that need app_server wait.
     if settings.is_none() && panel.needs_server() {
-        let p = theme::palette(cx);
+        let p = theme::palette();
         return root.items_center().justify_center().child(StringView::new("Waiting for app_server…").color(style::disabled_text(&p)));
     }
     let s = settings.unwrap_or_default();
-    let prefs = v.prefs.downgrade();
     // (Power's Defaults and Revert are its Battery & Idle tab's: its other
     // tabs have Apply and Revert of their own, for the computer.)
     let resettable = panel.resettable() && !matches!(&v.state, State::Power(st) if st.tab != 2);
-    let mut ui = Ui::new(window, cx, &s, prefs, &mut v.fields);
-    ui.resets(resettable);
-    let power = power.as_ref();
-    match (panel, &mut v.state) {
-        (Panel::Appearance, _) => appearance::ui(&mut ui),
-        (Panel::Backgrounds, State::Backgrounds(st)) => workspaces::backgrounds_ui(&mut ui, st),
-        (Panel::Display, State::Display(st)) => display::ui(&mut ui, &outputs, power, &server, st),
-        (Panel::Keyboard, State::Keyboard(st)) => keyboard::ui(&mut ui, power, &server, st),
-        (Panel::Power, State::Power(st)) => power::ui(&mut ui, power, &server, st),
-        (Panel::ScreenSaver, State::ScreenSaver(st)) => screensaver::ui(&mut ui, &server, st),
-        (Panel::Sound, State::Sound(st)) => sound::ui(&mut ui, st),
-        (Panel::Security, State::Security(st)) => security::ui(&mut ui, st),
-        (Panel::Ai, _) => ai::ui(&mut ui),
-        (Panel::Themes, _) => themes::ui(&mut ui),
-        (Panel::DateTime, State::DateTime(st)) => datetime::ui(&mut ui, st),
-        (Panel::DefaultApps, State::DefaultApps(st)) => default_apps::ui(&mut ui, st),
-        (Panel::Deskbar, State::Deskbar(st)) => deskbar::ui(&mut ui, st),
-        (Panel::Network, State::Network(st)) => network::ui(&mut ui, st),
-        (Panel::Notifications, State::Notifications(st)) => notifications::ui(&mut ui, st),
-        (Panel::Performance, State::Performance(st)) => performance::ui(&mut ui, st),
-        (Panel::Backup, State::Backup(st)) => backup::ui(&mut ui, st),
-        (Panel::Bluetooth, State::Bluetooth(st)) => bluetooth::ui(&mut ui, st),
-        (Panel::AirPods, State::AirPods(st)) => airpods::ui(&mut ui, st),
-        (Panel::Touchpad, State::Touchpad(st)) => touchpad::ui(&mut ui, st),
-        (Panel::Tracker, _) => tracker::ui(&mut ui),
-        (Panel::Terminal, _) => terminal::ui(&mut ui),
-        (Panel::Windows, _) => windows::ui(&mut ui, &outputs),
-        (Panel::Workspaces, _) => workspaces::ui(&mut ui),
-        (Panel::About, State::About(st)) => about::ui(&mut ui, st),
-        (Panel::Integrations, State::Integrations(st)) => integrations::ui(&mut ui, st),
-        _ => {}
-    }
-    let items = ui.take();
+    let items = {
+        let mut ui = Ui::new(cx, &s, &mut v.fields);
+        ui.resets(resettable);
+        let power = power.as_ref();
+        match (panel, &mut v.state) {
+            (Panel::Appearance, _) => appearance::ui(&mut ui),
+            (Panel::Backgrounds, State::Backgrounds(st)) => workspaces::backgrounds_ui(&mut ui, st),
+            (Panel::Display, State::Display(st)) => display::ui(&mut ui, &outputs, power, &server, st),
+            (Panel::Keyboard, State::Keyboard(st)) => keyboard::ui(&mut ui, power, &server, st),
+            (Panel::Power, State::Power(st)) => power::ui(&mut ui, power, &server, st),
+            (Panel::ScreenSaver, State::ScreenSaver(st)) => screensaver::ui(&mut ui, &server, st),
+            (Panel::Sound, State::Sound(st)) => sound::ui(&mut ui, st),
+            (Panel::Security, State::Security(st)) => security::ui(&mut ui, st),
+            (Panel::Ai, _) => ai::ui(&mut ui),
+            (Panel::Themes, _) => themes::ui(&mut ui),
+            (Panel::DateTime, State::DateTime(st)) => datetime::ui(&mut ui, st),
+            (Panel::DefaultApps, State::DefaultApps(st)) => default_apps::ui(&mut ui, st),
+            (Panel::Deskbar, State::Deskbar(st)) => deskbar::ui(&mut ui, st),
+            (Panel::Network, State::Network(st)) => network::ui(&mut ui, st),
+            (Panel::Notifications, State::Notifications(st)) => notifications::ui(&mut ui, st),
+            (Panel::Performance, State::Performance(st)) => performance::ui(&mut ui, st),
+            (Panel::Backup, State::Backup(st)) => backup::ui(&mut ui, st),
+            (Panel::Bluetooth, State::Bluetooth(st)) => bluetooth::ui(&mut ui, st),
+            (Panel::AirPods, State::AirPods(st)) => airpods::ui(&mut ui, st),
+            (Panel::AirPlay, State::AirPlay(st)) => airplay::ui(&mut ui, st),
+            (Panel::Touchpad, State::Touchpad(st)) => touchpad::ui(&mut ui, st),
+            (Panel::Tracker, _) => tracker::ui(&mut ui),
+            (Panel::Terminal, _) => terminal::ui(&mut ui),
+            (Panel::Windows, _) => windows::ui(&mut ui, &outputs),
+            (Panel::Workspaces, _) => workspaces::ui(&mut ui),
+            (Panel::About, State::About(st)) => about::ui(&mut ui, st),
+            (Panel::Integrations, State::Integrations(st)) => integrations::ui(&mut ui, st),
+            _ => {}
+        }
+        ui.take()
+    };
     // (Never shorter than what's in it: the window grows to it, and
     // too much for the screen pushes Defaults and Revert down, where the
     // window scrolls and the layout lint sees it. A list in it shrinks and
@@ -465,7 +494,6 @@ fn layout(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView>) -
         probe != s
     };
     let (to_defaults, to_opened) = (differs(&defaults), differs(&v.opened));
-    let (d, r) = (v.prefs.downgrade(), v.prefs.downgrade());
     let opened = v.opened.clone();
     let footer = div()
         .flex()
@@ -473,12 +501,8 @@ fn layout(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView>) -
         .gap(px(m::SPACING))
         .px(px(m::WINDOW_INSET))
         .pb(px(m::WINDOW_INSET))
-        .child(Button::new("Defaults").min_width(m::BUTTON_MIN_WIDTH).enabled(to_defaults).on_click(move |_, cx| {
-            let _ = d.update(cx, |p, cx| p.edit_as(cx, "", "Defaults", |s| panel.reset(s, &Settings::default())));
-        }))
-        .child(Button::new("Revert").min_width(m::BUTTON_MIN_WIDTH).enabled(to_opened).on_click(move |_, cx| {
-            let _ = r.update(cx, |p, cx| p.edit_as(cx, "", "Revert", |s| panel.reset(s, &opened)));
-        }));
+        .child(Button::new("Defaults").min_width(m::BUTTON_MIN_WIDTH).enabled(to_defaults).on_click(move |_, _| prefs().edit_as("", "Defaults", |s| panel.reset(s, &Settings::default()))))
+        .child(Button::new("Revert").min_width(m::BUTTON_MIN_WIDTH).enabled(to_opened).on_click(move |_, _| prefs().edit_as("", "Revert", |s| panel.reset(s, &opened))));
     root.child(footer)
 }
 

@@ -6,7 +6,8 @@
 //! and each Claude Code and Codex running, and where its connections go.
 //! What's running is read every two seconds while the window is open, off
 //! the UI thread (`running::scan`); a restart is Codex's own, on a worker
-//! thread too.
+//! thread too. On olo-kit: a view on its window's own looper, told what's
+//! running by its scanner itself.
 
 use std::{
     collections::VecDeque,
@@ -19,20 +20,20 @@ use std::{
     time::Duration,
 };
 
+use olo_kit::{
+    ClickEvent, Cx, Element, ParentElement as _, ScrollHandle, Styled as _, View, canvas, div, metrics as m,
+    palette::Hue,
+    px, style, theme,
+    widgets::{self, Button, Graph, LegendItem, MenuField, ScrollView, Series, StringView, heading, separator},
+};
+use olo_token_pool::codex_daemon;
 use olo_token_pool::{
     gateway::Shared,
     model::{Provider, now},
     running::{Process, Running},
 };
-use olo_ui::{
-    gpui::{self, Context, Entity, IntoElement, ParentElement as _, Render, ScrollHandle, Styled as _, Subscription, Task, Window, canvas, div, px},
-    metrics as m,
-    palette::Hue,
-    style, theme,
-    widgets::{self, Button, Graph, LegendItem, MenuField, ScrollView, Series, StringView, heading, separator},
-};
 
-use crate::ui::PoolApp;
+use crate::ui::Msg;
 
 /// How often what's running is read.
 const EVERY: Duration = Duration::from_secs(2);
@@ -42,20 +43,35 @@ const GRAPH_HEIGHT: f32 = 110.0;
 /// seconds between time lines.
 const SPANS: [(&str, i64, i64, f64); 3] = [("Last Hour", 60, 1, 600.0), ("Last 6 Hours", 360, 5, 3600.0), ("Last 24 Hours", 1440, 15, 4.0 * 3600.0)];
 
+/// What the Clients window is told.
+#[derive(Clone)]
+pub enum ClientsMsg {
+    /// The pool changed.
+    Changed,
+    /// Which clients use the pool (None: not read yet).
+    Uses(Option<[bool; 2]>),
+    /// What's running.
+    Found(Box<Running>),
+    /// The chart's span chosen.
+    Span(usize),
+    /// Restart pressed.
+    Restart,
+    /// Codex's service restarted (its new pid).
+    Restarted(Result<i32, String>),
+    /// Its chart steps on a minute at a time.
+    Tick,
+}
+
 pub struct ClientsWindow {
-    app: Entity<PoolApp>,
     shared: Arc<Shared>,
+    uses: Option<[bool; 2]>,
     span: usize,
     running: Option<Running>,
     restarting: bool,
     /// What the last restart came to (error?).
     note: Option<(String, bool)>,
-    _watching: Arc<AtomicBool>,
+    watching: Arc<AtomicBool>,
     scroll: ScrollHandle,
-    _observe: Subscription,
-    _released: Subscription,
-    /// Its chart steps on a minute at a time.
-    _tick: Task<()>,
 }
 
 /// "~/src/olo" for a folder in the home folder.
@@ -82,56 +98,25 @@ fn hue(client: &str) -> Hue {
 }
 
 impl ClientsWindow {
-    /// The window's view; reads what's running (`found`) until it closes.
-    pub fn new(app: Entity<PoolApp>, shared: Arc<Shared>, proxy_port: u16, found: impl Fn(Running) + Send + 'static, cx: &mut Context<Self>) -> ClientsWindow {
+    /// The window's view; reads what's running until it closes.
+    pub fn new(shared: Arc<Shared>, proxy_port: u16, uses: Option<[bool; 2]>, cx: &mut Cx<Self>) -> ClientsWindow {
         let watching = Arc::new(AtomicBool::new(true));
-        let w = watching.clone();
+        let (w, found) = (watching.clone(), cx.messenger());
         let _ = std::thread::Builder::new().name("pool-clients".into()).spawn(move || {
             while w.load(Ordering::Relaxed) {
-                found(olo_token_pool::running::scan(proxy_port));
+                found.send(ClientsMsg::Found(Box::new(olo_token_pool::running::scan(proxy_port))));
                 std::thread::sleep(EVERY);
             }
         });
-        let observe = cx.observe(&app, |_, _, cx| cx.notify());
-        let (a, stop) = (app.clone(), watching.clone());
-        let released = cx.on_release(move |_, cx| {
-            stop.store(false, Ordering::Relaxed);
-            crate::ui::clients_closed(&a, cx);
-        });
-        let tick = cx.spawn(async move |this, cx| {
-            loop {
-                cx.background_executor().timer(Duration::from_secs(30)).await;
-                if this.update(cx, |_, cx| cx.notify()).is_err() {
-                    return;
-                }
-            }
-        });
-        ClientsWindow { app, shared, span: 0, running: None, restarting: false, note: None, _watching: watching, scroll: ScrollHandle::new(), _observe: observe, _released: released, _tick: tick }
-    }
-
-    pub fn found(&mut self, r: Running) {
-        self.running = Some(r);
-    }
-
-    pub fn restarted(&mut self, r: Result<i32, String>) {
-        self.restarting = false;
-        self.note = Some(match r {
-            Ok(pid) => (format!("Restarted (now pid {pid})."), false),
-            Err(e) => (e, true),
-        });
+        cx.after(Duration::from_secs(30), ClientsMsg::Tick);
+        ClientsWindow { shared, uses, span: 0, running: None, restarting: false, note: None, watching, scroll: ScrollHandle::new() }
     }
 
     /// The chart: requests a minute by client, with their totals below.
-    fn activity(&self, window: &Window, cx: &mut Context<Self>) -> gpui::Div {
-        let p = theme::palette(cx);
+    fn activity(&self, cx: &mut Cx<Self>) -> Element {
+        let p = theme::palette();
         let (name, span, step, grid) = SPANS[self.span];
-        let me = cx.entity();
-        let pick = MenuField::new("pool-span", SPANS.iter().map(|s| s.0.into()).collect(), self.span).width(140.0).on_change(move |i, _, cx| {
-            me.update(cx, |w, cx| {
-                w.span = i;
-                cx.notify();
-            })
-        });
+        let pick = MenuField::new("pool-span", SPANS.iter().map(|s| s.0.into()).collect(), self.span).width(140.0).on_change(cx.msg_with(|i: &usize| ClientsMsg::Span(*i)));
         let t = now();
         let since = t - span * 60;
         let (clients, lines, totals) = self.shared.activity(|a| {
@@ -161,9 +146,10 @@ impl ClientsWindow {
             .collect();
         // As tall as its rows in the width it has (the window's content's:
         // more than one row only in a narrow window).
-        let width = f32::from(window.viewport_size().width) - 2.0 * m::WINDOW_INSET;
-        let height = widgets::legend_height(cx, width, &items);
-        let legend = canvas(|_, _, _| {}, move |b, _, window, cx| widgets::legend(window, cx, b, &items)).w_full().h(px(height));
+        let width = f32::from(cx.viewport_size().width) - 2.0 * m::WINDOW_INSET;
+        let height = widgets::legend_height(width, &items);
+        let look: Vec<(String, String, [u32; 4])> = items.iter().map(|it| (it.name.to_string(), it.value.to_string(), [it.color.h, it.color.s, it.color.l, it.color.a].map(f32::to_bits))).collect();
+        let legend = canvas(move |g, b| widgets::legend(g, b, &items)).paint_key(style::key(look)).w_full().h(px(height));
         div()
             .flex()
             .flex_col()
@@ -174,8 +160,8 @@ impl ClientsWindow {
     }
 
     /// Codex's service: what it is, and Restart.
-    fn service(&self, should_use: bool, cx: &mut Context<Self>) -> gpui::Div {
-        let p = theme::palette(cx);
+    fn service(&self, should_use: bool, cx: &mut Cx<Self>) -> Element {
+        let p = theme::palette();
         let mut out = div().flex().flex_col().gap(px(m::TIGHT)).child(heading("Codex’s Service"));
         let t = now();
         let Some(running) = &self.running else {
@@ -214,15 +200,7 @@ impl ClientsWindow {
             Err(e) => out = out.child(StringView::new(format!("Its conversations: it didn’t say ({e}).")).wrap(true).dim(true)),
         }
         let label = if self.restarting { "Restarting…" } else { "Restart" };
-        let me = cx.entity();
-        let restart = Button::new(label).enabled(!self.restarting).on_click(move |_, cx| {
-            me.update(cx, |w, cx| {
-                w.restarting = true;
-                w.note = None;
-                w.app.read(cx).restart_codex();
-                cx.notify();
-            })
-        });
+        let restart = Button::new(label).enabled(!self.restarting).on_click(cx.msg::<ClickEvent>(ClientsMsg::Restart));
         let said = match &self.note {
             Some((text, error)) => StringView::new(text.clone()).color(if *error { style::c(p.failure) } else { style::disabled_text(&p) }),
             None => StringView::new("Ends a turn going on; Codex’s windows reconnect.").dim(true),
@@ -231,8 +209,8 @@ impl ClientsWindow {
     }
 
     /// Each Claude Code and Codex running, and where it connects.
-    fn processes(&self, uses: Option<[bool; 2]>, cx: &mut Context<Self>) -> gpui::Div {
-        let p = theme::palette(cx);
+    fn processes(&self, uses: Option<[bool; 2]>) -> Element {
+        let p = theme::palette();
         let t = now();
         let mut out = div().flex().flex_col().gap(px(m::TIGHT)).child(heading("Running"));
         let Some(running) = &self.running else { return out };
@@ -259,12 +237,46 @@ impl ClientsWindow {
     }
 }
 
-impl Render for ClientsWindow {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let uses = self.app.read(cx).clients();
-        let activity = self.activity(window, cx);
+impl View for ClientsWindow {
+    type Message = ClientsMsg;
+
+    fn message(&mut self, message: ClientsMsg, cx: &mut Cx<Self>) {
+        match message {
+            ClientsMsg::Changed => {}
+            ClientsMsg::Uses(uses) => self.uses = uses,
+            ClientsMsg::Found(r) => self.running = Some(*r),
+            ClientsMsg::Span(i) => self.span = i,
+            ClientsMsg::Restart => {
+                self.restarting = true;
+                self.note = None;
+                cx.work(|| codex_daemon::restart_now().map_err(|e| e.to_string()), ClientsMsg::Restarted);
+            }
+            ClientsMsg::Restarted(r) => {
+                self.restarting = false;
+                self.note = Some(match r {
+                    Ok(pid) => (format!("Restarted (now pid {pid})."), false),
+                    Err(e) => (e, true),
+                });
+            }
+            ClientsMsg::Tick => cx.after(Duration::from_secs(30), ClientsMsg::Tick),
+        }
+        cx.invalidate();
+    }
+
+    fn command(&mut self, name: &str, cx: &mut Cx<Self>) -> bool {
+        crate::ui::command(&self.shared, name, cx)
+    }
+
+    fn window_closing(&mut self, _: &mut Cx<Self>) {
+        self.watching.store(false, Ordering::Relaxed);
+        olo_kit::proxy().send(Msg::Closed(true));
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let uses = self.uses;
+        let activity = self.activity(cx);
         let service = self.service(uses.is_some_and(|u| u[1]), cx);
-        let processes = self.processes(uses, cx);
+        let processes = self.processes(uses);
         let content = div()
             .flex_1()
             .min_h_0()
@@ -274,7 +286,7 @@ impl Render for ClientsWindow {
             .p(px(m::WINDOW_INSET))
             .child(activity)
             .child(separator())
-            .child(div().flex_1().min_h_0().child(ScrollView::new("pool-clients", &self.scroll).border(false).child(div().flex().flex_col().gap(px(m::SPACING)).child(service).child(processes))));
-        div().size_full().flex().flex_col().child(crate::ui::menu_bar(&self.app)).child(content)
+            .child(div().flex_1().min_h_0().child(ScrollView::new(&self.scroll).border(false).child(div().flex().flex_col().gap(px(m::SPACING)).child(service).child(processes))));
+        div().size_full().flex().flex_col().child(crate::ui::menu_bar(cx)).child(content)
     }
 }

@@ -1,10 +1,17 @@
 //! BMenuField: an optional label and a raised field showing the current
 //! choice; a click opens the choices as a menu with the current one over
 //! the field (as BeOS and macOS do), and choosing one changes it.
+//!
+//! Or several choices ([`MenuField::many`]): the field says those chosen
+//! ("Weekly, Weekly Fable", cut short with "…"), and its menu opens under
+//! it with what none chosen means first, then each choice checked or not;
+//! choosing one turns it on or off. One row however many there are, as
+//! long as they come (a Token Pool's quotas: Ben, 2026-11-13, his ran out
+//! of the window as a row of check boxes).
 
 use std::rc::Rc;
 
-use olo_interface::{Bounds, ContentMask, Element, FontWeight, Hsla, IntoElement, Painter, PathBuilder, Pixels, SharedString, WindowCx, point, px};
+use olo_interface::{Bounds, ContentMask, Corner, Element, FontWeight, Hsla, IntoElement, Painter, PathBuilder, Pixels, SharedString, WindowCx, point, px};
 use olo_kit_base::metrics as m;
 
 use super::control::control;
@@ -25,11 +32,24 @@ pub struct MenuField {
     width: Option<f32>,
     enabled: bool,
     on_change: Option<OnChange>,
+    /// Several chosen ([`MenuField::many`]): which, and what none means.
+    many: Option<(Vec<bool>, SharedString)>,
 }
+
+/// What a field of several hands its `on_change` for its first item:
+/// none chosen.
+pub const NONE_CHOSEN: usize = usize::MAX;
 
 impl MenuField {
     pub fn new(id: impl Into<SharedString>, options: Vec<SharedString>, selected: usize) -> MenuField {
-        MenuField { id: id.into(), label: None, name: None, quiet: false, divider: None, options, selected, width: None, enabled: true, on_change: None }
+        MenuField { id: id.into(), label: None, name: None, quiet: false, divider: None, options, selected, width: None, enabled: true, on_change: None, many: None }
+    }
+
+    /// A field of several choices, those `chosen` on (one for each of
+    /// `options`), `none` what it says with none (its menu's first item).
+    /// `on_change` gets the choice to turn on or off, or [`NONE_CHOSEN`].
+    pub fn many(id: impl Into<SharedString>, options: Vec<SharedString>, chosen: Vec<bool>, none: impl Into<SharedString>) -> MenuField {
+        MenuField { many: Some((chosen, none.into())), ..MenuField::new(id, options, NONE_CHOSEN) }
     }
 
     pub fn label(mut self, label: impl Into<SharedString>) -> Self {
@@ -83,13 +103,20 @@ impl MenuField {
 impl IntoElement for MenuField {
     fn into_element(self) -> Element {
         let font = style::ui_font(FontWeight::NORMAL);
-        let widest = self.options.iter().map(|o| f32::from(style::text_width(o.clone(), style::PLAIN_SIZE, font.clone()))).fold(0.0, f32::max);
+        let widest = self.options.iter().chain(self.many.as_ref().map(|(_, none)| none)).map(|o| f32::from(style::text_width(o.clone(), style::PLAIN_SIZE, font.clone()))).fold(0.0, f32::max);
         let label_w = match &self.label {
             Some(l) => self.divider.unwrap_or_else(|| f32::from(style::text_width(l.clone(), style::PLAIN_SIZE, font.clone())).ceil() + m::LABEL_GAP),
             None => 0.0,
         };
         let width = self.width.unwrap_or((label_w + m::TEXT_INSET + widest + 12.0 + 18.0).ceil());
-        let current = self.options.get(self.selected).cloned().unwrap_or_default();
+        let current = match &self.many {
+            Some((chosen, none)) => {
+                let on: Vec<&str> = self.options.iter().zip(chosen).filter(|(_, c)| **c).map(|(o, _)| o.as_ref()).collect();
+                if on.is_empty() { none.clone() } else { SharedString::from(on.join(", ")) }
+            }
+            None => self.options.get(self.selected).cloned().unwrap_or_default(),
+        };
+        let many = self.many.clone();
         let label = self.label.clone();
         let name = self.label.clone().map(|l| SharedString::from(l.trim_end_matches(':').to_string())).or_else(|| self.name.clone()).unwrap_or_default();
         let (options, selected, on_change) = (self.options.clone(), self.selected, self.on_change.clone());
@@ -121,13 +148,29 @@ impl IntoElement for MenuField {
         .focusable()
         .agent_value("ComboBox", name, current)
         .on_click(move |_, cx| {
+            let field = field_bounds(cx.listener_bounds(), label_w);
+            // Several: under the field, none first, then each to turn on
+            // or off.
+            if let Some((chosen, none)) = &many {
+                let mut menu = Menu::new(id.to_string()).item(none.to_string(), "none").checked(!chosen.contains(&true)).separator();
+                for (i, o) in options.iter().enumerate() {
+                    menu = menu.item(o.to_string(), i.to_string()).checked(chosen.get(i).copied().unwrap_or(false));
+                }
+                let on_change = on_change.clone();
+                menu::popup(cx, menu, field, Corner::BottomLeft, move |command, cx| {
+                    let i = if command == "none" { NONE_CHOSEN } else { command.parse::<usize>().unwrap_or(NONE_CHOSEN) };
+                    if let Some(f) = &on_change {
+                        f(&i, cx);
+                    }
+                });
+                return;
+            }
             // Opened from the click: the choices, the current one over
             // the field.
             let mut menu = Menu::new(id.to_string());
             for (i, o) in options.iter().enumerate() {
                 menu = menu.item(o.to_string(), i.to_string()).checked(i == selected);
             }
-            let field = field_bounds(cx.listener_bounds(), label_w);
             let on_change = on_change.clone();
             menu::popup_over(cx, menu, field, selected, move |command, cx| {
                 if let (Ok(i), Some(f)) = (command.parse::<usize>(), &on_change)

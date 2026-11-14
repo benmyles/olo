@@ -605,7 +605,7 @@ impl TextField {
         self.select_to(self.line_edge(true), cx);
     }
 
-    fn copy(&mut self, cx: &mut Cx<Self>) {
+    fn copy(&mut self) {
         if !self.selected.is_empty() && !self.password {
             clipboard::write(ClipboardItem::new_string(self.text[self.selected.clone()].to_string()));
         }
@@ -624,6 +624,12 @@ impl TextField {
 
     /// The clipboard's text put in, once it's read (on a worker:
     /// `clipboard::paste_item`, which sends it back).
+    /// Puts what's on the clipboard in, in place of the selection (the
+    /// app's own Paste: a menu's, an agent's).
+    pub fn paste_from_clipboard(&mut self, cx: &mut Cx<Self>) {
+        self.paste_text(cx);
+    }
+
     fn paste_text(&mut self, cx: &mut Cx<Self>) {
         let me = cx.messenger();
         clipboard::paste_item(move |item| {
@@ -876,6 +882,7 @@ impl TextField {
         // (The input method's window keeps beside the caret, as last
         // drawn.)
         if let Some(at) = self.caret_bounds() {
+            let at = cx.to_window(at);
             cx.set_ime_position(at);
         }
     }
@@ -923,7 +930,7 @@ impl TextField {
             "end" => self.end(cx),
             "shift-home" => self.select_home(cx),
             "shift-end" => self.select_end(cx),
-            "ctrl-c" => self.copy(cx),
+            "ctrl-c" => self.copy(),
             "ctrl-x" => self.cut(cx),
             "ctrl-v" => self.paste(cx),
             "ctrl-z" => self.undo(cx),
@@ -1230,7 +1237,7 @@ impl TextField {
                 let _ = p.paint(point(origin.x, origin.y + tops[k].1), lh, olo_interface::TextAlign::Left, None, g);
             }
             if text.is_empty() && !hint.is_empty() && marked.is_none() {
-                // Drawn as the first row's text is (GPUI's line, in its
+                // Drawn as the first row's text is (a shaped line, in its
                 // height), so the first letter typed lands where the hint
                 // was: drawn as a label (its capitals centred) it sat a device
                 // pixel higher at 1.5×, and its line stood out of the field.

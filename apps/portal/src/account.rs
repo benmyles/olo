@@ -89,7 +89,7 @@ impl Account {
         if answer.is_none() {
             return (1, HashMap::new());
         }
-        let image = pic.map(|p| olo_ui::files::file_uri(&p)).unwrap_or_default();
+        let image = pic.map(|p| olo_kit::files::file_uri(&p)).unwrap_or_default();
         (0, HashMap::from([("id".to_owned(), value(user)), ("name".to_owned(), value(full)), ("image".to_owned(), value(image))]))
     }
 }

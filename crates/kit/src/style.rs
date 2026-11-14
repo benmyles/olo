@@ -83,6 +83,21 @@ pub fn disabled_text(p: &Palette) -> Hsla {
     c(olo_theme::mix(p.panel_text, p.panel_background, 0.55))
 }
 
+/// A key for what a drawing shows (`Element::paint_key`): everything
+/// its look depends on, hashed. While that's the same, the drawing is
+/// kept when the view that holds it says what it shows again.
+pub fn key(look: impl std::hash::Hash) -> u64 {
+    use std::hash::Hasher as _;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    look.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// A colour as something to hash (in a [`key`]).
+pub fn ink_key(color: Option<Hsla>) -> Option<[u32; 4]> {
+    color.map(|c| [c.h.to_bits(), c.s.to_bits(), c.l.to_bits(), c.a.to_bits()])
+}
+
 /// A one-point line's width in device pixels at `scale`.
 pub fn line_pixels(scale: f32) -> f32 {
     scale.floor().max(1.0)
@@ -315,7 +330,7 @@ pub fn label(g: &mut Painter, x: Pixels, center_y: Pixels, align: Align, text: i
     let text = text.into();
     let run = TextRun { len: text.len(), font, color, background_color: None, underline: None, strikethrough: None, size: None };
     let line = g.text_system().shape_line(text.clone(), px(font_size), &[run], None);
-    paint_label(g, x, center_y, align, &text, font_size, line)
+    paint_label(g, x, center_y, align, text, font_size, line)
 }
 
 /// Where a label `width` wide, aligned to `x` so, begins: on a device
@@ -336,14 +351,14 @@ fn label_left(g: &Painter, x: Pixels, width: Pixels, align: Align) -> Pixels {
 
 /// A line shaped for [`label`], painted.
 #[allow(clippy::too_many_arguments)]
-fn paint_label(g: &mut Painter, x: Pixels, center_y: Pixels, align: Align, text: &str, font_size: f32, line: olo_interface::ShapedLine) -> Bounds<Pixels> {
+fn paint_label(g: &mut Painter, x: Pixels, center_y: Pixels, align: Align, text: SharedString, font_size: f32, line: olo_interface::ShapedLine) -> Bounds<Pixels> {
     let left = label_left(g, x, line.width, align);
     let baseline = snap_coord(g, center_y + px(font_size * CAP_HEIGHT / 2.0));
     let top = baseline - line.ascent;
     let height = line.ascent + line.descent;
     let _ = line.paint(point(left, top), height, g);
     let at = Bounds { origin: point(left, top), size: size(line.width, height) };
-    crate::review::text(g, at, baseline, text, font_size);
+    crate::review::text(g, at, baseline, &text, font_size);
     note_if_clipped(g, text, at);
     at
 }
@@ -351,21 +366,27 @@ fn paint_label(g: &mut Painter, x: Pixels, center_y: Pixels, align: Align, text:
 /// `text` cut short with "…" to fit `max_width` (whole as it is when it
 /// fits), measured as it's shaped, kerning and all.
 pub fn fit(g: &mut Painter, text: SharedString, font_size: f32, font: &Font, max_width: Pixels) -> SharedString {
-    let shape = |g: &mut Painter, t: SharedString| {
+    fit_with(g.text_system(), text, font_size, font, max_width)
+}
+
+/// [`fit`], where there's no painter (a drag's picture, made as a press
+/// drags): with the window's text system.
+pub fn fit_with(text_system: &olo_interface::WindowTextSystem, text: SharedString, font_size: f32, font: &Font, max_width: Pixels) -> SharedString {
+    let shape = |t: SharedString| {
         let run = TextRun { len: t.len(), font: font.clone(), color: Hsla::default(), background_color: None, underline: None, strikethrough: None, size: None };
-        g.text_system().shape_line(t, px(font_size), &[run], None)
+        text_system.shape_line(t, px(font_size), &[run], None)
     };
-    let line = shape(g, text.clone());
+    let line = shape(text.clone());
     if line.width <= max_width {
         return text;
     }
-    let ellipsis = shape(g, "…".into()).width;
+    let ellipsis = shape("…".into()).width;
     let mut end = line.index_for_x(max_width - ellipsis).unwrap_or(text.len());
     // Shaped as a whole, a cut can still come out a little wider (a
     // kern, a ligature taken apart): one character back until it fits.
     loop {
         let cut: SharedString = format!("{}…", text[..end].trim_end()).into();
-        if end == 0 || shape(g, cut.clone()).width <= max_width {
+        if end == 0 || shape(cut.clone()).width <= max_width {
             return cut;
         }
         end = text[..end].char_indices().next_back().map_or(0, |(i, _)| i);
@@ -476,7 +497,7 @@ pub fn label_fit(g: &mut Painter, x: Pixels, center_y: Pixels, align: Align, tex
     let run = TextRun { len: text.len(), font: font.clone(), color, background_color: None, underline: None, strikethrough: None, size: None };
     let line = g.text_system().shape_line(text.clone(), px(font_size), &[run], None);
     if line.width <= max_width.max(px(0.0)) {
-        return paint_label(g, x, center_y, align, &text, font_size, line);
+        return paint_label(g, x, center_y, align, text, font_size, line);
     }
     let shown = fit(g, text.clone(), font_size, &font, max_width.max(px(0.0)));
     let at = label(g, x, center_y, align, shown, font_size, font, color);
@@ -497,7 +518,7 @@ pub fn label_runs(g: &mut Painter, x: Pixels, center_y: Pixels, align: Align, te
     let _ = line.paint(point(left, top), height, g);
     let at = Bounds { origin: point(left, top), size: size(line.width, height) };
     crate::review::text(g, at, baseline, &text, font_size);
-    note_if_clipped(g, &text, at);
+    note_if_clipped(g, text, at);
     at
 }
 
@@ -604,7 +625,7 @@ pub fn pill_height(font_size: f32) -> f32 {
 }
 
 /// How wide a [`pill`] saying `text` is.
-pub fn pill_width(g: &mut Painter, text: &str, font_size: f32, font: &Font) -> f32 {
+pub fn pill_width(text: &str, font_size: f32, font: &Font) -> f32 {
     let h = pill_height(font_size);
     (f32::from(text_width(text.to_owned(), font_size, font.clone())) + h * 0.9).max(h).round()
 }
@@ -613,7 +634,7 @@ pub fn pill_width(g: &mut Painter, text: &str, font_size: f32, font: &Font) -> f
 /// centred on `cy`, on device pixels. Returns where it is.
 #[allow(clippy::too_many_arguments)]
 pub fn pill(g: &mut Painter, x: Pixels, cy: Pixels, text: &str, font_size: f32, font: Font, fill: Hsla, ink: Hsla) -> Bounds<Pixels> {
-    let (w, h) = (pill_width(g, text, font_size, &font), pill_height(font_size));
+    let (w, h) = (pill_width(text, font_size, &font), pill_height(font_size));
     let r = snap(g, Bounds { origin: point(x, cy - px(h / 2.0)), size: size(px(w), px(h)) });
     g.paint_quad(olo_interface::fill(r, fill).corner_radii(r.size.height / 2.0));
     label(g, r.center().x, r.center().y, Align::Center, text.to_owned(), font_size, font, ink);
@@ -625,7 +646,7 @@ pub fn pill(g: &mut Painter, x: Pixels, cy: Pixels, text: &str, font_size: f32, 
 /// at some scales).
 #[allow(clippy::too_many_arguments)]
 pub fn pill_on_baseline(g: &mut Painter, x: Pixels, baseline: Pixels, text: &str, font_size: f32, font: Font, fill: Hsla, ink: Hsla) -> Bounds<Pixels> {
-    let (w, h) = (pill_width(g, text, font_size, &font), pill_height(font_size));
+    let (w, h) = (pill_width(text, font_size, &font), pill_height(font_size));
     let cy = baseline - px(font_size * CAP_HEIGHT / 2.0);
     let r = snap(g, Bounds { origin: point(x, cy - px(h / 2.0)), size: size(px(w), px(h)) });
     g.paint_quad(olo_interface::fill(r, fill).corner_radii(r.size.height / 2.0));
@@ -931,15 +952,13 @@ pub fn pull_request_mark(g: &mut Painter, r: Bounds<Pixels>, shape: PullRequestS
 
 /// A label `text` painted at `bounds`: noted (its whole shown in a tip,
 /// and read by agents) if what it's painted in cuts it at a side (a row
-/// scrolled half out of view, top or bottom, isn't).
-pub(crate) fn note_if_clipped(g: &mut Painter, text: &str, bounds: Bounds<Pixels>) {
-    let clip = g.clip();
-    // (A pixel's grace: a label flush against its clip isn't cut.)
-    let cut = bounds.left() < clip.left() - px(1.0) || bounds.right() > clip.right() + px(1.0);
-    let seen = bounds.top() < clip.bottom() && bounds.bottom() > clip.top();
-    if cut && seen {
-        g.note_cut(SharedString::from(text.to_owned()), bounds);
-    }
+/// scrolled half out of view, top or bottom, isn't): now, or as what
+/// holds it is laid out later.
+/// (The text as the label has it: shared, not copied for the note. Every
+/// label drawn is noted: a copy a label was two allocations each, a
+/// table's screen of them a step.)
+pub(crate) fn note_if_clipped(g: &mut Painter, text: SharedString, bounds: Bounds<Pixels>) {
+    g.note_if_cut(text, bounds);
 }
 
 /// BeOS's check mark: a stroke down and up, 1.6 points wide.

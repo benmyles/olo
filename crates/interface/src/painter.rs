@@ -16,9 +16,9 @@ use anyhow::Result;
 use collections::FxHashMap;
 
 use crate::{
-    AtlasTile, Background, BorderStyle, Bounds, BoxShadow, Corners, DevicePixels, Edges, FontId, GlyphId, Hsla, ImageTriangle, IsZero as _, MonochromeSprite, Path, Pixels, PlatformAtlas, Point,
-    PolychromeSprite, Quad, RenderGlyphParams, RenderImage, RenderImageParams, RenderSvgParams, SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Sector, Segment, Shadow, SharedString,
-    StrikethroughStyle, SvgRenderer, TextRendering, TextStyle, TextStyleRefinement, TransformationMatrix, Underline, UnderlineStyle, WindowTextSystem, point, px, size, transparent_black,
+    AtlasTile, Background, BorderStyle, Bounds, BoxShadow, Corners, DevicePixels, Edges, FontId, GlyphId, Hsla, IsZero as _, MonochromeSprite, Path, Pixels, PlatformAtlas, Point, PolychromeSprite,
+    Quad, RenderGlyphParams, RenderImage, RenderImageParams, RenderSvgParams, SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Sector, Segment, Shadow, SharedString, StrikethroughStyle,
+    SvgRenderer, TextRendering, TextStyle, TextStyleRefinement, TransformationMatrix, Underline, UnderlineStyle, WindowTextSystem, point, px, size, transparent_black,
 };
 use refineable::Refineable as _;
 
@@ -87,17 +87,40 @@ pub(crate) struct Notes {
     /// The drawing looked at what can be seen of it: it's drawn again
     /// when that changes.
     pub(crate) by_visible: bool,
+    /// What could be seen of it then.
+    pub(crate) visible: Bounds<Pixels>,
     pub(crate) agent: Vec<crate::agent::Node>,
     pub(crate) cursors: Vec<(Bounds<Pixels>, crate::CursorStyle)>,
     /// Texts that don't show in full (cut short to fit, or cut by what
-    /// they're in): each whole, and where what shows of it is.
-    pub(crate) cuts: Vec<(Bounds<Pixels>, SharedString)>,
+    /// they're in): each whole, and where what shows of it is; or
+    /// (true) that are cut only if what holds the drawing cuts them at a
+    /// side, where they are.
+    pub(crate) cuts: Vec<(Bounds<Pixels>, SharedString, bool)>,
+    /// It moves with time: drawn again within this many seconds
+    /// (`Painter::paint_again_within`; taken by the window's clock as
+    /// the drawing is kept).
+    pub(crate) again: Option<f64>,
+    /// Pictures of another program's, shown by the compositor itself
+    /// (`Painter::place_external`): which, and where.
+    pub(crate) externals: Vec<(u64, Bounds<Pixels>)>,
+    /// It scrolls what it draws itself ([`Painter::note_scroll`]): where
+    /// that was as it drew.
+    pub(crate) scrolled: Option<[f32; 4]>,
 }
 
 impl Notes {
     pub(crate) fn is_empty(&self) -> bool {
-        !self.unfinished && !self.by_visible && self.agent.is_empty() && self.cursors.is_empty() && self.cuts.is_empty()
+        !self.unfinished && !self.by_visible && self.agent.is_empty() && self.cursors.is_empty() && self.cuts.is_empty() && self.externals.is_empty() && self.scrolled.is_none()
     }
+}
+
+/// An element's own state, of the type asked for (made if it isn't
+/// there, or is another's).
+pub(crate) fn node_state<T: Default + 'static>(slot: &mut Option<Box<dyn std::any::Any>>) -> &mut T {
+    if !slot.as_ref().is_some_and(|s| s.is::<T>()) {
+        *slot = Some(Box::new(T::default()));
+    }
+    slot.as_mut().and_then(|s| s.downcast_mut::<T>()).expect("made above")
 }
 
 /// What a view draws with: its drawing is recorded and kept until the
@@ -111,11 +134,56 @@ pub struct Painter<'a> {
     element_opacity: f32,
     /// What can be seen of the view being painted (in the window).
     visible: Bounds<Pixels>,
+    /// What the element being painted keeps (`node_state`).
+    state: &'a mut Option<Box<dyn std::any::Any>>,
+    /// How far what's painted shows from where it's laid out
+    /// ([`Painter::scrolled_by`]).
+    pub(crate) shift: Point<Pixels>,
+}
+
+/// Which of a glyph's sub-pixel drawings goes at `origin` (device
+/// pixels): how far into its pixel it starts, in quarters across. Left
+/// of or above the window too (`fract` of a negative is negative, and
+/// every glyph there was the first variant: a line first drawn at a
+/// negative place, a panel centred in a window not yet given its size,
+/// kept those when it was moved into view).
+fn subpixel_variant(origin: Point<ScaledPixels>) -> Point<u8> {
+    let within = |v: f32, variants: u8| (((v - v.floor()) * variants as f32).floor() as u8).min(variants - 1);
+    Point { x: within(origin.x.0, SUBPIXEL_VARIANTS_X), y: within(origin.y.0, SUBPIXEL_VARIANTS_Y) }
+}
+
+/// Where a glyph goes in device pixels, to the nearest 64th (the grain
+/// [`Painter::paint_glyph_run`] keys on). A place in points adds up a
+/// node's offsets from all that holds it, so at 1.25× a glyph meant to
+/// start a quarter into a pixel is as likely to come out 126.24999 as
+/// 126.25: a sub-pixel drawing and a whole pixel apart. Drawn afresh in
+/// one place and moved there in another (a kept drawing, a run painted
+/// from what it found), the same text came out a quarter pixel apart.
+fn glyph_at(origin: Point<Pixels>, scale_factor: f32) -> Point<ScaledPixels> {
+    let snap = |v: f32| ScaledPixels((v * scale_factor * 64.0).round() / 64.0);
+    Point { x: snap(origin.x.0), y: snap(origin.y.0) }
 }
 
 impl<'a> Painter<'a> {
-    pub(crate) fn new(gfx: &'a mut Gfx, scene: &'a mut Scene, notes: &'a mut Notes, visible: Bounds<Pixels>, opacity: f32, text_style: Vec<TextStyleRefinement>) -> Self {
-        Painter { gfx, scene, notes, content_mask_stack: Vec::new(), text_style_stack: text_style, element_opacity: opacity, visible }
+    pub(crate) fn new(
+        gfx: &'a mut Gfx,
+        scene: &'a mut Scene,
+        notes: &'a mut Notes,
+        state: &'a mut Option<Box<dyn std::any::Any>>,
+        visible: Bounds<Pixels>,
+        opacity: f32,
+        text_style: Vec<TextStyleRefinement>,
+    ) -> Self {
+        Painter { gfx, scene, notes, content_mask_stack: Vec::new(), text_style_stack: text_style, element_opacity: opacity, visible, state, shift: Point::default() }
+    }
+
+    /// What the element being painted keeps from one drawing to the
+    /// next and between its handlers (`WindowCx::node_state`): what a
+    /// control is in the middle of (a scroll bar's held arrow, a
+    /// slider's drag). Made the first time it's asked for; one type an
+    /// element.
+    pub fn node_state<T: Default + 'static>(&mut self) -> &mut T {
+        node_state(self.state)
     }
 
     /// Device pixels to a point on the window's display.
@@ -216,17 +284,41 @@ impl<'a> Painter<'a> {
     /// stands for something: a key of a drawn keypad, a row of a drawn
     /// list). Kept with the drawing.
     pub fn agent(&mut self, mut node: crate::agent::Node) {
-        node.clip.get_or_insert(self.clip());
+        // (Its own clip, if the drawing has one: what the window clips
+        // of it is worked out when it's asked for, from where things
+        // are then.)
+        if node.clip.is_none() {
+            node.clip = self.content_mask_stack.last().map(|mask| mask.bounds);
+        }
         self.notes.agent.push(node);
     }
 
     /// `full` was drawn cut short in `bounds`: its whole is what agents
     /// read, and what a tip shows when the pointer rests on it.
     pub fn note_cut(&mut self, full: SharedString, bounds: Bounds<Pixels>) {
-        let shown = bounds.intersect(&self.clip());
+        let shown = bounds.intersect(&self.content_mask().bounds);
         if shown.size.width > px(0.0) && shown.size.height > px(0.0) && !full.trim().is_empty() {
-            self.notes.cuts.push((shown, full));
+            self.notes.cuts.push((shown, full, false));
         }
+    }
+
+    /// `full` was drawn whole in `bounds`: if what holds the drawing
+    /// cuts it at a side (now, or as things are laid out later), its
+    /// whole is what a tip shows and agents read. (A row scrolled half
+    /// out of view, top or bottom, isn't cut.)
+    pub fn note_if_cut(&mut self, full: SharedString, bounds: Bounds<Pixels>) {
+        if full.trim().is_empty() {
+            return;
+        }
+        // Cut by the drawing's own clip: so whatever holds it.
+        let mask = self.content_mask().bounds;
+        if bounds.left() < mask.left() - px(1.0) || bounds.right() > mask.right() + px(1.0) {
+            if bounds.top() < mask.bottom() && bounds.bottom() > mask.top() {
+                self.note_cut(full, bounds);
+            }
+            return;
+        }
+        self.notes.cuts.push((bounds, full, true));
     }
 
     /// What clips what's being painted now: what can be seen of the
@@ -235,6 +327,14 @@ impl<'a> Painter<'a> {
     /// when it changes: for notes on a drawing, not for what to draw.)
     pub fn clip(&self) -> Bounds<Pixels> {
         self.visible.intersect(&self.content_mask().bounds)
+    }
+
+    /// How far what's painted shows from where it's laid out and
+    /// painted: by everything round it that scrolls. (Known while
+    /// something is there to fill in, [`Self::ext`]: a review places what
+    /// was drawn where it shows.)
+    pub fn scrolled_by(&self) -> Point<Pixels> {
+        self.shift
     }
 
     /// What the kit put with the window for drawings to fill in
@@ -248,10 +348,67 @@ impl<'a> Painter<'a> {
         self.gfx.ext.is_some()
     }
 
+    /// Paints with `f`, none of whose text is noted as cut short: text
+    /// that's a picture, not something to read whole in a tip (a screen
+    /// saver's words running off the screen's edge).
+    pub fn without_cut_notes<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
+        let before = self.notes.cuts.len();
+        let result = f(self);
+        self.notes.cuts.truncate(before);
+        result
+    }
+
     /// What was painted waits for something still coming (a picture
     /// being decoded): the view is drawn again when it has.
     pub fn paint_unfinished(&mut self) {
         self.notes.unfinished = true;
+    }
+
+    /// What's being painted moves with time (a graph scrolling, a
+    /// clock's hand): it's drawn again, alone, within `seconds` (how
+    /// long until it would look different: a graph's samples a device
+    /// pixel along). The window has one clock for all that ask: it
+    /// ticks at the finest step asked, and each tick draws them all, so
+    /// they move together in one frame. Each drawing asks for the next;
+    /// what stops asking stops, and nothing runs while the window isn't
+    /// shown (the clock waits for the frame its drawings went in).
+    pub fn paint_again_within(&mut self, seconds: f64) {
+        if seconds.is_finite() {
+            self.notes.again = Some(self.notes.again.map_or(seconds, |s| s.min(seconds)).max(0.0));
+        }
+    }
+
+    /// A picture of another program's (`WindowCx::set_external_buffer`,
+    /// by `key`: an Agent Screen's frames) shows at `bounds`, put there
+    /// by the compositor itself and never copied: over everything this
+    /// window draws. One not placed as its drawing is made again is
+    /// hidden. It shows at whole logical pixels (a subsurface can't be
+    /// placed finer): draw round it at [`Self::external_bounds`].
+    pub fn place_external(&mut self, key: u64, bounds: Bounds<Pixels>) {
+        self.notes.externals.push((key, bounds));
+    }
+
+    /// What's being drawn scrolls itself (a text editor, a terminal's
+    /// scrollback: its view moves what it draws, not a scroller the
+    /// display thread keeps), and is here: how far it's scrolled across
+    /// and down, and the furthest it goes each way (points; past either
+    /// end, pulled past its edge). It goes in the marks of the frames
+    /// that show this drawing, with the window's scrollers' places, so
+    /// how evenly it scrolls can be measured (`tools/dev/scroll-check`,
+    /// the benchmark). Costs nothing when nobody asks.
+    pub fn note_scroll(&mut self, at: [f32; 4]) {
+        self.notes.scrolled = Some(at);
+    }
+
+    /// Where a picture placed at `bounds` shows, to the device pixel:
+    /// its corners at whole logical pixels, then at the device pixels
+    /// the compositor rounds them to.
+    pub fn external_bounds(&self, bounds: Bounds<Pixels>) -> Bounds<Pixels> {
+        let s = self.scale_factor();
+        let (x, y) = (f32::from(bounds.origin.x).round(), f32::from(bounds.origin.y).round());
+        let (w, h) = (f32::from(bounds.size.width).round().max(1.0), f32::from(bounds.size.height).round().max(1.0));
+        let dev = |v: f32| (v * s).round() / s;
+        Bounds::from_corners(crate::point(crate::px(dev(x)), crate::px(dev(y))), crate::point(crate::px(dev(x + w)), crate::px(dev(y + h))))
     }
 
     /// The pointer's shape while it's over `bounds`.
@@ -327,9 +484,10 @@ impl<'a> Painter<'a> {
         let opacity = self.element_opacity();
         let color: Background = color.into();
         // Olo: a small one in a plain colour, with exact coverage.
-        if let Some(outline) = path.outline.take()
+        let outline = path.outline.take();
+        if let Some(outline) = &outline
             && color.tag == crate::BackgroundTag::Solid
-            && let Some(placed) = crate::outline::place(&outline, path.bounds, scale_factor)
+            && let Some(placed) = crate::outline::place(outline, path.bounds, scale_factor)
             && let Ok(tile) = self.gfx.outlines.tile(self.gfx.sprite_atlas.as_ref(), &placed.key)
         {
             if let Some(tile) = tile {
@@ -344,6 +502,12 @@ impl<'a> Painter<'a> {
                 });
             }
             return;
+        }
+        // Drawn by its triangles after all: a polygon built without
+        // them has them made now (`PathBuilder::build`).
+        if let Some(outline) = outline.filter(|o| o.unmade.is_some()) {
+            let Some(made) = crate::PathBuilder::made(&outline) else { return };
+            path = made;
         }
         path.content_mask = content_mask;
         path.color = color.opacity(opacity);
@@ -530,9 +694,9 @@ impl<'a> Painter<'a> {
     pub fn paint_glyph(&mut self, origin: Point<Pixels>, font_id: FontId, glyph_id: GlyphId, font_size: Pixels, color: Hsla) -> Result<()> {
         let element_opacity = self.element_opacity();
         let scale_factor = self.scale_factor();
-        let glyph_origin = origin.scale(scale_factor);
+        let glyph_origin = glyph_at(origin, scale_factor);
 
-        let subpixel_variant = Point { x: (glyph_origin.x.0.fract() * SUBPIXEL_VARIANTS_X as f32).floor() as u8, y: (glyph_origin.y.0.fract() * SUBPIXEL_VARIANTS_Y as f32).floor() as u8 };
+        let subpixel_variant = subpixel_variant(glyph_origin);
         let key = (font_id.0 as u32, glyph_id.0, font_size.0.to_bits(), subpixel_variant.x, subpixel_variant.y);
         let found = match self.gfx.glyph_memo.get(&key) {
             Some(found) => found.clone(),
@@ -598,18 +762,10 @@ impl<'a> Painter<'a> {
     /// was found, moved, without a lookup a glyph.
     pub fn paint_glyph_run(&mut self, run: &mut GlyphRun, origin: Point<Pixels>, stamp: u64, glyphs: impl FnOnce(&mut dyn FnMut(Point<Pixels>, FontId, GlyphId, Pixels, Hsla))) {
         let scale_factor = self.scale_factor();
-        let device = origin.scale(scale_factor);
+        let device = glyph_at(origin, scale_factor);
         // Its whole device pixel and where within it (in 64ths).
-        let mut base = Point { x: device.x.0.floor(), y: device.y.0.floor() };
-        let mut phase = (((device.x.0 - base.x) * 64.0).round() as i32, ((device.y.0 - base.y) * 64.0).round() as i32);
-        if phase.0 == 64 {
-            base.x += 1.0;
-            phase.0 = 0;
-        }
-        if phase.1 == 64 {
-            base.y += 1.0;
-            phase.1 = 0;
-        }
+        let base = Point { x: device.x.0.floor(), y: device.y.0.floor() };
+        let phase = (((device.x.0 - base.x) * 64.0).round() as i32, ((device.y.0 - base.y) * 64.0).round() as i32);
         let key = GlyphRunKey { scale: scale_factor.to_bits(), rendering: self.gfx.text_rendering, stamp, phase };
         if run.key != Some(key) {
             let cold = crate::stats::frame_phases().then(std::time::Instant::now);
@@ -645,8 +801,8 @@ impl<'a> Painter<'a> {
     /// device pixels, and its tile (looked up once a frame a glyph).
     fn glyph_sprite(&mut self, origin: Point<Pixels>, font_id: FontId, glyph_id: GlyphId, font_size: Pixels) -> Option<(Bounds<ScaledPixels>, AtlasTile)> {
         let scale_factor = self.scale_factor();
-        let glyph_origin = origin.scale(scale_factor);
-        let subpixel_variant = Point { x: (glyph_origin.x.0.fract() * SUBPIXEL_VARIANTS_X as f32).floor() as u8, y: (glyph_origin.y.0.fract() * SUBPIXEL_VARIANTS_Y as f32).floor() as u8 };
+        let glyph_origin = glyph_at(origin, scale_factor);
+        let subpixel_variant = subpixel_variant(glyph_origin);
         let key = (font_id.0 as u32, glyph_id.0, font_size.0.to_bits(), subpixel_variant.x, subpixel_variant.y);
         let found = match self.gfx.glyph_memo.get(&key) {
             Some(found) => found.clone(),
@@ -686,7 +842,7 @@ impl<'a> Painter<'a> {
     /// This method is only useful if you need to paint a single emoji that has already been shaped.
     pub fn paint_emoji(&mut self, origin: Point<Pixels>, font_id: FontId, glyph_id: GlyphId, font_size: Pixels) -> Result<()> {
         let scale_factor = self.scale_factor();
-        let glyph_origin = origin.scale(scale_factor);
+        let glyph_origin = glyph_at(origin, scale_factor);
         let params = RenderGlyphParams {
             font_id,
             glyph_id,
@@ -783,6 +939,7 @@ impl<'a> Painter<'a> {
             .expect("Callback above only returns Some");
         let content_mask = self.content_mask().scale(scale_factor);
         let opacity = self.element_opacity();
+        self.scene.images.push(data.clone());
         for t in triangles {
             let corners = [t[0].0.scale(scale_factor), t[1].0.scale(scale_factor), t[2].0.scale(scale_factor)];
             let min = point(corners[0].x.min(corners[1].x).min(corners[2].x), corners[0].y.min(corners[1].y).min(corners[2].y));
@@ -814,6 +971,8 @@ impl<'a> Painter<'a> {
         let content_mask = self.content_mask().scale(scale_factor);
         let corner_radii = corner_radii.scale(scale_factor);
         let opacity = self.element_opacity();
+        // (Held while the frame shows it: its tile goes when it does.)
+        self.scene.images.push(data.clone());
 
         self.scene.insert_primitive(PolychromeSprite {
             order: 0,
@@ -925,4 +1084,32 @@ struct GlyphRunKey {
     rendering: TextRendering,
     stamp: u64,
     phase: (i32, i32),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A glyph's sub-pixel variant is how far into its device pixel it
+    /// starts, whichever side of the window's corner it's on.
+    #[test]
+    fn subpixel_variants_left_of_the_window() {
+        let at = |x: f32| subpixel_variant(Point { x: ScaledPixels(x), y: ScaledPixels(-19.104) }).x;
+        assert_eq!([at(0.0), at(0.3), at(0.5), at(0.99)], [0, 1, 2, 3]);
+        // (-83.4 is 0.6 into the pixel from -84.)
+        assert_eq!([at(-84.0), at(-83.7), at(-83.4), at(-83.01)], [0, 1, 2, 3]);
+        assert_eq!(subpixel_variant(Point { x: ScaledPixels(-0.25), y: ScaledPixels(-0.5) }).y, 0);
+    }
+
+    /// A glyph a quarter into a pixel at 1.25× is drawn there however its
+    /// place in points was added up.
+    #[test]
+    fn a_glyph_is_drawn_where_it_is_whatever_the_float_noise() {
+        // (101 + 0.2 points, at 1.25×: 126.5, give or take.)
+        let summed = [Pixels(101.0) + Pixels(0.2), Pixels(100.2) + Pixels(1.0), Pixels(126.5 / 1.25), Pixels(80.96) + Pixels(20.24)];
+        let at = summed.map(|x| glyph_at(Point { x, y: Pixels(0.0) }, 1.25).x);
+        assert!(at.iter().all(|&x| x == ScaledPixels(126.5)), "{at:?}");
+        let variants = at.map(|x| subpixel_variant(Point { x, y: ScaledPixels(0.0) }).x);
+        assert_eq!(variants, [2; 4]);
+    }
 }

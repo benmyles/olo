@@ -14,8 +14,8 @@
 use smallvec::SmallVec;
 
 use crate::{
-    Bounds, ClickEvent, ImeInput, KeyDownEvent, KeyboardButton, KeyboardClickEvent, MouseButton, MouseClickEvent, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, PlatformInput, Point,
-    ScrollWheelEvent, WindowCx,
+    Bounds, ClickEvent, ImeInput, KeyDownEvent, KeyboardButton, KeyboardClickEvent, MouseButton, MouseClickEvent, MouseDownEvent, MouseUpEvent, Pixels, PlatformInput, Point, ScrollWheelEvent,
+    WindowCx,
     element::{Interactivity, Listener},
     tree::{NodeId, NodeKind},
     window::WindowCore,
@@ -28,7 +28,12 @@ impl WindowCore {
         let mut found = Vec::new();
         if let Some(root) = self.root {
             let window = Bounds { origin: Point::default(), size: self.size };
-            self.gather(root, at, window, &mut found);
+            // (What's raised is over the rest: gathered after it.)
+            let mut raised = Vec::new();
+            self.gather(root, at, window, &mut found, Some(&mut raised));
+            for (id, at) in raised {
+                self.gather(id, at, window, &mut found, None);
+            }
         }
         // (Gathered in painting order: what's painted last is on top.)
         found.reverse();
@@ -38,14 +43,20 @@ impl WindowCore {
         found
     }
 
-    fn gather(&self, id: NodeId, at: Point<Pixels>, clip: Bounds<Pixels>, found: &mut Vec<NodeId>) {
+    fn gather(&self, id: NodeId, at: Point<Pixels>, clip: Bounds<Pixels>, found: &mut Vec<NodeId>, mut raised: Option<&mut Vec<(NodeId, Point<Pixels>)>>) {
         let Some(node) = self.nodes.get(id) else { return };
         if node.style.visibility == crate::Visibility::Hidden || !node.reach.contains(&at) {
             return;
         }
+        if node.inter.as_ref().is_some_and(|i| i.raised)
+            && let Some(raised) = raised.as_deref_mut()
+        {
+            raised.push((id, at));
+            return;
+        }
         if node.bounds.contains(&at)
             && clip.contains(&at)
-            && (node.style.mouse_cursor.is_some() || node.inter.as_ref().is_some_and(|i| i.takes_pointer()))
+            && (node.style.mouse_cursor.is_some() || node.inter.as_ref().is_some_and(|i| i.takes_pointer()) || node.notes.as_ref().is_some_and(|n| !n.cursors.is_empty()))
             && !node.inter.as_ref().is_some_and(|i| i.disabled)
         {
             found.push(id);
@@ -53,7 +64,7 @@ impl WindowCore {
         if node.children.is_empty() {
             return;
         }
-        let inner = match node.style.overflow_mask(node.bounds, self.gfx.rem_size) {
+        let inner = match node.style.overflow_mask(node.bounds, self.gfx.rem_size, self.gfx.scale_factor) {
             Some(mask) => clip.intersect(&mask.bounds),
             None => clip,
         };
@@ -61,8 +72,17 @@ impl WindowCore {
             // (Nothing it holds shows there.)
             return;
         }
+        // What it holds is where it's laid out, shown from wherever
+        // it's scrolled to: the pointer is over what's that far on.
+        let (at, inner) = match &node.scroll {
+            Some(handle) => {
+                let shown = handle.0.shown.get();
+                (crate::point(at.x - shown.x, at.y - shown.y), Bounds { origin: crate::point(crate::px(-1.0e7), crate::px(-1.0e7)), size: crate::size(crate::px(2.0e7), crate::px(2.0e7)) })
+            }
+            None => (at, inner),
+        };
         for child in &node.children {
-            self.gather(*child, at, inner, found);
+            self.gather(*child, at, inner, found, raised.as_deref_mut());
         }
     }
 
@@ -125,6 +145,20 @@ impl WindowCore {
         }
     }
 
+    /// Where keys go while nothing has the keyboard: the window's root
+    /// and the element its first view shows (which takes the window's
+    /// own keys: its menus').
+    fn unfocused_path(&self) -> SmallVec<[NodeId; 16]> {
+        let mut path: SmallVec<[NodeId; 16]> = SmallVec::new();
+        if let Some(root) = self.root {
+            path.push(root);
+            if let Some(first) = self.nodes.get(root).and_then(|n| n.children.first().copied()) {
+                path.push(first);
+            }
+        }
+        path
+    }
+
     /// The path from the window's root down to a node.
     fn path_to(&self, id: NodeId) -> SmallVec<[NodeId; 16]> {
         let mut path: SmallVec<[NodeId; 16]> = SmallVec::new();
@@ -142,6 +176,16 @@ impl WindowCx<'_> {
     pub(crate) fn dispatch_input(&mut self, input: PlatformInput) {
         self.core.propagate = true;
         self.core.default_prevented = false;
+        // Whether the pointer is over the window: what's laid out under
+        // where it last was (or under the corner, before it ever came:
+        // a new Deskbar's Olo tile was lit until the pointer first
+        // moved over it) isn't under the pointer.
+        match &input {
+            PlatformInput::MouseMove(_) | PlatformInput::MouseDown(_) | PlatformInput::MouseUp(_) | PlatformInput::ScrollWheel(_) => self.core.pointer_in = true,
+            PlatformInput::FileDrop(crate::FileDropEvent::Entered { .. } | crate::FileDropEvent::Pending { .. } | crate::FileDropEvent::Submit { .. }) => self.core.pointer_in = true,
+            PlatformInput::MouseExited(_) | PlatformInput::FileDrop(crate::FileDropEvent::Exited) => self.core.pointer_in = false,
+            _ => {}
+        }
         match input {
             PlatformInput::MouseMove(event) => {
                 self.core.mouse = event.position;
@@ -152,11 +196,16 @@ impl WindowCx<'_> {
             }
             PlatformInput::MouseDown(event) => self.mouse_down(event),
             PlatformInput::MouseUp(event) => self.mouse_up(event),
+            // (A wheel the stage left alone: something under the
+            // pointer takes it itself, or nothing there scrolls.)
             PlatformInput::ScrollWheel(event) => {
                 self.core.mouse = event.position;
                 self.core.modifiers = event.modifiers;
                 self.update_hover();
                 self.to_hovered(|i| i.scroll_wheel.iter().cloned().collect(), &event);
+                if self.core.propagate && !self.core.default_prevented && !matches!(event.touch_phase, crate::TouchPhase::Ended) {
+                    self.scroll_under_pointer(&event);
+                }
             }
             PlatformInput::MouseExited(_) => self.pointer_left(),
             PlatformInput::KeyDown(event) => self.key_down(event),
@@ -167,8 +216,136 @@ impl WindowCx<'_> {
             PlatformInput::ModifiersChanged(event) => {
                 self.core.modifiers = event.modifiers;
                 self.to_focus_path(|i| i.modifiers_changed.iter().cloned().collect(), &event);
+                // (A key held changes how a drag would be taken: ⌥ copies.)
+                self.ask_drop();
             }
-            PlatformInput::Pinch(_) | PlatformInput::FileDrop(_) => {}
+            PlatformInput::FileDrop(event) => self.file_drop(event),
+            PlatformInput::Pinch(event) => {
+                self.core.mouse = event.position;
+                self.core.modifiers = event.modifiers;
+                self.core.pointer_in = true;
+                self.update_hover();
+                self.to_hovered(|i| i.pinch.iter().cloned().collect(), &event);
+            }
+        }
+    }
+
+    /// Files dragged over the window from somewhere else: what's under
+    /// them is hovered as under the pointer, and dropped, they go to
+    /// the topmost thing there that takes drops (`on_drop`).
+    fn file_drop(&mut self, event: crate::FileDropEvent) {
+        use crate::FileDropEvent;
+        match event {
+            FileDropEvent::Entered { position, paths } => {
+                self.core.dropping = Some(paths);
+                self.core.mouse = position;
+                self.update_hover();
+                self.ask_drop();
+            }
+            FileDropEvent::Pending { position } => {
+                self.core.mouse = position;
+                self.update_hover();
+                self.ask_drop();
+            }
+            FileDropEvent::Submit { position } => {
+                self.core.mouse = position;
+                self.update_hover();
+                self.end_drop();
+                let Some(paths) = self.core.dropping.take() else { return };
+                for id in self.core.hovered.clone() {
+                    let listeners: SmallVec<[Listener<crate::ExternalPaths>; 1]> =
+                        self.core.nodes.get(id).and_then(|n| n.inter.as_ref()).filter(|i| !i.disabled).map(|i| i.file_drop.clone()).unwrap_or_default();
+                    if listeners.is_empty() {
+                        continue;
+                    }
+                    self.core.current = Some(id);
+                    for listener in listeners {
+                        listener(&paths, self);
+                    }
+                    self.core.current = None;
+                    break;
+                }
+            }
+            FileDropEvent::Exited => {
+                self.core.dropping = None;
+                self.end_drop();
+                self.pointer_left();
+            }
+            // What's dragged over it, whatever it is: the window's own
+            // view says where it would take it (`View::drop_over`).
+            FileDropEvent::Offered(offer) => {
+                self.core.drop_offer = Some(offer);
+                self.core.drop_accept_sent = None;
+                self.ask_drop();
+            }
+            // Dropped where the view took it, its data read.
+            FileDropEvent::Dropped(dropped) => {
+                self.end_drop();
+                if let Some(view) = self.core.main_view.or(self.core.root_view) {
+                    self.with_any_view(view, |v, id, cx| v.dropped(id, dropped, cx));
+                }
+            }
+        }
+    }
+
+    /// Asks the window's own view where it would take what's dragged
+    /// over it, and tells the display thread when that changes (what
+    /// the pointer shows, and what the source is told).
+    pub(crate) fn ask_drop(&mut self) {
+        let Some(offer) = self.core.drop_offer.clone() else { return };
+        let Some(view) = self.core.main_view.or(self.core.root_view) else { return };
+        let at = self.core.mouse;
+        let Some(accept) = self.with_any_view(view, |v, id, cx| v.takes_drops().then(|| v.drop_over(id, Some(&offer), at, cx))).flatten() else { return };
+        if self.core.drop_accept_sent.as_ref() != Some(&accept) {
+            self.core.drop_accept_sent = Some(accept.clone());
+            self.on_display(move |window| window.set_drop_accept(accept));
+        }
+    }
+
+    /// What's dragged over the window now, if anything.
+    pub fn drop_offer(&self) -> Option<&crate::DropOffer> {
+        self.core.drop_offer.as_ref()
+    }
+
+    /// Asks the window's own view again where it would take what's
+    /// dragged over it: what's under the pointer changed with the
+    /// pointer still (it scrolled, a folder sprang open).
+    pub fn reconsider_drop(&mut self) {
+        self.ask_drop();
+    }
+
+    /// The drag has left or been dropped: the view is told nothing is
+    /// over it.
+    fn end_drop(&mut self) {
+        if self.core.drop_offer.take().is_none() {
+            return;
+        }
+        self.core.drop_accept_sent = None;
+        let at = self.core.mouse;
+        if let Some(view) = self.core.main_view.or(self.core.root_view) {
+            self.with_any_view(view, |v, id, cx| {
+                if v.takes_drops() {
+                    v.drop_over(id, None, at, cx);
+                }
+            });
+        }
+    }
+
+    /// What took the wheel let it go on: the nearest thing round it
+    /// that scrolls that way scrolls (stopping at its ends).
+    fn scroll_under_pointer(&mut self, event: &ScrollWheelEvent) {
+        let delta = event.delta.pixel_delta(crate::px(20.));
+        let mut at = self.core.hovered.first().copied();
+        while let Some(id) = at {
+            let Some(node) = self.core.nodes.get(id) else { break };
+            at = node.parent;
+            let Some(handle) = node.scroll.clone() else { continue };
+            let max = handle.max_offset();
+            let by = crate::point(if max.width > crate::px(0.) { delta.x } else { crate::px(0.) }, if max.height > crate::px(0.) { delta.y } else { crate::px(0.) });
+            if by != Point::default() {
+                handle.scroll_by(self, by);
+                break;
+            }
         }
     }
 
@@ -203,19 +380,34 @@ impl WindowCx<'_> {
 
     /// Works out what the pointer is over now, and tells what it came
     /// over or left.
-    fn update_hover(&mut self) {
-        let now = self.core.nodes_at(self.core.mouse);
-        if now == self.core.hovered {
-            return;
+    pub(crate) fn update_hover(&mut self) {
+        let now = if self.core.pointer_in { self.core.nodes_at(self.core.mouse) } else { Vec::new() };
+        if now != self.core.hovered {
+            let before = std::mem::replace(&mut self.core.hovered, now.clone());
+            for id in before.iter().filter(|id| !now.contains(id)) {
+                self.set_hovered(*id, false);
+            }
+            for id in now.iter().filter(|id| !before.contains(id)) {
+                self.set_hovered(*id, true);
+            }
         }
-        let before = std::mem::replace(&mut self.core.hovered, now.clone());
-        for id in before.iter().filter(|id| !now.contains(id)) {
-            self.set_hovered(*id, false);
-        }
-        for id in now.iter().filter(|id| !before.contains(id)) {
-            self.set_hovered(*id, true);
-        }
-        let cursor = now.iter().find_map(|id| self.core.nodes.get(*id).and_then(|n| n.style.mouse_cursor)).unwrap_or(crate::CursorStyle::Arrow);
+        // The pointer's shape: the topmost thing under it that says
+        // one, for where in it the pointer is (its drawing may have
+        // said: a table's column dividers) or for all of it.
+        let at = self.core.mouse;
+        let cursor = now
+            .iter()
+            .find_map(|id| {
+                let node = self.core.nodes.get(*id)?;
+                let noted = node.notes.as_ref().filter(|n| !n.cursors.is_empty()).and_then(|notes| {
+                    let shift = self.core.shift_at(*id);
+                    let moved = crate::point(node.bounds.origin.x - node.painted_at.x + shift.x, node.bounds.origin.y - node.painted_at.y + shift.y);
+                    let at = crate::point(at.x - moved.x, at.y - moved.y);
+                    notes.cursors.iter().rev().find(|(b, _)| b.contains(&at)).map(|(_, style)| *style)
+                });
+                noted.or(node.style.mouse_cursor)
+            })
+            .unwrap_or(crate::CursorStyle::Arrow);
         self.set_cursor(cursor);
     }
 
@@ -227,9 +419,15 @@ impl WindowCx<'_> {
         node.hovered = hovered;
         let listeners: SmallVec<[Listener<bool>; 1]> = node.inter.as_ref().map(|i| i.hover.clone()).unwrap_or_default();
         self.core.state_changed(id);
+        // (It's the handlers' element: where it is, `listener_bounds`,
+        // is where its tip goes. Within another's handler, as when a
+        // click moves what's under the pointer, that one's again after.)
+        let outer = self.core.current;
         for listener in listeners {
+            self.core.current = Some(id);
             listener(&hovered, self);
         }
+        self.core.current = outer;
     }
 
     /// The pointer left the window: it's over nothing.
@@ -261,10 +459,14 @@ impl WindowCx<'_> {
         // What it went down on is held until it's let go: a click is
         // both on the same thing.
         let mut focus = None;
+        let mut kept = false;
         for id in &hovered {
             let Some(node) = self.core.nodes.get_mut(*id) else { continue };
             let Some(inter) = &node.inter else { continue };
-            if focus.is_none() && inter.focusable {
+            // (What's in front decides: it keeps the keyboard where it
+            // is, or takes it.)
+            kept |= focus.is_none() && inter.keeps_focus;
+            if focus.is_none() && !kept && inter.click_focus {
                 focus = Some(*id);
             }
             if event.button == MouseButton::Left && (inter.paints_by_state || inter.active_style.is_some() || !inter.click.is_empty()) {
@@ -331,7 +533,7 @@ impl WindowCx<'_> {
 
     fn key_down(&mut self, event: KeyDownEvent) {
         self.core.modifiers = event.keystroke.modifiers;
-        let path = self.core.focus.map(|f| self.core.path_to(f)).unwrap_or_else(|| self.core.root.into_iter().collect());
+        let path = self.core.focus.map(|f| self.core.path_to(f)).unwrap_or_else(|| self.core.unfocused_path());
         // Down to what has the keyboard, for those that take keys first.
         for id in &path {
             let listeners: SmallVec<[Listener<KeyDownEvent>; 1]> = self.core.nodes.get(*id).and_then(|n| n.inter.as_ref()).map(|i| i.capture_key_down.clone()).unwrap_or_default();
@@ -356,6 +558,24 @@ impl WindowCx<'_> {
             self.core.current = None;
             // Space clicks what has the keyboard, if it takes clicks.
             if Some(*id) == self.core.focus && event.keystroke.key == "space" && !event.keystroke.modifiers.modified() && self.keyboard_click(*id, KeyboardButton::Space) {
+                return;
+            }
+        }
+        // Nothing with the keyboard took it: what answers for the whole
+        // window may (a tab view's keys).
+        let hearing: Vec<(NodeId, Listener<KeyDownEvent>)> = self
+            .core
+            .window_listeners
+            .iter()
+            .filter(|id| self.core.is_attached(**id))
+            .filter_map(|id| Some((*id, self.core.nodes.get(*id)?.inter.as_ref()?)))
+            .flat_map(|(id, i)| i.window_key_down.iter().cloned().map(move |l| (id, l)))
+            .collect();
+        for (id, listener) in hearing {
+            self.core.current = Some(id);
+            listener(&event, self);
+            self.core.current = None;
+            if !self.core.propagate {
                 return;
             }
         }
@@ -409,7 +629,7 @@ impl WindowCx<'_> {
     /// on the window's default button). Whether it took the click.
     fn keyboard_click(&mut self, id: NodeId, button: KeyboardButton) -> bool {
         let (clicks, bounds): (SmallVec<[Listener<ClickEvent>; 1]>, _) = match self.core.nodes.get(id) {
-            Some(node) if !node.inter.as_ref().is_some_and(|i| i.disabled) => (node.inter.as_ref().map(|i| i.click.clone()).unwrap_or_default(), node.bounds),
+            Some(node) if !node.inter.as_ref().is_some_and(|i| i.disabled) => (node.inter.as_ref().map(|i| i.click.clone()).unwrap_or_default(), self.core.window_bounds(id)),
             _ => return false,
         };
         if clicks.is_empty() {
@@ -459,7 +679,7 @@ impl WindowCx<'_> {
     /// Hands something up from what has the keyboard through what holds
     /// it.
     fn to_focus_path<E>(&mut self, pick: impl Fn(&Interactivity) -> SmallVec<[Listener<E>; 2]>, event: &E) {
-        let path = self.core.focus.map(|f| self.core.path_to(f)).unwrap_or_else(|| self.core.root.into_iter().collect());
+        let path = self.core.focus.map(|f| self.core.path_to(f)).unwrap_or_else(|| self.core.unfocused_path());
         for id in path.iter().rev() {
             let listeners = self.core.nodes.get(*id).and_then(|n| n.inter.as_ref()).map(|i| pick(i)).unwrap_or_default();
             self.core.current = Some(*id);
@@ -476,6 +696,11 @@ impl WindowCx<'_> {
     /// Gives the keyboard to a node (or to none).
     pub(crate) fn focus_node(&mut self, to: Option<NodeId>) {
         let from = self.core.focus;
+        // (Something has the keyboard now: what waited to take it once
+        // shown doesn't take it away later.)
+        if to.is_some() {
+            self.core.pending_focus_handle = None;
+        }
         if from == to {
             return;
         }
@@ -486,9 +711,16 @@ impl WindowCx<'_> {
             node.focused = focused;
             let listeners: SmallVec<[Listener<bool>; 1]> = node.inter.as_ref().map(|i| i.focus_changed.clone()).unwrap_or_default();
             self.core.state_changed(id);
+            // (Its listeners run as its own: `invalidate_owner` and
+            // `listener_bounds` are this element's, not whatever was
+            // being handled when the keyboard moved, or nothing at all:
+            // a list given the keyboard as its window opened kept its
+            // selection in the colour of one without it.)
+            let outer = std::mem::replace(&mut self.core.current, Some(id));
             for listener in listeners {
                 listener(&focused, self);
             }
+            self.core.current = outer;
         }
         // What holds them and counts the keyboard as its own while it's
         // inside (`focus_within`).
@@ -504,6 +736,22 @@ impl WindowCx<'_> {
                 node.focused = within;
                 self.core.state_changed(*id);
             }
+        }
+        // And what holds them and asked to hear of it: told when the
+        // keyboard came into it or left it altogether (a search field's
+        // ring, round the text field it holds, went on showing after a
+        // click elsewhere took the keyboard).
+        let crossed = old.iter().filter(|id| !new.contains(id) && Some(**id) != from).map(|id| (*id, false)).chain(new.iter().filter(|id| !old.contains(id) && Some(**id) != to).map(|id| (*id, true)));
+        for (id, within) in crossed.collect::<Vec<_>>() {
+            let listeners: SmallVec<[Listener<bool>; 1]> = self.core.nodes.get(id).and_then(|n| n.inter.as_ref()).map(|i| i.focus_changed.clone()).unwrap_or_default();
+            if listeners.is_empty() {
+                continue;
+            }
+            let outer = std::mem::replace(&mut self.core.current, Some(id));
+            for listener in listeners {
+                listener(&within, self);
+            }
+            self.core.current = outer;
         }
     }
 

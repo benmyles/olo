@@ -17,9 +17,8 @@ use std::sync::{
 };
 
 use olo_fido::{Device, Sealed};
-use olo_ui::{
-    gpui::{Context, Entity, IntoElement as _, ParentElement as _, SharedString, Styled as _, div, px},
-    metrics as m,
+use olo_kit::{
+    Child, ClickEvent, Cx, IntoElement as _, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m, px,
     widgets::{Button, StatusBar, StringView, TextControl, TextField, TextFieldEvent},
 };
 use zeroize::Zeroizing;
@@ -87,7 +86,7 @@ fn user() -> String {
 }
 
 /// The worker (one for the app), telling the windows through `proxy`.
-fn link(proxy: olo_ui::Proxy) -> &'static Link {
+fn link(proxy: olo_kit::Proxy) -> &'static Link {
     static LINK: OnceLock<Link> = OnceLock::new();
     LINK.get_or_init(|| {
         let shared: Arc<Mutex<Shared>> = Default::default();
@@ -178,7 +177,7 @@ fn about(i: &olo_fido::Info) -> Result<String, String> {
 
 /// Set `device` up: the password checked, then (its PIN given, if it has
 /// one) two touches.
-fn set_up(sh: &Arc<Mutex<Shared>>, proxy: &olo_ui::Proxy, me: &str, device: &Device, password: &str, pin: Option<&str>) {
+fn set_up(sh: &Arc<Mutex<Shared>>, proxy: &olo_kit::Proxy, me: &str, device: &Device, password: &str, pin: Option<&str>) {
     let cancel = Arc::new(AtomicBool::new(false));
     {
         let mut s = sh.lock().unwrap();
@@ -240,43 +239,41 @@ pub struct State {
     /// The key being set up (its password being typed), and whether it
     /// has a PIN to type too.
     setting_up: Option<(Device, bool)>,
-    password: Entity<TextField>,
-    pin: Entity<TextField>,
+    password: Child<TextField>,
+    pin: Child<TextField>,
 }
 
 impl State {
-    pub fn new(cx: &mut Context<PanelView>) -> State {
-        let password = olo_ui::widgets::text_field(cx, |f| f.password(true));
-        cx.subscribe(&password, |v, _, e: &TextFieldEvent, cx| {
+    pub fn new(cx: &mut Cx<PanelView>) -> State {
+        let password = crate::form::text_field(cx, |f| f.password(true));
+        cx.subscribe(&password, |v, e: &TextFieldEvent, cx| {
             if matches!(e, TextFieldEvent::Entered)
                 && let Some(st) = state_of(v)
             {
                 st.start(cx);
                 cx.notify();
             }
-        })
-        .detach();
-        let pin = olo_ui::widgets::text_field(cx, |f| f.password(true));
-        cx.subscribe(&pin, |v, _, e: &TextFieldEvent, cx| {
+        });
+        let pin = crate::form::text_field(cx, |f| f.password(true));
+        cx.subscribe(&pin, |v, e: &TextFieldEvent, cx| {
             if matches!(e, TextFieldEvent::Entered)
                 && let Some(st) = state_of(v)
             {
                 st.start(cx);
                 cx.notify();
             }
-        })
-        .detach();
-        State { face: crate::face_unlock::State::new(cx), link: link(olo_ui::proxy(cx)), setting_up: None, password, pin }
+        });
+        State { face: crate::face_unlock::State::new(cx), link: link(olo_kit::proxy()), setting_up: None, password, pin }
     }
 
     /// Whether what setting up asks for is typed.
-    fn ready(&self, cx: &olo_ui::gpui::App) -> bool {
+    fn ready(&self, cx: &WindowCx) -> bool {
         let Some((_, pin)) = &self.setting_up else { return false };
         !self.password.read(cx).text().is_empty() && (!pin || !self.pin.read(cx).text().is_empty())
     }
 
     /// Set the key chosen up with the password (and PIN) typed.
-    fn start(&mut self, cx: &mut Context<PanelView>) {
+    fn start(&mut self, cx: &mut Cx<PanelView>) {
         if !self.ready(cx) {
             return;
         }
@@ -287,7 +284,7 @@ impl State {
         let _ = self.link.tx.send(Request::SetUp(device, typed, pin));
     }
 
-    fn forget_typed(&mut self, cx: &mut Context<PanelView>) {
+    fn forget_typed(&mut self, cx: &mut Cx<PanelView>) {
         self.password.update(cx, |f, cx| f.clear_secret(cx));
         self.pin.update(cx, |f, cx| f.clear_secret(cx));
     }
@@ -301,10 +298,10 @@ fn state_of(v: &mut PanelView) -> Option<&mut State> {
 }
 
 /// Something done to the box's state from a button.
-fn act(ui: &Ui, f: impl Fn(&mut State, &mut olo_ui::gpui::Window, &mut Context<PanelView>) + 'static) -> impl Fn(&mut olo_ui::gpui::Window, &mut olo_ui::gpui::App) + 'static {
-    ui.on_click_view(move |v, window, cx| {
+fn act(ui: &Ui, f: impl Fn(&mut State, &mut Cx<PanelView>) + 'static) -> impl Fn(&ClickEvent, &mut WindowCx) + 'static {
+    ui.on_click_view(move |v, cx| {
         if let Some(st) = state_of(v) {
-            f(st, window, cx);
+            f(st, cx);
         }
         cx.notify();
     })
@@ -321,7 +318,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let link = st.link;
 
     ui.bbox("Security Keys", |ui| {
-        ui.note("A touch of a security key (a YubiKey) can stand for your password: sudo in Terminal, Passwords, administrator requests and the lock screen.");
+        ui.note("A touch of a security key (a YubiKey) can stand for your password once you're signed in: sudo in Terminal, Passwords and administrator requests. Not to unlock the computer or sign in: someone who found it with the key plugged in could.");
         // The keys set up: each with whether it's plugged in, and Remove.
         for key in &set_up {
             let here = plugged.as_ref().is_some_and(|p| p.iter().any(|p| p.set_up && p.device.name == key.name));
@@ -349,15 +346,15 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                             ui.add(StringView::new(format!("{}{what}, plugged in: {about}.", key_name(&key.device.name))).wrap(true));
                             if st.setting_up.is_none() && doing.is_none() {
                                 let (device, pin) = (key.device.clone(), key.pin);
-                                let field = st.password.clone();
+                                let field = st.password.downgrade();
                                 ui.add(buttons(vec![
                                     Button::new("Set Up…")
                                         .id(format!("key-set-up-{}", key.device.path.display()))
-                                        .on_click(act(ui, move |st, window, cx| {
+                                        .on_click(act(ui, move |st, cx| {
                                             st.setting_up = Some((device.clone(), pin));
-                                            field.update(cx, |f, _| f.focus(window));
+                                            field.focus(cx);
                                         }))
-                                        .into_any_element(),
+                                        .into_element(),
                                 ]));
                             }
                         }
@@ -378,27 +375,27 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             ui.add(StringView::new("3. When it blinks again, touch it once more.").wrap(true));
             if pin {
                 // (The two wells lined up.)
-                let divider = crate::form::divider_for(ui.window, &["Password:", "Key’s PIN:"]);
-                ui.add(TextControl::new(st.password.clone()).label("Password:").divider(divider));
-                ui.add(TextControl::new(st.pin.clone()).label("Key’s PIN:").divider(divider));
+                let divider = crate::form::divider_for(&["Password:", "Key’s PIN:"]);
+                ui.add(TextControl::new(ui.cx, &st.password).label("Password:").divider(divider));
+                ui.add(TextControl::new(ui.cx, &st.pin).label("Key’s PIN:").divider(divider));
             } else {
-                ui.add(TextControl::new(st.password.clone()).label("Password:"));
+                ui.add(TextControl::new(ui.cx, &st.password).label("Password:"));
             }
             let ready = st.ready(ui.cx);
             ui.add(buttons(vec![
-                Button::new("Set Up").id("key-set-up").default(true).enabled(ready).on_click(act(ui, |st, _, cx| st.start(cx))).into_any_element(),
+                Button::new("Set Up").id("key-set-up").default(true).enabled(ready).on_click(act(ui, |st, cx| st.start(cx))).into_element(),
                 Button::new("Cancel")
-                    .on_click(act(ui, |st, _, cx| {
+                    .on_click(act(ui, |st, cx| {
                         st.setting_up = None;
                         st.forget_typed(cx);
                     }))
-                    .into_any_element(),
+                    .into_element(),
             ]));
         }
         if let Some((message, step, touched, cancel)) = doing {
             ui.add(StringView::new(message).wrap(true));
             ui.add(StatusBar::new(touched as f32 / 2.0).label(SharedString::from(step)).trailing(format!("{touched} of 2 touches")));
-            ui.add(buttons(vec![Button::new("Cancel").on_click(move |_, _| cancel.store(true, Ordering::Relaxed)).into_any_element()]));
+            ui.add(buttons(vec![Button::new("Cancel").on_click(move |_, _| cancel.store(true, Ordering::Relaxed)).into_element()]));
         } else if let Some(e) = error {
             ui.add(StringView::new(e).wrap(true));
         } else if let Some(n) = note {

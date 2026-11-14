@@ -13,8 +13,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use olo_kit::Proxy;
 use olo_system::recording::{Capture, RATE};
-use olo_ui::Proxy;
 use olo_video::opus::OggOpus;
 
 /// Bits a second: a voice, clearly (SILK has nothing to do with more:

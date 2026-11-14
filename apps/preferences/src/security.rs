@@ -10,15 +10,11 @@
 
 use std::sync::{Arc, OnceLock};
 
+use olo_kit::SharedString;
 use olo_sync::Mutex;
-use olo_ui::gpui::SharedString;
 use serde::Deserialize;
 
-use olo_ui::{
-    gpui::{Context, ParentElement as _, Styled as _, div, px},
-    metrics as m,
-    widgets::TabView,
-};
+use olo_kit::{Cx, ParentElement as _, Styled as _, div, metrics as m, px, widgets::TabView};
 
 use crate::{
     PanelView,
@@ -39,7 +35,7 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(cx: &mut Context<PanelView>) -> State {
+    pub fn new(cx: &mut Cx<PanelView>) -> State {
         State { tab: 0, keys: security_keys::State::new(cx), touchid: touchid::State::new(cx) }
     }
 }
@@ -57,9 +53,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         0 => sign_in(ui, st),
         _ => ui.columns(passwords, passwords_more),
     });
-    let pick = ui.on_view(|v, i: usize, _, cx| {
+    let pick = ui.on_view(|v, i: &usize, cx| {
         if let panel::State::Security(st) = &mut v.state {
-            st.tab = i;
+            st.tab = *i;
         }
         cx.notify();
     });
@@ -75,7 +71,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
 
 /// Every way in besides the password, side by side.
 fn sign_in(ui: &mut Ui, st: &mut State) {
-    ui.note("Each of these set up stands for your password wherever it's asked (the lock screen, Passwords, sudo in Terminal, administrator requests), all at once: whichever you use first.");
+    ui.note("Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.");
     let left = ui.collect(|ui| {
         touchid::ui(ui, &mut st.touchid);
         crate::face_unlock::ui(ui, &mut st.keys.face);
@@ -92,7 +88,7 @@ fn passwords(ui: &mut Ui) {
     });
     ui.bbox("Passwords: Locking", |ui| {
         let label = "Lock after idle for:";
-        let divider = divider_for(ui.window, &[label]);
+        let divider = divider_for(&[label]);
         minutes_menu(ui, "pw-lock", label, divider, &[1, 5, 10, 30, 60, 0], p.lock_minutes, |s, m| s.security.passwords.lock_minutes = m);
         ui.check("Lock when the screen locks", p.lock_with_screen, |s, v| s.security.passwords.lock_with_screen = v);
     });
@@ -147,18 +143,17 @@ fn clipboard(ui: &mut Ui, p: &olo_protocol::PasswordsSecurity) {
 /// session's programs have Passwords' agent in `SSH_AUTH_SOCK` (olo-session
 /// sets it as a login starts), so ssh is never left with none.
 fn ssh_config_note(ui: &mut Ui) {
-    let path = olo_keychain::ssh_config::path();
-    let Some(other) = std::fs::read_to_string(&path).ok().and_then(|t| olo_keychain::ssh_config::other_agent(&t)) else {
+    let (path, other, ours) = ssh_setup();
+    let Some(other) = other else {
         ui.note("ssh, git and other programs sign in with the SSH keys in Passwords, each one allowed the first time it asks.");
         return;
     };
-    let ours = std::env::var_os("SSH_AUTH_SOCK").is_some_and(|s| std::path::Path::new(&s) == olo_xdg::ssh_agent_socket());
     ui.note(format!("Your ssh configuration (~/.ssh/config) sends ssh to another agent, {other}, so it doesn’t use the keys in Passwords."));
     if !ours {
         ui.note("From your next login, Passwords can be ssh’s agent here too.");
         return;
     }
-    let done = ui.on_click_view(move |_, _, cx| {
+    let done = ui.on_click_view(move |_, cx| {
         if let Ok(text) = std::fs::read_to_string(&path) {
             let new = olo_keychain::ssh_config::use_session_agent(&text);
             let tmp = path.with_extension("olo-new");
@@ -169,6 +164,24 @@ fn ssh_config_note(ui: &mut Ui) {
         cx.notify();
     });
     ui.button("Use Passwords for ssh", done);
+}
+
+/// `~/.ssh/config`, the other agent it sends ssh to (if any), and whether
+/// this session's programs have Passwords' agent.
+#[cfg(not(test))]
+fn ssh_setup() -> (std::path::PathBuf, Option<String>, bool) {
+    let path = olo_keychain::ssh_config::path();
+    let other = std::fs::read_to_string(&path).ok().and_then(|t| olo_keychain::ssh_config::other_agent(&t));
+    let ours = std::env::var_os("SSH_AUTH_SOCK").is_some_and(|s| std::path::Path::new(&s) == olo_xdg::ssh_agent_socket());
+    (path, other, ours)
+}
+
+/// (The lint's, whoever runs it: never the person's own ssh setup. The
+/// panel's tallest, with its button, as on a machine that used
+/// 1Password's agent; a config nowhere, should the button be pressed.)
+#[cfg(test)]
+fn ssh_setup() -> (std::path::PathBuf, Option<String>, bool) {
+    ("/nonexistent/.ssh/config".into(), Some("~/.1password/agent.sock".into()), true)
 }
 
 /// What olo-secrets says it's doing (`$XDG_RUNTIME_DIR/olo-secrets.json`).
@@ -192,7 +205,7 @@ struct SecretsCollection {
 }
 
 /// olo-secrets' state, followed from its file (one watch for the app).
-fn secrets_status(proxy: olo_ui::Proxy) -> SecretsStatus {
+fn secrets_status(proxy: olo_kit::Proxy) -> SecretsStatus {
     static SHARED: OnceLock<Arc<Mutex<SecretsStatus>>> = OnceLock::new();
     let shared = SHARED.get_or_init(|| {
         let shared: Arc<Mutex<SecretsStatus>> = Arc::default();
@@ -222,7 +235,7 @@ fn secrets_status(proxy: olo_ui::Proxy) -> SecretsStatus {
             }
         };
         read(&[]);
-        if let Some(w) = olo_ui::watch::watch([path], read) {
+        if let Some(w) = olo_kit::watch::watch([path], read) {
             // The app's, for as long as it runs.
             std::mem::forget(w);
         }
@@ -237,7 +250,7 @@ fn secrets_note(ui: &mut Ui, on: bool) {
         ui.note("Chrome, Slack and other programs keep their secrets (the keys to their saved passwords and sign-ins) in GNOME Keyring. Turned on, Olo keeps them instead, GNOME Keyring’s copied over first; turned off, what changed goes back.");
         return;
     }
-    let st = secrets_status(olo_ui::proxy(ui.cx));
+    let st = secrets_status(olo_kit::proxy());
     if !st.running {
         ui.note("Olo’s keyring service isn’t running here; it starts with your session.");
         return;

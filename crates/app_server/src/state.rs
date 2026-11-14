@@ -143,13 +143,16 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// Preferences ▸ Touchpad said when it began).
     pub pinching: bool,
     /// The touch screen's fingers being the pointer where they went down
-    /// on what takes no touch (an app with no `wl_touch`, as every GPUI
+    /// on what takes no touch (an app with no `wl_touch`, as every Olo
     /// app, or app_server's own frames and tabs): one drags or taps, two
     /// scroll. `input_handler::touch_down`.
     pub touch_pointer: Option<crate::input_handler::TouchPointer>,
     /// The pointer hidden: a finger has been the pointer since a mouse or
     /// touchpad last moved it.
     pub touch_hides_pointer: bool,
+    /// The pointer is locked or confined by a window (a game): only
+    /// app_server's loop moves it (`input_thread`).
+    pub pointer_constrained: bool,
     /// Touch screens plugged in (their touches go to `touch_output`).
     pub touch_screens: usize,
     /// Which way the fingers' scroll goes (natural or not), for clients.
@@ -971,20 +974,35 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 }
 
+impl<BackendData: Backend> AnvilState<BackendData> {
+    /// The size `source`'s frames are, in pixels.
+    fn capture_size(&self, source: &ImageCaptureSource) -> Option<smithay::utils::Size<i32, smithay::utils::Physical>> {
+        // Smaller, to fit (the source it draws, at most so big).
+        if let Some(crate::capture::FittedSource { of, most }) = source.user_data().get::<crate::capture::FittedSource>() {
+            return Some(crate::capture::fit_within(self.capture_size(of)?, *most));
+        }
+        if let Some(crate::capture::WindowSource(id)) = source.user_data().get::<crate::capture::WindowSource>() {
+            // (On another workspace too: shown as it was last.)
+            let (window, scale) = self.capture_window(*id)?;
+            return Some(window.content_size().to_f64().to_physical(scale).to_i32_round());
+        }
+        // A workspace's picture is its display's size.
+        if let Some(output) = crate::capture::workspace_output(source) {
+            return crate::capture::size(&output);
+        }
+        let output = source.user_data().get::<smithay::output::WeakOutput>()?.upgrade()?;
+        crate::capture::size(&output)
+    }
+}
+
 impl<BackendData: Backend> ImageCopyCaptureHandler for AnvilState<BackendData> {
     fn image_copy_capture_state(&mut self) -> &mut ImageCopyCaptureState {
         &mut self.image_copy_capture_state
     }
 
     fn capture_constraints(&mut self, source: &ImageCaptureSource) -> Option<BufferConstraints> {
-        if let Some(crate::capture::WindowSource(id)) = source.user_data().get::<crate::capture::WindowSource>() {
-            // (On another workspace too: shown as it was last.)
-            let (window, scale) = self.capture_window(*id)?;
-            let size = window.content_size().to_f64().to_physical(scale).to_i32_round();
-            return Some(crate::capture::constraints_of(size, self.captures.dma.clone()));
-        }
-        let output = source.user_data().get::<smithay::output::WeakOutput>()?.upgrade()?;
-        crate::capture::constraints(&output, self.captures.dma.clone())
+        let size = self.capture_size(source)?;
+        Some(crate::capture::constraints_of(size, self.captures.dma.clone()))
     }
 
     fn new_session(&mut self, session: Session) {
@@ -1156,6 +1174,9 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         let output_capture_source_state = OutputCaptureSourceState::new::<Self>(&dh);
         let image_copy_capture_state = ImageCopyCaptureState::new::<Self>(&dh);
         let toplevel_capture_source_state = ToplevelCaptureSourceState::new::<Self>(&dh);
+        // Olo's own sources: a workspace, and a source fitted to a size
+        // (Show on AirPlay).
+        crate::capture::OloSources::offer::<Self>(&dh);
         let foreign_toplevel_list_state = ForeignToplevelListState::new::<Self>(&dh);
 
         // init input
@@ -1196,6 +1217,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             pinching: false,
             touch_pointer: None,
             touch_hides_pointer: false,
+            pointer_constrained: false,
             touch_screens: 0,
             scroll_direction: (smithay::backend::input::AxisRelativeDirection::Identical, smithay::backend::input::AxisRelativeDirection::Identical),
             held_stop: None,
@@ -1514,6 +1536,13 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             smithay::desktop::utils::send_frames_surface_tree(surface, output, time, throttle, |_, _| Some(output.clone()));
         }
         self.overview_frames(output, time);
+        // Windows parked on it that a share shows live (a workspace shown
+        // while it shows another, a window on one): drawing as if shown.
+        if self.captures.live() {
+            for w in self.followed_parked(output) {
+                w.send_frame(output, time, None, |_, _| Some(output.clone()));
+            }
+        }
     }
 
     pub fn post_repaint(&mut self, output: &Output, dmabuf_feedback: Option<SurfaceDmabufFeedback>, render_element_states: &RenderElementStates) {
@@ -1731,6 +1760,10 @@ pub trait Backend {
     /// output's current mode on success.
     /// Turn the screens off (DPMS) for idleness, or back on.
     fn set_displays_on(&mut self, _on: bool) {}
+    /// Turn one screen off, or back on: the built-in panel at the bottom
+    /// of its brightness. It stays the display it was (its windows where
+    /// they are); nothing is drawn on it meanwhile.
+    fn set_output_on(&mut self, _output: &Output, _on: bool) {}
     /// Scale the screens' gamma ramps by these red, green, blue gains
     /// (night light; `[1.0; 3]` is neutral).
     fn set_white_point(&mut self, _gains: [f64; 3]) {}

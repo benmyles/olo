@@ -3,14 +3,13 @@
 //! DNS, in `olo_system::netconf`'s file, written as root); a menu of the
 //! well-known public resolvers to start from; what each link asks now.
 
+use olo_kit::{
+    Child, Cx, IntoElement, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m, px,
+    widgets::{Button, MenuField, TextControl, TextField},
+};
 use olo_system::{
     netconf::{Dns, NetConf, valid_domain, valid_server},
     network::Status,
-};
-use olo_ui::{
-    gpui::{App, Context, Entity, IntoElement, ParentElement as _, SharedString, Styled as _, div, px},
-    metrics as m,
-    widgets::{Button, MenuField, TextControl, TextField},
 };
 
 use super::{Extra, Request, State, field, state_of};
@@ -26,22 +25,22 @@ const RESOLVERS: &[(&str, &str)] = &[
 ];
 
 pub struct Edit {
-    servers: Entity<TextField>,
-    searches: Entity<TextField>,
+    servers: Child<TextField>,
+    searches: Child<TextField>,
     /// What the fields were filled from: filled again as it changes.
     loaded: Option<Dns>,
 }
 
-fn words(f: &Entity<TextField>, cx: &App) -> Vec<String> {
+fn words(f: &Child<TextField>, cx: &WindowCx) -> Vec<String> {
     f.read(cx).text().split([',', ' ', ';']).map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned).collect()
 }
 
 impl Edit {
-    pub fn new(cx: &mut Context<PanelView>) -> Edit {
+    pub fn new(cx: &mut Cx<PanelView>) -> Edit {
         Edit { servers: field(cx, "Each network's own"), searches: field(cx, "None, or corp.example"), loaded: None }
     }
 
-    fn edited(&self, cx: &App) -> Dns {
+    fn edited(&self, cx: &WindowCx) -> Dns {
         Dns { servers: words(&self.servers, cx), searches: words(&self.searches, cx) }
     }
 }
@@ -61,14 +60,14 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
     names.extend(RESOLVERS.iter().map(|(n, _)| SharedString::from(*n)));
     names.push("Servers of Your Own".into());
     let chosen = if edited.servers.is_empty() { 0 } else { RESOLVERS.iter().position(|(_, a)| words_of(a) == edited.servers).map_or(names.len() - 1, |i| i + 1) };
-    let servers = e.servers.clone();
-    let pick = move |i: usize, window: &mut olo_ui::gpui::Window, cx: &mut App| {
-        let text = match i {
+    let servers = e.servers.downgrade();
+    let pick = move |i: &usize, cx: &mut WindowCx| {
+        let text = match *i {
             0 => String::new(),
             i if i <= RESOLVERS.len() => RESOLVERS[i - 1].1.to_owned(),
             _ => {
                 return servers.update(cx, |f, cx| {
-                    f.focus(window);
+                    cx.focus();
                     f.select_all_text(cx);
                 });
             }
@@ -77,8 +76,8 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
     };
     ui.bbox("For Every Link", |ui| {
         ui.add(MenuField::new("dns-resolver", names, chosen).label("Use:").divider(DIVIDER).on_change(pick));
-        ui.add(TextControl::new(st.dns.servers.clone()).label("DNS servers:").divider(DIVIDER));
-        ui.add(TextControl::new(st.dns.searches.clone()).label("Search domains:").divider(DIVIDER));
+        ui.add(TextControl::new(ui.cx, &st.dns.servers).label("DNS servers:").divider(DIVIDER));
+        ui.add(TextControl::new(ui.cx, &st.dns.searches).label("Search domains:").divider(DIVIDER));
         ui.note("Servers of your own are asked in place of what each network hands out, on every link. Search domains are tried after a short name: nas, then nas.corp.example.");
     });
     let bad = edited
@@ -103,14 +102,14 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
         super::rows(ui, DIVIDER, &rows);
     }
     let changed = edited != applied;
-    let revert = ui.on_click_view(|v, _, cx| {
+    let revert = ui.on_click_view(|v, cx| {
         if let Some(st) = state_of(v) {
             st.dns.loaded = None;
         }
         cx.notify();
     });
     let order = extra.conf.order.clone();
-    let apply = ui.on_click_view(move |v, _, cx| {
+    let apply = ui.on_click_view(move |v, cx| {
         let Some(st) = state_of(v) else { return };
         let conf = NetConf { order: order.clone(), dns: st.dns.edited(cx) };
         if conf.check().is_ok() {
@@ -126,7 +125,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
             .child(div().flex_1())
             .child(Button::new("Revert").enabled(changed && !busy).on_click(revert))
             .child(Button::new("Apply").default(changed).enabled(changed && bad.is_none() && !busy).on_click(apply))
-            .into_any_element(),
+            .into_element(),
     );
 }
 

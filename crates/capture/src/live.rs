@@ -1,6 +1,6 @@
 //! Frames to show live, never copied (Agent Screens' Live tab): captured
 //! into a few dmabufs in turn, each handed on as it comes to be shown by
-//! the person's compositor (GPUI's `Window::set_external_buffer`), and
+//! the person's compositor (the kit's `WindowCx::set_external_buffer`), and
 //! captured into again once that compositor lets it go. app_server draws
 //! a frame on the GPU only when the screen changed, and nothing reads it
 //! back: a screen at rest costs nothing, a busy one a copy on the GPU a

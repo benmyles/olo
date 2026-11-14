@@ -26,7 +26,6 @@ olo-palm.workspace = true
 signal-hook = "0.3"
 bitflags = "2.2.1"
 image = { version = "0.25.1", default-features = false, features = ["png", "jpeg", "webp", "bmp", "tiff", "gif"] }
-rand = "0.8"
 tracing = { version = "0.1.37", features = ["max_level_trace", "release_max_level_debug"] }
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 thiserror = "1"
@@ -44,6 +43,8 @@ olo-images.workspace = true
 # Smithay's libinput, with the newer options (three-finger drag, plugins).
 input = { version = "0.10", optional = true, features = ["libinput_1_30"] }
 fast_image_resize = "5"
+# Olo's own Wayland protocol: workspace capture (crates/capture/protocols).
+wayland-scanner = "0.31"
 
 [dependencies.smithay]
 workspace = true

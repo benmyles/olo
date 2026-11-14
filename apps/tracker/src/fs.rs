@@ -8,6 +8,7 @@ use std::{
     time::SystemTime,
 };
 
+use olo_kit::SharedString;
 use olo_xdg::{mime, open as opener};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -27,9 +28,52 @@ pub struct Entry {
     /// `NAME`, with how far along it is when it says how big it will be
     /// (`Some`, `olo_kit_base::files::EXPECTED_SIZE`).
     pub downloading: Option<Option<u64>>,
+    /// Its texts in a list, made when it's first drawn.
+    pub shown: Shown,
+}
+
+/// What a list shows of an [`Entry`] (its name, Size, Modified and
+/// Kind), made the first time it's drawn and kept with it: a list drawn
+/// again (a live resize, a theme) doesn't format them again. An item
+/// changed on disk comes as a new entry, so they're never stale. (Boxed:
+/// a folder's entries mostly never show.)
+#[derive(Clone, Default)]
+pub struct Shown(std::sync::OnceLock<Box<ShownTexts>>);
+
+#[derive(Clone)]
+pub struct ShownTexts {
+    pub name: SharedString,
+    pub size: SharedString,
+    pub modified: SharedString,
+    pub kind: SharedString,
+}
+
+/// (Made of the entry's other fields: two entries alike in those are
+/// alike.)
+impl PartialEq for Shown {
+    fn eq(&self, _: &Shown) -> bool {
+        true
+    }
+}
+
+impl std::fmt::Debug for Shown {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("Shown")
+    }
 }
 
 impl Entry {
+    /// Its texts in a list, made the first time they're asked for.
+    pub fn shown(&self) -> &ShownTexts {
+        self.shown.0.get_or_init(|| {
+            let kind = match self.downloading {
+                None => SharedString::new_static(self.kind.name()),
+                Some(_) => self.kind_text().into(),
+            };
+            Box::new(ShownTexts { name: self.label().to_owned().into(), size: self.size_text().into(), modified: format_time(self.modified).into(), kind })
+        })
+    }
+
     /// The name shown: a download's as it will be once done.
     pub fn label(&self) -> &str {
         match self.downloading {
@@ -89,6 +133,7 @@ pub fn entry(path: &Path) -> Option<Entry> {
         kind: kind_for(downloading.as_ref().map_or(path, |(done, _)| done.as_path()), is_dir, mode),
         app_icon: if is_dir { None } else { app_icon(path, is_link) },
         downloading: downloading.map(|(_, total)| total),
+        shown: Shown::default(),
     })
 }
 
@@ -131,7 +176,7 @@ pub fn app_id(e: &Entry) -> Option<String> {
 
 /// Group Windows for `e`'s app: shown when it is an application, checked
 /// while its windows are grouped.
-pub fn grouping_item(menu: olo_ui::Menu, e: Option<&Entry>) -> olo_ui::Menu {
+pub fn grouping_item(menu: olo_kit::Menu, e: Option<&Entry>) -> olo_kit::Menu {
     let Some(app) = e.and_then(app_id) else { return menu };
     let grouped = !UNGROUPED.lock().is_ok_and(|u| u.contains(&app));
     menu.item("Group Windows", "group-windows").checked(grouped)
@@ -171,7 +216,10 @@ pub fn list_counting(dir: &Path, hidden: bool, count: &std::sync::atomic::Atomic
 }
 
 pub fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| "/".into())
+    // (Read once: it's asked for every row drawn, and the environment
+    // is searched from its start each time.)
+    static HOME: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    HOME.get_or_init(|| std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| "/".into())).clone()
 }
 
 /// A path for display, with the home folder shortened to `~`.
@@ -433,6 +481,33 @@ pub fn permissions_string(mode: u32, is_dir: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_lists_texts_are_made_once_and_kept() {
+        let e = Entry {
+            path: PathBuf::from("/f/notes.txt"),
+            name: "notes.txt".into(),
+            is_dir: false,
+            is_link: false,
+            size: 2048,
+            modified: Some(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000)),
+            mode: 0o644,
+            kind: Kind::Text,
+            app_icon: None,
+            downloading: None,
+            shown: Shown::default(),
+        };
+        let fresh = e.clone();
+        let s = e.shown();
+        assert_eq!((s.name.as_str(), s.size.as_str(), s.kind.as_str()), ("notes.txt", "2.0 KB", "Text"));
+        assert_eq!(s.modified.as_str(), format_time(e.modified));
+        // Made once: asked again, the same texts.
+        assert!(std::ptr::eq(e.shown(), s));
+        // An entry whose texts were made is the entry it was.
+        assert_eq!(e, fresh);
+        // A copy keeps them.
+        assert_eq!(e.clone().shown().size.as_str(), "2.0 KB");
+    }
 
     #[test]
     fn downloads_show_as_they_will_be() {

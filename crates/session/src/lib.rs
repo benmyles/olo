@@ -12,7 +12,7 @@
 //! window layout), starts the new binary on the same sockets, and every
 //! client keeps its windows through olo-wlproxy — or, if its own binary
 //! was upgraded, re-executes the new version with its saved state (see
-//! `olo_ui::on_upgrade`). Nobody has to log out. If olo-session itself
+//! `olo_kit::on_upgrade`). Nobody has to log out. If olo-session itself
 //! was upgraded it re-executes first, keeping its children and sockets.
 //!
 //! An installed session also watches the tree it was built in and offers
@@ -303,6 +303,9 @@ struct Session {
     /// end only while still ours, and made again if they vanish.
     files: Vec<(PathBuf, Option<(u64, u64)>)>,
     watchdog: watchdog::Watchdog,
+    /// When to check that Deskbar is on the app_server started last
+    /// (`check_shell`).
+    shell_check_at: Option<Instant>,
     /// The direct and proxied listeners and the proxy, once started.
     proxy: Option<(UnixListener, UnixListener, Child)>,
     /// The program the proxy was started from: when it's another, the
@@ -370,6 +373,7 @@ impl Session {
 
         let mut s = Session {
             watchdog: watchdog::Watchdog::start(ipc_path.clone()),
+            shell_check_at: None,
             display,
             wayland,
             ipc,
@@ -404,10 +408,13 @@ impl Session {
         if real_start && !greeter {
             graphical::name_dconf();
         }
-        s.start_server();
         // Only a real session owns the user's environment: a headless or
         // nested one (tests, development) must not point the user's portals
-        // and services at itself.
+        // and services at itself. Said before anything is started, so
+        // every child has it: app_server was started first once, and what
+        // it started (the palette, and every program opened from the
+        // palette) was told for the whole session that it wasn't at the
+        // computer, and wouldn't ask for the administrator.
         let real = s.backend.iter().any(|b| b == "--tty-udev") && !greeter;
         // SAFETY: single-threaded start-up.
         unsafe {
@@ -419,6 +426,8 @@ impl Session {
             }
         }
         s.real = real;
+        s.say_real();
+        s.start_server();
         if real {
             keyring::start();
             export_environment();
@@ -497,6 +506,7 @@ impl Session {
         let greeter = r.greeter;
         let mut s = Session {
             watchdog: watchdog::Watchdog::start(ipc_path.clone()),
+            shell_check_at: None,
             display: r.display,
             wayland,
             ipc,
@@ -524,6 +534,10 @@ impl Session {
             greeter,
         };
         s.own_files();
+        // (A session from before the mark says so from this upgrade on:
+        // programs it started without the variable are at the computer
+        // from now.)
+        s.say_real();
         if !greeter {
             s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
         }
@@ -636,6 +650,37 @@ impl Session {
             set_cloexec(fd, true);
         }
         log(format!("app_server started (pid {})", self.server.pid));
+        self.shell_check_at = Some(Instant::now() + watchdog::SHELL_GRACE);
+    }
+
+    /// The shell's programs that show something (Deskbar, the desktop's
+    /// Tracker: `SHELL`, each a layer surface) on the app_server started
+    /// last: one running `SHELL_GRACE` without a surface on it is stuck,
+    /// and is ended (and so started again, as any crash). Once for each
+    /// app_server; one younger than that is looked at again when it
+    /// isn't.
+    fn check_shell(&mut self) {
+        let Some(at) = self.shell_check_at else { return };
+        if Instant::now() < at {
+            return;
+        }
+        let shown: Vec<(i32, &str)> =
+            self.shell.iter().filter(|c| c.pid > 0 && SHELL.iter().any(|s| c.argv.iter().map(String::as_str).eq(s.iter().copied()))).map(|c| (c.pid, c.argv[0].as_str())).collect();
+        let young = shown.iter().filter_map(|&(pid, _)| watchdog::age(pid)).filter(|a| *a < watchdog::SHELL_GRACE).max();
+        if let Some(age) = young {
+            self.shell_check_at = Some(Instant::now() + (watchdog::SHELL_GRACE - age));
+            return;
+        }
+        // (Not answering: the watchdog's to see to.)
+        let Some(clients) = watchdog::layer_clients(&self.ipc_path) else { return };
+        self.shell_check_at = None;
+        for (pid, name) in shown {
+            if !clients.iter().any(|(p, _)| *p == pid) {
+                log(format!("{name} {pid} has no surface {} s after app_server started: it's stuck; ending it (it will be restarted)", watchdog::SHELL_GRACE.as_secs()));
+                // SAFETY: signalling our own child.
+                unsafe { libc::kill(pid, libc::SIGKILL) };
+            }
+        }
     }
 
     /// Where Olo's own apps connect, and where the proxy does.
@@ -744,6 +789,7 @@ impl Session {
             self.reap();
             if !self.stopping {
                 self.watchdog.check(self.server.pid);
+                self.check_shell();
                 self.follow_install();
                 self.check_stale();
                 if self.nudge_at.is_some_and(|t| Instant::now() >= t) {
@@ -955,6 +1001,16 @@ impl Session {
 
     fn wayland_path(&self) -> PathBuf {
         runtime_dir().join(&self.display)
+    }
+
+    /// A real session says which display is the person's, for every
+    /// program to go by (`olo_xdg::session`).
+    fn say_real(&self) {
+        if self.real
+            && let Err(e) = olo_xdg::session::mark_real(&self.display)
+        {
+            log(format!("could not say this is the person's session ({}): {e}", olo_xdg::session::real_session_file().display()));
+        }
     }
 
     fn own_files(&mut self) {
@@ -1211,6 +1267,7 @@ impl Session {
         if self.real {
             keyd::restore();
             graphical::stop();
+            olo_xdg::session::unmark_real();
         }
         for (path, id) in &self.files {
             if id.is_some() && identity(path) == *id {

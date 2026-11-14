@@ -11,7 +11,7 @@ path = "src/main.rs"
 [dependencies]
 olo-crash.workspace = true
 olo-sync.workspace = true
-olo-ui.workspace = true
+olo-kit.workspace = true
 olo-kit-base.workspace = true
 olo-theme.workspace = true
 olo-xdg.workspace = true

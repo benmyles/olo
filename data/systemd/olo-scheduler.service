@@ -1,0 +1,21 @@
+# scx_lavd (sched-ext/scx, GPL-2.0), the Latency-criticality Aware
+# Virtual Deadline scheduler, loaded over the kernel's own (sched_ext).
+# Installed by Preferences > Performance's Scheduler (Olo Doctor's
+# helper: `olo-doctor --scheduler lavd`). If it stops or the kernel puts
+# it out, the kernel's own scheduler takes over again by itself. To go
+# back for good:
+#   sudo systemctl disable --now olo-scheduler.service
+[Unit]
+Description=The scheduler Olo runs under (scx_lavd, sched_ext)
+ConditionPathExists=/sys/kernel/sched_ext
+StartLimitIntervalSec=120
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/olo/scx_lavd
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

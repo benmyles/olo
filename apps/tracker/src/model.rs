@@ -7,13 +7,16 @@ use std::{
     sync::Arc,
 };
 
+use olo_kit::{Cx, Messenger, widgets::TextFieldEvent};
 use olo_kit_base::list::ListState;
-use olo_ui::{
-    Proxy,
-    gpui::{App, EntityId},
-};
 
-use crate::{Msg, ViewMode, folder::FolderWin, fs, fs::Entry, watch};
+use crate::{
+    ViewMode,
+    folder::{FolderMsg, FolderWin},
+    fs,
+    fs::Entry,
+    watch,
+};
 
 /// A column to the right of the root in column view.
 pub struct Pane {
@@ -37,11 +40,10 @@ impl Pane {
 
 /// Folders are listed on worker threads (listing stats every item and can
 /// take a while on big or slow folders); results come back as
-/// `Msg::Listed` to the window that asked.
+/// `FolderMsg::Listed` to the window that asked.
 #[derive(Clone)]
 pub struct Loader {
-    pub win: EntityId,
-    pub proxy: Proxy,
+    pub to: Messenger<FolderMsg>,
 }
 
 /// Put `v` in place of `entries`, keeping the selection (by path) and
@@ -123,7 +125,7 @@ impl FolderWin {
                 p.path.clone()
             }
         };
-        let (hidden, counter, Loader { win, proxy }) = (self.hidden, self.listed.clone(), self.loader.clone());
+        let (hidden, counter, Loader { to }) = (self.hidden, self.listed.clone(), self.loader.clone());
         let counter = if pane.is_none() { counter } else { Arc::default() };
         std::thread::spawn(move || {
             let result = fs::list_counting(&path, hidden, &counter).map_err(|e| match e.kind() {
@@ -134,7 +136,7 @@ impl FolderWin {
             // What Open With offers for the kinds here, worked out now
             // (after the listing's gone), so a menu finds it at once.
             let kinds: std::collections::BTreeSet<String> = result.as_ref().map(|v| v.iter().map(|e| olo_xdg::open::kind_of(&e.name, e.is_dir)).collect()).unwrap_or_default();
-            proxy.send(Msg::Listed { win, path, generation, result });
+            to.send(FolderMsg::Listed { path, generation, result });
             olo_xdg::open::warm(kinds);
         });
     }
@@ -355,10 +357,19 @@ impl FolderWin {
     }
 
     /// Start editing the name of `p` in place.
-    pub fn edit_name(&mut self, p: &Path, cx: &mut App) {
+    pub fn edit_name(&mut self, p: &Path, cx: &mut Cx<Self>) {
         self.select_path(p);
         let link = self.current().0.iter().any(|e| e.path == p && e.is_link);
-        self.editing = Some(crate::items::Rename::new(p.to_owned(), link, cx));
+        let rename = crate::items::Rename::new(p.to_owned(), link, cx);
+        // Return takes the name; typing grows the field.
+        cx.subscribe(&rename.field, |f: &mut FolderWin, e: &TextFieldEvent, cx| {
+            if matches!(e, TextFieldEvent::Entered) {
+                f.end_rename(true, cx);
+            } else {
+                cx.invalidate();
+            }
+        });
+        self.editing = Some(rename);
         self.pending_edit = None;
     }
 
@@ -509,6 +520,7 @@ mod tests {
             kind: if dir { fs::Kind::Folder } else { fs::Kind::Text },
             app_icon: None,
             downloading: None,
+            shown: Default::default(),
         }
     }
 

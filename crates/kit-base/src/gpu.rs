@@ -3,12 +3,12 @@
 //! uses it, and anything that loads NVIDIA's drivers wakes it: Vulkan's
 //! loader listing devices, glvnd's EGL choosing a vendor. Waking costs
 //! the waker ~2.3 s (a ThinkPad P1 Gen 9: Chrome's GPU process, every
-//! GPUI app before its first frame) and the battery, for a GPU nothing
+//! Olo app before its first frame) and the battery, for a GPU nothing
 //! draws with. So the programs Olo starts are given an environment
 //! without NVIDIA's drivers when another GPU is there to draw with,
 //! unless the person chose drivers or asked for NVIDIA themselves (PRIME
-//! offload). GPUI's own apps do the same as they make their context
-//! (`gpui`'s `blade_context::asleep_aside`). Read from sysfs only.
+//! offload). Olo's own apps do the same as they make their context
+//! (olo-interface's `blade_context::asleep_aside`). Read from sysfs only.
 
 use std::path::Path;
 
