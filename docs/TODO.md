@@ -950,6 +950,16 @@ something nobody here has is in "Blocked", with what it waits for.
          window draws all of its content again (more than 16 changed
          rectangles are made one, `stage::damage`), for three or four
          frames as each buffer catches up: ~0.5 ms a frame.
+         *Tried 2026-11-14, left:* handing the rectangles on (each
+         drawing changed in place once) for the renderer to join, as it
+         does a few (`apart`: those over one another, then the two
+         that add least, down to six). On the Overview the cards are
+         nearly all that changes at a sample (figure, caption, graph,
+         legend), so it joined them into the content's whole area
+         anyway: 2.03 → 1.66 MP a sample's frame, GPU time −6% (173 →
+         164 ms in 30 s), the CPU's no different within the runs'
+         spread (four runs in turn, 30 s each); not worth sixty-odd
+         rectangles through `apart` at every frame of a busier window.
        - *Notifications' cards, done 2026-11-13.* They were laid out
          anew for every width with everything made again: every note
          copied out of the model at each step (`lay_out`), again for
