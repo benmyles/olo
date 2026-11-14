@@ -993,7 +993,18 @@ impl Coder {
                 if cell.column == 0 {
                     cell.icon_text(g, "document", "document", path.clone());
                 } else {
-                    cell.text(g, if *staged { "staged".to_string() } else { state.clone() });
+                    // In a word, as Tracker says a file's kind.
+                    let word = match (*staged, state.as_str()) {
+                        (true, _) => "Staged",
+                        (_, "untracked") => "New",
+                        (_, "added") => "Added",
+                        (_, "modified") => "Changed",
+                        (_, "deleted") => "Deleted",
+                        (_, "renamed") => "Renamed",
+                        (_, "conflict") => "Conflict",
+                        _ => "Changed",
+                    };
+                    cell.text(g, word.to_owned());
                 }
             }
         })
