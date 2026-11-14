@@ -1565,12 +1565,17 @@ impl Deskbar {
         Taken::Changed
     }
 
-    /// What the tip of the widget the pointer is on says now (its
-    /// reading and the processes using most): the widget, and its tip.
-    fn retip(&self) -> Option<(u32, String)> {
+    /// The widget the pointer is on, whose tip (its reading and the
+    /// processes using most) is made again.
+    fn retip(&self) -> Option<u32> {
         let id = self.live.hovered()?;
+        self.live.widgets.iter().any(|w| w.id == id).then_some(id)
+    }
+
+    /// Widget `id`'s tip, a card (`widgets::Live::card`).
+    fn card(&self, id: u32) -> Option<std::rc::Rc<olo_kit::card::Card>> {
         let w = self.live.widgets.iter().find(|w| w.id == id)?;
-        Some((id, self.live.tip(w, &self.sources)))
+        Some(std::rc::Rc::new(self.live.card(w, &self.sources)))
     }
 
     /// A network behind a captive portal: said in a notification as it's
@@ -1646,10 +1651,10 @@ enum Taken {
     /// The displays changed: a bar on each, each drawn again.
     Displays,
     /// A reading came: the bars' widgets drawn again, and the tip of the
-    /// one the pointer is on.
-    Meters(Option<(u32, String)>),
+    /// one the pointer is on (its id).
+    Meters(Option<u32>),
     /// That tip alone.
-    Retip(Option<(u32, String)>),
+    Retip(Option<u32>),
 }
 
 /// Whether `app_id` is one of ours that opens a new window when asked.
@@ -2178,10 +2183,10 @@ struct BarView {
 enum BarMsg {
     /// The model changed (or a dot is shaking): drawn again.
     Changed,
-    /// A reading came: the widgets drawn again, and this tip said again
-    /// if the pointer is on its widget.
-    Meters(Option<(u32, String)>),
-    Retip(Option<(u32, String)>),
+    /// A reading came: the widgets drawn again, and this widget's tip
+    /// made again if the pointer is on it.
+    Meters(Option<u32>),
+    Retip(Option<u32>),
     /// Something to ask the person.
     Effect(Effect),
     /// A dot has had time to drain.
@@ -2208,14 +2213,16 @@ impl BarView {
         }
     }
 
-    /// The tip of the widget the pointer is on, if it's this one, says
+    /// The tip of the widget the pointer is on, if it's this one, shows
     /// what it does now (drawn again too, so its next tip starts from
     /// it).
-    fn retip(&mut self, tip_now: Option<(u32, String)>, cx: &mut Cx<Self>) {
-        let Some((id, text)) = tip_now else { return };
+    fn retip(&mut self, tip_now: Option<u32>, cx: &mut Cx<Self>) {
+        let Some(id) = tip_now else { return };
         let Some(key) = self.hot.clone().filter(|k| widget_of(k) == Some(id)) else { return };
         cx.invalidate();
-        tip::retext(cx, key, text);
+        if let Some(card) = self.model.read().card(id) {
+            tip::recard(cx, key, card);
+        }
     }
 
     /// Asks the person before something is done.
@@ -2352,6 +2359,19 @@ fn hit(view: &ViewRef<BarView>, key: &str, r: Bounds<Pixels>, tip_text: Option<S
         .h(r.size.height)
         .on_hover(move |on: &bool, cx| {
             let (key, on) = (k.clone(), *on);
+            // A live widget's tip is a card, made as the pointer comes
+            // (and again as readings come, `BarView::retip`).
+            if let Some(id) = widget_of(&key) {
+                v.update(cx, move |v, cx| {
+                    v.set_hot(&key, on, cx);
+                    let card = if on { v.model.read().card(id) } else { None };
+                    match card {
+                        Some(card) => tip::hover_card(cx, key, card, r, on),
+                        None => tip::hover(cx, key, "", r, false),
+                    }
+                });
+                return;
+            }
             v.update(cx, move |v, cx| v.set_hot(&key, on, cx));
             if let Some(t) = &t {
                 tip::hover(cx, k.clone(), t.clone(), r, on);

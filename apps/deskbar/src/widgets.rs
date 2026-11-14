@@ -25,9 +25,10 @@ use std::{
     time::Instant,
 };
 
+use olo_kit::card::{Card, CardPaint, Part, Row};
 use olo_kit::palette::Rgba;
 use olo_kit::{
-    Bounds, Cx, Element, FontWeight, Hsla, Painter, Pixels, Styled as _, View, agent, canvas, metrics as m,
+    Bounds, Cx, Element, FontWeight, Hsla, Painter, Pixels, SharedString, Styled as _, View, agent, canvas, metrics as m,
     palette::Palette,
     point, px,
     style::{self, Align, c},
@@ -63,6 +64,7 @@ fn ease(u: f64) -> f64 {
 /// What a widget shows now, made once a reading: each series' levels
 /// over its history (0 to 1, oldest first, with when each was read),
 /// each one's level now, and its value in words.
+#[derive(Clone)]
 pub struct Shown {
     pub widget: Widget,
     series: Vec<Vec<(f64, f32)>>,
@@ -198,6 +200,174 @@ impl Shown {
         out
     }
 
+    /// Its tip as a card (`olo_kit::card`, Ben, 2026-11-14: "improve the
+    /// popovers so that they can have rich widgets/designs inside of them
+    /// … so that all their popovers are nicely designed and visually show
+    /// the data better"): what it measures and its value at the top; the
+    /// last of its span as a graph (each core's bars too, a volume's
+    /// meter instead); each series' value against its colour; what the
+    /// reading notes; then the processes using most, as bars (`top`,
+    /// while the pointer is on it; `looked`: it is, so they're coming).
+    /// A Token Pool widget's: its summary, then each account (or quota)
+    /// with what's left as a bar, green to red, the one answering now in
+    /// bold. Made as a reading comes and as the pointer comes, not as
+    /// it's drawn; its drawings are painted live, as the widget's own.
+    /// `range`: the lowest and highest it was in its span, in words, for
+    /// agents (what the graph shows).
+    pub fn card(self: &Arc<Self>, sources: &meters::Sources, top: Option<&[(String, f64)]>, looked: bool, range: Option<String>) -> Card {
+        let p = theme::palette();
+        let w = &self.widget;
+        let (first, second) = colors(self, &p);
+        let described = meters::describe(&w.measure, sources);
+        let (title, rest) = match described.split_once(": ") {
+            Some((t, rest)) => (t.to_owned(), rest.to_owned()),
+            None => (label(w), described.clone()),
+        };
+        // ("CPU, each core": "Each core" under "CPU".)
+        let rest = rest.strip_prefix(&format!("{title}, ")).map(str::to_owned).or_else(|| (rest != title).then_some(rest)).unwrap_or_default();
+        let mut caption: String = rest.chars().take(1).flat_map(char::to_uppercase).chain(rest.chars().skip(1)).collect();
+        let pool = matches!(w.measure, Measure::Pool { .. });
+        // (Over its span, for what it draws as a graph.)
+        let span = match w.span_s.clamp(1, MAX_SPAN_S) {
+            3600 => "the last hour".to_owned(),
+            s if s % 3600 == 0 => format!("the last {} hours", s / 3600),
+            60 => "the last minute".to_owned(),
+            s if s % 60 == 0 => format!("the last {} minutes", s / 60),
+            s => format!("the last {s} seconds"),
+        };
+        if !pool && !matches!(w.measure, Measure::Space { .. }) {
+            caption = if caption.is_empty() { format!("Over {span}") } else { format!("{caption} · over {span}") };
+        }
+        // A Token Pool widget's: the provider, what's left, and which
+        // accounts and quotas, in Token Pool ("Claude", "38% left",
+        // "Token Pool · each account · 5-hour and Weekly").
+        let mut value = self.value.clone();
+        let mut title = title;
+        if let Measure::Pool { provider, quotas, view, .. } = &w.measure {
+            title = olo_protocol::pool::provider_name(provider);
+            let accounts = match view {
+                olo_protocol::deskbar::PoolView::Together => "every account together",
+                olo_protocol::deskbar::PoolView::Each => "each account",
+                olo_protocol::deskbar::PoolView::Serving => "the account answering now",
+            };
+            let which = match quotas.as_slice() {
+                [] => "what holds it back".to_owned(),
+                [q] => q.clone(),
+                [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+            };
+            caption = format!("Token Pool · {accounts} · {which}");
+            if *view == olo_protocol::deskbar::PoolView::Together {
+                caption = format!("{caption} · over {span}");
+            }
+            // (The account answering is said under it: "12% left", not
+            // "Work Max: 12% left".)
+            if *view == olo_protocol::deskbar::PoolView::Serving
+                && let Some((_, v)) = value.split_once(": ")
+            {
+                value = v.to_owned();
+            }
+        }
+        // (What's left in the colour of how much: green, to orange, to
+        // red.)
+        let value_colour = match (&w.measure, self.latest.as_ref().and_then(|r| r.left)) {
+            (Measure::Pool { .. }, Some(left)) => Some(c(charts::usage_colour(&p, 1.0 - left as f32))),
+            _ => None,
+        };
+        let mut card = Card::new(title).value(value, value_colour);
+        if !caption.is_empty() {
+            card = card.caption(caption);
+        }
+        let Some(r) = &self.latest else { return card.part(Part::Notes(vec!["Nothing read yet".into()])) };
+        let drawing = |look: Look, height: f32, heading: Option<&'static str>, text: String| {
+            let s = Arc::new(Shown { widget: Widget { look, ..w.clone() }, ..(**self).clone() });
+            let paint: CardPaint = Rc::new(move |g: &mut Painter, b: Bounds<Pixels>| paint_drawing(g, b, &s, &theme::palette(), clock()));
+            Part::Drawing { heading: heading.map(SharedString::from), height, paint, text: text.into() }
+        };
+        if let Measure::Pool { used, view, .. } = &w.measure {
+            // (All the accounts as one: what's been left over its span.)
+            if *view == olo_protocol::deskbar::PoolView::Together {
+                card = card.part(drawing(Look::Graph, 48.0, None, range.clone().unwrap_or_default()));
+            }
+            if !r.summary.is_empty() {
+                card = card.part(Part::Notes(r.summary.iter().map(|l| SharedString::from(l.clone())).collect()));
+            }
+            if !r.rows.is_empty() {
+                let rows = r
+                    .rows
+                    .iter()
+                    .map(|d| {
+                        let mut row = Row::new(d.name.clone(), d.value.clone()).strong(d.live);
+                        if let Some(level) = d.level {
+                            let use_of = if *used { level } else { 1.0 - level };
+                            row = row.level(level as f32, Some(c(charts::usage_colour(&p, use_of as f32))));
+                        }
+                        let note = match (&d.note, d.live) {
+                            (Some(n), true) => Some(format!("Answering now · {n}")),
+                            (None, true) => Some("Answering now".into()),
+                            (n, false) => n.clone(),
+                        };
+                        if let Some(n) = note {
+                            row = row.note(n);
+                        }
+                        row
+                    })
+                    .collect();
+                let heading = if *view == olo_protocol::deskbar::PoolView::Serving { "Quotas" } else { "Accounts" };
+                card = card.part(Part::Rows { heading: Some(heading.into()), rows });
+            }
+            if let Some(note) = &r.note {
+                card = card.part(Part::Notes(vec![note.clone().into()]));
+            }
+            return card;
+        }
+        // Its history, larger (a volume's fullness: a meter).
+        if matches!(w.measure, Measure::Space { .. }) {
+            card = card.part(drawing(Look::Meter, 14.0, None, self.value.clone()));
+        } else {
+            card = card.part(drawing(Look::Graph, 64.0, None, range.unwrap_or_default()));
+        }
+        let cores = matches!(w.measure, Measure::Cpu { cores: true });
+        if cores && r.values.len() > 1 {
+            let each = r.values.iter().map(|v| percent(*v)).collect::<Vec<_>>().join(", ");
+            card = card.part(drawing(Look::Bars, 32.0, Some("Each core now"), each));
+        }
+        // Each series against its colour (down and up, reads and writes).
+        if r.values.len() > 1 && !cores {
+            let rows = r.names.iter().zip(&r.values).enumerate().map(|(i, (name, v))| Row::new(name.clone(), meters::unit_text(r.unit, *v)).swatch(if i == 0 { first } else { second })).collect();
+            card = card.part(Part::Rows { heading: None, rows });
+        }
+        if let Some(note) = r.note.as_ref().filter(|_| !r.values.is_empty()) {
+            card = card.part(Part::Notes(vec![note.clone().into()]));
+        }
+        // The processes using most of it, each a bar: of the whole for
+        // the processor and a GPU, against the first for the rest.
+        if rank(w).is_some() {
+            let cores_n = sources.cores.max(1) as f64;
+            match top {
+                Some(top) if !top.is_empty() => {
+                    let most = top.iter().map(|(_, v)| *v).fold(0.0, f64::max).max(f64::MIN_POSITIVE);
+                    let rows = top
+                        .iter()
+                        .map(|(name, v)| {
+                            let (value, level) = match w.measure {
+                                Measure::Cpu { .. } => (percent(v / cores_n), v / cores_n / 100.0),
+                                Measure::Gpu { .. } => (percent(*v), v / 100.0),
+                                Measure::Memory { .. } => (bytes_text(*v), v / most),
+                                _ => (meters::rate_text(*v), v / most),
+                            };
+                            Row::new(name.clone(), value).level(level as f32, Some(first))
+                        })
+                        .collect();
+                    card = card.part(Part::Rows { heading: Some("Using the most".into()), rows });
+                }
+                Some(_) => card = card.part(Part::Notes(vec!["No process uses much of it now".into()])),
+                None if looked => card = card.part(Part::Notes(vec!["Looking at which processes use it…".into()])),
+                None => {}
+            }
+        }
+        card
+    }
+
     fn reading_tip(&self, sources: &meters::Sources) -> String {
         let w = &self.widget;
         let mut out = meters::describe(&w.measure, sources);
@@ -329,6 +499,23 @@ impl Live {
         if self.hovered == Some(id) && top.is_some() {
             self.top = top;
         }
+    }
+
+    /// Widget `w`'s tip as a card now (`Shown::card`).
+    pub fn card(&self, w: &Widget, sources: &meters::Sources) -> Card {
+        let looked = self.hovered == Some(w.id);
+        let top = self.top.as_deref().filter(|_| looked);
+        // (Its span's lowest and highest: of the cores, their mean.)
+        let range = self.readings.get(&w.id).and_then(|(readings, _)| {
+            let (_, last) = readings.back()?;
+            let one = |r: &Reading| {
+                if matches!(w.measure, Measure::Cpu { cores: true }) { r.values.iter().sum::<f64>() / r.values.len().max(1) as f64 } else { r.values.first().copied().unwrap_or(f64::NAN) }
+            };
+            let vs = readings.iter().map(|(_, r)| one(r)).filter(|v| v.is_finite());
+            let (lo, hi) = vs.fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), v| (lo.min(v), hi.max(v)));
+            lo.is_finite().then(|| format!("From {} to {}", meters::unit_text(last.unit, lo), meters::unit_text(last.unit, hi)))
+        });
+        self.shown(w).card(sources, top, looked, range)
     }
 
     /// Widget `w`'s tip now.
@@ -812,8 +999,10 @@ fn paint_cell(g: &mut Painter, r: Bounds<Pixels>, s: &Shown, p: &Palette, t: f64
     // never the tray's figures without their unit, "3" for 3%.)
     let value = (w.value && !number).then(|| std::iter::once(&s.value).chain(&s.shorter).find(|v| width(v, &plain) + name_w <= room).cloned()).flatten();
     g.with_content_mask(Some(olo_kit::ContentMask { bounds: r }), |g| {
+        // (Its short label cut with "…" if even that's wider: its card
+        // says it whole.)
         if w.label {
-            style::label(g, r.left(), text_y, Align::Left, name, size, bold.clone(), c(p.panel_text));
+            style::label_fit(g, r.left(), text_y, Align::Left, name, size, bold.clone(), c(p.panel_text), px(room));
         }
         if let Some(value) = value {
             let (x, align) = if w.label { (r.right(), Align::Right) } else { (r.left(), Align::Left) };

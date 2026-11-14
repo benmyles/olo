@@ -752,6 +752,7 @@ bounds, name)` an icon at one texel a device pixel.
 | `BMenuBar`, `BMenu`, `BPopUpMenu` | `MenuBar::new(cx, menus)`, `Menu::new("File").item(label, command).key("s")`, `menu::context_menu` | commands arrive in `View::command` |
 | `BAlert` | `open_alert(cx, title, icon, message, buttons, on_choose)` | the last button is Return's, the first Escape's |
 | `BFilePanel` | `file_panel::show(..)` | open, save, a folder |
+| Haiku's `BToolTip` | `tip::on(element, key, text)`, `tip::hover_card(cx, key, Rc<Card>, anchor, hovered)` | a popup of its own; a `card::Card` for more than a sentence (Deskbar's widgets): drawings, rows with bars, notes |
 | `BColorControl` | `ColorControl::new(id, rgb).on_change(..).build(cx)` | |
 | | `Sidebar`, `SidePane`, `ToolBar`, `Banner`, `KeyHint`, `Graph`, `Spectrum`, `CellGrid`, `ThumbnailPicker`, `find_bar` | what BeOS didn't have |
 

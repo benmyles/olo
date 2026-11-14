@@ -93,15 +93,35 @@ pub struct Reading {
     /// What's left of what it measures, 0 to 1, for a widget that warns
     /// as it runs low (a quota).
     pub left: Option<f64>,
+    /// The same as `detail`, laid out for a card (a tip that draws): its
+    /// summary's lines, then a row for each account (or quota).
+    pub summary: Vec<String>,
+    pub rows: Vec<DetailRow>,
+}
+
+/// One row of a reading's detail: a quota's account, or an account's
+/// quota.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct DetailRow {
+    pub name: String,
+    /// "55% left", "turned off".
+    pub value: String,
+    /// What's left (or used, as the widget shows it), 0 to 1; None: out
+    /// or not read yet.
+    pub level: Option<f64>,
+    /// Under its name: "resets in 17 h 17".
+    pub note: Option<String>,
+    /// Answering a request now.
+    pub live: bool,
 }
 
 impl Reading {
     fn of(values: Vec<f64>, names: Vec<String>, unit: Unit) -> Reading {
-        Reading { values, names, unit, note: None, words: None, detail: Vec::new(), left: None }
+        Reading { values, names, unit, note: None, words: None, detail: Vec::new(), left: None, summary: Vec::new(), rows: Vec::new() }
     }
 
     fn missing(unit: Unit, why: &str) -> Reading {
-        Reading { values: Vec::new(), names: Vec::new(), unit, note: Some(why.to_owned()), words: None, detail: Vec::new(), left: None }
+        Reading { values: Vec::new(), names: Vec::new(), unit, note: Some(why.to_owned()), words: None, detail: Vec::new(), left: None, summary: Vec::new(), rows: Vec::new() }
     }
 
     /// The level a series is drawn at, 0 to 1, against `top` (the
@@ -208,6 +228,12 @@ pub fn describe(measure: &Measure, sources: &Sources) -> String {
     }
 }
 
+/// `s` with its first letter a capital.
+fn capitalised(s: &str) -> String {
+    let mut c = s.trim().chars();
+    c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
+}
+
 /// What a Token Pool widget shows at `now` (seconds since the epoch):
 /// from the meters the pool last wrote (`olo_protocol::pool`). A series
 /// for each quota chosen (each account's in Each, as "Work 5-hour" when
@@ -238,6 +264,17 @@ pub fn pool_reading(m: Option<&PoolMeters>, measure: &Measure, now: i64) -> Read
                 Some(t) => format!("{}: {:.0}% {word}, resets in {}", w.label, shown(left(w)), pool::duration_text(t - now)),
                 None => format!("{}: {:.0}% {word}", w.label, shown(left(w))),
             }))
+            .collect();
+        r.summary = vec![format!("{}{}", a.name, if a.in_flight > 0 { " is answering now" } else { " answered last" })];
+        r.rows = windows
+            .iter()
+            .map(|w| DetailRow {
+                name: w.label.clone(),
+                value: format!("{:.0}% {word}", shown(left(w))),
+                level: Some(shown(left(w)) / 100.0),
+                note: w.resets_at.filter(|t| *t > now).map(|t| format!("resets in {}", pool::duration_text(t - now))),
+                live: false,
+            })
             .collect();
         r.left = Some(least / 100.0);
         return r;
@@ -288,6 +325,33 @@ pub fn pool_reading(m: Option<&PoolMeters>, measure: &Measure, now: i64) -> Read
         if several && let (Some(q), Some(first)) = (q, lines.first_mut()) {
             *first = format!("{q}: {first}");
         }
+        // (The card's: the summary, then each account a row.)
+        let accounts = a.accounts.len();
+        r.summary.extend(lines.iter().take(lines.len().saturating_sub(accounts)).cloned());
+        r.rows.extend(a.accounts.iter().map(|c| {
+            let level = c.left.filter(|_| c.out.is_none()).map(|l| shown(l) / 100.0);
+            DetailRow {
+                name: match q {
+                    Some(q) if several => format!("{} · {q}", c.name),
+                    _ => c.name.clone(),
+                },
+                // (One out until a reset: none left, and why, and when
+                // it's back; one turned off or signed out: why, no bar.)
+                value: match (&c.out, c.left, c.back_at.filter(|t| *t > now)) {
+                    (Some(_), _, Some(_)) => format!("{:.0}% {word}", shown(0.0)),
+                    (Some(why), _, None) => why.clone(),
+                    (None, Some(l), _) => format!("{:.0}% {word}", shown(l)),
+                    (None, None, _) => "not read yet".into(),
+                },
+                level: level.or(c.out.as_ref().and(c.back_at.filter(|t| *t > now)).map(|_| shown(0.0) / 100.0)),
+                note: match (&c.out, c.back_at.filter(|t| *t > now)) {
+                    (Some(why), Some(t)) => Some(format!("{} · back in {}", capitalised(why.split(',').next().unwrap_or(why)), pool::duration_text(t - now))),
+                    (Some(_), None) => None,
+                    (None, _) => c.resets_at.filter(|t| *t > now).map(|t| format!("resets in {}", pool::duration_text(t - now))),
+                },
+                live: c.serving,
+            }
+        }));
         r.detail.extend(lines);
     }
     // Out on every account: when it's back (which quota, of several).

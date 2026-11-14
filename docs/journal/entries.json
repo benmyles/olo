@@ -4120,5 +4120,11 @@
   "title": "Preferences \u25b8 Windows: apps that always float",
   "caption": "The apps floated Always, unchecked to tile them again; the panel in two columns, as one it was taller than a 1280 \u00d7 800 screen.",
   "image": "2026-11-14/130445-preferences-windows-apps-that-always-float.png"
+ },
+ {
+  "time": "2026-11-14T14:18:02",
+  "title": "Deskbar's widget tips are cards",
+  "caption": "Rest the pointer on a Deskbar widget and its tip is now a card (olo_kit::card), not a line of text: what it measures and its value at the top, the last minute as a graph, each core's bars, each series against its colour, and the processes using the most as bars; a Token Pool widget's shows each account or quota with what's left in green to red, when it resets and the one answering now. Ben: 'improve the popovers so that they can have rich widgets/designs inside of them \u2026 visually show the data better'. Light, 1\u00d7; checked at 1.5\u00d7 and 2\u00d7, light and dark.",
+  "image": "2026-11-14/141802-deskbar-s-widget-tips-are-cards.png"
  }
 ]

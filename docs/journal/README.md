@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-14
 
+### Deskbar's widget tips are cards
+
+*14:18* — Rest the pointer on a Deskbar widget and its tip is now a card (olo_kit::card), not a line of text: what it measures and its value at the top, the last minute as a graph, each core's bars, each series against its colour, and the processes using the most as bars; a Token Pool widget's shows each account or quota with what's left in green to red, when it resets and the one answering now. Ben: 'improve the popovers so that they can have rich widgets/designs inside of them … visually show the data better'. Light, 1×; checked at 1.5× and 2×, light and dark.
+
+![Deskbar's widget tips are cards](2026-11-14/141802-deskbar-s-widget-tips-are-cards.png)
+
 ### Preferences ▸ Windows: apps that always float
 
 *13:04* — The apps floated Always, unchecked to tile them again; the panel in two columns, as one it was taller than a 1280 × 800 screen.

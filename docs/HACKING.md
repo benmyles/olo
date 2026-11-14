@@ -1433,6 +1433,30 @@ once that comes), so a tip that grows at the screen's edge stays on it.
 So a tip can be wider or taller than its window: Deskbar's tray,
 Terminal's sudo window's command.
 
+A tip can be a card (`olo_kit::card`), for more than a sentence:
+`tip::hover_card(cx, key, Rc<Card>, anchor, hovered)` and
+`tip::recard(cx, key, card)` are `hover` and `retext` for one (a card
+handed in while its tip waits to show replaces the one it would have
+shown). A `Card` is a raised panel 300 points wide: its title, the
+value it's about at the top right (in a colour of its own if given),
+a caption under them (wrapped at words to two lines), an etched line,
+then its parts: `Part::Drawing { heading, height, paint, text }`
+(the owner paints it, live: a graph that scrolls asks to be drawn
+again as the widget's own does), `Part::Rows { heading, rows }`
+(each `Row` a name and value, `.level(0–1, colour)` a bar under it
+whose end is on a device pixel, `.note()` a dim line under the name,
+`.swatch(colour)` a series' key, `.strong(true)` in bold), and
+`Part::Notes` (dim lines). Its size is known before it shows
+(`Card::size`), so the tip opens at it; agents read it as the tip
+window's tree (named by its title: a Heading with the value, the
+caption, each part's heading, each row as "name: value (note)", a
+drawing's `text`), and `Card::text()` says it all in words. Make one
+as the pointer comes and as what it shows changes, never as a frame
+is drawn. Deskbar's widgets' tips are cards (see Deskbar);
+`crates/kit/examples/card.rs` paints one and shows it as a tip. (Not
+`widgets::dashboard::Card`, a box in a dashboard's grid: a tip's card
+is a window's whole.)
+
 ### Text cut short (`olo_kit::cut`)
 
 Text that doesn't show in full shows whole in the kit's tip (`tip`)
@@ -2888,6 +2912,9 @@ it.
   one showed a moment ago, not after a press; below the anchor, else
   above, slid to stay on screen; in the tooltip colours, wrapping past
   360 points. `tip::on(element, key, text)` gives any element one.
+  `tip::hover_card` / `tip::recard`: the tip a `card::Card` (a title,
+  value and caption, then drawings, rows with bars and notes): see
+  "Tips" above.
 - `dnd`: dragging out to another app or a folder
   (`WindowCx::start_drag`, Wayland's data source with a
   picture surface): `dnd::files(paths, copy, move)` (text/uri-list and
@@ -15293,12 +15320,41 @@ ProcessController put their bars in its tray.
   second, and the tip says them under its reading ("Using the most:",
   CPU as a share of the whole processor as the widget's, GPU as its
   share of that GPU, memory resident, network and disk a second), kept
-  up to date as it shows (`tip::retext`, its reading too). No tip, no
+  up to date as it shows (`tip::recard`, its reading too). No tip, no
   look, and the sampler (its memory of every process) goes as the
   pointer leaves. A look, 827 processes: 10 ms (disk counters only for
   a disk widget's, a second file each), 5 ms more for the sockets, and
   20 ms for who has each, at most every 3 s; the worker's share of a
   core while a tip shows: CPU 0.8%, network 1.2%, none after.
+* **Tips are cards** (Ben, 2026-11-14: "improve the popovers so that
+  they can have rich widgets/designs inside of them and then update
+  the ones for the deskbar widgets so that all their popovers are
+  nicely designed and visually show the data better"): a widget's tip
+  is an `olo_kit::card` (`Shown::card`, `Live::card`): what it
+  measures as its title, its value at the top right, what it is and
+  its span under them ("Each core · over the last minute"); then its
+  last span as a graph 64 points tall (a volume's fullness as a
+  meter), each core's bars now under "Each core now", each series
+  against its colour's swatch (Down and Up, Memory and Swap), what the
+  reading notes ("14.4 GB of 66.8 GB"), and "Using the most" as rows
+  with bars (of the whole processor or GPU; else against the first).
+  A Token Pool widget's: the provider as its title, what's left in
+  green to red, "Token Pool · each account · what holds it back"; all
+  the accounts together, a graph of its span; its summary lines; then
+  each account (the account answering now: each quota) with what's
+  left as a bar in the usage colours, when it resets, the one
+  answering now in bold, one out until a reset at 0% with why and when
+  it's back, one turned off without a bar (`Reading::summary`,
+  `Reading::rows`: `meters::DetailRow`). The card is made as the
+  pointer comes and again with each reading or look at the processes
+  (`BarView::retip`, by the widget's id), never as the bar is drawn;
+  its drawings paint the widget's own `Shown` (`paint_drawing`, in
+  another look), so a graph scrolls as the widget's does. Release, 1×,
+  three bars and nine widgets: idle unchanged (no card is made);
+  while a CPU card shows, its window 13.9 frames a second at 215 µs
+  mean (0.3% of a core), the process 2.3% against 1.8% idle. A
+  widget's label too long for its cell is cut with "…" (its card says
+  it whole).
 * **Backups** carry them with app_server's settings; from another
   computer, a widget measuring a GPU, disk, interface, sensor or volume
   this one hasn't measures its default instead, said

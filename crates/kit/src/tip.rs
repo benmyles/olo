@@ -9,15 +9,27 @@
 //! `on_hover`), and [`pressed`] when it's pressed; [`retext`] changes
 //! what its tip says while it shows (a live value: Deskbar's widgets),
 //! resized and placed again for it.
+//!
+//! A tip can show a [`Card`] instead of words ([`hover_card`],
+//! [`recard`]): a title and its value, a drawing, rows with levels, as
+//! Deskbar's widgets show what they measure. It's sized before it opens
+//! ([`Card::size`]), and agents read it in words ([`Card::text`]).
+//!
+//! A tip the compositor put away (its popup gone) is forgotten the next
+//! time the pointer comes: it would otherwise stand for one still
+//! showing, and the widget's tip never show again until a press.
 
-use std::time::{Duration, Instant};
+use std::{
+    rc::Rc,
+    time::{Duration, Instant},
+};
 
 use olo_interface::{
     Bounds, Cx, Element, FontWeight, IntoElement as _, LocalWindow, ParentElement as _, Pixels, SharedString, Styled as _, TimerId, View, WindowCx, WindowId, WindowKind, WindowSpec, div, px, size,
 };
 use olo_kit_base::metrics as m;
 
-use crate::{style, theme};
+use crate::{card::Card, style, theme};
 
 /// How long the pointer rests before a tip shows.
 const DELAY: Duration = Duration::from_millis(500);
@@ -28,14 +40,50 @@ const MAX_WIDTH: f32 = 360.0;
 const PAD_X: f32 = m::TIGHT + 1.0;
 const PAD_Y: f32 = 2.0;
 
+/// What a tip shows: words, or a card.
+#[derive(Clone)]
+enum Body {
+    Text(SharedString),
+    Card(Rc<Card>),
+}
+
+impl Body {
+    fn is_empty(&self) -> bool {
+        matches!(self, Body::Text(t) if t.is_empty())
+    }
+
+    /// Its tip's size (points).
+    fn size(&self) -> (f32, f32) {
+        match self {
+            Body::Text(t) => tip_size(t),
+            Body::Card(c) => c.size(),
+        }
+    }
+
+    fn same(&self, other: &Body) -> bool {
+        match (self, other) {
+            (Body::Text(a), Body::Text(b)) => a == b,
+            (Body::Card(a), Body::Card(b)) => Rc::ptr_eq(a, b),
+            _ => false,
+        }
+    }
+}
+
 struct TipView {
-    text: SharedString,
+    body: Body,
 }
 
 impl View for TipView {
     type Message = ();
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let text = match &self.body {
+            Body::Text(t) => t.clone(),
+            Body::Card(card) => {
+                let card = card.clone();
+                return olo_interface::canvas(move |g, b| card.paint(g, b)).size_full().into_element();
+            }
+        };
         let p = theme::palette();
         let s = cx.scale_factor();
         div()
@@ -49,7 +97,7 @@ impl View for TipView {
             .font_family(style::UI_FONT)
             .text_size(px(style::PLAIN_SIZE))
             .line_height(olo_interface::relative(style::LINE_HEIGHT))
-            .child(self.text.clone().into_element())
+            .child(text.into_element())
     }
 }
 
@@ -58,7 +106,9 @@ impl View for TipView {
 #[derive(Default)]
 struct Tips {
     shown: Option<(WindowId, SharedString, LocalWindow<TipView>)>,
-    waiting: Option<(WindowId, SharedString, TimerId)>,
+    /// (With what it will say: a reading that comes while it waits
+    /// changes it, `rebody`.)
+    waiting: Option<(WindowId, SharedString, TimerId, Body)>,
     hidden_at: Option<Instant>,
     /// Pressed since the pointer came: no tip until it leaves.
     pressed: Option<(WindowId, SharedString)>,
@@ -91,10 +141,21 @@ pub fn on(element: Element, key: impl Into<SharedString>, text: impl Into<Shared
 /// window, whose tip says `text` and which is at `anchor` (in the
 /// window).
 pub fn hover(cx: &mut WindowCx, key: impl Into<SharedString>, text: impl Into<SharedString>, anchor: Bounds<Pixels>, hovered: bool) {
-    let (key, text, parent) = (key.into(), text.into(), cx.window_id());
+    hover_body(cx, key.into(), Body::Text(text.into()), anchor, hovered);
+}
+
+/// [`hover`], the tip a card: `card` (shared, so it isn't copied as the
+/// widget is drawn again).
+pub fn hover_card(cx: &mut WindowCx, key: impl Into<SharedString>, card: Rc<Card>, anchor: Bounds<Pixels>, hovered: bool) {
+    hover_body(cx, key.into(), Body::Card(card), anchor, hovered);
+}
+
+fn hover_body(cx: &mut WindowCx, key: SharedString, text: Body, anchor: Bounds<Pixels>, hovered: bool) {
+    let parent = cx.window_id();
+    forget_gone(cx);
     if !hovered {
         let tips = tips(cx);
-        let waiting = tips.waiting.take_if(|(w, k, _)| *w == parent && *k == key).map(|(.., timer)| timer);
+        let waiting = tips.waiting.take_if(|(w, k, ..)| *w == parent && *k == key).map(|(_, _, timer, _)| timer);
         if tips.pressed.as_ref().is_some_and(|(w, k)| *w == parent && *k == key) {
             tips.pressed = None;
         }
@@ -117,25 +178,26 @@ pub fn hover(cx: &mut WindowCx, key: impl Into<SharedString>, text: impl Into<Sh
         show(cx, key, text, anchor);
         return;
     }
-    if let Some((.., timer)) = tips(cx).waiting.take() {
+    if let Some((_, _, timer, _)) = tips(cx).waiting.take() {
         cx.looper().cancel(timer);
     }
-    let (k, t) = (key.clone(), text);
+    let k = key.clone();
     let timer = cx.looper().after(DELAY, move |looper| {
-        let waiting = looper.state_mut::<Tips>().and_then(|tips| tips.waiting.take_if(|(w, wk, _)| *w == parent && *wk == k));
-        if waiting.is_some() {
-            olo_interface::with_window_on(looper, parent, |cx| show(cx, k, t, anchor));
+        let waiting = looper.state_mut::<Tips>().and_then(|tips| tips.waiting.take_if(|(w, wk, ..)| *w == parent && *wk == k));
+        if let Some((.., body)) = waiting {
+            olo_interface::with_window_on(looper, parent, |cx| show(cx, k, body, anchor));
         }
     });
-    tips(cx).waiting = Some((parent, key, timer));
+    tips(cx).waiting = Some((parent, key, timer, text));
 }
 
 /// The tip of widget `key` of the window now, without the pause (⌘ held
 /// over cut text, `cut`).
 pub fn show_now(cx: &mut WindowCx, key: impl Into<SharedString>, text: impl Into<SharedString>, anchor: Bounds<Pixels>) {
-    let (key, text, parent) = (key.into(), text.into(), cx.window_id());
+    let (key, text, parent) = (key.into(), Body::Text(text.into()), cx.window_id());
+    forget_gone(cx);
     let tips = tips(cx);
-    let waiting = tips.waiting.take().map(|(.., timer)| timer);
+    let waiting = tips.waiting.take().map(|(_, _, timer, _)| timer);
     tips.pressed = None;
     let showing = tips.shown.as_ref().is_some_and(|(w, k, _)| *w == parent && *k == key);
     if let Some(timer) = waiting {
@@ -153,7 +215,7 @@ pub fn show_now(cx: &mut WindowCx, key: impl Into<SharedString>, text: impl Into
 pub fn pressed(cx: &mut WindowCx, key: impl Into<SharedString>) {
     let parent = cx.window_id();
     let tips = tips(cx);
-    let waiting = tips.waiting.take().map(|(.., timer)| timer);
+    let waiting = tips.waiting.take().map(|(_, _, timer, _)| timer);
     tips.pressed = Some((parent, key.into()));
     if let Some(timer) = waiting {
         cx.looper().cancel(timer);
@@ -162,23 +224,55 @@ pub fn pressed(cx: &mut WindowCx, key: impl Into<SharedString>) {
 }
 
 /// The tip of widget `key` of the window says `text` from now: if it's
-/// showing, drawn again, resized and placed again for it (else nothing:
-/// [`hover`] takes the text as it shows).
+/// showing, drawn again, resized and placed again for it; if it's
+/// waiting to show, it shows that (else nothing: [`hover`] takes the
+/// text as it shows).
 pub fn retext(cx: &mut WindowCx, key: impl Into<SharedString>, text: impl Into<SharedString>) {
-    let (key, text, parent) = (key.into(), text.into(), cx.window_id());
-    let Some(tip) = tips(cx).shown.as_ref().filter(|(w, k, _)| *w == parent && *k == key).map(|(_, _, t)| *t) else { return };
+    rebody(cx, key.into(), Body::Text(text.into()));
+}
+
+/// [`retext`] for a card's tip: it shows `card` from now (resized for
+/// it, if it grew or shrank).
+pub fn recard(cx: &mut WindowCx, key: impl Into<SharedString>, card: Rc<Card>) {
+    rebody(cx, key.into(), Body::Card(card));
+}
+
+fn rebody(cx: &mut WindowCx, key: SharedString, text: Body) {
+    let parent = cx.window_id();
+    forget_gone(cx);
+    let tips_now = tips(cx);
+    if let Some((.., body)) = tips_now.waiting.as_mut().filter(|(w, k, ..)| *w == parent && *k == key) {
+        *body = text;
+        return;
+    }
+    let Some(tip) = tips_now.shown.as_ref().filter(|(w, k, _)| *w == parent && *k == key).map(|(_, _, t)| *t) else { return };
     if text.is_empty() {
         hide(cx);
         return;
     }
-    let (w, h) = tip_size(&text);
+    let (w, h) = text.size();
     tip.update(cx, |v, cx| {
-        if v.text != text {
-            v.text = text;
-            cx.resize_window(size(px(w), px(h)));
+        if !v.body.same(&text) {
+            let was = v.body.size();
+            v.body = text;
+            if was != (w, h) {
+                cx.resize_window(size(px(w), px(h)));
+            }
             cx.invalidate();
         }
     });
+}
+
+/// The tip it shows, if its popup has gone (put away by the compositor,
+/// or closed some other way): forgotten.
+fn forget_gone(cx: &mut WindowCx) {
+    let Some(tip) = tips(cx).shown.as_ref().map(|(_, _, tip)| *tip) else { return };
+    let gone = !tip.is_open(cx);
+    if gone {
+        let tips = tips(cx);
+        tips.shown = None;
+        tips.hidden_at = Some(Instant::now());
+    }
 }
 
 /// Puts the tip showing away.
@@ -190,14 +284,19 @@ pub fn hide(cx: &mut WindowCx) {
     }
 }
 
-fn show(cx: &mut WindowCx, key: SharedString, text: SharedString, anchor: Bounds<Pixels>) {
+fn show(cx: &mut WindowCx, key: SharedString, text: Body, anchor: Bounds<Pixels>) {
     let parent = cx.window_id();
     if tips(cx).pressed.as_ref().is_some_and(|(w, k)| *w == parent && *k == key) {
         return;
     }
-    let (w, h) = tip_size(&text);
-    let spec = WindowSpec { kind: WindowKind::Tip { parent, anchor }, focus: false, ..WindowSpec::new("", w, h) };
-    if let Some(tip) = cx.open_window_here(spec, move |_| TipView { text }) {
+    let (w, h) = text.size();
+    // (Named for agents: a card by its title.)
+    let title = match &text {
+        Body::Card(card) => card.title.to_string(),
+        Body::Text(_) => String::new(),
+    };
+    let spec = WindowSpec { kind: WindowKind::Tip { parent, anchor }, focus: false, ..WindowSpec::new(&title, w, h) };
+    if let Some(tip) = cx.open_window_here(spec, move |_| TipView { body: text }) {
         tips(cx).shown = Some((parent, key, tip));
     }
 }

@@ -1412,7 +1412,17 @@ something nobody here has is in "Blocked", with what it waits for.
   drawn on device pixels at 1×, 1.5× and 2× (as the kit snaps), in
   Classic and Platinum, light and dark, along the top and down the
   side; then, once Ben chooses, the kit's `TabStrip` (and `TabView`)
-  in that look for Terminal and every app with tabs.
+  in that look for Terminal and every app with tabs. Ben chose (round
+  two of the page, 2026-11-14): "ok let's go with the folder tabs ->
+  labels variant" (F1, Labels: folder tabs, a group named by a small
+  label of its colour, no coloured bands). And: "can you make it so
+  that the color palette for tab groups is also customized for the
+  theme, and it should be part of the theme so that it returns a set
+  of theme-appropriate colors to be used for tab groups and then any
+  app with tab groups should use this theme based palette for the tab
+  group color choices": the theme gives the tab groups' colours (each
+  theme, light and dark), and every app with tab groups chooses from
+  them.
 - **Two themes, Classic and Platinum, made exquisite** (Ben,
   2026-11-14: "let's simplify a bit so we just have 2 themes for now:
   Classic and Platinum (with light/dark variations). then, let's have
@@ -1479,13 +1489,6 @@ something nobody here has is in "Blocked", with what it waits for.
   settings for widgets let me provide a custom name for the widget if
   i want to override/customize the name"): Preferences ▸ Deskbar ▸
   Widgets, a name field; Deskbar shows it.
-- **Deskbar's popovers show without Deskbar active, and are rich**
-  (Ben, 2026-11-14: "the popover only seems to open up if the deskbar
-  is selected … popovers should show without the window needing to be
-  selected. and also improve the popovers so that they can have rich
-  widgets/designs inside of them and then update the ones for the
-  deskbar widgets so that all their popovers are nicely designed and
-  visually show the data better").
 - **The keyring's password asked once at login, not twice** (Ben,
   2026-11-14: "when i first login after a restart i'm being asked for
   my keyring password to unlock it twice. it should only need it once
@@ -1495,8 +1498,87 @@ something nobody here has is in "Blocked", with what it waits for.
   suggests olo apps/shortcuts, then ctrl changes to files then ctrl
   again changes to showing other apps (e.g. gnome apps and so on) and
   ctrl again continues to cycle through the 3").
+- **Passwords makes and manages vaults** (Ben, 2026-11-14: "olo
+  passwords should support creating/managing new vaults"): a new
+  vault, and renaming, describing and deleting one, from Passwords
+  itself.
+- **Weather: a native app, every detail, with an assistant** (Ben,
+  2026-11-14: "create an olo weather native app that has configurable
+  data providers and comes with for now tomorrow.io as the provider.
+  have the app ask for an api key and store it in passwords, and also
+  give the user the option of providing a secret ref if they already
+  have the key stored in passwords that it will use. and, i added a key
+  for you in op://Personal/olo-env/wu9us5wz8znbi3jqpyu4yl21em/TOMORROW_API_KEY
+  that you can use for dev/testing. the weather app needs to be
+  extremely detailed, showing the data from every core data layer
+  provided by tomorrow.io
+  https://docs.tomorrow.io/reference/data-layers-core. it needs to
+  support saving locations, showing current weather and rest of the
+  day weather as well as next 3 days and next 7 days. all of the
+  details are really important to include because i will use this not
+  just for personal needs like knowing when the rain might stop but
+  also to know when the clouds might be high enough to skydive or when
+  the cloud bases are not too low or when it's likely to be socked in
+  all day and so on. also support an ai integration with this where
+  there's an in-built assistant (model configured in prefs -> ai and
+  using astra xhigh through token pool by default) where i can ask it
+  questions like "when's a good time to run this afternoon?" or "will
+  it be socked in tomorrow?" or "will it be foggy all day?" and the
+  model should get the full set of raw data to answer me effectively.
+  the app needs to be very intuitive and beautifully designed don't
+  just "phone it in"."). A provider trait (tomorrow.io first, in
+  Rust, no SDK shelled out to); the key asked for once and kept in
+  Passwords, or a secret ref to one already there; saved locations;
+  now, the rest of today, the next 3 and 7 days, every core data layer
+  (cloud base and ceiling, cover, visibility, precipitation by kind
+  and its chance, wind and gusts at height, pressure, humidity, dew
+  point, UV, …) drawn so a skydiver can read when the bases lift; an
+  assistant (Preferences ▸ AI's model, Astra at xhigh through Token
+  Pool by default) handed the whole raw forecast; fetched on a worker,
+  cached, agent-readable; HACKING and the Olo Book.
 
+- **OS Updates: Fedora's packages, for power users** (Ben, 2026-11-14:
+  "add a new olo application OS Updates that is a GUI manager for
+  fedora dnf for upgrading to the latest available fedora packages.
+  design it for power users where you can drill into all the relevant
+  details and take all the actions you might want to take either one
+  thing at a time or all at once. also have it support adding/managing
+  3rd party repos everything else that makes sense. make it intuitive,
+  polished and look great."). Native, not dnf run as a program: DNF5's
+  daemon spoken to over D-Bus (`dnf5daemon-server`: its Base, Repo,
+  Rpm and Goal interfaces), polkit for what needs root; the updates
+  available, each package's versions, changelog, advisories (security,
+  bugfix, enhancement; CVEs), size and what it pulls in, chosen one by
+  one or all (the Olo Doctor pattern for acting on all, some or one);
+  a transaction shown before it runs, run on a worker with live
+  progress, cancellable; history and undo; repositories listed,
+  enabled, disabled, added (a .repo URL, COPR, RPM Fusion), their GPG
+  keys; system upgrades to the next Fedora release; agent-readable and
+  drivable; HACKING and the Olo Book.
 ## Done, waiting for Ben to try or confirm
+
+- **Deskbar's popovers show without Deskbar active, and are rich**
+  (Ben, 2026-11-14: "the popover only seems to open up if the deskbar
+  is selected … popovers should show without the window needing to be
+  selected. and also improve the popovers so that they can have rich
+  widgets/designs inside of them and then update the ones for the
+  deskbar widgets so that all their popovers are nicely designed and
+  visually show the data better").
+  Done (2026-11-14): tips can be cards (`olo_kit::card`:
+  `tip::hover_card`, `tip::recard`; a raised panel with a title, value
+  and caption, drawings, rows with bars and notes, read by agents as
+  the tip's tree), and every Deskbar widget's tip is one: its graph of
+  the span, each core's bars, each series against its colour, the
+  processes using most as bars; a Token Pool widget's, each account or
+  quota with what's left in green to red, when it resets, the one
+  answering in bold. Light and dark, 1×, 1.5×, 2×, reviewed clean. The
+  tip showing only while Deskbar was active didn't happen headless in
+  any order tried (a window clicked, Deskbar's menu, Activity Monitor
+  opened from a widget, three displays); a tip popup app_server put
+  away is now forgotten (`forget_gone`), which would have kept one
+  widget's tip from showing again. Ben: after upgrading, rest the
+  pointer on a widget with another window active; if no card comes,
+  say which display and what was active.
 
 (Audited again 2026-11-08, all 51: each is done, and what's left in
 each is Ben's alone: his accounts (Google, GitHub, 1Password), his
