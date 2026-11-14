@@ -167,6 +167,8 @@ struct TabKey {
     phys: (i32, i32),
     generation: u64,
     target: bool,
+    /// Closed along its bottom too: rolled up, with no frame under it.
+    closed: bool,
 }
 
 pub const DOUBLE_CLICK: Duration = Duration::from_millis(400);
@@ -541,7 +543,8 @@ impl Decoration {
 
         // Tab: rendered to a pixmap at the exact device size it covers.
         let phys = (tx(tab.x + tab.width) - tx(tab.x), frame_top);
-        let key = TabKey { title: cut(title).into_owned(), focused: self.focused, hover: self.hover, pressed: self.pressed, width: tab.width, phys, generation, target: self.target };
+        let key =
+            TabKey { title: cut(title).into_owned(), focused: self.focused, hover: self.hover, pressed: self.pressed, width: tab.width, phys, generation, target: self.target, closed: self.rolled };
         warm_tabs(renderer, phys.1);
         // A look drawn before, or done by the worker, is shown at once; a
         // new one is asked of the worker (the first is drawn here: there
@@ -716,14 +719,22 @@ fn draw_tab(palette: &Palette, key: &TabKey, tab: &TabLayout, s: f64) -> Pixmap 
     let (base, outline, line) = if key.target { (mix(base, nav, 0.18), nav, hair + bevel) } else { (base, outline, hair) };
 
     fill(&mut pixmap, 0, 0, w, h, base);
-    // Outline on three sides; the frame's top line closes the bottom.
+    // Outline on three sides; the frame's top line closes the bottom, or
+    // rolled up, with no frame under it, the tab's own (Ben, 2026-11-13:
+    // "just the tab itself but it just needs a bottom border").
+    let foot = if key.closed { line } else { 0 };
     fill(&mut pixmap, 0, 0, w, line, outline);
     fill(&mut pixmap, 0, 0, line, h, outline);
     fill(&mut pixmap, w - line, 0, line, h, outline);
-    // Bevel, inside it.
+    fill(&mut pixmap, 0, h - foot, w, foot, outline);
+    // Bevel, inside it: light along the top and left, shadow along the
+    // right (and the bottom, closed), as a raised box's.
     fill(&mut pixmap, line, line, w - 2 * line, bevel, light);
-    fill(&mut pixmap, line, line, bevel, h - line, light);
-    fill(&mut pixmap, w - line - bevel, line, bevel, h - line, shadow);
+    fill(&mut pixmap, line, line, bevel, h - line - foot, light);
+    fill(&mut pixmap, w - line - bevel, line, bevel, h - line - foot, shadow);
+    if key.closed {
+        fill(&mut pixmap, line + bevel, h - foot - bevel, w - 2 * line - bevel, bevel, shadow);
+    }
 
     // The boxes: the close box from the left edge, the zoom box from the
     // right, the same size and as far in.
@@ -795,6 +806,37 @@ mod title_tests {
         set_title_chars(100);
     }
 
+    /// Rolled up, a tab is closed along its bottom by its own outline and
+    /// shadow (Ben, 2026-11-13: "just the tab itself but it just needs a
+    /// bottom border"); on its frame, the frame's top line closes it.
+    #[test]
+    fn a_rolled_up_tab_is_closed_along_its_bottom() {
+        let palette = theme::palette();
+        for s in [1.0, 1.25, 1.5, 1.75, 2.0] {
+            let mut d = Decoration::default();
+            let tab = d.tab_layout("Network", (800, 600).into());
+            let phys = ((tab.width as f64 * s).round() as i32, (TAB_HEIGHT as f64 * s).round() as i32);
+            let key = |closed| TabKey { title: "Network".into(), focused: true, hover: Part::None, pressed: Part::None, width: tab.width, phys, generation: 0, target: false, closed };
+            let (hair, bevel) = lines(s);
+            let at = |p: &Pixmap, x: i32, y: i32| {
+                let c = p.pixel(x as u32, y as u32).expect("in the tab");
+                [c.red(), c.green(), c.blue(), c.alpha()]
+            };
+            let (closed, open) = (draw_tab(&palette, &key(true), &tab, s), draw_tab(&palette, &key(false), &tab, s));
+            let mid = phys.0 / 2;
+            // The bottom rows: outline, and the shadow above it, all along.
+            for y in phys.1 - hair..phys.1 {
+                assert_eq!(at(&closed, mid, y), palette.frame_focused[0], "outline at {s}×, row {y}");
+                assert_eq!(at(&closed, hair + bevel, y), palette.frame_focused[0], "outline's left end at {s}×");
+            }
+            for y in phys.1 - hair - bevel..phys.1 - hair {
+                assert_eq!(at(&closed, mid, y), palette.tab_focused_shadow, "shadow at {s}×, row {y}");
+            }
+            // Open, its bottom is the tab's own colour, the frame's line under it.
+            assert_eq!(at(&open, mid, phys.1 - 1), palette.tab_focused, "open at {s}×");
+        }
+    }
+
     /// How long tabs take to draw, cold and warm (`cargo test --release
     /// -p app_server tab_timing -- --ignored --nocapture`).
     #[test]
@@ -819,6 +861,7 @@ mod title_tests {
                     phys: ((tab.width as f64 * s) as i32, (TAB_HEIGHT as f64 * s) as i32),
                     generation: 0,
                     target: false,
+                    closed: false,
                 };
                 let t = std::time::Instant::now();
                 let _ = draw_tab(&palette, &key, &tab, s);

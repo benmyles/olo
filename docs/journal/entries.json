@@ -4054,5 +4054,11 @@
   "title": "Every app's first menu: About, Keyboard Shortcuts, its settings, Close and Quit",
   "caption": "Every Olo app's bar now starts the same way, as BeOS's did: About the app, Keyboard Shortcuts (the palette's sheet, the app's keys first), then the Preferences panels that go with it (\"Performance Settings\u2026\"), and ends with Close and Quit; Edit holds Undo to Find Previous in one order, View the zooms. The kit runs these items itself, and every window's review fails a bar that strays (olo_kit::app_menu).",
   "image": "2026-11-13/221156-every-app-s-first-menu-about-keyboard-shortcuts-.png"
+ },
+ {
+  "time": "2026-11-13T22:44:00",
+  "title": "A rolled-up window is its tab, closed along its bottom",
+  "caption": "Rolled up, a window shows only its tab, and the tab now closes its own bottom with its outline and its bevel's shadow, where before its bottom edge was open (it was drawn to sit on the frame). Here six rolled-up windows fanned out by Tile All; windows wider than their cell no longer put their tabs over the others'.",
+  "image": "2026-11-13/224400-a-rolled-up-window-is-its-tab-closed-along-its-b.png"
  }
 ]

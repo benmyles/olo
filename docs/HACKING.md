@@ -6227,7 +6227,9 @@ tiling command starts afresh; Tile All and Tile App tile each window as a
 rolled-up windows don't get a cell each but share the last one
 (`tile_grid`), each the whole cell with their tabs side by side along its
 top, a row lower when a row is full (`fan_in`), so unrolling one fills
-the cell). A tiled window with no tiled neighbours
+the cell; one whose app's least width is more than the cell's goes as
+far left as it must to stay in the area, its tab kept where the fan put
+it: moved with its frame, it lay over the other tabs). A tiled window with no tiled neighbours
 on that line is being sized away from its tile, and forgets it. Windows
 not tiled by a command are never pushed. Tiles and parts are kept across
 a restart in the layout (`Placement::tile`, `part`). Moving screens in
@@ -6531,7 +6533,13 @@ window it brings forward first and asks again for the next.
 Roll Up (`toggle_rolled`, ⌃⌘M, the tab's menu, the palette, or a
 double-click on the tab, which used to hide the window) leaves just the
 window's tab: `Decoration::rolled` makes the element's bbox the tab, draws
-only the tab, and passes the pointer through everywhere else. It is in
+only the tab, and passes the pointer through everywhere else. The tab is
+closed along its bottom by its own outline and its bevel's shadow
+(`TabKey::closed`; on its frame, the frame's top line closes it): Ben,
+2026-11-13, "rolling up shouldn't keep the extended horizontal top of
+the whole window just the tab itself but it just needs a bottom
+border". A rolled-up group's tabs are each closed, on one shared line
+between them as when open. It is in
 `WindowInfo::rolled` and kept across a reload (`layout::Placement`).
 Agents roll with `{"type":"run_shortcut","id":"roll-up","window":ID}`.
 

@@ -1871,10 +1871,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             .collect();
         for (w, (frame, offset)) in rolled.iter().zip(fan_in(cell, &tabs, olo_theme::deco::TAB_HEIGHT)) {
             let min = self.min_frame(w);
-            let frame = Rectangle::new(frame.loc, Size::from((frame.size.w.max(min.w), frame.size.h.max(min.h))));
+            let size = Size::from((frame.size.w.max(min.w), frame.size.h.max(min.h)));
+            // Wider than the cell (an app's least width): as far left as
+            // it must go to stay in the area, its tab kept where the fan
+            // put it (moved with its frame, it lay over the others' tabs).
+            let x = frame.loc.x.min(area.loc.x + area.size.w - size.w).max(area.loc.x);
+            let frame = Rectangle::new(Point::from((x, frame.loc.y)), size);
             self.set_frame(w, frame, true);
             self.set_cell(w, area, frame);
-            w.decoration().tab_offset = offset;
+            w.decoration().tab_offset = offset + cell.loc.x - x;
         }
     }
 

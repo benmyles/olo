@@ -1148,18 +1148,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **A rolled-up window ends at its tab** (Ben, 2026-11-13, with a
-  screenshot of "Network" rolled up: "when a window is rolled up it
-  looks weird b/c it doesn't have the bottom bar that it should have").
-  Rolled up, only the tab is drawn (app_server's decorator,
-  `shell/deco.rs`, "Rolled up: only the tab shows"), so it reads as a
-  tab cut loose rather than a window folded away: under the tab there
-  should be the window's frame closed off, a bar as wide as the window
-  with its border, bevel and shadow, as the window's top edge is
-  drawn. Measured at 1×, 1.25×, 1.5×, 1.75× and 2×, light, dark and
-  night, active and not, a lone window and one in a group of tabs, and
-  fanned out in a tile (`tiling.rs`, rolled-up windows sharing a cell);
-  what takes the pointer follows what's drawn.
 - **Captive portals: seen, said and opened** (Ben, 2026-11-13: "add
   captive portal recognition in network settings so that when a
   connection requires portal signin the link is available to click in
@@ -1301,6 +1289,19 @@ accessibility tree test on an agent screen (GTK's Text Editor, 30
 nodes). What's left needs Ben: in Blocked, "The ignored tests that
 need Ben".)
 
+- **A rolled-up window's tab closed along its bottom** (Ben,
+  2026-11-13, with a screenshot of "Network" rolled up: "when a window
+  is rolled up it looks weird b/c it doesn't have the bottom bar that it
+  should have", then "rolling up shouldn't keep the extended horizontal
+  top of the whole window just the tab itself but it just needs a bottom
+  border"). Done: rolled up, the tab draws its own bottom border, its
+  outline with its bevel's shadow inside, as its right side has
+  (`TabKey::closed`), nothing past the tab; a rolled-up group's tabs
+  each closed. Checked at 1×, 1.25×, 1.5×, 1.75× and 2×, light and
+  dark, focused and not, a group, and fanned out by Tile All, where the
+  tabs of windows wider than their cell lay over each other's (fixed
+  too: each tab kept where the fan puts it). For Ben: double-click a
+  tab.
 - **Every app's menus the same where they can be, and its settings a
   menu away** (Ben, 2026-11-13: "also in all the olo apps make it so
   that if there is one or more recommended settings apps/panels that
