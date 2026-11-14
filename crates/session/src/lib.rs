@@ -956,6 +956,19 @@ impl Session {
         }
         let Some(w) = &self.upgrades else { return };
         let mut stale = w.stale(&skip, &self.display);
+        // An agent screen's own bus stays as it is until the screen
+        // restarts: it can't become the new version in place, and a new one
+        // cuts off every program on the screen (Chrome and every GTK
+        // program quit when their session bus goes). Restarted 90 s after
+        // the upgrade of 2026-11-14, it took a screen's Chrome with it, and
+        // Olo's portal and notifications there were left on the old bus.
+        stale.retain(|(pid, name)| {
+            let bus = name == "olo-bus";
+            if bus && stage == 0 {
+                log(format!("{name} (pid {pid}) stays the old version until the screen restarts: a new bus would cut off every program on it"));
+            }
+            !bus
+        });
         // A program finishing what it has under way before it becomes the
         // new version (olo_kit_base::restore::mark_waiting: Token Pool
         // streaming an answer) is left to it.
@@ -1225,13 +1238,33 @@ impl Session {
                     continue;
                 }
                 log(format!("{} exited ({}); restarting it", c.argv[0], describe(status)));
+                let bus = Path::new(&c.argv[0]).file_name().is_some_and(|n| n == "olo-bus");
                 if note_crash(c) {
                     c.pid = spawn(&c.argv, &[]).unwrap_or(0);
                 } else {
                     log(format!("{} keeps exiting; leaving it stopped", c.argv[0]));
                     c.pid = 0;
                 }
+                // A new bus: the services on the old one (its portal and
+                // notification centre, which outlive their bus) start again
+                // on it, as `reap` restarts what ends.
+                if bus {
+                    self.restart_bus_services();
+                }
             }
+        }
+    }
+
+    /// An agent screen's bus started again (it ended): the services the
+    /// session runs on it (`own_bus::services`) are asked to end, and
+    /// `reap` starts them again, on the new bus.
+    fn restart_bus_services(&mut self) {
+        let name = |p: &str| Path::new(p).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let services: Vec<String> = own_bus::services("").iter().map(|a| name(&a[0])).collect();
+        for c in self.shell.iter().filter(|c| c.pid > 0 && services.contains(&name(&c.argv[0]))) {
+            log(format!("{} is on the bus that ended; starting it again on the new one", c.argv[0]));
+            // SAFETY: SIGTERM to our own child.
+            unsafe { libc::kill(c.pid, libc::SIGTERM) };
         }
     }
 

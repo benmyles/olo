@@ -754,12 +754,24 @@ const CMD: u32 = 125;
 pub fn parse_chord(text: &str) -> Result<Chord, String> {
     let mut parts: Vec<String> = text.split('+').map(|p| p.trim().to_owned()).collect();
     if let Some(key) = parts.last_mut() {
-        let alias = match key.to_ascii_lowercase().as_str() {
+        // As other tools name keys too: X11's (Page_Down, Prior, Next,
+        // KP_Enter: xdotool's) and the web's (ArrowDown, PageDown), any
+        // case, underscores or not (Page_Down was "unknown" nine times on
+        // one screen).
+        let lower = key.to_ascii_lowercase();
+        let squashed = if lower.len() > 1 { lower.replace('_', "") } else { lower };
+        let alias = match squashed.as_str() {
             "enter" | "return" => Some("Return"),
             "esc" => Some("Escape"),
             "del" => Some("Delete"),
-            "pgup" => Some("PageUp"),
-            "pgdn" | "pgdown" => Some("PageDown"),
+            "pgup" | "pageup" | "prior" => Some("PageUp"),
+            "pgdn" | "pgdown" | "pagedown" | "next" => Some("PageDown"),
+            "arrowup" | "uparrow" => Some("Up"),
+            "arrowdown" | "downarrow" => Some("Down"),
+            "arrowleft" | "leftarrow" => Some("Left"),
+            "arrowright" | "rightarrow" => Some("Right"),
+            "kpenter" => Some("KeypadEnter"),
+            "bksp" => Some("Backspace"),
             "space" | " " => Some("Space"),
             "-" => Some("Minus"),
             "=" => Some("Equal"),
@@ -944,6 +956,19 @@ mod tests {
         assert_eq!(parse_chord("esc").unwrap().key, 1);
         assert_eq!(parse_chord("ctrl+/").unwrap().key, 53);
         assert!(parse_chord("hyper+x").is_err());
+        // Other tools' names: X11's (xdotool's) and the web's.
+        let page_down = parse_chord("PageDown").unwrap().key;
+        for name in ["Page_Down", "page_down", "pgdn", "Next"] {
+            assert_eq!(parse_chord(name).unwrap().key, page_down, "{name}");
+        }
+        let page_up = parse_chord("PageUp").unwrap().key;
+        for name in ["Page_Up", "Prior", "pgup"] {
+            assert_eq!(parse_chord(name).unwrap().key, page_up, "{name}");
+        }
+        assert_eq!(parse_chord("ArrowDown").unwrap().key, parse_chord("Down").unwrap().key);
+        assert_eq!(parse_chord("shift+Arrow_Left").unwrap().key, parse_chord("Left").unwrap().key);
+        assert_eq!(parse_chord("KP_Enter").unwrap().key, parse_chord("KeypadEnter").unwrap().key);
+        assert_eq!(parse_chord("ctrl+-").unwrap().key, parse_chord("Minus").unwrap().key);
         let events = chord(&parse_chord("Cmd+W").unwrap());
         assert_eq!(events.first(), Some(&SyntheticEvent::Key { key: CMD, pressed: true }));
         assert_eq!(events.last(), Some(&SyntheticEvent::Key { key: CMD, pressed: false }));

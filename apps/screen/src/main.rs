@@ -101,7 +101,7 @@ usage: olo-screen                         open Agent Screens (watch, take contro
        olo-screen resize NAME WxH [--window ID]    its content's size
        olo-screen place NAME X Y [WxH] [--window ID]
                                              its frame's top left (and content's size)
-       olo-screen click NAME X Y [--right|--middle] [--double]
+       olo-screen click NAME X Y [--right|--middle] [--double]   (or X,Y, or --at X,Y)
        olo-screen click NAME FIND… [--right|--middle] [--double]
                                              the middle of what FIND matches (below)
        olo-screen set NAME FIND… TEXT     click into a field, replace its text
@@ -116,7 +116,7 @@ usage: olo-screen                         open Agent Screens (watch, take contro
        olo-screen down NAME X Y [--right] | up NAME [--right]
        olo-screen drag NAME X1 Y1 X2 Y2 [--steps N] [--duration MS]
                                              press, move there in N steps (20) over MS (300), let go
-       olo-screen scroll NAME DX DY [--no-end]
+       olo-screen scroll NAME DX DY [--no-end]       (or --dx N --dy N; --at X,Y for where)
                                              by pixels, as on a touchpad (positive: down/right);
                                              the fingers lift after, unless --no-end
        olo-screen wheel NAME NOTCHES [H-NOTCHES]
@@ -613,18 +613,24 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             let s = screen()?;
             let (x, y, matched) = match find::Query::from_args(rest)? {
                 Some(q) => {
-                    let f = find::find(&s, &q)?;
+                    let f = into_view(&s, &q, find::find(&s, &q)?)?;
                     (f.center.0 as f64, f.center.1 as f64, Some(f))
                 }
-                None => (number(rest.get(1), "x")?, number(rest.get(2), "y")?, None),
+                None => {
+                    let (x, y) = point(rest, "click")?;
+                    (x, y, None)
+                }
             };
             s.input(screens::click(x, y, button(rest), if has(rest, "--double") { 2 } else { 1 }))?;
             print_json(&json!({ "clicked": [x, y], "matched": matched, "after": find::after(&s) }));
             Ok(())
         })(),
-        "move" => (|| input(vec![SyntheticEvent::Move { x: number(rest.get(1), "x")?, y: number(rest.get(2), "y")? }]))(),
+        "move" => (|| {
+            let (x, y) = point(rest, "move")?;
+            input(vec![SyntheticEvent::Move { x, y }])
+        })(),
         "down" => (|| {
-            let (x, y) = (number(rest.get(1), "x")?, number(rest.get(2), "y")?);
+            let (x, y) = point(rest, "down")?;
             input(vec![SyntheticEvent::Move { x, y }, SyntheticEvent::Button { button: button(rest), pressed: true }])
         })(),
         "up" => input(vec![SyntheticEvent::Button { button: button(rest), pressed: false }]),
@@ -635,8 +641,25 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             screen()?.input_paced(screens::drag((n(1, "x1")?, n(2, "y1")?), (n(3, "x2")?, n(4, "y2")?), steps, Duration::from_millis(ms)))
         })(),
         "scroll" => (|| {
-            let (dx, dy) = (number(rest.get(1), "dx")?, number(rest.get(2), "dy")?);
-            screen()?.input_paced(screens::scroll(dx, dy, !has(rest, "--no-end")))
+            // DX DY, or --dx/--dy (either alone), and --at X,Y for where.
+            let by = |flag: &str| option(rest, flag).map(|v| v.parse::<f64>().map_err(|_| format!("{flag} is a number of pixels"))).transpose();
+            let (dx, dy) = match (by("--dx")?, by("--dy")?) {
+                (None, None) => {
+                    let p = positionals(rest);
+                    let n = |i: usize| p.get(i).and_then(|a| a.parse::<f64>().ok());
+                    match (n(1), n(2)) {
+                        (Some(dx), Some(dy)) => (dx, dy),
+                        _ => return Err("scroll takes DX DY in pixels (positive: right and down), or --dx N and --dy N; --at X,Y for where".into()),
+                    }
+                }
+                (dx, dy) => (dx.unwrap_or(0.0), dy.unwrap_or(0.0)),
+            };
+            let s = screen()?;
+            if let Some(a) = option(rest, "--at") {
+                let (x, y) = pair(a).ok_or("--at is X,Y")?;
+                s.input(vec![SyntheticEvent::Move { x, y }])?;
+            }
+            s.input_paced(screens::scroll(dx, dy, !has(rest, "--no-end")))
         })(),
         "wheel" => (|| {
             let dy = number(rest.get(1), "notches")? as i32;
@@ -666,7 +689,7 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             let s = screen()?;
             let q = find::Query::from_args(rest)?.ok_or("set needs the field: --name, --role or --match")?;
             let text = positionals(rest).get(1).cloned().ok_or("set needs the text to put in the field")?;
-            let f = find::find(&s, &q)?;
+            let f = into_view(&s, &q, find::find(&s, &q)?)?;
             // Into the field (once more if the first click went astray:
             // the keys below would edit whatever has the focus).
             let into = |s: &screens::Screen| find::after(s).focused.is_some_and(|now| now.window == f.window && now.x == f.x && now.y == f.y);
@@ -799,8 +822,25 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
 
 /// The arguments that aren't flags (nor flags' values).
 fn positionals(args: &[String]) -> Vec<String> {
-    const VALUED: [&str; 15] =
-        ["--at", "--name", "--role", "--match", "--text", "--index", "--window", "--timeout", "--steps", "--duration", "--crop", "--name-contains", "--contains", "--depth", "--max-len"];
+    const VALUED: [&str; 17] = [
+        "--at",
+        "--name",
+        "--role",
+        "--match",
+        "--text",
+        "--index",
+        "--window",
+        "--timeout",
+        "--steps",
+        "--duration",
+        "--crop",
+        "--name-contains",
+        "--contains",
+        "--depth",
+        "--max-len",
+        "--dx",
+        "--dy",
+    ];
     let mut out = Vec::new();
     let mut skip = false;
     for a in args {
@@ -910,10 +950,12 @@ fn scroll_to(s: &screens::Screen, q: &find::Query, at: Option<(f64, f64)>) -> Re
         Ok((find::matches(&trees, q).into_iter().nth(q.index), outline(&trees, &Filter::default())))
     };
     let whole = |f: &find::Found| f.role != "Row" || f.height >= 12.0;
-    if let (Some(f), _) = shown(s)?
-        && whole(&f)
+    let first = shown(s)?.0;
+    if let Some(f) = &first
+        && whole(f)
+        && in_view(s, f)?
     {
-        return Ok(f);
+        return Ok(f.clone());
     }
     let (x, y) = match at {
         Some(p) => p,
@@ -924,8 +966,15 @@ fn scroll_to(s: &screens::Screen, q: &find::Query, at: Option<(f64, f64)>) -> Re
         }
     };
     s.input(vec![SyntheticEvent::Move { x, y }])?;
-    // Up to the top, then down, until it shows or the list stops moving.
-    for (notches, rounds) in [(-10, 100), (3, 1000)] {
+    // Straight to it, if it's there out of sight (a web page's tree has
+    // the whole page); else up to the top, then down; until it shows or
+    // the list stops moving.
+    let plan: &[(i32, usize)] = match &first {
+        Some(f) if f.center.1 < view_of(s, f)?.1 => &[(-3, 1000)],
+        Some(_) => &[(3, 1000)],
+        None => &[(-10, 100), (3, 1000)],
+    };
+    for &(notches, rounds) in plan {
         let mut last = String::new();
         for _ in 0..rounds {
             s.input_paced(screens::wheel(0, notches))?;
@@ -933,8 +982,9 @@ fn scroll_to(s: &screens::Screen, q: &find::Query, at: Option<(f64, f64)>) -> Re
             let (found, now) = shown(s)?;
             if let Some(f) = found
                 && whole(&f)
+                && in_view(s, &f)?
             {
-                return Ok(f);
+                return settled(s, &shown, f);
             }
             if now == last {
                 break;
@@ -943,6 +993,67 @@ fn scroll_to(s: &screens::Screen, q: &find::Query, at: Option<(f64, f64)>) -> Re
         }
     }
     Err(format!("scrolled the whole list; nothing matches {}", q.describe()))
+}
+
+/// `f` once it stops moving: a browser scrolls smoothly, so what the
+/// wheel brought into view goes on gliding for a moment, and a click at
+/// where it was read mid-glide missed it (`set` on a web form). Read again
+/// every 50 ms until two reads agree, a second at most.
+fn settled(s: &screens::Screen, shown: &dyn Fn(&screens::Screen) -> Result<(Option<find::Found>, String), String>, mut f: find::Found) -> Result<find::Found, String> {
+    for _ in 0..20 {
+        std::thread::sleep(Duration::from_millis(50));
+        match shown(s)?.0 {
+            Some(now) if (now.x, now.y, now.width, now.height) == (f.x, f.y, f.width, f.height) => return Ok(now),
+            Some(now) => f = now,
+            None => break,
+        }
+    }
+    Ok(f)
+}
+
+/// Where a click lands on what shows: the part of the screen `f`'s window
+/// shows its content in (x, y, right, bottom), else the whole screen.
+fn view_of(s: &screens::Screen, f: &find::Found) -> Result<(f32, f32, f32, f32), String> {
+    let screen = (0.0, 0.0, s.width as f32, s.height as f32);
+    let content = s.windows()?.into_iter().find(|w| w.id == f.window).and_then(|w| w.content);
+    Ok(content.map_or(screen, |c| (c.x.max(0) as f32, c.y.max(0) as f32, ((c.x + c.width) as f32).min(screen.2), ((c.y + c.height) as f32).min(screen.3))))
+}
+
+/// Whether a click at `f`'s middle lands on it: within what its window
+/// shows, on the screen. (A web page's tree has the whole page: a field
+/// below the fold was at y 1045 of a 900-point screen, clicked where
+/// nothing is, and `set` failed seven times on 2026-11-13.)
+fn in_view(s: &screens::Screen, f: &find::Found) -> Result<bool, String> {
+    let (x, y) = f.center;
+    let (left, top, right, bottom) = view_of(s, f)?;
+    Ok(x >= left && x < right && y >= top && y < bottom)
+}
+
+/// `f`, scrolled into view first if it's out of sight (`scroll_to`).
+fn into_view(s: &screens::Screen, q: &find::Query, f: find::Found) -> Result<find::Found, String> {
+    if in_view(s, &f)? { Ok(f) } else { scroll_to(s, q, None) }
+}
+
+/// "X,Y" as two numbers.
+fn pair(a: &str) -> Option<(f64, f64)> {
+    let (x, y) = a.split_once(',')?;
+    Some((x.trim().parse().ok()?, y.trim().parse().ok()?))
+}
+
+/// Where, as agents write it: `X Y`, `X,Y` or `--at X,Y` (the screen's
+/// logical points).
+fn point(rest: &[String], what: &str) -> Result<(f64, f64), String> {
+    if let Some(a) = option(rest, "--at") {
+        return pair(a).ok_or_else(|| "--at is X,Y".to_owned());
+    }
+    let p = positionals(rest);
+    if let Some(xy) = p.get(1).and_then(|a| pair(a)) {
+        return Ok(xy);
+    }
+    match (p.get(1).and_then(|a| a.parse().ok()), p.get(2).and_then(|a| a.parse().ok())) {
+        (Some(x), Some(y)) => Ok((x, y)),
+        _ => Err(format!("{what} takes where: X Y, X,Y or --at X,Y (the screen's logical points){}", if what == "click" { ", or what to click: --name, --role, --match or --text" } else { "" })),
+    }
 }
 
 fn window_arg(args: &[String]) -> Result<Option<u64>, String> {
@@ -1199,4 +1310,27 @@ fn video_path(name: &str) -> std::path::PathBuf {
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
     unsafe { libc::localtime_r(&t, &mut tm) };
     dir.join(format!("Agent Screen {name} {:04}-{:02}-{:02} at {:02}.{:02}.{:02}.mp4", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(a: &[&str]) -> Vec<String> {
+        a.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    /// Where, as agents write it: `X Y`, `X,Y`, `--at X,Y`; anything else
+    /// says how (it was "x must be a number" ten times on one screen).
+    #[test]
+    fn points_as_agents_write_them() {
+        assert_eq!(point(&args(&["s", "600", "500"]), "click"), Ok((600.0, 500.0)));
+        assert_eq!(point(&args(&["s", "600,500"]), "click"), Ok((600.0, 500.0)));
+        assert_eq!(point(&args(&["s", "--at", "600, 500", "--double"]), "click"), Ok((600.0, 500.0)));
+        assert_eq!(point(&args(&["s", "--right", "-5", "7.5"]), "click"), Ok((-5.0, 7.5)));
+        assert!(point(&args(&["s", "--at", "600"]), "click").unwrap_err().contains("X,Y"));
+        assert!(point(&args(&["s"]), "move").unwrap_err().contains("--at X,Y"));
+        // (--dx and --dy take values: not where.)
+        assert_eq!(positionals(&args(&["s", "--dx", "3", "--dy", "900"])), args(&["s"]));
+    }
 }

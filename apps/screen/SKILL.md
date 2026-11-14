@@ -248,17 +248,22 @@ olo-screen wait agent --idle                          # until the windows stop c
 olo-screen scroll-to agent --match "Row:12:04:31"     # scroll the list until it shows
 ```
 
+`click` and `set` scroll what they find into view first when it's out
+of sight (a web page's tree has the whole page: a field below the fold
+is listed at its place on the page, past the screen's edge).
+
 By position:
 
 ```sh
-olo-screen click agent 320 200 [--right|--middle] [--double]
+olo-screen click agent 320 200 [--right|--middle] [--double]   # or 320,200, or --at 320,200
 olo-screen move agent 320 200
 olo-screen drag agent 100 100 400 300 [--steps 20] [--duration 300]
 olo-screen down agent 100 100 ; olo-screen up agent
-olo-screen scroll agent 0 120       # pixels, as a touchpad (positive: down/right)
+olo-screen scroll agent 0 120       # pixels, as a touchpad (positive: down/right); or --dy 120 [--dx N] [--at X,Y]
 olo-screen wheel agent 3            # mouse-wheel notches, 48 px each in Olo's lists
 olo-screen type agent "Hello, world"
-olo-screen key agent Cmd+S          # also Ctrl+Shift+T, Enter, Esc, Tab, Down, F5, …
+olo-screen key agent Cmd+S          # also Ctrl+Shift+T, Enter, Esc, Tab, Down, F5, PageDown, …
+                                    # (X11's and the web's names too: Page_Down, Next, ArrowDown, KP_Enter)
 olo-screen key agent Cmd+A Delete   # several chords in turn
 ```
 

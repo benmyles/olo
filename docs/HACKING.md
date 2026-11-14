@@ -13898,8 +13898,19 @@ counting; `--role`; `--match ROLE:TEXT`; `--text`; `--index`;
 `--window`) for `click`, `set` (click in, checking it took the focus,
 then ⌘A, Delete and the text), `select` (open the dropdown, wait for the
 `MenuItem`, click it), `wait` (until it shows or `--gone`; `--idle`: two
-outlines a quarter-second apart the same, and no window settling) and `scroll-to` (wheel to the
-top, then down, until it shows whole); actions print JSON with `after`,
+outlines a quarter-second apart the same, and no window settling) and `scroll-to` (wheel until it
+shows whole and in view: straight toward it when the tree already has
+it out of sight, a web page's below the fold; else to the top, then
+down; then read again until it stops moving, as a browser's smooth
+scroll glides on). `click` and `set` scroll what they find into view
+first (`into_view`: its middle within its window's content and the
+screen): a web form's field listed at y 1045 of a 900-point screen was
+clicked where nothing is, and `set` failed 14 times on one screen. A
+point is `X Y`, `X,Y` or `--at X,Y`, `scroll` takes `--dx`/`--dy` and
+`--at`, and keys go by X11's and the web's names too (`Page_Down`,
+`Next`, `ArrowDown`, `KP_Enter`): what agents write, which failed
+"x must be a number" and "unknown key" 21 times on that screen. Actions
+print JSON with `after`,
 the focused window and element. Popups are in the trees: the kit paints
 its menus (no AccessKit), so `Kit::popup_nodes` adds each open popup's
 `menu::popup_nodes` (a `Menu`, a `MenuItem` per item in view, laid out by
@@ -14088,7 +14099,16 @@ olo-screens/NAME.bus`, and the session starts `olo-bus` there before
 anything else (waiting for its "ready"), points its environment at it
 (`DBUS_SESSION_BUS_ADDRESS`), and looks after it with the shell (started
 again if it ends; ended with the session, and with `--with-parent`
-however the session ends). The listing has it (`Screen::bus`), so `run`
+however the session ends). A bus that ends takes every connection with
+it, and GLib programs (Chrome, GTK's) quit with their session bus: so an
+upgrade leaves it the old version until the screen restarts (`check_stale`;
+restarted 90 s after the upgrade of 2026-11-14, it took a screen's
+Chrome and its pages with it, and left Olo's portal and notification
+centre there on the bus that had gone), and if it ends anyway, the
+services the session runs on it are started again on the new one
+(`restart_bus_services`: tried by ending a screen's bus, its portal,
+notification centre and xdg-desktop-portal back on the new bus within
+a second, every name answering). The listing has it (`Screen::bus`), so `run`
 and moves give programs the screen's bus (`moving::bus_env`), and a
 move back gives the person's back. A screen from before has none and
 stays on the person's.
