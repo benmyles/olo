@@ -132,12 +132,39 @@ const DESKTOPS: &[&str] = &["gnome-shell", "mutter", "kwin_wayland"];
 /// the proxies (the session's stale check leaves them too).
 const NEVER_STOPPED: &[&str] = &["olo-session", "olo-app_server", "olo-app-server", "olo-wlproxy", "olo-doctor"];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// What kind a finding is, as the window tags it and lists it (most
+/// pressing first): Ben, 2026-11-13, "each item has a type showing
+/// whether it's e.g. a suggestion or something critical".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Severity {
+    /// Something you rely on doesn't work or is at risk now (your
+    /// backups, the computer's sound).
+    Critical,
     /// Gets in Olo's way now.
     Problem,
-    /// Better changed.
+    /// Better changed ("Recommended").
     Advice,
+    /// Olo suggests it, none of it needed: Olo works as well without
+    /// (suggest.rs; what Olo Suggestions had).
+    Suggestion,
+}
+
+impl Severity {
+    /// Its tag, as the window shows it.
+    pub fn label(self) -> &'static str {
+        match self {
+            Severity::Critical => "Critical",
+            Severity::Problem => "Problem",
+            Severity::Advice => "Recommended",
+            Severity::Suggestion => "Suggestion",
+        }
+    }
+
+    /// Something wrong (told in a notification, counted as a problem by
+    /// the tray), not something better.
+    pub fn is_problem(self) -> bool {
+        matches!(self, Severity::Critical | Severity::Problem)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -167,8 +194,8 @@ pub struct Fine {
     pub detail: String,
 }
 
-/// Something applied that can be undone (Olo Suggestions): the id its
-/// button goes by, the line it's on (a `Fine`'s title), and how.
+/// Something applied that can be undone (a suggestion taken): the id
+/// its button goes by, the line it's on (a `Fine`'s title), and how.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Undo {
     pub id: String,
@@ -189,12 +216,41 @@ pub struct Report {
 }
 
 impl Report {
+    /// How many findings are problems, critical ones too.
     pub fn problems(&self) -> usize {
-        self.findings.iter().filter(|f| f.severity == Severity::Problem).count()
+        self.findings.iter().filter(|f| f.severity.is_problem()).count()
     }
 
+    /// How many findings are of kind `s`.
+    pub fn count(&self, s: Severity) -> usize {
+        self.findings.iter().filter(|f| f.severity == s).count()
+    }
+
+    /// What Fix All fixes: each finding with a fix but the suggestions
+    /// (taken one by one, or with Apply All Suggestions).
     pub fn fixable(&self) -> impl Iterator<Item = &Finding> {
-        self.findings.iter().filter(|f| f.fix.is_some())
+        self.findings.iter().filter(|f| f.fix.is_some() && f.severity != Severity::Suggestion)
+    }
+
+    /// The suggestions that can be applied with a button.
+    pub fn applicable(&self) -> impl Iterator<Item = &Finding> {
+        self.findings.iter().filter(|f| f.fix.is_some() && f.severity == Severity::Suggestion)
+    }
+
+    /// `other`'s findings, what's fine and what can be undone added to
+    /// these (the checks' and the suggestions', one report).
+    pub fn merge(&mut self, other: Report) {
+        self.findings.extend(other.findings);
+        self.fine.extend(other.fine);
+        self.undo.extend(other.undo);
+        self.ignored.extend(other.ignored);
+    }
+
+    /// The findings most pressing first (critical, problems, what's
+    /// recommended, suggestions), each kind in the order it was found.
+    pub fn sort(&mut self) {
+        self.findings.sort_by_key(|f| f.severity);
+        self.ignored.sort_by_key(|f| f.severity);
     }
 
     /// A finding, ignored or not.
@@ -547,23 +603,34 @@ fn plural(n: usize, one: &str, many: &str) -> String {
     if n == 1 { format!("{n} {one}") } else { format!("{n} {many}") }
 }
 
-/// Look at everything.
-/// Look this computer over, and say what was found for Deskbar's tray
-/// (`olo_protocol::doctor::DoctorFound`).
+/// Look this computer over (the checks and the suggestions, one report,
+/// most pressing first), set aside what's ignored, and say what was
+/// found for Deskbar's tray (`olo_protocol::doctor::DoctorFound`).
+/// (`OLO_DOCTOR_DEMO`: a made-up report, one of everything, to look at
+/// headless; the tray isn't told.)
 pub fn look() -> Report {
+    if crate::demo::on() {
+        return crate::demo::report();
+    }
     let mut report = scan(&Roots::real());
-    report.set_aside(&crate::ignored::of(crate::app::Kind::Doctor));
+    report.merge(crate::suggest::scan());
+    report.set_aside(&crate::ignored::all());
+    report.sort();
     tell_tray(&report);
     report
 }
 
-/// What Deskbar's tray shows (its bag) from `report`: what's ignored is
-/// left out.
+/// What Deskbar's tray shows (its bag) from `report`: the problems, and
+/// what's recommended that a button fixes; not the suggestions (told
+/// once in a notification, then left in the window), nor what's ignored.
 pub fn tell_tray(report: &Report) {
-    let issues: Vec<&Finding> = report.findings.iter().filter(|f| f.severity == Severity::Problem || f.fix.is_some()).collect();
+    if crate::demo::on() {
+        return;
+    }
+    let issues: Vec<&Finding> = report.findings.iter().filter(|f| f.severity.is_problem() || (f.fix.is_some() && f.severity == Severity::Advice)).collect();
     let found = olo_protocol::doctor::DoctorFound {
         issues: issues.iter().map(|f| f.title.clone()).collect(),
-        problems: issues.iter().filter(|f| f.severity == Severity::Problem).count(),
+        problems: issues.iter().filter(|f| f.severity.is_problem()).count(),
         at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()),
     };
     if let Err(e) = found.save() {
@@ -699,7 +766,8 @@ fn diskbackup(roots: &Roots, r: &mut Report) {
     if let Some(c) = state.last.as_ref().and_then(|l| l.check.as_ref()).filter(|c| !c.problems.is_empty()) {
         r.findings.push(Finding {
             id: "diskbackup:damaged".into(),
-            severity: Severity::Problem,
+            // (What's backed up may not come back: critical.)
+            severity: Severity::Critical,
             title: "The last backup isn't whole".into(),
             detail: format!(
                 "Checked once it was made, it was missing what some files need ({}): those can't be restored as they were. The damaged parts are let go of, and the next backup sends again what it can.",
@@ -2394,7 +2462,8 @@ fn builtin_sound(roots: &Roots, pcis: &[Pci], r: &mut Report) {
     };
     r.findings.push(Finding {
         id: "sound:builtin".into(),
-        severity: Severity::Problem,
+        // (No sound at all, nor calls: critical.)
+        severity: Severity::Critical,
         title: "The built-in speakers and microphones have no driver".into(),
         detail: format!(
             "Linux finds {chips} but doesn't know how this computer wires them, so it makes no sound card of them: no speakers, microphones or headphone jack. Sound plays through Bluetooth, USB and HDMI meanwhile. {then}"
@@ -3168,7 +3237,7 @@ mod tests {
         let mut r = scan(&roots);
         let before = (r.problems(), r.fixable().count(), r.findings.len());
         let id = r.fixable().next().expect("a finding with a fix").id.clone();
-        let problem = r.find(&id).unwrap().severity == Severity::Problem;
+        let problem = r.find(&id).unwrap().severity.is_problem();
         r.set_aside(&[id.clone()].into_iter().collect());
         assert!(r.findings.iter().all(|f| f.id != id) && r.ignored.iter().any(|f| f.id == id));
         assert_eq!((r.problems(), r.fixable().count(), r.findings.len()), (before.0 - usize::from(problem), before.1 - 1, before.2 - 1));

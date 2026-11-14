@@ -6,12 +6,12 @@
 //! healer's report (`/run/olo/wifi-heal.json`, written by the root
 //! service, apps/wifi-heal), by inotify, and tells of each time it reset
 //! the Wi-Fi chip, and what came of it. (`--notify` is the look alone.)
-//! Each look also asks what Olo Suggestions would suggest, and tells of
-//! a suggestion once ever (as Olo Suggestions, whose window its click
-//! opens): one not taken stays in Olo Suggestions, untold again, and
-//! "Update brush" after "Use brush" is another. A suggestion with
-//! nothing to apply yet (brush before Olo's build of it) waits to be
-//! told until it has.
+//! The same look has what Olo suggests (suggest.rs), and each suggestion
+//! is told once ever (its click opens Olo Doctor too): one not taken
+//! stays in the window, untold again, and "Update brush" after "Use
+//! brush" is another. A suggestion with nothing to apply yet (brush
+//! before Olo's build of it) waits to be told until it has. What's
+//! ignored is never told.
 //! And it follows the crash reports Olo's programs leave (`olo_crash`,
 //! by inotify on their folder): each new one told once ("Viewer
 //! crashed", what and in which thread), a click opening Logs on that
@@ -38,7 +38,7 @@ struct Told {
     ids: BTreeSet<String>,
     /// The latest of the Wi-Fi healer's resets told of (its time).
     heals: u64,
-    /// Olo Suggestions' suggestions told of (`told_as`), never forgotten.
+    /// The suggestions told of (`told_as`), never forgotten.
     suggested: BTreeSet<String>,
     /// Crash reports told of (their file names; one gone is forgotten).
     crashes: BTreeSet<String>,
@@ -71,7 +71,7 @@ fn told_path() -> PathBuf {
 
 /// The problems to tell of now, and what is remembered as told after.
 fn news<'a>(findings: &'a [Finding], told: &Told) -> (Vec<&'a Finding>, Told) {
-    let problems: Vec<&Finding> = findings.iter().filter(|f| f.severity == Severity::Problem).collect();
+    let problems: Vec<&Finding> = findings.iter().filter(|f| f.severity.is_problem()).collect();
     let new = problems.iter().filter(|f| !told.ids.contains(&f.id)).copied().collect();
     // What isn't found now is forgotten, to be told again if it comes back.
     (new, Told { ids: problems.iter().map(|f| f.id.clone()).collect(), heals: told.heals, suggested: told.suggested.clone(), crashes: told.crashes.clone() })
@@ -86,7 +86,7 @@ fn told_as(f: &Finding) -> String {
 /// The suggestions to tell of now (each once ever, once it can be
 /// applied), what's told added to `told`.
 fn new_suggestions<'a>(findings: &'a [Finding], told: &mut Told) -> Vec<&'a Finding> {
-    findings.iter().filter(|f| f.fix.is_some() && told.suggested.insert(told_as(f))).collect()
+    findings.iter().filter(|f| f.severity == Severity::Suggestion && f.fix.is_some() && told.suggested.insert(told_as(f))).collect()
 }
 
 fn read_told() -> Told {
@@ -102,38 +102,40 @@ fn open_doctor() {
     let _ = olo_xdg::open::spawn_app(&[exe.into_os_string()], "olo.doctor");
 }
 
-/// Olo Suggestions, beside this program (else on PATH).
-fn open_suggestions() {
-    let beside = std::env::current_exe().ok().map(|p| PathBuf::from(p.to_string_lossy().trim_end_matches(" (deleted)")).with_file_name("olo-suggestions"));
-    let exe = beside.filter(|p| p.is_file()).unwrap_or_else(|| "olo-suggestions".into());
-    let _ = olo_xdg::open::spawn_app(&[exe.into_os_string()], "olo.suggestions");
-}
-
-/// Ask what Olo Suggestions would suggest, and tell of what's new.
-fn look_for_suggestions(notes: &Notifier) {
-    let report = crate::suggest::look();
+/// Tell of the suggestions in `findings` not told before (one note,
+/// the suggestion box its picture).
+fn tell_suggestions(notes: &Notifier, findings: &[Finding]) {
     let mut told = read_told();
-    let new = new_suggestions(&report.findings, &mut told);
+    let new = new_suggestions(findings, &mut told);
     if new.is_empty() {
         return;
     }
     write_told(&told);
     let summary = if new.len() == 1 { "Olo has a suggestion".to_owned() } else { format!("Olo has {} suggestions", new.len()) };
     let body = new.iter().map(|f| f.title.as_str()).collect::<Vec<_>>().join("\n");
-    notes.show(None, Note::new(summary).body(body).icon("suggestions").action("default", "Show").action("show", "Show Suggestions"));
+    notes.show(None, Note::new(summary).body(body).icon("suggestions").action("default", "Show").action("show", "Show in Olo Doctor"));
 }
 
-/// Look the computer over, and tell of problems not told before.
-fn look(notes: &Notifier) -> bool {
+/// Look the computer over, and tell of problems not told before (and,
+/// `suggestions`, of suggestions); whether a problem was told.
+fn look(notes: &Notifier, suggestions: bool) -> bool {
     let report = checks::look();
     let mut told = read_told();
     let (new, remember) = news(&report.findings, &told);
     told.ids = remember.ids;
     write_told(&told);
+    if suggestions {
+        tell_suggestions(notes, &report.findings);
+    }
     if new.is_empty() {
         return false;
     }
-    let summary = if new.len() == 1 { "Olo Doctor found a problem".to_owned() } else { format!("Olo Doctor found {} problems", new.len()) };
+    let critical = new.iter().any(|f| f.severity == Severity::Critical);
+    let summary = match (new.len(), critical) {
+        (1, true) => "Olo Doctor found a critical problem".to_owned(),
+        (1, false) => "Olo Doctor found a problem".to_owned(),
+        (n, _) => format!("Olo Doctor found {n} problems"),
+    };
     let body = new.iter().map(|f| f.title.as_str()).collect::<Vec<_>>().join("\n");
     notes.show(None, Note::new(summary).body(body).icon("doctor").action("default", "Show").action("show", "Show in Olo Doctor"));
     true
@@ -226,11 +228,6 @@ pub fn watch() -> ! {
             }
         }
     });
-    let suggestions = Notifier::with_events("Olo Suggestions", "olo-suggestions", |e| {
-        if let NoteEvent::Action { .. } = e {
-            open_suggestions();
-        }
-    });
     let shown: Shown = Shown::default();
     let crash_notes = Notifier::with_events("Olo Doctor", "olo-doctor", {
         let shown = shown.clone();
@@ -244,8 +241,7 @@ pub fn watch() -> ! {
         }
     });
     std::thread::sleep(SETTLE);
-    look(&notes);
-    look_for_suggestions(&suggestions);
+    look(&notes, true);
     tell_heals(&notes);
     // Crashes as they're reported (the folder made, so it can be
     // watched before the first).
@@ -259,8 +255,7 @@ pub fn watch() -> ! {
     // told, and Deskbar's tray follows what's found.
     loop {
         std::thread::sleep(EVERY);
-        look(&notes);
-        look_for_suggestions(&suggestions);
+        look(&notes, true);
     }
 }
 
@@ -270,7 +265,7 @@ pub fn run() {
     let notes = Notifier::with_events("Olo Doctor", "olo-doctor", move |e| {
         let _ = tx.send(e);
     });
-    if !look(&notes) {
+    if !look(&notes, false) {
         return;
     }
     // Blocked here (nothing polled) until the person answers or it goes.
@@ -294,7 +289,7 @@ mod tests {
 
     #[test]
     fn problems_are_told_once_and_again_when_they_come_back() {
-        let now = [finding("remapper:keyd", Severity::Problem), finding("login", Severity::Advice), finding("rule:input", Severity::Problem)];
+        let now = [finding("remapper:keyd", Severity::Problem), finding("login", Severity::Advice), finding("rule:input", Severity::Critical), finding("tool:just", Severity::Suggestion)];
         let told = Told { ids: ["remapper:keyd".to_owned(), "autosuspend:3-1.1".to_owned()].into(), ..Told::default() };
         let (new, remember) = news(&now, &told);
         assert_eq!(new.iter().map(|f| f.id.as_str()).collect::<Vec<_>>(), ["rule:input"], "keyd was told; advice never is");
@@ -308,15 +303,17 @@ mod tests {
         use crate::checks::Fix;
         let applicable = |id: &str, title: &str| Finding {
             id: id.into(),
-            severity: Severity::Advice,
+            severity: Severity::Suggestion,
             title: title.into(),
             detail: String::new(),
             fix: Some(Fix { label: "Do".into(), root: false, steps: vec![] }),
         };
         let mut told = Told::default();
-        let now = [applicable("tool:just", "Install just"), applicable("brush-shell", "Use brush as your shell"), finding("tool:uv", Severity::Advice)];
+        let mut fixable_problem = applicable("rtkit", "rtkit isn't running");
+        fixable_problem.severity = Severity::Problem;
+        let now = [applicable("tool:just", "Install just"), applicable("brush-shell", "Use brush as your shell"), finding("tool:uv", Severity::Suggestion), fixable_problem];
         let new = new_suggestions(&now, &mut told);
-        assert_eq!(new.iter().map(|f| f.id.as_str()).collect::<Vec<_>>(), ["tool:just", "brush-shell"], "uv has nothing to apply yet");
+        assert_eq!(new.iter().map(|f| f.id.as_str()).collect::<Vec<_>>(), ["tool:just", "brush-shell"], "uv has nothing to apply yet; a problem isn't a suggestion");
         assert!(new_suggestions(&now, &mut told).is_empty(), "told once");
         // Gone (installed) and back: not told again.
         assert!(new_suggestions(&now[..1], &mut told).is_empty());

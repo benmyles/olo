@@ -63,10 +63,18 @@ for base in "${XDG_CONFIG_HOME:-$USER_HOME/.config}" "${XDG_CACHE_HOME:-$USER_HO
     fi
 done
 as_user mkdir -p "$PREFIX/bin" "$PREFIX/share/olo"
+# Programs Olo no longer has (crates/session/src/upgrade.rs's RETIRED:
+# the build tree may still hold their last build): not installed, and
+# taken away.
+RETIRED="olo-suggestions"
+for name in $RETIRED; do
+    as_user rm -f "$PREFIX/bin/$name"
+done
 for b in target/release/olo-*; do
     [ -x "$b" ] && [ -f "$b" ] || continue
     name=$(basename "$b")
     case "$name" in *.*) continue ;; esac
+    case " $RETIRED " in *" $name "*) continue ;; esac
     # Under a temporary name, then renamed: running programs keep their
     # old file and notice the new one (in-place reload). A clone where
     # the file system can (btrfs), else a copy.

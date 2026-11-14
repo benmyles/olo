@@ -144,6 +144,72 @@ pub fn heading(text: impl Into<SharedString>) -> StringView {
     StringView::new(text).bold(true).height(m::LABEL_ROW)
 }
 
+/// A short tag in a pill, saying what kind a thing is (Olo Doctor's
+/// Critical, Problem, Recommended, Suggestion): bold, in the detail
+/// size, black or white on its colour (`fill`, from the palette's hues),
+/// else quiet (grey: what's set aside). As wide as its word, centred in
+/// a row `LABEL_ROW` tall, or on the capitals of the first line of a
+/// paragraph beside it ([`Self::beside_paragraph`]: a title that may
+/// wrap). Agents read it as a label.
+pub struct Tag {
+    text: SharedString,
+    fill: Option<olo_theme::Rgba>,
+    height: f32,
+    /// Where its middle is, from its top.
+    middle: f32,
+}
+
+impl Tag {
+    pub fn new(text: impl Into<SharedString>) -> Tag {
+        Tag { text: text.into(), fill: None, height: m::LABEL_ROW, middle: m::LABEL_ROW / 2.0 }
+    }
+
+    /// Level with the first line of a wrapped paragraph of `size` text
+    /// beside it, tops aligned (`items_start`): centred on its capitals
+    /// ([`style::paragraph_caps_middle`]), not in its line's height,
+    /// half a point lower at 12 points.
+    pub fn beside_paragraph(mut self, size: f32) -> Self {
+        self.height = style::line_row(size);
+        self.middle = style::paragraph_caps_middle(size);
+        self
+    }
+
+    /// Its colour (else quiet).
+    pub fn fill(mut self, rgba: olo_theme::Rgba) -> Self {
+        self.fill = Some(rgba);
+        self
+    }
+
+    /// The row it's centred in.
+    pub fn height(mut self, h: f32) -> Self {
+        self.height = h;
+        self.middle = h / 2.0;
+        self
+    }
+}
+
+impl IntoElement for Tag {
+    fn into_element(self) -> Element {
+        let font = style::ui_font(FontWeight::BOLD);
+        let w = style::tag_width(&self.text, style::DETAIL_SIZE, &font);
+        let (text, fill, middle) = (self.text, self.fill, self.middle);
+        let key = style::key((&text, fill, middle.to_bits()));
+        canvas(move |g, b| {
+            let p = theme::palette();
+            let (paint, ink) = match fill {
+                Some(f) => (style::c(f), style::ink_on(f)),
+                None => (style::c(olo_theme::mix(p.document_background, p.document_text, 0.13)), style::c(olo_theme::mix(p.document_background, p.document_text, 0.62))),
+            };
+            let r = style::tag(g, b.left(), b.top() + px(middle), &text, style::DETAIL_SIZE, font.clone(), paint, ink);
+            g.agent(agent::Node::label(text.clone(), r));
+        })
+        .paint_key(key)
+        .w(px(w))
+        .h(px(self.height))
+        .flex_shrink_0()
+    }
+}
+
 /// A groove across the width it's given: a dark line over a light one,
 /// in a row six points tall.
 pub struct Separator;

@@ -21,6 +21,12 @@ const EVERY: Duration = Duration::from_secs(3);
 /// A program modified more recently than this may still be being linked.
 const SETTLE: Duration = Duration::from_secs(3);
 
+/// Programs Olo no longer has, which an upgrade takes away from the
+/// install directory (a build tree may still hold their last build:
+/// cargo leaves what it no longer makes). Olo Suggestions, folded into
+/// Olo Doctor (2026-11-14). tools/install-session.sh has the same list.
+pub const RETIRED: &[&str] = &["olo-suggestions"];
+
 /// What Deskbar reads.
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Available {
@@ -119,6 +125,13 @@ impl Watcher {
             }
         }
         crate::log(format!("installed {} of {} upgraded programs", done.len(), programs.len()));
+        for name in RETIRED {
+            match std::fs::remove_file(self.to.join(name)) {
+                Ok(()) => crate::log(format!("removed {name}: Olo no longer has it")),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => crate::log(format!("could not remove {name}, which Olo no longer has: {e}")),
+            }
+        }
         // New and redrawn icons come with them (a new panel's, say).
         if let Some(prefix) = self.to.parent() {
             match sync_icons(&self.from, &prefix.join("share/olo/icons")) {
@@ -377,7 +390,7 @@ fn newer(from: &Path, to: &Path) -> Option<Vec<String>> {
     let mut out = Vec::new();
     for e in std::fs::read_dir(from).ok()?.flatten() {
         let name = e.file_name().to_string_lossy().into_owned();
-        if !name.starts_with("olo-") || name.contains('.') {
+        if !name.starts_with("olo-") || name.contains('.') || RETIRED.contains(&name.as_str()) {
             continue;
         }
         let Ok(m) = e.metadata() else { continue };
@@ -635,6 +648,25 @@ mod tests {
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
         let t = SystemTime::now() - Duration::from_secs(age);
         std::fs::File::options().write(true).open(&p).unwrap().set_modified(t).unwrap();
+    }
+
+    /// A program Olo no longer has is never installed from the build
+    /// tree (its last build still there), and an upgrade takes it away.
+    #[test]
+    fn a_retired_program_is_taken_away() {
+        let base = PathBuf::from(format!("/var/tmp/olo-retired-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (from, to) = (base.join("build"), base.join("bin"));
+        std::fs::create_dir_all(&from).unwrap();
+        std::fs::create_dir_all(&to).unwrap();
+        program(&from, "olo-deskbar", 60);
+        program(&from, RETIRED[0], 60);
+        program(&to, RETIRED[0], 600);
+        assert_eq!(newer(&from, &to).unwrap(), ["olo-deskbar"]);
+        let mut w = Watcher { from, to: to.clone(), state: base.join("olo-upgrade-test.json"), pending: Vec::new(), last: None, wanted: false };
+        assert_eq!(w.install(), ["olo-deskbar"]);
+        assert!(to.join("olo-deskbar").exists() && !to.join(RETIRED[0]).exists());
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

@@ -3,6 +3,20 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-14
+
+### Olo Doctor in dark: what's fine under a latch
+
+*01:01* — Under the findings, Fixed, As It Should Be and Ignored are latches over a card of lines: As It Should Be folds away while anything is found and opens when nothing is; an applied suggestion is undone from its line (Put It Back). Ignored is folded, its tags grey.
+
+![Olo Doctor in dark: what's fine under a latch](2026-11-14/010118-olo-doctor-in-dark-what-s-fine-under-a-latch.png)
+
+### Olo Doctor: one list, each finding tagged with its kind
+
+*01:01* — Olo Suggestions folded into Olo Doctor (Ben: one app, each item showing whether it's a suggestion or something critical, any of it ignorable), and the window tidied: a card per finding, most pressing first, its kind's tag (Critical, Problem, Recommended, Suggestion) level with its title, Ignore as a quiet link beside its fix; the summary counts each kind; Check Again and Fix All under the list. Made-up report (OLO_DOCTOR_DEMO=1).
+
+![Olo Doctor: one list, each finding tagged with its kind](2026-11-14/010101-olo-doctor-one-list-each-finding-tagged-with-its.png)
+
 ## 2026-11-13
 
 ### A tip goes when its item goes from under the pointer

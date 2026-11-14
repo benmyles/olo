@@ -1,9 +1,9 @@
 //! A program from its maker's latest GitHub release, installed natively
-//! (Olo Suggestions' mise and worktrunk, which Fedora doesn't carry): the
-//! release asked of GitHub's API, the asset and its published SHA-256
-//! downloaded, checked, the program taken out of a `.tar.xz` or `.tar.gz`
-//! (or the asset itself, a bare binary), and put in place whole (beside
-//! it, then renamed). Nothing is shelled out to. On a worker (it waits on
+//! (mise and worktrunk, which Olo Doctor suggests and Fedora doesn't
+//! carry): the release asked of GitHub's API, the asset and its
+//! published SHA-256 downloaded, checked, the program taken out of a
+//! `.tar.xz` or `.tar.gz` (or the asset itself, a bare binary), and put
+//! in place whole (beside it, then renamed). Nothing is shelled out to. On a worker (it waits on
 //! the network), telling how far it has got.
 
 use std::{io::Read as _, path::Path, time::Duration};

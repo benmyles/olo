@@ -539,8 +539,12 @@ impl IntoElement for ScrollView {
             let inner = style::inset(g, b, if border { 2.0 } else { 0.0 });
             crate::review::scroll_area(g, inner);
             let (r, bt) = (if vbar { px(SCROLL_BAR) } else { px(0.0) }, if hbar { px(SCROLL_BAR) } else { px(0.0) });
+            // (Under the bars too, which paint their own track over it:
+            // stopped at a bar's edge, a point count off the device
+            // pixels, it left a pixel's seam at 1.75×, where layout put
+            // the bar a pixel further on.)
             if let Some(bg) = background {
-                style::fill_rect(g, Bounds::from_corners(inner.origin, point(inner.right() - r, inner.bottom() - bt)), style::c(bg));
+                style::fill_rect(g, inner, style::c(bg));
             }
             if vbar && hbar {
                 style::fill_rect(g, Bounds::from_corners(point(inner.right() - r, inner.bottom() - bt), inner.bottom_right()), style::c(p.panel_background));

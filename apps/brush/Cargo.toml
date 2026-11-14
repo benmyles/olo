@@ -3,7 +3,7 @@ name = "olo-brush"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "brush (github.com/reubeno/brush), the bash-compatible shell written in Rust, built with Olo so Olo Suggestions can offer it as the login shell, its hints from olo-complete's model when that's on"
+description = "brush (github.com/reubeno/brush), the bash-compatible shell written in Rust, built with Olo so Olo Doctor can suggest it as the login shell, its hints from olo-complete's model when that's on"
 
 [[bin]]
 name = "olo-brush"

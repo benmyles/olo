@@ -1,6 +1,6 @@
 //! brush, the bash-compatible shell written in Rust
 //! (github.com/reubeno/brush), built with Olo: installed with Olo's
-//! programs and upgraded with them, and what Olo Suggestions makes the
+//! programs and upgraded with them, and what Olo Doctor suggests as the
 //! login shell (copied to /usr/local/bin/brush, listed in /etc/shells).
 //!
 //! Olo's own: with Preferences ▸ Terminal ▸ "Suggest commands with

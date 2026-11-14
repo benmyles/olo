@@ -12,10 +12,6 @@ path = "src/lib.rs"
 name = "olo-doctor"
 path = "src/main.rs"
 
-[[bin]]
-name = "olo-suggestions"
-path = "src/bin/olo-suggestions.rs"
-
 [dependencies]
 olo-crash.workspace = true
 olo-protocol.workspace = true
@@ -32,7 +28,7 @@ serde_json.workspace = true
 libc = "0.2"
 memchr = "2"
 tracing.workspace = true
-# Olo Suggestions' programs from their makers' releases (releases.rs):
+# The programs Olo Doctor suggests, from their makers' releases (releases.rs):
 # GitHub over HTTPS, the SHA-256 checked, .tar.xz and .tar.gz opened.
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
 ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "platform-verifier"] }

@@ -223,7 +223,7 @@ pub fn ui(ui: &mut Ui) {
         }));
         let mut text = match (&shell, on) {
             (Shell::Unknown, _) => String::new(),
-            (Shell::Other(path), _) => format!("brush’s grey hint after what you type, from a tiny model of your own commands on this computer. Your shell is {path}: Olo Suggestions makes it brush."),
+            (Shell::Other(path), _) => format!("brush’s grey hint after what you type, from a tiny model of your own commands on this computer. Your shell is {path}: Olo Doctor makes it brush (a suggestion)."),
             (_, false) => "brush’s grey hint after what you type, from a tiny model of your own commands on this computer: it weighs what’s typed, the folder, the commands before, the hour and the day, and learns as you go.".into(),
             _ if learning => "Learning from your history…".into(),
             _ => match &stats {
@@ -235,7 +235,7 @@ pub fn ui(ui: &mut Ui) {
             },
         };
         if shell == Shell::OldBrush {
-            text.push_str(" Your brush is from before the model: Olo Suggestions updates it.");
+            text.push_str(" Your brush is from before the model: Olo Doctor updates it.");
         }
         if !text.is_empty() {
             ui.note(text);
@@ -245,8 +245,8 @@ pub fn ui(ui: &mut Ui) {
             ui.add(StringView::new(SharedString::from(e)).color(style::c(p.failure)).wrap(true));
         }
         if matches!(shell, Shell::Other(_) | Shell::OldBrush) {
-            ui.add(Button::new("Open Olo Suggestions…").enabled(ui.enabled()).on_click(|_, _| {
-                let _ = olo_xdg::open::spawn_app(&["olo-suggestions".into()], "olo.suggestions");
+            ui.add(Button::new("Open Olo Doctor…").enabled(ui.enabled()).on_click(|_, _| {
+                let _ = olo_xdg::open::spawn_app(&["olo-doctor".into()], "olo.doctor");
             }));
         }
     });

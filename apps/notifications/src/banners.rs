@@ -154,9 +154,9 @@ fn buttons(card: &Card) -> Vec<(String, String)> {
 
 /// `actions` laid out in a card: side by side at their own widths, as
 /// in an alert, when they fit its width; else one above another, each
-/// the card's width ("Show in Olo Suggestions" is wider than half of
-/// Deskbar's width), a label cut short with "…" only if even that is too
-/// narrow. Whether they're stacked.
+/// the card's width (a long label can be wider than half of Deskbar's
+/// width), a label cut short with "…" only if even that is too narrow.
+/// Whether they're stacked.
 fn lay_buttons(cx: &WindowCx, actions: Vec<(String, String)>) -> (Vec<(String, String, f32)>, bool) {
     let room = WIDTH - 2.0 * PAD;
     let widths: Vec<f32> = actions.iter().map(|(_, l)| button_width(l, false)).collect();

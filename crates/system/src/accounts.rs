@@ -6,8 +6,8 @@ use std::path::PathBuf;
 
 use crate::{Result, bus};
 
-/// Where Olo Suggestions puts Olo's build of brush (and makes it the
-/// login shell).
+/// Where Olo Doctor puts Olo's build of brush (and makes it the login
+/// shell), a suggestion taken.
 pub const BRUSH: &str = "/usr/local/bin/brush";
 
 const DEST: &str = "org.freedesktop.Accounts";

@@ -34,6 +34,19 @@ pub const LINE_HEIGHT: f32 = 1.362;
 /// 1000 units).
 pub const CAP_HEIGHT: f32 = 0.714;
 
+/// Noto Sans's ascent as a fraction of the font size (1069 of its 1000
+/// units; its descent, 293, makes [`LINE_HEIGHT`]).
+pub const ASCENT: f32 = 1.069;
+
+/// How far below a wrapped paragraph's top the capitals of its first
+/// line are centred, at `size` points: its baseline is an ascent down
+/// (its line height is the font's ascent and descent), the capitals'
+/// middle half a cap height above. For setting something level with a
+/// title that may wrap (`widgets::Tag::beside_paragraph`).
+pub fn paragraph_caps_middle(size: f32) -> f32 {
+    size * (ASCENT - CAP_HEIGHT / 2.0)
+}
+
 /// The row a line of text `size` points tall sits in: its line height,
 /// up to the 2-point grid (`metrics`).
 pub fn line_row(size: f32) -> f32 {
@@ -638,6 +651,29 @@ pub fn pill(g: &mut Painter, x: Pixels, cy: Pixels, text: &str, font_size: f32, 
     let r = snap(g, Bounds { origin: point(x, cy - px(h / 2.0)), size: size(px(w), px(h)) });
     g.paint_quad(olo_interface::fill(r, fill).corner_radii(r.size.height / 2.0));
     label(g, r.center().x, r.center().y, Align::Center, text.to_owned(), font_size, font, ink);
+    r
+}
+
+/// The room either side of a [`tag`]'s word.
+fn tag_pad(font_size: f32) -> f32 {
+    (pill_height(font_size) * 0.45).round()
+}
+
+/// How wide a [`tag`] saying `text` is.
+pub fn tag_width(text: &str, font_size: f32, font: &Font) -> f32 {
+    (f32::from(text_width(text.to_owned(), font_size, font.clone())) + 2.0 * tag_pad(font_size)).ceil()
+}
+
+/// A word in a pill (`widgets::Tag`), its left edge at `x` and centred
+/// on `cy`: as a [`pill`], but the word a fixed room in from the left,
+/// not centred, so tags set one above another line their words up at
+/// every scale. Returns where it is.
+#[allow(clippy::too_many_arguments)]
+pub fn tag(g: &mut Painter, x: Pixels, cy: Pixels, text: &str, font_size: f32, font: Font, fill: Hsla, ink: Hsla) -> Bounds<Pixels> {
+    let (w, h) = (tag_width(text, font_size, &font), pill_height(font_size));
+    let r = snap(g, Bounds { origin: point(x, cy - px(h / 2.0)), size: size(px(w), px(h)) });
+    g.paint_quad(olo_interface::fill(r, fill).corner_radii(r.size.height / 2.0));
+    label(g, r.left() + px(tag_pad(font_size)), r.center().y, Align::Left, text.to_owned(), font_size, font, ink);
     r
 }
 

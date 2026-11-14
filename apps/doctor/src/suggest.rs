@@ -1,8 +1,9 @@
-//! Olo Suggestions' suggestions: what Olo suggests for the best of it,
-//! none of it needed (Olo works the same without), each applied with a
-//! button and undone with another. Looked at as Olo Doctor's checks are
-//! (a `Report`: what's suggested as findings, what's applied as fine,
-//! with its undo), applied by the same steps and helper.
+//! Olo Doctor's suggestions (once Olo Suggestions, an app of its own):
+//! what Olo suggests for the best of it, none of it needed (Olo works the
+//! same without), each applied with a button and undone with another.
+//! Looked at with the checks (`checks::look` merges them into one
+//! `Report`: what's suggested as findings of kind `Suggestion`, what's
+//! applied as fine, with its undo), applied by the same steps and helper.
 //!
 //! - **brush as the login shell**: brush (github.com/reubeno/brush), the
 //!   bash-compatible shell written in Rust, built with Olo (`olo-brush`,
@@ -39,22 +40,9 @@ pub use olo_system::accounts::BRUSH;
 use olo_system::accounts::login_shell;
 const BRUSH_ID: &str = "brush-shell";
 
-/// What's suggested now, and what's applied. (`OLO_SUGGESTIONS_DEMO=
-/// applied`: everything applied, made up, to look at headless without
-/// changing the computer.)
-/// What Olo Suggestions suggests now, what's ignored set aside (ignored.rs).
-pub fn look() -> Report {
-    let mut report = scan();
-    report.set_aside(&crate::ignored::of(crate::app::Kind::Suggestions));
-    report
-}
-
+/// What's suggested now, and what's applied (with its undo).
 pub fn scan() -> Report {
     let mut r = Report::default();
-    if std::env::var("OLO_SUGGESTIONS_DEMO").as_deref() == Ok("applied") {
-        applied_brush(&mut r, "person".into(), PathBuf::from("/bin/bash"));
-        return r;
-    }
     brush(&mut r);
     tools(&mut r);
     worktrunk_place(&mut r);
@@ -62,7 +50,7 @@ pub fn scan() -> Report {
 }
 
 /// brush is the login shell: so said, with its undo (`previous` again).
-fn applied_brush(r: &mut Report, user: String, previous: PathBuf) {
+pub(crate) fn applied_brush(r: &mut Report, user: String, previous: PathBuf) {
     let name = previous.file_name().map_or_else(|| previous.display().to_string(), |n| n.to_string_lossy().into_owned());
     let title = "brush is your login shell".to_owned();
     r.fine.push(Fine { title: title.clone(), detail: "New shells, Terminal's too, are brush. bash scripts run as before.".into() });
@@ -138,7 +126,7 @@ fn brush(r: &mut Report) {
     let Some(ours) = ours else {
         r.findings.push(Finding {
             id: BRUSH_ID.into(),
-            severity: Severity::Advice,
+            severity: Severity::Suggestion,
             title: "Use brush as your shell".into(),
             detail: format!("{detail} (Olo's build of brush comes with its next upgrade.)"),
             fix: None,
@@ -151,7 +139,7 @@ fn brush(r: &mut Report) {
         steps.push(Step::SetLoginShell { user, shell: brush.to_path_buf() });
     }
     let detail = if shell == brush { "Your login shell is brush, but the copy in /usr/local/bin is older than Olo's build: it's updated.".to_owned() } else { detail.to_owned() };
-    r.findings.push(Finding { id: BRUSH_ID.into(), severity: Severity::Advice, title: title.into(), detail, fix: Some(Fix { label: label.into(), root: true, steps }) });
+    r.findings.push(Finding { id: BRUSH_ID.into(), severity: Severity::Suggestion, title: title.into(), detail, fix: Some(Fix { label: label.into(), root: true, steps }) });
 }
 
 /// A program Olo suggests, and where it comes from.
@@ -231,7 +219,7 @@ fn tools(r: &mut Report) {
         let label = format!("Install {}", t.name);
         r.findings.push(Finding {
             id: t.id.into(),
-            severity: Severity::Advice,
+            severity: Severity::Suggestion,
             title: format!("Install {}", t.name),
             detail: format!("{} {} It's installed {whence}.", t.name, t.what),
             fix: Some(Fix { label, root, steps }),
@@ -310,7 +298,7 @@ fn worktrunk_place(r: &mut Report) {
     let content = with_worktree_path(doc, Some(&want));
     r.findings.push(Finding {
         id: WORKTRUNK_PLACE_ID.into(),
-        severity: Severity::Advice,
+        severity: Severity::Suggestion,
         title: "Make worktrunk's worktrees where Terminal does".into(),
         detail: format!("worktrunk makes them {where_now}; Terminal's New Worktree… in {place}/<repository>/<name> (Preferences ▸ Terminal). Worktrunk is set to make them in Terminal's place, the rest of its settings left as they are."),
         fix: Some(Fix { label: "Use Terminal's Place".into(), root: false, steps: vec![Step::WriteFile { path, content, mode: 0o644 }] }),

@@ -2162,8 +2162,17 @@ it.
   its words, small, in the link blue, underlined under the pointer,
   `LABEL_ROW` tall: an action in a line with no room for a button),
   `EmptyState` (an icon, a line, a detail and an action button,
-  centred in what it's given: a list or pane with nothing in it).
-  Each is a `widgets::Control` underneath: an element that keeps
+  centred in what it's given: a list or pane with nothing in it),
+  `Tag` (a word in a pill saying what kind a thing is, Olo Doctor's
+  Critical, Problem, Recommended or Suggestion: bold, in the detail
+  size, black or white on its `fill`, from the palette's hues, else
+  quiet grey for what's set aside; `beside_paragraph(size)` sets it
+  level with the capitals of the first line of a title beside it that
+  may wrap, `style::paragraph_caps_middle`; drawn with `style::tag`,
+  whose word starts a fixed room in, so tags one above another line
+  their words up at every scale; agents read it as a label; like
+  `StringView` and `BBox`, it takes no clicks). Each control is a
+  `widgets::Control` underneath: an element that keeps
   whether the pointer is over it or holding it down, draws itself from
   that through a closure, takes a click (press and release both on
   it), says what it is to agents, and is drawn faded (half opacity)
@@ -2267,7 +2276,10 @@ it.
 - `widgets::ScrollView::new(id, &handle)` (a `ScrollHandle` kept in the
   view's state): what it holds scrolled in a sunken frame with BeOS
   scroll bars (`horizontal`, `vertical`, `border`, `focused`,
-  `background`); `ScrollBar::vertical(id, handle)` drives any
+  `background`, which runs under the bars too: they paint their own
+  track over it, and stopped at a bar's edge, a point count off the
+  device pixels, it left a pixel's seam at 1.75×);
+  `ScrollBar::vertical(id, handle)` drives any
   `ScrollHandle` (a list's too): arrows that scroll on while
   held, a track click pages, the knob drags; agents read it as a
   `ScrollBar` with its position, 0 to 1. In a frame it places itself
@@ -10506,14 +10518,48 @@ running on it (the person's work, every measurement) changes with it.
 
 ## Olo Doctor (apps/doctor)
 
-Looks the computer over for what gets in Olo's way and fixes it with a
-button: each finding's own, or Fix All (one password for everything that
-needs root). `checks.rs` finds; each `Finding` carries its `Fix` as
+Looks the computer over for what gets in Olo's way, and for what Olo
+suggests for the best of it (below: once an app of its own, Olo
+Suggestions, folded in on 2026-11-14: Ben, "just have it be one unified
+olo doctor app where each item has a type showing whether it's e.g. a
+suggestion or something critical and any of them can be put on the
+ignored list"), and fixes or applies each with a button: each finding's
+own, or Fix All (one password for everything that needs root).
+
+Every finding has a kind (`Severity`, its tag's word `label()`):
+**Critical** (something the person relies on doesn't work or is at risk
+now: the last backup not whole, no driver for the built-in sound),
+**Problem** (gets in Olo's way now), **Recommended** (`Advice`: better
+changed) and **Suggestion** (none of it needed: `suggest.rs`).
+`checks::look` takes the checks' report and the suggestions' as one
+(`Report::merge`), sets aside what's ignored and lists the most pressing
+first (`Report::sort`, by kind, each kind in the order found). The
+window (`app.rs`) says what was found by kind at the top ("1 critical, 2
+problems, 1 recommendation and 2 suggestions.", how many things were
+looked at, fine and ignored), then one list on a card gutter: a card per
+finding, its kind's `Tag` (red, orange, blue, green) level with its
+title, what it is, and under it Ignore (a quiet link) and its fix (the
+button), with how the fix goes or why it failed (Try Again) at the left.
+Then three latches (`PaneSwitch`), each over a card of lines: Fixed (this
+time; open), As It Should Be (folded while anything is found: it's the
+long part; open when nothing is; what's applied can be undone from its
+line) and Ignored (folded: it isn't to draw attention). Check Again and
+Fix All (every finding's fix but the suggestions') are under the list,
+as a dialog's buttons; Fix ▸ Apply All Suggestions (⇧⌘A) applies those.
+Which latches are open comes back after an upgrade. `OLO_DOCTOR_DEMO=1`
+(`demo.rs`) shows a made-up report, one of every kind, a fine list with
+an undo, an ignored finding, without looking at the computer it runs on
+or telling its Deskbar; its fixes change nothing (one fails, to show a
+failure), so the window can be tried headless.
+
+`checks.rs` finds; each `Finding` carries its `Fix` as
 `Step`s (`fix.rs`: write a file, set a sysfs knob, remove a file, start,
 stop, enable or disable a system unit through `olo_system::systemd`,
 signal a process), all done in process. From a terminal or an agent:
-`olo-doctor --report` (the findings as JSON), `olo-doctor --fix` (those
-with a fix, by id), `olo-doctor --fix all|ID…` (what the buttons do: root
+`olo-doctor --report` (the findings as JSON, each with its `severity`),
+`olo-doctor --fix` (those with a fix, by id, each with its kind, and
+what can be undone), `olo-doctor --fix all|suggestions|ID…` (what the
+buttons do: `all` is Fix All's, `suggestions` Apply All Suggestions'; root
 steps through the helper and pkexec, or, under sudo, run there with the
 scan made for the sudo user), `olo-doctor --fans [auto|cool]` (the fan
 profile: "The fans", above), `olo-doctor --scheduler [kernel|lavd]`
@@ -10524,7 +10570,9 @@ profile: "The fans", above), `olo-doctor --scheduler [kernel|lavd]`
   since where backups go is the person's to choose); its service not
   running (a problem: Start It); paused (Resume Backups); nothing whole
   for three days or three of its intervals (a problem, the last's reason
-  said: Back Up Now); its key only in this computer's keyring (Keep Key
+  said: Back Up Now); the last backup not whole (critical: what's
+  backed up may not come back; Back Up Now); its key only in this
+  computer's keyring (Keep Key
   in Passwords); else when it last backed up, as fine. Each fix is
   DiskBackup's own command line (`Step::StartProgram`: one of Olo's
   programs, `olo-…`, started as the person, never as root).
@@ -10694,8 +10742,8 @@ profile: "The fans", above), `olo-doctor --scheduler [kernel|lavd]`
   to do by hand. Fine once it's there ("Intel graphics decodes every
   video"). Olo's player decodes all four codecs there then
   (`olo_vaapi::decode`).
-- **Built-in sound with no driver** (Intel's SOF bound, no sound card
-  made of it: a new laptop's SoundWire codecs, named from
+- **Built-in sound with no driver** (critical: no sound at all, nor
+  calls; Intel's SOF bound, no sound card made of it: a new laptop's SoundWire codecs, named from
   `/sys/bus/soundwire/devices`): a newer kernel and firmware installed
   when PackageKit has updates for them (`DRIVER_PACKAGES`: the kernel,
   linux-firmware, alsa-sof, Cirrus and Intel audio firmware, GPU and
@@ -10751,13 +10799,15 @@ state of (the Wi-Fi healer's, rtkit's) is left until the next look.
 after 20 s it looks, and every 15 minutes after (Ben: "run periodically
 like on startup and then maybe every 15 mins"; a look is a few hundred
 milliseconds of a background thread), and a problem not told of before
-(remembered in `~/.local/state/olo/doctor.json`; one fixed and back is
-told again) is told in a notification whose click opens Olo Doctor;
+(critical or not; remembered in `~/.local/state/olo/doctor.json`; one
+fixed and back is told again) is told in a notification whose click
+opens Olo Doctor, and so is each new suggestion, once ever (below);
 then it follows the Wi-Fi healer's report by inotify and tells of each
 reset and what came of it (`--notify` is the look alone). Every look
 (the watcher's, the window's, the command line's: `checks::look`) writes
-what it found that gets in the way or has a fix
-(`olo_protocol::doctor::DoctorFound`, `$XDG_RUNTIME_DIR/olo-doctor-found.json`);
+what it found that gets in the way, or is recommended and has a fix
+(not the suggestions: `tell_tray`;
+`olo_protocol::doctor::DoctorFound`, `$XDG_RUNTIME_DIR/olo-doctor-found.json`);
 Deskbar follows it by inotify and shows Olo Doctor's bag in the tray
 while there is something, a click opening it. Tests build a
 machine in a folder (`Roots { fs, bin, uid, scope, units }`) and check
@@ -10767,35 +10817,43 @@ Any finding can be ignored (Ben, 2026-11-07: "each item can be ignored
 which puts it into an ignored section and also has a button for each
 ignored item to still fix it if the user changes their mind but it
 won't alert about ignored items or draw attention to them"): its
-Ignore button, before its fix, keeps its id in
-`~/.config/olo/doctor-ignored.json` (`ignored.rs`: `doctor` and
-`suggestions`, by id), and every look sets those aside
-(`checks::look`, `suggest::look`: `Report::set_aside` moves them from
-`findings` to `ignored`), so the count, Fix All (Apply All), the tray's
-bag, the watcher's notifications and `--fix all` leave them out. The
-window lists them last, under Ignored: each title dim, with Stop
-Ignoring and its own fix button, which fixes it as ever. From a
-terminal or an agent: `olo-doctor --ignore ID…` and `--unignore ID…`
-(`olo-suggestions` the same; with no ids, the ignored listed), and
+Ignore link, before its fix, keeps its id in
+`~/.config/olo/doctor-ignored.json` (`ignored.rs`, one list, a
+suggestion's id as any other's; the file's old `suggestions` list, from
+when Olo Suggestions was an app of its own, is read with it and written
+into it at the next change), and every look sets those aside
+(`checks::look`: `Report::set_aside` moves them from
+`findings` to `ignored`), so the counts, Fix All, Apply All Suggestions,
+the tray's bag, the watcher's notifications and `--fix all` leave them
+out. The window lists them last, under Ignored, folded: each with its
+kind's tag in grey (the tags in one column, so the titles line up), its
+title dim, Stop Ignoring (a link under it) and its own fix button, which
+fixes it as ever. From a terminal or an agent: `olo-doctor --ignore ID…`
+and `--unignore ID…` (with no ids, the ignored listed), and
 `--report`'s `ignored`; `--fix` lists them as "ignored" and fixes one
 only when it's named. A process list says each program once with its
 processes ("GTK's portal backend (xdg-desktop-portal-gtk, processes
 1625065 and 1625111)", `by_program`), and the title counts programs:
 D-Bus had started GTK's portal backend six times, said six times over.
 
-## Olo Suggestions (apps/doctor, `olo-suggestions`)
+## Olo Doctor's suggestions (apps/doctor, suggest.rs)
 
 What Olo suggests for the best of it, none of it needed (Olo works the
 same without): each with what it does and why, a button that applies it,
-Apply All (⇧⌘A), and, once applied, a button that undoes it. It is Olo
-Doctor's body (`apps/doctor` is a library with two programs: `app.rs`'s
-window and command line by `Kind`), so a suggestion is a `Finding` whose
-`Fix` is applied by the same steps and root helper, what's applied is a
+Fix ▸ Apply All Suggestions (⇧⌘A), and, once applied, a button that
+undoes it (its line in As It Should Be). Until 2026-11-14 they were an
+app of their own, Olo Suggestions (`olo-suggestions`, the same body by a
+`Kind`); now they're findings of kind `Suggestion` in Olo Doctor's one
+list, ignorable as any other. A suggestion is a `Finding` whose `Fix`
+is applied by the same steps and root helper, what's applied is a
 `Fine` with an `Undo` beside it (`Report::undo`, found by
-`Report::action` as a fix is), and `olo-suggestions --report` and
-`--apply [all | ID…]` do from a terminal or an agent what the window
-does (`all` never undoes). `suggest.rs` has them; `OLO_SUGGESTIONS_DEMO=
-applied` shows them all applied, made up, to look at headless.
+`Report::action` as a fix is), and `olo-doctor --report` and `--fix
+[suggestions | ID…]` do from a terminal or an agent what the window does
+(an undo only when named). `suggest.rs` has them (`scan`), with
+`before` keeping what an apply changes, for its undo. The upgrade takes
+the old `olo-suggestions` program away (`upgrade::RETIRED`, and
+tools/install-session.sh's list: cargo leaves its last build in the
+build tree, which mustn't be installed again).
 
 - **brush as the login shell**: brush (github.com/reubeno/brush), the
   bash-compatible shell in Rust, is built with Olo (`apps/brush`,
@@ -10848,19 +10906,19 @@ applied` shows them all applied, made up, to look at headless.
   suggestions.json for the undo (none: the key taken out again).
 
 Each new suggestion is told once, ever, in a notification from Olo
-Suggestions (`notify.rs`, run by the session's `olo-doctor --watch` at
-each of its looks, after Olo Doctor's): "Olo has N suggestions" with
-their titles, a click (or Show Suggestions) opening its window. What's
+Doctor (`notify.rs`, the session's `olo-doctor --watch`, from the same
+look as the problems), the suggestion box its picture: "Olo has N
+suggestions" with their titles, a click (or Show in Olo Doctor) opening
+its window. What's
 told is remembered by id and title (`Told::suggested` in
 ~/.local/state/olo/doctor.json, never forgotten, so one not taken isn't
 told again, and Update brush after Use brush is), and one with nothing
 to apply yet (brush before Olo's build of it) waits until it has. A look
-costs under 10 ms (`olo-suggestions --apply` lists them: the whole
-program, 0.00 s), four times an hour.
+costs under 10 ms, four times an hour.
 
-`--apply` with an id that isn't there (mistyped, or an option it
-doesn't take) does nothing at all and exits 1, rather than applying the
-ones it knows.
+`--fix` with an id that isn't there (mistyped, or an option it doesn't
+take) does nothing at all and exits 1, rather than fixing the ones it
+knows.
 - **brush's suggestions from Olo's model (olo-complete)**: with
   Preferences ▸ Terminal ▸ Command Suggestions on
   (`~/.config/olo/complete.json` `enabled`, read by brush and the daemon
@@ -10913,7 +10971,7 @@ ones it knows.
     turning it on saves the setting, starts the daemon and waits for its
     first fine-tune ("Learning from your history…", then how it did);
     off saves and sends `reload`, and the daemon goes. Another shell, or
-    a brush without the mark, gets a note and Open Olo Suggestions….
+    a brush without the mark, gets a note and Open Olo Doctor….
     `complete::lint_states` are linted (`ui_lint_command_suggestions`;
     the pane is the tallest's size).
   - Activity Monitor ▸ AI (`sections::ai`): `model_poller` asks `stats`
@@ -10942,8 +11000,9 @@ ones it knows.
     (`output::tests::bens_restored_tab_suggests_the_resume`: Ben's
     restored tab, `cl` typed, his `claude … --resume 00000000-…`). Tried
     headless: a command printed by `printf`, `git l` typed in brush, the
-    hint `og --oneline -3`. The installed `/usr/local/bin/brush` is Olo
-    Suggestions' copy, brought up to date by its "Update brush".
+    hint `og --oneline -3`. The installed `/usr/local/bin/brush` is the
+    copy Olo Doctor's suggestion put there, brought up to date by its
+    "Update brush".
   - Measured (M2 Max, release, 640 commands): a suggestion 1 µs in the
     daemon, 2 µs at p95 (26 µs round trip from a client); with a shell's
     tail (ThinkPad, 2026-11-05) 2 µs at the median, 3 at p95, as without

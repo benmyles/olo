@@ -1186,19 +1186,6 @@ something nobody here has is in "Blocked", with what it waits for.
   --helper`: one administrator request), with live progress (making
   the initramfs again takes a while) and a way back (Revert). Not the
   firmware's logo (above).
-- **One Olo Doctor: Suggestions folded into it** (Ben, 2026-11-13:
-  "combine the olo suggestions app into olo doctor: just have it be one
-  unified olo doctor app where each item has a type showing whether
-  it's e.g. a suggestion or something critical and any of them can be
-  put on the ignored list"). Every finding of either app in one list,
-  each with its kind (critical, a problem, a suggestion, …) shown, and
-  any of them ignorable (Ignore, and an Ignored list to bring one
-  back); Suggestions' app, its Deskbar entry and its notifications go
-  to Doctor's; agents read and act on the same items.
-- **Olo Doctor looked over and tidied** (Ben, 2026-11-13: "also spruce
-  up olo doctor it's a bit of a mess right now"): its window laid out
-  again around the one list (grouped by kind, what's wrong first, each
-  item's fix at hand), at every scale and theme.
 ## Done, waiting for Ben to try or confirm
 
 (Audited again 2026-11-08, all 51: each is done, and what's left in
@@ -1257,6 +1244,34 @@ accessibility tree test on an agent screen (GTK's Text Editor, 30
 nodes). What's left needs Ben: in Blocked, "The ignored tests that
 need Ben".)
 
+- **One Olo Doctor, tidied: Suggestions folded into it** (Ben,
+  2026-11-13: "combine the olo suggestions app into olo doctor: just
+  have it be one unified olo doctor app where each item has a type
+  showing whether it's e.g. a suggestion or something critical and any
+  of them can be put on the ignored list", and "also spruce up olo
+  doctor it's a bit of a mess right now"). One app, one list, most
+  pressing first: each finding a card with its kind's tag (Critical
+  red: the last backup not whole, no driver for the built-in sound;
+  Problem orange; Recommended blue; Suggestion green: what Olo
+  Suggestions had), its title, what it is, and under it Ignore (a quiet
+  link) and its fix. The summary counts each kind ("1 critical, 2
+  problems, 1 recommendation and 2 suggestions."). Fixed, As It Should
+  Be (folded while anything is found) and Ignored (folded, its tags
+  grey) are latches under the list; Check Again and Fix All (all but
+  the suggestions) under it, as a dialog's buttons; Fix ▸ Apply All
+  Suggestions. One ignored list (the old two read as one). Olo
+  Suggestions' app, its Deskbar entry and its notifications are gone
+  to Doctor's (a new suggestion is told once, from Olo Doctor, a click
+  opening it); the upgrade removes the old `olo-suggestions`. Agents:
+  `--report` has each finding's `severity`, `--fix` lists each with its
+  kind and takes `all` or `suggestions`. New in the kit: `Tag`, and a
+  scroll view's background now runs under its bars (it left a pixel's
+  seam at 1.75×). Tried headless with a made-up report
+  (`OLO_DOCTOR_DEMO=1`): each fix, a failing one, Fix All, Apply All
+  Suggestions, Ignore and the command line's `--ignore`; the layout
+  review clean at 1×, 1.25×, 1.5×, 1.75× and 2×, light and dark, every
+  section open. *Left for Ben:* how it looks to him, and whether the
+  two critical ones are the right two (`Severity::Critical`).
 - **Calls: echo and poor sound reported by the people Ben talks to**
   (Ben, 2026-11-14: "i have had reports that people hear echo and just
   generally poor sound from me i need it to be super good quality for

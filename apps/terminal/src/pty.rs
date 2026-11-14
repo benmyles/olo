@@ -26,7 +26,7 @@ pub fn set_cloexec(fd: RawFd, on: bool) {
 }
 
 /// The user's login shell as the account has it now (one changed since
-/// login, Olo Suggestions' brush, is the next window's at once), else
+/// login, the brush Olo Doctor suggests, is the next window's at once), else
 /// `$SHELL` (what it was at login).
 fn shell(env: &[(String, String)]) -> String {
     // SAFETY: getpwuid returns a pointer into static storage or null.

@@ -55,4 +55,4 @@ pub use text_field::{FieldMessage, TextField, TextFieldEvent, text_field};
 pub use text_view::{TextView, text_view};
 pub use thumbs::{Thumbnail, ThumbnailPicker};
 pub use toolbar::{TOOL, ToolBar};
-pub use views::{BBox, EmptyState, Separator, StringView, heading, separator};
+pub use views::{BBox, EmptyState, Separator, StringView, Tag, heading, separator};
