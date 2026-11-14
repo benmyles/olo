@@ -141,8 +141,6 @@ pub struct Ruler {
     press: Option<(Point<Pixels>, Option<Held>)>,
     /// Where the ruler is in the window (as its handlers last found).
     bounds: Bounds<Pixels>,
-    /// The pointer is over a marker.
-    over: bool,
 }
 
 impl Default for Ruler {
@@ -153,7 +151,21 @@ impl Default for Ruler {
 
 impl Ruler {
     pub fn new() -> Ruler {
-        Ruler { setting: Setting::default(), origin: 0.0, width: 1.0, drag: None, metric: metric(), press: None, bounds: Bounds::default(), over: false }
+        Ruler { setting: Setting::default(), origin: 0.0, width: 1.0, drag: None, metric: metric(), press: None, bounds: Bounds::default() }
+    }
+
+    /// Where each marker can be taken (what [`Ruler::hit`] finds), in a
+    /// ruler drawn at `rect`.
+    fn reaches(&self, rect: Bounds<Pixels>) -> impl Iterator<Item = Bounds<Pixels>> + '_ {
+        let i = self.setting.indents;
+        let x_of = |v: f32| self.origin + v;
+        let (top, bottom) = (f32::from(rect.top()), f32::from(rect.bottom()));
+        let mid = (top + 6.0 + bottom - 7.0) / 2.0;
+        let reach = move |x: f32, upper: bool| {
+            let (t, b) = if upper { (top, mid) } else { (mid, bottom) };
+            Bounds::from_corners(point(px(x - REACH), px(t)), point(px(x + REACH), px(b)))
+        };
+        [reach(x_of(i.left + i.first), true), reach(x_of(i.left), false), reach(x_of(self.width - i.right), false)].into_iter().chain(self.setting.tabs.iter().map(move |t| reach(x_of(t.x), false)))
     }
 
     /// What it shows: `setting`, the scale's 0 at window x `origin`,
@@ -503,8 +515,15 @@ impl View for Ruler {
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         cx.canvas(|r: &Ruler, g, b| {
-            if r.over || r.drag.is_some() {
+            if r.drag.is_some() {
                 g.set_cursor_style(CursorStyle::ResizeLeftRight, b);
+            } else {
+                // Over a marker, the pointer says it can be dragged: a
+                // place for each, so the ruler hears nothing of the
+                // pointer going over it elsewhere.
+                for reach in r.reaches(b) {
+                    g.set_cursor_style(CursorStyle::ResizeLeftRight, reach);
+                }
             }
             // One layer for the lot: a ruler across a wide window is
             // hundreds of ticks, each its own place in the scene
@@ -518,22 +537,8 @@ impl View for Ruler {
             r.down(e, cx);
             cx.stop_propagation();
         }))
-        // (Over a marker, the pointer says it can be dragged.)
-        .on_mouse_move(cx.listener(|r: &mut Ruler, e: &MouseMoveEvent, cx| {
-            r.bounds = cx.listener_bounds();
-            let over = r.hit(e.position, &r.setting).is_some();
-            if over != r.over {
-                r.over = over;
-                cx.invalidate();
-            }
-        }))
-        .on_hover(cx.listener(|r: &mut Ruler, inside: &bool, cx| {
-            if !*inside && std::mem::take(&mut r.over) {
-                cx.invalidate();
-            }
-        }))
         // (Anywhere in the window: a marker held goes on being dragged.)
-        .on_window_mouse_move(cx.listener(|r: &mut Ruler, e: &MouseMoveEvent, cx| {
+        .on_drag_move(cx.listener(|r: &mut Ruler, e: &MouseMoveEvent, cx| {
             if r.drag.is_some() {
                 r.bounds = cx.listener_bounds();
                 r.moved(e, cx);

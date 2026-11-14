@@ -783,7 +783,9 @@ impl IntoElement for TabStrip {
         // has become: a tab or a group dragged along the strip, or out of
         // it; the side strip's edge.
         let (s, act) = (me.clone(), me.on_action.clone());
-        element = element.on_window_mouse_move(move |e: &MouseMoveEvent, cx| {
+        // (Every move over it: which part is under the pointer, lit; a
+        // drag from it, anywhere in the window.)
+        element = element.hears_motion().on_drag_move(move |e: &MouseMoveEvent, cx| {
             let (l, press, drag, changed) = {
                 let st = cx.node_state::<StripState>();
                 let Some(l) = st.laid.clone() else { return };

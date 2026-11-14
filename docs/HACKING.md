@@ -518,7 +518,35 @@ How Olo keeps it (do the same):
   drawn: some twenty-five frames at the end of every flick. A wheel
   turned over what neither scrolls nor takes it wakes no looper
   (`Stage::input`: only its end is passed on, for what took the steps
-  before the pointer left it).
+  before the pointer left it). Nor does the pointer moving where no
+  move means anything: the display thread sends a window's looper a
+  move with no button held only across the edge of something a hover
+  changes, a cursor's area, a cut text, an edge a drawing noted
+  (`Painter::note_pointer_edge`), or over what follows the pointer
+  (`on_mouse_move`, `hears_motion`; with ⌘ held only,
+  `moves_matter_with_command`; a drag's alone,
+  `moves_matter_while_pressed`; only across the edges its drawing
+  notes, `moves_matter_at_edges`); every move while a button is held
+  (`on_drag_move`, a drag's), and the first after any other input.
+  (The pointer swept over Tracker's desktop, 1,200 moves: 84 → 36 ms
+  of CPU, its looper never woken where it was woken for each.)
+  Each commit says where (`Commit::motion`, regions in the layers'
+  own coordinates as the wheel's are, made with the list of what
+  shows); the stage keeps where the pointer went
+  (`stage::PointerPlace`), which the looper reads when something moves
+  under a still pointer (`hover_again`) and for `mouse_position`. A move
+  within 1.5 device pixels of an edge goes too: the stage places a
+  scrolled layer by whole pixels, the looper's hit test by the exact
+  offset. `on_window_mouse_move` asks for every move (the looper woken
+  for each): only Screenshot's region picker does. What changes only
+  over parts of itself says where they are as it draws, not by
+  hearing every move over it: the ruler gives each marker a cursor's
+  area (`Painter::set_cursor_style`), so the pointer over its scale
+  wakes nothing; lists drawn in one canvas (search's suggestions, the
+  palette's results, the emoji picker's cells, Telegram's chats) note
+  each row and hear only the moves across them
+  (`moves_matter_at_edges`). `OLO_EVERY_MOVE=1` sends every move, to
+  compare.
 * **Ask for less**: events by kind (`EventKind`: `OwnWindows`, not every
   window's title), files by inotify, an event written out once for all.
   Something that wakes every app costs every app: an agent's spinning
@@ -1366,7 +1394,11 @@ that cuts text itself says so with `cut::note(g, full, bounds)`
 (Tracker's icon names, Telegram's attachment chips and bubble lines). The notes are paint records, so
 a cached view's replay keeps them; the pointer's moves look through
 them once after each frame drawn, then through the few rectangles cut
-(0.3–1.9 µs a move in Tracker and Activity Monitor). Agents read cut
+(0.3–1.9 µs a move in Tracker and Activity Monitor). Only the moves
+across a cut text's edge reach the window (the Frame's listener is an
+`on_drag_move`): each one noted is a motion region of the commit
+(`collect`, which tells a label cut at a side by the clip it's in as
+`cut_texts` does; in a layer that scrolls across, every label counts). Agents read cut
 text whole: in a window's tree a node named by what shows of it
 ("Quarterly rep…") has its whole name, and a cut text no node names is
 a `Label` of its own (`agent::whole_name`, when the tree is asked for).
@@ -5058,7 +5090,7 @@ from the panel's state in the callback (`on_click_view`). A drawing
 that takes the pointer itself (the display arrangement, the calendar,
 a corner's monitor, the shortcuts) only draws, and leaves where it put
 things in a cell its element's listeners read (`on_mouse_down`, and
-`on_window_mouse_move`/`up` for a drag), or they go by
+`on_drag_move`/`on_window_mouse_up` for a drag), or they go by
 `cx.listener_bounds()`. The layout lint's windows are made on loopers
 too, so what its tests share is the same `Prefs` (`set_for_tests`, one
 lint at a time).
@@ -11811,7 +11843,7 @@ and by the threads that move things to the Trash and put them back
 are canvases the view draws itself (`cx.canvas`), their pointer taken
 by listeners on them that find a slice or a chip's × by the arithmetic
 that drew it (`chart::hit`, `DiskUsage::chips`); a drag is the window's
-(`on_window_mouse_move`, `on_window_mouse_up`) until it's let go. Each
+(`on_drag_move`, `on_window_mouse_up`) until it's let go. Each
 slice is one `Painter::paint_sector` (the slices
 one paint layer, the hairlines another), so hovering redraws the window
 in about a millisecond and only when the slice under the pointer

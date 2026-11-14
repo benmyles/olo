@@ -285,6 +285,7 @@ impl View for After {
                     .w(px(pw))
                     .h(px(ph))
                     .on_mouse_down(MouseButton::Left, cx.listener(|a: &mut After, e: &MouseDownEvent, _| a.press = Some(e.position)))
+                    .moves_matter_while_pressed()
                     .on_mouse_move(cx.listener(|a: &mut After, e: &MouseMoveEvent, cx| {
                         let Some(at) = a.press else { return };
                         if e.pressed_button != Some(MouseButton::Left) {

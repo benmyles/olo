@@ -604,6 +604,8 @@ impl View for ImageView {
             .on_scroll_wheel(cx.listener(|v: &mut Self, e: &ScrollWheelEvent, cx| v.wheel(e, cx)))
             .on_pinch(cx.listener(|v: &mut Self, e: &PinchEvent, cx| v.pinch(e, cx)))
             .on_mouse_down(MouseButton::Left, cx.listener(|v: &mut Self, e: &MouseDownEvent, cx| v.press(e, cx)))
+            // (Dragged to pan: only with the button held.)
+            .moves_matter_while_pressed()
             .on_mouse_move(cx.listener(|v: &mut Self, e: &MouseMoveEvent, cx| v.moved(e, cx)))
             .on_mouse_up(
                 MouseButton::Left,

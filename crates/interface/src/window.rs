@@ -24,10 +24,11 @@ use crate::{
     AvailableSpace, Bounds, Modifiers, MouseDownEvent, Pixels, PlatformWindow, Point, ScaledPixels, SharedString, Size, SvgRenderer, TextRendering, TextStyle, WindowId, WindowParams,
     WindowTextSystem,
     display::display,
+    element::Motion,
     layout::Layout,
     painter::Gfx,
     point, px, size,
-    stage::{Commit, Item, Layer, Opened, ScrollReport, WheelKind, WheelRegion, WindowEvent, WindowLink, WindowState},
+    stage::{Commit, Item, Layer, MotionRegion, Opened, PointerPlace, ScrollReport, WheelKind, WheelRegion, WindowEvent, WindowLink, WindowState},
     tree::{Node, NodeId, NodeKind, ViewId},
     view::{AnyView, Child, Cx, View, ViewSlot},
 };
@@ -131,6 +132,10 @@ pub(crate) struct WindowCore {
     /// is drawn by a scroller (its bars).
     pub(crate) layers: Vec<Layer>,
     pub(crate) wheel: Vec<WheelRegion>,
+    /// Where the pointer's moves matter, and whether every move in the
+    /// window does (`Commit::motion`).
+    pub(crate) motion: Arc<Vec<MotionRegion>>,
+    pub(crate) all_motion: bool,
     pub(crate) scrollers: FxHashMap<u64, NodeId>,
     pub(crate) watchers: Vec<(u64, u8, NodeId)>,
     /// Scrollers that moved (and which ways), whose listeners and watchers haven't heard.
@@ -193,6 +198,12 @@ pub(crate) struct WindowCore {
     pub(crate) answered: u64,
     pub(crate) entered: Instant,
     pub(crate) mouse: Point<Pixels>,
+    /// The number of the input `mouse` came with (0: one the looper made
+    /// itself, `click_at`).
+    pub(crate) mouse_from: u64,
+    /// Where the pointer last moved, kept by the stage: moves that
+    /// mattered nowhere weren't sent (`pointer_at`).
+    pub(crate) pointer: Arc<PointerPlace>,
     /// The pointer is over the window (or files dragged from elsewhere
     /// are): until it has come, and once it has left, nothing in the
     /// window is under it, wherever it last was.
@@ -252,6 +263,7 @@ struct Listing {
     items: Vec<Item>,
     layers: Vec<Layer>,
     wheel: Vec<WheelRegion>,
+    motion: Vec<MotionRegion>,
     scrollers: FxHashMap<u64, NodeId>,
     watchers: Vec<(u64, u8, NodeId)>,
     /// What's raised (`InteractiveElement::raised`), found on the way and
@@ -571,6 +583,8 @@ impl WindowCore {
             items_stale: true,
             layers: Vec::new(),
             wheel: Vec::new(),
+            motion: Arc::default(),
+            all_motion: false,
             scrollers: FxHashMap::default(),
             watchers: Vec::new(),
             scroll_changed: Vec::new(),
@@ -593,6 +607,8 @@ impl WindowCore {
             answered: 0,
             entered: Instant::now(),
             mouse: Point::default(),
+            mouse_from: 0,
+            pointer: opened.pointer,
             pointer_in: false,
             modifiers: Modifiers::default(),
             hovered: Vec::new(),
@@ -895,6 +911,7 @@ impl WindowCore {
             items: std::mem::take(&mut self.items),
             layers: std::mem::take(&mut self.layers),
             wheel: std::mem::take(&mut self.wheel),
+            motion: Vec::new(),
             scrollers: std::mem::take(&mut self.scrollers),
             watchers: std::mem::take(&mut self.watchers),
             raised: Some(Vec::new()),
@@ -914,18 +931,29 @@ impl WindowCore {
             node.slots = [UNLISTED; 2];
         }
         if let Some(root) = self.root {
-            self.collect(root, window, 0, &mut listing);
+            let sides = Some((window.left(), window.right()));
+            self.collect(root, window, 0, sides, &mut listing);
             // What's raised, over the rest, cut by the window alone.
             for (id, layer) in listing.raised.take().unwrap_or_default() {
-                self.collect(id, window, layer, &mut listing);
+                self.collect(id, window, layer, if layer == 0 { sides } else { None }, &mut listing);
             }
         }
-        let Listing { items, layers, wheel, scrollers, watchers, .. } = listing;
+        let Listing { items, layers, wheel, motion, scrollers, watchers, .. } = listing;
         (self.items, self.layers, self.wheel, self.scrollers, self.watchers) = (items, layers, wheel, scrollers, watchers);
+        // (The same list as the stage has is kept as it is: which region
+        // the pointer is in isn't found afresh for nothing.)
+        if *self.motion != motion {
+            self.motion = Arc::new(motion);
+        }
+        let nodes = &self.nodes;
+        self.all_motion = self.window_listeners.iter().any(|id| nodes.get(*id).and_then(|n| n.inter.as_ref()).is_some_and(|i| i.all_motion));
         self.items_stale = false;
     }
 
-    fn collect(&mut self, id: NodeId, clip: Bounds<ScaledPixels>, layer: u32, out: &mut Listing) {
+    /// Lists node `id` and what it holds: `clip` is what can be seen of
+    /// it, in its layer; `sides`, where text is cut at a side, across
+    /// (none: not known here, in a layer that scrolls across).
+    fn collect(&mut self, id: NodeId, clip: Bounds<ScaledPixels>, layer: u32, sides: Option<(ScaledPixels, ScaledPixels)>, out: &mut Listing) {
         let scale = self.gfx.scale_factor;
         let rem = self.gfx.rem_size;
         let Some(node) = self.nodes.get_mut(id) else { return };
@@ -951,6 +979,42 @@ impl WindowCore {
             out.watchers.extend(inter.watches.iter().map(|(watched, ways)| (*watched, *ways, id)));
         }
         let by = point(ScaledPixels(((node.bounds.origin.x.0 - node.painted_at.x.0) * scale).round()), ScaledPixels(((node.bounds.origin.y.0 - node.painted_at.y.0) * scale).round()));
+        // Where the pointer's moves matter: over what follows it, and at
+        // the edges of what its coming and going changes (hover, the
+        // pointer's shape, a cut text's tip).
+        {
+            let mut region = |rect: Bounds<ScaledPixels>, every: Motion| {
+                let rect = rect.intersect(&clip);
+                if !rect.is_empty() {
+                    out.motion.push(MotionRegion { layer, rect, every });
+                }
+            };
+            match node.inter.as_ref().map_or(Motion::None, |i| i.motion()) {
+                Motion::None if node.style.mouse_cursor.is_some() => region(node.bounds.scale(scale), Motion::Edge),
+                Motion::None => {}
+                motion => region(node.bounds.scale(scale), motion),
+            }
+            if let Some(notes) = &node.notes {
+                // (Noted where it was painted; moved as the node has been.)
+                let placed = |b: &Bounds<Pixels>| {
+                    let b = b.scale(scale);
+                    Bounds { origin: b.origin + by, size: b.size }
+                };
+                for b in notes.cursors.iter().map(|(b, _)| b).chain(&notes.edges) {
+                    region(placed(b), Motion::Edge);
+                }
+                // A text cut short, or one cut by what it's in at a side
+                // (as `cut_texts` finds them, with a pixel's grace).
+                let grace = ScaledPixels(scale);
+                for (b, _, if_cut) in &notes.cuts {
+                    let b = placed(b);
+                    let cut = !*if_cut || sides.is_none_or(|(left, right)| b.left() < left - grace || b.right() > right + grace);
+                    if cut {
+                        region(b, Motion::Edge);
+                    }
+                }
+            }
+        }
         let shows = |list: &Arc<crate::stage::Recording>| !Bounds { origin: list.bounds.origin + by, size: list.bounds.size }.intersect(&clip).is_empty();
         if let Some(list) = &node.behind
             && shows(list)
@@ -960,14 +1024,17 @@ impl WindowCore {
         }
         let count = node.children.len();
         if count > 0 {
-            let inner = match node.style.overflow_mask(node.bounds, rem, scale) {
-                Some(mask) => clip.intersect(&mask.scale(scale).bounds),
-                None => clip,
+            let (inner, sides) = match node.style.overflow_mask(node.bounds, rem, scale) {
+                Some(mask) => {
+                    let mask = mask.scale(scale).bounds;
+                    (clip.intersect(&mask), sides.map(|(l, r)| (l.max(mask.left()), r.min(mask.right()))))
+                }
+                None => (clip, sides),
             };
             // What scrolls is a layer of its own: everything in it is
             // listed where it's laid out, all of it, and the stage shows
             // it from wherever it's scrolled to.
-            let (inner, within) = match &node.scroll {
+            let (inner, within, sides) = match &node.scroll {
                 Some(handle) if !inner.is_empty() => {
                     let index = out.layers.len() as u32;
                     let scrolls = (node.style.overflow.x == crate::Overflow::Scroll, node.style.overflow.y == crate::Overflow::Scroll);
@@ -975,14 +1042,18 @@ impl WindowCore {
                     out.layers.push(Layer { id: handle.id(), parent: layer, viewport: inner, max: handle.max_offset(), view: node.bounds.size, axes: scrolls, set });
                     out.wheel.push(WheelRegion { layer, rect: inner, kind: WheelKind::Scroller(index) });
                     out.scrollers.insert(handle.id(), id);
-                    (EVERYWHERE, index)
+                    // (Scrolled across, what its sides cut changes as it
+                    // scrolls, here: every text counts as cut. Else its
+                    // view's sides are where they are.)
+                    let sides = if scrolls.0 { None } else { sides.map(|(l, r)| (l.max(inner.left()), r.min(inner.right()))) };
+                    (EVERYWHERE, index, sides)
                 }
-                _ => (inner, layer),
+                _ => (inner, layer, sides),
             };
             if !inner.is_empty() {
                 for i in 0..count {
                     let child = self.nodes[id].children[i];
-                    self.collect(child, inner, within, out);
+                    self.collect(child, inner, within, sides, out);
                 }
             }
         }
@@ -1090,6 +1161,16 @@ impl WindowCore {
         }
     }
 
+    /// Where the pointer is: where it last moved, as the stage keeps it
+    /// (moves that mattered nowhere weren't sent), unless input from
+    /// after that has placed it since (a press: where it was pressed).
+    pub(crate) fn pointer_at(&self) -> Point<Pixels> {
+        if !self.pointer_in {
+            return self.mouse;
+        }
+        self.pointer.since(self.mouse_from).unwrap_or(self.mouse)
+    }
+
     /// The texts that don't show in full under a node, where what
     /// shows of each is in the window: `clip` is what can be seen there.
     fn cut_texts(&self, id: NodeId, clip: Bounds<Pixels>, shift: Point<Pixels>, out: &mut Vec<(Bounds<Pixels>, SharedString)>) {
@@ -1160,6 +1241,10 @@ impl<'a> WindowCx<'a> {
         match event {
             WindowEvent::Input(input, number, command) => {
                 self.core.answered = self.core.answered.max(number);
+                use crate::PlatformInput as I;
+                if matches!(input, I::MouseMove(_) | I::MouseDown(_) | I::MouseUp(_) | I::MouseExited(_) | I::ScrollWheel(_) | I::Pinch(_) | I::FileDrop(_)) {
+                    self.core.mouse_from = number;
+                }
                 crate::platform::taking_input(command);
                 self.dispatch_input(input)
             }
@@ -1261,7 +1346,7 @@ impl<'a> WindowCx<'a> {
             self.core.update_rows();
             self.core.check_visible();
             if std::mem::take(&mut self.core.hover_stale) {
-                self.update_hover();
+                self.hover_again();
             }
         }
     }
@@ -1421,7 +1506,7 @@ impl<'a> WindowCx<'a> {
             // What hears of scrolling hears (it may have more to show).
             self.tell_scrolled();
             if std::mem::take(&mut self.core.hover_stale) {
-                self.update_hover();
+                self.hover_again();
             }
             // What changed says what it shows now.
             let bodies = Instant::now();
@@ -1638,7 +1723,7 @@ impl<'a> WindowCx<'a> {
             );
         }
         let scale = core.gfx.scale_factor;
-        let (layers, wheel) = (core.layers.clone(), core.wheel.clone());
+        let (layers, wheel, motion) = (core.layers.clone(), core.wheel.clone(), core.motion.clone());
         // (Told once where the looper put a scroller: after that the
         // stage's own word stands.)
         for layer in &mut core.layers {
@@ -1678,6 +1763,8 @@ impl<'a> WindowCx<'a> {
             items,
             layers,
             wheel,
+            motion,
+            all_motion: core.all_motion,
             work: {
                 // (What this turn has taken so far, and the turns before
                 // it since the last commit; the rest of this turn is the
@@ -2025,6 +2112,21 @@ impl<'a> WindowCx<'a> {
         });
     }
 
+    /// The pointer moved to `at` (with `button` and `modifiers` held) over a window with
+    /// no display, as if the person moved it: through the display
+    /// thread, which sends the looper only the moves that matter. The
+    /// receiver hears once it has decided (what it sent is on the
+    /// looper's queue by then).
+    #[doc(hidden)]
+    pub fn headless_move(&self, at: Point<Pixels>, button: Option<crate::MouseButton>, modifiers: Modifiers) -> std::sync::mpsc::Receiver<()> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.on_display(move |window| {
+            window.headless_input(crate::PlatformInput::MouseMove(crate::MouseMoveEvent { position: at, pressed_button: button, modifiers }));
+            let _ = tx.send(());
+        });
+        rx
+    }
+
     /// Shows `buffer` as the picture `key` (another program's memory on
     /// the GPU, an Agent Screen's frame), in place of the one before,
     /// where a drawing placed it (`Painter::place_external`), at once,
@@ -2276,9 +2378,10 @@ impl<'a> WindowCx<'a> {
         found
     }
 
-    /// Where the pointer was last seen in the window.
+    /// Where the pointer is in the window (as last seen: its moves the
+    /// looper wasn't sent too, `Commit::motion`).
     pub fn mouse_position(&self) -> Point<Pixels> {
-        self.core.mouse
+        self.core.pointer_at()
     }
 
     pub fn modifiers(&self) -> Modifiers {

@@ -2562,14 +2562,16 @@ pub fn view<V: EditorHost>(host: &mut V, key: usize, options: Options, cx: &mut 
             }),
         )
         // With the command key held over it, links are hands: looked at
-        // again as the pointer moves with it held.
+        // again as the pointer moves with it held. (Moves without it
+        // aren't sent the window.)
+        .moves_matter_with_command()
         .on_mouse_move(cx.listener(|_: &mut V, e: &MouseMoveEvent, cx| {
             if e.modifiers.control || e.modifiers.platform {
                 cx.invalidate();
             }
         }))
         // (Anywhere in the window: a press that began here goes on.)
-        .on_window_mouse_move(cx.listener(move |host: &mut V, e: &MouseMoveEvent, cx| drag(host, key, e, cx)))
+        .on_drag_move(cx.listener(move |host: &mut V, e: &MouseMoveEvent, cx| drag(host, key, e, cx)))
         .on_window_mouse_up(cx.listener(move |host: &mut V, e: &MouseUpEvent, cx| {
             if e.button == MouseButton::Left {
                 release(host, key, e, cx);

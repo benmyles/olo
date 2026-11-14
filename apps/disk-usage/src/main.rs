@@ -1246,7 +1246,7 @@ impl View for DiskUsage {
             root = root
                 .relative()
                 .child(chip)
-                .on_window_mouse_move(cx.listener(|d: &mut Self, e: &MouseMoveEvent, cx| {
+                .on_drag_move(cx.listener(|d: &mut Self, e: &MouseMoveEvent, cx| {
                     d.drag_at = e.position;
                     cx.invalidate();
                 }))

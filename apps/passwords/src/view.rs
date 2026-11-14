@@ -1185,6 +1185,7 @@ impl Detail {
                     d.press = Some((down_key.clone(), e.position));
                 }),
             )
+            .moves_matter_while_pressed()
             .on_mouse_move(cx.listener(move |d: &mut Detail, e: &MouseMoveEvent, cx| {
                 let from = d.press.as_ref().filter(|(k, _)| *k == move_key).map(|(_, at)| *at);
                 if let Some(at) = from

@@ -460,6 +460,9 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, cx: &mut Cx<Tg>) -> Element {
         let now = when::now();
         for (i, d) in &draws {
             let rr = Bounds { origin: point(b.origin.x, b.origin.y + px(*i as f32 * ROW)), size: size(b.size.width, px(ROW)) };
+            // (Lit as the pointer comes over it: only rows' edges
+            // matter.)
+            g.note_pointer_edge(rr);
             paint_row(g, rr, d.clone(), &p, hover == Some(*i), now, h24);
         }
     })
@@ -472,6 +475,7 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, cx: &mut Cx<Tg>) -> Element {
         .h(px(total as f32 * ROW))
         .child(canvas_el)
         // (The row under the pointer is lit.)
+        .moves_matter_at_edges()
         .on_mouse_move(move |e: &MouseMoveEvent, cx| {
             let at = e.position;
             t_move.update(cx, move |tg, cx| {

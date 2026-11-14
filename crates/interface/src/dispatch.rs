@@ -378,6 +378,14 @@ impl WindowCx<'_> {
         false
     }
 
+    /// Something moved or scrolled under a still pointer: what it's over
+    /// is worked out again where it is now (the stage keeps moves that
+    /// mattered nowhere from the looper, not where they went).
+    pub(crate) fn hover_again(&mut self) {
+        self.core.mouse = self.core.pointer_at();
+        self.update_hover();
+    }
+
     /// Works out what the pointer is over now, and tells what it came
     /// over or left.
     pub(crate) fn update_hover(&mut self) {

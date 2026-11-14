@@ -169,6 +169,7 @@ impl View for Pad {
                     cx.invalidate();
                 }),
             )
+            .moves_matter_while_pressed()
             .on_mouse_move(cx.listener(|pad: &mut Pad, e: &MouseMoveEvent, cx| {
                 if pad.drawing && e.pressed_button == Some(MouseButton::Left) {
                     pad.add(e.position, cx.listener_bounds());

@@ -1859,6 +1859,9 @@ impl View for Picker {
                 if r.bottom() < visible.origin.y || r.origin.y > visible.bottom() {
                     continue;
                 }
+                // (Lit as the pointer comes over it: only rows' edges
+                // matter.)
+                g.note_pointer_edge(r);
                 if hover == Some(i) {
                     style::fill_rect(g, r, ink.opacity(0.06));
                 }
@@ -1883,6 +1886,7 @@ impl View for Picker {
             .w_full()
             .h(px(total as f32 * row_h))
             .child(rows)
+            .moves_matter_at_edges()
             .on_mouse_move(cx.listener(|p: &mut Picker, e: &MouseMoveEvent, cx| {
                 let i = p.row_at(e.position);
                 if i != p.hover {

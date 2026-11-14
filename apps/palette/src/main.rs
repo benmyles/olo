@@ -969,6 +969,9 @@ impl Palette {
         let p = theme::palette();
         for (n, (index, item)) in (self.top..self.results.len()).take(ROWS).map(|i| (i, &self.results[i])).enumerate() {
             let r = Bounds { origin: point(list.left(), list.top() + px(m::TIGHT + n as f32 * ROW)), size: size(list.size.width, px(ROW)) };
+            // (The row the pointer comes over is chosen: only rows'
+            // edges matter to it.)
+            g.note_pointer_edge(r);
             let is_selected = index == self.selected;
             let (fg, dim) = if is_selected {
                 style::fill_rect(g, r, c(p.menu_selected_background));
@@ -1152,6 +1155,7 @@ impl View for Palette {
                     .top(list.top())
                     .w(list.size.width)
                     .h(list.size.height)
+                    .moves_matter_at_edges()
                     .on_mouse_move(cx.listener(|p: &mut Self, e: &MouseMoveEvent, cx| {
                         if let Some(index) = p.result_at(e.position, cx).filter(|i| *i != p.selected) {
                             p.selected = index;

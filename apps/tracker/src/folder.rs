@@ -1044,7 +1044,7 @@ impl FolderWin {
                     .on_mouse_down(MouseButton::Right, cx.listener(|f: &mut FolderWin, e: &MouseDownEvent, cx| f.icon_press(e, cx)))
                     // The pointer held down goes on being followed past the
                     // view's edge.
-                    .on_window_mouse_move(cx.listener(|f: &mut FolderWin, e: &MouseMoveEvent, cx| {
+                    .on_drag_move(cx.listener(|f: &mut FolderWin, e: &MouseMoveEvent, cx| {
                         if f.press.is_some() {
                             f.geo.borrow_mut().origin = cx.listener_bounds().origin;
                             f.icon_move(e, cx);

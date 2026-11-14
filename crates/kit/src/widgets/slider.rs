@@ -198,7 +198,7 @@ impl IntoElement for Slider {
                     f(&v, cx);
                 }
             })
-            .on_window_mouse_move(move |e, cx| {
+            .on_drag_move(move |e, cx| {
                 if !e.dragging() || !*cx.node_state::<bool>() {
                     return;
                 }

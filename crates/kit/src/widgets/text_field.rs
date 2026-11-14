@@ -1030,7 +1030,7 @@ impl View for TextField {
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
             // (A selection dragged out of the field goes on following
             // the pointer.)
-            .on_window_mouse_move(cx.listener(Self::on_mouse_move))
+            .on_drag_move(cx.listener(Self::on_mouse_move))
             .agent("TextInput", self.name.clone())
             .agent_value(self.shown())
             .agent_clickable(true)

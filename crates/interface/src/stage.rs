@@ -106,6 +106,50 @@ pub(crate) enum WheelKind {
     Taker,
 }
 
+/// Where the pointer's moves mean something with no button held, in
+/// painting order: the display thread sends the window's looper a move
+/// only where one does (or while a button is held, or wherever the
+/// window asks for every move), so a pointer passing over a window
+/// changes nothing there wakes nothing.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct MotionRegion {
+    /// The layer it's in, and where in it.
+    pub(crate) layer: u32,
+    pub(crate) rect: Bounds<ScaledPixels>,
+    /// Every move over it matters (something follows the pointer there),
+    /// or only with ⌘ or Ctrl held, or only the pointer coming over it
+    /// or leaving (hover, a cursor, a cut text's tip).
+    pub(crate) every: crate::element::Motion,
+}
+
+/// How far either side of a region's edge every move is sent: the stage
+/// places a scrolled layer by whole device pixels and the looper finds
+/// what's under the pointer by the exact offset, and a drawing's notes
+/// are moved by whole ones, so their edges can be a pixel apart. A move
+/// near an edge goes, and the looper decides.
+const EDGE: f32 = 1.5;
+
+/// Where the pointer last moved over a window, which its stage keeps for
+/// the looper (moves that went nowhere still moved it): where, and after
+/// which input sent to the looper (`WindowEvent::Input`'s number). The
+/// looper looks again at what's under a still pointer here (something
+/// moved or scrolled under it), and its `mouse_position` is this, unless
+/// it has taken input that came after it.
+#[derive(Default)]
+pub(crate) struct PointerPlace(std::sync::Mutex<Option<(Point<Pixels>, u64)>>);
+
+impl PointerPlace {
+    fn set(&self, at: Point<Pixels>, after: u64) {
+        *self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some((at, after));
+    }
+
+    /// Where the pointer is, if it moved after input number `taken`
+    /// (the last the looper took).
+    pub(crate) fn since(&self, taken: u64) -> Option<Point<Pixels>> {
+        self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner).filter(|(_, after)| *after >= taken).map(|(at, _)| at)
+    }
+}
+
 /// Where a scroller is: (its layer's id, where it's scrolled to, where
 /// its content shows, which of the looper's own moves it has taken).
 pub(crate) type ScrollReport = (u64, Point<Pixels>, Point<Pixels>, u32);
@@ -119,6 +163,11 @@ pub(crate) struct Commit {
     pub(crate) items: Vec<Item>,
     pub(crate) layers: Vec<Layer>,
     pub(crate) wheel: Vec<WheelRegion>,
+    /// Where the pointer's moves matter (the same list from commit to
+    /// commit until what's listed changes), and whether every move in
+    /// the window does (`on_window_mouse_move`).
+    pub(crate) motion: Arc<Vec<MotionRegion>>,
+    pub(crate) all_motion: bool,
     /// How long the looper worked on it, from taking what led to it
     /// (input): the frame's `ui` time.
     pub(crate) work: Duration,
@@ -230,6 +279,7 @@ pub(crate) struct Opened {
     pub(crate) surface_id: Option<u32>,
     pub(crate) gpu: Option<GpuSpecs>,
     pub(crate) display: Option<Bounds<Pixels>>,
+    pub(crate) pointer: Arc<PointerPlace>,
     /// Its `size` stands in for the compositor's, not yet given
     /// (`PlatformWindow::awaits_size`): nothing is laid out or drawn
     /// until the stage says it came (`WindowEvent::Sized`).
@@ -336,6 +386,14 @@ pub(crate) struct Stage {
     /// Pointer motion not yet taken by the looper: the latest stands for
     /// all of it.
     motion: RefCell<Latest<(PlatformInput, u64, bool)>>,
+    /// Which of the commit's motion regions the pointer was in at its
+    /// last move (none known: the next move goes to the looper), and
+    /// where it is, for the looper.
+    inside: RefCell<Option<SmallVec<[u32; 8]>>>,
+    pointer: Arc<PointerPlace>,
+    /// Where each layer is, worked out again at each move (kept: no
+    /// allocation a move).
+    places: RefCell<Vec<(Point<ScaledPixels>, Bounds<ScaledPixels>)>>,
     /// Where the scrollers are, not yet taken by the looper.
     scrolled: Latest<Vec<ScrollReport>>,
     /// How app_server held the window, as the looper was last told.
@@ -385,7 +443,9 @@ impl Stage {
         let scale = window.scale_factor();
         let pace = Arc::new(FramePace { unpaced: window.frame_waker().is_none(), ..Default::default() });
         let awaits_size = window.awaits_size();
+        let pointer = Arc::new(PointerPlace::default());
         let opened = Opened {
+            pointer: pointer.clone(),
             pace: pace.clone(),
             size,
             scale,
@@ -415,6 +475,9 @@ impl Stage {
             }),
             waker: RefCell::new(waker),
             motion: RefCell::new(Latest::new()),
+            inside: RefCell::new(None),
+            pointer,
+            places: RefCell::default(),
             scrolled: Latest::new(),
             state: Cell::new(WindowState::default()),
             closed: Cell::new(false),
@@ -583,9 +646,65 @@ impl Stage {
     }
 
     /// The next motion starts afresh: something else was sent, and
-    /// motion from before it mustn't be taken for motion after.
+    /// motion from before it mustn't be taken for motion after. (And the
+    /// next move goes to the looper whatever it's over: the first after
+    /// the pointer comes in, after a press or a key.)
     fn break_motion(&self) {
         *self.motion.borrow_mut() = Latest::new();
+        *self.inside.borrow_mut() = None;
+    }
+
+    /// Whether a move to `at` (no button held) means anything to the
+    /// looper: the window asks for every move, or the pointer is where
+    /// every move matters, near a region's edge, or in other regions than
+    /// at its last move (it came over something or left it).
+    fn motion_matters(&self, at: Point<Pixels>, command: bool) -> bool {
+        // (`OLO_EVERY_MOVE=1`: every move sent, as before there were
+        // regions: to compare, or to rule them out.)
+        static EVERY_MOVE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        if *EVERY_MOVE.get_or_init(|| std::env::var_os("OLO_EVERY_MOVE").is_some_and(|v| v == "1")) {
+            return true;
+        }
+        let showing = self.showing.borrow();
+        let Some(commit) = &showing.commit else { return true };
+        if commit.all_motion {
+            return true;
+        }
+        let scale = commit.scale;
+        let at = point(ScaledPixels(at.x.0 * scale), ScaledPixels(at.y.0 * scale));
+        let mut places = self.places.borrow_mut();
+        layer_places_into(&commit.layers, &showing.scrollers, scale, &mut places);
+        let edge = ScaledPixels(EDGE);
+        let mut now: SmallVec<[u32; 8]> = SmallVec::new();
+        let mut matters = false;
+        for (i, region) in commit.motion.iter().enumerate() {
+            let Some((shift, clip)) = places.get(region.layer as usize) else {
+                matters = true;
+                continue;
+            };
+            let rect = Bounds { origin: region.rect.origin + *shift, size: region.rect.size }.intersect(clip);
+            if rect.is_empty() || !rect.dilate(edge).contains(&at) {
+                continue;
+            }
+            let well_in = rect.dilate(ScaledPixels(-EDGE));
+            if !well_in.contains(&at) {
+                // (Near its edge: the looper's own edge may be just here.)
+                matters = true;
+            }
+            if rect.contains(&at) {
+                now.push(i as u32);
+                use crate::element::Motion;
+                matters |= match region.every {
+                    Motion::Every => true,
+                    Motion::WithCommand => command,
+                    Motion::Edge | Motion::None => false,
+                };
+            }
+        }
+        let mut inside = self.inside.borrow_mut();
+        matters |= inside.as_ref() != Some(&now);
+        *inside = Some(now);
+        matters
     }
 
     fn input(&self, input: PlatformInput) {
@@ -594,10 +713,19 @@ impl Stage {
         // when this was made.)
         let command = crate::platform::right_control_now();
         match input {
-            PlatformInput::MouseMove(_) => {
+            PlatformInput::MouseMove(ref event) => {
+                // A move with no button held where none matters: kept
+                // from the looper (only where it is, for when it looks).
+                if event.pressed_button.is_some() {
+                    *self.inside.borrow_mut() = None;
+                } else if !self.motion_matters(event.position, event.modifiers.control || event.modifiers.platform) {
+                    self.pointer.set(event.position, self.sent.get());
+                    return;
+                }
                 // (Motion gathers on its way: the last of it has the
                 // number that answers for all it stood in for.)
                 let number = self.input_sent();
+                self.pointer.set(event.position, number);
                 let motion = self.motion.borrow().clone();
                 motion.put(&self.link.looper, (input, number, command), move |looper, (input, number, command)| crate::window::deliver(looper, id, WindowEvent::Input(input, number, command)));
             }
@@ -797,6 +925,11 @@ impl Stage {
             }
             if commit.size == showing.size && commit.scale == showing.scale {
                 showing.resized_at = None;
+            }
+            // Other places where moves matter: which the pointer is in is
+            // found afresh at its next move.
+            if showing.commit.as_ref().is_none_or(|before| !Arc::ptr_eq(&before.motion, &commit.motion) || before.layers.len() != commit.layers.len()) {
+                *self.inside.borrow_mut() = None;
             }
             showing.work += commit.work;
             showing.commit = Some(commit);
@@ -1066,8 +1199,15 @@ const EVERYTHING: Bounds<ScaledPixels> = Bounds { origin: Point { x: ScaledPixel
 /// Where each layer's content is now (how far from where it was
 /// painted), and what clips it, in the window's device pixels.
 fn layer_places(layers: &[Layer], scrollers: &FxHashMap<u64, Scroller>, scale: f32) -> Vec<(Point<ScaledPixels>, Bounds<ScaledPixels>)> {
+    let mut places = Vec::with_capacity(layers.len().max(1));
+    layer_places_into(layers, scrollers, scale, &mut places);
+    places
+}
+
+/// [`layer_places`], into `places`.
+fn layer_places_into(layers: &[Layer], scrollers: &FxHashMap<u64, Scroller>, scale: f32, places: &mut Vec<(Point<ScaledPixels>, Bounds<ScaledPixels>)>) {
     let nowhere = point(ScaledPixels(0.0), ScaledPixels(0.0));
-    let mut places: Vec<(Point<ScaledPixels>, Bounds<ScaledPixels>)> = Vec::with_capacity(layers.len().max(1));
+    places.clear();
     for (i, layer) in layers.iter().enumerate() {
         if i == 0 {
             places.push((nowhere, EVERYTHING));
@@ -1082,7 +1222,6 @@ fn layer_places(layers: &[Layer], scrollers: &FxHashMap<u64, Scroller>, scale: f
     if places.is_empty() {
         places.push((nowhere, EVERYTHING));
     }
-    places
 }
 
 /// Puts a frame together from what's committed: all of it, or only

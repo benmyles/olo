@@ -280,6 +280,8 @@ impl SearchField {
         g.paint_segment(glass + point(px(3.0), px(3.0)), glass + point(px(6.5), px(6.5)), px(1.75), true, dim);
         if has_text {
             let k = clear_bounds(g.scale_factor(), b);
+            // (The pointer over it lights it: only its edge matters.)
+            g.note_pointer_edge(k);
             let fill = if self.over_clear { style::shade(&p, p.document_background, 1.45) } else { style::shade(&p, p.document_background, 1.3) };
             g.paint_quad(olo_interface::fill(k, fill).corner_radii(px(6.0)));
             let x = Bounds { origin: point(k.left() + px(3.5), k.top() + px(3.5)), size: size(px(5.0), px(5.0)) };
@@ -299,6 +301,7 @@ impl SearchField {
         let dim = style::disabled_text(&p);
         for (k, s) in self.list.iter().enumerate() {
             let rr = row(k);
+            g.note_pointer_edge(rr);
             let lit = self.chosen == Some(k) || self.hover == Some(k);
             if lit {
                 style::fill_rect(g, rr, c(p.menu_selected_background));
@@ -389,6 +392,7 @@ impl View for SearchField {
             .left(px(0.0))
             .top(px(0.0))
             .size_full()
+            .moves_matter_at_edges()
             .on_mouse_move(cx.listener(move |_: &mut Self, e: &MouseMoveEvent, cx| {
                 let over = has_text && clear_bounds(cx.scale_factor(), cx.listener_bounds()).contains(&e.position);
                 cx.send(SearchMsg::OverClear(over));
@@ -440,6 +444,7 @@ impl View for SearchField {
                 .w_full()
                 .min_w(px(280.0))
                 .h(px(h))
+                .moves_matter_at_edges()
                 .on_mouse_move(cx.listener(move |_: &mut Self, e: &MouseMoveEvent, cx| {
                     let k = row_at(cx.listener_bounds(), e.position.y).filter(|&k| k < n);
                     cx.send(SearchMsg::Hover(k));

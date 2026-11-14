@@ -1277,7 +1277,7 @@ impl Terminal {
         if let Some(rows) = t.dragging.as_ref().map(|d| matches!(d.across, Across::Rows(_))) {
             let everywhere = canvas(move |g, b| g.set_cursor_style(if rows { CursorStyle::ResizeUpDown } else { CursorStyle::ResizeLeftRight }, b)).absolute().inset_0();
             root = root
-                .on_window_mouse_move(on(move |t, e: &MouseMoveEvent, _| {
+                .on_drag_move(on(move |t, e: &MouseMoveEvent, _| {
                     let along = if rows { e.position.y } else { e.position.x };
                     t.divider_drag(id, (e.pressed_button == Some(MouseButton::Left)).then_some(along));
                 }))
@@ -1388,7 +1388,10 @@ impl Terminal {
                     .w(screen.size.width)
                     .h(screen.size.height)
                     .on_any_mouse_down(on(move |t, e: &MouseDownEvent, w| t.pane_event(id, shell, screen, PaneEvent::Down(e.clone()), w)))
-                    .on_window_mouse_move(on(move |t, e: &MouseMoveEvent, w| t.pane_event(id, shell, screen, PaneEvent::Move(e.clone()), w)))
+                    // (Every move over the screen: its links lit under ⌘,
+                    // and the moves its program asks to be told of.)
+                    .hears_motion()
+                    .on_drag_move(on(move |t, e: &MouseMoveEvent, w| t.pane_event(id, shell, screen, PaneEvent::Move(e.clone()), w)))
                     .on_window_mouse_up(on(move |t, e: &MouseUpEvent, w| t.pane_event(id, shell, screen, PaneEvent::Up(e.clone()), w)))
                     .on_scroll_wheel(on(move |t, e: &ScrollWheelEvent, w| t.pane_event(id, shell, screen, PaneEvent::Wheel(e.clone()), w))),
             );

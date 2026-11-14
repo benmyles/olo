@@ -382,7 +382,7 @@ fn map(ui: &mut Ui, all: &[OutputInfo], server: &Server, st: &State) {
         }
     });
     // (The press on the map; the drag wherever the pointer goes.)
-    ui.add(canvas(paint).w_full().h(px(150.0)).flex_shrink_0().on_mouse_down(MouseButton::Left, down).on_window_mouse_move(moved).on_window_mouse_up(up));
+    ui.add(canvas(paint).w_full().h(px(150.0)).flex_shrink_0().on_mouse_down(MouseButton::Left, down).on_drag_move(moved).on_window_mouse_up(up));
 }
 
 /// The chosen display's resolution, refresh rate, scale, rotation, use,

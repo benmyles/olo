@@ -72,11 +72,17 @@ something nobody here has is in "Blocked", with what it waits for.
      1×, 1.5× and 2×, light and dark (`tools/dev/kit-compare`, the
      `*_gpui` examples beside the kit's). Tips are `tip::on` everywhere
      (a popup under its widget, free of its window's edges; olo-ui's
-     tool bar used GPUI's, at the pointer, inside the window). *Still
-     to do:* strip, image_view, ruler; undo, spotlight,
-     dnd, open_with, file_panel, search, code, brand, pictures,
-     workspaces, lock, copy, due, part, spell, lint; the editor;
-     `crates/preview`, `print`, `screensavers`.
+     tool bar used GPUI's, at the pointer, inside the window). *Done
+     since, as the apps that use them were ported (each with its app,
+     stage 4), before olo-ui was deleted (stage 5, 2026-11-12):* strip,
+     image_view, ruler; undo, spotlight, dnd, open_with, file_panel,
+     search, code, brand, pictures, lock, copy, due, spell, lint (in
+     `crates/kit`); workspaces (`olo_kit_base`); the editor
+     (`olo_kit::editor`); `crates/preview`, `print` and `screensavers`
+     (their `kit` views alone). Not ported: `part`, GPUI's cached view
+     of a part of a window (so a change didn't draw the whole window
+     again), needless where every view is retained and drawn again
+     alone. (This list said "still to do" until 2026-11-14.)
   4. **Every app**, one at a time, each compared pixel for pixel and
      benched against its GPUI build before it moves. *Done:* DeskCalc
      (hover 0.3% of a core against 1.0%, typing 1.5% against 2.0%, the
@@ -982,35 +988,49 @@ something nobody here has is in "Blocked", with what it waits for.
        of 100,000 paragraphs. Logs' 622 → 929 is its window coming up
        sooner, with more of the journal still being read (from its
        start: 1,110 → 921).
-     - The pointer moved over a window wakes two threads where it
-       woke one (Tracker 10 → 15 ms for a sweep that changes nothing).
-       Counted 2026-11-12 (perf stat, a sweep's 480 motions, three
-       runs each in turn): half the instructions of the build from
-       before the kits (0.056 M a motion against 0.11) and a tenth
-       more cycles (0.26 M against 0.23), four or five cycles an
-       instruction: the waking itself. To do: the stage keeps motion
-       from the looper where nothing under the pointer hears it (as
-       it does the wheel), which needs the commit to say where
-       something does (hover, a cursor, a tip, a window's own
-       listeners while a button is down). *Looked at 2026-11-13:* the
-       stage has what it needs from the wheel's pattern (a commit's
-       regions in its layers' coordinates, `WheelRegion`), and a press
-       finds what's under it at its own place, so skipped motion can't
-       send a click astray; but every kit window's `Frame` hears
-       motion window-wide (`on_window_mouse_move`, for cut text's tips),
-       as do 22 more listeners in 20 files (scroll bars, sliders, list
-       dividers, the ruler, slim scroll bars, text fields), most of them
-       for drags only. So first: a window-wide listener that hears only
-       what the window gets (while a button is held, over what notes
-       motion matters, leaving it) for the drags and the tips (their
-       regions from the painter's `cuts`), each listener sorted into
-       that or "everywhere"; then the commit's motion regions (hover and
-       active styles, hover and motion listeners, `paints_by_state`, a
-       cursor of its own or noted), the stage forwarding motion in
-       them, the motion that leaves one, all of it while a button is
-       held and the first after the pointer comes in; and the latest
-       place kept where the looper reads it when it looks again under
-       a still pointer (`hover_stale`: something moved or scrolled).
+     - *The pointer moved over a window, done 2026-11-14.* It woke
+       two threads where it woke one (Tracker 10 → 15 ms for a sweep
+       that changes nothing; 2026-11-12, perf stat: half the
+       instructions of the build from before the kits a motion, a
+       tenth more cycles: the waking itself). Now the display thread
+       sends a window's looper a move with no button held only where
+       one matters (HACKING, "Fast and light": the stage's motion
+       regions, made with the list of what shows: across the edges of
+       what a hover changes, a cursor's area, a cut text, an edge a
+       drawing notes, every move over what follows the pointer), every
+       move while a button is held, and the first after anything else;
+       it keeps where the pointer went for the looper, which looks
+       there when something moves under a still pointer. The 23
+       window-wide motion listeners (the Frame's and 22 more) were
+       sorted: 18 were drags (`on_drag_move`; the Frame's tips now come
+       from the cut texts' edges), four follow the pointer over themselves (the
+       strip, Terminal's screen, Agent Screens' live picture:
+       `hears_motion`; the slim scroll bar notes its two edges,
+       `note_pointer_edge`), and one wants every move (Screenshot's
+       region picker); nine node listeners that act only on a drag say
+       so (`moves_matter_while_pressed`), and the editor's ⌘-links
+       only with ⌘ held (`moves_matter_with_command`); the ruler gives
+       each marker a cursor's area instead of hearing every move, and
+       lists drawn in one canvas note their rows and hear only the
+       moves across them (`moves_matter_at_edges`: search's field and
+       suggestions, the palette, the emoji picker, Telegram's chats and
+       picker). Measured on release builds (2560 × 1600 at 2×, 1,200
+       moves at 240 Hz, schedstat; every move sent, `OLO_EVERY_MOVE=1`,
+       against now, two rounds): over Tracker's desktop 84 / 77 ms →
+       36 / 39 ms, its looper woken 1,200 times → never; over
+       StyledEdit's text 74 / 77 → 36 / 40 ms, 1,200 → 7; over Deskbar
+       139 / 141 → 111 / 113 ms, 1,202 → 168 (its rows light). The
+       benchmark's "pointer over it": StyledEdit 23.0 / 19.9 →
+       14.1 / 12.3 ms, Terminal 27.7 / 17.8 → 18.6 / 15.4, Activity
+       136.5 / 117.9 → 117.3 / 99.1, Deskbar 6.1 / 6.5 → 5.4 / 4.8
+       (Tracker's within noise); nothing else slower.
+       *Left of it:* still sent every move over them: Notifications'
+       history and banners (rows, cards and their close boxes, links),
+       Telegram's conversation (links, stickers), Disk Usage's chart
+       and its collector well, the Viewer's PDF pages and crop
+       handles, the charts' readouts (which follow the pointer, as they
+       should), the lock screen (activity, as it should). Each that
+       lights parts could note their edges as it draws them.
      - Scrolling fails the benchmark's evenness now and then in both
        builds (a frame skipped in a drag or a glide), and the
        Viewer's live resize its budget in both. Looked into

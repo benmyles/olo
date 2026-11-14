@@ -629,7 +629,7 @@ impl FolderWin {
             // The pointer held down goes on being followed past a
             // column's edge.
             inner = inner
-                .on_window_mouse_move(cx.listener(|f: &mut FolderWin, e: &MouseMoveEvent, cx| f.column_move(e, cx)))
+                .on_drag_move(cx.listener(|f: &mut FolderWin, e: &MouseMoveEvent, cx| f.column_move(e, cx)))
                 .on_window_mouse_up(cx.listener(|f: &mut FolderWin, e: &MouseUpEvent, cx| f.column_release(e, cx)));
         }
         div()

@@ -726,6 +726,7 @@ impl Doc {
             .flex_none()
             .child(paint)
             .on_mouse_down(MouseButton::Left, cx.listener(|d: &mut Doc, ev: &MouseDownEvent, cx| d.timeline_press(ev, cx)))
+            .moves_matter_while_pressed()
             .on_mouse_move(cx.listener(|d: &mut Doc, ev: &MouseMoveEvent, cx| d.timeline_drag(ev, cx)))
             .on_mouse_up(MouseButton::Left, cx.listener(|d: &mut Doc, _: &MouseUpEvent, cx| d.timeline_release(cx)))
             .into_any_element()

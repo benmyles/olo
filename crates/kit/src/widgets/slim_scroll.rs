@@ -130,6 +130,10 @@ impl IntoElement for SlimScrollBar {
                 return;
             }
             let parts = Parts::of(b, shown, total);
+            // (The pointer coming near the edge, or over the bar, or
+            // going: what the window is sent of its moves here.)
+            g.note_pointer_edge(parts.near);
+            g.note_pointer_edge(parts.bar);
             let now = Instant::now();
             let (alpha, held, wide, until) = {
                 let s = g.node_state::<SlimState>();
@@ -188,9 +192,10 @@ impl IntoElement for SlimScrollBar {
 
         // The pointer near the edge (or over the bar), whether it shows
         // or not: shown, it stays. And the thumb, held, follows it
-        // wherever in the window it goes.
+        // wherever in the window it goes. (The moves across those edges
+        // are sent, noted as it's drawn; a held thumb's, all of them.)
         let go = on_scroll.clone();
-        element = element.on_window_mouse_move(move |e: &MouseMoveEvent, cx| {
+        element = element.on_drag_move(move |e: &MouseMoveEvent, cx| {
             let b = cx.listener_bounds();
             let s = cx.node_state::<SlimState>();
             let (_, shown, total) = s.view;

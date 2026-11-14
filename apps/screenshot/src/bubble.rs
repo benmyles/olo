@@ -92,6 +92,7 @@ impl View for Bubble {
         div()
             .size_full()
             .on_mouse_down(MouseButton::Left, cx.listener(|b: &mut Bubble, e: &MouseDownEvent, _| b.drag = Some(e.position)))
+            .moves_matter_while_pressed()
             .on_mouse_move(cx.listener(|b: &mut Bubble, e: &MouseMoveEvent, cx| {
                 if let Some(at) = b.drag.filter(|_| e.pressed_button == Some(MouseButton::Left)) {
                     b.moved(e.position - at, cx);

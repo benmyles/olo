@@ -592,8 +592,10 @@ impl Frame {
             })
             // Text cut short: its whole in a tip (`cut`), at once with ⌘.
             // (Not while a button is held: a divider or a selection
-            // dragged over cut text has no tip.)
-            .on_window_mouse_move(|e, cx| {
+            // dragged over cut text has no tip.) The window is sent the
+            // moves across a cut text's edges (they're noted as it's
+            // drawn) and every move while a button is held: no more.
+            .on_drag_move(|e, cx| {
                 if e.pressed_button.is_some() {
                     crate::cut::left(cx, false);
                 } else {

@@ -188,7 +188,7 @@ impl View for InfoWin {
             .h(px(INFO_ICON))
             .on_mouse_down(MouseButton::Left, cx.listener(|i: &mut InfoWin, ev: &MouseDownEvent, _| i.press = Some(ev.position)))
             .on_window_mouse_up(cx.listener(|i: &mut InfoWin, _: &MouseUpEvent, _| i.press = None))
-            .on_window_mouse_move(cx.listener(|i: &mut InfoWin, ev: &MouseMoveEvent, cx| {
+            .on_drag_move(cx.listener(|i: &mut InfoWin, ev: &MouseMoveEvent, cx| {
                 let Some(at) = i.press.filter(|_| ev.pressed_button == Some(MouseButton::Left)) else { return };
                 if (ev.position - at).magnitude() < 3.0 {
                     return;

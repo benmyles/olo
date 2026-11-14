@@ -204,6 +204,20 @@ pub(crate) struct AgentSpec {
     pub(crate) clickable: Option<bool>,
 }
 
+/// How the pointer's moves over something matter
+/// ([`Interactivity::motion`]): what the display thread sends the
+/// window's looper of them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Motion {
+    None,
+    /// The pointer coming over it or leaving.
+    Edge,
+    /// Every move over it.
+    Every,
+    /// Every move over it with ⌘ or Ctrl held; else its coming and going.
+    WithCommand,
+}
+
 /// How an element takes the pointer and the keyboard.
 #[derive(Default)]
 pub(crate) struct Interactivity {
@@ -229,6 +243,18 @@ pub(crate) struct Interactivity {
     pub(crate) window_mouse_down: SmallVec<[Listener<MouseDownEvent>; 1]>,
     pub(crate) window_mouse_up: SmallVec<[Listener<MouseUpEvent>; 1]>,
     pub(crate) window_mouse_move: SmallVec<[Listener<MouseMoveEvent>; 1]>,
+    /// The window is to get every move of the pointer
+    /// (`on_window_mouse_move`), not only what matters somewhere.
+    pub(crate) all_motion: bool,
+    /// Every move over it matters (`hears_motion`).
+    pub(crate) hears_motion: bool,
+    /// Its `mouse_move` listeners act only with ⌘ or Ctrl held
+    /// (`moves_matter_with_command`), only with a button held
+    /// (`moves_matter_while_pressed`), or only across the edges its
+    /// drawing notes (`moves_matter_at_edges`).
+    pub(crate) moves_with_command: bool,
+    pub(crate) moves_when_pressed: bool,
+    pub(crate) moves_at_edges: bool,
     /// Keys nothing with the keyboard took (the window's own: its tab
     /// keys), wherever the keyboard is in the window.
     pub(crate) window_key_down: SmallVec<[Listener<KeyDownEvent>; 1]>,
@@ -301,6 +327,23 @@ impl Interactivity {
                 && self.hover.is_empty()
                 && self.file_drop.is_empty()
                 && self.pinch.is_empty())
+    }
+
+    /// How the pointer's moves over it matter: not at all, its coming and
+    /// going (hover: a style, a listener, a drawing by state; what takes
+    /// the pointer from what's under it), or every move.
+    pub(crate) fn motion(&self) -> Motion {
+        if self.disabled {
+            Motion::None
+        } else if self.hears_motion || (!self.mouse_move.is_empty() && !self.moves_with_command && !self.moves_when_pressed && !self.moves_at_edges) {
+            Motion::Every
+        } else if !self.mouse_move.is_empty() && self.moves_with_command {
+            Motion::WithCommand
+        } else if self.occlude || self.paints_by_state || self.hover_style.is_some() || self.active_style.is_some() || !self.hover.is_empty() || self.moves_at_edges {
+            Motion::Edge
+        } else {
+            Motion::None
+        }
     }
 
     pub(crate) fn hears_window(&self) -> bool {
@@ -611,10 +654,66 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// The pointer moving anywhere in the window (what's dragged from
-    /// here follows it).
+    /// Every move of the pointer anywhere in the window, a button held or
+    /// not. The window's looper is woken for each, so only for what
+    /// follows the pointer over all of it (Screenshot's region picker):
+    /// a drag is [`Self::on_drag_move`], what follows it over the element
+    /// alone is that and [`Self::hears_motion`].
     fn on_window_mouse_move(mut self, listener: impl Fn(&MouseMoveEvent, &mut WindowCx) + 'static) -> Self {
+        let i = self.interactivity();
+        i.window_mouse_move.push(Rc::new(listener));
+        i.all_motion = true;
+        self
+    }
+
+    /// The pointer's moves anywhere in the window while a button is held
+    /// (a drag from here follows it out, as BeOS's `SetMouseEventMask`
+    /// on a press), and whatever other moves the window is sent. The
+    /// display thread sends a window's looper a move with no button held
+    /// only where something notes it matters there: hover (a style, a
+    /// listener, a drawing by state), a cursor, cut text's tip,
+    /// [`Self::on_mouse_move`], [`Self::hears_motion`]. So asking for
+    /// this wakes the window for nothing more than a drag.
+    fn on_drag_move(mut self, listener: impl Fn(&MouseMoveEvent, &mut WindowCx) + 'static) -> Self {
         self.interactivity().window_mouse_move.push(Rc::new(listener));
+        self
+    }
+
+    /// Every move of the pointer over it, and the one that leaves it,
+    /// is sent to the window (heard by [`Self::on_drag_move`]): what
+    /// follows the pointer over it with no button held (a strip's tab
+    /// parts lit, a terminal's links and its programs' mouse reports).
+    fn hears_motion(mut self) -> Self {
+        self.interactivity().hears_motion = true;
+        self
+    }
+
+    /// Its [`Self::on_mouse_move`] listeners do something only while ⌘ or
+    /// Ctrl is held (links under the pointer lit, as the editor's): the
+    /// window is sent moves over it only then, else only the pointer
+    /// coming over it and leaving.
+    fn moves_matter_with_command(mut self) -> Self {
+        self.interactivity().moves_with_command = true;
+        self
+    }
+
+    /// Its [`Self::on_mouse_move`] listeners do something only while a
+    /// button is held (a drag that starts or goes on over it): they hear
+    /// what moves over it the window is sent, and ask for none with no
+    /// button held (every move with one held is sent anyway).
+    fn moves_matter_while_pressed(mut self) -> Self {
+        self.interactivity().moves_when_pressed = true;
+        self
+    }
+
+    /// Its [`Self::on_mouse_move`] listeners change something only as
+    /// the pointer crosses an edge its drawing notes
+    /// ([`crate::Painter::note_pointer_edge`]: the rows of a list drawn
+    /// in one canvas, lit as the pointer goes over them; a button drawn
+    /// in it): the window is sent only those moves, and the pointer
+    /// coming over it and leaving, not every move over it.
+    fn moves_matter_at_edges(mut self) -> Self {
+        self.interactivity().moves_at_edges = true;
         self
     }
 

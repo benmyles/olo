@@ -150,7 +150,7 @@ impl ColorControl {
                     down.lane.set(Some(lane));
                     pressed(lane, value_at(b, e.position.x, cx.scale_factor()), cx);
                 })
-                .on_window_mouse_move(move |e, cx| {
+                .on_drag_move(move |e, cx| {
                     if !e.dragging() {
                         return;
                     }

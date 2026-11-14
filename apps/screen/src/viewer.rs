@@ -1639,9 +1639,10 @@ impl Viewer {
                 _ => None,
             };
             input = input
-                // (Anywhere in the window while a button is held: a drag
-                // goes on outside the picture.)
-                .on_window_mouse_move(cx.listener(move |v: &mut Viewer, e: &MouseMoveEvent, cx| {
+                // (Every move over the picture; anywhere in the window
+                // while a button is held: a drag goes on outside it.)
+                .hears_motion()
+                .on_drag_move(cx.listener(move |v: &mut Viewer, e: &MouseMoveEvent, cx| {
                     let Some(pic) = v.live_at.get() else { return };
                     let over = pic.contains(&e.position) && v.live_hovered;
                     if over || !v.pressed.is_empty() {

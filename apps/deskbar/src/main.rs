@@ -3417,6 +3417,7 @@ impl Deskbar {
                 let press = Press { at: e.position, ..press.clone() };
                 v_down.update(cx, move |v, _| v.press = Some(press));
             })
+            .moves_matter_while_pressed()
             .on_mouse_move(move |e: &MouseMoveEvent, cx| {
                 if e.pressed_button != Some(MouseButton::Left) {
                     return;

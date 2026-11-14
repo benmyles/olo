@@ -759,6 +759,9 @@ impl Picker {
                         for i in r.clone() {
                             let col = (i - r.start) as f32;
                             let b = style::snap(g, Bounds { origin: point(grid.left() + px(col * CELL), y), size: size(px(CELL), px(CELL)) });
+                            // (The cell the pointer comes over is chosen:
+                            // only cells' edges matter to it.)
+                            g.note_pointer_edge(b.intersect(&inner));
                             if i == selected {
                                 let lit = style::inset(g, b, 2.0);
                                 style::fill_rect(g, lit, c(p.list_selected_background));
@@ -954,6 +957,7 @@ impl View for Picker {
                 }
             }))
             .on_any_mouse_down(cx.listener(Self::mouse_down))
+            .moves_matter_at_edges()
             .on_mouse_move(cx.listener(Self::mouse_move))
             .on_scroll_wheel(cx.listener(Self::wheel))
     }

@@ -162,7 +162,7 @@ pub fn side_divider(pane: &SidePane, x: f32, top: f32, height: f32, name: &'stat
             }
             cx.stop_propagation();
         })
-        .on_window_mouse_move(move |e, cx| {
+        .on_drag_move(move |e, cx| {
             if !moved.dragging() {
                 return;
             }

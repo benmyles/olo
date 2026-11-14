@@ -716,7 +716,7 @@ impl<V: View> IntoElement for ColumnListView<V> {
         .absolute()
         .inset_0()
         .on_any_mouse_down(move |e, cx| rows_pressed(&down_model, &down_handlers, e, cx))
-        .on_window_mouse_move(move |e, cx| rows_dragged(&move_model, &move_handlers, first_width, e, cx))
+        .on_drag_move(move |e, cx| rows_dragged(&move_model, &move_handlers, first_width, e, cx))
         .on_window_mouse_up(move |e, cx| rows_released(&up_model, &up_handlers, e, cx));
 
         // Behind the rows (where layout put them, as it put the header):
@@ -1155,7 +1155,7 @@ fn header(id: &SharedString, model: &ListModel, columns: &Rc<[Column]>, handlers
         cx.invalidate_owner();
         cx.stop_propagation();
     })
-    .on_window_mouse_move(move |e, cx| {
+    .on_drag_move(move |e, cx| {
         let drag = move_model.0.borrow().drag.clone();
         match drag {
             Some(Drag::Divider { column, x, width }) => {

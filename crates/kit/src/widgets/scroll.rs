@@ -295,7 +295,7 @@ impl IntoElement for ScrollBar {
         // (Its arrows grey when there's nothing to scroll: its ends.)
         .watch_scroll_ends(&self.handle)
         .on_mouse_down(MouseButton::Left, move |e, cx| pressed.mouse_down(e, cx))
-        .on_window_mouse_move(move |e, cx| moved.mouse_move(e, cx))
+        .on_drag_move(move |e, cx| moved.mouse_move(e, cx))
         .on_window_mouse_up(move |e, cx| {
             if e.button == MouseButton::Left {
                 released.mouse_up(cx)

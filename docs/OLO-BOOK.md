@@ -420,7 +420,7 @@ Elements take handlers (the `InteractiveElement` trait): `on_click`,
 `on_hover`, `on_scroll_wheel`, `on_key_down`, `capture_key_down`,
 `on_text_input`, `on_drop`, `on_focus_changed`, `on_bounds_changed`,
 `on_scroll`, and for a drag that goes on outside the element,
-`on_window_mouse_move` / `on_window_mouse_up`. A handler is a
+`on_drag_move` / `on_window_mouse_up`. A handler is a
 `Fn(&Event, &mut WindowCx)`; a view makes them with:
 
 ```rust
@@ -443,6 +443,45 @@ be now (a press that starts a drag).
   `.raised()` paints it over its siblings.
 - `cx.stop_propagation()` in a handler keeps what's under from hearing
   the same event.
+
+**The pointer's moves reach a window only where they matter.** The
+display thread sends a window's looper a move with no button held only
+where something says it matters: across the edges of what a hover
+changes (`.hover`, `.active`, `on_hover`, a control drawn by its
+state, `.occlude`), of a cursor (`.cursor(..)`,
+`Painter::set_cursor_style`), of a cut text's tip (noted as the kit
+draws a label), of what a drawing notes (`Painter::note_pointer_edge`),
+and every move over `on_mouse_move` and `.hears_motion()`. Every move
+goes while a button is held, and the first after anything else (a
+press, a key, the pointer coming in). Elsewhere a pointer passing over
+the window wakes nothing; where it is is still kept (`mouse_position`,
+and what's under it is found there again when something moves under a
+still pointer). So:
+
+- A drag: `on_drag_move` (BeOS's `SetMouseEventMask` on a press). It
+  hears every move while a button is held, wherever it goes, and
+  whatever else the window is sent.
+- Something that follows the pointer over itself with no button held
+  (a strip's parts lit, a terminal's mouse reports):
+  `.hears_motion().on_drag_move(..)`, or `on_mouse_move` (heard only
+  while the pointer is over it).
+- A drawing whose parts light under the pointer (a list's rows drawn
+  in one canvas, a button drawn in it): note each part's bounds as it
+  draws (`g.note_pointer_edge(part)`), and say so beside its
+  `on_mouse_move`: `.moves_matter_at_edges()`. The moves across the
+  parts' edges reach the listener, the moves within a part don't.
+  (A part that changes only the pointer's shape needs no listener:
+  give it a cursor's area, `g.set_cursor_style(style, part)`, as the
+  ruler does each marker.)
+- Only with ⌘ held (links lit): `.moves_matter_with_command()` beside
+  `on_mouse_move`. Only while a button is held (a drag that starts or
+  goes on over the element, a selection): `.moves_matter_while_pressed()`.
+- `on_window_mouse_move` asks for every move in the window: the looper
+  woken for each. Only for what follows the pointer over all of it
+  (Screenshot's region picker).
+
+`OLO_EVERY_MOVE=1` sends every move, as if every window asked: to
+compare, or to rule this out.
 - Where a pointer event is in an element that may have scrolled:
   `cx.listener_bounds()`, the element's place in the window now. Never
   a place you kept from the last time it was drawn.

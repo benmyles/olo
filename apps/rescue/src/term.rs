@@ -603,6 +603,8 @@ impl View for Terminal {
                 }
             }))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::mouse_down))
+            // (A selection dragged: only with the button held.)
+            .moves_matter_while_pressed()
             .on_mouse_move(cx.listener(Self::mouse_move))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::mouse_up))
             .on_scroll_wheel(cx.listener(Self::scroll))

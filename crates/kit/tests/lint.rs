@@ -250,3 +250,128 @@ fn ui_lint_a_tab_strip_is_clean() {
         assert_clean(if side { "the side strip" } else { "the strip along the top" }, &found);
     }
 }
+
+/// What a window's looper is sent of the pointer's moves: a box that
+/// lights under it (`on_hover`), one that follows it (`on_mouse_move`),
+/// one that does only with ⌘ held, one only while a button is, a
+/// drawing that notes an edge of its own (and hears moves only across
+/// it, `moves_matter_at_edges`), and the window counting every move it's
+/// sent (`on_drag_move`).
+struct Moves {
+    heard: std::rc::Rc<std::cell::Cell<u32>>,
+    over: std::rc::Rc<std::cell::Cell<bool>>,
+    /// The moves the drawing heard.
+    drawn: std::rc::Rc<std::cell::Cell<u32>>,
+    /// Where the lit box's top is (moved under a still pointer).
+    top: f32,
+}
+
+impl View for Moves {
+    type Message = ();
+
+    fn body(&mut self, _: &mut Cx<Self>) -> Element {
+        use olo_kit::InteractiveElement as _;
+        let (heard, over, drawn) = (self.heard.clone(), self.over.clone(), self.drawn.clone());
+        let boxed = |left: f32, top: f32| div().absolute().left(px(left)).top(px(top)).w(px(40.0)).h(px(20.0));
+        div()
+            .size_full()
+            .relative()
+            .on_drag_move(move |_, _| heard.set(heard.get() + 1))
+            .child(boxed(20.0, self.top).on_hover(move |o, _| over.set(*o)))
+            .child(boxed(100.0, 20.0).on_mouse_move(|_, _| {}))
+            .child(boxed(20.0, 50.0).moves_matter_with_command().on_mouse_move(|_, _| {}))
+            .child(boxed(80.0, 50.0).moves_matter_while_pressed().on_mouse_move(|_, _| {}))
+            .child(
+                olo_kit::canvas(|g, _| g.note_pointer_edge(olo_kit::Bounds { origin: olo_kit::point(px(150.0), px(60.0)), size: olo_kit::size(px(30.0), px(20.0)) }))
+                    .absolute()
+                    .left(px(140.0))
+                    .top(px(50.0))
+                    .w(px(60.0))
+                    .h(px(50.0))
+                    .moves_matter_at_edges()
+                    .on_mouse_move(move |_, _| drawn.set(drawn.get() + 1)),
+            )
+    }
+}
+
+/// A window's looper is sent the pointer's moves only where they mean
+/// something: across the edges of what lights under it (and of what a
+/// drawing notes), every move over what follows it, every move while a
+/// button is held, and the first after anything else; elsewhere the
+/// display thread keeps them, and keeps where the pointer is for when
+/// the looper looks again (a box moved under a still pointer lights).
+#[test]
+fn ui_lint_moves_reach_the_window_only_where_they_matter() {
+    use olo_kit::{Modifiers, MouseButton, point};
+    let _lint = Lint::new();
+    let window = olo_kit::open_window(WindowOptions::new("Moves", 200.0, 100.0), |_| Moves { heard: Default::default(), over: Default::default(), drawn: Default::default(), top: 20.0 });
+    // (Laid out and committed: the stage has where moves matter.)
+    ask(&window, |_, _| ());
+    ask(&window, |_, _| ());
+    let to_with = |x: f32, y: f32, button: Option<MouseButton>, modifiers: Modifiers| {
+        let decided = ask(&window, move |_, cx| cx.headless_move(point(px(x), px(y)), button, modifiers));
+        decided.recv_timeout(std::time::Duration::from_secs(10)).expect("the display thread decides");
+        ask(&window, |v, _| (v.heard.get(), v.over.get()))
+    };
+    let to = |x: f32, y: f32, button: Option<MouseButton>| to_with(x, y, button, Modifiers::default());
+    // The first move: sent. Then over nothing: kept.
+    assert_eq!(to(10.0, 80.0, None), (1, false));
+    assert_eq!(to(12.0, 80.0, None), (1, false));
+    assert_eq!(to(14.0, 82.0, None), (1, false));
+    // Over the box that lights: sent, and it's lit; within it, kept.
+    assert_eq!(to(40.0, 30.0, None), (2, true));
+    assert_eq!(to(42.0, 31.0, None), (2, true));
+    // Near its edge: sent (the looper's own edge may be a pixel off).
+    assert_eq!(to(59.5, 31.0, None), (3, true));
+    // Out of it: sent, and it isn't lit.
+    assert_eq!(to(10.0, 80.0, None), (4, false));
+    // Over what follows the pointer: every move.
+    assert_eq!(to(120.0, 30.0, None), (5, false));
+    assert_eq!(to(122.0, 31.0, None), (6, false));
+    // Across the edge a drawing noted: sent; within it, kept.
+    assert_eq!(to(165.0, 70.0, None), (7, false));
+    assert_eq!(to(166.0, 71.0, None), (7, false));
+    assert_eq!(to(10.0, 80.0, None), (8, false));
+    assert_eq!(to(12.0, 82.0, None), (8, false));
+    // A button held: every move, anywhere.
+    assert_eq!(to(14.0, 84.0, Some(MouseButton::Left)), (9, false));
+    assert_eq!(to(16.0, 86.0, Some(MouseButton::Left)), (10, false));
+    // Let go (the first move after): sent; then kept again.
+    assert_eq!(to(18.0, 86.0, None), (11, false));
+    assert_eq!(to(16.0, 86.0, None), (11, false));
+    // Over what follows the pointer with ⌘ held: its edge, then only
+    // with ⌘.
+    assert_eq!(to(40.0, 60.0, None), (12, false));
+    assert_eq!(to(41.0, 61.0, None), (12, false));
+    let command = Modifiers { control: true, ..Default::default() };
+    assert_eq!(to_with(42.0, 61.0, None, command), (13, false));
+    assert_eq!(to_with(43.0, 62.0, None, command), (14, false));
+    // Over what follows it only while a button is held: nothing sent
+    // without (not even its edges: only a drag's moves matter there).
+    assert_eq!(to(16.0, 86.0, None), (15, false));
+    assert_eq!(to(100.0, 60.0, None), (15, false));
+    assert_eq!(to(101.0, 61.0, None), (15, false));
+    assert_eq!(to(102.0, 61.0, Some(MouseButton::Left)), (16, false));
+    assert_eq!(to(16.0, 86.0, None), (17, false));
+    assert_eq!(to(30.0, 80.0, None), (17, false));
+    // The looper is told where the pointer is, kept moves and all.
+    assert_eq!(ask(&window, |_, cx| cx.mouse_position()), point(px(30.0), px(80.0)));
+    // The box moved under the still pointer (which the looper last saw at
+    // 18, 86, beside it): lit, where the pointer is now.
+    ask(&window, |v, cx| {
+        v.top = 70.0;
+        cx.invalidate();
+    });
+    assert_eq!(ask(&window, |v, _| v.over.get()), true);
+    // What hears moves only across the edges its drawing notes: its own
+    // edge and the noted one, not the moves between (it heard the one
+    // into the noted edge above).
+    let drawn = || ask(&window, |v, _| v.drawn.get());
+    assert_eq!(drawn(), 1);
+    assert_eq!(to(145.0, 55.0, None), (18, false));
+    assert_eq!(drawn(), 2);
+    assert_eq!(to(147.0, 57.0, None), (18, false));
+    assert_eq!(to(165.0, 70.0, None), (19, false));
+    assert_eq!(drawn(), 3);
+    window.close();
+}

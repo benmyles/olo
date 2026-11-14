@@ -475,7 +475,14 @@ impl WindowCore {
             let disabled_changed = node.inter.as_ref().is_some_and(|i| i.disabled) != inter.as_ref().is_some_and(|i| i.disabled);
             let heard = node.inter.as_ref().is_some_and(|i| i.hears_window());
             let hears = inter.as_ref().is_some_and(|i| i.hears_window());
+            // (Where the pointer's moves matter is in the list of what
+            // shows: made again when that changes here.)
+            let motion = |i: &Option<Box<crate::element::Interactivity>>| i.as_ref().map(|i| (i.motion(), i.all_motion));
+            let motion_changed = motion(&node.inter) != motion(&inter);
             node.inter = inter;
+            if motion_changed {
+                self.reshaped();
+            }
             if heard != hears {
                 if hears {
                     self.window_listeners.push(id);
@@ -494,7 +501,9 @@ impl WindowCore {
                 if style != node.style {
                     let text = style.text != node.style.text;
                     let opacity = style.opacity != node.style.opacity;
-                    let clips = style.overflow != node.style.overflow || style.visibility != node.style.visibility;
+                    // (And where the pointer's shape is set: where its
+                    // moves matter.)
+                    let clips = style.overflow != node.style.overflow || style.visibility != node.style.visibility || style.mouse_cursor.is_some() != node.style.mouse_cursor.is_some();
                     let look = style.background != node.style.background
                         || style.border_color != node.style.border_color
                         || style.border_widths != node.style.border_widths
@@ -765,7 +774,23 @@ impl WindowCore {
         if notes.scrolled.is_some() && !self.with_scrolls.contains(&id) {
             self.with_scrolls.push(id);
         }
+        // Where it says the pointer's shape changes, or text is cut, is
+        // where the pointer's moves matter: the list of what shows (which
+        // has those) is made again when they move.
+        let moved_marks = match node.notes.as_deref() {
+            Some(old) => {
+                old.cursors.len() != notes.cursors.len()
+                    || old.cuts.len() != notes.cuts.len()
+                    || old.edges != notes.edges
+                    || old.cursors.iter().zip(&notes.cursors).any(|(a, b)| a.0 != b.0)
+                    || old.cuts.iter().zip(&notes.cuts).any(|(a, b)| a.0 != b.0 || a.2 != b.2)
+            }
+            None => !(notes.cursors.is_empty() && notes.cuts.is_empty() && notes.edges.is_empty()),
+        };
         node.notes = (!notes.is_empty()).then(|| Box::new(notes));
+        if moved_marks {
+            self.items_stale = true;
+        }
         if let Some(seconds) = again {
             self.clock.ask(id, seconds);
         }

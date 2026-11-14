@@ -883,7 +883,7 @@ impl View for Desktop {
             .on_key_down(cx.listener(|d: &mut Desktop, e: &KeyDownEvent, cx| d.key_down(e, cx)))
             .on_mouse_down(MouseButton::Left, cx.listener(|d: &mut Desktop, e: &MouseDownEvent, cx| d.press(e, cx)))
             .on_mouse_down(MouseButton::Right, cx.listener(|d: &mut Desktop, e: &MouseDownEvent, cx| d.press(e, cx)))
-            .on_window_mouse_move(cx.listener(|d: &mut Desktop, e: &MouseMoveEvent, cx| d.moved(e, cx)))
+            .on_drag_move(cx.listener(|d: &mut Desktop, e: &MouseMoveEvent, cx| d.moved(e, cx)))
             .on_window_mouse_up(cx.listener(|d: &mut Desktop, e: &MouseUpEvent, cx| d.released(e, cx)))
             .child(content)
             .children(field)

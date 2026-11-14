@@ -311,7 +311,7 @@ impl View for QuickLook {
             .w(px(20.0))
             .on_mouse_down(MouseButton::Left, cx.listener(|q: &mut QuickLook, ev: &MouseDownEvent, _| q.press = Some(ev.position)))
             .on_window_mouse_up(cx.listener(|q: &mut QuickLook, _: &MouseUpEvent, _| q.press = None))
-            .on_window_mouse_move(cx.listener(|q: &mut QuickLook, ev: &MouseMoveEvent, cx| {
+            .on_drag_move(cx.listener(|q: &mut QuickLook, ev: &MouseMoveEvent, cx| {
                 let Some(at) = q.press.filter(|_| ev.pressed_button == Some(MouseButton::Left)) else { return };
                 if (ev.position - at).magnitude() < 3.0 {
                     return;

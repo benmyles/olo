@@ -91,6 +91,9 @@ pub(crate) struct Notes {
     pub(crate) visible: Bounds<Pixels>,
     pub(crate) agent: Vec<crate::agent::Node>,
     pub(crate) cursors: Vec<(Bounds<Pixels>, crate::CursorStyle)>,
+    /// Where the pointer coming or going matters
+    /// ([`Painter::note_pointer_edge`]).
+    pub(crate) edges: Vec<Bounds<Pixels>>,
     /// Texts that don't show in full (cut short to fit, or cut by what
     /// they're in): each whole, and where what shows of it is; or
     /// (true) that are cut only if what holds the drawing cuts them at a
@@ -110,7 +113,14 @@ pub(crate) struct Notes {
 
 impl Notes {
     pub(crate) fn is_empty(&self) -> bool {
-        !self.unfinished && !self.by_visible && self.agent.is_empty() && self.cursors.is_empty() && self.cuts.is_empty() && self.externals.is_empty() && self.scrolled.is_none()
+        !self.unfinished
+            && !self.by_visible
+            && self.agent.is_empty()
+            && self.cursors.is_empty()
+            && self.edges.is_empty()
+            && self.cuts.is_empty()
+            && self.externals.is_empty()
+            && self.scrolled.is_none()
     }
 }
 
@@ -414,6 +424,15 @@ impl<'a> Painter<'a> {
     /// The pointer's shape while it's over `bounds`.
     pub fn set_cursor_style(&mut self, style: crate::CursorStyle, bounds: Bounds<Pixels>) {
         self.notes.cursors.push((bounds, style));
+    }
+
+    /// The pointer coming over `bounds` or leaving it matters to what
+    /// follows it (a window listener, `on_drag_move`: a scroll bar shown
+    /// as the pointer comes near the edge): the moves across its edge
+    /// are sent to the window. (Moves with no button held reach a
+    /// window's looper only where something notes they matter.)
+    pub fn note_pointer_edge(&mut self, bounds: Bounds<Pixels>) {
+        self.notes.edges.push(bounds);
     }
 
     /// Creates a new painting layer for the specified bounds. A "layer" is a batch
