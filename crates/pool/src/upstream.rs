@@ -170,24 +170,35 @@ pub fn timestamp(v: &Value) -> Option<i64> {
     }
 }
 
-/// "seven_day_opus" for people.
+/// "seven_day_opus" for people: "Weekly Opus"; one this doesn't know
+/// by its words, each capitalised ("overage": "Overage").
 fn claude_label(name: &str) -> String {
     match name {
         "five_hour" => "5-hour".into(),
         "seven_day" => "Weekly".into(),
         _ => {
             let (base, rest) = if let Some(r) = name.strip_prefix("seven_day_") {
-                ("Weekly", r)
+                ("Weekly ", r)
             } else if let Some(r) = name.strip_prefix("five_hour_") {
-                ("5-hour", r)
+                ("5-hour ", r)
             } else {
-                return name.replace('_', " ");
+                ("", name)
             };
-            let mut c = rest.chars();
-            let model: String = c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default();
-            format!("{base} {}", model.replace('_', " "))
+            format!("{base}{}", words(rest))
         }
     }
+}
+
+/// "overage_included" as words, each capitalised: "Overage Included".
+fn words(s: &str) -> String {
+    s.split('_')
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            let mut c = w.chars();
+            c.next().map(|f| f.to_uppercase().chain(c).collect::<String>()).unwrap_or_default()
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// The model families a Claude window is for ("seven_day_opus": Opus).
@@ -196,6 +207,15 @@ fn claude_models(name: &str) -> Vec<String> {
     match rest {
         Some(m) if !m.is_empty() && !m.contains("oauth") && !m.contains("overage") && !m.contains("apps") => vec![m.to_owned()],
         _ => Vec::new(),
+    }
+}
+
+/// A header meter's own words as the usage report has them: "oi" is
+/// "overage_included".
+fn header_words(rest: &str) -> String {
+    match rest.replace('-', "_").as_str() {
+        "oi" => "overage_included".to_owned(),
+        r => r.to_owned(),
     }
 }
 
@@ -293,7 +313,9 @@ pub fn parse_usage(p: Provider, d: &Value) -> (Vec<Window>, Option<String>) {
             // (null) isn't there.
             if let Some(map) = d.as_object() {
                 for (name, w) in map {
-                    if !(name.starts_with("five_hour") || name.starts_with("seven_day")) || !w.is_object() || out.iter().any(|o| o.name == *name) {
+                    // (Not "seven_day_breakdown": what the week's usage was
+                    // spent on, not a meter.)
+                    if !(name.starts_with("five_hour") || name.starts_with("seven_day")) || name.ends_with("_breakdown") || !w.is_object() || out.iter().any(|o| o.name == *name) {
                         continue;
                     }
                     let used = w["utilization"].as_f64().unwrap_or(0.0);
@@ -446,11 +468,13 @@ pub fn header_windows(h: &axum::http::HeaderMap, p: Provider, family: &str, stat
             for (key, _) in h.iter() {
                 let Some(kind) = key.as_str().strip_prefix("anthropic-ratelimit-unified-").and_then(|k| k.strip_suffix("-utilization")) else { continue };
                 let Some(fraction) = header_num(h, key.as_str()) else { continue };
-                let name = match kind.split_once('-') {
+                // ("7d_oi" as "7d-fable": its own words after the length;
+                // "oi" is what the rejections call "overage_included".)
+                let name = match kind.split_once(['-', '_']) {
                     None if kind == "5h" => "five_hour".to_owned(),
                     None if kind == "7d" => "seven_day".to_owned(),
-                    Some(("5h", rest)) => format!("five_hour_{}", rest.replace('-', "_")),
-                    Some(("7d", rest)) => format!("seven_day_{}", rest.replace('-', "_")),
+                    Some(("5h", rest)) => format!("five_hour_{}", header_words(rest)),
+                    Some(("7d", rest)) => format!("seven_day_{}", header_words(rest)),
                     _ => kind.replace('-', "_"),
                 };
                 let resets_at = header_num(h, &format!("anthropic-ratelimit-unified-{kind}-reset")).map(|v| v as i64);
@@ -488,7 +512,7 @@ pub fn header_windows(h: &axum::http::HeaderMap, p: Provider, family: &str, stat
     let claim = h.get("anthropic-ratelimit-unified-representative-claim").and_then(|v| v.to_str().ok()).unwrap_or("");
     let model_only = p == Provider::Claude && !family.is_empty() && (claim == "seven_day_overage_included" || claude_models(claim).iter().any(|m| m == family));
     if model_only && claim == "seven_day_overage_included" {
-        out.push(Window { name: format!("model:{family}/seven_day"), label: format!("Weekly {family}"), used: 100.0, resets_at: Some(until), models: vec![family.to_owned()] });
+        out.push(Window { name: format!("model:{family}/seven_day"), label: format!("Weekly {}", words(family)), used: 100.0, resets_at: Some(until), models: vec![family.to_owned()] });
     }
     (out, Some(Rejection { until, model_only }))
 }
@@ -504,6 +528,7 @@ mod tests {
             "seven_day": {"utilization": 18, "resets_at": 1793500000},
             "seven_day_opus": {"utilization": 100, "resets_at": 1793600000},
             "seven_day_oauth_apps": null,
+            "seven_day_breakdown": {"by_model": {}},
             "extra_usage": {"utilization": 3},
         });
         let (w, _) = parse_usage(Provider::Claude, &d);
@@ -576,6 +601,21 @@ mod tests {
     }
 
     #[test]
+    fn header_meters_named_as_people_say_them() {
+        // (Ben's pool, 2026-11-13: "7d oi", "overage" and "Weekly fable"
+        // beside "Weekly Fable" among his quotas.)
+        let mut h = axum::http::HeaderMap::new();
+        for (k, v) in [("7d", "0.2"), ("7d-fable", "0.4"), ("7d_oi", "0.4"), ("overage", "0")] {
+            h.insert(axum::http::HeaderName::try_from(format!("anthropic-ratelimit-unified-{k}-utilization")).unwrap(), v.parse().unwrap());
+        }
+        let (w, _) = header_windows(&h, Provider::Claude, "", 200, 0);
+        let names: Vec<_> = w.iter().map(|w| (w.name.as_str(), w.label.as_str())).collect();
+        assert_eq!(names, [("overage", "Overage"), ("seven_day", "Weekly"), ("seven_day_fable", "Weekly Fable"), ("seven_day_overage_included", "Weekly Overage Included")]);
+        assert!(w[3].models.is_empty(), "overage isn't a model");
+        assert_eq!(claude_label("seven_day_claude_code"), "Weekly Claude Code");
+    }
+
+    #[test]
     fn headers_and_rejections() {
         let mut h = axum::http::HeaderMap::new();
         h.insert("anthropic-ratelimit-unified-5h-utilization", "0.5".parse().unwrap());
@@ -595,7 +635,7 @@ mod tests {
         h.insert("retry-after", "600".parse().unwrap());
         let (w, r) = header_windows(&h, Provider::Claude, "fable", 429, 1000);
         assert_eq!(r, Some(Rejection { until: 1600, model_only: true }));
-        assert!(w.iter().any(|w| w.models == ["fable"] && w.used >= 100.0));
+        assert!(w.iter().any(|w| w.models == ["fable"] && w.used >= 100.0 && w.label == "Weekly Fable"));
         // A shared meter: the whole account waits.
         h.insert("anthropic-ratelimit-unified-representative-claim", "five_hour".parse().unwrap());
         h.insert("anthropic-ratelimit-unified-reset", "7000".parse().unwrap());

@@ -4150,5 +4150,11 @@
   "title": "Coder: a quieter conversation after a real run",
   "caption": "At 2x: the Now card kept short so the tabs stay put, diffs the agent only read left closed, the model's name given room beside short approval choices.",
   "image": "2026-11-13/212356-coder-a-quieter-conversation-after-a-real-run.png"
+ },
+ {
+  "time": "2026-11-13T21:27:39",
+  "title": "Token Pool widget: Quotas is a menu field of any number",
+  "caption": "The Deskbar widget editor's quotas were a row of check boxes, which a real Claude account's quota names ran past Preferences' right edge. Now a MenuField::many: it says the chosen ones, cut with \u2026 to fit, and its menu checks any of them, Whichever holds each back first. The Preferences lint now draws the editor for every widget kind with the longest quota names the services use.",
+  "image": "2026-11-13/212739-token-pool-widget-quotas-is-a-menu-field-of-any-.png"
  }
 ]

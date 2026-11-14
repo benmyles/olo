@@ -2149,7 +2149,17 @@ it.
   name for agents and the settings index with no label shown, a field in
   a grid named by its row and column; its menu opens with the current
   choice over the field: `menu::popup_over`; its structured ComboBox node
-  exposes the current choice as `value`, so agents can verify selections),
+  exposes the current choice as `value`, so agents can verify selections;
+  `MenuField::many(id,
+  options, chosen, none)` for any number of choices (a `BMenu` out of
+  radio mode marks any number of items, but its field then stops
+  showing them, `SetLabelFromMarked(false)`; this one says them): it
+  says the chosen ones joined by commas, cut with "…"
+  to its width, else `none`, and its menu opens under it with `none`
+  first, then each option checked or not; `on_change` gets the option
+  turned, or `NONE_CHOSEN`. Use it, not a row of check boxes, wherever
+  the options come from data: names a person or a service makes run
+  past any window that holds them as boxes),
   `TextControl` (label, divider, `rows(N)` for a multiline field: height from
   its font and scale, extra text scrolls inside; the sunken well around a `TextField`), `StringView` (`dim`, `bold`),
   `BBox` (etched frame, bold label in its top line, `content_width`,
@@ -14913,6 +14923,22 @@ ProcessController put their bars in its tray.
   session with a made-up meters file for its display (two Claude
   accounts and a Codex one, two quotas each: a heatmap of four cells,
   "Claude 5h/Wk 24% · 45%", at 1×, 1.5× and 2×, light and dark).
+  Its quotas are a `MenuField::many` ("Quotas:", "Whichever holds each
+  back" when none is chosen; Preferences' `Ui::choose_many`): first a
+  row of check boxes, which a real Claude account's quotas ("Weekly",
+  "Weekly Fable", "Weekly Overage Included", "Overage") ran past
+  Preferences' right edge (Ben, 2026-11-13: "why didn't the lints pick
+  this up?"). They didn't because the made-up meters had two short
+  quotas and the Preferences lint drew Deskbar's panel with no widget
+  in it; `lint::ui_lint_deskbar_widgets` now draws the editor for every
+  kind of widget, a Pool one with seven Claude quotas and five Codex
+  ones of the longest names the services use, and long device names
+  (with the row of boxes back it finds 54 errors). The pool names a
+  quota as people say it (`upstream::claude_label`, `words`): each
+  word capitalised, `seven_day` "Weekly", `oi` "Overage Included",
+  the same quota from the usage endpoint, a header and a rejection
+  one name (`pool::quotas` merges names that differ only in case),
+  and `seven_day_breakdown`, which is no limit, isn't a quota.
 
 Preferences ▸ Deskbar (`deskbar.rs`) lists the widgets in order (Add
 one of a kind after the chosen one, Remove, Move Up, Move Down) beside

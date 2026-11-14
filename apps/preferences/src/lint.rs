@@ -91,8 +91,13 @@ fn outputs() -> Vec<OutputInfo> {
 /// What every window shares, as the lint has it: the defaults, the
 /// made-up displays. (One lint works at a time: `Lint::new` waits.)
 fn fresh() {
+    crate::set_for_tests(fresh_prefs());
+}
+
+/// [`fresh`]'s.
+fn fresh_prefs() -> Prefs {
     crate::form::EVERY_RESET.store(false, std::sync::atomic::Ordering::Relaxed);
-    crate::set_for_tests(Prefs {
+    Prefs {
         settings: Some(Settings::default()),
         outputs: outputs(),
         outputs_in: true,
@@ -101,7 +106,7 @@ fn fresh() {
         server: Server::detached(),
         windows: Vec::new(),
         history: Default::default(),
-    });
+    }
 }
 
 #[test]
@@ -129,6 +134,55 @@ fn ui_lint_every_panel() {
         }
     }
     assert_clean("Preferences' panels", &found);
+}
+
+/// Deskbar's widget editor for each kind of widget, chosen (the panel
+/// lint sees the list alone, none chosen): the made-up machine's devices
+/// as long as real ones' names, and a Token Pool widget of each look
+/// with every quota real pools have said, as many and as long (Ben,
+/// 2026-11-13: his ran out of the window as a row of check boxes, which
+/// no lint had drawn).
+#[test]
+fn ui_lint_deskbar_widgets() {
+    use olo_protocol::deskbar::{Look, Measure, Widget};
+    let mut lint = Lint::new();
+    let mut widgets: Vec<Widget> = Measure::kinds().into_iter().enumerate().map(|(i, k)| Widget::new(i as u32 + 1, k)).collect();
+    let claude = ["5-hour", "Weekly", "Weekly Fable", "Weekly Opus", "Weekly Claude Code", "Weekly Overage Included", "Overage"];
+    let codex = ["5-hour", "Weekly", "GPT-5.3-Codex-Spark 5-hour", "GPT-5.3-Codex-Spark Weekly", "Code Review Weekly"];
+    // All chosen, a heatmap: the field's longest, and the note under Colour.
+    let mut heat = Widget::new(100, Measure::pool("claude", &claude));
+    heat.look = Look::Heatmap;
+    widgets.push(heat);
+    widgets.push(Widget::new(101, Measure::pool("codex", &[])));
+    let mut settings = Settings::default();
+    settings.deskbar.widgets = widgets.clone();
+    let sources = olo_system::meters::Sources {
+        cores: 24,
+        gpus: vec![("0000:01:00.0".into(), "NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU".into())],
+        disks: vec![("nvme0n1".into(), "Samsung SSD 990 PRO with Heatsink 4TB".into())],
+        volumes: vec![("/run/media/someone/Photographs and Home Videos 2026".into(), "Photographs and Home Videos 2026".into())],
+        interfaces: vec![("wlp0s20f3".into(), "Wi-Fi (Intel Wi-Fi 7 BE200 320MHz)".into())],
+        sensors: vec![("nvme/Composite".into(), "Samsung SSD 990 PRO with Heatsink 4TB".into())],
+        battery: true,
+        pool: vec![("claude".into(), claude.map(String::from).to_vec()), ("codex".into(), codex.map(String::from).to_vec())],
+    };
+    let (w, h) = Panel::Deskbar.size();
+    let options = WindowOptions::new(Panel::Deskbar.title(), w as f32, h as f32).fits_content();
+    let mut found = Vec::new();
+    for (i, widget) in widgets.iter().enumerate() {
+        crate::set_for_tests(Prefs { settings: Some(settings.clone()), ..fresh_prefs() });
+        let (s, sources) = (settings.clone(), sources.clone());
+        for f in lint.window(&options, move |cx| {
+            let mut view = PanelView::new(Panel::Deskbar, s.clone(), cx);
+            if let crate::panel::State::Deskbar(st) = &mut view.state {
+                crate::deskbar::for_lint(st, sources.clone(), i);
+            }
+            view
+        }) {
+            found.push(olo_kit::lint::Found { text: format!("{} ({:?}): {}", widget.measure.kind_name(), widget.look, f.text), ..f });
+        }
+    }
+    assert_clean("Deskbar's widgets", &found);
 }
 
 /// Display's Colour tab (beside the Panel tab the panel lint sees): a

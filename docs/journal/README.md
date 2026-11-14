@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-13
 
+### Token Pool widget: Quotas is a menu field of any number
+
+*21:27* — The Deskbar widget editor's quotas were a row of check boxes, which a real Claude account's quota names ran past Preferences' right edge. Now a MenuField::many: it says the chosen ones, cut with … to fit, and its menu checks any of them, Whichever holds each back first. The Preferences lint now draws the editor for every widget kind with the longest quota names the services use.
+
+![Token Pool widget: Quotas is a menu field of any number](2026-11-13/212739-token-pool-widget-quotas-is-a-menu-field-of-any-.png)
+
 ### Coder: a quieter conversation after a real run
 
 *21:23* — At 2x: the Now card kept short so the tabs stay put, diffs the agent only read left closed, the model's name given room beside short approval choices.

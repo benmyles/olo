@@ -686,7 +686,7 @@ bounds, name)` an icon at one texel a device pixel.
 | `BCheckBox`, `BRadioButton` | `CheckBox::new(label, on).on_toggle(..)`, `RadioButton::new(label, on).on_select(..)` | `.mixed(true)` |
 | `BTextControl` | `TextControl::new(cx, &field).label("Name:")` | the field is a `Child<TextField>` from `text_field(cx, ..)` |
 | `BTextView` | `text_view`, `olo_kit::editor` | the editor: documents, undo, find, spelling, source code |
-| `BMenuField` | `MenuField::new(id, items, chosen).label(..).on_change(..)` | |
+| `BMenuField` | `MenuField::new(id, items, chosen).label(..).on_change(..)` | `MenuField::many(id, items, chosen, none)` for several choices, not a row of check boxes |
 | the Installer's "More Options" latch | `PaneSwitch::new("More Options", open).id("more").on_toggle(..)` | you keep `open` and put the pane under it; the window follows its content |
 | `BSlider` | `Slider::new(id, value, range).on_change(..)` | `.step`, `.limits`, `.value_text` |
 | `BStatusBar` | `StatusBar::new(fraction).label(..).trailing(..)` | |
