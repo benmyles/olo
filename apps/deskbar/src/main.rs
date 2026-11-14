@@ -2203,10 +2203,17 @@ impl BarView {
             return;
         };
         if hot != self.hot {
-            // The widget the pointer is on, whose tip lists processes.
+            // The widget the pointer is on, whose tip lists processes;
+            // left for its card (which lingers), still looked at while
+            // the card shows (`retip` lets it go after).
             let (was, now) = (self.hot.as_ref().and_then(|k| widget_of(k)), hot.as_ref().and_then(|k| widget_of(k)));
             if was != now {
-                self.model.read().live.hover(now);
+                let card_up = now.is_none() && was.is_some() && tip::shown(cx).is_some_and(|k| widget_of(&k) == was);
+                let mut m = self.model.read();
+                m.live.pointer_on = now.is_some();
+                if !card_up {
+                    m.live.hover(now);
+                }
             }
             self.hot = hot;
             cx.invalidate();
@@ -2218,7 +2225,18 @@ impl BarView {
     /// it).
     fn retip(&mut self, tip_now: Option<u32>, cx: &mut Cx<Self>) {
         let Some(id) = tip_now else { return };
-        let Some(key) = self.hot.clone().filter(|k| widget_of(k) == Some(id)) else { return };
+        let here = |k: &SharedString| widget_of(k) == Some(id);
+        let shown = tip::shown(cx).filter(here);
+        let Some(key) = self.hot.clone().filter(here).or(shown) else {
+            // Neither the pointer nor its card is on it (on any bar):
+            // it's no longer looked at.
+            let gone = !tip::shown_anywhere(cx).is_some_and(|k| here(&k));
+            let mut m = self.model.read();
+            if gone && !m.live.pointer_on {
+                m.live.hover(None);
+            }
+            return;
+        };
         cx.invalidate();
         if let Some(card) = self.model.read().card(id) {
             tip::recard(cx, key, card);
@@ -2361,12 +2379,15 @@ fn hit(view: &ViewRef<BarView>, key: &str, r: Bounds<Pixels>, tip_text: Option<S
             let (key, on) = (k.clone(), *on);
             // A live widget's tip is a card, made as the pointer comes
             // (and again as readings come, `BarView::retip`).
+            // It opens beside the bar, level with the widget, so it
+            // covers none of the others (the pointer may move onto it).
             if let Some(id) = widget_of(&key) {
                 v.update(cx, move |v, cx| {
                     v.set_hot(&key, on, cx);
                     let card = if on { v.model.read().card(id) } else { None };
+                    let row = Bounds { origin: point(px(0.0), r.top()), size: size(px(WIDTH), r.size.height) };
                     match card {
-                        Some(card) => tip::hover_card(cx, key, card, r, on),
+                        Some(card) => tip::hover_card_beside(cx, key, card, r, row, tip::TipPlace::Left, on),
                         None => tip::hover(cx, key, "", r, false),
                     }
                 });

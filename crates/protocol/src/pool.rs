@@ -257,7 +257,7 @@ impl Availability {
     pub fn detail(&self, now: i64) -> Vec<String> {
         let mut out = Vec::new();
         let n = self.accounts.iter().filter(|a| a.counted).count();
-        out.push(format!("{}% left: {} of {} {}' worth", (self.fraction() * 100.0).round(), worth(self.left), worth(self.whole), if n == 1 { "account" } else { "accounts" }));
+        out.push(format!("{}% left: {} of {} {} worth", (self.fraction() * 100.0).round(), worth(self.left), worth(self.whole), if n == 1 { "account's" } else { "accounts'" }));
         if let Some((at, who)) = &self.next_reset {
             out.push(format!("Next reset in {} ({who})", duration_text(at - now)));
         }

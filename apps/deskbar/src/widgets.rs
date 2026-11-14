@@ -407,6 +407,9 @@ pub struct Live {
     /// what it measures (None until known).
     hovered: Option<u32>,
     top: Option<Vec<(String, f64)>>,
+    /// The pointer is on that widget (not only on its card, which keeps
+    /// it looked at while it shows).
+    pub pointer_on: bool,
     /// Token Pool's meters followed while a widget shows them: the
     /// worker reads those widgets again as the pool writes.
     pool_watch: Option<olo_kit::watch::Watch>,
@@ -417,7 +420,7 @@ pub struct Live {
 
 impl Live {
     pub fn new() -> Live {
-        Live { widgets: Vec::new(), readings: HashMap::new(), shown: HashMap::new(), worker: None, paused: false, hovered: None, top: None, pool_watch: None, out: HashMap::new() }
+        Live { widgets: Vec::new(), readings: HashMap::new(), shown: HashMap::new(), worker: None, paused: false, hovered: None, top: None, pointer_on: false, pool_watch: None, out: HashMap::new() }
     }
 
     /// What widget `w` shows (nothing read yet: nothing).

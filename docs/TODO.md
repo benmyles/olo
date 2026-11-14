@@ -1398,6 +1398,22 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Quick Look empty after ↓ through pictures (a regression)** (Ben,
+  2026-11-14: "when i'm in the tracker and press space on an image for
+  the quick look, i see it properly but then if i hit down to go
+  through the other images i just get an empty window. i'm pretty sure
+  this is a regression coming back from something we fixed in the past
+  at some point"; his screenshot: Tracker's list of 01–10.png, 06.png
+  selected, Quick Look showing "PNG image, 1440 × 900" and its rotate
+  and Open with Viewer buttons over an empty gray body, with a
+  vertical scroll bar down its right). Fixed before for a PDF ("Quick
+  Look went gray on a PDF, and the arrows stopped", 2026-11-07, under
+  Done, waiting for Ben) and in the portal's panel (c8d11f24). Find
+  what brought it back (git log of tracker's quicklook.rs and
+  olo-preview since), fix it at the root, and keep it fixed: a test
+  that steps ↓ through a folder of pictures (PNG, JPEG, sizes, 1×,
+  1.5×, 2×) and checks each look draws its picture. The scroll bar
+  too: Quick Look's window must fit what it shows, not scroll.
 - **Tabs and tab groups: one better look for every app** (Ben,
   2026-11-14: "this tab and tab group styling we're using still looks
   really awful and out of place to me. we need to make this better for
@@ -1579,6 +1595,18 @@ something nobody here has is in "Blocked", with what it waits for.
   widget's tip from showing again. Ben: after upgrading, rest the
   pointer on a widget with another window active; if no card comes,
   say which display and what was active.
+  Then (Ben, 2026-11-14: "when i hover over disk then move the cursor
+  down over the codex heatmap the codex tip doesn't appear"; "i should
+  be able to move the cursor anywhere in the tip card without the tip
+  card disappearing -- it should require moving out of the tip card for
+  it to go away"): a card opened below its widget, over the widgets
+  under it. Now a card takes the pointer and stays while it's on it
+  (and a moment after it leaves its widget, to get there), and opens to
+  the left of the bar, level with its widget, so it covers none; Disk
+  to the widget under it switches at once, the widgets crossed on the
+  way to the card don't take over unless the pointer rests on them.
+  Tested headless at 1× and 2.5× (Ben's Studio Display's scale), with
+  the pointer moved at a mouse's pace.
 
 (Audited again 2026-11-08, all 51: each is done, and what's left in
 each is Ben's alone: his accounts (Google, GitHub, 1Password), his

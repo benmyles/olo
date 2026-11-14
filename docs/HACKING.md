@@ -1421,7 +1421,8 @@ window smaller than what it says, it would be cut at the edge).
 `tip::on(element, key, text)` gives an element one;
 `tip::hover(cx, key, text, anchor, hovered)` is the same for a drawing
 that follows the pointer itself (`WindowKind::Tip`: an xdg_popup
-with no grab and an empty input region, so it takes no clicks), below
+with no grab and an empty input region, so it takes no clicks; a
+card's takes the pointer, below), below
 the thing or else above it, slid to stay on the screen; it comes after
 a rest, at once if another showed a moment ago, and not after a click
 (`tip::pressed`). `tip::retext(cx, key, text)` changes what a
@@ -1437,7 +1438,26 @@ A tip can be a card (`olo_kit::card`), for more than a sentence:
 `tip::hover_card(cx, key, Rc<Card>, anchor, hovered)` and
 `tip::recard(cx, key, card)` are `hover` and `retext` for one (a card
 handed in while its tip waits to show replaces the one it would have
-shown). A `Card` is a raised panel 300 points wide: its title, the
+shown). A card takes the pointer (Ben, 2026-11-14: "i should be able to
+move the cursor anywhere in the tip card without the tip card
+disappearing -- it should require moving out of the tip card for it to
+go away"; `WindowKind::Tip { takes_pointer: true }`, an input region
+and no grab): it stays 450 ms after the pointer leaves its widget,
+for as long as the pointer is on it, and goes 250 ms after the
+pointer leaves it unless it's back on the widget. So a card must not
+open over other widgets, which couldn't be reached past it:
+`tip::hover_card_beside(cx, key, card, anchor, beside, TipPlace::Left,
+hovered)` opens it at `beside`'s side (a row: Deskbar's, the bar's
+width at the widget), its top level with it, flipped to the other side
+if there's no room, slid to stay on screen (`TipPlace` is
+`WindowKind::Tip`'s `place`). While a card lingers, a widget the
+pointer crosses on its way there (between the widget and the card's
+side) shows its own only if the pointer rests on it 300 ms; any
+other takes over at once (Disk to the Token Pool widget under it).
+`tip::shown(cx)` / `tip::shown_anywhere(cx)` say which widget's tip
+shows (in the window, on the looper): Deskbar keeps a card's readings
+coming while the pointer is on the card, and stops looking at the
+processes once no card shows. A `Card` is a raised panel 300 points wide: its title, the
 value it's about at the top right (in a colour of its own if given),
 a caption under them (wrapped at words to two lines), an etched line,
 then its parts: `Part::Drawing { heading, height, paint, text }`
@@ -2913,8 +2933,10 @@ it.
   above, slid to stay on screen; in the tooltip colours, wrapping past
   360 points. `tip::on(element, key, text)` gives any element one.
   `tip::hover_card` / `tip::recard`: the tip a `card::Card` (a title,
-  value and caption, then drawings, rows with bars and notes): see
-  "Tips" above.
+  value and caption, then drawings, rows with bars and notes), which
+  the pointer may move onto and rest on; `tip::hover_card_beside`
+  opens it beside a row (`TipPlace::Left` / `Right`) so it covers no
+  other widget: see "Tips" above.
 - `dnd`: dragging out to another app or a folder
   (`WindowCx::start_drag`, Wayland's data source with a
   picture surface): `dnd::files(paths, copy, move)` (text/uri-list and
@@ -15348,6 +15370,11 @@ ProcessController put their bars in its tray.
   `Reading::rows`: `meters::DetailRow`). The card is made as the
   pointer comes and again with each reading or look at the processes
   (`BarView::retip`, by the widget's id), never as the bar is drawn;
+  it opens to the left of the bar, level with the widget
+  (`tip::hover_card_beside`), so it covers none of the others, and the
+  pointer can move onto it and rest there: it keeps updating while
+  it's on it (`Live::pointer_on`; the processes looked at until no
+  card shows);
   its drawings paint the widget's own `Shown` (`paint_drawing`, in
   another look), so a graph scrolls as the widget's does. Release, 1×,
   three bars and nine widgets: idle unchanged (no card is made);

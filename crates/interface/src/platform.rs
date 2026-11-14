@@ -1153,15 +1153,32 @@ pub enum WindowKind {
     },
 
     /// Olo: a tooltip over a window: a popup (Wayland's xdg_popup) that
-    /// takes no input and grabs nothing, below `anchor` (in the parent's
-    /// content), else above it, slid to stay on screen: it may reach past
-    /// its window's edges (Deskbar's tray, narrower than what it says).
+    /// grabs nothing, below `anchor` (in the parent's content), else
+    /// above it, or beside it (`place`), slid to stay on screen: it may
+    /// reach past its window's edges (Deskbar's tray, narrower than what
+    /// it says). It takes no input, unless `takes_pointer` (a card the
+    /// pointer may move onto and rest on: `olo_kit::tip`).
     Tip {
         /// The window it belongs to.
         parent: WindowId,
-        /// What it tells about.
+        /// What it tells about (or opens beside).
         anchor: Bounds<Pixels>,
+        place: TipPlace,
+        takes_pointer: bool,
     },
+}
+
+/// Olo: where a [`WindowKind::Tip`] opens.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub enum TipPlace {
+    /// Below its anchor, else above it.
+    #[default]
+    Below,
+    /// At its anchor's left, its top level with the anchor's, else at
+    /// its right (Deskbar's cards, beside the bar).
+    Left,
+    /// At its right, else at its left.
+    Right,
 }
 
 /// The appearance of the window, as defined by the operating system.

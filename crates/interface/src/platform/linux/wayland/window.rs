@@ -670,7 +670,8 @@ impl WaylandWindow {
         };
         let (toplevel, popup) = match (params.kind, popup_parent) {
             (kind @ (WindowKind::Popup { .. } | WindowKind::Tip { .. }), Some((parent_surface, serial))) => {
-                let tip = matches!(kind, WindowKind::Tip { .. });
+                // (A tip takes no input, but one the pointer may rest on.)
+                let tip = matches!(kind, WindowKind::Tip { takes_pointer: false, .. });
                 let positioner = popup_positioner(&globals, &kind, params.bounds.size);
                 let popup = match &parent_surface {
                     PopupParent::Xdg(parent) => xdg_surface.get_popup(Some(parent), &positioner, &globals.qh, surface.id()),
@@ -2527,11 +2528,23 @@ const SNUG_AFTER: std::time::Duration = std::time::Duration::from_millis(1500);
 /// tells about (a gap away), or above; a menu at its corner.
 fn popup_positioner(globals: &Globals, kind: &WindowKind, size: Size<Pixels>) -> xdg_positioner::XdgPositioner {
     const TIP_GAP: f32 = 4.0;
+    // (Below, as a menu opens: its top-left at the anchor's bottom-left.
+    // Beside: its top level with the anchor's, a gap to one side.)
+    let mut gravity = xdg_positioner::Gravity::BottomRight;
     let (anchor, corner, offset) = match *kind {
         WindowKind::Popup { anchor, corner, offset, .. } => (anchor, corner, offset),
-        WindowKind::Tip { anchor, .. } => {
+        WindowKind::Tip { anchor, place: crate::TipPlace::Below, .. } => {
             let a = Bounds { origin: crate::point(anchor.origin.x, anchor.origin.y - px(TIP_GAP)), size: crate::size(anchor.size.width, anchor.size.height + px(2.0 * TIP_GAP)) };
             (a, crate::Corner::BottomLeft, Point::default())
+        }
+        WindowKind::Tip { anchor, place, .. } => {
+            let a = Bounds { origin: crate::point(anchor.origin.x - px(TIP_GAP), anchor.origin.y), size: crate::size(anchor.size.width + px(2.0 * TIP_GAP), anchor.size.height) };
+            if place == crate::TipPlace::Left {
+                gravity = xdg_positioner::Gravity::BottomLeft;
+                (a, crate::Corner::TopLeft, Point::default())
+            } else {
+                (a, crate::Corner::TopRight, Point::default())
+            }
         }
         _ => (Bounds::default(), crate::Corner::BottomLeft, Point::default()),
     };
@@ -2544,9 +2557,14 @@ fn popup_positioner(globals: &Globals, kind: &WindowKind, size: Size<Pixels>) ->
         crate::Corner::BottomLeft => xdg_positioner::Anchor::BottomLeft,
         crate::Corner::BottomRight => xdg_positioner::Anchor::BottomRight,
     });
-    positioner.set_gravity(xdg_positioner::Gravity::BottomRight);
+    positioner.set_gravity(gravity);
     let slide = xdg_positioner::ConstraintAdjustment::SlideX | xdg_positioner::ConstraintAdjustment::SlideY;
-    if offset == Point::default() {
+    // (Beside: to the other side if it must be, slid up to stay on the
+    // screen, never flipped above.)
+    let beside = matches!(kind, WindowKind::Tip { place: crate::TipPlace::Left | crate::TipPlace::Right, .. });
+    if beside {
+        positioner.set_constraint_adjustment(slide | xdg_positioner::ConstraintAdjustment::FlipX);
+    } else if offset == Point::default() {
         positioner.set_constraint_adjustment(slide | xdg_positioner::ConstraintAdjustment::FlipX | xdg_positioner::ConstraintAdjustment::FlipY);
     } else {
         positioner.set_offset(offset.x.0.round() as i32, offset.y.0.round() as i32);

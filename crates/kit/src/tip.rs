@@ -1,19 +1,29 @@
 //! Tips that may reach past their window's edges, each in a popup of its
-//! own (`WindowKind::Tip`: an xdg_popup that takes no input and grabs
-//! nothing), on its window's looper. One shows once the pointer has
-//! rested on its widget a moment, at once if another was showing a
-//! moment ago, not after a press; below the widget, else above, slid to
-//! stay on screen; in the tooltip colours.
+//! own (`WindowKind::Tip`: an xdg_popup that grabs nothing), on its
+//! window's looper. One shows once the pointer has rested on its widget
+//! a moment, at once if another was showing a moment ago, not after a
+//! press; below the widget, else above, slid to stay on screen; in the
+//! tooltip colours. A tip of words takes no input.
 //!
 //! The widget tells [`hover`] when the pointer comes and goes (its
 //! `on_hover`), and [`pressed`] when it's pressed; [`retext`] changes
-//! what its tip says while it shows (a live value: Deskbar's widgets),
-//! resized and placed again for it.
+//! what its tip says while it shows (a live value), resized and placed
+//! again for it.
 //!
 //! A tip can show a [`Card`] instead of words ([`hover_card`],
 //! [`recard`]): a title and its value, a drawing, rows with levels, as
 //! Deskbar's widgets show what they measure. It's sized before it opens
-//! ([`Card::size`]), and agents read it in words ([`Card::text`]).
+//! ([`Card::size`]), and agents read it in words ([`Card::text`]). A card
+//! takes the pointer (Ben, 2026-11-14: "i should be able to move the
+//! cursor anywhere in the tip card without the tip card disappearing --
+//! it should require moving out of the tip card for it to go away"): it
+//! stays a moment after the pointer leaves its widget ([`LINGER`]),
+//! for as long as the pointer is on it, and goes a moment after it
+//! leaves it ([`LEAVE_CARD`]) unless it's back on the widget. So it must
+//! never open over other widgets (they couldn't be reached past it):
+//! [`hover_card_beside`] opens it beside a row (Deskbar's, beside the
+//! bar), and widgets the pointer crosses on its way there show theirs
+//! only if it rests on them ([`SWITCH`]); others take over at once.
 //!
 //! A tip the compositor put away (its popup gone) is forgotten the next
 //! time the pointer comes: it would otherwise stand for one still
@@ -24,6 +34,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+pub use olo_interface::TipPlace;
 use olo_interface::{
     Bounds, Cx, Element, FontWeight, IntoElement as _, LocalWindow, ParentElement as _, Pixels, SharedString, Styled as _, TimerId, View, WindowCx, WindowId, WindowKind, WindowSpec, div, px, size,
 };
@@ -79,9 +90,11 @@ impl View for TipView {
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let text = match &self.body {
             Body::Text(t) => t.clone(),
+            // (The pointer on it keeps it: `card_hovered`.)
             Body::Card(card) => {
+                use olo_interface::InteractiveElement as _;
                 let card = card.clone();
-                return olo_interface::canvas(move |g, b| card.paint(g, b)).size_full().into_element();
+                return div().id("tip-card").size_full().on_hover(|on: &bool, cx| card_hovered(cx, *on)).child(olo_interface::canvas(move |g, b| card.paint(g, b)).size_full()).into_element();
             }
         };
         let p = theme::palette();
@@ -101,18 +114,65 @@ impl View for TipView {
     }
 }
 
+/// Where a tip opens: below what it's about (else above), or beside
+/// `at` (Deskbar's cards: beside the bar, level with the widget).
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Place {
+    at: Bounds<Pixels>,
+    side: TipPlace,
+}
+
+/// The tip showing.
+struct Shown {
+    /// The window it's of, and its widget there.
+    window: WindowId,
+    key: SharedString,
+    tip: LocalWindow<TipView>,
+    /// A card: the pointer may move onto it, and it stays while it's on
+    /// it.
+    card: bool,
+    /// Its widget, and the side it opened at (which way the pointer
+    /// goes to reach it).
+    anchor: Bounds<Pixels>,
+    side: TipPlace,
+}
+
+/// A tip waiting to show.
+struct Waiting {
+    window: WindowId,
+    key: SharedString,
+    timer: TimerId,
+    /// What it will say (a reading that comes while it waits changes it,
+    /// `rebody`).
+    body: Body,
+    anchor: Bounds<Pixels>,
+    place: Place,
+}
+
 /// The tip showing on a looper, the one waiting to, and when one last
 /// went.
 #[derive(Default)]
 struct Tips {
-    shown: Option<(WindowId, SharedString, LocalWindow<TipView>)>,
-    /// (With what it will say: a reading that comes while it waits
-    /// changes it, `rebody`.)
-    waiting: Option<(WindowId, SharedString, TimerId, Body)>,
+    shown: Option<Shown>,
+    waiting: Option<Waiting>,
     hidden_at: Option<Instant>,
     /// Pressed since the pointer came: no tip until it leaves.
     pressed: Option<(WindowId, SharedString)>,
+    /// A card whose widget the pointer left (or the card itself): put
+    /// away when this fires, unless the pointer came onto it, or back.
+    lingering: Option<TimerId>,
+    /// The pointer is on the card showing.
+    on_card: bool,
 }
+
+/// A card stays this long after the pointer leaves its widget: time to
+/// move onto it.
+const LINGER: Duration = Duration::from_millis(450);
+/// And this long after it leaves the card: time to go back to the widget.
+const LEAVE_CARD: Duration = Duration::from_millis(250);
+/// While a card lingers, another widget the pointer crosses on the way to
+/// it shows its own only if the pointer rests there this long.
+const SWITCH: Duration = Duration::from_millis(300);
 
 fn tips<'a>(cx: &'a mut WindowCx) -> &'a mut Tips {
     let looper = cx.looper();
@@ -141,54 +201,138 @@ pub fn on(element: Element, key: impl Into<SharedString>, text: impl Into<Shared
 /// window, whose tip says `text` and which is at `anchor` (in the
 /// window).
 pub fn hover(cx: &mut WindowCx, key: impl Into<SharedString>, text: impl Into<SharedString>, anchor: Bounds<Pixels>, hovered: bool) {
-    hover_body(cx, key.into(), Body::Text(text.into()), anchor, hovered);
+    hover_body(cx, key.into(), Body::Text(text.into()), anchor, Place { at: anchor, side: TipPlace::Below }, hovered);
 }
 
 /// [`hover`], the tip a card: `card` (shared, so it isn't copied as the
-/// widget is drawn again).
+/// widget is drawn again), below the widget. The pointer may move onto
+/// it: it stays while the pointer is on it, and goes once the pointer
+/// has left it (and isn't back on the widget).
 pub fn hover_card(cx: &mut WindowCx, key: impl Into<SharedString>, card: Rc<Card>, anchor: Bounds<Pixels>, hovered: bool) {
-    hover_body(cx, key.into(), Body::Card(card), anchor, hovered);
+    hover_body(cx, key.into(), Body::Card(card), anchor, Place { at: anchor, side: TipPlace::Below }, hovered);
 }
 
-fn hover_body(cx: &mut WindowCx, key: SharedString, text: Body, anchor: Bounds<Pixels>, hovered: bool) {
+/// [`hover_card`], the card opening beside `beside` (in the window) at
+/// `side`, its top level with `beside`'s: Deskbar's, beside the bar
+/// rather than over the widgets under the one it's about. On its way
+/// there the pointer may cross other widgets: their tips wait a moment
+/// ([`SWITCH`]) while the card lingers, so it isn't swapped for theirs.
+#[allow(clippy::too_many_arguments)]
+pub fn hover_card_beside(cx: &mut WindowCx, key: impl Into<SharedString>, card: Rc<Card>, anchor: Bounds<Pixels>, beside: Bounds<Pixels>, side: TipPlace, hovered: bool) {
+    hover_body(cx, key.into(), Body::Card(card), anchor, Place { at: beside, side }, hovered);
+}
+
+/// The key of the window's tip showing, if one is (a card the pointer
+/// has left lingers: still showing).
+pub fn shown(cx: &mut WindowCx) -> Option<SharedString> {
+    let window = cx.window_id();
+    forget_gone(cx);
+    tips(cx).shown.as_ref().filter(|s| s.window == window).map(|s| s.key.clone())
+}
+
+/// The key of the tip showing on any of the looper's windows.
+pub fn shown_anywhere(cx: &mut WindowCx) -> Option<SharedString> {
+    forget_gone(cx);
+    tips(cx).shown.as_ref().map(|s| s.key.clone())
+}
+
+/// Whether widget `b` lies on the way from `a` to a card opened at
+/// `side` of it: crossed by a pointer going there.
+fn on_the_way(a: Bounds<Pixels>, side: TipPlace, b: Bounds<Pixels>) -> bool {
+    let across = b.top() < a.bottom() && b.bottom() > a.top();
+    let along = b.left() < a.right() && b.right() > a.left();
+    match side {
+        TipPlace::Left => across && b.right() <= a.left() + px(1.0),
+        TipPlace::Right => across && b.left() >= a.right() - px(1.0),
+        TipPlace::Below => along && b.top() >= a.bottom() - px(1.0),
+    }
+}
+
+fn hover_body(cx: &mut WindowCx, key: SharedString, text: Body, anchor: Bounds<Pixels>, place: Place, hovered: bool) {
     let parent = cx.window_id();
     forget_gone(cx);
     if !hovered {
         let tips = tips(cx);
-        let waiting = tips.waiting.take_if(|(w, k, ..)| *w == parent && *k == key).map(|(_, _, timer, _)| timer);
+        let waiting = tips.waiting.take_if(|w| w.window == parent && w.key == key).map(|w| w.timer);
         if tips.pressed.as_ref().is_some_and(|(w, k)| *w == parent && *k == key) {
             tips.pressed = None;
         }
-        let shown = tips.shown.as_ref().is_some_and(|(w, k, _)| *w == parent && *k == key);
+        let shown = tips.shown.as_ref().filter(|s| s.window == parent && s.key == key).map(|s| s.card);
         if let Some(timer) = waiting {
             cx.looper().cancel(timer);
         }
-        if shown {
-            hide(cx);
+        match shown {
+            // A card stays a moment, for the pointer to reach it.
+            Some(true) => linger(cx, LINGER),
+            Some(false) => hide(cx),
+            None => {}
         }
         return;
     }
     let tips_now = tips(cx);
-    if tips_now.shown.as_ref().is_some_and(|(w, k, _)| *w == parent && *k == key) || text.is_empty() {
+    // Back on the widget whose tip shows: it stays.
+    if tips_now.shown.as_ref().is_some_and(|s| s.window == parent && s.key == key) {
+        if let Some(timer) = tips_now.lingering.take() {
+            cx.looper().cancel(timer);
+        }
         return;
     }
-    let again = tips_now.shown.is_some() || tips_now.hidden_at.is_some_and(|t| t.elapsed() < AGAIN);
-    hide(cx);
+    if text.is_empty() {
+        return;
+    }
+    // A card lingering, this widget on the pointer's way to it: this
+    // one's shows only if the pointer rests here.
+    let passing = tips_now.lingering.is_some() && tips_now.shown.as_ref().is_some_and(|s| s.card && s.window == parent && on_the_way(s.anchor, s.side, anchor));
+    let again = !passing && (tips_now.shown.is_some() || tips_now.hidden_at.is_some_and(|t| t.elapsed() < AGAIN));
+    if !passing {
+        hide(cx);
+    }
     if again {
-        show(cx, key, text, anchor);
+        show(cx, key, text, anchor, place);
         return;
     }
-    if let Some((_, _, timer, _)) = tips(cx).waiting.take() {
-        cx.looper().cancel(timer);
+    if let Some(w) = tips(cx).waiting.take() {
+        cx.looper().cancel(w.timer);
     }
     let k = key.clone();
-    let timer = cx.looper().after(DELAY, move |looper| {
-        let waiting = looper.state_mut::<Tips>().and_then(|tips| tips.waiting.take_if(|(w, wk, ..)| *w == parent && *wk == k));
-        if let Some((.., body)) = waiting {
-            olo_interface::with_window_on(looper, parent, |cx| show(cx, k, body, anchor));
+    let timer = cx.looper().after(if passing { SWITCH } else { DELAY }, move |looper| {
+        let waiting = looper.state_mut::<Tips>().and_then(|tips| tips.waiting.take_if(|w| w.window == parent && w.key == k));
+        if let Some(w) = waiting {
+            olo_interface::with_window_on(looper, parent, |cx| {
+                hide(cx);
+                show(cx, w.key, w.body, w.anchor, w.place);
+            });
         }
     });
-    tips(cx).waiting = Some((parent, key, timer, text));
+    tips(cx).waiting = Some(Waiting { window: parent, key, timer, body: text, anchor, place });
+}
+
+/// The card showing goes in `after`, unless the pointer comes onto it
+/// (or back to its widget) first.
+fn linger(cx: &mut WindowCx, after: Duration) {
+    if let Some(timer) = tips(cx).lingering.take() {
+        cx.looper().cancel(timer);
+    }
+    let timer = cx.looper().after(after, |looper| {
+        let Some(tips) = looper.state_mut::<Tips>() else { return };
+        tips.lingering = None;
+        let Some(window) = tips.shown.as_ref().filter(|_| !tips.on_card).map(|s| s.window) else { return };
+        olo_interface::with_window_on(looper, window, hide);
+    });
+    tips(cx).lingering = Some(timer);
+}
+
+/// The pointer came onto the card showing, or left it.
+fn card_hovered(cx: &mut WindowCx, on: bool) {
+    let tips = tips(cx);
+    tips.on_card = on;
+    if on {
+        if let Some(timer) = tips.lingering.take() {
+            cx.looper().cancel(timer);
+        }
+    } else {
+        linger(cx, LEAVE_CARD);
+    }
 }
 
 /// The tip of widget `key` of the window now, without the pause (⌘ held
@@ -197,9 +341,9 @@ pub fn show_now(cx: &mut WindowCx, key: impl Into<SharedString>, text: impl Into
     let (key, text, parent) = (key.into(), Body::Text(text.into()), cx.window_id());
     forget_gone(cx);
     let tips = tips(cx);
-    let waiting = tips.waiting.take().map(|(_, _, timer, _)| timer);
+    let waiting = tips.waiting.take().map(|w| w.timer);
     tips.pressed = None;
-    let showing = tips.shown.as_ref().is_some_and(|(w, k, _)| *w == parent && *k == key);
+    let showing = tips.shown.as_ref().is_some_and(|s| s.window == parent && s.key == key);
     if let Some(timer) = waiting {
         cx.looper().cancel(timer);
     }
@@ -207,7 +351,7 @@ pub fn show_now(cx: &mut WindowCx, key: impl Into<SharedString>, text: impl Into
         return;
     }
     hide(cx);
-    show(cx, key, text, anchor);
+    show(cx, key, text, anchor, Place { at: anchor, side: TipPlace::Below });
 }
 
 /// The widget `key` of the window was pressed: its tip goes, and doesn't
@@ -215,7 +359,7 @@ pub fn show_now(cx: &mut WindowCx, key: impl Into<SharedString>, text: impl Into
 pub fn pressed(cx: &mut WindowCx, key: impl Into<SharedString>) {
     let parent = cx.window_id();
     let tips = tips(cx);
-    let waiting = tips.waiting.take().map(|(_, _, timer, _)| timer);
+    let waiting = tips.waiting.take().map(|w| w.timer);
     tips.pressed = Some((parent, key.into()));
     if let Some(timer) = waiting {
         cx.looper().cancel(timer);
@@ -241,11 +385,11 @@ fn rebody(cx: &mut WindowCx, key: SharedString, text: Body) {
     let parent = cx.window_id();
     forget_gone(cx);
     let tips_now = tips(cx);
-    if let Some((.., body)) = tips_now.waiting.as_mut().filter(|(w, k, ..)| *w == parent && *k == key) {
-        *body = text;
+    if let Some(w) = tips_now.waiting.as_mut().filter(|w| w.window == parent && w.key == key) {
+        w.body = text;
         return;
     }
-    let Some(tip) = tips_now.shown.as_ref().filter(|(w, k, _)| *w == parent && *k == key).map(|(_, _, t)| *t) else { return };
+    let Some(tip) = tips_now.shown.as_ref().filter(|s| s.window == parent && s.key == key).map(|s| s.tip) else { return };
     if text.is_empty() {
         hide(cx);
         return;
@@ -266,38 +410,48 @@ fn rebody(cx: &mut WindowCx, key: SharedString, text: Body) {
 /// The tip it shows, if its popup has gone (put away by the compositor,
 /// or closed some other way): forgotten.
 fn forget_gone(cx: &mut WindowCx) {
-    let Some(tip) = tips(cx).shown.as_ref().map(|(_, _, tip)| *tip) else { return };
+    let Some(tip) = tips(cx).shown.as_ref().map(|s| s.tip) else { return };
     let gone = !tip.is_open(cx);
     if gone {
         let tips = tips(cx);
         tips.shown = None;
+        tips.on_card = false;
         tips.hidden_at = Some(Instant::now());
+        if let Some(timer) = tips.lingering.take() {
+            cx.looper().cancel(timer);
+        }
     }
 }
 
 /// Puts the tip showing away.
 pub fn hide(cx: &mut WindowCx) {
     let tips = tips(cx);
-    if let Some((_, _, tip)) = tips.shown.take() {
+    tips.on_card = false;
+    let lingering = tips.lingering.take();
+    if let Some(shown) = tips.shown.take() {
         tips.hidden_at = Some(Instant::now());
-        tip.close(cx);
+        shown.tip.close(cx);
+    }
+    if let Some(timer) = lingering {
+        cx.looper().cancel(timer);
     }
 }
 
-fn show(cx: &mut WindowCx, key: SharedString, text: Body, anchor: Bounds<Pixels>) {
+fn show(cx: &mut WindowCx, key: SharedString, text: Body, anchor: Bounds<Pixels>, place: Place) {
     let parent = cx.window_id();
     if tips(cx).pressed.as_ref().is_some_and(|(w, k)| *w == parent && *k == key) {
         return;
     }
     let (w, h) = text.size();
-    // (Named for agents: a card by its title.)
-    let title = match &text {
-        Body::Card(card) => card.title.to_string(),
-        Body::Text(_) => String::new(),
+    // (Named for agents: a card by its title. A card takes the pointer:
+    // it may be moved onto and rested on.)
+    let (title, card) = match &text {
+        Body::Card(card) => (card.title.to_string(), true),
+        Body::Text(_) => (String::new(), false),
     };
-    let spec = WindowSpec { kind: WindowKind::Tip { parent, anchor }, focus: false, ..WindowSpec::new(&title, w, h) };
+    let spec = WindowSpec { kind: WindowKind::Tip { parent, anchor: place.at, place: place.side, takes_pointer: card }, focus: false, ..WindowSpec::new(&title, w, h) };
     if let Some(tip) = cx.open_window_here(spec, move |_| TipView { body: text }) {
-        tips(cx).shown = Some((parent, key, tip));
+        tips(cx).shown = Some(Shown { window: parent, key, tip, card, anchor, side: place.side });
     }
 }
 
