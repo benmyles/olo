@@ -4042,5 +4042,11 @@
   "title": "Preferences \u25b8 Deskbar: a Token Pool widget's quotas as check boxes",
   "caption": "Quotas: each of the provider's, checked to show (none: whichever holds each account back). For a heatmap, Colour and 'Orange, then red' are dimmed: its cells are coloured by use.",
   "image": "2026-11-13/203723-preferences-deskbar-a-token-pool-widget-s-quotas.png"
+ },
+ {
+  "time": "2026-11-13T21:27:39",
+  "title": "Token Pool widget: Quotas is a menu field of any number",
+  "caption": "The Deskbar widget editor's quotas were a row of check boxes, which a real Claude account's quota names ran past Preferences' right edge. Now a MenuField::many: it says the chosen ones, cut with \u2026 to fit, and its menu checks any of them, Whichever holds each back first. The Preferences lint now draws the editor for every widget kind with the longest quota names the services use.",
+  "image": "2026-11-13/212739-token-pool-widget-quotas-is-a-menu-field-of-any-.png"
  }
 ]

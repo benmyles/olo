@@ -316,6 +316,31 @@ impl<'a, 'b, 'c> Ui<'a, 'b, 'c> {
         });
     }
 
+    /// A pop-up menu of several values (`MenuField::many`): `choices`,
+    /// those in `chosen` on, `none` what none chosen means; choosing one
+    /// turns it on or off, kept in `choices`' order.
+    pub fn choose_many(&mut self, id: &str, choices: &[String], chosen: &[String], none: &str, with: impl FnOnce(MenuField) -> MenuField, set: impl Fn(&mut Settings, Vec<String>) + 'static) {
+        let names: Vec<SharedString> = choices.iter().map(|c| SharedString::from(c.clone())).collect();
+        let on: Vec<bool> = choices.iter().map(|c| chosen.contains(c)).collect();
+        let set = Rc::new(set);
+        let (probe, now) = (set.clone(), chosen.to_vec());
+        self.probe(move |s| probe(s, now.clone()));
+        let f = with(MenuField::many(SharedString::from(id.to_owned()), names, on, none.to_owned()));
+        let title = f.title().map(|t| t.to_string());
+        let (run, name) = self.step(title.as_deref(), false);
+        let (choices, chosen) = (choices.to_vec(), chosen.to_vec());
+        let f = f.enabled(self.enabled).on_change(self.edit_as(run, name, move |s, i: usize| {
+            let mut now: Vec<String> = match choices.get(i) {
+                None => Vec::new(),
+                Some(c) if chosen.contains(c) => chosen.iter().filter(|o| *o != c).cloned().collect(),
+                Some(c) => chosen.iter().cloned().chain([c.clone()]).collect(),
+            };
+            now.sort_by_key(|o| choices.iter().position(|x| x == o).unwrap_or(usize::MAX));
+            set(s, now);
+        }));
+        self.add(f);
+    }
+
     pub fn button(&mut self, label: impl Into<SharedString>, on_click: impl Fn(&ClickEvent, &mut WindowCx) + 'static) {
         let b = Button::new(label).enabled(self.enabled).on_click(on_click);
         self.add(b);

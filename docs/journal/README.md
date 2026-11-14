@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-13
 
+### Token Pool widget: Quotas is a menu field of any number
+
+*21:27* — The Deskbar widget editor's quotas were a row of check boxes, which a real Claude account's quota names ran past Preferences' right edge. Now a MenuField::many: it says the chosen ones, cut with … to fit, and its menu checks any of them, Whichever holds each back first. The Preferences lint now draws the editor for every widget kind with the longest quota names the services use.
+
+![Token Pool widget: Quotas is a menu field of any number](2026-11-13/212739-token-pool-widget-quotas-is-a-menu-field-of-any-.png)
+
 ### Preferences ▸ Deskbar: a Token Pool widget's quotas as check boxes
 
 *20:37* — Quotas: each of the provider's, checked to show (none: whichever holds each account back). For a heatmap, Colour and 'Orange, then red' are dimmed: its cells are coloured by use.

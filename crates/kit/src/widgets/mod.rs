@@ -41,7 +41,7 @@ pub use find_bar::{find_bar, find_said};
 pub use image_view::{ImageView, image_view};
 pub use key_hint::KeyHint;
 pub use list::{Cell, Column, ColumnListView, HEADER_HEIGHT, ListModel};
-pub use menu_field::MenuField;
+pub use menu_field::{MenuField, NONE_CHOSEN};
 pub use scroll::{SCROLL_BAR, ScrollBar, ScrollView};
 pub use side_pane::{SidePane, side_divider};
 pub use sidebar::Sidebar;

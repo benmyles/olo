@@ -15,7 +15,7 @@ use olo_kit::{
     Cx, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m,
     palette::Hue,
     px,
-    widgets::{BBox, Button, Column, ColumnListView, ListModel, MenuField, StringView},
+    widgets::{BBox, Button, Column, ColumnListView, ListModel, MenuField},
 };
 use olo_protocol::{
     deskbar::{Look, Measure, Place, PoolView, Size, Widget},
@@ -44,6 +44,17 @@ impl State {
         });
         State { list: ListModel::new(false), sources, add: 0 }
     }
+}
+
+/// For the lint: what there is to measure made up (`sources`, as long as
+/// real machines' and pools' come), and widget `chosen` chosen, its
+/// editor showing.
+#[cfg(test)]
+pub fn for_lint(st: &mut State, sources: Sources, chosen: usize) {
+    // (A new one: the real machine's, read as the panel opened, go to the
+    // old.)
+    st.sources = Arc::new(Mutex::new(Some(sources)));
+    st.list.state_mut().select(chosen);
 }
 
 fn state_of(v: &mut PanelView) -> Option<&mut State> {
@@ -369,7 +380,7 @@ fn pool_options(ui: &mut Ui, id: u32, provider: &str, chosen: &[String], view: P
     );
     // Its quotas as the pool last said them, and those chosen even if the
     // pool doesn't say them now (not running, or no account has one): a
-    // check box each, side by side where the menus' fields start.
+    // pop-up field of several, each checked or not.
     let mut offered: Vec<String> = sources.pool.iter().find(|(p, _)| p == provider).map(|(_, q)| q.clone()).unwrap_or_default();
     for q in chosen {
         if !offered.contains(q) {
@@ -377,28 +388,15 @@ fn pool_options(ui: &mut Ui, id: u32, provider: &str, chosen: &[String], view: P
         }
     }
     if !offered.is_empty() {
-        ui.row_gap(0.0, |ui| {
-            ui.add(div().w(px(divider)).flex_shrink_0().child(StringView::new("Quotas:")));
-            ui.row_gap(m::SPACING, |ui| {
-                for q in &offered {
-                    let (q2, order) = (q.clone(), offered.clone());
-                    ui.check(q.clone(), chosen.contains(q), move |s, on| {
-                        let (q, order) = (q2.clone(), order.clone());
-                        set(id, move |quotas, _, _, _| {
-                            quotas.retain(|o| *o != q);
-                            if on {
-                                quotas.push(q.clone());
-                            }
-                            // (In the order offered: the series' order.)
-                            quotas.sort_by_key(|o| order.iter().position(|x| x == o).unwrap_or(usize::MAX));
-                        })(s)
-                    });
-                }
-            });
-        });
-        if chosen.is_empty() {
-            ui.note("None chosen: whichever holds each account back now.");
-        }
+        // (One field however many: as many and as long as the pool says.)
+        ui.choose_many(
+            "widget-pool-quotas",
+            &offered,
+            chosen,
+            "Whichever holds each back",
+            |f| f.label("Quotas:").divider(divider),
+            move |s, now| set(id, move |quotas, _, _, _| *quotas = now.clone())(s),
+        );
     }
     ui.choose("widget-pool-view", &PoolView::ALL.map(|v| (v, v.name())), &view, |f| f.label("Accounts:").divider(divider), move |s, v| set(id, move |_, _, view, _| *view = v)(s));
     ui.check("Show what's used, not what's left", used, move |s, v| set(id, move |_, _, _, b| *b[0] = v)(s));

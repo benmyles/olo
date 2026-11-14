@@ -128,7 +128,9 @@ impl PoolMeters {
         let mut found: Vec<(bool, u8, String)> = Vec::new();
         for a in self.accounts.iter().filter(|a| a.provider == provider) {
             for w in &a.windows {
-                if !found.iter().any(|(_, _, l)| *l == w.label) {
+                // (One quota however its windows' labels are cased: a
+                // rejection's "Weekly fable" was the report's "Weekly Fable".)
+                if !found.iter().any(|(_, _, l)| l.eq_ignore_ascii_case(&w.label)) {
                     found.push((!w.models.is_empty(), length_rank(&w.label), w.label.clone()));
                 }
             }
@@ -342,7 +344,7 @@ pub fn availability(m: &PoolMeters, provider: &str, quota: Option<&str>, count_o
         // Its window for the quota: the one by that name, or the one for
         // every request with least left.
         let window = match quota {
-            Some(q) => a.windows.iter().find(|w| w.label == q),
+            Some(q) => a.windows.iter().find(|w| w.label.eq_ignore_ascii_case(q)),
             None => a.windows.iter().filter(|w| w.models.is_empty()).min_by(|x, y| (100.0 - x.used_at(now)).total_cmp(&(100.0 - y.used_at(now)))),
         };
         let Some(w) = window else {
