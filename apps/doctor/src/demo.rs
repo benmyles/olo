@@ -85,6 +85,20 @@ pub fn report() -> Report {
             Some(("Use brush", true)),
         ),
         finding(
+            crate::checks::START_UP_SCREEN,
+            Severity::Suggestion,
+            "Show Olo's start-up screen as the computer starts",
+            "From the moment the computer starts until you log in, it shows the system's own logos. Olo's start-up screen (its wordmark and the row of icons lit as it starts) can show instead, at your screen's scale (200%), and asks a disk's password in Olo's field. It's made into the start-up image, which takes a minute or two; Olo Doctor can go back to the one before.",
+            Some(("Use Olo's Start-Up Screen", true)),
+        ),
+        finding(
+            "start-up-chime",
+            Severity::Suggestion,
+            "Play Olo's chime as the computer starts",
+            "Olo's chime plays as you log in. It can play as the computer starts instead, as a Mac's does: from its own speakers while the start-up screen shows, at the volume they were last set to (none while they're muted). It plays the chime chosen in Preferences ▸ Sound, and none if anyone on this computer turned the start-up sound off.",
+            Some(("Play It as the Computer Starts", true)),
+        ),
+        finding(
             "gnome:services",
             Severity::Advice,
             "2 of GNOME's services run",

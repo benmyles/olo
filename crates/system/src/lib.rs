@@ -47,6 +47,7 @@ pub mod rfkill;
 pub mod scheduler;
 pub mod secrets;
 pub mod shaping;
+pub mod splash;
 pub mod systemd;
 pub mod time;
 

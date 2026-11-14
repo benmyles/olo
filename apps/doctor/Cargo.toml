@@ -14,6 +14,8 @@ path = "src/main.rs"
 
 [dependencies]
 olo-crash.workspace = true
+# Which sound card is the computer's own: the start-up chime's check.
+olo-chime.workspace = true
 olo-protocol.workspace = true
 olo-sync.workspace = true
 olo-net = { workspace = true, features = ["ureq"] }

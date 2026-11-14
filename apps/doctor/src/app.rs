@@ -40,6 +40,8 @@ const PROGRAM: &str = "olo-doctor";
 enum Msg {
     /// Opened again: look again.
     Again,
+    /// A root fix's `prepare` done: its steps, for the helper.
+    Prepared(String, Vec<Step>),
     Scanned(Report),
     /// A fix run as this user: the finding and its steps' outcomes.
     Ran(String, Vec<Result<(), String>>),
@@ -185,57 +187,56 @@ impl Doctor {
     /// all).
     fn fix(&mut self, ids: &[String], cx: &mut Cx<Self>) {
         let Some(report) = &self.report else { return };
-        let mut root = Vec::new();
         for id in ids {
             let Some(fix) = report.action(id) else { continue };
             if self.outcomes.get(id) == Some(&Outcome::Fixing) {
                 continue;
             }
-            crate::suggest::before(id);
             self.outcomes.insert(id.clone(), Outcome::Fixing);
-            if crate::demo::on() {
-                let (to, id) = (cx.messenger(), id.clone());
-                std::thread::spawn(move || {
+            // On a worker: what's done as the person first (`prepare`:
+            // the start-up screen drawn, a suggestion's state kept), then
+            // the steps here, or handed to the root helper.
+            let (to, id, steps, root, demo) = (cx.messenger(), id.clone(), fix.steps.clone(), fix.root, crate::demo::on());
+            std::thread::spawn(move || {
+                if demo {
                     let results = crate::demo::fix(&id);
                     to.send(Msg::Ran(id, results));
-                });
-            } else if fix.root {
-                root.push((id.clone(), fix.steps.clone()));
-            } else {
-                let (to, id, steps) = (cx.messenger(), id.clone(), fix.steps.clone());
-                std::thread::spawn(move || {
+                } else if let Err(e) = crate::checks::prepare(&id) {
+                    to.send(Msg::Ran(id, vec![Err(e)]));
+                } else if root {
+                    to.send(Msg::Prepared(id, steps));
+                } else {
                     let results = helper::run_steps_with(&steps, &mut |text| {
                         to.send(Msg::Progress(id.clone(), text));
                     });
                     to.send(Msg::Ran(id, results));
-                });
-            }
+                }
+            });
         }
-        if !root.is_empty() {
-            if self.helper.is_none() {
-                let to = cx.messenger();
-                match Helper::start(helper::way(), move |m| {
-                    to.send(Msg::Helper(m));
-                }) {
-                    Ok(h) => {
-                        self.helper = Some(h);
-                        self.helper_ready = false;
-                    }
-                    Err(e) => {
-                        for (id, _) in root {
-                            self.outcomes.insert(id, Outcome::Failed(format!("The administrator couldn't be asked: {e}.")));
-                        }
-                        cx.invalidate();
-                        return;
-                    }
+        cx.invalidate();
+    }
+
+    /// Root steps for finding `id`, once prepared: to the helper (started
+    /// the first time: one password for all that come while it waits).
+    fn as_root(&mut self, id: String, steps: Vec<Step>, cx: &mut Cx<Self>) {
+        if self.helper.is_none() {
+            let to = cx.messenger();
+            match Helper::start(helper::way(), move |m| {
+                to.send(Msg::Helper(m));
+            }) {
+                Ok(h) => {
+                    self.helper = Some(h);
+                    self.helper_ready = false;
+                }
+                Err(e) => {
+                    self.outcomes.insert(id, Outcome::Failed(format!("The administrator couldn't be asked: {e}.")));
+                    return cx.invalidate();
                 }
             }
-            for (id, steps) in root {
-                self.next_run += 1;
-                self.queued.push((self.next_run, id, steps));
-            }
-            self.send_queued();
         }
+        self.next_run += 1;
+        self.queued.push((self.next_run, id, steps));
+        self.send_queued();
         cx.invalidate();
     }
 
@@ -468,6 +469,7 @@ impl View for Doctor {
     fn message(&mut self, msg: Msg, cx: &mut Cx<Self>) {
         match msg {
             Msg::Again => self.scan(cx),
+            Msg::Prepared(id, steps) => self.as_root(id, steps, cx),
             Msg::Scanned(r) => self.scanned(r, cx),
             Msg::Followed => {
                 self.following = self.following.saturating_sub(1);
@@ -770,9 +772,10 @@ fn fix_from_the_command_line(ids: &[String]) -> i32 {
     let mut failed = false;
     for (n, (id, title, fix, _)) in chosen.iter().enumerate() {
         println!("{title}: {}", fix.label);
-        crate::suggest::before(id);
         let results = if crate::demo::on() {
             crate::demo::fix(id)
+        } else if let Err(e) = crate::checks::prepare(id) {
+            vec![Err(e)]
         } else if !fix.root || root {
             helper::run_steps_with(&fix.steps, &mut |text| println!("  {text}"))
         } else {

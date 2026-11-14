@@ -9,6 +9,7 @@ name = "olo-notifications"
 path = "src/main.rs"
 
 [dependencies]
+olo-chime.workspace = true
 olo-crash.workspace = true
 olo-sync.workspace = true
 olo-kit.workspace = true

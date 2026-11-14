@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-14
 
+### Olo Doctor offers Olo's start-up screen and chime as the computer starts
+
+*01:37* — Two suggestions: the boot splash (Olo's Plymouth theme at the panel's scale, made into the start-up image) in place of Lenovo's and Fedora's logos, and the chime played from the built-in speakers as the computer starts, as a Mac's (olo-chime, a root service before PipeWire). Each with its way back. Doctor's made-up demo report, 2×.
+
+![Olo Doctor offers Olo's start-up screen and chime as the computer starts](2026-11-14/013710-olo-doctor-offers-olo-s-start-up-screen-and-chim.png)
+
 ### Olo Doctor in dark: what's fine under a latch
 
 *01:01* — Under the findings, Fixed, As It Should Be and Ignored are latches over a card of lines: As It Should Be folds away while anything is found and opens when nothing is; an applied suggestion is undone from its line (Put It Back). Ignored is folded, its tags grey.

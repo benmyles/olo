@@ -1,0 +1,31 @@
+# olo-chime: Olo's start-up chime as the computer starts, from its own
+# speakers while the start-up screen shows, as a Mac plays its own
+# (apps/chime). Installed by Olo Doctor ("Play Olo's chime as the
+# computer starts"), which can also take it away. Started with the first
+# sound card (sound.target), once a boot: it waits for the built-in card
+# (20 seconds at most), plays the chime chosen in Preferences > Sound
+# (nothing if anyone on the computer turned the start-up sound off), and
+# marks /run/olo/chime-played so the session doesn't play it again. To
+# go back by hand:
+#   sudo systemctl disable olo-chime.service
+[Unit]
+Description=Olo's start-up chime
+# (Early: not after the whole of the system's start, only the disks,
+# where the program and each person's settings are.)
+DefaultDependencies=no
+After=local-fs.target
+Conflicts=shutdown.target
+Before=shutdown.target
+ConditionPathExists=!/run/olo/chime-played
+
+[Service]
+Type=exec
+ExecStart=/usr/local/libexec/olo/olo-chime --boot
+RuntimeMaxSec=60
+NoNewPrivileges=yes
+ProtectHome=read-only
+ProtectSystem=full
+PrivateNetwork=yes
+
+[Install]
+WantedBy=sound.target

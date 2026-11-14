@@ -327,6 +327,9 @@ pub struct TempFiles {
     pub config: PathBuf,
     pub data: PathBuf,
     pub runtime: PathBuf,
+    /// Olo's cache folder (~/.cache/olo): where the boot splash is drawn
+    /// before it's installed (`start_up_screen`).
+    pub cache: PathBuf,
 }
 
 /// The session's `TMPDIR`: what systemd's user manager has (`manager`,
@@ -357,6 +360,7 @@ impl TempFiles {
         let data = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| home().join(".local/share"));
         let runtime = olo_xdg::runtime_dir();
         TempFiles {
+            cache: olo_xdg::cache_dir(),
             tmp_in_memory: olo_system::env::in_memory(Path::new("/tmp")),
             tmpdir_in_memory: tmpdir.as_deref().is_some_and(|d| olo_system::env::in_memory(Path::new(d))),
             tmpdir,
@@ -678,7 +682,224 @@ pub fn scan(roots: &Roots) -> Report {
     temp_files(roots, &mut r);
     file_manager(roots, &mut r);
     diskbackup(roots, &mut r);
+    start_up_screen(roots, &mut r);
+    start_up_chime(roots, &mut r);
     r
+}
+
+/// The finding that offers Olo's start-up screen, and the one that
+/// brings an installed one up to date: both draw it first (`prepare`).
+pub const START_UP_SCREEN: &str = "start-up-screen";
+pub const START_UP_SCREEN_OLD: &str = "start-up-screen:old";
+
+/// Where the start-up screen is drawn, as the person, before it's
+/// installed (`cache`: Olo's cache folder).
+pub fn splash_drawn(cache: &Path) -> PathBuf {
+    cache.join("plymouth-theme")
+}
+
+/// The root steps that install Olo's boot splash drawn into `theme` on
+/// the system under `fs` (Olo Doctor's and Olo Setup's): its plugin if
+/// it's missing, the theme, Plymouth's settings (what was there kept the
+/// first time, for the way back) and the start-up images made again.
+pub fn splash_steps(fs: &Path, theme: &Path, packages: &dyn Fn(&[&str]) -> Option<Vec<(String, bool)>>) -> Vec<Step> {
+    use olo_system::splash;
+    let mut steps = Vec::new();
+    if !fs.join(splash::PLUGIN).exists() && packages(&[splash::PLUGIN_PACKAGE]).is_some_and(|p| p.iter().any(|(n, _)| n == splash::PLUGIN_PACKAGE)) {
+        steps.push(Step::InstallPackages { names: vec![splash::PLUGIN_PACKAGE.into()] });
+    }
+    steps.push(Step::CopyTree { from: theme.to_owned(), to: PathBuf::from(splash::THEME_DIR), mode: 0o644 });
+    let conf = fs.join(splash::CONF.trim_start_matches('/'));
+    if conf.exists() && splash::theme(fs).as_deref() != Some("olo") && !fs.join(splash::CONF_BEFORE.trim_start_matches('/')).exists() {
+        steps.push(Step::CopyFile { from: PathBuf::from(splash::CONF), to: PathBuf::from(splash::CONF_BEFORE), mode: 0o644 });
+    }
+    steps.push(Step::WriteFile { path: PathBuf::from(splash::CONF), content: splash::OLO_CONF.into(), mode: 0o644 });
+    steps.push(Step::RebuildInitramfs);
+    steps
+}
+
+/// Olo's start-up screen as the computer starts (Ben, 2026-11-13: "olo
+/// doctor should offer to install the boot stuff"): its boot splash, a
+/// Plymouth theme of the start-up screen's picture
+/// (`olo_system::splash`; app_server draws it). Not installed: a
+/// suggestion (Use Olo's Start-Up Screen); drawn by an older version or
+/// at another scale than the computer's own screen is at now: Update It;
+/// installed but changed since the start-up image was made: Make It
+/// Again (the image alone); else fine, with the way back. Nothing on an
+/// atomic system (/usr is its image's), without Plymouth, or without
+/// Olo's compositor installed (it draws it).
+fn start_up_screen(roots: &Roots, r: &mut Report) {
+    use olo_system::splash::{self, Installed};
+    if !roots.bin.join("olo-app-server").is_file() || roots.fs.join("run/ostree-booted").exists() || !roots.fs.join("usr/sbin/plymouthd").exists() {
+        return;
+    }
+    let scale = splash::boot_scale(&splash::display_settings(&roots.temp.config), &roots.fs.join("sys"));
+    let release = read(&roots.fs.join("proc/sys/kernel/osrelease")).map(|s| s.trim().to_owned()).unwrap_or_default();
+    let theme = splash_drawn(&roots.temp.cache);
+    let install = || splash_steps(&roots.fs, &theme, &*roots.packages);
+    let pct = |s: f64| format!("{}%", (s * 100.0).round());
+    match splash::installed(&roots.fs, scale, &release) {
+        Installed::Not(_) => r.findings.push(Finding {
+            id: START_UP_SCREEN.into(),
+            severity: Severity::Suggestion,
+            title: "Show Olo's start-up screen as the computer starts".into(),
+            detail: format!(
+                "From the moment the computer starts until you log in, it shows the system's own logos. Olo's start-up screen (its wordmark and the row of icons lit as it starts) can show instead, at your screen's scale ({}), and asks a disk's password in Olo's field. It's made into the start-up image, which takes a minute or two; Olo Doctor can go back to the one before.",
+                pct(scale)
+            ),
+            fix: Some(Fix { label: "Use Olo's Start-Up Screen".into(), root: true, steps: install() }),
+        }),
+        Installed::Old(made) => r.findings.push(Finding {
+            id: START_UP_SCREEN_OLD.into(),
+            severity: Severity::Advice,
+            title: "Olo's start-up screen is out of date".into(),
+            detail: match made {
+                Some(m) if m.format == splash::FORMAT => format!("It was drawn at {}, and the computer's own screen is at {} in Olo now: drawn again, it's sharp at that scale.", pct(m.scale), pct(scale)),
+                _ => "It was drawn by an older version of Olo: drawn again as this one draws it.".into(),
+            },
+            fix: Some(Fix { label: "Update It".into(), root: true, steps: install() }),
+        }),
+        Installed::NotInImage => r.findings.push(Finding {
+            id: "start-up-screen:image".into(),
+            severity: Severity::Advice,
+            title: "Olo's start-up screen isn't in the start-up image yet".into(),
+            detail: "It's installed, but the start-up image (initramfs) the computer starts from was made before it, so the computer starts with what was there. Making the image again takes a minute or two.".into(),
+            fix: Some(Fix { label: "Make It Again".into(), root: true, steps: vec![Step::RebuildInitramfs] }),
+        }),
+        Installed::Current => {
+            let title = "Olo's start-up screen shows as the computer starts";
+            r.fine.push(Fine { title: title.into(), detail: format!("Drawn at {}, in the start-up image.", pct(scale)) });
+            // The way back: Plymouth's settings as they were (or its
+            // defaults), the image made again.
+            let before = roots.fs.join(splash::CONF_BEFORE.trim_start_matches('/'));
+            let mut steps = if before.exists() {
+                vec![Step::CopyFile { from: PathBuf::from(splash::CONF_BEFORE), to: PathBuf::from(splash::CONF), mode: 0o644 }, Step::RemoveFile { path: PathBuf::from(splash::CONF_BEFORE) }]
+            } else {
+                vec![Step::RemoveFile { path: PathBuf::from(splash::CONF) }]
+            };
+            steps.push(Step::RebuildInitramfs);
+            r.undo.push(Undo { id: "start-up-screen:undo".into(), title: title.into(), fix: Fix { label: "Use the One Before".into(), root: true, steps } });
+        }
+    }
+}
+
+/// Olo's start-up chime as the computer starts (apps/chime, its service
+/// data/systemd/olo-chime.service): from the computer's own speakers
+/// while the start-up screen shows, as a Mac plays its own (Ben,
+/// 2026-11-13), not as the person logs in. The program runs from a copy
+/// of its own, as root, before anyone logs in.
+pub const CHIME_SERVICE: &str = "olo-chime.service";
+pub const CHIME_UNIT: &str = include_str!("../../../data/systemd/olo-chime.service");
+const CHIME_UNIT_PATH: &str = "/etc/systemd/system/olo-chime.service";
+/// Its `WantedBy=sound.target`, as enabling it makes it.
+const CHIME_WANTED: &str = "/etc/systemd/system/sound.target.wants/olo-chime.service";
+
+fn chime_program() -> PathBuf {
+    Path::new(crate::login_screen::LIBEXEC).join("olo-chime")
+}
+
+/// The chime: not installed, a suggestion (none where the person turned
+/// the start-up sound off, nor without a built-in sound card with
+/// speakers: `olo_chime::cards`); installed from an older Olo (the
+/// program newer than its copy, as the login screen's are told, or its
+/// unit not this one's): Update It; else fine, with the way back to the
+/// chime as the session starts. Nothing without olo-chime installed.
+fn start_up_chime(roots: &Roots, r: &mut Report) {
+    let bin = roots.bin.join("olo-chime");
+    if !bin.is_file() {
+        return;
+    }
+    let under = |p: &str| roots.fs.join(p.trim_start_matches('/'));
+    let program = chime_program();
+    let copy = under(&program.to_string_lossy());
+    let written = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    let old_copy = match (written(&bin), written(&copy)) {
+        (Some(new), Some(old)) => new > old,
+        _ => true,
+    };
+    let unit = std::fs::read_to_string(under(CHIME_UNIT_PATH)).ok();
+    let old_unit = unit.as_deref() != Some(CHIME_UNIT);
+    let enabled = under(CHIME_WANTED).exists();
+    let installed = unit.is_some() && enabled;
+    let mut steps = Vec::new();
+    if old_copy {
+        steps.push(Step::CopyFile { from: bin.clone(), to: program.clone(), mode: 0o755 });
+        // (Labelled as its folder's programs are: one systemd may run.)
+        steps.push(Step::SelinuxLabels { rules: Vec::new(), restore: vec![program.clone()] });
+    }
+    if old_unit {
+        steps.push(Step::WriteFile { path: PathBuf::from(CHIME_UNIT_PATH), content: CHIME_UNIT.into(), mode: 0o644 });
+        steps.push(Step::Unit { name: CHIME_SERVICE.into(), action: UnitAction::Reload });
+    }
+    if old_unit || !enabled {
+        steps.push(Step::Unit { name: CHIME_SERVICE.into(), action: UnitAction::Enable });
+    }
+    if !installed {
+        let settings: olo_protocol::Settings = read(&roots.temp.config.join("olo/app_server.json")).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        if !settings.startup_sound || olo_chime::cards::built_in(&olo_chime::cards::cards(&roots.fs)).is_none() {
+            return;
+        }
+        r.findings.push(Finding {
+            id: "start-up-chime".into(),
+            severity: Severity::Suggestion,
+            title: "Play Olo's chime as the computer starts".into(),
+            detail: "Olo's chime plays as you log in. It can play as the computer starts instead, as a Mac's does: from its own speakers while the start-up screen shows, at the volume they were last set to (none while they're muted). It plays the chime chosen in Preferences ▸ Sound, and none if anyone on this computer turned the start-up sound off.".into(),
+            fix: Some(Fix { label: "Play It as the Computer Starts".into(), root: true, steps }),
+        });
+        return;
+    }
+    if !steps.is_empty() {
+        r.findings.push(Finding {
+            id: "start-up-chime:older".into(),
+            severity: Severity::Advice,
+            title: "Olo's start-up chime is an older version".into(),
+            detail: format!(
+                "It plays as the computer starts from a copy of its own ({}) that an upgrade doesn't replace, {}. The fix brings it up to date.",
+                program.display(),
+                if old_copy { "and this one's is newer" } else { "and its service isn't set up as this version sets it up" }
+            ),
+            fix: Some(Fix { label: "Update It".into(), root: true, steps }),
+        });
+        return;
+    }
+    let title = "Olo's chime plays as the computer starts";
+    r.fine.push(Fine { title: title.into(), detail: "From the computer's own speakers, while the start-up screen shows.".into() });
+    r.undo.push(Undo {
+        id: "start-up-chime:undo".into(),
+        title: title.into(),
+        fix: Fix {
+            label: "Play It as You Log In".into(),
+            root: true,
+            steps: vec![
+                Step::Unit { name: CHIME_SERVICE.into(), action: UnitAction::Disable },
+                Step::RemoveFile { path: PathBuf::from(CHIME_UNIT_PATH) },
+                Step::RemoveFile { path: program },
+                Step::Unit { name: CHIME_SERVICE.into(), action: UnitAction::Reload },
+            ],
+        },
+    });
+}
+
+/// What a fix needs done as the person before its steps run, on a worker
+/// (they may take a moment): a suggestion's state kept for its undo
+/// (`suggest::before`); the start-up screen drawn where its steps copy
+/// it from (`olo-app-server --plymouth-theme`: Olo's compositor draws
+/// it, as the person, at their screen's scale).
+pub fn prepare(id: &str) -> Result<(), String> {
+    crate::suggest::before(id);
+    if id == START_UP_SCREEN || id == START_UP_SCREEN_OLD {
+        // (Not `Roots::real`: that asks systemd's manager, up to 10 s.)
+        let bin = PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/bin");
+        let to = splash_drawn(&olo_xdg::cache_dir());
+        let _ = std::fs::remove_dir_all(&to);
+        let out = std::process::Command::new(bin.join("olo-app-server")).arg("--plymouth-theme").arg(&to).stdin(std::process::Stdio::null()).output();
+        match out {
+            Ok(o) if o.status.success() => {}
+            Ok(o) => return Err(format!("Olo's start-up screen couldn't be drawn: {}", String::from_utf8_lossy(&o.stderr).trim().trim_start_matches("olo-app-server: "))),
+            Err(e) => return Err(format!("Olo's start-up screen couldn't be drawn: {e}")),
+        }
+    }
+    Ok(())
 }
 
 /// DiskBackup, as its settings and its service's state say: not set up
@@ -3105,6 +3326,169 @@ mod tests {
         assert!(r.find("token-pool:no-gateway").is_none() && r.find("stale").is_none(), "{:?}", r.findings.iter().map(|f| &f.id).collect::<Vec<_>>());
     }
 
+    /// Olo's start-up screen: offered (Fedora's in place), old (from
+    /// before the stamp, then at another scale), not in the image yet,
+    /// and fine with the way back; the steps exactly.
+    #[test]
+    fn the_start_up_screen() {
+        use olo_system::splash;
+        let fs = Scratch(PathBuf::from(format!("/var/tmp/olo-doctor-test-{}-splash", std::process::id())));
+        let _ = std::fs::remove_dir_all(&fs);
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        w("home/me/.local/bin/olo-app-server", "");
+        w("usr/sbin/plymouthd", "");
+        w("usr/lib64/plymouth/two-step.so", "");
+        w("proc/sys/kernel/osrelease", "7.2.15\n");
+        w("etc/plymouth/plymouthd.conf", "# Administrator customizations go in this file\n#[Daemon]\n#Theme=fade-in\n");
+        w("home/me/.config/olo/app_server.json", r#"{"display":{"scale":1.5}}"#);
+        let roots = Roots {
+            fs: fs.0.clone(),
+            bin: fs.join("home/me/.local/bin"),
+            uid: 1000,
+            scope: None,
+            units: Box::new(|_| Err("none".into())),
+            airpods: false,
+            bluetooth_stuck: Vec::new(),
+            packages: Box::new(|_| None),
+            updates: Box::new(|| None),
+            temp: TempFiles { config: fs.join("home/me/.config"), cache: fs.join("home/me/.cache/olo"), ..TempFiles::default() },
+            pool_port: POOL_PORT,
+        };
+        let look = || {
+            let mut r = Report::default();
+            start_up_screen(&roots, &mut r);
+            r
+        };
+        let drawn = fs.join("home/me/.cache/olo/plymouth-theme");
+        let install = |backup: bool| {
+            let mut steps = vec![Step::CopyTree { from: drawn.clone(), to: splash::THEME_DIR.into(), mode: 0o644 }];
+            if backup {
+                steps.push(Step::CopyFile { from: splash::CONF.into(), to: splash::CONF_BEFORE.into(), mode: 0o644 });
+            }
+            steps.extend([Step::WriteFile { path: splash::CONF.into(), content: splash::OLO_CONF.into(), mode: 0o644 }, Step::RebuildInitramfs]);
+            steps
+        };
+        // Fedora's: offered, as a suggestion, at the screen's scale.
+        let r = look();
+        let f = r.find(START_UP_SCREEN).expect("offered");
+        assert_eq!(f.severity, Severity::Suggestion);
+        assert!(f.detail.contains("(150%)"), "{}", f.detail);
+        assert_eq!(f.fix.as_ref().unwrap().steps, install(true));
+        // Olo's, from before the stamp: drawn again (what was there kept
+        // already).
+        w("etc/plymouth/plymouthd.conf", splash::OLO_CONF);
+        w("etc/plymouth/plymouthd.conf.before-olo", "#[Daemon]\n");
+        w("usr/share/plymouth/themes/olo/olo.plymouth", "");
+        let r = look();
+        let f = r.find(START_UP_SCREEN_OLD).expect("old");
+        assert!(f.detail.contains("older version"), "{}", f.detail);
+        assert_eq!(f.fix.as_ref().unwrap().steps, install(false));
+        // Drawn at 200%, the screen at 150% now.
+        w("usr/share/plymouth/themes/olo/olo-made.json", &format!(r#"{{"format":{},"scale":2.0}}"#, splash::FORMAT));
+        let f = look().findings.into_iter().find(|f| f.id == START_UP_SCREEN_OLD).expect("old");
+        assert!(f.detail.contains("drawn at 200%") && f.detail.contains("150%"), "{}", f.detail);
+        // Current, but the image from before it.
+        w("usr/share/plymouth/themes/olo/olo-made.json", &format!(r#"{{"format":{},"scale":1.5}}"#, splash::FORMAT));
+        w("boot/initramfs-7.2.15.img", "");
+        let past = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
+        std::fs::File::options().write(true).open(fs.join("boot/initramfs-7.2.15.img")).unwrap().set_modified(past).unwrap();
+        let f = look().findings.into_iter().find(|f| f.id == "start-up-screen:image").expect("not in the image");
+        assert_eq!(f.fix.unwrap().steps, [Step::RebuildInitramfs]);
+        // In the image: fine, and the way back to what was there.
+        w("boot/initramfs-7.2.15.img", "made again");
+        let r = look();
+        assert!(r.findings.is_empty() && r.fine.len() == 1);
+        assert_eq!(
+            r.action("start-up-screen:undo").unwrap().steps,
+            [Step::CopyFile { from: splash::CONF_BEFORE.into(), to: splash::CONF.into(), mode: 0o644 }, Step::RemoveFile { path: splash::CONF_BEFORE.into() }, Step::RebuildInitramfs]
+        );
+        // No Plymouth: nothing said.
+        std::fs::remove_file(fs.join("usr/sbin/plymouthd")).unwrap();
+        let r = look();
+        assert!(r.findings.is_empty() && r.fine.is_empty());
+    }
+
+    /// The start-up chime: nothing without a built-in card, or with the
+    /// start-up sound off; offered; fine, with the way back; older when
+    /// an upgrade brings a newer program, or another unit.
+    #[test]
+    fn the_start_up_chime() {
+        let fs = Scratch(PathBuf::from(format!("/var/tmp/olo-doctor-test-{}-chime", std::process::id())));
+        let _ = std::fs::remove_dir_all(&fs);
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        w("home/me/.local/bin/olo-chime", "the chime");
+        w("proc/asound/cards", " 0 [NVidia         ]: HDA-Intel - HDA NVidia\n");
+        w("proc/asound/card0/pcm3p/info", "id: HDMI 0\n");
+        let roots = Roots {
+            fs: fs.0.clone(),
+            bin: fs.join("home/me/.local/bin"),
+            uid: 1000,
+            scope: None,
+            units: Box::new(|_| Err("none".into())),
+            airpods: false,
+            bluetooth_stuck: Vec::new(),
+            packages: Box::new(|_| None),
+            updates: Box::new(|| None),
+            temp: TempFiles { config: fs.join("home/me/.config"), ..TempFiles::default() },
+            pool_port: POOL_PORT,
+        };
+        let look = || {
+            let mut r = Report::default();
+            start_up_chime(&roots, &mut r);
+            r
+        };
+        let program = PathBuf::from("/usr/local/libexec/olo/olo-chime");
+        let unit = |action| Step::Unit { name: CHIME_SERVICE.into(), action };
+        let copy = [Step::CopyFile { from: fs.join("home/me/.local/bin/olo-chime"), to: program.clone(), mode: 0o755 }, Step::SelinuxLabels { rules: Vec::new(), restore: vec![program.clone()] }];
+        // Only HDMI: nowhere to play it.
+        let r = look();
+        assert!(r.findings.is_empty() && r.fine.is_empty());
+        // The built-in card's speakers: offered, all of it.
+        w("proc/asound/cards", " 0 [NVidia         ]: HDA-Intel - HDA NVidia\n 1 [sofsoundwire   ]: sof-soundwire - sof-soundwire\n");
+        w("proc/asound/card1/pcm2p/info", "id: Speaker (*)\n");
+        let f = look().findings.into_iter().next().expect("offered");
+        assert_eq!((f.id.as_str(), f.severity), ("start-up-chime", Severity::Suggestion));
+        let mut all = copy.to_vec();
+        all.extend([Step::WriteFile { path: CHIME_UNIT_PATH.into(), content: CHIME_UNIT.into(), mode: 0o644 }, unit(UnitAction::Reload), unit(UnitAction::Enable)]);
+        assert_eq!(f.fix.unwrap().steps, all);
+        // The start-up sound turned off: not offered.
+        w("home/me/.config/olo/app_server.json", r#"{"startup_sound":false}"#);
+        assert!(look().findings.is_empty());
+        w("home/me/.config/olo/app_server.json", "{}");
+        // Installed, the copy newer than the program: fine, and the way back.
+        let past = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
+        std::fs::File::options().write(true).open(fs.join("home/me/.local/bin/olo-chime")).unwrap().set_modified(past).unwrap();
+        w("usr/local/libexec/olo/olo-chime", "the chime");
+        w("etc/systemd/system/olo-chime.service", CHIME_UNIT);
+        w("etc/systemd/system/sound.target.wants/olo-chime.service", CHIME_UNIT);
+        let r = look();
+        assert!(r.findings.is_empty() && r.fine.len() == 1, "{:?}", r.findings);
+        assert_eq!(
+            r.action("start-up-chime:undo").unwrap().steps,
+            [unit(UnitAction::Disable), Step::RemoveFile { path: CHIME_UNIT_PATH.into() }, Step::RemoveFile { path: program.clone() }, unit(UnitAction::Reload)]
+        );
+        // An upgrade's newer program: the copy brought up to date alone.
+        w("home/me/.local/bin/olo-chime", "the chime, newer");
+        let f = look().findings.into_iter().next().expect("older");
+        assert_eq!((f.id.as_str(), f.severity), ("start-up-chime:older", Severity::Advice));
+        assert_eq!(f.fix.unwrap().steps, copy);
+        // Installed whatever the sound setting, and whatever the cards.
+        w("usr/local/libexec/olo/olo-chime", "the chime, newer");
+        w("etc/systemd/system/olo-chime.service", "[Unit]\n");
+        std::fs::remove_dir_all(fs.join("proc/asound/card1")).unwrap();
+        let f = look().findings.into_iter().next().expect("another unit");
+        assert!(f.detail.contains("isn't set up as this version"), "{}", f.detail);
+        assert_eq!(f.fix.unwrap().steps, [Step::WriteFile { path: CHIME_UNIT_PATH.into(), content: CHIME_UNIT.into(), mode: 0o644 }, unit(UnitAction::Reload), unit(UnitAction::Enable)]);
+    }
+
     /// DiskBackup: not set up, said without a button; set up, its service
     /// gone (Start It); running but paused (Resume); nothing for days
     /// (Back Up Now, the reason said); fine, and its key kept elsewhere.
@@ -4035,6 +4419,7 @@ mod tests {
                     config: PathBuf::from("/home/me/.config"),
                     data: PathBuf::from("/home/me/.local/share"),
                     runtime: PathBuf::new(),
+                    cache: PathBuf::new(),
                 },
                 pool_port: POOL_PORT,
             };

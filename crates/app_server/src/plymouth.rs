@@ -37,7 +37,11 @@
 //! - `olo.plymouth`: two-step's settings: the background, the prompt's
 //!   face and size (Noto Sans, Olo's, at the line's size in whole pixels:
 //!   the start-up image's label-freetype reads no fractions), the update
-//!   modes' bar and words.
+//!   modes' bar and words;
+//! - `olo-made.json`: what it was made with (`olo_system::splash::Made`:
+//!   the drawing's `FORMAT` and the scale), so Olo Doctor sees an
+//!   installed one is old without drawing it again. Change the drawing,
+//!   and `FORMAT` goes up by one.
 
 use std::path::{Path, PathBuf};
 
@@ -46,7 +50,7 @@ use tiny_skia::{IntRect, Pixmap, PixmapPaint};
 use crate::veil::{self, Parts, Why};
 
 /// Where the theme is installed (its `ImageDir`).
-pub const THEME_DIR: &str = "/usr/share/plymouth/themes/olo";
+pub const THEME_DIR: &str = olo_system::splash::THEME_DIR;
 /// The frames: four stages, and the finished one.
 const FRAMES: usize = 5;
 /// What the boot's line says.
@@ -111,35 +115,10 @@ pub fn run(args: &[String]) -> i32 {
 
 /// The scale the computer's own screen is at in Olo: its built-in
 /// panel's (eDP, LVDS, DSI) when one is connected, else the main
-/// display's, else Olo's default.
+/// display's, else Olo's default (`olo_system::splash::boot_scale`, which
+/// Olo Doctor checks an installed theme against).
 pub fn boot_scale() -> f64 {
-    let settings = crate::desktop::load_settings();
-    let d = &settings.display;
-    if let Some(name) = built_in_panels().into_iter().next() {
-        let (maker, model, serial) = olo_system::edid::for_connector(&name).map(|e| (e.maker, e.model.unwrap_or_default(), e.serial.unwrap_or_default())).unwrap_or_default();
-        return d.scale_for(&olo_protocol::display_key(&name, &maker, &model, &serial), &name);
-    }
-    match &d.main {
-        Some(main) => d.scale_for(main, main),
-        None => d.scale,
-    }
-}
-
-/// The connected built-in panels' connectors ("eDP-1"), in order.
-fn built_in_panels() -> Vec<String> {
-    let mut v: Vec<String> = std::fs::read_dir("/sys/class/drm")
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|e| {
-            let name = e.file_name().to_string_lossy().into_owned();
-            let (_, connector) = name.split_once('-')?;
-            let built_in = ["eDP-", "LVDS-", "DSI-"].iter().any(|p| connector.starts_with(p));
-            (built_in && std::fs::read_to_string(e.path().join("status")).is_ok_and(|s| s.trim() == "connected")).then(|| connector.to_owned())
-        })
-        .collect();
-    v.sort();
-    v
+    olo_system::splash::boot_scale(&crate::desktop::load_settings().display, Path::new("/sys"))
 }
 
 /// The theme at `scale`, written into `dir`.
@@ -162,6 +141,11 @@ pub fn write(dir: &Path, scale: f64) -> Result<Made, String> {
     save("bullet.png", &theme.bullet)?;
     let path = dir.join("olo.plymouth");
     std::fs::write(&path, settings(scale)).map_err(|e| format!("{}: {e}", path.display()))?;
+    files.push(path);
+    // What it was made with, for Olo Doctor (`olo_system::splash`).
+    let path = dir.join(olo_system::splash::STAMP);
+    let made = olo_system::splash::Made { format: olo_system::splash::FORMAT, scale };
+    std::fs::write(&path, serde_json::to_vec(&made).unwrap_or_default()).map_err(|e| format!("{}: {e}", path.display()))?;
     files.push(path);
     Ok(Made { scale, files, picture: (theme.watermark.width(), theme.watermark.height()), field: (theme.lock.width() + theme.entry.width(), theme.entry.height()) })
 }

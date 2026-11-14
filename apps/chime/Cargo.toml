@@ -1,0 +1,20 @@
+[package]
+name = "olo-chime-player"
+description = "olo-chime: Olo's start-up chime as the computer starts, straight to the built-in sound card through ALSA, before PipeWire"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "olo-chime"
+path = "src/main.rs"
+
+[dependencies]
+olo-chime.workspace = true
+olo-crash.workspace = true
+olo-protocol.workspace = true
+serde_json.workspace = true
+libc = "0.2"
+# alsa-lib, loaded as it runs (no headers to build against): the card's
+# use-case manager (UCM) and its PCMs.
+libloading = "0.8"

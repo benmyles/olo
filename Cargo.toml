@@ -47,6 +47,7 @@ olo-eld = { path = "crates/eld" }
 olo-voice = { path = "crates/voice" }
 olo-diskbackup = { path = "crates/diskbackup" }
 olo-tg = { path = "crates/telegram" }
+olo-chime = { path = "crates/chime" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"

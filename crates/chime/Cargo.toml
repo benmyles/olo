@@ -1,0 +1,9 @@
+[package]
+name = "olo-chime"
+description = "Olo's start-up chime, made: what Notifications plays as a session starts and olo-chime as the computer starts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+olo-protocol.workspace = true

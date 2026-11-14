@@ -1781,7 +1781,12 @@ impl Default for VideoSettings {
     }
 }
 
-/// Olo's start-up sound (olo-notifications' `startup.rs`).
+/// Olo's start-up sound was played as the computer started this boot
+/// (`olo-chime --boot`, apps/chime, writes it; in /run, gone at the next
+/// start): a session starting doesn't play it again.
+pub const CHIME_PLAYED: &str = "/run/olo/chime-played";
+
+/// Olo's start-up sound (`olo_chime`, crates/chime).
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum StartupChime {

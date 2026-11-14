@@ -3179,8 +3179,11 @@ the displays come up, Tracker's desktop layer shows and Deskbar's does
 Notifications plays **Olo's start-up sound**, once a session (a mark by
 the session's pid; not when re-executed or started again) unless
 Preferences ▸ Sound's "Play a sound when Olo starts" is off
-(`Settings::startup_sound`), one of two made in process
-(`notifications/src/startup.rs`, `Settings::startup_chime`): "Olo
+(`Settings::startup_sound`), or the computer played it already as it
+started (`olo_protocol::CHIME_PLAYED`, "The start-up chime as the
+computer starts" below), one of two made in process (`crates/chime`,
+`olo_chime::render`; played by `notifications/src/startup.rs`;
+`Settings::startup_chime`): "Olo
 saying its name", the default (Ben, 2026-11-06: "like \"ooollllooooo\"
 reminiscent of the mac startup sound but saying olo"), a start-up
 chime's bright F major chord over three octaves (each note two
@@ -3940,11 +3943,70 @@ stretches its pictures for device scale 2, so the theme is made at the
 scale the computer's own screen is at in Olo (the built-in panel's,
 else the main display's) and Plymouth draws device pixels
 (`DeviceScale=1`): pixel for pixel on every screen, the start-up
-screen's size on the computer's own. Change that screen's scale and run
-`tools/install-login.sh --plymouth` again (it makes the start-up image
-again, the splash being in it). Why each file is as it is (two-step's
-centring, its frame choice, where it starts the bullets) is in the
-module's comment.
+screen's size on the computer's own. Each theme carries a stamp of
+what made it (`olo-made.json`: the drawing's `FORMAT` and the scale),
+so whoever installs or checks it can tell one that's out of date
+without drawing it again: what they share is `olo_system::splash`
+(where Plymouth keeps it, `boot_scale`, `installed`: not Olo's, old,
+not yet in the start-up image, current). Raise `splash::FORMAT` with
+every change to how plymouth.rs draws it.
+
+Olo Doctor offers it (Ben, 2026-11-13: "olo doctor should offer to
+install the boot stuff"): a suggestion where Plymouth shows another
+theme (Use Olo's Start-Up Screen), Update It where the installed one
+was drawn by another `FORMAT` or at another scale than the computer's
+own screen is at now, Make It Again where it's newer than the start-up
+image, and on its fine line the way back (Use the One Before:
+plymouthd.conf as it was, kept as `plymouthd.conf.before-olo`, the image
+made again). Before its root steps run, `checks::prepare` draws the
+theme as the person (`~/.local/bin/olo-app-server --plymouth-theme`,
+into Olo's cache) on Doctor's worker; the steps
+(`checks::splash_steps`, which Olo Setup runs too) put in two-step if
+it's missing, copy the theme, keep the old settings once, write
+`splash::OLO_CONF` and make the start-up images again
+(`Step::RebuildInitramfs`: dracut `--regenerate-all`, its progress
+streamed from its `--verbose` lines). Nothing on an atomic system, or
+without Plymouth. `tools/install-login.sh --plymouth` does the same by
+hand. Why each file is as it is (two-step's centring, its frame choice,
+where it starts the bullets) is in the module's comment.
+
+**The start-up chime as the computer starts** (`apps/chime`, bin
+`olo-chime`; Ben, 2026-11-13: "with the olo sound played like how a mac
+plays the apple sound"). Olo Doctor's "Play Olo's chime as the computer
+starts" (a suggestion where the start-up sound is on and the computer
+has a built-in card with speakers: `olo_chime::cards`) copies
+`olo-chime` to /usr/local/libexec/olo and installs and enables
+`data/systemd/olo-chime.service`; an upgrade's newer program is "an
+older version" (Update It, told by the copy's time as the login
+screen's are), and the fine line's way back is Play It as You Log In.
+The unit has no default dependencies (only the disks: the program and
+each person's settings), is wanted by `sound.target` (started with the
+first sound card) and runs once a boot (`ConditionPathExists=!` the
+mark), sandboxed (home read-only, no network). `olo-chime --boot`:
+
+* waits for the built-in sound card (not USB, not only HDMI) and for
+  udev to have finished with it, so ALSA's mixer is as it was last
+  (`alsactl` from 90-alsa-restore.rules): inotify on /run/udev/data,
+  20 s at most;
+* plays nothing if anyone on the computer turned the start-up sound
+  off; else the chime of whoever changed their settings last;
+* marks `/run/olo/chime-played` (`olo_protocol::CHIME_PLAYED`), whatever
+  comes of it, so the session's Notifications stays quiet that boot;
+* through alsa-lib, loaded as it runs (`libasound.so.2`: no headers to
+  build against, and the card's use-case manager has no other way in):
+  sets the card's UCM verb (HiFi) and enables its Speaker device as
+  WirePlumber would (on the ThinkPad P1's SoundWire card the speakers'
+  path is set only then), plays the chime to that device's PCM through
+  its plug (`_ucm0001.plughw:…`), at the volume the speakers were last
+  set to (silent while muted), and switches them off again, verb
+  Inactive: the card as PipeWire finds it. A card without UCM: its
+  speakers' PCM, `plughw:N,D`.
+
+`olo-chime --which` says which card and speakers it would play to (and
+the card's use cases) without opening the card; `olo-chime --pcm NAME
+[olo|swell]` plays it to one PCM now (`null` in its tests: the card
+PipeWire holds is busy). Try it for real only by restarting the
+computer: the firmware's own logo still comes first, before Linux.
 
 **Testing.** Never with the real PAM, the machine's seat or its boot:
 
@@ -10693,6 +10755,12 @@ profile: "The fans", above), `olo-doctor --scheduler [kernel|lavd]`
   in ~/.local/bin (an upgrade replaces those, not the copies:
   `login_screen::stale`), which is advice, Update the Login Screen
   (`login:own-older`).
+- **Olo's start-up screen as the computer starts** (`start_up_screen`;
+  suggestion, Use Olo's Start-Up Screen; out of date, Update It; not in
+  the start-up image, Make It Again; fine, Use the One Before) and
+  **Olo's chime as the computer starts** (`start_up_chime`; suggestion,
+  Play It as the Computer Starts; an older copy, Update It; fine, Play
+  It as You Log In): "The login screen and boot splash" has both.
 - **Olo's Wi-Fi healer** (below) missing, out of date or stopped, on a
   machine whose Wi-Fi chip needs it (brcmfmac): installed as a root-owned
   copy, with its unit and NetworkManager's setting for the chip.

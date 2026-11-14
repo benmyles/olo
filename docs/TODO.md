@@ -1148,44 +1148,8 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **The computer starts with Olo's start-up screen and chime, not
-  Lenovo's and Fedora's logos** (Ben, 2026-11-13: "when the os starts
-  it still shows the lenovo + fedora logos on bootup. i want that
-  changed to the beos-inspired olo startup screen with the olo sound
-  played like how a mac plays the apple sound"). Olo's boot splash is
-  built (HACKING, "The login screen and boot splash": the start-up
-  screen's picture as a Plymouth theme, checked in a VM at every scale)
-  but not installed on the ThinkPad: it boots Fedora's theme, which
-  draws the firmware's logo (the BGRT image, Lenovo's) with Fedora's
-  under it.
-  - *Installing it* takes root (`tools/install-login.sh --plymouth`:
-    the theme, and the initramfs made again so it's there from the
-    start): Ben's say and his sudo, with `--revert-plymouth` as the
-    way back. Checked after: the theme draws no BGRT image; a LUKS
-    passphrase (if any) is asked in Olo's field; the hand-over to the
-    login screen without a flash, on the panel and the external
-    displays.
-  - *The firmware's own logo* (Lenovo's, before the bootloader) isn't
-    the OS's to draw over: what's possible on this ThinkPad is to be
-    found out (its setup's "Boot Logo" and the custom logo Lenovo's
-    BIOS update tool can write), said to Ben, and done only if he
-    says so (it writes the firmware).
-  - *The chime at power-on, as a Mac's*: today it plays as the
-    session's start-up screen shows (Preferences ▸ Sound ▸ Starting
-    Up). Played as early as the sound card can (a small unit of Olo's
-    own early in boot, ALSA straight to the card before PipeWire, at
-    the volume last set, silent when muted or chosen off), once a boot,
-    so the session's start-up screen doesn't play it again; measured
-    from power-on to the chime on the ThinkPad.
+(Nothing, 2026-11-14.)
 
-- **Olo Doctor offers to install the start-up screen and chime**
-  (Ben, 2026-11-13: "olo doctor should offer to install the boot
-  stuff"). A check that the boot splash (Olo's Plymouth theme, in the
-  initramfs) and the early chime unit are installed and current, and
-  if not, Install, through Doctor's helper (`pkexec olo-doctor
-  --helper`: one administrator request), with live progress (making
-  the initramfs again takes a while) and a way back (Revert). Not the
-  firmware's logo (above).
 ## Done, waiting for Ben to try or confirm
 
 (Audited again 2026-11-08, all 51: each is done, and what's left in
@@ -1272,6 +1236,36 @@ need Ben".)
   review clean at 1×, 1.25×, 1.5×, 1.75× and 2×, light and dark, every
   section open. *Left for Ben:* how it looks to him, and whether the
   two critical ones are the right two (`Severity::Critical`).
+- **The computer starts with Olo's start-up screen and chime, which
+  Olo Doctor offers** (Ben, 2026-11-13: "when the os starts it still
+  shows the lenovo + fedora logos on bootup. i want that changed to the
+  beos-inspired olo startup screen with the olo sound played like how a
+  mac plays the apple sound", and "olo doctor should offer to install
+  the boot stuff"). Two suggestions in Olo Doctor (HACKING, "The login
+  screen and boot splash"), each one press and his password:
+  - *Use Olo's Start-Up Screen*: the boot splash (Olo's Plymouth theme)
+    drawn at the computer's own screen's scale, installed and made into
+    the start-up image (dracut, its progress live in Doctor, a minute or
+    two); then Update It when a new Olo draws it differently or the
+    screen's scale changes, Make It Again if the image is older, and Use
+    the One Before as the way back. On the P1 now: offered (Fedora's
+    theme, plymouthd.conf all comments).
+  - *Play It as the Computer Starts*: `olo-chime` as a root service at
+    boot, with the first sound card, straight to the built-in speakers
+    through ALSA (their use case switched on as WirePlumber does, then
+    off again), at their last volume, silent when muted, none if the
+    start-up sound is off; once a boot, so the session's start-up
+    screen is quiet then. Play It as You Log In is the way back. Its
+    card and speakers on the P1 found read only (`olo-chime --which`:
+    card 1, sofsoundwire, UCM HiFi's Speaker); played only to ALSA's
+    null device in tests, never his speakers.
+  *Left for Ben:* after the Upgrade, press both in Olo Doctor and
+  restart: whether the screen is right from the bootloader to the login
+  screen (a disk password, if asked, in Olo's field), when the chime
+  comes (measured from power-on, against a Mac's), and how loud. The
+  firmware's own logo (Lenovo's, before Linux) stays: changing it means
+  writing the firmware (its setup's Boot Logo, or Lenovo's custom-logo
+  tool), only if he says so.
 - **Calls: echo and poor sound reported by the people Ben talks to**
   (Ben, 2026-11-14: "i have had reports that people hear echo and just
   generally poor sound from me i need it to be super good quality for

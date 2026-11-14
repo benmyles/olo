@@ -82,10 +82,9 @@ impl Choices {
     pub fn installed_under(root: &Path) -> Choices {
         let at = |p: &str| root.join(p.trim_start_matches('/'));
         let dm = std::fs::read_link(at("/etc/systemd/system/display-manager.service")).ok();
-        let theme = std::fs::read_to_string(at("/etc/plymouth/plymouthd.conf")).unwrap_or_default();
         Choices {
             login_screen: dm.as_deref().and_then(Path::file_name).is_some_and(|n| n == "olo-login.service"),
-            boot_splash: theme.lines().any(|l| l.trim() == "Theme=olo"),
+            boot_splash: olo_system::splash::theme(root).as_deref() == Some("olo"),
             rpm_fusion: at("/etc/yum.repos.d/rpmfusion-free.repo").exists(),
         }
     }
@@ -243,17 +242,10 @@ fn session_steps(c: &Computer, olo: &Path) -> Result<Vec<Step>, String> {
 }
 
 /// The root steps for Olo's boot splash, the theme made (as the person,
-/// at their screen's scale) into `theme`.
+/// at their screen's scale) into `theme`: Olo Doctor's
+/// (`checks::splash_steps`; its plugin is among the packages already).
 fn boot_splash_steps(theme: &Path) -> Result<Vec<Step>, String> {
-    let to = PathBuf::from("/usr/share/plymouth/themes/olo");
-    let mut steps = vec![Step::CopyTree { from: theme.to_owned(), to, mode: 0o644 }];
-    let conf = PathBuf::from("/etc/plymouth/plymouthd.conf");
-    if conf.exists() && !conf.with_extension("conf.before-olo").exists() {
-        steps.push(Step::CopyFile { from: conf.clone(), to: conf.with_extension("conf.before-olo"), mode: 0o644 });
-    }
-    steps.push(Step::WriteFile { path: conf, content: "# Olo's boot splash (Olo Setup).\n[Daemon]\nTheme=olo\nDeviceScale=1\n".into(), mode: 0o644 });
-    steps.push(Step::RebuildInitramfs);
-    Ok(steps)
+    Ok(olo_doctor::checks::splash_steps(Path::new("/"), theme, &|_| None))
 }
 
 /// The root helper, started the first time it's needed.
@@ -505,7 +497,7 @@ mod tests {
         assert_eq!(Choices::installed_under(&root), Choices::default());
         std::fs::remove_file(root.join("etc/systemd/system/display-manager.service")).unwrap();
         std::os::unix::fs::symlink("/etc/systemd/system/olo-login.service", root.join("etc/systemd/system/display-manager.service")).unwrap();
-        std::fs::write(root.join("etc/plymouth/plymouthd.conf"), "# Olo's boot splash (Olo Setup).\n[Daemon]\nTheme=olo\nDeviceScale=1\n").unwrap();
+        std::fs::write(root.join("etc/plymouth/plymouthd.conf"), olo_system::splash::OLO_CONF).unwrap();
         std::fs::write(root.join("etc/yum.repos.d/rpmfusion-free.repo"), "").unwrap();
         let had = Choices::installed_under(&root);
         assert_eq!(had, Choices { login_screen: true, boot_splash: true, rpm_fusion: true });

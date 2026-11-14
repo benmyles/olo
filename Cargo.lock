@@ -7143,6 +7143,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-chime"
+version = "0.1.0"
+dependencies = [
+ "olo-protocol",
+]
+
+[[package]]
+name = "olo-chime-player"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "libloading",
+ "olo-chime",
+ "olo-crash",
+ "olo-protocol",
+ "serde_json",
+]
+
+[[package]]
 name = "olo-chrome"
 version = "0.1.0"
 dependencies = [
@@ -7322,6 +7341,7 @@ dependencies = [
  "libc",
  "liblzma",
  "memchr",
+ "olo-chime",
  "olo-crash",
  "olo-fido",
  "olo-kit",
@@ -7724,6 +7744,7 @@ dependencies = [
  "futures-channel",
  "image",
  "libc",
+ "olo-chime",
  "olo-crash",
  "olo-kit",
  "olo-kit-base",

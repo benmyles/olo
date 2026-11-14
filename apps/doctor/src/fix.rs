@@ -291,6 +291,7 @@ impl Step {
                 .map(|_| ())
                 .map_err(|e| format!("{}: {e}", self.describe()))
             }
+            Step::RebuildInitramfs => rebuild_initramfs(progress).map_err(|e| format!("{}: {e}", self.describe())),
             _ => self.run(),
         }
     }
@@ -355,19 +356,7 @@ impl Step {
                     Err(e) => Err(failed(e)),
                 }
             }
-            Step::RebuildInitramfs => {
-                let status = std::process::Command::new("dracut")
-                    .args(["--force", "--regenerate-all"])
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::piped())
-                    .output();
-                match status {
-                    Ok(o) if o.status.success() => Ok(()),
-                    Ok(o) => Err(format!("{}: dracut: {}", self.describe(), String::from_utf8_lossy(&o.stderr).lines().last().unwrap_or("failed"))),
-                    Err(e) => Err(failed(e)),
-                }
-            }
+            Step::RebuildInitramfs => rebuild_initramfs(&mut |_| {}).map_err(|e| format!("{}: {e}", self.describe())),
         }
     }
 }
@@ -413,6 +402,64 @@ fn make_dir(path: &Path, mode: u32, owner: Option<&str>) -> std::io::Result<()> 
 }
 
 /// Every file of `from` copied into `to`, each over its old self.
+/// Every installed kernel's start-up image made again (dracut, the one
+/// program this shells out to: the image is the distribution's to make),
+/// telling how it goes from what dracut says as it goes (`--verbose`:
+/// Fedora's dracut says only warnings without it): each kernel's image
+/// as it begins and each module it takes in ("6.17.7: plymouth"), each
+/// image done. Its last words say why, when it fails.
+fn rebuild_initramfs(progress: &mut dyn FnMut(String)) -> Result<(), String> {
+    use std::io::BufRead as _;
+    let mut child = std::process::Command::new("dracut")
+        .args(["--force", "--regenerate-all", "--verbose"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("dracut: {e}"))?;
+    let mut last = String::new();
+    let mut kernel = String::new();
+    if let Some(err) = child.stderr.take() {
+        for line in std::io::BufReader::new(err).lines().map_while(Result::ok) {
+            if let Some(said) = initramfs_progress(&line, &mut kernel) {
+                progress(said);
+            }
+            if !line.trim().is_empty() {
+                last = line;
+            }
+        }
+    }
+    match child.wait() {
+        Ok(s) if s.success() => Ok(()),
+        Ok(_) => Err(format!("dracut: {}", last.trim().trim_start_matches("dracut").trim_start_matches(['[', 'F', 'E', ']', ':', ' ']))),
+        Err(e) => Err(format!("dracut: {e}")),
+    }
+}
+
+/// What a line of dracut's says of how it goes (`kernel`: the image
+/// being made now, from its file's name).
+fn initramfs_progress(line: &str, kernel: &mut String) -> Option<String> {
+    // (Each kernel's run begins "Executing: /usr/bin/dracut --kver=…".)
+    if line.contains("Executing:")
+        && let Some(k) = line.split_whitespace().find_map(|w| w.strip_prefix("--kver="))
+    {
+        *kernel = k.to_owned();
+        return Some(format!("{kernel}: starting"));
+    }
+    let said = line.split_once("*** ")?.1.trim_end().trim_end_matches(" ***");
+    let of = |what: String| if kernel.is_empty() { what } else { format!("{kernel}: {what}") };
+    if let Some(module) = said.strip_prefix("Including module: ") {
+        return Some(of(format!("including {module}")));
+    }
+    if said.starts_with("Creating initramfs image file '") && said.ends_with(" done") {
+        return Some(of("made".into()));
+    }
+    if said.starts_with("Creating image file '") {
+        return Some(of("writing the image".into()));
+    }
+    None
+}
+
 fn copy_tree(from: &Path, to: &Path, mode: u32) -> std::io::Result<()> {
     std::fs::create_dir_all(to)?;
     for e in std::fs::read_dir(from)? {
@@ -751,6 +798,22 @@ fn is_rpm(bytes: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    /// dracut's own words (Fedora 45's, `--verbose`) as the progress
+    /// said under the finding.
+    #[test]
+    fn dracut_says_how_it_goes() {
+        let mut kernel = String::new();
+        let lines = [
+            "dracut[I]: Executing: /usr/bin/dracut --kver=7.2.15-300.fc45.x86_64 --force --verbose",
+            "dracut[I]: *** Including module: plymouth ***",
+            "dracut[W]: Possible missing firmware for module",
+            "dracut[I]: *** Creating image file '/boot/initramfs-7.2.15-300.fc45.x86_64.img' ***",
+            "dracut[I]: *** Creating initramfs image file '/boot/initramfs-7.2.15-300.fc45.x86_64.img' done ***",
+        ];
+        let said: Vec<String> = lines.iter().filter_map(|l| super::initramfs_progress(l, &mut kernel)).collect();
+        assert_eq!(said, ["7.2.15-300.fc45.x86_64: starting", "7.2.15-300.fc45.x86_64: including plymouth", "7.2.15-300.fc45.x86_64: writing the image", "7.2.15-300.fc45.x86_64: made",]);
+    }
 
     #[test]
     fn a_kernel_argument_everywhere_the_command_line_is_kept() {
