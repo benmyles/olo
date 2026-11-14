@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-13
 
+### Coder: commands answer in words
+
+*20:54* — History, branches, worktrees and connections as lists, a toggle as a line, where they had been the API's JSON.
+
+![Coder: commands answer in words](2026-11-13/205447-coder-commands-answer-in-words.png)
+
+### Coder: Settings ▸ Model, around a pasted key
+
+*20:54* — Service, API key (pasted once, kept in Passwords, checked with the service), model by name, reasoning, and the models the other jobs use, applied as they change. Here Fireworks refused a made-up key and said why.
+
+![Coder: Settings ▸ Model, around a pasted key](2026-11-13/205445-coder-settings-model-around-a-pasted-key.png)
+
 ### Tracker list view: Edit Name shows its field
 
 *02:43* — Before (top): F2 in the list view blanked the name and showed no field, so typing went nowhere. After: the rename field sits over the Name cell, inside the column (a longer name scrolls in it); clicks in it place the caret. The kit's ColumnListView::over_cell.
