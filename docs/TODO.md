@@ -1257,6 +1257,56 @@ accessibility tree test on an agent screen (GTK's Text Editor, 30
 nodes). What's left needs Ben: in Blocked, "The ignored tests that
 need Ben".)
 
+- **Calls: echo and poor sound reported by the people Ben talks to**
+  (Ben, 2026-11-14: "i have had reports that people hear echo and just
+  generally poor sound from me i need it to be super good quality for
+  calls"). *Found* (his journal, voice.json, ALSA, read only):
+  - Olo's voice processing (echo cancellation, noise suppression,
+    level) has been **off since 2026-11-09 12:36** (`voice.json`
+    enabled false): every call since had the raw microphone, echo
+    left to each call app.
+  - Why it was likely turned off: on that day's call an app's
+    automatic gain control (WebRTC's: its clipping step, 15 of 255,
+    to its floor, 70) stepped the microphone down 71% → 29% in four
+    minutes, because the service passed the source's volume on to
+    the microphone and made up for it, so the app never heard its
+    change take effect, while AGC2 made the loss up digitally, noise
+    and all. **Fixed**: the source's volume is the app's, applied
+    after the processing; mute stays shared; back to 100% after.
+  - After its first call the service **never stopped**: the
+    microphone stayed open and the noise model ran, 11.5% of a core,
+    for good. **Fixed** (it follows the links from its source).
+  - The built-in microphone's codec gain (`cs42l43 Microphone`) is at
+    its top, +31.5 dB (PipeWire's 100%), with the DSP's compressor
+    after it: loud speech and keys near the mics can clip there, and
+    fan noise comes up with the voice. Not changed: it needs his
+    voice measured.
+  *Ben's:* upgrade, then turn Voice Processing on again (Preferences ▸
+  Sound, or Deskbar's speaker menu, Clean Up Microphone Sound). Say
+  what he calls with and through what (laptop speakers, the Studio
+  Display, the TV over HDMI, AirPlay, headphones), and whether an echo
+  test may run on his machine: speech played through his speakers and
+  his microphone recorded for some seconds, in memory only, to measure
+  the echo left and set the microphone's gain. Echo cancellation has
+  never been tried on the real speakers (it's in "AirPods and voice
+  processing, tried on the real things", below).
+- **Agent screens survive an upgrade of their bus; agents' clicks and
+  keys as they write them** (Ben, 2026-11-14, of the
+  v2-qa-integrations screen: "something has happened to that screen
+  and now the commands aren't working and the history shows the agent
+  trying to press ctrl+w a bunch of times and has an empty browser").
+  The Ctrl+w presses were the agent closing its tabs. The upgrade at
+  00:08, the first with a new olo-bus, restarted the screen's bus 90 s
+  later: Chrome quit with it and the screen's portal and notifications
+  were left on the bus that went (restarted on the live one by hand,
+  00:27; the agent there opens Chrome again). Fixed: a screen's bus
+  stays as it is through upgrades, and its services start again on a
+  new one if it ends. And from that screen's history: `click`/`set` on
+  something out of sight now scroll it into view first, `scroll-to`
+  stops only when it's in view, points take `X,Y` and `--at X,Y`,
+  `scroll` `--dx`/`--dy`, keys X11's and the web's names. *Noticed,
+  not done:* Chrome gives no accessibility tree for `file://` pages on
+  a screen (an empty Document); over http it does.
 - **Captive portals: seen, said and opened** (Ben, 2026-11-13: "add
   captive portal recognition in network settings so that when a
   connection requires portal signin the link is available to click in
