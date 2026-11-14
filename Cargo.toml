@@ -7,7 +7,6 @@ exclude = ["vendor"]
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-repository = "https://example.invalid/olo"
 
 [workspace.dependencies]
 olo-protocol = { path = "crates/protocol" }
