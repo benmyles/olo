@@ -12,7 +12,8 @@
 //! began on: choosing another sets it for new sessions and offers one.
 //! Changes go to the session through the same API as the terminal's.
 use crate::client::{Action, Handle, View as Shown};
-use crate::models::{self, KeyInput, KeyState, Listed};
+use crate::models::{self, KeyInput, KeyState, Listed, ROLES};
+use crate::options::{SECTIONS, choice_label, section as specs, unit};
 use olo_coder_core::{Command, ModelConfig, Provider, profiles::ModelProfile, rpc};
 use olo_kit::{
     Child, Cx, Element, IntoElement as _, ParentElement as _, SharedString, Styled as _, View, WindowCx, WindowOptions, canvas, div, metrics as m, px, style, theme,
@@ -20,18 +21,6 @@ use olo_kit::{
 };
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, path::PathBuf, time::Duration};
-
-/// The sections: their ids, titles and what they're for.
-const SECTIONS: [(&str, &str, &str); 8] = [
-    ("model", "Model", "What the agent runs on, and the models its other jobs use."),
-    ("safety", "Approvals", "What the agent may do without asking you."),
-    ("autonomy", "Autonomy", "How the agent keeps going, and who watches it."),
-    ("compaction", "Context", "How a long conversation is kept within the model’s window. The whole conversation is always kept."),
-    ("budgets", "Limits", "How far one run may go before it stops and asks."),
-    ("timeouts", "Timeouts", "How long actions and requests may take, and how often they’re tried again."),
-    ("collaboration", "Messages", "What other sessions and Coder instances may do."),
-    ("instructions", "Instructions", "What the agent is told at the start of every turn."),
-];
 
 /// The least the window is tall, so moving between short sections
 /// doesn't make it jump.
@@ -43,9 +32,6 @@ const DIVIDER: f32 = 150.0;
 const POPUP: f32 = DIVIDER + 270.0;
 /// How long typing pauses before what's typed applies.
 const PAUSE: Duration = Duration::from_millis(700);
-
-/// The agent's other jobs a model does: their labels and settings.
-const ROLES: [(&str, &str); 3] = [("Supervisor:", "supervisor.model"), ("Approval reviewer:", "reviewer"), ("Summarising:", "compaction.model")];
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Tone {
@@ -95,6 +81,8 @@ struct Option_ {
 struct Moving {
     asked: u64,
     model: ModelConfig,
+    /// All that was sent with it (the reviewer that follows it).
+    values: BTreeMap<String, Value>,
 }
 
 pub struct Settings {
@@ -207,114 +195,6 @@ pub fn open(cx: &mut WindowCx, dir: PathBuf, client: Handle, view: &Shown, owner
     });
 }
 
-/// The options in section `id`, as this window says them.
-fn specs(id: &str) -> Vec<crate::options::OptionSpec> {
-    use crate::options::OptionSpec;
-    let toggle = |path, label| OptionSpec { path, label, choices: vec!["true", "false"], rows: 1 };
-    let field = |path, label| OptionSpec { path, label, choices: vec![], rows: 1 };
-    match id {
-        "safety" => vec![
-            OptionSpec { path: "approval", label: "Actions:", choices: vec!["ask", "auto", "allow"], rows: 1 },
-            OptionSpec { path: "approval_guidance", label: "Reviewer’s guidance:", choices: vec![], rows: 5 },
-            OptionSpec { path: "sandbox", label: "Files:", choices: vec!["unrestricted", "workspace"], rows: 1 },
-            toggle("read_only", "Only read, never change"),
-        ],
-        "autonomy" => vec![
-            toggle("keep_going", "Keep going toward the goal by itself"),
-            heading("Subagents"),
-            toggle("subagents", "Let it hand work to subagents"),
-            field("max_subagents", "At once, at most:"),
-            field("max_depth", "Levels deep:"),
-            heading("Supervisor"),
-            toggle("supervisor.enabled", "A second model watches the work"),
-            OptionSpec { path: "supervisor.guidance", label: "What it looks for:", choices: vec![], rows: 5 },
-            toggle("supervisor.recover_errors", "It may restart work an error stopped"),
-            field("supervisor.every_turns", "Looks every:"),
-            field("supervisor.max_reviews", "Looks, at most:"),
-            field("supervisor.max_interventions", "Steps in, at most:"),
-            field("supervisor.token_budget", "Its tokens, at most:"),
-            field("supervisor.stall_seconds", "Stalled after:"),
-        ],
-        "compaction" => vec![
-            toggle("model.auto_compact", "Summarise older context as the window fills"),
-            field("model.compact_at", "Summarise at:"),
-            toggle("compaction.background", "Prepare the summary ahead, while it works"),
-            field("compaction.prepare_percent", "Prepare from:"),
-            toggle("compaction.verify", "Check each summary against the conversation"),
-            heading("Kept word for word"),
-            field("compaction.keep_recent_exchanges", "Recent exchanges:"),
-            field("compaction.keep_recent_tokens", "Recent tokens, up to:"),
-            heading("Summaries"),
-            field("compaction.chunk_tokens", "Read in pieces of:"),
-            field("compaction.summary_tokens", "A summary, at most:"),
-        ],
-        "budgets" => vec![field("max_turns", "Turns, at most:"), field("token_budget", "Tokens, at most:"), field("max_tool_bytes", "An action’s output:"), field("max_response_bytes", "A reply:")],
-        "timeouts" => vec![field("command_timeout_secs", "An action may take:"), field("request_timeout_secs", "A request may take:"), field("retries", "Tries again:")],
-        "collaboration" => vec![toggle("accept_messages", "Take messages from other sessions"), toggle("wake_on_message", "A message may start it when it’s idle")],
-        "instructions" => vec![
-            OptionSpec { path: "instructions", label: "Instructions:", choices: vec![], rows: 8 },
-            OptionSpec { path: "compaction.instructions", label: "For summaries:", choices: vec![], rows: 5 },
-        ],
-        _ => vec![],
-    }
-}
-
-/// A heading over the options after it (no option itself).
-fn heading(label: &'static str) -> crate::options::OptionSpec {
-    crate::options::OptionSpec { path: "", label, choices: vec![], rows: 0 }
-}
-
-/// How a choice reads.
-fn choice_label(path: &str, value: &str) -> &'static str {
-    match (path, value) {
-        ("approval", "ask") => "Ask me first",
-        ("approval", "auto") => "A reviewer decides, asks me when unsure",
-        ("approval", "allow") => "Allow everything",
-        ("sandbox", "workspace") => "Only the workspace folder",
-        ("sandbox", "unrestricted") => "Anywhere",
-        _ => "",
-    }
-}
-
-/// What a number setting's value means, after its field ("64 MB", "500K
-/// tokens", "10 minutes", "no limit").
-fn unit(path: &str, text: &str) -> String {
-    let Ok(n) = text.trim().replace([',', '_'], "").parse::<u64>() else { return String::new() };
-    let limit = matches!(path, "max_turns" | "token_budget");
-    match path {
-        _ if limit && n == 0 => "no limit".into(),
-        "max_turns" => "turns".into(),
-        p if p.ends_with("_bytes") => bytes(n),
-        p if p.ends_with("_secs") || p.ends_with("_seconds") => duration(n),
-        "retries" => if n == 1 { "time" } else { "times" }.into(),
-        "compaction.prepare_percent" => "% of the way".into(),
-        "supervisor.every_turns" => if n == 1 { "turn" } else { "turns" }.into(),
-        "max_subagents" => if n == 1 { "subagent" } else { "subagents" }.into(),
-        "max_depth" => if n == 1 { "level" } else { "levels" }.into(),
-        "compaction.keep_recent_exchanges" | "supervisor.max_reviews" | "supervisor.max_interventions" => String::new(),
-        _ => format!("{} tokens", models::tokens(n)),
-    }
-}
-fn bytes(n: u64) -> String {
-    // To a tenth: "64 MB", "1.5 MB", "512 KB".
-    let tenths = |unit: u64| {
-        let t = (n * 10 + unit / 2) / unit;
-        if t % 10 == 0 { format!("{}", t / 10) } else { format!("{}.{}", t / 10, t % 10) }
-    };
-    match n {
-        n if n >= 1 << 20 => format!("{} MB", tenths(1 << 20)),
-        n if n >= 1 << 10 => format!("{} KB", tenths(1 << 10)),
-        n => format!("{n} bytes"),
-    }
-}
-fn duration(n: u64) -> String {
-    match n {
-        n if n >= 3600 && n % 3600 == 0 => format!("{} hour{}", n / 3600, if n == 3600 { "" } else { "s" }),
-        n if n >= 60 && n % 60 == 0 => format!("{} minute{}", n / 60, if n == 60 { "" } else { "s" }),
-        n => format!("{n} second{}", if n == 1 { "" } else { "s" }),
-    }
-}
-
 impl Settings {
     fn id(&self) -> &'static str {
         SECTIONS[self.section].0
@@ -350,8 +230,8 @@ impl Settings {
     /// What the section's text fields would change, or why they can't.
     fn typed_changes(&self, cx: &Cx<Self>) -> Result<BTreeMap<String, Value>, String> {
         let (paths, values): (Vec<String>, Vec<String>) =
-            self.options.iter().filter(|o| !o.spec.path.is_empty() && o.spec.choices.is_empty()).map(|o| (o.spec.path.to_owned(), o.text.read(cx).text().trim().replace(',', ""))).unzip();
-        crate::options::validated_changes(&self.config, &paths, &values).map_err(|e| friendly(&e.to_string()))
+            self.options.iter().filter(|o| !o.spec.path.is_empty() && o.spec.choices.is_empty()).map(|o| (o.spec.path.to_owned(), o.text.read(cx).text().trim().to_owned())).unzip();
+        crate::options::validated_changes(&self.config, &paths, &values).map_err(|e| models::friendly(&e.to_string(), true))
     }
 
     /// Sends `values` to the session (and new sessions' settings, if
@@ -364,7 +244,7 @@ impl Settings {
         cx.work(
             move || {
                 let command = Command::ConfigureFields { session, values, defaults };
-                rpc::call(&dir, &command).map_err(|e| friendly(&format!("{e:#}")))
+                rpc::call(&dir, &command).map_err(|e| models::friendly(&format!("{e:#}"), true))
             },
             move |r| Msg::Saved(asked, r),
         );
@@ -374,8 +254,14 @@ impl Settings {
     /// Applies `model` to the session, or to new sessions if this
     /// conversation can't move to its service.
     fn save_model(&mut self, model: ModelConfig, cx: &mut Cx<Self>) {
-        let asked = self.save(BTreeMap::from([("model".to_owned(), json!(model))]), false, cx);
-        self.moving = Some(Moving { asked, model });
+        self.save_model_with(model, BTreeMap::new(), cx);
+    }
+
+    /// `save_model`, with other `values` that go with it.
+    fn save_model_with(&mut self, model: ModelConfig, mut values: BTreeMap<String, Value>, cx: &mut Cx<Self>) {
+        values.insert("model".to_owned(), json!(model));
+        let asked = self.save(values.clone(), false, cx);
+        self.moving = Some(Moving { asked, model, values });
     }
 
     /// Asks the service for its models (which checks its address and key).
@@ -428,7 +314,7 @@ impl Settings {
         if !id.is_empty() {
             model.model = id.to_owned();
         }
-        model.validate().map_err(|e| friendly(&e.to_string()))?;
+        model.validate().map_err(|e| models::friendly(&e.to_string(), true))?;
         Ok(model)
     }
 
@@ -440,49 +326,13 @@ impl Settings {
 
     /// What role `r`'s menu offers, and which it shows.
     fn role_menu(&self, r: usize) -> (Vec<SharedString>, usize) {
-        let mut labels: Vec<SharedString> = vec!["Same as the agent".into()];
-        labels.extend(self.listed.iter().map(|l| l.name.clone().into()));
-        let agent = self.session_model();
-        let current: Option<ModelConfig> = self.config.pointer(&crate::options::pointer(ROLES[r].1)).and_then(|v| serde_json::from_value(v.clone()).ok());
-        let Some(current) = current else { return (labels, 0) };
-        let same_service =
-            current.provider == agent.provider && current.endpoint.as_ref().map(|e| e.base_url.trim_end_matches('/')) == agent.endpoint.as_ref().map(|e| e.base_url.trim_end_matches('/'));
-        if same_service {
-            if r == 1 && current.model == agent.model {
-                return (labels, 0);
-            }
-            if let Some(i) = self.listed.iter().position(|l| l.id == current.model) {
-                return (labels, i + 1);
-            }
-        }
-        labels.push(format!("{} on {}", models::model_name(&current, &[], &current.model), models::service_name(&current)).into());
-        let at = labels.len() - 1;
-        (labels, at)
+        let (labels, at) = models::role_menu(&self.config, &self.session_model(), &self.listed, r);
+        (labels.into_iter().map(Into::into).collect(), at)
     }
 
     /// What choosing item `k` of role `r`'s menu sets it to (None: nothing).
     fn role_value(&self, r: usize, k: usize) -> Option<Value> {
-        let agent = self.session_model();
-        // The reviewer decides quickly: the least effort the model takes.
-        let quick = |mut m: ModelConfig, listed: &[Listed]| {
-            if r == 1 {
-                let efforts = models::efforts(listed, &m.model);
-                if efforts.iter().any(|e| e == "low") {
-                    m.effort = "low".into();
-                }
-            }
-            m
-        };
-        match k {
-            0 if r == 1 => Some(json!(quick(agent, &self.listed))),
-            0 => Some(Value::Null),
-            k if k <= self.listed.len() => {
-                let mut m = agent;
-                models::choose(&mut m, &self.listed, &self.listed[k - 1].id);
-                Some(json!(quick(m, &self.listed)))
-            }
-            _ => None,
-        }
+        models::role_value(&self.session_model(), &self.listed, r, k)
     }
 
     /// The key's line: where it's kept, or what's wrong with it.
@@ -601,8 +451,14 @@ impl Settings {
             .child(StringView::new("Which model does each of the agent’s other jobs. The supervisor works only while it’s on (Autonomy).").wrap(true).dim(true).small(true));
         for (r, (label, _)) in ROLES.iter().enumerate() {
             let (labels, at) = self.role_menu(r);
-            col = col
-                .child(MenuField::new(format!("role-{r}"), labels, at).label(*label).divider(DIVIDER).width(POPUP).enabled(!self.elsewhere).on_change(cx.msg_with(move |k: &usize| Msg::Role(r, *k))));
+            col = col.child(
+                MenuField::new(format!("role-{r}"), labels, at)
+                    .label(format!("{label}:"))
+                    .divider(DIVIDER)
+                    .width(POPUP)
+                    .enabled(!self.elsewhere)
+                    .on_change(cx.msg_with(move |k: &usize| Msg::Role(r, *k))),
+            );
         }
         col.into_any_element()
     }
@@ -671,28 +527,6 @@ impl Settings {
                 (self.config.pointer(&pointer) != Some(was)).then(|| (p.to_owned(), was.clone()))
             })
             .collect()
-    }
-}
-
-/// What the service said, as the person would put it here (where the
-/// key is pasted and Get a Key is beside it).
-fn friendly(e: &str) -> String {
-    let e = e.trim_start_matches("Error: ");
-    let e = match e.find(" Paste another in Settings ▸ Model.").or_else(|| e.find(" Get one at ")).or_else(|| e.find(": paste it in Settings ▸ Model")) {
-        Some(at) if e.contains("key") => format!("{} Paste another, or Get a Key.", &e[..at]),
-        _ => e.to_owned(),
-    };
-    let e = e.as_str();
-    if e.contains("stop the running turn") || e.contains("the agent is working") {
-        return "The agent is working: its model changes once it stops.".into();
-    }
-    if e.contains("invalid digit") || e.contains("expected") && e.contains("integer") {
-        return "That needs a whole number.".into();
-    }
-    let mut c = e.chars();
-    match c.next() {
-        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-        None => String::new(),
     }
 }
 
@@ -768,10 +602,10 @@ impl View for Settings {
                     // A conversation stays on its service: the model is
                     // new sessions', and one is offered.
                     Err(e) if e.contains("start a new session") && moving.is_some() => {
-                        let model = moving.unwrap().model;
+                        let Moving { model, values, .. } = moving.unwrap();
                         self.elsewhere = true;
-                        self.model = model.clone();
-                        self.save(BTreeMap::from([("model".to_owned(), json!(model))]), true, cx);
+                        self.model = model;
+                        self.save(values, true, cx);
                     }
                     Err(e) => {
                         if moving.is_some() {
@@ -794,12 +628,14 @@ impl View for Settings {
             Msg::Service(i) => {
                 if i != models::service(&self.model) {
                     let model = models::service_model(i, &self.model);
+                    // The reviewer, if it was the agent's own model, goes with it.
+                    let follow = models::following(&self.config, &self.session_model(), &model).map(|r| ("reviewer".to_owned(), r));
                     self.model = model.clone();
                     self.listed = models::known(&model);
                     self.key_said = None;
                     self.show_model(cx);
                     self.list(cx);
-                    self.save_model(model, cx);
+                    self.save_model_with(model, follow.into_iter().collect(), cx);
                 }
             }
             Msg::Model(i) => {
@@ -927,7 +763,7 @@ impl View for Settings {
                         }
                     }
                     Err(e) => {
-                        let e = friendly(&e);
+                        let e = models::friendly(&e, true);
                         if keyed {
                             // Most often the key: said under it.
                             self.key_said = Some((e, Tone::Bad));
@@ -1007,15 +843,9 @@ mod tests {
         for (_, path) in ROLES {
             assert!(config.pointer(&crate::options::pointer(path)).is_some(), "{path}");
         }
-        assert_eq!(unit("max_tool_bytes", "67108864"), "64 MB");
-        assert_eq!(unit("max_response_bytes", "1572864"), "1.5 MB");
-        assert_eq!(unit("model.compact_at", "500000"), "500K tokens");
-        assert_eq!(unit("token_budget", "0"), "no limit");
-        assert_eq!(unit("command_timeout_secs", "600"), "10 minutes");
-        assert_eq!(unit("retries", "1"), "time");
-        assert_eq!(friendly("Error: stop the running turn before this operation"), "The agent is working: its model changes once it stops.");
+        assert_eq!(models::friendly("Error: stop the running turn before this operation", true), "The agent is working: its model changes once it stops.");
         assert_eq!(
-            friendly("Fireworks AI refused the key (HTTP 401): The API key you provided is invalid. Paste another in Settings ▸ Model. Get one at https://example.com/keys."),
+            models::friendly("Fireworks AI refused the key (HTTP 401): The API key you provided is invalid. Paste another in Settings ▸ Model. Get one at https://example.com/keys.", true),
             "Fireworks AI refused the key (HTTP 401): The API key you provided is invalid. Paste another, or Get a Key."
         );
     }

@@ -31,7 +31,9 @@ enters the running conversation: after the next tool, after the current response
 or immediately by interrupting current work. The default is after the next tool. Escape stops the TUI's
 turn; the GUI has Stop and Agent ▸ Stop. Closing a view leaves the turn running.
 TUI Ctrl+D detaches, PgUp/PgDn scroll, Alt+Enter inserts a newline, Up/Down recall
-input, Tab completes command names, and Ctrl+O opens settings and Ctrl+L opens transcript links (including action details). The GUI composer uses Shift+Enter for a newline. In the GUI, the transcript supports
+input, Tab completes command names, Ctrl+O opens Settings (the window's sections,
+said the same way, by keyboard: ↑↓ move, ←→ change, Esc done) and Ctrl+L opens
+transcript links (including action details); F1 lists every key. The GUI composer uses Shift+Enter for a newline. In the GUI, the transcript supports
 selection and copy; View ▸ Toggle Follow Conversation lets you read earlier
 text without the next chunk scrolling it away.
 
@@ -93,7 +95,8 @@ change applied as it's made:
   without those it hides); a custom service without a list takes its id.
 - **Reasoning**: the efforts the model takes, its default first.
 - **Other jobs**: the supervisor's, the approval reviewer's and the
-  summariser's model: the agent's, or another on its service.
+  summariser's model: the agent's, or another on its service. A reviewer
+  that was the agent's own model moves with it to another service.
 
 **Also for new sessions** (on unless turned off) sends each change to the
 settings new sessions start with too (`configure_fields` with `defaults`;
@@ -103,10 +106,17 @@ for new sessions and offers **New Session**. **Revert** puts the section back
 as it was when the window opened. The model changes once the agent stops;
 everything else applies at its next step.
 
+The terminal's Settings (Ctrl+O ▸ Model) is the same page: a choice applies
+as ← → changes it, what's typed (the key, a custom service's address and
+limits) on Return or on moving to another row; Return on Model lists the
+service's models to find one by name. Esc closes once a change is taken.
+
 The service reads a kept key when it first needs it (`api_key_secret`, or
 for a known service with none set, the item of that title, else the
 service's variable such as `FIREWORKS_API_KEY`), keeps it in memory only and
-reads it again after the service refuses it.
+reads it again after the service refuses it. With Passwords not running it
+starts it in the background (`olo-passwords --keychain`, no window) and asks
+again.
 
 ## Known services
 

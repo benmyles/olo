@@ -113,12 +113,56 @@ fn matching(view: &View, query: &str) -> Vec<serde_json::Value> {
     let query = query.to_lowercase();
     view.catalog.iter().filter(|r| format!("{} {} {}", r["title"], r["workspace"], r["tags"]).to_lowercase().contains(&query)).cloned().collect()
 }
+/// When a message sent while it works reaches it (as the window's
+/// menu says it).
 fn mode_name(mode: olo_coder_core::Delivery) -> &'static str {
     match mode {
-        olo_coder_core::Delivery::AfterTool => "After next tool",
-        olo_coder_core::Delivery::Queue => "Queue after response",
-        olo_coder_core::Delivery::Interrupt => "Interrupt now",
+        olo_coder_core::Delivery::AfterTool => "after this step",
+        olo_coder_core::Delivery::Queue => "when it finishes",
+        olo_coder_core::Delivery::Interrupt => "at once, interrupting",
     }
+}
+
+/// Every key, for F1: (keys, what they do).
+const KEYS: [(&str, &str); 19] = [
+    ("Enter", "Send"),
+    ("Alt+Enter, Shift+Enter", "New line"),
+    ("Esc, Ctrl+C", "Stop the session"),
+    ("Alt+M", "While it works: when a message reaches it"),
+    ("Alt+T", "Task list"),
+    ("Ctrl+O", "Settings"),
+    ("Ctrl+P", "Open another session"),
+    ("Ctrl+T", "Another session beside this one"),
+    ("Ctrl+N", "Next session shown"),
+    ("Ctrl+W", "Close this one (several shown)"),
+    ("Ctrl+L", "Links in the conversation"),
+    ("Alt+O", "Open or close every action's output"),
+    ("Page Up, Page Down", "Scroll the conversation"),
+    ("Up, Down", "Messages sent before"),
+    ("Tab", "Complete a /command"),
+    ("Ctrl+A, Ctrl+E", "Start, end of the message"),
+    ("Ctrl+U, Ctrl+K", "Delete to the start, to the end"),
+    ("Ctrl+D", "Leave (the session keeps working)"),
+    ("F1", "These keys"),
+];
+
+/// The keys under the panes: as many as fit in `width`, then F1 for
+/// the rest.
+fn hints(width: usize) -> String {
+    const SHOWN: [&str; 8] = ["Enter send", "Esc stop", "Alt+T tasks", "Ctrl+O settings", "Ctrl+P sessions", "Ctrl+L links", "Ctrl+T tile", "Ctrl+D leave"];
+    const MORE: &str = "F1 all keys";
+    let mut out = String::new();
+    for hint in SHOWN {
+        let next = if out.is_empty() { hint.chars().count() } else { out.chars().count() + 3 + hint.chars().count() };
+        if next + 3 + MORE.len() > width {
+            break;
+        }
+        if !out.is_empty() {
+            out.push_str(" · ");
+        }
+        out.push_str(hint);
+    }
+    if out.is_empty() { MORE.to_owned() } else { format!("{out} · {MORE}") }
 }
 pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<()> {
     olo_kit_base::restore::claim();
@@ -172,6 +216,8 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
     let mut tasks: Option<crate::tui_tasks::Panel> = None;
     let mut links: Option<Vec<(String, String)>> = None;
     let mut selected_link = 0;
+    // F1's list of keys, showing.
+    let mut keys = false;
     loop {
         terminal.draw(|f| {
             let rows = Layout::vertical([Constraint::Length(2), Constraint::Min(4), Constraint::Length(4), Constraint::Length(1)]).split(f.area());
@@ -200,7 +246,10 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
                 }
                 let end = pane.lines.len().saturating_sub(pane.scroll);
                 let start = end.saturating_sub(area.height.saturating_sub(2) as usize);
-                let title = format!(" {} · {}{} ", i + 1, pane.view.session.as_ref().map(|s| s.title.as_str()).unwrap_or("Connecting…"), if i == active { " · active" } else { "" });
+                // (Numbered when there are several; the one typed to is
+                // yellow.)
+                let name = pane.view.session.as_ref().map(|s| s.title.as_str()).unwrap_or("Connecting…");
+                let title = if count > 1 { format!(" {} · {name} ", i + 1) } else { format!(" {name} ") };
                 let block = Block::bordered().title(title).border_style(Style::default().fg(if i == active { Color::LightYellow } else { Color::DarkGray }));
                 f.render_widget(Paragraph::new(pane.lines[start..end].to_vec()).block(block), area);
             }
@@ -212,22 +261,38 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
             let col = col % width;
             let top = row.saturating_sub(rows[2].height.saturating_sub(3) as usize);
             let input = wrapped(&pane.draft, width);
-            let pending = pane.view.session.as_ref().map_or(0, |s| s.inbox.len());
-            f.render_widget(
-                Paragraph::new(input.get(top..).unwrap_or_default().join("\n")).block(Block::bordered().title(format!("{} · {} pending · Alt+M delivery", mode_name(pane.delivery), pending))),
-                rows[2],
-            );
-            f.render_widget(Paragraph::new("Enter send · Alt+T tasks · Ctrl+O settings · Ctrl+P sessions · Ctrl+L links · Alt+O open actions · Ctrl+T tile · Esc stop · Ctrl+D detach"), rows[3]);
+            // While it works, when what's sent reaches it, and what's
+            // waiting to.
+            let session = pane.view.session.as_ref();
+            let working = session.is_some_and(|s| matches!(s.status, olo_coder_core::Status::Running | olo_coder_core::Status::Approval));
+            let waiting = session.map_or(0, |s| s.inbox.len());
+            let mut heading = " Message".to_owned();
+            if working {
+                heading += &format!(" · reaches it {} (Alt+M)", mode_name(pane.delivery));
+            }
+            if waiting > 0 {
+                heading += &format!(" · {waiting} waiting");
+            }
+            heading.push(' ');
+            f.render_widget(Paragraph::new(input.get(top..).unwrap_or_default().join("\n")).block(Block::bordered().title(heading)), rows[2]);
+            f.render_widget(Paragraph::new(hints(rows[3].width as usize)).style(Style::default().fg(Color::DarkGray)), rows[3]);
             if rows[2].width > 2 && rows[2].height > 2 {
                 f.set_cursor_position((rows[2].x + 1 + col as u16, rows[2].y + 1 + (row - top) as u16));
             }
+            // Overlays sit over the conversation, leaving the message and
+            // the keys under it as they are (the whole terminal when it's
+            // too small for that).
+            // (`sized` leaves two rows round what it's given: the room is
+            // the conversation's with those.)
+            let room = if rows[1].height >= 14 { Rect { y: rows[1].y.saturating_sub(2), height: rows[1].height + 4, ..rows[1] } } else { f.area() };
             if let Some(settings) = &settings {
-                settings.draw(f, overlay(f.area()));
+                // (Taller than the other overlays: a section's options.)
+                settings.draw(f, sized(room, 100, 40));
             } else if let Some(t) = &tasks {
                 let s = pane.view.session.as_ref();
-                t.draw(f, overlay(f.area()), s.map_or(&[][..], |s| &s.todos), s.and_then(|s| s.report.as_ref()));
+                t.draw(f, overlay(room), s.map_or(&[][..], |s| &s.todos), s.and_then(|s| s.report.as_ref()));
             } else if let Some(p) = &picker {
-                let area = overlay(f.area());
+                let area = overlay(room);
                 f.render_widget(Clear, area);
                 let choices = matching(&pane.view, &p.query);
                 let list = List::new(choices.iter().map(|r| format!("{}{} · {}", if r["pinned"] == true { "◆ " } else { "" }, r["title"].as_str().unwrap_or(""), r["status"].as_str().unwrap_or(""))))
@@ -235,8 +300,15 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
                     .highlight_symbol("› ")
                     .highlight_style(Style::default().fg(Color::Black).bg(Color::LightYellow));
                 f.render_stateful_widget(list, area, &mut ListState::default().with_selected(Some(p.selected)));
+            } else if keys {
+                let wide = KEYS.iter().map(|(k, _)| k.chars().count()).max().unwrap_or(0);
+                let said = KEYS.iter().map(|(_, w)| w.chars().count()).max().unwrap_or(0);
+                let area = sized(room, (wide + 2 + said + 2) as u16, KEYS.len() as u16 + 2);
+                f.render_widget(Clear, area);
+                let lines: Vec<Line> = KEYS.iter().map(|(k, what)| Line::from(vec![Span::styled(format!("{k:wide$}  "), Style::default().fg(Color::LightYellow)), Span::raw(*what)])).collect();
+                f.render_widget(Paragraph::new(lines).block(Block::bordered().title(" Keys · any key closes ")), area);
             } else if let Some(links) = &links {
-                let area = overlay(f.area());
+                let area = overlay(room);
                 f.render_widget(Clear, area);
                 let list = List::new(links.iter().map(|(label, url)| format!("{label}  {url}")))
                     .block(Block::bordered().title("Links · Enter open · Esc close"))
@@ -266,7 +338,7 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
                     let focused = panes[active].key == pane;
                     if focused {
                         if let Some(panel) = &mut settings {
-                            if panel.update(&update) {
+                            if panel.update(&update, &panes[active].client) {
                                 settings = None;
                             }
                         }
@@ -314,6 +386,14 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
                         if panel.key(k, &todos, &p.view.id, &p.client) {
                             tasks = None;
                         }
+                        continue;
+                    }
+                    if keys {
+                        keys = false;
+                        continue;
+                    }
+                    if k.code == KeyCode::F(1) && picker.is_none() && links.is_none() {
+                        keys = true;
                         continue;
                     }
                     if k.code == KeyCode::Char('t') && k.modifiers.contains(KeyModifiers::ALT) {
@@ -544,8 +624,13 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
     Ok(())
 }
 fn overlay(area: Rect) -> Rect {
-    let width = area.width.saturating_sub(4).min(90);
-    let height = area.height.saturating_sub(4).min(16);
+    sized(area, 90, 16)
+}
+
+/// A box of up to `width` × `height` in the middle of `area`.
+fn sized(area: Rect, width: u16, height: u16) -> Rect {
+    let width = area.width.saturating_sub(4).min(width);
+    let height = area.height.saturating_sub(4).min(height);
     Rect::new(area.x + (area.width - width) / 2, area.y + (area.height - height) / 2, width, height)
 }
 /// Wrap at terminal cell boundaries, keeping combined characters and emoji intact.
@@ -572,6 +657,34 @@ fn wrapped(text: &str, width: usize) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// What a frame's header, message heading and hints cost now, beside
+    /// the way they were made before (the model's id, a fixed line).
+    #[test]
+    #[ignore = "release measurement"]
+    fn frame_text_cost() {
+        let session = olo_coder_core::Session::new("/var/tmp".into(), olo_coder_core::Config::default());
+        let view = View { id: session.id.clone(), session: Some(session), ..Default::default() };
+        let rounds = 100_000;
+        let before = std::time::Instant::now();
+        for _ in 0..rounds {
+            let s = view.session.as_ref().unwrap();
+            let old = format!("{} ({}) · {}", s.config.model.model, s.config.model.effort, view.usage_line());
+            let heading = format!("{} · {} pending · Alt+M delivery", "After next tool", s.inbox.len());
+            std::hint::black_box((old, heading, "Enter send · Alt+T tasks · Ctrl+O settings · Ctrl+P sessions · Ctrl+L links · Alt+O open actions · Ctrl+T tile · Esc stop · Ctrl+D detach"));
+        }
+        let old = before.elapsed();
+        let after = std::time::Instant::now();
+        for _ in 0..rounds {
+            let s = view.session.as_ref().unwrap();
+            let mut heading = " Message".to_owned();
+            if matches!(s.status, olo_coder_core::Status::Running) {
+                heading += &format!(" · reaches it {} (Alt+M)", mode_name(Default::default()));
+            }
+            std::hint::black_box((view.status(), heading, hints(120)));
+        }
+        let new = after.elapsed();
+        println!("FRAME_TEXT_COST per frame: before {:?}, after {:?}", old / rounds, new / rounds);
+    }
     #[test]
     fn terminal_wrap_preserves_wide_combined_and_multiline_text() {
         assert_eq!(wrapped("a界b", 3), vec!["a界", "b"]);

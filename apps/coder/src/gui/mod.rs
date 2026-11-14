@@ -22,9 +22,9 @@ use crate::{
 };
 use olo_coder_core::{ApprovalMode, Delivery, SessionFilter, Status};
 use olo_kit::{
-    Child, ClickEvent, Cx, Element, FontWeight, IntoElement as _, Menu, MenuBar, ParentElement as _, Pixels, Point, Styled as _, View, WindowOptions, agent, canvas, div, instance, menu, metrics as m,
-    px, style, theme,
-    widgets::{Button, Column, ColumnListView, EmptyState, ListModel, MenuField, Sidebar, StatusBar, StringView, TabView, TextField, TextFieldEvent, sidebar::Row, text_field},
+    Child, ClickEvent, Cx, Element, FontWeight, InteractiveElement as _, IntoElement as _, KeyDownEvent, Menu, MenuBar, MouseButton, ParentElement as _, Pixels, Point, Styled as _, View,
+    WindowOptions, agent, canvas, div, instance, menu, metrics as m, px, style, theme,
+    widgets::{Button, Column, ColumnListView, EmptyState, ListModel, MenuField, Sidebar, StatusBar, StringView, TabView, TextControl, TextField, TextFieldEvent, sidebar::Row, text_field},
 };
 use serde_json::{Value, json};
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
@@ -60,6 +60,10 @@ pub enum Msg {
     Link(String),
     OpenChange(usize),
     Run(String),
+    /// The name being given in the header: kept (true) or let go.
+    Renamed(bool),
+    /// A click while a name is given: kept if the keyboard went elsewhere.
+    RenameCheck,
     Notice(String),
     // The task list.
     TaskAdd,
@@ -94,6 +98,9 @@ pub struct Coder {
     /// A repository command waiting for the repository to be read
     /// (its GitHub repository, branches), run once it is.
     after_repository: Option<String>,
+    /// The session being renamed in the header, and its name's field
+    /// (a click elsewhere keeps the name, as in Tracker).
+    renaming: Option<(String, Child<TextField>)>,
     // The task list: its rows as shown, which are chosen, which folded,
     // where their marks were drawn, and the field that adds one.
     tasks: ListModel,
@@ -204,6 +211,7 @@ impl Coder {
                 redraw = false;
             }
             Update::Opened(id) if id != &self.view.id => {
+                self.renaming = None;
                 let draft = self.composer.read(cx).text().to_owned();
                 if !self.view.id.is_empty() && !draft.is_empty() {
                     self.drafts.insert(self.view.id.clone(), draft);
@@ -302,7 +310,7 @@ impl Coder {
                 .item("New Window", "new_window")
                 .item("New Session in Folder…", "new_in")
                 .separator()
-                .item("Rename…", "rename")
+                .item("Rename", "rename")
                 .enabled(s.is_some())
                 .item(if pinned { "Unpin" } else { "Pin" }, "pin")
                 .enabled(s.is_some())
@@ -498,16 +506,18 @@ impl Coder {
             "approve" | "deny" => {
                 let _ = self.client.tx.send(Action::Approve(cmd == "approve"));
             }
+            // In place: the title in the header becomes its field.
             "rename" => {
-                let title = s.as_ref().map(|s| s.title.clone()).unwrap_or_default();
-                self.open_dialog(
-                    "Rename Session",
-                    "A name to find it by later.",
-                    "Rename",
-                    vec![Field::new("Name:", title)],
-                    Submission::Coordination { operation: "rename".into(), session: id, message: None, recipients: vec![] },
-                    cx,
-                );
+                let Some(title) = s.as_ref().map(|s| s.title.clone()) else { return true };
+                let field = text_field(cx, |f| f.name("Session name").with_text(title));
+                cx.subscribe(&field, |_: &mut Coder, e: &TextFieldEvent, cx| {
+                    if matches!(e, TextFieldEvent::Entered) {
+                        cx.send(Msg::Renamed(true));
+                    }
+                });
+                field.update(cx, |f, cx| f.select_all_text(cx));
+                field.focus(cx);
+                self.renaming = Some((id, field));
             }
             "connect" => self.open_dialog(
                 "Link Coder Instance",
@@ -851,7 +861,38 @@ impl Coder {
                             .flex()
                             .items_center()
                             .gap(px(m::SPACING))
-                            .child(div().flex_1().min_w_0().child(StringView::new(title).bold(true).cut(true)))
+                            .child(match &self.renaming {
+                                // Return keeps the new name, Escape the old.
+                                // (Its text where the name was: the field
+                                // reaches out by its inset.)
+                                Some((_, field)) => div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .ml(px(-m::TEXT_INSET))
+                                    .on_key_down(cx.listener(|c: &mut Coder, e: &KeyDownEvent, cx| {
+                                        if e.keystroke.key == "escape" && !e.keystroke.modifiers.modified() {
+                                            c.message(Msg::Renamed(false), cx);
+                                            cx.stop_propagation();
+                                        } else if e.keystroke.key == "tab" {
+                                            // (Tab moves on, keeping it.)
+                                            c.message(Msg::Renamed(true), cx);
+                                        }
+                                    }))
+                                    .child(TextControl::new(cx, field)),
+                                // A double-click on the name renames it.
+                                None => {
+                                    let me = cx.messenger();
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .on_mouse_down(MouseButton::Left, move |e, _| {
+                                            if e.click_count == 2 {
+                                                me.send(Msg::Run("rename".into()));
+                                            }
+                                        })
+                                        .child(StringView::new(title).bold(true).cut(true))
+                                }
+                            })
                             .child(div().flex().items_center().gap(px(m::TIGHT)).flex_shrink_0().child(mark).child(StringView::new(activity).dim(!running))),
                     )
                     .child(StringView::new(place).dim(true).small(true).cut(true)),
@@ -1201,6 +1242,24 @@ impl View for Coder {
                 }
                 return;
             }
+            Msg::RenameCheck => {
+                if self.renaming.as_ref().is_some_and(|(_, field)| !field.is_focused(cx)) {
+                    self.message(Msg::Renamed(true), cx);
+                }
+                return;
+            }
+            Msg::Renamed(keep) => {
+                if let Some((session, field)) = self.renaming.take() {
+                    let name = field.read(cx).text().trim().to_owned();
+                    let old = self.session().filter(|s| s.id == session).map(|s| s.title.clone());
+                    if keep && !name.is_empty() && old.as_deref() != Some(name.as_str()) {
+                        self.submit(format!("/api {}", json!({"op":"organize","session":session,"title":name})));
+                    }
+                    self.composer.focus(cx);
+                }
+                cx.invalidate();
+                return;
+            }
             Msg::Run(command) => {
                 if let Some(id) = command.strip_prefix("@window ") {
                     open(self.dir.clone(), self.workspace.clone(), Some(id.to_owned()), Value::Null);
@@ -1257,15 +1316,27 @@ impl View for Coder {
             panes = panes.child(vrule()).child(self.work(cx));
         }
         let status = self.said.clone().unwrap_or_else(|| self.view.usage_line());
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .child(bar)
+        let mut root = div().size_full().flex().flex_col();
+        if self.renaming.is_some() {
+            // A click elsewhere keeps the name being given: looked at once
+            // the click has moved the keyboard.
+            let me = cx.messenger();
+            root = root.on_window_mouse_down(move |_, _| {
+                me.send(Msg::RenameCheck);
+            });
+        }
+        root.child(bar)
             .child(panes)
             .child(rule())
             .child(div().px(px(m::WINDOW_INSET)).py(px(m::TIGHT)).pb(px(m::WINDOW_INSET)).flex_shrink_0().child(StringView::new(status).small(true).dim(true).cut(true)))
             .into_any_element()
+    }
+
+    /// Leaving the window keeps a name being given (as Tracker does).
+    fn window_activated(&mut self, active: bool, cx: &mut Cx<Self>) {
+        if !active && self.renaming.is_some() {
+            self.message(Msg::Renamed(true), cx);
+        }
     }
 
     fn save_state(&mut self, cx: &mut Cx<Self>) -> Option<String> {
@@ -1390,6 +1461,7 @@ pub fn open(dir: PathBuf, workspace: PathBuf, session: Option<String>, restore: 
             session_rows: vec![],
             said: None,
             after_repository: None,
+            renaming: None,
             tasks: ListModel::new(false),
             task_rows: Default::default(),
             folded: restore["folded"].as_array().into_iter().flatten().filter_map(Value::as_str).map(str::to_owned).collect(),

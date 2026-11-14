@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-13
 
+### Coder: rename a session in place
+
+*23:09* — Double-click the session's name (or Session ▸ Rename) and it becomes a field where it was, its text not moving; Return or a click elsewhere keeps the name, Escape keeps the old one. At 2x.
+
+![Coder: rename a session in place](2026-11-13/230935-coder-rename-a-session-in-place.png)
+
+### Coder: the terminal's Settings, as the window's
+
+*23:09* — The terminal's Settings (Ctrl+O) has the window's sections and words, and the same Model page: service, API key (pasted, kept in Passwords), model, reasoning and the other jobs' models, each applied as it changes, with Also for new sessions. It sits over the conversation, leaving the message box clear; F1 lists every key and the hints show what fits.
+
+![Coder: the terminal's Settings, as the window's](2026-11-13/230933-coder-the-terminal-s-settings-as-the-window-s.png)
+
 ### Token Pool widget: Quotas is a menu field of any number
 
 *21:27* — The Deskbar widget editor's quotas were a row of check boxes, which a real Claude account's quota names ran past Preferences' right edge. Now a MenuField::many: it says the chosen ones, cut with … to fit, and its menu checks any of them, Whichever holds each back first. The Preferences lint now draws the editor for every widget kind with the longest quota names the services use.

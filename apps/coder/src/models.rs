@@ -248,7 +248,7 @@ pub fn keep_key(model: &ModelConfig, secret: &str) -> Result<(), String> {
             Ok(_) => return Err("Passwords didn’t keep the key.".into()),
             Err(olo_keychain::CallError::NotRunning) if !started => {
                 started = true;
-                let _ = olo_xdg::spawn_detached("olo-passwords");
+                let _ = olo_xdg::spawn_detached("olo-passwords --keychain");
                 for _ in 0..50 {
                     std::thread::sleep(std::time::Duration::from_millis(200));
                     if olo_keychain::socket_path().exists() {
@@ -267,6 +267,89 @@ pub fn tokens(n: u64) -> String {
         n if n >= 1_000_000 && n % 100_000 == 0 => format!("{}{}M", n / 1_000_000, if n % 1_000_000 == 0 { String::new() } else { format!(".{}", n % 1_000_000 / 100_000) }),
         n if n >= 1_000 => format!("{}K", (n + 500) / 1_000),
         n => n.to_string(),
+    }
+}
+
+/// The agent's other jobs a model does: their names and settings.
+pub const ROLES: [(&str, &str); 3] = [("Supervisor", "supervisor.model"), ("Approval reviewer", "reviewer"), ("Summarising", "compaction.model")];
+
+/// The model the session's settings (`config`) give the agent.
+pub fn agent_model(config: &serde_json::Value) -> Option<ModelConfig> {
+    serde_json::from_value(config["model"].clone()).ok()
+}
+
+/// What role `r`'s menu offers and which it shows: "Same as the agent",
+/// the agent's service's models (`listed`), and the model it has if
+/// that's on another service.
+pub fn role_menu(config: &serde_json::Value, agent: &ModelConfig, listed: &[Listed], r: usize) -> (Vec<String>, usize) {
+    let mut labels = vec!["Same as the agent".to_owned()];
+    labels.extend(listed.iter().map(|l| l.name.clone()));
+    let current: Option<ModelConfig> = config.pointer(&crate::options::pointer(ROLES[r].1)).and_then(|v| serde_json::from_value(v.clone()).ok());
+    let Some(current) = current else { return (labels, 0) };
+    let same_service = current.provider == agent.provider && current.endpoint.as_ref().map(|e| e.base_url.trim_end_matches('/')) == agent.endpoint.as_ref().map(|e| e.base_url.trim_end_matches('/'));
+    if same_service {
+        if r == 1 && current.model == agent.model {
+            return (labels, 0);
+        }
+        if let Some(i) = listed.iter().position(|l| l.id == current.model) {
+            return (labels, i + 1);
+        }
+    }
+    labels.push(format!("{} on {}", model_name(&current, &[], &current.model), service_name(&current)));
+    let at = labels.len() - 1;
+    (labels, at)
+}
+
+/// What choosing item `k` of role `r`'s menu sets it to (None: nothing,
+/// it's the one it has).
+pub fn role_value(agent: &ModelConfig, listed: &[Listed], r: usize, k: usize) -> Option<serde_json::Value> {
+    // The reviewer decides quickly: the least effort the model takes.
+    let quick = |mut m: ModelConfig| {
+        if r == 1 && efforts(listed, &m.model).iter().any(|e| e == "low") {
+            m.effort = "low".into();
+        }
+        m
+    };
+    match k {
+        0 if r == 1 => Some(serde_json::json!(quick(agent.clone()))),
+        0 => Some(serde_json::Value::Null),
+        k if k <= listed.len() => {
+            let mut m = agent.clone();
+            choose(&mut m, listed, &listed[k - 1].id);
+            Some(serde_json::json!(quick(m)))
+        }
+        _ => None,
+    }
+}
+
+/// The agent's model going from `old` to `new` (another service): the
+/// reviewer's, if it was the agent's own, which goes with it (the other
+/// jobs with none of their own follow by themselves).
+pub fn following(config: &serde_json::Value, old: &ModelConfig, new: &ModelConfig) -> Option<serde_json::Value> {
+    let (_, at) = role_menu(config, old, &[], 1);
+    (at == 0).then(|| role_value(new, &known(new), 1, 0)).flatten()
+}
+
+/// What the service or the session said, as the person would put it in
+/// Settings (`get_key`: beside the key is Get a Key, which says where
+/// one is made).
+pub fn friendly(e: &str, get_key: bool) -> String {
+    let e = e.trim_start_matches("Error: ");
+    let e = match e.find(" Paste another in Settings ▸ Model.").or_else(|| e.find(" Get one at ")).or_else(|| e.find(": paste it in Settings ▸ Model")) {
+        Some(at) if get_key && e.contains("key") => format!("{} Paste another, or Get a Key.", &e[..at]),
+        _ => e.to_owned(),
+    };
+    let e = e.as_str();
+    if e.contains("stop the running turn") || e.contains("the agent is working") {
+        return "The agent is working: its model changes once it stops.".into();
+    }
+    if e.contains("invalid digit") || e.contains("expected") && e.contains("integer") {
+        return "That needs a whole number.".into();
+    }
+    let mut c = e.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        None => String::new(),
     }
 }
 

@@ -174,13 +174,15 @@ impl Submission {
                 serde_json::json!({"op":"tool","session":session,"name":name,"arguments":arguments})
             }
             Self::Agent { session, models } => {
-                let mut arguments = serde_json::json!({"task":v[0],"read_only":v.get(4).is_none_or(|v| v != "Workspace writes")});
+                // ("Workspace writes", "Inherit primary": as the terminal said them before.)
+                let writes = v.get(4).is_some_and(|v| matches!(v.as_str(), "Change files" | "Workspace writes"));
+                let mut arguments = serde_json::json!({"task":v[0],"read_only":!writes});
                 if !v[1].trim().is_empty() {
                     arguments["workspace"] = v[1].trim().into();
                 }
                 if let Some((_, model)) = models.iter().find(|(label, _)| label == &v[2]) {
                     arguments["model_config"] = serde_json::to_value(model).unwrap();
-                } else if models.is_empty() && !v[2].is_empty() && v[2] != "Inherit primary" {
+                } else if models.is_empty() && !v[2].is_empty() && !matches!(v[2].as_str(), "Same as this session" | "Inherit primary") {
                     arguments["model"] = v[2].clone().into();
                 }
                 if v[3] != "Use model settings" && !v[3].is_empty() {
@@ -255,8 +257,16 @@ pub(crate) fn next_choices(submission: &mut Submission, result: serde_json::Valu
         let mut found = result["sessions"].as_array().cloned().ok_or_else(|| anyhow::anyhow!("No session catalog returned"))?;
         found.retain(|r| r["id"].as_str() != Some(session));
         anyhow::ensure!(!found.is_empty(), "No matching sessions. Try another search or instance.");
-        for row in &mut found {
-            row["choice"] = format!("{} · {}", row["title"].as_str().unwrap_or("Untitled"), row["id"].as_str().unwrap_or("")).into();
+        // By its name and folder; the same twice, its id's start too.
+        let label = |r: &serde_json::Value| {
+            let folder = r["workspace"].as_str().and_then(|w| std::path::Path::new(w).file_name()).map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+            format!("{} · {folder}", r["title"].as_str().filter(|t| !t.is_empty()).unwrap_or("Untitled"))
+        };
+        let labels: Vec<String> = found.iter().map(label).collect();
+        for (row, l) in found.iter_mut().zip(&labels) {
+            let twice = labels.iter().filter(|o| *o == l).count() > 1;
+            let id: String = row["id"].as_str().unwrap_or("").chars().take(8).collect();
+            row["choice"] = if twice { format!("{l} ({id})") } else { l.clone() }.into();
         }
         let fields = vec![
             Field::new("Recipient:", "").choices(found.iter().map(|r| r["choice"].as_str().unwrap().to_owned())),
@@ -313,6 +323,13 @@ mod tests {
         let inherited = decode(&s, &["Task", "", "Inherit primary", "Model’s default"]);
         assert!(inherited["arguments"].get("model_config").is_none());
         assert_eq!(inherited["arguments"]["effort"], "");
+        // What the dialogs say: "Change files" lets it write, "Only read"
+        // doesn't, and "Same as this session" is no model's id.
+        let none = Submission::Agent { session: "session".into(), models: vec![] };
+        let writes = decode(&none, &["Task", "", "Same as this session", "Use model settings", "Change files"]);
+        assert_eq!(writes["arguments"]["read_only"], false);
+        assert!(writes["arguments"].get("model").is_none());
+        assert_eq!(decode(&none, &["Task", "", "Same as this session", "Use model settings", "Only read"])["arguments"]["read_only"], true);
     }
     #[test]
     fn password_picker_only_grants_selected_reference() {

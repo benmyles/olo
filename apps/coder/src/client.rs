@@ -25,10 +25,11 @@ pub enum Update {
     },
     Session(Box<Session>),
     Profiles(Vec<olo_coder_core::profiles::ModelProfile>),
-    ProfileModels {
+    /// What a service lists (`Action::ListModels`).
+    ServiceModels {
         key: String,
-        profile: Box<olo_coder_core::profiles::ModelProfile>,
-        models: Result<Vec<String>, String>,
+        /// Its models, as a person chooses them.
+        models: Result<Vec<olo_coder_core::providers::Listed>, String>,
     },
     Catalog {
         rows: Vec<Value>,
@@ -84,9 +85,11 @@ pub enum Action {
     Repository,
     Models,
     Profiles,
-    DiscoverProfile {
+    /// Ask `model`'s service for its models (which checks its address
+    /// and key); answered as `ServiceModels`.
+    ListModels {
         key: String,
-        profile: Box<olo_coder_core::profiles::ModelProfile>,
+        model: Box<olo_coder_core::ModelConfig>,
     },
     /// A key pasted for `model`'s service, to keep in Passwords
     /// (`models::keep_key`); answered as `SettingsSaved`.
@@ -433,7 +436,7 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                                 Ok(Action::Quit) | Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(()),
                                 Ok(Action::SubmitSettings { key, .. }) => callback(Update::SettingsSaved { key, result: Err(error) }),
                                 Ok(Action::SettingsRequest { key, .. }) => callback(Update::SettingsResult { key, result: Err(error) }),
-                                Ok(Action::DiscoverProfile { key, profile }) => callback(Update::ProfileModels { key, profile, models: Err(error) }),
+                                Ok(Action::ListModels { key, .. }) => callback(Update::ServiceModels { key, models: Err(error) }),
                                 // (Passwords, not the service: kept all the same.)
                                 Ok(Action::KeepKey { key, model, secret }) => {
                                     let callback = callback.clone();
@@ -505,13 +508,14 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                                 std::thread::spawn(move || callback(Update::SettingsSaved { key, result: crate::models::keep_key(&model, &secret) }));
                                 return Ok(());
                             }
-                            Action::DiscoverProfile { key, profile } => {
+                            Action::ListModels { key, model } => {
                                 let dir = dir.clone();
                                 let callback = callback.clone();
                                 std::thread::spawn(move || {
-                                    let command = Command::ModelProfiles { action: "discover".into(), profile: Some((*profile).clone()), id: None, session: None, role: String::new() };
-                                    let models = rpc::call(&dir, &command).and_then(|v| Ok(serde_json::from_value(v["models"].clone())?)).map_err(|e| e.to_string());
-                                    callback(Update::ProfileModels { key, profile, models });
+                                    let profile = olo_coder_core::profiles::ModelProfile { id: olo_coder_core::id(), name: "draft".into(), model: *model };
+                                    let command = Command::ModelProfiles { action: "discover".into(), profile: Some(profile), id: None, session: None, role: String::new() };
+                                    let models = rpc::call(&dir, &command).and_then(|v| Ok(serde_json::from_value(v["listed"].clone())?)).map_err(|e| format!("{e:#}"));
+                                    callback(Update::ServiceModels { key, models });
                                 });
                                 return Ok(());
                             }
@@ -722,7 +726,7 @@ impl View {
     pub fn apply(&mut self, u: Update) {
         match u {
             Update::Peers(peers) => self.peers = peers,
-            Update::ProfileModels { .. } | Update::SettingsResult { .. } | Update::SettingsSaved { .. } => {}
+            Update::ServiceModels { .. } | Update::SettingsResult { .. } | Update::SettingsSaved { .. } => {}
             Update::Profiles(profiles) => self.profiles = profiles,
             Update::Catalog { rows, next_offset } => {
                 self.catalog = Arc::new(rows);
@@ -820,30 +824,29 @@ impl View {
     /// The status line under the window, which has the model in its own
     /// menu: what's in context, what's been spent.
     pub fn usage_line(&self) -> String {
-        let line = self.status();
-        match self.session.as_ref() {
-            Some(s) => line.split_once(" · ").filter(|(model, _)| model.starts_with(s.config.model.model.as_str())).map_or(line.clone(), |(_, rest)| rest.to_owned()),
-            None => line,
+        let Some(s) = self.session.as_ref() else { return "Connecting…".into() };
+        let window = s.config.model.context_window;
+        let short = crate::feed::short;
+        let mut parts = vec![
+            if window > 0 { format!("{} of {} in context", short(s.usage.context), short(window)) } else { format!("{} in context", short(s.usage.context)) },
+            format!("{} tokens used", short(s.usage.input + s.usage.output)),
+        ];
+        if s.compactions > 0 {
+            parts.push(format!("{} checkpoints", s.compactions));
         }
+        if s.spec_mode {
+            parts.push("Spec mode".into());
+        }
+        parts.join(" · ")
     }
+
+    /// The model by its name (as the window's menu says it), how hard it
+    /// thinks, and the usage line.
     pub fn status(&self) -> String {
-        self.session.as_ref().map_or_else(
-            || "Connecting…".into(),
-            |s| {
-                let window = s.config.model.context_window;
-                let short = crate::feed::short;
-                let context = if window > 0 { format!("{} of {} in context", short(s.usage.context), short(window)) } else { format!("{} in context", short(s.usage.context)) };
-                format!(
-                    "{}{} · {} · {} tokens used{}{}",
-                    s.config.model.model,
-                    if s.config.model.effort.is_empty() { String::new() } else { format!(" ({})", s.config.model.effort) },
-                    context,
-                    short(s.usage.input + s.usage.output),
-                    if s.compactions > 0 { format!(" · {} checkpoints", s.compactions) } else { String::new() },
-                    if s.spec_mode { " · Spec mode" } else { "" },
-                )
-            },
-        )
+        let Some(s) = self.session.as_ref() else { return "Connecting…".into() };
+        let m = &s.config.model;
+        let effort = if m.effort.is_empty() { String::new() } else { format!(" ({})", crate::models::effort_name(&m.effort).to_lowercase()) };
+        format!("{}{effort} · {}", crate::models::model_name(m, &self.models, &m.model), self.usage_line())
     }
 }
 
