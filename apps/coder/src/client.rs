@@ -52,6 +52,8 @@ pub enum Update {
     Event(Event),
     Notice(String),
     Connection(Option<String>),
+    /// The folder to start in isn't there (it waits for another).
+    Missing(PathBuf),
     Opened(String),
     Rendered(Arc<crate::rich::Text>),
     /// Open or close an action's output in the conversation.
@@ -410,7 +412,11 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                 let mut last_error = String::new();
                 let mut attempt = 0u32;
                 let mut s: Session = loop {
+                    // A folder that isn't there won't come back by trying
+                    // again: it waits for another to be chosen.
+                    let missing = wanted.is_none() && !workspace.is_dir();
                     let opened = (|| -> Result<Session> {
+                        anyhow::ensure!(!missing, "{} isn’t there", olo_xdg::display_path(&workspace));
                         super::ensure_service(&dir)?;
                         Ok(serde_json::from_value(rpc::call(
                             &dir,
@@ -428,11 +434,16 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                         Err(error) => {
                             let error = format!("{error:#}");
                             if error != last_error {
-                                callback(Update::Connection(Some(format!("Waiting for the session: {error}. Retrying automatically; /open ID or /new can choose another session."))));
+                                callback(if missing {
+                                    Update::Missing(workspace.clone())
+                                } else {
+                                    Update::Connection(Some(format!("Waiting for the session: {error}. Retrying automatically; /open ID or /new can choose another session.")))
+                                });
                                 last_error = error.clone();
                             }
                             attempt = attempt.saturating_add(1);
-                            match rx.recv_timeout(std::time::Duration::from_secs(1u64 << attempt.min(3))) {
+                            let next = if missing { rx.recv().map_err(|_| mpsc::RecvTimeoutError::Disconnected) } else { rx.recv_timeout(std::time::Duration::from_secs(1u64 << attempt.min(3))) };
+                            match next {
                                 Ok(Action::Quit) | Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(()),
                                 Ok(Action::SubmitSettings { key, .. }) => callback(Update::SettingsSaved { key, result: Err(error) }),
                                 Ok(Action::SettingsRequest { key, .. }) => callback(Update::SettingsResult { key, result: Err(error) }),
@@ -454,7 +465,7 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                                     } else if text.trim() == "/new" {
                                         wanted = None;
                                     } else if let Some(path) = text.trim().strip_prefix("/new ") {
-                                        workspace = PathBuf::from(path.trim());
+                                        workspace = folder(path, &workspace);
                                         wanted = None;
                                     } else {
                                         callback(Update::InputResult { session: wanted.clone().unwrap_or_default(), text, error: Some(error) });
@@ -591,7 +602,8 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                             }
                             Input::New(path) => {
                                 inspecting = Arc::new(std::sync::atomic::AtomicBool::new(false));
-                                let workspace = if path.is_empty() { s.workspace.clone() } else { PathBuf::from(path) };
+                                let workspace = if path.is_empty() { s.workspace.clone() } else { folder(&path, &s.workspace) };
+                                anyhow::ensure!(workspace.is_dir(), "{} isn’t a folder", olo_xdg::display_path(&workspace));
                                 s = serde_json::from_value(rpc::call(&dir, &Command::Create { workspace, config: None })?)?;
                                 callback(Update::Opened(s.id.clone()));
                                 following = follow(&dir, &s.id, Default::default(), callback.clone(), tx.clone())?;
@@ -678,6 +690,11 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
         .expect("start client worker");
     handle
 }
+/// The folder `/new FOLDER` means: `~` is home, and a relative one is
+/// from the folder it's in now.
+fn folder(typed: &str, from: &Path) -> PathBuf {
+    from.join(olo_xdg::typed_path(typed.trim()))
+}
 pub struct View {
     pub peers: Vec<Peer>,
     pub session: Option<Session>,
@@ -692,6 +709,8 @@ pub struct View {
     pub notice: String,
     pub compaction_progress: Option<String>,
     pub connection: Option<String>,
+    /// The folder it was to start in isn't there.
+    pub missing: Option<PathBuf>,
     pub id: String,
     /// The model is writing its reply, or thinking, now.
     pub writing: bool,
@@ -715,6 +734,7 @@ impl Default for View {
             notice: String::new(),
             compaction_progress: None,
             connection: None,
+            missing: None,
             id: String::new(),
             writing: false,
             thinking: false,
@@ -733,7 +753,14 @@ impl View {
                 self.next_offset = next_offset;
             }
             Update::InputResult { .. } => {}
-            Update::Connection(status) => self.connection = status,
+            Update::Connection(status) => {
+                self.connection = status;
+                self.missing = None;
+            }
+            Update::Missing(path) => {
+                self.missing = Some(path);
+                self.connection = None;
+            }
             Update::Rendered(doc) => self.rich = doc,
             Update::Toggle(id) => self.feed.toggle(id),
             Update::OpenAll(open) => self.feed.open_all(open),
@@ -753,6 +780,7 @@ impl View {
                 self.notice.clear();
                 self.compaction_progress = None;
                 self.connection = None;
+                self.missing = None;
                 self.rich = Arc::default();
                 self.repository = None;
             }
@@ -802,6 +830,9 @@ impl View {
     }
     /// What the session is doing, in a few words.
     pub fn activity(&self) -> String {
+        if self.missing.is_some() {
+            return "Choose a folder".into();
+        }
         let Some(s) = &self.session else { return self.connection.clone().unwrap_or_else(|| "Connecting…".into()) };
         if let Some(c) = &self.connection {
             return c.clone();
@@ -824,6 +855,9 @@ impl View {
     /// The status line under the window, which has the model in its own
     /// menu: what's in context, what's been spent.
     pub fn usage_line(&self) -> String {
+        if let Some(path) = &self.missing {
+            return format!("{} isn’t there: New Session in Folder… (/new FOLDER) starts one in another.", olo_xdg::display_path(path));
+        }
         let Some(s) = self.session.as_ref() else { return "Connecting…".into() };
         let window = s.config.model.context_window;
         let short = crate::feed::short;
@@ -843,7 +877,7 @@ impl View {
     /// The model by its name (as the window's menu says it), how hard it
     /// thinks, and the usage line.
     pub fn status(&self) -> String {
-        let Some(s) = self.session.as_ref() else { return "Connecting…".into() };
+        let Some(s) = self.session.as_ref() else { return self.usage_line() };
         let m = &s.config.model;
         let effort = if m.effort.is_empty() { String::new() } else { format!(" ({})", crate::models::effort_name(&m.effort).to_lowercase()) };
         format!("{}{effort} · {}", crate::models::model_name(m, &self.models, &m.model), self.usage_line())
@@ -1057,6 +1091,36 @@ mod tests {
         assert!(view.models.is_empty());
         view.apply(Update::Models { session: session.id, model: Box::new(session.config.model), ids: listed(&["fresh"]) });
         assert_eq!(view.models, listed(&["fresh"]));
+    }
+    #[test]
+    fn a_folder_that_is_not_there_waits_for_another_without_retrying() {
+        let missing = PathBuf::from("/var/tmp/olo-coder-test-not-there/ws");
+        let (tx, rx) = mpsc::channel();
+        let handle = start("/var/tmp/olo-coder-test-not-there/data".into(), missing.clone(), None, move |u| {
+            let _ = tx.send(u);
+        });
+        // (The welcome, rendered, comes as well.)
+        let next = |wait| loop {
+            match rx.recv_timeout(std::time::Duration::from_millis(wait)) {
+                Ok(Update::Rendered(_)) => continue,
+                other => break other.ok(),
+            }
+        };
+        assert!(matches!(next(5000), Some(Update::Connection(_))));
+        let Some(Update::Missing(path)) = next(5000) else { panic!("not Missing") };
+        assert_eq!(path, missing);
+        // Asked to wait, it says so once, not on a retry timer.
+        assert!(next(2500).is_none());
+        let mut view = View::default();
+        view.apply(Update::Missing(path));
+        assert_eq!(view.activity(), "Choose a folder");
+        assert!(view.status().starts_with("/var/tmp/olo-coder-test-not-there/ws isn’t there"), "{}", view.status());
+        view.apply(Update::Connection(None));
+        assert!(view.missing.is_none());
+        let _ = handle.tx.send(Action::Quit);
+        // Another, as /new names it: relative to where it is.
+        assert_eq!(folder(" ws2 ", Path::new("/var/tmp/a")), Path::new("/var/tmp/a/ws2"));
+        assert_eq!(folder("/srv/x", Path::new("/var/tmp/a")), Path::new("/srv/x"));
     }
     fn listed(ids: &[&str]) -> Vec<olo_coder_core::providers::Listed> {
         ids.iter().map(|id| olo_coder_core::providers::Listed { id: (*id).into(), name: (*id).into(), efforts: vec![], context_window: None }).collect()

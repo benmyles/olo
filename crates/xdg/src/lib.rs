@@ -429,6 +429,17 @@ pub fn display_path(p: &Path) -> String {
     }
 }
 
+/// A path as a person types it: `~` (and `~/…`) is the home folder
+/// (the other way from [`display_path`]).
+pub fn typed_path(typed: &str) -> PathBuf {
+    let home = || std::env::var_os("HOME").map(PathBuf::from);
+    match typed.strip_prefix('~') {
+        Some("") => home().unwrap_or_else(|| typed.into()),
+        Some(rest) if rest.starts_with('/') => home().map_or_else(|| typed.into(), |h| h.join(rest.trim_start_matches('/'))),
+        _ => typed.into(),
+    }
+}
+
 /// A user folder from `user-dirs.dirs` (`"PICTURES"`, `"DESKTOP"`, ...), if
 /// it is set and exists; otherwise None (callers fall back to home).
 pub fn user_dir(name: &str) -> Option<PathBuf> {
@@ -533,6 +544,16 @@ mod user_dir_tests {
         let _ = std::fs::remove_file(&out);
         let ours = std::env::current_exe().unwrap().parent().unwrap().to_owned();
         assert_eq!(std::env::split_paths(&path).next(), Some(ours));
+    }
+
+    #[test]
+    fn typed_paths_are_the_other_way_from_display_paths() {
+        let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else { return };
+        assert_eq!(typed_path("~"), home);
+        assert_eq!(typed_path("~/src/olo"), home.join("src/olo"));
+        assert_eq!(typed_path(&display_path(&home.join("a b"))), home.join("a b"));
+        assert_eq!(typed_path("~someone/x"), PathBuf::from("~someone/x"));
+        assert_eq!(typed_path("/srv"), PathBuf::from("/srv"));
     }
 
     #[test]

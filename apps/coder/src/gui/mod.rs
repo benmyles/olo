@@ -198,6 +198,9 @@ impl Coder {
         }
         let action = if self.running() && !trimmed.starts_with('/') { Action::Steer(text, self.delivery) } else { Action::Steer(text, Delivery::AfterTool) };
         let _ = self.client.tx.send(action);
+        // (What went wrong before is old news: the status line says what
+        // this does, or the session's usage again.)
+        self.said = None;
         self.composer.update(cx, |f, cx| f.set_text("", cx));
         self.transcript.update(cx, |t, cx| t.to_end(cx));
     }
@@ -212,6 +215,7 @@ impl Coder {
             }
             Update::Opened(id) if id != &self.view.id => {
                 self.renaming = None;
+                self.said = None;
                 let draft = self.composer.read(cx).text().to_owned();
                 if !self.view.id.is_empty() && !draft.is_empty() {
                     self.drafts.insert(self.view.id.clone(), draft);
@@ -257,7 +261,7 @@ impl Coder {
                 return;
             }
             Update::Notice(t) if t.starts_with("Error: ") => self.said = Some(t.trim_start_matches("Error: ").to_owned()),
-            Update::Profiles(_) | Update::Peers(_) | Update::Catalog { .. } | Update::Models { .. } | Update::Connection(_) => {}
+            Update::Profiles(_) | Update::Peers(_) | Update::Catalog { .. } | Update::Models { .. } | Update::Connection(_) | Update::Missing(_) => {}
             _ => {}
         }
         let repository = matches!(&u, Update::Repository { session, .. } if session == &self.view.id);
@@ -454,7 +458,9 @@ impl Coder {
             "new" => self.submit("/new"),
             "new_in" => {
                 let me = cx.messenger();
-                olo_kit::file_panel::show("New Session in Folder", olo_kit::file_panel::FilePanel::folder(self.workspace.clone()), move |answer| {
+                // (From the nearest folder that's there.)
+                let from = self.workspace.ancestors().find(|p| p.is_dir()).map_or_else(|| self.workspace.clone(), Into::into);
+                olo_kit::file_panel::show("New Session in Folder", olo_kit::file_panel::FilePanel::folder(from), move |answer| {
                     if let olo_kit::file_panel::PanelResult::Chosen(path) = answer.result {
                         me.send(Msg::Run(format!("/new {}", path.display())));
                     }
@@ -803,13 +809,18 @@ impl Coder {
         let s = self.session();
         let title = s.map(|s| s.title.clone()).unwrap_or_else(|| "Olo Coder".into());
         let branch = self.view.repository.as_ref().and_then(|r| r["branch"].as_str()).map(|b| format!(" · {b}")).unwrap_or_default();
-        let place = s.map(|s| format!("{}{branch}", tilde(&s.workspace))).unwrap_or_default();
+        let place = match (s, &self.view.missing) {
+            (Some(s), _) => format!("{}{branch}", tilde(&s.workspace)),
+            (None, Some(missing)) => format!("{} isn’t there", tilde(missing)),
+            (None, None) => String::new(),
+        };
         let running = self.running();
         let activity = self.view.activity();
         // 1: waiting for the person; 2: stopped by an error.
         let tone: u8 = match s.map(|s| &s.status) {
             Some(Status::Approval | Status::Paused | Status::Interrupted) => 1,
             Some(Status::Failed) => 2,
+            None if self.view.missing.is_some() => 1,
             _ => 0,
         };
         // Waiting for the person isn't working: the mark says so, still.
@@ -840,6 +851,8 @@ impl Coder {
             None
         } else if resumable {
             Some(Button::new("Resume").on_click(cx.msg(Msg::Resume)))
+        } else if s.is_none() && self.view.missing.is_some() {
+            Some(Button::new("Choose a Folder…").default(true).on_click(cx.msg(Msg::Run("new_in".into()))))
         } else {
             None
         };

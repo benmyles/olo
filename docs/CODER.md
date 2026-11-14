@@ -41,7 +41,7 @@ Both composers accept these commands:
 
 | Command | Effect |
 | --- | --- |
-| `/new [directory]`, `/sessions [query]`, `/open ID` | Create, search, attach |
+| `/new [directory]`, `/sessions [query]`, `/open ID` | Create (in `~/…`, or a folder relative to this one), search, attach |
 | `/pin [on\|off]`, `/rename TITLE`, `/tags TAG…` | Organize a session |
 | `/archive`, `/restore` | Hide finished work; restore it before resuming |
 | `/interrupt TEXT`, `/after-tool TEXT`, `/queue TEXT` | Choose an explicit delivery boundary |
@@ -203,6 +203,9 @@ current workspace. Compact windows use a panel selector to keep every operation
 available. Four windows fit the minimum 1280×800-point screen beside Deskbar.
 Windows, attached sessions, unsent drafts, selected panels and delivery modes
 survive an in-place upgrade. Switching a view retains its draft for each session.
+Started in a folder that isn't there (moved, renamed, a drive not mounted),
+Coder says so and waits, with no retrying, for another: Choose a Folder… in
+the window's header (or New Session in Folder…, `/new FOLDER`, `/open ID`).
 
 In the TUI, **Ctrl+P** opens the searchable session picker; **Alt+P** pins the
 selected row. **Ctrl+T** opens a session in another conversation tile (up to four),

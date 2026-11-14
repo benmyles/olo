@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-13
 
+### Coder: a folder that isn't there
+
+*23:45* — Started in a workspace that's gone (moved, renamed, a drive not mounted), Coder no longer retries forever with 'Waiting for the session: No such file or directory'. It says the folder isn't there, with a warning mark and a default Choose a Folder… button that opens the folder panel at the nearest folder that is there. /new also takes ~ and folders relative to the session's, and the status line lets go of an old error once something works. Light mode, 1.5×.
+
+![Coder: a folder that isn't there](2026-11-13/234544-coder-a-folder-that-isn-t-there.png)
+
 ### Coder: rename a session in place
 
 *23:09* — Double-click the session's name (or Session ▸ Rename) and it becomes a field where it was, its text not moving; Return or a click elsewhere keeps the name, Escape keeps the old one. At 2x.
