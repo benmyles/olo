@@ -101,3 +101,10 @@ pub(crate) fn frame_phases() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ON.get_or_init(|| std::env::var_os("OLO_FRAME_PHASES").is_some())
 }
+
+/// With `OLO_FRAME_PHASES=batches`, each frame's draws in order too
+/// (`quad14 shadow1 mono133 …`): what breaks a run of one kind.
+pub(crate) fn frame_batches() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("OLO_FRAME_PHASES").is_some_and(|v| v == "batches"))
+}

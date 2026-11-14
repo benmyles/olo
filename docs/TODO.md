@@ -858,8 +858,18 @@ something nobody here has is in "Blocked", with what it waits for.
          bar's line; and at 2× a column's row scrolled half under the
          menu bar's titles (as the Viewer's text above: the review
          doesn't know a row cut by its scroller).
-       - Disk Usage is still 35 draws for 520 things (its chart's
-         sectors and labels, over one another).
+       - *Disk Usage's chart, done 2026-11-14.* Its hairlines between
+         slices and the edges round each ring were drawn in turn, line
+         then edge, and each touches the next, so every one was a draw
+         of its own: a frame of the chart was 21 draws, the window 26.
+         Now all the lines, then all the edges (one colour: the order
+         makes no difference but rounding where two anti-aliased
+         hairlines cross, 11 to 20 pixels a window 1/255 apart in one
+         channel). A frame of the chart is 7 draws, the window 11; a
+         400-move sweep round the chart (release, perf stat, three
+         rounds) 25.4–27.5 → 22.3–22.4 M instructions (cycles too noisy
+         to tell, 67–84 M for both). `OLO_FRAME_PHASES=batches` lists
+         a frame's draws in order, which is how it showed.
        - *Notifications' cards, done 2026-11-13.* They were laid out
          anew for every width with everything made again: every note
          copied out of the model at each step (`lay_out`), again for

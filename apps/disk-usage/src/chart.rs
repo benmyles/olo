@@ -145,7 +145,9 @@ pub fn paint(gx: &mut Painter, g: &Geometry, slices: &[Slice], hover: Option<usi
         }
     });
     // Hairlines between slices and round each ring's outer edge, a device
-    // pixel wide (one at 12 o'clock is straight up).
+    // pixel wide (one at 12 o'clock is straight up). All the lines, then
+    // all the edges: each line touches an edge, so drawn in turn they were
+    // a draw each, and one colour comes out the same in either order.
     let w = style::hairline(gx);
     gx.paint_layer(bounds, |gx| {
         for s in slices {
@@ -155,6 +157,9 @@ pub fn paint(gx: &mut Painter, g: &Geometry, slices: &[Slice], hover: Option<usi
             if (s.end - s.start) * r1 >= 6.0 {
                 gx.paint_segment(at(g, r0, s.start), at(g, r1, s.start), w, false, line);
             }
+        }
+        for s in slices {
+            let r1 = g.inner(s.ring) + g.ring;
             if (s.end - s.start) * r1 >= 2.0 {
                 gx.paint_sector(g.center, px(r1) - w / 2.0, px(r1) + w / 2.0, s.start, s.end - s.start, line);
             }

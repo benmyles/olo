@@ -319,7 +319,9 @@ message):
   the window it was, how many of the window's drawings, sprites and
   quads it has, how many draws it was ("batches": things of a kind at
   one order are one; ten is usual, a hundred means a drawing whose
-  orders pile up), and how long the looper worked on what it shows;
+  orders pile up; `OLO_FRAME_PHASES=batches` lists them in order,
+  `quad14 shadow1 mono133 …`, so what breaks a run shows), and how
+  long the looper worked on what it shows;
   and the lines it shaped, glyphs it drew and lines whose glyphs it
   looked up afresh (the rest painted from what each line found last
   time, moved).

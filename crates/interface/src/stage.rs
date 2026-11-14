@@ -1120,6 +1120,25 @@ impl Stage {
                 // are one, so a frame of rows drawn row by row, each
                 // above the last, is hundreds where it could be ten.)
                 let batches = scene.batches().count();
+                if crate::stats::frame_batches() {
+                    use crate::scene::PrimitiveBatch as B;
+                    let kinds: Vec<String> = scene
+                        .batches()
+                        .map(|b| match b {
+                            B::Shadows(s) => format!("shadow{}", s.len()),
+                            B::Quads(s) => format!("quad{}", s.len()),
+                            B::Paths(s) => format!("path{}", s.len()),
+                            B::Underlines(s) => format!("ul{}", s.len()),
+                            B::Segments(s) => format!("seg{}", s.len()),
+                            B::Sectors(s) => format!("sec{}", s.len()),
+                            B::MonochromeSprites { sprites, .. } => format!("mono{}", sprites.len()),
+                            B::PolychromeSprites { sprites, .. } => format!("poly{}", sprites.len()),
+                            B::ImageTriangles { triangles, .. } => format!("img{}", triangles.len()),
+                            B::Surfaces(s) => format!("surf{}", s.len()),
+                        })
+                        .collect();
+                    eprintln!("draws: {}", kinds.join(" "));
+                }
                 eprintln!(
                     "frame {:.3} ms: begin {:.3}, assemble {:.3}, draw {:.3}, complete {:.3}; {part}; {} of {} items, {} sprites, {} quads, {batches} batches; looper {:.3} ms",
                     ms(started.elapsed()),
