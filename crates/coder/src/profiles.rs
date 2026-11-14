@@ -55,12 +55,11 @@ impl Engine {
                     None => provider::Client::new(),
                 }?;
                 let found = client.models(&draft.model).await?;
-                let entries = found["data"].as_array().or_else(|| found["models"].as_array()).or_else(|| found.as_array());
-                let mut models = entries.into_iter().flatten().filter_map(|r| r["id"].as_str().or(r["slug"].as_str()).or(r.as_str())).map(str::to_owned).collect::<Vec<_>>();
-                models.sort();
-                models.dedup();
-                ensure!(!models.is_empty(), "This endpoint returned no model catalog. Check its API root and credentials.");
-                Ok(json!({"draft":draft,"models":models}))
+                // In the service's order, by name, without those it hides.
+                let listed = crate::providers::listed(&draft.model, &found);
+                let models = listed.iter().map(|m| m.id.clone()).collect::<Vec<_>>();
+                ensure!(!models.is_empty(), "This service listed no models: check its address and key.");
+                Ok(json!({"draft":draft,"models":models,"listed":listed}))
             }
             "apply" => {
                 let profile = self.model_profiles.lock().unwrap().iter().find(|p| Some(&p.id) == id.as_ref()).cloned().context("profile not found")?;

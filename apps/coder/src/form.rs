@@ -124,7 +124,7 @@ impl Submission {
                     }
                 } else {
                     let recipient = items.iter().find(|i| i["choice"].as_str() == Some(&v[0])).expect("selected recipient");
-                    serde_json::json!({"op":"send_message","session":session,"target":recipient["id"],"peer":peer,"text":v[1],"delivery":v[2],"wake":false})
+                    serde_json::json!({"op":"send_message","session":session,"target":recipient["id"],"peer":peer,"text":v[1],"delivery":choice_value(&v[2]),"wake":false})
                 }
             }
             Self::Password { session, phase, items, .. } => {
@@ -161,7 +161,7 @@ impl Submission {
                 _ => {
                     let recipient = recipients.iter().find(|(label, _)| label == &v[0]).map(|(_, id)| id.as_str()).unwrap_or(&v[0]);
                     let (peer, target) = recipient.split_once('/').map(|(p, t)| (Some(p), t)).unwrap_or((None, recipient));
-                    serde_json::json!({"op":"send_message","session":session,"target":target,"peer":peer,"text":v[1],"delivery":v.get(2).map(String::as_str).unwrap_or("after_tool"),"wake":false})
+                    serde_json::json!({"op":"send_message","session":session,"target":target,"peer":peer,"text":v[1],"delivery":v.get(2).map(|d| choice_value(d)).unwrap_or("after_tool"),"wake":false})
                 }
             },
             Self::Repository { operation, session, head } => {
@@ -184,7 +184,7 @@ impl Submission {
                     arguments["model"] = v[2].clone().into();
                 }
                 if v[3] != "Use model settings" && !v[3].is_empty() {
-                    arguments["effort"] = if v[3] == "Provider default" { "" } else { &v[3] }.into();
+                    arguments["effort"] = crate::models::effort_of(&v[3]).into();
                 }
                 serde_json::json!({"op":"tool","session":session,"name":"spawn_agent","arguments":arguments})
             }
@@ -217,7 +217,7 @@ impl Submission {
                 serde_json::json!({"op":"supervisor","session":session,"config":config})
             }
             Self::Integration { session, action, keys } => {
-                let arguments: serde_json::Map<String, serde_json::Value> = keys.iter().cloned().zip(v.into_iter().map(Into::into)).collect();
+                let arguments: serde_json::Map<String, serde_json::Value> = keys.iter().cloned().zip(v.iter().map(|v| choice_value(v).into())).collect();
                 serde_json::json!({"op":"integrations","session":session,"action":action,"arguments":arguments})
             }
             Self::Goal { session } => serde_json::json!({"op":"goal","session":session,"objective":v[0].trim()}),
@@ -226,6 +226,28 @@ impl Submission {
             Self::Guidance { session, .. } => serde_json::json!({"op":"configure_fields","session":session,"values":{"approval_guidance":v[0]}}),
         };
         format!("/api {command}")
+    }
+}
+/// The value a dialog's choice stands for (its label, said in words),
+/// else what was typed.
+pub(crate) fn choice_value(label: &str) -> &str {
+    match label {
+        // Manage Connection.
+        "Test It" => "test",
+        "See What It Offers" => "inspect",
+        "Sign In" => "login",
+        "Sign Out" => "logout",
+        "Remove It" => "remove",
+        // Add MCP Server.
+        "Nothing" => "none",
+        "A token in an environment variable" => "token",
+        "A field in Passwords" => "password",
+        "Signing in (OAuth)" => "oauth",
+        // Message Another Session.
+        "After its current step" => "after_tool",
+        "When it finishes" => "queue",
+        "Interrupt it now" => "interrupt",
+        other => other,
     }
 }
 pub(crate) fn next_choices(submission: &mut Submission, result: serde_json::Value) -> anyhow::Result<(Vec<Field>, String, String)> {
@@ -239,7 +261,7 @@ pub(crate) fn next_choices(submission: &mut Submission, result: serde_json::Valu
         let fields = vec![
             Field::new("Recipient:", "").choices(found.iter().map(|r| r["choice"].as_str().unwrap().to_owned())),
             Field::new("Message:", "").multiline(6),
-            Field::new("Delivery:", "after_tool").choices(["after_tool", "queue", "interrupt"]),
+            Field::new("Delivery:", "After its current step").choices(["After its current step", "When it finishes", "Interrupt it now"]),
         ];
         *items = found;
         return Ok((fields, "Send".into(), "Choose the recipient and when to deliver the message. Sending does not wake a paused session.".into()));
@@ -288,7 +310,7 @@ mod tests {
         let request = decode(&s, &["Task", "", "Fast", "Use model settings"]);
         assert_eq!(request["arguments"]["model_config"], json!(model));
         assert!(request["arguments"].get("effort").is_none());
-        let inherited = decode(&s, &["Task", "", "Inherit primary", "Provider default"]);
+        let inherited = decode(&s, &["Task", "", "Inherit primary", "Model’s default"]);
         assert!(inherited["arguments"].get("model_config").is_none());
         assert_eq!(inherited["arguments"]["effort"], "");
     }

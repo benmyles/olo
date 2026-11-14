@@ -201,6 +201,7 @@ pub fn keep_client(client: &olo_diskbackup::oauth::Client) -> Result<(), String>
         title: CLIENT_TITLE.into(),
         secret: serde_json::to_string(client).unwrap_or_default(),
         note: "DiskBackup's own sign-in to Google Drive (a Desktop app OAuth client in your Google Cloud project). On another computer, DiskBackup signs in with it, without making another.".into(),
+        replace: false,
     };
     match passwords(&request)? {
         olo_keychain::Response::Saved { .. } => Ok(()),

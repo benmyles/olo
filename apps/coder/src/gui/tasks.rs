@@ -4,6 +4,7 @@
 //! task's mark moves it on, its menu does the rest, a field adds one).
 //! Each edit is one `edit_todos` command, applied to the list as it is
 //! then; the agent is told what changed at its next step.
+use super::METER;
 use super::{Coder, Msg};
 use crate::form::{Field, Submission};
 use olo_coder_core::{StatusReport, Todo};
@@ -200,7 +201,7 @@ impl Coder {
         }
         if !todos.is_empty() {
             let done = todos.iter().filter(|t| t.status == "done").count();
-            col = col.child(StatusBar::new(done as f32 / todos.len() as f32).label("Tasks").trailing(format!("{done} of {} done", todos.len())));
+            col = col.child(StatusBar::new(done as f32 / todos.len() as f32).bar_height(METER).label("Tasks").trailing(format!("{done} of {} done", todos.len())));
         }
         let hits = self.task_hits.clone();
         let (cell_rows, key_rows, press_rows) = (rows.clone(), rows.clone(), rows.clone());

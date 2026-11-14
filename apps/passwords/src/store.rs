@@ -662,10 +662,31 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
     let b64 = base64::engine::general_purpose::STANDARD;
     match request {
         // An Olo program's own secret (DiskBackup's key): a Password item.
-        Request::KeepSecret { title, secret, note } => {
-            let kept = candidates.iter().filter_map(|(v, id)| c.get(v, id).ok()).any(|item| login_fields(&item).1.is_some_and(|f| f.value == *secret));
-            if kept {
+        Request::KeepSecret { title, secret, note, replace } => {
+            let items: Vec<Item> = candidates.iter().filter_map(|(v, id)| c.get(v, id).ok()).collect();
+            if items.iter().any(|item| login_fields(item).1.is_some_and(|f| f.value == *secret)) {
                 return Response::Saved { title: title.clone(), updated: false };
+            }
+            // The program's one secret for it, changed: that item takes it.
+            if *replace && let Some(mut item) = items.into_iter().next() {
+                let field = match login_fields(&item).1.map(|f| f.id.clone()) {
+                    Some(id) => item.field_mut(&id),
+                    None => {
+                        item.fields.push(ItemField::new("password", "password", ItemFieldType::Concealed, ""));
+                        item.fields.last_mut()
+                    }
+                };
+                if let Some(f) = field {
+                    f.value = secret.clone();
+                }
+                item.notes = note.clone();
+                return match c.put(&item) {
+                    Ok(saved) => {
+                        reply(Reply::Saved { item: Box::new(saved), created: false, tag: None });
+                        Response::Saved { title: title.clone(), updated: true }
+                    }
+                    Err(e) => error(&e),
+                };
             }
             let mut params = ItemCreateParams::new(ItemCategory::Password, vault, title.clone());
             params.fields = vec![ItemField::new("password", "password", ItemFieldType::Concealed, secret)];
@@ -979,7 +1000,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let mut v = Vault::open_at(dir.join("passwords.vault"), Some(&dir.join("key"))).unwrap();
         let vault = v.data.vaults[0].id.clone();
-        let keep = Request::KeepSecret { title: "DiskBackup Key".into(), secret: "abc123".into(), note: "the key".into() };
+        let keep = Request::KeepSecret { title: "DiskBackup Key".into(), secret: "abc123".into(), note: "the key".into(), replace: false };
         assert!(matches!(super::keychain(&mut v, &keep, &[], &vault, &|_| {}), Response::Saved { .. }));
         let ids: Vec<(String, String)> = v.items(&vault).into_iter().filter(|i| i.title == "DiskBackup Key").map(|i| (vault.clone(), i.id)).collect();
         assert_eq!(ids.len(), 1);
@@ -991,6 +1012,13 @@ mod tests {
         let r = super::keychain(&mut v, &Request::Secrets { title: "DiskBackup Key".into() }, &ids, &vault, &|_| {});
         let Response::Secrets { values } = &r else { panic!("not secrets") };
         assert_eq!(values, &["abc123"]);
+        // Changed, with `replace`: the same item takes it (still one).
+        let changed = Request::KeepSecret { title: "DiskBackup Key".into(), secret: "def456".into(), note: "the new key".into(), replace: true };
+        assert!(matches!(super::keychain(&mut v, &changed, &ids, &vault, &|_| {}), Response::Saved { updated: true, .. }));
+        assert_eq!(v.items(&vault).iter().filter(|i| i.title == "DiskBackup Key").count(), 1);
+        let r = super::keychain(&mut v, &Request::Secrets { title: "DiskBackup Key".into() }, &ids, &vault, &|_| {});
+        let Response::Secrets { values } = &r else { panic!("not secrets") };
+        assert_eq!(values, &["def456"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

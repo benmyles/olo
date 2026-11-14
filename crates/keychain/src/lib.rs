@@ -65,9 +65,18 @@ pub enum Request {
     Search { query: String },
     /// Keep an Olo program's own secret (DiskBackup's key) as a Password
     /// item titled `title`, with `note` saying what it is; one with that
-    /// title and secret already there is left as it is. Answered once
-    /// unlocked: `Saved`.
-    KeepSecret { title: String, secret: String, note: String },
+    /// title and secret already there is left as it is. With `replace`,
+    /// an item with that title takes the new secret (the program's one
+    /// key for something, changed: Coder's for a model service) rather
+    /// than another item being made beside it. Answered once unlocked:
+    /// `Saved`.
+    KeepSecret {
+        title: String,
+        secret: String,
+        note: String,
+        #[serde(default)]
+        replace: bool,
+    },
     /// The secrets of the Password items titled `title` (an Olo program's
     /// own, kept by `KeepSecret`), once unlocked: `Secrets`.
     Secrets { title: String },

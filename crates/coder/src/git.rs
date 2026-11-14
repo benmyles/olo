@@ -150,7 +150,7 @@ pub fn run(root: &Path, call: &ToolCall, cancel: Arc<AtomicBool>) -> Result<Valu
             let mut branches = Vec::new();
             for r in repo.references()?.local_branches()? {
                 let r = r?;
-                branches.push(json!({"name":r.name().shorten().to_str_lossy(),"target":format!("{:?}",r.target())}));
+                branches.push(json!({"name":r.name().shorten().to_str_lossy(),"target":r.target().try_id().map(|id|id.to_string())}));
             }
             Ok(json!({"branches":branches}))
         }

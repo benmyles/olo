@@ -46,7 +46,7 @@ pub enum Update {
     Models {
         session: String,
         model: Box<olo_coder_core::ModelConfig>,
-        ids: Vec<String>,
+        ids: Vec<olo_coder_core::providers::Listed>,
     },
     Event(Event),
     Notice(String),
@@ -87,6 +87,13 @@ pub enum Action {
     DiscoverProfile {
         key: String,
         profile: Box<olo_coder_core::profiles::ModelProfile>,
+    },
+    /// A key pasted for `model`'s service, to keep in Passwords
+    /// (`models::keep_key`); answered as `SettingsSaved`.
+    KeepKey {
+        key: String,
+        model: Box<olo_coder_core::ModelConfig>,
+        secret: String,
     },
     Stop,
     Approve(bool),
@@ -427,6 +434,11 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                                 Ok(Action::SubmitSettings { key, .. }) => callback(Update::SettingsSaved { key, result: Err(error) }),
                                 Ok(Action::SettingsRequest { key, .. }) => callback(Update::SettingsResult { key, result: Err(error) }),
                                 Ok(Action::DiscoverProfile { key, profile }) => callback(Update::ProfileModels { key, profile, models: Err(error) }),
+                                // (Passwords, not the service: kept all the same.)
+                                Ok(Action::KeepKey { key, model, secret }) => {
+                                    let callback = callback.clone();
+                                    std::thread::spawn(move || callback(Update::SettingsSaved { key, result: crate::models::keep_key(&model, &secret) }));
+                                }
                                 Ok(Action::SubmitForm { reply, .. }) => {
                                     let _ = reply.send(Err(error));
                                 }
@@ -488,6 +500,11 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                                 std::thread::spawn(move || callback(Update::SettingsResult { key, result: rpc::call(&dir, &command).map_err(|e| e.to_string()) }));
                                 return Ok(());
                             }
+                            Action::KeepKey { key, model, secret } => {
+                                let callback = callback.clone();
+                                std::thread::spawn(move || callback(Update::SettingsSaved { key, result: crate::models::keep_key(&model, &secret) }));
+                                return Ok(());
+                            }
                             Action::DiscoverProfile { key, profile } => {
                                 let dir = dir.clone();
                                 let callback = callback.clone();
@@ -511,9 +528,7 @@ pub fn start(dir: PathBuf, workspace: PathBuf, session: Option<String>, callback
                                 let callback = callback.clone();
                                 std::thread::spawn(move || {
                                     if let Ok(value) = rpc::call(&dir, &Command::Models { provider, session: Some(session.clone()) }) {
-                                        let entries = value["data"].as_array().or_else(|| value["models"].as_array()).or_else(|| value.as_array());
-                                        let ids =
-                                            entries.map(|rows| rows.iter().filter_map(|r| r["id"].as_str().or(r["slug"].as_str()).or(r.as_str())).map(str::to_owned).collect()).unwrap_or_default();
+                                        let ids = olo_coder_core::providers::listed(&model, &value);
                                         callback(Update::Models { session, model, ids });
                                     }
                                 });
@@ -666,7 +681,8 @@ pub struct View {
     pub next_offset: Option<usize>,
     pub rich: Arc<crate::rich::Text>,
     pub repository: Option<Value>,
-    pub models: Vec<String>,
+    /// The models the session's service offers, by name, in its order.
+    pub models: Vec<olo_coder_core::providers::Listed>,
     pub profiles: Vec<olo_coder_core::profiles::ModelProfile>,
     pub feed: crate::feed::Feed,
     pub notice: String,
@@ -847,71 +863,178 @@ pub fn read_link(link: &str) -> Option<String> {
     }
     None
 }
+/// A command's answer as the conversation shows it: what a person reads
+/// (a list, a table, a line saying what changed), never the API's JSON,
+/// except for `/api` and commands with nothing better to say.
 fn command_result(command: &Command, value: &Value) -> Result<String> {
-    let mut links = String::new();
+    let text = |v: &Value| v.as_str().unwrap_or("").to_owned();
+    let on = |v: &Value| if v == &Value::Bool(true) { "on" } else { "off" };
+    let mut out = String::new();
     match command {
         // Shown where they're made (the task list), and noted in the
         // conversation by their event.
         Command::EditTodos { .. } | Command::Todos { .. } => return Ok(String::new()),
-        Command::Integrations { .. } => {
+        Command::Integrations { action, .. } => {
             if let Some(url) = value["authorization_url"].as_str() {
-                links.push_str(&format!("Sign-in started. [Open authorization page]({url}).\n\n"));
+                out.push_str(&format!("Sign-in started: [open the sign-in page]({url}).\n"));
             }
-            if let Some(servers) = value["servers"].as_array() {
-                links.push_str("### Connections\n\n");
-                for server in servers {
-                    links.push_str(&format!("- **{}** · {}\n", server["name"].as_str().unwrap_or(""), server["url"].as_str().or(server["program"].as_str()).unwrap_or("")));
+            match action.as_str() {
+                "" | "list" => {
+                    out.push_str("### Connections\n\n");
+                    let olo = &value["olo"];
+                    out.push_str(&format!("- **Olo Terminal**: {} (names its tab after the work)\n", on(&olo["terminal"])));
+                    out.push_str(&format!("- **Agent Screens**: {} (a screen of its own for apps and web pages)\n", on(&olo["screens"])));
+                    for server in value["servers"].as_array().into_iter().flatten() {
+                        let place = server["url"].as_str().or(server["program"].as_str()).unwrap_or("");
+                        out.push_str(&format!("- **{}**: {place}\n", text(&server["name"])));
+                    }
+                    let shared: Vec<String> = olo["secret_grants"].as_object().into_iter().flatten().map(|(name, _)| format!("“{name}”")).collect();
+                    out.push_str(&format!("- **Passwords**: {}\n", if shared.is_empty() { "nothing shared".to_owned() } else { format!("shares {}", shared.join(", ")) }));
+                    out.push_str("\nThe Connections menu adds Slack, Logfire or any MCP server.\n");
                 }
+                "olo" => {
+                    let olo = &value["olo"];
+                    out.push_str(&format!("Agent Screens {}, terminal titles {}.\n", on(&olo["screens"]), on(&olo["terminal"])));
+                }
+                "install" | "configure" => out.push_str(&format!("Connected **{}**.\n", text(&value["server"]["name"]))),
+                "remove" => out.push_str(&format!("Removed **{}**.\n", text(&value["removed"]))),
+                "grant_secret" | "revoke_secret" => out.push_str(&format!("{} “{}” with the agent.\n", if value["shared"] == true { "Shared" } else { "Stopped sharing" }, text(&value["name"]))),
+                "test" | "inspect" if value["connected"] == true => {
+                    let tools: Vec<String> = value["tools"].as_array().into_iter().flatten().filter_map(|t| t["name"].as_str().or(t.as_str()).map(str::to_owned)).collect();
+                    out.push_str(&format!("Connected: {} tools{}.\n", tools.len(), if tools.is_empty() { String::new() } else { format!(" ({})", tools.join(", ")) }));
+                }
+                _ if value["authorization_url"].is_string() => {}
+                _ => out.push_str(&fenced("json", &serde_json::to_string_pretty(value)?)),
             }
         }
-        Command::Supervisor { .. } => {
-            links.push_str(&format!(
-                "### Supervisor · {}\n\n{} reviews · {} interventions\n\n{}\n\n",
-                if value["config"]["enabled"] == true { "On" } else { "Off" },
-                value["state"]["reviews"],
-                value["state"]["interventions"],
-                value["state"]["last_reason"].as_str().unwrap_or("")
-            ));
+        Command::Supervisor { config, .. } => {
+            let c = &value["config"];
+            let st = &value["state"];
+            if config.is_some() {
+                out.push_str(&if c["enabled"] == true { format!("The supervisor is on: it looks over the work every {} turns.\n", c["every_turns"]) } else { "The supervisor is off.\n".to_owned() });
+            } else {
+                out.push_str(&format!(
+                    "### Supervisor · {}\n\nLooked {} times, stepped in {} times.{}\n",
+                    if c["enabled"] == true { "On" } else { "Off" },
+                    st["reviews"],
+                    st["interventions"],
+                    st["last_reason"].as_str().filter(|r| !r.is_empty()).map(|r| format!("\n\nLast: {r}")).unwrap_or_default()
+                ));
+            }
         }
         Command::Compactions { .. } => {
-            if let Some(rows) = value["checkpoints"].as_array() {
-                links.push_str("### Compaction checkpoints\n\n| Checkpoint | State | Sources | Summary tokens |\n| --- | --- | ---: | ---: |\n");
-                for row in rows {
+            let rows = value["checkpoints"].as_array().cloned().unwrap_or_default();
+            if rows.is_empty() && value["checkpoints"].is_array() {
+                out.push_str("Nothing has been summarised yet: the whole conversation is in the context.\n");
+            } else if !rows.is_empty() {
+                out.push_str("### Summaries of earlier work\n\n| Summary | State | Records | Tokens |\n| --- | --- | ---: | ---: |\n");
+                for row in &rows {
                     let id = row["id"].as_str().unwrap_or("");
-                    links.push_str(&format!(
+                    out.push_str(&format!(
                         "| [{}](olo-coder:compaction/{id}) | {} | {} | {} |\n",
-                        id.chars().take(8).collect::<String>(),
-                        row["status"].as_str().unwrap_or(""),
-                        row["source_count"],
-                        row["summary_tokens"]
+                        when(row["created"].as_i64()),
+                        text(&row["status"]),
+                        row["source_count"].as_i64().unwrap_or(0),
+                        row["summary_tokens"].as_i64().map(|t| crate::models::tokens(t as u64)).unwrap_or_default()
                     ));
                 }
-            }
-            if let Some(id) = value["parent"].as_str() {
-                links.push_str(&format!("\n[Previous checkpoint](olo-coder:compaction/{id})\n"));
-            }
-            for id in value["prefix_refs"].as_array().into_iter().flatten().filter_map(Value::as_i64).take(100) {
-                links.push_str(&format!("[Source {id}](olo-coder:transcript/{id}) · "));
+            } else {
+                // One summary: its text, and what it came from.
+                if let Some(summary) = value["summary"].as_str() {
+                    out.push_str(&format!("### Summary\n\n{summary}\n\n"));
+                }
+                if let Some(id) = value["parent"].as_str() {
+                    out.push_str(&format!("[The summary before it](olo-coder:compaction/{id})\n\n"));
+                }
+                let sources: Vec<String> = value["prefix_refs"].as_array().into_iter().flatten().filter_map(Value::as_i64).take(100).map(|id| format!("[{id}](olo-coder:transcript/{id})")).collect();
+                if !sources.is_empty() {
+                    out.push_str(&format!("From records {}\n", sources.join(" · ")));
+                }
+                if out.is_empty() {
+                    out.push_str(&fenced("json", &serde_json::to_string_pretty(value)?));
+                }
             }
         }
         Command::Transcript { .. } => {
-            for row in value["records"].as_array().into_iter().flatten() {
-                if let Some(id) = row["id"].as_i64() {
-                    links.push_str(&format!("[Record {id}](olo-coder:transcript/{id}) · "));
+            if let Some(body) = value["text"].as_str() {
+                out.push_str(&format!("### Record {}\n\n{}", value["record"], fenced("json", body)));
+                if let Some(next) = value["next_offset"].as_u64() {
+                    out.push_str(&format!("\n{} of {} bytes shown.\n", next, value["total_bytes"]));
+                }
+            } else {
+                out.push_str("### The whole conversation, as kept\n\n");
+                for row in value["records"].as_array().into_iter().flatten() {
+                    if let Some(id) = row["id"].as_i64() {
+                        let preview: String = text(&row["preview"]).chars().take(90).collect::<String>().replace(['\n', '|'], " ");
+                        out.push_str(&format!("- [{id}](olo-coder:transcript/{id}) {}\n", preview.trim()));
+                    }
                 }
             }
         }
         Command::TranscriptSearch { .. } => {
-            for row in value.as_array().into_iter().flatten() {
+            let rows = value.as_array().cloned().unwrap_or_default();
+            out.push_str(&format!("### {} found\n\n", if rows.len() == 1 { "One record".to_owned() } else { format!("{} records", rows.len()) }));
+            for row in &rows {
                 if let Some(id) = row["id"].as_i64() {
-                    links.push_str(&format!("[Match {id}](olo-coder:transcript/{id}) · "));
+                    let preview: String = text(&row["preview"]).chars().take(90).collect::<String>().replace('\n', " ");
+                    out.push_str(&format!("- [{id}](olo-coder:transcript/{id}) {}\n", preview.trim()));
                 }
             }
         }
-        _ => {}
+        Command::Repository { arguments, .. } => match arguments["operation"].as_str().unwrap_or("status") {
+            "log" => {
+                out.push_str("### Recent commits\n\n");
+                for c in value["commits"].as_array().into_iter().flatten() {
+                    let id: String = text(&c["id"]).chars().take(8).collect();
+                    let subject = text(&c["message"]).lines().next().unwrap_or("").to_owned();
+                    out.push_str(&format!("- `{id}` {subject} · {}\n", text(&c["author"])));
+                }
+            }
+            "branches" => {
+                out.push_str("### Branches\n\n");
+                for b in value["branches"].as_array().into_iter().flatten() {
+                    let at: String = text(&b["target"]).chars().take(8).collect();
+                    out.push_str(&format!("- **{}**{}\n", text(&b["name"]), if at.is_empty() { String::new() } else { format!(" at `{at}`") }));
+                }
+            }
+            "worktrees" => {
+                out.push_str("### Worktrees\n\n");
+                for w in value["worktrees"].as_array().into_iter().flatten() {
+                    let branch = w["branch"].as_str().map(|b| format!("**{b}**")).unwrap_or_else(|| "no branch".into());
+                    out.push_str(&format!("- {branch} in `{}`{}\n", text(&w["path"]), if w["current"] == true { " (this one)" } else { "" }));
+                }
+            }
+            "status" => {
+                let files = value["files"].as_array().cloned().unwrap_or_default();
+                out.push_str(&format!(
+                    "On **{}**: {}.\n",
+                    value["branch"].as_str().unwrap_or("no branch"),
+                    if files.is_empty() { "nothing changed".to_owned() } else { format!("{} changed", files.len()) }
+                ));
+                for f in &files {
+                    out.push_str(&format!("- {} `{}`{}\n", text(&f["state"]), text(&f["path"]), if f["staged"] == true { " (staged)" } else { "" }));
+                }
+            }
+            _ => out.push_str(&if let Some(diff) = value["diff"].as_str() { fenced("diff", diff) } else { fenced("json", &serde_json::to_string_pretty(value)?) }),
+        },
+        Command::Checkpoints { .. } => {
+            let rows = value.as_array().or_else(|| value["checkpoints"].as_array()).cloned().unwrap_or_default();
+            out.push_str(&format!(
+                "### Checkpoints\n\n{}\n",
+                if rows.is_empty() { "None yet: the agent makes one before it changes files.".to_owned() } else { format!("{} checkpoints; Edit ▸ Undo goes back to one.", rows.len()) }
+            ));
+        }
+        _ => out.push_str(&if let Some(diff) = value["diff"].as_str() { fenced("diff", diff) } else { fenced("json", &serde_json::to_string_pretty(value)?) }),
     }
-    links.push_str(&if let Some(diff) = value["diff"].as_str() { fenced("diff", diff) } else { fenced("json", &serde_json::to_string_pretty(value)?) });
-    Ok(links)
+    Ok(out)
+}
+
+/// When something was made: "2:05", or with its date further back.
+fn when(t: Option<i64>) -> String {
+    use olo_kit_base::clock;
+    let Some(t) = t.filter(|t| *t > 0) else { return "—".into() };
+    let (at, today) = (clock::local(t), clock::now());
+    if (at.year, at.month, at.day) == (today.year, today.month, today.day) { at.time() } else { format!("{}, {}", at.date(), at.time()) }
 }
 
 use crate::feed::fenced;
@@ -923,14 +1046,17 @@ mod tests {
     fn catalogs_are_bound_to_the_session_and_endpoint_that_requested_them() {
         let mut session = Session::new("/var/tmp".into(), Config { model: ModelConfig::for_provider(Provider::Openai), ..Config::default() });
         let old = session.config.model.clone();
-        let mut view = View { id: session.id.clone(), session: Some(session.clone()), models: vec!["old-model".into()], ..Default::default() };
+        let mut view = View { id: session.id.clone(), session: Some(session.clone()), models: listed(&["old-model"]), ..Default::default() };
         session.config.model.endpoint.as_mut().unwrap().base_url = "http://127.0.0.1:9999/v1".into();
         view.apply(Update::Session(Box::new(session.clone())));
         assert!(view.models.is_empty());
-        view.apply(Update::Models { session: session.id.clone(), model: Box::new(old), ids: vec!["stale".into()] });
+        view.apply(Update::Models { session: session.id.clone(), model: Box::new(old), ids: listed(&["stale"]) });
         assert!(view.models.is_empty());
-        view.apply(Update::Models { session: session.id, model: Box::new(session.config.model), ids: vec!["fresh".into()] });
-        assert_eq!(view.models, vec!["fresh"]);
+        view.apply(Update::Models { session: session.id, model: Box::new(session.config.model), ids: listed(&["fresh"]) });
+        assert_eq!(view.models, listed(&["fresh"]));
+    }
+    fn listed(ids: &[&str]) -> Vec<olo_coder_core::providers::Listed> {
+        ids.iter().map(|id| olo_coder_core::providers::Listed { id: (*id).into(), name: (*id).into(), efforts: vec![], context_window: None }).collect()
     }
     #[test]
     fn source_links_cannot_perform_writes_or_accept_embedded_commands() {

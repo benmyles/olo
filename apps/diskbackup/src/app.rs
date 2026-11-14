@@ -211,6 +211,7 @@ pub(crate) fn keep_in_passwords() -> Result<(), String> {
         title: target::KEY_TITLE.into(),
         secret: key.to_hex(),
         note: "The key to DiskBackup's backups: without it they can't be read. DiskBackup keeps a copy in this computer's keyring; on another computer, it reads it from here.".into(),
+        replace: false,
     };
     match target::passwords(&request)? {
         olo_keychain::Response::Saved { .. } => Ok(()),

@@ -74,10 +74,44 @@ Set effort to `""` to omit it for models that do not support effort.
 subscription endpoint controls its own per-response limit. Run budgets cover
 both providers, approval review and client compaction.
 
+## Choosing the model
+
+**Settings ▸ Model** (⌘,) is what the agent runs on, in one column, each
+change applied as it's made:
+
+- **Service**: the Token Pool (ChatGPT, through Olo's pool: no key), a known
+  service (below), or any other OpenAI-compatible service (its **Address**).
+- **API key**: paste it. Settings keeps it in Olo Passwords, in an item of
+  its own titled `Olo Coder: SERVICE API key` (`providers::key_title`: the
+  service's name, else its address's host), replacing an older one, and
+  asks the service for its models, which checks the key: the line under the
+  field says it was taken, or the service's own reason it wasn't. The field
+  never shows a kept key. It also takes `op://vault/item/field` (a field of
+  yours in Passwords) or `$NAME` (the Coder service's environment variable).
+  **Get a Key** opens the service's keys page.
+- **Model**, by name, from the service's list (the pool's in its order,
+  without those it hides); a custom service without a list takes its id.
+- **Reasoning**: the efforts the model takes, its default first.
+- **Other jobs**: the supervisor's, the approval reviewer's and the
+  summariser's model: the agent's, or another on its service.
+
+**Also for new sessions** (on unless turned off) sends each change to the
+settings new sessions start with too (`configure_fields` with `defaults`;
+with no `session`, only to them). A conversation stays on the service it
+began on (its context is in that service's form): choosing another sets it
+for new sessions and offers **New Session**. **Revert** puts the section back
+as it was when the window opened. The model changes once the agent stops;
+everything else applies at its next step.
+
+The service reads a kept key when it first needs it (`api_key_secret`, or
+for a known service with none set, the item of that title, else the
+service's variable such as `FIREWORKS_API_KEY`), keeps it in memory only and
+reads it again after the service refuses it.
+
 ## Known services
 
 Coder knows how to set up some OpenAI-compatible services, so choosing one is a
-single step: **Settings ▸ Model ▸ Runs on**, `/provider ID`, or `"provider":"ID"`
+single step: **Settings ▸ Model ▸ Service**, `/provider ID`, or `"provider":"ID"`
 in `spawn_agent`. Each is an ordinary custom endpoint in the configuration,
 recognised by its address (`crates/coder/src/providers.rs`), with its models'
 windows, output limits and reasoning efforts filled in.
@@ -87,28 +121,24 @@ windows, output limits and reasoning efforts filled in.
 | `fireworks` | Fireworks AI (`https://api.fireworks.ai/inference/v1`) | DeepSeek V4.1 Flash on Ultrafast (`accounts/fireworks/routers/deepseek-v4p1-flash-1017-ultrafast`, the default) and on the standard path (`accounts/fireworks/models/deepseek-v4p1-flash-1017`): 1M context, 128K output here, effort `high`, `low` or `max` |
 
 Fireworks requests carry `x-session-affinity: SESSION_ID`, which keeps a
-session on one replica so its prompt prefix stays cached. The key is the
-service's **Key** field: an Olo Passwords field reference (`op://vault/item/field`,
-read by the service when it first needs it, kept in memory only, read again
-after the service refuses it) or the name of an environment variable the
-service has (`FIREWORKS_API_KEY` until changed):
+session on one replica so its prompt prefix stays cached. Its key is pasted
+in Settings (above), or given by reference:
 
 ```text
 /provider fireworks
-/set model.endpoint.api_key_env null
 /set model.endpoint.api_key_password "op://Private/Fireworks/credential"
 ```
 
 When an endpoint refuses a request, the error says who refused, why and what to
-change: a refused key (401, 403) points to **Key** and the service's keys page,
-an unknown model (404) to **Model**, a limit or empty account (402, 429) says
+change: a refused key (401, 403) says to paste another and where to get one,
+an unknown model (404) to choose another, a limit or empty account (402, 429) says
 so. A known service's own message (its `error.message`) is included; a custom
 gateway's body never is, since some echo the credentials they were sent.
 
 ## Custom OpenAI-compatible endpoints
 
-Choose **Settings ▸ Model ▸ Runs on: An OpenAI-compatible endpoint**, or
-configure an empty session:
+Choose **Settings ▸ Model ▸ Service: Other OpenAI-compatible service**, give its
+address and paste its key, or configure an empty session:
 
 ```text
 /endpoint {"base_url":"https://example.com/v1","api_key_env":"EXAMPLE_API_KEY"}
@@ -123,8 +153,8 @@ the configured API root. The GUI saves endpoint and model together. The TUI's
 `/config` or JSON `configure` command can also update them atomically.
 
 A key in an environment variable (`api_key_env`) must be in the service's
-environment when it starts; `api_key_password` (a Passwords field) needs no
-restart. For a variable, export it in the shell that starts the service, then
+environment when it starts; one pasted in Settings (`api_key_secret`, kept in
+Passwords) or a Passwords field (`api_key_password`) needs no restart. For a variable, export it in the shell that starts the service, then
 launch Coder. Changing a client's environment does
 not alter an already-running service; after its work is stopped, its explicit
 `--rpc '{"op":"shutdown"}'` command allows restarting it from the new environment.
@@ -250,7 +280,13 @@ Window, ⌘O New Session in Folder, ⌘D Fork, ⌘W, ⌘Q; ⌘Z/⇧⌘Z, ⌘X, �
 message being written when it has the focus, else the conversation), ⌘F Find
 Session, ⌘, Settings; ⌘↩ Send, ⌘. Stop, ⌘R Resume, ⇧⌘Y Allow, ⇧⌘D Deny, ⇧⌘G
 Set Goal; ⌥⌘S Sessions, ⌥⌘I Work, ⌘1–3 Tasks, Changes and Context, ⌘↑ ⌘↓ the
-previous and next session, ⌥⌘↓ ⌥⌘↑ open and close every action, ⌘/ Commands.
+previous and next session, ⌥⌘↓ ⌥⌘↑ open and close every action, ⌘/ Coder Help.
+
+Coder Help explains the window and the commands the message box takes. A
+command's answer is shown as a person reads it: history, branches and
+worktrees as lists, connections and their state, summaries as a table, a
+setting changed as a line (`client::command_result`); `/api` and commands with
+nothing better to say show their JSON.
 
 ## Tasks and status
 

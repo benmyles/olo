@@ -154,7 +154,7 @@ pub fn parse(text: &str, s: &Session) -> Result<Input> {
             let value: serde_json::Value = serde_json::from_str(value)?;
             let config = serde_json::to_value(config)?;
             anyhow::ensure!(config.pointer(&format!("/{}", key.replace('.', "/"))).is_some(), "unknown configuration key");
-            Command::ConfigureFields { session, values: std::collections::BTreeMap::from([(key.into(), value)]) }
+            Command::ConfigureFields { session, values: std::collections::BTreeMap::from([(key.into(), value)]), defaults: false }
         }
         "/config" => {
             if arg.is_empty() {

@@ -69,6 +69,44 @@ pub async fn resolve(reference: &str) -> Result<String> {
         _ => bail!("Passwords access was not granted"),
     }
 }
+/// A key Coder keeps in Passwords (pasted into Settings): the secret of the
+/// item titled `title` (`olo_keychain`'s `Secrets`, an Olo program's own).
+pub async fn kept_secret(title: &str) -> Result<String> {
+    let answer = keychain(olo_keychain::Request::Secrets { title: title.into() }).await?;
+    match &answer {
+        olo_keychain::Response::Secrets { values } => {
+            values.iter().find(|v| !v.trim().is_empty()).cloned().with_context(|| format!("Passwords has no item “{title}”: paste the key again in Settings ▸ Model"))
+        }
+        olo_keychain::Response::Error { message } => bail!("{message}"),
+        _ => bail!("Passwords did not give the key"),
+    }
+}
+/// A command line's words, as a shell splits simple ones: by spaces,
+/// with '…' and "…" kept whole.
+pub fn command_words(line: &str) -> Vec<String> {
+    let (mut words, mut word, mut quote, mut any) = (Vec::new(), String::new(), None, false);
+    for c in line.chars() {
+        match (quote, c) {
+            (Some(q), c) if c == q => quote = None,
+            (Some(_), c) => word.push(c),
+            (None, '"' | '\'') => {
+                quote = Some(c);
+                any = true;
+            }
+            (None, c) if c.is_whitespace() => {
+                if any || !word.is_empty() {
+                    words.push(std::mem::take(&mut word));
+                    any = false;
+                }
+            }
+            (None, c) => word.push(c),
+        }
+    }
+    if any || !word.is_empty() {
+        words.push(word);
+    }
+    words
+}
 pub fn terminal() -> McpServer {
     McpServer {
         name: "olo_terminal".into(),
@@ -109,14 +147,21 @@ impl Engine {
             ensure!(matches!(operation, "login" | "test" | "inspect" | "logout" | "remove"), "unknown connection action");
             (operation.to_owned(), args.clone())
         } else if action == "configure_fields" {
-            let address = args["address"].as_str().context("program or URL required")?;
+            let address = args["address"].as_str().map(str::trim).filter(|a| !a.is_empty()).context("a command or an address is needed")?;
             let mut server = McpServer { name: args["name"].as_str().unwrap_or("").into(), optional: true, ..Default::default() };
             if address.starts_with("http://") || address.starts_with("https://") {
                 server.url = Some(address.into());
             } else {
-                server.program = address.into();
+                // A command line: its program, then its words (quoted ones kept whole).
+                let mut words = command_words(address).into_iter();
+                server.program = words.next().unwrap_or_default();
+                server.args = words.collect();
             }
-            server.args = serde_json::from_str(args["args"].as_str().unwrap_or("[]")).context("arguments must be a JSON array of strings")?;
+            // (Older forms: the arguments as JSON besides.)
+            if let Some(more) = args["args"].as_str().filter(|a| !a.trim().is_empty()) {
+                let more: Vec<String> = serde_json::from_str(more).context("arguments must be a JSON array of strings")?;
+                server.args.extend(more);
+            }
             let reference = args["reference"].as_str().unwrap_or("");
             server.auth = match args["auth"].as_str().unwrap_or("none") {
                 "none" => None,
@@ -349,5 +394,14 @@ impl Engine {
             }
             _ => bail!("unknown Olo tool"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_command_line_is_split_into_words() {
+        assert_eq!(super::command_words(r#"npx -y "@scope/server name" --root '/a b'"#), ["npx", "-y", "@scope/server name", "--root", "/a b"]);
+        assert_eq!(super::command_words("  uvx  mcp-server ''"), ["uvx", "mcp-server", ""]);
     }
 }

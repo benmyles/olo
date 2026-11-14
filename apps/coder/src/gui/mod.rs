@@ -104,9 +104,62 @@ pub struct Coder {
     forms: Vec<Value>,
 }
 
+/// How tall the panes' meters are (Tasks, Context): thinner than a
+/// field, so an empty one doesn't read as a place to type.
+pub(crate) const METER: f32 = 8.0;
+
+/// "1 turn", "3 summaries".
+fn plural(n: u64, one: &str) -> String {
+    match (n, one) {
+        (1, _) => format!("1 {one}"),
+        (_, "summary") => format!("{n} summaries"),
+        _ => format!("{n} {one}s"),
+    }
+}
+
+/// View ▸ Coder Help: how the window works, then the commands the
+/// message box takes, for those who'd rather type.
+const HELP: &str = "### Working with Coder
+
+Write what you want in the box at the bottom and press Return (⇧Return for a new line). While the agent works, what you send steers it: **After this step** goes in once the step it's on ends, **When it finishes** waits for the end of its turn, **Interrupt now** stops it where it is. Escape stops it.
+
+- **Tasks** (right) is the agent's plan as it keeps it; add and tick off your own there too. **Changes** is what it changed in the workspace, **Context** how full its window is.
+- **Settings…** (⌘,) chooses the model and its service (a key you paste is kept in Passwords), what it may do without asking, and its limits.
+- **Agent ▸ Set Goal…** is for work that spans days; with **Keep Going** on it carries on by itself. **Spec Mode** has it write the plan first, for you to accept.
+- **Connections** lets it use Slack, Logfire, any MCP server, Agent Screens and Passwords fields you share with it.
+
+### Commands
+
+Type them in the message box:
+
+| | |
+| --- | --- |
+| `/model NAME` | another model (`/models` lists them) |
+| `/goal TEXT` | set the goal |
+| `/compact` | summarise older context now |
+| `/git log`, `/git branches` | the repository's history and branches |
+| `/transcript` | the whole conversation, as kept |
+| `/message SESSION TEXT` | message another session |
+| `/api JSON` | any command of the API, as JSON |
+";
+
 impl Coder {
     fn session(&self) -> Option<&olo_coder_core::Session> {
         self.view.session.as_ref()
+    }
+
+    /// The models the composer's menu offers (the service's, by name, with
+    /// the session's always among them), and which is the session's.
+    fn model_menu(&self) -> (Vec<crate::models::Listed>, usize) {
+        let Some(s) = self.session() else { return (vec![], 0) };
+        let model = &s.config.model;
+        let mut models = if self.view.models.is_empty() { crate::models::known(model) } else { self.view.models.clone() };
+        if !models.iter().any(|m| m.id == model.model) {
+            let name = crate::models::model_name(model, &[], &model.model);
+            models.insert(0, crate::models::Listed { id: model.model.clone(), name, efforts: vec![], context_window: None });
+        }
+        let at = models.iter().position(|m| m.id == model.model).unwrap_or(0);
+        (models, at)
     }
 
     fn running(&self) -> bool {
@@ -332,6 +385,7 @@ impl Coder {
                 .item("Add Logfire (EU)", "setup_logfire_eu")
                 .item("Add MCP Server…", "setup_mcp")
                 .item("Manage Connection…", "manage_mcp")
+                .enabled(s.is_some_and(|s| !s.config.mcp.is_empty()))
                 .separator()
                 .item("Agent Screens", "olo_screens")
                 .checked(screens)
@@ -339,7 +393,8 @@ impl Coder {
                 .checked(terminal)
                 .separator()
                 .item("Share a Password…", "share_password")
-                .item("Stop Sharing a Password…", "revoke_password"),
+                .item("Stop Sharing a Password…", "revoke_password")
+                .enabled(s.is_some_and(|s| !s.config.olo.secret_grants.is_empty())),
             Menu::new("View")
                 .item("Sessions", "sidebar")
                 .key("s")
@@ -360,7 +415,7 @@ impl Coder {
                 .checked(follow)
                 .separator()
                 .item("Tile Coder Windows", "tile")
-                .item("Commands", "help"),
+                .item("Coder Help", "help"),
         ]
     }
 
@@ -484,7 +539,7 @@ impl Coder {
                         Field::new("Task:", "").multiline(5),
                         Field::new("Subfolder:", "").optional(),
                         Field::new("Model:", "Same as this session").choices(labels),
-                        Field::new("Reasoning:", "Use model settings").choices(std::iter::once("Use model settings").chain(crate::models::EFFORTS)),
+                        Field::new("Reasoning:", "Use model settings").choices(std::iter::once("Use model settings".to_owned()).chain(crate::models::effort_names())),
                         Field::new("May:", "Only read").choices(["Only read", "Change files"]),
                     ],
                     Submission::Agent { session: id, models },
@@ -503,7 +558,9 @@ impl Coder {
             "supervisor_toggle" => self.submit(format!("/supervisor {}", if s.as_ref().is_some_and(|s| s.config.supervisor.enabled) { "off" } else { "on" })),
             "accept" | "fork" | "compact" | "compactions" | "transcript" | "archive" | "restore" | "integrations" => self.submit(format!("/{cmd}")),
             "pin" => self.submit(format!("/api {}", json!({"op":"organize","session":id,"pinned":!s.as_ref().is_some_and(|s| s.pinned)}))),
-            "help" => self.submit("/help"),
+            "help" => {
+                let _ = self.client.tx.send(Action::Show(Update::Notice(HELP.into())));
+            }
             "changes" | "tab_changes" => {
                 self.show_work = true;
                 self.tab = 1;
@@ -604,18 +661,17 @@ impl Coder {
                     ),
                     "setup_mcp" => (
                         "Add MCP Server",
-                        "A program to run (with its arguments as JSON), or an HTTPS address. Secrets are named, never typed here: a Passwords reference or an environment variable.",
+                        "A command that runs it (npx -y @scope/server --flag), or its HTTPS address. Secrets are never typed here: name the environment variable or the Passwords field (op://vault/item/field) they're in.",
                         "configure_fields",
                         vec![
                             Field::new("Name:", ""),
-                            Field::new("Program or address:", ""),
-                            Field::new("Arguments (JSON):", "[]"),
-                            Field::new("Sign in with:", "none").choices(["none", "token", "password", "oauth"]),
-                            Field::new("Token reference:", "").optional(),
+                            Field::new("Command or address:", ""),
+                            Field::new("Signs in with:", "Nothing").choices(["Nothing", "A token in an environment variable", "A field in Passwords", "Signing in (OAuth)"]),
+                            Field::new("Variable or field:", "").optional(),
                             Field::new("OAuth client ID:", "").optional(),
-                            Field::new("Secret variable:", "").optional(),
+                            Field::new("OAuth secret variable:", "").optional(),
                         ],
-                        vec!["name", "address", "args", "auth", "reference", "client_id", "client_secret_env"],
+                        vec!["name", "address", "auth", "reference", "client_id", "client_secret_env"],
                     ),
                     "manage_mcp" => (
                         "Manage Connection",
@@ -624,7 +680,7 @@ impl Coder {
                         vec![
                             Field::new("Connection:", s.as_ref().and_then(|s| s.config.mcp.first()).map(|m| m.name.clone()).unwrap_or_default())
                                 .choices(s.iter().flat_map(|s| s.config.mcp.iter().map(|m| m.name.clone()))),
-                            Field::new("Do:", "test").choices(["test", "inspect", "login", "logout", "remove"]),
+                            Field::new("Do:", "Test It").choices(["Test It", "See What It Offers", "Sign In", "Sign Out", "Remove It"]),
                         ],
                         vec!["name", "action"],
                     ),
@@ -868,35 +924,21 @@ impl Coder {
         .absolute()
         .inset_0();
         let field = div().relative().h(px(field_h)).flex_shrink_0().child(well).child(div().absolute().inset(px(2.0 + m::TIGHT)).child(&self.composer));
-        // The model: this session's, the ones its provider offers, the
-        // saved profiles.
-        let mut models: Vec<String> = self.view.models.clone();
-        let current = s.map(|s| s.config.model.model.clone()).unwrap_or_default();
-        if !current.is_empty() && !models.contains(&current) {
-            models.insert(0, current.clone());
-        }
-        let model_at = models.iter().position(|m| *m == current).unwrap_or(0);
-        let mut model_labels: Vec<olo_kit::SharedString> = models.iter().map(|m| m.clone().into()).collect();
-        for p in &self.view.profiles {
-            model_labels.push(format!("{} (saved)", p.name).into());
-        }
-        if model_labels.is_empty() {
-            model_labels.push("Model".into());
-        }
-        let effort = s.map(|s| crate::models::effort(&s.config.model.effort)).unwrap_or(0);
+        // The model, by name: those its service offers, then Settings.
+        let (models, model_at) = self.model_menu();
+        let mut model_labels: Vec<olo_kit::SharedString> = models.iter().map(|m| m.name.clone().into()).collect();
+        model_labels.push("Model Settings…".into());
+        let efforts = s.map(|s| crate::models::efforts(&self.view.models, &s.config.model.model)).unwrap_or_default();
+        let effort = s.and_then(|s| efforts.iter().position(|e| *e == s.config.model.effort)).unwrap_or(0);
+        // (Named "Reasoning" for agents: the choices are short to fit.)
+        let effort_labels = efforts.iter().map(|e| if e.is_empty() { "Default".into() } else { crate::models::effort_name(e).into() }).collect();
         let approval = s.map(|s| APPROVALS.iter().position(|(a, _)| *a == s.config.approval).unwrap_or(0)).unwrap_or(0);
         let mut controls = div().flex().items_center().gap(px(m::TIGHT));
         // While it works they can't change: the row is for steering it.
         if !running {
             controls = controls
                 .child(MenuField::new("model", model_labels, model_at).name("Model").width(190.0).enabled(settable).on_change(cx.msg_with(|i: &usize| Msg::Model(*i))))
-                .child(
-                    MenuField::new("effort", crate::models::EFFORTS.iter().map(|e| (if *e == "Provider default" { "Reasoning: default" } else { e }).to_owned().into()).collect(), effort)
-                        .name("Reasoning")
-                        .width(140.0)
-                        .enabled(settable)
-                        .on_change(cx.msg_with(|i: &usize| Msg::Effort(*i))),
-                )
+                .child(MenuField::new("effort", effort_labels, effort).name("Reasoning").width(120.0).enabled(settable).on_change(cx.msg_with(|i: &usize| Msg::Effort(*i))))
                 .child(
                     MenuField::new("approvals", APPROVALS.iter().map(|(_, l)| (*l).into()).collect(), approval)
                         .name("Approvals")
@@ -985,9 +1027,10 @@ impl Coder {
         let window = s.config.model.context_window;
         let used = s.usage.context;
         let fraction = if window > 0 { (used as f32 / window as f32).min(1.0) } else { 0.0 };
-        let n = crate::feed::thousands;
+        // As the status line says them ("6.4K of 872K").
+        let n = crate::feed::short;
         let mut col = div().flex().flex_col().gap(px(m::TIGHT)).p(px(m::TIGHT));
-        col = col.child(StatusBar::new(fraction).label("In context").trailing(if window > 0 { format!("{} of {}", n(used), n(window)) } else { n(used) }));
+        col = col.child(StatusBar::new(fraction).bar_height(METER).label("In context").trailing(if window > 0 { format!("{} of {}", n(used), n(window)) } else { n(used) }));
         let at = if s.config.model.compact_at > 0 { s.config.model.compact_at } else { window * 8 / 10 };
         col = col.child(
             StringView::new(if s.config.model.auto_compact {
@@ -1004,11 +1047,11 @@ impl Coder {
             .child(StringView::new("Used so far").bold(true))
             .child(StringView::new(format!("{} in · {} out", n(s.usage.input), n(s.usage.output))))
             .child(StringView::new(format!("{} read from cache · {} requests", n(s.usage.cached), n(s.usage.requests))).dim(true))
-            .child(StringView::new(format!("{} turns · {} checkpoints", s.turns, s.compactions)).dim(true));
+            .child(StringView::new(format!("{} · {}", plural(s.turns as u64, "turn"), plural(s.compactions as u64, "summary"))).dim(true));
         let budget = s.config.token_budget;
         if budget > 0 {
             let spent = s.usage.input + s.usage.output;
-            col = col.child(div().h(px(m::TIGHT))).child(StatusBar::new((spent as f32 / budget as f32).min(1.0)).label("Budget").trailing(format!("{} of {}", n(spent), n(budget))));
+            col = col.child(div().h(px(m::TIGHT))).child(StatusBar::new((spent as f32 / budget as f32).min(1.0)).bar_height(METER).label("Budget").trailing(format!("{} of {}", n(spent), n(budget))));
         }
         if !s.spec.text.is_empty() {
             let accepted = s.spec.accepted_revision == Some(s.spec.revision);
@@ -1024,7 +1067,6 @@ impl Coder {
         if !s.memory.trim().is_empty() {
             col = col.child(div().h(px(m::TIGHT))).child(StringView::new("Remembered").bold(true)).child(StringView::new(s.memory.trim().to_owned()).wrap(true).dim(true));
         }
-        col = col.child(div().h(px(m::TIGHT))).child(StringView::new(format!("Session {}", s.id)).dim(true).small(true).cut(true));
         olo_kit::widgets::ScrollView::new(&self.context_scroll).border(false).auto_hide(true).child(col).into_any_element()
     }
 
@@ -1069,18 +1111,21 @@ impl View for Coder {
             }
             Msg::Delivery(i) => self.delivery = DELIVERIES[i.min(2)].0,
             Msg::Model(i) => {
-                let mut models: Vec<String> = self.view.models.clone();
-                let current = self.session().map(|s| s.config.model.model.clone()).unwrap_or_default();
-                if !current.is_empty() && !models.contains(&current) {
-                    models.insert(0, current);
-                }
-                if let Some(model) = models.get(i) {
-                    self.submit(format!("/model {model}"));
-                } else if let Some(p) = self.view.profiles.get(i - models.len()) {
-                    self.submit(format!("/profiles apply {}", json!({"id":p.id,"role":"primary"})));
+                let (models, at) = self.model_menu();
+                match models.get(i) {
+                    Some(m) if i != at => self.submit(format!("/model {}", m.id)),
+                    Some(_) => {}
+                    None => settings::open(cx, self.dir.clone(), self.client.clone(), &self.view, &self.key, 0),
                 }
             }
-            Msg::Effort(i) => self.submit(format!("/set model.effort {}", json!(crate::models::effort_value(i)))),
+            Msg::Effort(i) => {
+                if let Some(s) = self.session() {
+                    let efforts = crate::models::efforts(&self.view.models, &s.config.model.model);
+                    if let Some(e) = efforts.get(i) {
+                        self.submit(format!("/set model.effort {}", json!(e)));
+                    }
+                }
+            }
             Msg::Approvals(i) => self.submit(format!("/approval {}", ["ask", "auto", "allow"][i.min(2)])),
             Msg::Session(i) => {
                 if let Some(Some(id)) = self.session_rows.get(i) {

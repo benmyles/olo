@@ -177,19 +177,44 @@ impl Engine {
             );
         }
         match cmd {
-            Command::ConfigureFields { session, values } => {
-                let _idle = self.idle_guard(&session)?;
-                self.change(&session, "configured", |s| {
-                    let mut config = serde_json::to_value(&s.config)?;
-                    for (path, value) in values {
+            Command::ConfigureFields { session, values, defaults } => {
+                let set = |config: &Config| -> Result<Config> {
+                    let mut config = serde_json::to_value(config)?;
+                    for (path, value) in &values {
                         let pointer = format!("/{}", path.replace('.', "/"));
-                        *config.pointer_mut(&pointer).with_context(|| format!("unknown setting {path}"))? = value;
+                        *config.pointer_mut(&pointer).with_context(|| format!("unknown setting {path}"))? = value.clone();
                     }
                     let config: Config = serde_json::from_value(config)?;
                     config.validate()?;
+                    Ok(config)
+                };
+                let keep_defaults = |values_set: &dyn Fn(&Config) -> Result<Config>| -> Result<Value> {
+                    let config = values_set(&self.defaults.lock().unwrap().clone())?;
+                    tools::atomic_write(&self.defaults_path, &serde_json::to_vec_pretty(&config)?)?;
+                    *self.defaults.lock().unwrap() = config.clone();
+                    Ok(json!({"defaults":config}))
+                };
+                // No session: what new sessions start with, only.
+                if session.is_empty() {
+                    return keep_defaults(&set);
+                }
+                // The model changes only between runs (a run is with one
+                // model); the rest is read again at each step.
+                let model = values.keys().any(|p| p == "model" || (p.starts_with("model.") && p != "model.effort"));
+                let _idle = if model { Some(self.idle_guard(&session).map_err(|_| anyhow::anyhow!("the agent is working: its model changes once it stops"))?) } else { None };
+                let result = self.change(&session, "configured", |s| {
+                    let config = set(&s.config)?;
+                    // A conversation is in its service's own form (Codex's
+                    // reasoning, a chat service's messages): it stays there.
+                    let service = |c: &Config| (c.model.provider.clone(), c.model.endpoint.as_ref().map(|e| e.base_url.trim_end_matches('/').to_owned()));
+                    ensure!(s.context.is_empty() || service(&s.config) == service(&config), "this conversation can't move to another service: start a new session for it");
                     s.config = config;
                     Ok(json!({"config":s.config}))
-                })
+                })?;
+                if defaults {
+                    keep_defaults(&set)?;
+                }
+                Ok(result)
             }
             Command::ModelProfiles { action, profile, id, session, role } => self.profiles(&action, profile, id, session, &role).await,
             Command::Supervisor { session, config } => {
@@ -438,7 +463,12 @@ impl Engine {
                         ModelConfig::default()
                     }
                 };
-                provider::Client::new()?.models(&model).await
+                match &self.pool {
+                    Some(base) => provider::Client::at(base)?,
+                    None => provider::Client::new()?,
+                }
+                .models(&model)
+                .await
             }
             Command::Tools => Ok(serde_json::to_value(tools::definitions())?),
             Command::Attach { session, path } => {

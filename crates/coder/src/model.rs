@@ -90,6 +90,10 @@ pub struct EndpointConfig {
     /// The key as an Olo Passwords field (op://vault/item/field), read by the
     /// service when it first needs it; instead of `api_key_env`.
     pub api_key_password: Option<String>,
+    /// The key as Coder keeps it: the title of the Passwords item it was
+    /// pasted into (Olo programs' own secrets, `olo_keychain`'s
+    /// `KeepSecret`), read by the service when it first needs it.
+    pub api_key_secret: Option<String>,
     pub header_env: std::collections::BTreeMap<String, String>,
     pub stream: bool,
     pub include_usage: bool,
@@ -108,6 +112,7 @@ impl Default for EndpointConfig {
             base_url: "http://127.0.0.1:8000/v1".into(),
             api_key_env: None,
             api_key_password: None,
+            api_key_secret: None,
             header_env: Default::default(),
             stream: true,
             include_usage: true,
@@ -134,16 +139,17 @@ impl ModelConfig {
             for variable in endpoint.api_key_env.iter().chain(endpoint.header_env.values()) {
                 anyhow::ensure!(!variable.is_empty() && variable.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'), "credential environment references must be variable names");
             }
-            anyhow::ensure!(endpoint.api_key_env.is_none() || endpoint.api_key_password.is_none(), "configure either api_key_env or api_key_password");
+            let sources = [endpoint.api_key_env.is_some(), endpoint.api_key_password.is_some(), endpoint.api_key_secret.is_some()].iter().filter(|on| **on).count();
+            anyhow::ensure!(sources <= 1, "configure one of api_key_env, api_key_password and api_key_secret");
             if let Some(reference) = &endpoint.api_key_password {
                 anyhow::ensure!(reference.starts_with("op://") && reference.len() <= 512, "api_key_password is a Passwords field reference (op://vault/item/field)");
             }
+            if let Some(title) = &endpoint.api_key_secret {
+                anyhow::ensure!(!title.trim().is_empty() && title.len() <= 256, "api_key_secret is the title of a Passwords item");
+            }
             for name in endpoint.header_env.keys() {
                 let header = reqwest::header::HeaderName::from_bytes(name.as_bytes())?;
-                anyhow::ensure!(
-                    header.as_str() != "authorization" || (endpoint.api_key_env.is_none() && endpoint.api_key_password.is_none()),
-                    "configure either api_key_env or an authorization header reference"
-                );
+                anyhow::ensure!(header.as_str() != "authorization" || sources == 0, "configure either api_key_env or an authorization header reference");
                 anyhow::ensure!(!matches!(header.as_str(), "host" | "content-length" | "transfer-encoding" | "connection" | "content-type"), "header {name} is managed by the transport");
             }
         } else {
@@ -694,9 +700,15 @@ pub struct ToolDef {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Command {
+    /// Settings by path (`approval`, `model.effort`): those that leave the
+    /// model as it is apply while the agent works, from its next step.
+    /// With `defaults`, new sessions start with them too; with no
+    /// `session` (""), only new sessions do.
     ConfigureFields {
         session: String,
         values: std::collections::BTreeMap<String, Value>,
+        #[serde(default)]
+        defaults: bool,
     },
     ModelProfiles {
         #[serde(default)]

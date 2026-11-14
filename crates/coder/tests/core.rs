@@ -2170,7 +2170,7 @@ async fn field_settings_preserve_other_edits_and_reject_invalid_changes_atomical
     let dir = Scratch::new();
     let e = Engine::open(dir.0.clone()).unwrap();
     let s: Session = serde_json::from_value(e.command(Command::Create { workspace: dir.0.clone(), config: None }).await.unwrap()).unwrap();
-    let edit = |pairs: Vec<(&str, Value)>| Command::ConfigureFields { session: s.id.clone(), values: pairs.into_iter().map(|(k, v)| (k.into(), v)).collect() };
+    let edit = |pairs: Vec<(&str, Value)>| Command::ConfigureFields { session: s.id.clone(), values: pairs.into_iter().map(|(k, v)| (k.into(), v)).collect(), defaults: false };
     e.command(edit(vec![("instructions", json!("Keep this edit"))])).await.unwrap();
     e.command(edit(vec![("supervisor.enabled", json!(true))])).await.unwrap();
     assert_eq!(e.get(&s.id).unwrap().config.instructions, "Keep this edit");
@@ -2179,6 +2179,30 @@ async fn field_settings_preserve_other_edits_and_reject_invalid_changes_atomical
     let s = e.get(&s.id).unwrap();
     assert_eq!(s.config.instructions, "Keep this edit");
     assert!(s.config.supervisor.enabled);
+}
+
+#[tokio::test]
+async fn settings_can_be_for_new_sessions_and_a_conversation_keeps_its_service() {
+    let dir = Scratch::new();
+    let e = Engine::open(dir.0.clone()).unwrap();
+    let s: Session = serde_json::from_value(e.command(Command::Create { workspace: dir.0.clone(), config: None }).await.unwrap()).unwrap();
+    e.command(Command::ConfigureFields { session: s.id.clone(), values: [("approval".to_owned(), json!("ask"))].into(), defaults: true }).await.unwrap();
+    let next: Session = serde_json::from_value(e.command(Command::Create { workspace: dir.0.clone(), config: None }).await.unwrap()).unwrap();
+    assert_eq!(next.config.approval, ApprovalMode::Ask, "new sessions start with it");
+    // An empty session may move to another service; one with a conversation may not.
+    let fireworks = serde_json::to_value(olo_coder_core::providers::FIREWORKS.config(None)).unwrap();
+    e.command(Command::ConfigureFields { session: next.id.clone(), values: [("model".to_owned(), fireworks.clone())].into(), defaults: false }).await.unwrap();
+    std::fs::write(dir.0.join("note.txt"), "hello").unwrap();
+    e.command(Command::Attach { session: s.id.clone(), path: dir.0.join("note.txt") }).await.unwrap();
+    let refused = e.command(Command::ConfigureFields { session: s.id.clone(), values: [("model".to_owned(), fireworks)].into(), defaults: false }).await.unwrap_err();
+    assert!(refused.to_string().contains("new session"), "{refused}");
+    assert_eq!(e.get(&s.id).unwrap().config.model.provider, Provider::Codex);
+    // With no session, it's for new sessions only.
+    let fireworks = serde_json::to_value(olo_coder_core::providers::FIREWORKS.config(None)).unwrap();
+    e.command(Command::ConfigureFields { session: String::new(), values: [("model".to_owned(), fireworks)].into(), defaults: false }).await.unwrap();
+    assert_eq!(e.get(&s.id).unwrap().config.model.provider, Provider::Codex);
+    let third: Session = serde_json::from_value(e.command(Command::Create { workspace: dir.0.clone(), config: None }).await.unwrap()).unwrap();
+    assert!(olo_coder_core::providers::of(&third.config.model).is_some(), "new sessions start on Fireworks");
 }
 
 #[tokio::test]

@@ -71,37 +71,76 @@ impl Client {
         })
     }
     async fn key(&self, endpoint: &EndpointConfig) -> Result<Option<zeroize::Zeroizing<String>>> {
+        let known = crate::providers::KNOWN.iter().find(|k| k.base_url == endpoint.base_url.trim_end_matches('/'));
         if let Some(variable) = &endpoint.api_key_env {
-            let known = crate::providers::KNOWN.iter().find(|k| k.base_url == endpoint.base_url.trim_end_matches('/'));
             let key = std::env::var(variable).with_context(|| match known {
-                Some(k) => format!("{} needs a key: choose its field in Passwords (Settings ▸ Model ▸ Key), or set {variable} in the Coder service environment. Keys: {}", k.name, k.keys_page),
+                Some(k) => format!("{} needs a key: paste it in Settings ▸ Model, or set {variable} in the Coder service environment. Get one at {}", k.name, k.keys_page),
                 None => format!("set {variable} in the Coder service environment"),
             })?;
             ensure!(!key.trim().is_empty(), "{variable} is empty");
             return Ok(Some(key.into()));
         }
-        let Some(reference) = &endpoint.api_key_password else { return Ok(None) };
-        if let Some(key) = self.keys.lock().unwrap().get(reference) {
+        // Kept by reference (a Passwords field, or an item Coder keeps):
+        // read once, held in memory only.
+        let (reference, kept) = match (&endpoint.api_key_password, &endpoint.api_key_secret) {
+            (Some(reference), _) => (reference.clone(), false),
+            (None, Some(title)) => (format!("kept:{title}"), true),
+            (None, None) => {
+                let Some(k) = known else { return Ok(None) };
+                // None set: the service's own variable, if the Coder service
+                // has it, else the key kept for that service (pasted once).
+                if let Some(key) = std::env::var(k.key_env).ok().filter(|k| !k.trim().is_empty()) {
+                    return Ok(Some(key.into()));
+                }
+                let title = crate::providers::key_title(k.base_url);
+                (format!("kept:{title}"), true)
+            }
+        };
+        if let Some(key) = self.keys.lock().unwrap().get(&reference) {
             return Ok(Some(key.clone()));
         }
-        let key = zeroize::Zeroizing::new(crate::integrations::resolve(reference).await.context("reading the endpoint's key from Passwords")?);
-        ensure!(!key.trim().is_empty(), "the key's field in Passwords is empty");
-        self.keys.lock().unwrap().insert(reference.clone(), key.clone());
+        let key = zeroize::Zeroizing::new(if kept {
+            let title = reference.trim_start_matches("kept:");
+            crate::integrations::kept_secret(title).await.map_err(|e| match known {
+                // None pasted yet: what to do, not why.
+                Some(k) if e.to_string().contains("has no item") => anyhow::anyhow!("{} needs your API key: paste it in Settings ▸ Model. Get one at {}", k.name, k.keys_page),
+                Some(k) => anyhow::anyhow!("{} needs your API key, kept in Passwords: {e:#}", k.name),
+                None => e.context("reading the endpoint's key from Passwords"),
+            })?
+        } else {
+            crate::integrations::resolve(&reference).await.context("reading the endpoint's key from Passwords")?
+        });
+        ensure!(!key.trim().is_empty(), "the key in Passwords is empty");
+        self.keys.lock().unwrap().insert(reference, key.clone());
         Ok(Some(key))
     }
     /// Forgets a Passwords key the service refused, so the next request reads it again.
     fn refused(&self, model: &ModelConfig) {
-        if let Some(reference) = model.endpoint.as_ref().and_then(|e| e.api_key_password.as_ref()) {
-            self.keys.lock().unwrap().remove(reference);
+        if let Some(e) = model.endpoint.as_ref() {
+            let mut keys = self.keys.lock().unwrap();
+            if let Some(reference) = &e.api_key_password {
+                keys.remove(reference);
+            }
+            if let Some(title) = &e.api_key_secret {
+                keys.remove(&format!("kept:{title}"));
+            }
         }
     }
     async fn authorize(&self, mut request: reqwest::RequestBuilder, model: &ModelConfig) -> Result<reqwest::RequestBuilder> {
         if model.provider == Provider::Openai {
             let endpoint = model.endpoint.as_ref().context("custom endpoint is missing")?;
-            if let Some(key) = self.key(endpoint).await? {
-                let mut value = reqwest::header::HeaderValue::from_str(&format!("Bearer {}", key.as_str())).context("invalid API key header")?;
-                value.set_sensitive(true);
-                request = request.header(reqwest::header::AUTHORIZATION, value);
+            match self.key(endpoint).await? {
+                Some(key) => {
+                    let mut value = reqwest::header::HeaderValue::from_str(&format!("Bearer {}", key.as_str())).context("invalid API key header")?;
+                    value.set_sensitive(true);
+                    request = request.header(reqwest::header::AUTHORIZATION, value);
+                }
+                // A known service always wants one (a local server may not).
+                None => {
+                    if let Some(k) = crate::providers::of(model) {
+                        bail!("{} needs your API key: paste it in Settings ▸ Model. Get one at {}", k.name, k.keys_page);
+                    }
+                }
             }
             for (name, variable) in &endpoint.header_env {
                 let secret = std::env::var(variable).with_context(|| format!("set {variable} in the Coder service environment"))?;
@@ -467,7 +506,7 @@ fn refusal(model: &ModelConfig, status: u16, body: &[u8]) -> String {
         None => ".".into(),
     };
     let (what, then) = match status {
-        401 | 403 => ("refused the key".to_owned(), format!(" Check Settings ▸ Model ▸ Key.{}", known.map(|k| format!(" Make one at {}.", k.keys_page)).unwrap_or_default())),
+        401 | 403 => ("refused the key".to_owned(), format!(" Paste another in Settings ▸ Model.{}", known.map(|k| format!(" Get one at {}.", k.keys_page)).unwrap_or_default())),
         404 => (format!("has no model “{}”", model.model), " Choose another in Settings ▸ Model.".into()),
         402 | 429 => ("turned the request away".into(), " Too many requests, or the account's credit or quota is used up.".into()),
         _ => ("couldn't answer".into(), " Check its address, model, key and quota in Settings ▸ Model.".into()),
@@ -490,8 +529,8 @@ mod tests {
     fn a_refusal_says_who_refused_and_what_to_change() {
         let fireworks = crate::providers::FIREWORKS.config(None);
         let said = refusal(&fireworks, 401, br#"{"error":{"message":"The API key you provided is invalid.","code":"UNAUTHORIZED"}}"#);
-        assert!(said.starts_with("Fireworks AI refused the key (HTTP 401): The API key you provided is invalid. Check"), "{said}");
-        assert!(said.contains("Settings ▸ Model ▸ Key") && said.contains("app.fireworks.ai"), "{said}");
+        assert!(said.starts_with("Fireworks AI refused the key (HTTP 401): The API key you provided is invalid. Paste another"), "{said}");
+        assert!(said.contains("Settings ▸ Model") && said.contains("app.fireworks.ai"), "{said}");
         assert!(refusal(&fireworks, 404, b"").contains("has no model “accounts/fireworks/routers/"));
         assert_eq!(
             refusal(&fireworks, 500, br#"{"error":{"message":"overloaded"}}"#),

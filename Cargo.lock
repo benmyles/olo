@@ -8442,6 +8442,7 @@ dependencies = [
  "libc",
  "olo-coder-core",
  "olo-crash",
+ "olo-keychain",
  "olo-kit",
  "olo-kit-base",
  "olo-protocol",

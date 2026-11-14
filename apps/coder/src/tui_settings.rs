@@ -59,6 +59,11 @@ pub struct Editor {
     save_request: Option<String>,
     #[serde(default)]
     discovery_request: Option<String>,
+    /// A pasted key being kept in Passwords, and whether one was.
+    #[serde(default)]
+    keep_request: Option<String>,
+    #[serde(default)]
+    kept: bool,
 }
 impl Panel {
     pub fn resume(&mut self) {
@@ -109,6 +114,18 @@ impl Panel {
     }
     pub fn update(&mut self, update: &Update) -> bool {
         if let (Self::Profile(e), Update::SettingsSaved { key, result }) = (&mut *self, update) {
+            if e.keep_request.as_ref() == Some(key) {
+                e.keep_request = None;
+                e.busy = false;
+                match result {
+                    Ok(()) => {
+                        e.fields[3].clear();
+                        e.kept = true;
+                        e.status = "Key kept in Passwords. F5 fetches the service’s models.".into();
+                    }
+                    Err(error) => e.status = error.clone(),
+                }
+            }
             if e.save_request.as_ref() == Some(key) {
                 e.save_request = None;
                 e.busy = false;
@@ -328,8 +345,7 @@ impl Panel {
                             *self = Self::Profile(Editor::new(p.clone(), true).into());
                         }
                     } else if command == "@reasoning" {
-                        *self =
-                            Self::menu("Reasoning", models::EFFORTS.iter().enumerate().map(|(i, label)| ((*label).into(), format!("/set model.effort {}", json!(models::effort_value(i))))).collect());
+                        *self = Self::menu("Reasoning", models::EFFORTS.iter().map(|e| (models::effort_name(e), format!("/set model.effort {}", json!(e)))).collect());
                     } else if command == "@approvals" {
                         *self = Self::menu(
                             "Approval policy",
@@ -345,7 +361,7 @@ impl Panel {
                                 Field::new("Task:", "").multiline(5),
                                 Field::new("Subfolder:", "").optional(),
                                 Field::new("Model:", "Inherit primary").choices(labels),
-                                Field::new("Reasoning:", "Use model settings").choices(std::iter::once("Use model settings").chain(crate::models::EFFORTS)),
+                                Field::new("Reasoning:", "Use model settings").choices(std::iter::once("Use model settings".to_owned()).chain(crate::models::effort_names())),
                                 Field::new("Access:", "Read-only").choices(["Read-only", "Workspace writes"]),
                             ];
                             ("Start Subagent", "The parent’s policy and approval rules still apply.", fields, Submission::Agent { session, models })
@@ -477,6 +493,21 @@ impl Panel {
             Self::Profile(e) => match key.code {
                 KeyCode::Up => e.at = e.at.saturating_sub(1),
                 KeyCode::Down | KeyCode::Tab => e.at = (e.at + 1) % e.fields.len(),
+                KeyCode::F(5) | KeyCode::F(2) if !e.busy && matches!(models::key_input(&e.fields[3]), models::KeyInput::Secret(_)) => {
+                    // A pasted key is kept in Passwords first.
+                    let models::KeyInput::Secret(secret) = models::key_input(&e.fields[3]) else { return false };
+                    let mut model = models::service_model(e.service(), &e.profile.model);
+                    let custom = olo_coder_core::providers::of(&model).is_none();
+                    if let Some(endpoint) = model.endpoint.as_mut().filter(|_| custom) {
+                        endpoint.base_url = e.fields[2].trim().into();
+                    }
+                    let key = olo_coder_core::id();
+                    if client.tx.send(Action::KeepKey { key: key.clone(), model: Box::new(model), secret }).is_ok() {
+                        e.busy = true;
+                        e.keep_request = Some(key);
+                        e.status = "Keeping the key in Passwords…".into();
+                    }
+                }
                 KeyCode::F(5) if !e.busy => match e.draft() {
                     Ok(profile) => {
                         let key = olo_coder_core::id();
@@ -521,7 +552,7 @@ impl Panel {
                                 vec![]
                             }
                         }
-                        _ => models::EFFORTS.iter().map(|s| (*s).into()).collect(),
+                        _ => models::effort_names(),
                     };
                     if !choices.is_empty() {
                         let at = choices.iter().position(|v| v == &e.fields[e.at]).unwrap_or(0);
@@ -642,7 +673,7 @@ impl Panel {
 }
 /// How this editor says where a model runs.
 fn services() -> Vec<String> {
-    models::services("Codex · Token Pool", "Custom endpoint")
+    models::services()
 }
 fn model_source(model: &ModelConfig) -> String {
     format!("{}\n{}\n{}", models::service(model), model.endpoint.as_ref().map(|e| e.base_url.as_str()).unwrap_or(""), models::key_text(model))
@@ -656,12 +687,12 @@ impl Editor {
             m.endpoint.as_ref().map(|e| e.base_url.clone()).unwrap_or_default(),
             models::key_text(m),
             m.model.clone(),
-            models::EFFORTS[models::effort(&m.effort)].into(),
+            models::effort_name(&m.effort),
             m.context_window.to_string(),
             m.max_output_tokens.to_string(),
         ];
         let source = model_source(m);
-        let known = models::known_ids(m);
+        let known: Vec<String> = models::known(m).into_iter().map(|l| l.id).collect();
         let is_known = !known.is_empty();
         let ids = if is_known {
             known
@@ -670,8 +701,20 @@ impl Editor {
         } else {
             vec![]
         };
-        let mut editor =
-            Self { profile, fields, at: 0, ids, status: "Fetch the catalog, choose a model and save.".into(), busy: false, source, picker: None, save_request: None, discovery_request: None };
+        let mut editor = Self {
+            profile,
+            fields,
+            at: 0,
+            ids,
+            status: "Paste the service’s API key, fetch its models (F5), choose one and save (F2).".into(),
+            busy: false,
+            source,
+            picker: None,
+            save_request: None,
+            discovery_request: None,
+            keep_request: None,
+            kept: false,
+        };
         if is_known {
             editor.source = editor.source();
         }
@@ -683,7 +726,7 @@ impl Editor {
     }
     fn source(&self) -> String {
         let service = self.service();
-        let fresh = models::service_model(service);
+        let fresh = models::service_model(service, &self.profile.model);
         let (root, key) = match service {
             0 => (String::new(), String::new()),
             _ if olo_coder_core::providers::of(&fresh).is_some() => (fresh.endpoint.as_ref().map(|e| e.base_url.clone()).unwrap_or_default(), self.fields[3].trim().to_owned()),
@@ -693,26 +736,27 @@ impl Editor {
     }
     /// Another service chosen: its address, usual key, models and limits.
     fn choose_service(&mut self) {
-        let m = models::service_model(self.service());
+        let m = models::service_model(self.service(), &self.profile.model);
         self.fields[2] = m.endpoint.as_ref().map(|e| e.base_url.clone()).unwrap_or_default();
         self.fields[3] = models::key_text(&m);
-        self.ids = models::known_ids(&m);
+        self.kept = false;
+        self.ids = models::known(&m).into_iter().map(|l| l.id).collect();
         self.show_model(&m);
         self.source = if self.ids.is_empty() { String::new() } else { self.source() };
     }
     /// Another model chosen: its known limits and effort.
     fn choose_model(&mut self) {
-        let mut m = models::service_model(self.service());
-        m.effort = if self.fields[5] == "Provider default" { String::new() } else { self.fields[5].clone() };
+        let mut m = models::service_model(self.service(), &self.profile.model);
+        m.effort = models::effort_of(&self.fields[5]);
         let id = self.fields[4].clone();
         if olo_coder_core::providers::of(&m).is_some() {
-            models::choose(&mut m, &id);
+            models::choose(&mut m, &[], &id);
             self.show_model(&m);
         }
     }
     fn show_model(&mut self, m: &ModelConfig) {
         self.fields[4] = m.model.clone();
-        self.fields[5] = models::EFFORTS[models::effort(&m.effort)].into();
+        self.fields[5] = models::effort_name(&m.effort);
         self.fields[6] = m.context_window.to_string();
         self.fields[7] = m.max_output_tokens.to_string();
     }
@@ -720,11 +764,12 @@ impl Editor {
         let mut p = self.profile.clone();
         p.name = self.fields[0].trim().into();
         let service = self.service();
+        let had = p.model.endpoint.as_ref().and_then(|e| e.api_key_secret.is_some().then(|| e.base_url.clone()));
         if models::service(&p.model) != service {
-            p.model = models::service_model(service);
+            p.model = models::service_model(service, &p.model);
         }
         p.model.model = self.fields[4].clone();
-        p.model.effort = if self.fields[5] == "Provider default" { String::new() } else { self.fields[5].clone() };
+        p.model.effort = models::effort_of(&self.fields[5]);
         p.model.context_window = self.fields[6].parse()?;
         p.model.max_output_tokens = self.fields[7].parse()?;
         let known = olo_coder_core::providers::of(&p.model).is_some();
@@ -733,7 +778,13 @@ impl Editor {
                 endpoint.base_url = self.fields[2].trim().into();
             }
         }
-        models::set_key(&mut p.model, &self.fields[3]);
+        // An empty field keeps a key already kept for that service.
+        let base = p.model.endpoint.as_ref().map(|e| e.base_url.clone());
+        match models::key_input(&self.fields[3]) {
+            models::KeyInput::Empty if self.kept || (had.is_some() && had == base) => models::set_key(&mut p.model, &models::KeyInput::Secret(String::new())),
+            models::KeyInput::Secret(_) => anyhow::bail!("Press F5 to keep the pasted key in Passwords first."),
+            input => models::set_key(&mut p.model, &input),
+        }
         p.validate()?;
         Ok(p)
     }
@@ -777,7 +828,7 @@ mod tests {
         restored.resume();
         let Panel::Profile(e) = restored else { unreachable!() };
         assert_eq!(e.fields[6], "unfinished");
-        assert_eq!(e.fields[1], "Codex · Token Pool");
+        assert_eq!(e.fields[1], "Token Pool (ChatGPT)");
         assert!(!e.busy);
         assert_eq!(filtered(&["vendor/Flash".into(), "Other".into()], "flash").len(), 1);
     }

@@ -116,6 +116,7 @@ impl Manager {
                 title,
                 secret: B64.encode(&bytes),
                 note: "Encrypts this Olo Coder service's MCP OAuth credentials. No conversation data is stored here.".into(),
+                replace: false,
             })
             .await?;
             ensure!(matches!(reply, olo_keychain::Response::Saved { .. }), "Passwords could not save the MCP encryption key");
