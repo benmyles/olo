@@ -481,14 +481,14 @@ impl FolderWin {
         let in_trash = self.current_dir().starts_with(fs::trash_files());
         // ⌘N a new window, ⇧⌘N a new folder, as Finder has them (Ben,
         // 2026-11-04: "pressing super+n should open a new tracker window").
+        // (Its settings: its own, and which app opens which files.)
         let mut file = Menu::new("File")
+            .app_items(&["tracker", "default-apps"])
             .item("New Window", "new")
             .key("n")
             .item("New Folder", "new-folder")
             .shift_key("n")
             .enabled(!in_trash)
-            .item("Find…", "find")
-            .key("f")
             .separator()
             .item("Open", "open")
             .key("o")
@@ -517,7 +517,7 @@ impl FolderWin {
         if in_trash {
             file = file.item("Restore", "restore").enabled(has_sel && self.current_dir() == fs::trash_files()).item("Empty Trash", "empty-trash").enabled(!fs::trash_is_empty());
         }
-        let file = file.separator().item("Close", "close").key("w").item("Quit", "quit").key("q");
+        let file = file.close_quit();
         let edit = Menu::new("Edit")
             .item(undo[0].0.clone(), "undo")
             .key("z")
@@ -539,9 +539,14 @@ impl FolderWin {
             .item("Select All", "select-all")
             .key("a")
             .item("Invert Selection", "invert")
-            .key("s");
+            .key("s")
+            .separator()
+            // (A query of the disk, BeOS's File ▸ Find…, where every app's
+            // Find… is.)
+            .item("Find…", "find")
+            .key("f");
         let sort = |k: SortKey| self.sort.is_some_and(|(s, _)| s == k);
-        let window = Menu::new("Window")
+        let window = Menu::new("View")
             .item("Icon View", "view-icons")
             .key("1")
             .checked(self.view == ViewMode::Icons)

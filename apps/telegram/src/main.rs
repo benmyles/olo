@@ -1273,9 +1273,10 @@ impl Tg {
     fn menus(&self) -> Vec<Menu> {
         let ready = matches!(self.status, Status::Online | Status::Updating | Status::Connecting | Status::Offline(_) | Status::Waiting(_));
         let chat = self.conv.as_ref().and_then(|c| self.store.chats.get(&c.chat));
-        let file = Menu::new("File").item("Contacts", "contacts").key("k").enabled(ready).separator().item("Close", "close").key("w").item("Quit", "quit").key("q");
+        // (Its settings: signing in, in Integrations, and its notifications.)
+        let file = Menu::new("File").app_items(&["integrations", "notifications"]).item("Contacts", "contacts").key("k").enabled(ready).close_quit();
         let edit = Menu::new("Edit")
-            .item("Find Chat", "find")
+            .item("Find…", "find")
             .key("f")
             .enabled(ready)
             .item("Select All Chats", "select-all-chats")
@@ -1323,7 +1324,6 @@ impl Tg {
         let account = Menu::new("Account")
             .item(self.me.as_ref().map_or_else(|| "Not Signed In".into(), |m| m.name.clone()), "me")
             .enabled(false)
-            .item("Integrations…", "integrations")
             .separator()
             .item("Sign Out…", "signout")
             .enabled(self.me.is_some());
@@ -1394,9 +1394,6 @@ impl Tg {
                 if let Some(i) = to {
                     self.open_chat(ids[i], None, cx);
                 }
-            }
-            "integrations" => {
-                let _ = olo_xdg::spawn_detached("olo-preferences integrations");
             }
             "signout" => self.ask("Sign Out", "Sign out of Telegram on this computer? Your chats stay on Telegram.", "Sign Out", vec![Cmd::SignOut], cx),
             _ => {}

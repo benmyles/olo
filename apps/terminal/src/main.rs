@@ -2599,7 +2599,10 @@ impl Terminal {
         // (Their keys are Terminal's in the keyboard profile, olo_protocol's
         // app_keys: Ctrl+Shift with any other key goes to the shell.)
         Some(vec![
+            // (Its settings: its own, and Integrations, where GitHub gives
+            // each tab its pull request.)
             Menu::new("Terminal")
+                .app_items(&["terminal", "integrations"])
                 .item("New Terminal", "new")
                 .shift_key("n")
                 .item("New Tab", "new-tab")

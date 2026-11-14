@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-13
 
+### Every app's first menu: About, Keyboard Shortcuts, its settings, Close and Quit
+
+*22:11* — Every Olo app's bar now starts the same way, as BeOS's did: About the app, Keyboard Shortcuts (the palette's sheet, the app's keys first), then the Preferences panels that go with it ("Performance Settings…"), and ends with Close and Quit; Edit holds Undo to Find Previous in one order, View the zooms. The kit runs these items itself, and every window's review fails a bar that strays (olo_kit::app_menu).
+
+![Every app's first menu: About, Keyboard Shortcuts, its settings, Close and Quit](2026-11-13/221156-every-app-s-first-menu-about-keyboard-shortcuts-.png)
+
 ### Token Pool widget: Quotas is a menu field of any number
 
 *21:27* — The Deskbar widget editor's quotas were a row of check boxes, which a real Claude account's quota names ran past Preferences' right edge. Now a MenuField::many: it says the chosen ones, cut with … to fit, and its menu checks any of them, Whichever holds each back first. The Preferences lint now draws the editor for every widget kind with the longest quota names the services use.

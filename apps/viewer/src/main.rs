@@ -844,7 +844,9 @@ impl Doc {
         let pos = self.siblings.iter().position(|p| *p == self.path);
         let picture = self.picture(cx);
         let editor = self.edit.as_ref().map(|e| &e.editor);
-        let mut file = Menu::new("File").item("Open…", "open").key("o").separator();
+        // (Its settings: which app opens which files, and AirPlay's
+        // receivers, which play its films.)
+        let mut file = Menu::new("File").app_items(&["default-apps", "airplay"]).item("Open…", "open").key("o").separator();
         if let Some(v) = pdf {
             file = file
                 .item("Save", "save")
@@ -867,7 +869,7 @@ impl Doc {
         if matches!(&self.content, Content::Other(prev) if prev.read(cx).is_video()) {
             file = file.submenu(Menu::airplay("Play On", &olo_kit::airplay::paired(), ""));
         }
-        file = file.separator().item("Close", "close").key("w").item("Quit", "quit").key("q");
+        file = file.close_quit();
         let mut menus = vec![file];
         // A video: Trim… (and while trimming, Cancel and Trim there too).
         if let Content::Other(prev) = &self.content
@@ -931,7 +933,7 @@ impl Doc {
                     .separator()
                     .item("Find…", "find")
                     .key("f")
-                    .item("Find Next", "find-next")
+                    .item("Find Again", "find-again")
                     .key("g")
                     .enabled(prev.finding(cx))
                     .item("Find Previous", "find-previous")
@@ -956,7 +958,7 @@ impl Doc {
                     .separator()
                     .item("Find…", "find")
                     .key("f")
-                    .item("Find Next", "find-next")
+                    .item("Find Again", "find-again")
                     .key("g")
                     .enabled(v.finding())
                     .item("Find Previous", "find-previous")
@@ -1232,13 +1234,13 @@ impl Doc {
         // selected, found.
         if let Content::Other(prev) = &self.content
             && prev.read(cx).has_text()
-            && matches!(command, "copy" | "select-all" | "find" | "find-next" | "find-previous")
+            && matches!(command, "copy" | "select-all" | "find" | "find-again" | "find-previous")
         {
             prev.update(cx, |p, cx| match command {
                 "copy" => p.copy(cx),
                 "select-all" => p.select_all(cx),
                 "find" => p.open_find(cx),
-                "find-next" => p.find_step(false, cx),
+                "find-again" => p.find_step(false, cx),
                 _ => p.find_step(true, cx),
             });
             // (Its menu says what's found, and whether there's a selection.)
@@ -1284,7 +1286,7 @@ impl Doc {
             "copy" => v.copy(cx),
             "select-all" => v.select_all(cx),
             "find" => v.open_find(cx),
-            "find-next" => v.find_step(false, cx),
+            "find-again" => v.find_step(false, cx),
             "find-previous" => v.find_step(true, cx),
             "zoom-in" => v.zoom_step(true, cx),
             "zoom-out" => v.zoom_step(false, cx),

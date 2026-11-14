@@ -1295,7 +1295,9 @@ fn tool_bars(cx: &Cx<DocView>, d: &DocView, menus: &[Menu], ink: olo_kit::Hsla) 
 fn doc_menus(app: &Common, d: &DocView, ink: olo_kit::Hsla) -> Vec<Menu> {
     let has_sel = !d.bytes().is_empty();
     let editable = !d.read_only && !d.loading;
+    // (Its settings: fonts, and which app opens which documents.)
     let file = Menu::new("File")
+        .app_items(&["appearance", "default-apps"])
         .item("New", "new")
         .key("n")
         .item("Open…", "open")
@@ -1327,11 +1329,7 @@ fn doc_menus(app: &Common, d: &DocView, ink: olo_kit::Hsla) -> Vec<Menu> {
         .separator()
         .item(olo_kit::tracker::LABEL, olo_kit::tracker::COMMAND)
         .enabled(d.path.is_some())
-        .separator()
-        .item("Close", "close")
-        .key("w")
-        .item("Quit", "quit")
-        .key("q");
+        .close_quit();
     // The picture selected, alone.
     let picked = picture_selected(&d.doc, d.bytes());
     // (Each step named, as every app's: Undo Typing, Redo Bold.)

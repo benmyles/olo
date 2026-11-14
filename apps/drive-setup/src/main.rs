@@ -1169,6 +1169,7 @@ impl DriveSetup {
                 let nvme = disk.device.starts_with("/dev/nvme");
                 self.run(format!("Checking “{dname}”…"), format!("“{dname}” couldn't be checked."), None, move |_| e(disks::smart_update(&dr.path, nvme)), cx);
             }
+            "close" => cx.close_window(),
             "quit" => olo_kit::quit(),
             _ => {}
         }
@@ -1343,7 +1344,7 @@ impl DriveSetup {
     fn menus(&self) -> Vec<Menu> {
         let can = self.can();
         vec![
-            self.disk_menu(Menu::new("Disk"), &can).separator().item("Quit", "quit").key("q"),
+            self.disk_menu(Menu::new("Disk").app_items(&[]), &can).close_quit(),
             Menu::new("Partition")
                 .item("Mount", "mount")
                 .enabled(can.mount)

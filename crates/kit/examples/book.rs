@@ -95,6 +95,7 @@ impl View for Primes {
         match command {
             "count" => cx.send(Msg::Count),
             "stop" => cx.send(Msg::Stop),
+            "close" => cx.close_window(),
             "quit" => olo_kit::quit(),
             _ => return false,
         }
@@ -103,7 +104,9 @@ impl View for Primes {
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let counting = self.counting.as_ref().map(|(_, at, _)| *at);
-        let menus = vec![Menu::new("File").item("Count", "count").key("k").item("Stop", "stop").enabled(counting.is_some()).separator().item("Quit", "quit").key("q")];
+        // (About, Keyboard Shortcuts and the settings to start, Close and
+        // Quit to end: every app's first menu, the Olo Book's "Menus".)
+        let menus = vec![Menu::new("File").app_items(&[]).item("Count", "count").key("k").item("Stop", "stop").enabled(counting.is_some()).close_quit()];
         let button = match counting {
             Some(_) => Button::new("Stop").on_click(cx.msg(Msg::Stop)),
             None => Button::new("Count").default(true).on_click(cx.msg(Msg::Count)),

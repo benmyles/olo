@@ -764,6 +764,7 @@ impl View for MainWindow {
             cx,
             vec![
                 Menu::new("File")
+                    .app_items(&["backup"])
                     .item("Back Up Now", "back-up-now")
                     .key("b")
                     .enabled(set_up && !running)
@@ -775,11 +776,7 @@ impl View for MainWindow {
                     .separator()
                     .item("Erase All Backups…", "erase-all")
                     .enabled(set_up && !running)
-                    .separator()
-                    .item("Close", "close")
-                    .key("w")
-                    .item("Quit", "quit")
-                    .key("q"),
+                    .close_quit(),
                 self.history.edit_items(Menu::new("Edit")),
             ],
         );

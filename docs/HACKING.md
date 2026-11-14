@@ -2571,6 +2571,43 @@ it.
   or a file's), from the bitmap made for the device size it's shown at,
   a texture pixel to a device pixel; decoded once, on a worker, the
   windows drawn again as each arrives.
+- `app_menu`: every app's menus the same (the Olo Book, "Menus"; Ben,
+  2026-11-13: "if there is one or more recommended settings apps/panels
+  that are related then those should also be launchable from that
+  app's menus. also standardize the olo apps menus"). The first menu
+  starts with `Menu::app_items(&[panels])`: About *App* (`about-app`:
+  an alert of the app's icon, its name from `olo_xdg::apps::OUR_APPS`,
+  Olo's version, and About Olo Desktop…, Preferences' About), Keyboard
+  Shortcuts (`keyboard-shortcuts`: `olo-palette --shortcuts`, the sheet
+  of the front app's keys then the desktop's, showing the profile's
+  keys for it), then a "*Panel* Settings…" item for each panel
+  (`pref:PANEL` or `pref:PANEL/TAB`: `olo-preferences PANEL --tab TAB`,
+  `app_menu::open_settings`; Deskbar's items use the same commands and
+  labels, `settings_label`), and a separator. It ends with
+  `close_quit()` (Close ⌘W, Quit ⌘Q) or, for a window of a program
+  that keeps running, `close_item()`. `MenuBar` and agents' `invoke`
+  run these three kinds of command themselves (`app_menu::run`) before
+  the app's `command`. Each app's settings: Activity Monitor
+  Performance; Doctor Performance, Power; DiskBackup Backup; Logs,
+  DiskUsage, DriveSetup none; Notifications' History Notifications;
+  Passwords Security ▸ Passwords; Token Pool AI, Deskbar; Agent Screens
+  AirPlay, Terminal; StyledEdit Appearance, Default Apps; Telegram
+  Integrations, Notifications; Terminal Terminal, Integrations; Tracker
+  Tracker, Default Apps; Viewer Default Apps, AirPlay.
+  `app_menu::review(menus)` is what the window review
+  (`review::review_window`, so `tsession review`, the live and the
+  built-in layout lint) finds wrong with a bar, as errors of kind
+  `menus`: About not first, Quit or Close not last, a standard command
+  (`STANDARD`: new, open, save, save-as, close, quit in the first
+  menu; undo, redo, cut, copy, paste, select-all, find, find-again,
+  find-previous, find-selection in Edit; zoom-in, zoom-out in View)
+  in another menu or called otherwise ("Find…", "Find Again"), a
+  settings item outside the first menu or not "… Settings…", two
+  enabled items with the same keys. A command that only looks like a
+  standard one gets a name of its own (DiskUsage's Item ▸ Open is
+  `open-item`; Tracker's Find…, a query of the disk, is in Edit as
+  every Find… is, not BeOS's File). Windows without a bar (Preferences'
+  panels, DeskCalc) aren't held to it.
 - `menu`: BeOS menus (`Menu::new(title).item(label, command).checked(
   on).separator().submenu(m)`), shown as Wayland popups
   (`WindowKind::Popup`, an xdg_popup over the window at a corner of an
@@ -9504,12 +9541,12 @@ offer).
   is read), Find… (⌘F: a bar over the pages, as the tool bar is, with
   how many it found and Previous, Next and Close; Return and ⇧Return;
   each match marked, the one shown selected and scrolled into view),
-  Find Next / Previous (⌘G, ⇧⌘G), and a right-click's Copy, Select All
+  Find Again / Find Previous (⌘G, ⇧⌘G), and a right-click's Copy, Select All
   and Find…. Agents read each line in view as a `Label`. Measured on
   release builds scrolling bzip2's manual at 60 frames a second: 457 to
   479 µs a frame before, 459 to 492 after; idle, nothing.
 - A text or a formatted document (Markdown, Word, OpenDocument, RTF):
-  Edit ▸ Copy, Select All, Find…, Find Next and Previous, as for PDFs,
+  Edit ▸ Copy, Select All, Find…, Find Again and Find Previous, as for PDFs,
   through the preview's (`PreviewView::copy`, `select_all`, `open_find`,
   `find_step`).
 - `--look FILE` (a file panel's Space): a process of its own, put away
@@ -13553,7 +13590,7 @@ deferred so the Tracker can update the window back):
   item, in Olo's order (`model::Order` None: the folders by name, then
   the files most recently changed first; the list's header shows
   Modified ▼) unless an order was chosen for that folder by hand (a
-  column clicked, Window ▸ Sort By), which it keeps
+  column clicked, View ▸ Sort By), which it keeps
   (`sorts.rs`: `~/.local/state/olo/tracker/sorts.json`, by folder, as
   BeOS kept a window's columns in its folder; a file of Tracker's own
   since the system's folders can't be written) and opens in again in

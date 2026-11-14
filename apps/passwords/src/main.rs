@@ -2035,6 +2035,8 @@ impl Passwords {
 
         let shared = on_screen();
         let file = Menu::new("File")
+            // (Its settings are Security's Passwords tab.)
+            .app_items(&["security/Passwords"])
             .submenu(category_menu(Menu::new("New Item"), "new:"))
             .enabled(ready && !shared)
             .separator()
@@ -2050,11 +2052,7 @@ impl Passwords {
             .enabled(!self.lock.locked && !shared)
             .item("Reset Passwords…", "reset")
             .enabled(!self.lock.locked && self.set_up() && !shared)
-            .separator()
-            .item("Close", "close")
-            .key("w")
-            .item("Quit", "quit")
-            .key("q");
+            .close_quit();
         let edit = self
             .history
             .edit_items(Menu::new("Edit"))
@@ -2071,14 +2069,14 @@ impl Passwords {
             .item("Copy Reference", "copy:reference")
             .enabled(has && details.is_some())
             .separator()
-            .item("Find", "find")
+            .item("Find…", "find")
             .key("f")
             .enabled(ready);
         let item = Menu::new("Item")
             .item("Edit", "edit")
             .key("e")
             .enabled(has && details.is_some() && !archived && !shared)
-            .item("Open Website", "open")
+            .item("Open Website", "open-website")
             .key("o")
             .enabled(has && has_site)
             .separator()
@@ -2120,7 +2118,7 @@ impl Passwords {
                 .enabled(has(ItemFieldType::Totp))
                 .item("Copy Reference", "copy:reference")
                 .separator()
-                .item("Open Website", "open")
+                .item("Open Website", "open-website")
                 .enabled(!o.websites.is_empty())
                 .item("Edit", "edit")
                 .enabled(!archived)
@@ -2149,7 +2147,7 @@ impl Passwords {
             "generator" => self.open_generator(None),
             "find" => self.ui.focus_search = true,
             "edit" => self.edit_selected(),
-            "open" => self.open_website(),
+            "open-website" => self.open_website(),
             "archive" if on_screen() => self.flash(SHARED_ONLY),
             "archive" => {
                 if let Some(o) = self.selected.as_ref().and_then(|s| self.overview(s)) {

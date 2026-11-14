@@ -537,7 +537,7 @@ impl HistoryWindow {
             .steps
             .edit_items(Menu::new("Edit"))
             .separator()
-            .item("Find", "find")
+            .item("Find…", "find")
             .key("f")
             .separator()
             .item(if selected == Some(false) { "Mark as Unread" } else { "Mark as Read" }, "toggle-read")
@@ -547,7 +547,8 @@ impl HistoryWindow {
             .enabled(n.history.unread() > 0)
             .separator();
         let edit = crate::note_menu(edit, pinned).separator().item("Clear All", "clear").enabled(n.history.entries.iter().any(|e| !e.shown && !e.pinned && !e.snoozed()));
-        vec![Menu::new("File").item("Close", "close").key("w"), edit, views]
+        // (The service stays running: Close, no Quit.)
+        vec![Menu::new("File").app_items(&["notifications"]).close_item(), edit, views]
     }
 
     fn do_command(&mut self, command: &str, cx: &mut Cx<Self>) {

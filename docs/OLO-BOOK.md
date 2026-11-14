@@ -172,6 +172,7 @@ chosen.
         match command {
             "count" => cx.send(Msg::Count),
             "stop" => cx.send(Msg::Stop),
+            "close" => cx.close_window(),
             "quit" => olo_kit::quit(),
             _ => return false,
         }
@@ -187,9 +188,9 @@ number of your own.
 ```rust
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let counting = self.counting.as_ref().map(|(_, at, _)| *at);
-        let menus = vec![Menu::new("File").item("Count", "count").key("k")
+        let menus = vec![Menu::new("File").app_items(&[]).item("Count", "count").key("k")
             .item("Stop", "stop").enabled(counting.is_some())
-            .separator().item("Quit", "quit").key("q")];
+            .close_quit()];
         let button = match counting {
             Some(_) => Button::new("Stop").on_click(cx.msg(Msg::Stop)),
             None => Button::new("Count").default(true).on_click(cx.msg(Msg::Count)),
@@ -712,6 +713,33 @@ and keys from the keyboard profile, undo (`olo_kit::undo`), the
 clipboard, drag and drop (`olo_kit::dnd`), Open in Tracker, recent
 documents, window places kept, search and filtering
 (`olo_kit::search`).
+
+**Menus** are the same in every app (`olo_kit::app_menu`; Ben,
+2026-11-13: "standardize the olo apps menus … so that kb shortcuts are
+consistent and always available and the menu locations/options where
+applicable are consistent"). As BeOS's apps did, a window's bar starts
+with its first menu: File, or what the app holds when it isn't files
+(Terminal, Disk, Screen). It starts with About and Keyboard Shortcuts
+and the app's settings, each a Preferences panel ("Sound Settings…"),
+then a separator (`Menu::app_items(&["sound", "security/Passwords"])`,
+a panel and its tab after a `/`), and it ends with Close and Quit
+(`close_quit()`; `close_item()` for a window of a program that keeps
+running, the notification service's History). Then Edit (Undo, Redo,
+Cut, Copy, Paste, Select All, Find…, Find Again, Find Previous, Find
+Selection), View (Zoom In, Zoom Out, the window's views) and the
+app's own. A command keeps its name everywhere (`find`, not
+`find-chat`; Find Again is `find-again`), so its keys come from the
+keyboard profile (`app_keys`) the same in every app. The kit runs
+About (an alert of the app's icon, its name and Olo's version),
+Keyboard Shortcuts (the palette's sheet, the app's keys first) and the
+settings items itself, chosen from the bar, its keys, the palette or by
+an agent (`app_menu::run`); your `command` never sees them. Every
+window's review checks its bar (`app_menu::review`: About first, Quit
+or Close last, each standard command in its menu and called what it
+is, settings items in the first menu and saying "… Settings…", no two
+items with the same keys), so `tsession review` and the layout lint
+fail a bar that strays. Windows without a bar (Preferences, DeskCalc,
+whose menu is a right-click's, as BeOS's were) aren't held to it.
 
 **Agents see what people see.** Every kit app answers on a socket
 (`olo-menus-PID.sock`): its menus (`{"menus":true}`, and

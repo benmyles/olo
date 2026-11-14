@@ -547,9 +547,8 @@ pub fn menus(settings: &Settings, sections: &[Section], access: Access, pids: &[
     };
     vec![
         Menu::new("File")
-            .item("Find Process…", "find")
-            .key("f")
-            .separator()
+            // (Its processes' priorities and the supervisor's.)
+            .app_items(&["performance"])
             .item("Add Graph", "add-graph")
             .separator()
             .item(full, "full-access")
@@ -557,11 +556,8 @@ pub fn menus(settings: &Settings, sections: &[Section], access: Access, pids: &[
             .checked(access == Access::Full)
             .item("Ask for Full Access at Start", "ask-full-access")
             .checked(settings.ask_full_access)
-            .separator()
-            .item("Close", "close")
-            .key("w")
-            .item("Quit", "quit")
-            .key("q"),
+            .close_quit(),
+        Menu::new("Edit").item("Find…", "find").key("f"),
         view,
         process,
     ]

@@ -462,7 +462,7 @@ impl DiskUsage {
             }
             "volumes" => self.show_volumes(cx),
             "up" => self.up(cx),
-            "open" => {
+            "open-item" => {
                 if let Some(id) = target {
                     self.open_item(id, cx);
                 }
@@ -512,7 +512,7 @@ impl DiskUsage {
             None => (false, false),
         };
         Menu::new("")
-            .item(if dir { "Open Folder" } else { "Open" }, "open")
+            .item(if dir { "Open Folder" } else { "Open" }, "open-item")
             .item(tracker::LABEL, tracker::COMMAND)
             .item("Copy Path", "copy-path")
             .separator()
@@ -536,6 +536,7 @@ impl DiskUsage {
         let any = !self.collected.is_empty();
         vec![
             Menu::new("File")
+                .app_items(&[])
                 .item("Scan Home", "scan-home")
                 .key("h")
                 .item("Scan a Folder…", "scan-folder")
@@ -548,15 +549,11 @@ impl DiskUsage {
                 .item("Stop Scanning", "stop")
                 .key(".")
                 .enabled(scanning)
-                .separator()
-                .item("Close", "close")
-                .key("w")
-                .item("Quit", "quit")
-                .key("q"),
+                .close_quit(),
             self.history.edit_items(Menu::new("Edit")),
             Menu::new("Go").item("Enclosing Folder", "up").enabled(scanned && self.folder != ROOT).item("Volumes", "volumes").enabled(scanned),
             Menu::new("Item")
-                .item("Open", "open")
+                .item("Open", "open-item")
                 .enabled(item)
                 .item(tracker::LABEL, tracker::COMMAND)
                 .enabled(item)

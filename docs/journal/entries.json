@@ -4048,5 +4048,11 @@
   "title": "Token Pool widget: Quotas is a menu field of any number",
   "caption": "The Deskbar widget editor's quotas were a row of check boxes, which a real Claude account's quota names ran past Preferences' right edge. Now a MenuField::many: it says the chosen ones, cut with \u2026 to fit, and its menu checks any of them, Whichever holds each back first. The Preferences lint now draws the editor for every widget kind with the longest quota names the services use.",
   "image": "2026-11-13/212739-token-pool-widget-quotas-is-a-menu-field-of-any-.png"
+ },
+ {
+  "time": "2026-11-13T22:11:56",
+  "title": "Every app's first menu: About, Keyboard Shortcuts, its settings, Close and Quit",
+  "caption": "Every Olo app's bar now starts the same way, as BeOS's did: About the app, Keyboard Shortcuts (the palette's sheet, the app's keys first), then the Preferences panels that go with it (\"Performance Settings\u2026\"), and ends with Close and Quit; Edit holds Undo to Find Previous in one order, View the zooms. The kit runs these items itself, and every window's review fails a bar that strays (olo_kit::app_menu).",
+  "image": "2026-11-13/221156-every-app-s-first-menu-about-keyboard-shortcuts-.png"
  }
 ]

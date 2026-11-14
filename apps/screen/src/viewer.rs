@@ -1001,19 +1001,22 @@ impl Viewer {
         let replay = self.replay.as_ref().map(|r| r.read(cx));
         let history = tab == Tab::History && replay.is_some_and(|r| r.loaded() && !r.actions().is_empty());
         let playing = replay.is_some_and(Replay::playing);
-        let screen = self.chosen_items(Menu::new("Screen").item("New Screen", "new").key("n").enabled(!self.busy).item("Passwords for Every Screen…", "shares-everywhere").separator());
+        // (Its settings: AirPlay's receivers, and Terminal's, which gives
+        // agents their screens.)
+        let screen = self.chosen_items(
+            Menu::new("Screen").app_items(&["airplay", "terminal"]).item("New Screen", "new").key("n").enabled(!self.busy).item("Passwords for Every Screen…", "shares-everywhere").separator(),
+        );
         vec![
-            screen
-                .item("Clear History…", "clear")
-                .enabled(chosen && !running)
+            screen.item("Clear History…", "clear").enabled(chosen && !running).separator().item("Export Video…", "export").key("e").enabled(self.can_export(cx)).close_quit(),
+            Menu::new("Edit")
+                .item("Select All Screens", "select-all")
+                .enabled(!self.rows.is_empty())
+                .item("Deselect All Screens", "deselect")
+                .enabled(!self.also.is_empty())
                 .separator()
-                .item("Export Video…", "export")
-                .key("e")
-                .enabled(self.can_export(cx))
-                .separator()
-                .item("Quit", "quit")
-                .key("q"),
-            Menu::new("Edit").item("Select All Screens", "select-all").enabled(!self.rows.is_empty()).item("Deselect All Screens", "deselect").enabled(!self.also.is_empty()),
+                .item("Find…", "find")
+                .key("f")
+                .enabled(chosen),
             Menu::new("View")
                 .item("Live", "tab-live")
                 .key("1")
@@ -1027,10 +1030,6 @@ impl Viewer {
                 .key("3")
                 .enabled(chosen)
                 .checked(tab == Tab::Stats)
-                .separator()
-                .item("Find", "find")
-                .key("f")
-                .enabled(chosen)
                 .separator()
                 .item("Show Archived", "show-archived")
                 .checked(self.show_archived),
@@ -1156,6 +1155,7 @@ impl Viewer {
                     self.take_control(cx);
                 }
             }
+            "close" => cx.close_window(),
             "quit" => self.quit(cx),
             _ => {}
         }

@@ -210,7 +210,17 @@ pub(crate) fn review_window(cx: &mut WindowCx, dark: bool) -> (WindowReview, (f3
         .collect();
     let (w, h) = (f32::from(size.width), f32::from(size.height));
     let scale = cx.scale_factor();
-    let findings = checks::review(&parts, w, h, scale);
+    let mut findings = checks::review(&parts, w, h, scale);
+    // Its menus, as every app's are (the Olo Book, "Menus").
+    findings.extend(crate::app_menu::review(&crate::menu::bar_menus(cx)).into_iter().map(|(kind, text)| olo_kit_base::review::Finding {
+        level: olo_kit_base::review::Level::Error,
+        kind,
+        text,
+        x: 0.0,
+        y: 0.0,
+        width: 0.0,
+        height: 0.0,
+    }));
     let fit = (checks::overflow_depth(&parts, scale), checks::bottom_slack(&parts, w, h));
     (WindowReview { title: cx.window_title().to_string(), width: w as u32, height: h as u32, scale, dark, layer: None, resizing: cx.commit_is_held(), findings }, fit)
 }
