@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-13
 
+### Coder: a quieter conversation after a real run
+
+*21:23* — At 2x: the Now card kept short so the tabs stay put, diffs the agent only read left closed, the model's name given room beside short approval choices.
+
+![Coder: a quieter conversation after a real run](2026-11-13/212356-coder-a-quieter-conversation-after-a-real-run.png)
+
 ### Coder: commands answer in words
 
 *20:54* — History, branches, worktrees and connections as lists, a toggle as a line, where they had been the API's JSON.
