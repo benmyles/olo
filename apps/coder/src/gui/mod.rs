@@ -135,7 +135,7 @@ const HELP: &str = "### Working with Coder
 Write what you want in the box at the bottom and press Return (⇧Return for a new line). While the agent works, what you send steers it: **After this step** goes in once the step it's on ends, **When it finishes** waits for the end of its turn, **Interrupt now** stops it where it is. Escape stops it.
 
 - **Tasks** (right) is the agent's plan as it keeps it; add and tick off your own there too. **Changes** is what it changed in the workspace, **Context** how full its window is.
-- **Settings…** (⌘,) chooses the model and its service (a key you paste is kept in Passwords), what it may do without asking, and its limits.
+- **Session ▸ Coder Settings…** (⌘,) chooses the model and its service (a key you paste is kept in Passwords), what it may do without asking, and its limits.
 - **Agent ▸ Set Goal…** is for work that spans days; with **Keep Going** on it carries on by itself. **Spec Mode** has it write the plan first, for you to accept.
 - **Connections** lets it use Slack, Logfire, any MCP server, Agent Screens and Passwords fields you share with it.
 
@@ -304,7 +304,13 @@ impl Coder {
         let has_spec = s.is_some_and(|s| !s.spec.text.is_empty() && s.spec.accepted_revision != Some(s.spec.revision));
         let follow = self.transcript_follow();
         vec![
+            // (As every Olo app's first menu: About, Keyboard Shortcuts and
+            // the settings that go with it, AI's for the token pool and
+            // Integrations'; its own Settings; Close and Quit last.)
             Menu::new("Session")
+                .app_items(&["ai", "integrations"])
+                .item("Coder Settings…", "settings")
+                .separator()
                 .item("New Session", "new")
                 .key("n")
                 .item("New Window", "new_window")
@@ -323,11 +329,7 @@ impl Coder {
                 .enabled(idle)
                 .item("Checkpoints", "compactions")
                 .item("Whole Transcript", "transcript")
-                .separator()
-                .item("Close Window", "close")
-                .key("w")
-                .item("Quit", "quit")
-                .key("q"),
+                .close_quit(),
             Menu::new("Edit")
                 .item("Undo", "undo")
                 .key("z")
@@ -346,10 +348,9 @@ impl Coder {
                 .item("Select All", "select-all")
                 .key("a")
                 .separator()
-                .item("Find Session", "find")
-                .key("f")
-                .separator()
-                .item("Settings…", "settings"),
+                // (Finds a session: the list's search.)
+                .item("Find…", "find")
+                .key("f"),
             Menu::new("Agent")
                 .item("Send", "send")
                 .item("Stop", "stop")

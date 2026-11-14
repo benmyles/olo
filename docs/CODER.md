@@ -78,7 +78,7 @@ both providers, approval review and client compaction.
 
 ## Choosing the model
 
-**Settings ▸ Model** (⌘,) is what the agent runs on, in one column, each
+**Settings ▸ Model** (Session ▸ Coder Settings…, ⌘,) is what the agent runs on, in one column, each
 change applied as it's made:
 
 - **Service**: the Token Pool (ChatGPT, through Olo's pool: no key), a known
@@ -288,7 +288,7 @@ The window's menus have the keys a person expects and Coder's own (Preferences
 ▸ Keyboard can change them; `olo_protocol::app_keys`): ⌘N New Session, ⇧⌘N New
 Window, ⌘O New Session in Folder, ⌘D Fork, ⌘W, ⌘Q; ⌘Z/⇧⌘Z, ⌘X, ⌘C, ⌘V, ⌘A (the
 message being written when it has the focus, else the conversation), ⌘F Find
-Session, ⌘, Settings; ⌘↩ Send, ⌘. Stop, ⌘R Resume, ⇧⌘Y Allow, ⇧⌘D Deny, ⇧⌘G
+(a session), ⌘, Coder Settings; ⌘↩ Send, ⌘. Stop, ⌘R Resume, ⇧⌘Y Allow, ⇧⌘D Deny, ⇧⌘G
 Set Goal; ⌥⌘S Sessions, ⌥⌘I Work, ⌘1–3 Tasks, Changes and Context, ⌘↑ ⌘↓ the
 previous and next session, ⌥⌘↓ ⌥⌘↑ open and close every action, ⌘/ Coder Help.
 
