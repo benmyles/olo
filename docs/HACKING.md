@@ -71,7 +71,14 @@ like pixel alignment is.
    gathered for 25 ms and read whole at its end; a path followed whether
    it is a file or a folder, exists yet or not, is replaced by a rename or
    swapped for another folder; the items that changed in a folder come
-   with it, so a caller passes over what isn't its business), Tracker's
+   with it, so a caller passes over what isn't its business; what a
+   change costs follows the change, not how much is followed: a folder
+   that comes or goes has only the paths at and under it looked at
+   again, each folder watched is counted by the paths that want it, and
+   a watch grows and shrinks by what changed, `Watch::add` and
+   `remove`, `set` looking only at what differs: the palette follows
+   ~37,000 folders, and a folder made or removed among 30,000 was
+   105 ms of CPU, now 0.2), Tracker's
    own `watch.rs` (changed items stat'ed off the UI thread, a full relist
    on queue overflow, a folder renamed or swapped away watched again at
    its path, the nearest folder above watched for it to come back if
@@ -13462,7 +13469,9 @@ put it away.
   is `Request::Show`), files under home by name (`sources::Index`: an
   `ignore` walk on start, at most 400,000, then each folder followed,
   `olo_kit::watch`, and only one that changed listed again, so a new file
-  is found at once; past an eighth of the kernel's inotify watches it is
+  is found at once; the watch gains and loses the folders that came and
+  went, `Index::take_moved`, not every folder again; past an eighth of
+  the kernel's inotify watches it is
   walked again when asked and five minutes old instead; matched on their
   own thread for the newest query only, which sleeps until a query or a
   change), sums (`calc.rs`; Return copies)

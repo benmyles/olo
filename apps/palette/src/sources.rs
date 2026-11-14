@@ -376,6 +376,11 @@ const MAX_DEPTH: usize = 12;
 pub struct Index {
     pub files: std::collections::BTreeSet<PathBuf>,
     dirs: std::collections::BTreeSet<PathBuf>,
+    /// Folders that came and went since `take_moved`: what the watch
+    /// gains and loses (not every folder handed to it again, ~37,000 in
+    /// a home of code, at each one made or removed).
+    came: Vec<PathBuf>,
+    went: Vec<PathBuf>,
 }
 
 impl Index {
@@ -393,8 +398,8 @@ impl Index {
             if self.files.len() >= MAX_FILES {
                 break;
             }
-            if entry.file_type().is_some_and(|t| t.is_dir()) {
-                self.dirs.insert(entry.path().to_owned());
+            if entry.file_type().is_some_and(|t| t.is_dir()) && self.dirs.insert(entry.path().to_owned()) {
+                self.came.push(entry.path().to_owned());
             }
             self.files.insert(entry.into_path());
         }
@@ -402,12 +407,22 @@ impl Index {
 
     /// Forget `p` and everything under it.
     fn forget(&mut self, p: &Path) {
-        for set in [&mut self.files, &mut self.dirs] {
+        for (set, dirs) in [(&mut self.files, false), (&mut self.dirs, true)] {
             let gone: Vec<PathBuf> = set.range(p.to_owned()..).take_while(|q| q.starts_with(p)).cloned().collect();
-            for g in gone {
-                set.remove(&g);
+            for g in &gone {
+                set.remove(g);
+            }
+            if dirs {
+                self.went.extend(gone);
             }
         }
+    }
+
+    /// The folders that came and went since last asked, as they are now
+    /// (one that came and went is in neither).
+    pub fn take_moved(&mut self) -> (Vec<PathBuf>, Vec<PathBuf>) {
+        let (came, went) = (std::mem::take(&mut self.came), std::mem::take(&mut self.went));
+        (came.into_iter().filter(|d| self.dirs.contains(d)).collect(), went.into_iter().filter(|d| !self.dirs.contains(d)).collect())
     }
 
     /// Folder `dir` changed (or went): list it again, walking what is new
@@ -433,7 +448,9 @@ impl Index {
                 break;
             }
             if new.is_dir() && Self::depth(home, &new) < MAX_DEPTH {
-                self.dirs.insert(new.clone());
+                if self.dirs.insert(new.clone()) {
+                    self.came.push(new.clone());
+                }
                 self.walk(home, &new);
             }
             self.files.insert(new);
@@ -717,7 +734,12 @@ pub fn workers(proxy: Proxy) -> Workers {
         walked.write().unwrap_or_else(|e| e.into_inner()).walk(&walk_home, &walk_home);
         let _ = wake_tx.send(Wake::Index);
         let budget = watch_budget();
-        let folders = walked.read().unwrap_or_else(|e| e.into_inner()).folders(&walk_home);
+        let folders = {
+            let mut ix = walked.write().unwrap_or_else(|e| e.into_inner());
+            // (All of them, followed at once below.)
+            let _ = ix.take_moved();
+            ix.folders(&walk_home)
+        };
         let follow = folders.len() <= budget;
         let watch = if follow {
             let tx = changed_tx.clone();
@@ -731,7 +753,6 @@ pub fn workers(proxy: Proxy) -> Workers {
         if watch.is_none() {
             tracing::info!(folders = folders.len(), budget, "not following the file index's folders: it is walked again when asked");
         }
-        let mut followed = folders.len();
         while let Ok(mut dirs) = changed_rx.recv() {
             // A burst (a copy, a checkout): every folder in it at once.
             while let Ok(more) = changed_rx.try_recv() {
@@ -748,11 +769,14 @@ pub fn workers(proxy: Proxy) -> Workers {
             for d in &dirs {
                 ix.changed(&walk_home, d);
             }
+            // The watch gains the folders that came, loses those that went.
+            let (came, went) = ix.take_moved();
             if let Some(w) = &watch {
-                let folders = ix.folders(&walk_home);
-                if folders.len() != followed {
-                    followed = folders.len();
-                    w.set(folders);
+                if !went.is_empty() {
+                    w.remove(went);
+                }
+                if !came.is_empty() {
+                    w.add(came);
                 }
             }
             drop(ix);
@@ -819,6 +843,7 @@ mod tests {
         let mut ix = Index::default();
         ix.walk(&home, &home);
         assert!(ix.files.contains(&home.join("Documents/old/a.txt")));
+        let _ = ix.take_moved();
         // A folder gone and one new (with things in it), seen as their
         // parent changing: only that one is listed again.
         std::fs::remove_dir_all(home.join("Documents/old")).unwrap();
@@ -828,10 +853,18 @@ mod tests {
         assert!(!ix.files.iter().any(|p| p.starts_with(home.join("Documents/old"))));
         assert!(ix.files.contains(&home.join("Documents/new/deep/c.txt")) && ix.files.contains(&home.join("Documents/b.txt")));
         assert!(ix.folders(&home).contains(&home.join("Documents/new/deep")));
+        // What the watch gains and loses: only those folders.
+        let (mut came, went) = ix.take_moved();
+        came.sort();
+        assert_eq!((came, went), (vec![home.join("Documents/new"), home.join("Documents/new/deep")], vec![home.join("Documents/old")]));
+        assert_eq!(ix.take_moved(), (vec![], vec![]), "told once");
         // A folder that went, reported itself: forgotten with all inside.
         std::fs::remove_dir_all(home.join("Documents")).unwrap();
         ix.changed(&home, &home.join("Documents"));
         assert!(ix.files.is_empty(), "{:?}", ix.files);
+        let (came, mut went) = ix.take_moved();
+        went.sort();
+        assert_eq!((came, went), (vec![], vec![home.join("Documents"), home.join("Documents/new"), home.join("Documents/new/deep")]));
         let _ = std::fs::remove_dir_all(&home);
     }
 

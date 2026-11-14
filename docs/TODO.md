@@ -870,6 +870,29 @@ something nobody here has is in "Blocked", with what it waits for.
          rounds) 25.4–27.5 → 22.3–22.4 M instructions (cycles too noisy
          to tell, 67–84 M for both). `OLO_FRAME_PHASES=batches` lists
          a frame's draws in order, which is how it showed.
+       - *Following many folders, done 2026-11-14.* The command palette
+         at rest was 3.9% of a core in Ben's session, all of it the
+         kit's watch thread (2.9%) and the palette's index (1.5%): it
+         follows every folder of his home (36,873 watches), and every
+         folder made or removed anywhere (a build, a checkout) had the
+         watch thread look at every path followed again (`is_dir` on
+         each and the folder above, `exists` on each), the changed
+         paths compared with every one, and then the palette hand all
+         its folders to the watch again, which looked at each again.
+         Now `olo_kit::watch` keeps its paths in order (what's under a
+         folder that came or went is a range, and only those are looked
+         at), counts each folder watched by the paths that want it, and
+         finds each watcher's paths from those touched; a watch grows
+         and shrinks by what changed (`Watch::add`, `remove`; `set`
+         looks only at what differs), and the palette's index says
+         which folders came and went (`Index::take_moved`). Release,
+         30,000 folders followed (`watch::tests::a_change_among_many`):
+         a folder made or removed 104–107 → 0.15–0.23 ms of CPU, `set`
+         of them all and one more 100 → 18–23 ms, the first watch of
+         them 161–167 → 191–205 ms (once). The palette headless on a
+         home of 30,000 folders, one made or removed every 200 ms, the
+         two builds in turn twice (cost, 30 s): 82.5 and 82.7% of a
+         core (the watch thread unable to keep up) → 0.5 and 0.4%.
        - *Activity Monitor's sampler, done 2026-11-14.* At rest on the
          Overview the app was 3–4% of a core, three quarters of it the
          sampler, most of that in the kernel: 27 ms of CPU a sample

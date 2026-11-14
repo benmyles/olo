@@ -13,16 +13,25 @@
 //! replaced) and a folder's own items too. Dropping the [`Watch`] stops
 //! it. Tracker keeps its own watcher (`apps/tracker/src/watch.rs`), which
 //! also reads what changed for its windows.
+//!
+//! What a change costs follows the change, not how much is followed (the
+//! command palette follows every folder of a home, ~37,000): a folder
+//! that comes or goes has the paths at and under it looked at again (the
+//! paths are kept in order, so those are a range), each folder watched is
+//! counted by the paths that want it, and a path's call is found from the
+//! paths touched. A [`Watch`] grows and shrinks by what changed in it
+//! ([`Watch::add`], [`Watch::remove`]); [`Watch::set`] looks only at what
+//! differs from what it followed.
 
 use olo_sync::Mutex;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     ffi::{CString, OsStr},
     os::{
         fd::{AsRawFd, FromRawFd, OwnedFd},
         unix::ffi::OsStrExt,
     },
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, OnceLock},
     time::{Duration, Instant},
 };
@@ -52,15 +61,52 @@ pub struct Watch {
 
 impl Watch {
     /// Follow `paths` from now on instead (a file panel gone to another
-    /// folder).
+    /// folder). Only what differs from before is looked at.
     pub fn set(&self, paths: impl IntoIterator<Item = PathBuf>) {
+        self.change(|st, id| {
+            let new = Places::of(paths);
+            let Some(w) = st.watchers.get_mut(&id) else { return };
+            let old = std::mem::replace(&mut w.paths, new);
+            let (old, new) = (&old, &st.watchers[&id].paths);
+            let gone: Vec<PathBuf> = old.list.iter().filter(|p| !new.at.contains_key(*p)).cloned().collect();
+            let came: Vec<PathBuf> = new.list.iter().filter(|p| !old.at.contains_key(*p)).cloned().collect();
+            for p in &came {
+                st.follow(p);
+            }
+            for p in &gone {
+                st.unfollow(p);
+            }
+        });
+    }
+
+    /// Follow `paths` too.
+    pub fn add(&self, paths: impl IntoIterator<Item = PathBuf>) {
+        self.change(|st, id| {
+            for p in paths {
+                let Some(w) = st.watchers.get_mut(&id) else { return };
+                if w.paths.push(&p) {
+                    st.follow(&p);
+                }
+            }
+        });
+    }
+
+    /// Follow `paths` no more.
+    pub fn remove(&self, paths: impl IntoIterator<Item = PathBuf>) {
+        self.change(|st, id| {
+            for p in paths {
+                let Some(w) = st.watchers.get_mut(&id) else { return };
+                if w.paths.take(&p) {
+                    st.unfollow(&p);
+                }
+            }
+        });
+    }
+
+    fn change(&self, f: impl FnOnce(&mut State, u64)) {
         let Some(s) = service() else { return };
         let mut st = s.state.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(w) = st.watchers.get_mut(&self.id) {
-            w.paths = paths.into_iter().collect();
-            w.there = w.paths.iter().map(|p| p.exists()).collect();
-        }
-        st.reconcile();
+        f(&mut st, self.id);
         drop(st);
         s.wake();
     }
@@ -70,8 +116,11 @@ impl Drop for Watch {
     fn drop(&mut self) {
         let Some(s) = service() else { return };
         let mut st = s.state.lock().unwrap_or_else(|e| e.into_inner());
-        st.watchers.remove(&self.id);
-        st.reconcile();
+        if let Some(w) = st.watchers.remove(&self.id) {
+            for p in &w.paths.list {
+                st.unfollow(p);
+            }
+        }
     }
 }
 
@@ -86,93 +135,233 @@ pub fn watch(paths: impl IntoIterator<Item = PathBuf>, changed: impl Fn(&[PathBu
     let mut st = s.state.lock().unwrap_or_else(|e| e.into_inner());
     st.next += 1;
     let id = st.next;
-    let paths: Vec<PathBuf> = paths.into_iter().collect();
-    let there = paths.iter().map(|p| p.exists()).collect();
-    st.watchers.insert(id, Watcher { paths, there, changed: Arc::new(changed) });
-    st.reconcile();
+    let paths = Places::of(paths);
+    for p in &paths.list {
+        st.follow(p);
+    }
+    st.watchers.insert(id, Watcher { paths, changed: Arc::new(changed) });
     drop(st);
     s.wake();
     Some(Watch { id })
 }
 
+/// A watcher's paths in the order given (what it's told comes in that
+/// order), and each one's place in it.
+#[derive(Default)]
+struct Places {
+    list: Vec<PathBuf>,
+    at: HashMap<PathBuf, usize>,
+}
+
+impl Places {
+    fn of(paths: impl IntoIterator<Item = PathBuf>) -> Places {
+        let mut places = Places::default();
+        for p in paths {
+            places.push(&p);
+        }
+        places
+    }
+
+    /// False if it's there already.
+    fn push(&mut self, p: &Path) -> bool {
+        if self.at.contains_key(p) {
+            return false;
+        }
+        self.at.insert(p.to_owned(), self.list.len());
+        self.list.push(p.to_owned());
+        true
+    }
+
+    /// False if it wasn't there.
+    fn take(&mut self, p: &Path) -> bool {
+        let Some(i) = self.at.remove(p) else { return false };
+        self.list.swap_remove(i);
+        if let Some(moved) = self.list.get(i) {
+            self.at.insert(moved.clone(), i);
+        }
+        true
+    }
+}
+
 struct Watcher {
-    paths: Vec<PathBuf>,
-    /// Whether each was there when last looked (after folders came or
-    /// went, one may have come or gone with them, unseen).
-    there: Vec<bool>,
+    paths: Places,
     changed: Changed,
+}
+
+/// A path followed, by one watcher or more.
+struct Followed {
+    users: usize,
+    /// Whether it was there when last looked.
+    there: bool,
+    /// The folders watched for it: itself, if it's a folder; the nearest
+    /// one above it that exists (for it coming, going or being replaced).
+    dirs: [Option<PathBuf>; 2],
+}
+
+/// Whether `p` is there, and the folders to watch for it.
+fn look(p: &Path) -> (bool, [Option<PathBuf>; 2]) {
+    let meta = std::fs::metadata(p);
+    let own = meta.as_ref().is_ok_and(|m| m.is_dir()).then(|| p.to_owned());
+    let mut up = p.parent();
+    while let Some(d) = up {
+        if d.is_dir() {
+            break;
+        }
+        up = d.parent();
+    }
+    (meta.is_ok(), [own, up.map(Path::to_owned)])
+}
+
+/// A folder watched: its watch (None while it can't be: gone, or the
+/// kernel refused), and how many paths want it.
+struct Dir {
+    wd: Option<i32>,
+    wanted: usize,
 }
 
 struct State {
     fd: OwnedFd,
     next: u64,
     watchers: HashMap<u64, Watcher>,
-    by_wd: HashMap<i32, PathBuf>,
-    by_dir: HashMap<PathBuf, i32>,
+    /// Every path followed, in order: what's under a folder is a range.
+    paths: BTreeMap<PathBuf, Followed>,
+    dirs: HashMap<PathBuf, Dir>,
+    /// Each watch's folder: its names (two paths can name one folder,
+    /// by a link, and share its watch).
+    by_wd: HashMap<i32, Vec<PathBuf>>,
+}
+
+/// What a burst of events said.
+#[derive(Default)]
+struct Burst {
+    /// What was touched: a folder's item, or the folder itself.
+    touched: HashSet<PathBuf>,
+    /// Folders that came or went (made, removed, moved in or out).
+    moved: Vec<PathBuf>,
+    /// The kernel lost count: everything may have changed.
+    overflow: bool,
 }
 
 impl State {
-    /// The folders to watch for the paths followed: each path's nearest
-    /// existing folder above it, and a folder path itself.
-    fn wanted(&self) -> HashSet<PathBuf> {
-        let mut want = HashSet::new();
-        for w in self.watchers.values() {
-            for p in &w.paths {
-                if p.is_dir() {
-                    want.insert(p.clone());
-                }
-                let mut up = p.parent();
-                while let Some(d) = up {
-                    if d.is_dir() {
-                        want.insert(d.to_owned());
-                        break;
-                    }
-                    up = d.parent();
-                }
-            }
+    /// One more watcher follows `p`.
+    fn follow(&mut self, p: &Path) {
+        if let Some(f) = self.paths.get_mut(p) {
+            f.users += 1;
+            return;
         }
-        want
+        let (there, dirs) = look(p);
+        for d in dirs.iter().flatten() {
+            self.want(d);
+        }
+        self.paths.insert(p.to_owned(), Followed { users: 1, there, dirs });
     }
 
-    fn reconcile(&mut self) {
-        let want = self.wanted();
-        let gone: Vec<PathBuf> = self.by_dir.keys().filter(|d| !want.contains(*d)).cloned().collect();
-        for d in gone {
-            if let Some(wd) = self.by_dir.remove(&d) {
+    /// One less does.
+    fn unfollow(&mut self, p: &Path) {
+        let Some(f) = self.paths.get_mut(p) else { return };
+        f.users -= 1;
+        if f.users == 0
+            && let Some(f) = self.paths.remove(p)
+        {
+            for d in f.dirs.iter().flatten() {
+                self.unwant(d);
+            }
+        }
+    }
+
+    /// Looks at `p` again (a folder came or went at or above it): whether
+    /// it's there changed.
+    fn again(&mut self, p: &Path) -> bool {
+        if !self.paths.contains_key(p) {
+            return false;
+        }
+        let (there, dirs) = look(p);
+        // (The new wanted before the old let go: a folder in both keeps
+        // its watch, or has it made again if it was lost.)
+        for d in dirs.iter().flatten() {
+            self.want(d);
+        }
+        let Some(f) = self.paths.get_mut(p) else { return false };
+        let old = std::mem::replace(&mut f.dirs, dirs);
+        let flipped = std::mem::replace(&mut f.there, there) != there;
+        for d in old.iter().flatten() {
+            self.unwant(d);
+        }
+        flipped
+    }
+
+    /// Looks again at every path at or under `dir`; those whose being
+    /// there changed go into `flipped`.
+    fn again_under(&mut self, dir: &Path, flipped: &mut HashSet<PathBuf>) {
+        let under: Vec<PathBuf> = self.paths.range(dir.to_owned()..).map(|(p, _)| p).take_while(|p| p.starts_with(dir)).cloned().collect();
+        for p in under {
+            if self.again(&p) {
+                flipped.insert(p);
+            }
+        }
+    }
+
+    fn want(&mut self, d: &Path) {
+        match self.dirs.get_mut(d) {
+            Some(dir) => {
+                dir.wanted += 1;
+                if dir.wd.is_none() {
+                    dir.wd = add_watch(&self.fd, d);
+                    if let Some(wd) = dir.wd {
+                        self.by_wd.entry(wd).or_default().push(d.to_owned());
+                    }
+                }
+            }
+            None => {
+                let wd = add_watch(&self.fd, d);
+                if let Some(wd) = wd {
+                    self.by_wd.entry(wd).or_default().push(d.to_owned());
+                }
+                self.dirs.insert(d.to_owned(), Dir { wd, wanted: 1 });
+            }
+        }
+    }
+
+    fn unwant(&mut self, d: &Path) {
+        let Some(dir) = self.dirs.get_mut(d) else { return };
+        dir.wanted -= 1;
+        if dir.wanted > 0 {
+            return;
+        }
+        let wd = dir.wd;
+        self.dirs.remove(d);
+        if let Some(wd) = wd
+            && let Some(names) = self.by_wd.get_mut(&wd)
+        {
+            names.retain(|n| n != d);
+            if names.is_empty() {
                 self.by_wd.remove(&wd);
                 // SAFETY: valid fd; a stale wd just fails.
                 unsafe { libc::inotify_rm_watch(self.fd.as_raw_fd(), wd) };
             }
         }
-        for d in want {
-            if self.by_dir.contains_key(&d) {
-                continue;
-            }
-            let Ok(c) = CString::new(d.as_os_str().as_bytes()) else { continue };
-            // SAFETY: valid fd and NUL-terminated path.
-            let wd = unsafe { libc::inotify_add_watch(self.fd.as_raw_fd(), c.as_ptr(), MASK) };
-            if wd < 0 {
-                tracing::debug!("can't watch {}: {}", d.display(), std::io::Error::last_os_error());
-                continue;
-            }
-            // Two paths naming one folder share its watch.
-            if let Some(old) = self.by_wd.insert(wd, d.clone()) {
-                self.by_dir.remove(&old);
-            }
-            self.by_dir.insert(d, wd);
-        }
     }
 
-    /// Read every event waiting: what was touched (a folder's item, or
-    /// the folder itself), and whether folders came or went.
-    fn read(&mut self, touched: &mut HashSet<PathBuf>) -> bool {
+    /// The watch `wd` is no more (its folder removed, or moved away):
+    /// its folders are unwatched until looked at again.
+    fn lost(&mut self, wd: i32) -> Vec<PathBuf> {
+        let names = self.by_wd.remove(&wd).unwrap_or_default();
+        for n in &names {
+            if let Some(dir) = self.dirs.get_mut(n) {
+                dir.wd = None;
+            }
+        }
+        names
+    }
+
+    /// Read every event waiting into `burst`.
+    fn read(&mut self, burst: &mut Burst) {
         let mut buf = [0u8; 16 * 1024];
-        let mut structure = false;
         loop {
             // SAFETY: reading into our own buffer from a non-blocking fd.
             let n = unsafe { libc::read(self.fd.as_raw_fd(), buf.as_mut_ptr().cast(), buf.len()) };
             if n <= 0 {
-                return structure;
+                return;
             }
             let mut at = 0;
             while at + std::mem::size_of::<libc::inotify_event>() <= n as usize {
@@ -184,59 +373,100 @@ impl State {
                 let name = &raw[..raw.iter().position(|&b| b == 0).unwrap_or(raw.len())];
                 at = name_at + ev.len as usize;
                 if ev.mask & libc::IN_Q_OVERFLOW != 0 {
-                    // Too much to say what: everything followed changed.
-                    touched.extend(self.watchers.values().flat_map(|w| w.paths.iter().cloned()));
-                    structure = true;
+                    burst.overflow = true;
                     continue;
                 }
-                let Some(dir) = self.by_wd.get(&ev.wd).cloned() else { continue };
                 if ev.mask & (libc::IN_IGNORED | libc::IN_DELETE_SELF | libc::IN_MOVE_SELF) != 0 {
                     // The folder itself went (or was swapped for another):
-                    // watch what has its path now, if anything.
-                    if ev.mask & libc::IN_IGNORED != 0 || ev.mask & libc::IN_MOVE_SELF != 0 {
-                        self.by_wd.remove(&ev.wd);
-                        self.by_dir.remove(&dir);
-                        // SAFETY: valid fd; a gone wd just fails.
-                        unsafe { libc::inotify_rm_watch(self.fd.as_raw_fd(), ev.wd) };
+                    // what has its path now, if anything, is looked at.
+                    let names = if ev.mask & (libc::IN_IGNORED | libc::IN_MOVE_SELF) != 0 {
+                        if ev.mask & libc::IN_MOVE_SELF != 0 {
+                            // (Moved, its watch would follow it elsewhere.)
+                            // SAFETY: valid fd; a gone wd just fails.
+                            unsafe { libc::inotify_rm_watch(self.fd.as_raw_fd(), ev.wd) };
+                        }
+                        self.lost(ev.wd)
+                    } else {
+                        self.by_wd.get(&ev.wd).cloned().unwrap_or_default()
+                    };
+                    for n in names {
+                        burst.touched.insert(n.clone());
+                        burst.moved.push(n);
                     }
-                    touched.insert(dir);
-                    structure = true;
                     continue;
                 }
-                if ev.mask & (libc::IN_CREATE | libc::IN_DELETE | libc::IN_MOVED_FROM | libc::IN_MOVED_TO) != 0 && ev.mask & libc::IN_ISDIR != 0 {
-                    structure = true;
+                let Some(names) = self.by_wd.get(&ev.wd) else { continue };
+                for dir in names {
+                    let item = dir.join(OsStr::from_bytes(name));
+                    if ev.mask & (libc::IN_CREATE | libc::IN_DELETE | libc::IN_MOVED_FROM | libc::IN_MOVED_TO) != 0 && ev.mask & libc::IN_ISDIR != 0 {
+                        burst.moved.push(item.clone());
+                    }
+                    burst.touched.insert(item);
+                    burst.touched.insert(dir.clone());
                 }
-                touched.insert(dir.join(OsStr::from_bytes(name)));
-                touched.insert(dir);
             }
         }
     }
 
-    /// Each watcher's paths that changed: touched (written, replaced, an
-    /// item in it changed), or, after folders came or went (`structure`),
-    /// come or gone with them.
-    fn calls(&mut self, touched: &HashSet<PathBuf>, structure: bool) -> Vec<(Changed, Vec<PathBuf>)> {
-        let mut out = Vec::new();
-        for w in self.watchers.values_mut() {
-            let mut hit = Vec::new();
-            for (p, there) in w.paths.iter().zip(w.there.iter_mut()) {
-                let now = if structure { p.exists() } else { *there };
-                if touched.contains(p) || now != *there {
-                    hit.push(p.clone());
+    /// What a burst changed, for each watcher: its paths touched (written,
+    /// replaced, an item in it changed) or come or gone, in its order, and
+    /// then the items that changed in its folders.
+    fn calls(&mut self, burst: Burst) -> Vec<(Changed, Vec<PathBuf>)> {
+        let Burst { mut touched, mut moved, overflow } = burst;
+        let mut flipped = HashSet::new();
+        if overflow {
+            // Too much to say what: everything followed changed, and is
+            // looked at again.
+            let all: Vec<PathBuf> = self.paths.keys().cloned().collect();
+            for p in &all {
+                self.again(p);
+            }
+            touched.extend(all);
+            moved.clear();
+        }
+        moved.sort();
+        moved.dedup();
+        // (A folder under another that moved is looked at with it.)
+        moved.dedup_by(|b, a| b.starts_with(&*a));
+        for m in &moved {
+            self.again_under(m, &mut flipped);
+        }
+        // A file touched may have come or gone without a folder moving.
+        for p in &touched {
+            if let Some(f) = self.paths.get_mut(p) {
+                let there = p.exists();
+                if f.there != there {
+                    f.there = there;
+                    flipped.insert(p.clone());
                 }
-                *there = now;
             }
+        }
+        let mut out = Vec::new();
+        for w in self.watchers.values() {
+            let mut hit: Vec<usize> = touched.iter().chain(&flipped).filter_map(|p| w.paths.at.get(p).copied()).collect();
+            if hit.is_empty() {
+                continue;
+            }
+            hit.sort_unstable();
+            hit.dedup();
+            let mut paths: Vec<PathBuf> = hit.into_iter().map(|i| w.paths.list[i].clone()).collect();
             // The items that changed in folders followed.
-            let items: Vec<PathBuf> = touched.iter().filter(|t| t.parent().is_some_and(|d| w.paths.iter().any(|p| p == d)) && !w.paths.contains(t)).cloned().collect();
-            if !hit.is_empty() {
-                hit.extend(items);
-            }
-            if !hit.is_empty() {
-                out.push((w.changed.clone(), hit));
-            }
+            paths.extend(touched.iter().filter(|t| t.parent().is_some_and(|d| w.paths.at.contains_key(d)) && !w.paths.at.contains_key(*t)).cloned());
+            out.push((w.changed.clone(), paths));
         }
         out
     }
+}
+
+fn add_watch(fd: &OwnedFd, d: &Path) -> Option<i32> {
+    let c = CString::new(d.as_os_str().as_bytes()).ok()?;
+    // SAFETY: valid fd and NUL-terminated path.
+    let wd = unsafe { libc::inotify_add_watch(fd.as_raw_fd(), c.as_ptr(), MASK) };
+    if wd < 0 {
+        tracing::debug!("can't watch {}: {}", d.display(), std::io::Error::last_os_error());
+        return None;
+    }
+    Some(wd)
 }
 
 struct Service {
@@ -268,15 +498,14 @@ fn service() -> Option<&'static Service> {
         }
         let (woken, wake) = unsafe { (OwnedFd::from_raw_fd(pipe[0]), OwnedFd::from_raw_fd(pipe[1])) };
         let ino = fd.as_raw_fd();
-        let s: &'static Service = Box::leak(Box::new(Service { state: Mutex::new(State { fd, next: 0, watchers: HashMap::new(), by_wd: HashMap::new(), by_dir: HashMap::new() }), wake }));
+        let s: &'static Service =
+            Box::leak(Box::new(Service { state: Mutex::new(State { fd, next: 0, watchers: HashMap::new(), paths: BTreeMap::new(), dirs: HashMap::new(), by_wd: HashMap::new() }), wake }));
         std::thread::Builder::new().name("kit-watch".into()).spawn(move || run(s, ino, woken)).ok()?;
         Some(s)
     })
 }
 
 fn run(s: &'static Service, ino: i32, woken: OwnedFd) {
-    let mut touched = HashSet::new();
-    let mut structure = false;
     let mut since: Option<Instant> = None;
     loop {
         // Idle: asleep until the kernel has an event (or a watch is
@@ -303,13 +532,9 @@ fn run(s: &'static Service, ino: i32, woken: OwnedFd) {
             since = None;
             let calls = {
                 let mut st = s.state.lock().unwrap_or_else(|e| e.into_inner());
-                structure |= st.read(&mut touched);
-                let structure = std::mem::take(&mut structure);
-                if structure {
-                    // Folders came or went: watch the ones there are now.
-                    st.reconcile();
-                }
-                st.calls(&std::mem::take(&mut touched), structure)
+                let mut burst = Burst::default();
+                st.read(&mut burst);
+                st.calls(burst)
             };
             for (changed, paths) in calls {
                 changed(&paths);
@@ -358,6 +583,99 @@ mod tests {
         drop(w);
         std::fs::write(&file, "3").unwrap();
         assert!(rx.recv_timeout(Duration::from_millis(200)).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn grown_shrunk_and_shared() {
+        let dir = std::env::temp_dir().join(format!("olo-kit-watch-shared-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("a")).unwrap();
+        let (a, b, c) = (dir.join("a"), dir.join("b"), dir.join("c.txt"));
+        let (tx1, rx1) = mpsc::channel();
+        let (tx2, rx2) = mpsc::channel();
+        let one = watch([a.clone()], move |p| tx1.send(p.to_vec()).unwrap()).unwrap();
+        let two = watch([a.clone(), c.clone()], move |p| tx2.send(p.to_vec()).unwrap()).unwrap();
+        // Both follow a: both hear of an item in it.
+        std::fs::write(a.join("x"), "x").unwrap();
+        assert_eq!(next(&rx1), [a.clone(), a.join("x")]);
+        assert_eq!(next(&rx2), [a.clone(), a.join("x")]);
+        // One gone, the other still hears.
+        drop(one);
+        std::fs::write(a.join("y"), "y").unwrap();
+        assert_eq!(next(&rx2), [a.clone(), a.join("y")]);
+        // Grown by a folder not there yet: made, it's heard of.
+        two.add([b.clone()]);
+        std::fs::create_dir(&b).unwrap();
+        assert!(next(&rx2).contains(&b));
+        // Shrunk: a's no more, c still is.
+        two.remove([a.clone()]);
+        std::fs::write(a.join("z"), "z").unwrap();
+        std::fs::write(&c, "c").unwrap();
+        assert_eq!(next(&rx2), [c.clone()]);
+        // Set: b kept as it was, a back.
+        two.set([b.clone(), a.clone()]);
+        std::fs::write(b.join("w"), "w").unwrap();
+        assert_eq!(next(&rx2), [b.clone(), b.join("w")]);
+        // a removed and made again, with an item: still followed.
+        std::fs::remove_dir_all(&a).unwrap();
+        while rx2.recv_timeout(Duration::from_millis(200)).is_ok() {}
+        std::fs::create_dir(&a).unwrap();
+        while rx2.recv_timeout(Duration::from_millis(200)).is_ok() {}
+        std::fs::write(a.join("v"), "v").unwrap();
+        assert_eq!(next(&rx2), [a.clone(), a.join("v")]);
+        drop(two);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn cpu_ms() -> f64 {
+        // SAFETY: getrusage fills the struct it's given.
+        let mut u: libc::rusage = unsafe { std::mem::zeroed() };
+        unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut u) };
+        let t = |v: libc::timeval| v.tv_sec as f64 * 1e3 + v.tv_usec as f64 / 1e3;
+        t(u.ru_utime) + t(u.ru_stime)
+    }
+
+    /// What a folder made or removed costs with many followed, as the
+    /// command palette follows every folder of a home (`--ignored
+    /// --nocapture`; TMPDIR on disk: it makes 30,000 folders).
+    #[test]
+    #[ignore]
+    fn a_change_among_many() {
+        let dir = std::env::temp_dir().join(format!("olo-kit-watch-many-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut folders = vec![dir.clone()];
+        for a in 0..30 {
+            for b in 0..1000 {
+                folders.push(dir.join(format!("a{a}/b{b}")));
+            }
+        }
+        for f in &folders {
+            std::fs::create_dir_all(f).unwrap();
+        }
+        let (tx, rx) = mpsc::channel();
+        let t = cpu_ms();
+        let w = watch(folders.clone(), move |p| tx.send(p.len()).unwrap()).unwrap();
+        eprintln!("watching {} folders: {:.1} ms", folders.len(), cpu_ms() - t);
+        let n = 20;
+        let t = cpu_ms();
+        for i in 0..n {
+            let new = dir.join(format!("a{}/b{i}/new", i % 30));
+            std::fs::create_dir(&new).unwrap();
+            rx.recv_timeout(Duration::from_secs(5)).unwrap();
+            std::fs::remove_dir(&new).unwrap();
+            rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        }
+        eprintln!("a folder made or removed: {:.2} ms", (cpu_ms() - t) / (2 * n) as f64);
+        // As the palette does: its folders again, one more.
+        let t = cpu_ms();
+        for i in 0..n {
+            let mut more = folders.clone();
+            more.push(dir.join(format!("a0/b{i}/x")));
+            w.set(more);
+        }
+        eprintln!("set again, one more: {:.2} ms", (cpu_ms() - t) / n as f64);
+        drop(w);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
