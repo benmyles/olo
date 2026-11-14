@@ -839,6 +839,11 @@ pub struct TilingSettings {
     /// windows share one frame with a tab each (app_server's `groups`).
     /// In Focus mode an app's windows are grouped whatever this says.
     pub ungrouped_apps: Vec<String>,
+    /// Apps whose windows always float over the tiles (and over the one
+    /// Focus shows), by app id: a window's menu ▸ Float Window ▸ Always
+    /// (`Request::SetAppFloating`). A window floated or tiled by hand
+    /// goes by that instead.
+    pub floating_apps: Vec<String>,
     /// The windowing mode of every workspace (and display) that hasn't
     /// one of its own (Preferences ▸ Windows).
     pub default_mode: WindowingMode,
@@ -859,7 +864,16 @@ pub struct TilingSettings {
 
 impl Default for TilingSettings {
     fn default() -> Self {
-        TilingSettings { gap: 8, margin: 8, ungrouped_apps: Vec::new(), default_mode: WindowingMode::Standard, layout: TilingLayout::Halves, modes: Vec::new(), auto: Vec::new() }
+        TilingSettings {
+            gap: 8,
+            margin: 8,
+            ungrouped_apps: Vec::new(),
+            floating_apps: Vec::new(),
+            default_mode: WindowingMode::Standard,
+            layout: TilingLayout::Halves,
+            modes: Vec::new(),
+            auto: Vec::new(),
+        }
     }
 }
 

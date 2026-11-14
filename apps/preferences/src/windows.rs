@@ -5,7 +5,10 @@
 //! the display's edges and a gap between windows, kept by tiling, zooming,
 //! Tile All, Smart Tile, cascading and fanning out. app_server fits tiled
 //! and zoomed windows to it as it changes, so the sliders move them live;
-//! the miniature shows the main display with three windows tiled.
+//! the miniature shows the main display with three windows tiled. And
+//! the apps whose windows always float over the tiles
+//! (`TilingSettings::floating_apps`, a window menu's Float Window ▸
+//! Always), to tile them again.
 
 use olo_kit::{
     Bounds, ContentMask, Painter, Pixels, SharedString, Styled as _, canvas,
@@ -31,33 +34,81 @@ const TAB_H: f32 = 22.0;
 const MIN_TAB_H: f32 = 7.0;
 
 pub fn ui(ui: &mut Ui, outputs: &[OutputInfo]) {
+    // (Two columns: in one, with the apps that float, it was taller than
+    // the smallest screen.)
     let s = ui.s.clone();
-    ui.bbox("Windowing Mode", |ui| {
-        let names: Vec<SharedString> = WindowingMode::ALL.iter().map(|m| SharedString::from(m.title())).collect();
-        let i = WindowingMode::ALL.iter().position(|m| *m == s.tiling.default_mode).unwrap_or(0);
-        ui.menu("default-mode", names, i, |f| f.label("Default mode:"), |s, i| s.tiling.default_mode = WindowingMode::ALL[i]);
-        let what = match s.tiling.default_mode {
-            WindowingMode::Standard => "Windows stay where you put them.",
-            WindowingMode::AutoTiling => "Each new window takes a tile, and the others make room.",
-            WindowingMode::Focus => "Only the active window shows, zoomed, with its dialogs over it.",
-        };
-        // Two lines for each mode, so nothing below moves as it changes.
-        ui.note(format!("{what} Choose a workspace's own from Deskbar's tray."));
-        let layouts: Vec<SharedString> = TilingLayout::ALL.iter().map(|l| SharedString::from(l.title())).collect();
-        let i = TilingLayout::ALL.iter().position(|l| *l == s.tiling.layout).unwrap_or(0);
-        ui.menu("tiling-layout", layouts, i, |f| f.label("Auto-tiling layout:"), |s, i| s.tiling.layout = TilingLayout::ALL[i]);
-        ui.note(s.tiling.layout.detail());
+    let left = ui.collect(|ui| {
+        ui.bbox("Windowing Mode", |ui| {
+            let names: Vec<SharedString> = WindowingMode::ALL.iter().map(|m| SharedString::from(m.title())).collect();
+            let i = WindowingMode::ALL.iter().position(|m| *m == s.tiling.default_mode).unwrap_or(0);
+            ui.menu("default-mode", names, i, |f| f.label("Default mode:"), |s, i| s.tiling.default_mode = WindowingMode::ALL[i]);
+            let what = match s.tiling.default_mode {
+                WindowingMode::Standard => "Windows stay where you put them.",
+                WindowingMode::AutoTiling => "Each new window takes a tile, and the others make room.",
+                WindowingMode::Focus => "Only the active window shows, zoomed, with its dialogs over it.",
+            };
+            // Two lines for each mode, so nothing below moves as it changes.
+            ui.note(format!("{what} Choose a workspace's own from Deskbar's tray."));
+            let layouts: Vec<SharedString> = TilingLayout::ALL.iter().map(|l| SharedString::from(l.title())).collect();
+            let i = TilingLayout::ALL.iter().position(|l| *l == s.tiling.layout).unwrap_or(0);
+            ui.menu("tiling-layout", layouts, i, |f| f.label("Auto-tiling layout:"), |s, i| s.tiling.layout = TilingLayout::ALL[i]);
+            ui.note(s.tiling.layout.detail());
+        });
+        // The apps whose windows always float over the tiles (a window's
+        // menu ▸ Float Window ▸ Always), by name; unchecked, one's
+        // windows tile again.
+        ui.bbox("Apps That Always Float", |ui| {
+            if s.tiling.floating_apps.is_empty() {
+                ui.note("None. To add an app, choose Float Window ▸ Always in the window menu of one of its windows.");
+            }
+            for id in &s.tiling.floating_apps {
+                let name = app_name(id);
+                let id = id.clone();
+                ui.check(name, true, move |s, on| {
+                    let apps = &mut s.tiling.floating_apps;
+                    apps.retain(|a| *a != id);
+                    if on {
+                        apps.push(id.clone());
+                    }
+                });
+            }
+            if !s.tiling.floating_apps.is_empty() {
+                ui.note("Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.");
+            }
+        });
     });
-    ui.bbox("Space Around Arranged Windows", |ui| {
-        let margin = s.tiling.margin as f32;
-        ui.slider("margin", margin, 0.0..=64.0, |sl| sl.step(1.0).label("Space at the edges").value_text(format!("{margin:.0}")).limits("None", "Wide"), |s, v| s.tiling.margin = v as u32);
-        let gap = s.tiling.gap as f32;
-        ui.slider("gap", gap, 0.0..=48.0, |sl| sl.step(1.0).label("Space between windows").value_text(format!("{gap:.0}")).limits("None", "Wide"), |s, v| s.tiling.gap = v as u32);
+    let right = ui.collect(|ui| {
+        ui.bbox("Space Around Arranged Windows", |ui| {
+            let margin = s.tiling.margin as f32;
+            ui.slider("margin", margin, 0.0..=64.0, |sl| sl.step(1.0).label("Space at the edges").value_text(format!("{margin:.0}")).limits("None", "Wide"), |s, v| s.tiling.margin = v as u32);
+            let gap = s.tiling.gap as f32;
+            ui.slider("gap", gap, 0.0..=48.0, |sl| sl.step(1.0).label("Space between windows").value_text(format!("{gap:.0}")).limits("None", "Wide"), |s, v| s.tiling.gap = v as u32);
+        });
+        let main = outputs.iter().find(|o| o.main).or(outputs.first());
+        let display = main.map(crate::display::logical).map_or((1280.0, 800.0), |(w, h)| (w as f32, h as f32));
+        let s = s.clone();
+        ui.add(canvas(move |g, b| miniature(g, b, &theme::palette(), &s, display)).w_full().h(px(MINIATURE_H)).flex_shrink_0());
+        ui.note("Tiling, zooming, Tile All, Smart Tile, cascading and fanning out all leave this space.");
     });
-    let main = outputs.iter().find(|o| o.main).or(outputs.first());
-    let display = main.map(crate::display::logical).map_or((1280.0, 800.0), |(w, h)| (w as f32, h as f32));
-    ui.add(canvas(move |g, b| miniature(g, b, &theme::palette(), &s, display)).w_full().h(px(MINIATURE_H)).flex_shrink_0());
-    ui.note("Tiling, zooming, Tile All, Smart Tile, cascading and fanning out all leave this space.");
+    ui.add_columns(left, right);
+}
+
+/// An app's name, by its id: from its desktop entry, read once (finding
+/// one by its window class reads them all, milliseconds), not each time
+/// the panel is laid out.
+fn app_name(id: &str) -> String {
+    thread_local! {
+        static NAMES: std::cell::RefCell<std::collections::HashMap<String, String>> = Default::default();
+    }
+    NAMES.with_borrow_mut(|names| {
+        names
+            .entry(id.to_owned())
+            .or_insert_with(|| {
+                let entry = if olo_xdg::apps::our_app(id).is_some() { None } else { olo_xdg::desktop_entry::find(id) };
+                olo_xdg::apps::app_name(id, entry.as_ref()).0
+            })
+            .clone()
+    })
 }
 
 /// The main display to scale, Deskbar in its corner and three windows

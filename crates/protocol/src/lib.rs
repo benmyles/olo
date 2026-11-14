@@ -490,6 +490,16 @@ pub enum Request {
         #[serde(default)]
         alone: bool,
     },
+    /// Every window of app `app_id` floats from now on (`floating: true`,
+    /// the window menu's Float Window ▸ Always), or no longer does
+    /// (`false`, Unfloat ▸ Always): kept in
+    /// `TilingSettings::floating_apps`. Its windows open now let go of
+    /// what a hand chose for each (as `SetFloating` with `floating` left
+    /// out), so they all go by it at once. Answered `Reply::Ok`.
+    SetAppFloating {
+        app_id: String,
+        floating: bool,
+    },
     /// Inject input as if from a device (for automated UI tests).
     Synthetic {
         events: Vec<SyntheticEvent>,
@@ -1208,7 +1218,8 @@ pub struct WindowInfo {
     pub part: Option<[f32; 4]>,
     /// It floats over auto-tiled windows rather than being tiled: a
     /// dialog, an alert, a fixed-size window, one tagged `floating`
-    /// (xdg-toplevel-tag), or one floated by hand.
+    /// (xdg-toplevel-tag), one of an app that floats always
+    /// (`TilingSettings::floating_apps`), or one floated by hand.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub floating: bool,
     /// Floated (true) or tiled (false) by hand

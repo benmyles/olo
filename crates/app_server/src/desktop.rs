@@ -2023,7 +2023,14 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.settings_changed();
             return;
         }
+        // Apps that float always, or no longer (Preferences ▸ Windows):
+        // their windows go by it at once, as Float Window ▸ Always has
+        // them do.
+        let (now, then) = (&self.settings.tiling.floating_apps, &settings.tiling.floating_apps);
+        let changed: Vec<String> = now.iter().filter(|a| !then.contains(a)).chain(then.iter().filter(|a| !now.contains(a))).cloned().collect();
+        let windows = self.apps_windows(&changed);
         self.apply_settings(settings);
+        self.let_go(windows);
         save_settings(&self.settings);
     }
 

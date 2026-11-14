@@ -1150,16 +1150,20 @@ impl<B: Backend + 'static> AnvilState<B> {
             shell::xdg::{SurfaceCachedState, XdgToplevelSurfaceData, dialog::ToplevelDialogHint},
             xdg_toplevel_tag::XdgToplevelTagSurfaceData,
         };
+        // Apps chosen to float always (Float Window ▸ Always): most
+        // computers have none, and the app id is compared where it is.
+        let apps = &self.settings.tiling.floating_apps;
         let (floats, min, max) = with_states(t.wl_surface(), |st| {
             let size = *st.cached_state.get::<SurfaceCachedState>().current();
             let tagged = st.data_map.get::<XdgToplevelTagSurfaceData>().is_some_and(|d| d.tag().is_some_and(|t| t.split_whitespace().any(|t| t == "floating")));
             let floats = tagged
                 || st.data_map.get::<XdgToplevelSurfaceData>().is_some_and(|d| {
                     let d = d.lock().unwrap();
+                    let app = d.app_id.as_deref().unwrap_or("");
                     // (A dialog is one "relative to its parent", and one with
                     // a parent floats already: GTK 4 gives every toplevel an
                     // xdg_dialog_v1, which makes its main windows "dialogs".)
-                    d.dialog_hint == ToplevelDialogHint::Modal || floating_kind(d.app_id.as_deref().unwrap_or(""), d.title.as_deref().unwrap_or(""))
+                    d.dialog_hint == ToplevelDialogHint::Modal || floating_kind(app, d.title.as_deref().unwrap_or("")) || (!app.is_empty() && apps.iter().any(|a| a == app))
                 });
             (floats, size.min_size, size.max_size)
         });
@@ -2029,6 +2033,12 @@ impl<B: Backend + 'static> AnvilState<B> {
             return;
         }
         let was = self.floats(w);
+        self.set_floating_from(w, floating, was);
+    }
+
+    /// `set_floating`, with whether `w` floated before (`was`): asked
+    /// before an app's rule changed, which changes it too.
+    fn set_floating_from(&mut self, w: &WindowElement, floating: Option<bool>, was: bool) {
         for m in self.groups.mates(w).iter().chain(std::iter::once(w)) {
             Self::restore_float_override(m, floating);
             // (On purpose: what a restart saved isn't put back over it.
@@ -2053,6 +2063,61 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         self.auto.dirty = true;
         info!(window = w.id(), ?floating, floats = self.floats(w), "floating");
+    }
+
+    /// Every window of app `app_id` floats from now on, or no longer does
+    /// (`TilingSettings::floating_apps`, saved): the window menu's Float
+    /// Window ▸ Always. Its windows open now let go of what a hand chose
+    /// for each, so they all go by it at once; those that start floating
+    /// leave their tiles as Float Window takes one out.
+    pub fn set_app_floating(&mut self, app_id: &str, floating: bool) {
+        if app_id.is_empty() {
+            return;
+        }
+        let listed = self.settings.tiling.floating_apps.iter().any(|a| a == app_id);
+        if floating == listed {
+            // (Chosen again: each of its windows goes by it, any floated
+            // or tiled by hand too.)
+            let windows = self.apps_windows(&[app_id.to_owned()]);
+            self.let_go(windows);
+            return;
+        }
+        let windows = self.apps_windows(&[app_id.to_owned()]);
+        let apps = &mut self.settings.tiling.floating_apps;
+        if floating {
+            apps.push(app_id.to_owned());
+        } else {
+            apps.retain(|a| a != app_id);
+        }
+        self.settings_changed();
+        info!(app = app_id, floating, windows = windows.len(), "an app's windows float always, or not");
+        self.let_go(windows);
+    }
+
+    /// The windows of `apps` (but those that float always), each with
+    /// whether it floats now: asked before the apps' rule changes, which
+    /// changes that too.
+    pub(crate) fn apps_windows(&self, apps: &[String]) -> Vec<(WindowElement, bool)> {
+        if apps.is_empty() {
+            return Vec::new();
+        }
+        self.all_windows()
+            .into_iter()
+            .filter(|w| !Self::floats_always(w) && apps.contains(&w.app_id()))
+            .map(|w| {
+                let was = self.floats(&w);
+                (w, was)
+            })
+            .collect()
+    }
+
+    /// Each of `windows` lets go of what a hand chose for it (floated, or
+    /// tiled), to go by its app's rule; one that starts floating leaves
+    /// its tile as Float Window takes it out.
+    pub(crate) fn let_go(&mut self, windows: Vec<(WindowElement, bool)>) {
+        for (w, was) in &windows {
+            self.set_floating_from(w, None, *was);
+        }
     }
 
     // ---- commands --------------------------------------------------------

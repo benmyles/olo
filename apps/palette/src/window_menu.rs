@@ -74,6 +74,9 @@ pub struct Facts {
     /// It floats whatever is asked (a dialog, an alert): Unfloat shows it,
     /// dimmed.
     pub floats_always: bool,
+    /// Its app's windows float always (Float Window ▸ Always:
+    /// `TilingSettings::floating_apps`).
+    pub app_floats: bool,
     /// Shortcut keys changed from the defaults, to show the ones in use.
     pub keys: KeyboardProfile,
     /// The file or folder it shows, if its program says
@@ -122,8 +125,8 @@ pub fn learn(ask: Ask, proxy: Proxy) {
         let display = w.output.as_deref().and_then(|o| olo_protocol::display_number(&outputs, o));
         let others =
             outputs.iter().filter(|o| o.mirror_of.is_none() && Some(&o.name) != w.output.as_ref()).filter_map(|o| Some((o.name.clone(), olo_protocol::display_number(&outputs, &o.name)?))).collect();
-        let keys = match c.request(&Request::GetSettings) {
-            Ok(Reply::Settings { settings }) => settings.keyboard.profile,
+        let (keys, app_floats) = match c.request(&Request::GetSettings) {
+            Ok(Reply::Settings { settings }) => (settings.keyboard.profile, !w.app_id.is_empty() && settings.tiling.floating_apps.contains(&w.app_id)),
             _ => Default::default(),
         };
         let mode = match c.request(&Request::WindowingMode { workspace: Some(w.workspace) }) {
@@ -194,6 +197,7 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             focus,
             floating,
             floats_always,
+            app_floats,
             keys,
             path,
             app,
@@ -302,14 +306,34 @@ pub fn build(f: &Facts) -> Menu {
             Some(k) => m.keys(k),
             None => m,
         };
-        if f.floating {
+        // Just this window this time, or every window of its app from now
+        // on (Ben, 2026-11-14: "a submenu under that for doing it just
+        // this time or always and when always is chosen it should
+        // remember so anytime that app window is launched in the future
+        // it always floats when in tile mode"): app_server keeps the app's id
+        // (`TilingSettings::floating_apps`). Always is checked while the
+        // app floats always, and choosing it again lets each of its
+        // windows go by that, any tiled by hand too; Unfloat ▸ Always
+        // forgets it.
+        let always = if f.app.name.is_empty() { "Always".to_owned() } else { format!("Always for {}", f.app.name) };
+        let has_app = !f.app.app_id.is_empty();
+        if f.floating && f.floats_always {
             // (A dialog or an alert floats whatever is asked: dimmed.)
-            m = with_keys(m.item("Unfloat", "unfloat")).enabled(!f.floats_always);
-        } else if f.grouped {
-            m = m.item("Float Window", "float");
-            m = with_keys(m.item("Float Window Group", "float-group"));
+            m = with_keys(m.item("Unfloat", "unfloat")).enabled(false);
+        } else if f.floating && f.app_floats {
+            let unfloat = with_keys(Menu::new("Unfloat").item("Just This Time", "unfloat"));
+            m = m.submenu(unfloat.item(always.clone(), "unfloat-always"));
+        } else if f.floating {
+            m = with_keys(m.item("Unfloat", "unfloat"));
         } else {
-            m = with_keys(m.item("Float Window", "float"));
+            // In a group, the keys float its group (Float Window Group);
+            // alone, just the window.
+            let just = Menu::new("Float Window").item("Just This Time", "float");
+            let just = if f.grouped { just } else { with_keys(just) };
+            m = m.submenu(just.item(always, "float-always").checked(f.app_floats).enabled(has_app));
+            if f.grouped {
+                m = with_keys(m.item("Float Window Group", "float-group"));
+            }
         }
     }
     m = m.separator().submenu(tile);
@@ -445,6 +469,7 @@ pub fn perform(window: u64, app: &Owner, command: &str) {
             "float" => Request::SetFloating { id: window, floating: Some(true), alone: true },
             "float-group" => Request::SetFloating { id: window, floating: Some(true), alone: false },
             "unfloat" => Request::SetFloating { id: window, floating: Some(false), alone: false },
+            "float-always" | "unfloat-always" if !app.app_id.is_empty() => Request::SetAppFloating { app_id: app.app_id.clone(), floating: command == "float-always" },
             "ungroup" => Request::UngroupWindow { id: window },
             "close" => Request::Close { id: window },
             _ => return,
@@ -582,6 +607,7 @@ mod tests {
             focus: false,
             floating: false,
             floats_always: false,
+            app_floats: false,
             keys: changed,
             path: None,
             display: Some(1),
@@ -648,28 +674,61 @@ mod tests {
         let mut doc = Vec::new();
         commands(&build(&Facts { path: Some("/home/me/notes.txt".into()), ..facts.clone() }), &mut doc);
         assert!(doc.contains(&tracker::COMMAND.to_owned()));
-        // Floating only where auto-tiling or Focus is the mode.
+        // Floating only where auto-tiling or Focus is the mode: each item
+        // as (submenu, label, enabled, keys, checked).
         let floats = |f: &Facts| {
-            build(f)
-                .items
-                .iter()
-                .filter_map(|i| match i {
-                    menu::MenuItem::Action(a) if ["float", "float-group", "unfloat"].contains(&a.command.as_str()) => Some((a.label.to_string(), a.enabled, a.keys.is_some())),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
+            let mut out = Vec::new();
+            for i in &build(f).items {
+                let mut take = |sub: &str, a: &menu::Action| {
+                    if ["float", "float-group", "unfloat", "float-always", "unfloat-always"].contains(&a.command.as_str()) {
+                        out.push((sub.to_owned(), a.label.to_string(), a.enabled, a.keys.is_some(), a.checked));
+                    }
+                };
+                match i {
+                    menu::MenuItem::Action(a) => take("", a),
+                    menu::MenuItem::Submenu(m) => {
+                        for i in &m.items {
+                            if let menu::MenuItem::Action(a) = i {
+                                take(&m.title, a);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            out
         };
+        let item = |sub: &str, label: &str, enabled: bool, keys: bool, checked: bool| (sub.to_owned(), label.to_owned(), enabled, keys, checked);
         assert!(floats(&facts).is_empty());
-        // In a group: the window alone, or its group (the keys', ⌃⌥⌘F).
+        // In a group: the window alone, just this time or always for its
+        // app, or its group (the keys', ⌃⌥⌘F).
         let grouped = floats(&Facts { auto: true, ..facts.clone() });
-        assert_eq!(grouped, [("Float Window".to_owned(), true, false), ("Float Window Group".to_owned(), true, true)]);
+        assert_eq!(
+            grouped,
+            [item("Float Window", "Just This Time", true, false, false), item("Float Window", "Always for Gedit", true, false, false), item("", "Float Window Group", true, true, false)]
+        );
         assert_eq!(floats(&Facts { focus: true, ..facts.clone() }), grouped);
-        // On its own: the window, with the keys.
-        assert_eq!(floats(&Facts { auto: true, grouped: false, ..facts.clone() }), [("Float Window".to_owned(), true, true)]);
-        // Floating: Unfloat; a dialog or an alert floats whatever is
-        // asked: shown, dimmed.
-        assert_eq!(floats(&Facts { focus: true, floating: true, ..facts.clone() }), [("Unfloat".to_owned(), true, true)]);
-        assert_eq!(floats(&Facts { auto: true, floating: true, floats_always: true, ..facts.clone() }), [("Unfloat".to_owned(), false, true)]);
+        // On its own: the window, with the keys; Always checked while its
+        // app floats always (a window of it tiled by hand).
+        assert_eq!(
+            floats(&Facts { auto: true, grouped: false, app_floats: true, ..facts.clone() }),
+            [item("Float Window", "Just This Time", true, true, false), item("Float Window", "Always for Gedit", true, false, true)]
+        );
+        // No app id to remember: Always dimmed.
+        let nameless = Owner::default();
+        assert_eq!(
+            floats(&Facts { auto: true, grouped: false, app: nameless, ..facts.clone() }),
+            [item("Float Window", "Just This Time", true, true, false), item("Float Window", "Always", false, false, false)]
+        );
+        // Floating: Unfloat; its app floating always, just this time or
+        // always; a dialog or an alert floats whatever is asked: shown,
+        // dimmed.
+        assert_eq!(floats(&Facts { focus: true, floating: true, ..facts.clone() }), [item("", "Unfloat", true, true, false)]);
+        assert_eq!(
+            floats(&Facts { auto: true, floating: true, app_floats: true, ..facts.clone() }),
+            [item("Unfloat", "Just This Time", true, true, false), item("Unfloat", "Always for Gedit", true, false, false)]
+        );
+        assert_eq!(floats(&Facts { auto: true, floating: true, floats_always: true, ..facts.clone() }), [item("", "Unfloat", false, true, false)]);
         assert!(all.contains(&"shortcut:next-display".to_owned()) && all.contains(&"workspace:2".to_owned()));
         // Each shows the keys it has now: changed, default, or none.
         let menu = build(&facts);

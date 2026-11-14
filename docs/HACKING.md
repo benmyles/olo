@@ -6616,7 +6616,11 @@ others' 0, is no largest size: it tiles), one tagged `floating`
 (xdg-toplevel-tag; the kit's `WindowOptions::floating()`, which
 DeskCalc, Preferences, Tracker's Info and status windows and the like
 set, and its `dialog()` and alerts, which it tags so too), and for other
-programs portal dialogs (`floating_kind`) and picture in picture. An
+programs portal dialogs (`floating_kind`) and picture in picture; and
+every window of an app chosen to float always
+(`TilingSettings::floating_apps`, by app id: the window menu's Float
+Window ▸ Always, `{"type":"set_app_floating","app_id":"…","floating":true}`,
+Preferences ▸ Windows' Apps That Always Float to tile them again). An
 xdg-dialog alone doesn't make a window float (nor keep it out of its
 app's tab group, `groups::is_dialog`): GTK 4 gives every toplevel one,
 its main windows too, which then floated over the tiles and never
@@ -6632,10 +6636,18 @@ under a tile put one over the float brought forward last, again and
 again: Ben's "one of them keeps itself on top and i can't go to the
 other floating one"). Anyone can float or tile a window by hand: the
 window menu (its tab right-clicked) where auto-tiling or Focus is the
-mode, Float Window, Float Window Group for one in a group, and Unfloat
-for one floating, dimmed for one that floats whatever is asked (Ben,
-2026-11-07: "if it's part of a group and i just choose to float window
-then it should also pull it out of that group"); ⌃⌥⌘F (`float-window`,
+mode, Float Window ▸ Just This Time or Always (for its app, checked
+while the app floats always), Float Window Group for one in a group,
+and Unfloat for one floating (▸ Just This Time or Always when its app
+floats always, Always forgetting the app), dimmed for one that floats
+whatever is asked (Ben, 2026-11-07: "if it's part of a group and i
+just choose to float window then it should also pull it out of that
+group"; 2026-11-14: "a submenu under that for doing it just this time
+or always"). An app's rule changing, by the menu or by Preferences
+(`set_settings` compares the lists), its open windows let go of what a
+hand chose for each (`let_go`) and go by it at once, one that starts
+floating leaving its tile as Float Window takes one; a window floated
+or tiled by hand afterwards goes by that; ⌃⌥⌘F (`float-window`,
 the window with its group); or
 `{"type":"set_floating","id":ID,"floating":true}` (`null` leaves it to
 app_server again; a group floats and tiles as one, unless `"alone":

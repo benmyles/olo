@@ -254,7 +254,7 @@ impl Panel {
             // pressure and the Apple driver's click thresholds).
             Panel::Touchpad => (784, 600),
             Panel::Tracker => (300, 222),
-            Panel::Windows => (400, 586),
+            Panel::Windows => (760, 420),
             Panel::Workspaces => (360, 230),
             Panel::About => (444, 392),
         }
@@ -321,6 +321,8 @@ impl Panel {
                 settings.tiling.gap = from.tiling.gap;
                 settings.tiling.margin = from.tiling.margin;
                 settings.tiling.default_mode = from.tiling.default_mode;
+                settings.tiling.layout = from.tiling.layout;
+                settings.tiling.floating_apps = from.tiling.floating_apps.clone();
             }
             Panel::Touchpad => {
                 settings.touchpad = from.touchpad.clone();

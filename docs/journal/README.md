@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-14
 
+### Preferences ▸ Windows: apps that always float
+
+*13:04* — The apps floated Always, unchecked to tile them again; the panel in two columns, as one it was taller than a 1280 × 800 screen.
+
+![Preferences ▸ Windows: apps that always float](2026-11-14/130445-preferences-windows-apps-that-always-float.png)
+
+### Float Window ▸ Just This Time or Always
+
+*13:04* — The window menu's Float Window is a submenu: this window just this time, or every window of its app always (checked here: StyledEdit floats always, and this window was tiled by hand). Unfloat of such a window asks the same.
+
+![Float Window ▸ Just This Time or Always](2026-11-14/130444-float-window-just-this-time-or-always.png)
+
 ### Command palette's key hint, after
 
 *10:57* — KeyHint::level_with(QUERY_SIZE): the hint on the query's baseline, its cap moved down with it, so the field reads as one line. The review finds nothing at 1x, 1.5x and 2x.

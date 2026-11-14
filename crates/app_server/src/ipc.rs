@@ -583,6 +583,10 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
                 None => not_found(),
             },
+            Request::SetAppFloating { app_id, floating } => {
+                self.set_app_floating(&app_id, floating);
+                Reply::Ok
+            }
             Request::Workspaces => Reply::Workspaces { current: self.workspace(), count: self.settings.workspace_count, displays: self.display_workspaces() },
             Request::SwitchWorkspace { index, output: None } => {
                 self.switch_workspace(index);

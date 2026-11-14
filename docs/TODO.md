@@ -1398,7 +1398,56 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-(Nothing, 2026-11-14.)
+- **Main and Stack: Make Main, where the main window goes, by keys**
+  (Ben, 2026-11-14: "let's add a proper command with shortcut and
+  menu item. i also want to make it configurable e.g. there should be
+  an option to set the main window layout for a workspace in main and
+  stack mode where i can choose any of these [the Tile submenu] and
+  let's have the default be center two-thirds (you'll need to add
+  two-thirds options for all of them). and there needs to be keyboard
+  shortcuts for it all e.g. if a new window takes the main area i want
+  to be able to swap it back with the previous window. i also want to
+  be able to change the main window with the kb from the ctrl+up
+  overview screen. and also from the ctrl+ctrl menu, e.g. maybe in
+  that menu if i hold down ctrl and type the letter of a window it
+  makes it main. and of course all these shortcuts need to be
+  configurable and use the right defaults based on the chosen keyboard
+  profile and also shown in the keyboard shortcuts help and available
+  in the command pallette.") Two-thirds for every side (Center, Top,
+  Bottom Two Thirds), Make Main and Swap with Previous Main as
+  shortcuts and window menu items, a per-workspace (and display) main
+  placement chosen from Deskbar's tray, its default in Preferences ▸
+  Windows, Ctrl+letter in the overview and the hints making a window
+  main; said to agents in `WindowInfo` and `WindowingModeInfo`.
+- **Olo Doctor: fix the problems, apply the suggestions, or both**
+  (Ben, 2026-11-14: "the fix all button only fixes all problems but
+  there's no way to apply all suggestions. we need a way to do both
+  and either/or. and it needs to be intuitive as a good reusable
+  pattern for this kind of thing. go study what beos, macos, and other
+  GUIs do for this kind of thing and fix it with a better pattern and
+  update the olo book with it too"). A kit pattern for acting on all,
+  some or one kind of a list's items, from BeOS's, macOS's and others'
+  ways; Doctor on it; the Olo Book and HACKING.
+- **A Deskbar widget's own name** (Ben, 2026-11-14: "in the deskbar
+  settings for widgets let me provide a custom name for the widget if
+  i want to override/customize the name"): Preferences ▸ Deskbar ▸
+  Widgets, a name field; Deskbar shows it.
+- **Deskbar's popovers show without Deskbar active, and are rich**
+  (Ben, 2026-11-14: "the popover only seems to open up if the deskbar
+  is selected … popovers should show without the window needing to be
+  selected. and also improve the popovers so that they can have rich
+  widgets/designs inside of them and then update the ones for the
+  deskbar widgets so that all their popovers are nicely designed and
+  visually show the data better").
+- **The keyring's password asked once at login, not twice** (Ben,
+  2026-11-14: "when i first login after a restart i'm being asked for
+  my keyring password to unlock it twice. it should only need it once
+  to unlock").
+- **The command palette's scopes, cycled with Ctrl** (Ben, 2026-11-14:
+  "change the cmd+space command palette so that by default it only
+  suggests olo apps/shortcuts, then ctrl changes to files then ctrl
+  again changes to showing other apps (e.g. gnome apps and so on) and
+  ctrl again continues to cycle through the 3").
 
 ## Done, waiting for Ben to try or confirm
 
@@ -1458,6 +1507,24 @@ accessibility tree test on an agent screen (GTK's Text Editor, 30
 nodes). What's left needs Ben: in Blocked, "The ignored tests that
 need Ben".)
 
+- **Float Window ▸ Just This Time or Always** (Ben, 2026-11-14: "in the
+  window menu options where we have Float Window option, please also
+  add a submenu under that for doing it just this time or always and
+  when always is chosen it should remember so anytime that app window
+  is launched in the future it always floats when in tile mode").
+  Float Window is a submenu: Just This Time (as before, with ⌃⌥⌘F) and
+  Always for the app (checked while it floats always); Unfloat of a
+  window of such an app: Just This Time or Always (forgets it).
+  app_server keeps the apps (`TilingSettings::floating_apps`,
+  `set_app_floating`); their windows float as dialogs do, open ones at
+  once, new ones as they open. Preferences ▸ Windows lists them, in
+  two columns now (one was taller than 1280 × 800), unchecked to tile
+  them again. Headless, auto-tiled: StyledEdit floated Always left its
+  tile for the middle, its next window opened floating, Unfloat ▸ Just
+  This Time tiled it with the rule kept, unchecked in Preferences its
+  windows tiled, Revert floated them again; the menus and the panel at
+  1×, 1.5× and 2×, the review clean. *Left for Ben:* upgrade, then
+  float an app Always.
 - **What's opened from a display opens there** (Ben, 2026-11-14: "if i
   e.g. right click on the deskbar on d0w1 and choose deskbar settings
   it's opening the settings on a different screen (d1w1) instead of
