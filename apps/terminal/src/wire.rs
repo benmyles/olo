@@ -64,10 +64,30 @@ pub const REPORT: u8 = 69;
 /// to be restored (`Spawn::restore`) next time.
 pub const ENDING: u8 = 70;
 
+/// The agent screen this Terminal (or olo-termd) is that screen's own
+/// on: started there, not the person's Terminal moved there for a while
+/// (`olo_kit_base::moving`), whose shells stay with theirs.
+pub fn screen() -> Option<String> {
+    std::env::var("OLO_SCREEN").ok().filter(|s| !s.is_empty()).filter(|_| olo_kit_base::moving::home().is_none())
+}
+
+/// Where Terminal and olo-termd keep what lasts between sessions (the
+/// windows, the shells): the person's state folder, or a screen's own,
+/// beside its history and Chrome's profile and gone with it. A Terminal
+/// started on an agent screen shares the person's home, and once opened
+/// their windows' folders there and wrote its own windows over theirs.
+pub fn state_dir() -> PathBuf {
+    let state = olo_xdg::state_dir();
+    match screen() {
+        Some(name) => state.join("screens").join(name).join("terminal"),
+        None => state.join("terminal"),
+    }
+}
+
 /// Where olo-termd keeps shells between sessions (only for us:
 /// scrollback can hold anything).
 pub fn kept_dir() -> PathBuf {
-    olo_xdg::state_dir().join("terminal")
+    state_dir()
 }
 
 /// Shell `id`'s lines, kept (zlib).

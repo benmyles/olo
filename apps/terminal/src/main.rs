@@ -828,7 +828,7 @@ const RETITLE_AFTER: std::time::Duration = std::time::Duration::from_millis(400)
 /// Where Terminal keeps its windows for the next time it starts, beside
 /// the shells olo-termd keeps (only for us: folders say what you work on).
 fn layout_path() -> PathBuf {
-    olo_xdg::state_dir().join("terminal").join("windows.json")
+    wire::state_dir().join("windows.json")
 }
 
 /// The windows as Terminal last kept them.
@@ -2991,7 +2991,7 @@ impl Terminal {
     /// there takes its shell (olo-termd detaching it here, so the tab goes
     /// as it's taken, the shell running on), in a window of its own.
     fn tab_to_screen(&mut self, _: &mut Cx, shell: u64, screen: Option<String>) {
-        if std::env::var_os("OLO_SCREEN").is_some() && olo_kit_base::moving::home().is_none() {
+        if wire::screen().is_some() {
             return;
         }
         let layout = self.layout();
@@ -3382,10 +3382,7 @@ fn main() {
         olo_kit::on_move_window(|surface| terminal().move_window(surface));
         // Started on an agent screen, its shells are that screen's
         // olo-termd's, which ends with it.
-        olo_kit::refuse_moves_while(|| {
-            (std::env::var_os("OLO_SCREEN").is_some() && olo_kit_base::moving::home().is_none())
-                .then(|| "Terminal's shells here belong to this screen and end with it: open the person's own Terminal for work to keep".to_owned())
-        });
+        olo_kit::refuse_moves_while(|| wire::screen().is_some().then(|| "Terminal's shells here belong to this screen and end with it: open the person's own Terminal for work to keep".to_owned()));
         widgets::strip::on_window_dropped(|window, onto, place| {
             let (Some(window), Some(onto)) = (ui::window_of(window), ui::window_of(onto)) else { return };
             terminal().window_dropped(&mut Cx, window, onto, Some(place));

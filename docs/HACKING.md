@@ -11851,7 +11851,13 @@ alternate screen or modes), zlib'd in `shell-ID.z` beside
 `windows.json`: every minute for shells that printed since, and all
 of them when the session ends. The directory and files are the
 person's alone (0700, 0600); a shell that exits forgets its file, Start
-Over forgets them all, and unclaimed ones go after 30 days. As the
+Over forgets them all, and unclaimed ones go after 30 days. A Terminal
+that is an agent screen's own (`wire::screen`: started there with
+`OLO_SCREEN`, not the person's moved there) keeps both in that screen's
+folder, `$XDG_STATE_HOME/olo/screens/NAME/terminal` (`wire::state_dir`),
+and so does its olo-termd: a screen shares the person's home, and its
+Terminal once opened their windows' folders there and wrote its own
+windows over theirs. As the
 session ends olo-termd tells each Terminal (`ENDING`) before hanging
 up, so it doesn't remember the tabs closing or start a new olo-termd;
 Start Over says it isn't that (`Link::starting_over`). Nor once it has
