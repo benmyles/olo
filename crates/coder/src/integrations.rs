@@ -31,12 +31,36 @@ impl OloConfig {
         Ok(())
     }
 }
+/// Passwords' keychain socket, Passwords started if it isn't running (as
+/// at login, only for its SSH agent, which may be off): a key kept there
+/// is read whether or not it was open.
+async fn connect() -> Result<tokio::net::UnixStream> {
+    let path = olo_keychain::socket_path();
+    match tokio::net::UnixStream::connect(&path).await {
+        Ok(socket) => return Ok(socket),
+        Err(e) if !matches!(e.kind(), std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused) => return Err(e).context("Passwords didn’t answer"),
+        // (A socket given, a test's or a stand-in's: its own to start.)
+        Err(e) if std::env::var_os("OLO_KEYCHAIN_SOCKET").is_some() => return Err(e).context("Passwords isn’t running"),
+        Err(_) => {}
+    }
+    // (In the background: its window shows only if it must ask.)
+    olo_xdg::spawn_detached("olo-passwords --keychain").context("Passwords isn’t running, and couldn’t be started")?;
+    // Its socket, once it's up (a few seconds at most).
+    for _ in 0..50 {
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        if let Ok(socket) = tokio::net::UnixStream::connect(&path).await {
+            return Ok(socket);
+        }
+    }
+    bail!("Passwords isn’t running: open it, then try again")
+}
+
 /// Async native keychain RPC. Dropping it closes the socket, dismissing pending
 /// Passwords requests. No blocking worker is left waiting after cancellation.
 pub async fn keychain(request: olo_keychain::Request) -> Result<olo_keychain::Response> {
     let timeout = request.timeout();
     let operation = async {
-        let mut socket = tokio::net::UnixStream::connect(olo_keychain::socket_path()).await.context("Olo Passwords is not available")?;
+        let mut socket = connect().await?;
         let wire = zeroize::Zeroizing::new(format!("{}\n", serde_json::to_string(&request)?));
         socket.write_all(wire.as_bytes()).await?;
         let mut reader = tokio::io::BufReader::new(socket);

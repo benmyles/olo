@@ -15913,7 +15913,11 @@ and locking refused, Passwords keeps the keys) on
 exports to systemd and D-Bus activation. olo-session starts `olo-passwords
 --agent` at login (`REAL_SHELL`): Passwords without a window, staying
 when its window closes (`stay_resident`), opened by a launch as before;
-off, it exits `SERVICE_NOT_WANTED` and isn't started again. Each request
+off, it exits `SERVICE_NOT_WANTED` and isn't started again. A program
+that keeps a key there (Coder's model service key) and finds Passwords
+not running starts `olo-passwords --keychain`: the same, for the
+keychain alone, whether or not the SSH agent is on (its window shows
+only to be unlocked or to ask). Each request
 of a program of the person's own (`SO_PEERCRED`) is a keychain request
 (`Request::SshKeys`, `SshSign`, made in process with
 `Incoming::local` and the program's pid), so it's answered as `op`'s:

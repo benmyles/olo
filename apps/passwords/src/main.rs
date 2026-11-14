@@ -1018,6 +1018,11 @@ impl Passwords {
                 let title = title.clone();
                 let candidates = self.items.iter().filter(|i| i.state == ItemState::Active && i.title == title).map(|i| (i.vault_id.clone(), i.id.clone())).collect();
                 let Some(vault) = self.new_item_vault() else {
+                    // Nowhere to keep one: none is kept (asked for one), or
+                    // it can't be (asked to keep one).
+                    if matches!(incoming.request, Request::Secrets { .. }) {
+                        return incoming.reply(Response::Secrets { values: Vec::new() });
+                    }
                     return incoming.reply(Response::Error { message: "There’s no vault to keep it in.".into() });
                 };
                 return self.store.send(Job::Keychain { incoming: Box::new(incoming), candidates, vault });
@@ -2269,9 +2274,10 @@ impl Passwords {
             Err(m) => m,
         };
         // Opened (Deskbar, a link), its window shows; olo-session's
-        // `--agent` for a Passwords already running asks nothing to show.
+        // `--agent` (or a program's `--keychain`) for a Passwords already
+        // running asks nothing to show.
         if let Ok(launch) = msg.downcast::<Launch>()
-            && launch.args.first().map(String::as_str) != Some(AGENT_FLAG)
+            && !in_background(&launch.args)
         {
             self.open_main();
         }
@@ -2418,6 +2424,15 @@ pub fn category_menu(menu: Menu, prefix: &str) -> Menu {
 /// How olo-session starts Passwords at login: the SSH agent (and the
 /// keychain), no window until it's opened.
 const AGENT_FLAG: &str = "--agent";
+/// How a program that keeps a key here starts Passwords when it isn't
+/// running (Coder, reading its model service's key): the keychain, no
+/// window until it's opened, and it stays for the keychain.
+const KEYCHAIN_FLAG: &str = "--keychain";
+
+/// Started with no window: for the SSH agent or the keychain.
+fn in_background(args: &[String]) -> bool {
+    matches!(args.first().map(String::as_str), Some(AGENT_FLAG | KEYCHAIN_FLAG))
+}
 
 fn main() {
     olo_crash::install();
@@ -2428,13 +2443,17 @@ fn main() {
         return;
     }
     let agent_only = args.first().map(String::as_str) == Some(AGENT_FLAG);
+    let keychain_only = args.first().map(String::as_str) == Some(KEYCHAIN_FLAG);
     olo_kit::run(APP_ID, move |cx| {
         let proxy = olo_kit::proxy();
         instance::listen(APP_ID, proxy.clone());
         // Logins for Chrome's pages, the palette's search and op.
         let keychain = proxy.clone();
-        if let Err(e) = olo_keychain::serve(move |incoming| keychain.send(incoming)) {
-            tracing::warn!("keychain: {e}");
+        match olo_keychain::serve(move |incoming| keychain.send(incoming)) {
+            // Started for it: it stays for it, with no window.
+            Ok(()) if keychain_only => olo_kit::stay_resident(),
+            Ok(()) => {}
+            Err(e) => tracing::warn!("keychain: {e}"),
         }
         let mut settings: Settings = std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
         // From when there was one account.
@@ -2546,9 +2565,9 @@ fn main() {
             }),
         };
         let mut unlocked_before = false;
-        // Started for the SSH agent, no window: unless it's coming back
-        // from an upgrade with its window open.
-        let show = saved.as_ref().map_or(!agent_only, |s| s.window);
+        // Started for the SSH agent or the keychain, no window: unless
+        // it's coming back from an upgrade with its window open.
+        let show = saved.as_ref().map_or(!(agent_only || keychain_only), |s| s.window);
         if let Some(saved) = saved {
             app.source = saved.source;
             app.selected = saved.selected;
