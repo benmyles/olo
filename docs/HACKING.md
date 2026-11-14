@@ -346,7 +346,12 @@ message):
   what else the machine is doing, where times do; two builds are
   compared by running each three times, in turn, and taking the
   middle. (Instructions don't see copying: a copy of 3 KB is a few
-  instructions and hundreds of cycles.) perf ending a program doesn't
+  instructions and hundreds of cycles. Nor memory: halving an agent's
+  spinner frame's instructions in Terminal, the glyphs compared and
+  copied one by one, moved its cycles within the noise, what was left
+  being a screen's glyphs written and read across cores. On this
+  machine, busy with other work, cycles and times vary by a sixth from
+  run to run even pinned to two cores: say so beside them.) perf ending a program doesn't
   end what it started: end that too, or the app's next start hands
   over to it and leaves.
   `tools/dev/resize-cost NAME LABEL ROUNDS APP_ID CMD…` is that for a
@@ -440,7 +445,19 @@ How Olo keeps it (do the same):
   the stage compares it with the one it replaces thing by thing
   (`Scene::changed_since`, for drawings of a sixteenth of the window
   or more) and damages only what differs; a frame then takes from each
-  drawing only what falls in a rectangle (`stage::assemble`). What a
+  drawing only what falls in a rectangle (`stage::assemble`). A line of
+  glyphs painted again whole from what it kept (`paint_glyph_run`, as
+  every plain line of text, the editor's and Terminal's rows are) says
+  how it was made (`scene::RunMade`: which finding of its glyphs, where,
+  its clip and opacity), so the comparison goes line by line and reads
+  the glyphs of only the lines that differ, and a frame passes over the
+  lines away from its rectangles whole (each run's reach): a screen of
+  text is a thousand and more glyphs, two copies of them read from
+  memory at each line printed (an agent's spinner in Terminal: 85 M of
+  the display thread's 180 M instructions, before). Check a change to
+  any of it with `tools/dev/damage-check` (each app typed in, scrolled
+  and selected in, drawn by its damage and drawn whole, the last
+  pictures compared at 1×, 1.5× and 2×; look at the pairs it keeps). What a
   thing can touch is its reach, not its bounds (`Shadow::reach`: a
   blur three radii past them), so a shadow falling past what casts it
   is drawn again with what it falls on. `OLO_DAMAGE=0` draws every
@@ -4132,7 +4149,7 @@ first, it stays) and the display's files in the runtime directory
 (its socket and lock, the apps' sockets, layouts kept for a reload),
 holding the display's lock as app_server takes it, so a live session's
 are never touched. A tool that starts sessions passes `--owner` with
-its own pid (the fuzzers, ui-lint, bench, order-check, rescue-check):
+its own pid (the fuzzers, ui-lint, bench, order-check, rescue-check, damage-check):
 a watcher (`tsession _watch`, blocked on both processes' pidfds, no
 polling) stops the session and removes its folder if the tool ends
 first, killed or not, so a tool cut short leaves no app_server running

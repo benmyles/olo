@@ -798,22 +798,46 @@ impl<'a> Painter<'a> {
                     run.sprites.push((rel, tile, color));
                 }
             }
+            // (Not known when a glyph shows nothing: each is looked at.)
+            run.reach = match run.sprites.iter().any(|(rel, ..)| rel.is_empty()) {
+                true => Bounds::default(),
+                false => run.sprites.iter().map(|(rel, ..)| *rel).reduce(|a, b| a.union(&b)).unwrap_or_default(),
+            };
+            let textures = run.sprites.iter().map(|(_, tile, _)| crate::scene::texture_key(tile));
+            run.textures = textures.clone().min().zip(textures.max()).unwrap_or_default();
+            run.found = FOUND.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             if let Some(t) = cold {
                 crate::stats::FRAME_WORK.note(&crate::stats::FRAME_WORK.runs, t);
             }
         }
         let element_opacity = self.element_opacity();
         let content_mask = self.content_mask().scale(scale_factor);
+        let at = |rel: &Bounds<ScaledPixels>| Bounds { origin: Point { x: ScaledPixels(rel.origin.x.0 + base.x), y: ScaledPixels(rel.origin.y.0 + base.y) }, size: rel.size };
         let sprites = run.sprites.iter().map(|(rel, tile, color)| MonochromeSprite {
             order: 0,
             coverage: 0,
-            bounds: Bounds { origin: Point { x: ScaledPixels(rel.origin.x.0 + base.x), y: ScaledPixels(rel.origin.y.0 + base.y) }, size: rel.size },
+            bounds: at(rel),
             content_mask: content_mask.clone(),
             color: color.opacity(element_opacity),
             tile: tile.clone(),
             transformation: TransformationMatrix::unit(),
         });
-        self.scene.insert_sprites(sprites);
+        // All of it within its clip (a line on a screen, nearly always):
+        // whole, what it reaches and its textures as they were found.
+        let reach = at(&run.reach);
+        if self.scene.is_recording() && !run.reach.is_empty() && reach.is_contained_within(&content_mask.bounds) {
+            let c = &content_mask.bounds;
+            let made = crate::scene::RunMade {
+                found: run.found,
+                at: [base.x.to_bits(), base.y.to_bits()],
+                clip: [c.origin.x.0.to_bits(), c.origin.y.0.to_bits(), c.size.width.0.to_bits(), c.size.height.0.to_bits()],
+                opacity: element_opacity.to_bits(),
+                part: 0,
+            };
+            self.scene.insert_whole_run(sprites, reach, run.textures, made);
+        } else {
+            self.scene.insert_sprites(sprites);
+        }
     }
 
     /// A glyph at `origin` (its baseline): where its sprite goes, in
@@ -1095,7 +1119,19 @@ pub struct GlyphRun {
     /// Each glyph's sprite, from the run's whole device pixel, its tile
     /// and colour.
     sprites: Vec<(Bounds<ScaledPixels>, AtlasTile, Hsla)>,
+    /// What they reach together, from the same pixel, and the first and
+    /// last of their textures: a run painted again within its clip goes
+    /// into the drawing whole, none of its glyphs looked at.
+    reach: Bounds<ScaledPixels>,
+    textures: ((u8, u32), (u8, u32)),
+    /// Which finding of its glyphs this is (new each time they're
+    /// found), so a drawing made again is seen to hold the same glyphs
+    /// without comparing them (`scene::RunMade`).
+    found: u64,
 }
+
+/// Each finding of a run's glyphs, numbered (never 0).
+static FOUND: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct GlyphRunKey {

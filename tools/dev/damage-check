@@ -1,0 +1,217 @@
+#!/usr/bin/env python3
+"""A window drawn only where it changed ends as one drawn whole.
+
+  damage-check [APP...] [--scales 1,1.5,2] [--keep DIR]
+
+APPs: styled-edit, tracker, terminal (all by default). For each app and
+scale, two headless sessions of their own (release builds: `cargo
+build --release -p app_server -p olo-styled-edit -p olo-tracker -p
+olo-terminal`), the same fixture home, the same steps: typing, Return,
+the wheel both ways, a selection, the pointer over rows; output
+overwriting a line (a spinner's), a drag and the scrollback in Terminal. In one the app
+draws only what changed (its damage, kept drawings compared line by
+line); in the other everything, every frame (`OLO_DAMAGE=0`). Their
+last pictures are compared: a pixel that differs is one the first left
+as it was when it should have drawn it again (or, if the two never
+agree, steps that aren't the same each time: look at the pair).
+
+Exits 1 on a difference; with --keep, the pictures (and where they
+differ) go to DIR: look at them, as two the same can be the same
+failure (an app that never opened).
+"""
+
+import json
+import os
+import random
+import shutil
+import subprocess
+import sys
+import time
+
+from PIL import Image, ImageChops
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+TSESSION = ["/usr/bin/python3", os.path.join(ROOT, "tools/dev/tsession")]
+SCREEN = "1600x1000"
+
+
+def ts(*args, check=False):
+    env = dict(os.environ, TSESSION_PROFILE="release")
+    for k in ("WAYLAND_DISPLAY", "OLO_SOCKET", "OLO_SESSION", "OLO_SESSION_PID"):
+        env.pop(k, None)
+    r = subprocess.run(TSESSION + [str(a) for a in args], capture_output=True, text=True, env=env)
+    if check and r.returncode != 0:
+        raise RuntimeError(f"tsession {' '.join(map(str, args))}: {r.stderr.strip()}")
+    return r
+
+
+def ipc(name, req):
+    out = ts("ipc", name, json.dumps(req)).stdout.strip()
+    try:
+        return json.loads(out) if out else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def frame_of(name, app_id, wait=15.0):
+    """The app's window, once it's there and its size settles."""
+    deadline = time.time() + wait
+    last = None
+    while time.time() < deadline:
+        ws = [w for w in ipc(name, {"type": "list_windows"}).get("windows", []) if w.get("app_id") == app_id and w.get("frame")]
+        if ws:
+            f = ws[0]["frame"]
+            now = (f["x"], f["y"], f["width"], f["height"])
+            if now == last:
+                return now
+            last = now
+        time.sleep(0.5)
+    raise RuntimeError(f"no {app_id} window")
+
+
+def fixture(home):
+    """A home with a long text file and a folder of many files."""
+    os.makedirs(os.path.join(home, "Many"), exist_ok=True)
+    words = "the window draws only where it changed and ends as one drawn whole".split()
+    with open(os.path.join(home, "long.txt"), "w") as f:
+        for i in range(400):
+            f.write(f"{i:04d} " + " ".join(words[(i + k) % len(words)] for k in range(9)) + "\n")
+    for i in range(160):
+        with open(os.path.join(home, "Many", f"file {i:03d} of the many.txt"), "w") as f:
+            f.write("x" * (i * 37 % 900))
+    # (One time for all, the same each run: shown, as Tracker's dates.)
+    when = 1_780_000_000
+    for d, _, files in os.walk(home):
+        for n in files + [""]:
+            os.utime(os.path.join(d, n), (when, when))
+
+
+def styled_edit(name, home, launch):
+    launch("olo-styled-edit", os.path.join(home, "long.txt"))
+    x, y, w, h = frame_of(name, "olo.styled-edit")
+    time.sleep(1)
+    ts("click", name, x + w // 2, y + h // 2)
+    ts("type", name, "Typed here, ")
+    ts("key", name, 28)
+    ts("type", name, "and a new line.")
+    # Down past the bottom: the view follows the caret, line by line.
+    for _ in range(30):
+        ts("key", name, 108)
+    time.sleep(0.5)
+    # The wheel, a notch at a time, each let glide to its end.
+    for n in (2, -1):
+        ts("wheel", name, n)
+        time.sleep(1.5)
+    # A word selected (its line's colours change), the pointer away.
+    ts("click", name, x + w // 2, y + h // 2)
+    ts("click", name, x + w // 2, y + h // 2)
+    ts("move", name, x + w - 40, y + h // 3)
+
+
+def tracker(name, home, launch):
+    launch("olo-tracker", os.path.join(home, "Many"))
+    x, y, w, h = frame_of(name, "olo.tracker")
+    ts("click", name, x + 120, y + 140)
+    for _ in range(3):
+        ts("key", name, 108)
+        time.sleep(0.2)
+    ts("wheel", name, 2)
+    time.sleep(0.4)
+    ts("wheel", name, -1)
+    time.sleep(0.4)
+    ts("move", name, x + 140, y + 200)
+
+
+def terminal(name, home, launch):
+    launch("olo-terminal")
+    x, y, w, h = frame_of(name, "olo.terminal")
+    time.sleep(1.5)
+    ts(
+        "type",
+        name,
+        'clear; for i in $(seq 1 60); do printf "\\033[3%dm%03d\\033[0m  some text on line $i of many\\n" $((i%7+1)) $i; done; '
+        'for s in a b c d e f g h; do printf "\\r\\033[38;5;174m%s\\033[0m Working, step $s" "*"; sleep 0.12; done; echo\n',
+    )
+    time.sleep(3)
+    # A selection dragged over two lines.
+    ts("drag", name, x + 60, y + 150, x + 260, y + 175)
+    # Back into the scrollback, a notch at a time, each let glide.
+    ts("move", name, x + w // 2, y + h // 2)
+    for n in (-3, 1):
+        ts("wheel", name, n)
+        time.sleep(1.5)
+    ts("move", name, x + w - 30, y + h - 30)
+
+
+APPS = {"styled-edit": styled_edit, "tracker": tracker, "terminal": terminal}
+
+
+def run(app, scale, damage, home, out):
+    name = f"dmg{random.randrange(100000)}"
+    try:
+        ts("start", name, SCREEN, "--scale", scale, "--home", home, "--owner", os.getpid(), check=True)
+        time.sleep(1)
+        env = [] if damage else ["OLO_DAMAGE=0"]
+        APPS[app](name, home, lambda *cmd: ts("run", name, *env, *cmd))
+        # (A field's caret blinks for 10 s after the last key.)
+        time.sleep(11 if app == "tracker" else 2)
+        ts("shot", name, out, check=True)
+    finally:
+        ts("stop", name)
+        # (Its folder too: logs and a picture of no further use.)
+        shutil.rmtree(f"/var/tmp/olo-dev/{name}", ignore_errors=True)
+
+
+def main():
+    args = sys.argv[1:]
+    scales = ["1", "1.5", "2"]
+    keep = None
+    apps = []
+    while args:
+        a = args.pop(0)
+        if a == "--scales":
+            scales = args.pop(0).split(",")
+        elif a == "--keep":
+            keep = args.pop(0)
+        elif a in APPS:
+            apps.append(a)
+        else:
+            sys.exit(__doc__)
+    apps = apps or list(APPS)
+    work = f"/var/tmp/olo-dev/damage-check-{os.getpid()}"
+    os.makedirs(work, exist_ok=True)
+    failed = []
+    try:
+        for app in apps:
+            for scale in scales:
+                shots = []
+                for damage in (True, False):
+                    # (A home of its own each run: what an app keeps
+                    # between runs stays out of the next.)
+                    home = os.path.join(work, f"home-{app}-{scale}-{damage}")
+                    fixture(home)
+                    out = os.path.join(work, f"{app}-{scale}-{'damage' if damage else 'whole'}.png")
+                    run(app, scale, damage, home, out)
+                    shots.append(out)
+                a, b = (Image.open(s).convert("RGB") for s in shots)
+                diff = ImageChops.difference(a, b)
+                box = diff.getbbox()
+                r, g, b = diff.split()
+                n = diff.size[0] * diff.size[1] - ImageChops.lighter(ImageChops.lighter(r, g), b).histogram()[0]
+                print(f"{app} at {scale}×: {'the same' if not box else f'{n} pixels differ, within {box}'}", flush=True)
+                if box:
+                    failed.append((app, scale))
+                if keep:
+                    # (Look at them: two the same may be the same failure.)
+                    os.makedirs(keep, exist_ok=True)
+                    for s in shots:
+                        shutil.copy(s, keep)
+                    if box:
+                        diff.point(lambda v: 255 if v else 0).save(os.path.join(keep, f"{app}-{scale}-diff.png"))
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    sys.exit(1 if failed else 0)
+
+
+if __name__ == "__main__":
+    main()

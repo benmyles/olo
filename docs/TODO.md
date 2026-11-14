@@ -55,9 +55,11 @@ something nobody here has is in "Blocked", with what it waits for.
      2026-11-13). *Still to do:* pictures as elements (`img`) and
      animated ones; animations stepped on the stage; a frame drawn
      straight from the kept drawings (no copy into a scene: ~50 µs of
-     a ~200 µs frame, and 5% of a Logs resize step's cycles); a
-     scroll bar's knob moved by the stage; rows of differing heights
-     (GPUI's `list`). *Done 2026-11-13:* nothing worked out or drawn
+     a ~200 µs frame, and 5% of a Logs resize step's cycles); rows of
+     differing heights (GPUI's `list`). (A scroll bar's knob moved by
+     the stage was looked at 2026-11-14 and left: every frame of a
+     scroll draws the content it moves anyway, and the knob's own
+     repaint is 0.02 ms of it.) *Done 2026-11-13:* nothing worked out or drawn
      for a layer surface stretched across its output, or a lock
      surface, before app_server has given it its size (they opened
      1 × 1 and were laid out and painted so once: the emoji picker
@@ -1054,6 +1056,40 @@ something nobody here has is in "Blocked", with what it waits for.
        handles, the charts' readouts (which follow the pointer, as they
        should), the lock screen (activity, as it should). Each that
        lights parts could note their edges as it draws them.
+     - *An agent's spinner in Terminal, looked at 2026-11-14.* With a
+       full screen of text and a status line redrawn 12 times a second
+       (release, 1600 × 1000 at 2×), Terminal is about 8 ms of CPU a
+       second: the display thread 0.32 ms an update (three wakes), the
+       looper 0.24, the shell's reader, parser and Terminal's main
+       thread 0.15; a background tab's spinner 1.2 ms a second, all of
+       it reading the shell. Each update draws one glyph's 11 × 16
+       pixels, but the kits handled every glyph on the screen to find
+       that: the looper put each of 1,400 into the drawing again, the
+       display thread compared each with the last drawing's, field by
+       field, and then looked at each to take what falls in the part
+       drawn. Now a line painted from what it kept goes into the drawing
+       whole, says how it was made, and is compared and passed over a
+       line at a time (HACKING, "Fast and light"); Terminal no longer
+       looks through every glyph for colour emoji. Instructions, three
+       rounds each in turn, 25 s of the spinner: 480–490 M → 231–233 M
+       (the display thread 180 → 43 M, the looper 231 → 118 M); the
+       display thread's comparing and per-glyph copying, 41 M of its
+       361 M cycles, gone; a frame's assembly 0.011–0.016 → 0.006–0.010
+       ms. The cycles moved within the noise of a machine busy with
+       other work (−11% to +0.4%): what is left is memory and the
+       driver. `tools/dev/damage-check` (new) finds each app's last
+       picture the same drawn by its damage and drawn whole, at 1×,
+       1.5× and 2×. *Left of it:* the looper still writes every line's
+       glyphs into each drawing (157 KB an update for a screen of
+       text, read across cores): drawings could share a kept line's
+       glyphs (an `Arc` a run) instead of copying them. The display
+       thread wakes three times an update: the commit; app_server's
+       release of the last buffer, as it takes the new one; and the
+       frame callback, a moment later. The release could come with the
+       callback, one wake fewer for every app's every frame. And
+       Terminal's screens' view says what it shows again for each
+       output (0.03 ms: its elements, listeners and scroll bar made
+       again), where its drawing alone is new.
      - Scrolling fails the benchmark's evenness now and then in both
        builds (a frame skipped in a drag or a glide), and the
        Viewer's live resize its budget in both. Looked into

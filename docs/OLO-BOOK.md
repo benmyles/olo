@@ -691,7 +691,11 @@ draws a frame. A burst of messages is one flush.
   (`paint_again_within`), and for nothing else. It draws only the
   parts of the window that changed (a few rectangles apart: a line
   typed in and the status line under it), and of a drawing made again
-  in the same place only what differs from the last.
+  in the same place only what differs from the last. Text is compared
+  a line at a time: a line painted again from what it kept (every
+  plain label's, the editor's, Terminal's rows) is known to be the
+  same line without its glyphs being read, so a screen of text with
+  one line changing costs that line.
 - `invalidate_at_frame()` holds a view's change for the next frame
   the compositor asks for, so a flood (a shell printing megabytes) is
   laid out and painted once a frame, as it is then.
@@ -1020,6 +1024,13 @@ their screen).
   pixel for pixel, at every scale and theme, to show it changed what
   you meant and nothing else. Keep the old build with `cp
   --reflink=always` under `/var/tmp`.
+- Changing how a frame finds what changed (damage, a drawing's
+  comparison, what a frame takes from a drawing)? `tools/dev/damage-check`:
+  StyledEdit, Tracker and Terminal typed in, scrolled and selected in,
+  each run drawn by its damage and drawn whole (`OLO_DAMAGE=0`), the
+  last pictures compared at 1×, 1.5× and 2×. A pixel apart is one left
+  stale. Look at the pictures it keeps (`--keep DIR`): the same can be
+  the same failure.
 
 **Does it behave right?**
 

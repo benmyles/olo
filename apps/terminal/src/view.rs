@@ -210,6 +210,9 @@ struct CachedRow {
     selected: Option<(usize, usize)>,
     bgs: Vec<(f32, f32, Hsla)>,
     glyphs: Vec<Glyph>,
+    /// Some of its glyphs are colour emoji (painted apart: most lines
+    /// have none, and aren't looked through for them at each paint).
+    emoji: bool,
     /// Its glyphs as last painted (where the atlas has them).
     run: RefCell<GlyphRun>,
     shapes: Vec<Shape>,
@@ -641,7 +644,8 @@ pub fn paint(g: &mut Painter, rect: Bounds<Pixels>, p: Paint, pane: &Pane) {
                 }
             }
         }
-        cache.rows[r] = Some(CachedRow { cells: cells.to_vec(), selected, bgs, glyphs, run: RefCell::default(), shapes, images });
+        let emoji = glyphs.iter().any(|g| g.emoji);
+        cache.rows[r] = Some(CachedRow { cells: cells.to_vec(), selected, bgs, glyphs, emoji, run: RefCell::default(), shapes, images });
     }
     // The rows in one layer: one place in the scene's order for all of
     // them, not each glyph's own, worked out against everything drawn so
@@ -668,8 +672,10 @@ pub fn paint(g: &mut Painter, rect: Bounds<Pixels>, p: Paint, pane: &Pane) {
                     glyph(point(px(it.x), px(0.0)), it.font, it.id, px(it.size), it.color);
                 }
             });
-            for it in row.glyphs.iter().filter(|it| it.emoji) {
-                let _ = g.paint_emoji(point(base.x + px(it.x), base.y), it.font, it.id, px(it.size));
+            if row.emoji {
+                for it in row.glyphs.iter().filter(|it| it.emoji) {
+                    let _ = g.paint_emoji(point(base.x + px(it.x), base.y), it.font, it.id, px(it.size));
+                }
             }
         }
     });
