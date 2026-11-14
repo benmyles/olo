@@ -71,14 +71,16 @@ fn ipv6_choices(now: nm::Ipv6) -> Vec<(nm::Ipv6, &'static str)> {
     c
 }
 
-/// A link's state in words, as the tab heads it.
-fn state_text(d: &Device) -> String {
+/// A link's state in words, as the tab heads it (`behind`: a captive
+/// portal wants a sign-in first).
+fn state_text(d: &Device, behind: bool) -> String {
     match d.state {
         20 => "No cable".into(),
         100 => {
             let name = d.connection.as_ref().map(|c| format!(" with “{c}”")).unwrap_or_default();
             let speed = d.speed.map(|s| format!(", {}", nm::speed_text(s))).unwrap_or_default();
-            format!("Connected{name}{speed}")
+            let portal = if behind { format!(": {}", super::SIGN_IN_NEEDED) } else { String::new() };
+            format!("Connected{name}{speed}{portal}")
         }
         _ => d.state_text().to_owned(),
     }
@@ -114,7 +116,15 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
             let _ = link.tx.send(Request::Connect(path.clone()));
         })
     };
-    ui.add(super::labelled(DIVIDER, "Status:", div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().child(StringView::new(state_text(&d)))).child(action)));
+    let portal = status.portal.as_ref().filter(|p| p.device == d.path);
+    ui.add(super::labelled(
+        DIVIDER,
+        "Status:",
+        div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().child(StringView::new(state_text(&d, portal.is_some())))).child(action),
+    ));
+    if let Some(p) = portal {
+        ui.add(super::labelled(DIVIDER, "", super::portal_line(p)));
+    }
 
     // The connection's IPv4 settings.
     let (profile, saved) = extra.ipv4.iter().find(|(p, ..)| *p == d.path).map(|(_, p, v)| (p.clone(), v.clone())).unwrap_or((None, nm::Addressing::default()));

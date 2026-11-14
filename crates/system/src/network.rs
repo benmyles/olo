@@ -19,6 +19,7 @@ const ACTIVE: &str = "org.freedesktop.NetworkManager.Connection.Active";
 const SETTINGS_PATH: &str = "/org/freedesktop/NetworkManager/Settings";
 const SETTINGS: &str = "org.freedesktop.NetworkManager.Settings";
 const CONNECTION: &str = "org.freedesktop.NetworkManager.Settings.Connection";
+const DHCP4: &str = "org.freedesktop.NetworkManager.DHCP4Config";
 
 /// The bus NetworkManager is on: the system bus, or `OLO_NM_BUS` (a
 /// D-Bus address: a stand-in's, `nm-fake`, for tests).
@@ -82,7 +83,108 @@ pub struct Links {
     /// What carries the default route (NetworkManager's primary
     /// connection): None for neither (a VPN, nothing).
     pub primary: Option<Kind>,
+    /// A network that wants its sign-in page first ([`Portal`]).
+    pub portal: Option<Portal>,
 }
+
+/// NM_CONNECTIVITY_PORTAL: what NetworkManager's connectivity check finds
+/// behind a captive portal (its request answered by something else).
+const CONNECTIVITY_PORTAL: u32 = 2;
+
+/// The address NetworkManager's check asks on Fedora, when it doesn't
+/// say its own.
+const FEDORA_CHECK: &str = "http://fedoraproject.org/static/hotspot.txt";
+
+/// A network that wants its sign-in page first: a captive portal (Ben,
+/// 2026-11-13: "add captive portal recognition in network settings so
+/// that when a connection requires portal signin the link is available
+/// to click"). Seen by NetworkManager's own connectivity check, as its
+/// signals say: nothing polled.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Portal {
+    /// The network's name (the connection's: a Wi-Fi network's is its
+    /// name, "Airport Wi-Fi"; "Wired connection 1").
+    pub network: String,
+    /// Its link (the device's path).
+    pub device: String,
+    /// Where to sign in: the page the network names (DHCP option 114,
+    /// RFC 8910), else NetworkManager's check address, a plain HTTP page
+    /// the portal answers with its own (or sends on to it).
+    pub url: String,
+    /// `url` is the page the network names (worth showing: the check's
+    /// address isn't the portal's).
+    pub named: bool,
+}
+
+/// The network behind a captive portal among `devices`, if any. The
+/// computer's connectivity (`Connectivity`, one call: what's asked on
+/// every change of the links) is its default route's link's, so a portal
+/// that holds the traffic back shows there first; then the link is the
+/// one whose own check says so (`Ip4Connectivity` or `Ip6Connectivity`),
+/// else (NetworkManager before 1.16 doesn't say) the one carrying the
+/// default route.
+fn portal_of(c: &zbus::blocking::Connection, devices: &[&Device]) -> Option<Portal> {
+    let whole: u32 = bus::property(c, DEST, NM_PATH, NM, "Connectivity").ok()?;
+    if whole != CONNECTIVITY_PORTAL {
+        return None;
+    }
+    let behind = |d: &&&Device| ["Ip4Connectivity", "Ip6Connectivity"].iter().any(|p| bus::property::<u32>(c, DEST, &d.path, DEVICE, p).ok() == Some(CONNECTIVITY_PORTAL));
+    let connected: Vec<&&Device> = devices.iter().filter(|d| d.connected()).collect();
+    let device = connected.iter().copied().find(behind).copied().or_else(|| {
+        let primary: OwnedObjectPath = bus::property(c, DEST, NM_PATH, NM, "PrimaryConnection").ok()?;
+        let links: Vec<OwnedObjectPath> = bus::property(c, DEST, primary.as_str(), ACTIVE, "Devices").ok()?;
+        let first = links.first()?;
+        connected.iter().find(|d| d.path == first.as_str()).copied().copied()
+    })?;
+    // The page its DHCP names, if it does (an http or https address).
+    let dhcp: OwnedObjectPath = bus::property(c, DEST, &device.path, DEVICE, "Dhcp4Config").unwrap_or_else(|_| OwnedObjectPath::try_from("/").expect("a path"));
+    let named = (dhcp.as_str() != "/")
+        .then(|| bus::property::<HashMap<String, OwnedValue>>(c, DEST, dhcp.as_str(), DHCP4, "Options").ok())
+        .flatten()
+        .and_then(|o| o.get("captive_portal").and_then(|v| String::try_from(v.clone()).ok()))
+        .filter(|u| u.starts_with("https://") || u.starts_with("http://"));
+    let check = || Some(str_prop(NM_PATH, NM, "ConnectivityCheckUri")).filter(|u| !u.is_empty()).unwrap_or_else(|| FEDORA_CHECK.to_owned());
+    Some(Portal { network: device.connection.clone().unwrap_or_else(|| device.interface.clone()), device: device.path.clone(), named: named.is_some(), url: named.unwrap_or_else(check) })
+}
+
+/// NetworkManager's connectivity check made again now: whether the
+/// computer is still behind a captive portal.
+pub fn check_portal() -> Result<bool> {
+    let found: u32 = bus::call(conn()?, DEST, NM_PATH, NM, "CheckConnectivity", &())?;
+    Ok(found == CONNECTIVITY_PORTAL)
+}
+
+/// Opens `portal`'s sign-in page in the default browser, then has
+/// NetworkManager check again every few seconds while it's open (a few
+/// minutes at most, and only one such round at a time), so the warning
+/// goes as soon as the network lets traffic through, not at its next
+/// check of its own (every five minutes).
+pub fn open_portal(portal: &Portal) {
+    if let Err(e) = olo_xdg::open::open(&olo_xdg::open::Target::Url(portal.url.clone())) {
+        tracing::warn!("network: the sign-in page {} couldn't be opened: {e}", portal.url);
+    }
+    static CHECKING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if CHECKING.swap(true, std::sync::atomic::Ordering::AcqRel) {
+        return;
+    }
+    let spawned = std::thread::Builder::new().name("portal-check".into()).spawn(|| {
+        for _ in 0..PORTAL_CHECKS {
+            std::thread::sleep(PORTAL_CHECK_EVERY);
+            if !check_portal().unwrap_or(false) {
+                break;
+            }
+        }
+        CHECKING.store(false, std::sync::atomic::Ordering::Release);
+    });
+    if spawned.is_err() {
+        CHECKING.store(false, std::sync::atomic::Ordering::Release);
+    }
+}
+
+/// How often, and how many times, NetworkManager is asked to check again
+/// after a sign-in page is opened: every 5 s for 5 minutes.
+const PORTAL_CHECK_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
+const PORTAL_CHECKS: u32 = 60;
 
 /// [`Links`] now, and the objects whose changes change them besides
 /// NetworkManager's own: each link connected and its addresses, the
@@ -125,6 +227,15 @@ fn links_and_paths() -> Result<(Links, Vec<String>)> {
         "802-3-ethernet" => Some(Kind::Ethernet),
         _ => None,
     };
+    let shown: Vec<&Device> = links.wifi_device.iter().chain(links.wired.iter()).collect();
+    links.portal = portal_of(c, &shown);
+    // (A Wi-Fi network by the name it goes by, as the tray says it.)
+    if let Some(p) = links.portal.as_mut()
+        && links.wifi_device.as_ref().is_some_and(|d| d.path == p.device)
+        && let Some(ssid) = links.wifi.as_ref().and_then(|w| w.ssid.clone())
+    {
+        p.network = ssid;
+    }
     Ok((links, paths))
 }
 
@@ -359,6 +470,8 @@ pub struct Status {
     pub devices: Vec<Device>,
     /// Networks in range, strongest first; the one in use first of all.
     pub networks: Vec<Network>,
+    /// A network that wants its sign-in page first ([`Portal`]).
+    pub portal: Option<Portal>,
 }
 
 fn str_prop(dev: &str, iface: &str, name: &str) -> String {
@@ -472,7 +585,8 @@ pub fn status() -> Result<Status> {
         }
     }
     networks.sort_by(|a, b| b.active.cmp(&a.active).then(b.strength.cmp(&a.strength)).then(a.ssid.to_lowercase().cmp(&b.ssid.to_lowercase())));
-    Ok(Status { wireless_enabled, wireless_hardware, devices, networks })
+    let portal = portal_of(c, &devices.iter().collect::<Vec<_>>());
+    Ok(Status { wireless_enabled, wireless_hardware, devices, networks, portal })
 }
 
 /// Have NetworkManager read its configuration files again (after one
@@ -1447,7 +1561,7 @@ mod links_tests {
             dns: Vec::new(),
             speed: Some(866),
         };
-        Links { wifi: Some(Wifi { ssid: Some("Home".into()), strength: 80 }), wifi_device: Some(wlan), wired: None, primary: Some(Kind::Wifi) }
+        Links { wifi: Some(Wifi { ssid: Some("Home".into()), strength: 80 }), wifi_device: Some(wlan), wired: None, primary: Some(Kind::Wifi), portal: None }
     }
 
     /// A strength or a rate is taken from the signal (every few seconds,

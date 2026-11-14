@@ -396,6 +396,10 @@ struct Deskbar {
     /// Token Pool widgets' notifications (made as the first is shown),
     /// one a widget's measure, each updated in place.
     pool_notes: Option<(olo_kit::notify::Notifier, HashMap<String, olo_kit::notify::NoteId>)>,
+    /// A captive portal said in a notification: the notifier, the portal
+    /// its click opens, and the network told of and its notification.
+    portal_notes: Option<(olo_kit::notify::Notifier, Arc<Mutex<Option<olo_system::network::Portal>>>)>,
+    portal_told: Option<(String, olo_kit::notify::NoteId)>,
     /// What there is to measure, for the widgets' tips (read once, off
     /// the UI thread).
     sources: olo_system::meters::Sources,
@@ -1134,6 +1138,11 @@ impl Deskbar {
             }
             Some(("run", bin)) => spawn(bin),
             Some(("pref", target)) => olo_kit::app_menu::open_settings(target),
+            Some(("portal", _)) => {
+                if let Some(p) = &self.status.portal {
+                    olo_system::network::open_portal(p);
+                }
+            }
             // An agent screen shown on an AirPlay receiver (its tray item's
             // menu).
             Some(("screen-airplay", rest)) => {
@@ -1484,6 +1493,9 @@ impl Deskbar {
             }
             Msg::Status(s) => {
                 self.note_arrivals(&s);
+                if s.portal != self.status.portal {
+                    self.tell_portal(s.portal.as_ref());
+                }
                 self.status = s;
             }
             Msg::Arrangement(undo, redo) => self.arrangement = (undo, redo),
@@ -1559,6 +1571,47 @@ impl Deskbar {
         let id = self.live.hovered()?;
         let w = self.live.widgets.iter().find(|w| w.id == id)?;
         Some((id, self.live.tip(w, &self.sources)))
+    }
+
+    /// A network behind a captive portal: said in a notification as it's
+    /// first seen ("Sign in to “Airport Wi-Fi”", Open Sign-In Page; a
+    /// click opens the page too), taken away once it's signed in to, and
+    /// not said again for that network until it wants a sign-in again
+    /// (Ben, 2026-11-13: "a tray icon + notification should appear about
+    /// it and clicking the tray icon or link in notification should open
+    /// the portal page").
+    fn tell_portal(&mut self, now: Option<&olo_system::network::Portal>) {
+        use olo_kit::notify::{Note, NoteEvent, NoteKind, Notifier};
+        let (notes, current) = self.portal_notes.get_or_insert_with(|| {
+            let current: Arc<Mutex<Option<olo_system::network::Portal>>> = Default::default();
+            let opens = current.clone();
+            let notes = Notifier::with_events("Network", "olo-preferences", move |e| {
+                if let NoteEvent::Action { key, .. } = e
+                    && (key == "default" || key == "open")
+                    && let Some(p) = opens.lock().unwrap().clone()
+                {
+                    olo_system::network::open_portal(&p);
+                }
+            });
+            (notes, current)
+        });
+        *current.lock().unwrap() = now.cloned();
+        match (now, self.portal_told.take()) {
+            // Still the network told of: nothing more to say.
+            (Some(p), Some((told, id))) if told == p.network => self.portal_told = Some((told, id)),
+            (Some(p), was) => {
+                let note = Note::new(format!("Sign in to “{}”", p.network))
+                    .body("This network wants you to sign in on its page before it lets anything through.")
+                    .icon("browser")
+                    .kind(NoteKind::Important)
+                    .action("open", "Open Sign-In Page");
+                let id = notes.show(was.map(|(_, id)| id), note);
+                self.portal_told = Some((p.network.clone(), id));
+            }
+            // Signed in (or left): its notification goes.
+            (None, Some((_, id))) => notes.close(id),
+            (None, None) => {}
+        }
     }
 
     /// A Token Pool widget's quota ran out on every account, or came
@@ -1981,6 +2034,10 @@ fn link_menu(kind: olo_system::network::Kind, l: &olo_system::network::Links) ->
             Some(p) if p == kind => m = row(m, "In Use for Internet Traffic".into()),
             Some(_) => m = row(m, format!("Standing By: {other} Is in Use")),
             None => {}
+        }
+        // Behind a captive portal: its sign-in page, first.
+        if l.portal.as_ref().is_some_and(|p| p.device == d.path) {
+            m = row(m, "Sign-In Needed".into()).item("Open Sign-In Page", "portal:open");
         }
         m = m.separator();
         if kind == Kind::Wifi
@@ -2486,6 +2543,8 @@ impl Deskbar {
                 // (Olo Doctor's bag, while it has found something.)
                 !st.doctor.issues.is_empty(),
                 st.battery.is_some(),
+                // (A network wanting its sign-in page: a captive portal.)
+                st.portal.is_some(),
                 st.wired.is_some(),
                 st.wifi.is_some(),
                 st.volume.is_some(),
@@ -2884,6 +2943,17 @@ impl Deskbar {
         // there's an adapter. With both, the one not carrying the traffic
         // (the default route) is drawn faint. A click opens the link's
         // menu (its addresses and rates, Network's preferences).
+        // A network that wants its sign-in page first (a captive portal):
+        // a click opens the page.
+        if let Some(p) = st.portal.clone() {
+            let tip_text = format!("“{}” wants you to sign in before it lets anything through. Click to open its sign-in page.", p.network);
+            let (_, h) = tray_item(&mut d, "portal", tip_text, Box::new(move |g, r| _ = icons::paint(g, r, "browser")));
+            d.hits.push(h.on_any_button(move |e, _| {
+                if matches!(button(e), MouseButton::Left | MouseButton::Right) {
+                    olo_system::network::open_portal(&p);
+                }
+            }));
+        }
         use olo_system::network::Kind;
         let standing_by = |kind: Kind| st.wired.is_some() && st.wifi.as_ref().is_some_and(|w| w.ssid.is_some()) && st.primary.is_some_and(|p| p != kind);
         let faint = |on: bool| if on { Some(0.45) } else { None };
@@ -3696,6 +3766,8 @@ fn main() {
             tray_pictures: HashMap::new(),
             live: widgets::Live::new(),
             pool_notes: None,
+            portal_notes: None,
+            portal_told: None,
             sources: Default::default(),
         }));
         let (seconds, ticking) = mpsc::channel();

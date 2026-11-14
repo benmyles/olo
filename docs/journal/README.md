@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-13
 
+### Captive portals: seen, said and a click away
+
+*23:33* — A network that wants its sign-in page first (NetworkManager's own connectivity check finding a portal, heard in its signals: nothing polled) now shows everywhere it should. Preferences ▸ Network says “sign-in needed” beside the connection, with Open Sign-In Page and the page itself when the network names it (DHCP option 114). Deskbar shows a globe in the tray whose tip names the network and whose click opens the page, and Notifications posts one note per network with the same action. Opening the page has NetworkManager check again every 5 s until it lets traffic through, so all of it goes as soon as you've signed in. (A stand-in NetworkManager and network here.)
+
+![Captive portals: seen, said and a click away](2026-11-13/233312-captive-portals-seen-said-and-a-click-away.png)
+
 ### A rolled-up window is its tab, closed along its bottom
 
 *22:44* — Rolled up, a window shows only its tab, and the tab now closes its own bottom with its outline and its bevel's shadow, where before its bottom edge was open (it was drawn to sit on the frame). Here six rolled-up windows fanned out by Tile All; windows wider than their cell no longer put their tabs over the others'.

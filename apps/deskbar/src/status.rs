@@ -58,6 +58,8 @@ pub struct Status {
     pub wired: Option<Wired>,
     /// What carries the default route, of the links.
     pub primary: Option<olo_system::network::Kind>,
+    /// A network that wants its sign-in page first (a captive portal).
+    pub portal: Option<olo_system::network::Portal>,
     pub volume: Option<Volume>,
     /// Every output and input, for the speaker's menu.
     pub sound: Option<audio::Devices>,
@@ -311,12 +313,13 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     if let Err(e) = olo_system::network::watch_links(move |l| {
         let wifi = l.wifi.as_ref().map(|w| Wifi { ssid: w.ssid.clone(), signal: w.strength });
         let wired = l.wired.as_ref().map(|d| Wired { speed: d.speed });
-        let primary = l.primary;
+        let (primary, portal) = (l.primary, l.portal.clone());
         *links_cell().lock().unwrap() = l;
         publish(&on_links, |s| {
             s.wifi = wifi;
             s.wired = wired;
             s.primary = primary;
+            s.portal = portal;
         });
     }) {
         tracing::debug!("NetworkManager: {e}");

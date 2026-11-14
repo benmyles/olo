@@ -29,7 +29,7 @@ use olo_kit::{
     Bounds, Child, ClickEvent, Cx, Element, Hsla, IntoElement, Painter, ParentElement as _, PathBuilder, Pixels, SharedString, Styled as _, View, WindowCx, WindowOptions, div,
     file_panel::{self, FilePanel, PanelResult},
     metrics as m, point, px, size, style,
-    widgets::{Button, CheckBox, Column, ColumnListView, EmptyState, ListModel, MenuField, StringView, TabView, TextControl, TextField, TextFieldEvent, separator},
+    widgets::{Button, CheckBox, Column, ColumnListView, EmptyState, LinkButton, ListModel, MenuField, StringView, TabView, TextControl, TextField, TextFieldEvent, separator},
 };
 use olo_system::{
     hosts::{Host, HostsFile},
@@ -341,6 +341,7 @@ fn fake_status() -> Status {
             speed: None,
         }],
         networks: vec![net("Olo Campus", 90, true, true), net("Olo Home", 70, true, false), net("Olo Guest", 40, false, false)],
+        portal: None,
     }
 }
 
@@ -432,6 +433,24 @@ fn rows(ui: &mut Ui, divider: f32, rows: &[(&str, String)]) {
     let lines: Vec<_> = rows.iter().map(|(label, value)| labelled(divider, label, StringView::new(value.clone()))).collect();
     ui.add(div().flex().flex_col().children(lines));
 }
+
+/// A link behind a captive portal (`nm::Portal`): its sign-in page a
+/// click away (Open Sign-In Page, and the page itself when the network
+/// names it: NetworkManager's check address isn't worth showing). Opened
+/// in the default browser, NetworkManager asked to check again while it
+/// is, so "sign-in needed" goes once it lets traffic through.
+fn portal_line(portal: &nm::Portal) -> Element {
+    let (p, q) = (portal.clone(), portal.clone());
+    let mut row = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(Button::new("Open Sign-In Page").on_click(move |_, _| nm::open_portal(&p)));
+    if portal.named {
+        let shown = portal.url.split_once("://").map_or(portal.url.as_str(), |(_, rest)| rest).trim_end_matches('/').to_owned();
+        row = row.child(div().min_w(px(0.0)).child(LinkButton::new(shown).id("portal-page").on_click(move |_, _| nm::open_portal(&q))));
+    }
+    row.into_element()
+}
+
+/// What a connected link says of itself behind a captive portal.
+const SIGN_IN_NEEDED: &str = "sign-in needed";
 
 /// `label` in the label column, `then` from the divider on.
 fn labelled(divider: f32, label: &str, then: impl IntoElement) -> Element {
@@ -591,7 +610,14 @@ fn wifi(ui: &mut Ui, st: &mut State, status: &Status, busy: bool) {
     } else if !status.wireless_enabled {
         "Off".to_owned()
     } else if let (true, Some(name)) = (dev.connected(), &dev.connection) {
-        if name == "Olo Hotspot" { "Making a hotspot (below)".to_owned() } else { format!("Connected to “{name}”") }
+        let behind = status.portal.as_ref().is_some_and(|p| p.device == dev.path);
+        if name == "Olo Hotspot" {
+            "Making a hotspot (below)".to_owned()
+        } else if behind {
+            format!("Connected to “{name}”: {SIGN_IN_NEEDED}")
+        } else {
+            format!("Connected to “{name}”")
+        }
     } else if dev.state == 120 || (dev.state == 30 && dev.failure().is_some()) {
         dev.failure().unwrap_or("Couldn't connect").to_owned()
     } else {
@@ -610,6 +636,9 @@ fn wifi(ui: &mut Ui, st: &mut State, status: &Status, busy: bool) {
             }))
             .child(StringView::new(text).dim(true)),
     );
+    if let Some(p) = status.portal.as_ref().filter(|p| p.device == dev.path) {
+        ui.add(portal_line(p));
+    }
     if !status.wireless_enabled {
         return;
     }

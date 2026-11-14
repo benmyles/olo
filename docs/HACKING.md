@@ -5316,7 +5316,8 @@ lint at a time).
   the default route where the lowest route metric is, profiles' `Update2`
   and devices' `Reapply`, signalled as NetworkManager does; `nm-fake
   --address A --tell "wired down"` (`wired up`, `wifi down`, `wifi up
-  SSID`, `strength N`, `state`) changes the world under a test. Run
+  SSID`, `strength N`, `portal [URL]`, `portal off`, `state`) changes
+  the world under a test (captive portals: see Deskbar's tray). Run
   Deskbar or Preferences against one with `tsession run NAME
   OLO_NM_BUS=ADDRESS olo-deskbar`, and `cargo run -p olo-system
   --example links` prints the links as the watch sees them (`--time`:
@@ -14735,6 +14736,42 @@ calls, 3.5 ms here) and asks for the signals of what's connected again
 only if that changed. Measured beside the old Wi-Fi-only watch over
 60 s, idle on Ben's machine (Ethernet and Wi-Fi both up): under one
 wakeup a second, against about two.
+
+**Captive portals** (Ben, 2026-11-13: "when a connection requires
+portal signin the link is available to click in the network settings
+and also a tray icon + notification should appear about it"): a network
+that wants its sign-in page first is NetworkManager's own connectivity
+check finding it (`Connectivity` = portal, its request answered by
+someone else), heard in the same signals as the links, so nothing is
+polled. `network::Links::portal` and `Status::portal` (a
+`network::Portal`: the network, by its SSID for Wi-Fi, its link, the
+page and whether the network named it) read the computer's
+`Connectivity` first, one call that is all a read costs while there's
+no portal (the links' read went 4.56 → 4.65 ms median, 3.48 → 3.61 ms
+best, 30 reads each, interleaved, against `nm-fake`), then the link
+whose own check says so (`Ip4Connectivity`/`Ip6Connectivity`, else the
+default route's), and the page: the one its DHCP names (option 114,
+RFC 8910, NetworkManager's `captive_portal` option; only an `http` or
+`https` address), else the check's address
+(`ConnectivityCheckUri`, Fedora's when it gives none), plain HTTP the
+portal answers with its own page or sends on to it. Deskbar shows a
+globe (`browser`) at the head of the links, whose tip says the network
+wants you to sign in and whose click opens the page; the link's menu
+says Sign-In Needed and has Open Sign-In Page; and it posts one
+Important notification (Network, "Sign in to “…”", with an Open
+Sign-In Page action), once per network, taken back when the portal
+goes. Preferences ▸ Network says "Connected to “…”: sign-in needed"
+(Ethernet's Status too) with an Open Sign-In Page button, and the page
+as a link when the network named it. Opening it (`network::open_portal`:
+the default browser, `olo_xdg::open`) has NetworkManager check again
+(`CheckConnectivity`) every 5 s for at most 5 minutes, one round at a
+time and stopping as soon as it's through, so the globe goes as you
+sign in, not at NetworkManager's own next check five minutes later.
+`nm-fake --tell portal [URL]` puts it behind one (the URL as its DHCP's
+option 114), `--tell "portal off"` signs in, `--check-uri URI` is its
+check's address, and its state says how many checks were asked for;
+`crates/system/tests/nm_portal.rs` runs it end to end
+(`OLO_TEST_BUS=unix:path=…`).
 
 **AppImages** (`olo_appimage`, crates/appimage, shared with Tracker):
 with a `~/AppImages` folder, the Olo menu has an AppImages item under

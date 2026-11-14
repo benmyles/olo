@@ -1148,38 +1148,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Captive portals: seen, said and opened** (Ben, 2026-11-13: "add
-  captive portal recognition in network settings so that when a
-  connection requires portal signin the link is available to click in
-  the network settings and also a tray icon + notification should
-  appear about it and clicking the tray icon or link in notification
-  should open the portal page"). Olo's network code
-  (`olo_system::network`, Preferences ▸ Network) says nothing of one
-  today.
-  - *Knowing:* NetworkManager's own connectivity check (its
-    `Connectivity` going to `portal`, per device and overall, as its
-    signals say: nothing polled), and the portal's address: where the
-    check's request was sent on to (its redirect, or the address the
-    network names in its DHCP option 114 / RFC 8910 Captive Portal
-    API, `user-portal-url`, which is better when given). Asked again
-    after the person signs in, so the warning goes as soon as the
-    network lets traffic through.
-  - *Preferences ▸ Network:* the connection's row says "Sign-in
-    needed" with a link to the portal page (and Open Sign-In Page).
-  - *The tray:* an icon while a portal waits (the Wi-Fi glyph with a
-    mark, or a small sign of its own), its tip naming the network; a
-    click opens the portal page.
-  - *A notification* as it's first seen on a network ("Sign in to
-    Airport Wi-Fi"), with Open Sign-In Page; clicking it opens the
-    page too. Not again for the same network until it's been signed
-    in to and needs it again.
-  - *Opening the page:* in the default browser, as a page of its own
-    (a portal page is often plain HTTP and expects no proxy): a
-    browser set to a proxy (the Token Pool's isn't one for web
-    pages, but a VPN's may be) or DNS over HTTPS can't reach it, so
-    the page opens past them where the browser allows.
-  - Agents read it too: the network's portal state and its address in
-    the tray's and Preferences' trees.
 - **The computer starts with Olo's start-up screen and chime, not
   Lenovo's and Fedora's logos** (Ben, 2026-11-13: "when the os starts
   it still shows the lenovo + fedora logos on bootup. i want that
@@ -1289,6 +1257,31 @@ accessibility tree test on an agent screen (GTK's Text Editor, 30
 nodes). What's left needs Ben: in Blocked, "The ignored tests that
 need Ben".)
 
+- **Captive portals: seen, said and opened** (Ben, 2026-11-13: "add
+  captive portal recognition in network settings so that when a
+  connection requires portal signin the link is available to click in
+  the network settings and also a tray icon + notification should
+  appear about it and clicking the tray icon or link in notification
+  should open the portal page"). Done: NetworkManager's own
+  connectivity check, heard in its signals (nothing polled;
+  `network::Portal`), the page the network names in DHCP option 114
+  (RFC 8910) else the check's address, which the portal answers with
+  its own page or sends on to it. Preferences ▸ Network: "sign-in
+  needed" on the connection (Wi-Fi and Ethernet), Open Sign-In Page,
+  and the page as a link when the network names it. Deskbar: a globe in
+  the tray (its tip names the network; a click opens the page), Sign-In
+  Needed and Open Sign-In Page in the link's menu, and one Important
+  notification per network with Open Sign-In Page, taken back as the
+  portal goes. Opening the page has NetworkManager check again every
+  5 s (5 minutes at most) so it all goes as soon as you've signed in.
+  Agents read it in the trees (the status, the button, the link, the
+  globe's tip). Tested end to end against `nm-fake` (`--tell portal
+  [URL]`, `crates/system/tests/nm_portal.rs`), headless at 1×, 1.5×
+  and 2×, light and dark. *Not done:* opening the page past a proxy or
+  DNS over HTTPS (the TODO's "where the browser allows"): it opens in
+  the default browser as a link would, and a running Chrome takes it
+  with the settings it has. *For Ben:* the next hotel or airport
+  Wi-Fi.
 - **A rolled-up window's tab closed along its bottom** (Ben,
   2026-11-13, with a screenshot of "Network" rolled up: "when a window
   is rolled up it looks weird b/c it doesn't have the bottom bar that it

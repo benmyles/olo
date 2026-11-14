@@ -29,7 +29,16 @@
 //! `nm-fake --address ADDRESS --tell WHAT` tells a running one, as a
 //! test would the world: `wired down` (the cable out), `wired up`,
 //! `wifi down`, `wifi up SSID`, `strength N` (the joined network's),
-//! `state` (prints the links and the default route as JSON).
+//! `portal [URL]` (the link carrying the default route is behind a
+//! captive portal: its connectivity and the computer's "portal", URL the
+//! page its DHCP names, option 114, if given), `portal off` (signed in),
+//! `state` (prints the links, the default route and the connectivity
+//! checks asked for as JSON).
+//!
+//! Connectivity as NetworkManager's check finds it: `Connectivity`,
+//! `ConnectivityCheckUri` (`--check-uri URI`, Fedora's by default) and
+//! `CheckConnectivity`; each link's `Ip4Connectivity` (none while it
+//! isn't connected) and its DHCP options (`Dhcp4Config`).
 
 use std::{
     collections::HashMap,
@@ -50,6 +59,10 @@ const WIRELESS: &str = "org.freedesktop.NetworkManager.Device.Wireless";
 const AP: &str = "org.freedesktop.NetworkManager.AccessPoint";
 const ACTIVE: &str = "org.freedesktop.NetworkManager.Connection.Active";
 const IP4: &str = "org.freedesktop.NetworkManager.IP4Config";
+/// NM_CONNECTIVITY_*.
+const NONE: u32 = 1;
+const PORTAL: u32 = 2;
+const FULL: u32 = 4;
 const TYPE_ETHERNET: u32 = 1;
 const TYPE_WIFI: u32 = 2;
 /// NM_DEVICE_STATE_*.
@@ -220,6 +233,13 @@ struct Model {
     defaults: Vec<(u32, i64)>,
     /// The VPNs up (their saved connections' numbers).
     vpns: Vec<usize>,
+    /// A link behind a captive portal (its number), and the page its
+    /// DHCP names, if any.
+    portal: Option<(usize, Option<String>)>,
+    /// Where NetworkManager's connectivity check asks.
+    check_uri: String,
+    /// How many times `CheckConnectivity` was asked.
+    checks: u32,
 }
 
 fn vpn_path(n: usize) -> String {
@@ -248,6 +268,9 @@ fn active_path(i: usize) -> String {
 }
 fn ip4_path(i: usize) -> String {
     format!("{NM_PATH}/IP4Config/{}", i + 1)
+}
+fn dhcp4_path(i: usize) -> String {
+    format!("{NM_PATH}/DHCP4Config/{}", i + 1)
 }
 
 /// A path's number at its end ("/…/Settings/3": 3).
@@ -309,6 +332,20 @@ impl Model {
         (addresses, gateway, dns)
     }
 
+    /// A link's connectivity, as NetworkManager's check finds it.
+    fn connectivity_of(&self, i: usize) -> u32 {
+        match self.portal {
+            _ if !self.connected(i) => NONE,
+            Some((p, _)) if p == i => PORTAL,
+            _ => FULL,
+        }
+    }
+
+    /// The computer's: its default route's link's.
+    fn connectivity(&self) -> u32 {
+        self.primary().map_or(NONE, |i| self.connectivity_of(i))
+    }
+
     /// The link the default route goes through: the lowest metric of
     /// those connected with a router.
     fn primary(&self) -> Option<usize> {
@@ -349,9 +386,12 @@ impl Model {
         out.push((NM_PATH.to_owned(), NM, "PrimaryConnectionType", format!("{:?}", primary.map(|i| self.devices[i].kind))));
         out.push((NM_PATH.to_owned(), NM, "ActiveConnections", format!("{:?} {:?}", (0..self.devices.len()).filter(|&i| self.connected(i)).collect::<Vec<_>>(), self.vpns)));
         out.push((NM_PATH.to_owned(), NM, "WirelessEnabled", self.wireless.to_string()));
+        out.push((NM_PATH.to_owned(), NM, "Connectivity", self.connectivity().to_string()));
         for (i, d) in self.devices.iter().enumerate() {
             let p = dev_path(i);
             out.push((p.clone(), DEVICE, "State", d.state.to_string()));
+            out.push((p.clone(), DEVICE, "Ip4Connectivity", self.connectivity_of(i).to_string()));
+            out.push((p.clone(), DEVICE, "Dhcp4Config", self.connected(i).to_string()));
             out.push((p.clone(), DEVICE, "StateReason", d.reason.to_string()));
             out.push((p.clone(), DEVICE, "ActiveConnection", format!("{:?}", d.active)));
             out.push((p.clone(), DEVICE, "Ip4Config", self.connected(i).to_string()));
@@ -381,7 +421,11 @@ impl Model {
                 })
             })
             .collect();
-        serde_json::json!({ "devices": devices, "primary": self.primary().map(|i| self.devices[i].iface.clone()), "wireless": self.wireless }).to_string()
+        serde_json::json!({
+            "devices": devices, "primary": self.primary().map(|i| self.devices[i].iface.clone()), "wireless": self.wireless,
+            "connectivity": self.connectivity(), "checks": self.checks,
+        })
+        .to_string()
     }
 }
 
@@ -511,6 +555,34 @@ impl Nm {
     #[zbus(property)]
     fn version(&self) -> String {
         "1.52.0-olo-fake".into()
+    }
+
+    /// The computer's connectivity, as the check found it (NM_CONNECTIVITY_*).
+    #[zbus(property)]
+    fn connectivity(&self) -> u32 {
+        self.model.lock().unwrap().connectivity()
+    }
+
+    #[zbus(property)]
+    fn connectivity_check_uri(&self) -> String {
+        self.model.lock().unwrap().check_uri.clone()
+    }
+
+    #[zbus(property)]
+    fn connectivity_check_enabled(&self) -> bool {
+        true
+    }
+
+    #[zbus(property)]
+    fn connectivity_check_available(&self) -> bool {
+        true
+    }
+
+    /// The check made again now: what it finds.
+    fn check_connectivity(&self) -> u32 {
+        let mut m = self.model.lock().unwrap();
+        m.checks += 1;
+        m.connectivity()
     }
 
     /// NM_STATE_CONNECTED_GLOBAL, or DISCONNECTED.
@@ -690,6 +762,22 @@ impl DeviceObj {
     #[zbus(property)]
     fn ip6_config(&self) -> OwnedObjectPath {
         root()
+    }
+
+    #[zbus(property)]
+    fn ip4_connectivity(&self) -> u32 {
+        self.model.lock().unwrap().connectivity_of(self.i)
+    }
+
+    /// (No IPv6 here: unknown.)
+    #[zbus(property)]
+    fn ip6_connectivity(&self) -> u32 {
+        0
+    }
+
+    #[zbus(property)]
+    fn dhcp4_config(&self) -> OwnedObjectPath {
+        if self.model.lock().unwrap().connected(self.i) { opath(dhcp4_path(self.i)) } else { root() }
     }
 
     /// The saved connections it could use.
@@ -1073,6 +1161,29 @@ impl Connection {
 
 // ---- A test's say ------------------------------------------------------------
 
+/// What a link's DHCP gave, as NetworkManager's options name it: its
+/// address, and the captive portal's page (option 114, RFC 8910) if the
+/// network names one.
+struct Dhcp4Obj {
+    model: Shared,
+    i: usize,
+}
+
+#[zbus::interface(name = "org.freedesktop.NetworkManager.DHCP4Config")]
+impl Dhcp4Obj {
+    #[zbus(property)]
+    fn options(&self) -> HashMap<String, OwnedValue> {
+        let m = self.model.lock().unwrap();
+        let mut out = HashMap::from([("ip_address".to_owned(), value(Value::from(m.devices[self.i].lease.address.as_str())))]);
+        if let Some((p, Some(url))) = &m.portal
+            && *p == self.i
+        {
+            out.insert("captive_portal".into(), value(Value::from(url.as_str())));
+        }
+        out
+    }
+}
+
 struct Control {
     model: Shared,
 }
@@ -1104,6 +1215,11 @@ impl Control {
                     let i = m.devices.iter().position(|d| d.kind == TYPE_WIFI).ok_or_else(|| fail("no Wi-Fi adapter"))?;
                     let n = m.saved.iter().find(|s| s.ssid().as_deref() == Some(ssid.as_str())).map(|s| s.n).ok_or_else(|| fail("no such network saved"))?;
                     m.activate(n, i)?;
+                }
+                ["portal", "off"] => m.portal = None,
+                ["portal", url @ ..] => {
+                    let i = m.primary().ok_or_else(|| fail("nothing carries the default route"))?;
+                    m.portal = Some((i, url.first().map(|u| (*u).to_owned())));
                 }
                 ["strength", n] => {
                     let strength: u8 = n.parse().map_err(fail)?;
@@ -1164,11 +1280,25 @@ fn wired_settings(n: usize) -> Settings {
 fn main() {
     olo_crash::install();
     let mut address = std::env::var("DBUS_SESSION_BUS_ADDRESS").unwrap_or_default();
-    let mut model = Model { saved: Vec::new(), next: 0, devices: Vec::new(), aps: Vec::new(), wireless: true, dump: None, defaults: conf_defaults(), vpns: Vec::new() };
+    let mut model = Model {
+        saved: Vec::new(),
+        next: 0,
+        devices: Vec::new(),
+        aps: Vec::new(),
+        wireless: true,
+        dump: None,
+        defaults: conf_defaults(),
+        vpns: Vec::new(),
+        portal: None,
+        check_uri: "http://fedoraproject.org/static/hotspot.txt".into(),
+        checks: 0,
+    };
     let (mut wired, mut wifi, mut adapter, mut tell, mut in_range) = (false, None::<String>, false, None::<String>, Vec::new());
     let mut args = std::env::args().skip(1);
     let usage = || -> ! {
-        eprintln!("usage: nm-fake [--address ADDRESS] [--network SSID:PASSWORD]… [--enterprise SSID]… [--ap SSID:STRENGTH]… [--wired] [--wifi SSID | --wifi-adapter] [--dump FILE] | --tell WHAT");
+        eprintln!(
+            "usage: nm-fake [--address ADDRESS] [--network SSID:PASSWORD]… [--enterprise SSID]… [--ap SSID:STRENGTH]… [--wired] [--wifi SSID | --wifi-adapter] [--check-uri URI] [--dump FILE] | --tell WHAT"
+        );
         std::process::exit(2)
     };
     while let Some(arg) = args.next() {
@@ -1197,6 +1327,7 @@ fn main() {
             "--wifi" => wifi = Some(args.next().unwrap_or_else(|| usage())),
             "--wifi-adapter" => adapter = true,
             "--dump" => model.dump = Some(PathBuf::from(args.next().unwrap_or_else(|| usage()))),
+            "--check-uri" => model.check_uri = args.next().unwrap_or_else(|| usage()),
             "--tell" => tell = Some(args.next().unwrap_or_else(|| usage())),
             _ => usage(),
         }
@@ -1293,6 +1424,7 @@ fn main() {
         }
         server.at(active_path(i).as_str(), ActiveObj { model: m(), i }).expect("an active connection");
         server.at(ip4_path(i).as_str(), Ip4Obj { model: m(), i }).expect("an IPv4 configuration");
+        server.at(dhcp4_path(i).as_str(), Dhcp4Obj { model: m(), i }).expect("a DHCP configuration");
     }
     for i in 0..aps {
         server.at(ap_path(i).as_str(), ApObj { model: m(), i }).expect("an access point");
