@@ -1398,6 +1398,53 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Tabs and tab groups: one better look for every app** (Ben,
+  2026-11-14: "this tab and tab group styling we're using still looks
+  really awful and out of place to me. we need to make this better for
+  terminal and all apps (it should be part of the kit or whatever so
+  it's reusable and consistent across apps that have tabs and tab
+  groups). so, before you do any of this work, i want you to create a
+  self-contained html file for me showing 4 different options we could
+  go with for how these look and which one you recommend and then i'll
+  give you feedback, maybe we iterate a bit, and then once i approve
+  you can do this work"; "the mockups need to be pixel perfect so i
+  can properly evaluate and choose"). First the page of four options,
+  drawn on device pixels at 1×, 1.5× and 2× (as the kit snaps), in
+  Classic and Platinum, light and dark, along the top and down the
+  side; then, once Ben chooses, the kit's `TabStrip` (and `TabView`)
+  in that look for Terminal and every app with tabs.
+- **Two themes, Classic and Platinum, made exquisite** (Ben,
+  2026-11-14: "let's simplify a bit so we just have 2 themes for now:
+  Classic and Platinum (with light/dark variations). then, let's have
+  each theme come with just one background (with light/dark
+  variations) but i want you to make it look really good: use sunburst
+  on max/4k and really try to come up with something for each theme
+  that is perfect for a background: not too "in your face", subtle
+  beos (for classic) and macos9 (for platinum) throwbacks/nostalgia,
+  and if you need to do a bunch of iterations to get them just right
+  please do it don't just accept the first one. and make sure all the
+  theme colors in both light and dark modes are optimized -- visually
+  try them all out and really think about it. you can use the openai
+  api and astra model to also get second opinions on all the visuals
+  from astra. and then, once you've perfected all that, i want you to
+  re-create full icon sets (all the olo icons for all apps and
+  preferences and everything, customized for each theme) and really
+  make every one pixel perfect, checking it looks good both at large
+  sizes and small sizes (e.g. in deskbar). they also need consistency
+  in terms of style so that they perfectly fit the theme. also, you
+  can drop the catppuccin colors selection so each theme just has its
+  theme colors option or the BeOS colors option. really spend a lot of
+  time on this, getting everything including every single icon just
+  absolutely perfect and exquisite. i want people to fall in love with
+  it."). After the tab look is approved (Ben: "once i approve you can
+  do this work"). The other themes go, settings naming them move to
+  Classic; Catppuccin's colour set goes (its terminal colours too, if
+  nothing else needs them); each theme's own colours and BeOS's, light
+  and dark, tried on every kit app at 1×, 1.5× and 2×; one wallpaper a
+  theme, light and dark, at 4K and ultrawide (sunburst, max quality),
+  iterated, with second opinions from OpenAI's Astra; then every icon
+  (apps, Preferences' panels, Deskbar, Tracker's kinds) made again for
+  each theme per docs/ICONS.md, checked large and at Deskbar's size.
 - **Main and Stack: Make Main, where the main window goes, by keys**
   (Ben, 2026-11-14: "let's add a proper command with shortcut and
   menu item. i also want to make it configurable e.g. there should be
