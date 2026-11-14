@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-13
 
+### A tip goes when its item goes from under the pointer
+
+*23:45* — Left, before: the pointer rests on the Wi-Fi icon, but the tip still says Ethernet. The cable icon that was there went (unplugged) without hearing that the pointer left it, so its tip stayed up for good. Now anything the pointer is over hears it leave when it goes, and what takes its place hears the pointer come. Middle and right: the pointer resting on the cable, then the cable unplugged, and the tip is the globe's, which took its place.
+
+![A tip goes when its item goes from under the pointer](2026-11-13/234503-a-tip-goes-when-its-item-goes-from-under-the-poi.png)
+
 ### Captive portals: seen, said and a click away
 
 *23:33* — A network that wants its sign-in page first (NetworkManager's own connectivity check finding a portal, heard in its signals: nothing polled) now shows everywhere it should. Preferences ▸ Network says “sign-in needed” beside the connection, with Open Sign-In Page and the page itself when the network names it (DHCP option 114). Deskbar shows a globe in the tray whose tip names the network and whose click opens the page, and Notifications posts one note per network with the same action. Opening the page has NetworkManager check again every 5 s until it lets traffic through, so all of it goes as soon as you've signed in. (A stand-in NetworkManager and network here.)

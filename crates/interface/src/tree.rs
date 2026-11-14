@@ -335,10 +335,20 @@ impl WindowCore {
             // placed again.)
             self.nodes[id].parent = None;
             self.reshaped();
+            // (What's in it under the pointer is no longer.)
+            self.hover_stale |= !self.hovered.is_empty();
             return;
         }
         let Some(node) = self.nodes.remove(id) else { return };
         self.layout.remove(node.layout);
+        // Gone from under the pointer: what heard it come hears it left.
+        if node.hovered
+            && let Some(inter) = &node.inter
+            && !inter.hover.is_empty()
+        {
+            self.left_behind.extend(inter.hover.iter().cloned());
+            self.hover_stale = true;
+        }
         for child in node.children {
             self.destroy(child);
         }

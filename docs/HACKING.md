@@ -1409,7 +1409,15 @@ key lit under it: before, they stayed lit after the pointer left from
 there). A div's `on_mouse_move` is called only while the pointer is
 over it: state an app keeps from it (DeskCalc's key under the pointer)
 is cleared in `on_hover(false)` (an `id` makes the div able to say),
-and a canvas's hover drawn only while its hitbox `is_hovered`.
+and a canvas's hover drawn only while its hitbox `is_hovered`. An
+element the pointer is over hears `on_hover(false)` when it goes, too,
+with the pointer resting where it was (`WindowCore::left_behind`, told
+as the hover is worked out again after the frame's layout), and what
+comes under it then hears `on_hover(true)`: before, a Deskbar tray
+item that went from under a resting pointer (the cable unplugged) left
+its tip up for good, over whatever took its place. Measured on release
+Deskbars, 216 pointer moves over the tray: 165 and 159 ms of its CPU
+before, 168 and 159 after.
 
 An app's own files (its settings in the config folder, what it
 remembers in the state folder) go through `store` (`olo_kit_base::store`,

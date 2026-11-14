@@ -381,6 +381,12 @@ impl WindowCx<'_> {
     /// Works out what the pointer is over now, and tells what it came
     /// over or left.
     pub(crate) fn update_hover(&mut self) {
+        // What the pointer was over and has gone: it left them.
+        let outer = self.core.current.take();
+        for listener in std::mem::take(&mut self.core.left_behind) {
+            listener(&false, self);
+        }
+        self.core.current = outer;
         let now = if self.core.pointer_in { self.core.nodes_at(self.core.mouse) } else { Vec::new() };
         if now != self.core.hovered {
             let before = std::mem::replace(&mut self.core.hovered, now.clone());

@@ -140,6 +140,11 @@ pub(crate) struct WindowCore {
     /// What the pointer is over may have changed under it (something
     /// scrolled).
     pub(crate) hover_stale: bool,
+    /// What heard the pointer come over something that has gone from
+    /// under it since: told it left, as the hover is worked out again
+    /// (a tip on a Deskbar tray item that went, with the pointer still
+    /// where it was, stayed up for good).
+    pub(crate) left_behind: Vec<crate::element::Listener<bool>>,
     /// An element that counts the keyboard as its own while it's inside
     /// (`focus_within`: a text control's well) was made anew: whether
     /// it's within it is found out (`flush`), not only when the keyboard
@@ -571,6 +576,7 @@ impl WindowCore {
             scroll_changed: Vec::new(),
             scroll_asks: Vec::new(),
             hover_stale: false,
+            left_behind: Vec::new(),
             within_stale: false,
             ended_timers: Vec::new(),
             by_visible: Vec::new(),
