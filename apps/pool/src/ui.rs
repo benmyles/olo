@@ -396,7 +396,9 @@ fn add_menu() -> Menu {
 /// The app's menu bar, on each of its windows (what's chosen goes to the
 /// window's view: [`command`]).
 pub fn menu_bar<V: View>(cx: &mut Cx<V>) -> MenuBar {
-    let menus = vec![Menu::new("Pool").item("Read Quota Now", "refresh").key("r").item("Clients", "clients").key("l").separator().item("Close", "close").key("w"), add_menu()];
+    // (The gateway stays running: Close, no Quit. Its settings: whether
+    // Olo's AI uses it, and its Deskbar widgets.)
+    let menus = vec![Menu::new("Pool").app_items(&["ai", "deskbar"]).item("Read Quota Now", "refresh").key("r").item("Clients", "clients").key("l").close_item(), add_menu()];
     MenuBar::new(cx, menus)
 }
 

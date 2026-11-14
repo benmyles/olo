@@ -335,7 +335,8 @@ impl Doctor {
     fn menus(&self) -> Vec<Menu> {
         let fixable = self.report.as_ref().is_some_and(|r| r.fixable().any(|f| self.outcomes.get(&f.id) != Some(&Outcome::Fixing)));
         vec![
-            Menu::new("File").item("Check Again", "check").key("r").enabled(!self.scanning).separator().item("Close", "close").key("w").item("Quit", "quit").key("q"),
+            // (What it checks most: the power modes and the scheduler.)
+            Menu::new("File").app_items(&["performance", "power"]).item("Check Again", "check").key("r").enabled(!self.scanning).close_quit(),
             Menu::new(if kind() == Kind::Doctor { "Fix" } else { "Apply" }).item(kind().all(), "fix-all").shift_key(if kind() == Kind::Doctor { "f" } else { "a" }).enabled(fixable),
         ]
     }

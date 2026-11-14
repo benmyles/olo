@@ -625,6 +625,10 @@ impl Logs {
                     }));
                 }));
             }
+            "close" => {
+                self.store();
+                cx.close_window();
+            }
             "quit" => {
                 self.store();
                 olo_kit::quit();
@@ -677,8 +681,8 @@ impl Logs {
             screens = screens.item("No Agent Screens", "").enabled(false);
         }
         vec![
-            Menu::new("File").item("Journal", "journal").checked(self.source.is_none()).item("Open Log File…", "open-file").key("o").submenu(screens).separator().item("Quit", "quit").key("q"),
-            Menu::new("Edit").item("Copy", "copy").key("c").enabled(self.selected.is_some()).item("Select All", "select-all").key("a").separator().item("Find", "find").key("f"),
+            Menu::new("File").app_items(&[]).item("Journal", "journal").checked(self.source.is_none()).item("Open Log File…", "open-file").key("o").submenu(screens).close_quit(),
+            Menu::new("Edit").item("Copy", "copy").key("c").enabled(self.selected.is_some()).item("Select All", "select-all").key("a").separator().item("Find…", "find").key("f"),
             Menu::new("View")
                 .item("Live", "live")
                 .key("l")

@@ -47,6 +47,7 @@ impl View for Controls {
         match command {
             "count" => self.clicks += 1,
             "reset" => self.clicks = 0,
+            "close" => cx.close_window(),
             "quit" => olo_kit::quit(),
             _ => return false,
         }
@@ -71,7 +72,7 @@ impl View for Controls {
 /// The window's menus.
 fn menus() -> Vec<Menu> {
     vec![
-        Menu::new("File").item("Count", "count").key("k").separator().item("Quit", "quit").key("q"),
+        Menu::new("File").app_items(&[]).item("Count", "count").key("k").close_quit(),
         Menu::new("Edit").item("Reset", "reset").item("Disabled", "none").enabled(false).separator().submenu(Menu::new("More").item("One", "one").item("Two", "two").checked(true)),
     ]
 }

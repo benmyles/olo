@@ -571,7 +571,7 @@ impl Deskbar {
             let here = o.name == own;
             m = m.item(format!("{n}{}", o.display_name()), format!("display:{}", o.name)).checked(here).enabled(!here);
         }
-        m.separator().item("Displays Preferences…", "pref:display")
+        m.separator().item(olo_kit::app_menu::settings_label("display"), "pref:display")
     }
 
     /// The displays whose workspaces a Deskbar on `own` lists: its own
@@ -824,7 +824,7 @@ impl Deskbar {
             .item(self.arrangement.1.as_ref().map_or("Redo Window Arrangement".into(), |n| format!("Redo {n}")), "arrange:redo-arrangement")
             .enabled(self.arrangement.1.is_some())
             .separator()
-            .item("Windows Preferences…", "pref:windows")
+            .item(olo_kit::app_menu::settings_label("windows"), "pref:windows")
     }
 
     /// The windowing modes (`mode:` and its id), `mode` checked, and
@@ -862,7 +862,7 @@ impl Deskbar {
             }
             m = m.separator().submenu(to);
         }
-        m.separator().item("Workspaces Preferences…", "pref:workspaces")
+        m.separator().item(olo_kit::app_menu::settings_label("workspaces"), "pref:workspaces")
     }
 
     /// A workspace heading's menu, for `display`'s workspace `ws`: all its
@@ -902,7 +902,7 @@ impl Deskbar {
         // 2026-11-12: "a specific workspace … by right clicking the …
         // workspace").
         m = m.separator().submenu(Menu::airplay("Show on AirPlay", &self.status.airplay_paired, &format!("ws-airplay:{ws}:")));
-        m.separator().item("Workspaces Preferences…", "pref:workspaces")
+        m.separator().item(olo_kit::app_menu::settings_label("workspaces"), "pref:workspaces")
     }
 
     /// A command from `display`'s workspace heading's menu
@@ -1033,7 +1033,7 @@ impl Deskbar {
             }
             m = m.separator();
         }
-        m.item("Power Preferences…", "pref:power")
+        m.item(olo_kit::app_menu::settings_label("power"), "pref:power")
     }
 
     /// Caffeinated mode: indefinitely or for a while, with the lid too.
@@ -1047,7 +1047,14 @@ impl Deskbar {
             Some(t) if on => format!("Allow Sleep (awake until {})", status::time_of_day(t, &self.clock)),
             _ => "Allow Sleep".into(),
         };
-        m.separator().item("Even With the Lid Closed", "caff:lid").checked(self.caffeinated_lid).separator().item(label, "caff:off").enabled(on).separator().item("Power Preferences…", "pref:power")
+        m.separator()
+            .item("Even With the Lid Closed", "caff:lid")
+            .checked(self.caffeinated_lid)
+            .separator()
+            .item(label, "caff:off")
+            .enabled(on)
+            .separator()
+            .item(olo_kit::app_menu::settings_label("power"), "pref:power")
     }
 
     /// A caffeinated-menu command (after `caff:`).
@@ -1126,7 +1133,7 @@ impl Deskbar {
                 }
             }
             Some(("run", bin)) => spawn(bin),
-            Some(("pref", panel)) => spawn(&format!("olo-preferences {panel}")),
+            Some(("pref", target)) => olo_kit::app_menu::open_settings(target),
             // An agent screen shown on an AirPlay receiver (its tray item's
             // menu).
             Some(("screen-airplay", rest)) => {
@@ -1770,7 +1777,7 @@ fn airplay_menu(plays: &[olo_protocol::airplay::Playing]) -> Menu {
     if plays.len() > 1 {
         m = m.separator().item("Stop All", "airplay:stop:all");
     }
-    m.separator().item("AirPlay Preferences…", "pref:airplay")
+    m.separator().item(olo_kit::app_menu::settings_label("airplay"), "pref:airplay")
 }
 
 /// The agent screens' menu (right click): watch them, or show one on an
@@ -2004,7 +2011,7 @@ fn link_menu(kind: olo_system::network::Kind, l: &olo_system::network::Links) ->
         }
     }
     // (On the link's own tab.)
-    m.separator().item("Network Preferences…", if kind == Kind::Wifi { "pref:network --tab Wi-Fi" } else { "pref:network --tab Ethernet" })
+    m.separator().item(olo_kit::app_menu::settings_label("network"), if kind == Kind::Wifi { "pref:network/Wi-Fi" } else { "pref:network/Ethernet" })
 }
 
 /// The bell's menu.
@@ -3433,7 +3440,7 @@ impl Deskbar {
         h.on_any_button(move |e, cx| match button(e) {
             MouseButton::Left => run(&m, opens, cx),
             MouseButton::Right => {
-                let menu = Menu::new("Widget").item(name, opens).separator().item("Deskbar Preferences…", "pref:deskbar");
+                let menu = Menu::new("Widget").item(name, opens).separator().item(olo_kit::app_menu::settings_label("deskbar"), "pref:deskbar");
                 let mm = m.clone();
                 open_menu(cx, &v, &key, r, menu, move |cmd, cx| run(&mm, cmd, cx));
             }

@@ -17,6 +17,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Coder: the terminal's Settings, as the window's](2026-11-13/230933-coder-the-terminal-s-settings-as-the-window-s.png)
 
+### A rolled-up window is its tab, closed along its bottom
+
+*22:44* — Rolled up, a window shows only its tab, and the tab now closes its own bottom with its outline and its bevel's shadow, where before its bottom edge was open (it was drawn to sit on the frame). Here six rolled-up windows fanned out by Tile All; windows wider than their cell no longer put their tabs over the others'.
+
+![A rolled-up window is its tab, closed along its bottom](2026-11-13/224400-a-rolled-up-window-is-its-tab-closed-along-its-b.png)
+
+### Every app's first menu: About, Keyboard Shortcuts, its settings, Close and Quit
+
+*22:11* — Every Olo app's bar now starts the same way, as BeOS's did: About the app, Keyboard Shortcuts (the palette's sheet, the app's keys first), then the Preferences panels that go with it ("Performance Settings…"), and ends with Close and Quit; Edit holds Undo to Find Previous in one order, View the zooms. The kit runs these items itself, and every window's review fails a bar that strays (olo_kit::app_menu).
+
+![Every app's first menu: About, Keyboard Shortcuts, its settings, Close and Quit](2026-11-13/221156-every-app-s-first-menu-about-keyboard-shortcuts-.png)
+
 ### Token Pool widget: Quotas is a menu field of any number
 
 *21:27* — The Deskbar widget editor's quotas were a row of check boxes, which a real Claude account's quota names ran past Preferences' right edge. Now a MenuField::many: it says the chosen ones, cut with … to fit, and its menu checks any of them, Whichever holds each back first. The Preferences lint now draws the editor for every widget kind with the longest quota names the services use.

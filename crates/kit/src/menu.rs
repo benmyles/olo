@@ -1235,7 +1235,12 @@ impl MenuBar {
         let bar = cx.window_state::<Bar>();
         bar.menus = menus;
         bar.raw = raw;
-        bar.on_command = Rc::new(on_command);
+        // (The kit's own first: About, Keyboard Shortcuts, settings.)
+        bar.on_command = Rc::new(move |command: &str, cx: &mut WindowCx| {
+            if !crate::app_menu::run(command, cx) {
+                on_command(command, cx);
+            }
+        });
         MenuBar { titles, shared: bar.shared.clone() }
     }
 }
@@ -1280,6 +1285,12 @@ pub(crate) fn bar_shortcut(cx: &mut WindowCx, k: &olo_interface::Keystroke) -> O
 /// any (for a view that takes the keys for itself, to let one through).
 pub fn shortcut_command(cx: &mut WindowCx, k: &olo_interface::Keystroke) -> Option<String> {
     bar_shortcut(cx, k).map(|(command, _)| command)
+}
+
+/// The window's bar's menus, as its last body said them (none without a
+/// bar): what the window review checks (`app_menu::review`).
+pub(crate) fn bar_menus(cx: &mut WindowCx) -> Vec<Menu> {
+    cx.window_state::<Bar>().menus.clone()
 }
 
 /// The window's menus, for the command palette and agents: its bar's,

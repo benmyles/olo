@@ -8,6 +8,7 @@
 
 pub mod agent;
 mod app;
+pub mod app_menu;
 pub mod brand;
 pub mod code;
 pub mod copy;

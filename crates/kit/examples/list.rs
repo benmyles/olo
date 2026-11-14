@@ -48,17 +48,14 @@ impl Lists {
     fn menus(&self) -> Vec<Menu> {
         vec![
             Menu::new("File")
+                .app_items(&[])
                 .item("New", "new")
                 .key("n")
                 .item("Open…", "open")
                 .key("o")
                 .separator()
                 .submenu(Menu::new("Recent").item("one.txt", "r1").item("two.txt", "r2"))
-                .separator()
-                .item("Close", "close")
-                .key("w")
-                .item("Quit", "quit")
-                .key("q"),
+                .close_quit(),
             Menu::new("Edit")
                 .item("Undo", "undo")
                 .key("z")
@@ -71,7 +68,7 @@ impl Lists {
                 .key("c")
                 .item("Paste", "paste")
                 .key("v")
-                .item("Select All", "all")
+                .item("Select All", "select-all")
                 .key("a"),
             Menu::new("Options").item("Wrap Lines", "wrap").checked(self.wrap),
         ]

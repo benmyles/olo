@@ -218,7 +218,12 @@ impl View for Strip {
         if self.side {
             strip = strip.side();
         }
-        let menus = ["Terminal", "Edit", "Tabs", "Settings"].map(|t| Menu::new(t).item("Close", "close")).to_vec();
+        let menus = vec![
+            Menu::new("Terminal").app_items(&["terminal"]).close_quit(),
+            Menu::new("Edit").item("Copy", "copy"),
+            Menu::new("Tabs").item("Close Tab", "close-tab"),
+            Menu::new("Settings").item("Font Size", "font-size"),
+        ];
         let place = if self.side {
             // (Down to an inset over the bottom: the lint's window isn't
             // Terminal's, whose strip runs to its foot.)

@@ -138,6 +138,7 @@ pub const APP_KEYS: &[AppKey] = &[
     k("app.select-all", None, "select-all", "Select All", &["Cmd+A"], &["Ctrl+A"], &["Alt+A"]),
     k("app.find", None, "find", "Find", &["Cmd+F"], &["Ctrl+F"], &["Alt+F"]),
     k("app.find-again", None, "find-again", "Find Again", &["Cmd+G"], &["F3"], &["Alt+G"]),
+    k("app.find-previous", None, "find-previous", "Find Previous", &["Shift+Cmd+G"], &["Shift+F3"], &["Alt+Shift+G"]),
     k("app.find-selection", None, "find-selection", "Find the selection", &["Cmd+E"], &["Ctrl+F3"], &["Alt+H"]),
     k("app.new-tab", None, "new-tab", "New Tab", &["Cmd+T"], &["Ctrl+T"], &["Alt+T"]),
     k("app.bigger", None, "bigger", "Bigger text", &["Cmd+Equal"], &["Ctrl+Equal"], &["Alt+Equal"]),

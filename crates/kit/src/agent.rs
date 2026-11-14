@@ -269,7 +269,8 @@ fn invoke(mut windows: Vec<(bool, olo_interface::WindowId, String)>, _surface: O
     olo_interface::ask_windows(WAIT, move |cx| {
         (cx.window_id() == id).then(|| {
             INVOKING.with(|i| i.set(true));
-            let taken = cx.command(&command);
+            // (About, Keyboard Shortcuts, a settings item: the kit's own.)
+            let taken = crate::app_menu::run(&command, cx) || cx.command(&command);
             INVOKING.with(|i| i.set(false));
             taken
         })
