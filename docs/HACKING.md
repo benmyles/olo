@@ -3494,6 +3494,44 @@ for a 3-second `sleep`.
   SIGABRT (so `coredumpctl debug` has the stack that hung), then SIGKILL
   10 s later, and restarts it like a crash: apps reconnect and a locked
   screen comes back locked.
+* **Silence around a sleep isn't a hang.** The graphics driver holds
+  every GPU submission from when a sleep is being prepared until the
+  computer has woken (xe's `xe_pm_block_on_suspend`), and app_server's
+  frame with it: on 2026-11-13 that time before the lid closed and
+  after it opened added up to 10 s, and the watchdog ended a healthy
+  app_server 20 ms after the lid opened (and an Agent Screen's with
+  it). So the silence counts from the last wake (`asleep`:
+  CLOCK_BOOTTIME less CLOCK_MONOTONIC, which grows by each sleep; it's
+  logged, "the computer slept"), and an app_server whose main thread
+  the kernel holds for a sleep (`held_for_sleep`: its wchan names a
+  suspend, `pm_block` or the freezer) is waited for (logged once,
+  "held by the kernel for a sleep"), never ended: another would be
+  held the same.
+* **A shell program that didn't come back is ended, and so
+  restarted.** 20 s (`watchdog::SHELL_GRACE`) after each app_server
+  starts, olo-session asks it which processes have layer surfaces
+  (`Request::LayerClients`: pid and namespace of each, on every output
+  and none); Deskbar or the desktop's Tracker (`SHELL`) running at
+  least that long without one is stuck, and gets SIGKILL (logged, "has
+  no surface"), which the crash restart then sees to. One younger than
+  that is looked at again once it's old enough. Once per app_server;
+  one not answering is the watchdog's. (That day, Deskbar and Tracker,
+  mid-frame as app_server was ended, waited for good for swapchain
+  images it would never give back; nothing restarted them, as they
+  hadn't exited. Tested headless: a stopped Deskbar, its app_server
+  killed, is ended 20 s after the new one starts and comes back.)
+* **No window waits for good on its compositor.** The renderer acquires
+  each frame's image with a 1 s timeout (`ACQUIRE_TIMEOUT_NS`, vendored
+  blade-graphics' `acquire_frame`), not forever: a timeout is a lost
+  frame (`Frame::is_lost`), skipped, and the surface is made again
+  (`remake_surface`), so the window's drawing thread is free to see its
+  connection gone and reconnect (the kit re-executes, its state saved).
+  A kept image is free at once and one still being shown within a
+  frame or two, so a compositor that answers never hits it. (Tested
+  headless: Activity Monitor drawing as its app_server stopped timed
+  out once, "Acquire timed out", and re-executed onto the next
+  app_server; the old code waits there for good, as Activity Monitor,
+  Tracker and olo-screen did on 2026-11-13.)
 * Never replace an installed binary by writing over it (install to a temporary
   name and rename, as `tools/install-session.sh` does).
 

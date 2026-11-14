@@ -71,6 +71,10 @@ pub enum Request {
         keys: Vec<(String, String)>,
     },
     ListWindows,
+    /// Each layer surface's process and namespace ([`Reply::LayerClients`]):
+    /// olo-session's check that Deskbar and the desktop came back after
+    /// app_server did.
+    LayerClients,
     Activate {
         id: WindowId,
     },
@@ -677,6 +681,11 @@ pub enum Reply {
     },
     Windows {
         windows: Vec<WindowInfo>,
+    },
+    /// Each layer surface (Deskbar's, the desktop's, a banner…): the
+    /// process it's of (behind olo-wlproxy too) and its namespace.
+    LayerClients {
+        clients: Vec<(i32, String)>,
     },
     /// How many workspaces each display has, the one showing on the
     /// active display (`current`), and each display's (`displays`).

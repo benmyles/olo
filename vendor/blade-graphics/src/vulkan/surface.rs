@@ -1,6 +1,11 @@
 use ash::vk;
 use std::mem;
 
+/// Olo: how long a frame waits for an image of its swapchain: a kept
+/// image is free at once, and one the compositor is still showing within
+/// a frame or two.
+const ACQUIRE_TIMEOUT_NS: u64 = 1_000_000_000;
+
 impl super::Surface {
     pub fn info(&self) -> crate::SurfaceInfo {
         crate::SurfaceInfo {
@@ -31,7 +36,7 @@ impl super::Surface {
         match unsafe {
             self.device.acquire_next_image(
                 self.swapchain.raw,
-                !0,
+                ACQUIRE_TIMEOUT_NS,
                 acquire_semaphore,
                 vk::Fence::null(),
             )
@@ -73,6 +78,21 @@ impl super::Surface {
                 crate::lose_device();
                 super::Frame {
                     internal: self.frames.first().copied().unwrap_or_default(),
+                    swapchain: self.swapchain,
+                    image_index: None,
+                }
+            }
+            // Olo: no image within a second: the compositor holds them all
+            // and isn't giving them back, gone (killed for not answering,
+            // its release points never to come) or stuck. Waiting forever
+            // (as `!0` did) stuck the window's drawing thread for good:
+            // Deskbar, mid-frame as app_server was ended after a sleep,
+            // never drew again (Ben, 2026-11-13). Lost instead: the frame
+            // is skipped and the surface made again (`remake_surface`).
+            Err(vk::Result::TIMEOUT | vk::Result::NOT_READY) => {
+                log::warn!("Acquire timed out: the compositor isn't giving its images back");
+                super::Frame {
+                    internal: super::InternalFrame::default(),
                     swapchain: self.swapchain,
                     image_index: None,
                 }
