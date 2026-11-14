@@ -11,7 +11,6 @@ serde.workspace = true
 serde_json.workspace = true
 schemars = "1"
 olo-sync.workspace = true
-olo-net.workspace = true
 olo-xdg.workspace = true
 olo-system.workspace = true
 gix = { version = "0.90", default-features = false, features = ["parallel", "sha1", "sha256", "status", "worktree-mutation", "revision", "serde", "blocking-http-transport-reqwest-rust-tls"] }

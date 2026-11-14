@@ -8470,7 +8470,6 @@ dependencies = [
  "ignore",
  "libc",
  "olo-keychain",
- "olo-net",
  "olo-screen",
  "olo-sync",
  "olo-system",
