@@ -13,7 +13,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use olo_protocol::voice::{Mode, Model, NODE, Noise, Settings, State};
-use olo_system::audio::{self, Devices, Kind, Volume};
+use olo_system::audio::{self, Devices, Kind};
 
 fn main() -> ExitCode {
     olo_crash::install();
@@ -204,8 +204,8 @@ fn service() -> ExitCode {
             }
             state.running = true;
             state.error = None;
-            if let (Some(e), Some(m)) = (&engine, &microphone) {
-                follow(&mut followed, d, m, e);
+            if let Some(m) = &microphone {
+                follow(&mut followed, d, m);
             }
         } else {
             give_back(engine.take(), &default_in, &microphone);
@@ -218,7 +218,11 @@ fn service() -> ExitCode {
 
         if let Some(e) = &engine {
             use std::sync::atomic::Ordering::Relaxed;
+            let was = state.active;
             state.active = e.stats.active.load(Relaxed);
+            if was && !state.active {
+                reset_volume(d);
+            }
             state.dropouts = e.stats.dropouts.load(Relaxed);
             state.latency_ms = (e.stats.latency_samples.load(Relaxed) as u64 * 1000 / 48_000) as u32;
             let now = (e.stats.frames.load(Relaxed), e.stats.frame_ns.load(Relaxed));
@@ -240,67 +244,76 @@ fn service() -> ExitCode {
 }
 
 /// What the processed source and its microphone were last left as: the
-/// microphone's name, and their mute and volume.
+/// microphone's name, and whether they're muted.
 #[derive(Debug, Clone, PartialEq)]
 struct Followed {
     microphone: String,
-    volume: Volume,
+    muted: bool,
 }
 
-fn same(a: &Volume, b: &Volume) -> bool {
-    a.muted == b.muted && (a.level - b.level).abs() < 0.005
-}
-
-/// What the source and the microphone are both to be: the microphone's,
-/// unless the source was changed since they were last the same.
-fn wanted(followed: Option<&Followed>, microphone: &str, source: &Volume, mic: &Volume) -> Volume {
+/// Whether the source and the microphone are both to be muted: as the
+/// microphone is, unless the source was muted or unmuted since they were
+/// last the same.
+fn wanted(followed: Option<&Followed>, microphone: &str, source: bool, mic: bool) -> bool {
     match followed {
         // The source just made (WirePlumber puts nothing of its own back:
         // `state.restore-props`), or another microphone: the microphone's.
-        Some(f) if f.microphone == microphone => {
-            if same(source, &f.volume) {
-                // The microphone changed (Olo's controls show it), or nothing.
-                *mic
-            } else {
-                // The source changed (an app's mute, Chrome's own gain
-                // control, the microphone key): the microphone takes it.
-                *source
-            }
+        Some(f) if f.microphone == microphone && source != f.muted => {
+            // The source changed (an app's mute, the microphone key): the
+            // microphone takes it.
+            source
         }
-        _ => *mic,
+        // The microphone changed (Olo's controls show it), or nothing.
+        _ => mic,
     }
 }
 
-/// The processed source's mute and volume are its microphone's, both ways
-/// (Ben, 2026-11-09: "it just kept telling me that the device was muted
-/// and i couldn't change that but in olo prefs it said it was not muted").
-/// Olo shows the microphone in the source's place, so a mute or volume of
-/// the source's own (an app's, the microphone key's, kept by WirePlumber
-/// from one start to the next) was out of sight and out of reach. What's
-/// changed on either is now made the other's; and as PipeWire applies the
-/// source's volume to what it gives, the engine makes that up (its
-/// `Stats::volume`): the voice is as loud as the microphone's volume says,
-/// once, not twice.
-fn follow(followed: &mut Option<Followed>, d: &Devices, microphone: &str, engine: &engine::Engine) {
+/// The processed source's mute is its microphone's, both ways (Ben,
+/// 2026-11-09: "it just kept telling me that the device was muted and i
+/// couldn't change that but in olo prefs it said it was not muted"): Olo
+/// shows the microphone in the source's place, so a mute of the source's
+/// own (an app's, the microphone key's) was out of sight and out of reach.
+///
+/// Its volume isn't: that's the app recording's own, for its automatic
+/// gain control, applied after the processing as PipeWire applies any
+/// source's (and put back to 100% once nothing records: `reset_volume`).
+/// It was the microphone's too, and the engine made up what PipeWire took
+/// off, so an app's gain control (Chrome's, every WebRTC call's) never
+/// heard its change take effect: on a call on 2026-11-09 it stepped the
+/// microphone down 6% every few seconds, 71% to 29%, its floor, as WebRTC
+/// does when it hears clipping, while the level stage made the loss up
+/// again digitally, noise and all.
+fn follow(followed: &mut Option<Followed>, d: &Devices, microphone: &str) {
     let (Some(source), Some(mic)) = (d.inputs.iter().find(|i| i.name == NODE), d.inputs.iter().find(|i| i.name == microphone)) else { return };
-    let want = wanted(followed.as_ref(), microphone, &source.volume, &mic.volume);
+    // Just made: at 100% (PipeWire first says 0%).
+    if followed.is_none() {
+        reset_volume(d);
+    }
+    let muted = wanted(followed.as_ref(), microphone, source.volume.muted, mic.volume.muted);
     for (device, name) in [(source, NODE), (mic, microphone)] {
-        if (device.volume.level - want.level).abs() >= 0.005 {
-            if let Err(e) = audio::set_device_volume(Kind::Input, name, want.level, device.channels) {
-                tracing::warn!("voice: {name}'s volume: {e}");
-            }
-        }
-        if device.volume.muted != want.muted
-            && let Err(e) = audio::set_device_muted(Kind::Input, name, want.muted)
+        if device.volume.muted != muted
+            && let Err(e) = audio::set_device_muted(Kind::Input, name, muted)
         {
             tracing::warn!("voice: {name}'s mute: {e}");
         }
     }
-    if followed.as_ref().is_none_or(|f| f.microphone != microphone || !same(&f.volume, &want)) {
-        tracing::info!("voice: the source and {microphone}: {}%{}", (want.level * 100.0).round(), if want.muted { ", muted" } else { "" });
+    if followed.as_ref().is_none_or(|f| f.microphone != microphone || f.muted != muted) {
+        tracing::info!("voice: the source and {microphone}: {}", if muted { "muted" } else { "not muted" });
     }
-    engine.stats.volume.store(want.level.powi(3).to_bits(), std::sync::atomic::Ordering::Relaxed);
-    *followed = Some(Followed { microphone: microphone.to_owned(), volume: want });
+    *followed = Some(Followed { microphone: microphone.to_owned(), muted });
+}
+
+/// The source's volume back to 100%, as it's made and once nothing records
+/// from it (PipeWire pauses it a few seconds after: its suspend timeout):
+/// what an app's gain control left it at isn't the next recording's.
+fn reset_volume(d: &Devices) {
+    let Some(source) = d.inputs.iter().find(|i| i.name == NODE) else { return };
+    if (source.volume.level - 1.0).abs() >= 0.005 {
+        tracing::info!("voice: the source back to 100% from {}%", (source.volume.level * 100.0).round());
+        if let Err(e) = audio::set_device_volume(Kind::Input, NODE, 1.0, source.channels) {
+            tracing::warn!("voice: the source's volume: {e}");
+        }
+    }
 }
 
 /// Stop processing; if ours was the default, the microphone is again.
@@ -366,26 +379,21 @@ fn on_signals(tx: mpsc::Sender<Event>) {
 mod tests {
     use super::*;
 
-    fn v(level: f32, muted: bool) -> Volume {
-        Volume { level, muted }
-    }
-
-    /// The microphone's, unless the source was changed since they were
-    /// the same; WirePlumber's or a stale state never wins at the start.
+    /// The microphone's, unless the source was muted or unmuted since they
+    /// were the same; WirePlumber's or a stale state never wins at the
+    /// start. Volume isn't followed: an app's gain control is its own.
     #[test]
-    fn the_source_and_its_microphone_are_one() {
-        let kept = |level, muted| Followed { microphone: "mic".into(), volume: v(level, muted) };
+    fn the_source_and_its_microphone_are_muted_as_one() {
+        let kept = |muted| Followed { microphone: "mic".into(), muted };
         // New: the microphone's, whatever the source came up as.
-        assert_eq!(wanted(None, "mic", &v(0.69, true), &v(0.76, false)), v(0.76, false));
+        assert!(!wanted(None, "mic", true, false));
         // Muted on the source (an app, the microphone key): the microphone too.
-        assert_eq!(wanted(Some(&kept(0.76, false)), "mic", &v(0.76, true), &v(0.76, false)), v(0.76, true));
+        assert!(wanted(Some(&kept(false)), "mic", true, false));
         // Unmuted on the microphone (Preferences, Deskbar): the source too.
-        assert_eq!(wanted(Some(&kept(0.76, true)), "mic", &v(0.76, true), &v(0.76, false)), v(0.76, false));
-        // Chrome's gain control lowers the source: the microphone's gain.
-        assert_eq!(wanted(Some(&kept(0.76, false)), "mic", &v(0.69, false), &v(0.76, false)), v(0.69, false));
+        assert!(!wanted(Some(&kept(true)), "mic", true, false));
         // Another microphone: its own.
-        assert_eq!(wanted(Some(&kept(0.76, true)), "airpods", &v(0.76, true), &v(1.0, false)), v(1.0, false));
+        assert!(!wanted(Some(&kept(true)), "airpods", true, false));
         // Both as left: nothing changes.
-        assert_eq!(wanted(Some(&kept(0.5, false)), "mic", &v(0.5, false), &v(0.5, false)), v(0.5, false));
+        assert!(wanted(Some(&kept(true)), "mic", true, true));
     }
 }

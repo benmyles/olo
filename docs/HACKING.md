@@ -11251,27 +11251,44 @@ one are always told apart:
   and show that microphone as the default; `devices_raw` has both.
   Turned off, stopped or quitting, the microphone is the default itself
   again; if it crashes, WirePlumber falls back to the microphone.
-- **Its mute and volume are the microphone's** (`main.rs`, `follow`),
-  both ways: muted or turned down on the source (an app, Chrome's own
-  gain control, the microphone key), the microphone is too; changed on
-  the microphone (Olo's controls, which show the microphone in the
-  source's place), the source follows. As PipeWire applies the source's
-  volume to what it gives, the engine gives that much more
-  (`Stats::volume`), so the voice is as loud as the microphone's volume
-  says, once. WirePlumber keeps nothing of the source's own
-  (`state.restore-props` false). (Ben, 2026-11-09: Chrome said the
-  processed microphone was muted and couldn't unmute it, while
-  Preferences said it wasn't: muted once, the source came back muted at
-  69% at every start, out of sight.) Tried in a pw-sandbox: a source
-  kept muted came up unmuted at the microphone's volume, mute and volume
-  went across both ways, and at 76% both read −22.4 dBFS (twice applied,
-  −29.5).
+- **Its mute is the microphone's** (`main.rs`, `follow`), both ways:
+  muted on the source (an app, the microphone key), the microphone is
+  too; on the microphone (Olo's controls, which show the microphone in
+  the source's place), the source follows. WirePlumber keeps nothing of
+  the source's own (`state.restore-props` false). (Ben, 2026-11-09:
+  Chrome said the processed microphone was muted and couldn't unmute
+  it, while Preferences said it wasn't: muted once, the source came
+  back muted at 69% at every start, out of sight.)
+- **Its volume is the recording app's**, for its automatic gain
+  control: applied by PipeWire after the processing, as any source's
+  is, and put back to 100% as the source is made and whenever nothing
+  records from it any more (`reset_volume`), so what one app's gain
+  control left it at isn't the next recording's. The microphone's own
+  volume is the person's (Olo's controls), untouched by apps. It used to
+  be the microphone's too, the engine making up what PipeWire took off:
+  an app's gain control then never heard its change take effect, and
+  WebRTC's (Chrome's, every call app's on it) stepped the microphone
+  down 6% every few seconds to its floor, 71% to 29% on a call of
+  Ben's on 2026-11-09 (its clipping step, 15 of 255, and floor, 70),
+  while the level stage made the loss up digitally, noise and all. In a
+  pw-sandbox, speech recorded from the source as an app set it to 50%:
+  before, the microphone went to 50% and the recording from −27 dBFS to
+  −42 and back up to −31; now the microphone stays at 100% and the
+  recording at −42 (0.5³, −18 dB), the source back to 100% once the
+  recording ends; mute across both ways in both.
 - **What's behind the source** (`engine.rs`, PipeWire's thread): the
   microphone's capture and, for echo cancellation, the default output's
   monitor, only for an output the microphone can hear (not
   `Device::private`: Bluetooth, a headphones or headset port or form
   factor). Made inactive, switched on only while something records from
-  the source: idle, nothing runs and the microphone isn't open. A new
+  the source: idle, nothing runs and the microphone isn't open. What
+  records is the links from the source (a registry listener on Link
+  objects whose output node is the source's), not its state: it's one
+  group with the captures, so once they ran it ran whether anything read
+  it or not, and after the first call it never paused again: the
+  microphone stayed open and the processing ran for good, 11.5% of a
+  core (568-582 ms of CPU every 5 s in a pw-sandbox, 8 s after the
+  recording ended; now 0, and the microphone suspended). A new
   microphone or new settings rebuild only the captures, so a call keeps
   its device. The captures and the source are one group (`node.group`:
   one driver and clock) and the source a triggered stream, run from the

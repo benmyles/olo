@@ -114,21 +114,6 @@ pub struct Stats {
     pub latency_samples: AtomicU32,
     /// The graph's quantum, as the source last ran (samples; 0 not yet).
     pub quantum: AtomicU32,
-    /// The source's own volume (linear, f32 bits; 0: not known): PipeWire
-    /// applies it to what the source gives, so the source gives that much
-    /// more. Its volume is the microphone's (main.rs, `follow`), which
-    /// already set how loud the voice is: applied twice, a microphone at
-    /// 76% would come through at 34%.
-    pub volume: AtomicU32,
-}
-
-impl Stats {
-    /// What the source's samples are multiplied by, for its volume.
-    fn gain(&self) -> f32 {
-        let v = f32::from_bits(self.volume.load(Relaxed));
-        // (Nothing to make up at no volume: PipeWire makes it silent.)
-        if v > 1e-3 { 1.0 / v } else { 1.0 }
-    }
 }
 
 pub enum Message {
@@ -412,19 +397,27 @@ fn run(config: Config, rx: pw::channel::Receiver<Message>, stats: Arc<Stats>, ch
     // (The captures, made after it, trigger it; it goes after them.)
     trigger.store(source.as_raw_ptr(), std::sync::atomic::Ordering::Release);
     let current = Rc::new(RefCell::new((config.clone(), captures(&core, &config, &processing, &stats, &trigger)?)));
+    // Recording or not: the captures (and so the microphone) on only while
+    // something records from the source.
+    let recording = Rc::new({
+        let (current, processing, stats) = (current.clone(), processing.clone(), stats.clone());
+        move |on: bool| {
+            if stats.active.load(Relaxed) == on {
+                return;
+            }
+            if on {
+                processing.lock().unwrap().reset();
+            }
+            set_active(&current.borrow().1.weak, on);
+            stats.active.store(on, Relaxed);
+            changed();
+        }
+    });
     let _source_listener = source
         .add_local_listener_with_user_data(())
         .state_changed({
-            let (current, processing, stats) = (current.clone(), processing.clone(), stats.clone());
-            move |_, _, _, new| {
-                let on = matches!(new, pw::stream::StreamState::Streaming);
-                if on {
-                    processing.lock().unwrap().reset();
-                }
-                set_active(&current.borrow().1.weak, on);
-                stats.active.store(on, Relaxed);
-                changed();
-            }
+            let recording = recording.clone();
+            move |_, _, _, new| recording(matches!(new, pw::stream::StreamState::Streaming))
         })
         .process({
             let (processing, stats) = (processing.clone(), stats.clone());
@@ -465,9 +458,10 @@ fn run(config: Config, rx: pw::channel::Receiver<Message>, stats: Arc<Stats>, ch
                         out.fill(0.0);
                         p.quantum = 0;
                     } else {
-                        let gain = stats.gain();
+                        // (Its volume, an app's gain control's, is
+                        // PipeWire's to apply after: main.rs, `follow`.)
                         for (o, s) in out.iter_mut().zip(p.out.drain(..n)) {
-                            *o = s * gain;
+                            *o = s;
                         }
                         // Never more than a frame beyond what's held (should
                         // a capture's clock run a hair fast).
@@ -497,6 +491,38 @@ fn run(config: Config, rx: pw::channel::Receiver<Message>, stats: Arc<Stats>, ch
         .connect(spa::utils::Direction::Output, None, pw::stream::StreamFlags::MAP_BUFFERS | pw::stream::StreamFlags::RT_PROCESS | pw::stream::StreamFlags::TRIGGER, &mut params)
         .map_err(|e| e.to_string())?;
 
+    // What records from the source: the links from it. Its state alone
+    // doesn't say: it's one group with the captures (one driver), so once
+    // they run, it runs whether anything reads it or not, and it never
+    // paused again after the first call, the microphone open and the noise
+    // model running for good.
+    let registry = core.get_registry_rc().map_err(|e| e.to_string())?;
+    let readers: Rc<RefCell<std::collections::HashSet<u32>>> = Rc::default();
+    let _links = registry
+        .add_listener_local()
+        .global({
+            let (readers, recording, source) = (readers.clone(), recording.clone(), source.downgrade());
+            move |g| {
+                let ours = source.upgrade().map(|s| s.node_id());
+                let from = g.props.and_then(|p| p.get("link.output.node")).and_then(|n| n.parse::<u32>().ok());
+                if g.type_ == pw::types::ObjectType::Link && from.is_some() && from == ours {
+                    readers.borrow_mut().insert(g.id);
+                    recording(true);
+                }
+            }
+        })
+        .global_remove({
+            let (readers, recording) = (readers.clone(), recording.clone());
+            move |id| {
+                let mut r = readers.borrow_mut();
+                if r.remove(&id) && r.is_empty() {
+                    drop(r);
+                    recording(false);
+                }
+            }
+        })
+        .register();
+
     let weak = mainloop.downgrade();
     let _rx = rx.attach(mainloop.loop_(), {
         let (core, processing, stats, source, trigger) = (core.clone(), processing.clone(), stats.clone(), source.downgrade(), trigger.clone());
@@ -524,8 +550,7 @@ fn run(config: Config, rx: pw::channel::Receiver<Message>, stats: Arc<Stats>, ch
                 cur.1 = Captures { _streams: Vec::new(), weak: Vec::new() };
                 match captures(&core, &config, &processing, &stats, &trigger) {
                     Ok(c) => {
-                        let streaming = source.upgrade().is_some_and(|s| matches!(s.state(), pw::stream::StreamState::Streaming));
-                        set_active(&c.weak, streaming);
+                        set_active(&c.weak, stats.active.load(Relaxed));
                         cur.1 = c;
                     }
                     Err(e) => tracing::warn!("voice: {e}"),
