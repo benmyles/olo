@@ -902,9 +902,14 @@ impl WindowCore {
     pub(crate) fn shift_at(&self, id: NodeId) -> Point<Pixels> {
         let mut shift = Point::default();
         let mut at = self.nodes.get(id).and_then(|n| n.parent);
+        // (By whole device pixels, a scroller at a time, as the stage
+        // moves what it shows: where things are, not a fraction off.)
+        let s = self.gfx.scale_factor;
+        let device = |v: Pixels| Pixels((v.0 * s).round() / s);
         while let Some(node) = at.and_then(|id| self.nodes.get(id)) {
             if let Some(handle) = &node.scroll {
-                shift = shift + handle.0.shown.get();
+                let shown = handle.0.shown.get();
+                shift = shift + Point { x: device(shown.x), y: device(shown.y) };
             }
             at = node.parent;
         }

@@ -202,7 +202,9 @@ pub struct Fill {
 }
 
 /// A picture drawn from a bitmap: where, its bitmap's size in pixels
-/// (if known), and whether all of the bitmap is drawn.
+/// (if known), and whether all of it shows (all of the bitmap drawn,
+/// none of it cut away by what holds it: a row half scrolled out of
+/// sight isn't judged by where the rest of it would be).
 #[derive(Debug, Clone)]
 pub struct Icon {
     pub rect: Rect,
@@ -601,12 +603,35 @@ fn crowded(p: &Parts, screen: Rect, ppp: f32, out: &mut Vec<Finding>) {
             let gap_y = (rb.min.y - ra.max.y).max(ra.min.y - rb.max.y);
             let side = overlap_y >= 0.5 * ra.height().min(rb.height()) && gap_x > touching && gap_x < CROWDED;
             let stacked = overlap_x >= 0.5 * ra.width().min(rb.width()) && gap_y > touching && gap_y < CROWDED;
+            if (side && ruled(p, ra, rb, false, ppp)) || (stacked && ruled(p, ra, rb, true, ppp)) {
+                continue;
+            }
             if side || stacked {
                 let gap = if side { gap_x } else { gap_y };
                 push(out, finding(Level::Error, "crowded", format!("{na} and {nb} are {gap:.1} pt apart: give them room (`metrics::TIGHT` or `SPACING`)"), ra.union(*rb)));
             }
         }
     }
+}
+
+/// Whether a rule is drawn across the gap between `a` and `b` (one over
+/// the other, `stacked`, or side by side): a line no more than 2 pt
+/// thick, between them and as long as where they face each other. It
+/// sets them apart, as a status bar's etched edge does the scroll bar's
+/// arrow over it (Tracker's icon view, 5 pt apart, a rule between). A
+/// control's own edge, inside it, isn't one: half a device pixel is all
+/// a rule may reach into either.
+fn ruled(p: &Parts, a: &Rect, b: &Rect, stacked: bool, ppp: f32) -> bool {
+    let slack = 0.5 / ppp;
+    // (Along the gap and across it, for either way round.)
+    let span = |r: &Rect| if stacked { (r.min.y, r.max.y, r.min.x, r.max.x) } else { (r.min.x, r.max.x, r.min.y, r.max.y) };
+    let (a, b) = (span(a), span(b));
+    let (first, second) = if a.1 <= b.0 { (a, b) } else { (b, a) };
+    let (from, to) = (first.2.max(second.2), first.3.min(second.3));
+    p.fills.iter().any(|f| {
+        let (r0, r1, s0, s1) = span(&f.rect);
+        r1 - r0 <= 2.0 && r0 >= first.1 - slack && r1 <= second.0 + slack && s0 <= from + slack && s1 >= to - slack
+    })
 }
 
 /// Text or a control almost against the window's edge (not in a bar
@@ -1166,7 +1191,7 @@ fn off_centre(p: &Parts, out: &mut Vec<Finding>) {
             (t.middle - r.center().y).abs() <= 1.0 && gap <= t.size * 1.5 && t.rect.y_range().intersects(r.y_range())
         })
     };
-    items.extend(p.icons.iter().map(|i| i.rect).filter(|r| !in_line(*r)).map(|r| (r, r.center().y, "an icon".to_owned())));
+    items.extend(p.icons.iter().filter(|i| i.whole).map(|i| i.rect).filter(|r| !in_line(*r)).map(|r| (r, r.center().y, "an icon".to_owned())));
     for (r, middle, name) in items {
         let Some(band) = band_of(p, r) else { continue };
         let d = middle - band.center().y;
@@ -1265,6 +1290,25 @@ mod tests {
         assert_eq!(found(&p), 1);
         let p = Parts { controls: vec![button("Save", 20.0, "[save]"), under("Scroll Down")], ..Parts::default() };
         assert_eq!(found(&p), 0);
+    }
+
+    /// Text a few points under a button is crowded; with a rule drawn
+    /// across the gap between them (a status bar's edge) it isn't, but
+    /// with the button's own bottom edge alone it still is.
+    #[test]
+    fn a_rule_between_sets_them_apart() {
+        let found = |p: &Parts| review(p, 400.0, 300.0, 2.0).into_iter().filter(|f| f.kind == "crowded").count();
+        // The button 20..44; the text's capitals from 49.
+        let mut words = text("1.0 TB free", 20.0, 80.0);
+        words.rect = Rect::from_min_max(pos2(20.0, 45.0), pos2(100.0, 60.0));
+        (words.baseline, words.middle, words.size) = (58.0, 53.0, 11.0);
+        let line = |y0: f32, y1: f32| Fill { rect: Rect::from_min_max(pos2(0.0, y0), pos2(400.0, y1)), cut: [false; 4] };
+        let mut p = Parts { controls: vec![button("Scroll Down", 20.0, "[down]")], texts: vec![words], ..Parts::default() };
+        assert_eq!(found(&p), 1, "crowded, nothing between");
+        p.fills = vec![line(43.5, 44.0)];
+        assert_eq!(found(&p), 1, "the button's own edge is no rule between");
+        p.fills = vec![line(44.0, 44.5), line(44.5, 45.0)];
+        assert_eq!(found(&p), 0, "an etched edge between them");
     }
 
     /// Two long lines a few points apart are found; a thin level bar's

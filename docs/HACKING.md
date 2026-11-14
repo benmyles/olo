@@ -4821,7 +4821,10 @@ recorded otherwise.
 - **Errors** (tests fail on them):
   - `blurry-icon`: an icon off device pixels, not a whole number of them,
     or a pixel or two off its texture's own size (`Marks::textures`), so
-    it is resampled.
+    it is resampled. What scrolls is reviewed where it shows: moved by
+    each scroller's offset in whole device pixels, as the stage moves
+    it (`WindowCore::shift_at`; by the exact offset, a row scrolled
+    0.01 pt was an icon 0.02 px off that no frame drew).
   - `line-weights`: one-point lines of different weights.
   - `blurry-outline`: a stroke not a whole number of device pixels.
   - `seam`: a line and what it borders a device pixel apart.
@@ -4859,7 +4862,10 @@ recorded otherwise.
     frame; boxes and panes mark themselves, `review::container`,
     `review::pane`), `crowded` (two things, side by side or one over the
     other, closer than `metrics::TIGHT`; a list's rows and header, tabs,
-    and what's on a grid of its own are spaced by the kit),
+    and what's on a grid of its own are spaced by the kit, and a rule
+    drawn across the gap between two sets them apart: a status bar's
+    etched edge under a scroll bar's arrow; a control's own edge, inside
+    it, isn't one),
     `window-edge` (content nearer the window's edge than its inset, less
     4, unless in a bar or a view along that edge), `crowded-lines` (two
     long lines a point or three apart: a box's edge almost on its
@@ -4888,7 +4894,9 @@ recorded otherwise.
   edges are its lengths'),
   `off-centre` (text or an icon off-centre in the band it sits in; only
   bands no clip cuts, since a card at the foot of a scroll view is
-  centred in the whole of it, not in what shows), `uneven-rows` (rows
+  centred in the whole of it, not in what shows, and only icons no clip
+  cuts: a row's half scrolled under a menu bar isn't in the bar's
+  band), `uneven-rows` (rows
   down a column spaced unevenly). Right edges count as lined up a
   device pixel apart: text set from its right starts on a pixel.
 

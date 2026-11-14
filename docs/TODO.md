@@ -852,12 +852,18 @@ something nobody here has is in "Blocked", with what it waits for.
          a move (an icon's place looked up with the Trash's folder
          found from the environment each time, and ~/Desktop's).
          The same to the pixel at 1×, 1.5×, 2×, light and dark.
-         *Found, not fixed* (the build before too): the review at 1.5×
-         and 2× calls an icon view's "1.0 TB free" crowded with the
-         scroll bar's down arrow 5 pt above it, across the status
-         bar's line; and at 2× a column's row scrolled half under the
-         menu bar's titles (as the Viewer's text above: the review
-         doesn't know a row cut by its scroller).
+         *Found then, put right 2026-11-14* (the review's, not Tracker's:
+         the same to the pixel at every scale, measured): at 1.5× and
+         2× an icon view's "1.0 TB free" was called crowded with the
+         scroll bar's down arrow 5 pt above it, across the status bar's
+         etched edge (a rule drawn across the gap now sets two apart);
+         a column's row half scrolled under the menu bar had its icon
+         judged off-centre in the bar's band (an icon its clip cuts
+         isn't judged so now), and icons scrolled a fraction of a
+         point were called blurry (the review moved them by the exact
+         offset; the stage, and now the review, by whole device
+         pixels). Column view at 40 scroll positions over 1×, 1.25×,
+         1.5×, 1.75× and 2×: nothing found (before, 2 of 12).
        - *Disk Usage's chart, done 2026-11-14.* Its hairlines between
          slices and the edges round each ring were drawn in turn, line
          then edge, and each touches the next, so every one was a draw

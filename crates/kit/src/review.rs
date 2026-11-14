@@ -121,7 +121,9 @@ pub(crate) fn icon(g: &mut Painter, b: Bounds<Pixels>, texture: [usize; 2]) {
         // Pictures (thumbnails, previews) are scaled anyway; icons are
         // drawn at their size.
         if r.width() <= 128.0 && r.height() <= 128.0 && r.intersects(clip) {
-            parts.icons.push(Icon { rect: r, texture: Some(texture), whole: true });
+            // (Part of it cut by what holds it, a row half scrolled out
+            // of sight: drawn whole, but not all of it shows.)
+            parts.icons.push(Icon { rect: r, texture: Some(texture), whole: clip.expand(SAME).contains_rect(r) });
         }
     });
 }
