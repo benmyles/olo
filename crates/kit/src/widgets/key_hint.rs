@@ -13,12 +13,23 @@ pub struct KeyHint {
     key: SharedString,
     action: SharedString,
     enabled: bool,
+    level_with: Option<f32>,
 }
 
 impl KeyHint {
     /// `key` as it's printed on the keyboard ("Space", "Esc", "R").
     pub fn new(key: impl Into<SharedString>, action: impl Into<SharedString>) -> KeyHint {
-        KeyHint { key: key.into(), action: action.into(), enabled: true }
+        KeyHint { key: key.into(), action: action.into(), enabled: true, level_with: None }
+    }
+
+    /// On the baseline of text of `size` points beside it, centred as
+    /// it is (by its capitals, on this hint's middle), its cap moved down
+    /// with it: a line of text and the hint after it read as one line
+    /// (the command palette's query, 20 pt, and "Ctrl Files"; centred
+    /// each by its own capitals they sat ~3 pt apart).
+    pub fn level_with(mut self, size: f32) -> Self {
+        self.level_with = Some(size);
+        self
     }
 
     /// Whether the key does anything now (dim if not).
@@ -39,18 +50,19 @@ impl IntoElement for KeyHint {
         let w = (f32::from(style::text_width(self.key.clone(), style::SMALL_SIZE, bold.clone())) + 2.0 * m::TEXT_INSET).ceil().max(CAP);
         let w = (w / 2.0).ceil() * 2.0;
         let action_w = f32::from(style::text_width(self.action.clone(), style::PLAIN_SIZE, plain.clone())).ceil();
-        let look = style::key((&self.key, &self.action, self.enabled));
-        let (key, action, enabled) = (self.key, self.action, self.enabled);
+        let look = style::key((&self.key, &self.action, self.enabled, self.level_with.map(f32::to_bits)));
+        let (key, action, enabled, level_with) = (self.key, self.action, self.enabled, self.level_with);
         let said = format!("{key}: {action}");
         // The cap and what it does in one, on one baseline: drawn apart,
         // each snapped on its own, they sat a device pixel apart at 1.25×
         // and 1.75× (the layout review's "almost level").
         canvas(move |g, b| {
             let p = theme::palette();
-            let cap = style::snap(g, Bounds::new(point(b.left(), b.center().y - px(CAP / 2.0)), size(px(w), px(CAP))));
+            let own = style::baseline_at(g, b.center().y, style::PLAIN_SIZE);
+            let baseline = level_with.map_or(own, |s| style::baseline_at(g, b.center().y, s));
+            let cap = style::snap(g, Bounds::new(point(b.left(), b.center().y + (baseline - own) - px(CAP / 2.0)), size(px(w), px(CAP))));
             style::fill_rect(g, cap, style::c(p.control_background));
             style::raised(g, cap, &p);
-            let baseline = style::baseline_at(g, b.center().y, style::PLAIN_SIZE);
             let ink = if enabled { style::c(p.control_text) } else { style::disabled_text(&p) };
             style::label_on_baseline(g, cap.center().x, baseline, style::Align::Center, key.clone(), style::SMALL_SIZE, bold.clone(), ink);
             g.agent(agent::Node::label(said.clone(), cap));

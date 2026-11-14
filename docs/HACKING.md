@@ -2548,7 +2548,11 @@ it.
   it does, `enabled(false)` dim: for views driven from the keyboard,
   where nothing needs the pointer; agents read "Space: Next"; the cap's
   text and what it does are drawn on one baseline, so they stay level at
-  every scale), `widgets::Banner::new(Tone::Success, title, line)`
+  every scale; `level_with(size)` puts both on the baseline of text of
+  `size` points beside the hint, the cap moved down with them, so a
+  line of larger text and the hint after it read as one line: the
+  command palette's 20-pt query and its "Ctrl Files", which centred
+  each by its own capitals sat ~3 pt apart), `widgets::Banner::new(Tone::Success, title, line)`
   (news to be seen at once, not read in a status line: a box across its
   column tinted green or red, a large round check or cross
   (`widgets::verdict_mark`), a bold title, a line, `.trailing(…)` what to
@@ -13453,8 +13457,8 @@ put it away.
   a tap of Ctrl on its own (not ⌘, which comes as the right Ctrl)
   switches to files and folders only, and back (`files_mode`,
   `modifiers`), the placeholder saying what it finds and a `KeyHint`
-  at the field's right ("Ctrl Files", "Ctrl Commands") what the tap
-  finds instead; a path copied or typed is offered either way. The
+  at the field's right ("Ctrl Files", "Ctrl Commands", on the query's
+  baseline: `level_with(QUERY_SIZE)`) what the tap finds instead; a path copied or typed is offered either way. The
   field is a little taller than its line on the device grid (it sets
   its text by the capitals' middle, so a field just a line tall cut the
   letters' tops at 1.25×).

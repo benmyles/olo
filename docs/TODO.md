@@ -864,6 +864,15 @@ something nobody here has is in "Blocked", with what it waits for.
          offset; the stage, and now the review, by whole device
          pixels). Column view at 40 scroll positions over 1×, 1.25×,
          1.5×, 1.75× and 2×: nothing found (before, 2 of 12).
+       - *The review over the shell and kit apps, 2026-11-14.* Deskbar
+         and the desktop, Activity Monitor, Doctor, Terminal and
+         Tracker: nothing at 1×, 1.5× and 2×. The command palette's
+         "Ctrl Files" sat ~3 pt off the 20-pt query's baseline (each
+         centred by its own capitals: "near-level" at every scale);
+         `KeyHint::level_with(size)` puts the hint on the baseline of
+         the text beside it, its cap moved down with it. Nothing found
+         at any of the three after; looked at, the two within a device
+         pixel of one line.
        - *Disk Usage's chart, done 2026-11-14.* Its hairlines between
          slices and the edges round each ring were drawn in turn, line
          then edge, and each touches the next, so every one was a draw

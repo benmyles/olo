@@ -1135,7 +1135,7 @@ impl View for Palette {
             .items_center()
             .gap(px(m::SPACING))
             .child(div().flex_1().h(room).child(&self.query))
-            .child(KeyHint::new("Ctrl", other));
+            .child(KeyHint::new("Ctrl", other).level_with(QUERY_SIZE));
 
         let mut root = div().size_full().relative().child(backdrop);
         match (&self.answer, &laid) {

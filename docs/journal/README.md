@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-14
 
+### Command palette's key hint, after
+
+*10:57* — KeyHint::level_with(QUERY_SIZE): the hint on the query's baseline, its cap moved down with it, so the field reads as one line. The review finds nothing at 1x, 1.5x and 2x.
+
+![Command palette's key hint, after](2026-11-14/105746-command-palette-s-key-hint-after.png)
+
+### Command palette's key hint, before
+
+*10:57* — The "Ctrl Files" hint centred by its own capitals sat ~3 pt off the 20-pt query's baseline: the layout review's near-level at 1x, 1.5x and 2x.
+
+![Command palette's key hint, before](2026-11-14/105745-command-palette-s-key-hint-before.png)
+
 ### Tracker: a band in a scrolled icon view is drawn where it is
 
 *08:31* — Before (left): in an icon view scrolled down, the selection band was drawn displaced up by the scroll (what it selected was right). After (right): drawn from the press to the pointer. Tracker's icon views, columns and Desktop now draw a row (an icon on the Desktop) again only when it changes; the band is a drawing over them, in the content's own coordinates.
