@@ -295,10 +295,27 @@ pub fn run(dir: PathBuf, workspace: PathBuf, session: Option<String>) -> Result<
                 let area = overlay(room);
                 f.render_widget(Clear, area);
                 let choices = matching(&pane.view, &p.query);
-                let list = List::new(choices.iter().map(|r| format!("{}{} · {}", if r["pinned"] == true { "◆ " } else { "" }, r["title"].as_str().unwrap_or(""), r["status"].as_str().unwrap_or(""))))
-                    .block(Block::bordered().title(format!("{}: {} · Alt+P pin · Esc close", if p.tile { "Tile session" } else { "Open session" }, p.query)))
-                    .highlight_symbol("› ")
-                    .highlight_style(Style::default().fg(Color::Black).bg(Color::LightYellow));
+                // Each by its name, and what it's doing as the window says it.
+                let list = List::new(choices.iter().map(|r| {
+                    let doing = match r["status"].as_str().unwrap_or("") {
+                        "running" => "Working",
+                        "approval" => "Needs you",
+                        "failed" => "Error",
+                        "paused" => "Paused",
+                        "complete" => "Goal reached",
+                        "interrupted" => "Stopped",
+                        _ => "Ready",
+                    };
+                    let title = r["title"].as_str().filter(|t| !t.is_empty()).unwrap_or("Untitled");
+                    format!("{}{title} · {doing}", if r["pinned"] == true { "◆ " } else { "" })
+                }))
+                .block(Block::bordered().title(format!(
+                    " {} · {} · Enter open · Alt+P pin · Esc close ",
+                    if p.tile { "Show beside this one" } else { "Open a session" },
+                    if p.query.is_empty() { "type to find".to_owned() } else { format!("finding “{}”", p.query) }
+                )))
+                .highlight_symbol("› ")
+                .highlight_style(Style::default().fg(Color::Black).bg(Color::LightYellow));
                 f.render_stateful_widget(list, area, &mut ListState::default().with_selected(Some(p.selected)));
             } else if keys {
                 let wide = KEYS.iter().map(|(k, _)| k.chars().count()).max().unwrap_or(0);

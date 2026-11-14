@@ -74,10 +74,27 @@ impl Panel {
     pub fn draw(&self, f: &mut Frame, area: Rect, todos: &[Todo], report: Option<&StatusReport>) {
         f.render_widget(Clear, area);
         let done = todos.iter().filter(|t| t.status == "done").count();
-        let title = format!(" Tasks · {done} of {} done · Space status · Enter rename · a add · s subtask · Tab/⇧Tab nest · Alt+↑↓ move · Del remove · Esc close ", todos.len());
+        let title = format!(" Tasks · {done} of {} done · Esc close ", todos.len());
         let block = Block::bordered().title(title).border_style(Style::default().fg(Color::LightYellow));
         let inner = block.inner(area);
         f.render_widget(block, area);
+        // The keys along the bottom, wrapped to fit; the list above them.
+        const KEYS: [&str; 7] = ["Space status", "Return rename", "a add", "s subtask", "Tab, Shift+Tab nest", "Alt+↑↓ move", "Delete remove"];
+        let mut keys: Vec<String> = vec![String::new()];
+        for k in KEYS {
+            let line = keys.last_mut().unwrap();
+            if !line.is_empty() && line.chars().count() + 3 + k.chars().count() > inner.width as usize {
+                keys.push(k.to_owned());
+            } else {
+                if !line.is_empty() {
+                    line.push_str(" · ");
+                }
+                line.push_str(k);
+            }
+        }
+        let foot = (keys.len() as u16).min(inner.height / 2);
+        let (inner, foot_area) = (Rect { height: inner.height - foot, ..inner }, Rect { y: inner.y + inner.height - foot, height: foot, ..inner });
+        f.render_widget(Paragraph::new(keys.into_iter().map(|k| Line::styled(k, Style::default().fg(Color::DarkGray))).collect::<Vec<_>>()), foot_area);
         let mut lines: Vec<Line> = Vec::new();
         if let Some(r) = report {
             for (head, color, items) in [("Doing now", Color::LightBlue, &r.doing), ("Done", Color::Green, &r.done), ("Up next", Color::Gray, &r.next)] {
