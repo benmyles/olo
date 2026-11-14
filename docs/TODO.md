@@ -1243,26 +1243,6 @@ something nobody here has is in "Blocked", with what it waits for.
   up olo doctor it's a bit of a mess right now"): its window laid out
   again around the one list (grouped by kind, what's wrong first, each
   item's fix at hand), at every scale and theme.
-- **Every app's menus the same where they can be, and its settings a
-  menu away** (Ben, 2026-11-13: "also in all the olo apps make it so
-  that if there is one or more recommended settings apps/panels that
-  are related then those should also be launchable from that app's
-  menus. also standardize the olo apps menus (and patterns in the olo
-  book) so that kb shortcuts are consistent and always available and
-  the menu locations/options where applicable are consistent").
-  - *Related settings in the menus:* an app whose behaviour some
-    Preferences panel (or another app) sets has a menu item opening it
-    straight at that panel (Mail: Accounts; Terminal: its Profiles and
-    Keyboard; Deskbar: its own; …), where the app's own settings are.
-  - *One menu layout:* the app menu, File, Edit, View, then the app's
-    own, Window and Help, each with the same items in the same places
-    and the same shortcuts (⌘N, ⌘O, ⌘W, ⌘Q, ⌘Z, ⌘F, ⌘G, ⌘, …), a
-    shortcut always shown beside its item and always working, even
-    with the menu bar hidden; checked by a lint over every app's menus.
-  - *The Olo Book* says the layout and the shortcuts, as a pattern for
-    apps to follow, with the kit building the shared menus so an app
-    adds only its own.
-
 ## Done, waiting for Ben to try or confirm
 
 (Audited again 2026-11-08, all 51: each is done, and what's left in
@@ -1321,6 +1301,24 @@ accessibility tree test on an agent screen (GTK's Text Editor, 30
 nodes). What's left needs Ben: in Blocked, "The ignored tests that
 need Ben".)
 
+- **Every app's menus the same where they can be, and its settings a
+  menu away** (Ben, 2026-11-13: "also in all the olo apps make it so
+  that if there is one or more recommended settings apps/panels that
+  are related then those should also be launchable from that app's
+  menus. also standardize the olo apps menus (and patterns in the olo
+  book) so that kb shortcuts are consistent and always available and
+  the menu locations/options where applicable are consistent"). Done
+  (259a3d19; the Olo Book, "Menus"; HACKING, `app_menu`): every bar's
+  first menu starts with About, Keyboard Shortcuts and "… Settings…"
+  for the panels that go with the app, and ends with Close and Quit;
+  Edit holds Undo to Find Previous in one order, View the zooms; one
+  command and its keys from the profile everywhere (Find Previous got
+  its own, ⇧⌘G). The kit runs About, the shortcuts sheet and the
+  settings items itself, from the bar, keys, palette and agents; every
+  window's review fails a bar that strays (`tsession review`, both
+  layout lints). Not done: a Window and a Help menu in every app (no
+  app has Help to put in one; Window's items are app_server's, in the
+  tab's menu and Deskbar). For Ben: open any app's first menu.
 - **Deskbar widgets for the Token Pool** (Ben, 2026-11-13: "deskbar
   widget support for showing token pool usage / quotas etc. i want to
   be able to have it show the aggregate availability for each provider
@@ -1337,7 +1335,11 @@ need Ben".)
   only when they change, and the widget reads them as the file
   changes. A heatmap's quotas are green to red by use. Not done: a
   ready-made row button in Preferences (adding the widgets by hand
-  does it). For Ben: add one in Preferences ▸ Deskbar (Add, Token Pool).
+  does it). Its quotas were first a row of check boxes, which a real
+  account's names ran past Preferences' edge (Ben's screenshot): now
+  one menu field of any number (251350a1), and the Preferences lint
+  draws the widget editor with the longest names the services use.
+  For Ben: add one in Preferences ▸ Deskbar (Add, Token Pool).
 - **An NVMe drive kept cooler, chosen for each power mode** (Ben,
   2026-11-13: "also add the ability to adjust/customize nvme power for
   each profile for when a user wants to get their nvme drive to run a
