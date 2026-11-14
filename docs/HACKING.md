@@ -2923,7 +2923,9 @@ it.
   frame does) before it answers `tree`, `menus`, `invoke` or `review`.
 - `widgets::Sidebar::new(id, rows, chosen).on_choose(f)` (a source
   list filling its box: `sidebar::Row::new(icon,
-  label).value(v)` and `Row::heading(label)`, `sidebar::height(rows)`,
+  label).value(v)`, with `.short(s)` its short form, drawn instead where
+  the name would be cut (Coder's sessions: "●" for "Working"; agents
+  read the value), and `Row::heading(label)`, `sidebar::height(rows)`,
   its `ground` and `edge` colours for what sits on it; ↑ ↓ step over
   headings, rows past its height scroll, the chosen one is brought into
   view; `ListItem`s and `Heading`s to agents). `Row::heading("")` is a

@@ -368,7 +368,13 @@ impl Feed {
                     // terminal's Tasks); here, only that it was made.
                     let todos = output["todos"].as_array().cloned().unwrap_or_default();
                     let done = todos.iter().filter(|t| t["status"] == "done").count();
-                    self.push(Item::Markdown { text: format!("Task list · {done} of {} done", todos.len()), block: Block::Quiet });
+                    let text = match (done, todos.len()) {
+                        (_, 0) => "Task list cleared".to_owned(),
+                        (0, 1) => "Task list made: 1 task".to_owned(),
+                        (0, n) => format!("Task list made: {n} tasks"),
+                        (d, n) => format!("Task list · {d} of {n} done"),
+                    };
+                    self.push(Item::Markdown { text, block: Block::Quiet });
                     return;
                 }
                 "update_todos" | "report_status" => return,
@@ -391,6 +397,9 @@ impl Feed {
         }
         let call = d["call_id"].as_str().unwrap_or("").to_owned();
         let (summary, body, open) = outcome(output, failed);
+        // A diff opens by itself where the agent made the change; one it
+        // only looked at (`git diff`, reviewing) repeats those: it waits.
+        let open = open && (failed || !name.starts_with("repository_read") && !name.starts_with("github_read"));
         let time = e.time;
         let state = if !failed {
             ToolState::Done
@@ -855,6 +864,11 @@ mod tests {
         assert!(doc.text.contains("+more"));
         assert!(doc.text.contains("exit 1"));
         assert!(doc.text.contains("boom"));
+        // A diff the agent only read waits to be asked for.
+        f.event(&ev(5, "tool_started", json!({"call":{"id":"c3","name":"repository_read","arguments":{"operation":"diff","path":"src/lib.rs"}}})));
+        f.event(&ev(6, "tool_result", json!({"call_id":"c3","name":"repository_read","error":false,"output":{"diff":"--- a\n+++ b\n@@\n-old\n+review"}})));
+        let doc = f.document(&mut r);
+        assert!(!doc.text.contains("+review"), "{}", doc.text);
     }
     #[test]
     fn messages_appear_when_delivered_and_notes_read_plainly() {

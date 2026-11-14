@@ -139,8 +139,8 @@ pub fn definitions() -> Vec<ToolDef> {
         ),
         def(
             "repository_read",
-            "Inspect Git status, staged or unstaged diff, log, branches, or linked worktrees. Native Rust; never runs Git or hooks.",
-            json!({"operation":{"type":"string","enum":["status","diff","log","branches","worktrees"]},"path":{"type":"string"},"staged":{"type":"boolean"},"limit":{"type":"integer"}}),
+            "Inspect Git status, staged or unstaged diff, log, branches, or linked worktrees. A diff is one file's (path, relative or absolute inside the workspace) or, without a path, every changed file's. Native Rust; never runs Git or hooks.",
+            json!({"operation":{"type":"string","enum":["status","diff","log","branches","worktrees"]},"path":{"type":"string","description":"For diff: a file; omit for every changed file"},"staged":{"type":"boolean"},"limit":{"type":"integer"}}),
             &["operation"],
         ),
         def(

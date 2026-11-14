@@ -46,19 +46,22 @@ pub struct Row {
     pub label: SharedString,
     /// Its value at the right, if it has one.
     pub value: Option<SharedString>,
+    /// What the value shows as where the name needs the room ("●" for
+    /// "Working"): agents read the value all the same.
+    pub short: Option<SharedString>,
     /// A heading over the rows that follow (not chosen).
     pub heading: bool,
 }
 
 impl Row {
     pub fn new(icon: impl Into<SharedString>, label: impl Into<SharedString>) -> Row {
-        Row { icon: icon.into(), label: label.into(), value: None, heading: false }
+        Row { icon: icon.into(), label: label.into(), value: None, short: None, heading: false }
     }
 
     /// A heading; with no words, a gap setting what follows apart
     /// (Passwords' Archive, under its categories).
     pub fn heading(label: impl Into<SharedString>) -> Row {
-        Row { icon: SharedString::default(), label: label.into(), value: None, heading: true }
+        Row { icon: SharedString::default(), label: label.into(), value: None, short: None, heading: true }
     }
 
     /// How tall it stands.
@@ -72,6 +75,13 @@ impl Row {
 
     pub fn value(mut self, value: impl Into<SharedString>) -> Row {
         self.value = Some(value.into());
+        self
+    }
+
+    /// The value's short form, shown instead of it when the name would
+    /// otherwise be cut.
+    pub fn short(mut self, short: impl Into<SharedString>) -> Row {
+        self.short = Some(short.into());
         self
     }
 }
@@ -222,11 +232,19 @@ impl Sidebar {
                 if !row.icon.is_empty() {
                     icons::paint(g, icon, &row.icon);
                 }
-                let value_w = row.value.as_ref().map_or(0.0, |v| f32::from(style::text_width(v.clone(), style::PLAIN_SIZE, plain.clone())) + m::SPACING);
+                let width = |v: &SharedString| f32::from(style::text_width(v.clone(), style::PLAIN_SIZE, plain.clone())) + m::SPACING;
                 let left = icon.right() + px(6.0);
-                let room = (r.right() - px(m::WINDOW_INSET + value_w) - left).max(px(0.0));
-                style::label_fit(g, left, r.center().y, style::Align::Left, row.label.clone(), style::PLAIN_SIZE, plain.clone(), text, room);
-                if let Some(v) = &row.value {
+                let room = |value_w: f32| (r.right() - px(m::WINDOW_INSET + value_w) - left).max(px(0.0));
+                // The value, or its short form if the name needs the room.
+                let mut shown = row.value.clone();
+                if let (Some(v), Some(short)) = (&row.value, &row.short) {
+                    if style::text_width(row.label.clone(), style::PLAIN_SIZE, plain.clone()) > room(width(v)) {
+                        shown = Some(short.clone());
+                    }
+                }
+                let value_w = shown.as_ref().map_or(0.0, width);
+                style::label_fit(g, left, r.center().y, style::Align::Left, row.label.clone(), style::PLAIN_SIZE, plain.clone(), text, room(value_w));
+                if let Some(v) = &shown {
                     let quiet = if selected { text } else { style::disabled_text(&p) };
                     style::label(g, r.right() - px(m::WINDOW_INSET), r.center().y, style::Align::Right, v.clone(), style::PLAIN_SIZE, plain, quiet);
                 }

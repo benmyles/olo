@@ -39,7 +39,8 @@ const MAX_LINES: usize = 10;
 
 /// When a message sent while the agent works reaches it.
 const DELIVERIES: [(Delivery, &str); 3] = [(Delivery::AfterTool, "After this step"), (Delivery::Queue, "When it finishes"), (Delivery::Interrupt, "Interrupt now")];
-const APPROVALS: [(ApprovalMode, &str); 3] = [(ApprovalMode::Ask, "Ask me"), (ApprovalMode::Auto, "Review automatically"), (ApprovalMode::Allow, "Allow everything")];
+/// (Short, to leave the model's name room beside them.)
+const APPROVALS: [(ApprovalMode, &str); 3] = [(ApprovalMode::Ask, "Ask me first"), (ApprovalMode::Auto, "Auto review"), (ApprovalMode::Allow, "Allow all")];
 
 #[derive(Clone)]
 pub enum Msg {
@@ -90,6 +91,9 @@ pub struct Coder {
     session_rows: Vec<Option<String>>,
     /// What the window last said in its status line, briefly.
     said: Option<String>,
+    /// A repository command waiting for the repository to be read
+    /// (its GitHub repository, branches), run once it is.
+    after_repository: Option<String>,
     // The task list: its rows as shown, which are chosen, which folded,
     // where their marks were drawn, and the field that adds one.
     tasks: ListModel,
@@ -248,7 +252,14 @@ impl Coder {
             Update::Profiles(_) | Update::Peers(_) | Update::Catalog { .. } | Update::Models { .. } | Update::Connection(_) => {}
             _ => {}
         }
+        let repository = matches!(&u, Update::Repository { session, .. } if session == &self.view.id);
         self.view.apply(u);
+        // A command that waited for the repository, now it's read.
+        if repository {
+            if let Some(cmd) = self.after_repository.take() {
+                self.run_command(&cmd, cx);
+            }
+        }
         // Forms an upgrade closed, back over this window once its session
         // is here (they need it).
         if !self.forms.is_empty() && self.view.session.is_some() {
@@ -597,7 +608,18 @@ impl Coder {
             "git_init" => self.submit("/git init"),
             "git_log" | "git_branches" | "git_worktrees" => self.submit(format!("/git {}", cmd.trim_start_matches("git_"))),
             "git_commit" | "git_branch" | "git_worktree" | "github_draft" => {
+                // Its branches and GitHub repository first, if not read yet.
+                if self.view.repository.is_none() {
+                    self.after_repository = Some(cmd.to_owned());
+                    let _ = self.client.tx.send(Action::Repository);
+                    return true;
+                }
                 let repo = self.view.repository.clone().unwrap_or_default();
+                if cmd == "github_draft" && repo["github"].as_str().is_none_or(str::is_empty) {
+                    self.said = Some("This workspace has no GitHub repository: push it to GitHub first.".into());
+                    cx.invalidate();
+                    return true;
+                }
                 let head = repo["head"].as_str().unwrap_or("").to_owned();
                 let github = repo["github"].as_str().unwrap_or("").to_owned();
                 let branch = repo["branch"].as_str().unwrap_or("").to_owned();
@@ -654,9 +676,9 @@ impl Coder {
                 let (title, description, action, fields, keys) = match cmd {
                     "setup_slack" => (
                         "Add Slack",
-                        "Your Slack app’s client ID, and the environment variable its secret is in (the service reads it there). Its redirect address is http://127.0.0.1:8787/callback.",
+                        "Slack signs the agent in through a Slack app of your own: make one at api.slack.com/apps with the redirect URL http://127.0.0.1:8787/callback, and give its Client ID here. Its Client Secret is never typed here: put it in the environment variable named below, where the Coder service reads it. Then Connections ▸ Manage Connection… ▸ Sign In.",
                         "setup_slack",
-                        vec![Field::new("Client ID:", ""), Field::new("Secret variable:", "SLACK_CLIENT_SECRET")],
+                        vec![Field::new("Client ID:", ""), Field::new("Secret’s variable:", "SLACK_CLIENT_SECRET")],
                         vec!["client_id", "client_secret_env"],
                     ),
                     "setup_mcp" => (
@@ -728,19 +750,21 @@ impl Coder {
             for r in list.iter() {
                 let id = r["id"].as_str().unwrap_or("").to_owned();
                 let status = r["status"].as_str().unwrap_or("");
-                let value = match status {
-                    "running" => "Working",
-                    "approval" => "Needs you",
-                    "failed" => "Error",
-                    "paused" => "Paused",
-                    _ if r["pending"].as_u64().unwrap_or(0) > 0 => "Mail",
-                    _ => "",
+                // (Its short form where the title needs the room.)
+                let (value, short) = match status {
+                    "running" => ("Working", "●"),
+                    "approval" => ("Needs you", "!"),
+                    "failed" => ("Error", "!"),
+                    "paused" => ("Paused", ""),
+                    _ if r["pending"].as_u64().unwrap_or(0) > 0 => ("Mail", ""),
+                    _ => ("", ""),
                 };
                 if id == self.view.id {
                     chosen = rows.len();
                 }
                 let title = r["title"].as_str().filter(|t| !t.is_empty()).unwrap_or("Untitled");
-                rows.push(Row::new("coder", title.to_owned()).value(value));
+                let row = Row::new("coder", title.to_owned()).value(value);
+                rows.push(if short.is_empty() { row } else { row.short(short) });
                 of.push(Some(id));
             }
         }
@@ -937,12 +961,12 @@ impl Coder {
         // While it works they can't change: the row is for steering it.
         if !running {
             controls = controls
-                .child(MenuField::new("model", model_labels, model_at).name("Model").width(190.0).enabled(settable).on_change(cx.msg_with(|i: &usize| Msg::Model(*i))))
-                .child(MenuField::new("effort", effort_labels, effort).name("Reasoning").width(120.0).enabled(settable).on_change(cx.msg_with(|i: &usize| Msg::Effort(*i))))
+                .child(MenuField::new("model", model_labels, model_at).name("Model").width(230.0).enabled(settable).on_change(cx.msg_with(|i: &usize| Msg::Model(*i))))
+                .child(MenuField::new("effort", effort_labels, effort).name("Reasoning").width(104.0).enabled(settable).on_change(cx.msg_with(|i: &usize| Msg::Effort(*i))))
                 .child(
                     MenuField::new("approvals", APPROVALS.iter().map(|(_, l)| (*l).into()).collect(), approval)
                         .name("Approvals")
-                        .width(170.0)
+                        .width(120.0)
                         .enabled(settable)
                         .on_change(cx.msg_with(|i: &usize| Msg::Approvals(*i))),
                 );
@@ -1365,6 +1389,7 @@ pub fn open(dir: PathBuf, workspace: PathBuf, session: Option<String>, restore: 
             changes: Arc::default(),
             session_rows: vec![],
             said: None,
+            after_repository: None,
             tasks: ListModel::new(false),
             task_rows: Default::default(),
             folded: restore["folded"].as_array().into_iter().flatten().filter_map(Value::as_str).map(str::to_owned).collect(),

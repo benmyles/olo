@@ -22,6 +22,48 @@ fn relative(name: &str) -> Result<&str> {
     ensure!(!name.is_empty() && Path::new(name).components().all(|c| matches!(c, std::path::Component::Normal(v) if v != ".git")), "expected a relative repository file path");
     Ok(name)
 }
+/// A file's path in the repository, given relative to it or as an
+/// absolute path inside it.
+fn inside<'a>(root: &Path, path: &'a str) -> Result<&'a str> {
+    let p = Path::new(path);
+    if p.is_absolute() {
+        let canonical = root.canonicalize()?;
+        let rest = p.strip_prefix(root).or_else(|_| p.strip_prefix(&canonical)).ok().and_then(|r| r.to_str()).filter(|r| !r.is_empty()).context("that path is outside the repository")?;
+        // (A borrowed tail of `path`: its last bytes.)
+        return relative(&path[path.len() - rest.len()..]);
+    }
+    relative(path.trim_start_matches("./"))
+}
+/// One file's diff, staged (index against HEAD) or not (the file against
+/// the index).
+fn file_diff(repo: &gix::Repository, root: &Path, name: &str, staged: bool) -> Result<Value> {
+    let index = repo.index_or_empty()?;
+    let indexed = index.entry_by_path(name.as_bytes().as_bstr()).map(|e| blob(repo, e.id)).transpose()?.unwrap_or_default();
+    let (old, new) = if staged {
+        let old = match repo.head_tree().ok().map(|t| t.lookup_entry_by_path(name)).transpose()?.flatten() {
+            Some(e) => blob(repo, e.object_id())?,
+            None => Vec::new(),
+        };
+        (old, indexed)
+    } else {
+        let target = root.join(name);
+        let new = if target.exists() {
+            let safe = tools::path(root, name, false)?;
+            ensure!(std::fs::metadata(&safe)?.len() <= 8 * 1024 * 1024, "file exceeds 8 MB preview limit");
+            std::fs::read(safe)?
+        } else {
+            Vec::new()
+        };
+        (indexed, new)
+    };
+    if old.contains(&0) || new.contains(&0) {
+        return Ok(json!({"path":name,"binary":true,"old_bytes":old.len(),"new_bytes":new.len()}));
+    }
+    let old = String::from_utf8_lossy(&old);
+    let new = String::from_utf8_lossy(&new);
+    let diff = similar::TextDiff::from_lines(old.as_ref(), new.as_ref()).unified_diff().context_radius(3).header(&format!("a/{name}"), &format!("b/{name}")).to_string();
+    Ok(json!({"path":name,"staged":staged,"diff":tools::clip(&diff,128000)}))
+}
 fn blob(repo: &gix::Repository, id: gix::ObjectId) -> Result<Vec<u8>> {
     let object = repo.find_object(id)?;
     ensure!(object.kind == gix::object::Kind::Blob, "not a regular file blob");
@@ -107,34 +149,28 @@ pub fn run(root: &Path, call: &ToolCall, cancel: Arc<AtomicBool>) -> Result<Valu
             )
         }
         "diff" => {
-            let name = relative(tools::string(a, "path")?)?;
-            let index = repo.index_or_empty()?;
             let staged = a["staged"].as_bool().unwrap_or(false);
-            let indexed = index.entry_by_path(name.as_bytes().as_bstr()).map(|e| blob(&repo, e.id)).transpose()?.unwrap_or_default();
-            let (old, new) = if staged {
-                let old = match repo.head_tree().ok().map(|t| t.lookup_entry_by_path(name)).transpose()?.flatten() {
-                    Some(e) => blob(&repo, e.object_id())?,
-                    None => Vec::new(),
-                };
-                (old, indexed)
-            } else {
-                let target = root.join(name);
-                let new = if target.exists() {
-                    let safe = tools::path(root, name, false)?;
-                    ensure!(std::fs::metadata(&safe)?.len() <= 8 * 1024 * 1024, "file exceeds 8 MB preview limit");
-                    std::fs::read(safe)?
-                } else {
-                    Vec::new()
-                };
-                (indexed, new)
-            };
-            if old.contains(&0) || new.contains(&0) {
-                return Ok(json!({"path":name,"binary":true,"old_bytes":old.len(),"new_bytes":new.len()}));
+            match a["path"].as_str().map(str::trim).filter(|p| !p.is_empty() && *p != ".") {
+                Some(path) => file_diff(&repo, root, inside(root, path)?, staged),
+                // No file: every changed one's (staged, or not), together.
+                None => {
+                    let status = run(root, &ToolCall { id: call.id.clone(), name: call.name.clone(), arguments: json!({"operation":"status"}) }, cancel)?;
+                    let (mut diff, mut paths) = (String::new(), Vec::new());
+                    for f in status["files"].as_array().into_iter().flatten().filter(|f| f["staged"].as_bool() == Some(staged)) {
+                        let Some(path) = f["path"].as_str() else { continue };
+                        let one = file_diff(&repo, root, path, staged)?;
+                        match one["diff"].as_str() {
+                            Some(d) => diff.push_str(d),
+                            None => diff.push_str(&format!("Binary file {path} changed\n")),
+                        }
+                        paths.push(path.to_owned());
+                        if diff.len() > 128_000 {
+                            break;
+                        }
+                    }
+                    Ok(json!({"paths":paths,"staged":staged,"diff":tools::clip(&diff,128000)}))
+                }
             }
-            let old = String::from_utf8_lossy(&old);
-            let new = String::from_utf8_lossy(&new);
-            let diff = similar::TextDiff::from_lines(old.as_ref(), new.as_ref()).unified_diff().context_radius(3).header(&format!("a/{name}"), &format!("b/{name}")).to_string();
-            Ok(json!({"path":name,"staged":staged,"diff":tools::clip(&diff,128000)}))
         }
         "log" => {
             let mut commits = Vec::new();

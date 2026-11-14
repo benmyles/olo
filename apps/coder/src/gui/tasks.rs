@@ -117,6 +117,9 @@ fn next_status(status: &str) -> &'static str {
     }
 }
 
+/// How many done and upcoming items the Now card shows.
+const CARD_ITEMS: usize = 3;
+
 /// The agent's latest report on a card: what's done, what it's doing,
 /// what's next, each under a coloured mark.
 pub fn now_card(report: &StatusReport, running: bool) -> Element {
@@ -145,12 +148,24 @@ pub fn now_card(report: &StatusReport, running: bool) -> Element {
         .flex_shrink_0();
         let mut list = div().flex_1().min_w_0().flex().flex_col().gap(px(2.0));
         list = list.child(StringView::new(title.to_owned()).bold(true).small(true).dim(kind != 1));
-        for item in items {
-            let view = StringView::new(item.clone()).wrap(true);
+        // So the card stays small and the tabs under it stay put: what
+        // it's doing in full; the last few done and the next few, a line
+        // each (the whole list is the Tasks tab's).
+        let shown: Vec<&String> = match kind {
+            1 => items.iter().collect(),
+            0 => items.iter().skip(items.len().saturating_sub(CARD_ITEMS)).collect(),
+            _ => items.iter().take(CARD_ITEMS).collect(),
+        };
+        for item in &shown {
+            let view = StringView::new((*item).clone());
             list = list.child(match kind {
-                0 => view.dim(true),
-                _ => view,
+                1 => view.wrap(true),
+                0 => view.cut(true).dim(true),
+                _ => view.cut(true),
             });
+        }
+        if shown.len() < items.len() {
+            list = list.child(StringView::new(format!("and {} more", items.len() - shown.len())).small(true).dim(true));
         }
         Some(div().flex().gap(px(m::TIGHT)).child(icon).child(list).into_any_element())
     };

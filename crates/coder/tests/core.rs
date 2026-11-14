@@ -507,6 +507,12 @@ fn native_git_index_commit_diff_worktrees_and_conflicts() {
     run("repository_write", json!({"operation":"stage","paths":["hello.rs"]})).unwrap();
     run("repository_write", json!({"operation":"unstage","paths":["hello.rs"]})).unwrap();
     assert_eq!(run("repository_read", json!({"operation":"diff","path":"hello.rs","staged":true})).unwrap()["diff"], "");
+    // Without a path, every changed file's; an absolute path inside it works too.
+    let all = run("repository_read", json!({"operation":"diff"})).unwrap();
+    assert!(all["diff"].as_str().unwrap().contains("println!") && all["paths"] == json!(["hello.rs"]), "{all}");
+    let absolute = scratch.0.join("hello.rs");
+    assert!(run("repository_read", json!({"operation":"diff","path":absolute})).unwrap()["diff"].as_str().unwrap().contains("println!"));
+    assert!(run("repository_read", json!({"operation":"diff","path":"/etc/passwd"})).is_err());
     run("repository_write", json!({"operation":"stage","paths":["hello.rs"]})).unwrap();
     assert!(run("repository_write", json!({"operation":"commit","message":"stale","expected_head":""})).is_err());
     run("repository_write", json!({"operation":"commit","message":"Greeting","expected_head":head})).unwrap();

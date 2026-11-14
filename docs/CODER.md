@@ -570,7 +570,9 @@ caches lines by document and width. Neither parses or highlights on the UI
 thread. The agent's `present` tool also emits structured tables, checklists,
 progress, charts and code; the original component data remains in the API audit.
 Tool results have concise presentations with links to the complete action.
-Terminal escape controls and HTML are never executed by the renderer.
+A short diff of a change the agent made opens by itself; a diff it only read
+(`repository_read`, reviewing its work) waits to be opened, since it repeats
+those. Terminal escape controls and HTML are never executed by the renderer.
 
 The Changes pane shows native Git status, opens highlighted diffs, stages or
 unstages selected files, and offers commit, branch and worktree actions.
@@ -581,6 +583,7 @@ filters or credential helpers. Commands include:
 /git init
 /git status
 /git diff {"path":"src/lib.rs","staged":false}
+/git diff                      (every changed file's)
 /git stage {"paths":["src/lib.rs"]}
 /git unstage {"paths":["src/lib.rs"]}
 /git commit {"message":"Fix parser","expected_head":"EXACT_CURRENT_HEAD"}
