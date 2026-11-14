@@ -149,7 +149,7 @@ impl Shared {
 
     fn sign_menu(&self, title: &str) -> Menu {
         let signatures = self.signatures();
-        let mut sign = Menu::new(title);
+        let mut sign = Menu::new(title.to_owned());
         for (k, s) in signatures.iter().enumerate() {
             sign = sign.item(signature::label(s, k), format!("sign:{k}"));
         }

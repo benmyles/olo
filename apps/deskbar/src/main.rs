@@ -1671,7 +1671,7 @@ fn add_keys(menu: &mut Menu, profile: &KeyboardProfile) {
                     c => c.strip_prefix("arrange:").unwrap_or(c),
                 };
                 if let Some(info) = shortcuts::by_id(id) {
-                    a.keys = shortcuts::keys_for(info, profile).first().map(|c| c.label(profile.platform));
+                    a.keys = shortcuts::keys_for(info, profile).first().map(|c| c.label(profile.platform).into());
                 }
             }
             MenuItem::Submenu(m) => add_keys(m, profile),

@@ -2508,7 +2508,7 @@ impl Terminal {
                 offered.push(chosen.clone());
             }
             let slot = if mode == ThemeMode::Dark { "dark" } else { "light" };
-            offered.iter().fold(Menu::new(title), |m, t| m.item(&t.name, format!("colors-{slot}:{}", t.id)).checked(t.id == chosen.id))
+            offered.iter().fold(Menu::new(title.to_owned()), |m, t| m.item(&t.name, format!("colors-{slot}:{}", t.id)).checked(t.id == chosen.id))
         };
         let scheme = Menu::new("Colors")
             .item("Match Appearance", "scheme-auto")

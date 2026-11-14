@@ -87,7 +87,7 @@ pub struct ToolBar {
     name: SharedString,
     tools: Vec<Tool>,
     /// The window's menus' commands by name (what each tool is now).
-    actions: HashMap<String, Action>,
+    actions: HashMap<SharedString, Action>,
     vertical: bool,
     /// How long it can be: its width (its height down a side). The
     /// window's, unless said.
@@ -133,7 +133,7 @@ impl ToolBar {
         for m in menus {
             walk(&m.items, &wanted, &mut found);
         }
-        let mut own = [Menu { title: String::new(), items: found.into_iter().map(MenuItem::Action).collect(), icon: None }];
+        let mut own = [Menu { title: SharedString::default(), items: found.into_iter().map(MenuItem::Action).collect(), icon: None }];
         menu::resolve(&mut own, false);
         let [own] = own;
         self.actions = own.items.into_iter().filter_map(|i| if let MenuItem::Action(a) = i { Some((a.command.clone(), a)) } else { None }).collect();
@@ -327,13 +327,13 @@ impl ToolBar {
                     Tool::Command { icon, .. } => {
                         if let Some(a) = action {
                             let mut a = a.clone();
-                            a.icon = Some(icon.to_string());
+                            a.icon = Some(icon.clone());
                             menu.items.push(MenuItem::Action(a));
                         }
                     }
                     Tool::Picker { name, enabled, menu: make, .. } => {
                         let mut m = make(cx);
-                        m.title = name.to_string();
+                        m.title = name.clone();
                         if !enabled {
                             disable(&mut m);
                         }
@@ -564,7 +564,7 @@ mod tests {
         let mut menu = Menu::new("M");
         for t in tools {
             if !t.starts_with('|') {
-                menu = menu.item(*t, *t);
+                menu = menu.item(t.to_string(), t.to_string());
             }
         }
         let mut b = ToolBar::new("t", "Tools", |_, _| {});

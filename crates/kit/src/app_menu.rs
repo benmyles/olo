@@ -194,7 +194,7 @@ pub fn review(menus: &[Menu]) -> Vec<(String, String)> {
     // Each standard command in its menu, called what it is.
     for (i, menu) in menus.iter().enumerate() {
         for a in actions(menu) {
-            let Some((_, home, label)) = STANDARD.iter().find(|(c, ..)| *c == a.command) else {
+            let Some((_, home, label)) = STANDARD.iter().find(|(c, ..)| *c == a.command.as_ref()) else {
                 if a.command.starts_with(PREF) && i != 0 {
                     say(format!("{} ▸ {}: settings go in the first menu", menu.title, a.label));
                 }
@@ -217,11 +217,11 @@ pub fn review(menus: &[Menu]) -> Vec<(String, String)> {
     let mut seen: Vec<(&str, &str)> = Vec::new();
     for menu in menus {
         for a in actions(menu).into_iter().filter(|a| a.enabled) {
-            let Some(keys) = a.keys.as_deref().filter(|_| a.shortcut.is_some()) else { continue };
+            let Some(keys) = a.keys.as_ref().map(|k| k.as_ref()).filter(|_| a.shortcut.is_some()) else { continue };
             match seen.iter().find(|(k, _)| *k == keys) {
-                Some((_, other)) if *other != a.label => say(format!("{keys} is both {other} and {}", a.label)),
+                Some((_, other)) if *other != a.label.as_ref() => say(format!("{keys} is both {other} and {}", a.label)),
                 Some(_) => {}
-                None => seen.push((keys, &a.label)),
+                None => seen.push((keys, a.label.as_ref())),
             }
         }
     }

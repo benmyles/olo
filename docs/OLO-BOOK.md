@@ -780,6 +780,15 @@ items with the same keys), so `tsession review` and the layout lint
 fail a bar that strays. Windows without a bar (Preferences, DeskCalc,
 whose menu is a right-click's, as BeOS's were) aren't held to it.
 
+A window says its menus at every body, as it says everything it shows,
+so saying them must cost next to nothing. A menu's words are
+`SharedString`s: a fixed one (`"Copy"`, `"copy"`) is kept as it's
+given, never copied; one made as it goes is shared from then on. So
+give fixed words where there are fixed words: a table of items written
+out (`("12", "size:12")`) rather than `format!` at every body, and a
+long list that changes rarely (every installed font) made once when it
+changes and cloned (StyledEdit's `Fonts::groups`), not made again.
+
 **Agents see what people see.** Every kit app answers on a socket
 (`olo-menus-PID.sock`): its menus (`{"menus":true}`, and
 `{"invoke":"command"}` to choose one), each window's tree of what it

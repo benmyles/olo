@@ -80,12 +80,18 @@ fn item_icon(g: &mut Painter, row: Bounds<Pixels>, left: f32, name: &str, enable
 }
 
 /// A menu: its title (a menu bar's, a submenu's item) and items.
+///
+/// Its words are [`SharedString`]s: a window says its menus at every
+/// body (as it says everything it shows), and most of their words are
+/// fixed (`"Copy"`, `"copy"`), kept as they're given rather than copied
+/// each time; words made as it goes (a file's name) are shared, so a
+/// menu handed on (to a popup, to agents) copies none of them.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Menu {
-    pub title: String,
+    pub title: SharedString,
     pub items: Vec<MenuItem>,
     /// Drawn beside the title where this is a submenu (an icon name).
-    pub icon: Option<String>,
+    pub icon: Option<SharedString>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -98,8 +104,8 @@ pub enum MenuItem {
 /// A command in a menu.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Action {
-    pub label: String,
-    pub command: String,
+    pub label: SharedString,
+    pub command: SharedString,
     pub enabled: bool,
     pub checked: bool,
     /// Its keys as the app presses them (the command key is Ctrl):
@@ -107,11 +113,11 @@ pub struct Action {
     pub shortcut: Option<Shortcut>,
     /// Its keys as shown ("⌘C", "Ctrl+C"): the shortcut's, or keys the
     /// window doesn't take itself (a desktop shortcut, a chord).
-    pub keys: Option<String>,
+    pub keys: Option<SharedString>,
     /// Drawn at its left (an icon name, as for `icons::paint`). A menu
     /// with any gives them all a column, between the check marks and the
     /// labels.
-    pub icon: Option<String>,
+    pub icon: Option<SharedString>,
     /// A colour it stands for, drawn as a swatch in the icons' column (a
     /// Color menu's choices).
     pub swatch: Option<Hsla>,
@@ -122,12 +128,12 @@ pub struct Action {
 }
 
 impl Menu {
-    pub fn new(title: impl Into<String>) -> Menu {
+    pub fn new(title: impl Into<SharedString>) -> Menu {
         Menu { title: title.into(), items: Vec::new(), icon: None }
     }
 
     /// The last item's (an action's or a submenu's) icon.
-    pub fn icon(mut self, name: impl Into<String>) -> Menu {
+    pub fn icon(mut self, name: impl Into<SharedString>) -> Menu {
         match self.items.last_mut() {
             Some(MenuItem::Action(a)) => a.icon = Some(name.into()),
             Some(MenuItem::Submenu(m)) => m.icon = Some(name.into()),
@@ -146,7 +152,7 @@ impl Menu {
     }
 
     /// Adds a command.
-    pub fn item(mut self, label: impl Into<String>, command: impl Into<String>) -> Menu {
+    pub fn item(mut self, label: impl Into<SharedString>, command: impl Into<SharedString>) -> Menu {
         self.items.push(MenuItem::Action(Action { label: label.into(), command: command.into(), enabled: true, ..Default::default() }));
         self
     }
@@ -183,7 +189,7 @@ impl Menu {
     /// `prefix` and the screen's name (`olo_kit_base::moving`'s
     /// `SCREEN_COMMAND`, `NEW_SCREEN_COMMAND` with no prefix of its own).
     /// The program keeps running as it goes (`olo-screen take`).
-    pub fn agent_screens(title: &str, screens: &[olo_kit_base::moving::RunningScreen], prefix: &str) -> Menu {
+    pub fn agent_screens(title: impl Into<SharedString>, screens: &[olo_kit_base::moving::RunningScreen], prefix: &str) -> Menu {
         let mut m = Menu::new(title);
         for s in screens {
             m = m.item(s.label.clone(), format!("{prefix}{}{}", olo_kit_base::moving::SCREEN_COMMAND, s.name));
@@ -202,7 +208,7 @@ impl Menu {
     /// receiver's key, or `airplay::SETTINGS_COMMAND`, as
     /// `airplay::menu_command` reads them; the app runs `show_on` or
     /// `play_on` with the key, or `open_settings`.
-    pub fn airplay(title: &str, paired: &[olo_protocol::airplay::Paired], prefix: &str) -> Menu {
+    pub fn airplay(title: impl Into<SharedString>, paired: &[olo_protocol::airplay::Paired], prefix: &str) -> Menu {
         use olo_protocol::airplay::{MENU_COMMAND, SETTINGS_COMMAND};
         let mut m = Menu::new(title);
         if paired.is_empty() {
@@ -224,7 +230,7 @@ impl Menu {
     /// origin window then that window should close"). Terminal's tabs and
     /// tab groups, and a window's own tab (the window menu: into that
     /// window's group) use it.
-    pub fn move_to_window(title: &str, others: impl IntoIterator<Item = (String, String)>) -> Menu {
+    pub fn move_to_window(title: impl Into<SharedString>, others: impl IntoIterator<Item = (String, String)>) -> Menu {
         let mut others: Vec<(String, String)> = others.into_iter().collect();
         others.sort_by(|a, b| olo_kit_base::files::natural_cmp(&a.0, &b.0));
         let mut m = Menu::new(title);
@@ -294,7 +300,7 @@ impl Menu {
 
     /// The last item's keys, as shown ("⌘C"), when not a shortcut of
     /// the window's own (a desktop shortcut, a chord).
-    pub fn keys(mut self, keys: impl Into<String>) -> Menu {
+    pub fn keys(mut self, keys: impl Into<SharedString>) -> Menu {
         if let Some(MenuItem::Action(a)) = self.items.last_mut() {
             a.keys = Some(keys.into());
         }
@@ -368,12 +374,17 @@ impl Menu {
     /// Its commands for the command palette, flattened (`agent::set_menus`).
     pub fn entries(&self, app_id: &str) -> olo_kit_base::commands::Menus {
         fn walk(menu: &Menu, path: &mut Vec<String>, out: &mut Vec<olo_kit_base::commands::Entry>) {
-            path.push(menu.title.clone());
+            path.push(menu.title.to_string());
             for item in &menu.items {
                 match item {
-                    MenuItem::Action(a) => {
-                        out.push(olo_kit_base::commands::Entry { path: path.clone(), label: a.label.clone(), command: a.command.clone(), keys: a.keys.clone(), enabled: a.enabled, checked: a.checked })
-                    }
+                    MenuItem::Action(a) => out.push(olo_kit_base::commands::Entry {
+                        path: path.clone(),
+                        label: a.label.to_string(),
+                        command: a.command.to_string(),
+                        keys: a.keys.as_ref().map(|k| k.to_string()),
+                        enabled: a.enabled,
+                        checked: a.checked,
+                    }),
                     MenuItem::Submenu(m) => walk(m, path, out),
                     MenuItem::Separator => {}
                 }
@@ -398,12 +409,12 @@ pub fn resolve(menus: &mut [Menu], raw: bool) {
                 MenuItem::Action(a) => match olo_kit_base::keys::known(&a.command, raw) {
                     Some(known) if known.own || a.shortcut.is_some() => {
                         a.shortcut = known.keys.as_ref().map(|(s, _)| *s);
-                        a.keys = known.keys.map(|(_, label)| label);
+                        a.keys = known.keys.map(|(_, label)| label.into());
                     }
                     Some(_) => {}
                     None => {
                         if let Some(s) = a.shortcut.filter(|_| a.keys.is_none()) {
-                            a.keys = Some(s.label());
+                            a.keys = Some(s.label().into());
                             if cfg!(debug_assertions) {
                                 olo_kit_base::keys::unlisted(&a.command, &s);
                             }
@@ -1400,7 +1411,7 @@ mod tests {
             .items
             .iter()
             .filter_map(|i| match i {
-                MenuItem::Action(a) => Some((a.label.to_string(), a.command.clone(), a.enabled)),
+                MenuItem::Action(a) => Some((a.label.to_string(), a.command.to_string(), a.enabled)),
                 _ => None,
             })
             .collect();
@@ -1419,7 +1430,7 @@ mod tests {
             m.items
                 .iter()
                 .filter_map(|i| match i {
-                    MenuItem::Action(a) => Some((a.label.to_string(), a.command.clone(), a.enabled)),
+                    MenuItem::Action(a) => Some((a.label.to_string(), a.command.to_string(), a.enabled)),
                     _ => None,
                 })
                 .collect()

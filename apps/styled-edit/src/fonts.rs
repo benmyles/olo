@@ -16,6 +16,9 @@ pub enum Event {
 
 pub struct Fonts {
     pub families: Vec<String>,
+    /// The Font menu's alphabetical groups of them, made once when the
+    /// list comes (none checked): a window says its menus at every body.
+    pub groups: Vec<olo_kit::Menu>,
 }
 
 impl Fonts {
@@ -27,7 +30,7 @@ impl Fonts {
             families.dedup();
             send(Event::Families(families));
         });
-        Fonts { families: Vec::new() }
+        Fonts { families: Vec::new(), groups: Vec::new() }
     }
 }
 

@@ -886,7 +886,7 @@ impl Tg {
     /// `prefix`.
     pub fn group_menu(&self, group: list::Group, title: &str, prefix: &str) -> Menu {
         let chats = self.group_chats(group);
-        let mut menu = Menu::new(title).item("Mark All as Read", format!("{prefix}chats:read")).enabled(chats.iter().any(|c| c.unread > 0 || c.marked));
+        let mut menu = Menu::new(title.to_owned()).item("Mark All as Read", format!("{prefix}chats:read")).enabled(chats.iter().any(|c| c.unread > 0 || c.marked));
         if chats.iter().any(|c| !c.muted) {
             menu = menu.item("Mute All", format!("{prefix}chats:mute"));
         }

@@ -2529,11 +2529,13 @@ impl<'a> WindowCx<'a> {
         }
     }
 
-    /// Draws an element again (if it's still there).
-    pub fn repaint_node(&mut self, node: NodeRef) {
-        if self.core.nodes.contains_key(node.0) {
+    /// Draws an element again, if it's still there (whether it was).
+    pub fn repaint_node(&mut self, node: NodeRef) -> bool {
+        let there = self.core.nodes.contains_key(node.0);
+        if there {
             self.core.mark_paint(node.0);
         }
+        there
     }
 
     /// What's being handed round stops here: nothing else gets it.

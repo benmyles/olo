@@ -733,7 +733,7 @@ pub fn picture(item: &Item, px: u32) -> Option<std::sync::Arc<RenderImage>> {
 
 /// An item's menu as an Olo menu: each entry's command is `sni:ID`.
 pub fn menu(title: &str, entries: &[Entry]) -> olo_kit::Menu {
-    let mut m = olo_kit::Menu::new(title);
+    let mut m = olo_kit::Menu::new(title.to_owned());
     for e in entries {
         if e.separator {
             // Not first, last or twice in a row.

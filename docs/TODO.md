@@ -833,7 +833,8 @@ something nobody here has is in "Blocked", with what it waits for.
          each kept for the pointer told when it moves without being
          drawn); the column and icon views as rows of their own
          (`uniform_rows`), so a taller window paints only the rows it
-         uncovers; the menus made again at every body (33 strings).
+         uncovers. (The menus' 33 strings at every body: shared since
+         2026-11-14, fixed words never copied.)
        - Disk Usage is still 35 draws for 520 things (its chart's
          sectors and labels, over one another).
        - *Notifications' cards, done 2026-11-13.* They were laid out
@@ -964,10 +965,32 @@ something nobody here has is in "Blocked", with what it waits for.
          flushes each window first, `agent::trees`, but what holds the
          text, the app's document, isn't reachable from there: the
          editor would need a source the app gives it, or the view to
-         draw again for the question); menus are made again at every
-         body (`Menu::item`, some 600 small allocations a key);
-         code's tree-sitter reparse, on a worker, is most of a key in
-         code.
+         draw again for the question); code's tree-sitter reparse, on
+         a worker, is most of a key in code. (Menus made again at
+         every body: done 2026-11-14, below.)
+       - *A scroll's frame in StyledEdit, done 2026-11-14.* Each step
+         of a scroll ran the window's whole body (the editor scrolls
+         itself, and its wheel handler asked its host to say
+         everything again): 0.15 to 0.39 ms a frame of menus, tool
+         bars and the status line for a drawing that alone changed,
+         and 1,510 allocations a frame, 900 of them the menus' words
+         copied (`Menu::item` made a `String` of `"Copy"`), the font
+         list (two a family) and `keys::known`'s labels. Now a scroll
+         alone (the wheel, the fingers, their glide, a bar) is laid
+         out and drawn in the handler (`editor::scroll_alone`,
+         `WindowCx::repaint_node`): 22 of 348 frames of a scroll ran
+         a body, the median flush 0.295 → 0.064 ms. Menus' words are
+         `SharedString`s (fixed ones never copied), StyledEdit's
+         numbered items written out and its font groups made once
+         (`Fonts::groups`): 1,510 → 611 allocations a scroll frame.
+         A 600-step touchpad scroll of 4,000 paragraphs of Markdown
+         (release, perf stat, three runs each in turn, medians): 1,312
+         → 864 M instructions, 1,305 → 958 M cycles; per frame 3.75 →
+         2.51 M instructions. 192 keys typed: 67.4 → 60.5 M
+         instructions and 33.5 → 30.6 M cycles a key (the runs
+         overlap). The same to the pixel after wheel, touchpad and
+         bar scrolls at 1×, 1.5× and 2×, Markdown and a styled
+         document with its ruler, and after a click and typing.
        (app_server sending each size of a live resize twice wasn't
        seen again: 38 configures for 36 steps, DeskCalc, 2026-11-12.
        The app commits twice a step, once to acknowledge the size

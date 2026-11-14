@@ -229,7 +229,7 @@ fn quit_label(f: &Facts, own: Option<&str>) -> String {
 
 pub fn build(f: &Facts) -> Menu {
     // A shortcut's item, by its id, with its keys.
-    let shortcut = |m: Menu, id: &str, label: &str| {
+    let shortcut = |m: Menu, id: &str, label: &'static str| {
         let m = m.item(label, format!("shortcut:{id}"));
         match keys(f, id) {
             Some(k) => m.keys(k),
@@ -349,7 +349,7 @@ pub fn build(f: &Facts) -> Menu {
     m = m.item("Always on Top", "on-top").checked(f.on_top);
     m = m.item("Send to Back", "send-to-back").separator();
     // The app's own Close and Quit, as its keys press them.
-    let item = |m: Menu, label: String, command: &str, keys: Option<String>, enabled: bool| {
+    let item = |m: Menu, label: String, command: &'static str, keys: Option<String>, enabled: bool| {
         let m = m.item(label, command).enabled(enabled);
         match keys {
             Some(k) => m.keys(k),
@@ -603,7 +603,7 @@ mod tests {
         fn commands(m: &Menu, out: &mut Vec<String>) {
             for item in &m.items {
                 match item {
-                    menu::MenuItem::Action(a) => out.push(a.command.clone()),
+                    menu::MenuItem::Action(a) => out.push(a.command.to_string()),
                     menu::MenuItem::Submenu(s) => commands(s, out),
                     _ => {}
                 }
@@ -654,7 +654,7 @@ mod tests {
                 .items
                 .iter()
                 .filter_map(|i| match i {
-                    menu::MenuItem::Action(a) if ["float", "float-group", "unfloat"].contains(&a.command.as_str()) => Some((a.label.clone(), a.enabled, a.keys.is_some())),
+                    menu::MenuItem::Action(a) if ["float", "float-group", "unfloat"].contains(&a.command.as_str()) => Some((a.label.to_string(), a.enabled, a.keys.is_some())),
                     _ => None,
                 })
                 .collect::<Vec<_>>()
@@ -691,7 +691,7 @@ mod tests {
         windows.keys.platform = olo_protocol::shortcuts::Platform::Windows;
         let on_windows = build(&windows);
         let said: Vec<(String, Option<String>)> =
-            on_windows.items.iter().rev().take(3).filter_map(|i| if let menu::MenuItem::Action(a) = i { Some((a.label.clone(), a.keys.clone())) } else { None }).collect();
+            on_windows.items.iter().rev().take(3).filter_map(|i| if let menu::MenuItem::Action(a) = i { Some((a.label.to_string(), a.keys.as_ref().map(|k| k.to_string()))) } else { None }).collect();
         assert_eq!(said, [("Quit Gedit".to_owned(), Some("Ctrl+Q".to_owned())), ("Close Others".to_owned(), None), ("Close".to_owned(), Some("Ctrl+W".to_owned()))]);
         // A kit app's are its own, from that window's menus: Terminal's
         // Close Tab with a tab of several, chosen in the app.
@@ -707,8 +707,13 @@ mod tests {
             ..facts.clone()
         };
         let kit_menu = build(&kit);
-        let last: Vec<(String, String, Option<String>)> =
-            kit_menu.items.iter().rev().take(3).filter_map(|i| if let menu::MenuItem::Action(a) = i { Some((a.label.clone(), a.command.clone(), a.keys.clone())) } else { None }).collect();
+        let last: Vec<(String, String, Option<String>)> = kit_menu
+            .items
+            .iter()
+            .rev()
+            .take(3)
+            .filter_map(|i| if let menu::MenuItem::Action(a) = i { Some((a.label.to_string(), a.command.to_string(), a.keys.as_ref().map(|k| k.to_string()))) } else { None })
+            .collect();
         assert_eq!(
             last,
             [
@@ -726,7 +731,7 @@ mod tests {
         assert_eq!(first.keys.clone(), None);
         let own: Vec<&menu::Action> = spaces.items.iter().filter_map(|i| if let menu::MenuItem::Action(a) = i { Some(a) } else { None }).filter(|a| a.label.starts_with("D1")).collect();
         assert_eq!(own.len(), 3);
-        assert_eq!((own[0].command.as_str(), own[0].keys.as_deref()), ("workspace:0", Some("⌃⇧1")));
+        assert_eq!((own[0].command.as_ref(), own[0].keys.as_ref().map(|k| k.as_ref())), ("workspace:0", Some("⌃⇧1")));
         assert!(own[1].checked && !own[0].checked);
     }
 }

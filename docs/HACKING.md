@@ -554,7 +554,15 @@ How Olo keeps it (do the same):
 * **Per frame, no waste**: no new strings or vectors for what didn't
   change, nothing quadratic (a check of a whole run per character cost
   Terminal 1 ms a frame), no locks held across calls (Deskbar's status
-  deadlocked holding one), no sleeping loops.
+  deadlocked holding one), no sleeping loops. A body runs whenever its
+  view changes, so what it says that didn't change must cost nothing:
+  menus' words are shared (`SharedString`: a fixed one never copied,
+  `keys::known`'s labels an `Arc`), and items with numbers in them are
+  written out, not formatted (StyledEdit made 900 of its 1,510
+  allocations a scroll frame saying its menus, its font list included).
+  And what changed alone is drawn alone: a view that scrolls itself
+  draws its drawing again in the handler (`repaint_node`), not its
+  host's whole body (the editor's `scroll_alone`).
 * **The GPU draws, the CPU decides.** Upload once and keep textures;
   meshes made once and handed over as they are.
 * **Four malloc arenas a kit app** (`olo_kit::run`, `few_arenas`):
@@ -3085,7 +3093,12 @@ it.
   place a modifier's change reaches, and as the pointer moves with it
   held). `editor::view(host, key,
   options, cx)` is the element: a `ScrollView` that
-  scrolls itself, the caret, selection, input methods, the pointer
+  scrolls itself (a scroll alone, the wheel's, the fingers', their
+  glide's, a bar's, lays out what shows and draws the text again in
+  the handler, `scroll_alone`, without the host's body: StyledEdit's
+  menus, tool bars and status line were a scroll's frame's
+  millisecond; the host's body runs when the text moved across the
+  window, on pages, or while a press selects), the caret, selection, input methods, the pointer
   (words and paragraphs on double and triple clicks, a selection
   dragged to move it or out to another app, a table's column rule
   dragged), keys (its own `on_key_down`, taken before the window's, so

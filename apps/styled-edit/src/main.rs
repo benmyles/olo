@@ -61,6 +61,20 @@ const COLORS: [(&str, Option<[u8; 3]>); 7] = [
     ("Yellow", Some([210, 170, 0])),
 ];
 
+// The menus' items with numbers in them, written out: a window says its
+// menus at every body, and these were made again each time
+// (`menus_say_the_commands_they_always_did` checks them).
+/// `doc::Kind::ALL`'s commands, in its order.
+const KIND_COMMANDS: [&str; 7] = ["kind:body", "kind:title", "kind:heading-1", "kind:heading-2", "kind:heading-3", "kind:quote", "kind:code"];
+/// `doc::SIZES`' items, in its order.
+const SIZE_ITEMS: [(&str, &str); 10] =
+    [("9", "size:9"), ("10", "size:10"), ("11", "size:11"), ("12", "size:12"), ("14", "size:14"), ("18", "size:18"), ("24", "size:24"), ("36", "size:36"), ("48", "size:48"), ("72", "size:72")];
+/// `COLORS`' commands, in its order.
+const COLOR_COMMANDS: [&str; 7] = ["color:0", "color:1", "color:2", "color:3", "color:4", "color:5", "color:6"];
+/// Markdown's Paragraph ▸ Heading 1 to 6.
+const MD_HEADINGS: [(&str, &str); 6] =
+    [("Heading 1", "md:heading-1"), ("Heading 2", "md:heading-2"), ("Heading 3", "md:heading-3"), ("Heading 4", "md:heading-4"), ("Heading 5", "md:heading-5"), ("Heading 6", "md:heading-6")];
+
 /// Families per submenu of the Font menu.
 const FAMILY_GROUP: usize = 24;
 
@@ -618,7 +632,7 @@ impl EditorHost for DocView {
         }
         if let Some((_, guesses)) = &self.spell {
             for (k, g) in guesses.iter().enumerate() {
-                menu = menu.item(g.as_str(), format!("spell:{k}"));
+                menu = menu.item(g.clone(), format!("spell:{k}"));
             }
             if guesses.is_empty() {
                 menu = menu.item("No Guesses Found", "spell:none").enabled(false);
@@ -1175,8 +1189,8 @@ fn step_name(command: &str) -> Option<&'static str> {
 /// Font ▸ Size, checking the size where the selection starts.
 fn size_menu(cur: &Style) -> Menu {
     let mut size = Menu::new("Size");
-    for s in doc::SIZES {
-        size = size.item(format!("{s}"), format!("size:{s}")).checked(cur.size == s);
+    for (s, (label, command)) in doc::SIZES.into_iter().zip(SIZE_ITEMS) {
+        size = size.item(label, command).checked(cur.size == s);
     }
     size
 }
@@ -1186,7 +1200,7 @@ fn size_menu(cur: &Style) -> Menu {
 fn color_menu(cur: &Style, ink: olo_kit::Hsla) -> Menu {
     let mut color = Menu::new("Color");
     for (k, (name, rgb)) in COLORS.iter().enumerate() {
-        color = color.item(*name, format!("color:{k}")).checked(cur.color == *rgb).swatch(rgb.map_or(ink, rgb_color));
+        color = color.item(*name, COLOR_COMMANDS[k]).checked(cur.color == *rgb).swatch(rgb.map_or(ink, rgb_color));
     }
     color
 }
@@ -1204,21 +1218,32 @@ fn families(mut font: Menu, app: &Common, d: &DocView, cur: &Style) -> Menu {
     used.sort_unstable();
     used.dedup();
     for f in &used {
-        font = font.item(*f, format!("family:{f}")).checked(cur.family == *f);
+        font = font.item(f.to_string(), format!("family:{f}")).checked(cur.family == *f);
     }
-    let families = &app.fonts.families;
-    if !families.is_empty() {
+    if !app.fonts.groups.is_empty() {
         font = font.separator();
-        let chunks: Vec<&[String]> = families.chunks(FAMILY_GROUP).collect();
-        for (chunk, title) in chunks.iter().zip(guide_words(&chunks)) {
-            let mut group = Menu::new(title);
-            for f in chunk.iter() {
-                group = group.item(f.as_str(), format!("family:{f}")).checked(cur.family == *f);
+        for group in &app.fonts.groups {
+            // (Made once, words shared: only the one where the selection
+            // starts is checked here.)
+            let mut group = group.clone();
+            if !cur.family.is_empty() {
+                for item in &mut group.items {
+                    if let MenuItem::Action(a) = item {
+                        a.checked = a.label == cur.family;
+                    }
+                }
             }
             font = font.submenu(group);
         }
     }
     font
+}
+
+/// The Font menu's groups of `families` (alphabetical, a group's title
+/// its guide words), each family's item `family:` and its name.
+fn family_groups(families: &[String]) -> Vec<Menu> {
+    let chunks: Vec<&[String]> = families.chunks(FAMILY_GROUP).collect();
+    chunks.iter().zip(guide_words(&chunks)).map(|(chunk, title)| chunk.iter().fold(Menu::new(title), |group, f| group.item(f.clone(), format!("family:{f}")))).collect()
 }
 
 /// The tool bars: along the top, the file's and editing's commands and
@@ -1395,8 +1420,8 @@ fn doc_menus(app: &Common, d: &DocView, ink: olo_kit::Hsla) -> Vec<Menu> {
     let para = d.doc.paras()[d.doc.para_index(d.bytes().start)].clone();
     let align = para.align.unwrap_or(d.doc.align);
     let mut kinds = Menu::new("Style");
-    for (k, label, id) in doc::Kind::ALL {
-        kinds = kinds.item(label, format!("kind:{id}")).checked(para.kind == k);
+    for ((k, label, _), command) in doc::Kind::ALL.into_iter().zip(KIND_COMMANDS) {
+        kinds = kinds.item(label, command).checked(para.kind == k);
     }
     let paragraph = Menu::new("Paragraph")
         .submenu(kinds)
@@ -1490,8 +1515,8 @@ fn doc_menus(app: &Common, d: &DocView, ink: olo_kit::Hsla) -> Vec<Menu> {
             .item("Link", "md:link")
             .key("k");
         let mut kinds = Menu::new("Paragraph").item("Body", "md:body");
-        for n in 1..=6u8 {
-            kinds = kinds.item(format!("Heading {n}"), format!("md:heading-{n}"));
+        for (label, command) in MD_HEADINGS {
+            kinds = kinds.item(label, command);
         }
         let paragraph = kinds.separator().item("Quote", "md:quote").separator().item("Bulleted List", "list-bullet").item("Numbered List", "list-number").item("Task List", "md:tasks");
         return vec![file, edit, all_enabled(font, editable), all_enabled(paragraph, editable), all_enabled(document, editable)];
@@ -2085,7 +2110,10 @@ impl Hub {
         let Ok(msg) = message.downcast::<ToHub>() else { return };
         match *msg {
             ToHub::Fonts(fonts::Event::Families(f)) => {
-                self.shared.common().fonts.families = f;
+                let mut common = self.shared.common();
+                common.fonts.groups = family_groups(&f);
+                common.fonts.families = f;
+                drop(common);
                 self.tell_all(|| DocMsg::Again(false));
             }
             ToHub::Open(path) => self.open_file(path),
@@ -2911,6 +2939,18 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn menus_say_the_commands_they_always_did() {
+        let kinds: Vec<String> = super::doc::Kind::ALL.iter().map(|(_, _, id)| format!("kind:{id}")).collect();
+        assert_eq!(kinds, super::KIND_COMMANDS);
+        let sizes: Vec<(String, String)> = super::doc::SIZES.iter().map(|s| (format!("{s}"), format!("size:{s}"))).collect();
+        assert_eq!(sizes, super::SIZE_ITEMS.map(|(l, c)| (l.to_owned(), c.to_owned())));
+        let colors: Vec<String> = (0..super::COLORS.len()).map(|k| format!("color:{k}")).collect();
+        assert_eq!(colors, super::COLOR_COMMANDS);
+        let headings: Vec<(String, String)> = (1..=6).map(|n| (format!("Heading {n}"), format!("md:heading-{n}"))).collect();
+        assert_eq!(headings, super::MD_HEADINGS.map(|(l, c)| (l.to_owned(), c.to_owned())));
+    }
+
     #[test]
     fn guide_words() {
         let names: Vec<String> = ["Adwaita Sans", "Cantarell", "Jomolhari", "Noto Sans Arabic", "Noto Sans Bengali", "Z003"].map(String::from).to_vec();

@@ -601,6 +601,9 @@ pub struct Editor {
     rules: RefCell<Vec<(Bounds<Pixels>, usize, usize, Vec<f32>)>>,
     /// Where layout last put it in the window.
     bounds: Bounds<Pixels>,
+    /// Its text's drawing (the element), to draw again by itself when the
+    /// view only scrolled ([`scroll_alone`]).
+    text_node: Option<olo_interface::NodeRef>,
     column_drag: Option<ColumnDrag>,
     /// Where the text's left edge was in the window when last shown
     /// (scrolled sideways too), and how wide it was ([`Editor::text_span`]).
@@ -753,6 +756,7 @@ impl Editor {
             spell_gen: 0,
             rules: RefCell::default(),
             bounds: Bounds::default(),
+            text_node: None,
             column_drag: None,
             span: None,
             pages: None,
@@ -2472,12 +2476,7 @@ pub fn view<V: EditorHost>(host: &mut V, key: usize, options: Options, cx: &mut 
         // What's left to do with nothing new to draw (paragraphs about to
         // show measured, a press held past an edge) goes on by a timer.
         if again && ed.again.is_none() {
-            ed.again = Some(cx.after_do(Duration::from_millis(if on || ed.springing { 16 } else { 1 }), move |host, cx| {
-                host.editor(key, cx, &mut |ed, _, cx| {
-                    ed.again = None;
-                    cx.invalidate();
-                });
-            }));
+            ed.again = Some(go_on(key, on || ed.springing, cx));
         }
     });
     if let Some(span) = moved {
@@ -2501,9 +2500,12 @@ pub fn view<V: EditorHost>(host: &mut V, key: usize, options: Options, cx: &mut 
             });
         })
         .size_full()
-        // Where it is: laid out for that, in the same turn.
+        // Where it is: laid out for that, in the same turn. (And which
+        // element it is: told as one is first placed, too.)
         .on_bounds_changed(cx.listener(move |host: &mut V, b: &Bounds<Pixels>, cx| {
+            let node = cx.listener_node();
             host.editor(key, cx, &mut |ed, _, cx| {
+                ed.text_node = node;
                 if ed.bounds != *b {
                     ed.bounds = *b;
                     cx.invalidate();
@@ -2514,8 +2516,8 @@ pub fn view<V: EditorHost>(host: &mut V, key: usize, options: Options, cx: &mut 
         .on_scroll_of(
             &scroll,
             cx.listener(move |host: &mut V, at: &Point<Pixels>, cx| {
-                host.editor(key, cx, &mut |ed, _, cx| {
-                    if *at != ed.told {
+                with(host, key, cx, |ed, doc, sh, cx| {
+                    if *at != ed.told && !scroll_alone(ed, key, doc, sh, cx) {
                         cx.invalidate();
                     }
                 });
@@ -2604,10 +2606,53 @@ fn p_clamp(v: Pixels, lo: Pixels, hi: Pixels) -> Pixels {
     v.max(lo).min(hi.max(lo))
 }
 
+/// What's left to do with nothing new to draw goes on by a timer
+/// (paragraphs about to show measured, a glide springing back, a press
+/// held past an edge): a frame from now if `soon`, else at once. The
+/// view alone, where that's all it is ([`scroll_alone`]).
+fn go_on<V: EditorHost>(key: usize, soon: bool, cx: &mut Cx<V>) -> olo_interface::TimerId {
+    cx.after_do(Duration::from_millis(if soon { 16 } else { 1 }), move |host, cx| {
+        with(host, key, cx, |ed, doc, sh, cx| {
+            ed.again = None;
+            if !scroll_alone(ed, key, doc, sh, cx) {
+                cx.invalidate();
+            }
+        });
+    })
+}
+
+/// The view scrolled and nothing else changed (the wheel, the fingers or
+/// their glide, a bar dragged, paragraphs coming into view measured):
+/// what shows is laid out for where it is now and the text drawn again,
+/// here, without the host saying all it shows again. (Each frame of a
+/// scroll was its host's whole body, StyledEdit's menus, tool bars and
+/// status line, for a drawing that alone changed.) False where the host
+/// has to: the text's place across the window moved (a ruler follows
+/// it), on pages (their headers and footers move with them), a press
+/// selecting (the caret follows the pointer), or not drawn yet.
+fn scroll_alone<V: EditorHost>(ed: &mut Editor, key: usize, doc: &mut dyn Document, sh: &dyn Shaper, cx: &mut Cx<V>) -> bool {
+    let (o, bounds) = (ed.shown.o, ed.bounds);
+    let Some(node) = ed.text_node else { return false };
+    if o.pages.is_some() || ed.gesture == Gesture::Selecting || bounds.size.width <= px(0.0) || bounds.size.height <= px(0.0) {
+        return false;
+    }
+    let was = ed.span;
+    ed.prepare(doc, sh, &o, bounds, cx.scale_factor(), cx);
+    if ed.span != was || !cx.repaint_node(node) {
+        return false;
+    }
+    let woken = cx.invalidator();
+    ed.settle(doc, sh, &woken, cx);
+    if (ed.more || ed.springing) && ed.again.is_none() {
+        ed.again = Some(go_on(key, ed.springing, cx));
+    }
+    true
+}
+
 /// The wheel, fingers on a touchpad, or their glide.
 fn wheel<V: EditorHost>(host: &mut V, key: usize, e: &ScrollWheelEvent, cx: &mut Cx<V>) {
     let d = e.delta.pixel_delta(px(16.0));
-    host.editor(key, cx, &mut |ed, _, cx| {
+    with(host, key, cx, |ed, doc, sh, cx| {
         let o = ed.shown.o;
         let scale = cx.scale_factor();
         let (dx, dy) = (f32::from(d.x), f32::from(d.y));
@@ -2629,7 +2674,7 @@ fn wheel<V: EditorHost>(host: &mut V, key: usize, e: &ScrollWheelEvent, cx: &mut
             // some twenty-five at the end of every flick.
             let pixel = |v: f32| (v * scale).round();
             let moved = pixel(-f32::from(to.x)) != pixel(at.0) || pixel(-f32::from(to.y)) != pixel(at.1);
-            if stretched || moved {
+            if (stretched || moved) && !scroll_alone(ed, key, doc, sh, cx) {
                 cx.invalidate();
             }
             return;
@@ -2649,7 +2694,9 @@ fn wheel<V: EditorHost>(host: &mut V, key: usize, e: &ScrollWheelEvent, cx: &mut
         if sideways {
             ed.scroll_by.0 -= dx;
         }
-        cx.invalidate();
+        if !scroll_alone(ed, key, doc, sh, cx) {
+            cx.invalidate();
+        }
     });
     cx.stop_propagation();
 }

@@ -12,7 +12,7 @@ use olo_sync::Mutex;
 use std::{
     collections::HashMap,
     sync::{
-        OnceLock,
+        Arc, OnceLock,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
 };
@@ -129,8 +129,10 @@ pub struct Known {
     /// The app's own entry, not every app's.
     pub own: bool,
     /// Its keys as the app presses them, and as the platform writes them
-    /// (None: it has none).
-    pub keys: Option<(Shortcut, String)>,
+    /// (None: it has none). (Shared: menus look every item up at every
+    /// body, and a copy of the words each time was an allocation an
+    /// item.)
+    pub keys: Option<(Shortcut, Arc<str>)>,
 }
 
 /// The keys `command` has in this app (as a terminal-style window, `raw`,
@@ -153,7 +155,7 @@ pub fn known(command: &str, raw: bool) -> Option<Known> {
     let known = app_keys::app_key(app_id(), command).map(|entry| {
         let p = profile();
         let chords = shortcuts::entry(entry.id).map(|e| e.keys(&p)).unwrap_or_default();
-        let keys = chords.iter().find_map(|c| Some((app_side(c, p.command_key, raw)?, c.label(p.platform))));
+        let keys = chords.iter().find_map(|c| Some((app_side(c, p.command_key, raw)?, Arc::from(c.label(p.platform)))));
         Known { own: entry.app.is_some(), keys }
     });
     map.insert(command.to_owned(), known.clone());

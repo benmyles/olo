@@ -675,7 +675,7 @@ impl Logs {
         }
         let mut screens = Menu::new("Agent Screen Logs");
         for (name, path) in &self.screen_logs.1 {
-            screens = screens.item(name.as_str(), format!("file:{}", path.display())).checked(self.source.as_ref() == Some(path));
+            screens = screens.item(name.clone(), format!("file:{}", path.display())).checked(self.source.as_ref() == Some(path));
         }
         if self.screen_logs.1.is_empty() {
             screens = screens.item("No Agent Screens", "").enabled(false);

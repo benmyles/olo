@@ -156,7 +156,7 @@ pub fn edit_items_named(menu: Menu, undo: Option<&str>, redo: Option<&str>) -> M
 }
 
 /// [`edit_items_named`] with commands of the app's own (`edit-undo`).
-pub fn edit_items_as(menu: Menu, undo: Option<&str>, redo: Option<&str>, commands: (&str, &str)) -> Menu {
+pub fn edit_items_as(menu: Menu, undo: Option<&str>, redo: Option<&str>, commands: (&'static str, &'static str)) -> Menu {
     let label = |verb: &str, name: Option<&str>| match name {
         Some(n) if !n.is_empty() => format!("{verb} {n}"),
         _ => verb.to_owned(),
