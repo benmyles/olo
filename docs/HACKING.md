@@ -454,7 +454,13 @@ How Olo keeps it (do the same):
   lines away from its rectangles whole (each run's reach): a screen of
   text is a thousand and more glyphs, two copies of them read from
   memory at each line printed (an agent's spinner in Terminal: 85 M of
-  the display thread's 180 M instructions, before). Check a change to
+  the display thread's 180 M instructions, before). Such a line's
+  glyphs aren't copied into the drawing either: the drawing shares the
+  line's own (`Scene::insert_kept_run`, an `Arc` a line, each glyph
+  from the line's whole device pixel), and they are put in place, moved,
+  clipped and faded, only where a frame draws them or a comparison
+  reads them (the spinner: the looper's 43 M instructions of writing a
+  screen's glyphs, 157 KB an update, gone). Check a change to
   any of it with `tools/dev/damage-check` (each app typed in, scrolled
   and selected in, drawn by its damage and drawn whole, the last
   pictures compared at 1×, 1.5× and 2×; look at the pairs it keeps). What a

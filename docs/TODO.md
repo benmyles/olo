@@ -1079,10 +1079,17 @@ something nobody here has is in "Blocked", with what it waits for.
        other work (−11% to +0.4%): what is left is memory and the
        driver. `tools/dev/damage-check` (new) finds each app's last
        picture the same drawn by its damage and drawn whole, at 1×,
-       1.5× and 2×. *Left of it:* the looper still writes every line's
+       1.5× and 2×. *Left of it:* the looper still wrote every line's
        glyphs into each drawing (157 KB an update for a screen of
-       text, read across cores): drawings could share a kept line's
-       glyphs (an `Arc` a run) instead of copying them. The display
+       text, read across cores). *Done after, 2026-11-14:* drawings
+       share a kept line's glyphs (`Scene::insert_kept_run`, an `Arc` a
+       line), put in place only where a frame draws them; the spinner,
+       three rounds each in turn, 25 s: instructions 218–220 M → 174–176
+       M (perf record by thread: the looper 142 → 91 M, its writing of
+       the glyphs, 43 M, gone; the display thread the same, ~60 M);
+       memory steady through the run (82 MB). damage-check the same at
+       1×, 1.5× and 2×; Terminal's Edit menu (disabled items, drawn
+       faded) the same to the pixel as before at each. The display
        thread wakes three times an update: the commit; app_server's
        release of the last buffer, as it takes the new one; and the
        frame callback, a moment later. The release could come with the
