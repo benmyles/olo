@@ -870,7 +870,7 @@ impl Doc {
         match e.cropping.clone() {
             Some(frame) => {
                 let paint = canvas(move |g, b| {
-                    g.set_cursor_style(frame.shape(), b);
+                    frame.note_cursors(g, b, shown, full);
                     frame.paint(g, view, shown, full);
                 })
                 .absolute()
@@ -893,17 +893,17 @@ impl Doc {
                                 }
                             }),
                         )
+                        // (A drag's alone: the pointer's shapes are the
+                        // drawing's cursor areas.)
+                        .moves_matter_while_pressed()
                         .on_mouse_move(cx.listener(move |d: &mut Doc, ev: &MouseMoveEvent, cx| {
                             let Some(e) = d.video_edit.as_mut() else { return };
                             let Some(f) = e.cropping.as_mut() else { return };
-                            let changed = if ev.pressed_button == Some(MouseButton::Left) && e.crop_press.is_some() {
+                            if ev.pressed_button == Some(MouseButton::Left) && e.crop_press.is_some() {
                                 e.crop_press = Some(true);
-                                f.drag_to(ev.position, shown, full)
-                            } else {
-                                f.hover(ev.position, shown, full)
-                            };
-                            if changed {
-                                cx.invalidate();
+                                if f.drag_to(ev.position, shown, full) {
+                                    cx.invalidate();
+                                }
                             }
                         }))
                         .on_mouse_up(

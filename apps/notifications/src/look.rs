@@ -264,6 +264,32 @@ impl Text {
         }
     }
 
+    /// Where the bytes `range` of it are, row by row, painted at `at`
+    /// (as [`Text::paint`] puts it: what of them is cut off isn't).
+    pub fn rects_of(&self, g: &Painter, range: std::ops::Range<usize>, at: Point<Pixels>) -> Vec<Bounds<Pixels>> {
+        let at = point(style::snap_coord(g, at.x), style::snap_coord(g, at.y));
+        let (mut rects, mut y, mut offset) = (Vec::new(), at.y, 0);
+        for (i, line) in self.lines.iter().enumerate() {
+            let x = if i == 0 { style::snap_coord(g, at.x + self.lead) } else { at.x };
+            let layout = &line.unwrapped_layout;
+            // Each row's bytes: from the line's start or a wrap, to the
+            // next wrap or the line's end.
+            let wraps = line.wrap_boundaries.iter().map(|b| layout.runs[b.run_ix].glyphs[b.glyph_ix].index);
+            let starts = std::iter::once(0).chain(wraps.clone());
+            for (row, (from, to)) in starts.zip(wraps.chain([line.len()])).enumerate() {
+                let (s, e) = (range.start.saturating_sub(offset).max(from), range.end.saturating_sub(offset).min(to));
+                if s < e {
+                    let left = layout.x_for_index(from);
+                    let (x0, x1) = (layout.x_for_index(s) - left, layout.x_for_index(e) - left);
+                    rects.push(Bounds::new(point(x + x0, y + self.line_height * row as f32), size(x1 - x0, self.line_height)));
+                }
+            }
+            y += self.line_height * (line.wrap_boundaries.len() + 1) as f32;
+            offset += line.len() + 1;
+        }
+        rects
+    }
+
     /// The byte of it under `pos` (its top left at the origin).
     pub fn index_at(&self, pos: Point<Pixels>) -> Option<usize> {
         let (mut y, mut offset) = (px(0.0), 0);
@@ -403,9 +429,11 @@ pub fn paint_stop(g: &mut Painter, title: &Text, at: Point<Pixels>, size: f32) {
     agent::record(g, agent::Node { role: "Image", name: Some("Error".into()), bounds: r, enabled: true, ..Default::default() });
 }
 
-/// Where the body went, for finding links under the pointer.
+/// Where the body went, for finding links under the pointer, and where
+/// its links are (each row of each).
 pub struct Painted {
     pub body: Option<(Point<Pixels>, Text)>,
+    pub links: Vec<Bounds<Pixels>>,
 }
 
 /// `img` drawn at its own size centred in `r`, from a whole device pixel.
@@ -474,7 +502,7 @@ pub fn paint(g: &mut Painter, face: &Face, laid: &Laid, ink: &Ink, at: Point<Pix
         y += px(2.0 + h);
     }
     // The body, in a balloon for a message.
-    let mut painted = Painted { body: None };
+    let mut painted = Painted { body: None, links: Vec::new() };
     if let Some(b) = &laid.body {
         y += px(m::TIGHT);
         let origin = if laid.balloon {
@@ -491,6 +519,14 @@ pub fn paint(g: &mut Painter, face: &Face, laid: &Laid, ink: &Ink, at: Point<Pix
         b.paint(g, origin);
         let all: String = face.body.iter().map(|s| s.text.as_str()).collect();
         agent::record(g, agent::Node::label(all, Bounds::new(origin, size(px(b.width), px(b.height)))));
+        // (Bytes counted as `link_at` counts them.)
+        let mut start = 0;
+        for s in face.body {
+            if s.link.is_some() {
+                painted.links.extend(b.rects_of(g, start..start + s.text.len(), origin));
+            }
+            start += s.text.len();
+        }
         painted.body = Some((origin, b.clone()));
         y += px(b.height);
     }

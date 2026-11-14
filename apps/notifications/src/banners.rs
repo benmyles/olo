@@ -127,8 +127,6 @@ pub struct Banners {
     /// The close box under the pointer: a card's, or (None) a group's
     /// (by its first card).
     close_hover: Option<(u32, bool)>,
-    /// The pointer is on a link.
-    on_link: bool,
     /// Reply fields, by card (Return sends, as Send does).
     replies: HashMap<u32, Child<TextField>>,
 }
@@ -183,7 +181,7 @@ fn buttons_height(buttons: &[(String, String, f32)], stacked: bool) -> f32 {
 
 impl Banners {
     pub fn new(shared: Shared, _: &mut Cx<Self>) -> Banners {
-        Banners { shared, faces: HashMap::new(), height: 0.0, keyboard: false, bodies: Rc::default(), close_hover: None, on_link: false, replies: HashMap::new() }
+        Banners { shared, faces: HashMap::new(), height: 0.0, keyboard: false, bodies: Rc::default(), close_hover: None, replies: HashMap::new() }
     }
 
     /// The cards that show, laid out and grouped: as many as fit on the
@@ -453,9 +451,17 @@ impl View for Banners {
                         let lit = close_hover == Some((c.id, true));
                         style::close_box(g, close, if lit { style::c(p.panel_text) } else { style::disabled_text(&p) });
                     }
+                    // (Which card the pointer is on: only cards' edges
+                    // matter.)
+                    g.note_pointer_edge(rect);
                     let face = look::Face { title: &c.title, body: &c.body, look: &c.look, progress: c.progress, picture: c.picture.clone(), failed: c.failed };
                     let at = rect.origin + point(px(PAD), px(PAD));
                     let painted = look::paint(g, &face, &c.laid, &c.ink, at, WIDTH - 2.0 * PAD);
+                    // A link's a hand where it is, as the pointer goes
+                    // over it, without the app hearing each move.
+                    for link in &painted.links {
+                        g.set_cursor_style(CursorStyle::PointingHand, *link);
+                    }
                     if let Some(body) = painted.body {
                         bodies.borrow_mut().insert(c.id, body);
                     }
@@ -474,15 +480,12 @@ impl View for Banners {
             .w(px(WIDTH))
             .h(px(total))
             .child(paint)
-            // Which card the pointer is on (it stays while it is).
-            .on_mouse_move(cx.listener(move |b: &mut Banners, e: &MouseMoveEvent, cx| {
+            // Which card the pointer is on (it stays while it is): heard
+            // as it crosses a card's edge (the drawing notes them).
+            .moves_matter_at_edges()
+            .on_mouse_move(cx.listener(move |b: &mut Banners, e: &MouseMoveEvent, _| {
                 let pos = e.position;
                 let over = rects.iter().find(|(_, r)| r.contains(&pos)).map(|(id, _)| *id);
-                let link = over.is_some_and(|id| b.link_at(id, pos).is_some());
-                if link != b.on_link {
-                    b.on_link = link;
-                    cx.invalidate();
-                }
                 with(&b.shared, |n| n.hover(over));
             }))
             .on_hover(cx.listener(|b: &mut Banners, inside: &bool, _| {
@@ -511,11 +514,13 @@ impl View for Banners {
                 // The whole card is the default action; its menu pins or
                 // snoozes it; a link in its body opens.
                 let (has_default, pinned) = (c.has_default, c.pinned);
-                let mut area = div().id(format!("card-{id}")).absolute().left(c.rect.left()).top(c.rect.top()).w(c.rect.size.width).h(c.rect.size.height);
-                if self.on_link && hovered == Some(id) {
-                    area = area.cursor(CursorStyle::PointingHand);
-                }
-                let area = area
+                let area = div()
+                    .id(format!("card-{id}"))
+                    .absolute()
+                    .left(c.rect.left())
+                    .top(c.rect.top())
+                    .w(c.rect.size.width)
+                    .h(c.rect.size.height)
                     .on_click(cx.listener(move |b: &mut Banners, e: &ClickEvent, cx| {
                         let did = match b.link_at(id, e.position()) {
                             Some(url) => Did::Link(url),

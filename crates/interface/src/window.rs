@@ -1662,6 +1662,20 @@ impl<'a> WindowCx<'a> {
         if drew > 0 {
             core.gfx.text_system.finish_frame();
         }
+        // The pointer's shapes changed under it as it was drawn
+        // (`Tree::record`): its shape there now, and what it's over (no
+        // move tells the window, if none crosses an edge). What that
+        // changes is said and drawn at the next frame.
+        if std::mem::take(&mut core.hover_stale) {
+            self.hover_again();
+            let core = &mut *self.core;
+            if !core.dirty_views.is_empty() || !core.paint_queue.is_empty() {
+                core.hover_stale = true;
+                core.next_frame.push(Box::new(|_| {}));
+                core.needs_commit = true;
+            }
+        }
+        let core = &mut *self.core;
         // What moves with time is drawn again in a while, counted from
         // the frame this drawing goes in.
         if !core.clock.nodes.is_empty() && core.clock.timer.is_none() && !core.clock.waiting {

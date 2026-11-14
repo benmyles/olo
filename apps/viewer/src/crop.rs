@@ -26,8 +26,6 @@ pub struct CropFrame {
     /// In picture pixels: left, top, right, bottom.
     pub sel: Option<[f32; 4]>,
     drag: Option<Grab>,
-    /// The pointer's shape where it last was (set when painting).
-    shape: Option<CursorStyle>,
 }
 
 /// A picture point (its pixels) for window point `p`, the picture drawn
@@ -66,20 +64,9 @@ impl CropFrame {
         }
     }
 
-    /// The pointer moved to `pos`; true when its shape changed.
-    pub fn hover(&mut self, pos: Point<Pixels>, shown: Bounds<Pixels>, full: (u32, u32)) -> bool {
-        let shape = Some(self.cursor(pos, shown, full));
-        std::mem::replace(&mut self.shape, shape) != shape
-    }
-
-    /// The pointer's shape where it last was.
-    pub fn shape(&self) -> CursorStyle {
-        self.shape.unwrap_or(CursorStyle::Crosshair)
-    }
-
-    /// The pointer's shape at `pos`.
-    fn cursor(&self, pos: Point<Pixels>, shown: Bounds<Pixels>, full: (u32, u32)) -> CursorStyle {
-        match self.drag.or_else(|| self.grab_at(pos, shown, full)) {
+    /// The pointer's shape for a grab (or none: a new frame).
+    fn cursor(grab: Option<Grab>) -> CursorStyle {
+        match grab {
             Some(Grab::Move(_)) => CursorStyle::OpenHand,
             Some(Grab::Edges(l, r, t, b)) => match (l || r, t || b) {
                 (true, true) => {
@@ -94,6 +81,38 @@ impl CropFrame {
             },
             _ => CursorStyle::Crosshair,
         }
+    }
+
+    /// The pointer's shapes over `b` (all of what it's drawn over), as
+    /// areas of the drawing: the window isn't sent the moves over it to
+    /// work them out, only those across their edges. While it's dragged,
+    /// the drag's shape all over (wherever the pointer goes); else a
+    /// crosshair, the open hand inside the frame, and the arrows along
+    /// its edges and at its corners (as `grab_at` finds them: those
+    /// noted later go over those before).
+    pub fn note_cursors(&self, g: &mut Painter, b: Bounds<Pixels>, shown: Bounds<Pixels>, full: (u32, u32)) {
+        if self.drag.is_some() {
+            g.set_cursor_style(Self::cursor(self.drag), b);
+            return;
+        }
+        g.set_cursor_style(CursorStyle::Crosshair, b);
+        let Some(sel) = self.sel else { return };
+        let s = to_window(sel, shown, full);
+        let h = px(HANDLE);
+        g.set_cursor_style(CursorStyle::OpenHand, s);
+        let (tall, wide) = ((s.top() - h, s.bottom() + h), (s.left() - h, s.right() + h));
+        let band = |x: (Pixels, Pixels), y: (Pixels, Pixels)| Bounds::from_corners(point(x.0, y.0), point(x.1, y.1));
+        let around = |v: Pixels| (v - h, v + h);
+        // (Right before left, bottom before top: left and top win where
+        // they meet, as in `grab_at`.)
+        g.set_cursor_style(CursorStyle::ResizeLeftRight, band(around(s.right()), tall));
+        g.set_cursor_style(CursorStyle::ResizeLeftRight, band(around(s.left()), tall));
+        g.set_cursor_style(CursorStyle::ResizeUpDown, band(wide, around(s.bottom())));
+        g.set_cursor_style(CursorStyle::ResizeUpDown, band(wide, around(s.top())));
+        g.set_cursor_style(CursorStyle::ResizeUpLeftDownRight, band(around(s.right()), around(s.bottom())));
+        g.set_cursor_style(CursorStyle::ResizeUpRightDownLeft, band(around(s.left()), around(s.bottom())));
+        g.set_cursor_style(CursorStyle::ResizeUpRightDownLeft, band(around(s.right()), around(s.top())));
+        g.set_cursor_style(CursorStyle::ResizeUpLeftDownRight, band(around(s.left()), around(s.top())));
     }
 
     /// A press at `pos`: a grab of the frame, or a new one. A press

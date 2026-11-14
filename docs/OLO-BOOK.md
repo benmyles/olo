@@ -472,7 +472,11 @@ still pointer). So:
   parts' edges reach the listener, the moves within a part don't.
   (A part that changes only the pointer's shape needs no listener:
   give it a cursor's area, `g.set_cursor_style(style, part)`, as the
-  ruler does each marker.)
+  ruler does each marker, a notification's links do, and the Viewer's
+  crop frame its edges, corners and inside; areas noted later go over
+  those before. Drawn again with other areas under a still pointer,
+  the window works out its shape there once it's drawn: no move is
+  needed.)
 - Only with ⌘ held (links lit): `.moves_matter_with_command()` beside
   `on_mouse_move`. Only while a button is held (a drag that starts or
   goes on over the element, a selection): `.moves_matter_while_pressed()`.

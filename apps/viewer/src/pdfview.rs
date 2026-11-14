@@ -1569,6 +1569,9 @@ impl View for PdfView {
                     }
                 }),
             )
+            // (A drag's alone: the pointer's shapes over the pages are
+            // the drawing's cursor areas, `cursors`.)
+            .moves_matter_while_pressed()
             .on_mouse_move(cx.listener(|v: &mut PdfView, e: &MouseMoveEvent, cx| v.moved(e, cx)))
             .on_mouse_up(MouseButton::Left, cx.listener(|v: &mut PdfView, _: &MouseUpEvent, cx| v.released(cx)))
             .on_scroll_wheel(cx.listener(|v: &mut PdfView, e: &ScrollWheelEvent, cx| v.wheel(e, cx)))

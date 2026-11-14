@@ -1056,6 +1056,36 @@ something nobody here has is in "Blocked", with what it waits for.
        handles, the charts' readouts (which follow the pointer, as they
        should), the lock screen (activity, as it should). Each that
        lights parts could note their edges as it draws them.
+       *Done after, 2026-11-14:* Notifications' rows, cards and
+       headings note what they light (their ×s, Dismiss, Mark All
+       Read); its banners note their cards and give their links cursor
+       areas; Telegram's messages note their edges (a sticker plays
+       while the pointer's on it) and give what a click acts on cursor
+       areas (`bubble::hit_rects`); the Collector's chips note their
+       ×s; the PDF view hears drags alone (its shapes were areas
+       already); the crop frame gives its shapes as areas
+       (`CropFrame::note_cursors`) and hears drags alone. In the kit,
+       cursor areas that change under a still pointer have its shape
+       worked out again once drawn (no move may come). 1,200 moves at
+       240 Hz (release, 2560 × 1600 at 2×, every move sent against
+       now, two rounds), the window's thread: Notifications' rows
+       1,197 / 1,200 wakes and 31 / 47 ms → 3 and 1.2 ms (the three
+       row edges crossed), its cards 1,200 → 79 wakes and 57 / 44 →
+       26 / 22 ms (each a card lit), a banner 1,200 → 67 and 27 / 38 →
+       7 ms, Telegram's conversation 1,210 / 1,204 → 32 and 20 / 45 →
+       3 ms, the PDF view 1,200 → 0 and 40 / 33 → 0 ms, the crop frame
+       1,200 → 49 and 47 / 16 → 1–3.5 ms; the Collector, 59 (its two
+       ×s crossed). Left: Disk Usage's chart (ring slices lit under the
+       pointer: following it, as it should), the charts' readouts, the
+       lock screen; and the display thread's own 20–60 ms a sweep,
+       every move reaching it (the floor under all of these): perf
+       record of the Viewer's (2,400 moves) finds 9,600 instructions
+       of its own a move, 1,200 the stage's, the rest the Wayland
+       client's dispatch; the 35 µs a move is the wake and the
+       kernel's. Only fewer events would cut it (app_server sending a
+       window's moves no faster than it draws, where nothing in it
+       follows the pointer): not done, a drawing app wants every
+       sample.
      - *An agent's spinner in Terminal, looked at 2026-11-14.* With a
        full screen of text and a status line redrawn 12 times a second
        (release, 1600 × 1000 at 2×), Terminal is about 8 ms of CPU a

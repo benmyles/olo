@@ -1111,6 +1111,12 @@ struct Shown {
 /// A card, in `r`.
 fn paint_card(g: &mut Painter, r: Bounds<Pixels>, e: &store::Entry, laid: &CardLaid, shown: Shown) {
     let p = theme::palette();
+    // What the pointer lights (`HistoryWindow::hit_at`): the list hears
+    // only the moves across these.
+    g.note_pointer_edge(r);
+    if !e.shown {
+        g.note_pointer_edge(card_close(r).dilate(px(3.0)));
+    }
     let r = style::snap(g, r);
     // Staggered in its column: level with a card beside it only by
     // chance.
@@ -1152,6 +1158,13 @@ fn paint_card(g: &mut Painter, r: Bounds<Pixels>, e: &store::Entry, laid: &CardL
 /// A heading or a group's line, in `r`.
 fn paint_heading(g: &mut Painter, r: Bounds<Pixels>, item: &Item, entries: &[store::Entry], shown: Shown) {
     let p = theme::palette();
+    // What the pointer lights (`HistoryWindow::hit_at`).
+    g.note_pointer_edge(r);
+    match item {
+        Item::Unread(count) if *count > 0 => g.note_pointer_edge(mark_all_rect(r)),
+        Item::Group { .. } => g.note_pointer_edge(dismiss_rect(r)),
+        _ => {}
+    }
     heading_fill(g, &p, r);
     match item {
         Item::Unread(count) => {
@@ -1200,6 +1213,11 @@ fn paint_heading(g: &mut Painter, r: Bounds<Pixels>, item: &Item, entries: &[sto
 #[allow(clippy::too_many_arguments)]
 fn paint_row(g: &mut Painter, r: Bounds<Pixels>, e: &store::Entry, laid: &RowLaid, older: usize, grouped: bool, view: HistoryView, shown: Shown) {
     let p = theme::palette();
+    // What the pointer lights (`HistoryWindow::hit_at`).
+    g.note_pointer_edge(r);
+    if !e.shown {
+        g.note_pointer_edge(row_close(laid, r).dilate(px(3.0)));
+    }
     let (is_sel, hovered) = (shown.selected, shown.hovered);
     let (fg, bg) = if is_sel { (p.list_selected_item_text, p.list_selected_background) } else { (p.document_text, p.document_background) };
     let dim = style::c(olo_theme::mix(fg, bg, 0.45));
@@ -1463,6 +1481,9 @@ impl View for HistoryWindow {
         let content = content
             .on_mouse_down(MouseButton::Left, cx.listener(|h: &mut HistoryWindow, e: &MouseDownEvent, cx| h.press(e, cx)))
             .on_mouse_down(MouseButton::Right, cx.listener(|h: &mut HistoryWindow, e: &MouseDownEvent, cx| h.menu(e, cx)))
+            // (Heard only across the edges of what it lights, which each
+            // row, card and heading notes as it's drawn.)
+            .moves_matter_at_edges()
             .on_mouse_move(cx.listener(|h: &mut HistoryWindow, e: &MouseMoveEvent, cx| {
                 let now = h.hit_at(e.position - h.list_origin());
                 if now != h.hover {

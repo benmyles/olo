@@ -1645,7 +1645,7 @@ impl Doc {
         let (shown, view) = prev.read(cx).image_view().read(cx).picture_bounds()?;
         let frame = crop.clone();
         let paint = canvas(move |g, b| {
-            g.set_cursor_style(frame.shape(), b);
+            frame.note_cursors(g, b, shown, full);
             frame.paint(g, view, shown, full);
         })
         .absolute()
@@ -1665,15 +1665,16 @@ impl Doc {
                     cx.stop_propagation();
                 }),
             )
+            // (A drag's alone: the pointer's shapes are the drawing's
+            // cursor areas, `CropFrame::note_cursors`.)
+            .moves_matter_while_pressed()
             .on_mouse_move(cx.listener(move |d: &mut Doc, e: &MouseMoveEvent, cx| {
                 let Some(c) = d.edit.as_mut().and_then(|e| e.crop.as_mut()) else { return };
-                let mut changed = c.hover(e.position, shown, full);
                 if e.pressed_button == Some(MouseButton::Left) && d.crop_press.is_some() {
                     d.crop_press = Some(true);
-                    changed |= c.drag_to(e.position, shown, full);
-                }
-                if changed {
-                    cx.invalidate();
+                    if c.drag_to(e.position, shown, full) {
+                        cx.invalidate();
+                    }
                 }
             }))
             .on_mouse_up(

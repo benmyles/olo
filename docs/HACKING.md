@@ -566,9 +566,20 @@ How Olo keeps it (do the same):
   hearing every move over it: the ruler gives each marker a cursor's
   area (`Painter::set_cursor_style`), so the pointer over its scale
   wakes nothing; lists drawn in one canvas (search's suggestions, the
-  palette's results, the emoji picker's cells, Telegram's chats) note
-  each row and hear only the moves across them
-  (`moves_matter_at_edges`). `OLO_EVERY_MOVE=1` sends every move, to
+  palette's results, the emoji picker's cells, Telegram's chats,
+  Notifications' rows, cards and headings with their ×s, Dismiss and
+  Mark All Read, its banners' cards, Disk Usage's Collector chips' ×s)
+  note each row and hear only the moves across them
+  (`moves_matter_at_edges`); what only changes the pointer's shape
+  gives it as cursor areas (a banner's links, Telegram's links, names,
+  quotes, media and reactions, `bubble::hit_rects`; the Viewer's crop
+  frame, `CropFrame::note_cursors`, a drag's shape all over while it's
+  dragged), and hears drags alone (`moves_matter_while_pressed`: the
+  PDF view, whose shapes were areas already). A drawing whose cursor
+  areas changed under a still pointer has the pointer's shape and what
+  it's over worked out again once it's drawn (`hover_stale`, set by
+  `Tree::record`; what that changes is drawn at the next frame), as no
+  move may come to do it. `OLO_EVERY_MOVE=1` sends every move, to
   compare.
 * **Ask for less**: events by kind (`EventKind`: `OwnWindows`, not every
   window's title), files by inotify, an event written out once for all.

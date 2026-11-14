@@ -11,7 +11,7 @@ cd "$F"
 echo hello > notes.txt
 printf '# readme\n' > README.md
 # Two synthetic photos (a sunset over the sea, a house on a hill).
-python3 - <<'PY'
+/usr/bin/python3 - <<'PY'
 from PIL import Image, ImageDraw
 def sky(w, h, top, bottom):
     im = Image.new("RGB", (w, h))

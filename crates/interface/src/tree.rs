@@ -787,6 +787,12 @@ impl WindowCore {
             }
             None => !(notes.cursors.is_empty() && notes.cuts.is_empty() && notes.edges.is_empty()),
         };
+        // (The pointer's shapes moved or changed: the pointer's shape
+        // where it is, still, may be another. No move tells the window,
+        // if none crosses an edge.)
+        if node.notes.as_deref().map_or(!notes.cursors.is_empty(), |old| old.cursors != notes.cursors) {
+            self.hover_stale = true;
+        }
         node.notes = (!notes.is_empty()).then(|| Box::new(notes));
         if moved_marks {
             self.items_stale = true;

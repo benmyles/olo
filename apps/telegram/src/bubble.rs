@@ -16,7 +16,7 @@ use olo_kit::{
     style::{self, Align},
     transparent_black, white,
 };
-use olo_tg::{EntityKind, Media, Message, Pending};
+use olo_tg::{Entity, EntityKind, Media, Message, Pending};
 
 /// Message text's size.
 pub const TEXT: f32 = 13.0;
@@ -312,6 +312,25 @@ impl Para {
             }
         }
         None
+    }
+
+    /// Where the bytes `range` of it are, row by row, from the text's
+    /// top left (as [`Para::index_at`] finds them: from the left).
+    pub fn rects_of(&self, range: std::ops::Range<usize>) -> Vec<Bounds<Pixels>> {
+        let mut rects = Vec::new();
+        for (p, (start, y)) in self.lines.iter().zip(self.tops()) {
+            let starts = row_starts(p);
+            for (r, &s) in starts.iter().enumerate() {
+                let e = starts.get(r + 1).copied().unwrap_or(p.len());
+                let (from, to) = (range.start.saturating_sub(start).max(s), range.end.saturating_sub(start).min(e));
+                if from < to {
+                    let left = p.unwrapped_layout.x_for_index(s);
+                    let (x0, x1) = (p.unwrapped_layout.x_for_index(from) - left, p.unwrapped_layout.x_for_index(to) - left);
+                    rects.push(Bounds { origin: point(x0, px(y + self.lh * r as f32)), size: size(x1 - x0, px(self.lh)) });
+                }
+            }
+        }
+        rects
     }
 
     /// Where its last line ends, and that line's baseline (from the top).
@@ -818,12 +837,13 @@ fn pt(o: Point<Pixels>, p: (f32, f32)) -> Point<Pixels> {
     point(o.x + px(p.0), o.y + px(p.1))
 }
 
-/// What clicking `q` does in `laid`, painted with its top-left at `o`:
-/// a link or mention in the text, else the topmost area under it.
-pub fn hit_at(o: Point<Pixels>, m: &Message, laid: &Laid, q: Point<Pixels>) -> Option<Hit> {
+/// The areas of `laid`, painted with its top-left at `o`, that a click
+/// acts on (the sender's picture and name, the quote, the media, a web
+/// page's preview, the reactions), the topmost last.
+fn areas(o: Point<Pixels>, m: &Message, laid: &Laid) -> Vec<(Bounds<Pixels>, Hit)> {
     let mut areas: Vec<(Bounds<Pixels>, Hit)> = Vec::new();
     if laid.shape == Shape::Service {
-        return None;
+        return areas;
     }
     // (A sticker or a picture alone has only itself and its reactions.)
     let whole = laid.shape == Shape::Bubble;
@@ -858,29 +878,58 @@ pub fn hit_at(o: Point<Pixels>, m: &Message, laid: &Laid, q: Point<Pixels>) -> O
     for (r, _, _, emoji, _) in &laid.reactions {
         areas.push((r.at(o), Hit::Reaction(emoji.clone())));
     }
-    if whole && let Some((g, p)) = &laid.text {
+    areas
+}
+
+/// What a click on text entity `e` of `m` does, if anything.
+fn entity_hit(m: &Message, e: &Entity) -> Option<Hit> {
+    let word = m.text.get(e.start..e.end).unwrap_or("").to_owned();
+    match &e.kind {
+        EntityKind::Url => Some(Hit::Link(word)),
+        EntityKind::Email => Some(Hit::Link(format!("mailto:{word}"))),
+        EntityKind::Phone => Some(Hit::Link(format!("tel:{word}"))),
+        EntityKind::TextUrl(u) => Some(Hit::Link(u.clone())),
+        EntityKind::Mention => Some(Hit::Mention(word)),
+        EntityKind::MentionName(id) => Some(Hit::MentionId(*id)),
+        EntityKind::Hashtag | EntityKind::Cashtag | EntityKind::BotCommand => Some(Hit::Hashtag(word)),
+        EntityKind::Spoiler => Some(Hit::Spoiler),
+        _ => None,
+    }
+}
+
+/// What clicking `q` does in `laid`, painted with its top-left at `o`:
+/// a link or mention in the text, else the topmost area under it.
+pub fn hit_at(o: Point<Pixels>, m: &Message, laid: &Laid, q: Point<Pixels>) -> Option<Hit> {
+    if laid.shape == Shape::Service {
+        return None;
+    }
+    if laid.shape == Shape::Bubble
+        && let Some((g, p)) = &laid.text
+    {
         let at = pt(o, *p);
         if let Some(byte) = g.index_at(point(q.x - at.x, q.y - at.y))
-            && let Some(e) = m.entities.iter().find(|e| e.start <= byte && byte < e.end)
+            && let Some(link) = m.entities.iter().find(|e| e.start <= byte && byte < e.end).and_then(|e| entity_hit(m, e))
         {
-            let word = m.text.get(e.start..e.end).unwrap_or("").to_owned();
-            let link = match &e.kind {
-                EntityKind::Url => Some(Hit::Link(word)),
-                EntityKind::Email => Some(Hit::Link(format!("mailto:{word}"))),
-                EntityKind::Phone => Some(Hit::Link(format!("tel:{word}"))),
-                EntityKind::TextUrl(u) => Some(Hit::Link(u.clone())),
-                EntityKind::Mention => Some(Hit::Mention(word)),
-                EntityKind::MentionName(id) => Some(Hit::MentionId(*id)),
-                EntityKind::Hashtag | EntityKind::Cashtag | EntityKind::BotCommand => Some(Hit::Hashtag(word)),
-                EntityKind::Spoiler => Some(Hit::Spoiler),
-                _ => None,
-            };
-            if link.is_some() {
-                return link;
-            }
+            return Some(link);
         }
     }
-    areas.iter().rev().find(|(r, _)| r.contains(&q)).map(|(_, h)| h.clone())
+    areas(o, m, laid).iter().rev().find(|(r, _)| r.contains(&q)).map(|(_, h)| h.clone())
+}
+
+/// Where a click does something in `laid`, painted with its top-left at
+/// `o` (each row of a link or mention in the text, and each of
+/// [`hit_at`]'s areas): where the pointer is a hand.
+pub fn hit_rects(o: Point<Pixels>, m: &Message, laid: &Laid) -> Vec<Bounds<Pixels>> {
+    let mut rects: Vec<Bounds<Pixels>> = areas(o, m, laid).into_iter().map(|(r, _)| r).collect();
+    if laid.shape == Shape::Bubble
+        && let Some((g, p)) = &laid.text
+    {
+        let at = pt(o, *p);
+        for e in m.entities.iter().filter(|e| entity_hit(m, e).is_some()) {
+            rects.extend(g.rects_of(e.start..e.end).into_iter().map(|r| Bounds { origin: r.origin + at, size: r.size }));
+        }
+    }
+    rects
 }
 
 /// Paint `laid` with its top-left at `o`.

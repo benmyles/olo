@@ -508,7 +508,6 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, cx: &mut Cx<Tg>) -> Element {
     let partial = plan.partial;
     let older = thread.is_some_and(|t| t.more && !t.loading && t.loaded) && offset < 800.0;
     let painted = conv.painted.clone();
-    let hover_hit = conv.hover.as_ref().is_some_and(|h| h.1.is_some());
     let at_bottom = conv.at_bottom;
     if partial {
         // The rest laid out next frame.
@@ -534,9 +533,6 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, cx: &mut Cx<Tg>) -> Element {
 
     let look2 = look.clone();
     let messages = canvas(move |gr, b| {
-        if hover_hit {
-            gr.set_cursor_style(CursorStyle::PointingHand, b);
-        }
         let mut out = painted.borrow_mut();
         out.clear();
         // It scrolls: on a grid of its own, not level with the chat
@@ -583,6 +579,15 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, cx: &mut Cx<Tg>) -> Element {
                     let who = if m.out { "You".to_owned() } else { m.from.as_ref().map_or_else(String::new, |f| f.name.clone()) };
                     let said = if who.is_empty() { m.summary() } else { format!("{who}: {}", m.summary()) };
                     crate::seen(gr, olo_kit::agent::Node { role: "ListItem", name: Some(said.into()), bounds: whole, enabled: true, clickable: true, ..Default::default() });
+                    // Where the pointer's moves matter: across a
+                    // message's edge (an animated sticker plays while
+                    // the pointer's on it), and a hand over what a click
+                    // acts on (links, names, quotes, media, reactions),
+                    // without Telegram hearing each move.
+                    gr.note_pointer_edge(whole);
+                    for r in bubble::hit_rects(o, m, laid) {
+                        gr.set_cursor_style(CursorStyle::PointingHand, r);
+                    }
                     out.push(Painted { whole, origin: o, m: m.clone(), laid: laid.clone() });
                 }
             }
@@ -596,18 +601,18 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, cx: &mut Cx<Tg>) -> Element {
         .w_full()
         .h(px(content.max(view_h)))
         .child(messages)
+        // (Heard only across the edges the drawing notes: messages', and
+        // those of what a click acts on, where the pointer's a hand.)
+        .moves_matter_at_edges()
         .on_mouse_move(move |e: &MouseMoveEvent, cx| {
-            // (Only the pointer's shape shows it: drawn again when that
-            // changes, over a link or off it.)
             let at = e.position;
             t_move.update(cx, move |tg, cx| {
                 let Some(c) = tg.conv.as_mut() else { return };
                 let now = c.hit_at(at);
-                let pointing = |h: &Option<(MsgId, Option<Hit>)>| h.as_ref().is_some_and(|h| h.1.is_some());
                 // (Onto an animated sticker or off one: it plays or stops.)
                 let sticker = |h: &Option<(MsgId, Option<Hit>)>| h.as_ref().is_some_and(|h| tg.stickers.is_shown((c.chat, h.0)));
                 let moved = now.as_ref().map(|h| h.0) != c.hover.as_ref().map(|h| h.0);
-                let redraw = pointing(&now) != pointing(&c.hover) || moved && (sticker(&now) || sticker(&c.hover));
+                let redraw = moved && (sticker(&now) || sticker(&c.hover));
                 c.hover = now;
                 if redraw {
                     cx.invalidate();
@@ -617,7 +622,9 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, cx: &mut Cx<Tg>) -> Element {
         .on_hover(move |on: &bool, cx| {
             if !*on {
                 t_out.update(cx, move |tg, cx| {
-                    if tg.conv.as_mut().and_then(|c| c.hover.take()).is_some_and(|h| h.1.is_some()) {
+                    let Some(c) = tg.conv.as_mut() else { return };
+                    let was = c.hover.take();
+                    if was.is_some_and(|h| tg.stickers.is_shown((c.chat, h.0))) {
                         cx.invalidate();
                     }
                 });

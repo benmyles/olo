@@ -1031,6 +1031,11 @@ impl DiskUsage {
             let icon_r = style::snap(g, Bounds { origin: point(chip.left() + px(3.0), chip.center().y - px(8.0)), size: size_of(16.0, 16.0) });
             icons::paint(g, icon_r, icon_for(name, *dir));
             if let Some(close) = close {
+                // (Lit as the pointer comes over it: the well hears only
+                // the moves across its chips' ×s.)
+                if id.is_some() {
+                    g.note_pointer_edge(*close);
+                }
                 style::label_fit(
                     g,
                     chip.left() + px(22.0),
@@ -1069,6 +1074,7 @@ impl DiskUsage {
             .h_full()
             // (Where a drop lands, and where its chips are.)
             .on_bounds_changed(cx.listener(|d: &mut Self, b: &Bounds<Pixels>, _| d.collector = *b))
+            .moves_matter_at_edges()
             .on_mouse_move(cx.listener(|d: &mut Self, e: &MouseMoveEvent, cx| {
                 let before = d.well_at.and_then(|at| d.close_at(at));
                 d.well_at = Some(e.position);
