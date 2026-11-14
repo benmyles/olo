@@ -207,7 +207,14 @@ like pixel alignment is.
    glide, a window dragged, the overview, Twitcher, hints, the spotlight,
    the level indicator, a glow fading): a frame of it may change nothing
    to see, and a glide paced by looks went on at ten frames a second.
-   `{"type":"timings","quiet":true}` answers with `phases`: what the
+   A menu open isn't one (a popup's pointer grab, unlike a drag's):
+   what its program draws wakes the displays, and counting it kept them
+   drawing 60 frames a second while a menu sat open (62 wakeups a
+   second, 2.5% of a core; 6 now). What each look asks before drawing
+   is kept, not looked up again: the wallpaper is found again only when
+   its setting, the screen's size, dark mode or HDR changes
+   (`wallpaper::Slot::asked`; finding a pack's picture took two `stat`s
+   a frame). `{"type":"timings","quiet":true}` answers with `phases`: what the
    loop spent its time on (each look's parts, `tick`'s, commits, input).
 
    A frame's budget is the frame less what the GPU then takes to draw

@@ -1741,10 +1741,13 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// gliding on, a window dragged or resized, the overview, Twitcher, the
     /// keyboard hints, the spotlight, the level indicator, a window's glow
     /// fading): the displays don't rest meanwhile, as a frame of it may
-    /// change nothing to see and the next must still come at once.
+    /// change nothing to see and the next must still come at once. Not a
+    /// menu open (a popup's grab): nothing of ours moves, and what its
+    /// program draws wakes them (a menu left open kept every display
+    /// drawing 60 frames a second, 62 wakeups a second against 4).
     pub fn keeps_awake(&self) -> bool {
         self.pacer.busy()
-            || self.pointer.is_grabbed()
+            || (self.pointer.is_grabbed() && !self.pointer.with_grab(|_, g| g.is::<smithay::desktop::PopupPointerGrab<Self>>()).unwrap_or(false))
             || self.overview.is_some()
             || self.twitch.is_some()
             || self.hints.active()

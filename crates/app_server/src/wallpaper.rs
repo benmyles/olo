@@ -56,12 +56,25 @@ struct Key {
 /// Kept in each output's user data.
 #[derive(Default)]
 struct Slot {
+    /// What the picture was chosen from last: the setting, the screen's
+    /// size, dark mode and HDR. The same, it's the same picture, not
+    /// looked for again (finding a pack's is a few `stat`s, and this is
+    /// asked before every frame).
+    asked: Option<Asked>,
     /// The picture asked for (being decoded, shown, or failed).
     wanted: Option<Key>,
     shown: Option<Strips>,
     /// A new picture on its way to the GPU, and how many of its strips are
     /// there: shown once they all are.
     coming: Option<(Strips, usize)>,
+}
+
+#[derive(PartialEq)]
+struct Asked {
+    setting: Option<String>,
+    size: Option<(u32, u32)>,
+    dark: bool,
+    hdr: bool,
 }
 
 /// A picture cut across into strips of about `STRIP_BYTES`, each a texture
@@ -279,23 +292,30 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     /// Make sure `output` has (or is getting) the current wallpaper at its
-    /// current size. Cheap when nothing changed; called before each frame.
+    /// current size. Cheap when nothing changed (no file looked at, no
+    /// allocation); called before each frame.
     pub fn update_wallpaper(&mut self, output: &Output) {
         // A pack picture: the version for the screen's shape and the mode
         // (so it changes with dark mode, Auto's schedule too).
         let dark = self.settings.appearance.effective_theme == olo_theme::ThemeMode::Dark;
         let hdr = matches!(crate::color::drawing(output), crate::color::Drawing::Hdr { .. });
-        let want = self.settings.wallpaper.as_deref().zip(physical_size(output)).and_then(|(setting, size)| {
+        let (setting, size) = (self.settings.wallpaper.as_deref(), physical_size(output));
+        let mut slot = slot(output).lock().unwrap();
+        if slot.asked.as_ref().is_some_and(|a| a.setting.as_deref() == setting && a.size == size && a.dark == dark && a.hdr == hdr) {
+            return;
+        }
+        let asked = Asked { setting: setting.map(str::to_owned), size, dark, hdr };
+        let want = setting.zip(size).and_then(|(setting, size)| {
             let path = olo_xdg::wallpapers::resolve(setting, size, dark)?;
             let gain = if hdr { olo_images::gain::find(&path) } else { None };
             Some(Key { path, size, gain })
         });
-        let mut slot = slot(output).lock().unwrap();
+        slot.asked = Some(asked);
         if slot.wanted == want {
             return;
         }
         let Some(key) = want else {
-            *slot = Slot::default();
+            *slot = Slot { asked: slot.asked.take(), ..Slot::default() };
             return;
         };
         // A new size of the same picture keeps the old one up meanwhile;
