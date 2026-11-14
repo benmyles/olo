@@ -9,6 +9,7 @@ use std::{io, net::IpAddr};
 
 const NETLINK_SOCK_DIAG: i32 = 4;
 const SOCK_DIAG_BY_FAMILY: u16 = 20;
+const TCPDIAG_GETSOCK: u16 = 18;
 const RTM_GETLINK: u16 = 18;
 const NLMSG_ERROR: u16 = 2;
 const NLMSG_DONE: u16 = 3;
@@ -155,11 +156,25 @@ fn socket(tcp: bool, m: &[u8]) -> Option<Socket> {
 }
 
 /// Every TCP and UDP socket, v4 and v6.
+///
+/// TCP's both at once: a dump walks the whole table of connections
+/// whatever it's asked for (half a million slots on a computer of 64 GB,
+/// ~2.7 ms here for a hundred sockets), and `SOCK_DIAG_BY_FAMILY` takes
+/// one family a walk. The older `TCPDIAG_GETSOCK` takes both in one; a
+/// kernel without it is asked a family at a time.
 pub fn sockets() -> io::Result<Vec<Socket>> {
-    let nl = Netlink::open(NETLINK_SOCK_DIAG)?;
     let mut out = Vec::new();
+    // (Its own socket: one refused leaves nothing behind for the rest.)
+    let tcp_both = tcp_sockets(&Netlink::open(NETLINK_SOCK_DIAG)?, &mut out).is_ok();
+    if !tcp_both {
+        out.clear();
+    }
+    let nl = Netlink::open(NETLINK_SOCK_DIAG)?;
     for family in [libc::AF_INET as u8, libc::AF_INET6 as u8] {
         for (protocol, tcp) in [(libc::IPPROTO_TCP as u8, true), (libc::IPPROTO_UDP as u8, false)] {
+            if tcp && tcp_both {
+                continue;
+            }
             // inet_diag_req_v2: family, protocol, ext (tcp_info), pad, every
             // state, a blank socket id.
             let mut req = vec![family, protocol, if tcp { 1 << (INET_DIAG_INFO - 1) } else { 0 }, 0];
@@ -175,6 +190,25 @@ pub fn sockets() -> io::Result<Vec<Socket>> {
         }
     }
     Ok(out)
+}
+
+/// Every TCP socket, v4 and v6, in one walk (`TCPDIAG_GETSOCK`, which
+/// the kernel takes as either family), into `out`.
+fn tcp_sockets(nl: &Netlink, out: &mut Vec<Socket>) -> io::Result<()> {
+    // inet_diag_req: family (either), src_len, dst_len, ext (tcp_info);
+    // a blank socket id; every state; dbs.
+    let mut req = vec![0u8, 0, 0, 1 << (INET_DIAG_INFO - 1)];
+    req.extend_from_slice(&[0u8; 48]);
+    req.extend_from_slice(&u32::MAX.to_ne_bytes());
+    req.extend_from_slice(&0u32.to_ne_bytes());
+    for (kind, m) in nl.dump(TCPDIAG_GETSOCK, &req)? {
+        if kind == TCPDIAG_GETSOCK
+            && let Some(s) = socket(true, &m)
+        {
+            out.push(s);
+        }
+    }
+    Ok(())
 }
 
 /// An interface's counters so far.
@@ -240,6 +274,21 @@ mod tests {
         assert!((1000..=1001).contains(&theirs.sent), "{}", theirs.sent);
         assert!(all.iter().any(|s| s.tcp && s.local.1 == port && s.state == 10), "the listener");
         assert!(theirs.inode != 0);
+    }
+
+    #[test]
+    fn one_walk_finds_what_a_walk_a_family_does() {
+        // A v4 and a v6 listener of our own.
+        let four = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let six = std::net::TcpListener::bind("[::1]:0");
+        let nl = Netlink::open(NETLINK_SOCK_DIAG).unwrap();
+        let mut both = Vec::new();
+        tcp_sockets(&nl, &mut both).expect("the kernel takes TCPDIAG_GETSOCK");
+        let port = |l: &std::net::TcpListener| l.local_addr().unwrap().port();
+        assert!(both.iter().any(|s| s.state == 10 && s.local.1 == port(&four)), "the v4 listener");
+        if let Ok(six) = &six {
+            assert!(both.iter().any(|s| s.state == 10 && s.local.1 == port(six) && s.local.0.is_ipv6()), "the v6 listener");
+        }
     }
 
     #[test]

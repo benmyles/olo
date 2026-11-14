@@ -870,6 +870,34 @@ something nobody here has is in "Blocked", with what it waits for.
          rounds) 25.4–27.5 → 22.3–22.4 M instructions (cycles too noisy
          to tell, 67–84 M for both). `OLO_FRAME_PHASES=batches` lists
          a frame's draws in order, which is how it showed.
+       - *Activity Monitor's sampler, done 2026-11-14.* At rest on the
+         Overview the app was 3–4% of a core, three quarters of it the
+         sampler, most of that in the kernel: 27 ms of CPU a sample
+         (thread CPU time, part by part). Processes 10 ms and sockets
+         10. Now each process's `stat` and `io` is one read, not five
+         or six (`read_to_string` probes 32 bytes and grows); `io` that
+         can't be read (another user's, ~400 here) is tried once per
+         process, not each sample; the count in the sidebar is the
+         list's, not /proc listed again (1.8 ms); and TCP's sockets
+         come in one dump for both families (`TCPDIAG_GETSOCK`), not
+         one each: any dump walks the kernel's whole table of
+         connections (half a million slots here), ~2.7 ms for a
+         hundred sockets. Release: a sample 27.4–28.2 → 22.0–23.1 ms of
+         the thread's CPU; `procs` looking at every process 8.7–9.9 →
+         6.8–8.0 ms, the sockets 4.7–5.1 → 2.7 ms (the same sockets);
+         the sampler thread before and after in turn (cost, 30 s, load
+         2.2–2.8) 4.0 and 3.4% → 3.2 and 1.9% of a core.
+         *Found, not changed:* the sensors cost little CPU (2.4 ms) but
+         keep the sampler waiting ~70 ms a sample, and some wake a
+         device each time: the NVMe's three temperatures are an admin
+         command to the drive each (41 ms), the Wi-Fi's a command to its
+         firmware (7 ms), the EC's fans and temperatures ~1–5 ms each.
+         Reading the slow ones less often while Sensors doesn't show
+         would let the drive rest; it changes what the graphs show, so
+         it's a choice to make, not a fix. And at each sample the
+         window draws all of its content again (more than 16 changed
+         rectangles are made one, `stage::damage`), for three or four
+         frames as each buffer catches up: ~0.5 ms a frame.
        - *Notifications' cards, done 2026-11-13.* They were laid out
          anew for every width with everything made again: every note
          copied out of the model at each step (`lay_out`), again for

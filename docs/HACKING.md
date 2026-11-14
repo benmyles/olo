@@ -10073,13 +10073,23 @@ a rate can be known) and a `System` of what isn't a series (policies,
 zram, pressure, disks' requests, interfaces, battery, GPU, tunables,
 volumes every 5 s, which skips network and FUSE file systems because
 `statvfs` there can hang). Processes are read every sample (their
-name, command and owner kept by pid and start time); connections and
+name, command and owner kept by pid and start time, and whether their
+`io` can be read: another user's is tried once, not each sample; each
+`stat` and `io` in one read into a buffer kept from file to file, where
+`read_to_string` probes 32 bytes and grows, five or six reads a file;
+the sidebar's count is the list's); connections and
 GPU clients only while their sections show (`Control`). The network
 comes from netlink (`olo_system::netdiag`, as `ss` and `ip -s link`
 read it; the processes themselves from `olo_system::procs`, both moved
 there for Deskbar's widgets' tips too): a
 `sock_diag` dump of every TCP and UDP socket, v4 and v6, with TCP's
-`tcp_info` (bytes acknowledged and received, at 120 and 128), and
+`tcp_info` (bytes acknowledged and received, at 120 and 128). TCP's
+both families come in one dump (the older `TCPDIAG_GETSOCK`, which
+takes either; a family at a time where a kernel refuses it): any TCP
+dump walks the kernel's whole table of connections, half a million
+slots on a computer of 64 GB, ~2.7 ms however few sockets there are,
+and `SOCK_DIAG_BY_FAMILY` walked it once for each family. And
+`RTM_GETLINK`'s `IFLA_STATS64` for each interface's counters (with
 `RTM_GETLINK`'s `IFLA_STATS64` for each interface's counters (with
 /proc/net as the fallback). Each process's Sent and Received (columns
 in the list, and the Network section's "Programs Using the Network")

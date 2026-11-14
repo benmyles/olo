@@ -1232,7 +1232,22 @@ pub fn start(control: Control, send_sources: impl FnOnce(Vec<Source>) + Send + '
                 c.interrupts = stat.lines().find_map(|l| l.strip_prefix("intr ")).and_then(|r| r.split_whitespace().next()).map_or(0, num);
                 values.push(rate(c.interrupts, p.map(|p| p.interrupts)));
 
-                let procs = std::fs::read_dir("/proc").map(|rd| rd.flatten().filter(|e| e.file_name().to_str().is_some_and(|s| s.bytes().all(|b| b.is_ascii_digit()))).count()).unwrap_or(0);
+                let mut processes = if control.want_processes.load(Ordering::Relaxed) {
+                    let (no_ticks, no_io) = (HashMap::new(), HashMap::new());
+                    let (t0, i0) = (p.map_or(&no_ticks, |p| &p.ticks), p.map_or(&no_io, |p| &p.io));
+                    let (list, ticks, io) = processes(Before { ticks: t0, io: i0, with_io: true }, elapsed.unwrap_or(1.0), &users, page, hz, &mut known);
+                    c.ticks = ticks;
+                    c.io = io;
+                    Some(list)
+                } else {
+                    None
+                };
+                // (How many: the list's, where it's read; /proc read
+                // twice was 1.8 ms of a sample's 27.)
+                let procs = match &processes {
+                    Some(list) => list.len(),
+                    None => std::fs::read_dir("/proc").map(|rd| rd.flatten().filter(|e| e.file_name().to_str().is_some_and(|s| s.bytes().all(|b| b.is_ascii_digit()))).count()).unwrap_or(0),
+                };
                 values.push(procs as f64);
                 // "running/total" scheduling entities: the total is threads.
                 let loadavg = read("/proc/loadavg");
@@ -1346,15 +1361,6 @@ pub fn start(control: Control, send_sources: impl FnOnce(Vec<Source>) + Send + '
                 }
                 debug_assert_eq!(values.len(), probe.sources.len());
 
-                let mut processes = if control.want_processes.load(Ordering::Relaxed) {
-                    let (t0, i0) = (p.map(|p| p.ticks.clone()).unwrap_or_default(), p.map(|p| p.io.clone()).unwrap_or_default());
-                    let (list, ticks, io) = processes(Before { ticks: &t0, io: &i0, with_io: true }, elapsed.unwrap_or(1.0), &users, page, hz, &mut known);
-                    c.ticks = ticks;
-                    c.io = io;
-                    Some(list)
-                } else {
-                    None
-                };
                 // The sockets (netlink), whose owners give each process's
                 // traffic and each connection's program.
                 let want_connections = control.want_connections.load(Ordering::Relaxed);

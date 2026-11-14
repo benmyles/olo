@@ -14,6 +14,34 @@ fn read(path: impl AsRef<Path>) -> String {
     std::fs::read_to_string(path).unwrap_or_default()
 }
 
+/// A process's `stat` or `io` into `buf` (kept from file to file), and
+/// how long it is: one read, where `read_to_string` starts with a probe
+/// of 32 bytes and grows, five or six reads for a `stat`. (procfs gives
+/// such a file's one record whole to a read with room for it: a read
+/// short of the room is all of it.) None if it can't be opened or read
+/// (another user's `io`).
+fn read_record(path: &Path, buf: &mut Vec<u8>) -> Option<usize> {
+    use std::io::Read;
+    let mut f = std::fs::File::open(path).ok()?;
+    let mut len = 0;
+    loop {
+        if buf.len() < len + 1024 {
+            buf.resize(len + 4096, 0);
+        }
+        match f.read(&mut buf[len..]) {
+            Ok(0) => return Some(len),
+            Ok(n) => {
+                len += n;
+                if len < buf.len() {
+                    return Some(len);
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(_) => return None,
+        }
+    }
+}
+
 fn num(s: &str) -> u64 {
     s.trim().parse().unwrap_or(0)
 }
@@ -91,11 +119,23 @@ pub struct Before<'a> {
 }
 
 /// What doesn't change in a process's life (its name, command line and
-/// owner), kept by pid with when it started, so a list of hundreds reads
-/// only their stat and io each time.
+/// owner, and whether its io can be read), kept by pid with when it
+/// started, so a list of hundreds reads only their stat and io each time,
+/// and only the io it can.
 #[derive(Default)]
 pub struct Known {
-    by_pid: HashMap<i32, (u64, String, String, u32)>,
+    by_pid: HashMap<i32, Seen>,
+}
+
+struct Seen {
+    start: u64,
+    name: String,
+    command: String,
+    uid: u32,
+    /// Its io couldn't be read (another user's process, or one that
+    /// can't be looked into): not tried again each look, ~400 of them
+    /// here.
+    io_hidden: bool,
 }
 
 /// Processes, and their counters now: CPU ticks, and bytes read and
@@ -107,10 +147,13 @@ pub fn processes(before: Before, elapsed: f64, users: &HashMap<u32, String>, pag
     let mut list = Vec::new();
     let mut ticks = HashMap::new();
     let mut io = HashMap::new();
+    let (mut stat_buf, mut io_buf) = (Vec::new(), Vec::new());
     for e in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
         let Some(pid) = e.file_name().to_str().and_then(|s| s.parse::<i32>().ok()) else { continue };
         let dir = e.path();
-        let stat = read(dir.join("stat"));
+        let Some(n) = read_record(&dir.join("stat"), &mut stat_buf) else { continue };
+        // (A name needn't be UTF-8.)
+        let stat = String::from_utf8_lossy(&stat_buf[..n]);
         // "pid (comm) state ..." — comm may hold spaces and parentheses.
         let (Some(open), Some(close)) = (stat.find('('), stat.rfind(')')) else { continue };
         let comm = &stat[open + 1..close];
@@ -127,11 +170,18 @@ pub fn processes(before: Before, elapsed: f64, users: &HashMap<u32, String>, pag
         let rss = num(f[21]) * page;
         ticks.insert(pid, t);
         let cpu = before.ticks.get(&pid).map_or(0.0, |&p| t.saturating_sub(p) as f64 / hz / elapsed * 100.0);
+        let start_ticks = num(f[19]);
+        // As it was when last seen: the same process (a program that
+        // runs another keeps its pid but changes its name: comm says so).
+        let kept = known.by_pid.get_mut(&pid).filter(|k| k.start == start_ticks && k.name.starts_with(comm));
         // Its I/O, where it may be read.
-        let counted = before.with_io.then(|| std::fs::read_to_string(dir.join("io")).ok()).flatten().map(|s| {
+        let io_tried = before.with_io && !kept.as_ref().is_some_and(|k| k.io_hidden);
+        let counted = io_tried.then(|| read_record(&dir.join("io"), &mut io_buf)).flatten().map(|n| {
+            let s = std::str::from_utf8(&io_buf[..n]).unwrap_or_default();
             let field = |k: &str| s.lines().find_map(|l| l.strip_prefix(k)).map_or(0, num);
             (field("read_bytes:"), field("write_bytes:"))
         });
+        let io_hidden = io_tried && counted.is_none();
         let (read_rate, write_rate) = match (counted, before.io.get(&pid)) {
             (Some((r, w)), Some(&(r0, w0))) => (Some(r.saturating_sub(r0) as f64 / elapsed), Some(w.saturating_sub(w0) as f64 / elapsed)),
             (Some(_), None) => (Some(0.0), Some(0.0)),
@@ -140,12 +190,12 @@ pub fn processes(before: Before, elapsed: f64, users: &HashMap<u32, String>, pag
         if let Some(c) = counted {
             io.insert(pid, c);
         }
-        let start_ticks = num(f[19]);
-        let (name, command, uid) = match known.by_pid.get(&pid) {
-            // (A program that runs another keeps its pid but changes its
-            // name: comm says so.)
-            Some((start, name, command, uid)) if *start == start_ticks && name.starts_with(comm) => (name.clone(), command.clone(), *uid),
-            _ => {
+        let (name, command, uid) = match kept {
+            Some(k) => {
+                k.io_hidden |= io_hidden;
+                (k.name.clone(), k.command.clone(), k.uid)
+            }
+            None => {
                 let cmd = read(dir.join("cmdline"));
                 let command = cmd.trim_end_matches('\0').replace('\0', " ");
                 // comm is cut at 15 bytes; the program's file name isn't.
@@ -158,7 +208,7 @@ pub fn processes(before: Before, elapsed: f64, users: &HashMap<u32, String>, pag
                     name = base;
                 }
                 let uid = std::fs::metadata(&dir).map_or(0, |m| std::os::unix::fs::MetadataExt::uid(&m));
-                known.by_pid.insert(pid, (start_ticks, name.clone(), command.clone(), uid));
+                known.by_pid.insert(pid, Seen { start: start_ticks, name: name.clone(), command: command.clone(), uid, io_hidden });
                 (name, command, uid)
             }
         };
@@ -508,6 +558,25 @@ mod tests {
         }
         let cpu = fresh.top(&Rank::Cpu, 50).unwrap();
         assert!(!cpu.is_empty(), "something used the CPU");
+    }
+
+    /// Its own process's disk counters are read at every look; another
+    /// user's, which can't be, are tried once.
+    #[test]
+    fn io_read_where_it_can_be() {
+        let mut known = Known::default();
+        let me = std::process::id() as i32;
+        for look in 0..2 {
+            let (list, _, io) = processes(Before { ticks: &HashMap::new(), io: &HashMap::new(), with_io: true }, 1.0, &users(), 4096, 100.0, &mut known);
+            let mine = list.iter().find(|p| p.pid == me).expect("this test's process");
+            assert!(mine.read.is_some() && io.contains_key(&me), "look {look}");
+            assert!(!known.by_pid[&me].io_hidden);
+        }
+        // (pid 1 is root's: hidden unless the test runs as root.)
+        // SAFETY: getuid has no preconditions.
+        if unsafe { libc::getuid() } != 0 {
+            assert!(known.by_pid.get(&1).is_none_or(|k| k.io_hidden));
+        }
     }
 }
 
