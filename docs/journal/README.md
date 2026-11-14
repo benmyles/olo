@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-14
 
+### Tracker: a band in a scrolled icon view is drawn where it is
+
+*08:31* — Before (left): in an icon view scrolled down, the selection band was drawn displaced up by the scroll (what it selected was right). After (right): drawn from the press to the pointer. Tracker's icon views, columns and Desktop now draw a row (an icon on the Desktop) again only when it changes; the band is a drawing over them, in the content's own coordinates.
+
+![Tracker: a band in a scrolled icon view is drawn where it is](2026-11-14/083100-tracker-a-band-in-a-scrolled-icon-view-is-drawn-.png)
+
 ### Olo Doctor offers Olo's start-up screen and chime as the computer starts
 
 *01:37* — Two suggestions: the boot splash (Olo's Plymouth theme at the panel's scale, made into the start-up image) in place of Lenovo's and Fedora's logos, and the chime played from the built-in speakers as the computer starts, as a Mac's (olo-chime, a root service before PipeWire). Each with its way back. Doctor's made-up demo report, 2×.

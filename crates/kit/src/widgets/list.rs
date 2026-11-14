@@ -98,6 +98,17 @@ struct Model {
     /// The cell something is over (`ColumnListView::over_cell`), in the
     /// content: a press on it is that thing's.
     over: Option<Bounds<Pixels>>,
+    /// What draws the rows' cells, as the view last said (a
+    /// `RowPainter<V>`): every row draws with it, so one kept from an
+    /// earlier `body` (its key unchanged) never draws with what that
+    /// `body` captured.
+    painter: Option<Rc<dyn std::any::Any>>,
+}
+
+/// The cell painter and the columns, as the view last said.
+struct RowPainter<V> {
+    cell: Rc<dyn Fn(&V, &mut Cell, &mut Painter)>,
+    columns: Rc<[Column]>,
 }
 
 /// A list's state, kept by the app's view from one `body` to the next
@@ -120,6 +131,7 @@ impl ListModel {
             rows: 0,
             row_height: m::LIST_ROW,
             over: None,
+            painter: None,
         })))
     }
 
@@ -406,8 +418,11 @@ impl<V: View> ColumnListView<V> {
     /// What row `row` shows, as a number that changes when it does (its
     /// line's id and what a search marks in it, say): a row whose key,
     /// and whose look (selected, the columns' widths), are as they were
-    /// keeps its drawing when the view says what it shows again. Without
-    /// it every row near what shows is drawn again each time.
+    /// is kept as it is when the view says what it shows again, not made
+    /// or drawn (`Element::row_key_by`: a step of the selection makes two
+    /// rows). So the key covers everything the row shows, what the cell
+    /// painter captures included. Without it every row near what shows
+    /// is made and drawn again each time.
     pub fn row_key(mut self, key: impl Fn(&V, usize) -> u64 + 'static) -> Self {
         self.row_key = Some(Rc::new(key));
         self
@@ -650,17 +665,24 @@ impl<V: View> IntoElement for ColumnListView<V> {
         let hbar = if sideways { parts.bar } else { edge };
 
         // The rows, each an element of its own drawing its cells: made
-        // by the window as they come near what shows.
+        // by the window as they come near what shows. Each draws with the
+        // cell painter the view gave last.
+        model.0.borrow_mut().painter = Some(Rc::new(RowPainter { cell: self.cell.clone(), columns: columns.clone() }));
         let make = {
-            let (model, columns, cell, row_key, id) = (model.clone(), columns.clone(), self.cell.clone(), self.row_key.clone(), self.id.clone());
+            let (model, columns, row_key, id) = (model.clone(), columns.clone(), self.row_key.clone(), self.id.clone());
             move |near: std::ops::Range<usize>| -> Vec<Element> {
                 let m = model.0.borrow();
                 let (widths, order) = (Rc::<[f32]>::from(shown_widths(&m, &columns)), Rc::<[usize]>::from(order(&m, &columns)));
                 let look = style::key((&id, widths.iter().map(|w| w.to_bits()).collect::<Vec<u32>>(), &order, sideways));
                 near.map(|row| {
                     let selected = m.state.selected.contains(&row);
-                    let (cell, columns, widths, order) = (cell.clone(), columns.clone(), widths.clone(), order.clone());
-                    let mut row_el = view_canvas::<V>(move |view, g, r| paint_row(view, g, r, row, selected, focused, sideways, &columns, &widths, &order, &*cell));
+                    let (model, widths, order) = (model.clone(), widths.clone(), order.clone());
+                    let mut row_el = view_canvas::<V>(move |view, g, r| {
+                        let painter = model.0.borrow().painter.clone().and_then(|p| p.downcast::<RowPainter<V>>().ok());
+                        if let Some(p) = painter {
+                            paint_row(view, g, r, row, selected, focused, sideways, &p.columns, &widths, &order, &*p.cell);
+                        }
+                    });
                     if let Some(key) = row_key.clone() {
                         // (Focus shows only in a selected row.)
                         row_el = row_el.key_by::<V>(move |view| style::key((look, key(view, row), selected, selected && focused)));
@@ -672,6 +694,18 @@ impl<V: View> IntoElement for ColumnListView<V> {
             }
         };
         let mut content = uniform_rows(rows, px(row_h), make);
+        // Rows whose key and look are as they were: kept as they are.
+        if let Some(key) = self.row_key.clone() {
+            let look = {
+                let m = model.0.borrow();
+                style::key((&self.id, shown_widths(&m, &columns).iter().map(|w| w.to_bits()).collect::<Vec<u32>>(), order(&m, &columns), sideways))
+            };
+            let model = model.clone();
+            content = content.row_key_by::<V>(move |view, row| {
+                let selected = model.0.borrow().state.selected.contains(&row);
+                style::key((look, key(view, row), selected, selected && focused))
+            });
+        }
         if sideways {
             content = content.w(px(total));
         }

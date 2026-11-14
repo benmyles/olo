@@ -828,15 +828,36 @@ something nobody here has is in "Blocked", with what it waits for.
          3.68 and 3.66, now 2.47 and 2.85: 29% and 11% under the old
          build, and under it in each of the four rounds. The same to
          the pixel (the column view, two menus, three Preferences
-         panels, DeskCalc). *Left of it:* Tracker's own drawings (a
-         column, the icons, the Desktop) have no key, so each is
-         painted again whenever its window says anything (HACKING's
-         rule; a key needs every row's look in it, and the place
-         each kept for the pointer told when it moves without being
-         drawn); the column and icon views as rows of their own
-         (`uniform_rows`), so a taller window paints only the rows it
-         uncovers. (The menus' 33 strings at every body: shared since
-         2026-11-14, fixed words never copied.)
+         panels, DeskCalc). (The menus' 33 strings at every body:
+         shared since 2026-11-14, fixed words never copied.)
+       - *Tracker's own drawings, done 2026-11-14.* A column, the
+         icon views and the Desktop were each one drawing with no key,
+         painted whole whenever the window said anything (a step of
+         the selection, each move of a band: on the Desktop every icon
+         laid out again too, its name measured). Now the icon views are
+         rows of the grid and a column rows of its own (`uniform_rows`),
+         the Desktop an icon a drawing, each keyed by what it shows; the
+         band and a drop's outline a drawing over them. And the kit
+         keeps a row whose key is unchanged without making it
+         (`Element::row_key_by`; `ColumnListView` with a `row_key`):
+         without that, making and comparing the fifty rows kept round
+         what shows cost what painting them had. Where the content is
+         comes from the scroll handles, not from where it was drawn:
+         the band was drawn displaced by the scroll in a scrolled icon
+         view (the selection was right). Release, perf stat of the app,
+         instructions a step (a folder of 3,050, 560 × 380 window):
+         icons 1.01 → 0.67 M, mini icons 1.28 → 0.84, columns 1.61 →
+         1.47 (the rest is the preview and the frame), the list view
+         1.08 → 0.87; a band swept over 45 Desktop icons 2.23 → 0.53 M
+         a move (an icon's place looked up with the Trash's folder
+         found from the environment each time, and ~/Desktop's).
+         The same to the pixel at 1×, 1.5×, 2×, light and dark.
+         *Found, not fixed* (the build before too): the review at 1.5×
+         and 2× calls an icon view's "1.0 TB free" crowded with the
+         scroll bar's down arrow 5 pt above it, across the status
+         bar's line; and at 2× a column's row scrolled half under the
+         menu bar's titles (as the Viewer's text above: the review
+         doesn't know a row cut by its scroller).
        - Disk Usage is still 35 draws for 520 things (its chart's
          sectors and labels, over one another).
        - *Notifications' cards, done 2026-11-13.* They were laid out

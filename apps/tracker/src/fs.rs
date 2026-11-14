@@ -34,11 +34,13 @@ pub struct Entry {
 
 /// What a list shows of an [`Entry`] (its name, Size, Modified and
 /// Kind), made the first time it's drawn and kept with it: a list drawn
-/// again (a live resize, a theme) doesn't format them again. An item
-/// changed on disk comes as a new entry, so they're never stale. (Boxed:
-/// a folder's entries mostly never show.)
+/// again (a live resize, a theme) doesn't format them again; and what it
+/// is, as a number (`Entry::look`), worked out the first time a view
+/// asks whether it changed. An item changed on disk comes as a new
+/// entry, so they're never stale. (Boxed: a folder's entries mostly
+/// never show.)
 #[derive(Clone, Default)]
-pub struct Shown(std::sync::OnceLock<Box<ShownTexts>>);
+pub struct Shown(std::sync::OnceLock<Box<ShownTexts>>, std::sync::OnceLock<u64>);
 
 #[derive(Clone)]
 pub struct ShownTexts {
@@ -63,6 +65,15 @@ impl std::fmt::Debug for Shown {
 }
 
 impl Entry {
+    /// What it is, as a number that differs from another entry's when
+    /// anything a view shows of it from its own fields does (its path,
+    /// size, date, kind, whether it's a link or a download): hashed once
+    /// (`folder::row_key` adds what can change about it, its icon and
+    /// mark).
+    pub fn look(&self) -> u64 {
+        *self.shown.1.get_or_init(|| olo_kit::style::key((&self.path, self.is_link, self.size, self.modified, self.kind.name(), self.downloading)))
+    }
+
     /// Its texts in a list, made the first time they're asked for.
     pub fn shown(&self) -> &ShownTexts {
         self.shown.0.get_or_init(|| {

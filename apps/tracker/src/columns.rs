@@ -3,7 +3,7 @@
 //! preview of a selected file at the end. Browsing happens in place; the
 //! keyboard moves through the hierarchy (←/→ between columns).
 
-use std::{cell::RefCell, collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf};
 
 use olo_kit::{
     Bounds, Cx, DropAccept, DropOffer, Element, FontWeight, InteractiveElement as _, IntoElement as _, KeyDownEvent, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Painter,
@@ -32,15 +32,14 @@ const DISCLOSURE: (f32, f32) = (4.0, 8.0);
 const DISCLOSURE_ROOM: f32 = m::CELL_INSET + 4.0 + m::MARK_GAP;
 const DRAG_SLOP: f32 = 3.0;
 
-/// The column view's own state: its scrolls, where each column was
-/// drawn, and what the pointer is doing.
+/// The column view's own state: its scrolls and what the pointer is
+/// doing.
 #[derive(Default)]
 pub struct Cols {
     /// Across the columns.
     scroll: ScrollHandle,
     /// Down each column, by its folder.
     lists: HashMap<PathBuf, ScrollHandle>,
-    geo: RefCell<Vec<ColGeo>>,
     press: Option<ColPress>,
     /// A band: its column, where it began (down the column's rows) and
     /// across, what was selected, and where it reaches now (in the
@@ -56,11 +55,12 @@ impl Cols {
     }
 }
 
-/// A column as last drawn: where its rows start (in the window) and where
-/// it shows.
+/// A column where it is in the window now (`FolderWin::col_geo`): where
+/// its content and its rows start (it scrolls, down and across), what of
+/// it shows, and how many rows it has.
 #[derive(Clone, Copy, Default)]
 struct ColGeo {
-    /// The content's top left (it scrolls).
+    /// The content's top left.
     origin: Point<Pixels>,
     top: Pixels,
     view: Bounds<Pixels>,
@@ -208,10 +208,9 @@ impl FolderWin {
             _ => {
                 // Typing selects within the active column.
                 let Some(typed) = e.keystroke.key_char.clone().filter(|c| !c.chars().any(char::is_control)) else { return false };
-                let (_, entries, list) = self.column(k);
-                let from = list.cursor();
-                let names: Vec<String> = entries.iter().map(|e| e.name.clone()).collect();
-                if let Some(row) = self.typing.typed(&typed, names.len(), from, |i| names[i].as_str()) {
+                // (The column's names as they are, not copied for each key.)
+                let (entries, list) = if k == 0 { (&self.entries, &self.list) } else { (&self.panes[k - 1].entries, &self.panes[k - 1].list) };
+                if let Some(row) = self.typing.typed(&typed, entries.len(), list.cursor(), |i| entries[i].name.as_str()) {
                     self.choose(k, row);
                     self.reveal_row(k, row, 0.0, cx);
                 }
@@ -225,15 +224,108 @@ impl FolderWin {
 
     // ---- the pointer -------------------------------------------------------
 
-    /// Column `k`'s content is at `b` now (it scrolls): where its rows
-    /// are, for what the pointer does there.
-    fn place_column(&self, k: usize, b: Bounds<Pixels>, view: Bounds<Pixels>) {
-        let rows = self.column(k).1.len();
-        let mut g = self.cols.geo.borrow_mut();
-        if g.len() <= k {
-            g.resize(k + 1, ColGeo::default());
+    /// Column `k` where it is in the window now: from where it and the
+    /// columns are scrolled to, not where it was last drawn (its rows are
+    /// drawn only when they change). None before it's laid out.
+    fn col_geo(&self, k: usize) -> Option<ColGeo> {
+        let (path, entries, _) = self.column(k);
+        let down = self.cols.lists.get(path)?;
+        let b = down.bounds();
+        if b.size.width <= px(0.0) {
+            return None;
         }
-        g[k] = ColGeo { origin: b.origin, top: b.top() + px(m::TIGHT), view, rows };
+        // (A column is laid out where it is with the columns scrolled to
+        // their start.)
+        let at = point(b.left() + self.cols.scroll.offset().x, b.top());
+        let view = Bounds { origin: at, size: b.size }.intersect(&self.cols.scroll.bounds());
+        let origin = point(at.x, at.y + down.offset().y);
+        Some(ColGeo { origin, top: origin.y + px(m::TIGHT), view, rows: entries.len() })
+    }
+
+    /// What shows of column `k`'s content, in the content.
+    fn column_shown(&self, k: usize) -> Option<Bounds<Pixels>> {
+        let down = self.cols.lists.get(self.column(k).0)?;
+        Some(Bounds { origin: point(px(0.0), -down.offset().y), size: down.bounds().size })
+    }
+
+    /// The outline round what shows of column `k` while what's dragged
+    /// over it would go into its folder, in its content.
+    fn column_outline(&self, k: usize) -> Option<Bounds<Pixels>> {
+        if self.dropping == Some((k, None)) { self.column_shown(k) } else { None }
+    }
+
+    /// The band being drawn in column `k`, in its content, as far as it
+    /// shows.
+    fn column_band_rect(&self, k: usize) -> Option<Bounds<Pixels>> {
+        let (_, from, _, now) = self.cols.band.as_ref().filter(|(c, ..)| *c == k)?;
+        let g = self.col_geo(k)?;
+        let x = self.cols.press.as_ref().map_or(now.x, |p| p.at.x);
+        let (s, e) = (point(x - g.origin.x, *from + px(m::TIGHT)), point(now.x - g.origin.x, now.y - g.origin.y));
+        let r = Bounds::from_corners(point(s.x.min(e.x), s.y.min(e.y)), point(s.x.max(e.x), s.y.max(e.y)));
+        Some(r.intersect(&self.column_shown(k)?))
+    }
+
+    /// Row `i` of column `k`, in `r`.
+    fn paint_column_row(&self, g: &mut Painter, r: Bounds<Pixels>, k: usize, i: usize) {
+        if k > self.panes.len() {
+            return;
+        }
+        let (_, entries, list) = self.column(k);
+        let Some(e) = entries.get(i) else { return };
+        let p = theme::palette();
+        let active = self.active == k;
+        let selected = list.selected.contains(&i);
+        let text_color = if selected { style::c(p.list_selected_item_text) } else { style::c(p.list_item_text) };
+        if selected {
+            // Solid in the active column, a quieter tint along the path
+            // in the others (as in Finder).
+            let sel_bg = if active { style::c(p.list_selected_background) } else { style::c(mix(p.list_background, p.list_selected_background, 0.5)) };
+            style::fill_rect(g, r, sel_bg);
+        }
+        olo_kit::agent::record(
+            g,
+            olo_kit::agent::Node { role: "ListItem", name: Some(e.name.clone().into()), bounds: r, enabled: true, clickable: true, selected: Some(selected), ..Default::default() },
+        );
+        let icon = Bounds { origin: point(r.left() + px(m::CELL_INSET), r.center().y - px(items::MINI / 2.0)), size: size(px(items::MINI), px(items::MINI)) };
+        icons::paint(g, icon, items::icon_of(e));
+        if crate::backups::backed_up(&e.path) {
+            items::paint_mark(g, icon, e.label(), &p);
+        }
+        let x = icon.right() + px(m::MARK_GAP);
+        let right = r.right() - px(if e.is_dir { DISCLOSURE_ROOM } else { m::CELL_INSET });
+        if !(active && self.editing.as_ref().is_some_and(|r| r.path == e.path)) {
+            style::label_fit(g, x, r.center().y, Align::Left, e.label().to_owned(), style::PLAIN_SIZE, items::name_font(e.is_link), text_color, (right - x).max(px(0.0)));
+        }
+        // Something dragged over it that would go into it.
+        if self.dropping == Some((k, Some(i))) {
+            style::frame_rect(g, r, style::c(p.keyboard_navigation));
+        }
+        if e.is_dir {
+            let tip = point(r.right() - px(m::CELL_INSET), r.center().y);
+            let color = if selected { text_color } else { style::disabled_text(&p) };
+            let mut path = PathBuilder::fill();
+            path.move_to(point(tip.x - px(DISCLOSURE.0), tip.y - px(DISCLOSURE.1 / 2.0)));
+            path.line_to(tip);
+            path.line_to(point(tip.x - px(DISCLOSURE.0), tip.y + px(DISCLOSURE.1 / 2.0)));
+            path.close();
+            if let Ok(path) = path.build() {
+                g.paint_path(path, color);
+            }
+        }
+    }
+
+    /// What row `i` of column `k` shows, as a number that changes when
+    /// it does: its item's look (`row_key`), whether it's selected (and
+    /// in the active column), dropped on or being renamed.
+    fn column_row_key(&self, k: usize, i: usize) -> u64 {
+        if k > self.panes.len() {
+            return 0;
+        }
+        let (_, entries, list) = self.column(k);
+        let Some(e) = entries.get(i) else { return 0 };
+        let (selected, active) = (list.selected.contains(&i), self.active == k);
+        let editing = active && self.editing.as_ref().is_some_and(|r| r.path == e.path);
+        style::key((crate::folder::row_key(e), selected, selected && active, self.dropping == Some((k, Some(i))), editing))
     }
 
     fn column_press(&mut self, k: usize, e: &MouseDownEvent, cx: &mut Cx<Self>) {
@@ -241,9 +333,8 @@ impl FolderWin {
             self.end_rename(true, cx);
         }
         self.focus.focus(cx);
-        let view = self.col_scroll(k).bounds();
-        self.place_column(k, cx.listener_bounds(), view);
-        let Some(g) = self.cols.geo.borrow().get(k).copied() else { return };
+        self.col_scroll(k);
+        let Some(g) = self.col_geo(k) else { return };
         let row = g.row_at(e.position);
         if e.button == MouseButton::Left && e.click_count >= 2 {
             if let Some(entry) = row.and_then(|r| self.column(k).1.get(r)).filter(|e| !e.is_dir).cloned() {
@@ -279,9 +370,10 @@ impl FolderWin {
                 let (_, entries, list) = self.column(k);
                 let paths = list.selected.iter().filter_map(|&i| entries.get(i)).map(|e| e.path.clone()).collect();
                 let Some(entry) = entries.get(row) else { return };
-                let top = self.cols.geo.borrow().get(k).map_or(at.y, |g| g.top);
+                let g = self.col_geo(k);
+                let top = g.map_or(at.y, |g| g.top);
                 let icon_top = top + px(row as f32 * m::LIST_ROW + (m::LIST_ROW - items::MINI) / 2.0);
-                let left = self.cols.geo.borrow().get(k).map_or(at.x, |g| g.view.left()) + px(m::CELL_INSET);
+                let left = g.map_or(at.x, |g| g.origin.x) + px(m::CELL_INSET);
                 let d = items::Drag {
                     paths,
                     icon: items::icon_of(entry),
@@ -308,7 +400,7 @@ impl FolderWin {
         if let Some(b) = &mut self.cols.band {
             b.3 = now;
         }
-        let Some(g) = self.cols.geo.borrow().get(k).copied() else { return };
+        let Some(g) = self.col_geo(k) else { return };
         let here = now.y - g.top;
         let (y0, y1) = (f32::from(from.min(here)), f32::from(from.max(here)));
         let rows = self.column(k).1.len();
@@ -340,11 +432,6 @@ impl FolderWin {
             let h = self.col_scroll(k);
             let (o, max) = (h.offset(), f32::from(h.max_offset().height));
             let to = (f32::from(o.y) - step).clamp(-max, 0.0);
-            // (Its rows move with it, before it's drawn again.)
-            if let Some(g) = self.cols.geo.borrow_mut().get_mut(k) {
-                g.top += px(to) - o.y;
-                g.origin.y += px(to) - o.y;
-            }
             h.set_offset(cx, point(o.x, px(to)));
         }
     }
@@ -401,10 +488,9 @@ impl FolderWin {
             self.rest_on(None, cx);
             return None;
         }
-        let col = self.cols.geo.borrow().iter().take(n).position(|g| g.view.contains(&at));
+        let col = (0..n).find_map(|k| self.col_geo(k).filter(|g| g.view.contains(&at)).map(|g| (k, g)));
         let (accept, on, k) = match col {
-            Some(k) => {
-                let g = self.cols.geo.borrow()[k];
+            Some((k, g)) => {
                 let r = (f32::from(at.y - g.top) / m::LIST_ROW).floor();
                 let (dir, entries, list) = self.column(k);
                 let over = (r >= 0.0).then_some(r as usize).and_then(|r| entries.get(r).map(|e| (r, e, list.selected.contains(&r))));
@@ -471,6 +557,7 @@ impl FolderWin {
         }
         // Past the last column: outlined while what's dragged there would
         // go into its folder.
+        let outlined = self.dropping == Some((n, None));
         let past = cx
             .canvas(move |f: &FolderWin, g, b| {
                 if f.dropping == Some((1 + f.panes.len(), None)) {
@@ -478,10 +565,14 @@ impl FolderWin {
                     items::outline(g, clip, &theme::palette());
                 }
             })
+            .paint_key(outlined as u64)
             .absolute()
             .inset_0();
         let preview_el = preview.map(|e| {
             let entry = e.clone();
+            // (Drawn again when the file changes, or a picture's thumbnail
+            // is made.)
+            let key = style::key((crate::folder::row_key(&e), crate::thumbs::made()));
             div()
                 .w(px(PREVIEW_WIDTH))
                 .h_full()
@@ -494,7 +585,7 @@ impl FolderWin {
                         }
                     }),
                 )
-                .child(olo_kit::canvas(move |g, b| draw_preview(g, &e, b)).size_full())
+                .child(olo_kit::canvas(move |g, b| draw_preview(g, &e, b)).paint_key(key).size_full())
         });
         let rest = div().flex_1().h_full().relative().children(preview_el).child(past);
         div()
@@ -523,89 +614,32 @@ impl FolderWin {
             }
             _ => None,
         };
-        let content = cx
-            .canvas(move |f: &FolderWin, g, b| {
-                if k > f.panes.len() {
-                    return;
-                }
-                let p = theme::palette();
-                let clip = g.visible_bounds().intersect(&b);
-                let top = b.top() + px(m::TIGHT);
-                let (_, entries, list) = f.column(k);
-                let rows = entries.len();
-                let first = (f32::from(clip.top() - top) / m::LIST_ROW).floor().max(0.0) as usize;
-                let last = ((f32::from(clip.bottom() - top) / m::LIST_ROW).ceil().max(0.0) as usize).min(rows);
-                let active = f.active == k;
-                f.place_column(k, b, clip);
-                // Selection: solid in the active column, a quieter tint
-                // along the path in the others (as in Finder).
-                let sel_bg = if active { style::c(p.list_selected_background) } else { style::c(mix(p.list_background, p.list_selected_background, 0.5)) };
-                // Something dragged over this column: onto a folder in it,
-                // or into it.
-                let (took, drop_on) = match f.dropping {
-                    Some((col, on)) if col == k => (true, on),
-                    _ => (false, None),
-                };
-                let editing = f.editing.as_ref().filter(|_| active).and_then(|r| entries.iter().position(|e| e.path == r.path));
-                g.with_content_mask(Some(olo_kit::ContentMask { bounds: clip }), |g| {
-                    for i in first..last.max(first) {
-                        let Some(e) = entries.get(i) else { continue };
-                        let selected = list.selected.contains(&i);
-                        let r = Bounds { origin: point(b.left(), top + px(i as f32 * m::LIST_ROW)), size: size(b.size.width, px(m::LIST_ROW)) };
-                        let text_color = if selected { style::c(p.list_selected_item_text) } else { style::c(p.list_item_text) };
-                        if selected {
-                            style::fill_rect(g, r, sel_bg);
-                        }
-                        olo_kit::agent::record(
-                            g,
-                            olo_kit::agent::Node {
-                                role: "ListItem",
-                                name: Some(e.name.clone().into()),
-                                bounds: r.intersect(&clip),
-                                enabled: true,
-                                clickable: true,
-                                selected: Some(selected),
-                                ..Default::default()
-                            },
-                        );
-                        let icon = Bounds { origin: point(r.left() + px(m::CELL_INSET), r.center().y - px(items::MINI / 2.0)), size: size(px(items::MINI), px(items::MINI)) };
-                        icons::paint(g, icon, items::icon_of(e));
-                        if crate::backups::backed_up(&e.path) {
-                            items::paint_mark(g, icon, e.label(), &p);
-                        }
-                        let x = icon.right() + px(m::MARK_GAP);
-                        let right = r.right() - px(if e.is_dir { DISCLOSURE_ROOM } else { m::CELL_INSET });
-                        if editing != Some(i) {
-                            style::label_fit(g, x, r.center().y, Align::Left, e.label().to_owned(), style::PLAIN_SIZE, items::name_font(e.is_link), text_color, (right - x).max(px(0.0)));
-                        }
-                        if took && drop_on == Some(i) {
-                            style::frame_rect(g, r, style::c(p.keyboard_navigation));
-                        }
-                        if e.is_dir {
-                            let tip = point(r.right() - px(m::CELL_INSET), r.center().y);
-                            let color = if selected { text_color } else { style::disabled_text(&p) };
-                            let mut path = PathBuilder::fill();
-                            path.move_to(point(tip.x - px(DISCLOSURE.0), tip.y - px(DISCLOSURE.1 / 2.0)));
-                            path.line_to(tip);
-                            path.line_to(point(tip.x - px(DISCLOSURE.0), tip.y + px(DISCLOSURE.1 / 2.0)));
-                            path.close();
-                            if let Ok(path) = path.build() {
-                                g.paint_path(path, color);
-                            }
-                        }
-                    }
-                    if took && drop_on.is_none() {
-                        items::outline(g, clip, &p);
-                    }
-                    // A band, drawn from below the items.
-                    if let Some((_, from, _, now)) = f.cols.band.as_ref().filter(|(c, ..)| *c == k) {
-                        let s = point(f.cols.press.as_ref().map_or(now.x, |p| p.at.x), *from + top);
-                        let r = Bounds::from_corners(point(s.x.min(now.x), s.y.min(now.y)), point(s.x.max(now.x), s.y.max(now.y)));
-                        style::selection_band(g, r.intersect(&clip), &p);
-                    }
-                });
-            })
-            .size_full();
+        // Its items a row each, each drawn again only when what it shows
+        // changes, and made as it comes into view: a step of the selection
+        // draws the row it left and the one it's on, not every column.
+        let rows_el = olo_kit::uniform_rows(rows, px(m::LIST_ROW), move |near| {
+            near.map(|i| olo_kit::view_canvas::<FolderWin>(move |f, g, r| f.paint_column_row(g, r, k, i)).key_by::<FolderWin>(move |f| f.column_row_key(k, i)).id(i).w_full()).collect()
+        })
+        .row_key_by::<FolderWin>(move |f, i| f.column_row_key(k, i))
+        .absolute()
+        .left(px(0.0))
+        .top(px(m::TIGHT));
+        // Over them: the outline while what's dragged over would go into
+        // its folder, and a band (drawn from below the items).
+        let bits = |r: Option<Bounds<Pixels>>| r.map(|r| [r.origin.x, r.origin.y, r.size.width, r.size.height].map(|v| f32::from(v).to_bits()));
+        let over = olo_kit::view_canvas::<FolderWin>(move |f, g, b| {
+            let p = theme::palette();
+            let at = |r: Bounds<Pixels>| Bounds { origin: r.origin + b.origin, size: r.size };
+            if let Some(r) = f.column_outline(k) {
+                items::outline(g, at(r), &p);
+            }
+            if let Some(r) = f.column_band_rect(k) {
+                style::selection_band(g, at(r), &p);
+            }
+        })
+        .key_by::<FolderWin>(move |f| style::key((bits(f.column_outline(k)), bits(f.column_band_rect(k)))))
+        .absolute()
+        .inset_0();
         let sep = olo_kit::canvas(|g, b| {
             let p = theme::palette();
             // Etched on the right edge: the light line right against
@@ -637,7 +671,15 @@ impl FolderWin {
             .h_full()
             .relative()
             .child(sep)
-            .child(div().absolute().top_0().bottom_0().left_0().w(px(COLUMN_WIDTH - 2.0)).child(ScrollView::new(&handle).border(false).auto_hide(true).child(inner.child(content).children(field_el))))
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .bottom_0()
+                    .left_0()
+                    .w(px(COLUMN_WIDTH - 2.0))
+                    .child(ScrollView::new(&handle).border(false).auto_hide(true).child(inner.child(rows_el).child(over).children(field_el))),
+            )
             .into_any_element()
     }
 }

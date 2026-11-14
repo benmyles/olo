@@ -373,6 +373,9 @@ pub(crate) struct RowsSpec {
     pub(crate) count: usize,
     pub(crate) row_height: Pixels,
     pub(crate) make: Rc<dyn Fn(std::ops::Range<usize>) -> Vec<Element>>,
+    /// What each row is, from the view ([`Element::row_key_by`]): None
+    /// for a view of another type (the row is made again).
+    pub(crate) key: Option<Rc<dyn Fn(&dyn std::any::Any, usize) -> Option<u64>>>,
 }
 
 /// `count` rows, each `row_height` tall, one under the other: only
@@ -383,11 +386,12 @@ pub(crate) struct RowsSpec {
 /// more, a run at a time with some to spare, without the view that
 /// holds it saying what it shows again; the stage scrolls the ones
 /// there with nothing drawn. A list of a hundred thousand rows costs
-/// what a screenful does.
+/// what a screenful does. With [`Element::row_key_by`], what's said
+/// again keeps the rows that haven't changed without making them.
 pub fn uniform_rows(count: usize, row_height: Pixels, make: impl Fn(std::ops::Range<usize>) -> Vec<Element> + 'static) -> Element {
     use crate::Styled as _;
     let mut element = div().relative().w_full().h(row_height * count as f32).flex_shrink_0();
-    element.rows = Some(RowsSpec { count, row_height, make: Rc::new(make) });
+    element.rows = Some(RowsSpec { count, row_height, make: Rc::new(make), key: None });
     element
 }
 
@@ -410,6 +414,23 @@ impl Element {
     pub fn key_by<V: 'static>(mut self, key: impl Fn(&V) -> u64 + 'static) -> Self {
         if let Kind::Canvas(canvas) = &mut self.kind {
             canvas.key_by = Some(Rc::new(move |view| view.downcast_ref::<V>().map_or(0, &key)));
+        }
+        self
+    }
+
+    /// For [`uniform_rows`]: what row `row` is, worked out from the view
+    /// (of type `V`), as a number that changes when it does. When the
+    /// view says what it shows again, a row near what shows whose key is
+    /// the same as when it was made is kept as it is: not made, compared
+    /// or drawn (a step of the selection in a list of a screenful makes
+    /// two rows, not the fifty kept round what shows). So the key covers
+    /// everything the row's element is made from, what its closures
+    /// capture included; what they read from the view when they draw
+    /// needs only to be in its drawing's key. (Everything is made again
+    /// when the look changes: the theme, the scale.)
+    pub fn row_key_by<V: 'static>(mut self, key: impl Fn(&V, usize) -> u64 + 'static) -> Self {
+        if let Some(rows) = &mut self.rows {
+            rows.key = Some(Rc::new(move |view, row| view.downcast_ref::<V>().map(|v| key(v, row))));
         }
         self
     }

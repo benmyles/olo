@@ -77,8 +77,11 @@ pub struct Desktop {
     /// where they were then (to put them where they are dropped).
     dragging: Option<(Point<Pixels>, Dragged)>,
     press: Option<Press>,
-    /// The items as last laid out.
+    /// The items as last laid out, and what each was laid out from (a
+    /// name's lines are measured: laid out again only when its cell,
+    /// name, selection or the scale changes).
     layouts: RefCell<Vec<ItemLayout>>,
+    laid: Vec<u64>,
     spring: Spring,
     /// The item what's dragged over the desktop would be dropped on
     /// (a folder, the Trash), if it would be taken there.
@@ -131,10 +134,14 @@ pub type Placed = Vec<(String, Option<[f32; 2]>, Option<[f32; 2]>)>;
 /// What a desktop icon's place is kept under: a ~/Desktop item's name,
 /// else its path (Home, volumes), or "Trash".
 fn place_key(path: &Path) -> String {
-    if path == fs::trash_files() {
+    // (Both found once: this is asked for each icon whenever the desktop
+    // says what it shows, as a band is drawn at every move.)
+    static DIRS: std::sync::OnceLock<(PathBuf, PathBuf)> = std::sync::OnceLock::new();
+    let (trash, desktop) = DIRS.get_or_init(|| (fs::trash_files(), desktop_dir()));
+    if path == trash {
         return "Trash".into();
     }
-    match path.strip_prefix(desktop_dir()) {
+    match path.strip_prefix(desktop) {
         Ok(name) if !name.as_os_str().is_empty() => name.to_string_lossy().into_owned(),
         _ => path.to_string_lossy().into_owned(),
     }
@@ -182,6 +189,7 @@ impl Desktop {
             dragging: None,
             press: None,
             layouts: RefCell::default(),
+            laid: Vec::new(),
             spring: Spring::default(),
             drop_on: None,
             focus: FocusHandle::new(),
@@ -274,6 +282,18 @@ impl Desktop {
         if i == self.items.len() { Some(&self.trash) } else { self.items.get(i) }
     }
 
+    /// Item `i`, as last laid out (its label left out while its name is
+    /// edited).
+    fn paint_icon(&self, g: &mut olo_kit::Painter, i: usize, label: bool) {
+        let layouts = self.layouts.borrow();
+        let (Some(it), Some(l)) = (self.item(i), layouts.get(i)) else { return };
+        let p = theme::palette();
+        items::paint_item(g, l, it.icon, self.selected.contains(&i) || self.drop_on == Some(i), true, label, &p);
+        if crate::backups::backed_up(&it.entry.path) {
+            items::paint_mark(g, l.icon, &l.name, &p);
+        }
+    }
+
     pub fn select_paths(&mut self, paths: &[PathBuf]) {
         self.selected = (0..=self.items.len()).filter(|&i| self.item(i).is_some_and(|it| paths.contains(&it.entry.path))).collect();
     }
@@ -319,6 +339,9 @@ impl Desktop {
         let n = self.items.len() + 1;
         let cell = size(px(ICON_CELL.0), px(ICON_CELL.1));
         let placed = |i: usize| {
+            if self.places.icons.is_empty() {
+                return None;
+            }
             let p = self.places.icons.get(&place_key(&self.item(i)?.entry.path))?;
             let x = (screen.right() - px(p[0])).clamp(screen.left(), (screen.right() - cell.width).max(screen.left()));
             let y = (screen.top() + px(p[1])).clamp(screen.top(), (screen.bottom() - cell.height).max(screen.top()));
@@ -846,36 +869,65 @@ impl View for Desktop {
         self.screen = screen;
         let cells = self.cells(screen);
         let n = self.items.len() + 1;
-        let layouts: Vec<ItemLayout> = (0..n)
-            .map(|i| {
-                let it = self.item(i).expect("an item");
-                items::layout_item(cells[i], &it.label, Look::Icons, self.selected.contains(&i), it.entry.is_link)
-            })
-            .collect();
+        let bits = |r: Bounds<Pixels>| [r.origin.x, r.origin.y, r.size.width, r.size.height].map(|v| f32::from(v).to_bits());
+        let scale = olo_kit::scale_factor().to_bits();
+        let (laid, layouts): (Vec<u64>, Vec<ItemLayout>) = {
+            let old = self.layouts.borrow();
+            (0..n)
+                .map(|i| {
+                    let it = self.item(i).expect("an item");
+                    let selected = self.selected.contains(&i);
+                    let key = style::key((bits(cells[i]), &it.label, selected, it.entry.is_link, scale));
+                    let l = match (self.laid.get(i), old.get(i)) {
+                        (Some(k), Some(l)) if *k == key => l.clone(),
+                        _ => items::layout_item(cells[i], &it.label, Look::Icons, selected, it.entry.is_link),
+                    };
+                    (key, l)
+                })
+                .unzip()
+        };
+        self.laid = laid;
         let editing = self.editing.as_ref().and_then(|r| self.items.iter().position(|it| it.entry.path == r.path));
         if self.editing.is_some() && editing.is_none() {
             self.editing = None;
         }
         let field = editing.and_then(|i| Some(self.editing.as_ref()?.element(cx, &layouts[i], point(px(0.0), px(0.0)))));
         *self.layouts.borrow_mut() = layouts;
-        let content = cx
-            .canvas(move |d: &Desktop, g, b| {
-                let p = theme::palette();
-                let layouts = d.layouts.borrow();
-                for (i, l) in layouts.iter().enumerate() {
-                    let Some(it) = d.item(i) else { continue };
-                    let sel = d.selected.contains(&i);
-                    items::paint_item(g, l, it.icon, sel || d.drop_on == Some(i), true, editing != Some(i), &p);
-                    if crate::backups::backed_up(&it.entry.path) {
-                        items::paint_mark(g, l.icon, &l.name, &p);
-                    }
-                }
-                if let Some((start, _, now)) = d.band.as_ref().filter(|_| d.press.as_ref().is_some_and(|p| p.item.is_none())) {
-                    let r = Bounds::from_corners(point(start.x.min(now.x), start.y.min(now.y)), point(start.x.max(now.x), start.y.max(now.y)));
-                    style::selection_band(g, r.intersect(&b), &p);
-                }
+        // Each item a drawing of its own, drawn again only when what it
+        // shows changes (a step of the selection draws the two it's
+        // between, a band's sweep only those it takes in or lets go).
+        let icons: Vec<Element> = (0..n)
+            .map(|i| {
+                let it = self.item(i).expect("an item");
+                let selected = self.selected.contains(&i);
+                let lit = selected || self.drop_on == Some(i);
+                let key = style::key((it.entry.look(), &it.label, it.icon, selected, lit, editing == Some(i), crate::backups::backed_up(&it.entry.path)));
+                let c = cells[i];
+                cx.canvas(move |d: &Desktop, g, _| d.paint_icon(g, i, editing != Some(i)))
+                    .paint_key(key)
+                    // (Its drawing kept as others come and go before it.)
+                    .id(("icon", it.entry.look()))
+                    .absolute()
+                    .left(c.left())
+                    .top(c.top())
+                    .w(c.size.width)
+                    .h(c.size.height)
             })
-            .size_full();
+            .collect();
+        // Over them: the band.
+        let band = self
+            .band
+            .as_ref()
+            .filter(|_| self.press.as_ref().is_some_and(|p| p.item.is_none()))
+            .map(|(start, _, now)| Bounds::from_corners(point(start.x.min(now.x), start.y.min(now.y)), point(start.x.max(now.x), start.y.max(now.y))).intersect(&screen));
+        let over = olo_kit::canvas(move |g, _| {
+            if let Some(r) = band {
+                style::selection_band(g, r, &theme::palette());
+            }
+        })
+        .paint_key(style::key(band.map(bits)))
+        .absolute()
+        .inset_0();
         div()
             .size_full()
             .relative()
@@ -885,7 +937,8 @@ impl View for Desktop {
             .on_mouse_down(MouseButton::Right, cx.listener(|d: &mut Desktop, e: &MouseDownEvent, cx| d.press(e, cx)))
             .on_drag_move(cx.listener(|d: &mut Desktop, e: &MouseMoveEvent, cx| d.moved(e, cx)))
             .on_window_mouse_up(cx.listener(|d: &mut Desktop, e: &MouseUpEvent, cx| d.released(e, cx)))
-            .child(content)
+            .children(icons)
+            .child(over)
             .children(field)
             .into_any_element()
     }

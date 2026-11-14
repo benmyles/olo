@@ -431,7 +431,9 @@ How Olo keeps it (do the same):
 * **Work done once is kept**, keyed by what it was made from:
   Terminal's rows (`RowCache`: each row's cells compared with those it
   was drawn from, only changed rows laid out again), a drawing's
-  display list (`paint_key`, `key_by`), a list's rows (`row_key`),
+  display list (`paint_key`, `key_by`), a list's rows (`row_key`, and
+  `uniform_rows(..).row_key_by(..)` for rows of your own: a row whose
+  key is the same isn't made again when the view says what it shows),
   window tab looks, the wallpaper's strips. Compare the source (cells, a version counter)
   rather than hashing what you'd draw: finding out what changed must
   cost far less than drawing it.
@@ -2442,7 +2444,11 @@ it.
   a number that changes when what a row shows does (its line's id and
   what a search marks in it): such a row whose key and look are as last
   frame's is kept, moved if scrolled, rather than painted again
-  (Log Viewer's screen of 22,000 glyphs). Give it
+  (Log Viewer's screen of 22,000 glyphs), and when the view says what
+  it shows again it isn't even made (`Element::row_key_by`: a step of
+  the selection makes the two rows it moves between, not the fifty
+  kept round what shows), so the key covers all the row shows, what
+  the cell painter captures included. Give it
   for any list of many rows, and for any list whose view says what it
   shows often (a selection moved, a folder changing, results coming
   in): without it every row near what shows is painted again each
@@ -13859,9 +13865,25 @@ deferred so the Tracker can update the window back):
   date, kind, icon and backup mark), and an entry's texts in a list
   (`Entry::shown`: name, size, date, kind) are made the first time it's
   drawn and kept with it (an item changed on disk comes as a new
-  entry).
+  entry), with what it is hashed once (`Entry::look`). The icon views
+  draw a row of the grid at a time and the column view a row of a
+  column (`uniform_rows`, rows and drawings keyed by what they show,
+  `FolderWin::icon_row_key`, `column_row_key`): a step of the
+  selection makes and draws the row it left and the one it's on, a
+  scroll makes only the rows it brings near. The band and a drop's
+  outline are a drawing over the rows, in the content's own
+  coordinates. Where the content is in the window comes from where it's
+  scrolled to (`icon_geo`, `col_geo`: the scroll handles' place and
+  offset), never from where it was last drawn: a drawing is laid out
+  where its content would be unscrolled, and the stage moves it.
+  The column preview is keyed by its file and the thumbnails made
+  (`thumbs::made`).
 - `Desktop` (desktop.rs): a background layer anchored to every edge;
   icons placed by hand kept in `desktop.json`, the rest on the grid.
+  Each icon is a drawing of its own keyed by what it shows, laid out
+  again only when its cell, name, selection or the scale changes
+  (`laid`); the band is a drawing over them. So a band's sweep draws
+  the band and the icons it takes in or lets go.
 - Drops come through the kit's (`View::takes_drops`, `drop_over`,
   `dropped`): each part says whether it takes what's dragged
   over it (`items::take_drop`, BeOS's rules: move within a

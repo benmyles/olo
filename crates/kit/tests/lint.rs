@@ -3,7 +3,8 @@
 //! scale (a box with an action in its top line too), and controls put
 //! over each other are found; text the interface cuts is read whole; a
 //! view's one timer (`Due`) wakes it once, at its time; Terminal's tab
-//! strip, along the top and down the side, is clean.
+//! strip, along the top and down the side, is clean; rows with keys are
+//! kept as they are when the view says what it shows again.
 
 use olo_kit::{
     Child, Cx, Element, ParentElement as _, Styled as _, View, WindowOptions, div,
@@ -374,4 +375,70 @@ fn ui_lint_moves_reach_the_window_only_where_they_matter() {
     assert_eq!(to(165.0, 70.0, None), (19, false));
     assert_eq!(drawn(), 3);
     window.close();
+}
+
+/// A hundred rows of a scroller, each a drawing keyed by what it shows;
+/// the rows too with `keyed` (`row_key_by`). Which rows are made and
+/// which drawn, as they are.
+struct Rows {
+    keys: Vec<u64>,
+    keyed: bool,
+    made: std::rc::Rc<std::cell::RefCell<Vec<usize>>>,
+    drawn: std::rc::Rc<std::cell::RefCell<Vec<usize>>>,
+}
+
+impl View for Rows {
+    type Message = ();
+
+    fn body(&mut self, _: &mut Cx<Self>) -> Element {
+        use olo_kit::InteractiveElement as _;
+        let made = self.made.clone();
+        let mut rows = olo_kit::uniform_rows(self.keys.len(), px(20.0), move |near| {
+            near.map(|row| {
+                made.borrow_mut().push(row);
+                olo_kit::view_canvas::<Rows>(move |v, _, _| v.drawn.borrow_mut().push(row)).key_by::<Rows>(move |v| v.keys[row]).id(row).w_full()
+            })
+            .collect()
+        });
+        if self.keyed {
+            rows = rows.row_key_by::<Rows>(|v, row| v.keys[row]);
+        }
+        div().size_full().overflow_y_scroll().child(rows)
+    }
+}
+
+/// Rows keyed by what they are: when the view says what it shows again,
+/// those whose key is the same are kept, not made again (nor drawn), and
+/// a row whose key changed is made and drawn alone. Without keys every
+/// row near what shows is made again (and only the changed one drawn).
+#[test]
+fn ui_lint_keyed_rows_are_kept() {
+    let _lint = Lint::new();
+    for keyed in [true, false] {
+        let window = olo_kit::open_window(WindowOptions::new("Rows", 200.0, 100.0), move |_| Rows { keys: (0..100).collect(), keyed, made: Default::default(), drawn: Default::default() });
+        ask(&window, |_, _| ());
+        ask(&window, |_, _| ());
+        let taken = |v: &mut Rows| (std::mem::take(&mut *v.made.borrow_mut()), std::mem::take(&mut *v.drawn.borrow_mut()));
+        let (made, drawn) = ask(&window, move |v, _| taken(v));
+        assert!(made.len() >= 5 && drawn.len() >= 5, "the rows that show, at first: made {made:?}, drawn {drawn:?}");
+        let near = made.len();
+        // Row 3 changes.
+        ask(&window, |v, cx| {
+            v.keys[3] = 1000;
+            cx.invalidate();
+        });
+        let (made, drawn) = ask(&window, move |v, _| taken(v));
+        assert_eq!(drawn, [3], "only the changed row is drawn again (keyed: {keyed})");
+        if keyed {
+            assert_eq!(made, [3], "only the changed row is made again");
+        } else {
+            assert_eq!(made.len(), near, "every row near what shows is made again");
+        }
+        // Nothing changes: with keys nothing is made.
+        ask(&window, |_, cx| cx.invalidate());
+        let (made, drawn) = ask(&window, move |v, _| taken(v));
+        assert!(drawn.is_empty(), "{drawn:?}");
+        assert_eq!(made.len(), if keyed { 0 } else { near });
+        window.close();
+    }
 }

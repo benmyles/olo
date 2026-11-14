@@ -151,8 +151,9 @@ pub struct FolderWin {
     told: Option<WinInfo>,
 }
 
-/// The icon view as last laid out and drawn: where its content is (in
-/// the window: it scrolls), what of it shows, and its grid.
+/// The icon view's grid as last laid out; with where its content is (in
+/// the window: it scrolls) and what of it shows when asked for
+/// (`FolderWin::icon_geo`).
 #[derive(Default, Clone, Copy)]
 struct IconGeo {
     origin: Point<Pixels>,
@@ -766,15 +767,84 @@ impl FolderWin {
         if self.view == ViewMode::Icons { Look::Icons } else { Look::Mini }
     }
 
+    /// The icon view's grid, with where its content is in the window now
+    /// and what shows of it: from where it's scrolled to, not where it
+    /// was last drawn (its rows are drawn only when they change).
+    fn icon_geo(&self) -> IconGeo {
+        let mut g = *self.geo.borrow();
+        let view = self.scroll.bounds();
+        g.origin = view.origin + self.scroll.offset();
+        g.view = view;
+        g
+    }
+
+    /// What shows of the icon view's content, in the content.
+    fn icon_shown(&self) -> Bounds<Pixels> {
+        let o = self.scroll.offset();
+        Bounds { origin: point(-o.x, -o.y), size: self.scroll.bounds().size }
+    }
+
+    /// The outline round what shows while what's dragged over it would
+    /// go into the folder, in the content.
+    fn icon_outline(&self) -> Option<Bounds<Pixels>> {
+        matches!(self.dropping, Some((_, None))).then(|| self.icon_shown())
+    }
+
+    /// The band being drawn, in the content, as far as it shows.
+    fn icon_band(&self) -> Option<Bounds<Pixels>> {
+        let (start, _) = self.band.as_ref().filter(|_| self.press.as_ref().is_some_and(|p| p.item.is_none() && p.button == MouseButton::Left))?;
+        let o = self.icon_geo().origin;
+        let now = point(self.band_at.x - o.x, self.band_at.y - o.y);
+        let r = Bounds::from_corners(point(start.x.min(now.x), start.y.min(now.y)), point(start.x.max(now.x), start.y.max(now.y)));
+        Some(r.intersect(&self.icon_shown()))
+    }
+
+    /// Row `row` of the icon view's grid (`cols` items of `look` in
+    /// cells of `cell`, `inset` from the left), in `b`.
+    #[allow(clippy::too_many_arguments)]
+    fn paint_icon_row(&self, g: &mut Painter, b: Bounds<Pixels>, row: usize, look: Look, cols: usize, cell: (f32, f32), inset: f32) {
+        let p = theme::palette();
+        let drop_on = self.dropping.and_then(|(_, on)| on);
+        for i in row * cols..((row + 1) * cols).min(self.entries.len()) {
+            let e = &self.entries[i];
+            let c = Bounds { origin: point(b.left() + px(inset + (i % cols) as f32 * cell.0), b.top()), size: size(px(cell.0), px(cell.1)) };
+            let selected = self.list.selected.contains(&i);
+            let l = items::layout_item(c, e.label(), look, selected, e.is_link);
+            let editing = self.editing.as_ref().is_some_and(|r| r.path == e.path);
+            items::paint_item(g, &l, items::icon_of(e), selected || drop_on == Some(i), false, !editing, &p);
+            if let Some(done) = e.progress() {
+                items::paint_progress(g, l.icon, done, &p);
+            }
+            if crate::backups::backed_up(&e.path) {
+                items::paint_mark(g, l.icon, &l.name, &p);
+            }
+        }
+    }
+
+    /// What row `row` of the icon view shows, as a number that changes
+    /// when it does: each of its items' look (`row_key`), whether it's
+    /// selected, dropped on or being renamed.
+    fn icon_row_key(&self, row: usize, look: Look, cols: usize) -> u64 {
+        use std::hash::{Hash as _, Hasher as _};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (look == Look::Icons, cols).hash(&mut h);
+        let drop_on = self.dropping.and_then(|(_, on)| on);
+        for i in row * cols..((row + 1) * cols).min(self.entries.len()) {
+            let e = &self.entries[i];
+            (row_key(e), self.list.selected.contains(&i), drop_on == Some(i), self.editing.as_ref().is_some_and(|r| r.path == e.path)).hash(&mut h);
+        }
+        h.finish()
+    }
+
     /// Item `i` of the icon view, laid out where it is in the window.
     fn icon_layout(&self, i: usize) -> Option<items::ItemLayout> {
         let e = self.entries.get(i)?;
-        Some(items::layout_item(self.geo.borrow().cell_at(i), e.label(), self.icon_look(), self.list.selected.contains(&i), e.is_link))
+        Some(items::layout_item(self.icon_geo().cell_at(i), e.label(), self.icon_look(), self.list.selected.contains(&i), e.is_link))
     }
 
     /// The item of the icon view at `p` (on its icon or its label).
     fn icon_hit(&self, p: Point<Pixels>) -> Option<usize> {
-        let i = self.geo.borrow().index_at(p, self.entries.len())?;
+        let i = self.icon_geo().index_at(p, self.entries.len())?;
         self.icon_layout(i).filter(|l| l.hit().contains(&p)).map(|_| i)
     }
 
@@ -785,8 +855,6 @@ impl FolderWin {
             self.end_rename(true, cx);
         }
         self.focus.focus(cx);
-        // (Where the content is now: it scrolls.)
-        self.geo.borrow_mut().origin = cx.listener_bounds().origin;
         let pos = e.position;
         let hit = self.icon_hit(pos);
         let on_label = hit.and_then(|i| self.icon_layout(i)).is_some_and(|l| l.highlight().contains(&pos));
@@ -816,7 +884,7 @@ impl FolderWin {
                 // A band: with ⇧ adding to what's selected, with ⌘ flipping
                 // what it covers.
                 if e.button == MouseButton::Left {
-                    let origin = self.geo.borrow().origin;
+                    let origin = self.icon_geo().origin;
                     self.band = Some((point(pos.x - origin.x, pos.y - origin.y), self.list.band(m)));
                     self.band_at = pos;
                 }
@@ -875,7 +943,7 @@ impl FolderWin {
         let Some((start, base)) = self.band.clone() else { return };
         self.band_at = now;
         let look = self.icon_look();
-        let g = *self.geo.borrow();
+        let g = self.icon_geo();
         let here = point(now.x - g.origin.x, now.y - g.origin.y);
         let r = Bounds::from_corners(point(start.x.min(here.x), start.y.min(here.y)), point(start.x.max(here.x), start.y.max(here.y)));
         let r = Bounds { origin: point(r.origin.x + g.origin.x, r.origin.y + g.origin.y), size: r.size };
@@ -904,7 +972,6 @@ impl FolderWin {
             let o = self.scroll.offset();
             let max = f32::from(self.scroll.max_offset().height);
             let to = (f32::from(o.y) - step).clamp(-max, 0.0);
-            self.geo.borrow_mut().origin.y += px(to) - o.y;
             self.scroll.set_offset(cx, point(o.x, px(to)));
         }
     }
@@ -987,50 +1054,37 @@ impl FolderWin {
             Some(r.element(cx, &l, Point::default()))
         });
         let ground = theme::palette().document_background;
-        let content = cx
-            .canvas(move |f: &FolderWin, g, b| {
-                let p = theme::palette();
-                let clip = g.visible_bounds().intersect(&b);
-                {
-                    let mut geo = f.geo.borrow_mut();
-                    geo.origin = b.origin;
-                    geo.view = clip;
-                }
-                // What shows, and only that.
-                let first = ((f32::from(clip.top() - b.top()) - inset) / cell.1).floor().max(0.0) as usize * cols;
-                let last = (((f32::from(clip.bottom() - b.top()) - inset) / cell.1).ceil().max(0.0) as usize + 1) * cols;
-                let cell_at =
-                    |i: usize| Bounds { origin: point(b.left() + px(inset + (i % cols) as f32 * cell.0), b.top() + px(inset + (i / cols) as f32 * cell.1)), size: size(px(cell.0), px(cell.1)) };
-                let editing = f.editing.as_ref().and_then(|r| f.entries.iter().position(|e| e.path == r.path));
-                let (took, drop_on) = match f.dropping {
-                    Some((_, on)) => (true, on),
-                    None => (false, None),
-                };
-                g.with_content_mask(Some(olo_kit::ContentMask { bounds: clip }), |g| {
-                    for i in first.min(f.entries.len())..last.min(f.entries.len()) {
-                        let e = &f.entries[i];
-                        let selected = f.list.selected.contains(&i);
-                        let l = items::layout_item(cell_at(i), e.label(), look, selected, e.is_link);
-                        items::paint_item(g, &l, items::icon_of(e), selected || drop_on == Some(i), false, editing != Some(i), &p);
-                        if let Some(done) = e.progress() {
-                            items::paint_progress(g, l.icon, done, &p);
-                        }
-                        if crate::backups::backed_up(&e.path) {
-                            items::paint_mark(g, l.icon, &l.name, &p);
-                        }
-                    }
-                    if took && drop_on.is_none() {
-                        items::outline(g, clip, &p);
-                    }
-                    if let Some((start, _)) = f.band.as_ref().filter(|_| f.press.as_ref().is_some_and(|p| p.item.is_none() && p.button == MouseButton::Left)) {
-                        let now = f.band_at;
-                        let s = point(start.x + b.left(), start.y + b.top());
-                        let r = Bounds::from_corners(point(s.x.min(now.x), s.y.min(now.y)), point(s.x.max(now.x), s.y.max(now.y)));
-                        style::selection_band(g, r.intersect(&clip), &p);
-                    }
-                });
+        // The items a row of the grid at a time, each row drawn again only
+        // when what it shows changes, and made as it comes into view: a
+        // step of the selection draws the row it left and the one it's
+        // on, a taller window only the rows it uncovers.
+        let grid = olo_kit::uniform_rows(rows, px(cell.1), move |near| {
+            near.map(|row| {
+                olo_kit::view_canvas::<FolderWin>(move |f, g, b| f.paint_icon_row(g, b, row, look, cols, cell, inset)).key_by::<FolderWin>(move |f| f.icon_row_key(row, look, cols)).id(row).w_full()
             })
-            .size_full();
+            .collect()
+        })
+        // (A row is made of `look` and `cols`, and what its key says.)
+        .row_key_by::<FolderWin>(move |f, row| f.icon_row_key(row, look, cols))
+        .absolute()
+        .left(px(0.0))
+        .top(px(inset));
+        // Over them: the band, and the outline round what shows while
+        // what's dragged over would go into the folder.
+        let bits = |r: Option<Bounds<Pixels>>| r.map(|r| [r.origin.x, r.origin.y, r.size.width, r.size.height].map(|v| f32::from(v).to_bits()));
+        let over = olo_kit::view_canvas::<FolderWin>(|f, g, b| {
+            let p = theme::palette();
+            let at = |r: Bounds<Pixels>| Bounds { origin: r.origin + b.origin, size: r.size };
+            if let Some(r) = f.icon_outline() {
+                items::outline(g, at(r), &p);
+            }
+            if let Some(r) = f.icon_band() {
+                style::selection_band(g, at(r), &p);
+            }
+        })
+        .key_by::<FolderWin>(move |f| style::key((bits(f.icon_outline()), bits(f.icon_band()))))
+        .absolute()
+        .inset_0();
         ScrollView::new(&self.scroll)
             .border(false)
             .background(ground)
@@ -1046,12 +1100,12 @@ impl FolderWin {
                     // view's edge.
                     .on_drag_move(cx.listener(|f: &mut FolderWin, e: &MouseMoveEvent, cx| {
                         if f.press.is_some() {
-                            f.geo.borrow_mut().origin = cx.listener_bounds().origin;
                             f.icon_move(e, cx);
                         }
                     }))
                     .on_window_mouse_up(cx.listener(|f: &mut FolderWin, e: &MouseUpEvent, cx| f.icon_release(e, cx)))
-                    .child(content)
+                    .child(grid)
+                    .child(over)
                     .children(field),
             )
             .into_any_element()
@@ -1266,7 +1320,7 @@ impl FolderWin {
 
     /// What's dragged over the icon view at `at`.
     fn icon_drop_over(&mut self, o: &DropOffer, at: Point<Pixels>, cx: &mut Cx<Self>) -> Option<DropAccept> {
-        if !self.geo.borrow().view.contains(&at) {
+        if !self.icon_geo().view.contains(&at) {
             self.dropping = None;
             self.rest_on(None, cx);
             return None;
@@ -1566,7 +1620,7 @@ pub fn name_cell(cell: &mut Cell, g: &mut Painter, e: &Entry, text: bool) {
 /// when it does (`ColumnListView::row_key`): its name, icon, mark and
 /// columns.
 pub fn row_key(e: &Entry) -> u64 {
-    style::key((&e.path, e.is_link, e.size, e.modified, e.kind.name(), e.downloading, items::icon_of(e), crate::backups::backed_up(&e.path)))
+    style::key((e.look(), items::icon_of(e), crate::backups::backed_up(&e.path)))
 }
 
 /// Delete and F2 trash and rename in a view as well as the menus' keys,

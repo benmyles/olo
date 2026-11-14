@@ -28,9 +28,18 @@ pub fn init(proxy: Proxy) {
     let _ = WAKE.set(proxy);
 }
 
+/// How many pictures have been made: part of the key of a drawing of
+/// one (it's drawn again once its picture is ready).
+pub fn made() -> u64 {
+    MADE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+static MADE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// Draw the windows again: a picture is ready (a thumbnail, an
 /// AppImage's icon).
 pub fn wake() {
+    MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     if let Some(p) = WAKE.get() {
         p.send(crate::ToHub::Thumb);
     }

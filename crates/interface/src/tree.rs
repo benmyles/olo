@@ -105,8 +105,9 @@ pub(crate) struct Node {
     /// What it keeps for itself (`Painter::node_state`).
     pub(crate) state: Option<Box<dyn Any>>,
     /// What it holds is rows made as they come near what shows, and
-    /// which of them are there now.
-    pub(crate) rows: Option<(crate::element::RowsSpec, std::ops::Range<usize>)>,
+    /// which of them are there now (with each one's key, as it was made,
+    /// if they have one: `Element::row_key_by`).
+    pub(crate) rows: Option<(crate::element::RowsSpec, std::ops::Range<usize>, Vec<Option<u64>>)>,
     /// What it drew behind what it holds (its ground and its own
     /// content), and over it (its border), where it was when it did.
     pub(crate) behind: Option<Arc<Recording>>,
@@ -256,7 +257,7 @@ impl WindowCore {
         // (Rows: made once it's laid out, and what shows of it is
         // known.)
         if let Some(spec) = rows {
-            self.nodes[id].rows = Some((spec, 0..0));
+            self.nodes[id].rows = Some((spec, 0..0, Vec::new()));
             self.row_nodes.push(id);
         }
         if !children.is_empty() {
@@ -536,15 +537,40 @@ impl WindowCore {
         let children = match rows {
             Some(spec) => {
                 let node = &mut self.nodes[id];
-                let near = match node.rows.take() {
-                    Some((_, near)) => near.start.min(spec.count)..near.end.min(spec.count),
+                let (near, old) = match node.rows.take() {
+                    Some((old_spec, near, keys)) => (near.start.min(spec.count)..near.end.min(spec.count), Some((old_spec.row_height, near, keys))),
                     None => {
                         self.row_nodes.push(id);
-                        0..0
+                        (0..0, None)
                     }
                 };
+                // Keyed rows: those whose key is what it was when they
+                // were made are kept as they are, and only the others
+                // made again (unless the look changed: then all are).
+                if let Some((height, was, old_keys)) = &old
+                    && spec.key.is_some()
+                    && !self.everything
+                    && *height == spec.row_height
+                    && *was == near
+                    && old_keys.len() == near.len()
+                    && self.nodes[id].children.len() == near.len()
+                {
+                    let keys = self.row_keys(&spec, near.clone(), owner);
+                    for (n, row) in near.clone().enumerate() {
+                        if keys[n].is_some() && keys[n] == old_keys[n] {
+                            continue;
+                        }
+                        if let Some(element) = place_rows(&spec, row..row + 1).pop() {
+                            let child = self.nodes[id].children[n];
+                            self.reconcile(child, element, owner);
+                        }
+                    }
+                    self.nodes[id].rows = Some((spec, near, keys));
+                    return;
+                }
                 let made = place_rows(&spec, near.clone());
-                self.nodes[id].rows = Some((spec, near));
+                let keys = self.row_keys(&spec, near.clone(), owner);
+                self.nodes[id].rows = Some((spec, near, keys));
                 made
             }
             None => {
@@ -564,7 +590,7 @@ impl WindowCore {
         for i in 0..self.row_nodes.len() {
             let id = self.row_nodes[i];
             let Some(node) = self.nodes.get(id) else { continue };
-            let Some((spec, near)) = &node.rows else { continue };
+            let Some((spec, near, _)) = &node.rows else { continue };
             if !self.is_attached(id) {
                 continue;
             }
@@ -585,11 +611,20 @@ impl WindowCore {
             }
             let (spec, owner) = (spec.clone(), node.owner);
             let made = place_rows(&spec, wanted.clone());
-            self.nodes[id].rows = Some((spec, wanted));
+            let keys = self.row_keys(&spec, wanted.clone(), owner);
+            self.nodes[id].rows = Some((spec, wanted, keys));
             self.reconcile_children(id, made, owner);
             any = true;
         }
         any
+    }
+
+    /// Each of rows `near`'s keys, as the view says them now (none
+    /// without `Element::row_key_by`).
+    fn row_keys(&self, spec: &crate::element::RowsSpec, near: std::ops::Range<usize>, owner: ViewId) -> Vec<Option<u64>> {
+        let Some(key) = &spec.key else { return Vec::new() };
+        let Some(view) = self.views.get(owner).and_then(|v| v.view.as_ref()) else { return vec![None; near.len()] };
+        near.map(|row| key(view.as_any(), row)).collect()
     }
 
     fn reconcile_children(&mut self, id: NodeId, children: Vec<Element>, owner: ViewId) {
