@@ -1485,6 +1485,25 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Done, waiting for Ben to try or confirm
 
+- **The desktop went blank and came back, 13:29** (Ben, 2026-11-15:
+  "i think something just crashed my whole desktop went blank and then
+  came back"). Found (read-only: the journal, the session's own log):
+  app_server ended by SIGKILL at 13:29:23 (olo-session: "app_server died
+  (signal 9)"), restarted at once, every app reconnecting with its
+  windows. Not Olo's watchdog (it sends SIGABRT first and says so), the
+  supervisor (it asks first) or the out-of-memory killer (nothing in the
+  kernel's log). It came three seconds into a live layout lint (the
+  pre-push hook, of an agent's push: a dozen headless sessions at once
+  at normal priority on the same computer and GPU). The likeliest cause
+  left is the kernel's realtime limit: app_server's loop is realtime
+  under rtkit's hard 200 ms without sleeping; the guard puts it back at
+  50 ms (it did at 13:13:49, during an agent's video exports) but can't
+  while a thread is inside the kernel, a GPU driver's wait. Done: the
+  live lint and everything it starts run at idle priority. *Left:* what
+  app_server's loop does when it runs that long (each overrun to say
+  what held the loop), and whether a realtime loop outside rtkit's hard
+  limit is worth a root helper (Ben's to choose).
+
 - **Agent Screens' Export Video: what was done, fast-forwarded between,
   fast, a part, zoomed** (Ben, 2026-11-15: "does exporting a video for
   an agent screen correctly only include the actual parts where

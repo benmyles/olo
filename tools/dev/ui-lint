@@ -12,7 +12,8 @@ Errors fail it; review findings (look closely) are listed with --review.
 
 Every app at once, each in a headless session of its own (a copy of the
 made-up home, its own sound server), --jobs at a time (three quarters of
-the processors by default); the look and scale are changed and the app
+the processors by default), all at idle priority (the person's desktop
+first); the look and scale are changed and the app
 asked again until it has drawn them, never waited for longer.
 
 Results are kept (~/.cache/olo-dev/ui-lint.json): an app whose build and
@@ -373,6 +374,18 @@ def main():
     scales = [float(s) for s in (a[a.index("--scales") + 1].split(",") if "--scales" in a else ["1", "1.5", "2"])]
     screen = a[a.index("--screen") + 1] if "--screen" in a else "3024x1964"
     jobs = int(a[a.index("--jobs") + 1]) if "--jobs" in a else max(2, (os.cpu_count() or 4) * 3 // 4)
+    # Background work beside the person's desktop: the lint and every
+    # session it starts at idle priority (they inherit it), so they take
+    # only the processor time nothing else wants. Run by the pre-push
+    # hook, a dozen sessions at once loaded the computer while the person
+    # worked (2026-11-15: app_server was ended mid-lint, its realtime
+    # loop past rtkit's hard limit, the likeliest cause; HACKING, "Fast
+    # and light").
+    try:
+        os.nice(19)
+        os.sched_setscheduler(0, os.SCHED_IDLE, os.sched_param(0))
+    except (OSError, AttributeError):
+        pass
     picked = [x for i, x in enumerate(a) if not x.startswith("--") and (i == 0 or a[i - 1] not in ("--scales", "--screen", "--jobs"))]
     work = f"/var/tmp/olo-live-lint-{os.getpid()}"
     master = os.path.join(work, "home")
