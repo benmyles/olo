@@ -121,6 +121,23 @@ pub fn present() -> bool {
     bus::session().is_ok_and(available)
 }
 
+/// Whether Olo's keyring (olo-secrets) is on but locked: the login
+/// password wasn't given, or it couldn't be opened. What asks it for a
+/// secret then gets an error (or waits for the password, if a program's
+/// request brings the prompt); [`unlock`] asks.
+pub fn locked() -> bool {
+    std::fs::read(olo_xdg::runtime_dir().join("olo-secrets.json")).ok().and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok()).is_some_and(|v| v["locked"] == true)
+}
+
+/// Ask Olo's keyring to open, as the person asked (a button they pressed):
+/// the login password is asked for through Olo's prompter. Whether it's
+/// open. Blocks as long as they take: call it from a worker thread.
+pub fn unlock() -> Result<bool> {
+    let conn = bus::session()?;
+    let p = Proxy::new(conn, "org.olo.Secrets1", "/org/olo/Secrets1", "org.olo.Secrets1")?;
+    Ok(p.call("Unlock", &(true,))?)
+}
+
 /// The secret stored with exactly these attributes, if there is one (none
 /// with no keyring).
 pub fn lookup(attributes: &[(&str, &str)]) -> Result<Option<Vec<u8>>> {

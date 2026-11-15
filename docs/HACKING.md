@@ -4145,10 +4145,13 @@ nothing switches without those.
   `wayland-sessions` (Olo's first).
 * `olo-login --daemon [--programs DIR] [--vt N] [--test DIR]`
   (apps/login, root): the seat's terminal, the greeter's session, and
-  for each login a worker per way in, all at once (`--worker WAY USER`:
-  the password through the `olo-login` PAM service, a fingerprint
-  through `olo-login-fingerprint`, the face through `olo-login-face`,
-  `data/pam`); the first way in wins and the others stop. The winner
+  for each login a worker (`--worker password USER`, through the
+  `olo-login` PAM service, `data/pam`). Only the typed password logs
+  in: it's what opens the person's keyring (pam_olo_keyring seals
+  olo-secrets' key by it), and a login by face or fingerprint left the
+  keyring locked (Ben, 2026-11-15: "just make the login require typing
+  the password -- simple"); they unlock the lock screen once the
+  person is in. The worker
   opens logind's session through PAM (`pam_systemd`) and becomes the
   person (setsid, the terminal, their groups, gid, uid) to run their
   session once the greeter has gone. The greeter's own session is a
@@ -13490,10 +13493,7 @@ wakeups) and follows the switch live.
   store (`login_key.rs`: `secrets.login`, "OLOL", a format byte, a
   nonce, the key sealed with XChaCha20-Poly1305 under the key the
   password gives, `olo_login_key::login_key`: Argon2id, 64 MiB, 3
-  passes, salted by the uid and /etc/machine-id, 99 ms here), kept in
-  GNOME Keyring's login keyring too where it was made there
-  (`olo_system::secrets::SECRETS_KEY`; a kept secret, so Backup carries
-  it, and the store with it as a vault: "Programs' Secrets"), and for
+  passes, salted by the uid and /etc/machine-id, 99 ms here), and for
   the rest of the login in the kernel's session keyring (`kernel.rs`:
   `olo-secrets:` and the store's path, so a test's key never meets the
   real one), so olo-secrets started again (an upgrade, a crash) opens it
@@ -13509,22 +13509,39 @@ wakeups) and follows the switch live.
   the login). It never fails a login and never reads the person's files;
   with no password (a face, a fingerprint, the greeter) it does nothing.
   olo-secrets takes the key once (read, then invalidated) and opens the
-  sealed store key with it (`key`). With none from PAM (another login
-  screen, a face, a fingerprint) or the password changed since it was
-  sealed, it takes GNOME Keyring's copy if GNOME Keyring is answering
-  (another login screen's PAM unlocked it), else asks for the password
-  through Olo's prompter (`ask_password`: the one used before, if it
+  sealed store key with it (`key`). Olo's login screen logs in by the
+  typed password alone, so it always has one. With none from PAM
+  (another login screen, the module not installed) or the password
+  changed since it was sealed, it asks for the password through Olo's
+  prompter (`ask_password`, `Why::Open`: the one used before, if it
   changed) until it opens the seal; then it seals again with this
-  login's. The first time (nothing sealed yet) it takes GNOME Keyring's
-  copy, or makes a key for a new store. Tested in a real PAM run
+  login's. Not sealed yet: a new store gets a new key (sealed by PAM's
+  key, or by the password asked for, `Why::New`); a store an earlier
+  version made kept its key in GNOME Keyring's login keyring, which is
+  read natively with the password asked for once (`Why::Move`,
+  `legacy.rs`: GNOME Keyring's own file format, its items AES-128-CBC
+  under SHA-256 of the password and salt, iterated, and an MD5 that
+  tells a wrong password; nothing of GNOME's runs); and a key kept for
+  this login but not sealed (started again after an upgrade from such
+  a version) asks once to seal it (`Why::Seal`). A password typed for
+  any of these is checked by PAM first (`olo_system::auth`), so a typo
+  can never seal the key under a password the next login won't give.
+  It never asks the bus for anything while taking over: olo-secrets is
+  what answers there, and asking (GNOME Keyring's copy, once) had D-Bus
+  start `--activated` for it, which waits for olo-secrets, so both
+  waited 10 s and the keyring stayed locked (Ben, 2026-11-15, after a
+  login by face). Pre-sealing it took the GNOME Keyring daemon; now its
+  files are read in process. Tested in a real PAM run
   (`tests/pam.rs`, private services and a session keyring of the test's
   own): the typed password's key arrives in the session keyring, and a
   stack without a password leaves nothing.
 - **Taking over** (at login, or switched on): the key, the store, then,
-  when GNOME Keyring is answering or its keyrings
-  (`$XDG_DATA_HOME/keyrings/*.keyring`) changed since the last copy (a
-  GNOME session since: D-Bus starts it, and it asks for its password
-  through Olo's prompter; neither, and nothing of GNOME's starts),
+  when the login password was typed this time and GNOME Keyring's
+  keyrings (`$XDG_DATA_HOME/keyrings/*.keyring`) changed since the last
+  copy, their items read from the files natively with it (`legacy.rs`);
+  or, only when something else started GNOME Keyring (another login
+  screen's PAM) and it answers, through it: nothing starts it (the bus
+  would start `--activated`, olo-secrets' own stand-in). Either way,
   every GNOME Keyring item new or changed since the last copy
   (`Data::imported`: identity, its `Modified`; identity is collection,
   label and attributes without `xdg:schema`, which GNOME Keyring adds to
@@ -13589,14 +13606,43 @@ wakeups) and follows the switch live.
   Olo's keyring turned off (app_server's settings, followed live) it
   becomes GNOME Keyring (the system's description's `Exec`), and with
   no olo-secrets in the session for 15 s (olo-session gave up on it)
-  too; if olo-secrets couldn't take over (Not Now to the password) it
-  ends unanswered, the keyring locked, nothing else asking.
+  too; if Olo's keyring is locked, it asks olo-secrets to unlock it as
+  a program (`Unlock(false)`, below).
+- **Never locked in silence** (`locked.rs`; Ben, 2026-11-15: "it should
+  never just silently fail like this something should tell me that it
+  needs unlocking and let me do it"). While Olo's keyring is on but
+  locked (Not Now, or it couldn't be opened), the status says
+  `"locked": true` and a notification says so ("Programs’ secrets are
+  locked", resident, until it's open), its Unlock asking for the
+  password again. Anyone can ask over the bus:
+  `busctl --user call org.olo.Secrets1 /org/olo/Secrets1
+  org.olo.Secrets1 Unlock b true` asks (if locked) and answers whether
+  it's open, waiting for the person. `true` is the person asking (the
+  notification, Passwords' Unlock…): always asked. `false` is a
+  program's request through the stand-in: asked too, unless the person
+  said Not Now in the last two minutes, so a program asking again and
+  again doesn't bring the prompt back each time. `olo_system::secrets`
+  has `locked()` and `unlock()` for apps: Passwords, finding the
+  keyring locked as it opens, asks (as the person) and, if it stays
+  locked, says so with Unlock… rather than the bus's error.
 - **Upgraded in place**: at olo-session's SIGURG it becomes the new
   version in the same process (`restore::on_upgrade`), once no password
   is being asked for (`Asking`, olo-session told it waits meanwhile);
   the key kept in the kernel's keyring, it asks nothing, and the name is
   free only while it starts. It ignored the signal and was stopped 90 s
   after each upgrade, the name free until it started again.
+- Tested on a private bus, nothing of GNOME's running
+  (`tests/locked.rs`): a store whose key an earlier version kept in GNOME
+  Keyring's login keyring (`tests/data/gnome-login.keyring`, made by
+  GNOME Keyring 51.1 in a sandbox, its password "fixture password"),
+  the password asked for and Not Now said: locked, the notification up,
+  a program's request a moment later unanswered and unasked; the
+  notification's Unlock asks, a wrong password asks again, the right
+  one opens GNOME's file natively and the store with the key in it, and
+  seals it; the notification goes; `Unlock` says it's open; the next
+  login, PAM's key for that password, opens it unasked. `legacy.rs`'s
+  own tests: every item of the fixture read, a wrong password told, a
+  damaged or cut file refused.
 - Tested on a private bus with a throwaway GNOME Keyring
   (`tools/dev/private-keyring`; `apps/secrets/tests/takeover.rs`, its
   top says how): taking over and handing back, libsecret's sessions,

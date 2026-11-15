@@ -65,8 +65,15 @@ pub struct Props {
 impl Props {
     fn update(&mut self, changes: &HashMap<String, OwnedValue>) {
         for (k, v) in changes {
-            let s = || String::try_from(v.try_clone().ok()?).ok();
-            let b = || bool::try_from(v).ok();
+            // (gcr wraps each value in a variant of its own, v holding v:
+            // peeled, or every text read as none and the prompt came up
+            // blank, 2026-11-15.)
+            let mut inner: &zvariant::Value<'_> = v;
+            while let zvariant::Value::Value(boxed) = inner {
+                inner = boxed;
+            }
+            let s = || inner.downcast_ref::<zvariant::Str<'_>>().ok().map(|s| s.to_string());
+            let b = || inner.downcast_ref::<bool>().ok();
             match k.as_str() {
                 "title" => self.title = s().unwrap_or_default(),
                 "message" => self.message = s().unwrap_or_default(),

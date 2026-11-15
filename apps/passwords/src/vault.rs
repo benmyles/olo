@@ -255,6 +255,23 @@ pub fn new_id() -> String {
     random::<26>().iter().map(|b| ALPHABET[(*b & 31) as usize] as char).collect()
 }
 
+/// What Passwords says when the keyring its key is in stays locked.
+pub const LOCKED: &str = "Your keyring is locked, and the key to your passwords is kept in it. Unlock it with your login password.";
+
+/// The vault's key looked up in the keyring; if Olo's keyring is locked,
+/// it's asked to open first (the person opened Passwords: their login
+/// password asked for), then looked up again.
+fn looked_up() -> Result<Option<Vec<u8>>> {
+    match olo_system::secrets::lookup(KEY_ATTRS) {
+        Err(_) if olo_system::secrets::locked() => match olo_system::secrets::unlock() {
+            Ok(true) => olo_system::secrets::lookup(KEY_ATTRS).map_err(|e| fail(format!("Couldn’t reach the login keyring: {e}"))),
+            Ok(false) => Err(fail(LOCKED)),
+            Err(e) => Err(fail(format!("Couldn’t ask for your keyring to be unlocked: {e}"))),
+        },
+        other => other.map_err(|e| fail(format!("Couldn’t reach the login keyring: {e}"))),
+    }
+}
+
 /// The vault key: from the key file or the login keyring, made (and
 /// kept) if there is none and no store yet.
 fn key(store_exists: bool, keyfile: Option<&Path>) -> Result<Zeroizing<[u8; 32]>> {
@@ -272,7 +289,7 @@ fn key(store_exists: bool, keyfile: Option<&Path>) -> Result<Zeroizing<[u8; 32]>
             }
             Err(e) => return Err(fail(format!("Couldn’t read the key: {e}"))),
         },
-        None => match olo_system::secrets::lookup(KEY_ATTRS) {
+        None => match looked_up() {
             Ok(Some(b)) => Zeroizing::new(b),
             Ok(None) if store_exists => return Err(missing()),
             Ok(None) => {
@@ -280,7 +297,7 @@ fn key(store_exists: bool, keyfile: Option<&Path>) -> Result<Zeroizing<[u8; 32]>
                 olo_system::secrets::store(olo_system::secrets::PASSWORDS_KEY.label, KEY_ATTRS, &k).map_err(|e| fail(format!("Couldn’t keep the key in the login keyring: {e}")))?;
                 k
             }
-            Err(e) => return Err(fail(format!("Couldn’t reach the login keyring: {e}"))),
+            Err(e) => return Err(e),
         },
     };
     let key: [u8; 32] = bytes.as_slice().try_into().map_err(|_| fail("The key to your passwords is damaged."))?;

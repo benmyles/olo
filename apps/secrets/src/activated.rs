@@ -19,9 +19,12 @@
 //! Olo's turned off (Preferences ▸ Security), or no olo-secrets in the
 //! session to answer for 15 s (olo-session gave up on it), it becomes
 //! GNOME Keyring, as the system's service would have started it, so
-//! programs still have a keyring. If olo-secrets couldn't take over (the
-//! person said Not Now to the password), it ends without an answer: the
-//! keyring stays locked, and nothing else asks.
+//! programs still have a keyring. If Olo's keyring is locked (the person
+//! said Not Now to the password, or it couldn't be opened), it asks
+//! olo-secrets to unlock it (`locked.rs`): the password is asked for
+//! again, unless the person said Not Now in the last two minutes, when
+//! this request goes unanswered (the notification that it's locked stays,
+//! with Unlock).
 
 use std::{process::ExitCode, sync::mpsc, time::Duration};
 
@@ -73,10 +76,22 @@ pub fn run() -> ExitCode {
             // at login, a moment at an upgrade.)
             Err(mpsc::RecvTimeoutError::Timeout) => match ours() {
                 Ours::Coming => alone = Duration::ZERO,
-                Ours::Declined => {
-                    tracing::info!("secrets: Olo's keyring stays locked; nothing answers");
-                    return ExitCode::FAILURE;
-                }
+                // Locked: olo-secrets asked to open it, as a program asked
+                // (the password asked for, unless the person said Not Now a
+                // moment ago); it takes the name once it's open. Never
+                // ended in silence: while it stays locked, a notification
+                // says so (locked.rs).
+                Ours::Declined => match crate::locked::ask_to_unlock(&conn, false) {
+                    Ok(true) => return ExitCode::SUCCESS,
+                    Ok(false) => {
+                        tracing::info!("secrets: Olo's keyring stays locked (Not Now); this request goes unanswered");
+                        return ExitCode::FAILURE;
+                    }
+                    Err(e) => {
+                        tracing::warn!("secrets: couldn't ask olo-secrets to unlock: {e}");
+                        return ExitCode::FAILURE;
+                    }
+                },
                 Ours::Gone => {
                     alone += step;
                     if alone >= ALONE {

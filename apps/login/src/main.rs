@@ -46,8 +46,6 @@ fn main() {
             };
             let (service, class) = match way.as_str() {
                 "password" => (olo_greet::Way::Password.service(), "user"),
-                "fingerprint" => (olo_greet::Way::Fingerprint.service(), "user"),
-                "face" => (olo_greet::Way::Face.service(), "user"),
                 "greeter" => ("olo-login-greeter", "greeter"),
                 _ => {
                     eprintln!("{USAGE}");

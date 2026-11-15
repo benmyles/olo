@@ -5,11 +5,11 @@
 //!   greeter's own user) and answers it on a socket
 //!   ([`socket_path`]: [`Request`] in, [`Event`] out, a JSON object a
 //!   line).
-//! * For each login it starts workers, one process a way in
-//!   (`olo-login --worker SERVICE USER`: the password, a fingerprint, a
-//!   face), as GDM does, each with its own PAM conversation
-//!   ([`pam::Pam`]). It relays their prompts and takes the first that
-//!   says yes, ending the others.
+//! * For each login it starts a worker (`olo-login --worker password
+//!   USER`), with its own PAM conversation ([`pam::Pam`]), and relays its
+//!   prompts. Only the password logs in: it's what opens the person's
+//!   keyring (pam_olo_keyring); a face or a fingerprint left it locked.
+//!   They unlock the lock screen once the person is in.
 //! * That worker opens the person's PAM and logind session, becomes
 //!   them and starts their desktop's session. When it ends, the daemon
 //!   shows the greeter again.
@@ -91,13 +91,12 @@ pub enum Event {
     },
 }
 
-/// A way in.
+/// A way in: the password, typed (the one that opens the person's
+/// keyring).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Way {
     Password,
-    Fingerprint,
-    Face,
 }
 
 impl Way {
@@ -105,8 +104,6 @@ impl Way {
     pub fn service(self) -> &'static str {
         match self {
             Way::Password => "olo-login",
-            Way::Fingerprint => "olo-login-fingerprint",
-            Way::Face => "olo-login-face",
         }
     }
 }
@@ -172,10 +169,10 @@ mod tests {
         let line = serde_json::to_string(&r).unwrap();
         assert_eq!(line, r#"{"type":"begin","user":"ben"}"#);
         assert_eq!(serde_json::from_str::<Request>(&line).unwrap(), r);
-        let e = Event::Prompt { by: Way::Fingerprint, kind: PromptKind::Info, text: "Place your finger on the reader".into() };
+        let e = Event::Prompt { by: Way::Password, kind: PromptKind::Secret, text: "Password:".into() };
         assert_eq!(serde_json::from_str::<Event>(&serde_json::to_string(&e).unwrap()).unwrap(), e);
         let w = ToWorker::Start { command: vec!["olo-session".into(), "--tty-udev".into()], env: vec![("XDG_SESSION_DESKTOP".into(), "olo".into())] };
         assert_eq!(serde_json::from_str::<ToWorker>(&serde_json::to_string(&w).unwrap()).unwrap(), w);
-        assert_eq!(Way::Fingerprint.service(), "olo-login-fingerprint");
+        assert_eq!(Way::Password.service(), "olo-login");
     }
 }

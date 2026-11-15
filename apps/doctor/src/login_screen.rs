@@ -14,12 +14,10 @@ use std::path::{Path, PathBuf};
 use crate::fix::{Step, UnitAction};
 
 /// Its PAM services (/etc/pam.d), by name.
-pub const PAM: &[(&str, &str)] = &[
-    ("olo-login", include_str!("../../../data/pam/olo-login")),
-    ("olo-login-face", include_str!("../../../data/pam/olo-login-face")),
-    ("olo-login-fingerprint", include_str!("../../../data/pam/olo-login-fingerprint")),
-    ("olo-login-greeter", include_str!("../../../data/pam/olo-login-greeter")),
-];
+pub const PAM: &[(&str, &str)] = &[("olo-login", include_str!("../../../data/pam/olo-login")), ("olo-login-greeter", include_str!("../../../data/pam/olo-login-greeter"))];
+/// Its PAM services no longer: the login screen logs in by the password
+/// alone (it opens the keyring; a face or a fingerprint left it locked).
+pub const PAM_GONE: &[&str] = &["olo-login-face", "olo-login-fingerprint"];
 pub const UNIT: &str = include_str!("../../../data/systemd/olo-login.service");
 pub const SYSUSERS: &str = include_str!("../../../data/sysusers/olo-greeter.conf");
 pub const TMPFILES: &str = include_str!("../../../data/tmpfiles/olo-greeter.conf");
@@ -61,9 +59,12 @@ pub fn steps(bin: &Path, share: &Path, instead: Option<&str>) -> Vec<Step> {
     for (name, text) in PAM {
         steps.push(Step::WriteFile { path: PathBuf::from("/etc/pam.d").join(name), content: (*text).to_owned(), mode: 0o644 });
     }
+    for name in PAM_GONE {
+        steps.push(Step::RemoveFile { path: PathBuf::from("/etc/pam.d").join(name) });
+    }
     // The login password opens Olo's keyring (olo-login's PAM names it).
-    if bin.join("pam_olo_keyring.so").is_file() {
-        steps.push(Step::CopyFile { from: bin.join("pam_olo_keyring.so"), to: PathBuf::from("/usr/lib64/security/pam_olo_keyring.so"), mode: 0o755 });
+    if let Some(from) = pam_module(bin) {
+        steps.push(Step::CopyFile { from, to: PathBuf::from(PAM_MODULE), mode: 0o755 });
     }
     steps.push(Step::WriteFile { path: "/etc/sysusers.d/olo-greeter.conf".into(), content: SYSUSERS.to_owned(), mode: 0o644 });
     steps.push(Step::WriteFile { path: "/etc/tmpfiles.d/olo-greeter.conf".into(), content: TMPFILES.to_owned(), mode: 0o644 });
@@ -83,6 +84,18 @@ pub fn steps(bin: &Path, share: &Path, instead: Option<&str>) -> Vec<Step> {
     }
     steps.push(Step::Unit { name: SERVICE.into(), action: UnitAction::Enable });
     steps
+}
+
+/// Where PAM loads the module that opens Olo's keyring.
+pub const PAM_MODULE: &str = "/usr/lib64/security/pam_olo_keyring.so";
+
+/// The PAM module that opens Olo's keyring, as it comes with the
+/// programs in `bin`: beside them in a release's bundle, or in the
+/// install's `lib/olo` (an upgrade copies it there from the build).
+pub fn pam_module(bin: &Path) -> Option<PathBuf> {
+    let beside = bin.join("pam_olo_keyring.so");
+    let lib = bin.parent().map(|p| p.join("lib/olo/pam_olo_keyring.so"));
+    [Some(beside), lib].into_iter().flatten().find(|p| p.is_file())
 }
 
 /// The folders a tmpfiles.d file's `d` lines ask for (`d PATH MODE USER
@@ -110,8 +123,11 @@ pub fn display_manager(fs: &Path) -> Option<String> {
 
 /// The login screen's copies older than the programs in `bin` (by when
 /// each was written: an upgrade writes `bin`'s after the copies), by name;
-/// and its unit, if it isn't this build's (a fix there, such as who takes
-/// the seat when it can't show, came with no program newer).
+/// the PAM module that opens the keyring, missing or older than the
+/// install's; its unit, if it isn't this build's (a fix there, such as
+/// who takes the seat when it can't show, came with no program newer);
+/// and its PAM services, if they aren't this build's (the face's and the
+/// fingerprint's, gone: only the password logs in).
 pub fn stale(fs: &Path, bin: &Path) -> Vec<&'static str> {
     let written = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
     let mut old: Vec<&'static str> = PROGRAMS
@@ -126,8 +142,19 @@ pub fn stale(fs: &Path, bin: &Path) -> Vec<&'static str> {
             }
         })
         .collect();
+    if let Some(ours) = pam_module(bin) {
+        match (written(&ours), written(&fs.join(PAM_MODULE.trim_start_matches('/')))) {
+            (Some(new), Some(old)) if new <= old => {}
+            (Some(_), _) => old.push("pam_olo_keyring.so"),
+            _ => {}
+        }
+    }
     if std::fs::read_to_string(fs.join("etc/systemd/system").join(SERVICE)).is_ok_and(|u| u != UNIT) {
         old.push(SERVICE);
+    }
+    let pam = fs.join("etc/pam.d");
+    if PAM.iter().any(|(name, text)| std::fs::read_to_string(pam.join(name)).is_ok_and(|t| t != *text)) || PAM_GONE.iter().any(|name| pam.join(name).exists()) {
+        old.push("its PAM services");
     }
     old
 }
@@ -148,6 +175,38 @@ mod tests {
         // The unit before the hand-over moved to systemd.
         std::fs::write(&unit, UNIT.replace("OnFailure=gdm.service sddm.service", "OnFailure=plymouth-quit.service")).unwrap();
         assert_eq!(stale(&fs, &bin), [SERVICE]);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The module that opens the keyring with the login password, as an
+    /// upgrade keeps it (`lib/olo`), and not where PAM loads it: stale,
+    /// and the fix copies it there (a person's install never had it, so
+    /// their typed password opened nothing, 2026-11-15). The face's and
+    /// the fingerprint's services left from before: stale, and removed.
+    #[test]
+    fn the_keyring_module_and_old_services_are_stale_and_mended() {
+        let base = std::path::PathBuf::from(format!("/var/tmp/olo-doctor-pam-{}", std::process::id()));
+        let (fs, home) = (base.join("fs"), base.join("home/.local"));
+        let bin = home.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::create_dir_all(home.join("lib/olo")).unwrap();
+        std::fs::create_dir_all(fs.join("etc/pam.d")).unwrap();
+        for (name, text) in PAM {
+            std::fs::write(fs.join("etc/pam.d").join(name), text).unwrap();
+        }
+        assert!(stale(&fs, &bin).is_empty(), "nothing to install: no module built");
+        std::fs::write(home.join("lib/olo/pam_olo_keyring.so"), b"module").unwrap();
+        assert_eq!(pam_module(&bin), Some(home.join("lib/olo/pam_olo_keyring.so")));
+        assert_eq!(stale(&fs, &bin), ["pam_olo_keyring.so"]);
+        let installed = fs.join(PAM_MODULE.trim_start_matches('/'));
+        std::fs::create_dir_all(installed.parent().unwrap()).unwrap();
+        std::fs::write(&installed, b"module").unwrap();
+        assert!(stale(&fs, &bin).is_empty(), "installed since");
+        std::fs::write(fs.join("etc/pam.d/olo-login-face"), b"auth required pam_olo_face.so\n").unwrap();
+        assert_eq!(stale(&fs, &bin), ["its PAM services"]);
+        let steps = steps(&bin, &base.join("share"), None);
+        assert!(steps.iter().any(|s| matches!(s, Step::CopyFile { to, .. } if to == Path::new(PAM_MODULE))));
+        assert!(steps.iter().any(|s| matches!(s, Step::RemoveFile { path } if path == Path::new("/etc/pam.d/olo-login-face"))));
         let _ = std::fs::remove_dir_all(&base);
     }
 }

@@ -822,7 +822,9 @@ impl View for MainView {
             match a.conn.clone() {
                 Conn::Connecting if a.items.is_empty() => panel("passwords", "Opening your passwords…", "The key is in your login keyring.".into(), div()),
                 Conn::Failed(message) if a.items.is_empty() => {
-                    panel("warning", "Can’t open your passwords", message, button_row().child(Button::new("Try Again").default(true).on_click(|_: &ClickEvent, _| app().connect())))
+                    // (Locked: Unlock asks for the login password again.)
+                    let label = if message == crate::vault::LOCKED { "Unlock…" } else { "Try Again" };
+                    panel("warning", "Can’t open your passwords", message, button_row().child(Button::new(label).default(true).on_click(|_: &ClickEvent, _| app().connect())))
                 }
                 Conn::Ready if a.items.is_empty() && a.sync == Some(SyncState::Running) => {
                     let account = a.account_label();

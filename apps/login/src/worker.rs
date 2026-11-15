@@ -20,7 +20,7 @@ use olo_greet::{FromWorker, PromptKind, ToWorker, pam};
 
 /// Where this worker is.
 pub struct Setup {
-    /// The PAM service (`olo-login`, `olo-login-fingerprint`, ...).
+    /// The PAM service (`olo-login`, or the greeter's `olo-login-greeter`).
     pub service: String,
     pub user: String,
     /// Logind's class for the session: "user", or "greeter".

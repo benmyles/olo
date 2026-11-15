@@ -40,6 +40,8 @@
 mod activated;
 mod gnome;
 mod kernel;
+mod legacy;
+mod locked;
 mod login_key;
 mod service;
 mod session;
@@ -85,6 +87,10 @@ struct Status {
     /// What went wrong last, if anything.
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    /// On, but locked: a notification says so, and `Unlock` (locked.rs)
+    /// asks for the password.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    locked: bool,
 }
 
 #[derive(Debug, Default, Clone, Serialize)]
@@ -155,138 +161,227 @@ fn store_path() -> PathBuf {
     std::env::var_os("OLO_SECRETS_STORE").map(PathBuf::from).unwrap_or_else(store::path)
 }
 
+/// The store's key, as it was had.
+struct Key {
+    key: Zeroizing<[u8; 32]>,
+    /// Kept for this login in the kernel's keyring (started again: an
+    /// upgrade, a crash), so nothing was asked.
+    again: bool,
+    /// The login password, if the person typed it (PAM said it's theirs):
+    /// what opens GNOME Keyring's keyrings, to bring them over.
+    typed: Option<Zeroizing<String>>,
+}
+
+/// Why the login password is asked for.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Why {
+    /// To open the store's key, sealed by it: no key from PAM (another
+    /// login screen, or pam_olo_keyring missing), or the password
+    /// changed since it was sealed (`changed`).
+    Open { changed: bool },
+    /// A new store, with no key from PAM to seal it by.
+    New,
+    /// The store's key isn't sealed by the login password yet: an earlier
+    /// version kept it in GNOME Keyring's login keyring, read natively
+    /// (`legacy.rs`) with the password, once.
+    Move,
+    /// The key is open (kept for this login) but not sealed by the login
+    /// password yet: typed once, the next login opens it.
+    Seal,
+}
+
 /// The store's key: from `OLO_SECRETS_KEYFILE` (tests), else as kept for
-/// this login in the kernel's keyring (started again: true), else sealed
-/// by the login password (`login_key.rs`) and opened with the key PAM
-/// gave this login (pam_olo_keyring), else, with none from PAM (a face,
-/// a fingerprint, another login screen) or the password changed since
-/// it was sealed, GNOME Keyring's copy if GNOME Keyring is answering
-/// (PAM unlocked it), else the password asked for. The first time (not
-/// sealed yet), GNOME Keyring's copy (made and kept there the first
-/// time), or a new key for a new store. Sealed by this login's password
-/// from then on, and again after it changes.
-/// Also whether it was kept for this login (started again), and the
-/// password if the person typed it (for GNOME Keyring's keyrings too).
-fn key(conn: &zbus::blocking::Connection) -> Result<(Zeroizing<[u8; 32]>, bool, Option<Zeroizing<String>>), String> {
-    if std::env::var_os("OLO_SECRETS_KEYFILE").is_some() {
-        return Ok((keyring_key()?, false, None));
+/// this login in the kernel's keyring (started again), else sealed by the
+/// login password (`login_key.rs`) and opened with the key PAM gave this
+/// login (pam_olo_keyring, at Olo's login screen), else the password
+/// asked for through Olo's prompter: to open it (no key from PAM, or the
+/// password changed since), for a new store, or, not sealed yet, to read
+/// the key an earlier version kept in GNOME Keyring's files. Nothing of
+/// GNOME's runs, and nothing is asked of the bus: olo-secrets is what
+/// answers there (it once asked, D-Bus started `--activated` for it,
+/// which waits for this one, and both waited 10 s: Ben's keyring stayed
+/// locked, 2026-11-15). Sealed by the login password from then on, and
+/// again after it changes.
+fn key() -> Result<Key, String> {
+    if let Some(file) = std::env::var_os("OLO_SECRETS_KEYFILE") {
+        return Ok(Key { key: keyfile_key(&PathBuf::from(file))?, again: false, typed: None });
     }
     let store = store_path();
     if let Some(k) = kernel::get(&store) {
-        return Ok((k, true, None));
+        return Ok(Key { key: k, again: true, typed: None });
     }
-    let mut typed = None;
     let login = kernel::take_login_key();
     let sealed = std::fs::read(login_key::path(&store)).ok();
-    let k = match &sealed {
-        Some(bytes) => match login.as_ref().and_then(|l| login_key::open(l, bytes)) {
-            Some(k) => k,
-            None => match gnome::owner(conn).map(|_| keyring_lookup()) {
-                Some(Ok(Some(k))) => k,
-                _ => {
-                    let (k, password) = ask_password(bytes, login.is_some())?;
-                    typed = Some(password);
-                    k
-                }
-            },
+    let (k, typed) = match (&sealed, login.as_ref().and_then(|l| login_key::open(l, sealed.as_deref()?))) {
+        (_, Some(k)) => (k, None),
+        (Some(bytes), None) => typed(ask_password(Why::Open { changed: login.is_some() }, Some(bytes))?),
+        (None, None) if !store.exists() => match &login {
+            Some(_) => (store::new_key(), None),
+            None => typed(ask_password(Why::New, None)?),
         },
-        None => match keyring_key() {
-            Ok(k) => k,
-            // Nowhere it was kept, and no store yet: a new one.
-            Err(_) if login.is_some() && !store.exists() => store::new_key(),
-            Err(e) => return Err(e),
-        },
+        (None, None) => typed(ask_password(Why::Move, None)?),
     };
-    if let Some(l) = &login
-        && sealed.as_ref().is_none_or(|b| login_key::open(l, b).is_none())
-    {
-        match login_key::keep(&store, l, &k) {
-            Ok(()) => tracing::info!("secrets: the store's key is sealed by the login password"),
-            Err(e) => tracing::warn!("secrets: couldn't seal the store's key by the login password: {e}"),
-        }
-    }
+    seal(&store, &k, login.as_deref(), typed.as_ref().map(|p| p.as_str()), sealed.as_deref());
     if !kernel::put(&store, &k) {
         tracing::warn!("secrets: couldn't keep the store's key in the kernel's keyring (started again, it asks again)");
     }
-    Ok((k, false, typed))
+    Ok(Key { key: k, again: false, typed })
 }
 
-/// The store's key sealed in `sealed`, the person asked for their login
-/// password (the one they used before, if it has `changed`) through
-/// Olo's prompter until it opens it, or they cancel. The key, and the
-/// password typed.
-fn ask_password(sealed: &[u8], changed: bool) -> Result<(Zeroizing<[u8; 32]>, Zeroizing<String>), String> {
+/// A key and the password typed for it.
+fn typed((k, password): (Zeroizing<[u8; 32]>, Zeroizing<String>)) -> (Zeroizing<[u8; 32]>, Option<Zeroizing<String>>) {
+    (k, Some(password))
+}
+
+/// The key to the store at `store` sealed by the login password (the key
+/// PAM gave, else the one the typed password gives), unless `sealed`
+/// already is by it.
+fn seal(store: &std::path::Path, k: &[u8; 32], login: Option<&[u8; 32]>, typed: Option<&str>, sealed: Option<&[u8]>) {
+    let from_typed = typed.map(|p| olo_login_key::login_key(p.as_bytes(), uid(), &olo_login_key::machine_id()));
+    let Some(l) = login.or(from_typed.as_deref()) else { return };
+    if sealed.is_some_and(|b| login_key::open(l, b).is_some()) {
+        return;
+    }
+    match login_key::keep(store, l, k) {
+        Ok(()) => tracing::info!("secrets: the store's key is sealed by the login password"),
+        Err(e) => tracing::warn!("secrets: couldn't seal the store's key by the login password: {e}"),
+    }
+}
+
+fn uid() -> u32 {
     // SAFETY: getuid can't fail.
-    let uid = unsafe { libc::getuid() };
+    unsafe { libc::getuid() }
+}
+
+/// Kept for this login, but not sealed by the login password (the key
+/// came from GNOME Keyring through an earlier version): the password
+/// asked for once, now, so the next login opens it. Not Now leaves it
+/// as it is, asked again the next time olo-secrets starts.
+fn seal_if_unsealed(k: &[u8; 32]) {
+    let store = store_path();
+    if std::env::var_os("OLO_SECRETS_KEYFILE").is_some() || login_key::path(&store).exists() {
+        return;
+    }
+    match ask_password_for(Why::Seal, None, k) {
+        Ok((_, typed)) => seal(&store, k, None, Some(&typed), None),
+        Err(e) => tracing::info!("secrets: the store's key isn't sealed by the login password yet: {e}"),
+    }
+}
+
+/// The login password asked for through Olo's prompter, as `why` says,
+/// until it's right or the person says Not Now: the store's key, and the
+/// password.
+fn ask_password(why: Why, sealed: Option<&[u8]>) -> Result<(Zeroizing<[u8; 32]>, Zeroizing<String>), String> {
+    ask_password_for(why, sealed, &[0; 32])
+}
+
+fn ask_password_for(why: Why, sealed: Option<&[u8]>, open: &[u8; 32]) -> Result<(Zeroizing<[u8; 32]>, Zeroizing<String>), String> {
+    let user = olo_system::auth::current_user().ok_or("who's logged in isn't known")?;
     let machine = olo_login_key::machine_id();
+    let description = match why {
+        Why::Open { changed: true } => "Your login password has changed since they were last opened. Type the password you logged in with before.",
+        Why::Open { changed: false } => "Type your login password to open the secrets programs keep: their sign-ins, keys and Wi-Fi passwords.",
+        Why::New | Why::Seal => "Type your login password once, so your login opens the secrets programs keep from now on: their sign-ins, keys and Wi-Fi passwords.",
+        Why::Move => "Type your login password once to bring the secrets programs keep over from GNOME Keyring: their sign-ins, keys and Wi-Fi passwords. From then on your login opens them.",
+    };
     let props = olo_system::keyring_prompt::Props {
         title: "Programs’ Secrets".into(),
-        message: "Unlock the secrets programs keep".into(),
-        description: if changed {
-            "Your login password has changed since they were last opened. Type the password you logged in with before.".into()
-        } else {
-            "You logged in without typing your password. Type it to open the secrets programs keep: their sign-ins, keys and Wi-Fi passwords.".into()
-        },
+        message: if why == Why::Seal { "Keep the secrets programs keep opening when you log in".into() } else { "Unlock the secrets programs keep".into() },
+        description: description.into(),
         continue_label: "Unlock".into(),
         cancel_label: "Not Now".into(),
         ..Default::default()
     };
-    let mut found = None;
+    let new = store::new_key();
+    let mut found: Option<Zeroizing<[u8; 32]>> = None;
+    // (What can't be helped by typing again: said once the prompt is gone.)
+    let mut stuck: Option<String> = None;
     let _asking = Asking::new();
-    let given = olo_system::keyring_prompt::ask_password(&props, "That isn’t the password they were locked with.", |password| {
-        let login = olo_login_key::login_key(password.as_bytes(), uid, &machine);
-        found = login_key::open(&login, sealed);
+    let given = olo_system::keyring_prompt::ask_password(&props, "That isn’t your login password.", |password| {
+        found = match why {
+            Why::Open { .. } => sealed.and_then(|b| login_key::open(&olo_login_key::login_key(password.as_bytes(), uid(), &machine), b)),
+            // (Checked by PAM: what seals the key must be the password the
+            // next login gives, or that login can't open it.)
+            Why::New | Why::Seal | Why::Move => match password_check(&user, password) {
+                Err(olo_system::auth::AuthError::Denied(_)) => None,
+                Err(olo_system::auth::AuthError::Unavailable(e)) => {
+                    stuck = Some(format!("the password couldn't be checked: {e}"));
+                    return true;
+                }
+                Ok(()) => match why {
+                    Why::New => Some(new.clone()),
+                    Why::Seal => Some(Zeroizing::new(*open)),
+                    _ => match moved_key(password) {
+                        Ok(k) => Some(k),
+                        Err(e) => {
+                            stuck = Some(e);
+                            return true;
+                        }
+                    },
+                },
+            },
+        };
         found.is_some()
     })
     .map_err(|e| format!("asking for the login password: {e}"))?;
+    if let Some(e) = stuck {
+        return Err(e);
+    }
     match (given, found) {
         (Some(password), Some(k)) => Ok((k, password)),
-        _ => Err("the secrets stay locked: the login password wasn't given".into()),
+        _ => Err(NOT_GIVEN.into()),
     }
 }
 
-/// The store's key from GNOME Keyring's login keyring, if it's there.
-fn keyring_lookup() -> Result<Option<Zeroizing<[u8; 32]>>, String> {
-    let kept = olo_system::secrets::SECRETS_KEY;
-    let Some(b) = olo_system::secrets::lookup(kept.attributes).map_err(|e| format!("the login keyring: {e}"))? else { return Ok(None) };
-    let b = Zeroizing::new(b);
-    if b.len() != 32 {
-        return Err("the store's key isn't 32 bytes".into());
+/// Whether `password` is `user`'s, as PAM says. (Tests check against a
+/// password of their own, `OLO_SECRETS_TEST_PASSWORD`, never the
+/// account's.)
+fn password_check(user: &str, password: &str) -> Result<(), olo_system::auth::AuthError> {
+    match std::env::var("OLO_SECRETS_TEST_PASSWORD") {
+        Ok(t) if t == password => Ok(()),
+        Ok(_) => Err(olo_system::auth::AuthError::Denied("not the test's password".into())),
+        Err(_) => olo_system::auth::check_password(user, password),
     }
-    let mut k = Zeroizing::new([0u8; 32]);
-    k.copy_from_slice(&b);
-    Ok(Some(k))
 }
 
-fn keyring_key() -> Result<Zeroizing<[u8; 32]>, String> {
-    let from = |bytes: &[u8]| -> Result<Zeroizing<[u8; 32]>, String> {
-        let mut k = Zeroizing::new([0u8; 32]);
-        if bytes.len() != 32 {
-            return Err("the store's key isn't 32 bytes".into());
+/// What the person said Not Now to.
+const NOT_GIVEN: &str = "the secrets stay locked: the login password wasn't given";
+
+/// The store's key as an earlier version kept it in GNOME Keyring's login
+/// keyring, its files opened natively with `password`.
+fn moved_key(password: &str) -> Result<Zeroizing<[u8; 32]>, String> {
+    let (keyrings, _) = legacy::open_all(password);
+    if keyrings.is_empty() {
+        return Err(format!("the key to the secrets programs keep was in GNOME Keyring's keyrings ({}), and your login password opens none of them", legacy::folder().display()));
+    }
+    let wanted: std::collections::BTreeMap<String, String> = olo_system::secrets::SECRETS_KEY.attributes.iter().map(|(k, v)| ((*k).to_owned(), (*v).to_owned())).collect();
+    let store = store_path();
+    let mut candidates = keyrings.iter().flat_map(|k| &k.items).filter(|i| i.matches(&wanted)).collect::<Vec<_>>();
+    // (The newest first: a key made again since is the one in use.)
+    candidates.sort_by_key(|i| std::cmp::Reverse(i.modified));
+    for item in candidates {
+        if let Ok(k) = <[u8; 32]>::try_from(item.secret.as_slice())
+            && store::opens(&store, &k)
+        {
+            return Ok(Zeroizing::new(k));
         }
-        k.copy_from_slice(bytes);
-        Ok(k)
-    };
-    if let Some(file) = std::env::var_os("OLO_SECRETS_KEYFILE") {
-        return match std::fs::read(&file) {
-            Ok(b) => from(&Zeroizing::new(b)),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                let k = store::new_key();
-                std::fs::write(&file, k.as_slice()).map_err(|e| e.to_string())?;
-                Ok(k)
-            }
-            Err(e) => Err(e.to_string()),
-        };
     }
-    let kept = olo_system::secrets::SECRETS_KEY;
-    match olo_system::secrets::lookup(kept.attributes).map_err(|e| format!("the login keyring: {e}"))? {
-        Some(b) => from(&Zeroizing::new(b)),
-        None if !olo_system::secrets::present() => Err("there's no login keyring to keep the store's key in".into()),
-        None => {
+    Err("the key to the secrets programs keep isn't in GNOME Keyring's keyrings, so they can't be opened".into())
+}
+
+/// The store's key kept in `file` (tests), made the first time.
+fn keyfile_key(file: &std::path::Path) -> Result<Zeroizing<[u8; 32]>, String> {
+    match std::fs::read(file) {
+        Ok(b) => {
+            let b = Zeroizing::new(b);
+            <[u8; 32]>::try_from(b.as_slice()).map(Zeroizing::new).map_err(|_| "the store's key isn't 32 bytes".into())
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             let k = store::new_key();
-            olo_system::secrets::store(kept.label, kept.attributes, k.as_slice()).map_err(|e| format!("couldn't keep the store's key in the login keyring: {e}"))?;
+            std::fs::write(file, k.as_slice()).map_err(|e| e.to_string())?;
             Ok(k)
         }
+        Err(e) => Err(e.to_string()),
     }
 }
 
@@ -345,15 +440,27 @@ struct Serving {
 /// Take over from GNOME Keyring (see the top).
 fn take_over(status: &mut Status) -> Result<Serving, String> {
     let conn = zbus::blocking::Connection::session().map_err(|e| format!("the session bus: {e}"))?;
-    let (key, again, mut typed) = key(&conn)?;
+    let Key { key, again, typed } = key()?;
+    if again {
+        seal_if_unsealed(&key);
+    }
     let mut store = Store::open(&store_path(), key)?;
-    // GNOME Keyring's items copied in: when it's answering (PAM started
-    // it: another login screen), or when its keyrings changed since the
-    // last copy (a GNOME session since; D-Bus starts it, and it asks for
-    // its password through Olo's prompter). Olo's login screen doesn't
-    // start it (pam_olo_keyring opens Olo's), so otherwise it isn't.
+    // GNOME Keyring's items copied in: read natively from its files with
+    // the login password, when it was typed (the move, or asked for) and
+    // they changed since the last copy (or were never copied); or from
+    // GNOME Keyring itself only when something else started it (another
+    // login screen's PAM) and it answers now, as it's then asked to quit.
+    // Nothing starts it: the bus would start olo-secrets --activated.
     let running = gnome::owner(&conn).is_some();
-    if running || gnome::changed_since(store.data.imported_at) {
+    if let Some(password) = typed.as_deref().filter(|_| !running && gnome::changed_since(store.data.imported_at)) {
+        let (keyrings, unopened) = legacy::open_all(password);
+        let found = keyrings.into_iter().flat_map(|k| k.items.into_iter().map(move |item| gnome::Found { collection: k.id.clone(), collection_label: k.label.clone(), item }));
+        status.imported = import(&mut store, found.collect());
+        if unopened > 0 {
+            tracing::info!("secrets: {unopened} of GNOME Keyring's keyrings don't open with the login password; not copied");
+        }
+    } else if running {
+        let mut typed = typed;
         // (Started again, nothing is asked: a locked collection waits for
         // the next login. Else the password once for all of them: the one
         // typed for Olo's store just now, if it was.)
@@ -363,8 +470,7 @@ fn take_over(status: &mut Status) -> Result<Serving, String> {
                 status.imported = import(&mut store, found);
                 status.skipped = skipped;
             }
-            Err(e) if running => return Err(format!("reading GNOME Keyring: {e}")),
-            Err(e) => tracing::info!("secrets: GNOME Keyring's changes not copied: {e}"),
+            Err(e) => return Err(format!("reading GNOME Keyring: {e}")),
         }
     }
     // What earlier versions left, mended (an upgrade starts it again).
@@ -432,17 +538,17 @@ fn hand_back(serving: Serving) -> Result<(usize, usize), String> {
 }
 
 /// Whether Olo should answer, now and as it changes: sent on `tx`.
-fn watch_setting(tx: mpsc::Sender<bool>) {
+fn watch_setting(tx: mpsc::Sender<locked::Msg>) {
     match std::env::var("OLO_SECRETS_SERVE").as_deref() {
         Ok("1") => {
-            let _ = tx.send(true);
+            let _ = tx.send(locked::Msg::Wanted(true));
             return;
         }
         // (Tests: "on" and "off" lines.)
         Ok("stdin") => {
             std::thread::spawn(move || {
                 for line in std::io::stdin().lines().map_while(Result::ok) {
-                    if tx.send(line.trim() == "on").is_err() {
+                    if tx.send(locked::Msg::Wanted(line.trim() == "on")).is_err() {
                         return;
                     }
                 }
@@ -452,7 +558,7 @@ fn watch_setting(tx: mpsc::Sender<bool>) {
         _ => {}
     }
     if olo_protocol::socket_path().is_none() {
-        let _ = tx.send(false);
+        let _ = tx.send(locked::Msg::Wanted(false));
         return;
     }
     std::thread::Builder::new()
@@ -462,7 +568,7 @@ fn watch_setting(tx: mpsc::Sender<bool>) {
             loop {
                 if let Ok(mut c) = olo_protocol::Client::connect()
                     && let Ok(olo_protocol::Reply::Settings { settings }) = c.request(&olo_protocol::Request::GetSettings)
-                    && tx.send(wanted(&settings)).is_err()
+                    && tx.send(locked::Msg::Wanted(wanted(&settings))).is_err()
                 {
                     return;
                 }
@@ -471,7 +577,7 @@ fn watch_setting(tx: mpsc::Sender<bool>) {
                 {
                     for event in events {
                         if let Ok(olo_protocol::Event::SettingsChanged { settings }) = event
-                            && tx.send(wanted(&settings)).is_err()
+                            && tx.send(locked::Msg::Wanted(wanted(&settings))).is_err()
                         {
                             return;
                         }
@@ -526,40 +632,68 @@ fn main() -> std::process::ExitCode {
     }
     become_new_version_when_upgraded();
     let (tx, rx) = mpsc::channel();
-    watch_setting(tx);
+    watch_setting(tx.clone());
+    locked::serve(tx.clone());
+    let mut note = locked::Note::new(tx);
     let mut serving: Option<Serving> = None;
+    let mut wanted = false;
+    // When the person last said Not Now (a program's request doesn't
+    // ask again for a while after).
+    let mut not_now: Option<std::time::Instant> = None;
     let mut status = Status::default();
     write_status(&status);
-    for wanted in rx {
-        match (wanted, serving.take()) {
-            (true, None) => {
-                status = Status::default();
-                match take_over(&mut status) {
-                    Ok(s) => {
-                        let imported = std::mem::take(&mut status.imported);
-                        let skipped = std::mem::take(&mut status.skipped);
-                        let healed = status.healed.take();
-                        status = Status { imported, skipped, healed, ..status_of(&s.state.store.lock().unwrap_or_else(|e| e.into_inner()), true) };
-                        forget_the_gone(&s.conn, s.state.clone());
-                        serving = Some(s);
-                    }
-                    Err(e) => {
-                        tracing::warn!("secrets: not answering for the keyring: {e}");
-                        status.error = Some(e);
-                    }
+    for msg in rx {
+        // Taken over when it's turned on, or asked to unlock while locked
+        // (a program's request not within a while of a Not Now); handed
+        // back when turned off. (The settings are sent again on any
+        // change: on again isn't asked again.)
+        let (take, give, reply) = match msg {
+            locked::Msg::Wanted(w) => {
+                let was = std::mem::replace(&mut wanted, w);
+                (w && !was && serving.is_none(), !w && serving.is_some(), None)
+            }
+            locked::Msg::Unlock { asked_by_person, reply } => {
+                let ask = asked_by_person || not_now.is_none_or(|t| t.elapsed() >= locked::QUIET_AFTER_NOT_NOW);
+                (wanted && serving.is_none() && ask, false, reply)
+            }
+        };
+        if take {
+            status = Status::default();
+            match take_over(&mut status) {
+                Ok(s) => {
+                    let imported = std::mem::take(&mut status.imported);
+                    let skipped = std::mem::take(&mut status.skipped);
+                    let healed = status.healed.take();
+                    status = Status { imported, skipped, healed, ..status_of(&s.state.store.lock().unwrap_or_else(|e| e.into_inner()), true) };
+                    forget_the_gone(&s.conn, s.state.clone());
+                    serving = Some(s);
+                    not_now = None;
+                    note.close();
+                }
+                Err(e) => {
+                    tracing::warn!("secrets: not answering for the keyring: {e}");
+                    not_now = Some(std::time::Instant::now());
+                    note.show(&e);
+                    status.error = Some(e);
+                    status.locked = true;
                 }
             }
-            (false, Some(s)) => {
-                let state = s.state.clone();
-                status = match hand_back(s) {
-                    Ok(_) => status_of(&state.store.lock().unwrap_or_else(|e| e.into_inner()), false),
-                    Err(e) => {
-                        tracing::warn!("secrets: handing back: {e}");
-                        Status { error: Some(e), ..status_of(&state.store.lock().unwrap_or_else(|e| e.into_inner()), false) }
-                    }
-                };
-            }
-            (_, s) => serving = s,
+        } else if give && let Some(s) = serving.take() {
+            let state = s.state.clone();
+            status = match hand_back(s) {
+                Ok(_) => status_of(&state.store.lock().unwrap_or_else(|e| e.into_inner()), false),
+                Err(e) => {
+                    tracing::warn!("secrets: handing back: {e}");
+                    Status { error: Some(e), ..status_of(&state.store.lock().unwrap_or_else(|e| e.into_inner()), false) }
+                }
+            };
+        } else if !wanted && status.locked {
+            // (Turned off while locked: nothing to say any more.)
+            note.close();
+            status.locked = false;
+        }
+        if let Some(reply) = reply {
+            let _ = reply.send(serving.is_some());
         }
         write_status(&status);
     }

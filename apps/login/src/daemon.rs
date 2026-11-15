@@ -189,8 +189,6 @@ impl Daemon {
         let way = match role {
             Role::GreeterSession => "greeter",
             Role::Login(Way::Password) => "password",
-            Role::Login(Way::Fingerprint) => "fingerprint",
-            Role::Login(Way::Face) => "face",
         };
         // (Upgraded since it started: the program in its place now.)
         let exe = std::env::current_exe().ok()?;
@@ -347,13 +345,12 @@ impl Daemon {
             Request::Begin { user } => {
                 self.stop_logins(None);
                 self.user = Some(user.clone());
-                for way in [Way::Password, Way::Fingerprint, Way::Face] {
-                    // (Not in a test: the person's own sensor and camera.)
-                    if way != Way::Password && (self.config.test.is_some() || !way_here(way)) {
-                        continue;
-                    }
-                    self.spawn(Role::Login(way), &user);
-                }
+                // The password, typed: it's what opens the person's keyring
+                // (pam_olo_keyring), so a login by face or fingerprint left
+                // it locked (Ben, 2026-11-15: "just make the login require
+                // typing the password -- simple"). The face and the
+                // fingerprint unlock the lock screen, once logged in.
+                self.spawn(Role::Login(Way::Password), &user);
             }
             Request::Answer { text } => {
                 let id = self.workers.iter().find(|(_, w)| w.role == Role::Login(Way::Password)).map(|(id, _)| *id);
@@ -493,20 +490,6 @@ fn greeter_uid() -> Option<u32> {
     unsafe {
         let pw = libc::getpwnam(name.as_ptr());
         (!pw.is_null()).then(|| (*pw).pw_uid)
-    }
-}
-
-/// Whether this computer can log people in `way`: a fingerprint where
-/// Fedora's fingerprint stack is set up (fprintd's module in it; when it
-/// isn't, authselect leaves `pam_debug.so auth=authinfo_unavail`, which
-/// says just that through the conversation: the login screen showed
-/// "auth=authinfo_unavail", a fresh Fedora 45), a face where Olo's face
-/// module is installed.
-fn way_here(way: Way) -> bool {
-    match way {
-        Way::Password => true,
-        Way::Fingerprint => std::fs::read_to_string("/etc/pam.d/fingerprint-auth").is_ok_and(|t| t.lines().any(|l| !l.trim_start().starts_with('#') && l.contains("pam_fprintd"))),
-        Way::Face => ["/usr/lib64/security/pam_olo_face.so", "/usr/lib/security/pam_olo_face.so"].iter().any(|p| Path::new(p).exists()),
     }
 }
 

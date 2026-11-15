@@ -13,7 +13,7 @@
 # need first (olo-login, olo-session, olo-app-server, olo-wlproxy,
 # olo-greeter) into /usr/local/libexec/olo, Olo's data (icons, fonts,
 # themes, wallpapers) into /usr/local/share/olo, its PAM services
-# (data/pam: password, fingerprint, face, and its own session's) and the
+# (data/pam: the password's, and its own session's) and the
 # PAM module the password one names (pam_olo_keyring: the password
 # unlocks Olo's keyring), its
 # user and folders (data/sysusers, data/tmpfiles) and its unit
@@ -99,9 +99,11 @@ for theme in data/themes/*/; do
 done
 # The login password unlocks Olo's keyring (olo-login's PAM service names it).
 as_root install -D -m 755 target/release/libpam_olo_keyring.so /usr/lib64/security/pam_olo_keyring.so
-for service in olo-login olo-login-fingerprint olo-login-face olo-login-greeter; do
+for service in olo-login olo-login-greeter; do
     as_root install -D -m 644 "data/pam/$service" "/etc/pam.d/$service"
 done
+# (Only the password logs in now: it opens the keyring.)
+as_root rm -f /etc/pam.d/olo-login-face /etc/pam.d/olo-login-fingerprint
 as_root install -D -m 644 data/sysusers/olo-greeter.conf /etc/sysusers.d/olo-greeter.conf
 as_root install -D -m 644 data/tmpfiles/olo-greeter.conf /etc/tmpfiles.d/olo-greeter.conf
 as_root systemd-sysusers /etc/sysusers.d/olo-greeter.conf

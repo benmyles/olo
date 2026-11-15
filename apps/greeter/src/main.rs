@@ -4,11 +4,11 @@
 //! as the system's `olo-greeter` user), every display showing the
 //! desktop's colour and the time, the first the panel: who (their
 //! picture and name; a choice of people when there are several), their
-//! password, what the ways in say (a fingerprint's "Place your finger on
-//! the reader"), the session, and Restart, Shut Down and Sleep. It asks
-//! nothing itself: the login daemon (`olo-login`) runs every way in at
-//! once through PAM and says what each says, and the greeter shows it
-//! and answers the password's question. Once the person is in it asks
+//! password, what PAM says, the session, and Restart, Shut Down and
+//! Sleep. It asks nothing itself: the login daemon (`olo-login`) runs the
+//! login through PAM and says what it says, and the greeter shows it and
+//! answers the password's question. Only the password logs in (it opens
+//! the person's keyring); a face or fingerprint unlocks the lock screen. Once the person is in it asks
 //! for their session and quits, which ends its own session for theirs.
 //!
 //! What it knows (who, the daemon's connection, what was said) is kept

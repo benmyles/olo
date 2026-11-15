@@ -529,6 +529,29 @@ pub fn sync_data(from: &Path, to: &Path) {
         Ok(n) => crate::log(format!("installed {n} new or changed wallpapers")),
         Err(e) => crate::log(format!("could not install wallpapers: {e}")),
     }
+    match sync_pam_module(from, &prefix.join("lib/olo")) {
+        Ok(false) => {}
+        Ok(true) => crate::log("installed a new pam_olo_keyring.so (Olo Doctor puts it in the login screen's place)"),
+        Err(e) => crate::log(format!("could not install pam_olo_keyring.so: {e}")),
+    }
+}
+
+/// The PAM module that opens Olo's keyring with the login password
+/// (`libpam_olo_keyring.so`, built beside the programs) copied into `to`
+/// as `pam_olo_keyring.so` where new or newer: not a program, so not in
+/// `bin`. Only root can put it where PAM loads it (Olo Doctor's login
+/// screen fix does, from here); before, a person's install never had
+/// it, so their typed password opened nothing (2026-11-15). Whether it
+/// was copied.
+fn sync_pam_module(from: &Path, to: &Path) -> std::io::Result<bool> {
+    let built = from.join("libpam_olo_keyring.so");
+    if !built.is_file() || !is_newer(&built, &to.join("pam_olo_keyring.so")) {
+        return Ok(false);
+    }
+    std::fs::create_dir_all(to)?;
+    install(&built, to, "pam_olo_keyring.so")?;
+    std::fs::set_permissions(to.join("pam_olo_keyring.so"), std::fs::Permissions::from_mode(0o755))?;
+    Ok(true)
 }
 
 /// Copy the build tree's wallpaper pack (`data/wallpapers`: the manifest,

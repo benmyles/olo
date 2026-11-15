@@ -3006,12 +3006,21 @@ fn own_login_screen(roots: &Roots, r: &mut Report) {
     if dm.as_deref() == Some(ls::SERVICE) {
         let old = ls::stale(&roots.fs, &roots.bin);
         if !old.is_empty() {
+            // (Without the module, the password typed at login opens no
+            // keyring: programs' secrets stay locked till it's asked for
+            // again.)
+            let keyring = old.contains(&"pam_olo_keyring.so");
             r.findings.push(Finding {
                 id: "login:own-older".into(),
-                severity: Severity::Advice,
-                title: "Olo's login screen runs an older version".into(),
+                severity: if keyring { Severity::Problem } else { Severity::Advice },
+                title: if keyring { "Logging in doesn't open your keyring".into() } else { "Olo's login screen runs an older version".into() },
                 detail: format!(
-                    "It runs copies of Olo's programs of its own ({}), which an upgrade doesn't replace. The fix copies the installed ones over them, for the next time it shows.",
+                    "{}It runs copies of Olo's programs of its own ({}), which an upgrade doesn't replace. The fix copies the installed ones over them, for the next time it shows.",
+                    if keyring {
+                        "The part of the login screen that opens the secrets programs keep with your login password isn't installed (or is older), so they're asked for again after you log in. "
+                    } else {
+                        ""
+                    },
                     old.join(", ")
                 ),
                 fix: Some(Fix { label: "Update the Login Screen".into(), root: true, steps: ls::steps(&roots.bin, &share, None) }),

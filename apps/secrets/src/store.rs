@@ -376,6 +376,14 @@ fn seal(key: &[u8; 32], plain: &[u8]) -> Vec<u8> {
     out
 }
 
+/// Whether `key` opens the store at `path` (true when there's none yet).
+pub fn opens(path: &Path, key: &[u8; 32]) -> bool {
+    match std::fs::read(path) {
+        Ok(bytes) => open(key, &bytes).is_ok(),
+        Err(e) => e.kind() == std::io::ErrorKind::NotFound,
+    }
+}
+
 fn open(key: &[u8; 32], bytes: &[u8]) -> Result<Zeroizing<Vec<u8>>, String> {
     if bytes.len() < 5 + 24 || &bytes[..4] != MAGIC {
         return Err("the secrets store isn't one".into());
