@@ -747,6 +747,9 @@ fn main() -> std::process::ExitCode {
         sup.adopt();
         sup.publish(None);
         let _ = std::thread::Builder::new().name("supervisor".into()).spawn(move || {
+            // (Above every other of Olo's threads: it gets to look whatever
+            // they do.)
+            olo_system::realtime::promote_if_wanted(olo_protocol::performance::SUPERVISOR_RT_PRIORITY, "the supervisor");
             loop {
                 let began = Instant::now();
                 sup.tick();

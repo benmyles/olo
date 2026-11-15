@@ -12,16 +12,13 @@
 //! 2.5 s; made realtime, it waited 0 ms in a minute of the same load. The
 //! realtime class is above every normal and sched_ext one.
 //!
-//! Through rtkit (`priority::make_realtime`), SCHED_RR, each thread
-//! registered with the guard in `olo_app::realtime` first (a soft limit of
-//! 50 ms of realtime CPU without sleeping, where SIGXCPU puts the threads
-//! back to their nice, under rtkit's hard 200 ms that would end the
-//! process). Here a keeper thread, asleep on a pipe the guard's handler
-//! writes to, makes them realtime again [`AGAIN_AFTER`] later (and logs
-//! it). Nothing runs meanwhile: the keeper is blocked in a read.
-//!
-//! Threads a realtime one starts are normal (rtkit sets
-//! SCHED_RESET_ON_FORK). [`demote_self`] puts one back for good (a window
-//! that lost the keyboard).
+//! SCHED_RR, set by the program itself where the account lets it (Olo
+//! Doctor's Allow Realtime), each thread registered with the guard in
+//! `olo_app::realtime` first: never put back for running long, its
+//! program ended only when it's stuck (30 s without once sleeping), with
+//! a report. Never through rtkit, whose rule ends a program at 200 ms.
+//! Threads a realtime one starts are normal (SCHED_RESET_ON_FORK).
+//! [`demote_self`] puts one back for good (a window that lost the
+//! keyboard).
 
 pub use olo_xdg::realtime::*;

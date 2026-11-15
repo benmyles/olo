@@ -657,7 +657,8 @@ pub fn scan(roots: &Roots) -> Report {
     wifi(roots, &mut r);
     bluetooth(roots, &mut r);
     rtkit(roots, &mut r);
-    voice_realtime(roots, &procs, &mut r);
+    let realtime_leave = realtime(roots, &mut r);
+    voice_realtime(roots, &procs, realtime_leave, &mut r);
     airpods_listening(roots, &procs, &mut r);
     util_clamp(roots, &mut r);
     kept_core(roots, &mut r);
@@ -1564,6 +1565,63 @@ fn rtkit(roots: &Roots, r: &mut Report) {
     }
 }
 
+/// Where Olo Doctor's Allow Realtime gives the account its leave to make
+/// threads realtime (the login's limits, pam_limits).
+pub const REALTIME_LIMITS_CONF: &str = "etc/security/limits.d/80-olo-realtime.conf";
+
+/// The limits file for account `uid`: realtime up to Olo's most, and no
+/// limit on how long a realtime thread runs (Olo's own guard ends one
+/// stuck, 30 s).
+fn realtime_limits_conf(uid: u32) -> String {
+    let most = olo_system::realtime::MOST_PRIORITY;
+    format!(
+        "# Olo: account {uid}'s programs may make their threads realtime themselves (app_server's loop and input, the window\n# with the keyboard, sound, PipeWire's in Olo's programs), with no limit on how long one runs: Olo ends a thread\n# stuck 30 s itself, with a report. Without this, realtime comes only through rtkit, which ends a program whose\n# realtime thread runs 200 ms without sleeping (app_server was, 2026-11-15). Written by Olo Doctor (Allow Realtime).\n{uid}:{uid} - rtprio {most}\n{uid}:{uid} - rttime unlimited\n"
+    )
+}
+
+/// The account's leave to make its threads realtime itself (this
+/// session's limits: RLIMIT_RTPRIO at least Olo's most, and no hard limit
+/// on realtime time short of the guard's). Whether it has it.
+fn realtime(roots: &Roots, r: &mut Report) -> bool {
+    let limits = read(&roots.fs.join("proc/self/limits")).unwrap_or_default();
+    let field = |name: &str| -> Vec<String> { limits.lines().find(|l| l.starts_with(name)).map(|l| l[name.len()..].split_whitespace().map(str::to_owned).collect()).unwrap_or_default() };
+    let rtprio = field("Max realtime priority").first().and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
+    let time_hard = field("Max realtime timeout").get(1).cloned().unwrap_or_default();
+    let long_enough = time_hard == "unlimited" || time_hard.parse::<u64>().is_ok_and(|us| us >= olo_system::realtime::HARD_LIMIT_US);
+    let most = olo_system::realtime::MOST_PRIORITY;
+    if rtprio >= most && long_enough {
+        r.fine.push(Fine {
+            title: "Olo's threads are realtime, with no time limit".into(),
+            detail: "app_server's loop and input, the window with the keyboard and sound run before anything else wanting the processor, for as long as they have work: only a thread stuck for 30 s ends its program, with a report.".into(),
+        });
+        return true;
+    }
+    if roots.fs.join(REALTIME_LIMITS_CONF).exists() {
+        r.findings.push(Finding {
+            id: "realtime".into(),
+            severity: Severity::Advice,
+            title: "Realtime for Olo's threads starts at your next login".into(),
+            detail: "The account may make its threads realtime now, but this session was started before: log out and in, and app_server, the window with the keyboard and sound run realtime, with no time limit.".into(),
+            fix: None,
+        });
+        return false;
+    }
+    r.findings.push(Finding {
+        id: "realtime".into(),
+        severity: Severity::Problem,
+        title: "Olo's threads can't be realtime without being ended at 200 ms".into(),
+        detail: format!(
+            "Under load, app_server's loop and input, the window with the keyboard and sound need to run before other programs' work. This account may not make threads realtime itself (its limit is {rtprio}), so the only way is rtkit, which ends a whole program whose realtime thread runs 200 ms without a pause, even when it's only busy (app_server was ended so, inside a graphics driver's wait). So Olo's threads stay at a raised priority, not realtime. The fix lets the account make them realtime itself, up to {most}, with no limit on how long they run: Olo ends a thread only if it's stuck for 30 s, with a report. It applies at your next login."
+        ),
+        fix: Some(Fix {
+            label: "Allow Realtime".into(),
+            root: true,
+            steps: vec![Step::WriteFile { path: PathBuf::from("/").join(REALTIME_LIMITS_CONF), content: realtime_limits_conf(roots.uid), mode: 0o644 }],
+        }),
+    });
+    false
+}
+
 /// AirPods paired: connecting and switching by themselves needs their
 /// broadcasts heard, through BlueZ's advertisement monitor, which BlueZ
 /// (5.87) keeps among its experimental interfaces (`bluetoothd
@@ -1611,9 +1669,10 @@ fn airpods_listening(roots: &Roots, procs: &[Proc], r: &mut Report) {
 /// desktop's programs use them up: then a frame of someone's voice can
 /// wait behind other work, a click in their call. The fix lets rtkit give
 /// more, and restarts it (the supervisor asks again).
-fn voice_realtime(roots: &Roots, procs: &[Proc], r: &mut Report) {
+fn voice_realtime(roots: &Roots, procs: &[Proc], leave: bool, r: &mut Report) {
     let threads = audio_threads(roots, procs);
-    if threads.is_empty() {
+    // (Without the account's leave, Allow Realtime's finding says it.)
+    if threads.is_empty() || !leave {
         return;
     }
     let mut not: Vec<String> = Vec::new();
@@ -1623,38 +1682,18 @@ fn voice_realtime(roots: &Roots, procs: &[Proc], r: &mut Report) {
         }
     }
     if not.is_empty() {
-        r.fine.push(Fine { title: "Voice processing's sound is realtime".into(), detail: "rtkit made the voice services' sound threads realtime.".into() });
+        r.fine.push(Fine { title: "Voice processing's sound is realtime".into(), detail: "The voice services' sound threads are realtime.".into() });
         return;
     }
-    let daemon = ["usr/libexec/rtkit-daemon", "usr/lib/rtkit/rtkit-daemon"].into_iter().find(|p| roots.fs.join(p).exists());
-    let fix = daemon.map(|d| Fix {
-        label: "Let rtkit Give More".into(),
-        root: true,
-        steps: vec![
-            Step::WriteFile {
-                path: "/etc/systemd/system/rtkit-daemon.service.d/olo.conf".into(),
-                content: format!(
-                    "# Olo: room for the voice services' sound to be realtime (Olo Doctor).
-[Service]
-ExecStart=
-ExecStart=/{d} --processes-per-user-max=64 --threads-per-user-max=256
-"
-                ),
-                mode: 0o644,
-            },
-            Step::Unit { name: "rtkit-daemon.service".into(), action: UnitAction::Reload },
-            Step::Unit { name: "rtkit-daemon.service".into(), action: UnitAction::Restart },
-        ],
-    });
     r.findings.push(Finding {
         id: "voice-realtime".into(),
         severity: Severity::Advice,
         title: "Voice processing's sound isn't realtime".into(),
         detail: format!(
-            "{} asked rtkit for realtime and didn't get it: rtkit gives it to only so many processes a user (15 by default), and this desktop's programs have used them up. Under load, a frame of a voice can then wait behind other work, a click in a call. The fix lets rtkit give it to 64 processes and 256 threads, restarts it, and asks it again for their sound.",
+            "{} started before the account could make threads realtime itself, and their sound runs at its nice: under load, a frame of a voice can wait behind other work, a click in a call. The fix makes their sound threads realtime now, with no time limit.",
             not.join(" and ")
         ),
-        fix,
+        fix: Some(Fix { label: "Make It Realtime".into(), root: false, steps: Vec::new() }),
     });
 }
 
@@ -3241,6 +3280,45 @@ mod tests {
         (fs, roots)
     }
 
+    /// Realtime: without the account's leave, Allow Realtime (the account
+    /// by its uid, up to Olo's most, no time limit); written but this
+    /// session from before it, the next login; in force, fine.
+    #[test]
+    fn realtime_leave_is_offered_then_fine() {
+        let (fs, roots) = machine("realtime");
+        let limits = |prio: u32, soft: &str, hard: &str| {
+            let p = fs.join("proc/self/limits");
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, format!("Limit                     Soft Limit           Hard Limit           Units     \nMax realtime priority     {prio}                    {prio}                    \nMax realtime timeout      {soft}            {hard}            us        \n")).unwrap();
+        };
+        limits(0, "unlimited", "unlimited");
+        let mut r = Report::default();
+        assert!(!realtime(&roots, &mut r));
+        let f = r.findings.iter().find(|f| f.id == "realtime").unwrap();
+        assert_eq!(f.severity, Severity::Problem);
+        let Some(Fix { root: true, steps, .. }) = &f.fix else { panic!("no root fix") };
+        let Step::WriteFile { path, content, .. } = &steps[0] else { panic!("not a file") };
+        assert_eq!(path, &PathBuf::from("/").join(REALTIME_LIMITS_CONF));
+        let u = roots.uid;
+        assert!(content.contains(&format!("{u}:{u} - rtprio 70")) && content.contains(&format!("{u}:{u} - rttime unlimited")), "{content}");
+        // Written; this session started before it.
+        std::fs::create_dir_all(fs.join(REALTIME_LIMITS_CONF).parent().unwrap()).unwrap();
+        std::fs::write(fs.join(REALTIME_LIMITS_CONF), content).unwrap();
+        let mut r = Report::default();
+        assert!(!realtime(&roots, &mut r));
+        let f = r.findings.iter().find(|f| f.id == "realtime").unwrap();
+        assert!(f.severity == Severity::Advice && f.fix.is_none());
+        // In force (the guard's own limits in the process, 30 s and 31 s).
+        limits(70, "30000000", "31000000");
+        let mut r = Report::default();
+        assert!(realtime(&roots, &mut r));
+        assert!(r.findings.is_empty() && r.fine.iter().any(|f| f.title.contains("realtime")));
+        // A hard limit of rtkit's (200 ms) isn't leave: ended at that.
+        limits(70, "200000", "200000");
+        let mut r = Report::default();
+        assert!(!realtime(&roots, &mut r));
+    }
+
     /// The power modes as planned: nothing said without a power profiles
     /// daemon; the follower installed, started, brought up to date, tried
     /// again, its settings set again when something changed them; else
@@ -3914,6 +3992,11 @@ mod tests {
         let (fs, mut roots) = machine("wrong");
         // Programs' temporary files in memory too.
         roots.temp = TempFiles { tmp_in_memory: true, config: fs.join("home/me/.config"), data: fs.join("home/me/.local/share"), ..TempFiles::default() };
+        // (The account may make threads realtime: the voice services'
+        // aren't, started before.)
+        let limits = fs.join("proc/self/limits");
+        std::fs::create_dir_all(limits.parent().unwrap()).unwrap();
+        std::fs::write(&limits, "Max realtime priority     70                   70                   \nMax realtime timeout      unlimited            unlimited            us        \n").unwrap();
         let r = scan(&roots);
         let ids: Vec<&str> = r.findings.iter().map(|f| f.id.as_str()).collect();
         assert_eq!(r.find("foreign").unwrap().title, "A program of another desktop runs in this session");
@@ -3938,8 +4021,9 @@ mod tests {
             "{r:#?}"
         );
         let voice = r.find("voice-realtime").unwrap();
-        assert!(voice.detail.starts_with("olo-voice asked rtkit"), "{}", voice.detail);
-        assert!(matches!(&voice.fix.as_ref().unwrap().steps[0], Step::WriteFile { content, .. } if content.contains("ExecStart=/usr/libexec/rtkit-daemon --processes-per-user-max=64")));
+        assert!(voice.detail.starts_with("olo-voice started before"), "{}", voice.detail);
+        let fix = voice.fix.as_ref().unwrap();
+        assert!(fix.label == "Make It Realtime" && !fix.root && fix.steps.is_empty());
         let uclamp = r.find("uclamp").unwrap();
         assert!(uclamp.detail.starts_with("kernel.sched_util_clamp_min is 512"));
         assert_eq!(uclamp.fix.as_ref().unwrap().steps[1], Step::WriteSysfs { path: "/proc/sys/kernel/sched_util_clamp_min".into(), value: "1024".into() });
@@ -3990,7 +4074,8 @@ mod tests {
         // Written where GDM always looks (the old one, in /usr/local, read
         // only when GDM's XDG_DATA_DIRS names it).
         assert!(matches!(&login.fix.as_ref().unwrap().steps[0], Step::WriteFile { path, .. } if path == Path::new("/usr/share/wayland-sessions/olo.desktop")));
-        assert!(r.fine.is_empty(), "{:?}", r.fine);
+        // (Only the account's leave for realtime, given above, is fine.)
+        assert!(r.fine.iter().all(|f| f.title.starts_with("Olo's threads are realtime")), "{:?}", r.fine);
         let _ = std::fs::remove_dir_all(&fs);
     }
 
@@ -4002,6 +4087,7 @@ mod tests {
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(path, c).unwrap();
         };
+        w("proc/self/limits", "Max realtime priority     70                   70                   \nMax realtime timeout      30000000             31000000             us        \n");
         std::fs::remove_dir_all(fs.join("proc/772")).unwrap();
         std::fs::remove_dir_all(fs.join("proc/900")).unwrap();
         std::fs::remove_dir_all(fs.join("proc/901")).unwrap();
@@ -4033,6 +4119,7 @@ mod tests {
                 "Olo's display rule is installed",
                 "Olo's healer watches wld0",
                 "rtkit is running",
+                "Olo's threads are realtime, with no time limit",
                 "Voice processing's sound is realtime",
                 "Bluetooth listens for the AirPods",
                 "Frames run on the fast cores",

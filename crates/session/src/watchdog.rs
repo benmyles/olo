@@ -129,6 +129,9 @@ impl Watchdog {
         std::thread::Builder::new()
             .name("watchdog".into())
             .spawn(move || {
+                // (Above every other of Olo's threads: it gets to look
+                // whatever they do.)
+                olo_system::realtime::promote_if_wanted(olo_protocol::performance::SUPERVISOR_RT_PRIORITY, "the watchdog");
                 loop {
                     std::thread::sleep(EVERY);
                     if ping(&path) {

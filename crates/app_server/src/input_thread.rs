@@ -805,10 +805,9 @@ pub fn spawn(
 
 /// The highest nice rtkit gives (`INPUT_NICE`), above the loop's own,
 /// and realtime above the loop's (`realtime::INPUT_PRIORITY`): read as
-/// soon as the kernel has an event, whatever else runs. rtkit's limit on
-/// a realtime thread (200 ms of CPU without sleeping) would end app_server
-/// were this thread ever to spin; `realtime`'s lower one puts it back to
-/// its nice first. (It started at the loop's nice, and on its fast cores.)
+/// soon as the kernel has an event, whatever else runs, and never put
+/// back for running long (only stuck, 30 s, would end app_server). (It
+/// started at the loop's nice, and on its fast cores.)
 fn prioritise() {
     if let Some(why) = olo_system::priority::not_the_persons() {
         info!("the input thread stays at its nice: {why}");
@@ -819,7 +818,7 @@ fn prioritise() {
         Err(e) => info!("the input thread stays at its nice: {e}"),
     }
     match crate::realtime::promote_self(crate::realtime::INPUT_PRIORITY) {
-        Ok(()) => info!(priority = crate::realtime::INPUT_PRIORITY, "the input thread is realtime (rtkit)"),
+        Ok(()) => info!(priority = crate::realtime::INPUT_PRIORITY, "the input thread is realtime"),
         Err(e) => info!("the input thread isn't realtime: {e}"),
     }
     // ...on the kept core, beside the loop (`Settings::keep_core`).

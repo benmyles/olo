@@ -1,15 +1,16 @@
 //! app_server's realtime threads: its main loop (every input event, every
 //! frame) and its input thread (libinput, the cursor moved while the loop
-//! is held), above them. Made realtime with `olo_system::realtime` (its
-//! guard puts them back to their nice should either ever run 50 ms
-//! without sleeping, and makes them realtime again after). Only the
+//! is held), above them. Made realtime with `olo_system::realtime` (never
+//! put back for running long; app_server ended only should one be stuck,
+//! 30 s without once sleeping, with a report). Only the
 //! person's own app_server: a headless one (an agent's screen, a test
 //! session) is background work beside it (`OLO_REALTIME=1` makes one
 //! realtime anyway, to measure).
 
 /// The main loop's priority and the input thread's (above it: the
-/// pointer before everything). rtkit gives at most 20; audio's threads
-/// are at 20 (`olo_protocol::performance::AUDIO_RT_PRIORITY`).
+/// pointer before everything); audio's threads are at 20
+/// (`olo_protocol::performance::AUDIO_RT_PRIORITY`), the watchdog and
+/// the supervisor at 21.
 pub const MAIN_PRIORITY: u32 = 10;
 pub const INPUT_PRIORITY: u32 = 12;
 
@@ -148,10 +149,11 @@ mod tests {
 /// someone waits on, made realtime here: each window's looper (named
 /// `w>` and its title, as BeOS's) and its display thread (`display`), at
 /// the kit's priorities, below app_server's own. Only a program that
-/// registered them with the guard (`olo_app::realtime::guarded`: its
-/// SIGXCPU puts them back; without it, a thread running long at the
-/// limit would end the program): Olo's. On a worker (rtkit's D-Bus calls
-/// never wait on the loop), told by [`focus`] and [`always`].
+/// registered them with the guard (`olo_app::realtime::guarded`: a
+/// thread there ends its program only stuck, 30 s, with a report):
+/// Olo's. Put back when another program has the keyboard (never for
+/// running long). On a worker (reading /proc never waits on the loop),
+/// told by [`focus`] and [`always`].
 mod focused {
     use std::sync::{OnceLock, mpsc};
 
@@ -188,8 +190,8 @@ mod focused {
     /// registered with its guard (`olo_app::realtime::marked`). A thread
     /// a looper starts unnamed takes its name (`w>…`) but isn't marked:
     /// made realtime too, Agent Screens' export thread encoded video at
-    /// realtime, past rtkit's hard limit, and the kernel ended the app
-    /// (Ben, 2026-11-15).
+    /// realtime, past rtkit's hard limit (as it was then), and the kernel
+    /// ended the app (Ben, 2026-11-15).
     fn threads(pid: i32) -> Vec<(i32, u32)> {
         let Ok(tasks) = std::fs::read_dir(format!("/proc/{pid}/task")) else { return Vec::new() };
         tasks

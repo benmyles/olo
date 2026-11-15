@@ -10960,12 +10960,14 @@ kernel's own. Two reasons a nice can't help: the processor is shared out
 between sibling cgroups by their weights before any nice counts (below),
 and a nice orders shares, not who runs first.
 
-**Realtime, guarded.** The threads someone waits on are SCHED_RR,
-through rtkit (`MakeThreadRealtimeWithPID`), above every normal and
-sched_ext thread under any scheduler:
+**Realtime, never ended for being busy.** The threads someone waits on
+are SCHED_RR, set by the program itself (`olo_xdg::realtime`,
+`sched_setscheduler`), above every normal and sched_ext thread under any
+scheduler:
 
 | Thread | Priority | Made realtime by |
 |---|---|---|
+| The session's watchdog, the Performance supervisor's look (`SUPERVISOR_RT_PRIORITY`) | 21 | itself |
 | PipeWire's data loops | 20 | libpipewire, as a stream starts |
 | A player's, recorder's or AirPlay's sound (`SOUND_PRIORITY`) | 15 | itself, `olo_xdg::realtime::promote_if_wanted` |
 | app_server's input thread (`olo-input`) | 12 | itself |
@@ -10973,47 +10975,51 @@ sched_ext thread under any scheduler:
 | The keyboard's program's display thread, and the proxy's loop | 9 | app_server (`realtime::focus`); olo-wlproxy itself |
 | The keyboard's program's windows' loopers (`w>…`), and Deskbar's | 8 | app_server (`realtime::focus`, `realtime::always`) |
 
-Only the person's own: a headless app_server, an agent's screen
-(`OLO_SCREEN`) and `OLO_REALTIME=0` leave everything at its nice
+The watchdog and the supervisor are above the rest (Ben, 2026-11-15:
+"give the olo supervisor thread(s) slightly higher priority than the
+other olo stuff"): a realtime thread is never put back for running
+long, so they must always get to run, whatever the others do; each
+mostly sleeps. Only the person's own: a headless app_server, an agent's
+screen (`OLO_SCREEN`) and `OLO_REALTIME=0` leave everything at its nice
 (`OLO_REALTIME=1` makes a headless one realtime, to measure). A window
-that loses the keyboard goes back to its nice.
+that loses the keyboard goes back to its nice; nothing goes back for
+being busy.
 
-A realtime thread that spun would take a core for good (Fedora's kernel
-doesn't throttle realtime threads), and rtkit's hard limit on realtime
-CPU without sleeping (`RLIMIT_RTTIME`, 200 ms) ends the whole process.
-So every thread that may be realtime is registered first with the guard
-in `olo_app::realtime` (every Olo program has it, plain system calls):
-a soft limit of 50 ms under rtkit's hard one, and a SIGXCPU handler that
-puts the thread that ran over back to the normal class at once (the
-kernel delivers the signal to the thread running, the one that ran
-over; landed elsewhere, every registered realtime thread goes back).
-`olo_xdg::realtime`'s keeper thread, asleep on a pipe the handler writes
-to, makes it realtime again two seconds later and logs it: slowed, never
-ended. app_server makes another program's threads realtime only when
-its limits say it has the guard (`olo_app::realtime::guarded`, read from
-/proc). The kit registers each window's looper and its display thread
-as they start (`guard_ui_thread`), and a registration is forgotten as
-its thread ends (a thread-local's destructor: the kernel gives the id
-to new threads). Two kernel details the guard depends on, each found by
-`a_thread_that_runs_over_is_slowed_never_ended` (olo-xdg, ignored: it
-asks rtkit), which runs a realtime thread over twice:
+A thread is made realtime only where the account lets a program do it
+itself (RLIMIT_RTPRIO, from the login's limits): Olo Doctor's **Allow
+Realtime** writes `/etc/security/limits.d/80-olo-realtime.conf` (the
+account by its uid: `rtprio 70`, `rttime unlimited`), in force from the
+next login; without it threads keep their nice. Never through rtkit:
+rtkit gives realtime only to a process whose hard limit on realtime time
+without sleeping (`RLIMIT_RTTIME`) is 200 ms at most, and the kernel
+ends the process at that (SIGKILL), busy or not. app_server was, at
+13:29 on 2026-11-15, three seconds into a live lint's dozen sessions,
+most likely inside a GPU driver's wait where no signal could be taken
+(Ben: "there should never be short kill rule and we should NEVER drop
+priority down"). Before, a guard put a thread back to its nice at 50 ms
+and a keeper made it realtime again two seconds on; both are gone.
 
-- rtkit gives SCHED_RR with SCHED_RESET_ON_FORK, and the kernel refuses
-  (EPERM) an unprivileged caller that would clear that flag: a thread
-  is put back with `SCHED_OTHER | SCHED_RESET_ON_FORK`
-  (`olo_app::realtime::demote`), or it can't be at all. Without it the
-  guard did nothing and the test's process was SIGKILLed.
-- At the soft limit the kernel raises it by a second (so SIGXCPU comes
-  once a second): over the hard one, the next thread to run over meets
-  the hard limit. The handler sets the limits back first. Without it
-  the second overrun was SIGKILL. The guard also sets them again at
-  every registration: libpipewire's realtime module sets soft and hard
-  both to 200 ms in any program that uses it, and
-  `olo_system::priority::realtime` leaves a process whose hard limit is
-  already rtkit's alone.
-
-rtkit gives realtime to so many processes and threads a user (15 and 25
-by default); Olo Doctor's rtkit drop-in raises them (64 and 256).
+The guard (`olo_app::realtime`, every Olo program, plain system calls)
+now only ends a thread truly stuck: `RLIMIT_RTTIME` soft 30 s (realtime
+processor time without once sleeping), whose SIGXCPU it turns into an
+abort (a crash report, as any crash, "stuck" said on stderr), and hard
+31 s, the kernel's SIGKILL for a thread stuck inside the kernel all that
+while. A limit lowered below the guard's by something else in the
+process (libpipewire's realtime module, where it went through rtkit)
+can't be raised again: then nothing there is made realtime. app_server
+makes another program's threads realtime only when its limits are the
+guard's (`olo_app::realtime::guarded`, from /proc) and the thread is
+marked as registered (`marked`: SCHED_RESET_ON_FORK on its normal class,
+which threads it starts don't have, though they take its name). The kit
+registers each window's looper and its display thread as they start
+(`guard_ui_thread`), and a registration is forgotten as its thread ends
+(a thread-local's destructor: the kernel gives the id to new threads).
+Put back (a window that lost the keyboard) with `SCHED_OTHER |
+SCHED_RESET_ON_FORK`: the kernel refuses (EPERM) an unprivileged caller
+that would clear the flag. Tests: `a_stuck_thread_ends_its_program_with_a_report`
+(olo-app: SIGXCPU, the program aborts) and `a_busy_thread_stays_realtime`
+(olo-xdg, ignored without the account's leave: 1.5 s of work, still
+realtime).
 
 **The kept core** (`Settings::keep_core`, on by default; Preferences ▸
 Performance ▸ Scheduler ▸ Kept Core). One core, the fastest

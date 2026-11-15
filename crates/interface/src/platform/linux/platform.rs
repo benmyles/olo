@@ -132,8 +132,9 @@ impl LinuxCommon {
 
 /// Register the calling thread (a window's looper, the display thread) with
 /// the realtime guard (`olo_app::realtime`): app_server makes it realtime
-/// at `priority` while this program has the keyboard, and the guard puts
-/// it back should it run 50 ms without sleeping. Not on an agent's screen,
+/// at `priority` while this program has the keyboard; never put back for
+/// running long, the program ended only should it be stuck (30 s without
+/// once sleeping), with a report. Not on an agent's screen,
 /// in a headless program, or with `OLO_REALTIME=0`.
 pub(crate) fn guard_ui_thread(priority: u32) {
     if env::var("OLO_REALTIME").as_deref() == Ok("0") || env::var_os("OLO_SCREEN").is_some() || env::var_os("OLO_HEADLESS").is_some() {

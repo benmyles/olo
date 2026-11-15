@@ -23,36 +23,17 @@ pub fn high_priority(pid: u32, tid: u32, nice: i32) -> Result<()> {
     Ok(())
 }
 
-/// Thread `tid` of `pid` made realtime (SCHED_RR at `priority`, at most
-/// rtkit's `MaxRealtimePriority`), through rtkit. rtkit asks that the
-/// process has a limit on realtime CPU time (RLIMIT_RTTIME), so that a
-/// realtime thread that spins can't take the computer: set here first,
-/// 200 ms, as PipeWire's own module does. The process must be the
-/// caller's user's.
+/// Thread `tid` of `pid` made realtime: SCHED_RR at `priority`, set
+/// directly where the account lets it (RLIMIT_RTPRIO, Olo Doctor's Allow
+/// Realtime), with no limit on how long it may run: never through rtkit,
+/// whose rule (a hard limit of 200 ms on realtime time without sleeping)
+/// ends the program at that. The process must be the caller's user's.
 pub fn realtime(pid: u32, tid: u32, priority: u32) -> Result<()> {
-    // (A process whose hard limit is low enough already keeps its own: an
-    // Olo program's guard, `olo_app::realtime`, has a lower soft one, where
-    // a thread that runs over is slowed, not ended.)
-    let mut now = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
-    // SAFETY: prlimit only reads (null new limit) into `now`.
-    let read = unsafe { libc::prlimit(pid as libc::pid_t, libc::RLIMIT_RTTIME, std::ptr::null(), &mut now) } == 0;
-    if !read || now.rlim_max > 200_000 {
-        let limit = libc::rlimit { rlim_cur: 200_000, rlim_max: 200_000 };
-        // SAFETY: prlimit sets, and doesn't read back (null), a resource
-        // limit of a process of our own user: lowering a limit needs no
-        // privilege.
-        if unsafe { libc::prlimit(pid as libc::pid_t, libc::RLIMIT_RTTIME, &limit, std::ptr::null_mut()) } != 0 {
-            return Err(std::io::Error::last_os_error().into());
-        }
-    }
     make_realtime(pid, tid, priority)
 }
 
-/// Thread `tid` of `pid` made realtime through rtkit, the process's
-/// RLIMIT_RTTIME as it is (rtkit refuses one without a hard limit at most
-/// its `RTTimeUSecMax`, 200 ms: the caller has set it). Priority at most
-/// rtkit's `MaxRealtimePriority`. (`olo_xdg::realtime`'s, where the kit's
-/// programs reach it.)
+/// [`realtime`] (`olo_xdg::realtime`'s, where the kit's programs reach
+/// it).
 pub fn make_realtime(pid: u32, tid: u32, priority: u32) -> Result<()> {
     olo_xdg::realtime::make_realtime(pid, tid, priority).map_err(zbus::Error::Failure)
 }
@@ -190,9 +171,9 @@ mod tests {
         assert_eq!(raise_thread(me, me, n), Ok(n));
     }
 
-    /// Through the system's rtkit, on a thread of this test's own.
+    /// On a thread of this test's own, where the account lets it.
     #[test]
-    #[ignore = "asks the system's rtkit"]
+    #[ignore = "needs the account's leave for realtime (Olo Doctor's Allow Realtime)"]
     fn makes_a_thread_realtime() {
         let (tx, rx) = std::sync::mpsc::channel();
         let t = std::thread::spawn(move || {
@@ -203,13 +184,8 @@ mod tests {
         });
         let tid = rx.recv().unwrap();
         assert!(!is_realtime(tid));
-        match realtime(std::process::id(), tid, 5) {
-            Ok(()) => assert!(is_realtime(tid)),
-            // rtkit gives realtime to so many processes of a user (15 by
-            // default), and a desktop's use them up.
-            Err(e) if e.to_string().contains("busy") => eprintln!("rtkit has no room for another process now: {e}"),
-            Err(e) => panic!("rtkit: {e}"),
-        }
+        realtime(std::process::id(), tid, 5).expect("the account's leave");
+        assert!(is_realtime(tid));
         t.join().unwrap();
     }
 

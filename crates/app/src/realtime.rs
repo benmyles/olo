@@ -1,59 +1,65 @@
 //! The guard on realtime threads, in every Olo program that has threads
 //! someone waits on (a window's looper, the display thread, a sound
 //! thread): what makes it safe for app_server, or the program itself
-//! (`olo_system::realtime`), to make them realtime through rtkit.
+//! (`olo_system::realtime`), to make them realtime.
 //!
-//! A realtime thread that spun would take a core for good (Fedora's
-//! kernel doesn't throttle realtime threads), and rtkit's hard limit on
-//! realtime CPU time without sleeping (`RLIMIT_RTTIME`, 200 ms) ends the
-//! whole process; without a handler, SIGXCPU at the soft limit ends it
-//! too. So the soft limit here is lower ([`SOFT_LIMIT_US`]), and SIGXCPU
-//! puts every thread registered here back to the normal class at once
-//! (its nice as it was), before the hard limit: a realtime thread that
-//! runs long is slowed, never ended. app_server makes a program's threads
-//! realtime only when its limits say it has this guard (`guarded`).
+//! A realtime thread runs before anything else wanting the processor,
+//! for as long as it has work: busy isn't stuck, and it is never put back
+//! to the normal class for running long, nor ended for it (Ben,
+//! 2026-11-15: "there should never be short kill rule and we should
+//! NEVER drop priority down"; app_server was ended that day by rtkit's
+//! rule, at 200 ms without sleeping, inside a GPU driver's wait). Only a
+//! thread truly stuck, [`STUCK_LIMIT_US`] (30 s) of processor without
+//! once sleeping, ends its program: RLIMIT_RTTIME's soft limit, whose
+//! SIGXCPU the guard turns into an abort (a crash report, as any crash
+//! has), and the hard limit a second on, the kernel's SIGKILL should the
+//! thread be inside the kernel all that while. So threads are made
+//! realtime only where the account lets a program do it itself
+//! (RLIMIT_RTPRIO; Olo Doctor's Allow Realtime), never through rtkit,
+//! which gives it only to a process whose hard limit is 200 ms at most.
+//! app_server makes a program's threads realtime only when its limits say
+//! it has this guard (`guarded`).
 //!
-//! Registering doesn't make a thread realtime; it only says which threads
-//! may be, and puts them back when they run over. (Plain system calls,
-//! no D-Bus: every Olo program has it.)
+//! Registering doesn't make a thread realtime; it says which threads may
+//! be. (Plain system calls, no D-Bus: every Olo program has it.)
 
 use std::sync::{
     OnceLock,
-    atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering},
+    atomic::{AtomicI32, AtomicU32, Ordering},
 };
 
-/// Realtime CPU time without sleeping before the registered threads are
-/// put back: no frame, batch of events or buffer of sound takes this long,
-/// and it is well under rtkit's hard limit.
-pub const SOFT_LIMIT_US: u64 = 50_000;
-/// rtkit's most (`RTTimeUSecMax`), the hard limit: rtkit refuses a
-/// process whose hard limit is larger.
-pub const HARD_LIMIT_US: u64 = 200_000;
+/// Processor time a realtime thread may take without once sleeping
+/// before it's taken for stuck and its program ended (with a report).
+pub const STUCK_LIMIT_US: u64 = 30_000_000;
+/// The kernel's own end, a second after: for a thread stuck inside the
+/// kernel, where the guard's signal can't be taken.
+pub const HARD_LIMIT_US: u64 = 31_000_000;
 const SLOTS: usize = 32;
 
 static TIDS: [AtomicI32; SLOTS] = [const { AtomicI32::new(0) }; SLOTS];
 static PRIORITIES: [AtomicU32; SLOTS] = [const { AtomicU32::new(0) }; SLOTS];
-/// Put back by the guard, not yet made realtime again.
-static PUT_BACK: [AtomicBool; SLOTS] = [const { AtomicBool::new(false) }; SLOTS];
-/// A pipe told when the threads were put back (-1: none): the keeper
-/// that makes them realtime again, if the program has one.
-static NOTIFY: AtomicI32 = AtomicI32::new(-1);
 static GUARD: OnceLock<Result<(), String>> = OnceLock::new();
 
 /// The limits, and the handler (once for the process). The limits are
-/// set again each time: something else in the process may have set its
-/// own since (libpipewire's realtime module sets soft and hard both to
-/// 200 ms, where a thread that ran over would be ended, not slowed).
+/// set again each time: something else in the process may have lowered
+/// them since (libpipewire's realtime module, where it went through
+/// rtkit, sets both to 200 ms). A hard limit lowered below ours can't be
+/// raised again: then no thread here is made realtime, rather than one
+/// ended at that.
 pub fn guard() -> Result<(), String> {
-    let limit = libc::rlimit { rlim_cur: SOFT_LIMIT_US, rlim_max: HARD_LIMIT_US };
-    // SAFETY: setrlimit reads `limit`; lowering a limit needs no privilege.
+    let limit = libc::rlimit { rlim_cur: STUCK_LIMIT_US, rlim_max: HARD_LIMIT_US };
+    // SAFETY: setrlimit reads `limit`; lowering a limit needs no privilege
+    // (raising the hard one would, and fails).
     if unsafe { libc::setrlimit(libc::RLIMIT_RTTIME, &limit) } != 0 {
-        return Err(format!("its realtime limit: {}", std::io::Error::last_os_error()));
+        let mut now = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        // SAFETY: getrlimit writes `now`.
+        unsafe { libc::getrlimit(libc::RLIMIT_RTTIME, &mut now) };
+        return Err(format!("its realtime time limit is {} ms (set by something else in it): a thread made realtime would be ended at that", now.rlim_max / 1000));
     }
     GUARD
         .get_or_init(|| {
             // SAFETY: a zeroed sigaction, then its handler set; the handler
-            // makes only async-signal-safe calls and reads atomics.
+            // makes only async-signal-safe calls.
             unsafe {
                 let mut action: libc::sigaction = std::mem::zeroed();
                 action.sa_sigaction = on_xcpu as *const () as usize;
@@ -68,54 +74,15 @@ pub fn guard() -> Result<(), String> {
         .clone()
 }
 
-/// SIGXCPU: a realtime thread used its soft limit without sleeping. The
-/// kernel sends it to the process but, in practice, to the thread that ran
-/// over (it is the one running): that one goes back to the normal class,
-/// registered or not. A thread not registered is put back for good (not
-/// marked: nothing makes it realtime again here): one a window's looper
-/// started takes its name (`w>…`, as Linux names a new thread for the one
-/// that made it), and app_server, which makes a focused program's loopers
-/// realtime by name, made it realtime too: Agent Screens' export, encoding
-/// video on such a thread, ran over and was ended at the hard limit (Ben,
-/// 2026-11-15), while this put back the threads it knew of instead. If
-/// the signal landed on a thread that isn't realtime, every registered
-/// one that is goes back (which one ran over isn't known). Each
-/// registered one put back is marked for the keeper, which hears of it.
-///
-/// The kernel raises the soft limit by a second each time it sends
-/// SIGXCPU (so it comes once a second, not every tick): over the hard
-/// one, the next thread to run over would meet the hard limit, and
-/// SIGKILL. So the limits go back as they were first.
+/// SIGXCPU: a realtime thread has run [`STUCK_LIMIT_US`] without once
+/// sleeping. Stuck: the program is ended with a report (SIGABRT, as a
+/// crash), said first on stderr (the journal).
 extern "C" fn on_xcpu(_: libc::c_int) {
-    let limit = libc::rlimit { rlim_cur: SOFT_LIMIT_US, rlim_max: HARD_LIMIT_US };
-    // SAFETY: setrlimit is one system call (prlimit64), async-signal-safe
-    // in practice; lowering a limit needs no privilege.
-    unsafe { libc::setrlimit(libc::RLIMIT_RTTIME, &limit) };
-    // SAFETY: gettid is one system call.
-    let me = unsafe { libc::gettid() };
-    let mine = TIDS.iter().position(|t| t.load(Ordering::Relaxed) == me);
-    if mine.is_none() && is_realtime(me) {
-        demote(me);
-    } else {
-        put_back(mine);
-    }
-    let fd = NOTIFY.load(Ordering::Relaxed);
-    if fd >= 0 {
-        // SAFETY: async-signal-safe; the keeper's pipe is non-blocking.
-        unsafe { libc::write(fd, b"!".as_ptr().cast(), 1) };
-    }
-}
-
-/// The registered threads that are realtime back to the normal class
-/// (only slot `mine`'s, if given), each marked for the keeper. (From the
-/// handler: atomics and system calls only.)
-fn put_back(mine: Option<usize>) {
-    for (slot, t) in TIDS.iter().enumerate() {
-        let tid = t.load(Ordering::Relaxed);
-        if tid > 0 && mine.is_none_or(|m| m == slot) && is_realtime(tid) {
-            demote(tid);
-            PUT_BACK[slot].store(true, Ordering::Relaxed);
-        }
+    const SAID: &[u8] = b"olo: a realtime thread ran 30 s without once sleeping: stuck, ending the program\n";
+    // SAFETY: write and abort are async-signal-safe.
+    unsafe {
+        libc::write(2, SAID.as_ptr().cast(), SAID.len());
+        libc::abort();
     }
 }
 
@@ -125,7 +92,7 @@ fn put_back(mine: Option<usize>) {
 /// a window's looper starts takes the looper's name (`w>…`), and
 /// app_server makes realtime only the named threads that are marked
 /// ([`marked`]), not those (Agent Screens' export, encoding video,
-/// 2026-11-15). Realtime already (rtkit sets the flag), left as it is.
+/// 2026-11-15). Realtime already (made so with the flag), left as it is.
 fn mark(tid: i32) {
     // SAFETY: sched_getscheduler only reads.
     let policy = unsafe { libc::sched_getscheduler(tid) };
@@ -139,8 +106,7 @@ fn mark(tid: i32) {
 }
 
 /// Whether thread `tid` is marked as one that may be made realtime (a
-/// registered thread's flag, see `mark`; one rtkit made realtime has it
-/// too). Read by app_server before it makes another program's threads
+/// registered thread's flag, see `mark`; one made realtime has it too). Read by app_server before it makes another program's threads
 /// realtime.
 pub fn marked(tid: i32) -> bool {
     // SAFETY: sched_getscheduler only reads.
@@ -148,9 +114,8 @@ pub fn marked(tid: i32) -> bool {
     policy >= 0 && policy & libc::SCHED_RESET_ON_FORK != 0
 }
 
-/// Whether thread `tid` runs realtime (SCHED_FIFO or SCHED_RR; rtkit's
-/// SCHED_RESET_ON_FORK comes back OR'd in, and read as it was every
-/// thread rtkit made realtime looked not to be).
+/// Whether thread `tid` runs realtime (SCHED_FIFO or SCHED_RR; the
+/// SCHED_RESET_ON_FORK it's made with comes back OR'd in).
 pub fn is_realtime(tid: i32) -> bool {
     // SAFETY: sched_getscheduler only reads (one system call).
     realtime_policy(unsafe { libc::sched_getscheduler(tid) })
@@ -158,21 +123,6 @@ pub fn is_realtime(tid: i32) -> bool {
 
 fn realtime_policy(policy: libc::c_int) -> bool {
     policy >= 0 && matches!(policy & !libc::SCHED_RESET_ON_FORK, libc::SCHED_FIFO | libc::SCHED_RR)
-}
-
-/// The threads the guard put back since last asked, and their
-/// priorities: what the keeper makes realtime again. (A thread made
-/// realtime by app_server, a window's looper, too: it was realtime when
-/// it ran over.)
-pub fn take_put_back() -> Vec<(i32, u32)> {
-    TIDS.iter()
-        .zip(&PRIORITIES)
-        .zip(&PUT_BACK)
-        .filter_map(|((t, p), back)| {
-            let tid = t.load(Ordering::Relaxed);
-            (back.swap(false, Ordering::AcqRel) && tid > 0).then(|| (tid, p.load(Ordering::Relaxed)))
-        })
-        .collect()
 }
 
 /// The calling thread's id.
@@ -227,19 +177,13 @@ pub fn forget(tid: i32) {
             demote(tid);
         }
     }
-    for (t, back) in TIDS.iter().zip(&PUT_BACK) {
-        if t.load(Ordering::Relaxed) == 0 {
-            back.store(false, Ordering::Relaxed);
-        }
-    }
 }
 
-/// Thread `tid` back to the normal class, its nice as it was. With
-/// SCHED_RESET_ON_FORK, as rtkit made it: the kernel refuses (EPERM) an
-/// unprivileged caller that would clear the flag, so without it a thread
-/// rtkit made realtime could never be put back. One system call,
-/// async-signal-safe (the guard's handler calls it). Any thread of the
-/// caller's user (app_server puts back a window's looper).
+/// Thread `tid` back to the normal class, its nice as it was (a thread
+/// ending, or a window whose program no longer has the keyboard: never
+/// for running long). With SCHED_RESET_ON_FORK, the mark it keeps: the
+/// kernel refuses (EPERM) an unprivileged caller that would clear it. Any
+/// thread of the caller's user (app_server puts back a window's looper).
 pub fn demote(tid: i32) -> bool {
     let param = libc::sched_param { sched_priority: 0 };
     // SAFETY: sched_setscheduler reads `param`; lowering a thread of our
@@ -252,21 +196,15 @@ pub fn registered() -> Vec<(i32, u32)> {
     TIDS.iter().zip(&PRIORITIES).filter_map(|(t, p)| Some((t.load(Ordering::Relaxed), p.load(Ordering::Relaxed))).filter(|(t, _)| *t > 0)).collect()
 }
 
-/// The pipe the handler tells when it put the threads back.
-pub fn set_notify(fd: i32) {
-    NOTIFY.store(fd, Ordering::Release);
-}
-
-/// Whether process `pid`'s limits are this guard's (its soft realtime
-/// limit set, under its hard one: SIGXCPU is handled, not fatal). Read
-/// from /proc: for app_server, before it makes another program's threads
-/// realtime.
+/// Whether process `pid`'s limits are this guard's (a thread there ends
+/// only stuck, 30 s, with a report). Read from /proc: for app_server,
+/// before it makes another program's threads realtime.
 pub fn guarded(pid: u32) -> bool {
     let Ok(limits) = std::fs::read_to_string(format!("/proc/{pid}/limits")) else { return false };
     limits.lines().find(|l| l.starts_with("Max realtime timeout")).is_some_and(|l| {
         let mut n = l["Max realtime timeout".len()..].split_whitespace();
         let (soft, hard) = (n.next().and_then(|v| v.parse::<u64>().ok()), n.next().and_then(|v| v.parse::<u64>().ok()));
-        matches!((soft, hard), (Some(s), Some(h)) if s <= SOFT_LIMIT_US && s < h && h <= HARD_LIMIT_US)
+        (soft, hard) == (Some(STUCK_LIMIT_US), Some(HARD_LIMIT_US))
     })
 }
 
@@ -282,7 +220,8 @@ mod tests {
         assert!(guarded(std::process::id()));
         forget(tid);
         assert!(!registered().iter().any(|(t, _)| *t == tid));
-        assert!(SOFT_LIMIT_US * 2 <= HARD_LIMIT_US);
+        // Stuck is half a minute, never a frame's or a buffer's worth.
+        assert!(STUCK_LIMIT_US >= 30_000_000 && HARD_LIMIT_US > STUCK_LIMIT_US);
         assert!(!guarded(1), "init isn't ours, or unguarded");
     }
 
@@ -307,6 +246,27 @@ mod tests {
         .unwrap();
     }
 
+    /// Stuck (the stuck limit's SIGXCPU): the program ends with an abort,
+    /// as a crash (a report), said on stderr. (In a child process: it
+    /// ends.)
+    #[test]
+    fn a_stuck_thread_ends_its_program_with_a_report() {
+        if std::env::var_os("OLO_RT_STUCK_CHILD").is_some() {
+            guard().unwrap();
+            // SAFETY: raise sends this process a signal.
+            unsafe { libc::raise(libc::SIGXCPU) };
+            unreachable!("it went on");
+        }
+        use std::os::unix::process::ExitStatusExt;
+        let out = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["realtime::tests::a_stuck_thread_ends_its_program_with_a_report", "--exact", "--nocapture"])
+            .env("OLO_RT_STUCK_CHILD", "1")
+            .output()
+            .unwrap();
+        assert_eq!(out.status.signal(), Some(libc::SIGABRT), "{out:?}");
+        assert!(String::from_utf8_lossy(&out.stderr).contains("stuck"), "{out:?}");
+    }
+
     #[test]
     fn a_thread_that_ends_is_forgotten() {
         let tid = std::thread::spawn(|| register_self(3).unwrap()).join().unwrap();
@@ -314,7 +274,7 @@ mod tests {
     }
 
     #[test]
-    fn rtkits_reset_on_fork_is_still_realtime() {
+    fn reset_on_fork_is_still_realtime() {
         assert!(realtime_policy(libc::SCHED_RR | libc::SCHED_RESET_ON_FORK));
         assert!(realtime_policy(libc::SCHED_FIFO));
         assert!(!realtime_policy(libc::SCHED_OTHER | libc::SCHED_RESET_ON_FORK));

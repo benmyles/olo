@@ -1,8 +1,8 @@
-//! Realtime threads, guarded: what the person is waiting on runs before
-//! anything else wanting the processor, under any scheduler and any load
-//! (Ben, 2026-11-15: "nothing should ever be able to impact the
-//! responsiveness of olo"; "any audio i/o and other stuff like that
-//! should be realtime too").
+//! Realtime threads: what the person is waiting on runs before anything
+//! else wanting the processor, under any scheduler and any load (Ben,
+//! 2026-11-15: "nothing should ever be able to impact the responsiveness
+//! of olo"; "any audio i/o and other stuff like that should be realtime
+//! too").
 //!
 //! A nice isn't enough: the CPU is shared between cgroups before nice
 //! counts (each app is a scope of its own), and a scheduler loaded over
@@ -12,61 +12,65 @@
 //! 2.5 s; made realtime, it waited 0 ms in a minute of the same load. The
 //! realtime class is above every normal and sched_ext one.
 //!
-//! Through rtkit ([`make_realtime`]), SCHED_RR, each thread
-//! registered with the guard in `olo_app::realtime` first (a soft limit of
-//! 50 ms of realtime CPU without sleeping, where SIGXCPU puts the threads
-//! back to their nice, under rtkit's hard 200 ms that would end the
-//! process). Here a keeper thread, asleep on a pipe the guard's handler
-//! writes to, makes them realtime again [`AGAIN_AFTER`] later (and logs
-//! it). Nothing runs meanwhile: the keeper is blocked in a read.
-//!
-//! Threads a realtime one starts are normal (rtkit sets
-//! SCHED_RESET_ON_FORK). [`demote_self`] puts one back for good (a window
-//! that lost the keyboard).
+//! SCHED_RR (with SCHED_RESET_ON_FORK: the threads a realtime one starts
+//! are normal), set by the program itself ([`make_realtime`]), where the
+//! account lets it (RLIMIT_RTPRIO, from the login's limits: Olo Doctor's
+//! Allow Realtime gives the person's account [`MOST_PRIORITY`]). Each
+//! thread registered with the guard in `olo_app::realtime` first: a
+//! realtime thread is never put back for running long, and ends its
+//! program only stuck, 30 s without once sleeping, with a report. Never
+//! through rtkit: it gives realtime only to a process whose hard limit on
+//! realtime time without sleeping is 200 ms at most, ended at that, and
+//! app_server was (2026-11-15, inside a GPU driver's wait). Without the
+//! account's leave, threads keep their nice (rtkit still gives that, with
+//! no such limit).
 
-use std::time::Duration;
+pub use olo_app::realtime::{HARD_LIMIT_US, STUCK_LIMIT_US, demote, forget, guarded, marked, registered, tid};
 
-pub use olo_app::realtime::{SOFT_LIMIT_US, demote, forget, guarded, marked, registered, tid};
+/// The highest realtime priority Olo's threads and PipeWire's in its
+/// programs use, and what Olo Doctor's Allow Realtime lets the account
+/// set (Fedora gives its `pipewire` group the same).
+pub const MOST_PRIORITY: u32 = 70;
 
-const RTKIT: &str = "org.freedesktop.RealtimeKit1";
-const PATH: &str = "/org/freedesktop/RealtimeKit1";
-
-/// Whether thread `tid` runs realtime (SCHED_FIFO or SCHED_RR; rtkit's
+/// Whether thread `tid` runs realtime (SCHED_FIFO or SCHED_RR;
 /// SCHED_RESET_ON_FORK comes back OR'd in).
 pub fn is_realtime(tid: u32) -> bool {
     olo_app::realtime::is_realtime(tid as i32)
 }
 
-/// Thread `tid` of `pid` made realtime through rtkit (SCHED_RR at
-/// `priority`, at most its `MaxRealtimePriority`). rtkit refuses a process
-/// whose hard RLIMIT_RTTIME isn't set at most its 200 ms: the guard sets
-/// it. The process must be the caller's user's.
+/// The realtime priority this process may set (its RLIMIT_RTPRIO: the
+/// login's limits; 0 without Olo Doctor's Allow Realtime).
+pub fn allowed_priority() -> u32 {
+    let mut l = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+    // SAFETY: getrlimit writes `l`.
+    if unsafe { libc::getrlimit(libc::RLIMIT_RTPRIO, &mut l) } != 0 {
+        return 0;
+    }
+    l.rlim_cur.min(99) as u32
+}
+
+/// Thread `tid` of `pid` made realtime: SCHED_RR at `priority` (at most
+/// what the account allows), SCHED_RESET_ON_FORK. The process must be the
+/// caller's user's, and the account let it (RLIMIT_RTPRIO): the error
+/// says so where it isn't.
 pub fn make_realtime(pid: u32, tid: u32, priority: u32) -> Result<(), String> {
-    // One connection, and rtkit's most asked once (each focus change asks
-    // again for a window's threads).
-    static BUS: std::sync::OnceLock<(zbus::blocking::Connection, u32)> = std::sync::OnceLock::new();
-    let (conn, most) = match BUS.get() {
-        Some(b) => b,
-        None => {
-            let conn = zbus::blocking::Connection::system().map_err(|e| e.to_string())?;
-            let most = conn
-                .call_method(Some(RTKIT), PATH, Some("org.freedesktop.DBus.Properties"), "Get", &(RTKIT, "MaxRealtimePriority"))
-                .ok()
-                .and_then(|r| r.body().deserialize::<zbus::zvariant::OwnedValue>().ok())
-                .and_then(|v| i32::try_from(v).ok())
-                .unwrap_or(20)
-                .max(1) as u32;
-            BUS.get_or_init(|| (conn, most))
-        }
-    };
-    conn.call_method(Some(RTKIT), PATH, Some(RTKIT), "MakeThreadRealtimeWithPID", &(pid as u64, tid as u64, priority.min(*most))).map_err(|e| e.to_string())?;
-    Ok(())
+    let _ = pid;
+    let param = libc::sched_param { sched_priority: priority.clamp(1, 99) as i32 };
+    // SAFETY: sched_setscheduler reads `param`, for a thread of our user.
+    if unsafe { libc::sched_setscheduler(tid as i32, libc::SCHED_RR | libc::SCHED_RESET_ON_FORK, &param) } == 0 {
+        return Ok(());
+    }
+    let e = std::io::Error::last_os_error();
+    if e.raw_os_error() == Some(libc::EPERM) {
+        return Err(format!("the account may not make threads realtime at {priority} (Olo Doctor's Allow Realtime lets it)"));
+    }
+    Err(e.to_string())
 }
 
 /// A thread moving sound between a program and the sound server (a
 /// player's, a recorder's, a call's): above app_server's (a gap in sound
 /// is heard where a late frame is barely seen; such a thread does little
-/// each time it wakes), below PipeWire's own data loops (20).
+/// each time it wakes), below PipeWire's own data loops.
 pub const SOUND_PRIORITY: u32 = 15;
 
 /// The calling thread made realtime at `priority` if realtime is
@@ -83,60 +87,13 @@ pub fn promote_if_wanted(priority: u32, what: &str) {
     }
 }
 
-/// How long a thread put back stays in the normal class before the
-/// keeper makes it realtime again.
-pub const AGAIN_AFTER: Duration = Duration::from_secs(2);
-
-static KEEPER: std::sync::OnceLock<()> = std::sync::OnceLock::new();
-
-/// The keeper, once: asleep on a pipe the guard's handler writes to;
-/// woken, it makes the threads the guard put back realtime again after
-/// [`AGAIN_AFTER`].
-fn keeper() {
-    KEEPER.get_or_init(|| {
-        let mut fds = [0; 2];
-        // SAFETY: pipe2 writes two descriptors into `fds`.
-        if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
-            return;
-        }
-        // (The handler's end non-blocking: a full pipe already says it.)
-        // SAFETY: fcntl on a descriptor of ours.
-        unsafe { libc::fcntl(fds[1], libc::F_SETFL, libc::O_NONBLOCK) };
-        olo_app::realtime::set_notify(fds[1]);
-        let read = fds[0];
-        let _ = std::thread::Builder::new().name("realtime-keeper".into()).spawn(move || {
-            let mut buf = [0u8; 64];
-            loop {
-                // SAFETY: reads at most 64 bytes into `buf` from our pipe.
-                let n = unsafe { libc::read(read, buf.as_mut_ptr().cast(), buf.len()) };
-                if n < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
-                    continue;
-                }
-                if n <= 0 {
-                    return;
-                }
-                tracing::warn!(ms = SOFT_LIMIT_US / 1000, "a realtime thread ran this long without sleeping: back to its nice, realtime again in {} s", AGAIN_AFTER.as_secs());
-                std::thread::sleep(AGAIN_AFTER);
-                for (tid, priority) in olo_app::realtime::take_put_back() {
-                    if !is_realtime(tid as u32)
-                        && let Err(e) = make_realtime(std::process::id(), tid as u32, priority)
-                    {
-                        tracing::warn!(tid, "couldn't be made realtime again: {e}");
-                    }
-                }
-            }
-        });
-    });
-}
-
-/// Make the calling thread realtime at `priority` (rtkit, at most its
-/// `MaxRealtimePriority`), guarded, made realtime again by the keeper
-/// should the guard put it back. Its nice stays as set before, for when
-/// it is put back. The error says why it wasn't (rtkit missing or
-/// refusing): it stays as it was.
+/// Make the calling thread realtime at `priority`, guarded (stuck 30 s,
+/// its program ended with a report; never put back for running long).
+/// The error says why it wasn't (the account doesn't allow it, or
+/// something in the process lowered the guard's limit): it stays as it
+/// was.
 pub fn promote_self(priority: u32) -> Result<(), String> {
     let tid = olo_app::realtime::register_self(priority)?;
-    keeper();
     if is_realtime(tid as u32) {
         return Ok(());
     }
@@ -164,6 +121,8 @@ pub fn wanted() -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
 
     fn spin(ms: u64) {
@@ -174,50 +133,29 @@ mod tests {
         }
     }
 
-    /// A realtime thread that never sleeps is put back at the soft limit,
-    /// made realtime again, and put back again: never ended by the hard
-    /// one (the kernel raises the soft limit a second each time; without
-    /// the guard setting it back, the second time was SIGKILL).
+    /// A realtime thread busy for longer than any frame stays realtime and
+    /// its program runs on: busy isn't stuck (rtkit's rule ended a
+    /// program at 200 ms; the guard put a thread back at 50).
     #[test]
-    #[ignore = "asks the system's rtkit"]
-    fn a_thread_that_runs_over_is_slowed_never_ended() {
-        promote_self(5).expect("rtkit");
+    #[ignore = "needs the account's leave for realtime (Olo Doctor's Allow Realtime)"]
+    fn a_busy_thread_stays_realtime() {
+        promote_self(5).expect("the account's leave");
         let me = tid() as u32;
         assert!(is_realtime(me));
-        spin(300);
-        assert!(!is_realtime(me), "put back after 50 ms");
-        // The keeper, two seconds on (asleep meanwhile, as this thread is).
-        std::thread::sleep(AGAIN_AFTER + Duration::from_millis(300));
-        assert!(is_realtime(me), "realtime again");
-        spin(300);
-        assert!(!is_realtime(me), "put back again, not ended");
+        spin(1_500);
+        assert!(is_realtime(me), "still realtime after 1.5 s of work");
         demote_self();
+        assert!(!is_realtime(me));
     }
 
-    /// A thread made realtime that isn't registered (one a looper
-    /// started, named for it, made realtime by app_server for its name)
-    /// and runs on is put back itself, and only it: the registered thread
-    /// beside it, asleep meanwhile, stays realtime. Before, the guard put
-    /// back the registered ones and left the other to the hard limit,
-    /// which ended the program (Agent Screens' export, 2026-11-15).
+    /// Without the account's leave, a thread isn't made realtime, and
+    /// it's said why; it carries on as it was.
     #[test]
-    #[ignore = "asks the system's rtkit"]
-    fn an_unregistered_thread_that_runs_over_is_put_back_itself() {
-        promote_self(5).expect("rtkit");
-        let me = tid() as u32;
-        let (tx, rx) = std::sync::mpsc::channel();
-        let worker = std::thread::spawn(move || {
-            let tid = tid() as u32;
-            assert!(!is_realtime(tid), "started normal (rtkit's reset on fork)");
-            make_realtime(std::process::id(), tid, 4).expect("rtkit");
-            assert!(is_realtime(tid));
-            spin(400);
-            tx.send(is_realtime(tid)).unwrap();
-        });
-        let still = rx.recv().unwrap();
-        worker.join().unwrap();
-        assert!(!still, "the one that ran over put back");
-        assert!(is_realtime(me), "the registered one left as it was");
-        demote_self();
+    fn without_leave_it_says_so() {
+        if allowed_priority() >= 5 {
+            return;
+        }
+        let e = std::thread::spawn(|| promote_self(5)).join().unwrap().unwrap_err();
+        assert!(e.contains("Allow Realtime"), "{e}");
     }
 }

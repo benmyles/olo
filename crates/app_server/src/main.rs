@@ -64,7 +64,7 @@ fn main() {
     // any program, under any scheduler, holds the desktop up.
     if app_server::realtime::wanted(headless) {
         match app_server::realtime::promote_self(app_server::realtime::MAIN_PRIORITY) {
-            Ok(()) => tracing::info!(priority = app_server::realtime::MAIN_PRIORITY, "the main thread is realtime (rtkit)"),
+            Ok(()) => tracing::info!(priority = app_server::realtime::MAIN_PRIORITY, "the main thread is realtime"),
             Err(e) => tracing::info!("the main thread isn't realtime: {e}"),
         }
         // ...and the program with the keyboard, and Deskbar, too.

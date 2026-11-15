@@ -434,8 +434,8 @@ pub fn open_window<V: View>(options: WindowSpec, build: impl FnOnce(&mut Cx<V>) 
         // Its frames' work is done here: on a fast core.
         crate::util_floor();
         // ...and realtime while it has the keyboard (app_server makes it
-        // so, `realtime::focus`, guarded here: put back should it run
-        // 50 ms without sleeping).
+        // so, `realtime::focus`, guarded here: never put back for
+        // running long; its program ended only stuck, 30 s).
         crate::guard_ui_thread(WINDOW_RT_PRIORITY);
         let title = options.title.clone();
         if let Err(e) = crate::window::open(looper, id, options.params(), title, build) {

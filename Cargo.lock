@@ -8208,6 +8208,7 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "olo-crash",
+ "olo-protocol",
  "olo-system",
  "olo-xdg",
  "serde",

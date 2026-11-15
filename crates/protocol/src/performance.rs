@@ -255,9 +255,16 @@ pub const AUDIO_NICE: i32 = -10;
 /// The name PipeWire gives the thread a stream's sound runs on, in a
 /// program of the audio tier: realtime.
 pub const AUDIO_THREAD: &str = "data-loop";
-/// Its realtime priority, at most (rtkit gives up to its
-/// `MaxRealtimePriority`, 20 by default; PipeWire's clients ask 83).
+/// Its realtime priority.
 pub const AUDIO_RT_PRIORITY: u32 = 20;
+/// The threads that watch the rest, just above every other of Olo's: the
+/// session's watchdog (app_server not answering: it ends it, to be
+/// started again) and the Performance supervisor's look. Realtime
+/// threads are never put back for running long, so these always get to
+/// run, whatever Olo's others are doing (Ben, 2026-11-15: "give the olo
+/// supervisor thread(s) slightly higher priority than the other olo
+/// stuff"). Each mostly sleeps.
+pub const SUPERVISOR_RT_PRIORITY: u32 = 21;
 /// The session's, Deskbar's, the proxy's and termd's (every key typed in
 /// Terminal and its echo pass through termd's threads; the shells it
 /// starts are put back at 0).

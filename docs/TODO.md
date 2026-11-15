@@ -1412,6 +1412,43 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Passwords: Approve Always, kept for good** (Ben, 2026-11-15: "once
+  i allow the weather app to use the passwords item it should keep that
+  approval forever, not until the next restart. if you need to update
+  the way that stuff works in the kit or whatever that's fine -- this
+  pattern should apply to all apps using this pattern of an api key /
+  login from passwords. actually make it so the dialog has both an
+  "Approve Always" and "Approve Once" with "Approve Always" the primary
+  choice"). The approval dialog for an app reading an item (an API key,
+  a login): Approve Always (the default button) and Approve Once; Always
+  kept across restarts and upgrades, for that app and that item, in
+  Passwords' own keeping (shown, and taken back, in Passwords); in the
+  kit's secret-reference path, so every app that takes a key or login
+  from Passwords (Weather's provider key, Token Pool's, DiskBackup's
+  Drive, …) asks this way.
+
+- **Weather: the timeline stays at the top** (Ben, 2026-11-15: "the
+  timeline should be at the top and stay there as you scroll the data
+  so that you always know. when it is."). The time axis pinned above
+  what scrolls (the charts and rows of data scroll under it), so the
+  hour or day of what's under the pointer is always in sight.
+
+- **The supervisor deprioritises background work, for real** (Ben,
+  2026-11-15: "make it so that olo's supervisor can truly and properly
+  deprioritize the background work in a way that works (in the past you
+  said renicing it alone wasn't enough) -- if olo doctor needs to set up
+  something to give it more perms or some config to be able to do it
+  that's fine"). A nice orders shares inside a cgroup only, and the
+  processor is shared between sibling cgroups first (a build run as a
+  service, another scope); and scx_lavd weighs nice its own way. To
+  work out and measure: moving background work (builds, indexers,
+  caches) into a cgroup of its own with `cpu.idle` (and a low
+  `io.weight`), which needs the right to move processes there (the
+  user's delegated subtree, or Olo Doctor setting up a delegated slice
+  or a root helper); how scx_lavd treats it; measured under a real
+  build with the desktop's frame times and input latency, before and
+  after.
+
 - **Two themes, Classic and Platinum, made exquisite** (Ben,
   2026-11-14: "let's simplify a bit so we just have 2 themes for now:
   Classic and Platinum (with light/dark variations). then, let's have
@@ -1499,10 +1536,19 @@ something nobody here has is in "Blocked", with what it waits for.
   under rtkit's hard 200 ms without sleeping; the guard puts it back at
   50 ms (it did at 13:13:49, during an agent's video exports) but can't
   while a thread is inside the kernel, a GPU driver's wait. Done: the
-  live lint and everything it starts run at idle priority. *Left:* what
-  app_server's loop does when it runs that long (each overrun to say
-  what held the loop), and whether a realtime loop outside rtkit's hard
-  limit is worth a root helper (Ben's to choose).
+  live lint and everything it starts run at idle priority. Then (Ben:
+  "there should never be short kill rule and we should NEVER drop
+  priority down … olo doctor should just offer to fix it … a 30s limit
+  … so if it is truly stuck it will get killed"; "give the olo
+  supervisor thread(s) slightly higher priority"): realtime never
+  through rtkit, set by Olo's programs themselves where the account lets
+  them (Olo Doctor's Allow Realtime: `limits.d`, `rtprio 70`, no time
+  limit, from the next login; without it, threads keep their nice);
+  never put back for running long; a thread stuck 30 s without once
+  sleeping ends its program with a report (31 s, the kernel's kill); the
+  session's watchdog and the supervisor's look at 21, above every other
+  of Olo's; the kept core as it was. *For Ben:* Upgrade, Olo Doctor ▸
+  Allow Realtime, log out and in.
 
 - **Agent Screens' Export Video: what was done, fast-forwarded between,
   fast, a part, zoomed** (Ben, 2026-11-15: "does exporting a video for
