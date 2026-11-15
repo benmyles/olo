@@ -32,6 +32,18 @@ impl super::Surface {
     }
 
     pub fn acquire_frame(&mut self) -> super::Frame {
+        // Olo: no swapchain (making one failed: a size beyond what the GPU
+        // takes, the window gone): no frame (`Frame::is_lost`), never the
+        // driver asked for an image of nothing. Mesa's Intel driver
+        // crashed on a null swapchain: Tracker's, for a popup 47,508
+        // pixels tall (2026-11-14).
+        if self.swapchain.raw == vk::SwapchainKHR::null() || self.frames.is_empty() {
+            return super::Frame {
+                internal: super::InternalFrame::default(),
+                swapchain: self.swapchain,
+                image_index: None,
+            };
+        }
         let acquire_semaphore = self.next_semaphore;
         match unsafe {
             self.device.acquire_next_image(

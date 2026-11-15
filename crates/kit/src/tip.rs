@@ -48,6 +48,13 @@ const DELAY: Duration = Duration::from_millis(500);
 const AGAIN: Duration = Duration::from_millis(500);
 /// The widest a tip grows before it wraps.
 const MAX_WIDTH: f32 = 360.0;
+/// The most a text tip says, past which it's cut short with "…". A tip
+/// is a glance, and the whole of a cut text can be long (a file's line):
+/// wrapped at `MAX_WIDTH` it had no limit, a tip as tall as the text
+/// (Tracker went down on a popup that width and 23,750 points tall, more
+/// than the GPU makes a surface for, 2026-11-14).
+const MAX_LINES: usize = 12;
+const MAX_CHARS: usize = 600;
 const PAD_X: f32 = m::TIGHT + 1.0;
 const PAD_Y: f32 = 2.0;
 
@@ -59,6 +66,11 @@ enum Body {
 }
 
 impl Body {
+    /// Words, as many as a tip says ([`MAX_LINES`], [`MAX_CHARS`]).
+    fn text(t: SharedString) -> Body {
+        Body::Text(clipped(t))
+    }
+
     fn is_empty(&self) -> bool {
         matches!(self, Body::Text(t) if t.is_empty())
     }
@@ -201,7 +213,7 @@ pub fn on(element: Element, key: impl Into<SharedString>, text: impl Into<Shared
 /// window, whose tip says `text` and which is at `anchor` (in the
 /// window).
 pub fn hover(cx: &mut WindowCx, key: impl Into<SharedString>, text: impl Into<SharedString>, anchor: Bounds<Pixels>, hovered: bool) {
-    hover_body(cx, key.into(), Body::Text(text.into()), anchor, Place { at: anchor, side: TipPlace::Below }, hovered);
+    hover_body(cx, key.into(), Body::text(text.into()), anchor, Place { at: anchor, side: TipPlace::Below }, hovered);
 }
 
 /// [`hover`], the tip a card: `card` (shared, so it isn't copied as the
@@ -338,7 +350,7 @@ fn card_hovered(cx: &mut WindowCx, on: bool) {
 /// The tip of widget `key` of the window now, without the pause (⌘ held
 /// over cut text, `cut`).
 pub fn show_now(cx: &mut WindowCx, key: impl Into<SharedString>, text: impl Into<SharedString>, anchor: Bounds<Pixels>) {
-    let (key, text, parent) = (key.into(), Body::Text(text.into()), cx.window_id());
+    let (key, text, parent) = (key.into(), Body::text(text.into()), cx.window_id());
     forget_gone(cx);
     let tips = tips(cx);
     let waiting = tips.waiting.take().map(|w| w.timer);
@@ -372,7 +384,7 @@ pub fn pressed(cx: &mut WindowCx, key: impl Into<SharedString>) {
 /// waiting to show, it shows that (else nothing: [`hover`] takes the
 /// text as it shows).
 pub fn retext(cx: &mut WindowCx, key: impl Into<SharedString>, text: impl Into<SharedString>) {
-    rebody(cx, key.into(), Body::Text(text.into()));
+    rebody(cx, key.into(), Body::text(text.into()));
 }
 
 /// [`retext`] for a card's tip: it shows `card` from now (resized for
@@ -455,6 +467,37 @@ fn show(cx: &mut WindowCx, key: SharedString, text: Body, anchor: Bounds<Pixels>
     }
 }
 
+/// `t` as a tip says it: its first [`MAX_LINES`] lines and
+/// [`MAX_CHARS`] characters, "…" where it's cut.
+fn clipped(t: SharedString) -> SharedString {
+    let mut out = String::new();
+    let (mut chars, mut cut) = (0, false);
+    for (i, line) in t.split('\n').enumerate() {
+        if i == MAX_LINES {
+            cut = true;
+            break;
+        }
+        if i > 0 {
+            out.push('\n');
+            chars += 1;
+        }
+        let n = line.chars().count();
+        if chars + n > MAX_CHARS {
+            out.extend(line.chars().take(MAX_CHARS - chars));
+            cut = true;
+            break;
+        }
+        out.push_str(line);
+        chars += n;
+    }
+    if !cut {
+        return t;
+    }
+    out.truncate(out.trim_end().len());
+    out.push('…');
+    out.into()
+}
+
 /// The height of `text` wrapped to `width` in the plain font, for sizing
 /// a window before it opens.
 pub fn paragraph_height(text: &str, width: f32) -> f32 {
@@ -478,4 +521,23 @@ fn tip_size(text: &str) -> (f32, f32) {
     let inner = one_line.ceil().min(MAX_WIDTH - 2.0 * PAD_X - frame);
     let text_h = paragraph_height(text, inner);
     ((inner + 2.0 * PAD_X + frame).ceil(), (text_h + 2.0 * PAD_Y + frame).ceil())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_tip_says_only_so_much() {
+        // Short: as it is.
+        assert_eq!(clipped("Open (⌘O)".into()).as_ref(), "Open (⌘O)");
+        // A file's worth: cut short, whatever its shape.
+        let long: String = "word ".repeat(20_000);
+        let c = clipped(long.into());
+        assert!(c.chars().count() <= MAX_CHARS + 1 && c.ends_with('…'));
+        let many: String = (0..5_000).map(|i| format!("line {i}\n")).collect();
+        let c = clipped(many.into());
+        assert_eq!(c.lines().count(), MAX_LINES);
+        assert!(c.ends_with('…'));
+    }
 }

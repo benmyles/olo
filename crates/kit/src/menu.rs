@@ -634,7 +634,7 @@ fn open(cx: &mut WindowCx, menu: Menu, place: Place, on_choose: OnChoose, parent
     let Place { anchor, corner, mut offset, selected, .. } = place;
     // Taller than the display: as tall as it allows, its items scrolled
     // (the one chosen in view: a pop-up field's over the field still).
-    let room = cx.display_bounds().map_or(f32::MAX, |d| f32::from(d.size.height) - 2.0 * SCREEN_MARGIN);
+    let room = crate::app::display_height(cx) - 2.0 * SCREEN_MARGIN;
     let h = if full_h <= room {
         full_h
     } else {

@@ -424,6 +424,21 @@ fn fitted(design: (f32, f32), fixed: bool, viewport: Size<Pixels>, need: f32, ro
 /// Room left above a window's tab and around it on a screen.
 const SCREEN_EDGES: f32 = 64.0;
 
+/// The height of the smallest screen Olo is made for (1280 × 800), in
+/// points.
+pub const SMALLEST_SCREEN_HEIGHT: f32 = 800.0;
+
+/// The height in points of the display `cx`'s window is on; until it's
+/// been told which (a popup just opened: a submenu, opened from another
+/// popup), the shortest display the app knows of, else the smallest
+/// screen. Never unbounded: what's sized by it stays drawable (Tracker
+/// went down on a popup 23,750 points tall, more than the GPU makes a
+/// surface for, 2026-11-14; a menu's height went unlimited without its
+/// display).
+pub fn display_height(cx: &olo_interface::WindowCx) -> f32 {
+    cx.display_bounds().map(|d| f32::from(d.size.height)).or_else(|| olo_interface::displays().iter().map(|d| f32::from(d.size.height)).reduce(f32::min)).unwrap_or(SMALLEST_SCREEN_HEIGHT)
+}
+
 /// The tallest a window may be: the shortest display's height in points,
 /// less room for the window's tab and edges (never under 240).
 pub fn screen_room() -> f32 {
@@ -431,7 +446,9 @@ pub fn screen_room() -> f32 {
     if let Some(room) = crate::lint::room_for_tests() {
         return room;
     }
-    olo_interface::displays().iter().map(|d| f32::from(d.size.height)).fold(f32::INFINITY, f32::min).max(240.0 + SCREEN_EDGES) - SCREEN_EDGES
+    // (Before any display is known, the smallest screen's: never unbounded.)
+    let shortest = olo_interface::displays().iter().map(|d| f32::from(d.size.height)).reduce(f32::min).unwrap_or(SMALLEST_SCREEN_HEIGHT);
+    shortest.max(240.0 + SCREEN_EDGES) - SCREEN_EDGES
 }
 
 /// Next Tab (+1: ⌃Tab, ⌃Page Down) or Previous Tab (−1: ⌃⇧Tab, ⌃Page Up);

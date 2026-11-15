@@ -1379,7 +1379,10 @@ anchor, corner, on_choose)` (`MenuField`'s is one). `on_choose` gets the
 chosen item's command: an app's own context menus use its menu bar's
 command names and send them where the bar's go.
 
-A menu taller than its display is as tall as the display allows (24 pt
+A menu taller than its display is as tall as the display allows (by
+`olo_kit::display_height`: its window's display, else, before a popup is
+told which it's on, the shortest the app knows of, else the smallest
+screen; never unbounded) (24 pt
 off its top and bottom, a whole number of items and one arrow, so
 neither end shows half an item) and scrolls, as BeOS's did: an arrow at
 each end there's more past, which scrolls it (480 pt/s, a tick every
@@ -1425,7 +1428,9 @@ with no grab and an empty input region, so it takes no clicks; a
 card's takes the pointer, below), below
 the thing or else above it, slid to stay on the screen; it comes after
 a rest, at once if another showed a moment ago, and not after a click
-(`tip::pressed`). `tip::retext(cx, key, text)` changes what a
+(`tip::pressed`). A text tip says at most 12 lines and 600 characters,
+cut short with "…" past them: a tip is a glance, and a cut text's whole
+(a file's line) can be any length. `tip::retext(cx, key, text)` changes what a
 tip showing says (a live value: Deskbar's widgets' tips), resized and
 placed again for it: a popup that changes size is placed again
 (`xdg_popup.reposition`, version 3; one resized before its first
@@ -3832,6 +3837,16 @@ for a 3-second `sleep`.
   images it would never give back; nothing restarted them, as they
   hadn't exited. Tested headless: a stopped Deskbar, its app_server
   killed, is ended 20 s after the new one starts and comes back.)
+* **No surface too big to draw takes a program down.** A surface past
+  what the GPU makes swapchains for (Tracker's, a popup 720 × 47,508
+  pixels, 2026-11-14) has none made (`ERROR_OUT_OF_HOST_MEMORY` on
+  Intel); `acquire_frame` then gives a lost frame rather than ask the
+  driver for an image of no swapchain, which segfaulted in Mesa's
+  `wsi_common_acquire_next_image2`. Nothing is drawn; the program
+  stays up. (What sized it is bounded too: menus by `display_height`,
+  tips by their 12 lines.) Tested headless with a 360 × 24,000-point
+  popup at 2×: SIGSEGV at 0x2d0 without the check, as Tracker's; up and
+  drawing its other windows with it.
 * **No window waits for good on its compositor.** The renderer acquires
   each frame's image with a 1 s timeout (`ACQUIRE_TIMEOUT_NS`, vendored
   blade-graphics' `acquire_frame`), not forever: a timeout is a lost
@@ -5079,7 +5094,8 @@ brightness, a longer message); one the person or the app sizes (a file
 panel, Quick Look sized to its picture) never shorter than its content
 needs. Never taller than the shortest display less 64 points
 (`screen_room`, from the displays the kit knows, in points, as turned; a
-display coming or going looks again): past that the Frame lays the
+display coming or going looks again; before any is known, the smallest
+screen's, `SMALLEST_SCREEN_HEIGHT`): past that the Frame lays the
 content out at its own height and scrolls it, the window widened by the
 scroll bar (and at least as tall as the window, so what fills it, a
 picture's or a list's box, keeps its room). An app that sizes such a

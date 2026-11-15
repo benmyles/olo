@@ -191,7 +191,7 @@ impl Banners {
         let p = theme::palette();
         let room = look::Room { width: WIDTH - 2.0 * PAD, title_rows: 2, body_rows: BODY_ROWS, title_reserve: 16.0, picture: ICON, image_max: 120.0, fields_max: 4 };
         let scale = (cx.scale_factor() * 1000.0).round() as u32;
-        let most = cx.display_bounds().map_or(f32::INFINITY, |d| f32::from(d.size.height) - 2.0 * SCREEN_EDGE);
+        let most = olo_kit::display_height(cx) - 2.0 * SCREEN_EDGE;
         let shared = self.shared.clone();
         let app = shared.lock().unwrap();
         let cards: Vec<&Card> = app.cards.iter().take(SHOWN).collect();
