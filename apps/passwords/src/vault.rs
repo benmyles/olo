@@ -154,6 +154,21 @@ pub struct Data {
     pub shares: Shares,
     /// Vaults made, changed and deleted here, not yet in 1Password.
     pub vault_changes: Vec<VaultChange>,
+    /// Programs allowed an item for good (Approve Always), until taken
+    /// back (File ▸ Apps Allowed…).
+    pub allowed: Vec<Allowed>,
+}
+
+/// A program allowed an item for good (Ben, 2026-11-15: "once i allow
+/// the weather app to use the passwords item it should keep that approval
+/// forever, not until the next restart"): the program (its file, which an
+/// upgrade replaces in place) and the item's secret reference
+/// (`op://vault/item/field`), and since when.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Allowed {
+    pub program: String,
+    pub reference: String,
+    pub since: DateTime<Utc>,
 }
 
 /// What's shared with agent screens: items every screen has, and what
@@ -947,6 +962,28 @@ mod tests {
             }
             other => panic!("OLO_BACKUP_TEST=make or check, not {other:?}"),
         }
+    }
+
+    /// A program allowed an item for good is kept in the store, so it's
+    /// still allowed after Passwords (or the computer) starts again, until
+    /// taken back; a store from before there were any opens with none.
+    #[test]
+    fn apps_allowed_for_good_are_kept() {
+        let (mut v, dir) = fresh("allowed");
+        assert!(v.data.allowed.is_empty());
+        let weather = Allowed { program: "/home/me/.local/bin/olo-weather".into(), reference: "op://Personal/Tomorrow/credential".into(), since: Utc::now() };
+        v.data.allowed.push(weather.clone());
+        v.save().unwrap();
+        drop(v);
+        let mut v = Vault::open_at(dir.join("passwords.vault"), Some(&dir.join("key"))).unwrap();
+        assert_eq!(v.data.allowed, vec![weather]);
+        v.data.allowed.clear();
+        v.save().unwrap();
+        let v = Vault::open_at(dir.join("passwords.vault"), Some(&dir.join("key"))).unwrap();
+        assert!(v.data.allowed.is_empty(), "taken back");
+        let old: Data = serde_json::from_str(r#"{"vaults":[],"entries":[]}"#).unwrap();
+        assert!(old.allowed.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// A fresh store in a directory of its own, its key in a file there.

@@ -50,7 +50,8 @@ pub fn read(provider: &dyn Provider, source: &Source) -> Result<Zeroizing<String
     let request = match source {
         Source::None => return Err(Error::NoKey),
         Source::Kept => Request::Secrets { title: title(provider) },
-        Source::Reference { reference } => Request::Reference { reference: reference.clone(), purpose: format!("for {}’s forecasts", provider.name()) },
+        // (Passwords asks the person the first time: Approve Always, kept.)
+        Source::Reference { reference } => return olo_keychain::read_reference(reference, &format!("for {}’s forecasts", provider.name())).map_err(|e| Error::Key(e.to_string())),
     };
     match olo_keychain::call(&request) {
         Ok(Response::Secrets { ref values }) => match values.iter().find(|v| !v.trim().is_empty()) {

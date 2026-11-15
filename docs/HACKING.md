@@ -4699,7 +4699,12 @@ its app sets now (`claim_placement`, from the surface's `min_size` at
 its first commit): the version back may need more room than the one
 whose size was kept (Weather's least grew from 900 × 560 to 1060 × 660,
 and came back at the old size, its columns run past its edge). IPC's
-`Place` holds a frame to its `least` the same way.
+`Place` holds a frame to its `least` the same way. A window coming back
+into its app's group takes the group's size (`returning_group_size`),
+but never a dialog (a parent, a modal hint or the `floating` tag:
+`is_dialog`), which is never one of the group's tabs: Passwords' Apps
+Allowed came back the size of Passwords' main window, wider than the
+screen (2026-11-15).
 
 A window goes back to the same place on the display it was saved on
 (`Placement::screen_key`, the monitor, else `screen`'s connector),
@@ -17255,14 +17260,25 @@ reads the secret an `op://vault/item/[section/]field` names, for a
 program the person gave the reference to (Weather's key, kept in
 Passwords already): resolved as `op read` resolves it (`cli::resolve`:
 vault and item by ID or name), once the person allows that program
-that secret. Passwords asks once per program (by `/proc/PID/exe`) and
-reference while it runs ("Allow “Weather” to use the “password” of
-“Weather: tomorrow.io API key” in Personal (for tomorrow.io’s
-forecasts)? It can then have it whenever it asks, until Passwords
-quits.": the item, field and vault by name, not the reference), Deny
-or Allow; on an agent screen, what it was given is the agents' there,
+that secret. Passwords asks per program (by `/proc/PID/exe`) and
+reference ("Allow “Weather” to use the “password” of “Weather:
+tomorrow.io API key” in Personal (for tomorrow.io’s forecasts)? Always
+lets it have it whenever it asks, until you take it back (File ▸ Apps
+Allowed…).": the item, field and vault by name, not the reference):
+Deny (Escape), Approve Once (this request, and any waiting with it) or
+Approve Always (the default, Return). Always is kept in the vault
+(`Data::allowed`: the program's file, the reference, since when), so
+it holds across restarts and upgrades (Ben, 2026-11-15: "once i allow
+the weather app to use the passwords item it should keep that approval
+forever, not until the next restart"; before, an Allow lasted until
+Passwords quit); File ▸ Apps Allowed… (`allowed.rs`) lists each with
+Take Back. On an agent screen, what it was given is the agents' there,
 so it isn't asked. Requests waiting for the same answer share one
-alert. Tested headless with a stand-in vault (debug builds only: the
+alert. Apps read a secret this way with `olo_keychain::read_reference
+(reference, purpose)`, which blocks while Passwords asks and gives the
+secret or a `ReferenceError` whose text is for the person (Weather's
+key does); any app taking a key or a login from Passwords should, so
+it's asked the same way. Tested headless with a stand-in vault (debug builds only: the
 stand-in PAM, `OLO_PAM_CONFDIR`, is compiled out of release builds,
 which check the real account).
 

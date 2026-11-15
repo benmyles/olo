@@ -104,6 +104,16 @@ pub enum Job {
     DeleteVault {
         id: String,
     },
+    /// Allow `program` the item `reference` for good (Approve Always).
+    Allow {
+        program: String,
+        reference: String,
+    },
+    /// Take back what `program` was allowed of `reference`.
+    TakeBack {
+        program: String,
+        reference: String,
+    },
 }
 
 /// How syncing with 1Password is going.
@@ -192,6 +202,8 @@ pub enum Reply {
         item: String,
         error: String,
     },
+    /// The programs allowed items for good, as kept now.
+    Allowed(Vec<crate::vault::Allowed>),
 }
 
 /// What was done to a vault.
@@ -257,6 +269,7 @@ fn refresh(v: &Vault, reply: &impl Fn(Reply)) {
         reply(Reply::Items { items: v.items(&vault.id), vault: vault.id });
     }
     reply(Reply::Index(index(v)));
+    reply(Reply::Allowed(v.data.allowed.clone()));
     reply(Reply::Loaded);
 }
 
@@ -415,6 +428,8 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
                     | Job::CreateVault { .. }
                     | Job::EditVault { .. }
                     | Job::DeleteVault { .. }
+                    | Job::Allow { .. }
+                    | Job::TakeBack { .. }
             )
         {
             proxy.send(FromStore { generation: gen_of_job, reply: Reply::Error("Shared with this screen: change it in your own Passwords.".into()) });
@@ -641,6 +656,21 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
                         reply(Reply::VaultDone { vault: id, title, what: VaultDone::Deleted { items } });
                     }
                     Err(e) => reply(Reply::Error(describe(&e))),
+                }
+            }
+            Job::Allow { program, reference } => {
+                v.data.allowed.retain(|a| (&a.program, &a.reference) != (&program, &reference));
+                v.data.allowed.push(crate::vault::Allowed { program, reference, since: Utc::now() });
+                match v.save() {
+                    Ok(()) => reply(Reply::Allowed(v.data.allowed.clone())),
+                    Err(e) => reply(Reply::Error(format!("Couldn’t keep the approval: {}", describe(&e)))),
+                }
+            }
+            Job::TakeBack { program, reference } => {
+                v.data.allowed.retain(|a| (&a.program, &a.reference) != (&program, &reference));
+                match v.save() {
+                    Ok(()) => reply(Reply::Allowed(v.data.allowed.clone())),
+                    Err(e) => reply(Reply::Error(format!("Couldn’t take the approval back: {}", describe(&e)))),
                 }
             }
             Job::Keychain { incoming, candidates, vault } => {

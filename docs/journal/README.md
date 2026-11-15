@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Passwords: Apps Allowed
+
+*15:48* — File > Apps Allowed... lists the apps allowed an item for good (Approve Always): the app, the item and since when, each with Take Back (the app is asked again the next time). Kept in the vault. Checked at 1x, 1.5x and 2x, light and dark; app_server no longer gives a returning dialog its app's group size (this one came back the main window's size, wider than the screen) (light, 2x).
+
+![Passwords: Apps Allowed](2026-11-15/154833-passwords-apps-allowed.png)
+
+### Passwords: Approve Always, kept
+
+*15:45* — An app asking for an item by its reference (Weather's key) is asked about once: Approve Always (the default, Return) keeps it allowed across restarts and upgrades, in the vault, until taken back in File > Apps Allowed...; Approve Once is just this time; Deny (Escape). Before, an Allow lasted only until Passwords quit, so Weather asked again after every restart (light, 2x).
+
+![Passwords: Approve Always, kept](2026-11-15/154514-passwords-approve-always-kept.png)
+
 ### Programs' secrets locked: said, with Unlock
 
 *15:12* — Olo's keyring never stays locked in silence: when the login password isn't given (Not Now), or it can't be opened, a notification says so with Unlock…, which asks again (and it comes back while it stays locked). Programs asking for a secret bring the prompt too, but not again within two minutes of a Not Now; org.olo.Secrets1.Unlock asks over the bus (light, 2x).

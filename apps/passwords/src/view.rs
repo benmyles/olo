@@ -1455,7 +1455,7 @@ impl View for Detail {
 const REVIEW_ROW: f32 = 42.0;
 
 /// A window's message, list and buttons, as an alert's are laid out.
-fn sheet(message: String, list: impl IntoElement, buttons: impl IntoElement) -> Element {
+pub(crate) fn sheet(message: String, list: impl IntoElement, buttons: impl IntoElement) -> Element {
     div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).child(StringView::new(message).wrap(true)).child(div().flex_1().min_h_0().child(list)).child(buttons)
 }
 

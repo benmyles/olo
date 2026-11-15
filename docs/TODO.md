@@ -1494,7 +1494,14 @@ something nobody here has is in "Blocked", with what it waits for.
   Passwords' own keeping (shown, and taken back, in Passwords); in the
   kit's secret-reference path, so every app that takes a key or login
   from Passwords (Weather's provider key, Token Pool's, DiskBackup's
-  Drive, …) asks this way.
+  Drive, …) asks this way. Done (HACKING, "Passwords", an Olo
+  program's own secrets): Deny, Approve Once, Approve Always (the
+  default); Always kept in the vault across restarts and upgrades,
+  listed with Take Back in File ▸ Apps Allowed…; for every app asking by
+  reference, and `olo_keychain::read_reference` for apps to ask that
+  way (Weather's key does). Token Pool's keys and DiskBackup's Drive
+  sign-in are kept in the keyring, not taken from Passwords items, so
+  nothing of theirs asks yet.
 
 - **Weather: the timeline stays at the top** (Ben, 2026-11-15: "the
   timeline should be at the top and stay there as you scroll the data

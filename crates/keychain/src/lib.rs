@@ -480,6 +480,52 @@ fn finish(s: UnixStream) -> Result<Response, CallError> {
     result
 }
 
+/// A secret from Passwords by its reference (`op://vault/item/field`),
+/// for the program asking: how an app takes a key or a login kept in
+/// Passwords (Weather's provider key). The first time, Passwords asks the
+/// person whether this program may have it, `purpose` saying what for
+/// ("for Tomorrow.io’s forecasts"): Approve Always (kept, across
+/// restarts and upgrades, until taken back in Passwords' File ▸ Apps
+/// Allowed…), Approve Once, or Deny. Blocks while it asks (and while
+/// Passwords is unlocked for it): call it from a worker thread.
+pub fn read_reference(reference: &str, purpose: &str) -> Result<zeroize::Zeroizing<String>, ReferenceError> {
+    match call(&Request::Reference { reference: reference.to_owned(), purpose: purpose.to_owned() }) {
+        Ok(Response::Secrets { ref values }) => match values.iter().find(|v| !v.trim().is_empty()) {
+            Some(v) => Ok(zeroize::Zeroizing::new(v.trim().to_owned())),
+            None => Err(ReferenceError::Empty),
+        },
+        Ok(Response::Error { ref message }) => Err(ReferenceError::Refused(message.clone())),
+        Ok(Response::Locked) => Err(ReferenceError::Locked),
+        Ok(Response::NotSetUp) => Err(ReferenceError::NotSetUp),
+        Ok(_) => Err(ReferenceError::Refused("it answered something else".into())),
+        Err(e) => Err(ReferenceError::Unreachable(e)),
+    }
+}
+
+/// Why [`read_reference`] gave no secret; its `Display` is for the person.
+#[derive(Debug)]
+pub enum ReferenceError {
+    /// The secret there is empty.
+    Empty,
+    /// Passwords said no (the person denied it, or the item isn't there).
+    Refused(String),
+    Locked,
+    NotSetUp,
+    Unreachable(CallError),
+}
+
+impl std::fmt::Display for ReferenceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReferenceError::Empty => f.write_str("That secret is empty in Passwords."),
+            ReferenceError::Refused(m) => write!(f, "Passwords: {m}"),
+            ReferenceError::Locked => f.write_str("Passwords is locked."),
+            ReferenceError::NotSetUp => f.write_str("Passwords isn’t set up yet: open it to set it up, then try again."),
+            ReferenceError::Unreachable(e) => write!(f, "Passwords can’t be reached ({e}). Is it running?"),
+        }
+    }
+}
+
 /// As [`call`], handing `keep` the connection first, so another thread
 /// can end it (`shutdown`) to give up waiting: the asker went away.
 /// Passwords sees that as [`Incoming::gone`].

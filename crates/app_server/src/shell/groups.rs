@@ -481,6 +481,13 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// another first (auto-fuzz seed 16: a StyledEdit back during a drag,
     /// drawn in front at 290 px for a look while its group was 533).
     pub(crate) fn returning_group_size(&self, w: &WindowElement, grouping: &Grouping, display: Option<&smithay::output::Output>) -> Option<Size<i32, Logical>> {
+        // A dialog is never a tab of its app's group: it comes back at its
+        // own size (Passwords' Apps Allowed came back the size of the main
+        // window, wider than the screen, 2026-11-15).
+        let WindowSurface::Wayland(t) = w.0.underlying_surface();
+        if is_dialog(t) {
+            return None;
+        }
         let app = w.app_id();
         let key = match grouping {
             Grouping::With(k) => k.clone(),

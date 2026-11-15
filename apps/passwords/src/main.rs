@@ -14,6 +14,7 @@
 
 mod agent;
 mod allow;
+mod allowed;
 mod cli;
 mod edit;
 mod generator;
@@ -229,11 +230,26 @@ fn allow_message(a: &cli::Asker, ssh: bool, ways: Option<String>) -> String {
 /// `named`: what the reference names, as a person reads it (“the
 /// password of “Weather key” in Personal”), or the reference itself.
 fn reference_message(program: &str, named: &str, purpose: &str) -> String {
-    let file = program.rsplit('/').next().unwrap_or(program);
-    let name = olo_xdg::apps::OUR_APPS.iter().find(|(bin, ..)| *bin == file).map_or(file, |(_, name, _)| *name);
+    let name = program_name(program);
     let purpose = purpose.trim();
     let what = if purpose.is_empty() { String::new() } else { format!(" ({purpose})") };
-    format!("Allow “{name}” to use {named}{what}? It can then have it whenever it asks, until Passwords quits.")
+    format!("Allow “{name}” to use {named}{what}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).")
+}
+
+/// A program as the person knows it: an Olo app's name, else its file's.
+pub fn program_name(program: &str) -> &str {
+    let file = program.rsplit('/').next().unwrap_or(program);
+    olo_xdg::apps::OUR_APPS.iter().find(|(bin, ..)| *bin == file).map_or(file, |(_, name, _)| *name)
+}
+
+/// How the person answered a program's ask for an item.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Grant {
+    No,
+    /// This time only (and those asking alongside).
+    Once,
+    /// For good, until taken back.
+    Always,
 }
 
 /// The accounts, as `op account list --format json` prints them: those
@@ -372,9 +388,11 @@ pub struct Passwords {
     cli_waiting: Vec<(cli::Session, Incoming)>,
     /// The terminal sessions allowed to use `op`.
     grants: cli::Grants,
-    /// The programs allowed a secret by its reference while Passwords
-    /// runs: (the program's executable, the reference).
-    reference_grants: HashSet<(String, String)>,
+    /// The programs allowed an item for good (Approve Always), as the
+    /// vault keeps them (File ▸ Apps Allowed… shows and takes them back).
+    pub allowed: Vec<vault::Allowed>,
+    /// The Apps Allowed window, while it's open.
+    pub allowed_window: Option<WindowHandle<allowed::AllowedView>>,
     /// Their requests waiting for the person's answer, by the same.
     reference_waiting: Vec<((String, String), Incoming)>,
     /// Asking app_server whether it approves without asking, for the
@@ -456,6 +474,9 @@ impl Passwords {
             w.messenger().send(());
         }
         if let Some(w) = self.problems.as_ref().and_then(|p| p.window.as_ref()) {
+            w.messenger().send(());
+        }
+        if let Some(w) = &self.allowed_window {
             w.messenger().send(());
         }
         if !SCHEDULING.swap(true, Ordering::AcqRel) {
@@ -1065,14 +1086,22 @@ impl Passwords {
                 };
                 let asked = (program, reference.clone());
                 // (On a screen: what it was given is the agents' there.)
-                if on_screen() || self.reference_grants.contains(&asked) {
+                if on_screen() || self.allowed.iter().any(|a| (&a.program, &a.reference) == (&asked.0, &asked.1)) {
                     return self.store.send(Job::Keychain { incoming: Box::new(incoming), candidates: Vec::new(), vault: String::new() });
                 }
                 let shown = self.reference_waiting.iter().any(|(a, _)| *a == asked);
                 let message = reference_message(&asked.0, &self.reference_named(&asked.1), purpose);
                 self.reference_waiting.push((asked.clone(), incoming));
                 if !shown {
-                    open_app_alert("Passwords", "warning", &message, &["Deny", "Allow"], move |choice| app().answer_reference(&asked, choice == Some(1)));
+                    // (Return: Approve Always; Escape: Deny.)
+                    open_app_alert("Passwords", "warning", &message, &["Deny", "Approve Once", "Approve Always"], move |choice| {
+                        let answer = match choice {
+                            Some(2) => Grant::Always,
+                            Some(1) => Grant::Once,
+                            _ => Grant::No,
+                        };
+                        app().answer_reference(&asked, answer)
+                    });
                 }
                 return;
             }
@@ -1292,9 +1321,14 @@ impl Passwords {
 
     /// The person's answer to a program asking for a secret by its
     /// reference: allowed until Passwords quits, or refused.
-    fn answer_reference(&mut self, asked: &(String, String), allow: bool) {
-        if allow {
-            self.reference_grants.insert(asked.clone());
+    fn answer_reference(&mut self, asked: &(String, String), answer: Grant) {
+        let allow = answer != Grant::No;
+        // Always: kept in the vault (across restarts and upgrades), and
+        // here at once so the next ask isn't asked.
+        if answer == Grant::Always {
+            self.allowed.push(vault::Allowed { program: asked.0.clone(), reference: asked.1.clone(), since: chrono::Utc::now() });
+            self.store.send(Job::Allow { program: asked.0.clone(), reference: asked.1.clone() });
+            self.changed();
         }
         let (theirs, rest) = std::mem::take(&mut self.reference_waiting).into_iter().partition::<Vec<_>, _>(|(a, _)| a == asked);
         self.reference_waiting = rest;
@@ -1942,6 +1976,7 @@ impl Passwords {
         }
         match reply {
             Reply::Index(index) => self.index = index,
+            Reply::Allowed(list) => self.allowed = list,
             Reply::Connected => {
                 self.conn = Conn::Ready;
                 if self.security.auto_sync && self.sync_asked.is_none_or(|t| t.elapsed() > SYNC_EVERY) {
@@ -2221,6 +2256,8 @@ impl Passwords {
             .enabled(ready && !self.settings.accounts.is_empty() && self.sync != Some(SyncState::Running) && !shared)
             .item("1Password Accounts…", "account")
             .enabled(!self.lock.locked && !shared)
+            .item("Apps Allowed…", "allowed")
+            .enabled(!self.lock.locked && !shared)
             .item("Reset Passwords…", "reset")
             .enabled(!self.lock.locked && self.set_up() && !shared)
             .close_quit();
@@ -2313,6 +2350,7 @@ impl Passwords {
             "sync" | "account" | "reset" | "lock" if on_screen() => {}
             "lock" => self.do_lock(),
             "account" => self.change_account(),
+            "allowed" => self.show_allowed(),
             "sync" => self.sync_and_review(),
             "reset" => self.confirm_reset(),
             "generator" => self.open_generator(None),
@@ -2706,7 +2744,8 @@ fn main() {
             unlocked: false,
             waiting: Vec::new(),
             cli_waiting: Vec::new(),
-            reference_grants: HashSet::new(),
+            allowed: Vec::new(),
+            allowed_window: None,
             reference_waiting: Vec::new(),
             grants: cli::Grants::default(),
             asking: HashSet::new(),
