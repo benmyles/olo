@@ -4138,5 +4138,11 @@
   "title": "Quick Look: every picture drawn, on any screen",
   "caption": "Before (top): on a 2.5\u00d7 display beside a shorter one, Quick Look sized itself past the room a window that fits what it shows has; its Frame scrolled it and the picture's box was laid out to nothing, an empty body over a scroll bar after \u2193. After (bottom): the Frame puts such a window back within the room each time, and Quick Look sizes itself within it.",
   "image": "2026-11-14/162655-quick-look-every-picture-drawn-on-any-screen.png"
+ },
+ {
+  "time": "2026-11-14T16:54:38",
+  "title": "Agent Screens' History back from another tab shows its rows",
+  "caption": "Before (left): History, then Stats, then History again on a screen with 2,104 actions: the list blank, its scroll bar at the end, and the wheel did nothing (Ben's report). The display thread let go of the list's scroller while Stats showed and started it again at its top, while the looper had it at the end; every report after carried an old mark and was dropped. After (right): every scroll layer carries where its looper has it, and the display thread starts one it hasn't from there, so a list on any tab comes back where it was.",
+  "image": "2026-11-14/165438-agent-screens-history-back-from-another-tab-show.png"
  }
 ]

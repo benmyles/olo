@@ -81,10 +81,14 @@ pub(crate) struct Layer {
     pub(crate) view: Size<Pixels>,
     /// Which ways it scrolls: across, down.
     pub(crate) axes: (bool, bool),
-    /// Where the looper put it, if it moved it (a view scrolled to, a
-    /// scroll bar dragged) and which of its moves this is: otherwise
-    /// the display thread's own stands.
-    pub(crate) set: Option<(Point<Pixels>, u32)>,
+    /// Where the looper has it, and which of the looper's own moves
+    /// that is: where the display thread starts it when it hasn't one
+    /// (new, or not in the last commit: a list on a tab that wasn't
+    /// chosen, which it let go), and where it goes when `set`.
+    pub(crate) at: (Point<Pixels>, u32),
+    /// The looper moved it (a view scrolled to, a scroll bar dragged)
+    /// since it last said: otherwise the display thread's own stands.
+    pub(crate) set: bool,
 }
 
 /// Where the wheel means something, in painting order (the last one
@@ -891,12 +895,24 @@ impl Stage {
             // ends, and put where the looper moved it if it did.
             let mut told = false;
             for layer in commit.layers.iter().skip(1) {
-                let scroller = showing.scrollers.entry(layer.id).or_default();
+                // (One it hasn't, or let go while it wasn't shown, starts
+                // where the looper has it, and as the same move: else it
+                // was at its top here while the looper had it scrolled,
+                // whose rows were all elsewhere, and the looper took
+                // every report of it for stale. Agent Screens' History,
+                // back from another tab, was blank, its bar at the end,
+                // and stayed so: Ben, 2026-11-14.)
+                let (scroller, had) = match showing.scrollers.entry(layer.id) {
+                    std::collections::hash_map::Entry::Occupied(e) => (e.into_mut(), true),
+                    std::collections::hash_map::Entry::Vacant(e) => (e.insert(Scroller::default()), false),
+                };
                 scroller.elastic.set_extent(layer.max, layer.view);
+                if !had {
+                    (scroller.offset, scroller.epoch) = layer.at;
+                }
                 let before = scroller.offset;
-                if let Some((to, epoch)) = layer.set {
-                    scroller.offset = to;
-                    scroller.epoch = epoch;
+                if layer.set {
+                    (scroller.offset, scroller.epoch) = layer.at;
                     told = true;
                 }
                 scroller.offset = point(scroller.offset.x.clamp(-layer.max.width, px(0.)), scroller.offset.y.clamp(-layer.max.height, px(0.)));

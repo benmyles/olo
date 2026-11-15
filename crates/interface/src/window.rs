@@ -921,7 +921,7 @@ impl WindowCore {
         listing.wheel.clear();
         listing.scrollers.clear();
         listing.watchers.clear();
-        listing.layers.push(Layer { id: 0, parent: 0, viewport: window, max: Size::default(), view: self.size, axes: (false, false), set: None });
+        listing.layers.push(Layer { id: 0, parent: 0, viewport: window, max: Size::default(), view: self.size, axes: (false, false), at: Default::default(), set: false });
         // (What the listing doesn't reach, held by something hidden or
         // cut away whole, is in no place in it: a place kept from the
         // list before was another node's in this one, and its next
@@ -1038,8 +1038,8 @@ impl WindowCore {
                 Some(handle) if !inner.is_empty() => {
                     let index = out.layers.len() as u32;
                     let scrolls = (node.style.overflow.x == crate::Overflow::Scroll, node.style.overflow.y == crate::Overflow::Scroll);
-                    let set = handle.0.set.take().then(|| (handle.offset(), handle.0.epoch.get()));
-                    out.layers.push(Layer { id: handle.id(), parent: layer, viewport: inner, max: handle.max_offset(), view: node.bounds.size, axes: scrolls, set });
+                    let (at, set) = ((handle.offset(), handle.0.epoch.get()), handle.0.set.take());
+                    out.layers.push(Layer { id: handle.id(), parent: layer, viewport: inner, max: handle.max_offset(), view: node.bounds.size, axes: scrolls, at, set });
                     out.wheel.push(WheelRegion { layer, rect: inner, kind: WheelKind::Scroller(index) });
                     out.scrollers.insert(handle.id(), id);
                     // (Scrolled across, what its sides cut changes as it
@@ -1741,7 +1741,7 @@ impl<'a> WindowCx<'a> {
         // (Told once where the looper put a scroller: after that the
         // stage's own word stands.)
         for layer in &mut core.layers {
-            layer.set = None;
+            layer.set = false;
         }
         core.commits += 1;
         core.started = None;
@@ -2136,6 +2136,22 @@ impl<'a> WindowCx<'a> {
         let (tx, rx) = std::sync::mpsc::channel();
         self.on_display(move |window| {
             window.headless_input(crate::PlatformInput::MouseMove(crate::MouseMoveEvent { position: at, pressed_button: button, modifiers }));
+            let _ = tx.send(());
+        });
+        rx
+    }
+
+    /// The wheel turned `delta` points (down: positive) with the pointer
+    /// at `at`, over a window with no display, as if the person turned
+    /// it: through the display thread, which scrolls what's under it
+    /// itself and tells the looper where it got to. The receiver hears
+    /// once it has (what it sent is on the looper's queue by then).
+    #[doc(hidden)]
+    pub fn headless_wheel(&self, at: Point<Pixels>, delta: Point<Pixels>) -> std::sync::mpsc::Receiver<()> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.on_display(move |window| {
+            let delta = crate::ScrollDelta::Pixels(crate::point(-delta.x, -delta.y));
+            window.headless_input(crate::PlatformInput::ScrollWheel(crate::ScrollWheelEvent { position: at, delta, ..Default::default() }));
             let _ = tx.send(());
         });
         rx

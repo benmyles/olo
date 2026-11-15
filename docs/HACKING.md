@@ -7399,6 +7399,20 @@ Chrome, GTK 4.16 text), and how Olo does it:
     scale changed came back a third of a point off, every row between
     pixels (the live lint, Date & Time's Time Zone list, which centres
     the zone in use).
+  - *A scroller shown again scrolls from where it was*
+    (olo-interface). Its place is kept twice: by the looper, which
+    makes the rows near it, and by the display thread, which moves it
+    under the wheel and fingers and says where it got to, each word
+    marked with the looper's last move of it (`ScrollHandle::put`'s
+    epoch) so one from before that move is dropped as stale. The
+    display thread lets go of a scroller a commit leaves out (its tab
+    isn't chosen), so every scroll layer carries where its looper has
+    it (`Layer::at`, `set` when the looper moved it since it last
+    said), and one the display thread hasn't starts there. It started
+    at the top: the looper's rows were at the end, the list blank, and
+    every word of it after carried an old mark, the wheel's too
+    (Agent Screens' History back from Stats, Ben 2026-11-14;
+    `ui_lint_a_list_shown_again_scrolls_from_where_it_was`).
   - *A drawing kept lands where a fresh one would* (olo-kit). What a
     node drew is kept and moved with it when layout puts it elsewhere,
     if that's by whole device pixels; a drawing of the app's own (a

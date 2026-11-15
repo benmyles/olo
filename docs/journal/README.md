@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-14
 
+### Agent Screens' History back from another tab shows its rows
+
+*16:54* — Before (left): History, then Stats, then History again on a screen with 2,104 actions: the list blank, its scroll bar at the end, and the wheel did nothing (Ben's report). The display thread let go of the list's scroller while Stats showed and started it again at its top, while the looper had it at the end; every report after carried an old mark and was dropped. After (right): every scroll layer carries where its looper has it, and the display thread starts one it hasn't from there, so a list on any tab comes back where it was.
+
+![Agent Screens' History back from another tab shows its rows](2026-11-14/165438-agent-screens-history-back-from-another-tab-show.png)
+
 ### Quick Look: every picture drawn, on any screen
 
 *16:26* — Before (top): on a 2.5× display beside a shorter one, Quick Look sized itself past the room a window that fits what it shows has; its Frame scrolled it and the picture's box was laid out to nothing, an empty body over a scroll bar after ↓. After (bottom): the Frame puts such a window back within the room each time, and Quick Look sizes itself within it.

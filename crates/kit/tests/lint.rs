@@ -6,7 +6,8 @@
 //! strip, along the top and down the side, is clean; rows with keys are
 //! kept as they are when the view says what it shows again; a window
 //! that fits what it shows, asked to be taller than the screen has room
-//! for, keeps what fills it.
+//! for, keeps what fills it; a list scrolled, hidden and shown again
+//! scrolls from where it was.
 
 use olo_kit::{
     Child, Cx, Element, ParentElement as _, Styled as _, View, WindowOptions, div,
@@ -501,5 +502,78 @@ fn ui_lint_a_fitted_window_past_the_screen_keeps_what_fills_it() {
         assert!(height <= 300.5, "asked {tall} tall, the window is {height}, past the room (300)");
         assert!(body >= height - 40.5, "asked {tall} tall, its body is {body} of a window {height} tall: laid out to nothing");
     }
+    window.close();
+}
+
+/// Two hundred rows in a scroller that can be hidden (a list on a tab
+/// that isn't chosen), kept by its view; which rows are made.
+struct Hides {
+    shown: bool,
+    scroll: olo_kit::ScrollHandle,
+    made: std::rc::Rc<std::cell::RefCell<Vec<usize>>>,
+}
+
+impl View for Hides {
+    type Message = ();
+
+    fn body(&mut self, _: &mut Cx<Self>) -> Element {
+        use olo_kit::InteractiveElement as _;
+        if !self.shown {
+            return div().size_full();
+        }
+        let made = self.made.clone();
+        let rows = olo_kit::uniform_rows(200, px(20.0), move |near| {
+            near.map(|row| {
+                made.borrow_mut().push(row);
+                div().id(row).w_full().h(px(20.0))
+            })
+            .collect()
+        });
+        div().size_full().overflow_y_scroll().track_scroll(&self.scroll).child(rows)
+    }
+}
+
+/// A list scrolled, hidden and shown again, scrolls from where it was:
+/// the display thread, which let it go while it wasn't shown, starts it
+/// where its looper has it. (It started it at its top, where none of its
+/// rows were made, and the looper took all it said of it after for
+/// stale: Agent Screens' History, back from another tab, was blank, its
+/// scroll bar at the end, and the wheel did nothing; Ben, 2026-11-14.)
+#[test]
+fn ui_lint_a_list_shown_again_scrolls_from_where_it_was() {
+    use olo_kit::point;
+    let _lint = Lint::new();
+    let window = olo_kit::open_window(WindowOptions::new("Hides", 200.0, 100.0), |_| Hides { shown: true, scroll: Default::default(), made: Default::default() });
+    let settle = || {
+        ask(&window, |_, _| ());
+        ask(&window, |_, _| ());
+    };
+    settle();
+    let wheel = |down: f32| {
+        let turned = ask(&window, move |_, cx| cx.headless_wheel(point(px(100.0), px(50.0)), point(px(0.0), px(down))));
+        turned.recv_timeout(std::time::Duration::from_secs(10)).expect("the display thread scrolls");
+        ask(&window, |v, _| f32::from(v.scroll.offset().y))
+    };
+    // Scrolled by its view, then by the wheel: the display thread has it
+    // where the looper put it.
+    ask(&window, |v, cx| v.scroll.set_offset(cx, point(px(0.0), px(-2000.0))));
+    settle();
+    assert_eq!(wheel(40.0), -2040.0, "the wheel scrolls on from where the view put it");
+    // Hidden (its layer left out of what's committed), then shown again.
+    for shown in [false, true] {
+        ask(&window, move |v, cx| {
+            v.shown = shown;
+            cx.invalidate();
+        });
+        settle();
+    }
+    let made = ask(&window, |v, _| std::mem::take(&mut *v.made.borrow_mut()));
+    assert!(made.contains(&102), "the rows where it was are made: {made:?}");
+    // The wheel moves it from there, both ways, and the rows it comes to
+    // are made.
+    assert_eq!(wheel(-100.0), -1940.0, "the wheel up, shown again");
+    assert_eq!(wheel(60.0), -2000.0, "the wheel down, shown again");
+    let made = ask(&window, |v, _| std::mem::take(&mut *v.made.borrow_mut()));
+    assert!(made.contains(&97), "the rows it came to are made: {made:?}");
     window.close();
 }

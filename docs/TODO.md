@@ -1398,18 +1398,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Agent Screens' History empty** (Ben, 2026-11-14: "there is a bug in
-  agent screens i can't see any history it's just empty"; his
-  screenshot: the running screen v2-qa-integrations, "2,073 actions"
-  in its header and at the filter bar's right, Kind All Actions, Result
-  Any, Time All Time, no search, yet the Time / Action list empty; the
-  player under the picture at its last action, "click 570 347", 145:37:40
-  of 145:37:40). The count says the actions are there and the player
-  can reach them, so the list isn't showing rows it has: find why (the
-  list's model not filled, filled before the window's size was known,
-  a filter that hides everything, rows of zero height, a virtual list
-  scrolled past its end), fix it at the root, with a test that opens a
-  screen's History with thousands of actions and checks rows show.
 - **Two themes, Classic and Platinum, made exquisite** (Ben,
   2026-11-14: "let's simplify a bit so we just have 2 themes for now:
   Classic and Platinum (with light/dark variations). then, let's have
@@ -1559,6 +1547,41 @@ something nobody here has is in "Blocked", with what it waits for.
   (paths with .. or absolute ones refused); undo; agent-readable and
   drivable; HACKING and the Olo Book.
 ## Done, waiting for Ben to try or confirm
+
+- **Agent Screens' History empty** (Ben, 2026-11-14: "there is a bug in
+  agent screens i can't see any history it's just empty"; his
+  screenshot: the running screen v2-qa-integrations, "2,073 actions"
+  in its header and at the filter bar's right, Kind All Actions, Result
+  Any, Time All Time, no search, yet the Time / Action list empty; the
+  player under the picture at its last action, "click 570 347", 145:37:40
+  of 145:37:40). The count says the actions are there and the player
+  can reach them, so the list isn't showing rows it has: find why (the
+  list's model not filled, filled before the window's size was known,
+  a filter that hides everything, rows of zero height, a virtual list
+  scrolled past its end), fix it at the root, with a test that opens a
+  screen's History with thousands of actions and checks rows show.
+  Done (2026-11-14): not the list or its rows but its scroll position.
+  A scroller's place is kept twice: by its looper (which makes the
+  rows near it) and by the display thread (which scrolls it under the
+  wheel and fingers and says where it got to, each word marked with
+  the looper's last move of it, so a word from before that move is
+  dropped as stale). The display thread lets go of a scroller its
+  window's commit leaves out (a list on a tab that isn't chosen) and
+  started it again at its top when it came back, while the looper
+  still had it at the end, where it had shown the newest action: the
+  rows were made there, none at the top where it was drawn, the bar
+  at the end, and every word of it after, the wheel's too, carried an
+  old mark, so the looper dropped them all and it stayed blank.
+  History → Stats → History did it, on a screen with no new actions
+  (a new one revealed it again, which is why it came and went).
+  Now every scroll layer carries where its looper has it, and the
+  display thread starts one it hasn't from there (and after an
+  app_server restart too): any list on a tab, in any app. Kept fixed:
+  `ui_lint_a_list_shown_again_scrolls_from_where_it_was` (scrolled,
+  hidden, shown: the wheel moves it from where it was; fails without
+  the fix). Checked in Agent Screens with 2,104 actions: History,
+  Stats and back, rows there, the wheel scrolls. Ben: after upgrading,
+  switch tabs on a screen's History and back.
 
 - **Quick Look empty after ↓ through pictures (a regression)** (Ben,
   2026-11-14: "when i'm in the tracker and press space on an image for

@@ -564,7 +564,10 @@ doing, and its content isn't drawn again to move.
   `reveal_span(top, bottom)`, `reveal_in_middle(cx, top, bottom)`,
   `set_offset_once_laid_out(..)`. What's asked of it waits for layout
   (the view's height isn't known before); it always lands on whole
-  device pixels.
+  device pixels. Kept by its view while what it scrolls isn't shown (a
+  list on a tab that isn't chosen), it comes back where it was: each
+  commit says where the looper has every scroller, and the display
+  thread starts one it hasn't (or let go) from there.
 - The looper hears where it got to (`.on_scroll(..)`,
   `.watch_scroll(&handle)` to draw again as it moves: a scroll bar's
   knob does). Don't read `offset()` in a `body` to decide what to
