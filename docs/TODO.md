@@ -65,11 +65,12 @@ something nobody here has is in "Blocked", with what it waits for.
      medians): putting the frame together 42 → 18 µs, the frame 158 →
      131 µs. Quads and the rest are still copied (tens a frame).
      Same to the pixel (StyledEdit scrolled, Tracker, DeskCalc, the
-     gallery; 1×, 1.5×, 2×, light and dark); damage-check the same but
-     for a flake of Terminal's at 1× that the build before has too (its
-     scrollback ends a device pixel apart about one run in four,
-     drawn whole or by damage alike: where a glide stops, to look
-     at). (A scroll bar's knob moved by
+     gallery; 1×, 1.5×, 2×, light and dark); damage-check the same (a flake
+     of Terminal's at 1× it found, the build before's too, fixed the
+     same day: a wheel's eased steps too small to show drew nothing,
+     were taken for an end, and the notches' last pixel or so was
+     dropped, as soon or late as the frames came; each step is a
+     device pixel at least now). (A scroll bar's knob moved by
      the stage was looked at 2026-11-14 and left: every frame of a
      scroll draws the content it moves anyway, and the knob's own
      repaint is 0.02 ms of it.) *Done 2026-11-13:* nothing worked out or drawn

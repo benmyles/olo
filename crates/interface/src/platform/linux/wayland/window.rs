@@ -1128,10 +1128,20 @@ impl WaylandWindowStatePtr {
         w.last = Some(now);
         let k = (1.0 - (-dt / WHEEL_EASE).exp()) as f32;
         let mut step = Point { x: w.left.x * k, y: w.left.y * k };
+        // Each step a device pixel at least (or what's left): a step too
+        // small to show draws nothing, and a step that draws nothing is
+        // taken for an end, the rest dropped. The notches' last pixel or
+        // so went so, sooner or later by the frames' timing: Terminal's
+        // scrollback stopped a device pixel apart at 1×, one run in four.
+        let pixel = 1.0 / self.state.borrow().scale;
+        let (len, left) = (step.x.hypot(step.y), w.left.x.hypot(w.left.y));
+        if len < pixel && len > 0.0 {
+            let to = pixel.min(left) / len;
+            step = Point { x: step.x * to, y: step.y * to };
+        }
         // Less than half a device pixel would be left: no more frames
         // for moves that don't show.
-        let half_pixel = 0.5 / self.state.borrow().scale;
-        if (w.left.x - step.x).hypot(w.left.y - step.y) < half_pixel {
+        if (w.left.x - step.x).hypot(w.left.y - step.y) < pixel / 2.0 {
             step = w.left;
         }
         w.left = Point { x: w.left.x - step.x, y: w.left.y - step.y };
