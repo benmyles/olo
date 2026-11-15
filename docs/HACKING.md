@@ -4649,6 +4649,13 @@ moved since on purpose: by hand, a shortcut or an agent,
 ("came back from the restart other than it was"), with a summary
 ("windows back after the restart, checked against what was saved").
 
+A window comes back at its kept size, but never smaller than the least
+its app sets now (`claim_placement`, from the surface's `min_size` at
+its first commit): the version back may need more room than the one
+whose size was kept (Weather's least grew from 900 × 560 to 1060 × 660,
+and came back at the old size, its columns run past its edge). IPC's
+`Place` holds a frame to its `least` the same way.
+
 A window goes back to the same place on the display it was saved on
 (`Placement::screen_key`, the monitor, else `screen`'s connector),
 wherever that display is now (`saved_location`): the displays found one

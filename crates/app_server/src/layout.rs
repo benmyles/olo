@@ -597,6 +597,13 @@ impl<B: Backend + 'static> AnvilState<B> {
             && let Some(toplevel) = window.0.toplevel()
         {
             let size = group.unwrap_or_else(|| (p.width, p.height).into());
+            // Never under the least it says it needs now: the version back
+            // may need more room than the one whose size was kept.
+            let least = smithay::wayland::compositor::with_states(surface, |s| s.cached_state.get::<smithay::wayland::shell::xdg::SurfaceCachedState>().current().min_size);
+            let size: smithay::utils::Size<i32, smithay::utils::Logical> = (size.w.max(least.w), size.h.max(least.h)).into();
+            if size != group.unwrap_or_else(|| (p.width, p.height).into()) {
+                info!(window = window.id(), app_id = window.app_id(), w = size.w, h = size.h, "back: at least the size it needs now");
+            }
             if group.is_some_and(|g| g != (p.width, p.height).into()) {
                 info!(window = window.id(), app_id = window.app_id(), w = size.w, h = size.h, "back into its group: at the group's size");
             }

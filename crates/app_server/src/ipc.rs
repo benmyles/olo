@@ -502,7 +502,10 @@ impl<B: Backend + 'static> AnvilState<B> {
             Request::Place { id, frame } => match self.window_by_id(id) {
                 Some(w) if self.space.element_location(&w).is_some() => {
                     w.meta().moved_on_purpose.set(true);
-                    let size = (frame.width.max(1), frame.height.max(1));
+                    // (No smaller than its app can draw it: its least, with
+                    // the tab and border.)
+                    let least = crate::shell::groups::least_frame(&w);
+                    let size = (frame.width.max(least.w).max(1), frame.height.max(least.h).max(1));
                     // As if moved and sized by hand: its own place now,
                     // where it can be taken hold of again.
                     let to = self.reachable(smithay::utils::Rectangle::new((frame.x, frame.y).into(), size.into()));
