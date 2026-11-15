@@ -407,6 +407,9 @@ impl Session {
         // started gvfs: a fresh Fedora 45, 2026-11-07).
         if real_start && !greeter {
             graphical::name_dconf();
+            // Olo's keyring, likewise, before the services that look up
+            // their keys as they start (graphical.rs's name_keyring).
+            graphical::name_keyring();
         }
         // Only a real session owns the user's environment: a headless or
         // nested one (tests, development) must not point the user's portals

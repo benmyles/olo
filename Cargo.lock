@@ -8150,6 +8150,7 @@ dependencies = [
  "libc",
  "num-bigint 0.4.8",
  "olo-crash",
+ "olo-kit-base",
  "olo-login-key",
  "olo-protocol",
  "olo-system",

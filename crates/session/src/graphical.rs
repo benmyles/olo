@@ -245,6 +245,7 @@ pub fn start() {
     if let Some(bin) = crate::exe().parent() {
         take_dconf(bin, &crate::runtime_dir());
         name_file_manager(bin, &crate::runtime_dir());
+        name_keyring_in(bin, &crate::runtime_dir());
     }
     stop_gvfs();
 }
@@ -311,6 +312,48 @@ fn name_file_manager(bin: &Path, runtime: &Path) {
     }
 }
 
+/// The keyring's name: what D-Bus starts for it while nobody answers.
+const KEYRING: &str = "org.freedesktop.secrets";
+
+/// `olo-secrets --activated` for it while an Olo session runs (its
+/// activated.rs): it waits for the session's olo-secrets to take the
+/// name, or, Olo's keyring turned off, becomes GNOME Keyring. D-Bus
+/// started GNOME Keyring for a program asking at login before
+/// olo-secrets had the name (Token Pool's service and DiskBackup's look
+/// up their keys as they start), which asked for its password, and
+/// olo-secrets, finding it running, asked again for each of its keyrings
+/// (Ben, 2026-11-14: "i'm being asked for my keyring password to unlock
+/// it twice").
+fn keyring_service(bin: &Path) -> String {
+    format!("[D-BUS Service]\nName={KEYRING}\nExec={} --activated\n", bin.join("olo-secrets").display())
+}
+
+/// In the runtime folder's services, as dconf's (gone with the login:
+/// another desktop's session has GNOME Keyring's again).
+fn keyring_service_path(runtime: &Path) -> PathBuf {
+    runtime.join(format!("dbus-1/services/{KEYRING}.service"))
+}
+
+/// Name olo-secrets for [`KEYRING`] (the bus told to read its services
+/// again if that changed): as the session starts, before the services
+/// that ask for secrets, and again after an upgrade.
+pub fn name_keyring() {
+    if let Some(bin) = crate::exe().parent() {
+        name_keyring_in(bin, &crate::runtime_dir());
+    }
+}
+
+fn name_keyring_in(bin: &Path, runtime: &Path) {
+    if !bin.join("olo-secrets").is_file() {
+        return;
+    }
+    match put(&keyring_service_path(runtime), &keyring_service(bin)) {
+        Ok(true) => reload_bus(),
+        Ok(false) => {}
+        Err(e) => log(format!("could not name olo-secrets for the keyring: {e}")),
+    }
+}
+
 fn reload_bus() {
     if let Err(e) = olo_system::env::reload_bus_services() {
         log(format!("could not reload the session bus's services: {e}"));
@@ -367,7 +410,8 @@ pub fn stop() {
     let _ = std::fs::remove_file(portal_drop_in(&crate::runtime_dir()));
     let _ = std::fs::remove_file(gio_drop_in_path(&crate::runtime_dir()));
     let dconf = std::fs::remove_file(dconf_service_path(&crate::runtime_dir())).is_ok();
-    if std::fs::remove_file(file_manager_service_path(&crate::runtime_dir())).is_ok() || dconf {
+    let keyring = std::fs::remove_file(keyring_service_path(&crate::runtime_dir())).is_ok();
+    if std::fs::remove_file(file_manager_service_path(&crate::runtime_dir())).is_ok() || dconf || keyring {
         reload_bus();
     }
     let _ = std::fs::remove_file(crate::runtime_dir().join(olo_xdg::legacy::OLD).join("gtk-4.0.css"));
@@ -448,6 +492,8 @@ mod tests {
         let text = file_manager_service(Path::new("/home/u/.local/bin"));
         assert_eq!(text, "[D-BUS Service]\nName=org.freedesktop.FileManager1\nExec=/home/u/.local/bin/olo-tracker --file-manager\n");
         assert_eq!(file_manager_service_path(Path::new("/run/user/1000")), Path::new("/run/user/1000/dbus-1/services/org.freedesktop.FileManager1.service"));
+        assert_eq!(keyring_service_path(Path::new("/run/user/1000")), Path::new("/run/user/1000/dbus-1/services/org.freedesktop.secrets.service"));
+        assert_eq!(keyring_service(Path::new("/home/me/.local/bin")), "[D-BUS Service]\nName=org.freedesktop.secrets\nExec=/home/me/.local/bin/olo-secrets --activated\n");
     }
 
     #[test]

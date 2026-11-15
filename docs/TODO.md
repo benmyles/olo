@@ -1430,10 +1430,6 @@ something nobody here has is in "Blocked", with what it waits for.
   iterated, with second opinions from OpenAI's Astra; then every icon
   (apps, Preferences' panels, Deskbar, Tracker's kinds) made again for
   each theme per docs/ICONS.md, checked large and at Deskbar's size.
-- **The keyring's password asked once at login, not twice** (Ben,
-  2026-11-14: "when i first login after a restart i'm being asked for
-  my keyring password to unlock it twice. it should only need it once
-  to unlock").
 - **The command palette's scopes, cycled with Ctrl** (Ben, 2026-11-14:
   "change the cmd+space command palette so that by default it only
   suggests olo apps/shortcuts, then ctrl changes to files then ctrl
@@ -1514,6 +1510,30 @@ something nobody here has is in "Blocked", with what it waits for.
   drivable; HACKING and the Olo Book.
 
 ## Done, waiting for Ben to try or confirm
+
+- **The keyring's password asked once at login, not twice** (Ben,
+  2026-11-14: "when i first login after a restart i'm being asked for
+  my keyring password to unlock it twice. it should only need it once
+  to unlock").
+  Done (2026-11-14): this login's journal had "Unlock Keyring" then
+  "Unlock Login Keyring", both GNOME Keyring's: D-Bus had started it
+  (a program asking for a secret at login before olo-secrets had the
+  name: Token Pool's and DiskBackup's services look up their keys as
+  they start), and olo-secrets, finding it running, opened each of its
+  two keyrings (`login` and a second "Login") with a prompt of GNOME
+  Keyring's, copying nothing new. Now olo-session names `olo-secrets
+  --activated` for the keyring in the session's D-Bus services, which
+  waits for Olo's to answer (GNOME Keyring only with Olo's turned off,
+  or none running); GNOME Keyring's keyrings, when there is something
+  to copy, are opened with the password asked once (the one typed for
+  Olo's store, if it was); and olo-secrets becomes the new version at
+  an upgrade instead of being stopped 90 s later with the name free.
+  Tested on a private bus with a throwaway GNOME Keyring (one prompt
+  for two locked keyrings; a lookup while olo-secrets was away waited
+  for it, GNOME Keyring never started). *Left for Ben:* the next login
+  after a restart should ask once at most (none if the password was
+  typed at the login screen); after Upgrade, olo-secrets on the old
+  version is restarted once, then follows upgrades in place.
 
 - **A Deskbar widget's own name** (Ben, 2026-11-14: "in the deskbar
   settings for widgets let me provide a custom name for the widget if

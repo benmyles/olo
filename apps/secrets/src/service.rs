@@ -725,6 +725,8 @@ impl PromptObj {
         std::thread::Builder::new()
             .name("unlock prompt".into())
             .spawn(move || {
+                // (An upgrade waits for the answer.)
+                let _asking = crate::Asking::new();
                 let names: Vec<String> = {
                     let store = state.store();
                     let mut ids: Vec<&String> = unlock.iter().map(|(_, c)| c).collect();

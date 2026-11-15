@@ -5,6 +5,11 @@
 //! (gkd-control-server.c's GKD_CONTROL_OP_QUIT), which gives up
 //! `org.freedesktop.secrets` to olo-secrets, waiting in line for it.
 //! GNOME Keyring lets nobody replace it on the bus, so this is the way.
+//! Its locked keyrings are opened with the login password asked once
+//! (most have it: `login`, and a second "Login" a client once made), not
+//! a prompt of GNOME Keyring's for each (Ben, 2026-11-14: "i'm being
+//! asked for my keyring password to unlock it twice. it should only
+//! need it once to unlock").
 
 use std::{
     collections::{BTreeMap, HashMap},
@@ -28,6 +33,9 @@ const SERVICE: &str = "org.freedesktop.Secret.Service";
 const COLLECTION: &str = "org.freedesktop.Secret.Collection";
 const ITEM: &str = "org.freedesktop.Secret.Item";
 const PROMPT: &str = "org.freedesktop.Secret.Prompt";
+/// GNOME Keyring's own interface for opening a keyring with its password
+/// (seahorse's), as its PAM module does at login.
+const MASTER: &str = "org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface";
 
 /// GKD_CONTROL_OP_QUIT and GKD_CONTROL_RESULT_OK.
 const QUIT: u32 = 3;
@@ -84,18 +92,64 @@ fn unlock(conn: &Connection, svc: &Proxy<'_>, objects: &[OwnedObjectPath]) -> zb
     run_prompt(conn, &prompt)
 }
 
+/// The login password asked for, once for every keyring of GNOME
+/// Keyring's to be copied, until it opens `first`; None if the person
+/// says Not Now.
+fn ask_once(conn: &Connection, session: &OwnedObjectPath, first: &OwnedObjectPath) -> Option<Zeroizing<String>> {
+    let props = olo_system::keyring_prompt::Props {
+        title: "GNOME Keyring".into(),
+        message: "Copy the secrets GNOME Keyring keeps".into(),
+        description: "GNOME Keyring has secrets Olo hasn’t copied yet. Type your login password to open them, once for all of its keyrings.".into(),
+        continue_label: "Unlock".into(),
+        cancel_label: "Not Now".into(),
+        ..Default::default()
+    };
+    let _asking = crate::Asking::new();
+    match olo_system::keyring_prompt::ask_password(&props, "That password didn’t open them.", |p| unlock_with(conn, session, first, p)) {
+        Ok(given) => given,
+        Err(e) => {
+            tracing::warn!("secrets: couldn't ask for GNOME Keyring's password: {e}");
+            None
+        }
+    }
+}
+
 fn last(p: &str) -> String {
     p.rsplit('/').next().unwrap_or_default().to_owned()
 }
 
+/// Open the keyring `collection` with `password` (GNOME Keyring's own
+/// `UnlockWithMasterPassword`, no prompt): whether it opened.
+fn unlock_with(conn: &Connection, session: &OwnedObjectPath, collection: &OwnedObjectPath, password: &str) -> bool {
+    let secret = (session, Vec::<u8>::new(), password.as_bytes().to_vec(), "text/plain");
+    let opened = Proxy::new(conn, NAME, ROOT, MASTER).and_then(|m| m.call::<_, _, ()>("UnlockWithMasterPassword", &(collection, secret)));
+    if let Err(e) = &opened {
+        tracing::debug!("secrets: {} not opened with the password: {e}", last(collection.as_str()));
+    }
+    opened.is_ok()
+}
+
+/// How the locked keyrings are opened as they're read.
+pub enum Ask<'a> {
+    /// They aren't: left for the next login (started again, nothing is
+    /// asked).
+    Never,
+    /// With the login password: the one given (typed for Olo's own store
+    /// this login), else asked for once, through Olo's prompter, and
+    /// tried on each; GNOME Keyring's own prompt only for one it doesn't
+    /// open. Cancelled, the rest are left too.
+    Once(&'a mut Option<Zeroizing<String>>),
+}
+
 /// Every item GNOME Keyring keeps (its session collection left out, as
-/// it's kept in memory only), each locked collection unlocked first if
-/// `ask` (else left); and the collections left locked, by label.
-pub fn read_all(conn: &Connection, ask: bool) -> zbus::Result<(Vec<Found>, Vec<String>)> {
+/// it's kept in memory only), each locked collection opened first as
+/// `ask` says (else left); and the collections left locked, by label.
+pub fn read_all(conn: &Connection, mut ask: Ask<'_>) -> zbus::Result<(Vec<Found>, Vec<String>)> {
     let svc = service(conn)?;
     let (_, session): (OwnedValue, OwnedObjectPath) = svc.call("OpenSession", &("plain", Value::from("")))?;
     let collections: Vec<OwnedObjectPath> = svc.get_property("Collections")?;
     let (mut found, mut skipped) = (Vec::new(), Vec::new());
+    let mut cancelled = false;
     for c in collections {
         let id = last(c.as_str());
         if id == store::SESSION {
@@ -104,7 +158,21 @@ pub fn read_all(conn: &Connection, ask: bool) -> zbus::Result<(Vec<Found>, Vec<S
         let col = Proxy::new(conn, NAME, c.as_str(), COLLECTION)?;
         let label: String = col.get_property("Label").unwrap_or_default();
         let locked: bool = col.get_property("Locked").unwrap_or(false);
-        if locked && (!ask || !unlock(conn, &svc, std::slice::from_ref(&c))?) {
+        let opened = !locked
+            || match &mut ask {
+                Ask::Never => false,
+                _ if cancelled => false,
+                Ask::Once(given) => match given.as_deref() {
+                    Some(password) => unlock_with(conn, &session, &c, password) || unlock(conn, &svc, std::slice::from_ref(&c))?,
+                    None => {
+                        let typed = ask_once(conn, &session, &c);
+                        cancelled = typed.is_none();
+                        **given = typed;
+                        given.is_some()
+                    }
+                },
+            };
+        if !opened {
             skipped.push(label);
             continue;
         }

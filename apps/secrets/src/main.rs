@@ -23,11 +23,21 @@
 //! What it's doing is in `$XDG_RUNTIME_DIR/olo-secrets.json` (`Status`),
 //! which Preferences shows and `olo-secrets --status` prints.
 //!
+//! While nobody answers for the keyring (at login before olo-secrets
+//! has, as it becomes a new version), D-Bus starts `olo-secrets
+//! --activated` for it in an Olo session (`activated.rs`; olo-session
+//! names it so), which waits for this one rather than GNOME Keyring
+//! starting in its place and asking for its own password. Upgraded
+//! (olo-session's SIGURG), it becomes the new version in place once no
+//! password is being asked for, the store's key kept for the login in
+//! the kernel's keyring, so nothing is asked again.
+//!
 //! For tests: `OLO_SECRETS_SERVE=1` answers whatever the settings say
 //! (`stdin`: as the lines "on" and "off" say),
 //! `OLO_SECRETS_KEYFILE` keeps the store's key in a file, and
 //! `OLO_SECRETS_STORE` puts the store elsewhere.
 
+mod activated;
 mod gnome;
 mod kernel;
 mod login_key;
@@ -48,6 +58,8 @@ use crate::store::Store;
 /// What olo-secrets is doing, for Preferences and agents.
 #[derive(Debug, Default, Clone, Serialize)]
 struct Status {
+    /// Its process (`activated.rs` waits while it's there).
+    pid: u32,
     /// Olo answers for the keyring.
     serving: bool,
     /// Since when (seconds since 1970).
@@ -87,10 +99,56 @@ fn status_path() -> PathBuf {
 }
 
 fn write_status(s: &Status) {
+    let s = Status { pid: std::process::id(), ..s.clone() };
     let tmp = status_path().with_extension("json.tmp");
-    if std::fs::write(&tmp, serde_json::to_vec_pretty(s).unwrap_or_default()).is_ok() {
+    if std::fs::write(&tmp, serde_json::to_vec_pretty(&s).unwrap_or_default()).is_ok() {
         let _ = std::fs::rename(tmp, status_path());
     }
+}
+
+/// How many passwords are being asked for now: an upgrade waits till
+/// none is (a prompt cut off by the new version would come back empty).
+static ASKING: (std::sync::Mutex<usize>, std::sync::Condvar) = (std::sync::Mutex::new(0), std::sync::Condvar::new());
+
+/// A password being asked for, while it lives.
+pub struct Asking;
+
+impl Asking {
+    pub fn new() -> Asking {
+        *ASKING.0.lock().unwrap_or_else(|e| e.into_inner()) += 1;
+        Asking
+    }
+}
+
+impl Drop for Asking {
+    fn drop(&mut self) {
+        let mut n = ASKING.0.lock().unwrap_or_else(|e| e.into_inner());
+        *n = n.saturating_sub(1);
+        ASKING.1.notify_all();
+    }
+}
+
+/// Upgraded (olo-session's SIGURG: this program's file was replaced):
+/// the new version, once no password is being asked for (olo-session
+/// told it waits meanwhile), in the same process. The store's key is in
+/// the kernel's keyring, so it asks nothing; the bus name is free only
+/// for the moment it takes to start, and what asks then waits for it
+/// (`activated.rs`). It was left on the old version and stopped 90 s
+/// later, the name free till it started again.
+fn become_new_version_when_upgraded() {
+    olo_kit_base::restore::on_upgrade(|| {
+        let mut n = ASKING.0.lock().unwrap_or_else(|e| e.into_inner());
+        if *n > 0 {
+            olo_kit_base::restore::mark_waiting(true);
+            while *n > 0 {
+                n = ASKING.1.wait(n).unwrap_or_else(|e| e.into_inner());
+            }
+        }
+        tracing::info!("secrets: upgraded: becoming the new version");
+        olo_kit_base::restore::mark_waiting(false);
+        let e = olo_kit_base::restore::exec_new_version();
+        tracing::warn!("secrets: couldn't become the new version: {e}");
+    });
 }
 
 fn store_path() -> PathBuf {
@@ -107,14 +165,17 @@ fn store_path() -> PathBuf {
 /// sealed yet), GNOME Keyring's copy (made and kept there the first
 /// time), or a new key for a new store. Sealed by this login's password
 /// from then on, and again after it changes.
-fn key(conn: &zbus::blocking::Connection) -> Result<(Zeroizing<[u8; 32]>, bool), String> {
+/// Also whether it was kept for this login (started again), and the
+/// password if the person typed it (for GNOME Keyring's keyrings too).
+fn key(conn: &zbus::blocking::Connection) -> Result<(Zeroizing<[u8; 32]>, bool, Option<Zeroizing<String>>), String> {
     if std::env::var_os("OLO_SECRETS_KEYFILE").is_some() {
-        return Ok((keyring_key()?, false));
+        return Ok((keyring_key()?, false, None));
     }
     let store = store_path();
     if let Some(k) = kernel::get(&store) {
-        return Ok((k, true));
+        return Ok((k, true, None));
     }
+    let mut typed = None;
     let login = kernel::take_login_key();
     let sealed = std::fs::read(login_key::path(&store)).ok();
     let k = match &sealed {
@@ -122,7 +183,11 @@ fn key(conn: &zbus::blocking::Connection) -> Result<(Zeroizing<[u8; 32]>, bool),
             Some(k) => k,
             None => match gnome::owner(conn).map(|_| keyring_lookup()) {
                 Some(Ok(Some(k))) => k,
-                _ => ask_password(bytes, login.is_some())?,
+                _ => {
+                    let (k, password) = ask_password(bytes, login.is_some())?;
+                    typed = Some(password);
+                    k
+                }
             },
         },
         None => match keyring_key() {
@@ -143,13 +208,14 @@ fn key(conn: &zbus::blocking::Connection) -> Result<(Zeroizing<[u8; 32]>, bool),
     if !kernel::put(&store, &k) {
         tracing::warn!("secrets: couldn't keep the store's key in the kernel's keyring (started again, it asks again)");
     }
-    Ok((k, false))
+    Ok((k, false, typed))
 }
 
 /// The store's key sealed in `sealed`, the person asked for their login
 /// password (the one they used before, if it has `changed`) through
-/// Olo's prompter until it opens it, or they cancel.
-fn ask_password(sealed: &[u8], changed: bool) -> Result<Zeroizing<[u8; 32]>, String> {
+/// Olo's prompter until it opens it, or they cancel. The key, and the
+/// password typed.
+fn ask_password(sealed: &[u8], changed: bool) -> Result<(Zeroizing<[u8; 32]>, Zeroizing<String>), String> {
     // SAFETY: getuid can't fail.
     let uid = unsafe { libc::getuid() };
     let machine = olo_login_key::machine_id();
@@ -166,6 +232,7 @@ fn ask_password(sealed: &[u8], changed: bool) -> Result<Zeroizing<[u8; 32]>, Str
         ..Default::default()
     };
     let mut found = None;
+    let _asking = Asking::new();
     let given = olo_system::keyring_prompt::ask_password(&props, "That isn’t the password they were locked with.", |password| {
         let login = olo_login_key::login_key(password.as_bytes(), uid, &machine);
         found = login_key::open(&login, sealed);
@@ -173,7 +240,7 @@ fn ask_password(sealed: &[u8], changed: bool) -> Result<Zeroizing<[u8; 32]>, Str
     })
     .map_err(|e| format!("asking for the login password: {e}"))?;
     match (given, found) {
-        (Some(_), Some(k)) => Ok(k),
+        (Some(password), Some(k)) => Ok((k, password)),
         _ => Err("the secrets stay locked: the login password wasn't given".into()),
     }
 }
@@ -278,7 +345,7 @@ struct Serving {
 /// Take over from GNOME Keyring (see the top).
 fn take_over(status: &mut Status) -> Result<Serving, String> {
     let conn = zbus::blocking::Connection::session().map_err(|e| format!("the session bus: {e}"))?;
-    let (key, again) = key(&conn)?;
+    let (key, again, mut typed) = key(&conn)?;
     let mut store = Store::open(&store_path(), key)?;
     // GNOME Keyring's items copied in: when it's answering (PAM started
     // it: another login screen), or when its keyrings changed since the
@@ -288,8 +355,10 @@ fn take_over(status: &mut Status) -> Result<Serving, String> {
     let running = gnome::owner(&conn).is_some();
     if running || gnome::changed_since(store.data.imported_at) {
         // (Started again, nothing is asked: a locked collection waits for
-        // the next login.)
-        match gnome::read_all(&conn, !again) {
+        // the next login. Else the password once for all of them: the one
+        // typed for Olo's store just now, if it was.)
+        let ask = if again { gnome::Ask::Never } else { gnome::Ask::Once(&mut typed) };
+        match gnome::read_all(&conn, ask) {
             Ok((found, skipped)) => {
                 status.imported = import(&mut store, found);
                 status.skipped = skipped;
@@ -441,6 +510,9 @@ fn main() -> std::process::ExitCode {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
     let _ = tracing_subscriber::fmt().with_env_filter(filter).with_writer(std::io::stderr).try_init();
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|a| a == "--activated") {
+        return activated::run();
+    }
     if args.iter().any(|a| a == "--status") {
         match std::fs::read_to_string(status_path()) {
             Ok(s) => println!("{s}"),
@@ -449,9 +521,10 @@ fn main() -> std::process::ExitCode {
         return std::process::ExitCode::SUCCESS;
     }
     if !args.is_empty() {
-        eprintln!("usage: olo-secrets [--status]");
+        eprintln!("usage: olo-secrets [--status | --activated]");
         return std::process::ExitCode::from(2);
     }
+    become_new_version_when_upgraded();
     let (tx, rx) = mpsc::channel();
     watch_setting(tx);
     let mut serving: Option<Serving> = None;

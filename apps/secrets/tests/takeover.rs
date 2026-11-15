@@ -1,6 +1,8 @@
 //! olo-secrets taking over from a real GNOME Keyring and handing back,
 //! with libsecret's own client (`secret-tool`, an encrypted session as
-//! Chrome's) asking. Needs a private bus with its own GNOME Keyring
+//! Chrome's) asking; GNOME Keyring's two locked keyrings opened with one
+//! password; a program asking while olo-secrets is away waiting for it
+//! (`--activated`), GNOME Keyring never started. Needs a private bus with its own GNOME Keyring
 //! (login keyring unlocked with "test"), never the session's:
 //!
 //!   eval "$(tools/dev/private-keyring start | grep ^export)"
@@ -67,8 +69,13 @@ struct Secrets {
 
 impl Secrets {
     fn start(bus: &str, scratch: &std::path::Path) -> Secrets {
+        Secrets::start_with(bus, scratch, &[])
+    }
+
+    fn start_with(bus: &str, scratch: &std::path::Path, env: &[(&str, String)]) -> Secrets {
         let mut child = Command::new(env!("CARGO_BIN_EXE_olo-secrets"))
             .env_clear()
+            .envs(env.iter().map(|(k, v)| (*k, v.as_str())))
             .env("DBUS_SESSION_BUS_ADDRESS", bus)
             .env("HOME", format!("{DIR}/home"))
             .env("XDG_RUNTIME_DIR", format!("{DIR}/run"))
@@ -246,9 +253,108 @@ fn takes_over_and_hands_back() {
     assert!(keyring_daemons().is_empty());
     assert_eq!(tool(&bus, &["lookup", "application", "chrome"], None).1, "chrome-key-2");
     assert_eq!(PROMPTS.load(std::sync::atomic::Ordering::SeqCst), prompts, "nothing asked");
-    // Handed back at the end (the key kept for the login forgotten).
+    // Handed back (the key kept for the login forgotten).
+    s.say("off");
+    s.wait_for("handed back to GNOME Keyring");
+    drop(s);
+
+    // GNOME Keyring with a second keyring of the same password (as a
+    // client once made beside `login`), both locked: opened with the
+    // password asked once, not a prompt for each (Ben, 2026-11-14: "i'm
+    // being asked for my keyring password to unlock it twice").
+    let second = make_keyring(&bus, "Login");
+    store_in(&bus, &second, "Second", &[("application", "olo-test"), ("kind", "second")], b"second-value");
+    // (GNOME Keyring started again for the hand back has `login` locked
+    // already; the new one is locked here.)
+    for c in ["/org/freedesktop/secrets/collection/login", second.as_str()] {
+        let _ = tool(&bus, &["lock", &format!("--collection={c}")], None);
+        let conn = zbus::blocking::Connection::session().unwrap();
+        let col = zbus::blocking::Proxy::new(&conn, "org.freedesktop.secrets", c, "org.freedesktop.Secret.Collection").unwrap();
+        assert!(col.get_property::<bool>("Locked").unwrap(), "{c} locked");
+    }
+    let fresh = scratch.join("fresh");
+    std::fs::create_dir_all(&fresh).unwrap();
+    let keyfile = [("OLO_SECRETS_KEYFILE", fresh.join("key").display().to_string())];
+    let prompts = PROMPTS.load(std::sync::atomic::Ordering::SeqCst);
+    let mut s = Secrets::start_with(&bus, &fresh, &keyfile);
+    s.say("on");
+    s.wait_for("answering for the keyring");
+    assert_eq!(PROMPTS.load(std::sync::atomic::Ordering::SeqCst), prompts + 1, "both keyrings opened with one password");
+    assert_eq!(tool(&bus, &["lookup", "application", "olo-test", "kind", "second"], None).1, "second-value");
+    assert_eq!(tool(&bus, &["lookup", "application", "chrome"], None).1, "chrome-key-2");
+
+    // Away (as it becomes a new version), a program asking waits for it:
+    // D-Bus starts `olo-secrets --activated` (olo-session describes it in
+    // the runtime folder's services), never GNOME Keyring.
+    drop(s);
+    assert!(keyring_daemons().is_empty(), "GNOME Keyring quit as olo-secrets took over");
+    let services = std::path::PathBuf::from(format!("{DIR}/run/dbus-1/services"));
+    std::fs::create_dir_all(&services).unwrap();
+    std::fs::write(services.join("org.freedesktop.secrets.service"), format!("[D-BUS Service]\nName=org.freedesktop.secrets\nExec={} --activated\n", env!("CARGO_BIN_EXE_olo-secrets"))).unwrap();
+    let conn = zbus::blocking::Connection::session().unwrap();
+    conn.call_method(Some("org.freedesktop.DBus"), "/org/freedesktop/DBus", Some("org.freedesktop.DBus"), "ReloadConfig", &()).unwrap();
+    let prompts = PROMPTS.load(std::sync::atomic::Ordering::SeqCst);
+    let (asked_tx, asked) = mpsc::channel();
+    {
+        let bus = bus.clone();
+        std::thread::spawn(move || {
+            let _ = asked_tx.send(tool(&bus, &["lookup", "application", "chrome"], None));
+        });
+    }
+    assert!(asked.recv_timeout(Duration::from_secs(2)).is_err(), "the lookup waits while nobody answers");
+    assert!(keyring_daemons().is_empty(), "GNOME Keyring wasn't started for it");
+    let mut s = Secrets::start_with(&bus, &fresh, &keyfile);
+    s.say("on");
+    s.wait_for("answering for the keyring");
+    let (ok, out) = asked.recv_timeout(Duration::from_secs(10)).expect("the lookup answered once olo-secrets did");
+    assert!(ok && out == "chrome-key-2", "the waiting lookup: {out}");
+    assert!(keyring_daemons().is_empty(), "never GNOME Keyring");
+    assert_eq!(PROMPTS.load(std::sync::atomic::Ordering::SeqCst), prompts, "nothing asked");
+
+    // Handed back at the end, D-Bus starting GNOME Keyring again.
+    std::fs::remove_file(services.join("org.freedesktop.secrets.service")).unwrap();
+    conn.call_method(Some("org.freedesktop.DBus"), "/org/freedesktop/DBus", Some("org.freedesktop.DBus"), "ReloadConfig", &()).unwrap();
     s.say("off");
     s.wait_for("handed back to GNOME Keyring");
     drop(s);
     let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// A new keyring of GNOME Keyring's labelled `label`, its password given
+/// by the prompter ("test"): its path.
+fn make_keyring(bus: &str, label: &str) -> zbus::zvariant::OwnedObjectPath {
+    use zbus::zvariant::{OwnedObjectPath, Value};
+    let _ = bus;
+    let conn = zbus::blocking::Connection::session().unwrap();
+    let svc = zbus::blocking::Proxy::new(&conn, "org.freedesktop.secrets", "/org/freedesktop/secrets", "org.freedesktop.Secret.Service").unwrap();
+    let mut props: std::collections::HashMap<&str, Value> = std::collections::HashMap::new();
+    props.insert("org.freedesktop.Secret.Collection.Label", Value::from(label));
+    let (made, prompt): (OwnedObjectPath, OwnedObjectPath) = svc.call("CreateCollection", &(props, "")).unwrap();
+    if made.as_str() != "/" {
+        return made;
+    }
+    let p = zbus::blocking::Proxy::new(&conn, "org.freedesktop.secrets", prompt.as_str(), "org.freedesktop.Secret.Prompt").unwrap();
+    let mut done = p.receive_signal("Completed").unwrap();
+    p.call::<_, _, ()>("Prompt", &("",)).unwrap();
+    let msg = done.next().expect("the prompt completes");
+    let (dismissed, result): (bool, zbus::zvariant::OwnedValue) = msg.body().deserialize().unwrap();
+    assert!(!dismissed, "the keyring was made");
+    OwnedObjectPath::try_from(result).expect("its path")
+}
+
+/// An item stored in the keyring `collection` (unlocked).
+fn store_in(bus: &str, collection: &zbus::zvariant::OwnedObjectPath, label: &str, attributes: &[(&str, &str)], secret: &[u8]) {
+    use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
+    let _ = bus;
+    let conn = zbus::blocking::Connection::session().unwrap();
+    let svc = zbus::blocking::Proxy::new(&conn, "org.freedesktop.secrets", "/org/freedesktop/secrets", "org.freedesktop.Secret.Service").unwrap();
+    let (_, session): (OwnedValue, OwnedObjectPath) = svc.call("OpenSession", &("plain", Value::from(""))).unwrap();
+    let col = zbus::blocking::Proxy::new(&conn, "org.freedesktop.secrets", collection.as_str(), "org.freedesktop.Secret.Collection").unwrap();
+    let attrs: std::collections::HashMap<&str, &str> = attributes.iter().copied().collect();
+    let mut props: std::collections::HashMap<&str, Value> = std::collections::HashMap::new();
+    props.insert("org.freedesktop.Secret.Item.Label", Value::from(label));
+    props.insert("org.freedesktop.Secret.Item.Attributes", Value::from(attrs));
+    let secret = (session, Vec::<u8>::new(), secret.to_vec(), "text/plain");
+    let (_, prompt): (OwnedObjectPath, OwnedObjectPath) = col.call("CreateItem", &(props, secret, true)).unwrap();
+    assert_eq!(prompt.as_str(), "/", "stored without a prompt");
 }

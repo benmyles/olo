@@ -13220,9 +13220,17 @@ wakeups) and follows the switch live.
   every GNOME Keyring item new or changed since the last copy
   (`Data::imported`: identity, its `Modified`; identity is collection,
   label and attributes without `xdg:schema`, which GNOME Keyring adds to
-  an item that had none once it has read it back from disk), each locked
-  GNOME Keyring collection unlocked first through Olo's prompter (not
-  when started again: it waits for the next login). Then it asks for the
+  an item that had none once it has read it back from disk), GNOME
+  Keyring's locked keyrings opened first with the login password asked
+  once (`gnome::Ask::Once`: Olo's prompter, "Copy the secrets GNOME
+  Keyring keeps", the password tried on each with GNOME Keyring's own
+  `UnlockWithMasterPassword`, its prompt only for one it doesn't open;
+  the password typed for Olo's own store this login, if it was, without
+  asking again), not a prompt of GNOME Keyring's for each: a computer
+  with `login` and a second "Login" asked twice at every login (Ben,
+  2026-11-14: "i'm being asked for my keyring password to unlock it
+  twice. it should only need it once to unlock"). Not when started
+  again: they wait for the next login. Then it asks for the
   bus name with no flags, so it waits in line (GNOME Keyring lets nobody
   replace it: `RequestName` with `REPLACE_EXISTING` says it exists), and
   tells GNOME Keyring to quit over its control socket (`gnome.rs`: op 3,
@@ -13258,6 +13266,35 @@ wakeups) and follows the switch live.
   while Olo answered written into GNOME Keyring (D-Bus starts it again;
   it asks for the password to unlock through Olo's prompter) and what was
   deleted deleted there; the kernel's copy of the key forgotten.
+- **Nobody else answers in its place** (`activated.rs`): olo-session
+  describes `olo-secrets --activated` for `org.freedesktop.secrets` in
+  the runtime folder's D-Bus services (`graphical::name_keyring`, as the
+  session starts, before the services that look up their keys, and
+  after an upgrade; gone with the login), which the bus reads before
+  the system's GNOME Keyring. A program asking at login before
+  olo-secrets had the name (Token Pool's and DiskBackup's services
+  look up their keys as they start) had D-Bus start GNOME Keyring,
+  locked, which asked for its password, and olo-secrets, finding it
+  running, read its keyrings: the second ask. Now what D-Bus starts
+  waits for the session's olo-secrets to take the name (as long as its
+  password takes) and ends, the asking program answered by Olo's; with
+  Olo's keyring turned off (app_server's settings, followed live) it
+  becomes GNOME Keyring (the system's description's `Exec`), and with
+  no olo-secrets in the session for 15 s (olo-session gave up on it)
+  too; if olo-secrets couldn't take over (Not Now to the password) it
+  ends unanswered, the keyring locked, nothing else asking.
+- **Upgraded in place**: at olo-session's SIGURG it becomes the new
+  version in the same process (`restore::on_upgrade`), once no password
+  is being asked for (`Asking`, olo-session told it waits meanwhile);
+  the key kept in the kernel's keyring, it asks nothing, and the name is
+  free only while it starts. It ignored the signal and was stopped 90 s
+  after each upgrade, the name free until it started again.
+- Tested on a private bus with a throwaway GNOME Keyring
+  (`tools/dev/private-keyring`; `apps/secrets/tests/takeover.rs`, its
+  top says how): taking over and handing back, libsecret's sessions,
+  two locked keyrings opened with one password, and a lookup made while
+  olo-secrets is away waiting for it through `--activated`, GNOME
+  Keyring never started.
 - **As GNOME Keyring answers** (Ben, 2026-11-06: gh lost its token
   just after he switched): an item made without `xdg:schema` gets
   `org.freedesktop.Secret.Generic`, as GNOME Keyring gives it; and
