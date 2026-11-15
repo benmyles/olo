@@ -70,10 +70,17 @@ pub fn guard() -> Result<(), String> {
 
 /// SIGXCPU: a realtime thread used its soft limit without sleeping. The
 /// kernel sends it to the process but, in practice, to the thread that ran
-/// over (it is the one running): that one goes back to the normal class
-/// if registered; if the signal landed on another, every registered one
-/// that is realtime does (which one ran over isn't known). Each put back
-/// is marked for the keeper, which hears of it.
+/// over (it is the one running): that one goes back to the normal class,
+/// registered or not. A thread not registered is put back for good (not
+/// marked: nothing makes it realtime again here): one a window's looper
+/// started takes its name (`w>…`, as Linux names a new thread for the one
+/// that made it), and app_server, which makes a focused program's loopers
+/// realtime by name, made it realtime too: Agent Screens' export, encoding
+/// video on such a thread, ran over and was ended at the hard limit (Ben,
+/// 2026-11-15), while this put back the threads it knew of instead. If
+/// the signal landed on a thread that isn't realtime, every registered
+/// one that is goes back (which one ran over isn't known). Each
+/// registered one put back is marked for the keeper, which hears of it.
 ///
 /// The kernel raises the soft limit by a second each time it sends
 /// SIGXCPU (so it comes once a second, not every tick): over the hard
@@ -87,6 +94,22 @@ extern "C" fn on_xcpu(_: libc::c_int) {
     // SAFETY: gettid is one system call.
     let me = unsafe { libc::gettid() };
     let mine = TIDS.iter().position(|t| t.load(Ordering::Relaxed) == me);
+    if mine.is_none() && is_realtime(me) {
+        demote(me);
+    } else {
+        put_back(mine);
+    }
+    let fd = NOTIFY.load(Ordering::Relaxed);
+    if fd >= 0 {
+        // SAFETY: async-signal-safe; the keeper's pipe is non-blocking.
+        unsafe { libc::write(fd, b"!".as_ptr().cast(), 1) };
+    }
+}
+
+/// The registered threads that are realtime back to the normal class
+/// (only slot `mine`'s, if given), each marked for the keeper. (From the
+/// handler: atomics and system calls only.)
+fn put_back(mine: Option<usize>) {
     for (slot, t) in TIDS.iter().enumerate() {
         let tid = t.load(Ordering::Relaxed);
         if tid > 0 && mine.is_none_or(|m| m == slot) && is_realtime(tid) {
@@ -94,11 +117,35 @@ extern "C" fn on_xcpu(_: libc::c_int) {
             PUT_BACK[slot].store(true, Ordering::Relaxed);
         }
     }
-    let fd = NOTIFY.load(Ordering::Relaxed);
-    if fd >= 0 {
-        // SAFETY: async-signal-safe; the keeper's pipe is non-blocking.
-        unsafe { libc::write(fd, b"!".as_ptr().cast(), 1) };
+}
+
+/// Thread `tid` marked as registered, where app_server can see it:
+/// SCHED_RESET_ON_FORK set on its normal class (its nice kept), which the
+/// threads it starts don't have (the kernel clears it in them). A thread
+/// a window's looper starts takes the looper's name (`w>…`), and
+/// app_server makes realtime only the named threads that are marked
+/// ([`marked`]), not those (Agent Screens' export, encoding video,
+/// 2026-11-15). Realtime already (rtkit sets the flag), left as it is.
+fn mark(tid: i32) {
+    // SAFETY: sched_getscheduler only reads.
+    let policy = unsafe { libc::sched_getscheduler(tid) };
+    if policy == libc::SCHED_OTHER {
+        let param = libc::sched_param { sched_priority: 0 };
+        // SAFETY: sched_setscheduler reads `param`; setting the flag on a
+        // thread of our own (never clearing it) needs no privilege, and the
+        // normal class keeps the thread's nice.
+        unsafe { libc::sched_setscheduler(tid, libc::SCHED_OTHER | libc::SCHED_RESET_ON_FORK, &param) };
     }
+}
+
+/// Whether thread `tid` is marked as one that may be made realtime (a
+/// registered thread's flag, see `mark`; one rtkit made realtime has it
+/// too). Read by app_server before it makes another program's threads
+/// realtime.
+pub fn marked(tid: i32) -> bool {
+    // SAFETY: sched_getscheduler only reads.
+    let policy = unsafe { libc::sched_getscheduler(tid) };
+    policy >= 0 && policy & libc::SCHED_RESET_ON_FORK != 0
 }
 
 /// Whether thread `tid` runs realtime (SCHED_FIFO or SCHED_RR; rtkit's
@@ -156,6 +203,7 @@ thread_local! {
 pub fn register_self(priority: u32) -> Result<i32, String> {
     guard()?;
     let tid = tid();
+    mark(tid);
     let _ = REGISTERED.try_with(|r| {
         let mut r = r.borrow_mut();
         if r.is_none() {
@@ -236,6 +284,27 @@ mod tests {
         assert!(!registered().iter().any(|(t, _)| *t == tid));
         assert!(SOFT_LIMIT_US * 2 <= HARD_LIMIT_US);
         assert!(!guarded(1), "init isn't ours, or unguarded");
+    }
+
+    /// A registered thread is marked; one it starts isn't (though it
+    /// would take its name), and a registered one's nice is kept.
+    #[test]
+    fn a_registered_thread_is_marked_and_what_it_starts_isnt() {
+        std::thread::spawn(|| {
+            // SAFETY: setpriority on this thread (0 with PRIO_PROCESS is
+            // the calling thread on Linux); raising a nice needs no privilege.
+            unsafe { libc::setpriority(libc::PRIO_PROCESS, 0, 3) };
+            register_self(8).unwrap();
+            let me = tid();
+            assert!(marked(me));
+            // SAFETY: getpriority only reads.
+            assert_eq!(unsafe { libc::getpriority(libc::PRIO_PROCESS, 0) }, 3, "its nice kept");
+            let child = std::thread::spawn(|| marked(tid())).join().unwrap();
+            assert!(!child, "a thread it starts isn't marked");
+            forget(me);
+        })
+        .join()
+        .unwrap();
     }
 
     #[test]

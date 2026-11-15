@@ -26,7 +26,7 @@
 
 use std::time::Duration;
 
-pub use olo_app::realtime::{SOFT_LIMIT_US, demote, forget, guarded, registered, tid};
+pub use olo_app::realtime::{SOFT_LIMIT_US, demote, forget, guarded, marked, registered, tid};
 
 const RTKIT: &str = "org.freedesktop.RealtimeKit1";
 const PATH: &str = "/org/freedesktop/RealtimeKit1";
@@ -191,6 +191,33 @@ mod tests {
         assert!(is_realtime(me), "realtime again");
         spin(300);
         assert!(!is_realtime(me), "put back again, not ended");
+        demote_self();
+    }
+
+    /// A thread made realtime that isn't registered (one a looper
+    /// started, named for it, made realtime by app_server for its name)
+    /// and runs on is put back itself, and only it: the registered thread
+    /// beside it, asleep meanwhile, stays realtime. Before, the guard put
+    /// back the registered ones and left the other to the hard limit,
+    /// which ended the program (Agent Screens' export, 2026-11-15).
+    #[test]
+    #[ignore = "asks the system's rtkit"]
+    fn an_unregistered_thread_that_runs_over_is_put_back_itself() {
+        promote_self(5).expect("rtkit");
+        let me = tid() as u32;
+        let (tx, rx) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let tid = tid() as u32;
+            assert!(!is_realtime(tid), "started normal (rtkit's reset on fork)");
+            make_realtime(std::process::id(), tid, 4).expect("rtkit");
+            assert!(is_realtime(tid));
+            spin(400);
+            tx.send(is_realtime(tid)).unwrap();
+        });
+        let still = rx.recv().unwrap();
+        worker.join().unwrap();
+        assert!(!still, "the one that ran over put back");
+        assert!(is_realtime(me), "the registered one left as it was");
         demote_self();
     }
 }

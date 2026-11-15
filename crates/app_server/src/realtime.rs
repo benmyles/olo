@@ -184,6 +184,12 @@ mod focused {
         }
     }
 
+    /// The program's loopers and display thread: by name, and marked as
+    /// registered with its guard (`olo_app::realtime::marked`). A thread
+    /// a looper starts unnamed takes its name (`w>…`) but isn't marked:
+    /// made realtime too, Agent Screens' export thread encoded video at
+    /// realtime, past rtkit's hard limit, and the kernel ended the app
+    /// (Ben, 2026-11-15).
     fn threads(pid: i32) -> Vec<(i32, u32)> {
         let Ok(tasks) = std::fs::read_dir(format!("/proc/{pid}/task")) else { return Vec::new() };
         tasks
@@ -191,7 +197,8 @@ mod focused {
             .filter_map(|t| {
                 let tid: i32 = t.file_name().to_str()?.parse().ok()?;
                 let name = std::fs::read_to_string(t.path().join("comm")).ok()?;
-                Some((tid, priority_of(name.trim_end())?))
+                let priority = priority_of(name.trim_end())?;
+                olo_system::realtime::marked(tid).then_some((tid, priority))
             })
             .collect()
     }

@@ -1484,6 +1484,26 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Done, waiting for Ben to try or confirm
 
+- **Agent Screens ended as it exported a video** (Ben, 2026-11-15: "i
+  just tried to export an agent screen to a video and agent screens app
+  crashed"). Found (read-only: the journal, the dead process's exit
+  status in /proc, rtkit's log): SIGKILL from the kernel, 0.3 s after
+  the encoder started. The export ran on a thread started unnamed from
+  the window's looper, so it took the looper's name (`w>Agent
+  Screens`); as the Export Video panel closed and the window had the
+  keyboard again, app_server made the program's `w>` threads realtime
+  by name, the encoder with them; it never sleeps, the guard (which put
+  back only the threads it knew of) left it running, and at rtkit's
+  hard limit of 200 ms the kernel ended the program. (Ben's Tracker had
+  two `w>Home` threads for one window: it happens in other apps too.)
+  Now a registered thread marks itself (SCHED_RESET_ON_FORK, which
+  threads it starts don't have) and app_server makes only marked ones
+  realtime; the guard puts back whichever thread ran over, registered
+  or not; the export's thread has a name of its own. Reproduced in a
+  test (an unregistered thread made realtime spinning: the old guard's
+  process killed, 137; now put back, the registered one untouched).
+  *For Ben:* Upgrade, then export again.
+
 - **Backgrounds: a picture clicked didn't stay chosen** (Ben,
   2026-11-15: "after opening backgrounds on my main display and trying
   to click the images they're not clicking properly and not staying

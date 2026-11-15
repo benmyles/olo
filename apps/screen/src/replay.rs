@@ -447,7 +447,11 @@ impl Replay {
         let cancel = Arc::new(AtomicBool::new(false));
         self.exporting = Some((0.0, cancel.clone()));
         let name = self.name.clone();
-        std::thread::spawn(move || {
+        // (A name of its own: one started here unnamed takes the looper's,
+        // `w>…`, and app_server makes a focused window's loopers realtime
+        // by name: video encoding at realtime, Ben's export of 2026-11-15
+        // ended the app.)
+        let _ = std::thread::Builder::new().name("export".into()).spawn(move || {
             let mut told = -1;
             let result = crate::export::export(&name, &path, &mut |done| {
                 let pct = (done * 100.0) as i32;
