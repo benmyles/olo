@@ -1465,9 +1465,9 @@ something nobody here has is in "Blocked", with what it waits for.
   colours (dtwm's, dtsession's and Motif's rules read from their
   source); Windows 2000's eleven tiles. Windows ME added nothing of its
   own (its cabinets carry 98's and 2000's pictures, and "More Windows",
-  a logo). Left: OS/2 Warp 4's (its files are in OS/2's own PACK2
-  bundles, which nothing here unpacks yet: an unpacker first);
-  individual icons redrawn where one drifts.
+  a logo). OS/2 Warp 4's (its PACK2 bundles unpacked with deark): its
+  eight pictures and 35 textures, the dither blurred away first; 523 in
+  the pack. Left: individual icons redrawn where one drifts.
 
 - **OS Updates: Fedora's packages, for power users** (Ben, 2026-11-14:
   "add a new olo application OS Updates that is a GUI manager for

@@ -6,12 +6,20 @@ bluriness in places … figure out how to make them all perfect".
   finishwallpaper.py picture IN.png OUT.png   a render: edges from the model (from a 1280-wide
                                               base: stair-steps under a pixel), flat areas as they are
   finishwallpaper.py photo IN.png OUT.png     a photograph: the model's from a 1920-wide base
-  finishwallpaper.py tile IN.png OUT.png      a small tile: its 3x3 mosaic 4x, the middle cut out
-  finishwallpaper.py match ORIGINAL IN OUT    IN's colours set back to ORIGINAL's (each YCbCr
+  finishwallpaper.py tile IN.png OUT.png [SIGMA]
+                                              a small tile: its 3x3 mosaic 4x, the middle cut out;
+                                              SIGMA (pixels) blurs a dithered tile first (OS/2's:
+                                              the model sharpened its dither into a cross-hatch;
+                                              0.9 merges it and keeps the texture)
+  finishwallpaper.py match ORIGINAL IN OUT [--keep-spread]
+                                              IN's colours set back to ORIGINAL's (each YCbCr
                                               channel's mean and spread): the image model
                                               widening a picture brightened it and spread its
-                                              colours 10–26%
-  finishwallpaper.py batch LIST               lines "picture|photo|tile<TAB>IN<TAB>OUT", one model load
+                                              colours 10–26%. --keep-spread: the colour channels'
+                                              means only (a dithered original's dither doubles its
+                                              colours' spread: scaled to it, OS/2's Warp 03's white
+                                              clouds went yellow)
+  finishwallpaper.py batch LIST               lines "picture|photo|tile[:SIGMA]<TAB>IN<TAB>OUT", one model load
 
 Each is supersampled (made at 4x, brought down) and quantised to 8 bits
 with a fine dither, so deep gradients don't band. Runs in its own Python
@@ -26,7 +34,7 @@ import os, sys, time
 
 import numpy as np
 import torch
-from PIL import Image
+from PIL import Image, ImageFilter
 from spandrel import ModelLoader
 
 MODEL = os.environ.get("OLO_SR_MODEL", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "wallpapers", "src", "models", "4x-UltraSharp.pth"))
@@ -123,13 +131,17 @@ def picture(src, out, base_w=None, photo=False):
     Image.fromarray(quantise(final)).save(out)
 
 
-def tile(src, out):
+def tile(src, out, descreen=0.0):
     t = Image.open(src).convert("RGB")
     w, h = t.size
     mosaic = Image.new("RGB", (3 * w, 3 * h))
     for y in range(3):
         for x in range(3):
             mosaic.paste(t, (x * w, y * h))
+    if descreen:
+        # Blurred as a mosaic, so the middle tile's edges are blurred with
+        # its neighbours' pixels and it still repeats without a seam.
+        mosaic = mosaic.filter(ImageFilter.GaussianBlur(descreen))
     big = sr(np.asarray(mosaic))
     mid = big[4 * h:8 * h, 4 * w:8 * w]
     Image.fromarray(quantise(mid)).save(out)
@@ -146,17 +158,20 @@ def rgb_of(y):
     return np.stack([Y + 1.402 * cr, Y - 0.344136 * cb - 0.714136 * cr, Y + 1.772 * cb], -1)
 
 
-def match(original, src, out):
+def match(original, src, out, keep_spread=False):
     """`src`'s colours as `original`'s: each YCbCr channel's mean and
     standard deviation set to the original's (its detail, and what the
     model drew beyond the original's edges, kept; only the overall
-    brightness and colourfulness go back). In floats, quantised once
-    with the fine dither, so gradients don't band."""
+    brightness and colourfulness go back); `keep_spread`, Cb's and Cr's
+    means only. In floats, quantised once with the fine dither, so
+    gradients don't band."""
     o = ycc(np.asarray(Image.open(original).convert("RGB"), dtype=np.float32))
     im = ycc(np.asarray(Image.open(src).convert("RGB"), dtype=np.float32))
     for c in range(3):
         mo, so = o[..., c].mean(), o[..., c].std()
         mi, si = im[..., c].mean(), im[..., c].std()
+        if keep_spread and c:
+            so = si
         im[..., c] = (im[..., c] - mi) * (so / max(si, 1e-3)) + mo
     Image.fromarray(quantise(rgb_of(im))).save(out)
 
@@ -164,7 +179,7 @@ def match(original, src, out):
 def main():
     t0 = time.time()
     if sys.argv[1] == "match":
-        match(sys.argv[2], sys.argv[3], sys.argv[4])
+        match(sys.argv[2], sys.argv[3], sys.argv[4], keep_spread="--keep-spread" in sys.argv[5:])
         print(sys.argv[4])
         return
     if sys.argv[1] == "batch":
@@ -175,8 +190,8 @@ def main():
             if os.path.exists(out) and os.path.getmtime(out) > os.path.getmtime(src):
                 continue
             s = time.time()
-            if kind == "tile":
-                tile(src, out)
+            if kind.startswith("tile"):
+                tile(src, out, float(kind[5:] or 0))
             else:
                 picture(src, out, photo=kind == "photo")
             print(f"{out} {time.time() - s:.1f} s", flush=True)
@@ -184,7 +199,7 @@ def main():
         if sys.argv[1] in ("picture", "photo"):
             picture(sys.argv[2], sys.argv[3], int(sys.argv[4]) if len(sys.argv) > 4 else None, photo=sys.argv[1] == "photo")
         else:
-            tile(sys.argv[2], sys.argv[3])
+            tile(sys.argv[2], sys.argv[3], float(sys.argv[4]) if len(sys.argv) > 4 else 0.0)
         print(sys.argv[3])
     print(f"done on {DEV} in {time.time() - t0:.0f} s")
 

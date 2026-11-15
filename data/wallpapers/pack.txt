@@ -455,6 +455,49 @@ win2000-river-sumida|River Sumida|Windows 2000|tile:160
 win2000-santa-fe-stucco|Santa Fe Stucco|Windows 2000|tile:256
 win2000-soap-bubbles|Soap Bubbles|Windows 2000|tile:256
 win2000-zapotec|Zapotec|Windows 2000|tile:96
+os2-garden|Garden|OS/2 Warp 4
+os2-garden-2|Garden 2|OS/2 Warp 4
+os2-ocean|Ocean|OS/2 Warp 4
+os2-ocean-2|Ocean 2|OS/2 Warp 4
+os2-space|Space|OS/2 Warp 4
+os2-space-2|Space 2|OS/2 Warp 4
+os2-warp-03|Warp 03|OS/2 Warp 4
+os2-warp-04|Warp 04|OS/2 Warp 4
+os2-big-blue|Big Blue|OS/2 Warp 4 Patterns|tile:287
+os2-bubble-pad|Bubble Pad|OS/2 Warp 4 Patterns|tile:90
+os2-burlap|Burlap|OS/2 Warp 4 Patterns|tile:198
+os2-carve|Carve|OS/2 Warp 4 Patterns|tile:114
+os2-cloud|Cloud|OS/2 Warp 4 Patterns|tile:144
+os2-diamond|Diamond|OS/2 Warp 4 Patterns|tile:245
+os2-dots|Dots|OS/2 Warp 4 Patterns|tile:100
+os2-green-marble|Green Marble|OS/2 Warp 4 Patterns|tile:179
+os2-gold|Gold|OS/2 Warp 4 Patterns|tile:122
+os2-grass|Grass|OS/2 Warp 4 Patterns|tile:64
+os2-loofah|Loofah|OS/2 Warp 4 Patterns|tile:200
+os2-mauve-mat|Mauve Mat|OS/2 Warp 4 Patterns|tile:144
+os2-multi|Multi|OS/2 Warp 4 Patterns|tile:288
+os2-paper|Paper|OS/2 Warp 4 Patterns|tile:150
+os2-plaster|Plaster|OS/2 Warp 4 Patterns|tile:231
+os2-plastic|Plastic|OS/2 Warp 4 Patterns|tile:200
+os2-pool|Pool|OS/2 Warp 4 Patterns|tile:150
+os2-purple|Purple|OS/2 Warp 4 Patterns|tile:212
+os2-rice-mat|Rice Mat|OS/2 Warp 4 Patterns|tile:114
+os2-sponge|Sponge|OS/2 Warp 4 Patterns|tile:144
+os2-tie-dye|Tie-Dye|OS/2 Warp 4 Patterns|tile:193
+os2-texture-1|Texture 1|OS/2 Warp 4 Patterns|tile:156
+os2-texture-2|Texture 2|OS/2 Warp 4 Patterns|tile:153
+os2-texture-3|Texture 3|OS/2 Warp 4 Patterns|tile:117
+os2-texture-4|Texture 4|OS/2 Warp 4 Patterns|tile:156
+os2-texture-5|Texture 5|OS/2 Warp 4 Patterns|tile:96
+os2-texture-6|Texture 6|OS/2 Warp 4 Patterns|tile:160
+os2-texture-7|Texture 7|OS/2 Warp 4 Patterns|tile:145
+os2-texture-8|Texture 8|OS/2 Warp 4 Patterns|tile:96
+os2-texture-9|Texture 9|OS/2 Warp 4 Patterns|tile:104
+os2-texture-10|Texture 10|OS/2 Warp 4 Patterns|tile:151
+os2-texture-11|Texture 11|OS/2 Warp 4 Patterns|tile:161
+os2-texture-12|Texture 12|OS/2 Warp 4 Patterns|tile:144
+os2-watercolour|Watercolour|OS/2 Warp 4 Patterns|tile:114
+os2-wicker|Wicker|OS/2 Warp 4 Patterns|tile:141
 cde-ankh|Ankh|CDE|tile:261
 cde-brick-wall|Brick Wall|CDE|tile:50
 cde-concave|Concave|CDE|tile:8

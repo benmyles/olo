@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Backgrounds: OS/2 Warp 4's
+
+*07:25* — OS/2 Warp 4's backgrounds, from its CD's PACK2 bundles: its eight pictures (Garden, Garden 2, Ocean, Ocean 2 (here), Space, Space 2, Warp 03, Warp 04) redrawn at 4K, and its 35 textures (OS/2 Warp 4 Patterns: Big Blue, Burlap, Gold, Green Marble, Pool, Rice Mat, Wicker, Texture 1–12 …), their dither blurred away before 4x-UltraSharp. Its logos left out. 523 in the pack.
+
+![Backgrounds: OS/2 Warp 4's](2026-11-15/072524-backgrounds-os-2-warp-4-s.png)
+
 ### Backgrounds: Windows 2000's tiles
 
 *05:32* — Windows 2000's eleven tiles (here Gone Fishing): Blue Lace 16 and Zapotec made larger by nearest neighbour, the photographic nine (Coffee Bean, Feather Texture, Gone Fishing, Greenstone, Prairie Wind, Rhododendron, River Sumida, Santa Fe Stucco, Soap Bubbles) by 4x-UltraSharp's tile mosaic. 480 in the pack.

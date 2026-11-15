@@ -247,6 +247,8 @@ in Backgrounds by Collection:
 | Windows 95 | Clouds, and its tiles (Bubbles, Circles, Houndstooth, Pinstripe, Red Blocks, Blue Rivets, Black Thatch, Gold Weave, Straw Mat, Triangles, 3D Blocks, Forest, Sandstone) | Windows 98 SE's CD (its cabinets carry 95's set) |
 | Windows 98 | Its fifteen desktop pictures but those that are its logo (Setup, More Windows, Windows 98) | the same |
 | Windows 2000 | Its eleven tiles (Blue Lace 16, Coffee Bean, Feather Texture, Gone Fishing, Greenstone, Prairie Wind, Rhododendron, River Sumida, Santa Fe Stucco, Soap Bubbles, Zapotec; its NT logos left out) | Windows 2000 Professional's CD (`I386/*.BM_`, single-file cabinets) |
+| OS/2 Warp 4 | Its eight pictures (Garden, Garden 2, Ocean, Ocean 2, Space, Space 2, Warp 03, Warp 04; its logos left out: the Warp desktop, WARP02, OS2LOGO, OS2WARP, FTP-PM's backdrop) | OS/2 Warp 4's CD (`OS2IMAGE/DISK_*/BUNDLE`: PACK2 archives, unpacked with deark's `os2pack2`; three are OS/2 bitmap arrays, its richest bitmap taken) |
+| OS/2 Warp 4 Patterns | Its 35 textures (`\OS2\BITMAP`: Big Blue, Burlap, Gold, Green Marble, Pool, Rice Mat, Wicker, TXTR_000–011 as Texture 1–12, …) | the same |
 | CDE | Its 24 backdrops (Sun's logo, the plain fills and "no backdrop" left out), in the Default palette as CDE drew them: KnitLight, WaterDrops, RicePaper and Pebbles in their workspaces' colours (sets 3, 5, 6, 7), the rest in workspace One's | CDE 2.5.2's source (`programs/backdrops`, `programs/palettes`), rendered by `tools/cdebackdrops.py` |
 
 BeOS shipped no wallpapers worth having (two Be logos, a TV overlay, two
@@ -266,7 +268,10 @@ given) and its `iconGray`/`iconColor` symbols the file's colours, its
 strings read literally as libXpm does (the skies use `\` as a pixel).
 Pixel-art tiles (Mac OS 9's
 8 and 16 pixel ones, Windows 3.1's and 95's) are made larger by nearest
-neighbour, 4×: their pixels are the design.
+neighbour, 4×: their pixels are the design. Dithered tiles (OS/2's, 10
+to 120 colours, the dither visible) are blurred 0.9 pixels as a mosaic
+first (`finishwallpaper.py tile IN OUT 0.9`): 4x-UltraSharp sharpened
+the dither into a cross-hatch, and 0.9 merges it and keeps the texture.
 Each theme names its default (`Theme::wallpaper`): Classic Blueberry
 Oxygen (the nearest to Be's blue), Platinum Quantum Foam; those two have
 a dark version and an ultrawide crop, as PNG; the rest are 4K JPEGs
@@ -312,7 +317,10 @@ Which route a picture takes depends on what it is:
   Abstract) is widened by step 1, then finished, then its colours set
   back to the original's (`finishwallpaper.py match ORIGINAL IN OUT`:
   each YCbCr channel's mean and spread): the model brightened them and
-  spread their colours 10–26%.
+  spread their colours 10–26%. A dithered original's dither doubles its
+  colours' spread, so where the redraw's is half the original's, only
+  their means go back (`match … --keep-spread`: scaled to the dither,
+  OS/2's Warp 03's white clouds went yellow).
 - A regular pattern or soft field (Mac OS X's Lines and Tiles) is never
   drawn again by the model, which turned a grid of fine lines wobbly: it
   is cropped to 16:9 and finished from its native width
