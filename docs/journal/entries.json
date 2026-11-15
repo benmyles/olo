@@ -4132,5 +4132,11 @@
   "title": "Folder tabs: the Labels look, in every tab strip and tab view",
   "caption": "Ben chose \"folder tabs \u2192 labels\". The kit's TabStrip (Terminal's tabs, along the top and down the side) draws BeOS's slanted folder tabs in Classic and Mac OS 9's rounded ones in Platinum: the chosen tab in the content's colours and open onto it, the others a shade off the panel; a group led by a label of its colour, its name in spaced bold capitals. Group colours come from the look (Palette::group_colors: Mac OS 9's Finder labels in Platinum, BeOS's bright hues in Classic; white names by day, near-black on lifted fills at night). TabView (Preferences and the rest) draws the same tabs over its raised panel; crowded, the widest are cut back and short names keep their width. Above: the tabs example in Classic light and Platinum dark at 2\u00d7.",
   "image": "2026-11-14/160005-folder-tabs-the-labels-look-in-every-tab-strip-a.png"
+ },
+ {
+  "time": "2026-11-14T16:26:55",
+  "title": "Quick Look: every picture drawn, on any screen",
+  "caption": "Before (top): on a 2.5\u00d7 display beside a shorter one, Quick Look sized itself past the room a window that fits what it shows has; its Frame scrolled it and the picture's box was laid out to nothing, an empty body over a scroll bar after \u2193. After (bottom): the Frame puts such a window back within the room each time, and Quick Look sizes itself within it.",
+  "image": "2026-11-14/162655-quick-look-every-picture-drawn-on-any-screen.png"
  }
 ]

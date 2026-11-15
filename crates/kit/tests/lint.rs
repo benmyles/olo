@@ -4,7 +4,9 @@
 //! over each other are found; text the interface cuts is read whole; a
 //! view's one timer (`Due`) wakes it once, at its time; Terminal's tab
 //! strip, along the top and down the side, is clean; rows with keys are
-//! kept as they are when the view says what it shows again.
+//! kept as they are when the view says what it shows again; a window
+//! that fits what it shows, asked to be taller than the screen has room
+//! for, keeps what fills it.
 
 use olo_kit::{
     Child, Cx, Element, ParentElement as _, Styled as _, View, WindowOptions, div,
@@ -441,4 +443,63 @@ fn ui_lint_keyed_rows_are_kept() {
         assert_eq!(made.len(), if keyed { 0 } else { near });
         window.close();
     }
+}
+
+/// A window that fits what it shows whose body fills it over a footer,
+/// as Quick Look's picture over its bar.
+#[derive(Default)]
+struct Fills {
+    /// The body's height as last drawn.
+    body: std::rc::Rc<std::cell::Cell<f32>>,
+}
+
+impl View for Fills {
+    type Message = ();
+
+    fn body(&mut self, _: &mut Cx<Self>) -> Element {
+        let body = self.body.clone();
+        div().size_full().flex().flex_col().child(olo_kit::canvas(move |_, b| body.set(f32::from(b.size.height))).w_full().flex_1().min_h(px(0.0))).child(div().w_full().h(px(40.0)).flex_shrink_0())
+    }
+}
+
+/// A window that fits what it shows, asked by its app to be taller than
+/// the screen has room for (Quick Look sized to a picture on a taller
+/// screen than the shortest), is brought back to the room and its body
+/// still fills it: scrolled, its body was laid out to nothing (Ben,
+/// 2026-11-14: Quick Look "i just get an empty window" after ↓, an empty
+/// body over a scroll bar).
+#[test]
+fn ui_lint_a_fitted_window_past_the_screen_keeps_what_fills_it() {
+    struct Room;
+    impl Drop for Room {
+        fn drop(&mut self) {
+            olo_kit::lint::set_room_for_tests(None);
+        }
+    }
+    let _lint = Lint::new();
+    olo_kit::lint::set_room_for_tests(Some(300.0));
+    let _room = Room;
+    let window = olo_kit::open_window(WindowOptions::new("Fills", 400.0, 200.0).dialog(), |_| Fills::default());
+    ask(&window, |_, _| ());
+    // (As the Frame follows: until the window and its body stay put.)
+    let settled = || {
+        let mut seen = (0.0, 0.0);
+        for _ in 0..200 {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            let now = ask(&window, |v, cx| (f32::from(cx.viewport_size().height), v.body.get()));
+            if now == seen && now.1 > 0.0 {
+                break;
+            }
+            seen = now;
+        }
+        seen
+    };
+    // Twice, as Quick Look sizes itself to each picture it steps to.
+    for tall in [500.0, 480.0] {
+        ask(&window, move |_, cx| cx.resize_window(olo_kit::size(px(400.0), px(tall))));
+        let (height, body) = settled();
+        assert!(height <= 300.5, "asked {tall} tall, the window is {height}, past the room (300)");
+        assert!(body >= height - 40.5, "asked {tall} tall, its body is {body} of a window {height} tall: laid out to nothing");
+    }
+    window.close();
 }

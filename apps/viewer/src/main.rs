@@ -584,7 +584,9 @@ impl Doc {
     fn resize_to(&self, cx: &mut Cx<Self>) {
         let Content::Other(prev) = &self.content else { return };
         let s = screen_of(cx).map(|(w, h)| (w as u32, h as u32));
-        let (w, h) = prev.read(cx).ideal_size(s, olo_kit::menu::BAR_HEIGHT);
+        // (A look fits what it shows: no taller than the Frame allows.)
+        let tallest = self.shared.look.then(olo_kit::screen_room);
+        let (w, h) = prev.read(cx).ideal_size(s, olo_kit::menu::BAR_HEIGHT, tallest);
         cx.resize_window(size(px(w as f32), px(h as f32)));
     }
 
@@ -617,7 +619,8 @@ impl Doc {
         if opened && !self.sized {
             self.sized = true;
             let s = screen_of(cx);
-            let (w, h) = v.update(cx, |p, _| p.ideal_size(s, olo_kit::menu::BAR_HEIGHT + m::TOOLBAR_HEIGHT + 1.0));
+            let tallest = self.shared.look.then(olo_kit::screen_room);
+            let (w, h) = v.update(cx, |p, _| p.ideal_size(s, olo_kit::menu::BAR_HEIGHT + m::TOOLBAR_HEIGHT + 1.0, tallest));
             cx.resize_window(size(px(w), px(h)));
         }
         let loaded = v.read(cx).loaded();

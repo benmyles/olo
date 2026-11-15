@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-14
 
+### Quick Look: every picture drawn, on any screen
+
+*16:26* — Before (top): on a 2.5× display beside a shorter one, Quick Look sized itself past the room a window that fits what it shows has; its Frame scrolled it and the picture's box was laid out to nothing, an empty body over a scroll bar after ↓. After (bottom): the Frame puts such a window back within the room each time, and Quick Look sizes itself within it.
+
+![Quick Look: every picture drawn, on any screen](2026-11-14/162655-quick-look-every-picture-drawn-on-any-screen.png)
+
 ### Folder tabs: the Labels look, in every tab strip and tab view
 
 *16:00* — Ben chose "folder tabs → labels". The kit's TabStrip (Terminal's tabs, along the top and down the side) draws BeOS's slanted folder tabs in Classic and Mac OS 9's rounded ones in Platinum: the chosen tab in the content's colours and open onto it, the others a shade off the panel; a group led by a label of its colour, its name in spaced bold capitals. Group colours come from the look (Palette::group_colors: Mac OS 9's Finder labels in Platinum, BeOS's bright hues in Classic; white names by day, near-black on lifted fills at night). TabView (Preferences and the rest) draws the same tabs over its raised panel; crowded, the widest are cut back and short names keep their width. Above: the tabs example in Classic light and Platinum dark at 2×.

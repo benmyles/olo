@@ -5030,8 +5030,19 @@ needs. Never taller than the shortest display less 64 points
 (`screen_room`, from the displays the kit knows, in points, as turned; a
 display coming or going looks again): past that the Frame lays the
 content out at its own height and scrolls it, the window widened by the
-scroll bar. Layer surfaces, lock screens and full screen windows are
-the screen's or the app's to size.
+scroll bar (and at least as tall as the window, so what fills it, a
+picture's or a list's box, keeps its room). An app that sizes such a
+window itself (Quick Look and the Viewer's look to their picture,
+`PreviewView::ideal_size(screen, chrome, Some(screen_room()))`) keeps
+within `screen_room()`; sized past it anyway, the Frame asks for the
+room again (a size it asked for and got is forgotten, so a later one
+the app sets is put right). Quick Look sized itself to 82% of a 2.5×
+Studio Display beside a shorter laptop panel: the Frame scrolled it,
+asked once, and the next picture's size stayed, its picture laid out
+to nothing under a scroll bar (Ben, 2026-11-14: "i just get an empty
+window"; `ui_lint_a_fitted_window_past_the_screen_keeps_what_fills_it`).
+Layer surfaces, lock screens and full screen windows are the screen's
+or the app's to size.
 
 A window the compositor holds (a side of it in a tile, maximized or
 full screen: Focus's zoom, auto-tiling) isn't the window's to size: it

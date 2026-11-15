@@ -427,6 +427,10 @@ const SCREEN_EDGES: f32 = 64.0;
 /// The tallest a window may be: the shortest display's height in points,
 /// less room for the window's tab and edges (never under 240).
 pub fn screen_room() -> f32 {
+    #[cfg(feature = "lint")]
+    if let Some(room) = crate::lint::room_for_tests() {
+        return room;
+    }
     olo_interface::displays().iter().map(|d| f32::from(d.size.height)).fold(f32::INFINITY, f32::min).max(240.0 + SCREEN_EDGES) - SCREEN_EDGES
 }
 
@@ -480,6 +484,12 @@ impl Frame {
         } else {
             let ((w, h), scrolls) = fitted(fit.design, fit.fixed, now, need, screen_room());
             let off = (f32::from(now.width) - w).abs() > 0.5 || (f32::from(now.height) - h).abs() > 0.5;
+            // (A size asked for and got is forgotten: sized another way
+            // after (by its app: Quick Look to its next picture), it's
+            // asked again. Kept, the window stayed past the room.)
+            if !off {
+                fit.asked = None;
+            }
             // (The resize asked for is made when its size is another:
             // laid out at it, or at what the compositor gave instead; or
             // it never comes, and the window is shown as it is after
@@ -662,7 +672,16 @@ impl Frame {
             if !fit.fixed {
                 laid = laid.flex_grow();
             }
-            let content = if fit.scrolls { crate::widgets::ScrollView::new(&self.scroll).border(false).child(div().w_full().flex().flex_col().child(laid)).into_element() } else { laid };
+            // (Scrolled, laid out as tall as the window at least: what
+            // fills the window, a picture's or a list's box, keeps the
+            // room it had rather than none. Quick Look sized past the
+            // screen's room showed an empty body over a scroll bar.)
+            let content = if fit.scrolls {
+                let tall = cx.viewport_size().height;
+                crate::widgets::ScrollView::new(&self.scroll).border(false).child(div().w_full().min_h(tall).flex().flex_col().child(laid)).into_element()
+            } else {
+                laid
+            };
             return root.flex().flex_col().child(content);
         }
         // Taller than the window (a short screen): laid out at its own

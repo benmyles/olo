@@ -26,6 +26,20 @@ use olo_theme::Palette;
 
 use crate::WindowOptions;
 
+/// The room [`crate::screen_room`] says there is, as if the shortest
+/// screen left `room` points (None: the screens'); for tests of windows
+/// that fit what they show (there are no screens headless).
+pub fn set_room_for_tests(room: Option<f32>) {
+    ROOM.store(room.map_or(0, f32::to_bits), std::sync::atomic::Ordering::SeqCst);
+}
+
+static ROOM: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+pub(crate) fn room_for_tests() -> Option<f32> {
+    let bits = ROOM.load(std::sync::atomic::Ordering::SeqCst);
+    (bits != 0).then(|| f32::from_bits(bits))
+}
+
 /// The scales every window is checked at.
 pub const SCALES: &[f32] = &[1.0, 1.5, 2.0];
 

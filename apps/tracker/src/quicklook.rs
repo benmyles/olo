@@ -184,10 +184,12 @@ impl QuickLook {
         self.editor.as_ref().is_some_and(|e| e.busy || e.saving)
     }
 
-    /// The window size that suits what is shown, within the screen.
+    /// The window size that suits what is shown, within the screen and
+    /// the room a window that fits what it shows has (`screen_room`: past
+    /// it, the Frame would scroll it, its picture laid out to nothing).
     pub fn ideal_size(&self, screen: Option<(u32, u32)>, cx: &WindowCx) -> (u32, u32) {
         let p = self.preview.read(cx);
-        let (w, h) = p.ideal_size(screen, FOOTER);
+        let (w, h) = p.ideal_size(screen, FOOTER, Some(olo_kit::screen_room()));
         // Room for the note beside the rotate buttons.
         let min = if self.editable && p.is_image() { 460 } else { 0 };
         (w.max(min.min(screen.map_or(u32::MAX, |s| s.0))), h)

@@ -1398,22 +1398,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Quick Look empty after ↓ through pictures (a regression)** (Ben,
-  2026-11-14: "when i'm in the tracker and press space on an image for
-  the quick look, i see it properly but then if i hit down to go
-  through the other images i just get an empty window. i'm pretty sure
-  this is a regression coming back from something we fixed in the past
-  at some point"; his screenshot: Tracker's list of 01–10.png, 06.png
-  selected, Quick Look showing "PNG image, 1440 × 900" and its rotate
-  and Open with Viewer buttons over an empty gray body, with a
-  vertical scroll bar down its right). Fixed before for a PDF ("Quick
-  Look went gray on a PDF, and the arrows stopped", 2026-11-07, under
-  Done, waiting for Ben) and in the portal's panel (c8d11f24). Find
-  what brought it back (git log of tracker's quicklook.rs and
-  olo-preview since), fix it at the root, and keep it fixed: a test
-  that steps ↓ through a folder of pictures (PNG, JPEG, sizes, 1×,
-  1.5×, 2×) and checks each look draws its picture. The scroll bar
-  too: Quick Look's window must fit what it shows, not scroll.
 - **Agent Screens' History empty** (Ben, 2026-11-14: "there is a bug in
   agent screens i can't see any history it's just empty"; his
   screenshot: the running screen v2-qa-integrations, "2,073 actions"
@@ -1575,6 +1559,43 @@ something nobody here has is in "Blocked", with what it waits for.
   (paths with .. or absolute ones refused); undo; agent-readable and
   drivable; HACKING and the Olo Book.
 ## Done, waiting for Ben to try or confirm
+
+- **Quick Look empty after ↓ through pictures (a regression)** (Ben,
+  2026-11-14: "when i'm in the tracker and press space on an image for
+  the quick look, i see it properly but then if i hit down to go
+  through the other images i just get an empty window. i'm pretty sure
+  this is a regression coming back from something we fixed in the past
+  at some point"; his screenshot: Tracker's list of 01–10.png, 06.png
+  selected, Quick Look showing "PNG image, 1440 × 900" and its rotate
+  and Open with Viewer buttons over an empty gray body, with a
+  vertical scroll bar down its right). Fixed before for a PDF ("Quick
+  Look went gray on a PDF, and the arrows stopped", 2026-11-07, under
+  Done, waiting for Ben) and in the portal's panel (c8d11f24). Find
+  what brought it back (git log of tracker's quicklook.rs and
+  olo-preview since), fix it at the root, and keep it fixed: a test
+  that steps ↓ through a folder of pictures (PNG, JPEG, sizes, 1×,
+  1.5×, 2×) and checks each look draws its picture. The scroll bar
+  too: Quick Look's window must fit what it shows, not scroll.
+  Done (2026-11-14): not the old faults back but a new one, since
+  Quick Look became a window that fits what it shows (`dialog()`,
+  2026-11-04). Its Frame keeps such a window within the shortest
+  display's room (`screen_room`), while Quick Look sized itself to 82%
+  of its own display: on a 2.5× Studio Display beside a shorter laptop
+  panel (their scales differ, so the window knows its display from the
+  start) it asked for more, the Frame scrolled it and asked once for the
+  room, and the next picture's size stayed: in the scroll view the
+  picture's box was laid out to nothing, an empty body over a scroll
+  bar. Reproduced headless with those two displays (04.jpg, a window
+  938 tall). Now the Frame forgets a size it asked for and got, so it
+  puts a later one right; scrolled, it lays the content out at least as
+  tall as the window; and Quick Look and the Viewer's look size
+  themselves within the room (`ideal_size(…, tallest)`). Kept fixed:
+  `ui_lint_a_fitted_window_past_the_screen_keeps_what_fills_it` (fails
+  without the fix). Checked by stepping ↓ and ↑ through ten PNGs and
+  JPEGs, landscape and portrait, at 1×, 2×, 2.5× and with the 2.5× and
+  2× displays side by side: every picture drawn, no scroll bar. Ben:
+  after upgrading, step through pictures in Quick Look on the Studio
+  Display.
 
 - **Tabs and tab groups: one better look for every app** (Ben,
   2026-11-14: "this tab and tab group styling we're using still looks

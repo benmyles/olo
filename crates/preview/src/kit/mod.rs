@@ -691,10 +691,13 @@ impl PreviewView {
     }
 
     /// The window size that suits what is shown, within the screen
-    /// (`chrome`: the height the caller adds round it).
-    pub fn ideal_size(&self, screen: Option<(u32, u32)>, chrome: f32) -> (u32, u32) {
+    /// (`chrome`: the height the caller adds round it), and no taller
+    /// than `tallest` (a window that fits what it shows: Quick Look's,
+    /// a look's, never taller than `olo_kit::screen_room`, or its Frame
+    /// scrolls it).
+    pub fn ideal_size(&self, screen: Option<(u32, u32)>, chrome: f32, tallest: Option<f32>) -> (u32, u32) {
         let (sw, sh) = screen.map_or((1440.0, 900.0), |(w, h)| (w as f32, h as f32));
-        let (max_w, max_h) = (sw * 0.8, sh * 0.82 - chrome);
+        let (max_w, max_h) = (sw * 0.8, (sh * 0.82).min(tallest.unwrap_or(f32::INFINITY)).floor() - chrome);
         let fit = |w: f32, h: f32| {
             let k = (max_w / w).min(max_h / h).min(1.0);
             ((w * k).round().max(320.0), (h * k).round().max(200.0))

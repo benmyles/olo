@@ -561,11 +561,13 @@ impl PdfView {
         let _ = self.tx.send(Request::Save { model: self.model.clone(), to, flatten, adopt });
     }
 
-    /// The window size that shows the first page whole, within the screen.
-    pub fn ideal_size(&mut self, screen: Option<(f32, f32)>, chrome: f32) -> (f32, f32) {
+    /// The window size that shows the first page whole, within the screen
+    /// and no taller than `tallest` (a look, which fits what it shows:
+    /// `olo_kit::screen_room`).
+    pub fn ideal_size(&mut self, screen: Option<(f32, f32)>, chrome: f32, tallest: Option<f32>) -> (f32, f32) {
         let (sw, sh) = screen.unwrap_or((1440.0, 900.0));
         let (pw, ph) = self.geoms.first().map_or((612.0, 792.0), |g| g.size);
-        let zoom = ((sh * 0.86 - chrome - 2.0 * GAP) / ph).min((sw * 0.8 - 2.0 * GAP - SCROLL_BAR) / pw).clamp(0.3, 1.5);
+        let zoom = (((sh * 0.86).min(tallest.unwrap_or(f32::INFINITY)) - chrome - 2.0 * GAP) / ph).min((sw * 0.8 - 2.0 * GAP - SCROLL_BAR) / pw).clamp(0.3, 1.5);
         self.zoom = zoom;
         let w = pw * zoom + 2.0 * GAP + SCROLL_BAR + 4.0;
         let h = ph * zoom + 2.0 * GAP + chrome + 4.0;
