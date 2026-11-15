@@ -1412,6 +1412,67 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Olo independent of GNOME, 100%** (Ben, 2026-11-15: "we should be
+  100% independent of gnome and not rely on any of its services etc so
+  please also make sure that is done after this"). Olo's keyring needs
+  nothing of GNOME's now (its key sealed by the login password; GNOME
+  Keyring's files read natively, once, to bring secrets over). Still to
+  go through, every one: what still starts or hands back to GNOME
+  Keyring (olo-secrets' `--activated` becoming it when Olo's keyring is
+  off or absent, `hand_back`, Preferences ▸ Security's switch), the
+  keyring prompter's gcr protocol (serving it for programs is fine;
+  relying on it isn't), GTK/GNOME settings Olo writes for other
+  programs (dconf: Olo's own `apps/dconf`, so check nothing needs
+  GNOME's daemon), `org.gnome.SessionManager` and other GNOME names Olo
+  serves or calls, portals (no xdg-desktop-portal-gnome/-gtk backends
+  needed), GVfs, the login screen's and Setup's GNOME packages, and
+  Doctor's checks that name GNOME. Serving GNOME's interfaces so GNOME
+  and GTK programs work is fine; needing a GNOME program or service
+  for anything of Olo's isn't. Each found: replaced natively, its
+  dependency gone from Setup's package list, tested with GNOME's
+  packages absent (a VM or a container without them).
+
+- **Weather: a Deskbar widget, customizable and beautiful** (Ben,
+  2026-11-15: "the weather app should make available a deskbar widget
+  that is customizable and can show useful stuff like 3/6/12 hour
+  rain/cloud forecast, 7 day high level forecast, and any other
+  interesting things. it should be able to render a customizable type
+  of widget e.g. that shows visually with rain/clouds/sun etc or
+  whatever is appropriate given the widget configuration and weather
+  app. make sure it looks beautiful and any new support/functionality
+  you need try to add to the kit in a way that can be reusable for
+  future apps that want to provide rich olo widgets for the deskbar").
+  Views: the next 3, 6 or 12 hours' rain and cloud (a strip of
+  pictures, or a small chart), the 7 days at a glance (each day's sky,
+  high and low), now (temperature, feels like, wind), and what else is
+  worth a glance (an alert, sunrise and sunset, air quality); each
+  widget's view and size chosen in its settings. What the kit needs for
+  a rich widget from any app (an app-provided widget kind, its
+  settings, drawing it from data the app sends, kept live without
+  polling) added to the kit's Deskbar widget support, documented, and
+  used by Weather first.
+
+- **Terminal: AI autocomplete that keeps how a program was started**
+  (Ben, 2026-11-15: "when i quit an app in terminal like codex/claude it
+  often tells me the session id to resume. and i often started it with
+  options like `codex --dangerously-bypass-approvals-and-sandbox` but
+  then in the resume command it shows `codex resume
+  01a1ddfb-20d0-7980-af3c-e082abab3e33`. in this scenario the ai command
+  autocomplete should be smart enough to know that what i want is
+  `codex --dangerously-bypass-approvals-and-sandbox resume
+  01a1ddfb-…`. but don't like hardcode that rule for codex/claude or
+  anything, we need it to be smart enough to know this type of thing in
+  a general/universal way. which also means it should retrain pretty
+  often when there are new commands, like once a second or something.
+  anyway figure out how to make that work like i want whilst still
+  being super fast and efficient"). Learned, not ruled: a command a
+  program printed (a resume line) completed with the options the
+  person started that program with, because their history shows they
+  carry them; learning from new commands within about a second of
+  each (only what changed, never a whole retrain), and suggesting as
+  fast as now. Measured: suggestion latency, the cost of learning at
+  idle (none) and per command.
+
 - **Passwords: Approve Always, kept for good** (Ben, 2026-11-15: "once
   i allow the weather app to use the passwords item it should keep that
   approval forever, not until the next restart. if you need to update

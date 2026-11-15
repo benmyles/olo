@@ -98,3 +98,19 @@ how to build with them. These rules are universal and non-negotiable:
   remove it when you're done.
 - **No forks or subagents.** Do all the work yourself, in this session:
   never spawn a fork, subagent or background agent for any part of a task.
+- **Root-cause every problem; never work around it.** Whenever something
+  goes wrong (a hang, a crash, a slow step, a flaky test, a tool that
+  misbehaves), find why it happened and fix that, so it can't happen
+  again: in Olo, in its tools, or in the tool itself (fork it if need
+  be). Restarting, retrying, skipping a hook or waiting it out is never
+  the fix; if you must do one to keep going, say so and still fix the
+  cause.
+- **Waits that can't hang.** Never wait with `pgrep -f PATTERN` (or
+  `pkill -f`) from a shell whose own command line holds PATTERN: it
+  matches itself and the loop never ends (it hung a commit and a clone,
+  2026-11-15). Wait on what you started: its PID (`while kill -0 PID`),
+  its exit (run it with `run_in_background` and take the completion
+  notice; `wait` in the same shell), or a file it writes when done. Every
+  wait has a deadline well under the tool's timeout and says what it's
+  waiting for when it gives up; a long job runs in the background and is
+  looked at, not slept on.
