@@ -2639,6 +2639,37 @@ it.
   around it (Activity Monitor's CPU section, while it was on this kit:
   4.2 ms a frame to 1.4; on olo-kit a `Graph::live` draws itself again
   alone, with no layer to keep).
+- `widgets::Timeline::new(id, start, end, step, panels, key)` is a
+  forecast's chart, read the other way from a `Graph`: time left to
+  right from now, many things about one hour at once. `Panel::plot(title,
+  height, Scale)` with `Track`s (`line`, `.thin()`; `columns`, each
+  its own colour with `.colors`; `ranges` from lows to highs; `above`,
+  each step shaded from its value to the plot's top with its edge
+  solid, as a meteogram draws cloud over its base, so values that leap
+  hour to hour read as clear air coming and going, not a zigzag;
+  `quiet`, read out but not drawn: the cover that shades the cloud),
+  `.alpha` for ranges and columns above, `.on_right()` and
+  `Panel::right(Scale)` for a second scale, `.guide(value, name)` (a
+  line named on a ground of its own: freezing, fog); `Panel::icons`
+  and `Panel::arrows` are strips (a sky picture an hour, wind arrows),
+  placed by their hours, so the review keeps them on a grid of their
+  own. `Scale::new(say).range/.at_least/.from_zero` ends on nice
+  numbers from what shows (not the hours past the end), two points in
+  from the plot's top and bottom so a line at an end isn't halved, its
+  values each on its line. Columns and ranges are drawn first, then the
+  lines, the first named on top; each plot's legend is drawn only when
+  it fits beside its title. `.now(t)` (a red line), `.nights(spans)`
+  (shaded), `.spans(Span)` (an assistant's "dry and calm": yellow over
+  every plot, named over the first, two rows of names so none runs
+  into another), `.local(f)` (the place's clock, for the hours and day
+  names, which may be another time zone's than the computer's). The
+  pointer draws a line through every plot and a readout of every
+  track's value then, kept inside what shows of the chart (its scroll
+  view's, by `WindowCx::listener_shown`, exact, where the painter's
+  visible bounds are rounded to bands); hovering draws the chart alone,
+  one frame a pointer position (Weather: 0.4–0.9 ms a flush). Agents
+  read each plot as a Figure: each track's first value, lowest and
+  highest and when.
 - `StringView::wrap(true)` (a paragraph, as tall as it wraps to),
   `StringView::cut(true)` (one line as wide as it's given, not as its
   text, cut short with "…" and its whole in a tip and to agents: a path
@@ -7227,8 +7258,11 @@ the claude code model selectable in the ai prefs, default to opus 5.5 on
 medium"). Each feature is an `AiFeature { enabled, model, effort }`,
 the model one of `AI_MODELS` and the effort one of `AI_EFFORTS`; the
 panel's `feature()` draws its switch and choosers, so the next feature
-is a struct field and a BBox: Smart Tiling, and Emoji (the emoji
-picker's ⌘↩, low effort by default: it's asked while the person waits). `AI_MODELS` is OpenAI's current Codex
+is a struct field and a BBox: Smart Tiling, Ask, Weather (its
+assistant, Astra 6 at Medium by default: "Weather (apps/weather)"), and
+Emoji (the emoji picker's ⌘↩, low effort by default: it's asked while
+the person waits); Weather's sits in the left column with Smart Tiling
+and Ask, so neither column runs past the window. `AI_MODELS` is OpenAI's current Codex
 models (Astra 6, the default; Sol 6.1, Terra 6.1, Luna 6), reached
 through the Token Pool's gateway (`http://127.0.0.1:{OLO_POOL_PORT or
 17891}/codex`) and its Codex accounts. A model no longer listed (a
@@ -16782,6 +16816,25 @@ listed, nearest first (`olo_keychain::closeness`: the page's own host,
 then its parent domains from the nearest, then the site's other hosts),
 then by title; an item that can't be read is logged, not hidden silently.
 
+An Olo program's own secrets: `KeepSecret {title, secret, note}` keeps
+one as a Password item of that title (DiskBackup's key, Weather's
+provider key; left as it is if that title and secret are there) and
+`Secrets {title}` reads them back. `Reference {reference, purpose}`
+reads the secret an `op://vault/item/[section/]field` names, for a
+program the person gave the reference to (Weather's key, kept in
+Passwords already): resolved as `op read` resolves it (`cli::resolve`:
+vault and item by ID or name), once the person allows that program
+that secret. Passwords asks once per program (by `/proc/PID/exe`) and
+reference while it runs ("Allow “Weather” to use the “password” of
+“Weather: tomorrow.io API key” in Personal (for tomorrow.io’s
+forecasts)? It can then have it whenever it asks, until Passwords
+quits.": the item, field and vault by name, not the reference), Deny
+or Allow; on an agent screen, what it was given is the agents' there,
+so it isn't asked. Requests waiting for the same answer share one
+alert. Tested headless with a stand-in vault (debug builds only: the
+stand-in PAM, `OLO_PAM_CONFDIR`, is compiled out of release builds,
+which check the real account).
+
 ## Token Pool (apps/pool, crates/pool)
 
 (Its windows are on olo-kit. What outlives them is a `Hub` on the
@@ -17393,3 +17446,114 @@ modes, which it chose at 64 kb/s or for a tone at 32, came out at −1
 to −3 dB where libopus had 6 to 17. Its speech comes 328 samples late,
 not libopus's 312, so that's the pre-skip (the test checks the decoded
 sound lines up).
+
+## Weather (apps/weather)
+
+Ben, 2026-11-14: a native weather app with every detail, made for
+deciding things (a run this afternoon, whether the clouds will be high
+enough to skydive or it'll be socked in all day), with an assistant
+that's given all the data. On olo-kit; the provider's key in Passwords.
+
+**The window.** Places in a sidebar (each with its sky and temperature
+now; Add Place… under them; a place's menu: Show, Remove Place), the
+forecast in a well beside them, the assistant at the right (View ▸ Show
+Assistant, ⌘J). The forecast: the place, its region, coordinates and
+elevation, its own clock ("Sat 14, 20:29 there"); now (the sky's
+picture, the temperature, what it is, feels like, the day's high and
+low, the sun's times); "Updated … ago · provider" or what's under way
+or wrong; six cards (cloud base with ceiling and cover; visibility with
+the dew point's spread, "Fog likely" under 2.5 °C; wind with gusts and
+where from; precipitation by its kind and this hour's chance; humidity
+with dew point and pressure; UV with its level and the day's highest);
+the next hour minute by minute (what falls, and "Rain stopping in about
+25 minutes"); then three tabs (⌘1–3): Rest of Today (to midnight or
+twelve hours, whichever is later), Next 3 Days and Next 7 Days (a row a
+day, its sky by day and by night, what it does, low and high on the
+week's span, two lines of detail: what falls, how likely and how much,
+cloud and its lowest base, visibility when it's poor; wind, UV once
+it's moderate, the sun's times, the moon), each over a `Timeline`
+(Temperature with feels like and dew point, freezing marked; Clouds,
+each hour shaded from its base up as solid as its cover with the
+ceiling darker over it, the clear air under it what's open to fly;
+Visibility with the dew point's spread, fog marked; Precipitation
+coloured by kind with its chance and thunderstorms'; Wind and gusts,
+its arrows; Humidity and pressure; UV coloured by level). Units:
+View ▸ Units (metric, imperial, or each measure by itself). The window
+opens 1180 × 760 and is never under 1060 × 660 (`view::MIN_WIDTH`,
+`MIN_HEIGHT`: each column at its least, the cards three across whole;
+the assistant gives up width, 320 to 260, before the forecast does).
+
+**Data.** A `provider::Provider` (`provider::all()`): tomorrow.io
+(`tomorrow.rs`: `/v4/weather/forecast` for the minutes, hours and days,
+and `/v4/timelines` for the layers that one leaves out, merged by time),
+and a made-up one for the demo. `model.rs` has every layer (44: the
+temperatures, the clouds' base, ceiling and cover, visibility, every
+kind of precipitation and its intensity, amount and chance,
+thunderstorms, wind and gusts and direction, pressure, humidity, dew
+point, UV, the sun and moon), by the minute (`Step`), hour and day
+(`Day`, each layer's min, max, average and sum). The provider's answer
+is kept whole (`Forecast::raw`) for the assistant and on disk
+(`$XDG_CACHE_HOME/olo/weather/`, by place), so a start shows the last
+forecast at once. Fetched on a worker (ureq, rustls, gzip, by network:
+`olo_net::PerNetwork`), every 30 minutes (`FRESH`, by a timer set to
+when it's due: nothing runs between); a limit hit waits as long as the
+provider says (else 15 minutes), unreachable 5. 401, 403 and 429 are
+said as what they mean. Places come from Open-Meteo's geocoder (no key)
+or are typed as coordinates; each keeps its own time zone
+(`chrono-tz`), and every time is shown in the place's clock.
+`OLO_WEATHER_TOMORROW_URL` and `OLO_WEATHER_GEOCODE_URL` point them
+elsewhere (tests).
+
+**The key** (`key.rs`), always in Passwords: typed once in File ▸ Data
+Provider… and kept as Weather's own Password item ("Weather: tomorrow.io
+API key", `KeepSecret`, read back with `Secrets`), or a secret reference
+to one already there (`op://vault/item/[section/]field`, read with
+`Reference`, which Passwords answers once the person allows Weather
+that secret: "The keychain"). Either waits for Passwords to be
+unlocked. The key is held in memory while Weather runs, zeroed when
+dropped, and written nowhere else. With no key, the forecast's place
+says what's needed and offers Give a Key….
+
+**The assistant** (`assistant.rs`): Preferences ▸ AI ▸ Weather's model
+(Astra 6 thinking at Medium by default, through the Token Pool). A
+question goes on a worker with the place, its clock now, the person's
+units, how to weigh things for skydiving (bases, exit altitudes, wind
+limits, "socked in") and for being outside, and the provider's whole
+answer as it came (every layer by the minute, hour and day, about
+200 KB). The answer is JSON (`schema`): its words, shown as they stream,
+and the spans of time it points to (`windows`), marked on the chart in
+the tab that shows them all (the narrowest; the tab changes only if the
+one showing doesn't) and listed under the answer with their day
+("Low overcast · tomorrow 10:00–12:00"), each a link that marks its
+answer's spans again. A follow-up carries the conversation; Stop or
+Escape lets an answer go (as much as came stays; one stopped before a
+word says "Stopped." quietly and isn't carried on); New Conversation
+starts again. Suggestions
+show before the first question. Tests never call a model
+(`OLO_AI_BASE_URL` to a stand-in).
+
+**For agents.** Every command of the menus is on Weather's menus
+socket (`{"invoke":…}`), with more: `tab:N`, `place:N` or
+`place:NAME`, `ask:QUESTION`, `units:metric|imperial|c|f|kmh|mph|ms|kt|m|ft|km|mi|mm|in|hpa|inhg`.
+The tree has every card (figure and caption), each day's row (its whole
+detail), each chart's plots as Figures (each track's first, lowest and
+highest values and when), the spans, and the conversation.
+`olo-weather --print [PLACE] [--fetch]` prints the forecast as JSON in
+the person's units, with the units named, without a window (the cache,
+or fetched); Edit ▸ Copy copies it as text. `OLO_WEATHER_DEMO=1` shows a
+made-up place and forecast with no key or network (the layout lint's,
+`tools/dev/ui-lint`).
+
+**Pictures.** The 18 skies (clear, mostly clear, partly cloudy by day
+and night, mostly cloudy, cloudy, fog, drizzle, rain, heavy rain, freezing rain, sleet,
+flurries, snow, heavy snow, thunderstorms) are in Olo's Classic look
+(`data/icons/weather.txt`, made like the app icons but not in the
+manifest: one look for every theme, as a forecast's symbols are a
+language of their own); the app's icon is in every theme. tomorrow.io's
+codes map to them in `model::icon` (by day and night).
+
+**Cost.** Idle: 0% of a core, no wakeups, no frames (10 s, release).
+The pointer over the chart: one frame a position, 0.4–0.9 ms a flush,
+only the chart drawn (1 of 102 nodes). Reviewed at 1×, 1.25×, 1.5×,
+1.75× and 2×, light and dark, every tab scrolled through, the dialogs
+too, at its least size and at 1600 × 1000.

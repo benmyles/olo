@@ -71,6 +71,13 @@ pub enum Request {
     /// The secrets of the Password items titled `title` (an Olo program's
     /// own, kept by `KeepSecret`), once unlocked: `Secrets`.
     Secrets { title: String },
+    /// The secret an `op://` reference names (`op://vault/item/[section/]field`),
+    /// for an Olo program the person gave the reference to (Weather's API
+    /// key, kept in Passwords already): once unlocked and the person
+    /// allows that program that secret, asked once while Passwords runs
+    /// (as `op` is per terminal session). `purpose` says what it's for, in
+    /// the question. Answered `Secrets` with its value.
+    Reference { reference: String, purpose: String },
     /// Bring Passwords forward showing item `id` (once unlocked).
     Show { vault: String, id: String },
     /// From `op`: answered once unlocked and the asking terminal session
@@ -212,7 +219,8 @@ impl Request {
             | Request::Shares
             | Request::SetShares { .. }
             | Request::KeepSecret { .. }
-            | Request::Secrets { .. } => Duration::from_secs(300),
+            | Request::Secrets { .. }
+            | Request::Reference { .. } => Duration::from_secs(300),
         }
     }
 }

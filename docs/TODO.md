@@ -1430,40 +1430,6 @@ something nobody here has is in "Blocked", with what it waits for.
   iterated, with second opinions from OpenAI's Astra; then every icon
   (apps, Preferences' panels, Deskbar, Tracker's kinds) made again for
   each theme per docs/ICONS.md, checked large and at Deskbar's size.
-- **Weather: a native app, every detail, with an assistant** (Ben,
-  2026-11-14: "create an olo weather native app that has configurable
-  data providers and comes with for now tomorrow.io as the provider.
-  have the app ask for an api key and store it in passwords, and also
-  give the user the option of providing a secret ref if they already
-  have the key stored in passwords that it will use. and, i added a key
-  for you in op://Personal/olo-env/wu9us5wz8znbi3jqpyu4yl21em/TOMORROW_API_KEY
-  that you can use for dev/testing. the weather app needs to be
-  extremely detailed, showing the data from every core data layer
-  provided by tomorrow.io
-  https://docs.tomorrow.io/reference/data-layers-core. it needs to
-  support saving locations, showing current weather and rest of the
-  day weather as well as next 3 days and next 7 days. all of the
-  details are really important to include because i will use this not
-  just for personal needs like knowing when the rain might stop but
-  also to know when the clouds might be high enough to skydive or when
-  the cloud bases are not too low or when it's likely to be socked in
-  all day and so on. also support an ai integration with this where
-  there's an in-built assistant (model configured in prefs -> ai and
-  using astra xhigh through token pool by default) where i can ask it
-  questions like "when's a good time to run this afternoon?" or "will
-  it be socked in tomorrow?" or "will it be foggy all day?" and the
-  model should get the full set of raw data to answer me effectively.
-  the app needs to be very intuitive and beautifully designed don't
-  just "phone it in"."). A provider trait (tomorrow.io first, in
-  Rust, no SDK shelled out to); the key asked for once and kept in
-  Passwords, or a secret ref to one already there; saved locations;
-  now, the rest of today, the next 3 and 7 days, every core data layer
-  (cloud base and ceiling, cover, visibility, precipitation by kind
-  and its chance, wind and gusts at height, pressure, humidity, dew
-  point, UV, …) drawn so a skydiver can read when the bases lift; an
-  assistant (Preferences ▸ AI's model, Astra at xhigh through Token
-  Pool by default) handed the whole raw forecast; fetched on a worker,
-  cached, agent-readable; HACKING and the Olo Book.
 
 - **OS Updates: Fedora's packages, for power users** (Ben, 2026-11-14:
   "add a new olo application OS Updates that is a GUI manager for
@@ -1501,6 +1467,65 @@ something nobody here has is in "Blocked", with what it waits for.
   drivable; HACKING and the Olo Book.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Weather: a native app, every detail, with an assistant** (Ben,
+  2026-11-14: "create an olo weather native app that has configurable
+  data providers and comes with for now tomorrow.io as the provider.
+  have the app ask for an api key and store it in passwords, and also
+  give the user the option of providing a secret ref if they already
+  have the key stored in passwords that it will use. and, i added a key
+  for you in op://Personal/olo-env/wu9us5wz8znbi3jqpyu4yl21em/TOMORROW_API_KEY
+  that you can use for dev/testing. the weather app needs to be
+  extremely detailed, showing the data from every core data layer
+  provided by tomorrow.io
+  https://docs.tomorrow.io/reference/data-layers-core. it needs to
+  support saving locations, showing current weather and rest of the
+  day weather as well as next 3 days and next 7 days. all of the
+  details are really important to include because i will use this not
+  just for personal needs like knowing when the rain might stop but
+  also to know when the clouds might be high enough to skydive or when
+  the cloud bases are not too low or when it's likely to be socked in
+  all day and so on. also support an ai integration with this where
+  there's an in-built assistant (model configured in prefs -> ai and
+  using astra xhigh through token pool by default) where i can ask it
+  questions like "when's a good time to run this afternoon?" or "will
+  it be socked in tomorrow?" or "will it be foggy all day?" and the
+  model should get the full set of raw data to answer me effectively.
+  the app needs to be very intuitive and beautifully designed don't
+  just "phone it in"."). Then (2026-11-14):
+  "also in weather app change the default thinking level for astra to
+  medium".
+  Done (2026-11-14): `apps/weather`. Places in a sidebar (Add Place…
+  finds them with Open-Meteo's geocoder, or coordinates); now (the sky,
+  temperature, feels like, high and low, the sun) and six cards (cloud
+  base with ceiling and cover, visibility with the dew point's spread
+  and "Fog likely", wind and gusts, precipitation by kind and chance,
+  humidity with dew point and pressure, UV); the next hour by the
+  minute ("Rain stopping in about 25 minutes"); Rest of Today, Next 3
+  Days and Next 7 Days (⌘1–3) over the kit's new `Timeline`
+  (temperature, clouds as a meteogram from their base up so the open
+  air under them reads at a glance, visibility, precipitation, wind,
+  humidity and pressure, UV; the pointer reads every layer at an hour),
+  the 7 days also as a row a day. Every one of tomorrow.io's 44 core
+  layers, by the minute, hour and day, in the person's units (View ▸
+  Units). The key is typed once and kept as Weather's own Passwords
+  item, or given as a secret reference to one already there (Passwords
+  asks once to allow it, naming the item and vault); held only in
+  memory. Fetched on a worker every 30 minutes by a timer (nothing in
+  between), cached on disk so a start shows the last forecast at once.
+  The assistant (Preferences ▸ AI ▸ Weather: Astra 6 at Medium through
+  the Token Pool, as asked) gets the place, its clock, the units, how
+  to weigh bases and wind for skydiving, and the whole raw forecast
+  (~200 KB); its answer streams, and the spans it names are marked on
+  the chart and listed as links under it; Escape stops it. For agents:
+  every card, row and plot in the tree, `olo-weather --print`, menus
+  socket commands (`ask:`, `tab:`, `place:`, `units:`). 18 sky pictures
+  drawn per docs/ICONS.md. Tried headless against tomorrow.io (Seattle)
+  with the dev key, and one real question through the Token Pool
+  ("Will it be socked in tomorrow?", answered in feet and °F); reviewed
+  at 1×, 1.25×, 1.5×, 1.75× and 2×, light and dark; idle costs nothing
+  (0 wakeups, 0 frames). *Left for Ben:* putting his own key in (File ▸
+  Data Provider…), and asking it real questions about real jumps.
 
 - **Passwords makes and manages vaults** (Ben, 2026-11-14: "olo
   passwords should support creating/managing new vaults").

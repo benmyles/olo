@@ -749,6 +749,11 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
             let values = candidates.iter().filter_map(|(v, id)| c.get(v, id).ok()).filter_map(|item| login_fields(&item).1.map(|f| f.value.clone())).collect();
             Response::Secrets { values }
         }
+        // A secret by its reference, for a program allowed it (main.rs).
+        Request::Reference { reference, .. } => match crate::cli::resolve(&c.data, reference) {
+            Ok(value) => Response::Secrets { values: vec![value] },
+            Err(message) => Response::Error { message },
+        },
         // The SSH agent's (`agent`): the keys never leave this thread.
         Request::SshKeys => Response::SshKeys { keys: crate::agent::keys(&c.data) },
         Request::SshSign { key, data, flags } => {

@@ -59,6 +59,8 @@ def apps(home):
         ("Terminal", ["olo-terminal"], {}, False),
         ("Tracker", ["olo-tracker", home], {}, False),
         ("Viewer", ["olo-viewer", os.path.join(home, "Pictures/holiday.png")], {}, False),
+        # (Its demo forecast: no provider, key or network.)
+        ("Weather", ["olo-weather"], {"OLO_WEATHER_DEMO": "1"}, False),
         ("Deskbar", ["olo-deskbar"], {}, True),
     ]
     out += [(f"prefs:{p}", ["olo-preferences", p], {}, False) for p in PANELS]

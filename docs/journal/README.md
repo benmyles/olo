@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-14
 
+### Weather: every layer of the forecast, with an assistant
+
+*22:57* — A new app (apps/weather): saved places, now in six cards (cloud base and ceiling, visibility, wind, precipitation, humidity, UV), the next hour by the minute, and Rest of Today, Next 3 Days and Next 7 Days over the kit's new Timeline (temperature, clouds drawn from their base up, visibility, precipitation by kind, wind, humidity and pressure, UV; the pointer reads every layer at an hour). The assistant at the right gets the whole forecast; the spans it names are marked on the chart and listed under its answer. tomorrow.io's data for Seattle, at 2×; the answer here is a test stand-in's, not a model's.
+
+![Weather: every layer of the forecast, with an assistant](2026-11-14/225741-weather-every-layer-of-the-forecast-with-an-assi.png)
+
 ### Passwords makes and manages vaults
 
 *19:34* — File ▸ New Vault…, Vault Info… and Delete Vault… (and a vault's right-click in the sources): made, renamed, described or deleted here at once, and in 1Password at the next sync, each a row of Review Sync with the vault's icon.

@@ -4180,5 +4180,11 @@
   "title": "Passwords makes and manages vaults",
   "caption": "File \u25b8 New Vault\u2026, Vault Info\u2026 and Delete Vault\u2026 (and a vault's right-click in the sources): made, renamed, described or deleted here at once, and in 1Password at the next sync, each a row of Review Sync with the vault's icon.",
   "image": "2026-11-14/193418-passwords-makes-and-manages-vaults.png"
+ },
+ {
+  "time": "2026-11-14T22:57:41",
+  "title": "Weather: every layer of the forecast, with an assistant",
+  "caption": "A new app (apps/weather): saved places, now in six cards (cloud base and ceiling, visibility, wind, precipitation, humidity, UV), the next hour by the minute, and Rest of Today, Next 3 Days and Next 7 Days over the kit's new Timeline (temperature, clouds drawn from their base up, visibility, precipitation by kind, wind, humidity and pressure, UV; the pointer reads every layer at an hour). The assistant at the right gets the whole forecast; the spans it names are marked on the chart and listed under its answer. tomorrow.io's data for Seattle, at 2\u00d7; the answer here is a test stand-in's, not a model's.",
+  "image": "2026-11-14/225741-weather-every-layer-of-the-forecast-with-an-assi.png"
  }
 ]

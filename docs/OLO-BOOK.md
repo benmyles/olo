@@ -757,7 +757,7 @@ bounds, name)` an icon at one texel a device pixel.
 | `BFilePanel` | `file_panel::show(..)` | open, save, a folder |
 | Haiku's `BToolTip` | `tip::on(element, key, text)`, `tip::hover_card(cx, key, Rc<Card>, anchor, hovered)` | a popup of its own; a `card::Card` for more than a sentence (Deskbar's widgets): drawings, rows with bars, notes |
 | `BColorControl` | `ColorControl::new(id, rgb).on_change(..).build(cx)` | |
-| | `Sidebar`, `SidePane`, `ToolBar`, `Banner`, `KeyHint`, `Graph`, `Spectrum`, `CellGrid`, `ThumbnailPicker`, `find_bar` | what BeOS didn't have |
+| | `Sidebar`, `SidePane`, `ToolBar`, `Banner`, `KeyHint`, `Graph`, `Timeline`, `Spectrum`, `CellGrid`, `ThumbnailPicker`, `find_bar` | what BeOS didn't have |
 
 **If an app needs a widget or behaviour another could use, it goes in
 the kit** (`crates/kit`), documented in HACKING.md, with an example in

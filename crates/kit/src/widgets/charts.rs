@@ -474,7 +474,7 @@ impl IntoElement for Spectrum {
 
 /// The values under the pointer, in a tip-coloured box beside it (kept
 /// inside the graph).
-fn readout(g: &mut Painter, inside: Bounds<Pixels>, at: Point<Pixels>, lines: &[(Hsla, String)], when: String) {
+pub(crate) fn readout(g: &mut Painter, inside: Bounds<Pixels>, at: Point<Pixels>, lines: &[(Hsla, String)], when: String) {
     let p = theme::palette();
     let font = style::ui_font(FontWeight::NORMAL);
     let texts: Vec<String> = std::iter::once(when).chain(lines.iter().map(|(_, t)| t.clone())).collect();
@@ -487,6 +487,9 @@ fn readout(g: &mut Painter, inside: Bounds<Pixels>, at: Point<Pixels>, lines: &[
     }
     if r.bottom() > inside.bottom() {
         r.origin.y -= r.bottom() - inside.bottom();
+    }
+    if r.top() < inside.top() {
+        r.origin.y = inside.top();
     }
     let r = style::snap(g, r);
     g.paint_quad(olo_interface::fill(r, style::c(p.tooltip_background)).corner_radii(px(2.0)));

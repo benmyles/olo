@@ -1,0 +1,29 @@
+[package]
+name = "olo-weather"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "olo-weather"
+path = "src/main.rs"
+
+[dependencies]
+olo-crash.workspace = true
+olo-kit.workspace = true
+olo-kit-base.workspace = true
+olo-protocol.workspace = true
+olo-theme.workspace = true
+olo-xdg.workspace = true
+olo-keychain.workspace = true
+olo-ai.workspace = true
+olo-net = { workspace = true, features = ["ureq"] }
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
+chrono-tz = "0.10"
+# The forecast and place searches over HTTPS, as Olo Doctor fetches.
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "platform-verifier", "json", "gzip"] }
+zeroize = "1"

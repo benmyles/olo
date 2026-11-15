@@ -1,0 +1,23 @@
+# Weather's pictures of the sky (apps/weather: model::icon), one a line as
+# in manifest.txt: name|subject. Drawn like every icon (docs/ICONS.md), for
+# the Classic set; the other themes show these until the themes' sets are
+# drawn again (docs/TODO.md, the two themes), so they aren't in the
+# manifest the theme test checks.
+weather-clear-day|a glossy golden yellow sun: a thick round disc like a chunky coin standing upright, with short chunky triangular rays all round it
+weather-clear-night|a glossy pale yellow crescent moon, thick and chunky like a tile cut in a crescent, standing upright, with two small golden stars beside it
+weather-mostly-clear-day|a glossy golden yellow sun with short chunky rays, and one small puffy white cloud in front of its lower right edge
+weather-mostly-clear-night|a chunky glossy pale yellow crescent moon standing upright, with one small puffy white cloud in front of its lower right
+weather-partly-cloudy-day|a chunky puffy white cloud with a glossy golden yellow sun and its chunky rays behind its upper left, half hidden by the cloud
+weather-partly-cloudy-night|a chunky puffy white cloud with a glossy pale yellow crescent moon behind its upper left, half hidden by the cloud
+weather-mostly-cloudy|two chunky puffy clouds, a white one in front at the lower right of a larger light grey one
+weather-cloudy|one large chunky puffy cloud in soft greys, from silver on top to charcoal underneath
+weather-fog|a chunky pale grey cloud sitting low, with three thick rounded horizontal bands of grey mist in front of it
+weather-drizzle|a chunky puffy grey cloud with four small light blue droplets falling beneath it
+weather-rain|a chunky puffy grey cloud with several glossy Be blue raindrops falling beneath it
+weather-heavy-rain|a chunky dark charcoal grey cloud with many glossy Be blue raindrops falling in slanted streaks beneath it
+weather-flurries|a chunky puffy light grey cloud with two small white six-pointed snowflakes drifting beneath it
+weather-snow|a chunky puffy light grey cloud with several thick white six-pointed snowflakes falling beneath it
+weather-heavy-snow|a chunky dark grey cloud with many thick white six-pointed snowflakes falling densely beneath it
+weather-sleet|a chunky puffy grey cloud with small white ice pellets and glossy blue raindrops falling mixed beneath it
+weather-freezing-rain|a chunky puffy grey cloud with glossy pale icy blue raindrops beneath it, each with a tiny white icicle point
+weather-thunderstorm|a chunky dark charcoal storm cloud with a thick glossy golden yellow lightning bolt striking down beneath it

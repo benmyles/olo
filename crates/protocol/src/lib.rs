@@ -151,9 +151,10 @@ pub enum Request {
         index: u32,
     },
     /// Put a window's frame (tab and border included, as
-    /// [`WindowInfo::frame`]) here, at this size; no longer zoomed. It
-    /// may hang off a display's edge, but no further than a person could
-    /// leave it: its top edge on the display, enough of it to take hold of.
+    /// [`WindowInfo::frame`]) here, at this size (no smaller than its
+    /// `least`); no longer zoomed. It may hang off a display's edge, but
+    /// no further than a person could leave it: its top edge on the
+    /// display, enough of it to take hold of.
     Place {
         id: WindowId,
         frame: Frame,
@@ -1668,6 +1669,11 @@ pub struct AiSettings {
     pub emoji: AiFeature,
     /// The command palette's /ask: an answer, and code to copy.
     pub ask: AiFeature,
+    /// Weather's assistant: questions about the forecast, answered from
+    /// all of it: Astra 6 through the Token Pool, thinking at Medium by
+    /// default (Ben, 2026-11-14: "change the default thinking level for
+    /// astra to medium").
+    pub weather: AiFeature,
     /// Agent Screens: how much of each screen's history (its actions and
     /// the frames it drew) is kept, in megabytes, and for how many days
     /// (0: for ever).
@@ -1709,6 +1715,7 @@ impl Default for AiSettings {
             // Asked while the person waits too (Ben, 2026-11-07: "defaulting
             // to astra on low").
             ask: AiFeature { enabled: true, model: AI_MODELS[0].0.into(), effort: "low".into() },
+            weather: AiFeature { enabled: true, model: AI_MODELS[0].0.into(), effort: "medium".into() },
             screen_history_mb: 512,
             screen_history_days: 30,
             claude_code: ClaudeCode::default(),

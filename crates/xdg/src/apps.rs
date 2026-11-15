@@ -22,6 +22,7 @@ pub const OUR_APPS: &[(&str, &str, &str)] = &[
     ("olo-telegram", "Telegram", "telegram"),
     ("olo-slack", "Slack", "slack"),
     ("olo-doctor", "Olo Doctor", "doctor"),
+    ("olo-weather", "Weather", "weather"),
 ];
 
 /// Our apps that are a web app in Olo's Chrome (olo-slack): the Wayland

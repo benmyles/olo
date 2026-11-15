@@ -1,6 +1,7 @@
 //! AI: Olo's AI features, each on or off, with its model (OpenAI's,
 //! through the Token Pool's Codex accounts) and effort: Smart Tiling,
-//! the command palette's /ask, and the emoji picker's suggestions; and
+//! the command palette's /ask, the emoji picker's suggestions and
+//! Weather's assistant; and
 //! the model and effort Olo starts Claude Code with for a task.
 
 use olo_kit::SharedString;
@@ -10,7 +11,8 @@ use crate::form::Ui;
 
 pub fn ui(ui: &mut Ui) {
     let s = ui.s.clone();
-    // (Two columns: the models and tiling; emoji and agent screens.)
+    // (Two columns: the models, tiling, /ask and Weather; emoji, agent
+    // screens and Claude Code.)
     let left = ui.collect(|ui| {
         ui.bbox("Models", |ui| {
             ui.note("AI features use OpenAI’s models through the Token Pool’s Codex accounts, spent in its order.");
@@ -29,6 +31,10 @@ pub fn ui(ui: &mut Ui) {
         ui.bbox("Ask", |ui| {
             feature(ui, "ask", &s.ai.ask, "Answer questions in the command palette", |s| &mut s.ai.ask);
             ui.note("In the command palette, type /ask and a question: the answer shows there with code to copy (its number, then Return). Space asks a follow-up.");
+        });
+        ui.bbox("Weather", |ui| {
+            feature(ui, "weather", &s.ai.weather, "Answer questions about the forecast", |s| &mut s.ai.weather);
+            ui.note("Weather’s assistant is handed the whole forecast for the place you’re looking at, every layer hour by hour, to answer from.");
         });
     });
     let right = ui.collect(|ui| {

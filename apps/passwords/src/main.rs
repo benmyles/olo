@@ -224,6 +224,18 @@ fn allow_message(a: &cli::Asker, ssh: bool, ways: Option<String>) -> String {
     m
 }
 
+/// The question for letting `program` (an executable) have the secret
+/// `reference` names, for `purpose`: Olo's apps by their names.
+/// `named`: what the reference names, as a person reads it (“the
+/// password of “Weather key” in Personal”), or the reference itself.
+fn reference_message(program: &str, named: &str, purpose: &str) -> String {
+    let file = program.rsplit('/').next().unwrap_or(program);
+    let name = olo_xdg::apps::OUR_APPS.iter().find(|(bin, ..)| *bin == file).map_or(file, |(_, name, _)| *name);
+    let purpose = purpose.trim();
+    let what = if purpose.is_empty() { String::new() } else { format!(" ({purpose})") };
+    format!("Allow “{name}” to use {named}{what}? It can then have it whenever it asks, until Passwords quits.")
+}
+
 /// The accounts, as `op account list --format json` prints them: those
 /// Passwords syncs with (with what the 1Password app says of them), or
 /// this computer's own when it syncs with none.
@@ -360,6 +372,11 @@ pub struct Passwords {
     cli_waiting: Vec<(cli::Session, Incoming)>,
     /// The terminal sessions allowed to use `op`.
     grants: cli::Grants,
+    /// The programs allowed a secret by its reference while Passwords
+    /// runs: (the program's executable, the reference).
+    reference_grants: HashSet<(String, String)>,
+    /// Their requests waiting for the person's answer, by the same.
+    reference_waiting: Vec<((String, String), Incoming)>,
     /// Asking app_server whether it approves without asking, for the
     /// unlock (None) or for a session's `op`.
     asking: HashSet<Option<cli::Session>>,
@@ -466,6 +483,21 @@ impl Passwords {
 
     pub fn overview(&self, id: &str) -> Option<&ItemOverview> {
         self.items.iter().find(|i| i.id == id)
+    }
+
+    /// What secret reference `reference` names, as a person reads it:
+    /// “the password of “Weather key” in Personal” (its vault and item by
+    /// ID or name, as resolving it finds them); the reference itself when
+    /// it names nothing here (resolving it then says why).
+    pub fn reference_named(&self, reference: &str) -> String {
+        let fallback = || format!("the secret at {reference}");
+        let Ok(r) = onepassword::reference::validate(reference) else { return fallback() };
+        let vault = self.vaults.iter().find(|v| v.id == r.vault).or_else(|| self.vaults.iter().find(|v| v.title.eq_ignore_ascii_case(&r.vault)));
+        let Some(vault) = vault else { return fallback() };
+        let active = |i: &&ItemOverview| i.state == ItemState::Active && i.vault_id == vault.id;
+        let item = self.items.iter().filter(active).find(|i| i.id == r.item).or_else(|| self.items.iter().filter(active).find(|i| i.title.eq_ignore_ascii_case(&r.item)));
+        let Some(item) = item else { return fallback() };
+        format!("the “{}” of “{}” in {}", r.field, item.title, self.vault_name(vault))
     }
 
     /// The items (or what's known of them) changed: the list and the
@@ -1025,6 +1057,25 @@ impl Passwords {
                 };
                 return self.store.send(Job::Keychain { incoming: Box::new(incoming), candidates, vault });
             }
+            // A secret by its reference, for the Olo program asking
+            // (Weather's key): once the person allows that program it.
+            Request::Reference { reference, purpose } => {
+                let Some(program) = std::fs::read_link(format!("/proc/{}/exe", incoming.pid)).ok().map(|p| p.to_string_lossy().into_owned()) else {
+                    return incoming.reply(Response::Error { message: "the program went away".into() });
+                };
+                let asked = (program, reference.clone());
+                // (On a screen: what it was given is the agents' there.)
+                if on_screen() || self.reference_grants.contains(&asked) {
+                    return self.store.send(Job::Keychain { incoming: Box::new(incoming), candidates: Vec::new(), vault: String::new() });
+                }
+                let shown = self.reference_waiting.iter().any(|(a, _)| *a == asked);
+                let message = reference_message(&asked.0, &self.reference_named(&asked.1), purpose);
+                self.reference_waiting.push((asked.clone(), incoming));
+                if !shown {
+                    open_app_alert("Passwords", "warning", &message, &["Deny", "Allow"], move |choice| app().answer_reference(&asked, choice == Some(1)));
+                }
+                return;
+            }
             Request::Shares | Request::SetShares { .. } | Request::SshKeys => {
                 return self.store.send(Job::Keychain { incoming: Box::new(incoming), candidates: Vec::new(), vault: String::new() });
             }
@@ -1230,6 +1281,23 @@ impl Passwords {
         }
         let (theirs, rest) = std::mem::take(&mut self.cli_waiting).into_iter().partition::<Vec<_>, _>(|(s, _)| *s == session);
         self.cli_waiting = rest;
+        for (_, incoming) in theirs {
+            if allow {
+                self.keychain(incoming);
+            } else {
+                incoming.reply(Response::Error { message: "Passwords: not allowed".into() });
+            }
+        }
+    }
+
+    /// The person's answer to a program asking for a secret by its
+    /// reference: allowed until Passwords quits, or refused.
+    fn answer_reference(&mut self, asked: &(String, String), allow: bool) {
+        if allow {
+            self.reference_grants.insert(asked.clone());
+        }
+        let (theirs, rest) = std::mem::take(&mut self.reference_waiting).into_iter().partition::<Vec<_>, _>(|(a, _)| a == asked);
+        self.reference_waiting = rest;
         for (_, incoming) in theirs {
             if allow {
                 self.keychain(incoming);
@@ -2638,6 +2706,8 @@ fn main() {
             unlocked: false,
             waiting: Vec::new(),
             cli_waiting: Vec::new(),
+            reference_grants: HashSet::new(),
+            reference_waiting: Vec::new(),
             grants: cli::Grants::default(),
             asking: HashSet::new(),
             notifier,

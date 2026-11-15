@@ -181,6 +181,14 @@ Rules:
   theme's references. `genicon.py --theme ID` uses the theme's
   `style.txt` and `reference/`, drops "glossy" from the subject (the
   manifest is written for Classic) and writes to `data/themes/ID/src/`.
+* **Pictures that aren't a thing's icon stay out of the manifest.**
+  Weather's 18 skies (`data/icons/weather.txt`, `name|subject` lines as
+  in the manifest) are drawn for Classic with the same tools
+  (`genicon.py NAME "subject"`, `mkicons.py NAME`) and shown in every
+  theme, so the theme test doesn't ask for them: a forecast's symbols
+  are a language of their own. Check them at 16 px (the places list)
+  and 48 px (the forecast) next to each other: one sun, one cloud, the
+  same drops, so they read as a set.
 * The theme sets were first drawn one image per icon (about 500), not as
   two candidates each, and then reviewed on a contact sheet per theme.
   Redraw any icon that drifts with `--variants 2` as usual.
