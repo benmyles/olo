@@ -60,6 +60,9 @@ struct AdapterCapabilities {
     /// Olo: a present can say which rectangles changed
     /// (VK_KHR_incremental_present).
     incremental_present: bool,
+    /// Olo: a queue's global priority can be asked for (the extension's
+    /// name: KHR's, else EXT's).
+    global_priority: Option<&'static ffi::CStr>,
     external_memory: bool,
     /// Olo: the host's memory imported as buffers (VK_EXT_external_memory_host):
     /// the alignment its pointers and sizes need.
@@ -282,6 +285,13 @@ unsafe fn inspect_adapter(
     let shader_info = supported_extensions.contains(&vk::AMD_SHADER_INFO_NAME);
     let full_screen_exclusive = supported_extensions.contains(&vk::EXT_FULL_SCREEN_EXCLUSIVE_NAME);
     let incremental_present = supported_extensions.contains(&vk::KHR_INCREMENTAL_PRESENT_NAME);
+    let global_priority = if supported_extensions.contains(&vk::KHR_GLOBAL_PRIORITY_NAME) {
+        Some(vk::KHR_GLOBAL_PRIORITY_NAME)
+    } else if supported_extensions.contains(&vk::EXT_GLOBAL_PRIORITY_NAME) {
+        Some(vk::EXT_GLOBAL_PRIORITY_NAME)
+    } else {
+        None
+    };
 
     let device_information = crate::DeviceInformation {
         is_software_emulated: properties.device_type == vk::PhysicalDeviceType::CPU,
@@ -307,6 +317,7 @@ unsafe fn inspect_adapter(
         shader_info,
         full_screen_exclusive,
         incremental_present,
+        global_priority,
         external_memory,
         host_memory,
         timing,
@@ -480,12 +491,23 @@ impl super::Context {
         }
 
         let device_core = {
-            let family_info = vk::DeviceQueueCreateInfo::default()
+            // Olo: the lowest global priority, asked (`ContextDesc::low_priority`).
+            let low = if desc.low_priority { capabilities.global_priority } else { None };
+            let mut global_priority = vk::DeviceQueueGlobalPriorityCreateInfoKHR::default()
+                .global_priority(vk::QueueGlobalPriorityKHR::LOW);
+            let mut family_info = vk::DeviceQueueCreateInfo::default()
                 .queue_family_index(capabilities.queue_family_index)
                 .queue_priorities(&[1.0]);
+            if low.is_some() {
+                family_info = family_info.push_next(&mut global_priority);
+                log::info!("The GPU queue at the lowest global priority");
+            }
             let family_infos = [family_info];
 
             let mut device_extensions = REQUIRED_DEVICE_EXTENSIONS.to_vec();
+            if let Some(name) = low {
+                device_extensions.push(name);
+            }
             if desc.presentation {
                 device_extensions.push(vk::KHR_SWAPCHAIN_NAME);
             }

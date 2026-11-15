@@ -11041,6 +11041,20 @@ waiting: the loop's frames on the fastest core at its full clock, its
 caches its own, and a core free when other realtime work (PipeWire's at
 20, other programs' sound) is on the rest.
 
+**The GPU** has priorities too. The person's app_server asks for a
+high-priority context (`EGL_IMG_context_priority`, udev.rs) and gets it:
+its frames run ahead of programs' work on the GPU. A headless one (an
+agent's screen, a test session) asks for the lowest (headless.rs;
+`OLO_REALTIME=1`, to measure one as the person's: high): it had asked
+high too, and every agent's screen was granted it, drawing as the
+person's equal on the same GPU. A kit program on an agent's screen
+(`OLO_SCREEN`; `OLO_GPU_PRIORITY=low|normal` says instead) makes its
+Vulkan queue at the lowest global priority (`VK_KHR_global_priority`,
+blade's `ContextDesc::low_priority`, an Olo change in
+vendor/blade-graphics). Asking lower never needs privilege; the logs
+say what was granted ("EGL context created priority=Some(Low)", "The
+GPU queue at the lowest global priority").
+
 **Groups' weights.** The processor is shared between sibling cgroups by
 weight first. Fedora's uresourced raises the active user's manager
 (`user@UID.service`, where GNOME's shell runs) to 500; Olo runs in
