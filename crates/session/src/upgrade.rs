@@ -525,13 +525,13 @@ fn sync_wallpapers(from: &Path, to: &Path) -> std::io::Result<usize> {
         return Ok(0);
     };
     let mut n = 0;
-    for sub in ["", "4k", "ultrawide", "thumbs"] {
+    for sub in ["", "4k", "ultrawide", "thumbs", "tiles"] {
         let (from_dir, to_dir) = (src.join(sub), to.join(sub));
         let Ok(entries) = std::fs::read_dir(&from_dir) else { continue };
         std::fs::create_dir_all(&to_dir)?;
         for e in entries.flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
-            if e.path().is_file() && (name.ends_with(".png") || name == "pack.txt") && is_newer(&e.path(), &to_dir.join(&name)) {
+            if e.path().is_file() && (name.ends_with(".png") || name.ends_with(".jpg") || name == "pack.txt") && is_newer(&e.path(), &to_dir.join(&name)) {
                 install(&e.path(), &to_dir, &name)?;
                 std::fs::set_permissions(to_dir.join(&name), std::fs::Permissions::from_mode(0o644))?;
                 n += 1;
@@ -539,7 +539,8 @@ fn sync_wallpapers(from: &Path, to: &Path) -> std::io::Result<usize> {
         }
         for e in std::fs::read_dir(&to_dir)?.flatten() {
             let name = e.file_name();
-            if e.path().is_file() && name.to_string_lossy().ends_with(".png") && !from_dir.join(&name).is_file() {
+            let picture = name.to_string_lossy().ends_with(".png") || name.to_string_lossy().ends_with(".jpg");
+            if e.path().is_file() && picture && !from_dir.join(&name).is_file() {
                 std::fs::remove_file(e.path())?;
                 n += 1;
             }

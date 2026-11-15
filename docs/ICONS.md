@@ -216,54 +216,68 @@ python3 tools/genwordmark.py platinum --variants 2
 python3 tools/genwordmark.py platinum --promote data/themes/platinum/src/wordmark/olo-wordmark-3.png
 ```
 
-### Theme wallpapers
+### Theme wallpapers and the retro collection
 
-The pack's pictures for the themes are Mac OS 9's own desktop pictures
-(Ben, 2026-11-15: "upscale all the macos 9 ones and use them for both
-themes, just pick the most suitable one for each theme as the theme
-default"; BeOS shipped none worth having: two Be logos, a TV overlay and
-two photos of its people). Nineteen of the twenty Mac OS 9 installed in
-Appearance ▸ Desktop Pictures (the iMac flavours: Blueberry, Grape, Lime,
-Strawberry and Tangerine; Quantum Foam; Tub and the UFOs; Blue Dalmatian
-and Flower Power; the photographs: Bottles, Golden Poppy, Shutters), all
-but Mac OS Background (the Finder's face: too on the nose). Each theme
-names its own (`Theme::wallpaper`): Classic Blueberry Oxygen (the
-nearest to Be's blue), Platinum Quantum Foam (its lavender and grey);
-those two have a dark version. Choosing a theme in Preferences ▸ Themes
-switches the wallpaper to it (`olo_xdg::themes::wallpaper`); Backgrounds
-can pick any other. A setting naming a picture that's gone shows its
-theme's (`pack:platinum`, the old name) or the default's.
+The pack's pictures are the retro systems' own, made 4K (Ben, 2026-11-15:
+"upscale all the macos 9 ones and use them for both themes"; then "the
+latest amigaos, nextstep, and other classic desktops … for a complete
+retro os collection"; "don't skip the tiled ones … add tiling support to
+olo"; "they have visible pixellation, bluriness in places … make them
+all perfect and stunning"). Each collection is a system's set, chosen
+in Backgrounds by Collection:
 
-The originals came from a Mac OS 9 disc image read with `machfs` (HFS);
-Blue Dalmatian and Flower Power, which only 9.1's installer has, from
-512 Pixels' copies of them. `tools/upscalewallpaper.py` makes each a 4K
-picture with the icons' model at quality "high": the original attached
-to the edits endpoint, exactly that picture again at 3840×2160, widened
-to 16:9 by continuing its background; `--dark` redraws one for dark
-mode. Candidates go to `data/wallpapers/src/` (gitignored), each with a
-`.json` sidecar (model, prompt, source). The API key is read from
+| Collection | What | From |
+|---|---|---|
+| Mac OS 9 | The twenty it installed, but Mac OS Background (the Finder's face: too on the nose) | a Mac OS 9 disc image (HFS, read with `machfs`); Blue Dalmatian and Flower Power (only in 9.1's installer) from 512 Pixels' copies |
+| Mac OS 9 Extras, Photos, Nostalgia | The disc's Additional Desktop Pictures (3D, Convergence, Ensemble; photographs; Nostalgia, older pictures) | the 9.2.2 disc's CD Extras |
+| Mac OS 9 Patterns, Large Patterns | Its Additional Desktop Patterns (PICT resources: pixel patterns, decoded) and Large Patterns (JPEG tiles) | the 9.2.2 disc |
+| AmigaOS 3.9 | Its 30 backdrops (1024×768) | the AmigaOS 3.9 CD (ISO 9660) |
+| AmigaOS 3.9 Patterns | Its Workbench patterns (JPEG and IFF ILBM tiles; Pixel64's twins of Pixel128's left out) | the same |
+
+BeOS shipped no wallpapers worth having (two Be logos, a TV overlay, two
+photos of its people) and NeXTSTEP none (its desktop was a plain grey).
+Each theme names its default (`Theme::wallpaper`): Classic Blueberry
+Oxygen (the nearest to Be's blue), Platinum Quantum Foam; those two have
+a dark version and an ultrawide crop, as PNG; the rest are 4K JPEGs
+(quality 95, no chroma subsampling) cropped to the screen as shown.
+Choosing a theme in Preferences ▸ Themes switches to its picture
+(`olo_xdg::themes::wallpaper`). A setting naming a picture that went
+shows its theme's (`pack:platinum`, the old name) or the default's.
+
+How a picture is made, in two steps, both kept:
+
+1. `tools/upscalewallpaper.py SRC NAME`: the original attached to the
+   sunburst model at quality "high", exactly that picture again at
+   3840×2160, widened to 16:9 by continuing its background, lettering
+   kept as it is (`--dark`: the same picture for dark mode). A tile
+   (`--tile`): its 3×3 mosaic drawn again at 4× or more, the middle tile
+   cut out and its edges cross-faded with its neighbours, so it repeats
+   without a seam; tiles of 32 pixels or less are too small for the
+   model (it doubled a stripe pattern) and go to step 2 instead.
+2. `tools/finishwallpaper.py` (its own Python with PyTorch and spandrel,
+   on the NVIDIA GPU; see its header): 4x-UltraSharp, supersampled. The
+   model draws the whole 4K frame at once, and copies the low-resolution
+   originals' stair-stepped edges, a pixel or three tall. A render is
+   brought down to 1280 wide (the steps under a pixel), made 4× by the
+   model and brought back to 4K, and the model's kept only where there
+   are edges (its own faint canvas texture in flat areas is not wanted:
+   there the picture's gradients stay as they were); a photograph from
+   1920 wide, the model's everywhere; a small tile from its 3×3 mosaic;
+   8- and 16-pixel Mac pixel patterns by nearest-neighbour (their
+   pixels are the design). Quantised with a fine dither, so deep
+   gradients don't band.
+
+Then `--promote NAME` (`--jpeg` for a collection's picture, `--tile` for
+a tile: `tiles/NAME.png` and a tiled thumbnail), a line in `pack.txt`
+(`name|label|collection`, `|tile:N` for a tile N points wide), and the HDR
+maps: `cargo run --release -p olo-images --bin wallpaper-hdr` makes
+`NAME.gain.png` beside each picture in `4k/` and `ultrawide/` (PNG or
+JPEG; not the tiles) that's newer than its map (`olo_images::gain`;
+`--preview DIR` tints what shines). `cargo test -p olo-xdg` checks every
+theme has its wallpaper, light and dark, at each shape. Candidates and
+their `.json` sidecars (model, prompt, source) go to
+`data/wallpapers/src/` (gitignored). The API key is read from
 `OPENAI_API_KEY` or `~ben/.env`; never print, log or commit it.
-
-```sh
-python3 tools/upscalewallpaper.py "Quantum Foam-(1280x1024).jpg" quantum-foam
-python3 tools/upscalewallpaper.py data/wallpapers/src/quantum-foam.png quantum-foam --dark
-python3 tools/upscalewallpaper.py --promote quantum-foam [--crop-y 300]
-python3 tools/upscalewallpaper.py --promote quantum-foam --dark
-```
-
-`--promote` writes the 4K picture, the 3840×1648 ultrawide band (from
-`--crop-y`, default the middle) and the 320×180 thumbnail. `cargo test
--p olo-xdg` checks every theme has all six
-(`themes::tests::every_theme_has_its_wallpaper`). Then give it its HDR
-version: `cargo run --release -p olo-images --bin wallpaper-hdr` makes
-`NAME.gain.png` beside each picture in `4k/` and `ultrawide/` that's
-newer than its map (`olo_images::gain`; `--preview DIR` writes each
-picture with what shines tinted red, to look at), and the maps go in
-with the pictures.
-
-(`tools/genwallpaper.py` draws a picture from a scene described in
-words, with a theme's icons attached as style references if asked: how
-the themes' first wallpapers were made.)
 
 ## Using icons in code
 

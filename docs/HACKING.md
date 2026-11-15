@@ -5755,6 +5755,12 @@ lint at a time).
   [ICONS.md](ICONS.md)); choosing a theme in Themes sets `wallpaper` to it
   too, so an agent switching looks over IPC sets both
   `appearance.icon_theme` and `wallpaper` (`themes::wallpaper(id)`).
+  A pack entry can be a tile (`|tile:N`: a desktop pattern, `tiles/NAME.png`,
+  `Wallpaper::tile`): app_server makes it N points on a side at the
+  display's scale, once, and repeats it across the display from its top
+  left into the one picture it shows (`load_tile`), so the scale
+  changing redraws it (`Asked::scale`). A picture may be a JPEG and have
+  no ultrawide version (`resolve` takes the 4K one, cropped).
   app_server keeps settings naming what's gone current as it loads them
   and as they're set (`keep_looks_current`: a theme there was once is
   Classic, Catppuccin's colours the theme's own, a pack picture that
@@ -5769,8 +5775,8 @@ lint at a time).
   its text field follows the setting when it changes elsewhere. Each
   pack picture has an HDR version: a gain map beside it
   (`NAME.gain.png`, `olo_images::gain`), greyscale at half size, how
-  many stops brighter each point is (0 to `MAX_STOPS`, 2: 4× SDR's
-  white), made from the picture by `wallpaper-hdr` (points that stand
+  many stops brighter each point is (0 to `MAX_STOPS`, 1.25: about 2.4×
+  SDR's white; 2 was too much behind windows), made from the picture by `wallpaper-hdr` (points that stand
   out from what's around them, light sources, LEDs, the moon, glints,
   shine most; near-white glows some; large bright surfaces stay at SDR's
   white or within a quarter stop, so nothing glares). 7.5 MB for all 56,

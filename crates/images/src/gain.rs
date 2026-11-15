@@ -20,9 +20,13 @@ use std::path::{Path, PathBuf};
 
 use image::{GrayImage, RgbaImage};
 
-/// The most a gain map brightens: two stops, 4× SDR's white (on the
-/// ThinkPad's OLED at 400 cd/m² for SDR, its 1,600 cd/m² peak).
-pub const MAX_STOPS: f32 = 2.0;
+/// The most a gain map brightens: one and a quarter stops, about 2.4×
+/// SDR's white (on the ThinkPad's OLED at 400 cd/m² for SDR, about 950
+/// cd/m²). Two (4×, its 1,600 cd/m² peak) was too much to sit behind
+/// windows (Ben, 2026-11-15: "the hdr gain needs to be a little more
+/// subtle"). The maps hold each point's share of it, so this alone sets
+/// how strongly every wallpaper shines.
+pub const MAX_STOPS: f32 = 1.25;
 
 /// Where `picture`'s gain map is kept: beside it, `NAME.gain.png`.
 pub fn path_for(picture: &Path) -> PathBuf {
@@ -191,12 +195,12 @@ mod tests {
     }
 
     #[test]
-    fn applied_white_is_sdr_white_and_full_gain_four_times_it() {
+    fn applied_white_is_sdr_white_and_full_gain_max_stops_more() {
         let px = [255u8, 255, 255, 255, 255, 255, 255, 255];
         let out = apply(&px, &[0, 255]);
         let f = |i: usize| half::f16::from_bits(out[i]).to_f32();
         assert!((f(0) - 1.0).abs() < 1e-3 && (f(3) - 1.0).abs() < 1e-3);
-        assert!((f(4) - 4.0).abs() < 1e-2, "{}", f(4));
+        assert!((f(4) - 2f32.powf(MAX_STOPS)).abs() < 1e-2, "{}", f(4));
         // A mid grey is gamma 2.2's light.
         let g = apply(&[128, 128, 128, 255], &[0]);
         assert!((half::f16::from_bits(g[0]).to_f32() - (128.0f32 / 255.0).powf(2.2)).abs() < 1e-3);

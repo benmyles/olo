@@ -45,12 +45,15 @@ use tracing::{info, warn};
 use crate::state::{AnvilState, Backend};
 
 /// What an output should show: this file at this physical size, in HDR
-/// with this gain map (a display in HDR, a picture that has one).
+/// with this gain map (a display in HDR, a picture that has one), or
+/// repeated across it as a tile this many device pixels on a side (a
+/// desktop pattern: its points at the display's scale).
 #[derive(Debug, Clone, PartialEq)]
 struct Key {
     path: PathBuf,
     size: (u32, u32),
     gain: Option<PathBuf>,
+    tile: Option<u32>,
 }
 
 /// Kept in each output's user data.
@@ -75,6 +78,8 @@ struct Asked {
     size: Option<(u32, u32)>,
     dark: bool,
     hdr: bool,
+    /// (A tile's size follows it; the display's pixels needn't change.)
+    scale: f64,
 }
 
 /// A picture cut across into strips of about `STRIP_BYTES`, each a texture
@@ -219,9 +224,31 @@ fn load(path: &Path, (w, h): (u32, u32)) -> Result<RgbaImage, String> {
     Ok(out)
 }
 
+/// Tile `path` made `side` device pixels square (once, filtered) and
+/// repeated across `size` from its top left, as a desktop pattern is.
+fn load_tile(path: &Path, side: u32, (w, h): (u32, u32)) -> Result<RgbaImage, String> {
+    let tile = load(path, (side.max(1), side.max(1)))?;
+    let side = tile.width() as usize;
+    let mut out = RgbaImage::new(w, h);
+    let (row_bytes, tile_bytes) = (w as usize * 4, side * 4);
+    let src = tile.as_raw();
+    let dst: &mut [u8] = &mut out;
+    for y in 0..h as usize {
+        let from = &src[(y % side) * tile_bytes..(y % side + 1) * tile_bytes];
+        let row = &mut dst[y * row_bytes..(y + 1) * row_bytes];
+        for chunk in row.chunks_mut(tile_bytes) {
+            chunk.copy_from_slice(&from[..chunk.len()]);
+        }
+    }
+    Ok(out)
+}
+
 /// The picture `key` asks for: in HDR when it has a gain map (a picture
-/// whose map can't be read is shown in SDR).
+/// whose map can't be read is shown in SDR); a tile repeated.
 fn load_picture(key: &Key) -> Result<Picture, String> {
+    if let Some(side) = key.tile {
+        return load_tile(&key.path, side, key.size).map(Picture::Sdr);
+    }
     let img = load(&key.path, key.size)?;
     let Some(gain) = &key.gain else { return Ok(Picture::Sdr(img)) };
     let source = image::image_dimensions(&key.path).map_err(|e| e.to_string())?;
@@ -300,15 +327,19 @@ impl<B: Backend + 'static> AnvilState<B> {
         let dark = self.settings.appearance.effective_theme == olo_theme::ThemeMode::Dark;
         let hdr = matches!(crate::color::drawing(output), crate::color::Drawing::Hdr { .. });
         let (setting, size) = (self.settings.wallpaper.as_deref(), physical_size(output));
+        let scale = output.current_scale().fractional_scale();
         let mut slot = slot(output).lock().unwrap();
-        if slot.asked.as_ref().is_some_and(|a| a.setting.as_deref() == setting && a.size == size && a.dark == dark && a.hdr == hdr) {
+        if slot.asked.as_ref().is_some_and(|a| a.setting.as_deref() == setting && a.size == size && a.dark == dark && a.hdr == hdr && a.scale == scale) {
             return;
         }
-        let asked = Asked { setting: setting.map(str::to_owned), size, dark, hdr };
+        let asked = Asked { setting: setting.map(str::to_owned), size, dark, hdr, scale };
         let want = setting.zip(size).and_then(|(setting, size)| {
             let path = olo_xdg::wallpapers::resolve(setting, size, dark)?;
-            let gain = if hdr { olo_images::gain::find(&path) } else { None };
-            Some(Key { path, size, gain })
+            // (A tile at its points on this display: its size follows the
+            // scale, as everything else drawn in points does.)
+            let tile = olo_xdg::wallpapers::tile(setting).map(|points| (points as f64 * scale).round().max(1.0) as u32);
+            let gain = if hdr && tile.is_none() { olo_images::gain::find(&path) } else { None };
+            Some(Key { path, size, gain, tile })
         });
         slot.asked = Some(asked);
         if slot.wanted == want {
@@ -398,7 +429,7 @@ mod tests {
         let path = dir.join("blueberry-oxygen-dark.png");
         let size = (3200, 2000);
         for gain in [None, olo_images::gain::find(&path)] {
-            let key = Key { path: path.clone(), size, gain: gain.clone() };
+            let key = Key { path: path.clone(), size, gain: gain.clone(), tile: None };
             let mut times = Vec::new();
             let mut bytes = 0;
             for _ in 0..5 {

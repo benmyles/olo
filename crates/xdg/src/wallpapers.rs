@@ -1,6 +1,8 @@
 //! The wallpaper pack (data/wallpapers): pictures in a 16:9 (4K) and a
-//! 21:9 (ultrawide) version, some with a dark-mode version. The setting
-//! names one as `pack:NAME`; anything else is a file of the person's own.
+//! 21:9 (ultrawide) version, some with a dark-mode version, and tiles
+//! (`tiles/NAME.png`: a desktop pattern, repeated across the screen at
+//! its size in points, `Wallpaper::tile`). The setting names one as
+//! `pack:NAME`; anything else is a file of the person's own.
 
 use std::path::{Path, PathBuf};
 
@@ -8,7 +10,7 @@ use std::path::{Path, PathBuf};
 pub const PACK: &str = "pack:";
 
 /// One of the pack's pictures.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Wallpaper {
     pub name: String,
     /// For people: "Dusk".
@@ -17,6 +19,10 @@ pub struct Wallpaper {
     pub collection: String,
     /// It has a version for dark mode.
     pub dark: bool,
+    /// A tile (a desktop pattern): repeated across the screen, this many
+    /// points on a side (as it was on its system's screen); its file is
+    /// `tiles/NAME.png`, drawn larger than that so it's sharp at any scale.
+    pub tile: Option<f32>,
 }
 
 impl Wallpaper {
@@ -44,9 +50,10 @@ pub(crate) fn parse(text: &str, dir: &Path) -> Vec<Wallpaper> {
         .filter_map(|l| {
             let mut parts = l.split('|').map(str::trim);
             let (name, label) = (parts.next()?, parts.next()?);
-            let collection = parts.next().unwrap_or("Olo");
-            let dark = dir.join("4k").join(format!("{name}-dark.png")).is_file();
-            Some(Wallpaper { name: name.to_owned(), label: label.to_owned(), collection: collection.to_owned(), dark })
+            let collection = parts.next().filter(|c| !c.is_empty()).unwrap_or("Olo");
+            let tile = parts.find_map(|p| p.strip_prefix("tile:")).and_then(|n| n.parse::<f32>().ok()).filter(|n| *n > 0.0);
+            let dark = ["png", "jpg"].iter().any(|x| dir.join("4k").join(format!("{name}-dark.{x}")).is_file());
+            Some(Wallpaper { name: name.to_owned(), label: label.to_owned(), collection: collection.to_owned(), dark, tile })
         })
         .collect()
 }
@@ -85,7 +92,7 @@ pub fn moved(setting: &str) -> Option<String> {
 
 fn moved_in(dir: &Path, setting: &str) -> Option<String> {
     let name = setting.trim().strip_prefix(PACK)?;
-    let here = |n: &str| dir.join("4k").join(format!("{n}.png")).is_file();
+    let here = |n: &str| ["4k/{n}.png", "4k/{n}.jpg", "tiles/{n}.png"].iter().any(|f| dir.join(f.replace("{n}", n)).is_file());
     if here(name) {
         return None;
     }
@@ -96,10 +103,24 @@ fn moved_in(dir: &Path, setting: &str) -> Option<String> {
 /// [`resolve`] for a pack setting, the pack in `dir`.
 fn resolve_in(dir: &Path, setting: &str, size: (u32, u32), dark: bool) -> Option<PathBuf> {
     let name = setting.strip_prefix(PACK)?;
+    let tile = dir.join("tiles").join(format!("{name}.png"));
+    if tile.is_file() {
+        return Some(tile);
+    }
     let shape = if size.0 as f64 >= size.1.max(1) as f64 * ULTRAWIDE { "ultrawide" } else { "4k" };
-    let file = |n: &str| Some(dir.join(shape).join(format!("{n}.png"))).filter(|p| p.is_file());
+    // (A PNG or, for the retro collections, a JPEG; one with no ultrawide
+    // version is its 4K one, cropped to the screen as it's shown.)
+    let in_dir = |sub: &str, n: &str| ["png", "jpg"].into_iter().map(|x| dir.join(sub).join(format!("{n}.{x}"))).find(|p| p.is_file());
+    let file = |n: &str| in_dir(shape, n).or_else(|| in_dir("4k", n));
     let pick = |name: &str| dark.then(|| file(&format!("{name}-dark"))).flatten().or_else(|| file(name));
     pick(name).or_else(|| pick(crate::themes::resolve(name).wallpaper))
+}
+
+/// How many points on a side the tile `setting` names is drawn, if it's
+/// one of the pack's tiles (`Wallpaper::tile`).
+pub fn tile(setting: &str) -> Option<f32> {
+    let name = setting.trim().strip_prefix(PACK)?;
+    pack().into_iter().find(|w| w.name == name)?.tile
 }
 
 /// `picture` has an HDR version (its gain map beside it,
@@ -129,8 +150,20 @@ mod tests {
                 std::fs::write(dir.join(d).join(format!("{n}.png")), "png").unwrap();
             }
         }
-        let pack = parse("# comment\ndusk|Dusk|Mac OS 9\nblue|Blue\n", &dir);
-        assert_eq!(pack.iter().map(|w| (w.name.as_str(), w.label.as_str(), w.collection.as_str(), w.dark)).collect::<Vec<_>>(), [("dusk", "Dusk", "Mac OS 9", true), ("blue", "Blue", "Olo", false)]);
+        let pack = parse("# comment\ndusk|Dusk|Mac OS 9\nblue|Blue\nweave|Weave|Mac OS 9|tile:64\n", &dir);
+        assert_eq!(
+            pack.iter().map(|w| (w.name.as_str(), w.label.as_str(), w.collection.as_str(), w.dark, w.tile)).collect::<Vec<_>>(),
+            [("dusk", "Dusk", "Mac OS 9", true, None), ("blue", "Blue", "Olo", false, None), ("weave", "Weave", "Mac OS 9", false, Some(64.0))]
+        );
+        // A tile is its file in tiles/, at any size, light or dark.
+        std::fs::create_dir_all(dir.join("tiles")).unwrap();
+        std::fs::write(dir.join("tiles/weave.png"), "png").unwrap();
+        assert_eq!(resolve_in(&dir, "pack:weave", (300, 100), true), Some(dir.join("tiles/weave.png")));
+        assert_eq!(moved_in(&dir, "pack:weave"), None);
+        // A JPEG with no ultrawide version: its 4K one on any screen.
+        std::fs::write(dir.join("4k/boing.jpg"), "jpg").unwrap();
+        assert_eq!(resolve_in(&dir, "pack:boing", (300, 100), false), Some(dir.join("4k/boing.jpg")));
+        assert_eq!(moved_in(&dir, "pack:boing"), None);
         assert_eq!(pack[0].setting(), "pack:dusk");
         assert_eq!(resolve("/x/mine.jpg", (100, 100), true), Some(PathBuf::from("/x/mine.jpg")));
         assert_eq!(resolve("  ", (100, 100), true), None);

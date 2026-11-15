@@ -24,6 +24,115 @@ tangerine-melt|Tangerine Melt|Mac OS 9
 tub|Tub|Mac OS 9
 ufo-1|UFO 1|Mac OS 9
 ufo-2|UFO 2|Mac OS 9
+amiga-boing-blue|Boing Blue|AmigaOS 3.9
+amiga-boing-gray|Boing Gray|AmigaOS 3.9
+amiga-boing-green|Boing Green|AmigaOS 3.9
+amiga-boing-orange|Boing Orange|AmigaOS 3.9
+amiga-boing-purple|Boing Purple|AmigaOS 3.9
+amiga-boing-red|Boing Red|AmigaOS 3.9
+amiga-boing-teal|Boing Teal|AmigaOS 3.9
+amiga-boing-yellow|Boing Yellow|AmigaOS 3.9
+amiga-coming-soon|Coming Soon|AmigaOS 3.9
+amiga-get-it|Get It|AmigaOS 3.9
+amiga-eclipse|Eclipse|AmigaOS 3.9
+amiga-flare-blue|Flare Blue|AmigaOS 3.9
+amiga-flare-green|Flare Green|AmigaOS 3.9
+amiga-flare-orange|Flare Orange|AmigaOS 3.9
+amiga-flare-purple|Flare Purple|AmigaOS 3.9
+amiga-fresh-green|Fresh Green|AmigaOS 3.9
+amiga-fresh-yellow|Fresh Yellow|AmigaOS 3.9
+amiga-simplify|Simplify|AmigaOS 3.9
+amiga-slogan-blue|Slogan Blue|AmigaOS 3.9
+amiga-slogan-gray|Slogan Gray|AmigaOS 3.9
+amiga-slogan-green|Slogan Green|AmigaOS 3.9
+amiga-slogan-red|Slogan Red|AmigaOS 3.9
+amiga-starfield|Starfield|AmigaOS 3.9
+amiga-stoffa|Stoffa|AmigaOS 3.9
+amiga-supersonic-blue|Supersonic Blue|AmigaOS 3.9
+amiga-supersonic-red|Supersonic Red|AmigaOS 3.9
+amiga-supersonic-teal|Supersonic Teal|AmigaOS 3.9
+amiga-flames|Flames|AmigaOS 3.9
+amiga-tunnel|Tunnel|AmigaOS 3.9
+amiga-twirladelic|Twirladelic|AmigaOS 3.9
+amiga-pattern-amiga-waves|Amiga Waves|AmigaOS 3.9 Patterns|tile:100
+amiga-pattern-amiga-waves-colored|Amiga Waves Colored|AmigaOS 3.9 Patterns|tile:100
+amiga-pattern-fire|Fire|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-leaves|Leaves|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-light|Light|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-water|Water|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-boing-amiga|Boing Amiga|AmigaOS 3.9 Patterns|tile:100
+amiga-pattern-boing-amiga-world|Boing Amiga World|AmigaOS 3.9 Patterns|tile:100
+amiga-pattern-boing-amiga-world-glow|Boing Amiga World Glow|AmigaOS 3.9 Patterns|tile:100
+amiga-pattern-boing-chess|Boing Chess|AmigaOS 3.9 Patterns|tile:100
+amiga-pattern-boing-fog|Boing Fog|AmigaOS 3.9 Patterns|tile:100
+amiga-pattern-boing-in-a-row|Boing In A Row|AmigaOS 3.9 Patterns|tile:100
+amiga-pattern-boing-techno|Boing Techno|AmigaOS 3.9 Patterns|tile:100
+amiga-pattern-boing-techno-stripes|Boing Techno Stripes|AmigaOS 3.9 Patterns|tile:100
+amiga-pattern-boing-tornado|Boing Tornado|AmigaOS 3.9 Patterns|tile:100
+amiga-pattern-boing-world|Boing World|AmigaOS 3.9 Patterns|tile:100
+amiga-pattern-boing-world-sand|Boing World Sand|AmigaOS 3.9 Patterns|tile:100
+amiga-pattern-boing-world-waves|Boing World Waves|AmigaOS 3.9 Patterns|tile:100
+amiga-pattern-christmas-landscape|Christmas Landscape|AmigaOS 3.9 Patterns|tile:800
+amiga-pattern-christmas-santa-claus|Christmas Santa Claus|AmigaOS 3.9 Patterns|tile:400
+amiga-pattern-christmas-pattern-1|Christmas Pattern 1|AmigaOS 3.9 Patterns|tile:120
+amiga-pattern-christmas-pattern-2|Christmas Pattern 2|AmigaOS 3.9 Patterns|tile:148
+amiga-pattern-christmas-pattern-3|Christmas Pattern 3|AmigaOS 3.9 Patterns|tile:200
+amiga-pattern-christmas-pattern-4|Christmas Pattern 4|AmigaOS 3.9 Patterns|tile:148
+amiga-pattern-pebble-blue|Pebble Blue|AmigaOS 3.9 Patterns|tile:32
+amiga-pattern-pebble-gray|Pebble Gray|AmigaOS 3.9 Patterns|tile:32
+amiga-pattern-pebble-green|Pebble Green|AmigaOS 3.9 Patterns|tile:32
+amiga-pattern-pebble-orange|Pebble Orange|AmigaOS 3.9 Patterns|tile:32
+amiga-pattern-pebble-purple|Pebble Purple|AmigaOS 3.9 Patterns|tile:32
+amiga-pattern-pebble-teal|Pebble Teal|AmigaOS 3.9 Patterns|tile:32
+amiga-pattern-pipes-blue|Pipes Blue|AmigaOS 3.9 Patterns|tile:16
+amiga-pattern-pipes-green|Pipes Green|AmigaOS 3.9 Patterns|tile:16
+amiga-pattern-pipes-ice|Pipes Ice|AmigaOS 3.9 Patterns|tile:16
+amiga-pattern-pipes-purple|Pipes Purple|AmigaOS 3.9 Patterns|tile:16
+amiga-pattern-pipes-red|Pipes Red|AmigaOS 3.9 Patterns|tile:16
+amiga-pattern-pipes-sunny|Pipes Sunny|AmigaOS 3.9 Patterns|tile:16
+amiga-pattern-stripes-blue|Stripes Blue|AmigaOS 3.9 Patterns|tile:16
+amiga-pattern-stripes-green|Stripes Green|AmigaOS 3.9 Patterns|tile:16
+amiga-pattern-stripes-purple|Stripes Purple|AmigaOS 3.9 Patterns|tile:16
+amiga-pattern-stripes-sandy|Stripes Sandy|AmigaOS 3.9 Patterns|tile:16
+amiga-pattern-stripes-teal|Stripes Teal|AmigaOS 3.9 Patterns|tile:16
+amiga-pattern-hypno-blue|Hypno Blue|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-hypno-gray|Hypno Gray|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-hypno-green|Hypno Green|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-hypno-orange|Hypno Orange|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-hypno-purple|Hypno Purple|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-paisly-blue|Paisly Blue|AmigaOS 3.9 Patterns|tile:64
+amiga-pattern-paisly-green|Paisly Green|AmigaOS 3.9 Patterns|tile:64
+amiga-pattern-paisly-orange|Paisly Orange|AmigaOS 3.9 Patterns|tile:64
+amiga-pattern-paisly-purple|Paisly Purple|AmigaOS 3.9 Patterns|tile:64
+amiga-pattern-ripples-blue|Ripples Blue|AmigaOS 3.9 Patterns|tile:64
+amiga-pattern-ripples-gray|Ripples Gray|AmigaOS 3.9 Patterns|tile:64
+amiga-pattern-ripples-green|Ripples Green|AmigaOS 3.9 Patterns|tile:64
+amiga-pattern-ripples-orange|Ripples Orange|AmigaOS 3.9 Patterns|tile:64
+amiga-pattern-ripples-silver|Ripples Silver|AmigaOS 3.9 Patterns|tile:64
+amiga-pattern-amiga-diagonal-pixel|Amiga Diagonal (Pixel)|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-amiga-the-wave-pixel|Amiga The Wave (Pixel)|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-boing-amiga-pixel|Boing Amiga (Pixel)|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-boing-amiga-grainy-pixel|Boing Amiga Grainy (Pixel)|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-boing-engraved-pixel|Boing Engraved (Pixel)|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-boing-exploding-pixel|Boing Exploding (Pixel)|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-boing-ghost-pixel|Boing Ghost (Pixel)|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-boing-hurricane-pixel|Boing Hurricane (Pixel)|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-boing-in-the-blue-pixel|Boing In The Blue (Pixel)|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-boing-in-the-rain-pixel|Boing In The Rain (Pixel)|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-boing-ion-storm-pixel|Boing Ion Storm (Pixel)|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-boing-light-blue-pixel|Boing Light Blue (Pixel)|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-boing-on-the-wall-pixel|Boing On The Wall (Pixel)|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-boing-only-pixel|Boing Only (Pixel)|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-boing-powered-all-over-pixel|Boing Powered All Over (Pixel)|AmigaOS 3.9 Patterns|tile:128
+amiga-pattern-boing-amiga-again-pixel|Boing Amiga Again (Pixel)|AmigaOS 3.9 Patterns|tile:64
+amiga-pattern-boing-blue-pixel|Boing Blue (Pixel)|AmigaOS 3.9 Patterns|tile:64
+amiga-pattern-boing-dirty-pixel|Boing Dirty (Pixel)|AmigaOS 3.9 Patterns|tile:64
+amiga-pattern-boing-fire-pixel|Boing Fire (Pixel)|AmigaOS 3.9 Patterns|tile:64
+amiga-pattern-boing-football-pixel|Boing Football (Pixel)|AmigaOS 3.9 Patterns|tile:64
+amiga-pattern-boing-psychedelic-pixel|Boing Psychedelic (Pixel)|AmigaOS 3.9 Patterns|tile:64
+amiga-pattern-boing-smooth-pixel|Boing Smooth (Pixel)|AmigaOS 3.9 Patterns|tile:64
+amiga-pattern-boing-stoned-pixel|Boing Stoned (Pixel)|AmigaOS 3.9 Patterns|tile:64
+amiga-pattern-boing-wall-pixel|Boing Wall (Pixel)|AmigaOS 3.9 Patterns|tile:64
 dusk-gradient|Dusk|Olo
 boing|Boing|Olo
 be-blue|Be Blue|Olo
