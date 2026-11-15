@@ -43,11 +43,11 @@ impl Events {
                 came.extend(plain);
                 while let Some((first, head, body, used)) = request(&came) {
                     came.drain(..used);
-                    if let Some(said) = pl::read(&body) {
-                        // (Its player's news comes wrapped: a list inside a list.)
-                        let inner = pl::at(&said, &["params", "data"]).and_then(Value::as_data).and_then(pl::read);
-                        heard(Event::Said(inner.unwrap_or(said)));
-                    }
+                    // Answered before it's acted on: what it said may end
+                    // the session ("stopped"), and the one watching may then
+                    // close this channel before an answer written after it
+                    // went out (and a receiver kept waiting on what we do
+                    // with its news has no reason to be).
                     let protocol = first.split(' ').nth(2).unwrap_or("RTSP/1.0");
                     let mut reply = format!("{protocol} 200 OK\r\nContent-Length: 0\r\nAudio-Latency: 0");
                     for name in ["server", "cseq"] {
@@ -58,6 +58,11 @@ impl Events {
                     reply.push_str("\r\n\r\n");
                     if ours.write_all(&cipher.seal(reply.as_bytes())).is_err() {
                         break 'reading;
+                    }
+                    if let Some(said) = pl::read(&body) {
+                        // (Its player's news comes wrapped: a list inside a list.)
+                        let inner = pl::at(&said, &["params", "data"]).and_then(Value::as_data).and_then(pl::read);
+                        heard(Event::Said(inner.unwrap_or(said)));
                     }
                 }
             }

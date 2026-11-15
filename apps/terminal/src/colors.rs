@@ -157,7 +157,8 @@ mod tests {
         let s = Scheme::from(&t);
         assert_eq!((s.name.as_str(), s.background), ("Platinum Dark", rgb(t.background)));
         assert_eq!(s.ansi, t.ansi.map(rgb));
-        assert_eq!(Scheme::light().background, Rgb { r: 0xfb, g: 0xfa, b: 0xf6 });
+        // (BeOS light's ground white, as R5's Terminal.)
+        assert_eq!(Scheme::light().background, Rgb { r: 0xff, g: 0xff, b: 0xff });
     }
 
     #[test]
