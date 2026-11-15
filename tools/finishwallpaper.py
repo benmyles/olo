@@ -7,6 +7,10 @@ bluriness in places … figure out how to make them all perfect".
                                               base: stair-steps under a pixel), flat areas as they are
   finishwallpaper.py photo IN.png OUT.png     a photograph: the model's from a 1920-wide base
   finishwallpaper.py tile IN.png OUT.png      a small tile: its 3x3 mosaic 4x, the middle cut out
+  finishwallpaper.py match ORIGINAL IN OUT    IN's colours set back to ORIGINAL's (each YCbCr
+                                              channel's mean and spread): the image model
+                                              widening a picture brightened it and spread its
+                                              colours 10–26%
   finishwallpaper.py batch LIST               lines "picture|photo|tile<TAB>IN<TAB>OUT", one model load
 
 Each is supersampled (made at 4x, brought down) and quantised to 8 bits
@@ -131,8 +135,38 @@ def tile(src, out):
     Image.fromarray(quantise(mid)).save(out)
 
 
+def ycc(rgb):
+    """RGB (floats) to YCbCr, JPEG's full range (PIL's)."""
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    return np.stack([0.299 * r + 0.587 * g + 0.114 * b, 128 - 0.168736 * r - 0.331264 * g + 0.5 * b, 128 + 0.5 * r - 0.418688 * g - 0.081312 * b], -1)
+
+
+def rgb_of(y):
+    Y, cb, cr = y[..., 0], y[..., 1] - 128, y[..., 2] - 128
+    return np.stack([Y + 1.402 * cr, Y - 0.344136 * cb - 0.714136 * cr, Y + 1.772 * cb], -1)
+
+
+def match(original, src, out):
+    """`src`'s colours as `original`'s: each YCbCr channel's mean and
+    standard deviation set to the original's (its detail, and what the
+    model drew beyond the original's edges, kept; only the overall
+    brightness and colourfulness go back). In floats, quantised once
+    with the fine dither, so gradients don't band."""
+    o = ycc(np.asarray(Image.open(original).convert("RGB"), dtype=np.float32))
+    im = ycc(np.asarray(Image.open(src).convert("RGB"), dtype=np.float32))
+    for c in range(3):
+        mo, so = o[..., c].mean(), o[..., c].std()
+        mi, si = im[..., c].mean(), im[..., c].std()
+        im[..., c] = (im[..., c] - mi) * (so / max(si, 1e-3)) + mo
+    Image.fromarray(quantise(rgb_of(im))).save(out)
+
+
 def main():
     t0 = time.time()
+    if sys.argv[1] == "match":
+        match(sys.argv[2], sys.argv[3], sys.argv[4])
+        print(sys.argv[4])
+        return
     if sys.argv[1] == "batch":
         for line in open(sys.argv[2]):
             if not line.strip():

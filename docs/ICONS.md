@@ -231,6 +231,8 @@ in Backgrounds by Collection:
 | Mac OS 9 | The twenty it installed, but Mac OS Background (the Finder's face: too on the nose) | a Mac OS 9 disc image (HFS, read with `machfs`); Blue Dalmatian and Flower Power (only in 9.1's installer) from 512 Pixels' copies |
 | Mac OS 9 Extras, Photos, Nostalgia | The disc's Additional Desktop Pictures (3D, Convergence, Ensemble; photographs; Nostalgia, older pictures) | the 9.2.2 disc's CD Extras |
 | Mac OS 9 Patterns, Large Patterns | Its Additional Desktop Patterns (PICT resources: pixel patterns, decoded) and Large Patterns (JPEG tiles) | the 9.2.2 disc |
+| Mac OS X | Each release's Aqua Blue and Aqua Graphite, redrawn each time (Cheetah's, Jaguar's, Panther's, Tiger's) | the 10.0–10.4 install discs (HFS+; the pictures in `Essentials.pkg`'s or `MediaFiles.pkg`'s `Archive.pax.gz`) |
+| Mac OS X Abstract, Nature, Black & White, Patterns | What each release added: the Abstracts, Flows, Lines and Tiles; Cheetah's and Jaguar's photographs and Tiger's Nature and Plants; Tiger's Black & White; the Ripples tiles (the 128-pixel solid colours left out: Desktop Colour is that) | the same; one of each, a wide-screen original over its 5:4 twin |
 | AmigaOS 3.9 | Its 30 backdrops (1024×768) | the AmigaOS 3.9 CD (ISO 9660) |
 | AmigaOS 3.9 Patterns | Its Workbench patterns (JPEG and IFF ILBM tiles; Pixel64's twins of Pixel128's left out) | the same |
 
@@ -271,6 +273,21 @@ How a picture is made, in two steps, both kept:
    8- and 16-pixel Mac pixel patterns by nearest-neighbour (their
    pixels are the design). Quantised with a fine dither, so deep
    gradients don't band.
+
+Which route a picture takes depends on what it is:
+
+- A wide original (16:10 or wider, 1600 pixels and more: Tiger's 2560 ×
+  1600, the "wide screen" versions) is cropped to 16:9 and finished
+  (step 2) from its own pixels: nothing drawn that wasn't there.
+- A 4:3 or 5:4 original whose composition a crop would cut (an Aqua, an
+  Abstract) is widened by step 1, then finished, then its colours set
+  back to the original's (`finishwallpaper.py match ORIGINAL IN OUT`:
+  each YCbCr channel's mean and spread): the model brightened them and
+  spread their colours 10–26%.
+- A regular pattern or soft field (Mac OS X's Lines and Tiles) is never
+  drawn again by the model, which turned a grid of fine lines wobbly: it
+  is cropped to 16:9 and finished from its native width
+  (`finishwallpaper.py photo|picture IN OUT WIDTH`).
 
 Then `--promote NAME` (`--jpeg` for a collection's picture, `--tile` for
 a tile: `tiles/NAME.png` and a tiled thumbnail), a line in `pack.txt`

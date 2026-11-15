@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Backgrounds: Mac OS X 10.0–10.4's desktop pictures
+
+*04:47* — From the 10.0–10.4 install discs: each release's Aqua Blue and Graphite (here Tiger's), the Abstracts, Flows, Lines and Tiles, the Nature and Plants photographs, Tiger's Black & White, and the Ripples as tiles; 60 at 4K. Wide originals cropped and finished from their own pixels; 4:3 ones widened and their colours set back to the originals'; the Lines and Tiles never redrawn by the model.
+
+![Backgrounds: Mac OS X 10.0–10.4's desktop pictures](2026-11-15/044753-backgrounds-mac-os-x-10-0-10-4-s-desktop-picture.png)
+
 ### Secondary text read easily; dark mode's check boxes outlined
 
 *04:38* — Each pair before (left) and after (right). Notes, file details and status lines were the disabled colour, about 3:1 against the panel; now at least 4.5:1 and still quieter than the text (Classic light and dark, Platinum dark). By night a check box's or radio button's well has a rim lighter than the panel, where its darker rim vanished (Classic, Platinum and BeOS dark; light mode as it was).

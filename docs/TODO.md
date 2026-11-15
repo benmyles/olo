@@ -1454,9 +1454,12 @@ something nobody here has is in "Blocked", with what it waits for.
   stunning"), the HDR gain subtler; the collections now Mac OS 9 (19),
   its CD extras (Extras 26, Photos 34, Nostalgia 21), its Patterns (111)
   and Large Patterns (20), AmigaOS 3.9 (30) and its Patterns (79).
-  BeOS and NeXTSTEP shipped nothing usable. Left: Mac OS X 10.0–10.4's
-  (Aqua, its blue and graphite sets: different from 9's), others
-  (Windows 95–2000's, CDE, IRIX, OS/2), then the colours and icons.
+  BeOS and NeXTSTEP shipped nothing usable. Then Mac OS X 10.0–10.4's
+  (60: each release's Aqua, Abstract 18, Nature 24, Black & White 5,
+  Ripples tiles 5), and the colours (the six looks tried on the README's
+  desktop with Astra: secondary text at 4.5:1, dark mode's check boxes
+  outlined, BeOS light's terminal white). Left: other systems' sets
+  (Windows 95–2000's, CDE, IRIX, OS/2), then every icon per theme.
 
 - **OS Updates: Fedora's packages, for power users** (Ben, 2026-11-14:
   "add a new olo application OS Updates that is a GUI manager for

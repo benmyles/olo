@@ -236,6 +236,66 @@ macos-large-ripple-poppy|Ripple Poppy|Mac OS 9 Large Patterns|tile:256
 macos-large-waves-azul|Waves Azul|Mac OS 9 Large Patterns|tile:256
 macos-large-waves-bondi|Waves Bondi|Mac OS 9 Large Patterns|tile:256
 macos-large-waves-sunny|Waves Sunny|Mac OS 9 Large Patterns|tile:256
+macosx-cheetah-aqua-blue|Cheetah Aqua Blue|Mac OS X
+macosx-cheetah-aqua-graphite|Cheetah Aqua Graphite|Mac OS X
+macosx-jaguar-aqua-blue|Jaguar Aqua Blue|Mac OS X
+macosx-jaguar-aqua-graphite|Jaguar Aqua Graphite|Mac OS X
+macosx-panther-aqua-blue|Panther Aqua Blue|Mac OS X
+macosx-panther-aqua-graphite|Panther Aqua Graphite|Mac OS X
+macosx-tiger-aqua-blue|Tiger Aqua Blue|Mac OS X
+macosx-tiger-aqua-graphite|Tiger Aqua Graphite|Mac OS X
+macosx-abstract-1|Abstract 1|Mac OS X Abstract
+macosx-abstract-2|Abstract 2|Mac OS X Abstract
+macosx-abstract-3|Abstract 3|Mac OS X Abstract
+macosx-abstract-4|Abstract 4|Mac OS X Abstract
+macosx-abstract-5|Abstract 5|Mac OS X Abstract
+macosx-abstract-6|Abstract 6|Mac OS X Abstract
+macosx-abstract-7|Abstract 7|Mac OS X Abstract
+macosx-abstract-8|Abstract 8|Mac OS X Abstract
+macosx-flow-1|Flow 1|Mac OS X Abstract
+macosx-flow-2|Flow 2|Mac OS X Abstract
+macosx-flow-3|Flow 3|Mac OS X Abstract
+macosx-lines-blue|Lines Blue|Mac OS X Abstract
+macosx-lines-graphite|Lines Graphite|Mac OS X Abstract
+macosx-lines-moss|Lines Moss|Mac OS X Abstract
+macosx-lines-plum|Lines Plum|Mac OS X Abstract
+macosx-tiles-blue|Tiles Blue|Mac OS X Abstract
+macosx-tiles-pine|Tiles Pine|Mac OS X Abstract
+macosx-tiles-warm-grey|Tiles Warm Grey|Mac OS X Abstract
+macosx-dew-drop|Dew Drop|Mac OS X Nature
+macosx-ladybug|Ladybug|Mac OS X Nature
+macosx-snowy-hills|Snowy Hills|Mac OS X Nature
+macosx-water|Water|Mac OS X Nature
+macosx-faux-fur|Faux Fur|Mac OS X Nature
+macosx-agave|Agave|Mac OS X Nature
+macosx-clown-fish|Clown Fish|Mac OS X Nature
+macosx-daisies|Daisies|Mac OS X Nature
+macosx-dandelion|Dandelion|Mac OS X Nature
+macosx-dandelion-seeds|Dandelion Seeds|Mac OS X Nature
+macosx-evening-reflections|Evening Reflections|Mac OS X Nature
+macosx-flowing-rock|Flowing Rock|Mac OS X Nature
+macosx-gentle-rapids|Gentle Rapids|Mac OS X Nature
+macosx-leaf-curl|Leaf Curl|Mac OS X Nature
+macosx-lotus|Lotus|Mac OS X Nature
+macosx-maple|Maple|Mac OS X Nature
+macosx-peony|Peony|Mac OS X Nature
+macosx-petals|Petals|Mac OS X Nature
+macosx-purple-frond|Purple Frond|Mac OS X Nature
+macosx-stones|Stones|Mac OS X Nature
+macosx-sweeping-current|Sweeping Current|Mac OS X Nature
+macosx-tiger|Tiger|Mac OS X Nature
+macosx-tranquil-surface|Tranquil Surface|Mac OS X Nature
+macosx-zen-garden|Zen Garden|Mac OS X Nature
+macosx-lightning|Lightning|Mac OS X Black & White
+macosx-mojave|Mojave|Mac OS X Black & White
+macosx-pier|Pier|Mac OS X Black & White
+macosx-sea-mist|Sea Mist|Mac OS X Black & White
+macosx-wave|Wave|Mac OS X Black & White
+macosx-ripples-blue|Ripples Blue|Mac OS X Patterns|tile:320
+macosx-ripples-moss|Ripples Moss|Mac OS X Patterns|tile:320
+macosx-ripples-purple|Ripples Purple|Mac OS X Patterns|tile:320
+macosx-small-ripples|Small Ripples|Mac OS X Patterns|tile:128
+macosx-small-ripples-graphite|Small Ripples Graphite|Mac OS X Patterns|tile:128
 amiga-boing-blue|Boing Blue|AmigaOS 3.9
 amiga-boing-gray|Boing Gray|AmigaOS 3.9
 amiga-boing-green|Boing Green|AmigaOS 3.9
