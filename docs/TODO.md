@@ -1493,8 +1493,9 @@ something nobody here has is in "Blocked", with what it waits for.
   Extract To… as jobs with progress, Stop and Undo, a password asked
   for; Quick Look lists all of them; opening an archive looks into it
   as a folder (folders in it opened in the window, a file opened from
-  Tracker's cache, Extract Selected… and Extract All). Left: offering
-  Passwords' saved password for an archive.
+  Tracker's cache, Extract Selected… and Extract All); Passwords
+  offered for an archive's password (Use Saved Password; Keep It in
+  Passwords once it has worked; Compress As… keeps a new one's).
 
 ## Done, waiting for Ben to try or confirm
 

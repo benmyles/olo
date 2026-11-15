@@ -8498,6 +8498,7 @@ dependencies = [
  "olo-archive",
  "olo-crash",
  "olo-images",
+ "olo-keychain",
  "olo-kit",
  "olo-kit-base",
  "olo-preview",

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Tracker: an archive's password, from Passwords
+
+*09:41* — An archive that wants a password offers Passwords: Use Saved Password reads the one kept for it (a Password item "Archive: NAME", asked only when pressed), Keep It in Passwords keeps the one typed once it has worked, and Compress As… keeps a new archive's password (on by default). The same in the archive's own window.
+
+![Tracker: an archive's password, from Passwords](2026-11-15/094116-tracker-an-archive-s-password-from-passwords.png)
+
 ### Tracker: an archive looked into as a folder
 
 *09:32* — Opening an archive in Tracker (zip, tar, 7-Zip, RAR, ISO, cpio) shows what's in it, a level at a time: folders open in the window (Enclosing Folder comes back out), a file opens with what opens its kind, taken out into Tracker's cache once; Extract Selected… takes what's selected out to a folder chosen, Extract All everything beside the archive. A password, when it has one, is asked for in the window.

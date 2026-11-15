@@ -146,7 +146,11 @@ pub enum ToHub {
         targets: Vec<PathBuf>,
         origin: Option<u64>,
         password: Option<String>,
+        /// Keep the password in Passwords once the job has worked.
+        keep: bool,
     },
+    /// Something to tell the person, from a worker.
+    Said(String),
     /// A window to another display has its copy there: it goes here.
     Gone(u64),
     Quit,
@@ -504,6 +508,8 @@ struct Hub {
     history: undo::History<undo::Change>,
     recording: HashMap<u64, (String, undo::Purpose)>,
     status: Option<WindowHandle<StatusWin>>,
+    /// Passwords to keep in Passwords once their job has worked, by job.
+    keep_password: HashMap<u64, String>,
     go_to: Option<WindowHandle<goto::GoToWin>>,
     /// Long jobs say when they're done; Show opens where the items went.
     notes: Notifier,
@@ -976,6 +982,22 @@ impl Hub {
                 self.note_dirs.insert(n, d);
             }
         }
+        // A password that worked, kept in Passwords as asked: the archive
+        // made, or each one extracted.
+        if let Some(pw) = self.keep_password.remove(&id)
+            && outcome.error.is_none()
+            && !outcome.cancelled
+            && outcome.needs_password.is_none()
+        {
+            let archives = if matches!(job.kind, ops::Kind::Compress(_)) { outcome.created.clone() } else { job.sources.clone() };
+            std::thread::spawn(move || {
+                for a in archives {
+                    if let Err(e) = archives::keep_password(&a, &pw) {
+                        to_hub(ToHub::Said(format!("The password of “{}” couldn’t be kept: {e}", a.file_name().unwrap_or_default().to_string_lossy())));
+                    }
+                }
+            });
+        }
         // An archive wants its password: asked for, then done again.
         if let Some(wrong) = outcome.needs_password {
             archives::AskPassword::open(archives::Again { kind: job.kind, sources: job.sources.clone(), dest: job.dest.clone(), origin }, wrong);
@@ -1078,10 +1100,14 @@ impl Hub {
                 let options = archive_win::options(&path);
                 olo_kit::open_window(options, move |cx| archive_win::ArchiveWin::new(path, cx));
             }
-            ToHub::ArchiveJob { kind, sources, dest, targets, origin, password } => {
+            ToHub::ArchiveJob { kind, sources, dest, targets, origin, password, keep } => {
                 let record = Some((undo::name_of(kind).to_owned(), undo::Purpose::Do));
+                if keep && let Some(pw) = &password {
+                    self.keep_password.insert(self.next_job, pw.clone());
+                }
                 self.run_job_with(kind, sources, dest, targets, origin, record, password);
             }
+            ToHub::Said(message) => error(message),
             ToHub::Done(name, change) => self.done(&name, change),
             ToHub::UndoRedo(redo, origin) => self.undo_redo(redo, origin),
             ToHub::Hidden => {
@@ -1219,6 +1245,7 @@ fn main() {
             recording: HashMap::new(),
             status: None,
             go_to: None,
+            keep_password: HashMap::new(),
             notes: Notifier::new(olo_kit::proxy(), "Tracker", "olo-tracker"),
             note_dirs: HashMap::new(),
             watcher,

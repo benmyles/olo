@@ -14601,7 +14601,18 @@ Name, Format, Protect it with a password, which only Zip and 7-Zip
 take) names it and chooses. An archive wanting a password brings up a
 dialog asking for it (the job's `Outcome::needs_password`; "That
 password isn't right. Try again:" when it was wrong), and the job runs
-again with it (`ToHub::ArchiveJob`). Commands, for agents and the
+again with it (`ToHub::ArchiveJob`). Passwords is offered there: Use
+Saved Password reads the one Passwords keeps for that archive (a
+Password item titled "Archive: NAME", `archives::saved_password`,
+`Request::Secrets`: asked only when pressed, as it may bring Passwords
+up to be unlocked), and Keep It in Passwords keeps the one typed
+(`Request::KeepSecret`) once the job has worked (the hub's
+`keep_password`, by job: never a wrong one); Compress As… keeps a new
+archive's password, on by default (an archive's password is easy to
+lose). The archive's own window offers both too. Tested with a
+stand-in for Passwords on a socket of the test's own
+(`OLO_KEYCHAIN_SOCKET`; `archives::tests`), and in a test session: a
+zip made with a password kept, then extracted with Use Saved Password. Commands, for agents and the
 palette: `compress:zip`, `compress:tar.gz` (any `Format`'s ending),
 `compress-as`, `extract-here`, `extract-to`.
 

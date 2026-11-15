@@ -6,7 +6,9 @@
 //! file in it opens with what opens its kind (taken out into Tracker's
 //! cache first, once). Extract Selected… takes what's selected out into a
 //! folder chosen; Extract All, everything, beside the archive (Tracker's
-//! job). A password, when it has one, is asked for here.
+//! job). A password, when it has one, is asked for here: typed (and
+//! kept in Passwords once it has worked, if asked), or Passwords' kept one
+//! (`archives::saved_password`).
 
 use std::{
     collections::BTreeMap,
@@ -89,6 +91,9 @@ pub enum Msg {
     ExtractTo(PathBuf),
     Extracted(Result<Vec<PathBuf>, String>, bool),
     Progress(f32, String),
+    Keep(bool),
+    UseSaved,
+    Saved(Result<Option<String>, String>),
 }
 
 pub struct ArchiveWin {
@@ -98,6 +103,10 @@ pub struct ArchiveWin {
     password: Option<String>,
     /// It wants a password: none given (false), or the one given wrong.
     wants: Option<bool>,
+    /// Keep the password typed in Passwords once it has worked.
+    keep: bool,
+    /// A typed password not yet kept (kept once it has worked).
+    to_keep: Option<String>,
     field: Child<TextField>,
     dir: PathBuf,
     rows: Rc<Vec<Node>>,
@@ -127,6 +136,8 @@ impl ArchiveWin {
             entries: None,
             password: None,
             wants: None,
+            keep: false,
+            to_keep: None,
             field,
             dir: PathBuf::new(),
             rows: Rc::default(),
@@ -228,6 +239,18 @@ impl ArchiveWin {
         self.extract(vec![n], cache, true, cx);
     }
 
+    /// The password typed has worked: kept in Passwords, if asked.
+    fn keep_worked(&mut self) {
+        if let Some(pw) = self.to_keep.take() {
+            let path = self.path.clone();
+            std::thread::spawn(move || {
+                if let Err(e) = crate::archives::keep_password(&path, &pw) {
+                    to_hub(ToHub::Said(format!("The password of “{}” couldn’t be kept: {e}", path.file_name().unwrap_or_default().to_string_lossy())));
+                }
+            });
+        }
+    }
+
     fn menus(&self) -> Vec<Menu> {
         let any = !self.list.state().selected.is_empty();
         vec![
@@ -259,6 +282,7 @@ impl View for ArchiveWin {
                         self.entries = Some(e);
                         self.wants = None;
                         self.note = None;
+                        self.keep_worked();
                         self.show();
                     }
                     Err(e) if e.is_empty() => {
@@ -286,6 +310,9 @@ impl View for ArchiveWin {
                 if pw.is_empty() {
                     return;
                 }
+                if self.keep {
+                    self.to_keep = Some(pw.clone());
+                }
                 self.password = Some(pw);
                 self.wants = None;
                 if self.entries.is_some() {
@@ -295,7 +322,7 @@ impl View for ArchiveWin {
                 }
             }
             Msg::ExtractAll => {
-                to_hub(ToHub::ArchiveJob { kind: ops::Kind::Extract, sources: vec![self.path.clone()], dest: None, targets: Vec::new(), origin: None, password: self.password.clone() });
+                to_hub(ToHub::ArchiveJob { kind: ops::Kind::Extract, sources: vec![self.path.clone()], dest: None, targets: Vec::new(), origin: None, password: self.password.clone(), keep: false });
             }
             Msg::ExtractTo(into) => {
                 let nodes = self.selected();
@@ -307,6 +334,7 @@ impl View for ArchiveWin {
                 self.busy = None;
                 match r {
                     Ok(made) => {
+                        self.keep_worked();
                         self.note = Some((format!("{} taken out.", if made.len() == 1 { "1 item".to_owned() } else { format!("{} items", made.len()) }), false));
                         to_hub(ToHub::Done("Extract".into(), undo::Change::Made(made)));
                         to_hub(ToHub::ReloadAll);
@@ -318,6 +346,26 @@ impl View for ArchiveWin {
                     Err(e) => self.note = Some((e, true)),
                 }
             }
+            Msg::Keep(on) => self.keep = on,
+            Msg::UseSaved => {
+                let path = self.path.clone();
+                self.note = Some(("Asking Passwords…".into(), false));
+                cx.work(move || crate::archives::saved_password(&path), Msg::Saved);
+            }
+            Msg::Saved(r) => match r {
+                Ok(Some(pw)) => {
+                    self.password = Some(pw);
+                    self.wants = None;
+                    self.note = None;
+                    if self.entries.is_some() {
+                        self.note = Some(("Passwords’ password is used now: try again.".into(), false));
+                    } else {
+                        self.read(cx);
+                    }
+                }
+                Ok(None) => self.note = Some((format!("Passwords keeps no password for it (an item “{}”).", crate::archives::secret_title(&self.path)), true)),
+                Err(e) => self.note = Some((e, true)),
+            },
             Msg::Progress(f, item) => {
                 if let Some(b) = &mut self.busy {
                     *b = (f, item);
@@ -388,14 +436,25 @@ impl View for ArchiveWin {
         }));
         let mut col = div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).child(head);
         if let Some(wrong) = self.wants {
-            col = col.child(StringView::new(if wrong { "That password isn’t right. Try again:".to_owned() } else { format!("“{}” is protected by a password.", self.name) }).wrap(true)).child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(m::SPACING))
-                    .child(div().flex_1().child(TextControl::new(cx, &self.field).label("Password:")))
-                    .child(Button::new("Open").default(true).on_click(cx.msg(Msg::Password))),
-            );
+            col = col
+                .child(StringView::new(if wrong { "That password isn’t right. Try again:".to_owned() } else { format!("“{}” is protected by a password.", self.name) }).wrap(true))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(m::SPACING))
+                        .child(div().flex_1().child(TextControl::new(cx, &self.field).label("Password:")))
+                        .child(Button::new("Open").default(true).on_click(cx.msg(Msg::Password))),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(m::SPACING))
+                        .child(olo_kit::widgets::CheckBox::new("Keep it in Passwords", self.keep).id("keep").on_toggle(cx.msg_with(|on: &bool| Msg::Keep(*on))))
+                        .child(div().flex_1())
+                        .child(Button::new("Use Saved Password").id("use-saved").on_click(cx.msg(Msg::UseSaved))),
+                );
         }
         col = col.child(div().flex_1().min_h_0().child(list));
         let status: Element = match (&self.busy, &self.note) {
