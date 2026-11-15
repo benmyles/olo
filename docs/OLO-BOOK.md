@@ -893,6 +893,11 @@ first: both, either, neither, in one click.
   `choose-kind-N`, `choose-none`), check items by their check box's
   name, and press the button by its words.
 - Each item keeps its own button, to do just that one now.
+- A list too long for a check box an element (OS Updates' hundreds of
+  updates, a `ColumnListView`) paints each in its first column
+  (`check_box_look`), records it for agents (a CheckBox named by its
+  row), and takes the press with `on_press`; pressed on a selected row,
+  it checks or unchecks every selected row.
 
 ```rust
 const NEEDED: Kind = Kind { verb: "Fix", one: "Problem", many: "Problems", by_default: true };
@@ -1127,6 +1132,15 @@ their screen).
 
 **Does it behave right?**
 
+- What it talks to is played by a fake on the test session's own bus,
+  never the real thing: `udisks-fake` (disks), `nm-fake` (the
+  network), `dnf-fake` (packages), each pointed at by its own variable
+  (`OLO_UDISKS_BUS`, `OLO_DNF_BUS`), with what's hard to make happen on
+  purpose (a job cancelled, a key to trust, a mirror failing) part of
+  what it plays. A program that changes the system checks it's in the
+  person's own session at the computer before it does
+  (`olo_system::env::at_the_computer`), so one pointed at the real
+  service by mistake only reads.
 - Drive it as an agent would: the tree (`{"tree":true}` on its
   socket, or `olo-screen tree`), then `tsession click`, `key`, `type`,
   `scroll`. Check what the tree says afterwards, not only the picture.

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### OS Updates: Fedora's packages, chosen and reviewed
+
+*08:55* — A new app, through DNF5's own daemon: every update with its check box (Choose: All · Security Updates · Bug Fixes · Enhancements · Other Updates · None, and Update 20), searched and filtered by kind, severity, repository and chosen, the most pressing first; the selected one's versions, sizes, advisories with their CVEs linked, and its changelog since what's installed. Each change is reviewed before it runs; Repositories, History with Undo and Upgrade Fedora beside it. (Against dnf-fake: made-up updates.)
+
+![OS Updates: Fedora's packages, chosen and reviewed](2026-11-15/085557-os-updates-fedora-s-packages-chosen-and-reviewed.png)
+
 ### Backgrounds: OS/2 Warp 4's
 
 *07:25* — OS/2 Warp 4's backgrounds, from its CD's PACK2 bundles: its eight pictures (Garden, Garden 2, Ocean, Ocean 2 (here), Space, Space 2, Warp 03, Warp 04) redrawn at 4K, and its 35 textures (OS/2 Warp 4 Patterns: Big Blue, Burlap, Gold, Green Marble, Pool, Rice Mat, Wicker, Texture 1–12 …), their dither blurred away before 4x-UltraSharp. Its logos left out. 523 in the pack.

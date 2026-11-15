@@ -8485,6 +8485,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-updates"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "olo-crash",
+ "olo-kit",
+ "olo-kit-base",
+ "olo-net",
+ "olo-system",
+ "olo-theme",
+ "olo-xdg",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tracing",
+ "ureq",
+]
+
+[[package]]
 name = "olo-vaapi"
 version = "0.1.0"
 dependencies = [

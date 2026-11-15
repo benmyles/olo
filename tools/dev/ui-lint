@@ -52,6 +52,9 @@ def apps(home):
         # (Its settings, state and socket in the made-up home, not the person's.)
         ("DiskBackup", ["olo-diskbackup"], {"OLO_DISKBACKUP_DIR": os.path.join(home, ".diskbackup")}, False),
         ("Doctor", ["olo-doctor"], {"OLO_DOCTOR_HELPER": "off"}, False),
+        # (Against dnf-fake on the session's own bus: never the system's
+        # packages. "@session-bus" is that bus, the fake started on it.)
+        ("OS Updates", ["olo-updates"], {"OLO_DNF_BUS": "@session-bus", "OLO_UPDATES_HELPER": "off"}, False),
         ("Logs", ["olo-logs"], {}, False),
         ("Passwords", ["olo-passwords"], {"OLO_PASSWORDS_KEYFILE": os.path.join(home, ".pw-key")}, False),
         ("StyledEdit", ["olo-styled-edit", os.path.join(home, "README.md")], {}, False),
@@ -290,6 +293,7 @@ def lint_one(spec, slot, master, screen, scales, show_review, work):
     fakesound = subprocess.Popen([os.path.join(ROOT, "target/release/olo-fakesound"), pulse], env=dict(os.environ, FAKESOUND_AIRPODS="AA:BB:CC:DD:EE:FF"),
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     lines = []
+    fake = None
     try:
         # (--owner: the session ends with this run, killed or not.)
         # (At 2×, as most screens are; at the first scale asked for when
@@ -298,6 +302,19 @@ def lint_one(spec, slot, master, screen, scales, show_review, work):
         # it stayed that cramped at 1×.)
         first = "2" if 2 in scales else f"{scales[0]:g}"
         sh("start", name, screen, "--light", "--scale", first, "--home", home, "--owner", str(os.getpid()), check=True)
+        if "@session-bus" in env.values():
+            bus = f"unix:path={BASE}/{name}/bus"
+            env = {k: (bus if v == "@session-bus" else v) for k, v in env.items()}
+            fake = subprocess.Popen([os.path.join(ROOT, "target/release/dnf-fake"), "--address", bus], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # (On the bus before the app asks for it.)
+            try:
+                import dbus
+                b = dbus.bus.BusConnection(bus)
+                end = time.time() + 5
+                while time.time() < end and not b.name_has_owner("org.rpm.dnf.v0"):
+                    time.sleep(0.05)
+            except Exception:
+                time.sleep(0.5)
         sh("run", name, f"HOME={home}", f"PULSE_SERVER=unix:{pulse}", "OLO_NO_FINGERPRINT=1", "OLO_ACTIVITY_HELPER=off", "OLO_DOCTOR_HELPER=off", *[f"{k}={v}" for k, v in env.items()], *argv)
         exe = argv[0]
         pid = None
@@ -342,6 +359,8 @@ def lint_one(spec, slot, master, screen, scales, show_review, work):
     finally:
         sh("stop", name)
         fakesound.terminate()
+        if fake:
+            fake.terminate()
         # (Its session folder too: /tmp is memory.)
         subprocess.run(["rm", "-rf", home, os.path.join(BASE, name)])
 

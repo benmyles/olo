@@ -11,8 +11,11 @@
 //! put off until the computer next starts; and Fedora 46 to upgrade to.
 //! Checking again (the cache expired) finds one more update. Downloads
 //! and each package's steps are signalled as the real daemon does, and
-//! a run can be cancelled while it downloads. Point apps at it with
-//! `OLO_DNF_BUS=ADDRESS`.
+//! a run can be cancelled while it downloads. `--repos DIR` adds the
+//! repositories the .repo files in DIR say (and drops them when their
+//! file goes), as /etc/yum.repos.d is read: OS Updates' Add and Remove
+//! Repository write there in tests (`OLO_UPDATES_REPOS_DIR`). Point apps
+//! at it with `OLO_DNF_BUS=ADDRESS`.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -204,6 +207,8 @@ struct Model {
     /// Found by checking again.
     later: Vec<Pkg>,
     checked_again: bool,
+    /// Where .repo files are read from (`--repos`).
+    repos_dir: Option<std::path::PathBuf>,
 }
 
 type Shared = Arc<Mutex<Model>>;
@@ -475,10 +480,64 @@ fn sample() -> Model {
             changes: vec![ch("Upgrade", "expat", "2.9.0-1.fc45", "2.8.3-1.fc45", "updates", "Dependency")],
         },
     ];
-    Model { installed, available, advisories, repos, history, offline: None, trusted, later, checked_again: false }
+    Model { installed, available, advisories, repos, history, offline: None, trusted, later, checked_again: false, repos_dir: None }
 }
 
 impl Model {
+    /// The .repo files in `repos_dir` read again: their repositories
+    /// added, those whose file went dropped.
+    fn read_dir(&mut self) {
+        let Some(dir) = self.repos_dir.clone() else { return };
+        let mut seen = HashSet::new();
+        for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if path.extension().is_none_or(|e| e != "repo") {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else { continue };
+            let file = path.display().to_string();
+            let mut cur: Option<RepoM> = None;
+            let mut found = Vec::new();
+            for line in text.lines().map(str::trim) {
+                if let Some(id) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+                    found.extend(cur.take());
+                    cur = Some(RepoM {
+                        id: id.trim().into(),
+                        name: id.trim().into(),
+                        enabled: true,
+                        baseurl: String::new(),
+                        metalink: String::new(),
+                        gpgkey: Vec::new(),
+                        file: file.clone(),
+                        pkgs: 5,
+                        size: 12_000_000,
+                        priority: 99,
+                    });
+                } else if let (Some(r), Some((k, v))) = (cur.as_mut(), line.split_once('=')) {
+                    let v = v.trim().to_owned();
+                    match k.trim() {
+                        "name" => r.name = v,
+                        "baseurl" => r.baseurl = v,
+                        "metalink" | "mirrorlist" => r.metalink = v,
+                        "enabled" => r.enabled = v != "0",
+                        "gpgkey" => r.gpgkey = vec![v],
+                        _ => {}
+                    }
+                }
+            }
+            found.extend(cur);
+            for r in found {
+                seen.insert(r.id.clone());
+                if !self.repos.iter().any(|x| x.id == r.id) {
+                    self.trusted.insert(r.id.clone());
+                    self.repos.push(r);
+                }
+            }
+        }
+        let dir = dir.display().to_string();
+        self.repos.retain(|r| !r.file.starts_with(&dir) || seen.contains(&r.id));
+    }
+
     fn enabled(&self, repo: &str) -> bool {
         repo == "@commandline" || self.repos.iter().any(|r| r.id == repo && r.enabled)
     }
@@ -730,7 +789,8 @@ impl RepoI {
         let attrs = opt_strs(&options, "repo_attrs");
         let which = opt_str(&options, "enable_disable").unwrap_or_else(|| "enabled".into());
         let patterns = opt_strs(&options, "patterns");
-        let m = lock(&self.0.model);
+        let mut m = lock(&self.0.model);
+        m.read_dir();
         let mut out = Vec::new();
         for r in &m.repos {
             if (which == "enabled" && !r.enabled) || (which == "disabled" && r.enabled) || (!patterns.is_empty() && !patterns.contains(&r.id)) {
@@ -1297,17 +1357,22 @@ impl OfflineI {
 fn main() {
     olo_crash::install();
     let mut address = std::env::var("DBUS_SESSION_BUS_ADDRESS").unwrap_or_default();
+    let mut repos_dir = None;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--address" => address = args.next().expect("--address ADDRESS"),
+            "--repos" => repos_dir = Some(std::path::PathBuf::from(args.next().expect("--repos DIR"))),
             _ => {
-                eprintln!("usage: dnf-fake [--address ADDRESS]");
+                eprintln!("usage: dnf-fake [--address ADDRESS] [--repos DIR]");
                 std::process::exit(2);
             }
         }
     }
-    let model: Shared = Arc::new(Mutex::new(sample()));
+    let mut sample = sample();
+    sample.repos_dir = repos_dir;
+    sample.read_dir();
+    let model: Shared = Arc::new(Mutex::new(sample));
     let conn = match zbus::blocking::connection::Builder::address(address.as_str()).and_then(|b| b.name("org.rpm.dnf.v0")).and_then(|b| b.build()) {
         Ok(c) => c,
         Err(e) => {

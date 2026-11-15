@@ -17771,3 +17771,176 @@ The pointer over the chart: one frame a position, 0.4–0.9 ms a flush,
 only the chart drawn (1 of 102 nodes). Reviewed at 1×, 1.25×, 1.5×,
 1.75× and 2×, light and dark, every tab scrolled through, the dialogs
 too, at its least size and at 1600 × 1000.
+
+## OS Updates (apps/updates, olo_system::dnf, dnf-fake)
+
+Fedora's packages kept up to date, for people who want to see and
+choose everything (Ben, 2026-11-14: "a GUI manager for fedora dnf for
+upgrading to the latest available fedora packages. design it for power
+users where you can drill into all the relevant details and take all
+the actions you might want to take either one thing at a time or all
+at once. also have it support adding/managing 3rd party repos
+everything else that makes sense"). BeOS had no package manager;
+Haiku's SoftwareUpdater updates everything or nothing, and HaikuDepot
+one thing at a time. OS Updates is Mac OS X's Software Update (a check
+box an update, one counted button) with everything dnf knows beside
+it, laid out as Activity Monitor is: its sections down the left
+(Updates, Repositories, History, Upgrade Fedora), each a
+`ColumnListView` with the selected item's details on its right.
+
+**The daemon.** Everything goes through DNF5's own D-Bus daemon
+(`dnf5daemon-server`, `org.rpm.dnf.v0` on the system bus), never dnf
+run as a program: `olo_system::dnf` (blocking; call it from workers).
+A `Session` is a connection of its own (the daemon keeps one session a
+client): `updates()` (the upgrades, the installed package each
+replaces, the newest of several installed: kernels, and their
+advisories by `name.arch`, the most pressing first), `details(nevra)`
+(changelog newest first, from Fedora's `other` metadata, asked for at
+`Session::open`; dependencies), `repos()`, `history(n)`, `offline()`;
+the goal: `upgrade`, `install` (names, NEVRAs or an https .rpm's
+address), `remove`, `downgrade`, `reinstall`, `system_upgrade`, then
+`resolve` (every item: action, reason, package, sizes; problems), then
+`run(offline, comment)`; `hearing(events, f)` hands the session's
+signals (each download's progress, a key to trust, RPM's verify and
+prepare, each package, scriptlet errors) to `events` while `f` runs;
+`cancel` (only while downloading: the daemon can't stop RPM),
+`confirm_key`, `enable`, `cancel_offline`, `offline_then`. The
+daemon refuses an attribute it doesn't know (`excluded_pkgs`), so
+`REPO_ATTRS` is the list it takes; `mirrors(id)` is asked for alone (a
+Fedora repository has a hundred). Read-only against the real daemon,
+from the cache (`cargo test -p olo-system --lib dnf::live --
+--ignored --nocapture`): 517 updates, 167 advisories, 39 repositories,
+7zip resolved in 2 s.
+
+**Never by accident.** Fedora's polkit rule
+(`/usr/share/polkit-1/rules.d/org.rpm.dnf.v0.rules`) lets someone in
+`wheel`, active at the computer, run a transaction of signed packages
+and trust a repository's key **without being asked**. So nothing runs
+without the review (below), and `Session::run` refuses unless the
+daemon is a test's (`OLO_DNF_BUS`) or this program is in the person's
+own session at the computer (`dnf::may_change`, which is
+`olo_system::env::at_the_computer`): a test session or an agent's
+screen talking to the system's daemon reads, and changes nothing. A
+restart is asked of logind only there too.
+
+**Updates.** The search is every Olo list's (`olo_kit::search`):
+words find names, summaries, versions, advisory ids and titles and
+CVE ids; `kind:` (security, bugfix, enhancement, other), `severity:`,
+`repo:` (several), `chosen:yes|no`, each a menu in the filter bar with
+its count. The default order is the most pressing first (security by
+severity, bug fixes, enhancements, the rest), then by name; a column's
+title sorts. Each row's check box is painted in its first column
+(`check_box_look`, recorded for agents as a CheckBox named by the
+package) and pressed through `on_press`; on a selected row it checks or
+unchecks every selected row; a double click does it too. Under the
+list, `olo_kit::chosen`: Choose: All · Security Updates · Bug Fixes ·
+Enhancements · Other Updates · None, and "Update 12", or "Update 9
+Security Updates" (every kind checked to begin with: everything is
+what `dnf upgrade` would do); after a change runs, what was chosen goes
+back to its kinds. The details: versions (installed, and when; the
+update, and when it was built), architecture, repository, download,
+disk space, why it's installed, licence, home page; each advisory
+(Bodhi's page linked, kind and severity, issued, the CVEs and bugs it
+fixes, linked, its text); What Changed: the changelog entries since
+the installed version was built (or the last three); what it needs.
+A row's menu: Update Only, Reinstall, Choose / Don't Choose (these
+rows), Copy Name. Edit ▸ Copy copies the selected updates as "name
+old → new".
+
+**The review** (review.rs, its own window and session): a plan (what
+to mark) is resolved first and shown: the summary ("This will update 7
+packages, install 3 packages and remove 2 packages. It downloads 159.1
+MB and takes 63.0 MB more disk space."), every item (action, package,
+old → new version, each replaced version paired once with its new one,
+the same version first: kernels are installed side by side; from
+where, size, why: chosen, needed, recommended, no longer needed), the
+problems; then Install Now or Install When Restarting (dnf's offline
+transaction: downloaded now, installed as the computer starts). It
+runs on a worker: each download, how far in bytes (half the bar, all
+of it offline), each package as RPM takes it (the other half), a log
+of what went by, Stop while it downloads; a repository's key to trust
+shows its user ids, fingerprint, address and age, with Don't Trust and
+Trust; at the end what was done ("12 packages changed: 7 updated, 3
+installed, 2 removed."), the items still there, and Restart Now when a
+kernel, glibc, systemd, dbus, firmware or a kernel module changed (or
+the transaction waits for the restart). The main window reads again
+when it's done, even if the review was closed (the worker tells it).
+
+**Repositories.** Every repository, on ones first: a check box turns
+one on or off (`Repo.enable_with_options`: the daemon writes it, polkit
+asks), its name, id, packages, when its metadata was made, its file.
+The details: where it's fetched from (base address, metalink, mirror
+list), packages and size, made and fetched, how often it's checked,
+whether signatures are checked (each package's; its metadata's), its
+keys (linked), priority, cost, what happens if it's down, what it
+leaves out or keeps to, proxy, its file, and the package it came with
+(asked of the daemon by file name). Add Repository… (a dialog): a
+.repo file's https address, fetched and read (`parse_repo_file`: every
+`[id]` must say where it's from), or a Copr project ("owner/project",
+"@group/project": its address for this release and the name dnf's copr
+plugin gives its file), shown before it's added, unsigned ones in red;
+or RPM Fusion (Free, Nonfree): its release packages installed through
+the review, which add its repositories and keys. Remove… takes away a
+file in /etc/yum.repos.d (asked first, naming every repository it
+holds); one that came with a package is removed with that package, by
+the review; Fedora's own (in /usr/share) are turned off, not removed.
+The daemon has no call for a .repo file, so `helper.rs` does it as
+root: `olo-updates --helper` through pkexec, handed one request on its
+input (write NAME TEXT, remove PATH) and answering it, and checking
+itself what it's handed: a plain name ending .repo, a .repo file's
+text, never over an existing file (written beside it and renamed), a
+plain file directly in /etc/yum.repos.d to remove. Only at the
+computer; `OLO_UPDATES_HELPER=direct` does it in `OLO_UPDATES_REPOS_DIR`
+instead (tests), `=off` never.
+
+**History** lists every transaction (id, when, what it did, who, its
+command or comment, the result); the details list each package by what
+was done (old → new for an update). Undo… (History ▸ Undo
+Transaction…, or a double click) is the opposite as one change to
+review: what it installed removed, what it removed installed again at
+its version, what it updated downgraded to the version before (if the
+repositories still have it), what it downgraded updated back. The
+daemon has no undo of its own.
+
+**Upgrade Fedora** says which Fedora this is (`/etc/os-release`), and
+whether a newer one is out (fedoraproject.org's releases.json, its
+newest version without " Beta"); Prepare the Upgrade to Fedora N… opens
+the review of the system upgrade (`releasever` N's session,
+`system_upgrade` as distro-sync), which only downloads now and installs
+as the computer restarts. What waits for the next start (an upgrade or
+updates) shows over Updates and here, with Cancel It and Restart Now.
+
+**For agents.** The menus (`{"invoke":…}`): `check`,
+`update-chosen`, `update-selected`, `reinstall-selected`, `choose-all`,
+`choose-kind-N`, `choose-none`, `check:NAME` and `uncheck:NAME`,
+`section:updates|repos|history|upgrade`, `add-repo`, `repo-on`,
+`repo-off`, `remove-repo`, `undo-transaction`, `prepare-upgrade`,
+`cancel-waiting`, `restart`. The tree has every row and check box, the
+review's items and buttons by their words. `olo-updates --list` prints
+the updates as JSON from the cache (name, arch, installed, new,
+repository, size, kind, advisories with their references), with no
+window.
+
+**Testing.** `dnf-fake [--address A] [--repos DIR]` (olo-system) plays
+the daemon on a private bus: twenty updates of a Fedora 45 computer
+with Fedora's kinds of advisory (security with CVEs and severities,
+bug fixes, enhancements), changelogs, install-only kernels (the oldest
+of three removed), firefox pulling in nss and its langpacks, a Copr
+package whose key is asked about, RPM Fusion by its release package's
+address, a history to undo (old versions still there), offline
+transactions, Fedora 46 (47 isn't out: its metadata is a 404), and a
+check that finds one more update; downloads and RPM's steps signalled
+as the daemon does, a run cancellable while it downloads. `--repos
+DIR` reads the .repo files there as /etc/yum.repos.d. `cargo test -p
+olo-system --test dnf_fake` with `OLO_TEST_BUS` set runs the client
+against it. In a test session: `dnf-fake --address
+unix:path=/var/tmp/olo-dev/NAME/bus --repos DIR`, then `tsession run
+NAME OLO_DNF_BUS=unix:path=/var/tmp/olo-dev/NAME/bus
+OLO_UPDATES_HELPER=direct OLO_UPDATES_REPOS_DIR=DIR olo-updates` (a
+`file://` address is fetched only against a fake). `tools/dev/ui-lint`
+runs it against the fake on the session's bus (`@session-bus`).
+
+**Cost.** Idle: 0.0% of a core, no wakeups, no frames (10 s, release,
+2×). Moving down the list: two frames a step (the selection, then its
+details from a worker), 1.4 ms on average, the slowest 3.7 ms.
+Reviewed at 1×, 1.25×, 1.5×, 1.75× and 2×, light and dark.

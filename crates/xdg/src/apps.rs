@@ -22,6 +22,7 @@ pub const OUR_APPS: &[(&str, &str, &str)] = &[
     ("olo-telegram", "Telegram", "telegram"),
     ("olo-slack", "Slack", "slack"),
     ("olo-doctor", "Olo Doctor", "doctor"),
+    ("olo-updates", "OS Updates", "software-update"),
     ("olo-weather", "Weather", "weather"),
 ];
 

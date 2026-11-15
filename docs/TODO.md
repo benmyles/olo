@@ -1469,24 +1469,6 @@ something nobody here has is in "Blocked", with what it waits for.
   eight pictures and 35 textures, the dither blurred away first; 523 in
   the pack. Left: individual icons redrawn where one drifts.
 
-- **OS Updates: Fedora's packages, for power users** (Ben, 2026-11-14:
-  "add a new olo application OS Updates that is a GUI manager for
-  fedora dnf for upgrading to the latest available fedora packages.
-  design it for power users where you can drill into all the relevant
-  details and take all the actions you might want to take either one
-  thing at a time or all at once. also have it support adding/managing
-  3rd party repos everything else that makes sense. make it intuitive,
-  polished and look great."). Native, not dnf run as a program: DNF5's
-  daemon spoken to over D-Bus (`dnf5daemon-server`: its Base, Repo,
-  Rpm and Goal interfaces), polkit for what needs root; the updates
-  available, each package's versions, changelog, advisories (security,
-  bugfix, enhancement; CVEs), size and what it pulls in, chosen one by
-  one or all (the Olo Doctor pattern for acting on all, some or one);
-  a transaction shown before it runs, run on a worker with live
-  progress, cancellable; history and undo; repositories listed,
-  enabled, disabled, added (a .repo URL, COPR, RPM Fusion), their GPG
-  keys; system upgrades to the next Fedora release; agent-readable and
-  drivable; HACKING and the Olo Book.
 - **Tracker compresses and extracts, natively** (Ben, 2026-11-14:
   "olo's tracker should have native support for compression/archives
   so that it can compress files and folders (i.e. multi select them
@@ -1506,6 +1488,36 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Done, waiting for Ben to try or confirm
 
+- **OS Updates: Fedora's packages, for power users** (Ben, 2026-11-14:
+  "add a new olo application OS Updates that is a GUI manager for
+  fedora dnf for upgrading to the latest available fedora packages.
+  design it for power users where you can drill into all the relevant
+  details and take all the actions you might want to take either one
+  thing at a time or all at once. also have it support adding/managing
+  3rd party repos everything else that makes sense. make it intuitive,
+  polished and look great."). Done (2026-11-15): `olo-updates`, through
+  DNF5's daemon over D-Bus (`olo_system::dnf`), nothing shelled out
+  to. Updates (each with its check box, Olo Doctor's Choose: All ·
+  Security Updates · Bug Fixes · Enhancements · Other Updates · None
+  and "Update 12"; searched and filtered by kind, severity, repository
+  and chosen; the selected one's versions, sizes, advisories with
+  their CVEs and bugs linked, changelog since what's installed and
+  dependencies), every change reviewed before it runs (every package
+  it pulls in or removes, sizes, problems) and run now or as the
+  computer restarts, with live progress, Stop while it downloads, a
+  repository's key asked about; Repositories (turned on and off, every
+  setting and key, added from a .repo address, a Copr project or RPM
+  Fusion, removed, through a pkexec helper that writes only .repo
+  files in /etc/yum.repos.d); History with Undo; Upgrade Fedora (the
+  next release prepared and installed at the restart; what waits
+  cancelled or restarted for). Packages are only changed from the
+  session at the computer (Fedora lets an administrator there run
+  signed transactions without a password, so nothing runs without the
+  review). Tested end to end against `dnf-fake`; read-only against
+  this computer's daemon. For Ben: open OS Updates (Deskbar's
+  applications, once upgraded) and try a small update; adding a
+  repository and the Fedora upgrade ask for the password (polkit).
+  HACKING "OS Updates", the Olo Book.
 - **Weather: a native app, every detail, with an assistant** (Ben,
   2026-11-14: "create an olo weather native app that has configurable
   data providers and comes with for now tomorrow.io as the provider.

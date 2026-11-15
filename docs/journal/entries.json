@@ -4264,5 +4264,11 @@
   "title": "Backgrounds: OS/2 Warp 4's",
   "caption": "OS/2 Warp 4's backgrounds, from its CD's PACK2 bundles: its eight pictures (Garden, Garden 2, Ocean, Ocean 2 (here), Space, Space 2, Warp 03, Warp 04) redrawn at 4K, and its 35 textures (OS/2 Warp 4 Patterns: Big Blue, Burlap, Gold, Green Marble, Pool, Rice Mat, Wicker, Texture 1\u201312 \u2026), their dither blurred away before 4x-UltraSharp. Its logos left out. 523 in the pack.",
   "image": "2026-11-15/072524-backgrounds-os-2-warp-4-s.png"
+ },
+ {
+  "time": "2026-11-15T08:55:57",
+  "title": "OS Updates: Fedora's packages, chosen and reviewed",
+  "caption": "A new app, through DNF5's own daemon: every update with its check box (Choose: All \u00b7 Security Updates \u00b7 Bug Fixes \u00b7 Enhancements \u00b7 Other Updates \u00b7 None, and Update 20), searched and filtered by kind, severity, repository and chosen, the most pressing first; the selected one's versions, sizes, advisories with their CVEs linked, and its changelog since what's installed. Each change is reviewed before it runs; Repositories, History with Undo and Upgrade Fedora beside it. (Against dnf-fake: made-up updates.)",
+  "image": "2026-11-15/085557-os-updates-fedora-s-packages-chosen-and-reviewed.png"
  }
 ]
