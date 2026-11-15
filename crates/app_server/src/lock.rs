@@ -258,6 +258,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let fd = theirs.as_raw_fd();
         let mut cmd = std::process::Command::new(program);
         cmd.args(args).env("WAYLAND_SOCKET", fd.to_string()).env_remove("WAYLAND_DISPLAY");
+        crate::realtime::start_off_kept(&mut cmd);
         // SAFETY: only async-signal-safe fcntl calls between fork and exec,
         // to let the child inherit its end of the socket.
         unsafe {

@@ -1342,6 +1342,10 @@ impl<B: Backend + 'static> AnvilState<B> {
         };
         let mut cmd = std::process::Command::new(path);
         cmd.args(args);
+        // (Not on the kept core: the loop starting it is homed there, and
+        // everything it starts would be too: Palette, Terminal, and every
+        // shell and build in it, 2026-11-15.)
+        crate::realtime::start_off_kept(&mut cmd);
         if let Some(socket) = &self.socket_name {
             cmd.env("WAYLAND_DISPLAY", socket);
         }

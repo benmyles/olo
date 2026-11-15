@@ -18,7 +18,16 @@
 //! every program starts from a parent kept off it). Threads already
 //! realtime are left as they are (PipeWire's, Olo's other realtime
 //! threads: what they are for is never waiting), as is an affinity a
-//! program chose for itself. The system's services (root's) through
+//! program chose for itself, unless it's the kept core alone: that's
+//! inherited from a thread homed there. The homed threads' own children
+//! would inherit the kept core alone (the kernel copies a thread's
+//! affinity to the threads and programs it starts), so every program
+//! app_server starts begins where the person's run ([`start_off`]), and
+//! its other threads are swept off it as it goes. Before, Palette,
+//! started by app_server, started Terminal, whose shells and every build
+//! and agent in them ran on the kept core alone: one processor for all
+//! of it, the desktop's own (Ben, 2026-11-15: "wait why is the shell
+//! limited to one [cpu]???? that should never happen!"). The system's services (root's) through
 //! systemd's own `CPUAffinity=` ([`SYSTEM_CONF`]: what systemd starts
 //! inherits it) and a sweep of what runs already, which Olo Doctor does
 //! as root. Affinity, not a cgroup's cpuset: Intel's low-power daemon
@@ -180,7 +189,9 @@ impl Sweep<'_> {
             Sweep::KeepOff { kept, plain, online } => {
                 if now.iter().any(|c| kept.contains(c)) {
                     let rest = others(now, kept);
-                    (!rest.is_empty()).then_some(rest)
+                    // (The kept core alone: inherited from a thread homed
+                    // there, so given where the person's programs run.)
+                    Some(if rest.is_empty() { off(kept, plain, online) } else { rest })
                 } else if now == plain && plain != others(online, kept) {
                     Some(others(online, kept))
                 } else {
@@ -189,6 +200,43 @@ impl Sweep<'_> {
             }
             Sweep::GiveBack { kept, plain, online } => (now == others(online, kept) || (now == plain && now != online)).then(|| online.to_vec()),
         }
+    }
+}
+
+/// Where the person's programs run while `kept` is kept: where their
+/// cgroup lets them (`plain`) but the kept core, else every processor
+/// online but it.
+pub fn off(kept: &[usize], plain: &[usize], online: &[usize]) -> Vec<usize> {
+    let rest = others(plain, kept);
+    if rest.is_empty() { others(online, kept) } else { rest }
+}
+
+/// `cmd`'s program begins on `cpus` (where the person's programs run),
+/// whatever the thread starting it may run on: the kernel copies a
+/// thread's affinity to what it starts, and app_server's loop is homed
+/// on the kept core alone.
+pub fn start_off(cmd: &mut std::process::Command, cpus: &[usize]) {
+    use std::os::unix::process::CommandExt as _;
+    // SAFETY: a zeroed cpu_set_t is an empty set, filled here, before the
+    // fork; the child only makes the one system call with it, which is
+    // async-signal-safe.
+    let set = unsafe {
+        let mut set: libc::cpu_set_t = std::mem::zeroed();
+        for &c in cpus.iter().filter(|&&c| c < libc::CPU_SETSIZE as usize) {
+            libc::CPU_SET(c, &mut set);
+        }
+        set
+    };
+    if cpus.is_empty() {
+        return;
+    }
+    // SAFETY: as above.
+    unsafe {
+        cmd.pre_exec(move || {
+            // (Where it may not, it starts where it would have.)
+            libc::sched_setaffinity(0, size_of::<libc::cpu_set_t>(), &set);
+            Ok(())
+        });
     }
 }
 
@@ -342,6 +390,36 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// A program started from a thread pinned to one processor (as
+    /// app_server's loop is, on the kept core) begins where it's told,
+    /// not on that one processor (it did: Terminal's shells and every
+    /// build in them ran on the kept core alone, 2026-11-15).
+    #[test]
+    fn a_program_started_from_a_pinned_thread_begins_off_it() {
+        let mine = affinity(0).unwrap();
+        if mine.len() < 2 {
+            eprintln!("one processor here: nothing to tell apart");
+            return;
+        }
+        let (pin, rest) = (mine[0], mine[1..].to_vec());
+        let child = |start: bool| {
+            let rest = rest.clone();
+            std::thread::spawn(move || {
+                set_affinity(0, &[pin]).unwrap();
+                let mut cmd = std::process::Command::new("/bin/sh");
+                cmd.args(["-c", "while read -r k v; do [ \"$k\" = Cpus_allowed_list: ] && echo \"$v\"; done < /proc/self/status"]);
+                if start {
+                    start_off(&mut cmd, &rest);
+                }
+                String::from_utf8(cmd.output().unwrap().stdout).unwrap().trim().to_owned()
+            })
+            .join()
+            .unwrap()
+        };
+        assert_eq!(child(false), pin.to_string(), "inherited, without it");
+        assert_eq!(parse_list(&child(true)), rest);
+    }
+
     #[test]
     fn a_sweep_keeps_off_and_gives_back_only_what_it_should() {
         let online: Vec<usize> = (0..16).collect();
@@ -350,7 +428,7 @@ mod tests {
         assert_eq!(off.wanted(&online), Some(rest.clone()), "no affinity of its own");
         assert_eq!(off.wanted(&rest), None, "already off");
         assert_eq!(off.wanted(&[0, 1, 2, 3]), Some(vec![0, 1, 3]), "its own, less the kept core");
-        assert_eq!(off.wanted(&[2]), None, "pinned there by its program: left");
+        assert_eq!(off.wanted(&[2]), Some(rest.clone()), "the kept core alone, inherited: moved off");
         assert_eq!(off.wanted(&[5]), None);
         // Under intel_lpmd's low-power mode: the cgroup allows 12–15.
         let lp: Vec<usize> = (12..16).collect();
@@ -369,7 +447,10 @@ mod tests {
         let Some(kept) = kept().or_else(|| (online.len() >= 2).then(|| vec![*online.last().unwrap()])) else { return };
         let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
         let pid = child.id() as i32;
-        let plain = affinity(pid).unwrap();
+        // (Every processor, whatever this test was started on: a shell
+        // kept off the kept core starts its children off it already.)
+        set_affinity(pid, &online).unwrap();
+        let plain = online.clone();
         let swept = sweep(&[pid], Sweep::KeepOff { kept: &kept, plain: &plain, online: &online }, &[]);
         assert_eq!(swept, Swept { processes: 1, threads: 1, failed: 0 });
         assert!(!affinity(pid).unwrap().iter().any(|c| kept.contains(c)));

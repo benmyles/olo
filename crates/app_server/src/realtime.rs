@@ -65,6 +65,31 @@ mod kept {
         }
     }
 
+    /// Where a program app_server starts begins: off the kept core while
+    /// it's kept, else wherever the person's run.
+    pub(super) fn for_programs() -> Vec<usize> {
+        let plain = olo_system::cores::plain();
+        match cpus().filter(|_| on()) {
+            Some(kept) => olo_system::cores::off(kept, &plain, &olo_system::cores::online()),
+            None => plain,
+        }
+    }
+
+    /// app_server's own threads (but the homed ones) off the kept core: a
+    /// thread the loop starts begins there (it inherits the loop's
+    /// affinity), and libraries start theirs as they go (zbus's, the
+    /// compositor's). On the realtime worker, as it's told of a focus
+    /// change: no polling.
+    pub(super) fn sweep_own() {
+        let Some(kept) = cpus().filter(|_| on()) else { return };
+        let homed = HOMED.lock().unwrap().clone();
+        let (online, plain) = (olo_system::cores::online(), olo_system::cores::plain());
+        let swept = olo_system::cores::sweep(&[std::process::id() as i32], olo_system::cores::Sweep::KeepOff { kept, plain: &plain, online: &online }, &homed);
+        if swept.threads > 0 {
+            tracing::debug!(threads = swept.threads, "app_server's threads moved off the kept core");
+        }
+    }
+
     /// Every thread of the person's kept off the core (`on`), or let
     /// back; the homed ones homed. Logged with what it did and took.
     pub(super) fn sweep(on: bool) {
@@ -118,6 +143,14 @@ pub fn home_self() {
     if kept::on() {
         kept::home(tid, true);
     }
+}
+
+/// `cmd`'s program begins where the person's programs run, not on the
+/// kept core: the thread starting it (the loop) is homed there, and the
+/// kernel copies a thread's affinity to what it starts. Every program
+/// app_server starts goes through this.
+pub fn start_off_kept(cmd: &mut std::process::Command) {
+    olo_system::cores::start_off(cmd, &kept::for_programs());
 }
 
 /// `Settings::keep_core` as it is (at start, and as it changes): the
@@ -231,6 +264,7 @@ mod focused {
         while let Ok(ask) = rx.recv() {
             match ask {
                 Ask::Focus(pid) => {
+                    super::kept::sweep_own();
                     if let Some(old) = focused.filter(|old| Some(*old) != pid && !always.contains(old)) {
                         demote(old);
                     }

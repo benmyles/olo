@@ -11035,7 +11035,24 @@ thread of the account off it as it starts and as the setting changes
 1,900 threads, whose affinity read takes 8.5 ms even from Python), and every program started later inherits a parent's
 affinity. Threads already realtime are left as they are (PipeWire's;
 what they are for is never waiting), as is an affinity a program chose
-(one pinned to the kept core alone, or to others). The system's
+for other cores; one pinned to the kept core alone is moved off, as
+that was inherited from a homed thread. The homed loop's own children
+would inherit the kept core alone (the kernel copies a thread's
+affinity to the threads and programs it starts), so every program
+app_server starts begins where the person's run
+(`realtime::start_off_kept`, `cores::start_off`: the affinity set in
+the child before it runs, 7.5 µs to work out), and app_server's other
+threads (its own, and those zbus and the compositor start as they go)
+are swept off on its realtime worker at each focus change
+(`kept::sweep_own`, 35 µs for 25 threads, never on the loop). Before
+(2026-11-15), Palette, started by app_server, started Terminal, and
+every shell, build and agent in it ran on the kept core alone: one
+processor for all of it, and the desktop's at that (Ben: "wait why is
+the shell limited to one [cpu]???? that should never happen!"; "we
+want the core olo threads for responsiveness to stay on that one core
+but nothing else"). `cores::tests::a_program_started_from_a_pinned_
+thread_begins_off_it` starts a program from a thread pinned to one
+processor, with and without it. The system's
 services are root's: Olo Doctor's "Keep Them Off" (`olo-doctor
 --keep-core on|off`, Preferences' button beside the setting) writes
 systemd's own `CPUAffinity=` (`/etc/systemd/system.conf.d/50-olo-kept-core.conf`),

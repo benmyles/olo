@@ -73,7 +73,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             KeyAction::Run(cmd) => {
                 info!(cmd, "Starting program");
 
-                if let Err(e) = Command::new(&cmd).envs(self.socket_name.clone().map(|v| ("WAYLAND_DISPLAY", v))).spawn() {
+                let mut program = Command::new(&cmd);
+                crate::realtime::start_off_kept(&mut program);
+                if let Err(e) = program.envs(self.socket_name.clone().map(|v| ("WAYLAND_DISPLAY", v))).spawn() {
                     error!(cmd, err = %e, "Failed to start program");
                 }
             }

@@ -410,6 +410,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             return;
         };
         let mut cmd = std::process::Command::new(path);
+        crate::realtime::start_off_kept(&mut cmd);
         if let Some(socket) = &self.socket_name {
             cmd.env("WAYLAND_DISPLAY", socket);
         }
