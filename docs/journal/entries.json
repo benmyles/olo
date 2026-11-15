@@ -4288,5 +4288,11 @@
   "title": "Tracker: an archive's password, from Passwords",
   "caption": "An archive that wants a password offers Passwords: Use Saved Password reads the one kept for it (a Password item \"Archive: NAME\", asked only when pressed), Keep It in Passwords keeps the one typed once it has worked, and Compress As\u2026 keeps a new archive's password (on by default). The same in the archive's own window.",
   "image": "2026-11-15/094116-tracker-an-archive-s-password-from-passwords.png"
+ },
+ {
+  "time": "2026-11-15T09:54:07",
+  "title": "Tracker reads UDF disc images",
+  "caption": "Windows' install images, DVDs and Blu-ray discs keep their files in a UDF tree; their ISO 9660 tree holds at most a note saying so. olo-archive reads UDF 1.02 to 2.60 now (its metadata partition, a write-once disc's virtual allocation table), so an image like this one, made by genisoimage, opens in Tracker with its long and Unicode names, and Extract takes them out.",
+  "image": "2026-11-15/095407-tracker-reads-udf-disc-images.png"
  }
 ]

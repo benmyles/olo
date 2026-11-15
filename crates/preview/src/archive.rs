@@ -51,7 +51,7 @@ fn sort(items: &mut [Item]) {
 }
 
 /// What's in an archive (`olo_archive`: zip, tar in its compressions,
-/// 7-Zip, RAR, ISO 9660, cpio), or what a single compressed file holds.
+/// 7-Zip, RAR, disc images, cpio), or what a single compressed file holds.
 pub fn archive(path: &Path, name: &str, cancel: &Arc<AtomicBool>) -> Result<Update, String> {
     let _ = name;
     let Some(kind) = olo_archive::kind(path) else {

@@ -282,6 +282,118 @@ fn a_disc_image_is_read() {
     let _ = fs::remove_dir_all(&d);
 }
 
+/// A UDF image from `tests/data`, unpacked into `d`.
+fn udf_image(d: &Path, name: &str) -> PathBuf {
+    let data = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data").join(format!("{name}.zst"));
+    let out = d.join(name);
+    let mut r = Codec::Zstd.reader(File::open(data).unwrap()).unwrap();
+    std::io::copy(&mut r, &mut File::create(&out).unwrap()).unwrap();
+    out
+}
+
+#[test]
+fn a_udf_image_is_read() {
+    let d = scratch("udf");
+    let (stop, mut said) = quiet();
+    // genisoimage's: UDF beside an ISO 9660 tree of 8.3 names, so the
+    // long names say which tree was read.
+    let iso = udf_image(&d, "genudf.iso");
+    assert_eq!(kind(&iso), Some(Kind::Iso));
+    let mut all = list(&iso, None, &stop).unwrap();
+    all.sort_by(|a, b| a.name.cmp(&b.name));
+    let names: Vec<&str> = all.iter().map(|e| e.name.as_str()).collect();
+    assert_eq!(names, ["A long name, with spaces.txt", "Café ünïcode — 日本.txt", "Docs", "Docs/Deeper", "Docs/Deeper/deep.txt", "Docs/big.bin", "Docs/empty.txt", "hello.txt"]);
+    let big = all.iter().find(|e| e.name == "Docs/big.bin").unwrap();
+    assert_eq!((big.size, &big.kind), (300_000, &EntryKind::File));
+    assert_eq!(all.iter().find(|e| e.name == "Docs").unwrap().kind, EntryKind::Dir);
+    // 2021-03-04 05:06:07 UTC.
+    assert_eq!(all.iter().find(|e| e.name == "hello.txt").unwrap().mtime, Some(1_614_834_367));
+    // (genisoimage gives every file r--r--r-- and every folder r-xr-xr-x.)
+    assert_eq!(all.iter().find(|e| e.name == "hello.txt").unwrap().mode, Some(0o444));
+    let into = d.join("x");
+    fs::create_dir_all(&into).unwrap();
+    let made = extract(&iso, &into, None, &Control::new(&stop, &mut said)).unwrap();
+    assert_eq!(made, vec![into.join("genudf")]);
+    let x = into.join("genudf");
+    assert_eq!(fs::read_to_string(x.join("hello.txt")).unwrap(), "hello");
+    assert_eq!(fs::read_to_string(x.join("Café ünïcode — 日本.txt")).unwrap(), "café");
+    assert_eq!(fs::read_to_string(x.join("Docs/Deeper/deep.txt")).unwrap(), "deep");
+    assert_eq!(fs::read(x.join("Docs/empty.txt")).unwrap(), b"");
+    let want: Vec<u8> = (0..300_000u32).map(|i| (i * 7 % 251) as u8).collect();
+    assert!(fs::read(x.join("Docs/big.bin")).unwrap() == want, "big.bin differs");
+    // mkudffs's, empty: 1.02 with strategy 4096 in 512-byte blocks, 2.01
+    // with the root's names in its entry, 2.01 in 512-byte blocks, and
+    // 2.50 as a BD-R has it (a virtual allocation table under a metadata
+    // partition).
+    for (name, maps) in [("u102.img", &["physical"][..]), ("u201.img", &["physical"]), ("u201s.img", &["physical"]), ("u250.img", &["physical", "virtual"])] {
+        let img = udf_image(&d, name);
+        assert_eq!(udf::Udf::open(&img).unwrap().map_kinds(), maps, "{name}");
+        assert_eq!(kind(&img), Some(Kind::Iso), "{name}");
+        assert_eq!(list(&img, None, &stop).map(|l| l.len()).map_err(|e| e.to_string()), Ok(0), "{name}");
+    }
+    // UDF 2.50's metadata partition (which mkudffs doesn't make): the
+    // 2.01 image with one laid over its partition in two runs, its last
+    // four blocks then the rest from the start, the file set and the
+    // root found through it.
+    let img = udf_image(&d, "u201.img");
+    let mut b = fs::read(&img).unwrap();
+    let bs = 2048;
+    let checksum = |t: &mut [u8]| t[4] = t[..16].iter().enumerate().filter(|(i, _)| *i != 4).fold(0u8, |s, (_, v)| s.wrapping_add(*v));
+    let at = |b: &[u8], i: usize| u32::from_le_bytes(b[i..i + 4].try_into().unwrap()) as usize;
+    let blocks: Vec<usize> = (0..b.len() / bs).filter(|i| udf_tag(&b[i * bs..]).is_some()).collect();
+    let pd = *blocks.iter().find(|&&i| udf_tag(&b[i * bs..]) == Some(5)).unwrap();
+    let (start, plen) = (at(&b, pd * bs + 188), at(&b, pd * bs + 192));
+    let (shift, meta_fe) = (4, plen - 1);
+    for i in blocks.iter().copied().filter(|&i| udf_tag(&b[i * bs..]) == Some(6)).collect::<Vec<_>>() {
+        let l = &mut b[i * bs..(i + 1) * bs];
+        let fsd = at(l, 252) + shift;
+        l[252..256].copy_from_slice(&(fsd as u32).to_le_bytes());
+        l[256..258].copy_from_slice(&1u16.to_le_bytes());
+        let mtl = at(l, 264);
+        l[264..268].copy_from_slice(&(mtl as u32 + 64).to_le_bytes());
+        l[268..272].copy_from_slice(&2u32.to_le_bytes());
+        let m = &mut l[440 + mtl..440 + mtl + 64];
+        m[..2].copy_from_slice(&[2, 64]);
+        m[5..28].copy_from_slice(b"*UDF Metadata Partition");
+        m[36..38].copy_from_slice(&1u16.to_le_bytes());
+        m[40..44].copy_from_slice(&(meta_fe as u32).to_le_bytes());
+        m[44..48].copy_from_slice(&(meta_fe as u32).to_le_bytes());
+        m[48..52].copy_from_slice(&u32::MAX.to_le_bytes());
+        checksum(l);
+    }
+    for i in blocks.iter().copied().filter(|&i| udf_tag(&b[i * bs..]) == Some(256)).collect::<Vec<_>>() {
+        let l = &mut b[i * bs..(i + 1) * bs];
+        let root = at(l, 404) + shift;
+        l[404..408].copy_from_slice(&(root as u32).to_le_bytes());
+        l[408..410].copy_from_slice(&1u16.to_le_bytes());
+        checksum(l);
+    }
+    // The metadata file's entry: two short extents, the partition's last
+    // four blocks then its first.
+    let l = &mut b[(start + meta_fe) * bs..(start + meta_fe + 1) * bs];
+    l.fill(0);
+    l[..2].copy_from_slice(&261u16.to_le_bytes());
+    l[2] = 2;
+    l[16 + 4] = 4;
+    l[16 + 11] = 250;
+    l[56..64].copy_from_slice(&(((plen - 4 + shift) * bs) as u64).to_le_bytes());
+    l[172..176].copy_from_slice(&16u32.to_le_bytes());
+    l[176..180].copy_from_slice(&((shift * bs) as u32).to_le_bytes());
+    l[180..184].copy_from_slice(&((plen - 4) as u32).to_le_bytes());
+    l[184..188].copy_from_slice(&(((plen - 4) * bs) as u32).to_le_bytes());
+    checksum(l);
+    fs::write(&img, &b).unwrap();
+    assert_eq!(udf::Udf::open(&img).unwrap().map_kinds(), ["physical", "metadata"]);
+    assert_eq!(list(&img, None, &stop).map(|l| l.len()).map_err(|e| e.to_string()), Ok(0));
+    let _ = fs::remove_dir_all(&d);
+}
+
+/// A UDF descriptor's tag identifier, when its checksum adds up.
+fn udf_tag(b: &[u8]) -> Option<u16> {
+    let sum = b[..16].iter().enumerate().filter(|(i, _)| *i != 4).fold(0u8, |s, (_, v)| s.wrapping_add(*v));
+    (sum == b[4] && b[..16].iter().any(|&v| v != 0)).then(|| u16::from_le_bytes([b[0], b[1]]))
+}
+
 #[test]
 fn stopping_leaves_nothing() {
     let d = scratch("stop");

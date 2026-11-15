@@ -2,9 +2,9 @@
 //! "olo's tracker should have native support for compression/archives …
 //! support all the common formats including zip, tar, gz, tar.gz, bzip,
 //! 7z, rar, iso and so on"): zip (and its AES), tar plain or with gzip,
-//! bzip2, xz or zstd, 7-Zip (and its AES), RAR (read), ISO 9660 (read;
-//! Joliet and Rock Ridge names), cpio (read), and a single file
-//! compressed with gzip, bzip2, xz or zstd.
+//! bzip2, xz or zstd, 7-Zip (and its AES), RAR (read), disc images (read:
+//! ISO 9660 with Joliet and Rock Ridge names, and UDF), cpio (read), and
+//! a single file compressed with gzip, bzip2, xz or zstd.
 //!
 //! - [`kind`]: what a file is, by its first bytes (then its name).
 //! - [`list`]: what's in one.
@@ -28,6 +28,7 @@ mod rar;
 mod sevenz;
 mod sink;
 mod tarfmt;
+mod udf;
 mod zipfmt;
 
 use std::{
@@ -115,7 +116,7 @@ impl Kind {
             Kind::Zip => "Zip archive".into(),
             Kind::SevenZip => "7-Zip archive".into(),
             Kind::Rar => "RAR archive".into(),
-            Kind::Iso => "Disc image (ISO 9660)".into(),
+            Kind::Iso => "Disc image".into(),
             Kind::Tar(c) => format!("Tar archive{}", codec(c)),
             Kind::Cpio(c) => format!("cpio archive{}", codec(c)),
             Kind::Single(c) => format!("Compressed file{}", codec(c)),

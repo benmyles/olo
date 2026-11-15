@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Tracker reads UDF disc images
+
+*09:54* — Windows' install images, DVDs and Blu-ray discs keep their files in a UDF tree; their ISO 9660 tree holds at most a note saying so. olo-archive reads UDF 1.02 to 2.60 now (its metadata partition, a write-once disc's virtual allocation table), so an image like this one, made by genisoimage, opens in Tracker with its long and Unicode names, and Extract takes them out.
+
+![Tracker reads UDF disc images](2026-11-15/095407-tracker-reads-udf-disc-images.png)
+
 ### Tracker: an archive's password, from Passwords
 
 *09:41* — An archive that wants a password offers Passwords: Use Saved Password reads the one kept for it (a Password item "Archive: NAME", asked only when pressed), Keep It in Passwords keeps the one typed once it has worked, and Compress As… keeps a new archive's password (on by default). The same in the archive's own window.

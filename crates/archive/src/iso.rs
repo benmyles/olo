@@ -1,6 +1,7 @@
-//! ISO 9660 disc images (read): the primary volume's tree, with Rock
-//! Ridge's names, permissions and symbolic links where it has them,
-//! else Joliet's long names, else the plain 8.3 ones (";1" taken off).
+//! Disc images (read): ISO 9660's tree with Rock Ridge's names,
+//! permissions and symbolic links where it has them, else the UDF tree
+//! where there is one (`udf.rs`: DVDs', Blu-ray's, Windows'), else
+//! Joliet's long names, else the plain 8.3 ones (";1" taken off).
 
 use std::{
     collections::HashSet,
@@ -10,14 +11,35 @@ use std::{
     path::Path,
 };
 
-use crate::{Control, Entry, EntryKind, Result, safe_path, sink::Sink, stopped_or};
+use crate::{Control, Entry, EntryKind, Result, safe_path, sink::Sink, stopped_or, udf};
 
 const SECTOR: u64 = 2048;
 
+/// An ISO 9660 image, or a UDF one (whose recognition sequence starts
+/// where ISO 9660's would).
 pub fn is_iso(path: &Path) -> bool {
     let Ok(f) = File::open(path) else { return false };
     let mut b = [0u8; 6];
-    f.read_exact_at(&mut b, 16 * SECTOR).is_ok() && b[0] == 1 && &b[1..6] == b"CD001"
+    f.read_exact_at(&mut b, 16 * SECTOR).is_ok() && ((b[0] == 1 && &b[1..6] == b"CD001") || (&b[1..6] == b"BEA01" && udf::is_udf(&f)))
+}
+
+/// The UDF tree, when it's the one to read: there's no ISO 9660 tree,
+/// or it hasn't Rock Ridge's (Unix's own) names and permissions.
+fn udf_tree(path: &Path) -> io::Result<Option<udf::Udf>> {
+    let f = File::open(path)?;
+    let mut pvd = [0u8; 2048];
+    let iso = f.read_exact_at(&mut pvd, 16 * SECTOR).is_ok() && pvd[0] == 1 && &pvd[1..6] == b"CD001";
+    if iso {
+        let (lba, len) = (u32::from_le_bytes([pvd[158], pvd[159], pvd[160], pvd[161]]) as u64, u32::from_le_bytes([pvd[166], pvd[167], pvd[168], pvd[169]]) as u64);
+        if records(&f, lba, len, false)?.iter().any(|r| r.mode.is_some()) {
+            return Ok(None);
+        }
+    }
+    match udf::Udf::open(path) {
+        Ok(u) => Ok(Some(u)),
+        Err(_) if iso => Ok(None),
+        Err(e) => Err(e),
+    }
 }
 
 #[derive(Clone)]
@@ -212,11 +234,17 @@ fn entry(name: String, r: &Rec) -> Entry {
 }
 
 pub fn list(path: &Path) -> Result<Vec<Entry>> {
+    if let Some(u) = udf_tree(path).map_err(|e| crate::Error::Bad(e.to_string()))? {
+        return udf::list(&u).map_err(|e| crate::Error::Bad(e.to_string()));
+    }
     let (_, recs) = walk(path).map_err(|e| crate::Error::Bad(e.to_string()))?;
     Ok(recs.into_iter().map(|(n, r)| entry(n, &r)).collect())
 }
 
 pub fn extract(path: &Path, sink: &mut Sink, ctl: &Control) -> Result<()> {
+    if let Some(u) = udf_tree(path).map_err(|e| crate::Error::Bad(e.to_string()))? {
+        return udf::extract(&u, sink, ctl);
+    }
     let (mut f, recs) = walk(path).map_err(|e| crate::Error::Bad(e.to_string()))?;
     ctl.total(recs.iter().filter(|(_, r)| !r.dir && r.link.is_none()).map(|(_, r)| r.len).sum());
     for (name, r) in recs {
@@ -234,11 +262,4 @@ pub fn extract(path: &Path, sink: &mut Sink, ctl: &Control) -> Result<()> {
         }
     }
     Ok(())
-}
-
-#[allow(dead_code)]
-fn read_all(f: &mut File) -> io::Result<Vec<u8>> {
-    let mut v = Vec::new();
-    f.read_to_end(&mut v)?;
-    Ok(v)
 }

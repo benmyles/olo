@@ -14555,9 +14555,16 @@ folders into a new one. Written: zip (deflate; AES-256 with a password),
 tar plain or with gzip, bzip2, xz or zstd, 7-Zip (LZMA2; AES-256, its
 names hidden too, with a password). Read, also: RAR (RARLAB's own
 unpacker, the `unrar` crate, built from its source: reading only, as
-its licence has it), ISO 9660 (its own reader, `iso.rs`: Rock Ridge's
-names, permissions and links, else Joliet's names, else the 8.3 ones;
-a tree walked once, its loops and depth bounded), cpio (newc and odc,
+its licence has it), disc images (its own readers: ISO 9660 in
+`iso.rs`, Rock Ridge's names, permissions and links where the image has
+them, else the UDF tree where there is one, else Joliet's names, else
+the 8.3 ones; UDF 1.02 to 2.60 in `udf.rs`, the file system of DVDs,
+Blu-ray discs and Windows' install images, whose ISO 9660 tree holds no
+more than a note to read the UDF one: a 2.50 metadata partition, a
+write-once disc's virtual allocation table, strategy 4096's chains of
+entries and continued allocation descriptors followed, a file streamed
+from its extents, a directory at a time in memory; a tree walked once,
+its loops and depth bounded), cpio (newc and odc,
 `cpio.rs`: initramfs, RPM's payload), and a single file in gzip, bzip2,
 xz or zstd. (The `cdfs` crate was looked at for ISO and left: it
 requires FUSE, clap and a logger.)
@@ -14641,7 +14648,11 @@ trips (contents, the executable bit, links but in 7-Zip, times), a
 password asked for and checked (zip, 7-Zip), a tar made by hand to
 write outside (`../`, absolute paths, links out, a file through a link)
 writes nothing outside, a single gzip, a cpio and an ISO 9660 made in
-the test, RAR read (the `unrar` crate's sample archives, one with a
+the test, UDF images made by real tools (genisoimage's 1.02 beside an
+ISO 9660 tree, its long and Unicode names, a file of 300 KB and an empty
+one; mkudffs's 1.02 in 512-byte blocks with strategy 4096, 2.01 with
+the root's names in its entry, 2.50 with a virtual allocation table)
+and one of them given a metadata partition in two runs, RAR read (the `unrar` crate's sample archives, one with a
 password), Stop leaving nothing. Tracker's `ops::tests::compress_and_extract`
 runs them as jobs. Tried in a test session: Compress ▸ Zip of two items
 (Archive.zip, selected), Extract Here (a folder "Archive"), Undo (it went

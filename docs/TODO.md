@@ -1469,6 +1469,8 @@ something nobody here has is in "Blocked", with what it waits for.
   eight pictures and 35 textures, the dither blurred away first; 523 in
   the pack. Left: individual icons redrawn where one drifts.
 
+## Done, waiting for Ben to try or confirm
+
 - **Tracker compresses and extracts, natively** (Ben, 2026-11-14:
   "olo's tracker should have native support for compression/archives
   so that it can compress files and folders (i.e. multi select them
@@ -1486,7 +1488,8 @@ something nobody here has is in "Blocked", with what it waits for.
   (paths with .. or absolute ones refused); undo; agent-readable and
   drivable; HACKING and the Olo Book.
   Done (2026-11-15): `olo-archive` (zip and 7-Zip with AES, tar with
-  gzip, bzip2, xz and zstd, written; RAR, ISO 9660, cpio and single
+  gzip, bzip2, xz and zstd, written; RAR, disc images (ISO 9660, and
+  UDF: Windows' install images, DVDs, Blu-ray), cpio and single
   compressed files read too), every extraction kept inside its folder
   (names, links checked; permissions and times kept); Tracker's
   Compress ▸, Compress As… (name, format, password), Extract Here and
@@ -1496,8 +1499,6 @@ something nobody here has is in "Blocked", with what it waits for.
   Tracker's cache, Extract Selected… and Extract All); Passwords
   offered for an archive's password (Use Saved Password; Keep It in
   Passwords once it has worked; Compress As… keeps a new one's).
-
-## Done, waiting for Ben to try or confirm
 
 - **OS Updates: Fedora's packages, for power users** (Ben, 2026-11-14:
   "add a new olo application OS Updates that is a GUI manager for
