@@ -5,9 +5,9 @@
 //! terms of where they appear on the deskbar, how they look, how often
 //! they update, exactly what to show and so on"). The widgets in their
 //! order beside the chosen one's settings: what it measures and which
-//! (a GPU, a disk, an interface, a sensor), where, its look and size,
-//! its words, how often it's read, how far back its graph looks, its
-//! colour. Each change shows in the Deskbar at once.
+//! (a GPU, a disk, an interface, a sensor), its own name, where, its
+//! look and size, its words, how often it's read, how far back its graph
+//! looks, its colour. Each change shows in the Deskbar at once.
 
 use std::sync::{Arc, Mutex};
 
@@ -84,7 +84,9 @@ fn summary(w: &Widget, shares: bool, sources: &Sources) -> String {
         Place::Foot => "at the bottom",
     };
     let beside = if shares { ", beside the one before" } else { "" };
-    format!("{}, {look} {place}{beside}", meters::describe(&w.measure, sources))
+    // (Its own name first: "Build box: CPU, a graph under the tray".)
+    let named = w.own_name().map(|n| format!("{n}: ")).unwrap_or_default();
+    format!("{named}{}, {look} {place}{beside}", meters::describe(&w.measure, sources))
 }
 
 /// Whether the widget at `i` shares the row of the one before it: it
@@ -223,6 +225,23 @@ fn editor(ui: &mut Ui, w: &Widget, after: bool, sources: &Sources) {
             },
         );
         measure_options(ui, w, sources, DIVIDER);
+        // Its own name (Ben, 2026-11-14: "let me provide a custom name for
+        // the widget if i want to override/customize the name"), its name
+        // by what it measures as the hint; emptied, that again.
+        let field_id = format!("widget-name-{id}");
+        let field = ui.field(
+            &field_id,
+            w.name.as_deref().unwrap_or(""),
+            |f| f.name("Widget name"),
+            move |s, v| {
+                let v = v.trim().to_owned();
+                change(id, move |w| w.name = (!v.is_empty()).then(|| v.clone()))(s)
+            },
+        );
+        let hint = w.default_label();
+        field.update(ui.cx, move |f, cx| f.set_hint(hint, cx));
+        let name = ui.control_of(&field_id).label("Name:").divider(DIVIDER);
+        ui.add(name);
         ui.choose("widget-place", &Place::ALL.map(|p| (p, p.name())), &w.place, |f| f.label("Where:").divider(DIVIDER), move |s, v| change(id, move |w| w.place = v)(s));
         ui.choose("widget-look", &Look::ALL.map(|l| (l, l.name())), &w.look, |f| f.label("Look:").divider(DIVIDER), move |s, v| change(id, move |w| w.look = v)(s));
         let in_tray = w.place == Place::Tray;

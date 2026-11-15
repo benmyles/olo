@@ -8,7 +8,8 @@
 //! that fits what it shows, asked to be taller than the screen has room
 //! for, keeps what fills it; a list scrolled, hidden and shown again
 //! scrolls from where it was; a list acted on by what's checked
-//! (`chosen`) is clean, its button as wide whatever it counts.
+//! (`chosen`) is clean, its button as wide whatever it counts; text
+//! measured without a window counts what another font draws.
 
 use olo_kit::{
     Child, Cx, Element, ParentElement as _, Styled as _, View, WindowOptions, div,
@@ -642,4 +643,18 @@ fn ui_lint_a_list_acted_on_by_whats_checked_is_clean() {
         widths.push((words, button.x, button.width));
     }
     assert!(widths.iter().all(|w| (w.1, w.2) == (widths[0].1, widths[0].2)), "the button moved or changed width as it counted: {widths:?}");
+}
+
+/// Text measured without a window (`style::text_width_app`) counts the
+/// characters its font hasn't, drawn from another: Deskbar's "↓12K ↑3K"
+/// beside a widget's name was measured without its arrows, and drawn
+/// over the name.
+#[test]
+fn ui_lint_text_measured_without_a_window_counts_every_character() {
+    use olo_kit::{FontWeight, style};
+    let _lint = Lint::new();
+    let font = style::ui_font(FontWeight::NORMAL);
+    let digits = style::text_width_app("12K 3K", style::SMALL_SIZE, &font);
+    let arrows = style::text_width_app("↓12K ↑3K", style::SMALL_SIZE, &font);
+    assert!(arrows >= digits + 6.0, "two arrows add {:.1} pt", arrows - digits);
 }

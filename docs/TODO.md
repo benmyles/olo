@@ -1430,10 +1430,6 @@ something nobody here has is in "Blocked", with what it waits for.
   iterated, with second opinions from OpenAI's Astra; then every icon
   (apps, Preferences' panels, Deskbar, Tracker's kinds) made again for
   each theme per docs/ICONS.md, checked large and at Deskbar's size.
-- **A Deskbar widget's own name** (Ben, 2026-11-14: "in the deskbar
-  settings for widgets let me provide a custom name for the widget if
-  i want to override/customize the name"): Preferences ▸ Deskbar ▸
-  Widgets, a name field; Deskbar shows it.
 - **The keyring's password asked once at login, not twice** (Ben,
   2026-11-14: "when i first login after a restart i'm being asked for
   my keyring password to unlock it twice. it should only need it once
@@ -1518,6 +1514,24 @@ something nobody here has is in "Blocked", with what it waits for.
   drivable; HACKING and the Olo Book.
 
 ## Done, waiting for Ben to try or confirm
+
+- **A Deskbar widget's own name** (Ben, 2026-11-14: "in the deskbar
+  settings for widgets let me provide a custom name for the widget if
+  i want to override/customize the name"): Preferences ▸ Deskbar ▸
+  Widgets, a name field; Deskbar shows it.
+  Done (2026-11-14): `Widget::name`. Preferences ▸ Deskbar ▸ Widget
+  has Name: (its hint the widget's name by what it measures, "CPU";
+  emptied, that again), and the list's row starts with it. The Deskbar
+  shows it in the widget's row and beside others (a long one cut with
+  "…", never left out), as its card's title ("CPU · over the last
+  minute" under it), at the start of its tip and as its name for
+  agents; `SetSettings` takes it. On the way: text measured without a
+  window (`style::text_width_app`) counted characters its font hasn't
+  (Deskbar's arrows, "↓12K ↑3K") as nothing, so a value beside a name
+  could be drawn over it ("Wi-Fi↓28K"); now such a line is laid out as
+  drawn. Tried headless: names set by `SetSettings` and typed in
+  Preferences, the Deskbar following at once; the layout review clean
+  at 1×, 1.5× and 2×, light and dark.
 
 - **Olo Doctor: fix the problems, apply the suggestions, or both**
   (Ben, 2026-11-14: "the fix all button only fixes all problems but

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-14
 
+### A Deskbar widget's own name
+
+*18:42* — Preferences ▸ Deskbar ▸ Widget has Name:, its hint what the widget is called by what it measures (CPU); the Deskbar shows the name in its row, beside others and as its card's title (CPU · over the last minute under it), a long one cut with … (Ben: "let me provide a custom name for the widget"). Dark, 1.5×.
+
+![A Deskbar widget's own name](2026-11-14/184215-a-deskbar-widget-s-own-name.png)
+
 ### Olo Doctor fixes and applies what's checked, all, either or one kind
 
 *18:09* — Each finding with a fix has a check box (problems checked to begin with, suggestions when wanted); Choose: All · Problems · Suggestions · None; one default button that says what it will do (Fix 4 Problems, Apply 4 Suggestions, Fix 4 and Apply 4), as wide as its widest words so nothing moves as it counts. The kit's chosen pattern (Mac OS X's Software Update, Xcode's Update to Recommended Settings), in the Olo Book.

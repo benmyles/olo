@@ -15427,8 +15427,16 @@ ProcessController put their bars in its tray.
   applications), its look (`Look`: graph, bars, heatmap, meter,
   number), its row's size, its name and value shown, how often it's
   read (`every_ms`, 250 ms to a minute), how far back its graph looks
-  (`span_s`), its colour (a `Hue`, or the accent), and whether it's
-  `beside` the one before it, sharing its row.
+  (`span_s`), its colour (a `Hue`, or the accent), whether it's
+  `beside` the one before it, sharing its row, and its own `name`
+  (Ben, 2026-11-14: "let me provide a custom name for the widget if i
+  want to override/customize the name"): None or blank, it's named by
+  what it measures (`Widget::default_label`, "CPU", "Claude 5-hour");
+  given, it's its label in a row and beside others (`Widget::label`,
+  `short_label`: the name as it is, cut with "…" where even beside the
+  shortest value it doesn't fit, never left out), its card's title
+  (what it measures leading the caption, "CPU · over the last
+  minute"), the start of its tip and its name for agents.
 * **Readings**: `olo_system::meters` (Preferences' list of what there
   is too, `sources`: cores, GPUs, disks, volumes, interfaces, sensors,
   a battery): `/proc/stat`, `meminfo`, `diskstats`, `net/dev`, statvfs,
@@ -15610,10 +15618,13 @@ ProcessController put their bars in its tray.
   and `seven_day_breakdown`, which is no limit, isn't a quota.
 
 Preferences ▸ Deskbar (`deskbar.rs`) lists the widgets in order (Add
-one of a kind after the chosen one, Remove, Move Up, Move Down) beside
-the chosen one's settings (what it shows and which of it, where, look,
-size, name and value, beside the one before it, how often, how far
-back, colour), each changing the Deskbar at once; Defaults has none.
+one of a kind after the chosen one, Remove, Move Up, Move Down; a named
+one's row starts with its name, "Build box: CPU, a graph under the
+tray") beside the chosen one's settings (what it shows and which of it,
+its Name: a field whose hint is its name by what it measures, emptied
+to go back to that; where, look, size, name and value shown, beside
+the one before it, how often, how far back, colour), each changing the
+Deskbar at once; Defaults has none.
 
 ## The lock screen (crates/app_server/src/lock.rs, apps/lock)
 

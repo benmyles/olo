@@ -302,11 +302,48 @@ pub fn hgradient(g: &mut Painter, b: Bounds<Pixels>, left: Hsla, right: Hsla) {
 }
 
 /// The width of `text` in `font` at `size` points, without a window (to
-/// size one before it opens): its characters' advances.
+/// size one before it opens): its characters' advances. A character the
+/// font hasn't is drawn from another (Deskbar's "↓12K ↑3K"), so then the
+/// line is laid out as it's drawn, fallbacks and all: counting it as
+/// nothing put a value over a name beside it.
 pub fn text_width_app(text: &str, size: f32, font: &Font) -> f32 {
     let ts = olo_interface::text_system();
     let id = ts.resolve_font(font);
-    text.chars().filter_map(|ch| ts.advance(id, px(size), ch).ok()).map(|a| f32::from(a.width)).sum()
+    let mut width = 0.0;
+    for ch in text.chars() {
+        match ts.advance(id, px(size), ch) {
+            Ok(a) => width += f32::from(a.width),
+            // (A control character has no glyph and no width.)
+            Err(_) if ch.is_control() => {}
+            Err(_) => return laid_out_width(text, size, font, id),
+        }
+    }
+    width
+}
+
+/// `text_width_app`'s width of a line with a character from another
+/// font: laid out once, kept (a widget's value is measured each frame it
+/// moves).
+fn laid_out_width(text: &str, size: f32, font: &Font, id: olo_interface::FontId) -> f32 {
+    type Key = (olo_interface::FontId, u32, String);
+    thread_local! {
+        static KEPT: std::cell::RefCell<std::collections::HashMap<Key, f32>> = Default::default();
+    }
+    let key = (id, size.to_bits(), text.to_owned());
+    if let Some(w) = KEPT.with(|k| k.borrow().get(&key).copied()) {
+        return w;
+    }
+    let run = TextRun { len: text.len(), font: font.clone(), color: Hsla::default(), background_color: None, underline: None, strikethrough: None, size: None };
+    let w = f32::from(olo_interface::text_system().layout_line_now(text, px(size), &[run]).width);
+    KEPT.with(|k| {
+        let mut k = k.borrow_mut();
+        // (Values come and go: a few hundred lines at most.)
+        if k.len() >= 512 {
+            k.clear();
+        }
+        k.insert(key, w);
+    });
+    w
 }
 
 /// Which edge of the text `x` is.

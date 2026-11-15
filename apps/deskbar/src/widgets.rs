@@ -221,7 +221,8 @@ impl Shown {
         let described = meters::describe(&w.measure, sources);
         let (title, rest) = match described.split_once(": ") {
             Some((t, rest)) => (t.to_owned(), rest.to_owned()),
-            None => (label(w), described.clone()),
+            // (By what it measures: its own name, if any, goes above.)
+            None => (w.default_label(), described.clone()),
         };
         // ("CPU, each core": "Each core" under "CPU".)
         let rest = rest.strip_prefix(&format!("{title}, ")).map(str::to_owned).or_else(|| (rest != title).then_some(rest)).unwrap_or_default();
@@ -273,6 +274,15 @@ impl Shown {
             (Measure::Pool { .. }, Some(left)) => Some(c(charts::usage_colour(&p, 1.0 - left as f32))),
             _ => None,
         };
+        // Its own name as the title, what it measures leading what's
+        // under it ("Build box", "CPU · Each core · over the last minute").
+        if let Some(name) = w.own_name() {
+            // (Read on from it: "CPU · over the last minute"; Token Pool's
+            // name kept as it is.)
+            let rest: String = if pool { caption.clone() } else { caption.chars().take(1).flat_map(char::to_lowercase).chain(caption.chars().skip(1)).collect() };
+            caption = if rest.is_empty() { title } else { format!("{title} · {rest}") };
+            title = name.to_owned();
+        }
         let mut card = Card::new(title).value(value, value_colour);
         if !caption.is_empty() {
             card = card.caption(caption);
@@ -370,7 +380,11 @@ impl Shown {
 
     fn reading_tip(&self, sources: &meters::Sources) -> String {
         let w = &self.widget;
-        let mut out = meters::describe(&w.measure, sources);
+        // (Its own name first: "Work: CPU, all cores: 12%".)
+        let mut out = match w.own_name() {
+            Some(name) => format!("{name}: {}", meters::describe(&w.measure, sources)),
+            None => meters::describe(&w.measure, sources),
+        };
         let Some(r) = &self.latest else { return out };
         // (Said in full by what read it: a quota's accounts.)
         if !r.detail.is_empty() {
@@ -804,42 +818,16 @@ fn base(s: &Shown, p: &Palette) -> Rgba {
     w.hue.map_or(p.control_highlight, |h| p.hue(h))
 }
 
-/// Its label in a row ("CPU", "Network", "Claude 5-hour").
+/// Its label in a row ("CPU", "Network", "Claude 5-hour"), its own
+/// name if it has one.
 pub fn label(w: &Widget) -> String {
-    match &w.measure {
-        Measure::Temperature { .. } => "Temp".into(),
-        Measure::Pool { provider, quotas, .. } if quotas.is_empty() => olo_protocol::pool::provider_name(provider),
-        Measure::Pool { provider, quotas, .. } => format!("{} {}", olo_protocol::pool::provider_name(provider), quotas.join(", ")),
-        m => m.kind_name().into(),
-    }
+    w.label()
 }
 
 /// Its label where there's less room, beside others: "Mem", "Net",
 /// "Claude 5h".
 fn short_label(w: &Widget) -> String {
-    match &w.measure {
-        Measure::Cpu { .. } => "CPU".into(),
-        Measure::Memory { .. } => "Mem".into(),
-        Measure::Gpu { .. } => "GPU".into(),
-        Measure::Disk { .. } => "I/O".into(),
-        Measure::Space { .. } => "Disk".into(),
-        Measure::Network { .. } => "Net".into(),
-        Measure::Temperature { .. } => "Temp".into(),
-        Measure::Power => "Pwr".into(),
-        Measure::Pool { provider, quotas, .. } => {
-            let name = olo_protocol::pool::provider_name(provider);
-            if quotas.is_empty() { name } else { format!("{name} {}", quotas.iter().map(|q| short_quota(q)).collect::<Vec<_>>().join("/")) }
-        }
-    }
-}
-
-/// A quota said short: "5h", "Wk", "Wk Fable".
-fn short_quota(q: &str) -> String {
-    let q = q.replace("-hour", "h").replace(" hour", "h").replace("-day", "d");
-    match q.strip_prefix("Weekly") {
-        Some(rest) => format!("Wk{rest}"),
-        None => q,
-    }
+    w.short_label()
 }
 
 /// A value for the tray, an icon's width: "23", "2M", "63°".
@@ -954,14 +942,22 @@ fn paint_row(g: &mut Painter, r: Bounds<Pixels>, s: &Shown, p: &Palette, inset: 
     let fits = |value: &str, name: &str| shown_w(value) + style::text_width_app(name, style::PLAIN_SIZE, &bold) <= room;
     let names = if w.label { vec![label(w), short_label(w)] } else { Vec::new() };
     let chosen = names.iter().find_map(|name| values.iter().find(|v| fits(v, name)).map(|v| ((*v).clone(), Some(name.clone()))));
+    // (A name of its own that doesn't fit even beside the shortest value
+    // is cut with "…", not left out: the person gave it to tell this one
+    // from the others. Its card says it whole.)
+    let cut = chosen.is_none() && w.label && w.own_name().is_some();
     let (value, name) = chosen.unwrap_or_else(|| {
         let shortest = if w.label { values.last() } else { values.first() };
-        (shortest.map_or_else(String::new, |v| (*v).clone()), None)
+        (shortest.map_or_else(String::new, |v| (*v).clone()), cut.then(|| label(w)))
     });
     let show_label = name.is_some();
     let mut label_w = px(0.0);
     if let Some(name) = name {
-        label_w = style::label(g, left, text_y, Align::Left, name, style::PLAIN_SIZE, bold, c(p.panel_text)).size.width;
+        label_w = if cut {
+            style::label_fit(g, left, text_y, Align::Left, name, style::PLAIN_SIZE, bold, c(p.panel_text), px((room - shown_w(&value)).max(0.0))).size.width
+        } else {
+            style::label(g, left, text_y, Align::Left, name, style::PLAIN_SIZE, bold, c(p.panel_text)).size.width
+        };
     }
     let mut value_w = px(0.0);
     if w.value || number {

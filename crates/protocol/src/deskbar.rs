@@ -66,6 +66,13 @@ pub struct Widget {
     /// side, each drawn small: its label over its drawing, as iStat
     /// Menus' are. Ignored in the tray and for a place's first.
     pub beside: bool,
+    /// Its own name, given in Preferences (Ben, 2026-11-14: "let me
+    /// provide a custom name for the widget if i want to
+    /// override/customize the name"): its label in a row, beside others,
+    /// its card's title and its name for agents. None (or blank): named
+    /// by what it measures ([`Widget::default_label`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 impl Default for Widget {
@@ -87,7 +94,51 @@ impl Widget {
         // (A quota moves over minutes and hours: read each minute, as
         // well as whenever the pool says it changed, its graph an hour.)
         let (every_ms, span_s) = if matches!(measure, Measure::Pool { .. }) { (60_000, 3600) } else { (1000, 60) };
-        Widget { id, hue: Some(measure.hue()), measure, place: Place::Top, look, size: Size::Medium, label: true, value: true, every_ms, span_s, beside: false }
+        Widget { id, hue: Some(measure.hue()), measure, place: Place::Top, look, size: Size::Medium, label: true, value: true, every_ms, span_s, beside: false, name: None }
+    }
+
+    /// The name the person gave it, if any (not blank).
+    pub fn own_name(&self) -> Option<&str> {
+        self.name.as_deref().map(str::trim).filter(|n| !n.is_empty())
+    }
+
+    /// Its label in a row ("CPU", "Network", "Claude 5-hour"): its own
+    /// name, else what it measures.
+    pub fn label(&self) -> String {
+        self.own_name().map_or_else(|| self.default_label(), str::to_owned)
+    }
+
+    /// Its label by what it measures, as it is with no name of its own
+    /// (Preferences' hint).
+    pub fn default_label(&self) -> String {
+        match &self.measure {
+            Measure::Temperature { .. } => "Temp".into(),
+            Measure::Pool { provider, quotas, .. } if quotas.is_empty() => crate::pool::provider_name(provider),
+            Measure::Pool { provider, quotas, .. } => format!("{} {}", crate::pool::provider_name(provider), quotas.join(", ")),
+            m => m.kind_name().into(),
+        }
+    }
+
+    /// Its label where there's less room, beside others: "Mem", "Net",
+    /// "Claude 5h". Its own name as it is (cut short where it must be).
+    pub fn short_label(&self) -> String {
+        if let Some(name) = self.own_name() {
+            return name.to_owned();
+        }
+        match &self.measure {
+            Measure::Cpu { .. } => "CPU".into(),
+            Measure::Memory { .. } => "Mem".into(),
+            Measure::Gpu { .. } => "GPU".into(),
+            Measure::Disk { .. } => "I/O".into(),
+            Measure::Space { .. } => "Disk".into(),
+            Measure::Network { .. } => "Net".into(),
+            Measure::Temperature { .. } => "Temp".into(),
+            Measure::Power => "Pwr".into(),
+            Measure::Pool { provider, quotas, .. } => {
+                let name = crate::pool::provider_name(provider);
+                if quotas.is_empty() { name } else { format!("{name} {}", quotas.iter().map(|q| short_quota(q)).collect::<Vec<_>>().join("/")) }
+            }
+        }
     }
 
     /// `every_ms` within what's allowed.
@@ -98,6 +149,15 @@ impl Widget {
     /// How many readings its graph keeps (at least two).
     pub fn history(&self) -> usize {
         ((self.span_s.clamp(1, MAX_SPAN_S) as u64 * 1000) / self.every().as_millis().max(1) as u64).clamp(2, 4096) as usize
+    }
+}
+
+/// A quota said short: "5h", "Wk", "Wk Fable".
+fn short_quota(q: &str) -> String {
+    let q = q.replace("-hour", "h").replace(" hour", "h").replace("-day", "d");
+    match q.strip_prefix("Weekly") {
+        Some(rest) => format!("Wk{rest}"),
+        None => q,
     }
 }
 
@@ -368,6 +428,23 @@ mod tests {
         let made = Widget::new(3, Measure::pool("claude", &["5-hour"]));
         assert_eq!((made.look, made.every_ms, made.span_s, made.hue), (Look::Meter, 60_000, 3600, Some(Hue::Brown)));
         assert_eq!(serde_json::from_str::<Widget>(&serde_json::to_string(&made).unwrap()).unwrap(), made);
+    }
+
+    /// A widget's own name is its label everywhere, short too; blank or
+    /// none, it's named by what it measures. Settings without one read
+    /// as before, and none is written.
+    #[test]
+    fn a_widget_named_by_the_person() {
+        let mut w = Widget::new(1, Measure::pool("claude", &["5-hour", "Weekly"]));
+        assert_eq!((w.label(), w.short_label()), ("Claude 5-hour, Weekly".to_owned(), "Claude 5h/Wk".to_owned()));
+        assert!(!serde_json::to_string(&w).unwrap().contains("name"));
+        w.name = Some("  Work quota ".into());
+        assert_eq!((w.label(), w.short_label(), w.default_label()), ("Work quota".to_owned(), "Work quota".to_owned(), "Claude 5-hour, Weekly".to_owned()));
+        assert_eq!(serde_json::from_str::<Widget>(&serde_json::to_string(&w).unwrap()).unwrap(), w);
+        w.name = Some("   ".into());
+        assert_eq!(w.label(), "Claude 5-hour, Weekly");
+        let named: Widget = serde_json::from_str(r#"{"id": 4, "measure": {"kind": "memory", "swap": false}, "name": "RAM"}"#).unwrap();
+        assert_eq!((named.label(), named.short_label()), ("RAM".to_owned(), "RAM".to_owned()));
     }
 
     /// A graph keeps as many readings as its span holds at its rate.
