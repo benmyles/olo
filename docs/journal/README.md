@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Terminal follows a change of look at once
+
+*04:23* — Switching light/dark or the theme changed Terminal's window but not its screen, which kept the look before until something else drew it again: in dark mode its ground stayed white (left, before; right, after). The screens' view now follows the look itself.
+
+![Terminal follows a change of look at once](2026-11-15/042317-terminal-follows-a-change-of-look-at-once.png)
+
 ### Backgrounds: all of Mac OS 9's pictures and patterns
 
 *03:49* — Mac OS 9's CD extras as three collections (26 renders, 34 photographs, 21 Nostalgia pictures, 4K JPEGs finished with 4x-UltraSharp), its 111 desktop patterns and 20 Large Patterns as tiles (here Bossanova Bondi, tiled at its 256 points). Patterns made larger by the image model in a grid within its limits: strips get more tiles along their short side (3:1 at most), large tiles a smaller scale (its pixel budget).

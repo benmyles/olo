@@ -1338,6 +1338,15 @@ impl Terminal {
     /// countdown; the pointer on each goes to Terminal with which shell
     /// it's over.
     pub(crate) fn render_panes(&mut self, id: WindowId, focused: bool, dropping: bool, cx: &mut olo_kit::Cx<Panes>) -> Element {
+        // The desktop's look, when it's another: here too, not only in
+        // the window's render (`render_term`), which may come after this
+        // view's in the same refresh: the screens kept the look before
+        // until something else drew them again (a look changed showed in
+        // the terminal only at the next change).
+        let look = theme::palette();
+        if !Arc::ptr_eq(&look, &self.look) {
+            self.follow(&look);
+        }
         let scale = cx.scale_factor();
         let vs = cx.viewport_size();
         let metrics = self.metrics_for(scale);

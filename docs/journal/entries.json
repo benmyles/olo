@@ -4216,5 +4216,11 @@
   "title": "Backgrounds: all of Mac OS 9's pictures and patterns",
   "caption": "Mac OS 9's CD extras as three collections (26 renders, 34 photographs, 21 Nostalgia pictures, 4K JPEGs finished with 4x-UltraSharp), its 111 desktop patterns and 20 Large Patterns as tiles (here Bossanova Bondi, tiled at its 256 points). Patterns made larger by the image model in a grid within its limits: strips get more tiles along their short side (3:1 at most), large tiles a smaller scale (its pixel budget).",
   "image": "2026-11-15/034955-backgrounds-all-of-mac-os-9-s-pictures-and-patte.png"
+ },
+ {
+  "time": "2026-11-15T04:23:17",
+  "title": "Terminal follows a change of look at once",
+  "caption": "Switching light/dark or the theme changed Terminal's window but not its screen, which kept the look before until something else drew it again: in dark mode its ground stayed white (left, before; right, after). The screens' view now follows the look itself.",
+  "image": "2026-11-15/042317-terminal-follows-a-change-of-look-at-once.png"
  }
 ]
