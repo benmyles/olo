@@ -92,8 +92,31 @@ pub fn selection_over(p: &Palette, active: bool) -> Hsla {
     c(p.control_highlight).opacity(if active { 0.4 } else { 0.2 })
 }
 
+/// Text that can't be used now (a disabled control's label): quieter
+/// than [`secondary_text`], as BeOS's was; a little brighter by night,
+/// where 55% of the way to the panel all but disappeared.
 pub fn disabled_text(p: &Palette) -> Hsla {
-    c(olo_theme::mix(p.panel_text, p.panel_background, 0.55))
+    let dark = p.mode == olo_theme::ThemeMode::Dark;
+    c(olo_theme::mix(p.panel_text, p.panel_background, if dark { 0.45 } else { 0.55 }))
+}
+
+/// Secondary text (`StringView::dim`: a note under a setting, a file's
+/// size and dates, a status line): quieter than the text, and still
+/// read easily, at least 4.5:1 against the panel (WCAG's for body text).
+/// It was the disabled colour, about 3:1 in Classic (Astra, 2026-11-15:
+/// "the tiny grey metadata and free-space label" the weakest thing).
+pub fn secondary_text(p: &Palette) -> Hsla {
+    let dark = p.mode == olo_theme::ThemeMode::Dark;
+    let quiet = olo_theme::mix(p.panel_text, p.panel_background, if dark { 0.37 } else { 0.42 });
+    c(olo_theme::readable(quiet, p.panel_background, 4.5))
+}
+
+/// The rim of a check box's or radio button's well: the panel a shade
+/// darker on a light panel (BeOS's sunken well), and lighter than the
+/// panel on a dark one, where a darker rim round a dark well vanished
+/// (Astra: "unchecked checkboxes almost disappear").
+pub fn well_rim(p: &Palette, darker: f32) -> Hsla {
+    if p.mode == olo_theme::ThemeMode::Dark { c(olo_theme::mix(p.panel_background, p.panel_text, 0.42)) } else { shade(p, p.panel_background, darker) }
 }
 
 /// A key for what a drawing shows (`Element::paint_key`): everything

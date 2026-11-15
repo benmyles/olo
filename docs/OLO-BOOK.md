@@ -753,7 +753,15 @@ describes each widget in full; this is the map.
 night: never a colour of your own); `metrics` the spacing; `style` the
 BeOS drawing primitives on device pixels (`sunken`, `raised`, `bevel`,
 `fill_rect`, `hline`, `label`, `key`, `snap`); `icons::paint(g,
-bounds, name)` an icon at one texel a device pixel.
+bounds, name)` an icon at one texel a device pixel. Text's colours
+come from `style` too: the palette's text; `style::secondary_text(p)`
+for what's quieter but read (a note under a setting, a file's size and
+dates, a status line: `StringView::dim` draws in it), held to 4.5:1
+against the panel; `style::disabled_text(p)` only for what can't be
+used now, quieter still; `style::well_rim(p, darker)` for the rim of a
+well a mark sits in (a check box's, a radio button's), darker than the
+panel by day and lighter by night, where a dark rim round a dark well
+vanished.
 
 **Controls** (`olo_kit::widgets`), each a builder that's an element:
 

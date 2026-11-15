@@ -414,7 +414,9 @@ impl Palette {
                 name: "BeOS Light".into(),
                 mode: ThemeMode::Light,
                 foreground: hex(0x26292e),
-                background: hex(0xfbfaf6),
+                // (White, as R5's Terminal: beside white documents an
+                // off-white looked like a mistake.)
+                background: hex(0xffffff),
                 cursor: hex(0x2f6fdb),
                 selection: hex(0xc9dcf7),
                 ansi: ANSI_LIGHT,

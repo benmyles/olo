@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Secondary text read easily; dark mode's check boxes outlined
+
+*04:38* — Each pair before (left) and after (right). Notes, file details and status lines were the disabled colour, about 3:1 against the panel; now at least 4.5:1 and still quieter than the text (Classic light and dark, Platinum dark). By night a check box's or radio button's well has a rim lighter than the panel, where its darker rim vanished (Classic, Platinum and BeOS dark; light mode as it was).
+
+![Secondary text read easily; dark mode's check boxes outlined](2026-11-15/043840-secondary-text-read-easily-dark-mode-s-check-box.png)
+
 ### Terminal follows a change of look at once
 
 *04:23* — Switching light/dark or the theme changed Terminal's window but not its screen, which kept the look before until something else drew it again: in dark mode its ground stayed white (left, before; right, after). The screens' view now follows the look itself.

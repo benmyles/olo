@@ -97,7 +97,7 @@ impl IntoElement for StringView {
         let weight = if self.bold { FontWeight::BOLD } else { FontWeight::NORMAL };
         if self.wrap {
             let p = theme::palette();
-            let ink = self.color.unwrap_or_else(|| if self.dim { style::disabled_text(&p) } else { style::c(p.panel_text) });
+            let ink = self.color.unwrap_or_else(|| if self.dim { style::secondary_text(&p) } else { style::c(p.panel_text) });
             let mut d = div().w_full().line_height(olo_interface::relative(style::LINE_HEIGHT)).font_weight(weight).text_color(ink);
             // (The window's own size unless small: nothing else changes.)
             if self.size != style::PLAIN_SIZE {
@@ -111,7 +111,7 @@ impl IntoElement for StringView {
             let key = style::key((&text, dim, style::ink_key(color), size.to_bits(), self.bold));
             return canvas(move |g, b| {
                 let p = theme::palette();
-                let ink = color.unwrap_or_else(|| if dim { style::disabled_text(&p) } else { style::c(p.panel_text) });
+                let ink = color.unwrap_or_else(|| if dim { style::secondary_text(&p) } else { style::c(p.panel_text) });
                 let r = style::label_fit(g, b.left(), b.center().y, style::Align::Left, text.clone(), size, style::ui_font(weight), ink, b.size.width);
                 g.agent(agent::Node::label(text.clone(), r));
             })
@@ -125,7 +125,7 @@ impl IntoElement for StringView {
         let key = style::key((&text, dim, style::ink_key(color), size.to_bits(), self.bold, beside.map(f32::to_bits)));
         canvas(move |g, b| {
             let p = theme::palette();
-            let ink = color.unwrap_or_else(|| if dim { style::disabled_text(&p) } else { style::c(p.panel_text) });
+            let ink = color.unwrap_or_else(|| if dim { style::secondary_text(&p) } else { style::c(p.panel_text) });
             let r = match beside {
                 Some(of) => style::label_on_baseline(g, b.left(), style::baseline_at(g, b.center().y, of), style::Align::Left, text.clone(), size, style::ui_font(weight), ink),
                 None => style::label(g, b.left(), b.center().y, style::Align::Left, text.clone(), size, style::ui_font(weight), ink),

@@ -253,7 +253,14 @@ fn mark_well(g: &mut Painter, r: Bounds<Pixels>, p: &olo_theme::Palette, pressed
     style::fill_rect(g, r, fill);
     style::bevel(g, r, style::shade(p, p.panel_background, 1.18), style::c(p.shine));
     let inner = style::inset(g, r, 1.0);
-    style::bevel(g, inner, style::shade(p, p.panel_background, 1.6), style::shade(p, p.panel_background, 1.08));
+    if p.mode == olo_theme::ThemeMode::Dark {
+        // (By night the rim all round, lighter than the panel: see
+        // `style::well_rim`.)
+        let rim = style::well_rim(p, 1.6);
+        style::bevel(g, inner, rim, rim);
+    } else {
+        style::bevel(g, inner, style::shade(p, p.panel_background, 1.6), style::shade(p, p.panel_background, 1.08));
+    }
 }
 
 /// BCheckBox.
@@ -520,7 +527,7 @@ impl IntoElement for RadioButton {
                 style::c(bg)
             };
             // The ring a point wide outside the face.
-            circle(g, cx0, cy0, 6.5, style::shade(&p, bg, 1.55));
+            circle(g, cx0, cy0, 6.5, style::well_rim(&p, 1.55));
             circle(g, cx0, cy0, 5.5, face);
             if selected {
                 let ink = if s.enabled { p.control_mark } else { olo_theme::mix(p.panel_text, p.panel_background, 0.55) };
