@@ -1463,7 +1463,10 @@ something nobody here has is in "Blocked", with what it waits for.
   size now, with R5's contour, so light things read on light panels);
   Windows 3.1's, 95's and 98's (39); CDE's 24 backdrops, in CDE's own
   colours (dtwm's, dtsession's and Motif's rules read from their
-  source); Windows 2000's eleven tiles. Left: OS/2's and Windows ME's;
+  source); Windows 2000's eleven tiles. Windows ME added nothing of its
+  own (its cabinets carry 98's and 2000's pictures, and "More Windows",
+  a logo). Left: OS/2 Warp 4's (its files are in OS/2's own PACK2
+  bundles, which nothing here unpacks yet: an unpacker first);
   individual icons redrawn where one drifts.
 
 - **OS Updates: Fedora's packages, for power users** (Ben, 2026-11-14:
