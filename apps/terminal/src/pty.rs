@@ -110,6 +110,10 @@ impl Pty {
         if pid == 0 {
             // SAFETY: in the child; see above.
             unsafe {
+                // At nice 0 whatever the thread that started it had
+                // (termd's are at the shell's tier): a build in a tab
+                // isn't Olo's (raising one's own nice needs no privilege).
+                libc::setpriority(libc::PRIO_PROCESS, 0, 0);
                 libc::setsid();
                 libc::ioctl(s, libc::TIOCSCTTY as _, 0);
                 libc::dup2(s, 0);

@@ -319,6 +319,7 @@ fn spawn_reader(
     std::thread::Builder::new()
         .name("pty reader".into())
         .spawn(move || {
+            echo_path();
             let mut feeder = io::Feeder::default();
             let mut buf = vec![0u8; 256 * 1024];
             // Its recent text for olo-complete, written once output has
@@ -466,6 +467,7 @@ fn spawn_writer(master: &OwnedFd) -> mpsc::Sender<Vec<u8>> {
     std::thread::Builder::new()
         .name("pty writer".into())
         .spawn(move || {
+            echo_path();
             for bytes in rx {
                 if file.write_all(&bytes).is_err() {
                     break;
@@ -660,6 +662,7 @@ fn handle(st: &St, conn: u64, f: Frame) {
 
 /// Talk to one Terminal until it goes.
 fn serve(st: St, stream: UnixStream, conn: u64) {
+    echo_path();
     let (tx, rx) = mpsc::channel::<Frame>();
     let backlog = Arc::new(AtomicUsize::new(0));
     let Ok(out) = stream.try_clone() else { return };
@@ -668,6 +671,7 @@ fn serve(st: St, stream: UnixStream, conn: u64) {
         std::thread::Builder::new()
             .name("client writer".into())
             .spawn(move || {
+                echo_path();
                 for f in rx {
                     let n = f.data.len();
                     if wire::write(&out, &f).is_err() {
@@ -1095,6 +1099,20 @@ fn say_pid(lock: &mut File) {
     let _ = lock.set_len(0);
     let _ = lock.rewind();
     let _ = write!(lock, "{}", std::process::id());
+}
+
+/// A thread every key and its echo pass through (a client's reader and
+/// writer, a shell's PTY reader and writer): at the shell's tier
+/// (`olo_protocol::performance::SHELL_NICE`, rtkit), above other
+/// programs' builds in the same cgroup, as olo-session's and Deskbar's
+/// are. Each thread asks for itself (rtkit's high priority is reset in
+/// threads and processes started from one), and a shell started from one
+/// is put back at nice 0 before it runs (pty.rs). Measured, a byte
+/// through four processes' pipes as the echo goes, with eight nice-0
+/// burners on the same eight cores: at nice 0 p99 2.1 ms, worst 31.7 ms;
+/// at −5 p99 0.75 ms, worst 2.8 ms (2026-11-15).
+fn echo_path() {
+    let _ = olo_system::priority::raise_self(olo_protocol::performance::SHELL_NICE);
 }
 
 /// Become a daemon: the parent waits for the child to say it's listening

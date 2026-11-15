@@ -239,7 +239,7 @@ pub fn tier(name: &str) -> Option<i32> {
     match name {
         "olo-app-server" => Some(CORE_NICE),
         "olo-voice" | "olo-airpods" => Some(AUDIO_NICE),
-        "olo-session" | "olo-deskbar" | "olo-wlproxy" => Some(SHELL_NICE),
+        "olo-session" | "olo-deskbar" | "olo-wlproxy" | "olo-termd" => Some(SHELL_NICE),
         "olo-rescue" => Some(RESCUE_NICE),
         _ => None,
     }
@@ -258,7 +258,9 @@ pub const AUDIO_THREAD: &str = "data-loop";
 /// Its realtime priority, at most (rtkit gives up to its
 /// `MaxRealtimePriority`, 20 by default; PipeWire's clients ask 83).
 pub const AUDIO_RT_PRIORITY: u32 = 20;
-/// The session's, Deskbar's and the proxy's.
+/// The session's, Deskbar's, the proxy's and termd's (every key typed in
+/// Terminal and its echo pass through termd's threads; the shells it
+/// starts are put back at 0).
 pub const SHELL_NICE: i32 = -5;
 /// Olo Rescue's (and the shell in it): the highest rtkit gives, over
 /// the compositor's even, as it's what's left when something has taken

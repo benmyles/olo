@@ -318,6 +318,7 @@ mod tests {
             tiled: false,
             part: None,
             floating: false,
+            main: false,
             float: None,
             floats_always: false,
             output: None,

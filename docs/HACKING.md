@@ -12265,7 +12265,15 @@ the folder's change time, `Owners`; each file in one read) and:
   what keeps the desktop responsive runs above everything else, always,
   supervisor or not: app_server's main thread (every input event and
   frame) at nice −10, olo-session, Deskbar and olo-wlproxy at −5, each
-  asking rtkit for itself as it starts, in the person's own session only
+  asking rtkit for itself as it starts; olo-termd's threads every key
+  typed in Terminal and its echo pass through (a client's reader and
+  writer, each shell's PTY reader and writer) at −5 too, each asking as
+  it starts (rtkit's high priority is reset in what a raised thread
+  starts), and a shell termd starts put back at 0 before it runs, so a
+  build in a tab never inherits it (measured, a byte through four
+  processes' pipes as the echo goes, beside eight nice-0 burners on the
+  same cores: p99 2.1 ms and worst 31.7 ms at nice 0, p99 0.75 ms and
+  worst 2.8 ms at −5); in the person's own session only
   (on an agent's screen, `OLO_SCREEN`, and in a headless app_server they
   stay at their nice and leave cores to the scheduler: three agent
   screens' compositors at app_server's own −10, on fast cores at full

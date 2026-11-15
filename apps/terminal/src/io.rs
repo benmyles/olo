@@ -448,7 +448,7 @@ mod tests {
         feeder.feed(&mut term, &shared, b"\x1b[?2031h\x1b[?996n", &mut reply);
         assert!(shared.reports.load(Ordering::Relaxed));
         assert_eq!(reply, b"\x1b[?997;2n");
-        *shared.scheme.lock().unwrap() = crate::colors::Scheme::from(&olo_theme::looks::terminal("mocha").unwrap());
+        *shared.scheme.lock().unwrap() = crate::colors::Scheme::from(&olo_theme::looks::terminal("beos-dark").unwrap());
         reply.clear();
         feeder.feed(&mut term, &shared, b"\x1b[?996n\x1b[?2031l", &mut reply);
         assert_eq!(reply, b"\x1b[?997;1n");
