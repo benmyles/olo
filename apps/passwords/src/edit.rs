@@ -629,7 +629,7 @@ mod tests {
     fn editor() -> Editor {
         let mut e = Editor::new_item(ItemCategory::Login, 0, None);
         e.sections = vec![ItemSection { id: "bank".into(), title: "Bank".into() }, ItemSection { id: "more".into(), title: String::new() }, ItemSection { id: "empty".into(), title: "Later".into() }];
-        let mut f = |id: &str, section: &str| EditField { section: Some(section.into()), ..field(id, id, ItemFieldType::Text) };
+        let f = |id: &str, section: &str| EditField { section: Some(section.into()), ..field(id, id, ItemFieldType::Text) };
         e.fields.push(f("iban", "bank"));
         e.fields.push(f("extra", "more"));
         e.fields.push(f("bic", "bank"));

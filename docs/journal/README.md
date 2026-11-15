@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-14
 
+### Passwords makes and manages vaults
+
+*19:34* — File ▸ New Vault…, Vault Info… and Delete Vault… (and a vault's right-click in the sources): made, renamed, described or deleted here at once, and in 1Password at the next sync, each a row of Review Sync with the vault's icon.
+
+![Passwords makes and manages vaults](2026-11-14/193418-passwords-makes-and-manages-vaults.png)
+
 ### The command palette: Olo's own, then files, then other apps, by Ctrl
 
 *19:13* — Left: ⌘Space finds Olo's own at first (its apps, commands, shortcuts, settings, windows): "term" is Olo's Terminal and its settings. Right: two taps of Ctrl later, other programs' apps only: GNOME's Terminal. The key hint says what the next tap finds (Files, Other Apps, Olo). Light, 2×.

@@ -663,11 +663,20 @@ impl MainView {
             push(Row::new("archive", "Archive").value(archived.to_string()), Some(Source::Archive));
         }
         let chosen = of.iter().position(|s| s.as_ref() == Some(&a.source)).unwrap_or(0);
+        let menu_of = of.clone();
         let list = Sidebar::new("passwords-sources", rows, chosen)
             .bare()
             .on_choose(move |i: &usize, _| {
                 if let Some(Some(source)) = of.get(*i) {
                     app().set_source(source.clone());
+                }
+            })
+            // A vault's right-click: Vault Info…, Delete Vault…, New Vault….
+            .on_menu(move |(i, at): &(usize, olo_kit::Point<olo_kit::Pixels>), cx| {
+                let Some(Some(Source::Vault(id))) = menu_of.get(*i) else { return };
+                let shown = app().vault_menu(id);
+                if let Some(m) = shown {
+                    menu::context_menu(cx, m, *at, |cmd, _| app().command(cmd));
                 }
             })
             .build(cx);
@@ -1499,13 +1508,14 @@ impl View for ReviewView {
                 action = format!("{action}: {}", row.detail);
             }
             let warn = matches!(row.what, crate::sync::What::Delete | crate::sync::What::Conflict);
-            let category = row.category;
+            // (A vault's own row: the sources' vault icon.)
+            let glyph = if row.of_vault { "vault" } else { icon(row.category) };
             let (title, action): (SharedString, SharedString) = (title.into(), action.into());
-            let key = style::key((&title, &action, warn, category.as_str()));
+            let key = style::key((&title, &action, warn, glyph));
             rows = rows.child(
                 canvas(move |g, b| {
                     let p = theme::palette();
-                    icons::paint(g, style::snap_centred(g, point(b.left() + px(m::SPACING + 16.0), b.center().y), 32.0, 32.0), icon(category));
+                    icons::paint(g, style::snap_centred(g, point(b.left() + px(m::SPACING + 16.0), b.center().y), 32.0, 32.0), glyph);
                     let x = b.left() + px(m::SPACING * 2.0 + 32.0);
                     let width = (b.right() - x - px(m::SPACING)).max(px(0.0));
                     let font = style::ui_font(FontWeight::NORMAL);

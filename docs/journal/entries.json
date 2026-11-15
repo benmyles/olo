@@ -4174,5 +4174,11 @@
   "title": "The command palette: Olo's own, then files, then other apps, by Ctrl",
   "caption": "Left: \u2318Space finds Olo's own at first (its apps, commands, shortcuts, settings, windows): \"term\" is Olo's Terminal and its settings. Right: two taps of Ctrl later, other programs' apps only: GNOME's Terminal. The key hint says what the next tap finds (Files, Other Apps, Olo). Light, 2\u00d7.",
   "image": "2026-11-14/191323-the-command-palette-olo-s-own-then-files-then-ot.png"
+ },
+ {
+  "time": "2026-11-14T19:34:18",
+  "title": "Passwords makes and manages vaults",
+  "caption": "File \u25b8 New Vault\u2026, Vault Info\u2026 and Delete Vault\u2026 (and a vault's right-click in the sources): made, renamed, described or deleted here at once, and in 1Password at the next sync, each a row of Review Sync with the vault's icon.",
+  "image": "2026-11-14/193418-passwords-makes-and-manages-vaults.png"
  }
 ]

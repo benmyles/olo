@@ -314,6 +314,53 @@ fn invoke_method(account: &mut FakeAccount, method: &str, params: &Value) -> Res
     Ok(match method {
         "VaultsList" => (value(&account.vaults.iter().map(|v| v.vault.clone()).collect::<Vec<_>>())?, false),
         "VaultsGetOverview" => (value(&vault_mut(account, arg(params, "vault_id")?)?.vault)?, false),
+        // Vaults made, renamed and described, deleted (Passwords' own).
+        "VaultsCreate" => {
+            let p: crate::VaultCreateParams = parse(&params["params"])?;
+            if p.title.trim().is_empty() {
+                return Err(error("Internal", "a vault needs a title"));
+            }
+            let now = chrono::Utc::now();
+            let vault = VaultOverview {
+                // (26 characters, as 1Password's ids.)
+                id: {
+                    static MADE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+                    format!("madevault{:017}", MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+                },
+                title: p.title,
+                description: p.description.unwrap_or_default(),
+                vault_type: VaultType::UserCreated,
+                active_item_count: 0,
+                content_version: 1,
+                attribute_version: 1,
+                created_at: now,
+                updated_at: now,
+            };
+            account.vaults.push(FakeVault { vault: vault.clone(), items: Vec::new(), archived: Vec::new(), files: BTreeMap::new(), no_access: false });
+            (vault_json(&vault), true)
+        }
+        "VaultsUpdate" => {
+            let p: crate::VaultUpdateParams = parse(&params["params"])?;
+            let v = vault_mut(account, arg(params, "vault_id")?)?;
+            if let Some(t) = p.title {
+                v.vault.title = t;
+            }
+            if let Some(d) = p.description {
+                v.vault.description = d;
+            }
+            v.vault.attribute_version += 1;
+            v.vault.updated_at = chrono::Utc::now();
+            (vault_json(&v.vault), true)
+        }
+        "VaultsDelete" => {
+            let id = arg(params, "vault_id")?.to_owned();
+            let v = vault_mut(account, &id)?;
+            if v.vault.vault_type != VaultType::UserCreated {
+                return Err(error("Internal", "this vault can't be deleted"));
+            }
+            account.vaults.retain(|v| v.vault.id != id);
+            (Value::Null, true)
+        }
         "ItemsList" => {
             let vault = vault_mut(account, arg(params, "vault_id")?)?;
             if vault.no_access {
@@ -429,6 +476,11 @@ fn invoke_method(account: &mut FakeAccount, method: &str, params: &Value) -> Res
         }
         other => return Err(error("Internal", format!("{other} isn't supported by the stand-in"))),
     })
+}
+
+/// A vault as `VaultsCreate` and `VaultsUpdate` give it back (`Vault`).
+fn vault_json(v: &VaultOverview) -> Value {
+    json!({ "id": v.id, "title": v.title, "description": v.description, "vaultType": v.vault_type, "activeItemCount": v.active_item_count, "contentVersion": v.content_version, "attributeVersion": v.attribute_version })
 }
 
 fn value(v: &impl Serialize) -> Result<Value, Value> {

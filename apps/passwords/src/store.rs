@@ -89,6 +89,21 @@ pub enum Job {
     SyncDone(Result<Report, String>),
     /// Erase the store here (never anything in 1Password).
     Reset,
+    /// Make a vault here (in 1Password at the next sync).
+    CreateVault {
+        title: String,
+        description: String,
+    },
+    /// Rename and describe a vault.
+    EditVault {
+        id: String,
+        title: String,
+        description: String,
+    },
+    /// Delete a vault and every item in it.
+    DeleteVault {
+        id: String,
+    },
 }
 
 /// How syncing with 1Password is going.
@@ -163,6 +178,13 @@ pub enum Reply {
     },
     /// The store was erased.
     Reset,
+    /// A vault made (to be chosen), changed, or deleted (with `items`
+    /// in it): said, the list sent again before it.
+    VaultDone {
+        vault: String,
+        title: String,
+        what: VaultDone,
+    },
     /// An operation failed (the store is still good).
     Error(String),
     /// A fetch failed: the item may be gone.
@@ -170,6 +192,14 @@ pub enum Reply {
         item: String,
         error: String,
     },
+}
+
+/// What was done to a vault.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum VaultDone {
+    Made,
+    Changed,
+    Deleted { items: usize },
 }
 
 pub struct FromStore {
@@ -372,7 +402,20 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
         copies_due = !matches!(job, Job::Get { .. } | Job::Close | Job::Cli { .. } | Job::Sync { .. } | Job::Decline);
         // What's shared with an agent screen is read only.
         if vault.as_ref().is_some_and(Vault::is_shared)
-            && matches!(job, Job::Create(..) | Job::Put(..) | Job::Archive { .. } | Job::Delete { .. } | Job::Sync { .. } | Job::RemoveAccount { .. } | Job::Approve { .. } | Job::Reset)
+            && matches!(
+                job,
+                Job::Create(..)
+                    | Job::Put(..)
+                    | Job::Archive { .. }
+                    | Job::Delete { .. }
+                    | Job::Sync { .. }
+                    | Job::RemoveAccount { .. }
+                    | Job::Approve { .. }
+                    | Job::Reset
+                    | Job::CreateVault { .. }
+                    | Job::EditVault { .. }
+                    | Job::DeleteVault { .. }
+            )
         {
             proxy.send(FromStore { generation: gen_of_job, reply: Reply::Error("Shared with this screen: change it in your own Passwords.".into()) });
             continue;
@@ -576,6 +619,30 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
                 }
                 Err(e) => reply(Reply::Error(describe(&e))),
             },
+            Job::CreateVault { title, description } => match v.create_vault(&title, &description) {
+                Ok(made) => {
+                    refresh(v, &reply);
+                    reply(Reply::VaultDone { vault: made.id, title: made.title, what: VaultDone::Made });
+                }
+                Err(e) => reply(Reply::Error(describe(&e))),
+            },
+            Job::EditVault { id, title, description } => match v.edit_vault(&id, &title, &description) {
+                Ok(changed) => {
+                    refresh(v, &reply);
+                    reply(Reply::VaultDone { vault: id, title: changed.title, what: VaultDone::Changed });
+                }
+                Err(e) => reply(Reply::Error(describe(&e))),
+            },
+            Job::DeleteVault { id } => {
+                let title = v.data.vaults.iter().find(|x| x.id == id).map(|x| x.title.clone()).unwrap_or_default();
+                match v.delete_vault(&id) {
+                    Ok(items) => {
+                        refresh(v, &reply);
+                        reply(Reply::VaultDone { vault: id, title, what: VaultDone::Deleted { items } });
+                    }
+                    Err(e) => reply(Reply::Error(describe(&e))),
+                }
+            }
             Job::Keychain { incoming, candidates, vault } => {
                 let response = keychain(v, &incoming.request, &candidates, &vault, &reply);
                 // A login or passkey saved: searched and offered from now.

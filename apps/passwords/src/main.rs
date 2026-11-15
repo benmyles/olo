@@ -23,6 +23,7 @@ mod store;
 mod sync;
 mod undo;
 mod vault;
+mod vaults;
 mod view;
 
 use std::{
@@ -344,6 +345,8 @@ pub struct Passwords {
     /// The main window, while it's open.
     main: Option<WindowHandle<MainView>>,
     generator: Option<WindowHandle<GeneratorView>>,
+    /// The New Vault or Vault Info dialog, while it's open.
+    vault_info: Option<WindowHandle<vaults::VaultInfo>>,
     /// The terminal sessions being asked about (an alert showing).
     allow_shown: HashMap<cli::Session, Allowing>,
     pub status: Notice,
@@ -1711,6 +1714,81 @@ impl Passwords {
         });
     }
 
+    /// The vault chosen in the sources, if one is.
+    fn chosen_vault(&self) -> Option<&onepassword::VaultOverview> {
+        match &self.source {
+            Source::Vault(id) => self.vaults.iter().find(|v| &v.id == id),
+            _ => None,
+        }
+    }
+
+    /// New Vault… (`id` None) or Vault Info… for vault `id`.
+    fn open_vault_info(&mut self, id: Option<String>) {
+        if on_screen() {
+            return self.flash(SHARED_ONLY);
+        }
+        let shown = id.as_ref().and_then(|id| self.vaults.iter().find(|v| &v.id == id)).cloned();
+        if id.is_some() && shown.is_none() {
+            return;
+        }
+        // Where it goes: made in 1Password at the next sync (in the first
+        // account), or kept here while none is synced.
+        let first = self.settings.accounts.first().map(|l| l.label.clone());
+        let synced = shown.as_ref().is_some_and(|v| self.vault_accounts.contains_key(&v.id));
+        let note = match (&shown, first) {
+            (None, Some(account)) => format!("Made here now, and in 1Password ({account}) at the next sync, once you’ve reviewed it."),
+            (None, None) => "Kept on this computer; made in 1Password once you sync an account.".to_owned(),
+            (Some(_), _) if synced => "Changed here now, and in 1Password at the next sync.".to_owned(),
+            (Some(_), _) => "Kept on this computer.".to_owned(),
+        };
+        if let Some(w) = self.vault_info.take() {
+            w.close();
+        }
+        let (title, description) = shown.map(|v| (v.title, v.description)).unwrap_or_default();
+        self.vault_info = Some(vaults::VaultInfo::open(id, &title, &description, note));
+    }
+
+    /// Delete Vault…: asks, saying what goes with it.
+    fn confirm_delete_vault(&mut self, id: Option<String>) {
+        if on_screen() {
+            return self.flash(SHARED_ONLY);
+        }
+        let Some(v) = id.as_ref().and_then(|id| self.vaults.iter().find(|v| &v.id == id)).or_else(|| self.chosen_vault()).cloned() else { return };
+        if !vault::deletable(&v) {
+            return self.show_error(format!("“{}” can’t be deleted: 1Password keeps it for every account.", v.title));
+        }
+        let n = self.items.iter().filter(|i| i.vault_id == v.id).count();
+        let items = match n {
+            0 => String::new(),
+            1 => " and the 1 item in it".to_owned(),
+            n => format!(" and the {n} items in it"),
+        };
+        let there = if self.vault_accounts.contains_key(&v.id) { ", here now and in 1Password at the next sync (after you review it)" } else { "" };
+        let message = format!("Delete the vault “{}”{items}{there}? This can’t be undone.", v.title);
+        let id = v.id.clone();
+        self.alert("Delete Vault", "warning", message, &["Cancel", "Delete Vault"], move |choice| {
+            if choice == Some(1) {
+                app().store.send(Job::DeleteVault { id: id.clone() });
+            }
+        });
+    }
+
+    /// A vault's right-click menu in the sources.
+    pub fn vault_menu(&self, id: &str) -> Option<Menu> {
+        let v = self.vaults.iter().find(|v| v.id == id)?;
+        let shared = on_screen();
+        Some(
+            Menu::new("Vault")
+                .item("Vault Info…", format!("vault-info:{id}"))
+                .enabled(!shared)
+                .item("Delete Vault…", format!("delete-vault:{id}"))
+                .enabled(!shared && vault::deletable(v))
+                .separator()
+                .item("New Vault…", "new-vault")
+                .enabled(!shared),
+        )
+    }
+
     fn after_discard(&mut self, then: Then) {
         self.close_editor();
         match then {
@@ -1851,7 +1929,12 @@ impl Passwords {
                 if let Source::Vault(v) = &self.source
                     && !ids.contains(v.as_str())
                 {
-                    self.source = Source::All;
+                    // A vault made here, now in 1Password under its id
+                    // there: still the one chosen (the new id of that name).
+                    let was = self.vaults.iter().find(|x| &x.id == v).map(|x| x.title.clone());
+                    let known: HashSet<&str> = self.vaults.iter().map(|x| x.id.as_str()).collect();
+                    let now = was.filter(|_| v.starts_with(vault::LOCAL)).and_then(|t| vaults.iter().find(|x| x.title == t && !known.contains(x.id.as_str())));
+                    self.source = now.map_or(Source::All, |x| Source::Vault(x.id.clone()));
                 }
                 self.vaults = vaults;
                 self.vault_accounts = accounts;
@@ -1944,6 +2027,20 @@ impl Passwords {
                 self.details.remove(&item);
                 self.invalidate();
                 self.after_removal(&item, row);
+                self.changed_here();
+            }
+            Reply::VaultDone { vault, title, what } => {
+                match what {
+                    store::VaultDone::Made => {
+                        // (Chosen, to fill: New Item goes into it.)
+                        self.set_source(Source::Vault(vault));
+                        self.flash(format!("Made the vault “{title}”."));
+                    }
+                    store::VaultDone::Changed => self.flash(format!("Saved the vault “{title}”.")),
+                    store::VaultDone::Deleted { items: 0 } => self.flash(format!("Deleted the vault “{title}”.")),
+                    store::VaultDone::Deleted { items: 1 } => self.flash(format!("Deleted the vault “{title}” and its item.")),
+                    store::VaultDone::Deleted { items } => self.flash(format!("Deleted the vault “{title}” and its {items} items.")),
+                }
                 self.changed_here();
             }
             Reply::Error(message) => {
@@ -2039,6 +2136,12 @@ impl Passwords {
             .app_items(&["security/Passwords"])
             .submenu(category_menu(Menu::new("New Item"), "new:"))
             .enabled(ready && !shared)
+            .item("New Vault…", "new-vault")
+            .enabled(ready && !shared)
+            .item("Vault Info…", "vault-info")
+            .enabled(ready && !shared && self.chosen_vault().is_some())
+            .item("Delete Vault…", "delete-vault")
+            .enabled(ready && !shared && self.chosen_vault().is_some_and(vault::deletable))
             .separator()
             .item("Password Generator", "generator")
             .key("g")
@@ -2155,6 +2258,16 @@ impl Passwords {
                 }
             }
             "delete" => self.confirm_delete(),
+            "new-vault" => self.open_vault_info(None),
+            "vault-info" => {
+                let id = self.chosen_vault().map(|v| v.id.clone());
+                if id.is_some() {
+                    self.open_vault_info(id);
+                }
+            }
+            c if c.starts_with("vault-info:") => self.open_vault_info(Some(c[11..].to_owned())),
+            "delete-vault" => self.confirm_delete_vault(None),
+            c if c.starts_with("delete-vault:") => self.confirm_delete_vault(Some(c[13..].to_owned())),
             "undo" | "redo" if on_screen() => self.flash(SHARED_ONLY),
             "undo" | "redo" => self.undo_redo(command == "redo"),
             c if c.starts_with("copy:") => self.copy_selected(&c[5..]),
@@ -2518,6 +2631,7 @@ fn main() {
             focus_field: None,
             main: None,
             generator: None,
+            vault_info: None,
             allow_shown: HashMap::new(),
             status: Notice::default(),
             last_use: Instant::now(),

@@ -16568,6 +16568,29 @@ one-account days carry over (`Data::account`, `Settings::account`). The
 fake serves more signed-in accounts on one socket (`FakeAccount::others`). Files attached in 1Password aren't copied (their metadata
 is), so they aren't shown.
 
+**Vaults** (Ben, 2026-11-14: "olo passwords should support
+creating/managing new vaults") are made, renamed, described and deleted
+here, as items are: at once in the store, and in 1Password at the next
+sync, once reviewed. File ▸ New Vault…, Vault Info… and Delete Vault…, and
+a vault's right-click in the sources (`vault_menu`), are commands
+(`new-vault`, `vault-info[:ID]`, `delete-vault[:ID]`); New Vault and
+Vault Info are one small dialog (`vaults.rs`, Name: and Description:,
+saying where it goes), Delete asks first, naming how many items go with
+it. `Vault::create_vault` makes a `local-…` vault (in the first account,
+listed after 1Password's and chosen), `edit_vault` and `delete_vault` the
+others; each is a `VaultChange` in `Data::vault_changes`, counted in what's
+pending. Only vaults the person made can be deleted (`vault::deletable`:
+`UserCreated`, never Private, Shared or the vault kept here before any
+account); one never sent just goes. A sync shows each as a row of Review
+Sync with the vault's icon ("Make this vault in 1Password", "Renamed (was
+“X”)", "Its 4 items too") and, applied, makes vaults first and gives
+their items 1Password's id (`Change::VaultMade`, then `apply_made`; an
+item of a vault that couldn't be made waits for it); a vault being
+deleted isn't listed. The fake makes, changes and deletes vaults as
+1Password does (`VaultsCreate`, `VaultsUpdate`, `VaultsDelete`, only
+`UserCreated`). Tests: `vaults_made_renamed_and_deleted_here`,
+`vaults_made_here_before_a_sync`.
+
 **Problems** are `sync::Problem`s (vault, item or none, a reason in plain
 words from `sync::reason`, and whether it's only a note), never joined
 text. The status line counts them ("Synced just now · 2 problems", red

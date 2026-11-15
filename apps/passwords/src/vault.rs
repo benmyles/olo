@@ -14,6 +14,13 @@
 //! which PAM unlocks at login, so Touch ID can open Passwords;
 //! `OLO_PASSWORDS_KEYFILE` keeps it in a file instead (tests).
 //!
+//! Vaults are made, renamed, described and deleted here too (Ben,
+//! 2026-11-14: "olo passwords should support creating/managing new
+//! vaults"), as items are changed: at once here, and in 1Password at the
+//! next sync, which the person reviews (`VaultChange`s, waiting in the
+//! store as an item's changes do). A vault made here has an id starting
+//! with [`LOCAL`] until it's made in the first account.
+//!
 //! What's shared with agent screens (`Shares`, chosen in Agent Screens)
 //! is kept in the store too, sealed with it, so only the person's
 //! Passwords changes it. Each time the store changes, its items are
@@ -97,6 +104,35 @@ pub struct Tombstone {
     pub id: String,
 }
 
+/// A change to a vault made here, for the next sync to make in
+/// 1Password (once the person has reviewed it).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum VaultChange {
+    /// A vault made here (its id [`LOCAL`]…), to be made in the first
+    /// account, its items after it.
+    Create { id: String, title: String, description: String },
+    /// A synced vault renamed or described here.
+    Edit { id: String, title: String, description: String },
+    /// A synced vault deleted here, its items with it; its name then.
+    Delete { id: String, title: String },
+}
+
+impl VaultChange {
+    pub fn id(&self) -> &str {
+        match self {
+            VaultChange::Create { id, .. } | VaultChange::Edit { id, .. } | VaultChange::Delete { id, .. } => id,
+        }
+    }
+}
+
+/// Whether a vault may be deleted: 1Password's own (Private, Shared,
+/// the transfer vault) never are, nor the vault kept here before any
+/// account (its items go to the first account's).
+pub fn deletable(v: &VaultOverview) -> bool {
+    v.vault_type == VaultType::UserCreated && v.id != format!("{LOCAL}personal")
+}
+
 #[derive(Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Data {
@@ -116,6 +152,8 @@ pub struct Data {
     next_rev: u64,
     /// What's shared with agent screens.
     pub shares: Shares,
+    /// Vaults made, changed and deleted here, not yet in 1Password.
+    pub vault_changes: Vec<VaultChange>,
 }
 
 /// What's shared with agent screens: items every screen has, and what
@@ -167,6 +205,13 @@ pub enum Change {
     Pushed { local_id: String, rev: u64, item: Box<Item>, state: ItemState },
     /// A deletion reached 1Password.
     Buried(Tombstone),
+    /// A vault made here is in 1Password: `local` is `vault` there (in
+    /// `account`), made with this name and description.
+    VaultMade { account: String, local: String, vault: VaultOverview, title: String, description: String },
+    /// A vault's name and description, as sent, are 1Password's.
+    VaultEdited { id: String, title: String, description: String },
+    /// A vault deleted here is gone from 1Password.
+    VaultDeleted { id: String },
 }
 
 /// What a sync with one account starts from: a copy of the store's sync
@@ -184,6 +229,8 @@ pub struct Snapshot {
     pub tombstones: Vec<Tombstone>,
     /// Every vault known here, for names.
     pub vaults: Vec<VaultOverview>,
+    /// The vaults made, changed and deleted here for this account.
+    pub vault_changes: Vec<VaultChange>,
 }
 
 pub struct Vault {
@@ -534,9 +581,84 @@ impl Vault {
         Ok(entry.item)
     }
 
+    /// Make a vault here (in 1Password at the next sync, in the first
+    /// account): it as it is now.
+    pub fn create_vault(&mut self, title: &str, description: &str) -> Result<VaultOverview> {
+        let title = title.trim();
+        if title.is_empty() {
+            return Err(fail("A vault needs a name."));
+        }
+        let now = Utc::now();
+        let v = VaultOverview {
+            id: format!("{LOCAL}{}", new_id()),
+            title: title.to_owned(),
+            description: description.trim().to_owned(),
+            vault_type: VaultType::UserCreated,
+            active_item_count: 0,
+            content_version: 0,
+            attribute_version: 0,
+            created_at: now,
+            updated_at: now,
+        };
+        self.data.vaults.push(v.clone());
+        self.data.vault_changes.push(VaultChange::Create { id: v.id.clone(), title: v.title.clone(), description: v.description.clone() });
+        self.save()?;
+        Ok(v)
+    }
+
+    /// Rename and describe vault `id` (in 1Password too at the next
+    /// sync, if it's there or is to be made there).
+    pub fn edit_vault(&mut self, id: &str, title: &str, description: &str) -> Result<VaultOverview> {
+        let title = title.trim();
+        if title.is_empty() {
+            return Err(fail("A vault needs a name."));
+        }
+        let v = self.data.vaults.iter_mut().find(|v| v.id == id).ok_or_else(|| fail("That vault isn’t there any more."))?;
+        v.title = title.to_owned();
+        v.description = description.trim().to_owned();
+        v.updated_at = Utc::now();
+        let v = v.clone();
+        let synced = self.data.vault_account.contains_key(id);
+        match self.data.vault_changes.iter_mut().find(|c| c.id() == id) {
+            Some(VaultChange::Create { title, description, .. } | VaultChange::Edit { title, description, .. }) => {
+                *title = v.title.clone();
+                *description = v.description.clone();
+            }
+            Some(VaultChange::Delete { .. }) => return Err(fail("That vault isn’t there any more.")),
+            None if synced => self.data.vault_changes.push(VaultChange::Edit { id: id.to_owned(), title: v.title.clone(), description: v.description.clone() }),
+            None => {}
+        }
+        self.save()?;
+        Ok(v)
+    }
+
+    /// Delete vault `id` and every item in it, here now and in 1Password
+    /// at the next sync; how many items went.
+    pub fn delete_vault(&mut self, id: &str) -> Result<usize> {
+        let v = self.data.vaults.iter().find(|v| v.id == id).cloned().ok_or_else(|| fail("That vault isn’t there any more."))?;
+        if !deletable(&v) {
+            return Err(fail(format!("“{}” can’t be deleted: 1Password keeps it for every account.", v.title)));
+        }
+        let before = self.data.entries.len();
+        self.data.entries.retain(|e| e.item.vault_id != id);
+        let gone = before - self.data.entries.len();
+        self.data.tombstones.retain(|t| t.vault != id);
+        self.data.synced.remove(id);
+        self.data.vaults.retain(|v| v.id != id);
+        // Never made in 1Password: nothing to send. Else the vault goes
+        // there too (which takes its items), whatever was to change in it.
+        let made_here = self.data.vault_changes.iter().any(|c| matches!(c, VaultChange::Create { id: i, .. } if i == id));
+        self.data.vault_changes.retain(|c| c.id() != id);
+        if !made_here && self.data.vault_account.contains_key(id) {
+            self.data.vault_changes.push(VaultChange::Delete { id: id.to_owned(), title: v.title });
+        }
+        self.save()?;
+        Ok(gone)
+    }
+
     /// Changes not yet in 1Password.
     pub fn pending(&self) -> usize {
-        self.data.entries.iter().filter(|e| e.dirty).count() + self.data.tombstones.len()
+        self.data.entries.iter().filter(|e| e.dirty).count() + self.data.tombstones.len() + self.data.vault_changes.len()
     }
 
     /// Whether `vault` is synced with `account` (`home`: the first
@@ -556,6 +678,8 @@ impl Vault {
             entries: self.data.entries.iter().filter(|e| ours(&e.item.vault_id)).cloned().collect(),
             tombstones: self.data.tombstones.iter().filter(|t| ours(&t.vault)).cloned().collect(),
             vaults: self.data.vaults.clone(),
+            // (Vaults made here go to the first account.)
+            vault_changes: self.data.vault_changes.iter().filter(|c| ours(c.id())).cloned().collect(),
         }
     }
 
@@ -573,6 +697,7 @@ impl Vault {
             kept = true;
         }
         self.data.tombstones.retain(|t| !gone.contains(&t.vault));
+        self.data.vault_changes.retain(|c| !gone.contains(c.id()));
         self.data.synced.retain(|v, _| !gone.contains(v));
         self.data.vaults.retain(|v| !gone.contains(&v.id));
         self.data.vault_account.retain(|_, a| a != account);
@@ -646,6 +771,15 @@ impl Vault {
                     }
                 }
                 Change::Buried(t) => self.data.tombstones.retain(|x| *x != t),
+                Change::VaultMade { account, local, vault, title, description } => self.apply_made(account, &local, vault, title, description),
+                Change::VaultEdited { id, title, description } => {
+                    self.data.vault_changes.retain(|c| !matches!(c, VaultChange::Edit { id: i, title: t, description: d } if *i == id && *t == title && *d == description));
+                }
+                Change::VaultDeleted { id } => {
+                    self.data.vault_changes.retain(|c| !matches!(c, VaultChange::Delete { id: i, .. } if *i == id));
+                    self.data.vault_account.remove(&id);
+                    self.data.synced.remove(&id);
+                }
             }
         }
         self.data.last_sync = Some(Utc::now());
@@ -659,15 +793,27 @@ impl Vault {
         vaults.iter().find(|v| v.vault_type == VaultType::Personal).or_else(|| vaults.iter().find(|v| matches!(v.title.as_str(), "Personal" | "Private" | "Employee"))).or(vaults.first())
     }
 
-    fn apply_vaults(&mut self, account: String, remote: Vec<VaultOverview>, home: bool) {
+    fn apply_vaults(&mut self, account: String, mut remote: Vec<VaultOverview>, home: bool) {
         let Some(home_vault) = Self::default_vault(&remote).map(|v| v.id.clone()) else { return };
+        // What's still to change in 1Password stays as it is here: a vault
+        // made here (to be made there), renamed or described, deleted.
+        let made: HashSet<String> = self.data.vault_changes.iter().filter_map(|c| matches!(c, VaultChange::Create { .. }).then(|| c.id().to_owned())).collect();
+        remote.retain(|v| !self.data.vault_changes.iter().any(|c| matches!(c, VaultChange::Delete { id, .. } if *id == v.id)));
+        for v in &mut remote {
+            if let Some(VaultChange::Edit { title, description, .. }) = self.data.vault_changes.iter().find(|c| matches!(c, VaultChange::Edit { id, .. } if *id == v.id)) {
+                v.title = title.clone();
+                v.description = description.clone();
+            }
+        }
         let known: HashSet<&str> = remote.iter().map(|v| v.id.as_str()).collect();
         let map = self.data.vault_account.clone();
         let ours = |vault: &str| map.get(vault).map_or(home, |a| *a == account);
-        // This account's items in vaults 1Password doesn't have (made
-        // here, or a vault gone there): synced ones go with their vault;
-        // changed or new ones move to its default vault, to be sent.
-        let stray = |vault: &str| ours(vault) && !known.contains(vault);
+        // This account's items in vaults 1Password doesn't have (the one
+        // kept here before any account, or a vault gone there): synced
+        // ones go with their vault; changed or new ones move to its
+        // default vault, to be sent. Not a vault made here to be made
+        // there: its items go after it.
+        let stray = |vault: &str| ours(vault) && !known.contains(vault) && !made.contains(vault);
         self.data.entries.retain(|e| !stray(&e.item.vault_id) || e.remote.is_none() || e.dirty);
         for e in self.data.entries.iter_mut().filter(|e| stray(&e.item.vault_id)) {
             e.item.vault_id = home_vault.clone();
@@ -675,13 +821,42 @@ impl Vault {
             e.dirty = true;
         }
         self.data.synced.retain(|id, _| !ours(id) || known.contains(id.as_str()));
-        // This account's vaults, as 1Password has them, after the others.
-        self.data.vaults.retain(|v| !ours(&v.id));
+        // This account's vaults, as 1Password has them, after the others,
+        // then those made here and still to be made there (where they'll
+        // be once they are: last).
+        let kept: Vec<VaultOverview> = self.data.vaults.iter().filter(|v| made.contains(&v.id)).cloned().collect();
+        self.data.vaults.retain(|v| !ours(&v.id) && !made.contains(&v.id));
         self.data.vault_account.retain(|_, a| *a != account);
         for v in &remote {
             self.data.vault_account.insert(v.id.clone(), account.clone());
         }
         self.data.vaults.extend(remote);
+        self.data.vaults.extend(kept);
+    }
+
+    /// A vault made here reached 1Password as `vault`: its id and its
+    /// items' are 1Password's from now on. Renamed meanwhile, the new
+    /// name is still to send; deleted meanwhile, it's to be deleted there.
+    fn apply_made(&mut self, account: String, local: &str, vault: VaultOverview, title: String, description: String) {
+        let id = vault.id.clone();
+        let pending = self.data.vault_changes.iter().position(|c| matches!(c, VaultChange::Create { id, .. } if id == local));
+        let Some(at) = pending else {
+            // Deleted here while it was being made.
+            self.data.vault_account.insert(id.clone(), account);
+            self.data.vault_changes.push(VaultChange::Delete { id, title: vault.title });
+            return;
+        };
+        let VaultChange::Create { title: now, description: said, .. } = self.data.vault_changes.remove(at) else { unreachable!() };
+        if now != title || said != description {
+            self.data.vault_changes.push(VaultChange::Edit { id: id.clone(), title: now.clone(), description: said.clone() });
+        }
+        for v in self.data.vaults.iter_mut().filter(|v| v.id == local) {
+            *v = VaultOverview { title: now.clone(), description: said.clone(), ..vault.clone() };
+        }
+        for e in self.data.entries.iter_mut().filter(|e| e.item.vault_id == local) {
+            e.item.vault_id = id.clone();
+        }
+        self.data.vault_account.insert(id, account);
     }
 
     fn apply_fetched(&mut self, item: Item, state: ItemState) {

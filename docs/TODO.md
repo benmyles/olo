@@ -1430,10 +1430,6 @@ something nobody here has is in "Blocked", with what it waits for.
   iterated, with second opinions from OpenAI's Astra; then every icon
   (apps, Preferences' panels, Deskbar, Tracker's kinds) made again for
   each theme per docs/ICONS.md, checked large and at Deskbar's size.
-- **Passwords makes and manages vaults** (Ben, 2026-11-14: "olo
-  passwords should support creating/managing new vaults"): a new
-  vault, and renaming, describing and deleting one, from Passwords
-  itself.
 - **Weather: a native app, every detail, with an assistant** (Ben,
   2026-11-14: "create an olo weather native app that has configurable
   data providers and comes with for now tomorrow.io as the provider.
@@ -1505,6 +1501,22 @@ something nobody here has is in "Blocked", with what it waits for.
   drivable; HACKING and the Olo Book.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Passwords makes and manages vaults** (Ben, 2026-11-14: "olo
+  passwords should support creating/managing new vaults").
+  Done (2026-11-14): File ▸ New Vault…, Vault Info… and Delete
+  Vault…, and the same on a vault's right-click in the sources. A
+  vault is made, renamed, described or deleted here at once and in
+  1Password at the next sync, each a row of Review Sync to approve
+  like an item's ("Make this vault in 1Password: …", "Renamed (was
+  “X”)", "Its 4 items too"); a new vault's items go with it, made
+  after it. Only vaults you made can be deleted (never Private,
+  Shared or 1Password's own), after an alert naming how many items
+  go. Tried headless against the stand-in 1Password: made, synced,
+  renamed and deleted, each reviewed; the dialog and window clean at
+  1×, 1.5× and 2×, light and dark. *Left for Ben:* trying it with a
+  real account (a vault made there is real); whether a vault should
+  also be made in another of several accounts (now the first one's).
 
 - **The command palette's scopes, cycled with Ctrl** (Ben, 2026-11-14:
   "change the cmd+space command palette so that by default it only

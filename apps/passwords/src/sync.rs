@@ -12,6 +12,10 @@
 //! The result is every change either side would see, as [`Row`]s for
 //! the person to review, and nothing has changed anywhere.
 //!
+//! Vaults made, renamed, described or deleted here are rows too ("Make
+//! this vault in 1Password"), made first, so the items made in a new
+//! vault go into it.
+//!
 //! [`apply`], once the person approves, makes exactly those changes: the
 //! store's come back as [`Change`]s for [`crate::vault::Vault::apply`],
 //! and 1Password's are sent (a changed item is put against the version
@@ -20,11 +24,11 @@
 
 use std::collections::{HashMap, HashSet};
 
-use onepassword::{Client, Item, ItemCategory, ItemCreateParams, ItemFieldType, ItemListFilter, ItemListFilterByState, ItemState, fields, individual_items};
+use onepassword::{Client, Item, ItemCategory, ItemCreateParams, ItemFieldType, ItemListFilter, ItemListFilterByState, ItemState, VaultCreateParams, VaultUpdateParams, fields, individual_items};
 
 use crate::{
     store::describe,
-    vault::{Change, Entry, Remote, Snapshot, Tombstone, Vault},
+    vault::{Change, Entry, Remote, Snapshot, Tombstone, Vault, VaultChange},
 };
 
 #[derive(Default)]
@@ -47,6 +51,8 @@ pub struct Row {
     pub vault: String,
     /// Which parts change, or why.
     pub detail: String,
+    /// About a vault itself (its `title`), not an item.
+    pub of_vault: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -62,6 +68,13 @@ pub enum What {
 impl Row {
     /// "Add to 1Password", "Delete from this computer", …
     pub fn action(&self) -> &'static str {
+        if self.of_vault {
+            return match self.what {
+                What::Add => "Make this vault in 1Password",
+                What::Delete => "Delete this vault from 1Password",
+                _ => "Change this vault in 1Password",
+            };
+        }
         match (self.what, self.here) {
             (What::Add, true) => "Add to this computer",
             (What::Add, false) => "Add to 1Password",
@@ -186,8 +199,34 @@ impl Plan {
 
 /// A change for 1Password.
 enum Up {
-    Send { local_id: String, rev: u64, item: Box<Item>, vault: String, seen: Option<Remote>, archive: bool },
-    Delete { tomb: Tombstone, version: u32, title: String },
+    /// A vault made here (its local id), made before anything else.
+    MakeVault {
+        local: String,
+        title: String,
+        description: String,
+    },
+    EditVault {
+        id: String,
+        title: String,
+        description: String,
+    },
+    DeleteVault {
+        id: String,
+        title: String,
+    },
+    Send {
+        local_id: String,
+        rev: u64,
+        item: Box<Item>,
+        vault: String,
+        seen: Option<Remote>,
+        archive: bool,
+    },
+    Delete {
+        tomb: Tombstone,
+        version: u32,
+        title: String,
+    },
 }
 
 /// Items asked for at once.
@@ -334,12 +373,61 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
     // With several accounts, a vault is named with its account's.
     let name = |v: &onepassword::VaultOverview| if snap.label.is_empty() { v.title.clone() } else { format!("{} ({})", v.title, snap.label) };
     let title_of = |id: &str| -> String { vaults.iter().chain(&snap.vaults).find(|v| v.id == id).map(name).unwrap_or_default() };
-    let row = |here, what, item: &Item, detail: String| Row { here, what, title: item.title.clone(), category: item.category, vault: title_of(&item.vault_id), detail };
+    let row = |here, what, item: &Item, detail: String| Row { here, what, title: item.title.clone(), category: item.category, vault: title_of(&item.vault_id), detail, of_vault: false };
+    let vault_row = |what, title: &str, detail: String| Row { here: false, what, title: title.to_owned(), category: ItemCategory::Unsupported, vault: snap.label.clone(), detail, of_vault: true };
 
     p.titles = vaults.iter().chain(&snap.vaults).map(|v| (v.id.clone(), name(v))).collect();
     p.down.push(Change::Vaults { account: snap.account.clone(), vaults: vaults.clone(), home: snap.home });
     let home = Vault::default_vault(&vaults).map(|v| v.id.clone());
-    let known: HashSet<&str> = vaults.iter().map(|v| v.id.as_str()).collect();
+    // Vaults made here to be made now (their items go into them), and
+    // those deleted here (not read again: they're going).
+    let mut made: HashSet<&str> = HashSet::new();
+    let mut deleting: HashSet<&str> = HashSet::new();
+    for change in &snap.vault_changes {
+        let there = vaults.iter().find(|v| v.id == change.id());
+        match change {
+            VaultChange::Create { id, title, description } => {
+                made.insert(id);
+                p.rows.push(vault_row(What::Add, title, description.clone()));
+                p.up.push(Up::MakeVault { local: id.clone(), title: title.clone(), description: description.clone() });
+            }
+            VaultChange::Edit { id, title, description } => {
+                let Some(there) = there else { continue };
+                let mut parts = Vec::new();
+                if there.title != *title {
+                    parts.push(format!("Renamed (was “{}”)", there.title));
+                }
+                if there.description != *description {
+                    parts.push(if description.is_empty() { "Description removed".to_owned() } else { "New description".to_owned() });
+                }
+                if parts.is_empty() {
+                    // Already as it is here.
+                    p.down.push(Change::VaultEdited { id: id.clone(), title: title.clone(), description: description.clone() });
+                    continue;
+                }
+                p.rows.push(vault_row(What::Change, title, parts.join(", ")));
+                p.up.push(Up::EditVault { id: id.clone(), title: title.clone(), description: description.clone() });
+            }
+            VaultChange::Delete { id, title } => {
+                deleting.insert(id);
+                match there {
+                    Some(there) => {
+                        let n = there.active_item_count;
+                        let detail = match n {
+                            0 => String::new(),
+                            1 => "Its 1 item too".to_owned(),
+                            n => format!("Its {n} items too"),
+                        };
+                        p.rows.push(vault_row(What::Delete, title, detail));
+                        p.up.push(Up::DeleteVault { id: id.clone(), title: title.clone() });
+                    }
+                    // Gone there already.
+                    None => p.down.push(Change::VaultDeleted { id: id.clone() }),
+                }
+            }
+        }
+    }
+    let known: HashSet<&str> = vaults.iter().map(|v| v.id.as_str()).filter(|v| !deleting.contains(v)).chain(made.iter().copied()).collect();
     // Synced items whose vault is gone from 1Password go with it.
     for e in snap.entries.iter().filter(|e| e.remote.is_some() && !e.dirty && !known.contains(e.item.vault_id.as_str())) {
         p.rows.push(row(true, What::Delete, &e.item, "Its vault is gone from 1Password".into()));
@@ -357,7 +445,7 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
     // value of (fetched before it was asked for by reference): read
     // again, once, whether or not their vault changed.
     let unread: HashSet<&str> = snap.entries.iter().filter(|e| e.remote.is_some() && !e.dirty && has_unread(&e.item)).map(|e| e.item.id.as_str()).collect();
-    for v in &vaults {
+    for v in vaults.iter().filter(|v| !deleting.contains(v.id.as_str())) {
         let again = snap.entries.iter().any(|e| e.item.vault_id == v.id && unread.contains(e.item.id.as_str()));
         if snap.synced.get(&v.id) == Some(&v.content_version) && !again {
             continue;
@@ -584,9 +672,62 @@ pub fn apply(plan: Plan, socket: &str) -> Result<Report, String> {
         };
         let titles = part.titles;
         let title_of = |id: &str| titles.get(id).cloned().unwrap_or_default();
-        for up in part.up {
+        // Vaults made here, made first: their items go into them.
+        let mut ids: HashMap<String, String> = HashMap::new();
+        let mut unmade: HashSet<String> = HashSet::new();
+        let (vault_ups, item_ups): (Vec<Up>, Vec<Up>) = part.up.into_iter().partition(|u| matches!(u, Up::MakeVault { .. }));
+        for up in vault_ups {
+            let Up::MakeVault { local, title, description } = up else { continue };
+            let params = VaultCreateParams { title: title.clone(), description: (!description.is_empty()).then(|| description.clone()), allow_admins_access: None };
+            match c.vaults().create(&params) {
+                Ok(made) => {
+                    let overview = c.vaults().get_overview(&made.id).unwrap_or_else(|_| onepassword::VaultOverview {
+                        id: made.id.clone(),
+                        title: made.title.clone(),
+                        description: made.description.clone(),
+                        vault_type: made.vault_type,
+                        active_item_count: 0,
+                        content_version: made.content_version,
+                        attribute_version: made.attribute_version,
+                        created_at: chrono::Utc::now(),
+                        updated_at: chrono::Utc::now(),
+                    });
+                    ids.insert(local.clone(), overview.id.clone());
+                    r.changes.push(Change::VaultMade { account: part.account.clone(), local, vault: overview, title, description });
+                    r.sent += 1;
+                }
+                Err(err) => {
+                    r.problems.push(Problem::error(&title, None, format!("Couldn’t make this vault in 1Password, so its items weren’t sent either. {}", reason(&err))));
+                    unmade.insert(local);
+                }
+            }
+        }
+        for up in item_ups {
             match up {
+                Up::MakeVault { .. } => {}
+                Up::EditVault { id, title, description } => {
+                    let params = VaultUpdateParams { title: Some(title.clone()), description: Some(description.clone()) };
+                    match c.vaults().update(&id, &params) {
+                        Ok(_) => {
+                            r.changes.push(Change::VaultEdited { id, title, description });
+                            r.sent += 1;
+                        }
+                        Err(err) => r.problems.push(Problem::error(&title, None, format!("Couldn’t change this vault in 1Password. {}", reason(&err)))),
+                    }
+                }
+                Up::DeleteVault { id, title } => match c.vaults().delete(&id) {
+                    Ok(()) => {
+                        r.changes.push(Change::VaultDeleted { id });
+                        r.sent += 1;
+                    }
+                    Err(err) => r.problems.push(Problem::error(&title, None, format!("Couldn’t delete this vault from 1Password. {}", reason(&err)))),
+                },
                 Up::Send { local_id, rev, item, vault, seen, archive } => {
+                    // (Into a vault made just now, by its id there.)
+                    if unmade.contains(&vault) {
+                        continue;
+                    }
+                    let vault = ids.get(&vault).cloned().unwrap_or(vault);
                     let sent = match &seen {
                         None => c.items().create(&params(&item, &vault)),
                         Some(seen) => {
@@ -716,6 +857,86 @@ mod tests {
             out.sort_by(|a, b| a.0.cmp(&b.0));
             out
         }
+    }
+
+    /// A vault made here is made in 1Password at the next sync, reviewed
+    /// first ("Make this vault in 1Password"), its item made in it after;
+    /// renamed and described here, it changes there; deleted here, it
+    /// goes there too, with its items (Ben, 2026-11-14: "olo passwords
+    /// should support creating/managing new vaults").
+    #[test]
+    fn vaults_made_renamed_and_deleted_here() {
+        let mut w = world("vaults");
+        w.sync();
+        let made = w.vault.create_vault("  Work ", "For the office").unwrap();
+        assert!(made.id.starts_with(crate::vault::LOCAL) && made.title == "Work");
+        let mut p = onepassword::ItemCreateParams::new(ItemCategory::Login, made.id.clone(), "Office Wi-Fi");
+        p.fields = vec![onepassword::ItemField::new("password", "password", onepassword::ItemFieldType::Concealed, "wifi-pass")];
+        w.vault.create(&p).unwrap();
+        assert_eq!(w.vault.pending(), 2, "the vault and its item");
+        let plan = w.plan();
+        let actions: Vec<(String, &str, String)> = plan.rows.iter().map(|r| (r.title.clone(), r.action(), r.detail.clone())).collect();
+        assert!(actions.contains(&("Work".into(), "Make this vault in 1Password", "For the office".into())), "{actions:?}");
+        assert!(actions.iter().any(|(t, a, _)| t == "Office Wi-Fi" && *a == "Add to 1Password"), "{actions:?}");
+        let r = super::apply(plan, &w.socket).unwrap();
+        assert!(r.problems.is_empty(), "{:?}", r.problems);
+        w.vault.apply(r.changes).unwrap();
+        assert_eq!(w.vault.pending(), 0);
+        let there = w.client.vaults().list(None).unwrap().into_iter().find(|v| v.title == "Work").expect("made in 1Password");
+        assert_eq!(there.description, "For the office");
+        let mine = w.vault.data.vaults.iter().find(|v| v.title == "Work").unwrap();
+        assert_eq!(mine.id, there.id, "known by 1Password's id here now");
+        let item = w.local("Office Wi-Fi").unwrap();
+        assert_eq!(item.vault_id, there.id);
+        assert_eq!(w.client.items().get(&there.id, &item.id).unwrap().password(), Some("wifi-pass"));
+        assert_eq!(w.sync(), (0, 0), "nothing more to do");
+
+        // Renamed and described: there too; until then, the name here.
+        w.vault.edit_vault(&there.id, "Office", "").unwrap();
+        let plan = w.plan();
+        assert_eq!(
+            plan.rows.iter().map(|r| (r.title.as_str(), r.action(), r.detail.as_str())).collect::<Vec<_>>(),
+            [("Office", "Change this vault in 1Password", "Renamed (was “Work”), Description removed")]
+        );
+        let r = super::apply(plan, &w.socket).unwrap();
+        w.vault.apply(r.changes).unwrap();
+        let now = w.client.vaults().get_overview(&there.id).unwrap();
+        assert_eq!((now.title.as_str(), now.description.as_str()), ("Office", ""));
+        assert!(w.vault.data.vault_changes.is_empty());
+        assert_eq!(w.vault.data.vaults.iter().find(|v| v.id == there.id).unwrap().title, "Office");
+
+        // Deleted: its item with it, here now, there at the sync.
+        assert_eq!(w.vault.delete_vault(&there.id).unwrap(), 1);
+        assert!(w.local("Office Wi-Fi").is_none());
+        let plan = w.plan();
+        assert_eq!(plan.rows.iter().map(|r| (r.title.as_str(), r.action(), r.detail.as_str())).collect::<Vec<_>>(), [("Office", "Delete this vault from 1Password", "Its 1 item too")]);
+        let r = super::apply(plan, &w.socket).unwrap();
+        w.vault.apply(r.changes).unwrap();
+        assert!(w.client.vaults().list(None).unwrap().iter().all(|v| v.id != there.id), "gone from 1Password");
+        assert!(w.vault.data.vaults.iter().all(|v| v.id != there.id) && w.vault.data.vault_changes.is_empty());
+        assert_eq!(w.sync(), (0, 0));
+        // 1Password's own vaults aren't deleted.
+        let personal = w.vault.data.vaults.iter().find(|v| v.vault_type != onepassword::VaultType::UserCreated).unwrap().id.clone();
+        assert!(w.vault.delete_vault(&personal).is_err());
+    }
+
+    /// A vault made here and deleted again before any sync never reaches
+    /// 1Password; one made before any account goes to the first account
+    /// at its first sync, with its items.
+    #[test]
+    fn vaults_made_here_before_a_sync() {
+        let mut w = world("vaults-before");
+        let gone = w.vault.create_vault("Scratch", "").unwrap();
+        w.vault.delete_vault(&gone.id).unwrap();
+        let kept = w.vault.create_vault("Family", "").unwrap();
+        let p = onepassword::ItemCreateParams::new(ItemCategory::SecureNote, kept.id.clone(), "Wi-Fi at home");
+        w.vault.create(&p).unwrap();
+        w.sync();
+        let titles: Vec<String> = w.client.vaults().list(None).unwrap().into_iter().map(|v| v.title).collect();
+        assert!(titles.contains(&"Family".to_owned()) && !titles.contains(&"Scratch".to_owned()), "{titles:?}");
+        let family = w.vault.data.vaults.iter().find(|v| v.title == "Family").unwrap();
+        assert_eq!(w.local("Wi-Fi at home").unwrap().vault_id, family.id);
+        assert!(!family.id.starts_with(crate::vault::LOCAL));
     }
 
     #[test]
