@@ -53,10 +53,23 @@ something nobody here has is in "Blocked", with what it waits for.
      headless window, and agents' `Menus` by surface, `Move`,
      `WindowOver`, `WindowDropped`, `Focus` and `FocusIn` (checked
      2026-11-13). *Still to do:* pictures as elements (`img`) and
-     animated ones; animations stepped on the stage; a frame drawn
-     straight from the kept drawings (no copy into a scene: ~50 µs of
-     a ~200 µs frame, and 5% of a Logs resize step's cycles); rows of
-     differing heights (GPUI's `list`). (A scroll bar's knob moved by
+     animated ones; animations stepped on the stage; rows of
+     differing heights (GPUI's `list`). *Done 2026-11-15:* a frame
+     drawn straight from the kept drawings' glyphs, most of what a
+     frame holds: a drawing's glyphs are shared once it's made
+     (`Scene::seal`), the frame notes each run with where it goes, and
+     the renderer puts each glyph in place as it copies it for the GPU
+     (before, each was copied into the frame, then again into one
+     sorted list, then to the GPU). StyledEdit full screen at 2×,
+     scrolled (2,700 glyphs a frame; six rounds each in turn, release,
+     medians): putting the frame together 42 → 18 µs, the frame 158 →
+     131 µs. Quads and the rest are still copied (tens a frame).
+     Same to the pixel (StyledEdit scrolled, Tracker, DeskCalc, the
+     gallery; 1×, 1.5×, 2×, light and dark); damage-check the same but
+     for a flake of Terminal's at 1× that the build before has too (its
+     scrollback ends a device pixel apart about one run in four,
+     drawn whole or by damage alike: where a glide stops, to look
+     at). (A scroll bar's knob moved by
      the stage was looked at 2026-11-14 and left: every frame of a
      scroll draws the content it moves anyway, and the knob's own
      repaint is 0.02 ms of it.) *Done 2026-11-13:* nothing worked out or drawn

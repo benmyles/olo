@@ -1164,7 +1164,7 @@ impl Stage {
                     ms(started.elapsed() - drawn),
                     scene.len(),
                     commit.items.len(),
-                    scene.monochrome_sprites.len() + scene.polychrome_sprites.len(),
+                    scene.glyph_count() + scene.polychrome_sprites.len(),
                     scene.quads.len(),
                     ms(work),
                 );

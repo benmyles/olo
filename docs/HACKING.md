@@ -478,7 +478,16 @@ How Olo keeps it (do the same):
   from the line's whole device pixel), and they are put in place, moved,
   clipped and faded, only where a frame draws them or a comparison
   reads them (the spinner: the looper's 43 M instructions of writing a
-  screen's glyphs, 157 KB an update, gone). Check a change to
+  screen's glyphs, 157 KB an update, gone). Nor does a frame copy a
+  drawing's glyphs: once a view's drawing is made, its glyphs are
+  shared (`Scene::seal`, the list moved behind an `Arc`), the frame
+  notes each run of them with where it goes (moved, cut by what holds
+  the drawing, at its order: `scene::Put`), and the renderer puts each
+  glyph in place as it copies it into the GPU's buffer
+  (`scene::Glyphs::pieces`; a drawing that didn't move and shows whole
+  is copied as it is, a list's runs one after another as one). A glyph
+  cut away whole from a run that partly shows goes to the GPU and
+  shows nothing. Check a change to
   any of it with `tools/dev/damage-check` (each app typed in, scrolled
   and selected in, drawn by its damage and drawn whole, the last
   pictures compared at 1×, 1.5× and 2×; look at the pairs it keeps). What a

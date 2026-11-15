@@ -56,13 +56,19 @@ pub(crate) struct Scene {
     pub(crate) underlines: Vec<Underline>,
     pub(crate) segments: Vec<Segment>,
     pub(crate) sectors: Vec<Sector>,
-    /// Sorted by order and texture (`finish`), from `mono_staging`.
-    pub(crate) monochrome_sprites: Vec<MonochromeSprite>,
     /// Olo: glyph sprites as painted, in runs of one order and texture
     /// (`mono_runs`): a line's glyphs share an order, so `finish` sorts a
     /// frame's lines, not each of its tens of thousands of glyphs, and a
-    /// kept drawing put in a frame copies its runs from here.
+    /// kept drawing (once sealed: `sealed`) is drawn from here. A frame
+    /// draws its runs in their sorted order ([`Glyphs`]), from wherever
+    /// they are, never copied into one sorted list first.
     mono_staging: Vec<MonochromeSprite>,
+    /// Olo: a kept drawing's glyphs (`mono_staging`, once it's made,
+    /// `seal`), shared with the frames that draw it: a frame's run of
+    /// them says where they go, and the renderer puts each there as it
+    /// copies it for the GPU (a frame never copies a drawing's glyphs
+    /// into a list of its own: a window of text is 300 KB a frame).
+    sealed: Option<Arc<Vec<MonochromeSprite>>>,
     /// Olo: how many things were left out, clipped away whole.
     pub(crate) culled: usize,
     mono_runs: Vec<SpriteRun>,
@@ -151,7 +157,7 @@ impl Scene {
         // there after the last's) as they are; a kept run's put in place.)
         fn glyphs<'a>(s: &'a Scene, runs: &[SpriteRun]) -> Cow<'a, [MonochromeSprite]> {
             match (runs.first(), runs.last()) {
-                (Some(first), Some(last)) if runs.iter().all(|r| r.kept.is_none()) => Cow::Borrowed(&s.mono_staging[first.range.start as usize..last.range.end as usize]),
+                (Some(first), Some(last)) if runs.iter().all(|r| r.kept.is_none()) => Cow::Borrowed(&s.staged()[first.range.start as usize..last.range.end as usize]),
                 _ => {
                     let mut all = Vec::with_capacity(runs.iter().map(|r| r.range.len()).sum());
                     for r in runs {
@@ -178,7 +184,6 @@ impl Scene {
             end_b -= 1;
         }
         kind(&glyphs(was, &ra[first..end_a]), &glyphs(self, &rb[first..end_b]), same_sprites, mono, out);
-        kind(&was.monochrome_sprites, &self.monochrome_sprites, same_sprites, mono, out);
         kind(&was.polychrome_sprites, &self.polychrome_sprites, equal, |p| p.bounds.intersect(&p.content_mask.bounds), out);
         // (A picture let go and another in its tile: not the same.)
         if was.images.len() != self.images.len() || was.images.iter().zip(&self.images).any(|(a, b)| !std::sync::Arc::ptr_eq(a, b)) {
@@ -201,7 +206,7 @@ impl Scene {
         self.underlines.reserve(last.underlines.len());
         self.segments.reserve(last.segments.len());
         self.sectors.reserve(last.sectors.len());
-        self.mono_staging.reserve(last.mono_staging.len());
+        self.mono_staging.reserve(last.staged().len());
         self.mono_runs.reserve(last.mono_runs.len());
         self.polychrome_sprites.reserve(last.polychrome_sprites.len());
         self.image_triangles.reserve(last.image_triangles.len());
@@ -244,8 +249,8 @@ impl Scene {
         self.underlines.clear();
         self.segments.clear();
         self.sectors.clear();
-        self.monochrome_sprites.clear();
         self.mono_staging.clear();
+        self.sealed = None;
         self.mono_runs.clear();
         self.polychrome_sprites.clear();
         self.image_triangles.clear();
@@ -256,6 +261,46 @@ impl Scene {
     /// How many things it holds.
     pub fn len(&self) -> usize {
         self.count
+    }
+
+    /// How many glyphs (and shapes' coverage tiles) a frame draws.
+    pub(crate) fn glyph_count(&self) -> usize {
+        self.mono_runs.iter().map(|run| run.range.len()).sum()
+    }
+
+    /// Whether a frame draws glyphs from atlas textures of `kind`.
+    pub(crate) fn has_glyphs_of(&self, kind: crate::AtlasTextureKind) -> bool {
+        self.mono_runs.iter().any(|run| run.texture.0 == kind as u8)
+    }
+
+    /// Its glyphs as painted: a kept drawing's shared list once made.
+    fn staged(&self) -> &[MonochromeSprite] {
+        self.sealed.as_deref().map_or(&self.mono_staging[..], |list| &list[..])
+    }
+
+    /// A drawing, made: its glyphs shared from now on (nothing copied:
+    /// the list moves behind an `Arc`) with the frames that draw it.
+    pub(crate) fn seal(&mut self) {
+        if self.recording && self.sealed.is_none() {
+            self.sealed = Some(Arc::new(std::mem::take(&mut self.mono_staging)));
+        }
+    }
+
+    /// A finished frame's glyphs, in the order they're drawn (each at
+    /// its run's order, as the GPU's copy never needs it).
+    #[cfg(test)]
+    pub(crate) fn drawn_glyphs(&self) -> Vec<MonochromeSprite> {
+        let mut out = Vec::new();
+        for b in self.batches() {
+            if let PrimitiveBatch::MonochromeSprites { sprites, .. } = b {
+                let mut orders = sprites.runs.iter().flat_map(|run| std::iter::repeat_n(run.order, run.range.len()));
+                sprites.pieces(|piece| match piece {
+                    Piece::AsIs(list) => out.extend(list.iter().map(|g| MonochromeSprite { order: orders.next().unwrap(), ..g.clone() })),
+                    Piece::One(g) => out.push(MonochromeSprite { order: orders.next().unwrap(), ..g }),
+                });
+            }
+        }
+        out
     }
 
     /// How many orders a recording uses (its own run from zero).
@@ -497,7 +542,7 @@ impl Scene {
         let mut from = 0;
         for (part, &(texture, end)) in parts.iter().enumerate() {
             let made = Some(RunMade { part: part as u32, ..made });
-            self.mono_runs.push(SpriteRun { order, texture, range: from..end, reach, made, kept: Some(kept.clone()) });
+            self.mono_runs.push(SpriteRun { order, texture, range: from..end, reach, made, kept: Some(kept.clone()), drawing: None, put: Put::AsIs });
             from = end;
         }
     }
@@ -518,11 +563,11 @@ impl Scene {
             let next = key(&self.mono_staging[i]);
             if next != k {
                 sorted &= next > k;
-                self.mono_runs.push(SpriteRun { order: k.0, texture: k.1, range: from as u32..i as u32, reach, made: None, kept: None });
+                self.mono_runs.push(SpriteRun { order: k.0, texture: k.1, range: from as u32..i as u32, reach, made: None, kept: None, drawing: None, put: Put::AsIs });
                 (k, from) = (next, i);
             }
         }
-        self.mono_runs.push(SpriteRun { order: k.0, texture: k.1, range: from as u32..self.mono_staging.len() as u32, reach, made: None, kept: None });
+        self.mono_runs.push(SpriteRun { order: k.0, texture: k.1, range: from as u32..self.mono_staging.len() as u32, reach, made: None, kept: None, drawing: None, put: Put::AsIs });
         if !sorted {
             // Glyphs of several textures in one line, interleaved: those
             // of each together, as one batch.
@@ -659,6 +704,28 @@ impl Scene {
             if !whole && !run.reach.is_empty() && mv(run.reach).intersect(clip).is_empty() {
                 continue;
             }
+            // A kept drawing's (sealed): the run is noted with where its
+            // glyphs go, and they're put there as the renderer copies
+            // them, not copied here first. (Those that end up clipped
+            // away whole are drawn and show nothing: a line partly out
+            // of its view's clip.)
+            if let Some(list) = &recorded.sealed {
+                let order = run.order + base;
+                let (drawing, kept, put) = match &run.kept {
+                    None => (Some(list.clone()), None, if still && whole { Put::AsIs } else { Put::Moved { by, clip: (!whole).then_some(*clip), order } }),
+                    Some(kept) => {
+                        // (Placed as it was made, then moved with the
+                        // drawing, its clip cut by what holds it.)
+                        let p = run.placing();
+                        let moved = mv(p.clip);
+                        let cut = if whole { moved } else { moved.intersect(clip) };
+                        (None, Some(kept.clone()), Put::Placed(Placing { order, at: p.at + by, clip: cut, opacity: p.opacity }))
+                    }
+                };
+                self.mono_runs.push(SpriteRun { order, texture: run.texture, range: run.range.clone(), reach: mv(run.reach).intersect(clip), made: None, kept, drawing, put });
+                self.count += run.range.len();
+                continue;
+            }
             let start = self.mono_staging.len();
             let range = run.range.start as usize..run.range.end as usize;
             // (Each glyph as the recording holds it, then moved.)
@@ -675,7 +742,7 @@ impl Scene {
                 };
             }
             match &run.kept {
-                None => glyphs!(recorded.mono_staging[range].iter().cloned()),
+                None => glyphs!(recorded.staged()[range].iter().cloned()),
                 Some(kept) => {
                     // (A kept run's, put in place here: what a frame
                     // draws of a drawing is a line or two of it.)
@@ -685,7 +752,16 @@ impl Scene {
             }
             let end = self.mono_staging.len();
             if end > start {
-                self.mono_runs.push(SpriteRun { order: run.order + base, texture: run.texture, range: start as u32..end as u32, reach: mv(run.reach).intersect(clip), made: None, kept: None });
+                self.mono_runs.push(SpriteRun {
+                    order: run.order + base,
+                    texture: run.texture,
+                    range: start as u32..end as u32,
+                    reach: mv(run.reach).intersect(clip),
+                    made: None,
+                    kept: None,
+                    drawing: None,
+                    put: Put::AsIs,
+                });
                 self.count += end - start;
             }
         }
@@ -704,15 +780,18 @@ impl Scene {
         // one texture and in order already, which the sort finds in a
         // pass, where sorting by tile shuffled them all every frame.
         // The glyphs go by their runs (`mono_runs`): the same order as
-        // sorting each, for a sort of a frame's lines.
-        self.mono_runs.sort_by_key(|run| (run.order, run.texture));
-        let mut sprites = std::mem::take(&mut self.monochrome_sprites);
-        sprites.clear();
-        sprites.reserve(self.mono_runs.iter().map(|run| run.range.len()).sum());
-        for run in &self.mono_runs {
-            run.glyphs_onto(self, &mut sprites);
+        // sorting each, for a sort of a frame's lines; and they stay
+        // where they are, the renderer reading each batch's run by run
+        // (a full window of text is 300 KB a frame not copied again).
+        for run in &mut self.mono_runs {
+            // (Kept runs painted into this scene itself, not through
+            // `append`, which says where they go: put as they were made.)
+            if run.kept.is_some() && matches!(run.put, Put::AsIs) {
+                run.put = Put::Placed(run.placing());
+            }
         }
-        self.monochrome_sprites = sprites;
+        self.mono_runs.retain(|run| !run.range.is_empty());
+        self.mono_runs.sort_by_key(|run| (run.order, run.texture));
         self.polychrome_sprites.sort_by_key(|sprite| (sprite.order, texture_key(&sprite.tile)));
         self.image_triangles.sort_by_key(|triangle| triangle.order);
         self.surfaces.sort_by_key(|surface| surface.order);
@@ -839,9 +918,10 @@ impl Scene {
             sectors: &self.sectors,
             sectors_start: 0,
             sectors_iter: self.sectors.iter().peekable(),
-            monochrome_sprites: &self.monochrome_sprites,
-            monochrome_sprites_start: 0,
-            monochrome_sprites_iter: self.monochrome_sprites.iter().peekable(),
+            glyphs: &self.mono_staging,
+            runs: &self.mono_runs,
+            runs_start: 0,
+            runs_iter: self.mono_runs.iter().peekable(),
             polychrome_sprites: &self.polychrome_sprites,
             polychrome_sprites_start: 0,
             polychrome_sprites_iter: self.polychrome_sprites.iter().peekable(),
@@ -890,9 +970,38 @@ struct SpriteRun {
     /// holds each of its other lines so, its glyphs not written again (a
     /// screen of a terminal's text: 150 KB written at every line printed).
     kept: Option<Arc<[MonochromeSprite]>>,
+    /// (A frame's.) The kept drawing's glyphs it's of (`Scene::sealed`),
+    /// if not the scene's own or a kept run's.
+    drawing: Option<Arc<Vec<MonochromeSprite>>>,
+    /// (A frame's.) How its glyphs are put in place as they're drawn.
+    put: Put,
+}
+
+/// Olo: how a frame's run of glyphs is put in place, glyph by glyph, as
+/// the renderer copies them (`Glyphs::pieces`).
+#[derive(Clone, Copy)]
+enum Put {
+    /// As they are: the scene's own, or a drawing's that didn't move and
+    /// shows whole.
+    AsIs,
+    /// Each moved by `by` (whole device pixels), its own clip with it,
+    /// cut by `clip` (none: all of the drawing shows).
+    Moved { by: Point<ScaledPixels>, clip: Option<Bounds<ScaledPixels>>, order: DrawOrder },
+    /// A kept run's (`Placing`).
+    Placed(Placing),
 }
 
 impl SpriteRun {
+    /// Its glyphs as held (`own`: its scene's own list).
+    fn held<'a>(&'a self, own: &'a [MonochromeSprite]) -> &'a [MonochromeSprite] {
+        let range = self.range.start as usize..self.range.end as usize;
+        match (&self.drawing, &self.kept) {
+            (Some(list), _) => &list[range],
+            (None, Some(kept)) => &kept[range],
+            (None, None) => &own[range],
+        }
+    }
+
     /// Its glyphs' placing (of a kept run's): at its order, as `made`.
     fn placing(&self) -> Placing {
         Placing { order: self.order, ..self.made.map_or_else(Placing::default, |m| m.placing()) }
@@ -902,7 +1011,7 @@ impl SpriteRun {
     fn glyphs_onto(&self, scene: &Scene, into: &mut Vec<MonochromeSprite>) {
         let range = self.range.start as usize..self.range.end as usize;
         match &self.kept {
-            None => into.extend_from_slice(&scene.mono_staging[range]),
+            None => into.extend_from_slice(&scene.staged()[range]),
             Some(kept) => {
                 let placing = self.placing();
                 into.extend(kept[range].iter().map(|g| placing.place(g)));
@@ -1056,9 +1165,10 @@ struct BatchIterator<'a> {
     sectors: &'a [Sector],
     sectors_start: usize,
     sectors_iter: Peekable<slice::Iter<'a, Sector>>,
-    monochrome_sprites: &'a [MonochromeSprite],
-    monochrome_sprites_start: usize,
-    monochrome_sprites_iter: Peekable<slice::Iter<'a, MonochromeSprite>>,
+    glyphs: &'a [MonochromeSprite],
+    runs: &'a [SpriteRun],
+    runs_start: usize,
+    runs_iter: Peekable<slice::Iter<'a, SpriteRun>>,
     polychrome_sprites: &'a [PolychromeSprite],
     polychrome_sprites_start: usize,
     polychrome_sprites_iter: Peekable<slice::Iter<'a, PolychromeSprite>>,
@@ -1081,7 +1191,7 @@ impl<'a> Iterator for BatchIterator<'a> {
             (self.sectors_iter.peek().map(|s| s.order), PrimitiveKind::Sector),
             (self.underlines_iter.peek().map(|u| u.order), PrimitiveKind::Underline),
             (self.segments_iter.peek().map(|s| s.order), PrimitiveKind::Segment),
-            (self.monochrome_sprites_iter.peek().map(|s| s.order), PrimitiveKind::MonochromeSprite),
+            (self.runs_iter.peek().map(|r| r.order), PrimitiveKind::MonochromeSprite),
             (self.polychrome_sprites_iter.peek().map(|s| s.order), PrimitiveKind::PolychromeSprite),
             (self.image_triangles_iter.peek().map(|t| t.order), PrimitiveKind::ImageTriangle),
             (self.surfaces_iter.peek().map(|s| s.order), PrimitiveKind::Surface),
@@ -1158,15 +1268,17 @@ impl<'a> Iterator for BatchIterator<'a> {
                 Some(PrimitiveBatch::Sectors(&self.sectors[sectors_start..sectors_end]))
             }
             PrimitiveKind::MonochromeSprite => {
-                let texture_id = self.monochrome_sprites_iter.peek().unwrap().tile.texture_id;
-                let sprites_start = self.monochrome_sprites_start;
-                let mut sprites_end = sprites_start + 1;
-                self.monochrome_sprites_iter.next();
-                while self.monochrome_sprites_iter.next_if(|sprite| (sprite.order, batch_kind) < max_order_and_kind && sprite.tile.texture_id == texture_id).is_some() {
-                    sprites_end += 1;
+                // (Run by run: each run's glyphs are of one order and
+                // texture, and none is empty.)
+                let first = self.runs_iter.next().unwrap();
+                let texture_id = first.held(self.glyphs)[0].tile.texture_id;
+                let start = self.runs_start;
+                let mut end = start + 1;
+                while self.runs_iter.next_if(|run| (run.order, batch_kind) < max_order_and_kind && run.texture == first.texture).is_some() {
+                    end += 1;
                 }
-                self.monochrome_sprites_start = sprites_end;
-                Some(PrimitiveBatch::MonochromeSprites { texture_id, sprites: &self.monochrome_sprites[sprites_start..sprites_end] })
+                self.runs_start = end;
+                Some(PrimitiveBatch::MonochromeSprites { texture_id, sprites: Glyphs { own: self.glyphs, runs: &self.runs[start..end] } })
             }
             PrimitiveKind::PolychromeSprite => {
                 let texture_id = self.polychrome_sprites_iter.peek().unwrap().tile.texture_id;
@@ -1213,10 +1325,84 @@ pub(crate) enum PrimitiveBatch<'a> {
     Underlines(&'a [Underline]),
     Segments(&'a [Segment]),
     Sectors(&'a [Sector]),
-    MonochromeSprites { texture_id: AtlasTextureId, sprites: &'a [MonochromeSprite] },
+    MonochromeSprites { texture_id: AtlasTextureId, sprites: Glyphs<'a> },
     PolychromeSprites { texture_id: AtlasTextureId, sprites: &'a [PolychromeSprite] },
     ImageTriangles { texture_id: AtlasTextureId, triangles: &'a [ImageTriangle] },
     Surfaces(&'a [PaintSurface]),
+}
+
+/// Olo: a batch's glyphs, where they are: its runs (in the order
+/// they're drawn), each a range of the frame's own list, a kept
+/// drawing's or a kept run's, with where its glyphs go. The renderer
+/// copies them into the GPU's buffer one after another, putting each in
+/// place as it goes (`pieces`): what doesn't move is copied as it is.
+#[derive(Clone, Copy)]
+pub(crate) struct Glyphs<'a> {
+    own: &'a [MonochromeSprite],
+    runs: &'a [SpriteRun],
+}
+
+/// Olo: a piece of a batch's glyphs: some as they are, or one put in place.
+pub(crate) enum Piece<'a> {
+    AsIs(&'a [MonochromeSprite]),
+    One(MonochromeSprite),
+}
+
+impl std::fmt::Debug for Glyphs<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Glyphs({} in {} runs)", self.len(), self.runs.len())
+    }
+}
+
+impl<'a> Glyphs<'a> {
+    pub(crate) fn len(&self) -> usize {
+        self.runs.iter().map(|run| run.range.len()).sum()
+    }
+
+    /// Its glyphs in order, as `Piece`s: runs as they are one after
+    /// another in a list as one piece (a page of a view's lines).
+    pub(crate) fn pieces(&self, mut f: impl FnMut(Piece<'a>)) {
+        let own = self.own;
+        let mut i = 0;
+        while let Some(run) = self.runs.get(i) {
+            i += 1;
+            match run.put {
+                Put::AsIs => {
+                    let held = run.held(own);
+                    let (start, mut len) = (held.as_ptr(), held.len());
+                    // (Those that follow it in the same list, as it is.)
+                    while let Some(next) = self.runs.get(i).filter(|n| matches!(n.put, Put::AsIs)) {
+                        let more = next.held(own);
+                        if more.as_ptr() != start.wrapping_add(len) {
+                            break;
+                        }
+                        len += more.len();
+                        i += 1;
+                    }
+                    // SAFETY: `start..start + len` is runs of one list, one
+                    // right after another (checked above).
+                    f(Piece::AsIs(unsafe { std::slice::from_raw_parts(start, len) }));
+                }
+                Put::Moved { by, clip, order } => {
+                    for g in run.held(own) {
+                        let mut x = g.clone();
+                        x.order = order;
+                        x.bounds.origin = x.bounds.origin + by;
+                        x.content_mask.bounds.origin = x.content_mask.bounds.origin + by;
+                        if let Some(clip) = clip {
+                            x.content_mask.bounds = x.content_mask.bounds.intersect(&clip);
+                        }
+                        f(Piece::One(x));
+                    }
+                }
+                Put::Placed(placing) => {
+                    for g in run.held(own) {
+                        f(Piece::One(placing.place(g)));
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[derive(Default, Debug, Clone, PartialEq)]
@@ -1939,7 +2125,7 @@ mod tests {
         // by order and texture the way finish sorted every sprite.)
         let mut expected: Vec<_> = painted.into_iter().map(|(s, order)| (order, texture_key(&s.tile), s.tile.tile_id)).collect();
         expected.sort_by_key(|(order, texture, _)| (*order, *texture));
-        let got: Vec<_> = scene.monochrome_sprites.iter().map(|s| (s.order, texture_key(&s.tile), s.tile.tile_id)).collect();
+        let got: Vec<_> = scene.drawn_glyphs().iter().map(|s| (s.order, texture_key(&s.tile), s.tile.tile_id)).collect();
         assert_eq!(got, expected);
     }
 
@@ -2142,8 +2328,8 @@ mod tests {
         // one above the other: quads then glyphs, each row's above the
         // row before.
         assert_eq!(frame.quads.iter().map(|q| q.order).collect::<Vec<_>>(), vec![1, 2, 4]);
-        assert_eq!(frame.monochrome_sprites.iter().map(|s| (s.order, s.tile.tile_id.0)).collect::<Vec<_>>(), vec![(3, 1), (3, 1), (5, 2), (5, 2)]);
-        let moved: Vec<_> = frame.monochrome_sprites.iter().map(|g| (g.bounds.origin.y.0, g.content_mask.clone())).collect();
+        assert_eq!(frame.drawn_glyphs().iter().map(|s| (s.order, s.tile.tile_id.0)).collect::<Vec<_>>(), vec![(3, 1), (3, 1), (5, 2), (5, 2)]);
+        let moved: Vec<_> = frame.drawn_glyphs().iter().map(|g| (g.bounds.origin.y.0, g.content_mask.clone())).collect();
         assert_eq!(moved[..2], [(7.0, mask(0.0, 5.0, 100.0, 20.0)), (7.0, mask(100.0, 5.0, 300.0, 20.0))]);
         assert_eq!(moved[2..], [(-3.0, mask(0.0, 0.0, 100.0, 15.0)), (-3.0, mask(100.0, 0.0, 300.0, 15.0))]);
         assert_eq!(frame.len(), 7);
@@ -2155,6 +2341,79 @@ mod tests {
         frame.append(&second, point(ScaledPixels(0.0), ScaledPixels(20.0)), &list);
         assert_eq!(frame.quads.iter().map(|q| q.order).collect::<Vec<_>>(), vec![1, 1]);
         assert_eq!(frame.mono_staging.iter().map(|s| s.order).collect::<Vec<_>>(), vec![2, 2, 2, 2]);
+    }
+
+    /// Kept drawings, once made (sealed), aren't copied into the frame:
+    /// its runs say where their glyphs go, and they're put there as
+    /// they're drawn. What's drawn is what copying them drew: still and
+    /// whole, moved, cut by what holds them, a glyph cut away whole
+    /// drawn showing nothing (where the copy left it out).
+    #[test]
+    fn sealed_drawings_draw_as_copied_ones() {
+        let row = |text: u32| {
+            let mut kept = Scene::recording();
+            kept.insert_primitive(quad(0.0, 100.0, 400.0, 20.0));
+            // Three cells, each clipped to its own; one line's glyphs.
+            let glyphs: Vec<_> = [(0.0, 100.0), (100.0, 300.0), (300.0, 100.0)]
+                .into_iter()
+                .map(|(x, w)| {
+                    let mut glyph = sprite(x + 4.0, 0, text);
+                    glyph.bounds.origin.y = ScaledPixels(102.0);
+                    glyph.content_mask = mask(x, 100.0, w, 20.0);
+                    glyph
+                })
+                .collect();
+            kept.insert_sprites(glyphs);
+            kept
+        };
+        // (What shows of each: where it is, cut by its clip.)
+        let shown = |frame: &Scene| -> Vec<_> {
+            frame.drawn_glyphs().into_iter().filter(|g| !g.bounds.intersect(&g.content_mask.bounds).is_empty()).map(|g| (g.order, g.tile.tile_id.0, g.bounds, g.content_mask.bounds, g.color)).collect()
+        };
+        let list = mask(0.0, 0.0, 250.0, 300.0).bounds;
+        let places = [(0.0, 0.0), (0.0, -95.0), (0.0, -105.0), (-200.0, 20.0), (0.0, 400.0)];
+        let (mut copied, mut sealed) = (Scene::default(), Scene::default());
+        for (i, (x, y)) in places.into_iter().enumerate() {
+            let kept = row(i as u32 + 1);
+            copied.append(&kept, point(ScaledPixels(x), ScaledPixels(y)), &list);
+            let mut kept = kept;
+            kept.seal();
+            assert!(kept.mono_staging.is_empty() && kept.sealed.is_some());
+            sealed.append(&kept, point(ScaledPixels(x), ScaledPixels(y)), &list);
+        }
+        // Lines put in whole (kept runs: Terminal's, the editor's), one
+        // at half its opacity, placed off their whole pixel's corner.
+        let page = || {
+            let mut kept = Scene::recording();
+            for line in 0..6u32 {
+                let glyphs: Vec<_> = (0..20).map(|i| sprite(i as f32 * 8.0, line % 2, 500 + line * 100 + i)).collect();
+                let mut how = made(line as u64 + 1);
+                how.at = [3.0f32.to_bits(), (130.0 + line as f32 * 20.0).to_bits()];
+                if line == 2 {
+                    how.opacity = 0.5f32.to_bits();
+                }
+                put_kept(&mut kept, glyphs, how);
+            }
+            kept
+        };
+        for (x, y) in [(0.0, 0.0), (10.0, -60.0), (0.0, 120.0)] {
+            let kept = page();
+            copied.append(&kept, point(ScaledPixels(x), ScaledPixels(y)), &list);
+            let mut kept = kept;
+            kept.seal();
+            sealed.append(&kept, point(ScaledPixels(x), ScaledPixels(y)), &list);
+        }
+        // (A whole one, still, too: its glyphs as they are.)
+        let mut still = row(9);
+        let all = mask(0.0, 0.0, 1000.0, 1000.0).bounds;
+        copied.append(&still, Point::default(), &all);
+        still.seal();
+        sealed.append(&still, Point::default(), &all);
+        copied.finish();
+        sealed.finish();
+        assert!(sealed.mono_staging.is_empty(), "nothing copied into the frame");
+        assert_eq!(shown(&sealed), shown(&copied));
+        assert!(shown(&copied).len() >= 8 + 60);
     }
 
     /// A drawing that shows whole goes into the frame without its

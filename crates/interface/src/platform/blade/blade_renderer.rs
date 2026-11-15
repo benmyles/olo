@@ -969,7 +969,7 @@ impl BladeRenderer {
     /// Makes the pipeline for LCD subpixel glyphs, if needed and possible.
     fn prepare_subpixel_sprites(&mut self, scene: &Scene) {
         use gpu::ShaderData as _;
-        if self.subpixel_sprites.is_some() || !self.supports_subpixel_text() || !scene.monochrome_sprites.iter().any(|s| s.tile.texture_id.kind == crate::AtlasTextureKind::Subpixel) {
+        if self.subpixel_sprites.is_some() || !self.supports_subpixel_text() || !scene.has_glyphs_of(crate::AtlasTextureKind::Subpixel) {
             return;
         }
         let info = self.surface.info();
@@ -1155,7 +1155,7 @@ impl BladeRenderer {
                     total.as_secs_f64() * 1e3,
                     passes.join(", "),
                     scene.quads.len(),
-                    scene.monochrome_sprites.len() + scene.polychrome_sprites.len(),
+                    scene.glyph_count() + scene.polychrome_sprites.len(),
                     big.join(" ")
                 );
             }
@@ -1302,7 +1302,27 @@ impl BladeRenderer {
                 }
                 PrimitiveBatch::MonochromeSprites { texture_id, sprites } => {
                     let tex_info = self.atlas.get_texture_info(texture_id);
-                    let instance_buf = unsafe { self.instance_belt.alloc_typed(sprites, &self.gpu) };
+                    // (Copied run by run from the views' kept drawings, each
+                    // glyph put in place on its way: the frame holds no
+                    // copy of them.)
+                    let count = sprites.len();
+                    let instance_buf = self.instance_belt.alloc((count * std::mem::size_of::<crate::scene::MonochromeSprite>()) as u64, &self.gpu);
+                    let to = instance_buf.data() as *mut crate::scene::MonochromeSprite;
+                    let mut at = 0;
+                    sprites.pieces(|piece| match piece {
+                        crate::scene::Piece::AsIs(list) => {
+                            debug_assert!(at + list.len() <= count);
+                            // SAFETY: the belt gave room for `count`, and the pieces are `count` glyphs.
+                            unsafe { std::ptr::copy_nonoverlapping(list.as_ptr(), to.add(at), list.len()) };
+                            at += list.len();
+                        }
+                        crate::scene::Piece::One(glyph) => {
+                            debug_assert!(at < count);
+                            // SAFETY: as above.
+                            unsafe { std::ptr::write_unaligned(to.add(at), glyph) };
+                            at += 1;
+                        }
+                    });
                     let pipeline = match &self.subpixel_sprites {
                         Some(subpixel) if texture_id.kind == crate::AtlasTextureKind::Subpixel => &**subpixel,
                         _ => &self.pipelines.mono_sprites,
@@ -1319,7 +1339,7 @@ impl BladeRenderer {
                             b_mono_sprites: instance_buf,
                         },
                     );
-                    each_part!(encoder, encoder.draw(0, 4, 0, sprites.len() as u32));
+                    each_part!(encoder, encoder.draw(0, 4, 0, count as u32));
                 }
                 PrimitiveBatch::PolychromeSprites { texture_id, sprites } => {
                     let tex_info = self.atlas.get_texture_info(texture_id);

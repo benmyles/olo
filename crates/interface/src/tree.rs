@@ -939,12 +939,14 @@ const VISIBLE_BAND: f32 = 256.0;
 /// How faded a control that can't be used now is drawn.
 pub const DISABLED_OPACITY: f32 = 0.5;
 
-fn keep(scene: crate::Scene, recycled: &mut Vec<crate::Scene>) -> Option<Arc<Recording>> {
+fn keep(mut scene: crate::Scene, recycled: &mut Vec<crate::Scene>) -> Option<Arc<Recording>> {
     if scene.is_empty() {
         recycled.push(scene);
         return None;
     }
     let bounds = scene.extent();
+    // (Its glyphs shared with the frames that draw it, from now on.)
+    scene.seal();
     Some(Arc::new(Recording { scene, bounds }))
 }
 
