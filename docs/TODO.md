@@ -1436,8 +1436,19 @@ something nobody here has is in "Blocked", with what it waits for.
   and wallpapers gone (and pruned from installs on upgrade), a setting
   naming one draws Classic, a wallpaper naming one shows Classic's;
   Catppuccin's colours gone, Terminal's too; Preferences ▸ Themes as
-  two cards with a preview each. Next: the wallpapers, the colours,
-  the icons.
+  two cards with a preview each. Step 2, the wallpapers (2026-11-15):
+  drawn quiet scenes were rejected (Ben: "those wallpapers are awful
+  they have no kind of retro os nostalgia"; "i don't want landscapes or
+  nature"), and BeOS shipped none worth having, so (Ben: "just upscale
+  all the macos 9 ones and use them for both themes … leave out the mac
+  face one") Mac OS 9's nineteen desktop pictures, made 4K with
+  sunburst: Classic's default Blueberry Oxygen, Platinum's Quantum
+  Foam, each with a dark version; Backgrounds by collection. Next (Ben:
+  "download the latest amigaos, nextstep, and other classic desktops
+  and create upscaled versions of all of their wallpapers … for a
+  complete retro os collection"; "also include upscaled wallpapers from
+  other macos versions if they are different"): the other systems'
+  sets, then the colours, then the icons.
 
 - **OS Updates: Fedora's packages, for power users** (Ben, 2026-11-14:
   "add a new olo application OS Updates that is a GUI manager for

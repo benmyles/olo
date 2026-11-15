@@ -2,10 +2,10 @@
 //! and an optional wallpaper), as in BeOS's Workspaces and Backgrounds.
 
 use olo_kit::{
-    Cx, ParentElement as _, SharedString, Styled as _, div,
+    Cx, ParentElement as _, ScrollHandle, SharedString, Styled as _, div,
     file_panel::{self, FilePanel, PanelResult},
     metrics as m, pictures, px, rgb, style, theme,
-    widgets::{Button, ColorControl, ColorWell, MenuField, Thumbnail, ThumbnailPicker, color_control_height},
+    widgets::{Button, ColorControl, ColorWell, MenuField, ScrollView, Thumbnail, ThumbnailPicker, color_control_height},
 };
 use olo_xdg::wallpapers::{self, Wallpaper};
 
@@ -40,6 +40,11 @@ pub struct BackgroundsState {
     workspace: usize,
     /// The wallpaper pack, read once.
     pack: Option<Vec<Wallpaper>>,
+    /// The pack's collection shown (Mac OS 9, AmigaOS, …): the current
+    /// wallpaper's until another is chosen.
+    collection: Option<String>,
+    /// The pictures' list.
+    scroll: ScrollHandle,
 }
 
 fn state_of(v: &mut PanelView) -> Option<&mut BackgroundsState> {
@@ -51,6 +56,8 @@ fn state_of(v: &mut PanelView) -> Option<&mut BackgroundsState> {
 
 /// The wallpaper previews' size (16:9).
 const PREVIEW: (f32, f32) = (96.0, 54.0);
+/// Between the pictures' list's frame and the pictures.
+const LIST_PAD: f32 = 6.0;
 
 /// Picture formats app_server can show as a wallpaper.
 pub const WALLPAPER_TYPES: &[&str] = &["png", "jpg", "jpeg", "jxl", "avif", "heic", "heif", "webp", "bmp", "tif", "tiff", "gif"];
@@ -103,10 +110,36 @@ pub fn backgrounds_ui(ui: &mut Ui, st: &mut BackgroundsState) {
         ui.add(div().flex().flex_row().gap(px(m::SPACING)).child(ColorWell::new(colour(rgb), h)).child(control));
     });
 
-    let pack = st.pack.get_or_insert_with(wallpapers::pack).clone();
+    let all = st.pack.get_or_insert_with(wallpapers::pack).clone();
+    // The pack's collections in its order, one shown at a time (a
+    // collection a system's set: they're many).
+    let mut collections: Vec<String> = Vec::new();
+    for w in &all {
+        if !collections.contains(&w.collection) {
+            collections.push(w.collection.clone());
+        }
+    }
+    let current = s.wallpaper.as_deref().and_then(|w| all.iter().find(|p| p.setting() == w)).map(|p| p.collection.clone());
+    let shown = st.collection.clone().filter(|c| collections.contains(c)).or(current).or_else(|| collections.first().cloned()).unwrap_or_default();
+    let pack: Vec<Wallpaper> = all.iter().filter(|w| w.collection == shown).cloned().collect();
     let choose = choose(ui);
-    ui.bbox("Wallpaper", |ui| {
+    let scroll = st.scroll.clone();
+    ui.growing_bbox("Wallpaper", |ui| {
         let dark = s.appearance.effective_theme == olo_kit::palette::ThemeMode::Dark;
+        if collections.len() > 1 {
+            let at = collections.iter().position(|c| *c == shown).unwrap_or(0);
+            let names: Vec<SharedString> = collections.iter().map(|c| c.clone().into()).collect();
+            let pick = ui.on_view({
+                let collections = collections.clone();
+                move |v, i: &usize, cx: &mut Cx<PanelView>| {
+                    if let Some(st) = state_of(v) {
+                        st.collection = collections.get(*i).cloned();
+                    }
+                    cx.notify();
+                }
+            });
+            ui.add(MenuField::new("wallpaper-collection", names, at).label("Collection:").divider(80.0).on_change(pick));
+        }
         let own = s.wallpaper.as_deref().filter(|w| !w.starts_with(wallpapers::PACK)).map(str::to_owned);
         let px_wide = (PREVIEW.0 * ui.cx.scale_factor()).round() as u32;
         // None (just this workspace's colour), the pack (previews in the
@@ -128,10 +161,12 @@ pub fn backgrounds_ui(ui: &mut Ui, st: &mut BackgroundsState) {
             })
         });
         items.push(Thumbnail { picture: own_picture, color: None, label: "Your Own".into() });
+        // (One in another collection: none of these is.)
         let selected = match s.wallpaper.as_deref() {
             None => Some(0),
             Some(w) => match pack.iter().position(|p| p.setting() == w) {
                 Some(i) => Some(i + 1),
+                None if all.iter().any(|p| p.setting() == w) => None,
                 None => Some(items.len() - 1),
             },
         };
@@ -151,8 +186,11 @@ pub fn backgrounds_ui(ui: &mut Ui, st: &mut BackgroundsState) {
         // Your Own with none chosen yet: pick one.
         let choose_own = choose.clone();
         let has_own = own.is_some();
-        // As wide as the box's content: as many side by side as fit.
-        let wide = f32::from(ui.cx.viewport_size().width) - 2.0 * (m::WINDOW_INSET + m::BOX_INSET);
+        // As wide as the box's content less the list's frame and bar: as
+        // many side by side as fit. The list takes the room the window's
+        // designed height leaves (`Panel::size`) and scrolls the rest (a
+        // collection is many), never shorter than a row.
+        let wide = f32::from(ui.cx.viewport_size().width) - 2.0 * (m::WINDOW_INSET + m::BOX_INSET) - olo_kit::widgets::SCROLL_BAR - 2.0 * LIST_PAD - 2.0;
         let picker = ThumbnailPicker::new("wallpaper", items, selected).picture_size(PREVIEW.0, PREVIEW.1).width(wide).on_select(move |i: &usize, cx| {
             if *i > n && !has_own {
                 choose_own();
@@ -160,7 +198,8 @@ pub fn backgrounds_ui(ui: &mut Ui, st: &mut BackgroundsState) {
                 set(i, cx);
             }
         });
-        ui.add(picker);
+        let row = olo_kit::widgets::thumbs::cell_size(PREVIEW).1 + 2.0 * LIST_PAD + 2.0;
+        ui.add(div().flex_1().min_h(px(row)).child(ScrollView::new(&scroll).child(div().p(px(LIST_PAD)).child(picker))));
         // A pack picture with an HDR version (its lights shine above the
         // rest's white on a display in HDR).
         if let Some(w) = s.wallpaper.as_deref().filter(|w| w.starts_with(wallpapers::PACK))

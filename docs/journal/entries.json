@@ -4192,5 +4192,11 @@
   "title": "Themes: two, Classic and Platinum, as cards",
   "caption": "Olo has two themes now, Classic (after BeOS) and Platinum (after Mac OS 9); the other eight and Catppuccin's colours went, and a setting naming one draws Classic. Preferences \u25b8 Themes shows them as two cards, each a preview of its wallpaper with a small window in its own colours and a few of its icons, its name and wordmark, a line about it and a row of its icons; its colour sets (its own and BeOS's) under them. (The wallpapers here are the old ones: new ones come next.)",
   "image": "2026-11-14/235920-themes-two-classic-and-platinum-as-cards.png"
+ },
+ {
+  "time": "2026-11-15T01:09:08",
+  "title": "Wallpapers: Mac OS 9's desktop pictures, made 4K",
+  "caption": "The themes' wallpapers are Mac OS 9's own desktop pictures now: nineteen of the twenty it installed (all but the Finder's face), taken from a Mac OS 9 disc and made 4K with sunburst, widened to 16:9 by continuing their backgrounds. Classic's default is Blueberry Oxygen (on the desktop here), Platinum's Quantum Foam, each with a dark version. Backgrounds shows the pack one collection at a time (Collection:), its pictures in a list that scrolls.",
+  "image": "2026-11-15/010908-wallpapers-mac-os-9-s-desktop-pictures-made-4k.png"
  }
 ]

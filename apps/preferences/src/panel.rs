@@ -215,7 +215,7 @@ impl Panel {
             Panel::AirPlay => (500, 360),
             Panel::AirPods => (960, 622),
             Panel::Appearance => (420, 482),
-            Panel::Backgrounds => (640, 604),
+            Panel::Backgrounds => (760, 720),
             // Export and Import side by side, each with its list of what
             // goes in (or comes back) and what an import left behind.
             Panel::Backup => (920, 400),

@@ -52,10 +52,10 @@ pub fn set(id: &str) -> bool {
 }
 
 /// Theme `id`'s own wallpaper, as the wallpaper setting names it: the
-/// pack's picture by the theme's id (data/wallpapers), drawn in its look.
-/// Choosing a theme in Preferences switches to it.
+/// pack picture the theme names (`Theme::wallpaper`: one of Mac OS 9's
+/// desktop pictures). Choosing a theme in Preferences switches to it.
 pub fn wallpaper(id: &str) -> String {
-    format!("{}{}", crate::wallpapers::PACK, resolve(id).id)
+    format!("{}{}", crate::wallpapers::PACK, resolve(id).wallpaper)
 }
 
 /// The directories theme `id` overlays on the classic set, most
@@ -132,7 +132,7 @@ mod tests {
             let w = pack.iter().find(|w| w.setting() == wallpaper(t.id)).unwrap_or_else(|| panic!("{} has no wallpaper", t.id));
             assert!(w.dark, "{} has no dark wallpaper", t.id);
             for (shape, size) in [("4k", (3840, 2160)), ("ultrawide", (3840, 1648)), ("thumbs", (320, 180))] {
-                for name in [t.id.to_owned(), format!("{}-dark", t.id)] {
+                for name in [t.wallpaper.to_owned(), format!("{}-dark", t.wallpaper)] {
                     let img = crate::decode_png(&dir.join(shape).join(format!("{name}.png"))).unwrap_or_else(|| panic!("{shape}/{name}"));
                     assert_eq!((img.width, img.height), size, "{shape}/{name}");
                 }

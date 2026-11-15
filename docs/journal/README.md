@@ -3,6 +3,14 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-15
+
+### Wallpapers: Mac OS 9's desktop pictures, made 4K
+
+*01:09* — The themes' wallpapers are Mac OS 9's own desktop pictures now: nineteen of the twenty it installed (all but the Finder's face), taken from a Mac OS 9 disc and made 4K with sunburst, widened to 16:9 by continuing their backgrounds. Classic's default is Blueberry Oxygen (on the desktop here), Platinum's Quantum Foam, each with a dark version. Backgrounds shows the pack one collection at a time (Collection:), its pictures in a list that scrolls.
+
+![Wallpapers: Mac OS 9's desktop pictures, made 4K](2026-11-15/010908-wallpapers-mac-os-9-s-desktop-pictures-made-4k.png)
+
 ## 2026-11-14
 
 ### Themes: two, Classic and Platinum, as cards

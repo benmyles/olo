@@ -218,38 +218,52 @@ python3 tools/genwordmark.py platinum --promote data/themes/platinum/src/wordmar
 
 ### Theme wallpapers
 
-Each theme also has a wallpaper of its own: the pack's picture named
-after it (`data/wallpapers/{4k,ultrawide,thumbs}/<id>.png` and
-`<id>-dark.png`), drawn in the theme's material with the wordmark's `o`
-as the hero. The themes' come first in `pack.txt`, the default theme's
-first of all, so a new install starts with it. Choosing a theme in
-Preferences ▸ Themes switches the wallpaper to it
-(`olo_xdg::themes::wallpaper`); Backgrounds can still pick any other.
+The pack's pictures for the themes are Mac OS 9's own desktop pictures
+(Ben, 2026-11-15: "upscale all the macos 9 ones and use them for both
+themes, just pick the most suitable one for each theme as the theme
+default"; BeOS shipped none worth having: two Be logos, a TV overlay and
+two photos of its people). Nineteen of the twenty Mac OS 9 installed in
+Appearance ▸ Desktop Pictures (the iMac flavours: Blueberry, Grape, Lime,
+Strawberry and Tangerine; Quantum Foam; Tub and the UFOs; Blue Dalmatian
+and Flower Power; the photographs: Bottles, Golden Poppy, Shutters), all
+but Mac OS Background (the Finder's face: too on the nose). Each theme
+names its own (`Theme::wallpaper`): Classic Blueberry Oxygen (the
+nearest to Be's blue), Platinum Quantum Foam (its lavender and grey);
+those two have a dark version. Choosing a theme in Preferences ▸ Themes
+switches the wallpaper to it (`olo_xdg::themes::wallpaper`); Backgrounds
+can pick any other. A setting naming a picture that's gone shows its
+theme's (`pack:platinum`, the old name) or the default's.
 
-`tools/genwallpaper.py` draws them with the same model as the icons, at
-quality "high" and full 4K, with the theme's reference icons and
-wordmark attached as style references. Each theme's scene is in its
-`SCENES`; `--scene TEXT` tries another one, and the chosen one goes back
-in `SCENES`. Candidates go to `data/wallpapers/src/` (gitignored), each
-with a `.json` sidecar. The API key is read from `OPENAI_API_KEY` or
-`~ben/.env`; never print, log or commit it.
+The originals came from a Mac OS 9 disc image read with `machfs` (HFS);
+Blue Dalmatian and Flower Power, which only 9.1's installer has, from
+512 Pixels' copies of them. `tools/upscalewallpaper.py` makes each a 4K
+picture with the icons' model at quality "high": the original attached
+to the edits endpoint, exactly that picture again at 3840×2160, widened
+to 16:9 by continuing its background; `--dark` redraws one for dark
+mode. Candidates go to `data/wallpapers/src/` (gitignored), each with a
+`.json` sidecar (model, prompt, source). The API key is read from
+`OPENAI_API_KEY` or `~ben/.env`; never print, log or commit it.
 
 ```sh
-python3 tools/genwallpaper.py platinum --variants 2        # candidates
-python3 tools/genwallpaper.py platinum --dark-from data/wallpapers/src/platinum-1.png
-python3 tools/genwallpaper.py platinum --promote data/wallpapers/src/platinum-1.png --crop-y 300
-python3 tools/genwallpaper.py platinum --promote data/wallpapers/src/platinum-dark-1.png --dark --crop-y 300
+python3 tools/upscalewallpaper.py "Quantum Foam-(1280x1024).jpg" quantum-foam
+python3 tools/upscalewallpaper.py data/wallpapers/src/quantum-foam.png quantum-foam --dark
+python3 tools/upscalewallpaper.py --promote quantum-foam [--crop-y 300]
+python3 tools/upscalewallpaper.py --promote quantum-foam --dark
 ```
 
 `--promote` writes the 4K picture, the 3840×1648 ultrawide band (from
-`--crop-y`, default the middle; keep the hero inside it) and the 320×180
-thumbnail. `cargo test -p olo-xdg` checks every theme has all six
+`--crop-y`, default the middle) and the 320×180 thumbnail. `cargo test
+-p olo-xdg` checks every theme has all six
 (`themes::tests::every_theme_has_its_wallpaper`). Then give it its HDR
 version: `cargo run --release -p olo-images --bin wallpaper-hdr` makes
 `NAME.gain.png` beside each picture in `4k/` and `ultrawide/` that's
 newer than its map (`olo_images::gain`; `--preview DIR` writes each
 picture with what shines tinted red, to look at), and the maps go in
 with the pictures.
+
+(`tools/genwallpaper.py` draws a picture from a scene described in
+words, with a theme's icons attached as style references if asked: how
+the themes' first wallpapers were made.)
 
 ## Using icons in code
 

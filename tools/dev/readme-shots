@@ -115,7 +115,7 @@ def look(theme="light", icons="classic", colors="theme", wallpaper=None):
         a["theme"] = theme
         a["icon_theme"] = icons
         a["colors"] = colors
-        s["wallpaper"] = wallpaper or f"pack:{icons}"
+        s["wallpaper"] = wallpaper or {"classic": "pack:blueberry-oxygen", "platinum": "pack:quantum-foam"}.get(icons)
     settings(change)
     time.sleep(2)
 

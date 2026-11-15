@@ -2341,8 +2341,10 @@ it.
   `TextControl` (label, divider,
   the sunken well around a `TextField`), `StringView` (`dim`, `bold`),
   `BBox` (etched frame, bold label in its top line, `content_width`,
-  `action` for a `LinkButton` at the top line's end; agents read it as
-  a `Group` named by its label, round what's in it), `LinkButton` (only
+  `action` for a `LinkButton` at the top line's end, `grow` for a box
+  with a list in it: it takes the height the window's designed size
+  leaves and its `flex_1().min_h_0()` scroll view scrolls the rest;
+  agents read it as a `Group` named by its label, round what's in it), `LinkButton` (only
   its words, small, in the link blue, underlined under the pointer,
   `LABEL_ROW` tall: an action in a line with no room for a button;
   `beside(size)` puts its words on the baseline a push button's label
@@ -5739,15 +5741,24 @@ lint at a time).
   panel's preview). **Tests must never press Set, Set Time Zone or the
   network-time box: they change the real machine.**
 * Backgrounds (`workspaces.rs`): a colour per workspace and one wallpaper,
-  picked in a `ThumbnailPicker`: None (the workspace colour), the
-  wallpaper pack, or Your Own. The pack (`data/wallpapers`, Git LFS;
-  `olo_xdg::wallpapers`) lists its pictures in `pack.txt` (the first
-  is a new install's default), each in `4k/` (16:9) and `ultrawide/`
-  (21:9), some with a `-dark` version, and previews in `thumbs/`. Each
-  theme's own wallpaper leads the list, named after it (see "Theme
-  wallpapers" in [ICONS.md](ICONS.md)); choosing a theme in Themes sets
-  `wallpaper` to it too, so an agent switching looks over IPC sets both
-  `appearance.icon_theme` and `wallpaper` (`themes::wallpaper(id)`). The
+  picked in a `ThumbnailPicker`: None (the workspace colour), a picture
+  of the pack's collection shown, or Your Own. The pack (`data/wallpapers`,
+  Git LFS; `olo_xdg::wallpapers`) lists its pictures in `pack.txt`
+  (`name|label|collection`; the first is a new install's default), each
+  in `4k/` (16:9) and `ultrawide/` (21:9), some with a `-dark` version,
+  and previews in `thumbs/`. Its collections (Mac OS 9, then the other
+  retro systems' and Olo's) are many, so one shows at a time, picked in
+  Collection: (the current wallpaper's to begin with), its pictures in a
+  scroll view in a growing box (`BBox::grow`), the window 760 × 720 as
+  designed. Each theme names its picture (`Theme::wallpaper`: Classic
+  Blueberry Oxygen, Platinum Quantum Foam; see "Theme wallpapers" in
+  [ICONS.md](ICONS.md)); choosing a theme in Themes sets `wallpaper` to it
+  too, so an agent switching looks over IPC sets both
+  `appearance.icon_theme` and `wallpaper` (`themes::wallpaper(id)`).
+  app_server keeps settings naming what's gone current as it loads them
+  and as they're set (`keep_looks_current`: a theme there was once is
+  Classic, Catppuccin's colours the theme's own, a pack picture that
+  went the one `wallpapers::moved` says is shown instead). The
   setting holds `pack:NAME`, and `wallpapers::resolve` gives the file
   for a screen's shape (2:1 or wider takes the ultrawide one) and the
   effective theme, so it follows dark mode (Auto's schedule too) live.

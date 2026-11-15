@@ -395,7 +395,7 @@ mod tests {
     #[ignore]
     fn wallpaper_cost() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/wallpapers/4k");
-        let path = dir.join("classic-dark.png");
+        let path = dir.join("blueberry-oxygen-dark.png");
         let size = (3200, 2000);
         for gain in [None, olo_images::gain::find(&path)] {
             let key = Key { path: path.clone(), size, gain: gain.clone() };
@@ -418,7 +418,7 @@ mod tests {
     #[test]
     fn preferences_and_app_server_find_the_same_gain_maps() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/wallpapers/4k");
-        for name in ["classic.png", "classic-dark.png", "aqua.png"] {
+        for name in ["blueberry-oxygen.png", "blueberry-oxygen-dark.png", "aqua.png"] {
             let p = dir.join(name);
             assert_eq!(olo_xdg::wallpapers::has_hdr(&p), olo_images::gain::find(&p).is_some(), "{name}");
             assert!(olo_xdg::wallpapers::has_hdr(&p), "{name} has its gain map");

@@ -387,6 +387,6 @@ mod tests {
         assert_eq!(s.appearance.icon_theme, themes::DEFAULT);
         assert_eq!(s.wallpaper, Some(themes::wallpaper(themes::DEFAULT)));
         choose(&mut s, "platinum");
-        assert_eq!((s.appearance.icon_theme.as_str(), s.wallpaper.as_deref()), ("platinum", Some("pack:platinum")));
+        assert_eq!((s.appearance.icon_theme.as_str(), s.wallpaper.as_deref()), ("platinum", Some("pack:quantum-foam")));
     }
 }

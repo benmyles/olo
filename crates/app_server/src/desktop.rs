@@ -299,7 +299,28 @@ pub fn load_settings() -> Settings {
     adopt_old_app_ids(&mut settings);
     settings.tiling.upgrade();
     settings.migrate();
+    keep_looks_current(&mut settings);
     settings
+}
+
+/// A theme, colour set or wallpaper that has gone, named in `settings`,
+/// as what's drawn instead: the eight themes before Classic and Platinum
+/// draw Classic, Catppuccin's colours the theme's own, their wallpapers
+/// and the themes' own of then (`pack:classic`) the themes' pictures now. Kept so, every reader of the settings
+/// (Backgrounds, Themes, agents) sees what's on the screen.
+fn keep_looks_current(settings: &mut Settings) {
+    let theme = olo_xdg::themes::resolve(&settings.appearance.icon_theme).id;
+    if settings.appearance.icon_theme != theme {
+        settings.appearance.icon_theme = theme.to_owned();
+    }
+    // (Catppuccin's colours went too: the theme's own.)
+    let colors = olo_theme::looks::ColorSet::resolve(&settings.appearance.colors).id();
+    if settings.appearance.colors != colors {
+        settings.appearance.colors = colors.to_owned();
+    }
+    if let Some(now) = settings.wallpaper.as_deref().and_then(olo_xdg::wallpapers::moved) {
+        settings.wallpaper = Some(now);
+    }
 }
 
 /// Settings saved before the rename name Tabula's apps (`tabula.terminal`):
@@ -2015,8 +2036,9 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// A client's settings (Preferences'): applied and saved; in Olo
     /// Rescue, the person's own changed and saved, applied as it ends.
     pub fn set_settings(&mut self, mut settings: Settings) {
-        // A backup restored from before keyboard profiles.
+        // A backup restored from before keyboard profiles, or the themes.
         settings.migrate();
+        keep_looks_current(&mut settings);
         // Windowing modes and Main and Stack's places are kept as they are
         // chosen, not from a client's copy (which may be older).
         let own = self.rescue.as_ref().map_or(&self.settings, |r| &r.real);

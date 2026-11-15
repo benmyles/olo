@@ -176,12 +176,26 @@ impl<'a, 'b, 'c> Ui<'a, 'b, 'c> {
     /// An etched box with its title in its top line, and Reset at its
     /// end while its settings aren't their defaults.
     pub fn bbox(&mut self, title: &str, build: impl FnOnce(&mut Self)) {
+        self.bbox_of(title, false, build);
+    }
+
+    /// [`Ui::bbox`] holding a list that takes the window's spare height
+    /// and scrolls the rest (`BBox::grow`): the list a
+    /// `flex_1().min_h_0()` scroll view in it.
+    pub fn growing_bbox(&mut self, title: &str, build: impl FnOnce(&mut Self)) {
+        self.bbox_of(title, true, build);
+    }
+
+    fn bbox_of(&mut self, title: &str, grow: bool, build: impl FnOnce(&mut Self)) {
         self.boxes.push(Vec::new());
         self.titles.push(title.to_owned());
         let items = self.collect(build);
         self.titles.pop();
         let probes = self.boxes.pop().unwrap_or_default();
         let mut b = if title.is_empty() { BBox::plain() } else { BBox::new(SharedString::from(title.to_owned())) };
+        if grow {
+            b = b.grow();
+        }
         if self.enabled && (changed(&probes) || every_reset() && !probes.is_empty()) {
             let name = if title.is_empty() { "Reset".to_owned() } else { format!("Reset of “{title}”") };
             b = b.action("Reset", move |_: &ClickEvent, _: &mut WindowCx| prefs().edit_as("", &name, |s| reset(s, &probes)));

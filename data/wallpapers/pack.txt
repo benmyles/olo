@@ -1,14 +1,32 @@
-# The wallpaper pack: name|label. Each has 4k/NAME.png (16:9) and
-# ultrawide/NAME.png (21:9); NAME-dark.png beside it, when there is one,
-# is shown in dark mode. thumbs/ holds the previews. The first is the
-# default for a new install. The two themes' own come first, each named
-# after its theme (Preferences ▸ Themes switches to it), the default
-# theme's (Classic) first of all.
-classic|Classic
-platinum|Platinum
-dusk-gradient|Dusk
-boing|Boing
-be-blue|Be Blue
-aqua|Aqua
-clouds|Clouds
-workbench-pattern|Ring Pattern
+# The wallpaper pack: name|label|collection. Each has 4k/NAME.png (16:9)
+# and ultrawide/NAME.png (21:9); NAME-dark.png beside it, when there is
+# one, is shown in dark mode. thumbs/ holds the previews. The first is the
+# default for a new install: the default theme's (Classic: Blueberry
+# Oxygen); each theme names its own (`Theme::wallpaper`). The retro
+# systems' own desktop pictures, made 4K with tools/upscalewallpaper.py
+# (docs/ICONS.md, "Theme wallpapers"), then Olo's.
+blueberry-oxygen|Blueberry Oxygen|Mac OS 9
+quantum-foam|Quantum Foam|Mac OS 9
+blue-dalmatian|Blue Dalmatian|Mac OS 9
+blueberry-union|Blueberry Union|Mac OS 9
+bottles|Bottles|Mac OS 9
+flower-power|Flower Power|Mac OS 9
+golden-poppy|Golden Poppy|Mac OS 9
+grape-gravity|Grape Gravity|Mac OS 9
+grape-mission|Grape Mission|Mac OS 9
+lime-horizon|Lime Horizon|Mac OS 9
+lime-sharp|Lime Sharp|Mac OS 9
+shutters|Shutters|Mac OS 9
+strawberry-baby|Strawberry Baby|Mac OS 9
+strawberry-parabola|Strawberry Parabola|Mac OS 9
+tangerine-fusion|Tangerine Fusion|Mac OS 9
+tangerine-melt|Tangerine Melt|Mac OS 9
+tub|Tub|Mac OS 9
+ufo-1|UFO 1|Mac OS 9
+ufo-2|UFO 2|Mac OS 9
+dusk-gradient|Dusk|Olo
+boing|Boing|Olo
+be-blue|Be Blue|Olo
+aqua|Aqua|Olo
+clouds|Clouds|Olo
+workbench-pattern|Ring Pattern|Olo

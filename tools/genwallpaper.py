@@ -8,10 +8,14 @@
 
 Each theme (Classic, and Platinum in data/themes) has a wallpaper of its own in the
 pack, named after it (see "Themes" in docs/ICONS.md). It is drawn by the
-same model at quality "high" and full 4K (3840x2160), with the theme's
-reference icons and wordmark as style references, so it is in the
-theme's material. Candidates go to data/wallpapers/src/THEME-N.png, each
-with a .json sidecar; --dark-from redraws a chosen one for dark mode
+same model at quality "high" and full 4K (3840x2160): a quiet picture
+that's a nod to the system the theme is after (BeOS, Mac OS 9), never
+its logo or a word (Ben, 2026-11-14: "not too in your face, subtle beos
+(for classic) and macos9 (for platinum) throwbacks/nostalgia"). --refs
+attaches the theme's reference icons and wordmark as style references
+(for a scene made of the theme's own objects; the quiet scenes are
+drawn from words alone). Candidates go to data/wallpapers/src/THEME-N.png,
+each with a .json sidecar; --dark-from redraws a chosen one for dark mode
 (THEME-dark-N.png).
 
 --promote makes the pack's files from a chosen candidate: 4k/THEME.png,
@@ -37,47 +41,54 @@ SAMPLES = ["application", "disk", "folder", "home", "terminal"]
 # Every wallpaper: how it sits on the desktop, whatever the theme.
 COMMON = (
     "A desktop wallpaper for a computer: one finished picture filling the whole 16:9 frame edge to edge, "
-    "at very high resolution, with crisp, clean, beautifully finished detail everywhere. "
-    "It is drawn in exactly the look of the attached images, which are icons and the wordmark of one set: "
-    "the same material, rendering, palette, edges and lighting, so it plainly belongs with them. "
-    "Do not draw the attached icons themselves or the whole wordmark; draw only the scene below. "
-    "Calm and uncluttered, made to sit behind windows and desktop icons: one hero element left of centre, "
-    "the rest restful space with gentle detail, and the right third quieter still, for the desktop's icons. "
-    "Keep everything important inside the middle three quarters of the height: the picture is also cropped "
-    "to 21:9 for ultrawide screens. Light from the upper left. "
-    "No text, no letters, no numbers, no logos, no watermark, no user interface, no people. "
+    "at very high resolution, with clean, beautifully finished detail and smooth, banding-free gradients. "
+    "It is made to sit quietly behind windows and desktop icons: calm, uncluttered and low in contrast, "
+    "with nothing loud or attention-seeking; the right third especially quiet (the desktop's icons sit "
+    "there) and the middle free of strong detail (windows cover it). Keep anything of interest inside the "
+    "middle three quarters of the height: the picture is also cropped to 21:9 for ultrawide screens. "
+    "Light from the upper left. No text, no letters or letter-like shapes, no numbers, no logos, no "
+    "watermark, no user interface, no people, no animals. "
 )
 
-# Each theme's scene, in its own material. The hero is the wordmark's o,
-# on its own, as an object.
+# Each theme's scene: a quiet nod to the system it's after.
 SCENES = {
     "classic": (
-        "Scene: Olo's first look, glossy, bright and saturated: a big glossy Be blue ring like the o of the "
-        "attached wordmark (a ring-shaped object, not a letter), with a glossy BeOS-yellow bar beside it, "
-        "stands left of centre on a softly reflective pale blue floor that fades into a bright, luminous "
-        "sky-blue backdrop; glossy plastic with crisp highlights and soft reflections, a bold dark outline as "
-        "in the icons, cheerful bright light from the upper left."
+        "Scene: 'Be blue hour', a calm, nearly abstract landscape seen from far away in the clear blue light "
+        "of a late afternoon, the whole picture in the family of BeOS's desktop blue, a dusty steel blue "
+        "(#336698), lifted for daylight toward soft dusty steel-blue tints, never teal, cyan or turquoise. A "
+        "broad, smooth sky graded from steel blue at the top to a pale blue-grey haze at a low horizon about a "
+        "quarter up from the bottom. One long, gentle hill silhouette in deeper steel blue runs low across "
+        "the picture, and before it a still, subdued stretch of water that softly mirrors the sky, without "
+        "sparkle or glare. Far away in the left quarter, standing on the hill line, one tiny, slender, plain "
+        "dark tower with two short side-by-side columns of small, muted amber pinpoint lights (#FFCB00 "
+        "dimmed), like a distant beacon: so small it's discovered rather than noticed, with no glow or bloom. "
+        "Nothing else. A refined painterly-photographic finish, soft atmospheric depth, restrained and "
+        "spacious; the right third almost empty sky and water."
     ),
     "platinum": (
-        "Scene: a friendly, clean late-1990s desktop picture: soft rounded hills in pale lilac-grey and "
-        "platinum grey rolling under a clear, pale sky that fades from soft periwinkle at the top to white at "
-        "the horizon, a few small puffy white clouds; on a hill left of centre, a big chunky Be blue ring like "
-        "the o of the attached wordmark (a ring-shaped object, not a letter) beside a sunny BeOS-yellow bar, "
-        "seen in a gentle view from slightly above. Crisp even black outlines as in the icons, flat colour "
-        "with gentle smooth shading and one soft highlight on each form, a small soft grey shadow to the "
-        "lower right. Cheerful, tidy and restful."
+        "Scene: a quiet sky of soft clouds, a gentle nod to the cloud desktop pictures of 1990s computers: a "
+        "calm sky in platinum grey with lavender undertones (cool neutral greys with a faint lilac tint, "
+        "never a saturated purple), a few broad, softly airbrushed cumulus clouds gathered toward the upper "
+        "left, modelled by gentle light from the upper left with soft lilac-grey shadows, dissolving toward "
+        "the right into open grey-lilac space. A barely perceptible horizon near the bottom; no sunset bands. "
+        "The gradients carry an extremely fine, low-amplitude ordered dither that hints at a 1990s screen's "
+        "colours, not film grain and not a distressed filter. Modest colour depth, cool, serene and generous "
+        "in its emptiness; the right third almost featureless."
     ),
 }
 
 DARK = (
     "The attached image is a desktop wallpaper. Draw exactly the same picture again, for a computer's dark "
-    "mode: the same scene, composition, objects, materials, style and framing, but at night in a dim room "
-    "or under a night sky, so the whole picture is deep and dark with low overall brightness and rich, "
-    "deepened colour, and the hero element is still clearly readable, picked out by a soft rim light from "
-    "the upper left. {extra}No text, no letters, no numbers, no logos, no watermark, no user interface."
+    "mode: the same scene, composition, forms, style and framing, but in the dark, so the whole picture is "
+    "deep and low in overall brightness, with rich, deepened colour and the forms still gently separated, "
+    "nothing in it brighter than it needs to be. {extra}No text, no letters, no numbers, no logos, no "
+    "watermark, no user interface."
 )
 DARK_EXTRA = {
-    "platinum": "Still black outlines and flat, gently shaded colour: a deep periwinkle dusk, hills in dark lilac-grey. ",
+    "classic": "A deep steel-blue and navy twilight, not black; the hill still faintly set apart from the sky, "
+    "the water calm; the beacon's amber pinpoints dimmed with the scene, not its brightest thing. ",
+    "platinum": "Smoky violet-grey clouds over a charcoal-platinum sky, still soft; no stars, no moon, no "
+    "luminous cloud edges. ",
 }
 
 
@@ -93,9 +104,13 @@ def refs(theme):
 def generate(prompt, images, n):
     fields = {"model": MODEL, "prompt": prompt, "size": f"{SIZE[0]}x{SIZE[1]}", "quality": QUALITY,
               "background": "opaque", "output_format": "png", "n": str(n)}
-    body, ctype = genicon.multipart(fields, [("image[]", p) for p in images])
-    req = urllib.request.Request("https://api.openai.com/v1/images/edits", body,
-                                 {"Authorization": "Bearer " + genicon.key(), "Content-Type": ctype})
+    if images:
+        body, ctype = genicon.multipart(fields, [("image[]", p) for p in images])
+        url = "https://api.openai.com/v1/images/edits"
+    else:
+        body, ctype = json.dumps({**fields, "n": n}).encode(), "application/json"
+        url = "https://api.openai.com/v1/images/generations"
+    req = urllib.request.Request(url, body, {"Authorization": "Bearer " + genicon.key(), "Content-Type": ctype})
     for attempt in range(4):
         try:
             return [base64.b64decode(d["b64_json"]) for d in json.load(urllib.request.urlopen(req, timeout=1800))["data"]]
@@ -107,11 +122,11 @@ def generate(prompt, images, n):
     sys.exit("image API kept failing")
 
 
-def draw(theme, variants, dark_from, scene=None):
+def draw(theme, variants, dark_from, scene=None, with_refs=False):
     if dark_from:
         prompt, images, stem = DARK.format(extra=DARK_EXTRA.get(theme, "")), [dark_from], f"{theme}-dark"
     else:
-        prompt, images, stem = COMMON + (scene or SCENES[theme]), refs(theme), theme
+        prompt, images, stem = COMMON + (scene or SCENES[theme]), refs(theme) if with_refs else [], theme
     out = os.path.join(WALLPAPERS, "src")
     os.makedirs(out, exist_ok=True)
     # Never over an earlier candidate: number on from the last.
@@ -152,6 +167,7 @@ def main():
     ap.add_argument("--variants", type=int, default=1)
     ap.add_argument("--dark-from", help="redraw this candidate for dark mode")
     ap.add_argument("--scene", help="draw this scene instead of the theme's")
+    ap.add_argument("--refs", action="store_true", help="attach the theme's reference icons and wordmark")
     ap.add_argument("--promote", metavar="SRC", help="make the pack's files from this candidate")
     ap.add_argument("--dark", action="store_true", help="with --promote: it is the dark-mode version")
     ap.add_argument("--crop-y", type=int, help="with --promote: the ultrawide band's top")
@@ -159,7 +175,7 @@ def main():
     if a.promote:
         promote(a.theme, a.promote, a.dark, a.crop_y)
     else:
-        draw(a.theme, a.variants, a.dark_from, a.scene)
+        draw(a.theme, a.variants, a.dark_from, a.scene, a.refs)
 
 
 if __name__ == "__main__":

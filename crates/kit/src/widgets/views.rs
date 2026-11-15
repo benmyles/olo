@@ -240,17 +240,18 @@ pub struct BBox {
     label: Option<SharedString>,
     width: Option<f32>,
     action: Option<(SharedString, OnAction)>,
+    grow: bool,
     children: SmallVec<[AnyElement; 4]>,
 }
 
 impl BBox {
     pub fn new(label: impl Into<SharedString>) -> BBox {
-        BBox { label: Some(label.into()), width: None, action: None, children: SmallVec::new() }
+        BBox { label: Some(label.into()), width: None, action: None, grow: false, children: SmallVec::new() }
     }
 
     /// Without a label.
     pub fn plain() -> BBox {
-        BBox { label: None, width: None, action: None, children: SmallVec::new() }
+        BBox { label: None, width: None, action: None, grow: false, children: SmallVec::new() }
     }
 
     /// A `LinkButton` at the right end of its top line, for what's in it
@@ -263,6 +264,16 @@ impl BBox {
     /// What it holds is `w` wide (the frame, its insets wider).
     pub fn content_width(mut self, w: f32) -> Self {
         self.width = Some(w);
+        self
+    }
+
+    /// It takes the height its column has spare (a window's designed
+    /// height less the rest), and may be shorter than what it holds
+    /// needs: for a box with a list in it (a `flex_1().min_h_0()` scroll
+    /// view), which shows as much as that room allows and scrolls the
+    /// rest ("Windows fit what they show": the list, nothing else).
+    pub fn grow(mut self) -> Self {
+        self.grow = true;
         self
     }
 }
@@ -315,6 +326,9 @@ impl IntoElement for BBox {
         .absolute()
         .inset_0();
         let mut b = div().relative();
+        if self.grow {
+            b = b.flex_1().min_h_0();
+        }
         if let Some(w) = self.width {
             b = b.w(px(w + 2.0 * pad));
         }

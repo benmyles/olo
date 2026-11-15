@@ -27,6 +27,9 @@ pub struct Theme {
     pub about: &'static str,
     /// A line about its own colours, for Preferences.
     pub colors_about: &'static str,
+    /// Its wallpaper: the name of a picture in the wallpaper pack
+    /// (`data/wallpapers`), with a dark version beside it.
+    pub wallpaper: &'static str,
     pub light: Seeds,
     pub dark: Seeds,
 }
@@ -112,6 +115,8 @@ pub const THEMES: &[Theme] = &[
         name: "Classic",
         about: "After BeOS: glossy, bright and friendly.",
         colors_about: "Glossy sky grey by day and ocean blue by night.",
+        // (Mac OS 9's, the nearest to Be's blue.)
+        wallpaper: "blueberry-oxygen",
         light: Seeds {
             panel: hex(0xdbe3ee),
             ink: hex(0x131a26),
@@ -146,6 +151,7 @@ pub const THEMES: &[Theme] = &[
         name: "Platinum",
         about: "After Mac OS 9: platinum grey, friendly outlines.",
         colors_about: "Platinum grey, a lavender tab and lilac-blue.",
+        wallpaper: "quantum-foam",
         light: Seeds {
             panel: hex(0xdddddd),
             ink: hex(0x000000),
