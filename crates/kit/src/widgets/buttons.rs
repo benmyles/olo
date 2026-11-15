@@ -116,13 +116,22 @@ pub struct LinkButton {
     id: SharedString,
     label: SharedString,
     enabled: bool,
+    beside: Option<f32>,
     on_click: Option<Handler>,
 }
 
 impl LinkButton {
     pub fn new(label: impl Into<SharedString>) -> LinkButton {
         let label = label.into();
-        LinkButton { id: label.clone(), label, enabled: true, on_click: None }
+        LinkButton { id: label.clone(), label, enabled: true, beside: None, on_click: None }
+    }
+
+    /// Its words on the baseline that text of `size` centred in the same
+    /// row has (a push button's label beside it), not centred themselves:
+    /// a row of buttons and links reads as one line (`chosen::choose`).
+    pub fn beside(mut self, size: f32) -> Self {
+        self.beside = Some(size);
+        self
     }
 
     /// Its id, when two share a label (each box's Reset).
@@ -151,7 +160,7 @@ pub fn link_button_width(label: &str) -> f32 {
 impl IntoElement for LinkButton {
     fn into_element(self) -> Element {
         let w = link_button_width(&self.label);
-        let label = self.label.clone();
+        let (label, beside) = (self.label.clone(), self.beside);
         let mut c = control(self.id.clone(), w, m::LABEL_ROW, move |g, r, s| {
             let p = theme::palette();
             // (The blue of links, readable on the panel.)
@@ -163,14 +172,18 @@ impl IntoElement for LinkButton {
             } else {
                 style::c(link)
             };
-            let text = style::label(g, r.left(), r.center().y, style::Align::Left, label.to_string(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), color);
+            let font = style::ui_font(FontWeight::NORMAL);
+            let text = match beside {
+                Some(of) => style::label_on_baseline(g, r.left(), style::baseline_at(g, r.center().y, of), style::Align::Left, label.to_string(), style::DETAIL_SIZE, font, color),
+                None => style::label(g, r.left(), r.center().y, style::Align::Left, label.to_string(), style::DETAIL_SIZE, font, color),
+            };
             if s.focused {
                 focus_underline(g, text, &p);
             } else if s.hovered && s.enabled {
                 style::hline_above(g, text.left(), text.right(), text.bottom(), color);
             }
         })
-        .look(&self.label)
+        .look((&self.label, self.beside.map(f32::to_bits)))
         .enabled(self.enabled)
         .focusable()
         .pointing()
@@ -250,6 +263,7 @@ pub struct CheckBox {
     checked: bool,
     mixed: bool,
     enabled: bool,
+    mark_only: bool,
     height: f32,
     on_toggle: Option<Rc<dyn Fn(&bool, &mut WindowCx)>>,
 }
@@ -257,7 +271,15 @@ pub struct CheckBox {
 impl CheckBox {
     pub fn new(label: impl Into<SharedString>, checked: bool) -> CheckBox {
         let label = label.into();
-        CheckBox { id: label.clone(), label, checked, mixed: false, enabled: true, height: m::MARK_ROW, on_toggle: None }
+        CheckBox { id: label.clone(), label, checked, mixed: false, enabled: true, mark_only: false, height: m::MARK_ROW, on_toggle: None }
+    }
+
+    /// Only its mark, beside what it chooses that names it already (an
+    /// item's title in a list acted on by what's checked: `chosen`); its
+    /// label is still its name for agents.
+    pub fn mark_only(mut self) -> Self {
+        self.mark_only = true;
+        self
     }
 
     /// As tall as the controls beside it (`metrics::CONTROL_HEIGHT` beside
@@ -299,8 +321,13 @@ impl IntoElement for CheckBox {
         // label (a table's columns) shared the id "", and a click on one
         // was lost among them (Preferences ▸ Notifications' apps).
         debug_assert!(!self.id.is_empty(), "a CheckBox without a label needs an id of its own (CheckBox::id)");
-        let tw = f32::from(style::text_width(self.label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))).ceil();
-        let w = m::MARK_SIZE + m::MARK_GAP + tw;
+        let mark_only = self.mark_only;
+        let w = if mark_only {
+            m::MARK_SIZE
+        } else {
+            let tw = f32::from(style::text_width(self.label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))).ceil();
+            m::MARK_SIZE + m::MARK_GAP + tw
+        };
         let (label, checked, mixed) = (self.label.clone(), self.checked, self.mixed);
         let mut c = control(self.id.clone(), w, self.height, move |g, r, s| {
             let p = theme::palette();
@@ -317,13 +344,21 @@ impl IntoElement for CheckBox {
                 let mark = Bounds::from_corners(point(well.left() + px(3.0), well.top() + px(3.5)), point(well.right() - px(2.5), well.bottom() - px(3.5)));
                 style::check_mark(g, mark, ink);
             }
+            if mark_only {
+                // (The keyboard's line under the mark, clear of its well.)
+                if s.focused {
+                    let under = Bounds { origin: point(well.left(), well.top()), size: size(well.size.width, well.size.height + px(2.0)) };
+                    focus_underline(g, under, &p);
+                }
+                return;
+            }
             let color = if s.enabled { style::c(p.panel_text) } else { style::disabled_text(&p) };
             let text = style::label(g, well.right() + px(m::MARK_GAP), r.center().y, style::Align::Left, label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color);
             if s.focused {
                 focus_underline(g, text, &p);
             }
         })
-        .look((&self.label, checked, mixed))
+        .look((&self.label, checked, mixed, mark_only))
         .enabled(self.enabled)
         .focusable()
         .agent("CheckBox", self.label.clone(), Some(checked && !mixed));

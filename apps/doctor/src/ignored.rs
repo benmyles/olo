@@ -4,9 +4,9 @@
 //! changes their mind but it won't alert about ignored items or draw
 //! attention to them"), any kind of finding, a suggestion as much as a
 //! critical one. Kept by finding id, in the config folder: a look sets
-//! what's ignored aside (`Report::set_aside`), so the counts, Fix All,
-//! the tray's bag and the notifications leave it out, and the window
-//! lists it last, quietly, with its fix and "Stop Ignoring".
+//! what's ignored aside (`Report::set_aside`), so the counts, what's
+//! checked, the tray's bag and the notifications leave it out, and the
+//! window lists it last, quietly, with its fix and "Stop Ignoring".
 //!
 //! The file had two lists while Olo Suggestions was an app of its own
 //! (`doctor`, `suggestions`): both are read as one, and the next change

@@ -1430,15 +1430,6 @@ something nobody here has is in "Blocked", with what it waits for.
   iterated, with second opinions from OpenAI's Astra; then every icon
   (apps, Preferences' panels, Deskbar, Tracker's kinds) made again for
   each theme per docs/ICONS.md, checked large and at Deskbar's size.
-- **Olo Doctor: fix the problems, apply the suggestions, or both**
-  (Ben, 2026-11-14: "the fix all button only fixes all problems but
-  there's no way to apply all suggestions. we need a way to do both
-  and either/or. and it needs to be intuitive as a good reusable
-  pattern for this kind of thing. go study what beos, macos, and other
-  GUIs do for this kind of thing and fix it with a better pattern and
-  update the olo book with it too"). A kit pattern for acting on all,
-  some or one kind of a list's items, from BeOS's, macOS's and others'
-  ways; Doctor on it; the Olo Book and HACKING.
 - **A Deskbar widget's own name** (Ben, 2026-11-14: "in the deskbar
   settings for widgets let me provide a custom name for the widget if
   i want to override/customize the name"): Preferences ▸ Deskbar ▸
@@ -1525,7 +1516,40 @@ something nobody here has is in "Blocked", with what it waits for.
   permissions, times and links kept; never writing outside the target
   (paths with .. or absolute ones refused); undo; agent-readable and
   drivable; HACKING and the Olo Book.
+
 ## Done, waiting for Ben to try or confirm
+
+- **Olo Doctor: fix the problems, apply the suggestions, or both**
+  (Ben, 2026-11-14: "the fix all button only fixes all problems but
+  there's no way to apply all suggestions. we need a way to do both
+  and either/or. and it needs to be intuitive as a good reusable
+  pattern for this kind of thing. go study what beos, macos, and other
+  GUIs do for this kind of thing and fix it with a better pattern and
+  update the olo book with it too"). A kit pattern for acting on all,
+  some or one kind of a list's items, from BeOS's, macOS's and others'
+  ways; Doctor on it; the Olo Book and HACKING.
+  Done (2026-11-14): `olo_kit::chosen`. BeOS had a button on each
+  thing only (Haiku's SoftwareUpdater: all or nothing); Mac OS X's
+  Software Update a check box on each update and one counted button
+  ("Install 3 Items"), Ubuntu's Software Updater the same, Xcode's
+  Update to Recommended Settings the optional changes left unchecked.
+  So each finding with a fix has a check box at its left (the problems
+  checked to begin with, the suggestions not; what Ben checks is kept,
+  through an upgrade too); under the list, "Choose: All · Problems ·
+  Suggestions · None" (one click for both, either or neither) and one
+  default button saying what it will do, "Fix 2 Problems", "Apply 3
+  Suggestions", "Fix 2 and Apply 3" (⇧⌘F; as wide as its widest words,
+  so nothing moves as it counts); each card keeps its own button. The
+  Fix menu has the same, Choose All on ⌘A (configurable: Doctor's
+  `choose-all`). In the kit: `chosen` (the counted label, the Choose
+  links, the button, the menu, what's kept), `CheckBox::mark_only`,
+  `LinkButton::beside`; the Olo Book has the pattern ("Acting on
+  what's chosen"). Tried headless with the made-up report
+  (`OLO_DOCTOR_DEMO=1`): each Choose, single checks, the button's words
+  and the fixes it ran, ⌘A and ⇧⌘F; the layout review clean at 1×,
+  1.25×, 1.5×, 1.75× and 2×, light and dark. *Left for Ben:* whether the
+  suggestions should start unchecked (Mac and Xcode leave what's
+  optional to the person) and how it reads to him.
 
 - **Main and Stack: Make Main, where the main window goes, by keys**
   (Ben, 2026-11-14: "let's add a proper command with shortcut and

@@ -210,7 +210,8 @@ pub struct Report {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub undo: Vec<Undo>,
     /// Found, but what the person said to ignore (ignored.rs): out of the
-    /// counts, Fix All, the tray and the notifications; still fixable.
+    /// counts, what the window checks, the tray and the notifications;
+    /// still fixable.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ignored: Vec<Finding>,
 }
@@ -226,8 +227,9 @@ impl Report {
         self.findings.iter().filter(|f| f.severity == s).count()
     }
 
-    /// What Fix All fixes: each finding with a fix but the suggestions
-    /// (taken one by one, or with Apply All Suggestions).
+    /// What's fixed (`--fix all`, and checked in the window to begin
+    /// with): each finding with a fix but the suggestions (checked by
+    /// the person, or `--fix suggestions`).
     pub fn fixable(&self) -> impl Iterator<Item = &Finding> {
         self.findings.iter().filter(|f| f.fix.is_some() && f.severity != Severity::Suggestion)
     }
@@ -3613,8 +3615,9 @@ mod tests {
         assert!(matches!(&back.fix.steps[1], Step::WriteSysfs { value, .. } if value == "auto"));
     }
 
-    /// What's ignored is out of the counts and Fix All, still found and
-    /// fixable by its id, and back among the rest when no longer ignored.
+    /// What's ignored is out of the counts and what's checked, still found
+    /// and fixable by its id, and back among the rest when no longer
+    /// ignored.
     #[test]
     fn ignored_findings_are_set_aside() {
         let (_fs, roots) = machine("ignored");

@@ -6,9 +6,12 @@
 //! programs worth having; once an app of its own, Olo Suggestions), and
 //! shows it as one list, most pressing first, each item tagged with its
 //! kind (Critical, Problem, Recommended, Suggestion) and fixed or applied
-//! with its button, or Fix All (all but the suggestions). Any of it can
-//! be ignored. What needs root is done by the program run again as root
-//! (helper.rs), asked for once.
+//! with its button, or with the others checked (`olo_kit::chosen`: the
+//! problems checked to begin with, the suggestions when the person
+//! wants them; Choose All, Problems, Suggestions, None; one button saying
+//! what it will do, "Fix 2 and Apply 3"). Any of it can be ignored. What
+//! needs root is done by the program run again as root (helper.rs),
+//! asked for once.
 //!
 //! `--report` prints the report as JSON and opens nothing (for agents
 //! and scripts); `--fix` (`--apply`) does what the buttons do,
@@ -26,10 +29,12 @@ use crate::{
     notify,
 };
 use olo_kit::{
-    ClickEvent, Cx, Element, Hsla, IntoElement as _, Menu, MenuBar, ParentElement as _, ScrollHandle, Styled as _, View, WindowOptions, canvas, div, icons,
+    ClickEvent, Cx, Element, Hsla, IntoElement as _, Menu, MenuBar, ParentElement as _, ScrollHandle, Styled as _, View, WindowOptions, canvas,
+    chosen::{self, Choice, Chosen, Kind},
+    div, icons,
     instance::{self, Launch},
     metrics as m, px, style, theme,
-    widgets::{Button, LinkButton, PaneSwitch, ScrollView, StringView, Tag},
+    widgets::{Button, CheckBox, LinkButton, PaneSwitch, ScrollView, StringView, Tag},
 };
 use serde::{Deserialize, Serialize};
 
@@ -68,6 +73,7 @@ struct Saved {
     show_fine: Option<bool>,
     show_fixed: Option<bool>,
     show_ignored: bool,
+    chosen: Chosen,
 }
 
 struct Doctor {
@@ -100,6 +106,22 @@ struct Doctor {
     progress: BTreeMap<String, String>,
     next_run: u64,
     scroll: ScrollHandle,
+    /// What's checked to be fixed or applied together (`chosen`: the
+    /// problems to begin with, the suggestions when the person checks
+    /// them).
+    chosen: Chosen,
+}
+
+/// What's fixed: the critical, the problems and what's recommended,
+/// checked to begin with (all but the suggestions, as Fix All was).
+const NEEDED: Kind = Kind { verb: "Fix", one: "Problem", many: "Problems", by_default: true };
+/// What's applied, checked when the person wants it (Ben, 2026-11-14:
+/// "the fix all button only fixes all problems but there's no way to
+/// apply all suggestions. we need a way to do both and either/or").
+const SUGGESTED: Kind = Kind { verb: "Apply", one: "Suggestion", many: "Suggestions", by_default: false };
+
+fn kind_of(f: &Finding) -> &'static Kind {
+    if f.severity == Severity::Suggestion { &SUGGESTED } else { &NEEDED }
 }
 
 /// A kind's tag colour: critical red, a problem orange, what's
@@ -171,6 +193,7 @@ impl Doctor {
             }
             false
         });
+        self.chosen.keep(report.findings.iter().map(|f| f.id.as_str()));
         self.report = Some(report);
         if std::mem::take(&mut self.rescan) {
             self.scan(cx);
@@ -255,16 +278,43 @@ impl Doctor {
         cx.invalidate();
     }
 
-    /// Fix All: every finding's fix but the suggestions'.
-    fn fix_all(&mut self, cx: &mut Cx<Self>) {
-        let ids: Vec<String> = self.report.iter().flat_map(|r| r.fixable()).map(|f| f.id.clone()).collect();
+    /// The findings that can be checked (those with a fix, not being
+    /// fixed now).
+    fn choosable(&self) -> impl Iterator<Item = &Finding> {
+        self.report.iter().flat_map(|r| r.findings.iter()).filter(|f| f.fix.is_some() && self.outcomes.get(&f.id) != Some(&Outcome::Fixing))
+    }
+
+    /// How many of each kind are checked, of how many: the button's
+    /// words, and its width.
+    fn counts(&self) -> [chosen::Count<'static>; 2] {
+        let n = |kind: &Kind| self.choosable().filter(|f| kind_of(f) == kind && self.chosen.is(&f.id, kind)).count();
+        // (Of all there are, those being fixed too: the button keeps its
+        // width while they run.)
+        let of = |kind: &Kind| self.report.iter().flat_map(|r| r.findings.iter()).filter(|f| f.fix.is_some() && kind_of(f) == kind).count();
+        [(&NEEDED, n(&NEEDED), of(&NEEDED)), (&SUGGESTED, n(&SUGGESTED), of(&SUGGESTED))]
+    }
+
+    /// The button (Fix 2 and Apply 3): what's checked, fixed and applied.
+    fn act(&mut self, cx: &mut Cx<Self>) {
+        let ids: Vec<String> = self.choosable().filter(|f| self.chosen.is(&f.id, kind_of(f))).map(|f| f.id.clone()).collect();
         self.fix(&ids, cx);
     }
 
-    /// Apply All Suggestions.
-    fn apply_all(&mut self, cx: &mut Cx<Self>) {
-        let ids: Vec<String> = self.report.iter().flat_map(|r| r.applicable()).map(|f| f.id.clone()).collect();
-        self.fix(&ids, cx);
+    /// Choose: All, Problems, Suggestions or None.
+    fn choose(&mut self, choice: Choice, cx: &mut Cx<Self>) {
+        let kinds = [NEEDED, SUGGESTED];
+        let items: Vec<(String, &'static Kind)> = self.choosable().map(|f| (f.id.clone(), kind_of(f))).collect();
+        self.chosen.choose(items.iter().map(|(id, k)| (id.as_str(), *k)), |k| kinds.iter().position(|o| o == k).is_some_and(|i| choice.picks(i)));
+        cx.invalidate();
+    }
+
+    /// Check finding `id` (`on`), or uncheck it.
+    fn check(&mut self, id: &str, on: bool, cx: &mut Cx<Self>) {
+        if let Some(f) = self.report.as_ref().and_then(|r| r.find(id)) {
+            let kind = kind_of(f);
+            self.chosen.set(id, kind, on);
+        }
+        cx.invalidate();
     }
 
     fn send_queued(&mut self) {
@@ -327,20 +377,13 @@ impl Doctor {
         cx.invalidate();
     }
 
-    /// Whether Fix All (`suggestions`: Apply All Suggestions) has
-    /// something to do.
-    fn can_fix_all(&self, suggestions: bool) -> bool {
-        self.report.as_ref().is_some_and(|r| {
-            let mut those: Box<dyn Iterator<Item = &Finding>> = if suggestions { Box::new(r.applicable()) } else { Box::new(r.fixable()) };
-            those.any(|f| self.outcomes.get(&f.id) != Some(&Outcome::Fixing))
-        })
-    }
-
     fn menus(&self) -> Vec<Menu> {
         vec![
             // (What it checks most: the power modes and the scheduler.)
             Menu::new("File").app_items(&["performance", "power"]).item("Check Again", "check").key("r").enabled(!self.scanning).close_quit(),
-            Menu::new("Fix").item("Fix All", "fix-all").shift_key("f").enabled(self.can_fix_all(false)).item("Apply All Suggestions", "apply-all").shift_key("a").enabled(self.can_fix_all(true)),
+            // The button's command ("Fix 2 and Apply 3", ⇧⌘F), and
+            // Choose All (⌘A), Problems, Suggestions, None.
+            chosen::menu(Menu::new("Fix"), "fix-all", &self.counts(), self.report.is_some()),
         ]
     }
 
@@ -383,10 +426,27 @@ impl Doctor {
             Some(Outcome::Failed(e)) => Some(StringView::new(e.clone()).wrap(true).color(style::c(p.failure))),
             None => None,
         };
+        // Checked to be done with the others (the button under the list),
+        // named by its title for agents; a finding with nothing to do
+        // keeps the room, so the tags line up.
+        let choose = match &f.fix {
+            Some(_) => {
+                let id = f.id.clone();
+                CheckBox::new(f.title.clone(), self.chosen.is(&f.id, kind_of(f)))
+                    .id(format!("choose-{}", f.id))
+                    .mark_only()
+                    .height(style::line_row(style::PLAIN_SIZE))
+                    .enabled(outcome != Some(&Outcome::Fixing))
+                    .on_toggle(cx.listener(move |d: &mut Doctor, on: &bool, cx| d.check(&id, *on, cx)))
+                    .into_element()
+            }
+            None => div().w(px(m::MARK_SIZE)).flex_shrink_0(),
+        };
         let top = div()
             .flex()
             .items_start()
             .gap(px(m::MARK_GAP))
+            .child(choose)
             .child(Tag::new(f.severity.label()).fill(tag_fill(f.severity, &p)).beside_paragraph(style::PLAIN_SIZE))
             .child(div().flex_1().min_w_0().child(StringView::new(f.title.clone()).bold(true).wrap(true).color(ink.text)));
         let mut buttons = div().flex().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().children(status));
@@ -494,8 +554,8 @@ impl View for Doctor {
     fn command(&mut self, command: &str, cx: &mut Cx<Self>) -> bool {
         match command {
             "check" => self.scan(cx),
-            "fix-all" => self.fix_all(cx),
-            "apply-all" => self.apply_all(cx),
+            "fix-all" => self.act(cx),
+            c if Choice::of_command(c).is_some() => self.choose(Choice::of_command(c).expect("just seen"), cx),
             "close" | "quit" => olo_kit::quit(),
             _ => return false,
         }
@@ -504,7 +564,7 @@ impl View for Doctor {
 
     /// What comes back after an upgrade: what was fixed this time.
     fn save_state(&mut self, _: &mut Cx<Self>) -> Option<String> {
-        serde_json::to_string(&Saved { fixed: self.fixed.clone(), show_fine: self.show_fine, show_fixed: Some(self.show_fixed), show_ignored: self.show_ignored }).ok()
+        serde_json::to_string(&Saved { fixed: self.fixed.clone(), show_fine: self.show_fine, show_fixed: Some(self.show_fixed), show_ignored: self.show_ignored, chosen: self.chosen.clone() }).ok()
     }
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
@@ -512,7 +572,7 @@ impl View for Doctor {
         let ink = style::card_ink(&p);
         let bar = MenuBar::new(cx, self.menus());
         let (title, detail) = self.summary();
-        let fixable = self.can_fix_all(false);
+        let counts = self.counts();
         let icon = canvas(|g, b| {
             icons::paint(g, style::snap_centred(g, b.center(), 32.0, 32.0), "doctor");
         })
@@ -535,7 +595,9 @@ impl View for Doctor {
             .gap(px(m::SPACING))
             .child(Button::new("Check Again").enabled(!self.scanning).on_click(cx.listener(|d: &mut Doctor, _: &ClickEvent, cx| d.scan(cx))))
             .child(div().flex_1())
-            .child(Button::new("Fix All").default(fixable).enabled(fixable).on_click(cx.listener(|d: &mut Doctor, _: &ClickEvent, cx| d.fix_all(cx))));
+            // What's checked, done together: Choose All, a kind, None, and
+            // the button saying what it will do (olo_kit::chosen).
+            .child(chosen::bar("chosen", &counts, self.report.is_some(), cx.listener(|d: &mut Doctor, c: &Choice, cx| d.choose(*c, cx)), cx.listener(|d: &mut Doctor, _: &ClickEvent, cx| d.act(cx))));
         let mut list = div().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING));
         if let Some(r) = &self.report {
             // What's found, most pressing first, each tagged with its kind.
@@ -679,7 +741,7 @@ pub fn run() {
     olo_kit::run(APP_ID, move |app| {
         instance::listen(APP_ID, olo_kit::proxy());
         let saved: Saved = olo_kit::restored_state().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
-        let window = olo_kit::open_window(WindowOptions::new(TITLE, 600.0, 580.0).min_size(460.0, 360.0).keep_size(TITLE), move |cx| {
+        let window = olo_kit::open_window(WindowOptions::new(TITLE, 600.0, 580.0).min_size(540.0, 360.0).keep_size(TITLE), move |cx| {
             let mut doctor = Doctor {
                 report: None,
                 scanning: false,
@@ -697,6 +759,7 @@ pub fn run() {
                 progress: BTreeMap::new(),
                 next_run: 0,
                 scroll: ScrollHandle::new(),
+                chosen: saved.chosen,
             };
             doctor.scan(cx);
             doctor
@@ -714,9 +777,9 @@ pub fn run() {
 /// `olo-doctor --fix [all | suggestions | ID…]` (`--apply` the same):
 /// what the window's buttons do, from a terminal or an agent. No IDs:
 /// the findings that have a fix, and what can be undone, listed, each
-/// with its kind; `all` is what Fix All fixes (every finding's fix but
-/// the suggestions', never an undo), `suggestions` what Apply All
-/// Suggestions applies.
+/// with its kind; `all` is what the window checks to begin with (every
+/// finding's fix but the suggestions', never an undo), `suggestions`
+/// every suggestion (Choose Suggestions, then the button).
 /// Steps that need root go through the helper and pkexec as the window's
 /// do (polkit asks for the password); under sudo, everything runs here,
 /// the scan being the sudo user's. Exit status 0 when everything asked
@@ -881,8 +944,9 @@ mod tests {
         assert_eq!(summary(vec![]), "");
     }
 
-    /// Fix All leaves the suggestions to Apply All Suggestions; a merged
-    /// report lists what's most pressing first.
+    /// What's fixed (`--fix all`, checked to begin with) leaves the
+    /// suggestions to be chosen; a merged report lists what's most
+    /// pressing first.
     #[test]
     fn fix_all_leaves_suggestions_and_the_worst_comes_first() {
         let mut r = Report { findings: vec![finding("tool:just", Severity::Suggestion), finding("rtkit", Severity::Problem)], ..Report::default() };

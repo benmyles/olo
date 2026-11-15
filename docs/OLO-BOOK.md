@@ -827,6 +827,57 @@ back where they were by themselves; what they showed (which document,
 which tab, what was typed) is yours to keep. Test it: `tsession start
 NAME --session`, rebuild, `tsession reload NAME`.
 
+**Acting on what's chosen** (`olo_kit::chosen`). A list whose items
+can each be acted on, of a few kinds acted on differently, where the
+person may want all of it, one kind, either, some or one: Olo Doctor's
+findings, the problems fixed and the suggestions applied (Ben,
+2026-11-14: "the fix all button only fixes all problems but there's no
+way to apply all suggestions. we need a way to do both and
+either/or"). BeOS had a button on each thing and nothing for many at
+once (Haiku's SoftwareUpdater still updates everything or nothing).
+Mac OS X's Software Update had a check box on each update and one
+button that counted them ("Install 3 Items"); Ubuntu's Software Updater
+does the same; Xcode's Update to Recommended Settings checks each change
+and leaves the optional ones for the person to check, with one Perform
+Changes. Olo keeps that, and adds the shortcuts a person reaches for
+first: both, either, neither, in one click.
+
+- Each item that can be acted on has a check box at its left
+  (`CheckBox::new(title, on).mark_only()`: only the mark, beside the
+  title that names it, and named by it for agents). Whether it starts
+  checked goes by its kind (`Kind::by_default`): what's needed is
+  checked, what's only suggested isn't. What the person checks or
+  unchecks is kept (`Chosen`, saved with the window's state), and only
+  for items still listed (`Chosen::keep`).
+- One default button does what's checked and says so, counted, in each
+  kind's verb (`chosen::label`): "Fix 2 Problems", "Apply 1
+  Suggestion", "Fix 2 and Apply 3". It's dimmed with nothing checked,
+  and as wide as its widest words could get, so nothing beside it moves
+  as it counts.
+- Beside it, "Choose: All · Problems · Suggestions · None" as links
+  (`chosen::choose`; with the button, `chosen::bar`): Choose sets every
+  item, so the person starts from what's nearest what they want and
+  then checks one by one.
+- The menus have the same (`chosen::menu`): the button's command with
+  its words, then Choose All (⌘A, configurable: the app's `choose-all`
+  in `app_keys`, never Select All's command, which is Edit's), each
+  kind, Choose None. Agents choose by command (`choose-all`,
+  `choose-kind-N`, `choose-none`), check items by their check box's
+  name, and press the button by its words.
+- Each item keeps its own button, to do just that one now.
+
+```rust
+const NEEDED: Kind = Kind { verb: "Fix", one: "Problem", many: "Problems", by_default: true };
+const SUGGESTED: Kind = Kind { verb: "Apply", one: "Suggestion", many: "Suggestions", by_default: false };
+
+// counts: (kind, how many are checked, how many there are), in order.
+let counts = [(&NEEDED, 2, 3), (&SUGGESTED, 1, 4)];
+row.child(chosen::bar("chosen", &counts, true,
+    cx.listener(|v: &mut Doctor, c: &Choice, cx| v.choose(*c, cx)),
+    cx.listener(|v: &mut Doctor, _: &ClickEvent, cx| v.act(cx))))
+// …and in View::command: Choice::of_command(c) for the menu's Choose items.
+```
+
 ## Best practices
 
 Each of these is here because breaking it cost a bug or a slow frame.

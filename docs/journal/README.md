@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-14
 
+### Olo Doctor fixes and applies what's checked, all, either or one kind
+
+*18:09* — Each finding with a fix has a check box (problems checked to begin with, suggestions when wanted); Choose: All · Problems · Suggestions · None; one default button that says what it will do (Fix 4 Problems, Apply 4 Suggestions, Fix 4 and Apply 4), as wide as its widest words so nothing moves as it counts. The kit's chosen pattern (Mac OS X's Software Update, Xcode's Update to Recommended Settings), in the Olo Book.
+
+![Olo Doctor fixes and applies what's checked, all, either or one kind](2026-11-14/180939-olo-doctor-fixes-and-applies-what-s-checked-all-.png)
+
 ### A menu bar too narrow for its menus keeps them under »
 
 *17:36* — Before (left): StyledEdit tiled at its least width, its Document menu cut off past the window's edge (the live review's error). After (right): the titles that don't fit go in a » title at the bar's end, whose menu has them as submenus, as Qt's menu bar extension and the kit toolbar's » do; agents read it as More Menus.

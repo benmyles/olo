@@ -7,7 +7,8 @@
 //! kept as they are when the view says what it shows again; a window
 //! that fits what it shows, asked to be taller than the screen has room
 //! for, keeps what fills it; a list scrolled, hidden and shown again
-//! scrolls from where it was.
+//! scrolls from where it was; a list acted on by what's checked
+//! (`chosen`) is clean, its button as wide whatever it counts.
 
 use olo_kit::{
     Child, Cx, Element, ParentElement as _, Styled as _, View, WindowOptions, div,
@@ -576,4 +577,69 @@ fn ui_lint_a_list_shown_again_scrolls_from_where_it_was() {
     let made = ask(&window, |v, _| std::mem::take(&mut *v.made.borrow_mut()));
     assert!(made.contains(&97), "the rows it came to are made: {made:?}");
     window.close();
+}
+
+/// A list acted on by what's checked (`olo_kit::chosen`): three items,
+/// each a check box beside its title, and under them Choose and the
+/// counted button, `checked` of each kind (of two problems and one
+/// suggestion).
+struct Picks {
+    checked: [usize; 2],
+}
+
+const PROBLEM: olo_kit::chosen::Kind = olo_kit::chosen::Kind { verb: "Fix", one: "Problem", many: "Problems", by_default: true };
+const SUGGESTION: olo_kit::chosen::Kind = olo_kit::chosen::Kind { verb: "Apply", one: "Suggestion", many: "Suggestions", by_default: false };
+
+impl View for Picks {
+    type Message = ();
+
+    fn body(&mut self, _: &mut Cx<Self>) -> Element {
+        use olo_kit::{chosen, style, widgets::StringView};
+        let counts = [(&PROBLEM, self.checked[0], 2), (&SUGGESTION, self.checked[1], 1)];
+        let item = |title: &'static str, on: bool| {
+            div()
+                .flex()
+                .items_start()
+                .gap(px(m::MARK_GAP))
+                .child(CheckBox::new(title, on).mark_only().height(style::line_row(style::PLAIN_SIZE)))
+                .child(div().flex_1().min_w_0().child(StringView::new(title).bold(true).wrap(true)))
+        };
+        div()
+            .size_full()
+            .p(px(m::WINDOW_INSET))
+            .flex()
+            .flex_col()
+            .gap(px(m::SPACING))
+            .child(item("Rtkit isn't running", self.checked[0] > 0))
+            .child(item("USB mice may sleep", self.checked[0] > 1))
+            .child(item("Install just", self.checked[1] > 0))
+            .child(div().flex().child(div().flex_1()).child(chosen::bar("chosen", &counts, true, |_, _| {}, |_, _| {})))
+    }
+}
+
+/// A list acted on by what's checked is clean in every look at every
+/// scale, with nothing, some or everything checked; agents read each
+/// item's box by its title, the Choose links and the button by what
+/// they say; and the button keeps its width as it counts, so nothing
+/// beside it moves.
+#[test]
+fn ui_lint_a_list_acted_on_by_whats_checked_is_clean() {
+    let options = WindowOptions::new("Picks", 420.0, 146.0);
+    let mut widths = Vec::new();
+    for checked in [[0, 0], [2, 0], [1, 1], [2, 1], [0, 1]] {
+        let mut lint = Lint::new();
+        assert_clean(&format!("{checked:?} checked"), &lint.window(&options, move |_| Picks { checked }));
+        let (_, nodes) = lint.trees(&options, move |_| Picks { checked }).remove(0);
+        let named =
+            |role: &str, name: &str| nodes.iter().find(|n| n.role == role && n.name.as_deref() == Some(name)).unwrap_or_else(|| panic!("{checked:?}: no {role} {name:?} in {nodes:#?}")).clone();
+        assert_eq!(named("CheckBox", "Install just").checked, Some(checked[1] > 0));
+        for link in ["All", "Problems", "Suggestions", "None"] {
+            named("Button", link);
+        }
+        let words = olo_kit::chosen::label(&[(&PROBLEM, checked[0]), (&SUGGESTION, checked[1])]);
+        let button = named("Button", &words);
+        assert_eq!(button.enabled, checked != [0, 0], "{words}: dimmed only with nothing checked");
+        widths.push((words, button.x, button.width));
+    }
+    assert!(widths.iter().all(|w| (w.1, w.2) == (widths[0].1, widths[0].2)), "the button moved or changed width as it counted: {widths:?}");
 }

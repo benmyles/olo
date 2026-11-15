@@ -1781,6 +1781,46 @@ card is a lift above the paper, not a darker hole in it. Don't head a
 card with a coloured band or a little yellow tab: a card is not a
 window, and a tab on every one repeats the window's own.
 
+### Acting on what's chosen (`olo_kit::chosen`)
+
+A list whose items can each be acted on, of a few kinds acted on
+differently (Olo Doctor's problems, fixed, and its suggestions,
+applied), where the person may want all of it, one kind, either, some
+or one. BeOS had a button on each thing and nothing for many (Haiku's
+SoftwareUpdater updates everything or nothing); Mac OS X's Software
+Update had a check box on each update and one counted button ("Install
+3 Items"), as Ubuntu's Software Updater has, and Xcode's Update to
+Recommended Settings leaves the optional changes unchecked. Olo's
+pattern (the Olo Book's "Acting on what's chosen"):
+
+- A `Kind` says what acting on one is called (`verb`: "Fix"; `one`,
+  `many`: "Problem", "Problems") and whether it's checked to begin with
+  (`by_default`: what's needed is, what's only suggested isn't).
+- Each item that can be acted on has a check box at its left,
+  `CheckBox::new(title, chosen.is(id, kind)).id(...).mark_only()`: only
+  the mark, its title beside it, named by it for agents. `Chosen` keeps
+  what the person changed by item id (an untouched item goes by its
+  kind), serde, so it goes in the window's saved state; `keep(ids)`
+  forgets what's gone from the list, `set` one, `choose(items, pick)`
+  every item.
+- `chosen::bar(id, counts, enabled, on_choice, on_act)` under the list:
+  `choose` ("Choose: All · Problems · Suggestions · None", links on a
+  push button's baseline, `LinkButton::beside`) and `act` (the default
+  button, its words `label(counts)`: "Fix 2 Problems", "Apply 1
+  Suggestion", "Fix 2 and Apply 3", kinds sharing a verb counted
+  together; dimmed with nothing checked; as wide as its widest words
+  over every mix of whole kinds, so nothing beside it moves as it
+  counts). `counts` is `[(kind, checked, of)]`, in the kinds' order;
+  `of` counts items being acted on too, so the width holds while they
+  run. Ids: `{id}-all`, `{id}-kind-N`, `{id}-none`, `{id}-act`.
+- `chosen::menu(menu, act, counts, enabled)` adds the same to a menu:
+  the button's command with its words, Choose All (`choose-all`, ⌘A:
+  list it in `app_keys` for the app, so it's configurable and isn't
+  Edit's Select All), Choose each kind (`choose-kind-N`), Choose None
+  (`choose-none`); `Choice::of_command` reads them in `View::command`,
+  and `Choice::picks(i)` says whether a choice takes the `i`th kind.
+- Each item keeps its own button, to do just that one now.
+
 ### Searching and filtering (`olo_kit::search`)
 
 Every app's search is the same language, field and filter bar. The
@@ -2267,7 +2307,10 @@ it.
 - The BeOS controls (see them all in the kit's `gallery`, `controls`
   and `widgets` examples, `crates/kit/examples`, run in a test
   session): `Button` (`default`, `pushed`, `small`, `on_click`),
-  `CheckBox` (`mixed`, `on_toggle`), `RadioButton` (`on_select`),
+  `CheckBox` (`mixed`, `on_toggle`; `mark_only`: only its mark, beside
+  a title that names it already, its label still its name for agents:
+  an item checked to be acted on with others, `chosen`), `RadioButton`
+  (`on_select`),
   `PaneSwitch` (BeOS's Installer's "More Options": a latch,
   `style::latch`, and beside it what it opens; `on_toggle` gets whether
   it's open now, and whoever shows it keeps that, puts the pane under
@@ -2296,7 +2339,10 @@ it.
   `action` for a `LinkButton` at the top line's end; agents read it as
   a `Group` named by its label, round what's in it), `LinkButton` (only
   its words, small, in the link blue, underlined under the pointer,
-  `LABEL_ROW` tall: an action in a line with no room for a button),
+  `LABEL_ROW` tall: an action in a line with no room for a button;
+  `beside(size)` puts its words on the baseline a push button's label
+  of that size has in the same row, so links and buttons in one row
+  read as one line),
   `EmptyState` (an icon, a line, a detail and an action button,
   centred in what it's given: a list or pane with nothing in it),
   `Tag` (a word in a pill saying what kind a thing is, Olo Doctor's
@@ -10876,7 +10922,8 @@ Suggestions, folded in on 2026-11-14: Ben, "just have it be one unified
 olo doctor app where each item has a type showing whether it's e.g. a
 suggestion or something critical and any of them can be put on the
 ignored list"), and fixes or applies each with a button: each finding's
-own, or Fix All (one password for everything that needs root).
+own, or one for all that's checked (one password for everything that
+needs root).
 
 Every finding has a kind (`Severity`, its tag's word `label()`):
 **Critical** (something the person relies on doesn't work or is at risk
@@ -10891,14 +10938,31 @@ problems, 1 recommendation and 2 suggestions.", how many things were
 looked at, fine and ignored), then one list on a card gutter: a card per
 finding, its kind's `Tag` (red, orange, blue, green) level with its
 title, what it is, and under it Ignore (a quiet link) and its fix (the
-button), with how the fix goes or why it failed (Try Again) at the left.
+button), with how the fix goes or why it failed (Try Again) at the left;
+at its top left, before the tag, a check box (`CheckBox::mark_only`,
+named by its title, id `choose-ID`; a finding with no fix keeps its
+room, so the tags line up).
 Then three latches (`PaneSwitch`), each over a card of lines: Fixed (this
 time; open), As It Should Be (folded while anything is found: it's the
 long part; open when nothing is; what's applied can be undone from its
 line) and Ignored (folded: it isn't to draw attention). Check Again and
-Fix All (every finding's fix but the suggestions') are under the list,
-as a dialog's buttons; Fix ▸ Apply All Suggestions (⇧⌘A) applies those.
-Which latches are open comes back after an upgrade. `OLO_DOCTOR_DEMO=1`
+the button for what's checked are under the list, as a dialog's
+buttons: the kit's pattern for acting on what's chosen
+(`olo_kit::chosen`, "Acting on what's chosen" above; Ben, 2026-11-14:
+"the fix all button only fixes all problems but there's no way to
+apply all suggestions. we need a way to do both and either/or"). The
+problems (Critical, Problem, Recommended: kind
+`NEEDED`, "Fix") start checked, the suggestions (`SUGGESTED`, "Apply")
+don't; what the person checks is kept (`Chosen`, in the saved state,
+for findings still listed). "Choose: All · Problems · Suggestions ·
+None" checks every one of them, of a kind, or none, and the default
+button does what's checked and says so: "Fix 2 Problems", "Apply 1
+Suggestion", "Fix 2 and Apply 3" (⇧⌘F, `fix-all`; dimmed with nothing
+checked). The Fix menu has the same (`chosen::menu`): the button's
+item, Choose All (⌘A, Doctor's `choose-all` in `app_keys`), Choose
+Problems, Choose Suggestions, Choose None. A finding being fixed is
+out of what's chosen and its box dimmed until it's done. Which latches
+are open, and what's checked, come back after an upgrade. `OLO_DOCTOR_DEMO=1`
 (`demo.rs`) shows a made-up report, one of every kind, a fine list with
 an undo, an ignored finding, without looking at the computer it runs on
 or telling its Deskbar; its fixes change nothing (one fails, to show a
@@ -10911,7 +10975,8 @@ signal a process), all done in process. From a terminal or an agent:
 `olo-doctor --report` (the findings as JSON, each with its `severity`),
 `olo-doctor --fix` (those with a fix, by id, each with its kind, and
 what can be undone), `olo-doctor --fix all|suggestions|ID…` (what the
-buttons do: `all` is Fix All's, `suggestions` Apply All Suggestions'; root
+buttons do: `all` is what's checked to begin with, every finding's fix
+but the suggestions', `suggestions` every suggestion; root
 steps through the helper and pkexec, or, under sudo, run there with the
 scan made for the sudo user), `olo-doctor --fans [auto|cool]` (the fan
 profile: "The fans", above), `olo-doctor --scheduler [kernel|lavd]`
@@ -11181,7 +11246,7 @@ suggestion's id as any other's; the file's old `suggestions` list, from
 when Olo Suggestions was an app of its own, is read with it and written
 into it at the next change), and every look sets those aside
 (`checks::look`: `Report::set_aside` moves them from
-`findings` to `ignored`), so the counts, Fix All, Apply All Suggestions,
+`findings` to `ignored`), so the counts, what's checked and Choose,
 the tray's bag, the watcher's notifications and `--fix all` leave them
 out. The window lists them last, under Ignored, folded: each with its
 kind's tag in grey (the tags in one column, so the titles line up), its
@@ -11198,7 +11263,9 @@ D-Bus had started GTK's portal backend six times, said six times over.
 
 What Olo suggests for the best of it, none of it needed (Olo works the
 same without): each with what it does and why, a button that applies it,
-Fix ▸ Apply All Suggestions (⇧⌘A), and, once applied, a button that
+a check box to apply it with others (unchecked to begin with: Fix ▸
+Choose Suggestions, or the link under the list, checks them all), and,
+once applied, a button that
 undoes it (its line in As It Should Be). Until 2026-11-14 they were an
 app of their own, Olo Suggestions (`olo-suggestions`, the same body by a
 `Kind`); now they're findings of kind `Suggestion` in Olo Doctor's one

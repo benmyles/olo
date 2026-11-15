@@ -11,6 +11,7 @@ mod app;
 pub mod app_menu;
 pub mod brand;
 pub mod card;
+pub mod chosen;
 pub mod code;
 pub mod copy;
 pub mod cut;

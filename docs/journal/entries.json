@@ -4156,5 +4156,11 @@
   "title": "A menu bar too narrow for its menus keeps them under \u00bb",
   "caption": "Before (left): StyledEdit tiled at its least width, its Document menu cut off past the window's edge (the live review's error). After (right): the titles that don't fit go in a \u00bb title at the bar's end, whose menu has them as submenus, as Qt's menu bar extension and the kit toolbar's \u00bb do; agents read it as More Menus.",
   "image": "2026-11-14/173653-a-menu-bar-too-narrow-for-its-menus-keeps-them-u.png"
+ },
+ {
+  "time": "2026-11-14T18:09:39",
+  "title": "Olo Doctor fixes and applies what's checked, all, either or one kind",
+  "caption": "Each finding with a fix has a check box (problems checked to begin with, suggestions when wanted); Choose: All \u00b7 Problems \u00b7 Suggestions \u00b7 None; one default button that says what it will do (Fix 4 Problems, Apply 4 Suggestions, Fix 4 and Apply 4), as wide as its widest words so nothing moves as it counts. The kit's chosen pattern (Mac OS X's Software Update, Xcode's Update to Recommended Settings), in the Olo Book.",
+  "image": "2026-11-14/180939-olo-doctor-fixes-and-applies-what-s-checked-all-.png"
  }
 ]
