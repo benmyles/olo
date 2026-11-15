@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Backgrounds: Windows 2000's tiles
+
+*05:32* — Windows 2000's eleven tiles (here Gone Fishing): Blue Lace 16 and Zapotec made larger by nearest neighbour, the photographic nine (Coffee Bean, Feather Texture, Gone Fishing, Greenstone, Prairie Wind, Rhododendron, River Sumida, Santa Fe Stucco, Soap Bubbles) by 4x-UltraSharp's tile mosaic. 480 in the pack.
+
+![Backgrounds: Windows 2000's tiles](2026-11-15/053250-backgrounds-windows-2000-s-tiles.png)
+
 ### Backgrounds: CDE's backdrops, in CDE's own colours
 
 *05:21* — CDE's 24 backdrops (here KnitLight, workspace One's default) rendered as CDE drew them: the Default palette's colour sets, each colour's shadows by Motif's own arithmetic, workspace n's set {3, 5, 6, 7}, an XPM's symbolic colours from that set and a bitmap in its background on its bottom shadow (read from dtwm, dtsession and Motif's source). Tiles that aren't square now keep their shape (CDE's skies were one flat colour, Honey's hexagons squashed).

@@ -444,6 +444,17 @@ win98-the-60s-usa|The 60's USA|Windows 98
 win98-the-golden-era|The Golden Era|Windows 98
 win98-travel|Travel|Windows 98
 win98-underwater|Underwater|Windows 98
+win2000-blue-lace-16|Blue Lace 16|Windows 2000|tile:48
+win2000-coffee-bean|Coffee Bean|Windows 2000|tile:128
+win2000-feather-texture|Feather Texture|Windows 2000|tile:128
+win2000-gone-fishing|Gone Fishing|Windows 2000|tile:128
+win2000-greenstone|Greenstone|Windows 2000|tile:160
+win2000-prairie-wind|Prairie Wind|Windows 2000|tile:256
+win2000-rhododendron|Rhododendron|Windows 2000|tile:128
+win2000-river-sumida|River Sumida|Windows 2000|tile:160
+win2000-santa-fe-stucco|Santa Fe Stucco|Windows 2000|tile:256
+win2000-soap-bubbles|Soap Bubbles|Windows 2000|tile:256
+win2000-zapotec|Zapotec|Windows 2000|tile:96
 cde-ankh|Ankh|CDE|tile:261
 cde-brick-wall|Brick Wall|CDE|tile:50
 cde-concave|Concave|CDE|tile:8

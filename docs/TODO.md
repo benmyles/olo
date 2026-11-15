@@ -1463,8 +1463,8 @@ something nobody here has is in "Blocked", with what it waits for.
   size now, with R5's contour, so light things read on light panels);
   Windows 3.1's, 95's and 98's (39); CDE's 24 backdrops, in CDE's own
   colours (dtwm's, dtsession's and Motif's rules read from their
-  source). Left: OS/2's, Windows 2000/ME's; individual icons redrawn
-  where one drifts.
+  source); Windows 2000's eleven tiles. Left: OS/2's and Windows ME's;
+  individual icons redrawn where one drifts.
 
 - **OS Updates: Fedora's packages, for power users** (Ben, 2026-11-14:
   "add a new olo application OS Updates that is a GUI manager for

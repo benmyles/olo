@@ -246,6 +246,7 @@ in Backgrounds by Collection:
 | Windows 3.1 | Its eleven tiles (Arcade, Argyle, Castle, Egypt, Honey, Red Brick, Rivets, Squares, Thatch, Zigzag, 256 Color; its logo left out) | Windows 3.11's floppies (FAT; MS COMPRESS's KWAJ files, expanded with libmspack) |
 | Windows 95 | Clouds, and its tiles (Bubbles, Circles, Houndstooth, Pinstripe, Red Blocks, Blue Rivets, Black Thatch, Gold Weave, Straw Mat, Triangles, 3D Blocks, Forest, Sandstone) | Windows 98 SE's CD (its cabinets carry 95's set) |
 | Windows 98 | Its fifteen desktop pictures but those that are its logo (Setup, More Windows, Windows 98) | the same |
+| Windows 2000 | Its eleven tiles (Blue Lace 16, Coffee Bean, Feather Texture, Gone Fishing, Greenstone, Prairie Wind, Rhododendron, River Sumida, Santa Fe Stucco, Soap Bubbles, Zapotec; its NT logos left out) | Windows 2000 Professional's CD (`I386/*.BM_`, single-file cabinets) |
 | CDE | Its 24 backdrops (Sun's logo, the plain fills and "no backdrop" left out), in the Default palette as CDE drew them: KnitLight, WaterDrops, RicePaper and Pebbles in their workspaces' colours (sets 3, 5, 6, 7), the rest in workspace One's | CDE 2.5.2's source (`programs/backdrops`, `programs/palettes`), rendered by `tools/cdebackdrops.py` |
 
 BeOS shipped no wallpapers worth having (two Be logos, a TV overlay, two
