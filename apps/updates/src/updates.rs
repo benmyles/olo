@@ -663,6 +663,8 @@ fn update_details(app: &mut OsUpdates, u: &Update, cx: &mut Cx<OsUpdates>) -> El
                 "User" => "Chosen by someone".to_owned(),
                 "Dependency" => "Needed by another package".to_owned(),
                 "Weak Dependency" => "Recommended by another package".to_owned(),
+                "Group" => "Part of a package group".to_owned(),
+                "External User" => "Chosen outside dnf".to_owned(),
                 other => other.to_owned(),
             }),
         ));
@@ -680,9 +682,16 @@ fn update_details(app: &mut OsUpdates, u: &Update, cx: &mut Cx<OsUpdates>) -> El
     // Its advisories.
     for id in &u.advisories {
         let Some(adv) = a.get(id) else { continue };
-        col = col.child(heading(&format!("Advisory: {}", adv.title)));
+        col = col.child(heading(if adv.kind == "security" { "Security Advisory" } else { "Advisory" }));
         let url = format!("https://bodhi.fedoraproject.org/updates/{}", adv.id);
-        col = col.child(field("Advisory", if adv.id.starts_with("FEDORA") { link(adv.id.clone(), url) } else { text(adv.id.clone()) }));
+        col = col.child(field("Id", if adv.id.starts_with("FEDORA") { link(adv.id.clone(), url) } else { text(adv.id.clone()) }));
+        // (Fedora's title is the builds it brings, space apart: one a line.)
+        let builds: Vec<&str> = adv.title.split_whitespace().collect();
+        if builds.len() > 1 && builds.iter().all(|b| b.contains('-') && b.chars().any(|c| c.is_ascii_digit())) {
+            col = col.child(field("Builds", StringView::new(builds.join("\n")).small(true).wrap(true)));
+        } else if !adv.title.is_empty() {
+            col = col.child(field("Title", text(adv.title.clone())));
+        }
         let kind = match words::severity(&adv.severity) {
             "" => words::kind(&adv.kind).to_owned(),
             s => format!("{}, {s}", words::kind(&adv.kind)),
@@ -699,6 +708,10 @@ fn update_details(app: &mut OsUpdates, u: &Update, cx: &mut Cx<OsUpdates>) -> El
                 _ => r.id.clone(),
             };
             refs = refs.child(if r.url.is_empty() { text(label) } else { link(label, r.url.clone()) });
+            // (A bug's title says what it was: "foo crashes on start".)
+            if !r.title.is_empty() && !r.title.contains(&r.id) {
+                refs = refs.child(StringView::new(r.title.clone()).dim(true).small(true).wrap(true));
+            }
             any = true;
         }
         if any {
