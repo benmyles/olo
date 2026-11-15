@@ -405,7 +405,7 @@ A desktop in the spirit of **BeOS**, written in Rust for Wayland.
 - **Tracker**, spatial folders with columns, lists and icons
 - **Deskbar**, with live widgets for the processor, network and memory
 - **StyledEdit**, **Terminal**, **DeskCalc** and the **Viewer**
-- Light, dark and night modes, and ten themes
+- Light, dark and night modes, and two themes (Classic and Platinum)
 
 ## Shortcuts
 

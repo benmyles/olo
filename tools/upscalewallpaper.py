@@ -52,8 +52,8 @@ DARK = (
 
 TILE = (
     "The attached image is a seamless repeating desktop pattern from a 1990s computer at its original low "
-    "resolution, shown as a 3 by 3 grid of the same tile. Make it again at {w}x{h}: exactly the same pattern, "
-    "the same 3 by 3 grid of identical tiles, the same motifs, colours, shading and texture, every tile "
+    "resolution, shown as a grid of {nx} columns and {ny} rows of the same tile. Make it again at {w}x{h}: exactly "
+    "the same pattern, the same grid of identical tiles, the same motifs, colours, shading and texture, every tile "
     "identical to the others so the pattern still repeats seamlessly across their edges, only at a high "
     "resolution with crisp, clean, finely finished detail, no JPEG artefacts and no noise. Any lettering "
     "stays exactly as it is. Add, remove or rearrange nothing; no border, no gaps between the tiles."
@@ -76,6 +76,23 @@ def r16(v):
     return max(16, int(round(v / 16.0)) * 16)
 
 
+# What the image model takes: at most this many pixels, this long a side,
+# and 3:1 (a strip of a tile in a 3 by 3 grid was refused: 192x3072).
+BUDGET = 8_000_000
+MOST_SIDE = 3840
+
+
+def grid(w, h):
+    """How many tiles across and down the mosaic shows: 3 by 3 at least,
+    more along a strip's short side, until it's within 2:1."""
+    nx = ny = 3
+    while nx * w * 2 < ny * h:
+        nx += 1
+    while ny * h * 2 < nx * w:
+        ny += 1
+    return nx, ny
+
+
 def edit(prompt, image, size):
     fields = {"model": genicon.MODEL, "prompt": prompt, "size": size, "quality": genicon.QUALITY,
               "background": "opaque", "output_format": "png", "n": "1"}
@@ -94,7 +111,8 @@ def edit(prompt, image, size):
 
 
 def draw_tile(src, name):
-    """A tile made larger: a 3x3 mosaic of it drawn again, its middle
+    """A tile made larger: a mosaic of it (3 by 3, more along a strip's
+    short side: `grid`) drawn again, its middle
     tile cut out and its edges cross-faded with the tiles beside it, so
     it repeats without a seam."""
     from PIL import Image
@@ -111,30 +129,36 @@ def draw_tile(src, name):
                   open(out[:-4] + ".json", "w"), indent=1)
         print(out, f"tile:{w}")
         return
-    k = tile_scale(w, h)
-    tw, th = r16(w * k), r16(h * k)
-    mosaic = Image.new("RGB", (3 * w, 3 * h))
-    for y in range(3):
-        for x in range(3):
+    nx, ny = grid(w, h)
+    # (The mosaic within the model's budget: a 256-point tile 4x in a 3 by
+    # 3 grid, 3072 square, was refused; at 960 it's still more than a 2x
+    # display needs.)
+    k = min(tile_scale(w, h), (BUDGET / (nx * w * ny * h)) ** 0.5, MOST_SIDE / (nx * w), MOST_SIDE / (ny * h))
+    tw, th = max(16, int(w * k) // 16 * 16), max(16, int(h * k) // 16 * 16)
+    mosaic = Image.new("RGB", (nx * w, ny * h))
+    for y in range(ny):
+        for x in range(nx):
             mosaic.paste(t, (x * w, y * h))
     out = os.path.join(SRC, name + ".png")
     tmp = out + ".in.png"
     mosaic.save(tmp)
-    size = f"{3 * tw}x{3 * th}"
-    prompt = TILE.format(w=3 * tw, h=3 * th)
+    size = f"{nx * tw}x{ny * th}"
+    prompt = TILE.format(w=nx * tw, h=ny * th, nx=nx, ny=ny)
     try:
         data = edit(prompt, tmp, size)
     finally:
         os.remove(tmp)
     import io
-    big = Image.open(io.BytesIO(data)).convert("RGB").resize((3 * tw, 3 * th), Image.LANCZOS)
+    big = Image.open(io.BytesIO(data)).convert("RGB").resize((nx * tw, ny * th), Image.LANCZOS)
     cell = lambda cx, cy: big.crop((cx * tw, cy * th, (cx + 1) * tw, (cy + 1) * th))
-    tile = cell(1, 1)
+    # The middle one (tiles all round it), and those right of it and under it.
+    mx, my = nx // 2, ny // 2
+    tile = cell(mx, my)
     # Its left band from the tile on its right (which continues its right
     # edge in the mosaic), fading to its own; its top band likewise from
     # the tile under it.
     band = max(4, tw // 8)
-    right, below = cell(2, 1), cell(1, 2)
+    right, below = cell(mx + 1, my), cell(mx, my + 1)
     px, rp = tile.load(), right.load()
     for x in range(band):
         a = x / band

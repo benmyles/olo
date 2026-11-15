@@ -1448,7 +1448,15 @@ something nobody here has is in "Blocked", with what it waits for.
   and create upscaled versions of all of their wallpapers … for a
   complete retro os collection"; "also include upscaled wallpapers from
   other macos versions if they are different"): the other systems'
-  sets, then the colours, then the icons.
+  sets, then the colours, then the icons. Since (2026-11-15): tiling
+  (`|tile:N`, "don't skip the tiled ones … add tiling support to olo"),
+  every picture finished with 4x-UltraSharp ("make them all perfect and
+  stunning"), the HDR gain subtler; the collections now Mac OS 9 (19),
+  its CD extras (Extras 26, Photos 34, Nostalgia 21), its Patterns (111)
+  and Large Patterns (20), AmigaOS 3.9 (30) and its Patterns (79).
+  BeOS and NeXTSTEP shipped nothing usable. Left: Mac OS X 10.0–10.4's
+  (Aqua, its blue and graphite sets: different from 9's), others
+  (Windows 95–2000's, CDE, IRIX, OS/2), then the colours and icons.
 
 - **OS Updates: Fedora's packages, for power users** (Ben, 2026-11-14:
   "add a new olo application OS Updates that is a GUI manager for

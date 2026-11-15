@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Backgrounds: all of Mac OS 9's pictures and patterns
+
+*03:49* — Mac OS 9's CD extras as three collections (26 renders, 34 photographs, 21 Nostalgia pictures, 4K JPEGs finished with 4x-UltraSharp), its 111 desktop patterns and 20 Large Patterns as tiles (here Bossanova Bondi, tiled at its 256 points). Patterns made larger by the image model in a grid within its limits: strips get more tiles along their short side (3:1 at most), large tiles a smaller scale (its pixel budget).
+
+![Backgrounds: all of Mac OS 9's pictures and patterns](2026-11-15/034955-backgrounds-all-of-mac-os-9-s-pictures-and-patte.png)
+
 ### Performance: a kept core, realtime threads
 
 *03:34* — Preferences ▸ Performance ▸ Scheduler: "Keep a core for the window server" (on by default): app_server's loop and input thread have the fastest core to themselves and every other program runs on the others; Keep Them Off asks Olo Doctor to keep the system's services off it too. The kernel's own scheduler is the recommended one now: Olo's threads someone waits on are realtime under either.

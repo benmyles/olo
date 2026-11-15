@@ -250,9 +250,14 @@ How a picture is made, in two steps, both kept:
    sunburst model at quality "high", exactly that picture again at
    3840×2160, widened to 16:9 by continuing its background, lettering
    kept as it is (`--dark`: the same picture for dark mode). A tile
-   (`--tile`): its 3×3 mosaic drawn again at 4× or more, the middle tile
+   (`--tile`): its mosaic drawn again at 4× or more, the middle tile
    cut out and its edges cross-faded with its neighbours, so it repeats
-   without a seam; tiles of 32 pixels or less are too small for the
+   without a seam. 3×3, or more tiles along a strip's short side until
+   it's within 2:1 (the model refuses past 3:1: a 16×256 strip's 3×3 was
+   192×3072), at a smaller scale where the mosaic would be over the
+   model's pixel budget (about 8 megapixels: a 256-point Large Pattern's
+   3×3 at 4× was refused at 3072 square; at 2784 its tile is still 928
+   pixels, more than 2× needs); tiles of 32 pixels or less are too small for the
    model (it doubled a stripe pattern) and go to step 2 instead.
 2. `tools/finishwallpaper.py` (its own Python with PyTorch and spandrel,
    on the NVIDIA GPU; see its header): 4x-UltraSharp, supersampled. The
