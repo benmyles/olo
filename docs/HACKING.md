@@ -14791,17 +14791,43 @@ once, so the list scrolls freely otherwise, and rings and captions fade
 on the clock. Narrow, the scrubber goes over the buttons. Frames are
 built on a worker, the latest asked for winning, played on from the
 last (`record::Player`) rather than from a keyframe each time.
-`history NAME --export OUT.mp4` (`export.rs`) makes it a video in
-process: the frames at 10 a second (`record::Player`, each record
-applied once in order), H.264 from OpenH264, in an MP4 of our own
-(`ftyp`, `mdat`, `moov` with `avcC` from the encoder's parameter sets;
-`co64`, one chunk). Stretches over 10 s with no action and no frame
-changing are cut, each a two-second card in the kit's type ("4 min 12 s
-with nothing happening", `ab_glyph`); `progress` gets how far it is and
-can stop it. Olo's Viewer plays the result. In the window, History's
-Export Video… asks where (the kit's Save panel, `NAME.mp4` in ~/Videos)
-and exports on a worker, the bar saying how far it is with Cancel, then
-an alert with Open in Tracker (`Replay::start_export`). The sidebar (the
+`history NAME --export OUT.mp4 [--from N] [--to N] [--zoom 1|2|3]
+[--encoder auto|cpu|nvidia|vaapi]` (`export.rs`) makes it a video in
+process, of what the agent did: each action from 0.8 s before it to
+1.5 s after it ended (a wait over 10 s: its start and its end), played
+as it went at 10 frames a second; gaps under 3 s play through, and the
+rest is skipped, showing the screen across it quickly: under 30 s in
+half a second under a ⏩ badge with how long, longer in 1.5 s, dimmed
+under a card ("Fast-forwarding 4 h 12 min", the time of day racing on,
+a bar; Ben, 2026-11-15). The screen changing by itself (a page's
+animation, a spinner, a clock) isn't something happening: counted so,
+real histories were busy nearly every second. The work follows what's
+kept, not the history's length: `record::Player` plays forward once
+(each record applied once, a record found by halving, a jump ahead
+from the nearest keyframe, the segment's file kept open, `applied`
+saying whether the picture changed); a picture is encoded only when it
+changed (one that didn't is the one before, its MP4 sample longer); it
+goes to the encoder in BGRA, zoomed in the same pass (each pixel z × z,
+crisp; as far as H.264 goes, `export::zooms`); a skip's screen is drawn
+once a sample and only its card again each frame. The encoder is
+`olo_video::Encoder`, chosen by the work (`open_encoder`: up to about
+600 million pixels, the built-in GPU's or the processor's, at once;
+more, NVIDIA's, whose start takes two seconds). Measured 2026-11-15
+(release, real histories): 9 hours, 71 actions, 2.5 min of video, 195
+pictures, 1.8 s (Intel's); 16.5 hours, 3.2 min, 554 pictures of 2160 ×
+1350, 6 to 8 s (NVIDIA's); 51.5 hours, 2,209 actions, 86 min, 6,747
+pictures, 25 s; before, the first of these ran for minutes, every
+keyframe a stretch of activity. Its MP4 is Olo's own (`olo_video::Mp4`:
+`ftyp`, `mdat`, `moov` with the parameter sets; `co64`, one chunk).
+`progress` gets how far it is and can stop it. Olo's Viewer plays the
+result. In the window, History's Export Video… asks where (the kit's
+Save panel, `NAME.mp4` in ~/Videos, its Size: Actual Size, 2× or 3×,
+the last chosen again) and exports on a worker, the bar saying how far
+it is with Cancel, then an alert with Open in Tracker
+(`Replay::start_export`). What it exports (`Replay::export_part`): the
+rows chosen when there are several (⇧ or ⌘ in the list), else what the
+list shows when a search or filter leaves some out, else all; the file
+says a part ("NAME (12 actions).mp4"). The sidebar (the
 kit's `Sidebar`) has every screen running and every one stopped, under
 Running and Stopped, by last use (`viewer::rows`,
 read on a worker; the chosen one's as it acts), each with how long ago,

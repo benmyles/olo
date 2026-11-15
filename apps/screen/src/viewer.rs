@@ -98,7 +98,8 @@ pub enum Msg {
     /// A screen's windows given to the person: what didn't go, and why.
     Given(Result<Vec<String>, String>),
     /// Where the history's video goes (the file panel's answer).
-    ExportTo(PathBuf),
+    /// Export to this file, each pixel this many times over.
+    ExportTo(PathBuf, usize),
 }
 
 /// The chosen screen's tabs.
@@ -562,6 +563,9 @@ pub struct Viewer {
     giving: bool,
 }
 
+/// The size an export was last made at (each pixel this many times over).
+static LAST_ZOOM: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
+
 impl Viewer {
     pub fn new(show: Option<String>, cx: &mut Cx<Viewer>) -> Viewer {
         let saved: Saved = olo_kit::restored_state().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
@@ -843,14 +847,43 @@ impl Viewer {
             return;
         }
         let Some(replay) = self.replay.as_ref() else { return };
-        let name = replay.read(cx).name.clone();
+        let (name, part, size) = {
+            let r = replay.read(cx);
+            (r.name.clone(), r.export_part(), r.screen_size())
+        };
         let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
         let dir = [home.join("Videos"), home.clone()].into_iter().find(|d| d.is_dir()).unwrap_or(home);
-        let panel = file_panel::FilePanel::save(dir, format!("{name}.mp4"));
+        // (A part of it, the rows chosen or those a search shows: said in
+        // its name.)
+        let file = match part.map(|p| p.len()) {
+            Some(1) => format!("{name} (1 action).mp4"),
+            Some(n) => format!("{name} ({n} actions).mp4"),
+            None => format!("{name}.mp4"),
+        };
+        // Its size: as the screen is, or zoomed (each pixel two or three
+        // times over: a small screen easier to read), as far as H.264
+        // goes; the last chosen, again.
+        let (w, h) = size.unwrap_or((0, 0));
+        let options: Vec<(String, String)> = crate::export::zooms(w, h)
+            .into_iter()
+            .map(|z| {
+                let (vw, vh) = ((w & !1) * z, (h & !1) * z);
+                let label = if z == 1 { format!("Actual Size ({vw} × {vh})") } else { format!("{z}× ({vw} × {vh})") };
+                (z.to_string(), label)
+            })
+            .collect();
+        let last = LAST_ZOOM.load(std::sync::atomic::Ordering::Relaxed).to_string();
+        let value = options.iter().find(|o| o.0 == last).map_or_else(|| "1".to_owned(), |o| o.0.clone());
+        let mut panel = file_panel::FilePanel::save(dir, file);
+        if options.len() > 1 {
+            panel = panel.choices(vec![file_panel::Choice { id: "zoom".into(), label: "Size:".into(), options, value }]);
+        }
         let proxy = self.proxy.clone();
         file_panel::show("Export Video", panel, move |a| {
             if let file_panel::PanelResult::Chosen(path) = a.result {
-                proxy.send(Msg::ExportTo(path));
+                let zoom = a.choices.iter().find(|c| c.id == "zoom").and_then(|c| c.value.parse().ok()).unwrap_or(1);
+                LAST_ZOOM.store(zoom, std::sync::atomic::Ordering::Relaxed);
+                proxy.send(Msg::ExportTo(path, zoom));
             }
         });
     }
@@ -937,10 +970,10 @@ impl Viewer {
                 }
             }
             Msg::Spaces(spaces) => self.spaces = spaces,
-            Msg::ExportTo(path) => {
+            Msg::ExportTo(path, zoom) => {
                 let proxy = self.proxy.clone();
                 if let Some(r) = &self.replay {
-                    r.update(cx, |r, cx| r.start_export(path, proxy, cx));
+                    r.update(cx, |r, cx| r.start_export(path, zoom, proxy, cx));
                 }
             }
             Msg::Given(r) => {

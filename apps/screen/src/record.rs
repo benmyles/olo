@@ -113,7 +113,36 @@ fn segments_in(dir: &Path) -> Vec<PathBuf> {
 /// Screen `name`'s frames, segment by segment, oldest first (read from
 /// the records' heads: their pixels are left on disk).
 pub fn index(name: &str) -> Vec<Segment> {
-    segments_in(&history::dir(name)).into_iter().filter_map(|path| Some(Segment { frames: index_segment(&path)?, path })).collect()
+    index_dir(&history::dir(name))
+}
+
+/// The frames in history folder `dir`, as [`index`] has them.
+pub fn index_dir(dir: &Path) -> Vec<Segment> {
+    segments_in(dir).into_iter().filter_map(|path| Some(Segment { frames: index_segment(&path)?, path })).collect()
+}
+
+/// The size of the screen's last picture.
+pub fn last_size(segments: &[Segment]) -> Option<(usize, usize)> {
+    use std::os::unix::fs::FileExt;
+    let seg = segments.last()?;
+    let e = seg.frames.last()?;
+    let mut head = [0u8; 4 + 8 + 4 + 4];
+    std::fs::File::open(&seg.path).ok()?.read_exact_at(&mut head, e.offset).ok()?;
+    let u = |at: usize| u32::from_le_bytes([head[at], head[at + 1], head[at + 2], head[at + 3]]) as usize;
+    Some((u(12), u(16)))
+}
+
+/// Frames written to `dir` as the recorder writes them: each (picture,
+/// when, whether a keyframe though 30 s haven't passed).
+#[cfg(test)]
+pub(crate) fn write_for_test(dir: &Path, frames: Vec<(Frame, u64, bool)>) {
+    let mut w = Writer { dir: dir.to_owned(), max_bytes: 1 << 40, file: None, last: None, last_key: None };
+    for (frame, at, key) in frames {
+        if key {
+            w.last_key = Instant::now().checked_sub(KEY_EVERY);
+        }
+        w.add(frame, at).unwrap();
+    }
 }
 
 /// Screen `name`'s frames as [`index`] has them, reading again only the
@@ -173,7 +202,11 @@ fn index_segment(path: &Path) -> Option<Vec<Entry>> {
 /// The record at `offset` in `path`: when, and its tiles, applied to
 /// `frame` (made the record's size if it isn't).
 fn apply(path: &Path, offset: u64, frame: &mut Frame) -> Option<u64> {
-    let mut f = std::fs::File::open(path).ok()?;
+    apply_from(&mut std::fs::File::open(path).ok()?, offset, frame)
+}
+
+/// [`apply`], from a segment's file already open.
+fn apply_from(f: &mut std::fs::File, offset: u64, frame: &mut Frame) -> Option<u64> {
     f.seek(SeekFrom::Start(offset)).ok()?;
     let mut len = [0u8; 4];
     f.read_exact(&mut len).ok()?;
@@ -213,30 +246,48 @@ pub fn frame_at(segments: &[Segment], at: u64) -> Option<(u64, Frame)> {
 }
 
 /// Plays frames forward: each record applied once, in order, going back
-/// to a keyframe only on a jump back or into another segment.
+/// to a keyframe only on a jump back or into another segment, and on
+/// from the nearest keyframe on a jump ahead past one. Where `t` is is
+/// found by halving (a day's history is thousands of records), and the
+/// segment's file kept open.
 pub struct Player<'a> {
     segments: &'a [Segment],
     /// The segment and record the frame is up to.
     at: Option<(usize, usize)>,
+    /// The segment whose file is open.
+    file: Option<(usize, std::fs::File)>,
     pub frame: Frame,
+    /// How many records it has applied: the same as before a step, the
+    /// picture hasn't changed.
+    pub applied: u64,
 }
 
 impl<'a> Player<'a> {
     pub fn new(segments: &'a [Segment]) -> Player<'a> {
-        Player { segments, at: None, frame: Frame { width: 0, height: 0, rgba: Vec::new() } }
+        Player { segments, at: None, file: None, frame: Frame { width: 0, height: 0, rgba: Vec::new() }, applied: 0 }
     }
 
     /// The screen as it was at `t`; None before the first frame.
     pub fn at(&mut self, t: u64) -> Option<&Frame> {
-        let s = self.segments.iter().rposition(|s| s.frames.first().is_some_and(|f| f.at <= t))?;
+        let s = self.segments.partition_point(|s| s.frames.first().is_some_and(|f| f.at <= t)).checked_sub(1)?;
         let seg = &self.segments[s];
-        let last = seg.frames.iter().rposition(|f| f.at <= t)?;
+        let last = seg.frames.partition_point(|f| f.at <= t).checked_sub(1)?;
+        // (From the nearest keyframe when there's one past where it is: a
+        // fast-forward across hours decodes a picture a sample, not every
+        // keyframe between.)
+        let key = seg.frames[..=last].iter().rposition(|f| f.key);
         let from = match self.at {
-            Some((ps, pi)) if ps == s && pi <= last => pi + 1,
-            _ => seg.frames[..=last].iter().rposition(|f| f.key)?,
+            Some((ps, pi)) if ps == s && pi == last => return Some(&self.frame),
+            Some((ps, pi)) if ps == s && pi < last => key.map_or(pi + 1, |k| k.max(pi + 1)),
+            _ => key?,
         };
+        if self.file.as_ref().is_none_or(|(i, _)| *i != s) {
+            self.file = Some((s, std::fs::File::open(&seg.path).ok()?));
+        }
+        let (_, file) = self.file.as_mut()?;
         for e in &seg.frames[from..=last] {
-            apply(&seg.path, e.offset, &mut self.frame)?;
+            apply_from(file, e.offset, &mut self.frame)?;
+            self.applied += 1;
         }
         self.at = Some((s, last));
         Some(&self.frame)

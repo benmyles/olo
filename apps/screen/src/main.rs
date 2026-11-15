@@ -64,8 +64,10 @@ usage: olo-screen                         open Agent Screens (watch, take contro
                                              what was done on it: each action, what it matched, how it went
        olo-screen history NAME --look N [OUT.png]
                                              the screen as it was when action N (from 1) ended
-       olo-screen history NAME --export OUT.mp4
-                                             all of it as a video, quiet stretches cut
+       olo-screen history NAME --export OUT.mp4 [--from N] [--to N] [--zoom 1|2|3] [--encoder auto|cpu|nvidia|vaapi]
+                                             as a video: its actions (N to N, from 1), the time
+                                             between them skipped; each pixel zoomed (small
+                                             screens easier to read), as far as H.264 allows
        olo-screen stats [NAME] [--json]   when each screen was started and last used, how long it
                                              ran and was in use, its actions by kind, its programs
        olo-screen env NAME                its environment, for a shell (eval \"$(…)\")
@@ -460,7 +462,14 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             if let Some(out) = option(rest, "--export") {
                 let out = std::path::absolute(PathBuf::from(out)).map_err(|e| e.to_string())?;
                 let mut shown = -1i32;
-                export::export(&name()?, &out, &mut |f| {
+                // Actions N to N (from 1, as listed), or all.
+                let at = |flag| option(rest, flag).map(|v| v.parse::<usize>().map_err(|_| format!("{flag} is an action's number, from 1"))).transpose();
+                let (from, to) = (at("--from")?, at("--to")?);
+                let count = history::read(&name()?).len();
+                let part: Option<Vec<usize>> = (from.is_some() || to.is_some()).then(|| (from.unwrap_or(1).max(1) - 1..to.unwrap_or(count).min(count)).collect());
+                let zoom = option(rest, "--zoom").map(|z| z.trim_end_matches(['x', '×']).parse::<usize>().map_err(|_| "--zoom is 1, 2 or 3")).transpose()?.unwrap_or(1);
+                let encoder = option(rest, "--encoder").map(|e| olo_video::Choice::parse(e).ok_or("--encoder is auto, cpu, nvidia or vaapi")).transpose()?.unwrap_or(olo_video::Choice::Auto);
+                let made = export::export(&name()?, part.as_deref(), zoom, encoder, &out, &mut |f| {
                     let pct = (f * 100.0) as i32;
                     if pct / 10 != shown / 10 {
                         eprintln!("olo-screen: exporting… {pct}%");
@@ -468,7 +477,9 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                     }
                     true
                 })?;
-                print_json(&json!({ "path": out }));
+                print_json(
+                    &json!({ "path": out, "seconds": made.frames as f64 / 10.0, "frames": made.frames, "pictures_encoded": made.encoded, "encoder": made.encoder, "size": [made.size.0, made.size.1] }),
+                );
                 return Ok(());
             }
             let kind = option(rest, "--kind");

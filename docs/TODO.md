@@ -1484,6 +1484,30 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Done, waiting for Ben to try or confirm
 
+- **Agent Screens' Export Video: what was done, fast-forwarded between,
+  fast, a part, zoomed** (Ben, 2026-11-15: "does exporting a video for
+  an agent screen correctly only include the actual parts where
+  actions/events occurred, skipping over all the inactivity?"; "it's
+  going really slow"; "it should show like an overlay message or
+  something when there is no activity like it is fast forwarding
+  through time"; "make sure it is all super efficient"; "i also should
+  be able to export a subset of the timeline"; "add an export option
+  for choosing a target video size e.g. 2x"). It didn't: every 30 s
+  keyframe and every pixel that changed counted as activity, so a quiet
+  12 hours was some 1,440 stretches kept, about two hours of video, each
+  frame encoded on the processor. Now: the agent's actions are what
+  happened (on 40 real histories, screen changes were "activity" nearly
+  every second); each kept from 0.8 s before to 1.5 s after, gaps under
+  3 s played through, the rest skipped with the screen shown across it
+  quickly (a ⏩ badge, or for 30 s and more a "Fast-forwarding" card
+  with the time of day racing on); a picture encoded only when it
+  changed, on the GPU when the work pays for its start; a part (rows
+  chosen with ⇧ or ⌘, or what a search or filter shows; `--from N --to
+  N`); Size: Actual, 2× or 3× in the Save panel (`--zoom`). Measured on
+  real histories (release): 9 h in 1.8 s, 16.5 h in 6 to 8 s, 51.5 h of
+  constant use (86 min of video) in 25 s. *For Ben:* Upgrade, then
+  export again; try a part and 2×.
+
 - **Agent Screens ended as it exported a video** (Ben, 2026-11-15: "i
   just tried to export an agent screen to a video and agent screens app
   crashed"). Found (read-only: the journal, the dead process's exit

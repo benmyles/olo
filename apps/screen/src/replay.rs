@@ -319,7 +319,8 @@ impl Replay {
                 cx.invalidate();
             }
         });
-        let list = ListModel::new(false);
+        // (Several rows chosen, ⇧ or ⌘: a part of the history to export.)
+        let list = ListModel::new(true);
         Replay {
             name: name.to_owned(),
             actions: Vec::new(),
@@ -442,18 +443,36 @@ impl Replay {
         }
     }
 
-    /// Make the history a video at `path`, on a worker.
-    pub fn start_export(&mut self, path: PathBuf, proxy: Proxy, cx: &mut Cx<Self>) {
+    /// The actions an export takes (their numbers in the history): the
+    /// rows chosen, when there are several; else those the list shows,
+    /// when a search or filter leaves some out; else all (None).
+    pub fn export_part(&self) -> Option<Vec<usize>> {
+        let rows = &self.list.state().selected;
+        if rows.len() > 1 {
+            return Some(rows.iter().filter_map(|&r| self.shown.get(r).copied()).collect());
+        }
+        (self.shown.len() < self.actions.len()).then(|| self.shown.clone())
+    }
+
+    /// The size of the screen's last picture (what an export is, unzoomed).
+    pub fn screen_size(&self) -> Option<(usize, usize)> {
+        record::last_size(&self.segments)
+    }
+
+    /// Make the history (or the part `export_part` says) a video at
+    /// `path`, each pixel `zoom` × `zoom`, on a worker.
+    pub fn start_export(&mut self, path: PathBuf, zoom: usize, proxy: Proxy, cx: &mut Cx<Self>) {
         let cancel = Arc::new(AtomicBool::new(false));
         self.exporting = Some((0.0, cancel.clone()));
         let name = self.name.clone();
+        let part = self.export_part();
         // (A name of its own: one started here unnamed takes the looper's,
         // `w>…`, and app_server makes a focused window's loopers realtime
         // by name: video encoding at realtime, Ben's export of 2026-11-15
         // ended the app.)
         let _ = std::thread::Builder::new().name("export".into()).spawn(move || {
             let mut told = -1;
-            let result = crate::export::export(&name, &path, &mut |done| {
+            let result = crate::export::export(&name, part.as_deref(), zoom, olo_video::Choice::Auto, &path, &mut |done| {
                 let pct = (done * 100.0) as i32;
                 if pct != told {
                     told = pct;
@@ -464,7 +483,7 @@ impl Replay {
             if result.is_err() {
                 let _ = std::fs::remove_file(path.with_extension("mp4.part"));
             }
-            proxy.send(ReplayMsg::Exported { name, result: result.map(|()| path) });
+            proxy.send(ReplayMsg::Exported { name, result: result.map(|_| path) });
         });
         cx.invalidate();
     }
