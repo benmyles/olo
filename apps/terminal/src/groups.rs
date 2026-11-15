@@ -5,14 +5,23 @@
 use std::path::PathBuf;
 
 use olo_kit::Hsla;
-use olo_theme::{Hue, Palette};
+use olo_theme::Palette;
 
-/// The colours a group can have: the look's hues (the saved index into
-/// this stays the same colour from look to look).
-pub const COLORS: [Hue; 8] = [Hue::Red, Hue::Orange, Hue::Yellow, Hue::Green, Hue::Teal, Hue::Blue, Hue::Purple, Hue::Gray];
+/// How many colours a group can have: the look's tab group colours (the
+/// saved index stays the same colour from look to look, in each look's
+/// own way).
+pub const COLORS: usize = olo_theme::GROUP_COLORS;
 
+/// Colour `i` in the look `p` (Ben, 2026-11-14: "any app with tab groups
+/// should use this theme based palette for the tab group color
+/// choices"): the look's own (`Palette::group_colors`).
 pub fn color(i: usize, p: &Palette) -> Hsla {
-    olo_kit::style::c(p.hue(COLORS[i % COLORS.len()]))
+    olo_kit::style::c(p.group_color(i).fill)
+}
+
+/// Its name in the look ("Red"; Platinum's "Cyan", "Magenta", "Brown").
+pub fn name(i: usize, p: &Palette) -> &'static str {
+    p.group_color(i).name
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -65,7 +74,7 @@ pub fn new_name(taken: &[&str]) -> String {
 
 /// The first colour no group in `used` has (else the next in turn).
 pub fn new_color(used: &[usize]) -> usize {
-    (0..COLORS.len()).find(|c| !used.contains(c)).unwrap_or(used.len() % COLORS.len())
+    (0..COLORS).find(|c| !used.contains(c)).unwrap_or(used.len() % COLORS)
 }
 
 #[cfg(test)]

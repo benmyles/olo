@@ -58,6 +58,29 @@ impl ShapedLine {
         self
     }
 
+    /// Olo: the line with `spacing` more between each character and the
+    /// next (letter-spacing, as CSS's; none after the last), its kerning
+    /// kept.
+    pub fn tracked(&self, spacing: Pixels) -> Self {
+        let l = self.layout.as_ref();
+        let mut n = 0.0;
+        let runs: Vec<_> = l
+            .runs
+            .iter()
+            .map(|run| {
+                let mut run = run.clone();
+                for glyph in &mut run.glyphs {
+                    glyph.position.x += spacing * n;
+                    n += 1.0;
+                }
+                run
+            })
+            .collect();
+        let width = l.width + spacing * (n - 1.0f32).max(0.0);
+        let layout = Arc::new(LineLayout { font_size: l.font_size, width, ascent: l.ascent, descent: l.descent, runs, len: l.len, painted: Default::default() });
+        Self { layout, text: self.text.clone(), decoration_runs: self.decoration_runs.clone() }
+    }
+
     /// Paint the line of text to the p.
     pub fn paint(&self, origin: Point<Pixels>, line_height: Pixels, p: &mut Painter) -> Result<()> {
         paint_line(origin, &self.layout, "", line_height, TextAlign::default(), None, &self.decoration_runs, &[], p)?;

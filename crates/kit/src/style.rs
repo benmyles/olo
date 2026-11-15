@@ -346,6 +346,45 @@ pub fn label(g: &mut Painter, x: Pixels, center_y: Pixels, align: Align, text: i
     paint_label(g, x, center_y, align, text, font_size, line)
 }
 
+/// [`label`] with `spacing` points more between each character and the
+/// next (letter-spacing, for small bold capitals: a tab group's label).
+#[allow(clippy::too_many_arguments)]
+pub fn label_spaced(g: &mut Painter, x: Pixels, center_y: Pixels, align: Align, text: impl Into<SharedString>, font_size: f32, font: Font, color: Hsla, spacing: f32) -> Bounds<Pixels> {
+    let text = text.into();
+    let line = spaced(g.text_system(), text.clone(), font_size, font, color, spacing);
+    paint_label(g, x, center_y, align, text, font_size, line)
+}
+
+/// [`text_width`] of a [`label_spaced`].
+pub fn text_width_spaced(text: impl Into<SharedString>, size: f32, font: Font, spacing: f32) -> Pixels {
+    let text: SharedString = text.into();
+    let run = TextRun { len: text.len(), font, color: Hsla::default(), background_color: None, underline: None, strikethrough: None, size: None };
+    olo_interface::thread_text_system().shape_line(text, px(size), &[run], None).tracked(px(spacing)).width
+}
+
+/// A line shaped and spaced out, kept (the text system keeps the shaped
+/// line; this keeps the spaced one, and with it the glyphs it last
+/// painted).
+fn spaced(ts: &olo_interface::WindowTextSystem, text: SharedString, font_size: f32, font: Font, color: Hsla, spacing: f32) -> olo_interface::ShapedLine {
+    type Key = (SharedString, u32, Font, [u32; 4], u32);
+    thread_local! {
+        static SPACED: std::cell::RefCell<std::collections::HashMap<Key, olo_interface::ShapedLine>> = Default::default();
+    }
+    let key: Key = (text.clone(), font_size.to_bits(), font.clone(), [color.h.to_bits(), color.s.to_bits(), color.l.to_bits(), color.a.to_bits()], spacing.to_bits());
+    if let Some(line) = SPACED.with_borrow(|m| m.get(&key).cloned()) {
+        return line;
+    }
+    let run = TextRun { len: text.len(), font, color, background_color: None, underline: None, strikethrough: None, size: None };
+    let line = ts.shape_line(text, px(font_size), &[run], None).tracked(px(spacing));
+    SPACED.with_borrow_mut(|m| {
+        if m.len() >= 256 {
+            m.clear();
+        }
+        m.insert(key, line.clone());
+    });
+    line
+}
+
 /// Where a label `width` wide, aligned to `x` so, begins: on a device
 /// pixel. Right-aligned, it never runs past `x` (rounded down, not to the
 /// nearest: rounded up half a pixel, a slider's "Fast" and its values ran

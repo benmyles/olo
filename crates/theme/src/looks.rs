@@ -553,6 +553,48 @@ pub fn palette(theme: &str, colors: &str, mode: ThemeMode) -> Palette {
     p
 }
 
+/// The colours a look's tab groups can have ([`Palette::group_colors`]),
+/// in the same eight places in every look: red, orange, yellow, green,
+/// teal, blue, purple, grey.
+///
+/// - **Platinum's own**: Mac OS 9's Finder labels (Hot's red, Essential's
+///   orange, Project I's green, Cool's cyan, Personal's blue, In
+///   Progress's magenta, Project II's brown), with QuickDraw's yellow
+///   softened; at night each lifted to read on the dark panel.
+/// - **Classic's own and the BeOS colours**: BeOS's (its tab's yellow, the
+///   red and blue of its marks), even and bright, as Be's were.
+/// - **Every other**: the look's own hues.
+///
+/// By day the fills are deep enough for white names (all but yellow and
+/// orange, and Mac OS 9's bright green and cyan, kept as they were); at
+/// night they're lifted and take a near-black name, as Chrome's tab
+/// groups do. Each with that ink ([`Palette::label_ink`]).
+pub fn group_colors(p: &crate::Palette) -> [crate::GroupColor; crate::GROUP_COLORS] {
+    const NAMES: [&str; crate::GROUP_COLORS] = ["Red", "Orange", "Yellow", "Green", "Teal", "Blue", "Purple", "Gray"];
+    let dark = p.mode == ThemeMode::Dark;
+    let own = p.colors == ColorSet::Theme.id();
+    let platinum = own && p.theme == "platinum";
+    let beos = p.colors == ColorSet::Beos.id() || (own && p.theme == CLASSIC);
+    let (names, fills): ([&str; 8], [Rgba; 8]) = if platinum {
+        let names = ["Red", "Orange", "Yellow", "Green", "Cyan", "Blue", "Magenta", "Brown"];
+        if dark {
+            (names, [hex(0xf0453c), hex(0xff8433), hex(0xf2d43c), hex(0x3cc434), hex(0x34b8ee), hex(0x7c7cf4), hex(0xf2509e), hex(0xb0784a)])
+        } else {
+            (names, [hex(0xdd0806), hex(0xff6402), hex(0xf5d60a), hex(0x1fb714), hex(0x02abea), hex(0x0000d4), hex(0xf20884), hex(0x8a5a2a)])
+        }
+    } else if beos {
+        if dark {
+            (NAMES, [hex(0xe5574c), hex(0xf29236), hex(0xf0c21a), hex(0x4db65c), hex(0x34b3bf), hex(0x5288ea), hex(0xa070de), hex(0x9097a0)])
+        } else {
+            (NAMES, [hex(0xd9372b), hex(0xee7d10), hex(0xffcb00), hex(0x28863a), hex(0x11818d), hex(0x2e6bd6), hex(0x8350c8), hex(0x6f757d)])
+        }
+    } else {
+        let h = &p.hues;
+        (NAMES, [h.red, h.orange, h.yellow, h.green, h.teal, h.blue, h.purple, h.gray])
+    };
+    std::array::from_fn(|i| crate::GroupColor { name: names[i], fill: fills[i], ink: p.label_ink(fills[i]) })
+}
+
 /// The flavour the Catppuccin colours take in `mode`.
 fn catppuccin_flavour(mode: ThemeMode) -> &'static Flavour {
     match mode {

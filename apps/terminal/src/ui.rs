@@ -1201,8 +1201,24 @@ impl Terminal {
                 }
             })
             .collect();
-        let mut strip = TabStrip::new(format!("terminal-tabs-{}", id.0), tabs, t.active).groups(strip_groups).in_window(cx.surface_id());
-        if t.tiled && t.tabs.len() > 1 {
+        // Behind everything, the screen's background: the device pixel a
+        // fractional scale leaves past the last pane's edge (at 1.5×, the
+        // window's bottom row) is the terminal's colour, not black. And
+        // the chosen tab is a folder tab of the screen's colours, open
+        // onto it.
+        // (Tiled, what's under the strip is every tab's pane: the chosen
+        // tab is in the colours of the head over its pane, closed.)
+        let (behind, fore) = view::screen_colors(&t.tab().session, &scheme);
+        let tiled = t.tiled && t.tabs.len() > 1;
+        let (front, front_ink) = if tiled {
+            let p = theme::palette();
+            (style::c(p.panel_background), style::c(p.panel_text))
+        } else {
+            (behind, fore)
+        };
+        let mut strip = TabStrip::new(format!("terminal-tabs-{}", id.0), tabs, t.active).groups(strip_groups).content(front, front_ink).in_window(cx.surface_id());
+        if tiled {
+            strip = strip.closed();
             // Tile All Tabs: a group's chip chooses which are tiled; each
             // pane has its own head.
             strip = strip.group_selection((0..t.groups.len()).map(|g| t.tile_group_shown(g)).collect());
@@ -1213,10 +1229,6 @@ impl Terminal {
         let strip = strip.on_action(on(move |t, a: &StripAction, w| t.strip_action(id, *a, w)));
         let strip = div().absolute().left(layout.strip.left()).top(layout.strip.top()).w(layout.strip.size.width).h(layout.strip.size.height).child(strip);
 
-        // Behind everything, the screen's background: the device pixel a
-        // fractional scale leaves past the last pane's edge (at 1.5×, the
-        // window's bottom row) is the terminal's colour, not black.
-        let behind = view::screen_colors(&t.tab().session, &scheme).0;
         // The screens: a view of their own (`render_panes`).
         let panes = match &sh.panes {
             Some(p) => {
@@ -1964,7 +1976,7 @@ impl Terminal {
         let swatches = canvas(move |g, b| {
             let p = theme::palette();
             style::label(g, b.left(), b.center().y, style::Align::Left, "Color:", style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::c(p.panel_text));
-            for i in 0..groups::COLORS.len() {
+            for i in 0..groups::COLORS {
                 let r = swatch(b, i);
                 if color == i {
                     let ring = Bounds::centered_at(r.center(), size(px(SWATCH + 2.0), px(SWATCH + 2.0)));
@@ -1975,7 +1987,7 @@ impl Terminal {
                 g.paint_quad(fill(dot, groups::color(i, &look)).corner_radii(px(SWATCH / 2.0 - 3.0)));
                 g.agent(olo_kit::agent::Node {
                     role: "RadioButton",
-                    name: Some(groups::COLORS[i].name().into()),
+                    name: Some(groups::name(i, &look).into()),
                     bounds: r,
                     enabled: true,
                     clickable: true,
@@ -1991,7 +2003,7 @@ impl Terminal {
             MouseButton::Left,
             on(move |t, e: &MouseDownEvent, w| {
                 let b = w.listener_bounds();
-                let Some(i) = (0..groups::COLORS.len()).find(|&i| swatch(b, i).contains(&e.position)) else { return };
+                let Some(i) = (0..groups::COLORS).find(|&i| swatch(b, i).contains(&e.position)) else { return };
                 if let Some(Win::NameGroup { color, .. }) = t.windows.get_mut(&id) {
                     *color = i;
                 }

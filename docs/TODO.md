@@ -1414,31 +1414,18 @@ something nobody here has is in "Blocked", with what it waits for.
   that steps ↓ through a folder of pictures (PNG, JPEG, sizes, 1×,
   1.5×, 2×) and checks each look draws its picture. The scroll bar
   too: Quick Look's window must fit what it shows, not scroll.
-- **Tabs and tab groups: one better look for every app** (Ben,
-  2026-11-14: "this tab and tab group styling we're using still looks
-  really awful and out of place to me. we need to make this better for
-  terminal and all apps (it should be part of the kit or whatever so
-  it's reusable and consistent across apps that have tabs and tab
-  groups). so, before you do any of this work, i want you to create a
-  self-contained html file for me showing 4 different options we could
-  go with for how these look and which one you recommend and then i'll
-  give you feedback, maybe we iterate a bit, and then once i approve
-  you can do this work"; "the mockups need to be pixel perfect so i
-  can properly evaluate and choose"). First the page of four options,
-  drawn on device pixels at 1×, 1.5× and 2× (as the kit snaps), in
-  Classic and Platinum, light and dark, along the top and down the
-  side; then, once Ben chooses, the kit's `TabStrip` (and `TabView`)
-  in that look for Terminal and every app with tabs. Ben chose (round
-  two of the page, 2026-11-14): "ok let's go with the folder tabs ->
-  labels variant" (F1, Labels: folder tabs, a group named by a small
-  label of its colour, no coloured bands). And: "can you make it so
-  that the color palette for tab groups is also customized for the
-  theme, and it should be part of the theme so that it returns a set
-  of theme-appropriate colors to be used for tab groups and then any
-  app with tab groups should use this theme based palette for the tab
-  group color choices": the theme gives the tab groups' colours (each
-  theme, light and dark), and every app with tab groups chooses from
-  them.
+- **Agent Screens' History empty** (Ben, 2026-11-14: "there is a bug in
+  agent screens i can't see any history it's just empty"; his
+  screenshot: the running screen v2-qa-integrations, "2,073 actions"
+  in its header and at the filter bar's right, Kind All Actions, Result
+  Any, Time All Time, no search, yet the Time / Action list empty; the
+  player under the picture at its last action, "click 570 347", 145:37:40
+  of 145:37:40). The count says the actions are there and the player
+  can reach them, so the list isn't showing rows it has: find why (the
+  list's model not filled, filled before the window's size was known,
+  a filter that hides everything, rows of zero height, a virtual list
+  scrolled past its end), fix it at the root, with a test that opens a
+  screen's History with thousands of actions and checks rows show.
 - **Two themes, Classic and Platinum, made exquisite** (Ben,
   2026-11-14: "let's simplify a bit so we just have 2 themes for now:
   Classic and Platinum (with light/dark variations). then, let's have
@@ -1571,7 +1558,67 @@ something nobody here has is in "Blocked", with what it waits for.
   enabled, disabled, added (a .repo URL, COPR, RPM Fusion), their GPG
   keys; system upgrades to the next Fedora release; agent-readable and
   drivable; HACKING and the Olo Book.
+- **Tracker compresses and extracts, natively** (Ben, 2026-11-14:
+  "olo's tracker should have native support for compression/archives
+  so that it can compress files and folders (i.e. multi select them
+  then right click and Compress -> Compress as ... and e.g. Extract ->
+  Extract to ...) and support all the common formats including zip,
+  tar, gz, tar.gz, bzip, 7z, rar, iso and so on"). In Rust, in process
+  (no shelling out to tar, unzip, 7z or unrar): Compress ▸ (zip,
+  tar.gz, tar.xz, tar.zst, 7z, …) and Compress As… for the selection;
+  Extract Here and Extract To… for archives (zip, tar and its
+  compressions — gz, bz2, xz, zst —, 7z, rar to read, ISO 9660/UDF,
+  cpio, …); browsing into an archive as a folder, and Quick Look of
+  what's in one; on a worker with live progress, cancellable, a
+  password asked for (Passwords offered) where one is set; names,
+  permissions, times and links kept; never writing outside the target
+  (paths with .. or absolute ones refused); undo; agent-readable and
+  drivable; HACKING and the Olo Book.
 ## Done, waiting for Ben to try or confirm
+
+- **Tabs and tab groups: one better look for every app** (Ben,
+  2026-11-14: "this tab and tab group styling we're using still looks
+  really awful and out of place to me. we need to make this better for
+  terminal and all apps (it should be part of the kit or whatever so
+  it's reusable and consistent across apps that have tabs and tab
+  groups). so, before you do any of this work, i want you to create a
+  self-contained html file for me showing 4 different options we could
+  go with for how these look and which one you recommend and then i'll
+  give you feedback, maybe we iterate a bit, and then once i approve
+  you can do this work"; "the mockups need to be pixel perfect so i
+  can properly evaluate and choose"). First the page of four options,
+  drawn on device pixels at 1×, 1.5× and 2× (as the kit snaps), in
+  Classic and Platinum, light and dark, along the top and down the
+  side; then, once Ben chooses, the kit's `TabStrip` (and `TabView`)
+  in that look for Terminal and every app with tabs. Ben chose (round
+  two of the page, 2026-11-14): "ok let's go with the folder tabs ->
+  labels variant" (F1, Labels: folder tabs, a group named by a small
+  label of its colour, no coloured bands). And: "can you make it so
+  that the color palette for tab groups is also customized for the
+  theme, and it should be part of the theme so that it returns a set
+  of theme-appropriate colors to be used for tab groups and then any
+  app with tab groups should use this theme based palette for the tab
+  group color choices": the theme gives the tab groups' colours (each
+  theme, light and dark), and every app with tab groups chooses from
+  them.
+  Done (2026-11-14): the kit's `TabStrip` is the Labels look, along the
+  top and down the side: folder tabs (BeOS's slanted in Classic, Mac OS
+  9's rounded in Platinum), the chosen one in the content's colours and
+  open onto it, the others a shade off the panel behind the line along
+  the strip's foot, every edge on device pixels; each group led by a
+  label of its colour, its name in bold capitals spaced as the mockup's.
+  The palette's `group_colors()` gives each look's eight group colours
+  with their inks (Platinum: Mac OS 9's Finder labels; Classic and the
+  BeOS colours: BeOS's bright hues; by day white names, at night lifted
+  fills with near-black ones), and Terminal's group colours and their
+  names come from it. `TabView` (Preferences, Activity's inspector,
+  DiskBackup, Agent Screens) draws the same folder tabs over its raised
+  panel. Checked against the mockup at 2× (edges and colours match),
+  in Classic (own and BeOS colours) and Platinum, light and dark, at
+  1×, 1.25×, 1.5×, 1.75× and 2×; Astra's notes taken (the labels'
+  letter-spacing, night inks); the layout lint is clean. Ben: after
+  upgrading, look at Terminal's tabs and a Preferences panel with tabs
+  in both themes.
 
 - **Deskbar's popovers show without Deskbar active, and are rich**
   (Ben, 2026-11-14: "the popover only seems to open up if the deskbar

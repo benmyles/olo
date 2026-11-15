@@ -4126,5 +4126,11 @@
   "title": "Deskbar's widget tips are cards",
   "caption": "Rest the pointer on a Deskbar widget and its tip is now a card (olo_kit::card), not a line of text: what it measures and its value at the top, the last minute as a graph, each core's bars, each series against its colour, and the processes using the most as bars; a Token Pool widget's shows each account or quota with what's left in green to red, when it resets and the one answering now. Ben: 'improve the popovers so that they can have rich widgets/designs inside of them \u2026 visually show the data better'. Light, 1\u00d7; checked at 1.5\u00d7 and 2\u00d7, light and dark.",
   "image": "2026-11-14/141802-deskbar-s-widget-tips-are-cards.png"
+ },
+ {
+  "time": "2026-11-14T16:00:05",
+  "title": "Folder tabs: the Labels look, in every tab strip and tab view",
+  "caption": "Ben chose \"folder tabs \u2192 labels\". The kit's TabStrip (Terminal's tabs, along the top and down the side) draws BeOS's slanted folder tabs in Classic and Mac OS 9's rounded ones in Platinum: the chosen tab in the content's colours and open onto it, the others a shade off the panel; a group led by a label of its colour, its name in spaced bold capitals. Group colours come from the look (Palette::group_colors: Mac OS 9's Finder labels in Platinum, BeOS's bright hues in Classic; white names by day, near-black on lifted fills at night). TabView (Preferences and the rest) draws the same tabs over its raised panel; crowded, the widest are cut back and short names keep their width. Above: the tabs example in Classic light and Platinum dark at 2\u00d7.",
+  "image": "2026-11-14/160005-folder-tabs-the-labels-look-in-every-tab-strip-a.png"
  }
 ]

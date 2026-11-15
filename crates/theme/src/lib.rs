@@ -74,6 +74,22 @@ impl Hue {
     }
 }
 
+/// A colour a group of tabs can have (Terminal's, and any app's with
+/// tab groups): its name in the app's choices, its fill, and the ink a
+/// name is set in on it. Each look has its own ([`Palette::group_colors`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GroupColor {
+    pub name: &'static str,
+    pub fill: Rgba,
+    pub ink: Rgba,
+}
+
+/// How many colours a tab group can have: as many in every look, in the
+/// same order (reds first, greys last), so the one an app keeps (its
+/// index) is the same colour after the look changes, in the new look's
+/// own way.
+pub const GROUP_COLORS: usize = 8;
+
 /// A look's [`Hue`]s.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hues {
@@ -478,6 +494,29 @@ impl Palette {
 
     pub fn hue(&self, hue: Hue) -> Rgba {
         self.hues.get(hue)
+    }
+
+    /// The colours tab groups can have in this look (Ben, 2026-11-14:
+    /// "the color palette for tab groups is also customized for the
+    /// theme, and it should be part of the theme so that it returns a
+    /// set of theme-appropriate colors to be used for tab groups"):
+    /// [`looks::group_colors`].
+    pub fn group_colors(&self) -> [GroupColor; GROUP_COLORS] {
+        looks::group_colors(self)
+    }
+
+    /// Tab group colour `i` (any index: wrapped).
+    pub fn group_color(&self, i: usize) -> GroupColor {
+        self.group_colors()[i % GROUP_COLORS]
+    }
+
+    /// The ink a name (bold capitals) is set in on a label of `fill`: by
+    /// day white, at night near-black (the panel deepened), where it reads
+    /// (4:1); else whichever of the two reads better.
+    pub fn label_ink(&self, fill: Rgba) -> Rgba {
+        let dark = if self.mode == ThemeMode::Dark { mix(self.panel_background, BLACK, 0.6) } else { self.panel_text };
+        let (first, other) = if self.mode == ThemeMode::Dark { (dark, WHITE) } else { (WHITE, dark) };
+        if contrast(first, fill) >= 4.0 || contrast(first, fill) >= contrast(other, fill) { first } else { other }
     }
 
     /// `hue` as text on documents: as given where it reads (4.5:1),

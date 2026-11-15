@@ -2532,7 +2532,10 @@ it.
   lines) says its text to agents with `cell.say(text)`.
   `crates/kit/examples/list.rs` shows one.
 - `style::label_fit` (a label cut short with "…" to a width, measured
-  as shaped), `style::selection_band`, `style::selection_wash` (a thing
+  as shaped), `style::label_spaced` and `text_width_spaced` (letters
+  spaced out, CSS's letter-spacing, kerning kept: small bold capitals
+  such as a tab group's label; `ShapedLine::tracked`, the spaced line
+  kept so it isn't shaped again), `style::selection_band`, `style::selection_wash` (a thing
   selected in place: the selection colour see-through, its edge
   inside) and `style::snap_centred`.
 - `style::key_combo(g, right_center, keys, color)` and
@@ -2614,42 +2617,67 @@ it.
   `widgets::heading(text)` (bold, a label row tall) and
   `widgets::separator()` (a groove across).
 - `widgets::TabStrip::new(id, tabs, active)`: a row of document tabs
-  under a menu bar (Terminal's shells), `STRIP_HEIGHT` (32) tall, each
-  a `StripTab { label, icon, status, badge, group, faded }`. Everything sits
-  inside the band, a line under it: the tabs are their icons and titles
-  on the band, the selected one on a raised plate (`PLATE`, 24, rounded
-  7, centred) lit from above as BeOS's controls are (a touch lighter at
-  its top, its rim's top edge lit and tapering into the corners, a soft
-  shadow under it); one under the pointer on a faint plate, its title
-  in full ink, its close box shown; a faint line between the others.
-  Each tab is as wide as its title needs (between `TAB_MIN` 140 and
-  `TAB_MAX` 320, or `max_tab_width`), the widest cut back alike when
-  they don't all fit (`fit_widths`, on the 2-point grid, up where they
-  fit so no title loses a fraction of a point), titles cut short with
-  "…". `.groups(vec![StripGroup { name, color }])` and each tab's
-  `group`: a group is a capsule of its colour (22% in the dark, 16% in
-  the light) round its chip (its name, bold, on a pill of the colour,
-  `chip`/`chip_width`/`CHIP_HEIGHT`, which Terminal's pane heads use
-  too) and its tabs, rounded `TAB_RADIUS + HALO` so its corners are
-  concentric with the plates 2 points inside it; no lines. With
-  `.group_selection(chosen)` a chip filled is a group chosen (or shown:
-  Terminal fills every chip while every group is tiled) and an outlined
-  one not; a click gives `ToggleGroup(g)`, the right button
-  `Group(g, pos)`. A tab with `faded: Some(why)` is left out of
-  something the window shows (Terminal's Hide When Tiled): its icon and
-  title drawn at `STRIP_FADED` (0.45), its plate, close box and badge as
-  any tab's, and agents read `why` in its name ("…, hidden when
-  tiled").
-  `.side()` puts it down the content's left: rows, the selected one
-  raised the same way, a group's chip heading its rows in a capsule,
-  New Tab a row after the last, the right edge dragged to resize
-  (`Resize`). Its icons and its chips' names are at `WINDOW_INSET`,
-  under the menu bar's first title (`SIDE_FACE`, `side_chip`), and its
-  first row is centred on `STRIP_SIDE_HEAD` (32, as a strip along the top: the pane heads beside
-  it), so a chip heading it is where it is along the top.
-  Agents read a side chip and New Tab as what shows (the pill; the +
-  and its name), though their whole rows take a click. A tab dragged rides on a raised plate under the pointer,
-  its slot left empty, a mark where it would land; out of the strip
+  under a menu bar (Terminal's shells), `STRIP_HEIGHT` (34) tall, each
+  a `StripTab { label, icon, status, badge, group, faded }`, drawn as
+  folder tabs (Ben, 2026-11-14: "folder tabs → labels"; the options page
+  is in the journal): BeOS's slanted in Classic, Mac OS 9's rounded at
+  the top in Platinum (`Shape`, from the look). The chosen tab is in
+  the content's colours (`.content(fill, ink)`: Terminal's screen; else
+  a document's), outlined as the window's frame is and open onto the
+  content: the line along the strip's foot stops under it. The others
+  are a shade off the panel behind that line, lighter under the
+  pointer, their outline softer. Each tab is a 1-pixel outline, a
+  bevel inside it (lit along its left and top, shaded down its right,
+  a device pixel each at 1×, `scale.round()` at others) and its fill,
+  every edge on device pixels (`folder`, `side_folder`). The × shows on
+  the chosen tab and the one under the pointer (red under it; a badge
+  in its place otherwise). Each tab is as wide as its title needs in
+  bold (between `TAB_MIN` 140 and `TAB_MAX` 250, or `max_tab_width`),
+  the widest cut back alike when they don't all fit (`fit_widths`, on
+  the 2-point grid, those under the cut rounded up so no title loses a
+  fraction of a point), titles cut short with "…"; its icon only with
+  room for it, its title only with room for a few letters.
+  `.groups(vec![StripGroup { name, color }])` and each tab's `group`:
+  a group is led by a label, a folder tab of its colour with its name in
+  bold capitals spaced 0.6 points (`style::label_spaced`), the ink the
+  look sets for it (`Palette::label_ink`); a gap between tabs (the
+  look's, 2 or 3 points), more between groups (`GROUP_GAP`, 14). Group
+  colours come from the look, never from the app:
+  `Palette::group_colors()` (`GROUP_COLORS`, 8, in the same order in
+  every look: red, orange, yellow, green, teal, blue, purple, grey, so
+  the index an app keeps is the same colour after the look changes) is
+  each colour's name, fill and ink. Platinum's are Mac OS 9's Finder
+  labels, Classic's (and the BeOS colours') BeOS's bright even hues,
+  every other look's its own hues; by day white names on deep fills
+  (yellow and orange, and Mac OS 9's bright green and cyan, take the
+  ink), at night lifted fills with a near-black name, as Chrome's tab
+  groups are. With `.group_selection(chosen)` a label filled is a
+  group chosen (or shown: Terminal fills every label while every group
+  is tiled) and one on the panel, its name in its colour, not; a click
+  gives `ToggleGroup(g)`, the right button `Group(g, pos)`. `chip(g, r,
+  name, color, filled, hovered)` and `chip_width` draw a label anywhere
+  else (Terminal's pane heads). `.closed()`: what's under the strip
+  isn't the chosen tab's (Terminal's Tile All Tabs, every tab's pane),
+  so the chosen tab stays closed, the line running under it. A tab with
+  `faded: Some(why)` is left out of something the window shows
+  (Terminal's Hide When Tiled): its icon and title drawn at
+  `STRIP_FADED` (0.45), and agents read `why` in its name ("…, hidden
+  when tiled"). `crates/kit/examples/tabs.rs` shows both strips, two
+  groups and a tab view in the same look.
+  `.side()` puts it down the content's left: rows on the panel, the
+  chosen one a folder tab on its side open onto the content at its
+  right (its outlines meeting the ends of the column's edge line), one
+  under the pointer on a shade of the panel, a group's label above its
+  rows (`STRIP_SIDE_HEADING`, 22), a gap between groups, New Tab a row
+  after the last, the right edge dragged to resize (`Resize`). Its
+  icons are at `WINDOW_INSET`, under the menu bar's first title
+  (`SIDE_FACE`), and its first row is centred on `STRIP_SIDE_HEAD` (as
+  a strip along the top: the pane heads beside it).
+  Agents read a side label and New Tab as what shows (the label; the +
+  and its name), though their whole rows take a click. A tab dragged rides as the chosen one under the pointer,
+  its slot left empty, a caret over the gap where it would land (in the
+  band above the tabs, or beside the rows: never under the tab riding
+  there); out of the strip
   (`TEAR`) it's torn off (`TearOff`, `TearOffGroup` for a chip). A
   window of the app moved over the strip marks where its tabs would go
   (`strip::window_over`, from app_server's `WindowOver`: the strip is
@@ -3152,8 +3180,15 @@ it.
   would be ⌘S). Agents read a Splitter (its width, or "hidden").
   Telegram's chat list (View ▸ Hide Chat List).
 - `widgets::TabView::new(id, labels, selected).on_select(f)` with the
-  chosen tab's content as its child (BTabView: slanted folder tabs over
-  a raised panel, the content inside `WINDOW_INSET`; `Tab`s to agents).
+  chosen tab's content as its child (BTabView: the tab strip's folder
+  tabs, so there is one tab look, over a raised panel: outlined, lit
+  along its top and left and shaded along its bottom and right; the
+  chosen tab in the panel's colour and open into it, its name in bold,
+  the others a shade off it; the content inside `WINDOW_INSET`; `Tab`s
+  to agents). Each tab is as wide as its name in bold and its room;
+  where they don't all fit the room either side shrinks first, then the
+  widest are cut back (`strip::fit_widths`), short names keeping their
+  width.
   Next and Previous Tab (`app::tab_step`: ⌃Tab, ⌃⇧Tab, ⌃Page Down and
   ⌃Page Up) step the window's first tab view from wherever the keyboard
   is, unless what has it stops them (a screen being controlled).
@@ -12293,7 +12328,7 @@ tab). Make one with Tabs ▸ Group ▸ New Group… or a tab's Add to Group ▸
 New Group…; put a tab in one with Add to Group ▸ (name), take it out
 with Remove from Group, or drag it: among a group's tabs it joins,
 past its group's edge it leaves (the kit's `dropped_into`). A new tab
-from a grouped one joins its group. Drag a group's chip to move the
+from a grouped one joins its group. Drag a group's label to move the
 whole group; click it for its menu (Rename Group…, New Tab in Group,
 Save Group, Move Group to New Window, Move Group to Window ▸ (the kit's
 Move to Window; the group, still a group, at the end of that window's
@@ -12347,11 +12382,11 @@ no group a row of their own, where the first of them is:
 `TermWin::tile_rows`, `tile_in_rows`), and one group (or none) alone in
 a grid (`tile` picks the columns that keep panes nearest a terminal's
 shape, the last row spread across); each pane's shell sized to its pane.
-In it a group's chip in the strip chooses groups (`TabStrip::
-group_selection`, lit as Deskbar lights the workspace showing; agents
-read it as `selected`): at first every group is tiled and every chip
-lit (`tile_group_shown`); clicking one takes that group out (its chip
-outlined) and clicking it again brings it back (`tile_groups_toggled`:
+In it a group's label in the strip chooses groups (`TabStrip::
+group_selection`; agents read it as `selected`): at first every group
+is tiled and every label filled with its colour (`tile_group_shown`);
+clicking one takes that group out (its label on the panel, its name in
+its colour) and clicking it again brings it back (`tile_groups_toggled`:
 the last group tiled stays, and every group chosen is the same as
 none). A tab's menu has Hide When Tiled (Show When Tiled once hidden;
 the Tabs menu has it for the tab showing): its tab stays in the strip,
@@ -12363,6 +12398,9 @@ window, without a head). It's kept with the window (`hidden_tiled`). The
 right button gives the group's menu, as a click does outside Tile All
 Tabs. The chosen groups go by name (`tile_groups`, kept with the
 window across restarts), and the tab typed into stays one that shows.
+Tiled, the strip's chosen tab is closed, in the colours of a pane's
+head (`TabStrip::closed`): what's under the strip is every tab's pane,
+not its own page.
 With several rows, the line between two rows and the heads of the row
 under it drag the rows' heights (the pointer a row-resize one near the
 line; a click there still picks the pane): the two rows grow and
@@ -12378,7 +12416,7 @@ GROUP" with its share as its value, and drag it;
 each pane has a head (`pane_head_height`: a `STRIP_ROW` tall under a
 strip along the top; beside a side strip `STRIP_SIDE_HEAD`, the same,
 the strip's first row centred on it) with its icon and title on the
-strip's quiet band, and at its right its group's chip as the strip
+strip's quiet band, and at its right its group's label as the strip
 draws it (`strip::chip`), so it's plain which pane is in which group
 without a line or a tint; its icon, title and chip are centred on the
 band above the line under it (`snap_centred`, as near as the device

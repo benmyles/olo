@@ -748,7 +748,7 @@ bounds, name)` an icon at one texel a device pixel.
 | `BBox` | `BBox::new("Title").child(..)` | `.action("Reset", ..)` |
 | `BScrollView`, `BScrollBar` | `ScrollView::new(&handle).child(..)` | `.horizontal(true)`, `.auto_hide(true)` |
 | `BListView`, `BColumnListView` | `ColumnListView::new(cx, id, &model, columns, rows, cell)` | virtual; sort, type-select, drag, context menus |
-| `BTabView` | `TabView::new(id, tabs, chosen).on_select(..).child(..)` | Terminal's strip is `TabStrip` |
+| `BTabView` | `TabView::new(id, tabs, chosen).on_select(..).child(..)` | folder tabs, as `TabStrip`'s (document tabs: Terminal's, with groups led by labels in the look's `Palette::group_colors`) |
 | `BMenuBar`, `BMenu`, `BPopUpMenu` | `MenuBar::new(cx, menus)`, `Menu::new("File").item(label, command).key("s")`, `menu::context_menu` | commands arrive in `View::command` |
 | `BAlert` | `open_alert(cx, title, icon, message, buttons, on_choose)` | the last button is Return's, the first Escape's |
 | `BFilePanel` | `file_panel::show(..)` | open, save, a folder |

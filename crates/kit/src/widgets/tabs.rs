@@ -1,6 +1,8 @@
-//! BTabView: BeOS folder tabs, slanted at their sides, over a raised
-//! panel holding what the chosen tab shows; the chosen tab is in front,
-//! open into the panel, its name in bold. A click on a tab chooses it,
+//! BTabView: folder tabs over a raised panel holding what the chosen tab
+//! shows, drawn as the tab strip's are (one tab look in Olo): BeOS's
+//! slanted in Classic, Mac OS 9's rounded in Platinum; the others a shade
+//! off the panel, the chosen one in its colour and open into it, its name
+//! in bold. A click on a tab chooses it,
 //! and so do Next and Previous Tab (⌃Tab and ⌃⇧Tab, ⌃Page Down and
 //! ⌃Page Up) wherever the keyboard is in the window, unless what has it
 //! takes them (a screen being controlled): the first tab view in the
@@ -13,18 +15,18 @@
 use std::rc::Rc;
 
 use olo_interface::{
-    Bounds, Element, FontWeight, InteractiveElement as _, IntoElement, MouseButton, Painter, ParentElement, PathBuilder, Pixels, SharedString, Styled as _, WindowCx, agent, canvas, div, point, px,
-    size,
+    Bounds, Element, FontWeight, InteractiveElement as _, IntoElement, MouseButton, Painter, ParentElement, Pixels, SharedString, Styled as _, WindowCx, agent, canvas, div, point, px,
 };
 use olo_kit_base::metrics as m;
 use smallvec::SmallVec;
 
+use super::strip::{self, Folder, Shape};
 use crate::{style, theme};
 
 /// The tabs' row.
 pub const TAB_HEIGHT: f32 = 22.0;
-/// How far a tab's side slants across.
-const SLANT: f32 = 6.0;
+/// How far in from the panel's left the first tab is.
+const FIRST: f32 = 8.0;
 
 type SelectFn = Rc<dyn Fn(&usize, &mut WindowCx)>;
 
@@ -64,17 +66,28 @@ impl ParentElement for TabView {
     }
 }
 
-/// Each tab's place along the top of `outer`: tabs overlap by their
-/// slants, the first [`SLANT`] in.
+/// Each tab's place along the top of `outer`, the first [`FIRST`] in
+/// and the look's gap between: as wide as its name in bold and its room
+/// either side; where they don't all fit, with less room (to the least),
+/// then the widest cut back, their names cut short
+/// ([`strip::fit_widths`]).
 fn places(scale: f32, outer: Bounds<Pixels>, tabs: &[SharedString]) -> Vec<Bounds<Pixels>> {
+    let sh = Shape::now();
+    let (pad, least) = sh.name_pads();
     let bold = style::ui_font(FontWeight::BOLD);
-    let snap = |v: Pixels| px((f32::from(v) * scale).round() / scale);
-    let mut x = outer.left() + px(SLANT);
-    tabs.iter()
-        .map(|label| {
-            let w = (f32::from(style::text_width(label.clone(), style::PLAIN_SIZE, bold.clone())) + 2.0 * SLANT + 18.0).round();
-            let r = Bounds::from_corners(point(snap(x), snap(outer.top())), point(snap(x + px(w)), snap(outer.top() + px(TAB_HEIGHT))));
-            x += px(w - SLANT + 1.0);
+    let names: Vec<f32> = tabs.iter().map(|t| f32::from(style::text_width(t.clone(), style::PLAIN_SIZE, bold.clone()))).collect();
+    let n = names.len().max(1) as f32;
+    let room = f32::from(outer.size.width) - 2.0 * FIRST - sh.gap * (n - 1.0);
+    let pad = ((room - names.iter().sum::<f32>()) / (2.0 * n)).clamp(least, pad);
+    let natural: Vec<f32> = names.iter().map(|w| w + 2.0 * pad).collect();
+    let widths = strip::fit_widths(&natural, room, 2.0 * least + 24.0);
+    let snap = |v: f32| px((v * scale).round() / scale);
+    let (mut x, top) = (f32::from(outer.left()) + FIRST, f32::from(outer.top()));
+    widths
+        .iter()
+        .map(|&w| {
+            let r = Bounds::from_corners(point(snap(x), snap(top)), point(snap(x + w), snap(top + TAB_HEIGHT)));
+            x += w + sh.gap;
             r
         })
         .collect()
@@ -92,8 +105,7 @@ impl IntoElement for TabView {
             .inset_0()
             .on_mouse_down(MouseButton::Left, move |e, cx| {
                 let at = places(cx.scale_factor(), cx.listener_bounds(), &pressed);
-                // (The chosen tab is in front where they overlap.)
-                let hit = if at.get(selected).is_some_and(|r| r.contains(&e.position)) { Some(selected) } else { at.iter().position(|r| r.contains(&e.position)) };
+                let hit = at.iter().position(|r| r.contains(&e.position));
                 if let (Some(i), Some(f)) = (hit, &clicked)
                     && i != selected
                 {
@@ -134,84 +146,62 @@ impl IntoElement for TabView {
     }
 }
 
-/// The tabs and the panel under them.
+/// The tabs and the panel under them, as a tab strip's folder tabs
+/// ([`strip`](super::strip)'s, Ben's "folder tabs" look): the others a
+/// shade off the panel and behind its edge, the chosen one in the
+/// panel's colour and open into it; the panel outlined, lit along its
+/// top and left and shaded along its bottom and right.
 fn paint_face(g: &mut Painter, outer: Bounds<Pixels>, tabs: &[SharedString], selected: usize) {
     let p = theme::palette();
-    let bg = p.panel_background;
+    let sh = Shape::now();
+    let least = sh.name_pads().1;
+    let f = Folder::of(Some((style::c(p.panel_background), style::c(p.panel_text))));
+    // (Raised, its light must read at night too: a strip's chosen tab is
+    // lit 8% toward white there, the panel 17%; Astra, 2026-11-14.)
+    let lit = if p.mode == olo_theme::ThemeMode::Dark { style::c(olo_theme::mix(p.panel_background, olo_theme::WHITE, 0.17)) } else { f.front_light };
     let s = g.scale_factor();
-    let dev = px(1.0 / s);
-    let panel = Bounds::from_corners(point(outer.left(), outer.top() + px(TAB_HEIGHT - 1.0)), outer.bottom_right());
-    let panel = style::snap(g, panel);
-    // The panel: raised, a softer second line inside the dark one.
-    style::bevel(g, panel, style::c(p.shine), style::shade(&p, bg, 1.35));
+    let (hair, bev) = strip::lines(g);
+    let at = |v: f32| px(v / s);
+    let rect = |g: &mut Painter, (l, t, r, b): (f32, f32, f32, f32), c| {
+        if r > l && b > t {
+            style::fill_rect(g, Bounds::from_corners(point(at(l), at(t)), point(at(r), at(b))), c);
+        }
+    };
+    let rects = places(s, outer, tabs);
+    // (The panel's edge: its outline's row, on a device pixel.)
+    let y0 = strip::dev(g, outer.top() + px(TAB_HEIGHT));
+    let (l, rr, b) = (strip::dev(g, outer.left()), strip::dev(g, outer.right()), strip::dev(g, outer.bottom()));
+    // (A tab's foot, so a folder, a device pixel past it, ends at `y`.)
+    let foot = |r: &Bounds<Pixels>, y: f32| Bounds::from_corners(r.origin, point(r.right(), at(y - 1.0)));
+    for (_, r) in rects.iter().enumerate().filter(|&(i, _)| i != selected) {
+        strip::folder(g, foot(r, y0 + hair), f.behind, f.light, f.shadow, f.soft, sh);
+    }
+    rect(g, (l, y0, rr, b), f.outline);
+    rect(g, (l + hair, y0 + hair, rr - hair, b - hair), f.front_shadow);
+    rect(g, (l + hair, y0 + hair, rr - hair - bev, b - hair - bev), lit);
+    rect(g, (l + hair + bev, y0 + hair + bev, rr - hair - bev, b - hair - bev), f.front);
+    if let Some(r) = rects.get(selected) {
+        strip::folder(g, foot(r, y0 + hair + bev), f.front, lit, f.front_shadow, f.outline, sh);
+        // The panel's light runs into the tab's, either side.
+        let (tl, tr) = (strip::dev(g, r.left()), strip::dev(g, r.right()));
+        rect(g, (l + hair, y0 + hair, tl + hair, y0 + hair + bev), lit);
+        rect(g, (tr - hair, y0 + hair, rr - hair - bev, y0 + hair + bev), lit);
+    }
     // (What's in it must fit inside its inset.)
     crate::review::pane(
         g,
         Bounds::from_corners(point(outer.left() + px(m::WINDOW_INSET), outer.top() + px(TAB_HEIGHT)), point(outer.right() - px(m::WINDOW_INSET), outer.bottom() - px(m::WINDOW_INSET))),
     );
-    let in_panel = style::inset(g, panel, 1.0);
-    style::vline_left_of(g, in_panel.right(), in_panel.top(), in_panel.bottom(), style::shade(&p, bg, 1.12));
-    style::hline_above(g, in_panel.left(), in_panel.right(), in_panel.bottom(), style::shade(&p, bg, 1.12));
-    let (plain, bold) = (style::ui_font(FontWeight::NORMAL), style::ui_font(FontWeight::BOLD));
     // (The tabs go where their names' lengths put them: lined up with
     // what's under them only by chance.)
     crate::review::own_grid(g, Bounds::from_corners(outer.origin, point(outer.right(), outer.top() + px(TAB_HEIGHT))));
-    let rects = places(s, outer, tabs);
-    let draw = |g: &mut Painter, i: usize, r: Bounds<Pixels>| {
+    // Every name centred in its tab's face, the chosen one's in bold.
+    let cy = (outer.top() + at(hair + bev) + at(y0)) / 2.0;
+    for (i, r) in rects.iter().enumerate() {
         let on = i == selected;
-        let top = if on { r.top() } else { style::snap_coord(g, r.top() + px(2.0)) };
-        let bottom = if on { r.bottom() } else { style::snap_coord(g, r.bottom() - px(1.0)) };
-        let slant = style::snap_coord(g, px(SLANT));
-        let pts = [point(r.left(), bottom), point(r.left() + slant, top), point(r.right() - slant, top), point(r.right(), bottom)];
-        let fill = if on { style::c(bg) } else { style::shade(&p, bg, 1.07) };
-        let mut path = PathBuilder::fill();
-        path.move_to(pts[0]);
-        for pt in &pts[1..] {
-            path.line_to(*pt);
-        }
-        path.close();
-        if let Ok(path) = path.build() {
-            g.paint_path(path, fill);
-        }
-        // Lit up the left side and along the top, shaded down the right:
-        // lines a device pixel wide, inside the face.
-        let half = dev / 2.0;
-        g.paint_segment(point(pts[0].x + half, pts[0].y), point(pts[1].x + half, pts[1].y + half), dev, false, style::c(p.shine));
-        style::hline(g, pts[1].x, pts[2].x, top, style::c(p.shine));
-        g.paint_segment(point(pts[2].x - half, pts[2].y + half), point(pts[3].x - half, pts[3].y), dev, false, style::shade(&p, bg, 1.4));
-        if on {
-            // Open into the panel.
-            style::hline(g, pts[0].x + dev, pts[3].x - dev, panel.top(), style::c(bg));
-        }
-        // Every name on one line, the chosen tab's too: centred in an
-        // unchosen tab's face.
-        let cy = (r.top() + px(2.0) + r.bottom() - px(1.0)) / 2.0;
-        let font = if on { bold.clone() } else { plain.clone() };
         let label = tabs.get(i).cloned().unwrap_or_default();
-        style::label(g, r.center().x, cy, style::Align::Center, label.clone(), style::PLAIN_SIZE, font, style::c(p.panel_text));
-        // Agents get where a click picks it: the chosen tab over its
-        // neighbours, of two others the left one (the press), so no two
-        // overlap.
-        let mut take = r;
-        if !on && i > 0 {
-            let left = rects[i - 1].right().min(r.right());
-            take = Bounds::from_corners(point(left.max(r.left()), r.top()), r.bottom_right());
-        }
-        if !on && i + 1 == selected {
-            let right = rects[selected].left().max(take.left());
-            take = Bounds::from_corners(take.origin, point(right.min(take.right()), r.bottom()));
-        }
-        g.agent(agent::Node { role: "Tab", name: Some(label), bounds: take, enabled: true, clickable: true, selected: Some(on), ..Default::default() });
-    };
-    // The others first, right to left so left ones overlap; the chosen
-    // one over them.
-    for (i, r) in rects.iter().enumerate().rev() {
-        if i != selected {
-            draw(g, i, *r);
-        }
+        let (font, ink) = if on { (style::ui_font(FontWeight::BOLD), f.front_ink) } else { (style::ui_font(FontWeight::NORMAL), f.ink) };
+        style::label_fit(g, r.center().x, cy, style::Align::Center, label.clone(), style::PLAIN_SIZE, font, ink, r.size.width - px(2.0 * least));
+        g.agent(agent::Node { role: "Tab", name: Some(label), bounds: *r, enabled: true, clickable: true, selected: Some(on), ..Default::default() });
     }
-    if let Some(r) = rects.get(selected) {
-        draw(g, selected, *r);
-    }
-    let _ = size(px(0.), px(0.));
 }
