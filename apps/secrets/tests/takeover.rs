@@ -1,9 +1,13 @@
-//! olo-secrets taking over from a real GNOME Keyring and handing back,
-//! with libsecret's own client (`secret-tool`, an encrypted session as
-//! Chrome's) asking; GNOME Keyring's two locked keyrings opened with one
-//! password; a program asking while olo-secrets is away waiting for it
-//! (`--activated`), GNOME Keyring never started. Needs a private bus with its own GNOME Keyring
-//! (login keyring unlocked with "test"), never the session's:
+//! olo-secrets taking over from a real GNOME Keyring that something else
+//! started: its items (two keyrings of the one password) read from its
+//! files natively with the password asked once, GNOME Keyring asked to
+//! quit, the name taken; then libsecret's own client (`secret-tool`, an
+//! encrypted session as Chrome's) asking; started again, nothing asked;
+//! a program asking while olo-secrets is away waiting for it
+//! (`--activated`), GNOME Keyring never started. Nothing is handed back
+//! to GNOME Keyring: Olo needs nothing of GNOME's. Needs a private bus
+//! with its own GNOME Keyring (login keyring unlocked with "test"), never
+//! the session's:
 //!
 //!   eval "$(tools/dev/private-keyring start | grep ^export)"
 //!   KEYRING_TEST_BUS=$DBUS_SESSION_BUS_ADDRESS cargo test -p olo-secrets --test takeover -- --ignored --nocapture
@@ -11,7 +15,7 @@
 
 use std::{
     io::{BufRead as _, BufReader, Write as _},
-    process::{Child, ChildStdin, Command, Stdio},
+    process::{Child, Command, Stdio},
     sync::{Arc, mpsc},
     time::{Duration, Instant},
 };
@@ -63,7 +67,6 @@ fn keyring_daemons() -> Vec<u32> {
 
 struct Secrets {
     child: Child,
-    stdin: ChildStdin,
     lines: mpsc::Receiver<String>,
 }
 
@@ -80,15 +83,13 @@ impl Secrets {
             .env("HOME", format!("{DIR}/home"))
             .env("XDG_RUNTIME_DIR", format!("{DIR}/run"))
             .env("XDG_CONFIG_HOME", scratch.join("config"))
-            .env("OLO_SECRETS_SERVE", "stdin")
+            .env("OLO_SECRETS_SERVE", "1")
             .env("OLO_SECRETS_TEST_PASSWORD", "test")
             .env("OLO_SECRETS_STORE", scratch.join("secrets.store"))
             .env("RUST_LOG", "olo_secrets=debug,info")
-            .stdin(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .expect("olo-secrets");
-        let stdin = child.stdin.take().unwrap();
         let err = child.stderr.take().unwrap();
         let (tx, lines) = mpsc::channel();
         std::thread::spawn(move || {
@@ -97,11 +98,7 @@ impl Secrets {
                 let _ = tx.send(l);
             }
         });
-        Secrets { child, stdin, lines }
-    }
-
-    fn say(&mut self, what: &str) {
-        writeln!(self.stdin, "{what}").unwrap();
+        Secrets { child, lines }
     }
 
     /// Wait for a line saying `what`.
@@ -126,9 +123,15 @@ impl Drop for Secrets {
     }
 }
 
+fn join_new_session_keyring() {
+    // SAFETY: KEYCTL_JOIN_SESSION_KEYRING with no name: a new anonymous one
+    // (what olo-secrets keeps for the login never reaches the person's).
+    assert!(unsafe { libc::syscall(libc::SYS_keyctl, 1 as libc::c_long, std::ptr::null::<libc::c_char>()) } > 0);
+}
+
 #[test]
 #[ignore]
-fn takes_over_and_hands_back() {
+fn takes_over_from_a_running_gnome_keyring() {
     let bus = std::env::var("KEYRING_TEST_BUS").expect("KEYRING_TEST_BUS (see the top)");
     assert!(bus.contains("/olo-dev/"), "not a private test bus: {bus}");
     // SAFETY: set before any thread reads them.
@@ -137,10 +140,11 @@ fn takes_over_and_hands_back() {
         std::env::set_var("XDG_RUNTIME_DIR", format!("{DIR}/run"));
         std::env::remove_var("WAYLAND_DISPLAY");
     }
+    join_new_session_keyring();
     let scratch = std::path::PathBuf::from(format!("/var/tmp/olo-secrets-test-{}", std::process::id()));
     std::fs::create_dir_all(&scratch).unwrap();
-    // A prompter answering "test" (the private login keyring's password,
-    // and the account's? no: GNOME Keyring's own unlock asks here).
+    // A prompter answering "test" (the private keyrings' password, and
+    // the test's stand-in for the account's).
     let (tx, rx) = mpsc::channel();
     let prompter = Arc::new(Prompter::serve(move |e| tx.send(e).unwrap()).unwrap());
     {
@@ -156,22 +160,30 @@ fn takes_over_and_hands_back() {
         });
     }
 
-    // Items in GNOME Keyring first, as Chrome and a program of Olo's put them.
+    // Items in GNOME Keyring first, as Chrome and a program of Olo's put
+    // them, and in a second keyring of the same password (as a client
+    // once made beside `login`).
     assert!(tool(&bus, &["store", "--label=Chrome Safe Storage", "application", "chrome"], Some("chrome-key")).0);
     assert!(tool(&bus, &["store", "--label=Old", "application", "olo-test", "kind", "old"], Some("old-value")).0);
+    let second = make_keyring(&bus, "Login");
+    store_in(&bus, &second, "Second", &[("application", "olo-test"), ("kind", "second")], b"second-value");
     assert_eq!(keyring_daemons().len(), 1, "one private GNOME Keyring");
 
-    let mut s = Secrets::start(&bus, &scratch);
-    s.say("on");
+    // Taken over: the password asked once (a new store, no key from PAM),
+    // GNOME Keyring's three read from its files, it asked to quit.
+    // (GNOME Keyring asked for the second keyring's password as it made it.)
+    let before = PROMPTS.load(std::sync::atomic::Ordering::SeqCst);
+    let s = Secrets::start(&bus, &scratch);
     let said = s.wait_for("answering for the keyring");
-    // (Chrome's, the old one, and the store's own key.)
     assert!(said.contains("3 copied"), "{said}");
-    // GNOME Keyring is gone; Olo answers.
+    assert_eq!(PROMPTS.load(std::sync::atomic::Ordering::SeqCst), before + 1, "asked once");
+    assert!(scratch.join("secrets.login").exists(), "sealed by the password");
     let end = Instant::now() + Duration::from_secs(5);
     while !keyring_daemons().is_empty() && Instant::now() < end {
         std::thread::sleep(Duration::from_millis(50));
     }
     assert!(keyring_daemons().is_empty(), "GNOME Keyring quit");
+    assert_eq!(tool(&bus, &["lookup", "application", "olo-test", "kind", "second"], None).1, "second-value");
 
     // libsecret's encrypted sessions, many times (a shared secret with a
     // zero first byte comes about once in 256).
@@ -227,61 +239,16 @@ fn takes_over_and_hands_back() {
     assert_eq!(status["serving"], true);
     assert!(status["programs"].as_array().unwrap().iter().any(|p| p == "chrome"), "{status}");
 
-    // Handed back: the new one and gh's written into GNOME Keyring (started again,
-    // unlocked through the prompter), the deleted one deleted there.
-    s.say("off");
-    s.wait_for("handed back to GNOME Keyring (2 written, 1 deleted");
-    assert_eq!(keyring_daemons().len(), 1, "GNOME Keyring again");
-    assert_eq!(tool(&bus, &["lookup", "application", "olo-test", "kind", "new"], None).1, "newer");
-    assert!(!tool(&bus, &["lookup", "application", "olo-test", "kind", "old"], None).0);
-    assert_eq!(tool(&bus, &["lookup", "application", "chrome"], None).1, "chrome-key");
-
-    // And over again: only what changed in GNOME Keyring since comes.
-    assert!(tool(&bus, &["store", "--label=Chrome Safe Storage", "application", "chrome"], Some("chrome-key-2")).0);
-    s.say("on");
-    let said = s.wait_for("answering for the keyring");
-    assert!(said.contains("3 copied"), "the changed one and the two handed back: {said}");
-    assert_eq!(tool(&bus, &["lookup", "application", "chrome"], None).1, "chrome-key-2");
-
-    // Started again (an upgrade): no GNOME Keyring to ask, nothing asked.
+    // Started again (an upgrade): the key kept for the login, nothing
+    // asked, nothing copied, no GNOME Keyring.
     drop(s);
     let prompts = PROMPTS.load(std::sync::atomic::Ordering::SeqCst);
-    let mut s = Secrets::start(&bus, &scratch);
-    s.say("on");
+    let s = Secrets::start(&bus, &scratch);
     let said = s.wait_for("answering for the keyring");
     assert!(said.contains("0 copied"), "{said}");
     assert!(keyring_daemons().is_empty());
-    assert_eq!(tool(&bus, &["lookup", "application", "chrome"], None).1, "chrome-key-2");
+    assert_eq!(tool(&bus, &["lookup", "application", "chrome"], None).1, "chrome-key");
     assert_eq!(PROMPTS.load(std::sync::atomic::Ordering::SeqCst), prompts, "nothing asked");
-    // Handed back (the key kept for the login forgotten).
-    s.say("off");
-    s.wait_for("handed back to GNOME Keyring");
-    drop(s);
-
-    // GNOME Keyring with a second keyring of the same password (as a
-    // client once made beside `login`), both locked: opened with the
-    // password asked once, not a prompt for each (Ben, 2026-11-14: "i'm
-    // being asked for my keyring password to unlock it twice").
-    let second = make_keyring(&bus, "Login");
-    store_in(&bus, &second, "Second", &[("application", "olo-test"), ("kind", "second")], b"second-value");
-    // (GNOME Keyring started again for the hand back has `login` locked
-    // already; the new one is locked here.)
-    for c in ["/org/freedesktop/secrets/collection/login", second.as_str()] {
-        let _ = tool(&bus, &["lock", &format!("--collection={c}")], None);
-        let conn = zbus::blocking::Connection::session().unwrap();
-        let col = zbus::blocking::Proxy::new(&conn, "org.freedesktop.secrets", c, "org.freedesktop.Secret.Collection").unwrap();
-        assert!(col.get_property::<bool>("Locked").unwrap(), "{c} locked");
-    }
-    let fresh = scratch.join("fresh");
-    std::fs::create_dir_all(&fresh).unwrap();
-    let keyfile = [("OLO_SECRETS_KEYFILE", fresh.join("key").display().to_string())];
-    let prompts = PROMPTS.load(std::sync::atomic::Ordering::SeqCst);
-    let mut s = Secrets::start_with(&bus, &fresh, &keyfile);
-    s.say("on");
-    s.wait_for("answering for the keyring");
-    assert_eq!(PROMPTS.load(std::sync::atomic::Ordering::SeqCst), prompts + 1, "both keyrings opened with one password");
-    assert_eq!(tool(&bus, &["lookup", "application", "olo-test", "kind", "second"], None).1, "second-value");
-    assert_eq!(tool(&bus, &["lookup", "application", "chrome"], None).1, "chrome-key-2");
 
     // Away (as it becomes a new version), a program asking waits for it:
     // D-Bus starts `olo-secrets --activated` (olo-session describes it in
@@ -303,19 +270,15 @@ fn takes_over_and_hands_back() {
     }
     assert!(asked.recv_timeout(Duration::from_secs(2)).is_err(), "the lookup waits while nobody answers");
     assert!(keyring_daemons().is_empty(), "GNOME Keyring wasn't started for it");
-    let mut s = Secrets::start_with(&bus, &fresh, &keyfile);
-    s.say("on");
+    let s = Secrets::start(&bus, &scratch);
     s.wait_for("answering for the keyring");
     let (ok, out) = asked.recv_timeout(Duration::from_secs(10)).expect("the lookup answered once olo-secrets did");
-    assert!(ok && out == "chrome-key-2", "the waiting lookup: {out}");
+    assert!(ok && out == "chrome-key", "the waiting lookup: {out}");
     assert!(keyring_daemons().is_empty(), "never GNOME Keyring");
     assert_eq!(PROMPTS.load(std::sync::atomic::Ordering::SeqCst), prompts, "nothing asked");
 
-    // Handed back at the end, D-Bus starting GNOME Keyring again.
-    std::fs::remove_file(services.join("org.freedesktop.secrets.service")).unwrap();
-    conn.call_method(Some("org.freedesktop.DBus"), "/org/freedesktop/DBus", Some("org.freedesktop.DBus"), "ReloadConfig", &()).unwrap();
-    s.say("off");
-    s.wait_for("handed back to GNOME Keyring");
+    let services = std::path::PathBuf::from(format!("{DIR}/run/dbus-1/services"));
+    let _ = std::fs::remove_file(services.join("org.freedesktop.secrets.service"));
     drop(s);
     let _ = std::fs::remove_dir_all(&scratch);
 }

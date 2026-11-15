@@ -1414,23 +1414,24 @@ something nobody here has is in "Blocked", with what it waits for.
 
 - **Olo independent of GNOME, 100%** (Ben, 2026-11-15: "we should be
   100% independent of gnome and not rely on any of its services etc so
-  please also make sure that is done after this"). Olo's keyring needs
-  nothing of GNOME's now (its key sealed by the login password; GNOME
-  Keyring's files read natively, once, to bring secrets over). Still to
-  go through, every one: what still starts or hands back to GNOME
-  Keyring (olo-secrets' `--activated` becoming it when Olo's keyring is
-  off or absent, `hand_back`, Preferences ▸ Security's switch), the
-  keyring prompter's gcr protocol (serving it for programs is fine;
-  relying on it isn't), GTK/GNOME settings Olo writes for other
-  programs (dconf: Olo's own `apps/dconf`, so check nothing needs
-  GNOME's daemon), `org.gnome.SessionManager` and other GNOME names Olo
-  serves or calls, portals (no xdg-desktop-portal-gnome/-gtk backends
-  needed), GVfs, the login screen's and Setup's GNOME packages, and
-  Doctor's checks that name GNOME. Serving GNOME's interfaces so GNOME
-  and GTK programs work is fine; needing a GNOME program or service
-  for anything of Olo's isn't. Each found: replaced natively, its
-  dependency gone from Setup's package list, tested with GNOME's
-  packages absent (a VM or a container without them).
+  please also make sure that is done after this"). Done, in an Olo
+  session: nothing of GNOME's runs (checked on Ben's session: no GNOME
+  Keyring, dconf-service, gvfs, GNOME portal backends or settings
+  daemons), and nothing of Olo's starts or needs one. Olo's keyring
+  always answers: the Preferences switch that handed programs' secrets
+  back to GNOME Keyring is gone, the stand-in never starts it, the
+  session no longer finishes starting one another login screen's PAM
+  started, its items come over from its files natively, and Doctor no
+  longer offers GNOME Keyring's PAM module and flags any GNOME Keyring
+  running in an Olo session. Already Olo's own: dconf (olo-dconf),
+  every portal interface (olo-portal, olo-secrets; none to GNOME's or
+  GTK's backends), GIO without gvfs. What Olo still speaks of GNOME's is
+  serving it for GNOME and GTK programs (`org.gnome.desktop.interface`
+  settings, `org.gnome.SessionManager`'s inhibit, gcr's prompter
+  protocol, `Olo:GNOME` in `XDG_CURRENT_DESKTOP` for Qt). *Left:* trying
+  Setup on a Fedora without GNOME's packages (a VM or container: Olo
+  Setup's package list and the login screen's), to show none is needed
+  to install or run Olo.
 
 - **Weather: a Deskbar widget, customizable and beautiful** (Ben,
   2026-11-15: "the weather app should make available a deskbar widget

@@ -1,6 +1,6 @@
 //! Never locked in silence (Ben, 2026-11-15: "it should never just
 //! silently fail like this something should tell me that it needs
-//! unlocking and let me do it"). While Olo's keyring is on but locked
+//! unlocking and let me do it"). While Olo's keyring is locked
 //! (the password not given, or something went wrong opening it), a
 //! notification says so, with Unlock (shown again each time it stays
 //! locked), until it's open. And anyone can ask
@@ -35,8 +35,6 @@ use zbus::zvariant::Value;
 
 /// What olo-secrets' loop is told.
 pub enum Msg {
-    /// Olo's keyring turned on or off (Preferences ▸ Security).
-    Wanted(bool),
     /// Open it, if it's locked; whether it's open is sent on `reply`.
     Unlock { asked_by_person: bool, reply: Option<mpsc::Sender<bool>> },
 }

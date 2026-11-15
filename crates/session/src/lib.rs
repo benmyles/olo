@@ -29,7 +29,6 @@
 mod autostart;
 mod graphical;
 mod keyd;
-mod keyring;
 mod own_bus;
 mod skills;
 mod upgrade;
@@ -63,8 +62,7 @@ const SHELL: &[&[&str]] = &[&["olo-deskbar"], &["olo-tracker", "--desktop"]];
 /// Performance) looks after the person's own processes; Olo Doctor tells
 /// of problems at login and of the Wi-Fi healer's resets; the AirPods
 /// service talks to the computer's own Bluetooth; olo-secrets answers
-/// for the login keyring (when Preferences ▸ Security says so) in GNOME
-/// Keyring's place, which PAM started for this login; Terminal's tab
+/// for the login keyring (nothing of GNOME's); Terminal's tab
 /// title service for coding agents listens on another loopback port;
 /// DiskBackup backs up this computer's disk (only the logged-in session's).
 const REAL_SHELL: &[&[&str]] = &[
@@ -432,7 +430,9 @@ impl Session {
         s.say_real();
         s.start_server();
         if real {
-            keyring::start();
+            // (Nothing of GNOME Keyring's is finished starting here, if
+            // another login screen's PAM started it: olo-secrets answers,
+            // asks it to quit and reads its files natively.)
             export_environment();
             keyd::pass_through();
             skills::start();

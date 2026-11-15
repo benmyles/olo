@@ -1810,18 +1810,14 @@ pub struct PasswordsSecurity {
     /// keys in it sign for ssh, git and the rest, each program's first
     /// use allowed by the person. On by default.
     pub ssh_agent: bool,
-    /// Olo keeps programs' secrets (Chrome's and Slack's keys, Wi-Fi
-    /// passwords, …): olo-secrets answers the Secret Service
-    /// (`org.freedesktop.secrets`) in GNOME Keyring's place, its items
-    /// copied over first and changes handed back when this is turned
-    /// off. On by default (Olo needs nothing of GNOME's: the login
-    /// password opens Olo's keyring, `pam_olo_keyring`).
-    pub secret_service: bool,
+    // (Programs' secrets: always Olo's now, olo-secrets, nothing of
+    // GNOME's; the switch that once handed them back to GNOME Keyring,
+    // `secret_service`, is gone, and settings files that have it load.)
 }
 
 impl Default for PasswordsSecurity {
     fn default() -> Self {
-        PasswordsSecurity { auto_sync: true, lock_minutes: 10, lock_with_screen: true, clear_seconds: 90, op_cli: true, ssh_agent: true, secret_service: true }
+        PasswordsSecurity { auto_sync: true, lock_minutes: 10, lock_with_screen: true, clear_seconds: 90, op_cli: true, ssh_agent: true }
     }
 }
 

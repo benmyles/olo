@@ -1,39 +1,35 @@
 //! olo-secrets: Olo's own Secret Service (`org.freedesktop.secrets`), so
 //! programs' secrets (Chrome's and Slack's "Safe Storage" keys, Wi-Fi
-//! passwords, Olo's own keys) live in Olo's store rather than GNOME
-//! Keyring's. On unless Preferences ▸ Security turns it off
-//! (`security.passwords.secret_service`); olo-session starts it at login
-//! either way, and it does nothing while it's off. It serves the Secret
-//! portal too (`service.rs`, `Portal`: a secret for each program).
+//! passwords, Olo's own keys) live in Olo's store. Always, in an Olo
+//! session: olo-session starts it at login, and nothing of GNOME's is
+//! started, used or handed back to (Ben, 2026-11-15: "we should be 100%
+//! independent of gnome and not rely on any of its services"). It serves
+//! the Secret portal too (`service.rs`, `Portal`: a secret for each
+//! program).
 //!
-//! Taking over, at login or when turned on: the store's key is opened
-//! with the login password (`key`: sealed by it, `login_key.rs`, and
-//! pam_olo_keyring hands olo-secrets the key the password gives at Olo's
-//! login screen; else GNOME Keyring's copy, where another login screen's
-//! PAM unlocked it, or the password asked for once), the store is
-//! opened, every item GNOME Keyring has that's new or changed since the
-//! last time is copied in (when it's running, or its keyrings changed
-//! since), olo-secrets waits in line for the bus name and asks GNOME
-//! Keyring to quit (it lets nobody replace it), and the name comes to
-//! olo-secrets the moment it's gone. Handing back, when turned off: the
-//! name given up, then what changed while Olo answered written into GNOME
-//! Keyring (D-Bus starts it again; it asks for the password to unlock),
-//! and what was deleted deleted there.
+//! Taking over, at login: the store's key is opened with the login
+//! password (`key`: sealed by it, `login_key.rs`, pam_olo_keyring handing
+//! olo-secrets the key the password gives at Olo's login screen; else the
+//! password asked for once), the store is opened, and with the password
+//! typed, every item of GNOME Keyring's files that's new or changed since
+//! the last time is copied in, read natively (`legacy.rs`). It asks for
+//! the bus name waiting in line; if a GNOME Keyring something else
+//! started holds it, it's asked to quit (it lets nobody replace it), and
+//! the name comes to olo-secrets the moment it's gone.
 //!
 //! What it's doing is in `$XDG_RUNTIME_DIR/olo-secrets.json` (`Status`),
-//! which Preferences shows and `olo-secrets --status` prints.
+//! which Preferences shows and `olo-secrets --status` prints. Locked, it
+//! says so and anyone can ask it to unlock (`locked.rs`).
 //!
 //! While nobody answers for the keyring (at login before olo-secrets
 //! has, as it becomes a new version), D-Bus starts `olo-secrets
 //! --activated` for it in an Olo session (`activated.rs`; olo-session
-//! names it so), which waits for this one rather than GNOME Keyring
-//! starting in its place and asking for its own password. Upgraded
-//! (olo-session's SIGURG), it becomes the new version in place once no
-//! password is being asked for, the store's key kept for the login in
-//! the kernel's keyring, so nothing is asked again.
+//! names it so), which waits for this one. Upgraded (olo-session's
+//! SIGURG), it becomes the new version in place once no password is
+//! being asked for, the store's key kept for the login in the kernel's
+//! keyring, so nothing is asked again.
 //!
-//! For tests: `OLO_SECRETS_SERVE=1` answers whatever the settings say
-//! (`stdin`: as the lines "on" and "off" say),
+//! For tests: `OLO_SECRETS_SERVE=1` answers outside an Olo session,
 //! `OLO_SECRETS_KEYFILE` keeps the store's key in a file, and
 //! `OLO_SECRETS_STORE` puts the store elsewhere.
 
@@ -445,33 +441,18 @@ fn take_over(status: &mut Status) -> Result<Serving, String> {
         seal_if_unsealed(&key);
     }
     let mut store = Store::open(&store_path(), key)?;
-    // GNOME Keyring's items copied in: read natively from its files with
-    // the login password, when it was typed (the move, or asked for) and
-    // they changed since the last copy (or were never copied); or from
-    // GNOME Keyring itself only when something else started it (another
-    // login screen's PAM) and it answers now, as it's then asked to quit.
-    // Nothing starts it: the bus would start olo-secrets --activated.
-    let running = gnome::owner(&conn).is_some();
-    if let Some(password) = typed.as_deref().filter(|_| !running && gnome::changed_since(store.data.imported_at)) {
+    // GNOME Keyring's items copied in, read natively from its files with
+    // the login password when it was typed (the move, or asked for) and
+    // they changed since the last copy (or were never copied). Nothing of
+    // GNOME's runs for it.
+    if let Some(password) = typed.as_deref().filter(|_| gnome::changed_since(store.data.imported_at)) {
         let (keyrings, unopened) = legacy::open_all(password);
         let found = keyrings.into_iter().flat_map(|k| k.items.into_iter().map(move |item| gnome::Found { collection: k.id.clone(), collection_label: k.label.clone(), item }));
         status.imported = import(&mut store, found.collect());
-        if unopened > 0 {
-            tracing::info!("secrets: {unopened} of GNOME Keyring's keyrings don't open with the login password; not copied");
+        if !unopened.is_empty() {
+            tracing::info!("secrets: GNOME Keyring's {} don't open with the login password; not copied", unopened.join(", "));
         }
-    } else if running {
-        let mut typed = typed;
-        // (Started again, nothing is asked: a locked collection waits for
-        // the next login. Else the password once for all of them: the one
-        // typed for Olo's store just now, if it was.)
-        let ask = if again { gnome::Ask::Never } else { gnome::Ask::Once(&mut typed) };
-        match gnome::read_all(&conn, ask) {
-            Ok((found, skipped)) => {
-                status.imported = import(&mut store, found);
-                status.skipped = skipped;
-            }
-            Err(e) => return Err(format!("reading GNOME Keyring: {e}")),
-        }
+        status.skipped = unopened;
     }
     // What earlier versions left, mended (an upgrade starts it again).
     let healed = store.heal();
@@ -510,84 +491,10 @@ fn take_over(status: &mut Status) -> Result<Serving, String> {
     Ok(Serving { conn, state })
 }
 
-/// Hand back to GNOME Keyring (see the top).
-fn hand_back(serving: Serving) -> Result<(usize, usize), String> {
-    let Serving { conn, state } = serving;
-    let _ = conn.release_name(gnome::NAME);
-    drop(conn);
-    let (items, deleted, since) = {
-        let s = state.store.lock().unwrap_or_else(|e| e.into_inner());
-        let items: Vec<(String, String, store::Item)> = s
-            .data
-            .collections
-            .iter()
-            .flat_map(|c| c.items.iter().filter(|i| s.data.changed.contains(&store::identity(&c.id, &i.label, &i.attributes))).map(|i| (c.id.clone(), c.label.clone(), i.clone())))
-            .collect();
-        (items, s.data.deleted.iter().cloned().collect::<Vec<_>>(), s.data.serving_since.unwrap_or(0))
-    };
-    let conn = zbus::blocking::Connection::session().map_err(|e| e.to_string())?;
-    let done = gnome::write(&conn, &items, &deleted).map_err(|e| format!("writing to GNOME Keyring: {e}"))?;
-    let mut s = state.store.lock().unwrap_or_else(|e| e.into_inner());
-    s.data.serving_since = None;
-    s.data.changed.clear();
-    s.data.deleted.clear();
-    s.save()?;
-    kernel::forget(&store_path());
-    tracing::info!("secrets: handed back to GNOME Keyring ({} written, {} deleted; Olo answered since {since})", done.0, done.1);
-    Ok(done)
-}
-
-/// Whether Olo should answer, now and as it changes: sent on `tx`.
-fn watch_setting(tx: mpsc::Sender<locked::Msg>) {
-    match std::env::var("OLO_SECRETS_SERVE").as_deref() {
-        Ok("1") => {
-            let _ = tx.send(locked::Msg::Wanted(true));
-            return;
-        }
-        // (Tests: "on" and "off" lines.)
-        Ok("stdin") => {
-            std::thread::spawn(move || {
-                for line in std::io::stdin().lines().map_while(Result::ok) {
-                    if tx.send(locked::Msg::Wanted(line.trim() == "on")).is_err() {
-                        return;
-                    }
-                }
-            });
-            return;
-        }
-        _ => {}
-    }
-    if olo_protocol::socket_path().is_none() {
-        let _ = tx.send(locked::Msg::Wanted(false));
-        return;
-    }
-    std::thread::Builder::new()
-        .name("settings".into())
-        .spawn(move || {
-            let wanted = |s: &olo_protocol::Settings| s.security.passwords.secret_service;
-            loop {
-                if let Ok(mut c) = olo_protocol::Client::connect()
-                    && let Ok(olo_protocol::Reply::Settings { settings }) = c.request(&olo_protocol::Request::GetSettings)
-                    && tx.send(locked::Msg::Wanted(wanted(&settings))).is_err()
-                {
-                    return;
-                }
-                if let Ok(client) = olo_protocol::Client::connect()
-                    && let Ok(events) = client.into_events_of(&[olo_protocol::EventKind::Settings])
-                {
-                    for event in events {
-                        if let Ok(olo_protocol::Event::SettingsChanged { settings }) = event
-                            && tx.send(locked::Msg::Wanted(wanted(&settings))).is_err()
-                        {
-                            return;
-                        }
-                    }
-                }
-                // (app_server restarting: asked again in a moment.)
-                std::thread::sleep(std::time::Duration::from_millis(500));
-            }
-        })
-        .ok();
+/// Whether to answer: in an Olo session (app_server's socket there),
+/// always; outside one only for a test (`OLO_SECRETS_SERVE=1`).
+fn wanted() -> bool {
+    std::env::var("OLO_SECRETS_SERVE").as_deref() == Ok("1") || olo_protocol::socket_path().is_some()
 }
 
 /// Sessions of callers that left the bus, closed.
@@ -630,34 +537,28 @@ fn main() -> std::process::ExitCode {
         eprintln!("usage: olo-secrets [--status | --activated]");
         return std::process::ExitCode::from(2);
     }
+    if !wanted() {
+        eprintln!("olo-secrets: not in an Olo session (OLO_SECRETS_SERVE=1 answers anyway, for a test)");
+        return std::process::ExitCode::SUCCESS;
+    }
     become_new_version_when_upgraded();
     let (tx, rx) = mpsc::channel();
-    watch_setting(tx.clone());
     locked::serve(tx.clone());
-    let mut note = locked::Note::new(tx);
+    let mut note = locked::Note::new(tx.clone());
     let mut serving: Option<Serving> = None;
-    let mut wanted = false;
     // When the person last said Not Now (a program's request doesn't
     // ask again for a while after).
     let mut not_now: Option<std::time::Instant> = None;
     let mut status = Status::default();
     write_status(&status);
+    // Taken over at once, and again when asked to unlock while locked (a
+    // program's request not within a while of a Not Now).
+    let _ = tx.send(locked::Msg::Unlock { asked_by_person: true, reply: None });
+    drop(tx);
     for msg in rx {
-        // Taken over when it's turned on, or asked to unlock while locked
-        // (a program's request not within a while of a Not Now); handed
-        // back when turned off. (The settings are sent again on any
-        // change: on again isn't asked again.)
-        let (take, give, reply) = match msg {
-            locked::Msg::Wanted(w) => {
-                let was = std::mem::replace(&mut wanted, w);
-                (w && !was && serving.is_none(), !w && serving.is_some(), None)
-            }
-            locked::Msg::Unlock { asked_by_person, reply } => {
-                let ask = asked_by_person || not_now.is_none_or(|t| t.elapsed() >= locked::QUIET_AFTER_NOT_NOW);
-                (wanted && serving.is_none() && ask, false, reply)
-            }
-        };
-        if take {
+        let locked::Msg::Unlock { asked_by_person, reply } = msg;
+        let ask = asked_by_person || not_now.is_none_or(|t| t.elapsed() >= locked::QUIET_AFTER_NOT_NOW);
+        if serving.is_none() && ask {
             status = Status::default();
             match take_over(&mut status) {
                 Ok(s) => {
@@ -678,30 +579,11 @@ fn main() -> std::process::ExitCode {
                     status.locked = true;
                 }
             }
-        } else if give && let Some(s) = serving.take() {
-            let state = s.state.clone();
-            status = match hand_back(s) {
-                Ok(_) => status_of(&state.store.lock().unwrap_or_else(|e| e.into_inner()), false),
-                Err(e) => {
-                    tracing::warn!("secrets: handing back: {e}");
-                    Status { error: Some(e), ..status_of(&state.store.lock().unwrap_or_else(|e| e.into_inner()), false) }
-                }
-            };
-        } else if !wanted && status.locked {
-            // (Turned off while locked: nothing to say any more.)
-            note.close();
-            status.locked = false;
         }
         if let Some(reply) = reply {
             let _ = reply.send(serving.is_some());
         }
         write_status(&status);
-    }
-    // (No settings to follow: keep answering, if it is, till ended.)
-    if serving.is_some() {
-        loop {
-            std::thread::park();
-        }
     }
     std::process::ExitCode::SUCCESS
 }

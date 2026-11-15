@@ -38,9 +38,8 @@ After=graphical-session-pre.target
 /// backends: Olo's portal for what it serves (screen sharing and remote
 /// control, screenshots, keeping awake, Open and Save panels, Open With,
 /// the permission dialogs other portals ask through, the desktop's look
-/// as Settings, notifications), the keyring (olo-secrets, or GNOME
-/// Keyring when Olo's is turned off: `OLO_SECRETS_PORTAL`) for programs'
-/// secrets, and none for the rest (no backend: the portal says the
+/// as Settings, notifications), the keyring (olo-secrets:
+/// `OLO_SECRETS_PORTAL`) for programs' secrets, and none for the rest (no backend: the portal says the
 /// interface isn't there).
 const PORTALS: &str = "\
 # Written by olo-session: the desktop portals for Olo.
@@ -117,8 +116,7 @@ Interfaces=org.freedesktop.impl.portal.ScreenCast;org.freedesktop.impl.portal.Re
 ";
 
 /// The keyring's portal backend: whoever answers for the keyring
-/// (`org.freedesktop.secrets`), olo-secrets or, turned off, GNOME
-/// Keyring, which serves the same interface at the same path.
+/// (`org.freedesktop.secrets`): olo-secrets.
 const OLO_SECRETS_PORTAL: &str = "\
 # Written by olo-session: the keyring's portal backend (olo-secrets).
 [portal]
@@ -317,8 +315,8 @@ const KEYRING: &str = "org.freedesktop.secrets";
 
 /// `olo-secrets --activated` for it while an Olo session runs (its
 /// activated.rs): it waits for the session's olo-secrets to take the
-/// name, or, Olo's keyring turned off, becomes GNOME Keyring. D-Bus
-/// started GNOME Keyring for a program asking at login before
+/// name, and never starts GNOME Keyring. D-Bus started GNOME Keyring
+/// (the system's description) for a program asking at login before
 /// olo-secrets had the name (Token Pool's service and DiskBackup's look
 /// up their keys as they start), which asked for its password, and
 /// olo-secrets, finding it running, asked again for each of its keyrings

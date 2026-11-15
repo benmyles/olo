@@ -1,63 +1,43 @@
-//! GNOME Keyring, as olo-secrets takes over from it and hands back: its
-//! items read as a client of its Secret Service (a locked collection
-//! unlocked first, GNOME Keyring asking through Olo's prompter), changes
-//! written back, and the daemon asked to quit over its control socket
+//! GNOME Keyring, should something have started it (another login
+//! screen's PAM, a person by hand): olo-secrets answers for the keyring,
+//! so it asks GNOME Keyring to quit over its control socket
 //! (gkd-control-server.c's GKD_CONTROL_OP_QUIT), which gives up
 //! `org.freedesktop.secrets` to olo-secrets, waiting in line for it.
 //! GNOME Keyring lets nobody replace it on the bus, so this is the way.
-//! Its locked keyrings are opened with the login password asked once
-//! (most have it: `login`, and a second "Login" a client once made), not
-//! a prompt of GNOME Keyring's for each (Ben, 2026-11-14: "i'm being
-//! asked for my keyring password to unlock it twice. it should only
-//! need it once to unlock").
+//! Nothing else of it is used: its items come over from its files, read
+//! natively with the login password (`legacy.rs`), and nothing of Olo's
+//! starts it or hands anything back to it (Ben, 2026-11-15: "we should
+//! be 100% independent of gnome and not rely on any of its services").
 
 use std::{
-    collections::{BTreeMap, HashMap},
     io::{Read as _, Write as _},
     os::unix::{fs::FileTypeExt as _, fs::MetadataExt as _, net::UnixStream},
     path::PathBuf,
     time::Duration,
 };
 
-use zbus::{
-    blocking::{Connection, Proxy},
-    zvariant::{OwnedObjectPath, OwnedValue, Value},
-};
-use zeroize::Zeroizing;
+use zbus::blocking::Connection;
 
-use crate::store::{self, Item};
+use crate::store::Item;
 
 pub const NAME: &str = "org.freedesktop.secrets";
-const ROOT: &str = "/org/freedesktop/secrets";
-const SERVICE: &str = "org.freedesktop.Secret.Service";
-const COLLECTION: &str = "org.freedesktop.Secret.Collection";
-const ITEM: &str = "org.freedesktop.Secret.Item";
-const PROMPT: &str = "org.freedesktop.Secret.Prompt";
-/// GNOME Keyring's own interface for opening a keyring with its password
-/// (seahorse's), as its PAM module does at login.
-const MASTER: &str = "org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface";
 
 /// GKD_CONTROL_OP_QUIT and GKD_CONTROL_RESULT_OK.
 const QUIT: u32 = 3;
 const OK: u32 = 0;
 
-/// One of GNOME Keyring's items, read.
+/// One of GNOME Keyring's items, read from its files.
 pub struct Found {
-    /// Its collection's id (its path's last part) and label.
+    /// Its keyring's id (its file's name) and label.
     pub collection: String,
     pub collection_label: String,
     pub item: Item,
 }
 
-/// Where GNOME Keyring keeps its keyrings (`$XDG_DATA_HOME/keyrings`).
-fn keyrings() -> PathBuf {
-    std::env::var_os("XDG_DATA_HOME").filter(|d| !d.is_empty()).map(PathBuf::from).unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/share")).join("keyrings")
-}
-
 /// Whether one of GNOME Keyring's keyrings changed since `at` (seconds
 /// since 1970; None: never copied, so any there is new).
 pub fn changed_since(at: Option<u64>) -> bool {
-    std::fs::read_dir(keyrings()).into_iter().flatten().flatten().any(|e| {
+    std::fs::read_dir(crate::legacy::folder()).into_iter().flatten().flatten().any(|e| {
         e.path().extension().is_some_and(|x| x == "keyring")
             && e.metadata().and_then(|m| m.modified()).is_ok_and(|t| at.is_none_or(|at| t.duration_since(std::time::UNIX_EPOCH).is_ok_and(|d| d.as_secs() > at)))
     })
@@ -67,232 +47,6 @@ pub fn changed_since(at: Option<u64>) -> bool {
 pub fn owner(conn: &Connection) -> Option<String> {
     let dbus = zbus::blocking::fdo::DBusProxy::new(conn).ok()?;
     dbus.get_name_owner(NAME.try_into().ok()?).ok().map(|o| o.to_string())
-}
-
-fn service(conn: &Connection) -> zbus::Result<Proxy<'_>> {
-    Proxy::new(conn, NAME, ROOT, SERVICE)
-}
-
-/// Run a prompt GNOME Keyring asked for; true unless dismissed.
-fn run_prompt(conn: &Connection, prompt: &OwnedObjectPath) -> zbus::Result<bool> {
-    if prompt.as_str() == "/" {
-        return Ok(true);
-    }
-    let p = Proxy::new(conn, NAME, prompt.as_str(), PROMPT)?;
-    let mut done = p.receive_signal("Completed")?;
-    p.call::<_, _, ()>("Prompt", &("",))?;
-    let Some(msg) = done.next() else { return Ok(false) };
-    let (dismissed, _): (bool, OwnedValue) = msg.body().deserialize()?;
-    Ok(!dismissed)
-}
-
-/// Unlock `objects`, asking if need be; whether they were.
-fn unlock(conn: &Connection, svc: &Proxy<'_>, objects: &[OwnedObjectPath]) -> zbus::Result<bool> {
-    let (_, prompt): (Vec<OwnedObjectPath>, OwnedObjectPath) = svc.call("Unlock", &(objects,))?;
-    run_prompt(conn, &prompt)
-}
-
-/// The login password asked for, once for every keyring of GNOME
-/// Keyring's to be copied, until it opens `first`; None if the person
-/// says Not Now.
-fn ask_once(conn: &Connection, session: &OwnedObjectPath, first: &OwnedObjectPath) -> Option<Zeroizing<String>> {
-    let props = olo_system::keyring_prompt::Props {
-        title: "GNOME Keyring".into(),
-        message: "Copy the secrets GNOME Keyring keeps".into(),
-        description: "GNOME Keyring has secrets Olo hasn’t copied yet. Type your login password to open them, once for all of its keyrings.".into(),
-        continue_label: "Unlock".into(),
-        cancel_label: "Not Now".into(),
-        ..Default::default()
-    };
-    let _asking = crate::Asking::new();
-    match olo_system::keyring_prompt::ask_password(&props, "That password didn’t open them.", |p| unlock_with(conn, session, first, p)) {
-        Ok(given) => given,
-        Err(e) => {
-            tracing::warn!("secrets: couldn't ask for GNOME Keyring's password: {e}");
-            None
-        }
-    }
-}
-
-fn last(p: &str) -> String {
-    p.rsplit('/').next().unwrap_or_default().to_owned()
-}
-
-/// Open the keyring `collection` with `password` (GNOME Keyring's own
-/// `UnlockWithMasterPassword`, no prompt): whether it opened.
-fn unlock_with(conn: &Connection, session: &OwnedObjectPath, collection: &OwnedObjectPath, password: &str) -> bool {
-    let secret = (session, Vec::<u8>::new(), password.as_bytes().to_vec(), "text/plain");
-    let opened = Proxy::new(conn, NAME, ROOT, MASTER).and_then(|m| m.call::<_, _, ()>("UnlockWithMasterPassword", &(collection, secret)));
-    if let Err(e) = &opened {
-        tracing::debug!("secrets: {} not opened with the password: {e}", last(collection.as_str()));
-    }
-    opened.is_ok()
-}
-
-/// How the locked keyrings are opened as they're read.
-pub enum Ask<'a> {
-    /// They aren't: left for the next login (started again, nothing is
-    /// asked).
-    Never,
-    /// With the login password: the one given (typed for Olo's own store
-    /// this login), else asked for once, through Olo's prompter, and
-    /// tried on each; GNOME Keyring's own prompt only for one it doesn't
-    /// open. Cancelled, the rest are left too.
-    Once(&'a mut Option<Zeroizing<String>>),
-}
-
-/// Every item GNOME Keyring keeps (its session collection left out, as
-/// it's kept in memory only), each locked collection opened first as
-/// `ask` says (else left); and the collections left locked, by label.
-pub fn read_all(conn: &Connection, mut ask: Ask<'_>) -> zbus::Result<(Vec<Found>, Vec<String>)> {
-    let svc = service(conn)?;
-    let (_, session): (OwnedValue, OwnedObjectPath) = svc.call("OpenSession", &("plain", Value::from("")))?;
-    let collections: Vec<OwnedObjectPath> = svc.get_property("Collections")?;
-    let (mut found, mut skipped) = (Vec::new(), Vec::new());
-    let mut cancelled = false;
-    for c in collections {
-        let id = last(c.as_str());
-        if id == store::SESSION {
-            continue;
-        }
-        let col = Proxy::new(conn, NAME, c.as_str(), COLLECTION)?;
-        let label: String = col.get_property("Label").unwrap_or_default();
-        let locked: bool = col.get_property("Locked").unwrap_or(false);
-        let opened = !locked
-            || match &mut ask {
-                Ask::Never => false,
-                _ if cancelled => false,
-                Ask::Once(given) => match given.as_deref() {
-                    Some(password) => unlock_with(conn, &session, &c, password) || unlock(conn, &svc, std::slice::from_ref(&c))?,
-                    None => {
-                        let typed = ask_once(conn, &session, &c);
-                        cancelled = typed.is_none();
-                        **given = typed;
-                        given.is_some()
-                    }
-                },
-            };
-        if !opened {
-            skipped.push(label);
-            continue;
-        }
-        let items: Vec<OwnedObjectPath> = col.get_property("Items")?;
-        if items.is_empty() {
-            continue;
-        }
-        let secrets: HashMap<OwnedObjectPath, (OwnedObjectPath, Vec<u8>, Vec<u8>, String)> = svc.call("GetSecrets", &(&items, &session))?;
-        for p in items {
-            let Some((_, _, value, content_type)) = secrets.get(&p) else { continue };
-            let it = Proxy::new(conn, NAME, p.as_str(), ITEM)?;
-            let attributes: HashMap<String, String> = it.get_property("Attributes").unwrap_or_default();
-            found.push(Found {
-                collection: id.clone(),
-                collection_label: label.clone(),
-                item: Item {
-                    id: 0,
-                    label: it.get_property("Label").unwrap_or_default(),
-                    attributes: attributes.into_iter().collect(),
-                    secret: Zeroizing::new(value.clone()),
-                    content_type: content_type.clone(),
-                    created: it.get_property("Created").unwrap_or(0),
-                    modified: it.get_property("Modified").unwrap_or(0),
-                },
-            });
-        }
-    }
-    let _ = Proxy::new(conn, NAME, session.as_str(), "org.freedesktop.Secret.Session").and_then(|s| s.call::<_, _, ()>("Close", &()));
-    Ok((found, skipped))
-}
-
-/// The collection `id` (labelled `label`) of GNOME Keyring's, made if
-/// it's missing; its path. The login one is GNOME's `login` keyring where
-/// it has one (what go-keyring, gh's, reads, whatever the default alias
-/// says), made the default again if the default was a second "Login"
-/// (Olo's client made one, 2026-11-04); else the default's.
-fn collection(conn: &Connection, svc: &Proxy<'_>, id: &str, label: &str) -> zbus::Result<OwnedObjectPath> {
-    let collections: Vec<OwnedObjectPath> = svc.get_property("Collections")?;
-    if let Some(p) = collections.iter().find(|p| last(p.as_str()) == id) {
-        if id == store::LOGIN {
-            let default: OwnedObjectPath = svc.call("ReadAlias", &("default",))?;
-            if default.as_str() != p.as_str() && (default.as_str() == "/" || last(default.as_str()).eq_ignore_ascii_case(store::LOGIN)) {
-                let _ = svc.call::<_, _, ()>("SetAlias", &("default", p));
-            }
-        }
-        return Ok(p.clone());
-    }
-    let alias = if id == store::LOGIN { "default" } else { "" };
-    if !alias.is_empty() {
-        let p: OwnedObjectPath = svc.call("ReadAlias", &(alias,))?;
-        if p.as_str() != "/" {
-            return Ok(p);
-        }
-    }
-    let mut props: HashMap<&str, Value> = HashMap::new();
-    props.insert("org.freedesktop.Secret.Collection.Label", Value::from(label));
-    let (made, prompt): (OwnedObjectPath, OwnedObjectPath) = svc.call("CreateCollection", &(props, alias))?;
-    if made.as_str() != "/" {
-        return Ok(made);
-    }
-    if !run_prompt(conn, &prompt)? {
-        return Err(zbus::Error::Failure(format!("no collection “{label}” was made")));
-    }
-    let collections: Vec<OwnedObjectPath> = svc.get_property("Collections")?;
-    collections.into_iter().find(|p| last(p.as_str()) == id).ok_or_else(|| zbus::Error::Failure(format!("no collection “{label}”")))
-}
-
-/// `items` ((collection id, its label, the item)) written into GNOME
-/// Keyring, each replacing one with the same attributes, and the items
-/// named by `deleted` (identities) deleted there. How many of each.
-pub fn write(conn: &Connection, items: &[(String, String, Item)], deleted: &[String]) -> zbus::Result<(usize, usize)> {
-    let svc = service(conn)?;
-    let (_, session): (OwnedValue, OwnedObjectPath) = svc.call("OpenSession", &("plain", Value::from("")))?;
-    let mut paths: BTreeMap<String, OwnedObjectPath> = BTreeMap::new();
-    let mut written = 0;
-    for (id, label, item) in items {
-        let p = match paths.get(id) {
-            Some(p) => p.clone(),
-            None => {
-                let p = collection(conn, &svc, id, label)?;
-                paths.insert(id.clone(), p.clone());
-                p
-            }
-        };
-        let col = Proxy::new(conn, NAME, p.as_str(), COLLECTION)?;
-        if col.get_property::<bool>("Locked").unwrap_or(false) && !unlock(conn, &svc, std::slice::from_ref(&p))? {
-            return Err(zbus::Error::Failure(format!("GNOME Keyring's “{label}” stayed locked")));
-        }
-        let attrs: HashMap<&str, &str> = item.attributes.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-        let mut props: HashMap<&str, Value> = HashMap::new();
-        props.insert("org.freedesktop.Secret.Item.Label", Value::from(item.label.as_str()));
-        props.insert("org.freedesktop.Secret.Item.Attributes", Value::from(attrs));
-        let secret = (&session, Vec::<u8>::new(), item.secret.to_vec(), item.content_type.as_str());
-        let (_, prompt): (OwnedObjectPath, OwnedObjectPath) = col.call("CreateItem", &(props, secret, true))?;
-        if run_prompt(conn, &prompt)? {
-            written += 1;
-        }
-    }
-    let mut gone = 0;
-    for identity in deleted {
-        let mut parts = identity.splitn(3, '\n');
-        let (Some(id), Some(label), Some(attrs)) = (parts.next(), parts.next(), parts.next()) else { continue };
-        let Ok(attrs) = serde_json::from_str::<BTreeMap<String, String>>(attrs) else { continue };
-        let (unlocked, locked): (Vec<OwnedObjectPath>, Vec<OwnedObjectPath>) = svc.call("SearchItems", &(attrs.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>(),))?;
-        for p in unlocked.iter().chain(&locked) {
-            // (Only in that collection, with that label.)
-            if !p.as_str().contains(&format!("/collection/{id}/")) {
-                continue;
-            }
-            let it = Proxy::new(conn, NAME, p.as_str(), ITEM)?;
-            if it.get_property::<String>("Label").unwrap_or_default() != label {
-                continue;
-            }
-            let prompt: OwnedObjectPath = it.call("Delete", &())?;
-            if run_prompt(conn, &prompt)? {
-                gone += 1;
-            }
-        }
-    }
-    Ok((written, gone))
 }
 
 /// GNOME Keyring's control socket.

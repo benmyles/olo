@@ -259,7 +259,6 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "security", tab: "Passwords", group: "Passwords: Command line", name: "Answer 1Password’s op command", role: "CheckBox" },
     Setting { panel: "security", tab: "Passwords", group: "Passwords: Command line", name: "Be the SSH agent (ssh, git)", role: "CheckBox" },
     Setting { panel: "security", tab: "Passwords", group: "Passwords: Command line", name: "Use Passwords for ssh", role: "Button" },
-    Setting { panel: "security", tab: "Passwords", group: "Programs’ Secrets", name: "Keep programs’ secrets in Olo", role: "CheckBox" },
     Setting { panel: "sound", tab: "", group: "Output", name: "Play sound through", role: "ComboBox" },
     Setting { panel: "sound", tab: "", group: "Output", name: "Play Sound Through It", role: "Button" },
     Setting { panel: "sound", tab: "", group: "Output", name: "Volume", role: "Slider" },

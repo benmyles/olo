@@ -13474,14 +13474,15 @@ a Secret Service client calling `Unlock` and `Prompt`.
 ## Programs' secrets (apps/secrets)
 
 `olo-secrets` is Olo's own Secret Service (`org.freedesktop.secrets`, the
-freedesktop API 0.2): with Preferences ▸ Security ▸ Programs' Secrets on
-(`security.passwords.secret_service`, on by default), the secrets
-Chrome, Slack, NetworkManager's applets, `gh` and Olo itself keep through
-libsecret live in Olo's store rather than GNOME Keyring's, and the
-Secret portal is Olo's too. olo-session
-starts it in a real session (`REAL_SHELL`, and on an upgrade that adds
-it); while off it waits on app_server's settings events (no CPU, no
-wakeups) and follows the switch live.
+freedesktop API 0.2): the secrets Chrome, Slack, NetworkManager's
+applets, `gh` and Olo itself keep through libsecret live in Olo's store,
+and the Secret portal is Olo's too. Always: olo-session starts it in a
+real session (`REAL_SHELL`, and on an upgrade that adds it), and
+nothing of GNOME's is started, used or handed anything (Ben, 2026-11-15:
+"we should be 100% independent of gnome and not rely on any of its
+services etc"). Preferences ▸ Security ▸ Passwords ▸ Programs' Secrets
+says how it's going (what it keeps, or that it's locked, with Unlock…);
+the switch that once handed them back to GNOME Keyring is gone.
 
 - **The store** (`store.rs`): `$XDG_CONFIG_HOME/olo/secrets.store`,
   "OLOS", a format byte, a 24-byte nonce, the JSON sealed with
@@ -13539,33 +13540,28 @@ wakeups) and follows the switch live.
   (`tests/pam.rs`, private services and a session keyring of the test's
   own): the typed password's key arrives in the session keyring, and a
   stack without a password leaves nothing.
-- **Taking over** (at login, or switched on): the key, the store, then,
-  when the login password was typed this time and GNOME Keyring's
-  keyrings (`$XDG_DATA_HOME/keyrings/*.keyring`) changed since the last
-  copy, their items read from the files natively with it (`legacy.rs`);
-  or, only when something else started GNOME Keyring (another login
-  screen's PAM) and it answers, through it: nothing starts it (the bus
-  would start `--activated`, olo-secrets' own stand-in). Either way,
-  every GNOME Keyring item new or changed since the last copy
+- **Taking over** (at login): the key, the store, then, when the login
+  password was typed this time and GNOME Keyring's keyrings
+  (`$XDG_DATA_HOME/keyrings/*.keyring`) changed since the last copy,
+  their items read from the files natively with it (`legacy.rs`), every
+  keyring the password opens (`login`, and a second "Login" a client
+  once made: one password for all, Ben, 2026-11-14: "i'm being asked for
+  my keyring password to unlock it twice"); those it doesn't are named
+  in the status (`skipped`). Every GNOME Keyring item new or changed
+  since the last copy
   (`Data::imported`: identity, its `Modified`; identity is collection,
   label and attributes without `xdg:schema`, which GNOME Keyring adds to
-  an item that had none once it has read it back from disk), GNOME
-  Keyring's locked keyrings opened first with the login password asked
-  once (`gnome::Ask::Once`: Olo's prompter, "Copy the secrets GNOME
-  Keyring keeps", the password tried on each with GNOME Keyring's own
-  `UnlockWithMasterPassword`, its prompt only for one it doesn't open;
-  the password typed for Olo's own store this login, if it was, without
-  asking again), not a prompt of GNOME Keyring's for each: a computer
-  with `login` and a second "Login" asked twice at every login (Ben,
-  2026-11-14: "i'm being asked for my keyring password to unlock it
-  twice. it should only need it once to unlock"). Not when started
-  again: they wait for the next login. Then it asks for the
+  an item that had none once it has read it back from disk). Not when
+  started again: they wait for the next typed password. Then it asks for the
   bus name with no flags, so it waits in line (GNOME Keyring lets nobody
   replace it: `RequestName` with `REPLACE_EXISTING` says it exists), and
-  tells GNOME Keyring to quit over its control socket (`gnome.rs`: op 3,
-  `GKD_CONTROL_OP_QUIT`), the name coming to olo-secrets as it goes
-  (waited for as `NameAcquired`, up to 5 s). GNOME Keyring's other
-  parts (pkcs11) go with it; SSH is Passwords' agent or gcr's.
+  if something else started GNOME Keyring (another login screen's PAM,
+  a person by hand), tells it to quit over its control socket
+  (`gnome.rs`: op 3, `GKD_CONTROL_OP_QUIT`), the name coming to
+  olo-secrets as it goes (waited for as `NameAcquired`, up to 5 s). Its
+  other parts (pkcs11) go with it; SSH is Passwords' agent. The session
+  no longer finishes starting a GNOME Keyring a login's PAM started
+  (session's `keyring.rs`, gone).
 - **Serving** (`service.rs`): the service, collections (also at
   `…/aliases/NAME`), items, sessions and prompts as the spec has them,
   with their properties and signals. Sessions are `plain` and
@@ -13588,13 +13584,8 @@ wakeups) and follows the switch live.
   random bytes) the first time a program asks, then written to the
   portal's file descriptor, which is closed. olo-session describes it
   to the portal as `olo-secrets.portal` (`DBusName=org.freedesktop.
-  secrets`: whoever answers for the keyring, so GNOME Keyring, which
-  serves the same, when Olo's is off) and routes Secret to it. Tried
+  secrets`: whoever answers for the keyring) and routes Secret to it. Tried
   through the real frontend on a test bus: the same 64 bytes both times.
-- **Handing back** (switched off): the name given up, then what changed
-  while Olo answered written into GNOME Keyring (D-Bus starts it again;
-  it asks for the password to unlock through Olo's prompter) and what was
-  deleted deleted there; the kernel's copy of the key forgotten.
 - **Nobody else answers in its place** (`activated.rs`): olo-session
   describes `olo-secrets --activated` for `org.freedesktop.secrets` in
   the runtime folder's D-Bus services (`graphical::name_keyring`, as the
@@ -13607,15 +13598,14 @@ wakeups) and follows the switch live.
   running, read its keyrings: the second ask. Now what D-Bus starts
   waits for the session's olo-secrets to take the name (as long as its
   password takes) and ends, the asking program answered by Olo's; with
-  Olo's keyring turned off (app_server's settings, followed live) it
-  becomes GNOME Keyring (the system's description's `Exec`), and with
-  no olo-secrets in the session for 15 s (olo-session gave up on it)
-  too; if Olo's keyring is locked, it asks olo-secrets to unlock it as
-  a program (`Unlock(false)`, below).
+  no olo-secrets in the session for 15 s (olo-session restarts it when
+  it ends) the request goes unanswered; if Olo's keyring is locked, it
+  asks olo-secrets to unlock it as a program (`Unlock(false)`, below).
+  It never starts GNOME Keyring.
 - **Never locked in silence** (`locked.rs`; Ben, 2026-11-15: "it should
   never just silently fail like this something should tell me that it
-  needs unlocking and let me do it"). While Olo's keyring is on but
-  locked (Not Now, or it couldn't be opened), the status says
+  needs unlocking and let me do it"). While Olo's keyring is locked
+  (Not Now, or it couldn't be opened), the status says
   `"locked": true` and a notification says so ("Programs’ secrets are
   locked", until it's open; Unlock closes it, and it comes back if it stays locked), its Unlock asking for the
   password again. Anyone can ask over the bus:
@@ -13649,10 +13639,11 @@ wakeups) and follows the switch live.
   damaged or cut file refused.
 - Tested on a private bus with a throwaway GNOME Keyring
   (`tools/dev/private-keyring`; `apps/secrets/tests/takeover.rs`, its
-  top says how): taking over and handing back, libsecret's sessions,
-  two locked keyrings opened with one password, and a lookup made while
-  olo-secrets is away waiting for it through `--activated`, GNOME
-  Keyring never started.
+  top says how): taking over from it while it runs (its two keyrings of
+  one password read from their files, the password asked once, GNOME
+  Keyring asked to quit), libsecret's sessions, started again with
+  nothing asked, and a lookup made while olo-secrets is away waiting for
+  it through `--activated`, GNOME Keyring never started.
 - **As GNOME Keyring answers** (Ben, 2026-11-06: gh lost its token
   just after he switched): an item made without `xdg:schema` gets
   `org.freedesktop.Secret.Generic`, as GNOME Keyring gives it; and
@@ -13701,14 +13692,14 @@ GNOME Keyring with libsecret's own client, on a private bus that never
 reaches the person's (`tools/dev/private-keyring start`, which now uses
 `dbus-daemon` when busd isn't installed and keeps the display out):
 `KEYRING_TEST_BUS=$DBUS_SESSION_BUS_ADDRESS cargo test -p olo-secrets
---test takeover -- --ignored` takes over (3 copied, GNOME Keyring gone),
-answers 300 `secret-tool lookup`s (encrypted sessions), stores, replaces,
+--test takeover -- --ignored` takes over (3 copied from two keyrings,
+the password asked once, GNOME Keyring gone; 4.7 s), answers 300
+`secret-tool lookup`s (encrypted sessions, 2.4 s), stores, replaces,
 searches and clears, locks and unlocks through a test prompter
-(`OLO_SECRETS_TEST_PASSWORD`, never the account's), hands back (1
-written, 1 deleted; GNOME Keyring started again and unlocked through the
-prompter), takes over again copying only what changed, and starts again
-without GNOME Keyring or a prompt. `OLO_SECRETS_SERVE=1|stdin`,
-`OLO_SECRETS_KEYFILE` and `OLO_SECRETS_STORE` are for tests.
+(`OLO_SECRETS_TEST_PASSWORD`, never the account's), starts again
+without GNOME Keyring or a prompt, and answers a lookup that waited
+while it was away. `OLO_SECRETS_SERVE=1`, `OLO_SECRETS_KEYFILE` and
+`OLO_SECRETS_STORE` are for tests.
 
 ## Notifications (apps/notifications)
 

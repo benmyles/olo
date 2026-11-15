@@ -44,24 +44,24 @@ pub enum Opened {
 }
 
 /// Every keyring in GNOME Keyring's folder (`$XDG_DATA_HOME/keyrings`),
-/// as `password` opens each: those it opens, and how many it doesn't
-/// (another password, or not a keyring file).
-pub fn open_all(password: &str) -> (Vec<Keyring>, usize) {
+/// as `password` opens each: those it opens, and the names of those it
+/// doesn't (another password, or not a keyring file).
+pub fn open_all(password: &str) -> (Vec<Keyring>, Vec<String>) {
     open_all_in(&folder(), password)
 }
 
-pub fn open_all_in(dir: &Path, password: &str) -> (Vec<Keyring>, usize) {
-    let (mut opened, mut not) = (Vec::new(), 0);
+pub fn open_all_in(dir: &Path, password: &str) -> (Vec<Keyring>, Vec<String>) {
+    let (mut opened, mut not) = (Vec::new(), Vec::new());
     let mut files: Vec<_> = std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "keyring")).collect();
     files.sort();
     for path in files {
         let id = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         match std::fs::read(&path).map_err(|e| e.to_string()).and_then(|b| open(&id, &b, password)) {
             Ok(Opened::Keyring(k)) => opened.push(k),
-            Ok(Opened::WrongPassword) => not += 1,
+            Ok(Opened::WrongPassword) => not.push(id),
             Err(e) => {
                 tracing::info!("secrets: GNOME Keyring's {} not read: {e}", path.display());
-                not += 1;
+                not.push(id);
             }
         }
     }
@@ -288,7 +288,7 @@ mod tests {
         std::fs::write(dir.join("Other.keyring"), b"GnomeKeyring\n\r\0\nbroken").unwrap();
         std::fs::write(dir.join("user.keystore"), b"an old one, left alone").unwrap();
         let (opened, not) = open_all_in(&dir, "fixture password");
-        assert_eq!((opened.len(), not), (1, 1));
+        assert_eq!((opened.len(), not), (1, vec!["Other".to_owned()]));
         assert_eq!(opened[0].items.len(), 3);
         std::fs::remove_dir_all(&dir).unwrap();
     }

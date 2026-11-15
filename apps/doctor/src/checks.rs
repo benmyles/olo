@@ -103,9 +103,10 @@ const FOREIGN: &[(&str, &str)] = &[
 
 /// GNOME's services Olo has its own in place of: one running in an Olo
 /// session was started by something before Olo's took over (the start of
-/// the session, a program started before an upgrade) and isn't needed.
-/// GNOME Keyring only while Olo's keyring answers. (After a `|`: what
-/// follows its processes, as `by_program` says them.)
+/// the session, a program started before an upgrade) and isn't needed;
+/// GNOME Keyring too (Olo's keyring always answers, and nothing of
+/// GNOME's is needed). (After a `|`: what follows its processes, as
+/// `by_program` says them.)
 const GNOME_SERVICES: &[(&str, &str)] = &[
     ("dconf-service", "GNOME's dconf service|, where olo-dconf answers"),
     ("xdg-desktop-portal-gnome", "GNOME's portal backend|, where olo-portal is the backend"),
@@ -1255,11 +1256,9 @@ fn gnome_services(roots: &Roots, procs: &[Proc], r: &mut Report) {
     if procs.iter().filter(|p| ours(p) && DESKTOPS.contains(&p.name.as_str())).any(|p| p.scope.is_some() && p.scope != roots.scope) {
         return;
     }
-    let keyring_ours = secrets_status(roots).is_some_and(|v| v["serving"].as_bool() == Some(true));
     let found: Vec<(&Proc, &str)> = procs
         .iter()
         .filter(|p| ours(p) && (p.scope.is_none() || p.scope == roots.scope))
-        .filter(|p| p.name != "gnome-keyring-daemon" || keyring_ours)
         .filter_map(|p| GNOME_SERVICES.iter().find(|(n, _)| *n == p.name).map(|(_, what)| (p, *what)))
         .filter(|(p, _)| !on_a_screen(&roots.fs, p.pid))
         .collect();
@@ -2241,44 +2240,46 @@ fn soundwire_part(mfg: &str, part: &str) -> Option<&'static str> {
     })
 }
 
-/// The login keyring opened at login: gnome-keyring keeps the secrets
-/// (Passwords' key, Chrome's, Wi-Fi's), and only its PAM module, given
-/// the password as GDM logs one in, opens it (makes it, the first time).
-/// Without the module (Fedora's `gnome-keyring-pam`, not installed with
-/// gnome-keyring) the keyring stays locked and asks for its password, or
-/// is never made: Passwords couldn't keep its key (the ThinkPad P1
-/// Gen 9, 2026-11-04).
+/// Olo's keyring opened at login: programs' secrets (Passwords' key,
+/// Chrome's, Wi-Fi's) in olo-secrets' store, its key sealed by the login
+/// password (`secrets.login`), which pam_olo_keyring gives at Olo's
+/// login screen. Locked is a problem (programs can't read their secrets:
+/// unlock it from the notification or Preferences ▸ Security). Nothing of
+/// GNOME's: its keyring's PAM module was once what this offered (Ben,
+/// 2026-11-15: "we should be 100% independent of gnome").
 fn login_keyring(roots: &Roots, r: &mut Report) {
-    // Olo's keyring answering, its key sealed by the login password
-    // (pam_olo_keyring opens it at Olo's login screen): nothing of GNOME's
-    // is needed.
+    let Some(status) = secrets_status(roots) else { return };
     let sealed = roots.bin.parent().is_some_and(|local| local.parent().is_some_and(|home| home.join(".config/olo/secrets.login").exists()));
-    if sealed && secrets_status(roots).is_some_and(|v| v["serving"].as_bool() == Some(true)) {
+    if status["locked"].as_bool() == Some(true) {
+        let why = status["error"].as_str().unwrap_or("the login password wasn't given");
+        r.findings.push(Finding {
+            id: "keyring:locked".into(),
+            severity: Severity::Problem,
+            title: "Programs' secrets are locked".into(),
+            detail: format!("Programs can't read their sign-ins, keys and Wi-Fi passwords: {why}. Unlock them with your login password from the notification, or Preferences ▸ Security ▸ Passwords ▸ Programs' Secrets."),
+            fix: None,
+        });
+        return;
+    }
+    if status["serving"].as_bool() != Some(true) {
+        return;
+    }
+    if sealed {
         r.fine.push(Fine {
             title: "Olo's keyring opens when you log in".into(),
             detail: "Programs' secrets are in Olo's keyring, which your login password opens (at Olo's login screen; another asks for it once).".into(),
         });
-        return;
+    } else {
+        r.findings.push(Finding {
+            id: "keyring:unsealed".into(),
+            severity: Severity::Advice,
+            title: "Olo's keyring isn't opened by your login yet".into(),
+            detail:
+                "It's open now, but its key isn't sealed by your login password, so the next login asks for it. olo-secrets asks once to seal it when it starts again (an upgrade, or the next login)."
+                    .into(),
+            fix: None,
+        });
     }
-    if !roots.fs.join("usr/bin/gnome-keyring-daemon").exists() {
-        return;
-    }
-    let module = ["usr/lib64/security", "usr/lib/security", "lib64/security", "usr/lib/x86_64-linux-gnu/security", "usr/lib/aarch64-linux-gnu/security"]
-        .iter()
-        .any(|d| roots.fs.join(d).join("pam_gnome_keyring.so").exists());
-    if module {
-        r.fine.push(Fine { title: "The login keyring opens when you log in".into(), detail: "gnome-keyring's PAM module is installed: logging in opens it with your password.".into() });
-        return;
-    }
-    r.findings.push(Finding {
-        id: "keyring:pam".into(),
-        severity: Severity::Problem,
-        title: "The login keyring doesn't open when you log in".into(),
-        detail: format!(
-            "gnome-keyring keeps the secrets apps keep (Passwords' key, Chrome's, Wi-Fi passwords), and logging in opens it only through its PAM module, which isn't installed ({KEYRING_PAM}). So it stays locked and asks for its password, or was never made. The fix installs it; the keyring then opens at your next login, if its password is your login password."
-        ),
-        fix: Some(Fix { label: "Install the Keyring's Login Module".into(), root: true, steps: vec![Step::InstallPackages { names: vec![KEYRING_PAM.into()] }] }),
-    });
 }
 
 /// olo-secrets' status file (`$XDG_RUNTIME_DIR/olo-secrets.json`).
@@ -2296,10 +2297,9 @@ fn login_keyrings(status: &serde_json::Value) -> usize {
 /// upgrade starts it: a second login keyring ("Login", which Olo's own
 /// client made beside `login` on a computer with no default alias,
 /// 2026-11-04) merged in, an item there twice kept once. Said when it did
-/// that; found if it still has two (the fix starts it again). With GNOME
-/// Keyring answering, its own two are said (olo-secrets merges them when
-/// it takes over). Two, gh (go-keyring, which reads `login`) lost its
-/// token to the other (Ben, 2026-11-06).
+/// that; found if it still has two (the fix starts it again). Two, gh
+/// (go-keyring, which reads `login`) lost its token to the other (Ben,
+/// 2026-11-06).
 fn secrets_store(roots: &Roots, procs: &[Proc], r: &mut Report) {
     let status = secrets_status(roots);
     if let Some(v) = status.as_ref().filter(|v| v["serving"].as_bool() == Some(true)) {
@@ -2335,31 +2335,6 @@ fn secrets_store(roots: &Roots, procs: &[Proc], r: &mut Report) {
         r.fine.push(Fine { title: "Programs' secrets are in one login keyring".into(), detail });
         return;
     }
-    // GNOME Keyring answering: its own two, if it has them.
-    let Some(dir) = roots.bin.parent().map(|local| local.join("share/keyrings")) else { return };
-    if !dir.join("login.keyring").exists() {
-        return;
-    }
-    let others: Vec<String> = std::fs::read_dir(&dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|e| e.file_name().to_str()?.strip_suffix(".keyring").map(str::to_owned))
-        .filter(|stem| stem != "login" && stem.eq_ignore_ascii_case("login"))
-        .collect();
-    if others.is_empty() {
-        return;
-    }
-    r.findings.push(Finding {
-        id: "secrets:gnome-two-logins".into(),
-        severity: Severity::Advice,
-        title: "GNOME Keyring has two login keyrings".into(),
-        detail: format!(
-            "Besides “login” it has “{}”, the default, so programs that keep secrets in the default and those that read “login” (gh, through go-keyring) don't see each other's. Olo's own keyring (Preferences ▸ Security ▸ Programs' Secrets) merges them into one when it takes over.",
-            others.join("”, “")
-        ),
-        fix: None,
-    });
 }
 
 /// A human presence sensor (a ThinkPad's "prox"), and Olo's rule that
@@ -2671,9 +2646,6 @@ fn panel_hdr(roots: &Roots, r: &mut Report) {
         fix: Some(Fix { label: "Turn On HDR at Start".into(), root: true, steps: vec![Step::AddKernelArgument { arg }] }),
     });
 }
-
-/// gnome-keyring's PAM module, as Fedora packages it.
-const KEYRING_PAM: &str = "gnome-keyring-pam";
 
 /// Thunderbolt devices plugged in but not let in: on a computer whose
 /// Thunderbolt asks first (security "user" or "secure"), a dock or a
@@ -3713,8 +3685,7 @@ mod tests {
     }
 
     /// Programs' secrets in one login keyring: olo-secrets still having two
-    /// found (its fix starts it again), its mending said, and GNOME
-    /// Keyring's own two said when it answers.
+    /// found (its fix starts it again), and its mending said.
     #[test]
     fn one_login_keyring() {
         let (fs, roots) = machine("secrets");
@@ -3736,15 +3707,6 @@ mod tests {
         assert!(r.find("secrets:two-logins").is_none());
         let fine = r.fine.iter().find(|f| f.title == "Programs' secrets are in one login keyring").expect("said");
         assert!(fine.detail.contains("a second login keyring merged in") && fine.detail.contains("2 secrets kept twice"), "{}", fine.detail);
-        // GNOME Keyring answering, with its own two.
-        w(&status, r#"{"serving":false,"collections":[]}"#);
-        w("home/me/.local/share/keyrings/login.keyring", "");
-        w("home/me/.local/share/keyrings/Login.keyring", "");
-        let r = scan(&roots);
-        let f = r.find("secrets:gnome-two-logins").expect("GNOME's two");
-        assert!(f.fix.is_none() && f.detail.contains("“Login”"), "{}", f.detail);
-        std::fs::remove_file(fs.join("home/me/.local/share/keyrings/Login.keyring")).unwrap();
-        assert!(scan(&roots).find("secrets:gnome-two-logins").is_none());
     }
 
     /// Barlow Ridge's USB controller found: said, with a fix keeping it and
@@ -3986,14 +3948,13 @@ mod tests {
         w("proc/955/cmdline", "/usr/libexec/xdg-desktop-portal-gtk\0");
         w("proc/955/environ", "OLO_SCREEN=claude-browser\0DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/olo-screens/claude-browser.bus\0");
         let f = scan(&roots).find("gnome:services").cloned().unwrap();
-        // (GNOME Keyring only while Olo's keyring answers.)
-        assert_eq!(f.title, "2 of GNOME's services run", "{}", f.detail);
+        // (GNOME Keyring too, whatever Olo's keyring is doing: nothing of
+        // GNOME's is needed.)
+        assert_eq!(f.title, "3 of GNOME's services run", "{}", f.detail);
         // (A program running twice is said once, with both processes.)
         assert!(f.detail.contains("(dconf-service, process 950)") && f.detail.contains("(gvfsd, processes 951 and 954)") && f.detail.contains("network folders"), "{}", f.detail);
         assert!(!f.detail.contains("xdg-desktop-portal-gtk"), "{}", f.detail);
-        assert_eq!(f.fix.unwrap().steps, [950, 951, 954].map(|pid| Step::Signal { pid, signal: libc::SIGTERM }));
-        w(&format!("run/user/{}/olo-secrets.json", roots.uid), "{\"serving\": true}");
-        assert_eq!(scan(&roots).find("gnome:services").unwrap().title, "3 of GNOME's services run");
+        assert_eq!(f.fix.unwrap().steps, [950, 951, 954, 952].map(|pid| Step::Signal { pid, signal: libc::SIGTERM }));
     }
 
     #[test]
@@ -4242,29 +4203,32 @@ mod tests {
         let _ = std::fs::remove_dir_all(&fs);
     }
 
-    /// A ThinkPad P1 Gen 9: Intel graphics it started on, an NVIDIA card
-    /// nouveau couldn't start, kept awake, and SoundWire sound chips with
-    /// no card made of them.
+    /// Olo's keyring: locked said (with how to unlock), open but not sealed
+    /// by the login password advised, sealed fine; nothing of GNOME's
+    /// offered.
     #[test]
     fn the_login_keyring_opens_at_login() {
         let (fs, roots) = machine("keyring");
-        let w = |p: &str| {
+        let w = |p: &str, c: &str| {
             let path = fs.join(p);
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-            std::fs::write(path, "").unwrap();
+            std::fs::write(path, c).unwrap();
         };
-        // gnome-keyring, without its PAM module (pam_oo7 beside it).
-        w("usr/bin/gnome-keyring-daemon");
-        w("usr/lib64/security/pam_oo7.so");
+        let status = format!("run/user/{}/olo-secrets.json", roots.uid);
+        w(&status, r#"{"serving":false,"locked":true,"error":"the secrets stay locked: the login password wasn't given"}"#);
         let mut r = Report::default();
         login_keyring(&roots, &mut r);
-        let f = r.find("keyring:pam").expect("the module missing");
-        assert_eq!(f.fix.as_ref().unwrap().steps, vec![Step::InstallPackages { names: vec!["gnome-keyring-pam".into()] }]);
-        w("usr/lib64/security/pam_gnome_keyring.so");
+        let f = r.find("keyring:locked").expect("locked said");
+        assert!(f.detail.contains("Preferences ▸ Security") && f.fix.is_none(), "{}", f.detail);
+        w(&status, r#"{"serving":true}"#);
+        let mut r = Report::default();
+        login_keyring(&roots, &mut r);
+        assert!(r.find("keyring:unsealed").is_some());
+        w("home/me/.config/olo/secrets.login", "sealed");
         let mut r = Report::default();
         login_keyring(&roots, &mut r);
         assert!(r.findings.is_empty());
-        assert_eq!(r.fine[0].title, "The login keyring opens when you log in");
+        assert_eq!(r.fine[0].title, "Olo's keyring opens when you log in");
     }
 
     #[test]
