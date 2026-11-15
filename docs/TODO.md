@@ -1428,10 +1428,17 @@ something nobody here has is in "Blocked", with what it waits for.
   GTK's backends), GIO without gvfs. What Olo still speaks of GNOME's is
   serving it for GNOME and GTK programs (`org.gnome.desktop.interface`
   settings, `org.gnome.SessionManager`'s inhibit, gcr's prompter
-  protocol, `Olo:GNOME` in `XDG_CURRENT_DESKTOP` for Qt). *Left:* trying
-  Setup on a Fedora without GNOME's packages (a VM or container: Olo
-  Setup's package list and the login screen's), to show none is needed
-  to install or run Olo.
+  protocol, `Olo:GNOME` in `XDG_CURRENT_DESKTOP` for Qt). Checked too:
+  Setup's packages (`installer::plan::PACKAGES`) are none of GNOME's
+  (Mesa, libinput, PipeWire, polkit, NetworkManager, the portal's
+  frontend, AccountsService, …), and Olo's 63 release programs link no
+  GNOME library (no GLib, GIO, GTK or libsecret: libc, xkbcommon, GBM,
+  PipeWire, libinput, libseat, libudev, libpam, pixman,
+  libdisplay-info, zlib, libelf). *Left:* a Fedora without GNOME at
+  all (a minimal install) can't run Setup, which is a window on the
+  desktop the person has: installing there needs a way of its own (Setup
+  from the console, or from Olo's login screen), then the whole path
+  tried in `tools/dev/installer-check`'s VM with a minimal kickstart.
 
 - **Weather: a Deskbar widget, customizable and beautiful** (Ben,
   2026-11-15: "the weather app should make available a deskbar widget
