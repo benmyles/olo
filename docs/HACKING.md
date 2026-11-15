@@ -4955,7 +4955,10 @@ budget (rule 9). On release builds (`cargo build --release --workspace`,
 then `cargo build --release -p olo-kit --examples` for the kit's
 gallery; `TSESSION_PROFILE=release` makes tsession run them) it
 starts a session of its own ("bench": a 3456×2234 screen, a 16" MacBook
-Pro's, at 120 Hz, with the shell) and a sandbox home under
+Pro's, at 120 Hz, with the shell; realtime as the person's session is,
+`OLO_REALTIME=1`, unless `--no-realtime`: at its nice it measured the
+computer's other work, two StyledEdit runs in five skipping a frame in
+its flick, none in four realtime) and a sandbox home under
 /var/tmp/olo-bench filled with what makes apps work (a 20,000-line
 document, a folder of 3,000 files, photos, 200 notifications, a
 terminal's worth of output), and at 1×, 1.5× and 2× runs each app

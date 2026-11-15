@@ -6,6 +6,16 @@ below 120 frames a second.
 
   bench [--apps a,b,...] [--scales 1,1.5,2] [--hz 120] [--budget MS]
         [--size WxH] [--json FILE] [--keep] [--list] [--env K=V ...]
+        [--no-realtime]
+
+Its session runs as the person's does: app_server's loop and input
+thread and the app with the keyboard realtime, and app_server's GPU
+context high (`OLO_REALTIME=1`; HACKING, "Realtime threads and the kept
+core"). Without it a headless session is background work at its nice,
+and the bench measured the computer's other work rather than Olo: two
+StyledEdit runs in five skipped a frame in its flick (frames at most
+4.3–6.6 ms), none in four realtime (at most 0.7–1.0 ms), at the same
+load. `--no-realtime` measures it at its nice, to compare.
 
 `--env K=V` (again for more) is given to every app: an A/B of a switch
 without a rebuild (`--env OLO_FRAME_PHASES=1`: where each frame went,
@@ -147,6 +157,9 @@ def now_us():
 def tsession(*args, quiet=True):
     env = dict(os.environ, TSESSION_PROFILE="release")
     env.pop("WAYLAND_DISPLAY", None)
+    # As the person's session runs (see the top): realtime, unless asked not.
+    if "--no-realtime" not in sys.argv:
+        env.setdefault("OLO_REALTIME", "1")
     r = subprocess.run(["/usr/bin/python3", TSESSION, *args], capture_output=True, text=True, env=env)
     if not quiet:
         print(r.stdout, end="")
