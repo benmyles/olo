@@ -552,6 +552,31 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
                 Reply::Ok
             }
+            Request::SetMainPlace { place, workspace, output } => {
+                let o = match output {
+                    Some(name) => match self.space.outputs().find(|o| o.name() == name).cloned() {
+                        Some(o) => Some(o),
+                        None => return Some(Reply::Error { message: format!("no display {name:?}") }),
+                    },
+                    None => None,
+                };
+                if self.set_main_place(place, workspace, o) { Reply::Ok } else { Reply::Error { message: format!("the main window can't go in a {place:?}") } }
+            }
+            Request::MakeMain { id } => match self.window_by_id(id) {
+                Some(w) if self.make_main(&w) => Reply::Ok,
+                Some(_) => Reply::Error { message: "not a tile of Main and Stack's (auto-tiling, its layout Main and Stack)".into() },
+                None => Reply::Error { message: "no such window".into() },
+            },
+            Request::SwapMain { output } => {
+                let o = match output {
+                    Some(name) => match self.space.outputs().find(|o| o.name() == name).cloned() {
+                        Some(o) => Some(o),
+                        None => return Some(Reply::Error { message: format!("no display {name:?}") }),
+                    },
+                    None => None,
+                };
+                if self.swap_main(o) { Reply::Ok } else { Reply::Error { message: "no main window before this one there".into() } }
+            }
             Request::AutoTiling { workspace } => Reply::AutoTiling { workspace: workspace.unwrap_or_else(|| self.workspace()), displays: self.auto_tiling_infos(workspace) },
             Request::SetAutoTiling { on, workspace, output } => {
                 let o = match output {

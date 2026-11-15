@@ -520,6 +520,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 let floats = self.floats(&w);
                 self.set_floating(&w, Some(!floats));
             }
+            // Main and Stack's; nothing where the tiles aren't laid out so.
+            S::MakeMain => {
+                let Some(w) = focused else { return };
+                self.make_main(&w);
+            }
+            S::SwapMain => {
+                let output = focused.as_ref().and_then(|w| self.window_output(w));
+                self.swap_main(output);
+            }
             S::Tile(_) | S::Zoom | S::ZoomVertical | S::ZoomHorizontal | S::Restore | S::RestoreOrHide | S::Center | S::Hide | S::NextDisplay | S::PreviousDisplay => {
                 let Some(w) = focused else { return };
                 // Windows' ⊞↓: a window arranged goes back to its own

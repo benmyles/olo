@@ -74,6 +74,12 @@ pub struct Facts {
     /// It floats whatever is asked (a dialog, an alert): Unfloat shows it,
     /// dimmed.
     pub floats_always: bool,
+    /// A tile of Main and Stack's (auto-tiled, that layout): Make Main
+    /// and Swap with Previous Main; whether it's the main window, and
+    /// whether there is a main window before the one now.
+    pub main_and_stack: bool,
+    pub main: bool,
+    pub previous_main: bool,
     /// Its app's windows float always (Float Window ▸ Always:
     /// `TilingSettings::floating_apps`).
     pub app_floats: bool,
@@ -129,11 +135,14 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             Ok(Reply::Settings { settings }) => (settings.keyboard.profile, !w.app_id.is_empty() && settings.tiling.floating_apps.contains(&w.app_id)),
             _ => Default::default(),
         };
-        let mode = match c.request(&Request::WindowingMode { workspace: Some(w.workspace) }) {
-            Ok(Reply::WindowingMode { displays, .. }) => displays.into_iter().find(|d| Some(&d.output) == w.output.as_ref()).map(|d| d.mode),
+        let info = match c.request(&Request::WindowingMode { workspace: Some(w.workspace) }) {
+            Ok(Reply::WindowingMode { displays, .. }) => displays.into_iter().find(|d| Some(&d.output) == w.output.as_ref()),
             _ => None,
         };
+        let mode = info.as_ref().map(|d| d.mode);
         let (auto, focus) = (mode == Some(olo_protocol::WindowingMode::AutoTiling), mode == Some(olo_protocol::WindowingMode::Focus));
+        let main_and_stack = auto && !w.floating && info.as_ref().is_some_and(|d| d.layout == olo_protocol::TilingLayout::MainAndStack);
+        let previous_main = info.as_ref().is_some_and(|d| d.previous_main.is_some());
         // (A group once: its windows share their frame, so tiling one tiles
         // them all; its own group's not at all.)
         let mut groups = std::collections::HashSet::new();
@@ -171,7 +180,7 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             (Some(pid), Some(surface)) if w.app_id != "olo.tracker" => olo_kit::commands::path(pid as u32, surface),
             _ => None,
         };
-        let (rolled, on_top, grouped, floating, floats_always) = (w.rolled, w.on_top, w.group.is_some(), w.floating, w.floats_always);
+        let (rolled, on_top, grouped, floating, floats_always, main) = (w.rolled, w.on_top, w.group.is_some(), w.floating, w.floats_always, w.main);
         let pid = w.pid.map(|p| p as u32);
         let own = pid.zip(w.surface).and_then(|(pid, surface)| olo_kit::commands::menus_in(pid, surface)).map(|m| m.entries).unwrap_or_default();
         let find = |command: &str| own.iter().find(|e| e.command == command && e.path.len() == 1).map(|e| (e.label.clone(), e.keys.clone(), e.enabled));
@@ -197,6 +206,9 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             focus,
             floating,
             floats_always,
+            main_and_stack,
+            main,
+            previous_main,
             app_floats,
             keys,
             path,
@@ -240,25 +252,17 @@ pub fn build(f: &Facts) -> Menu {
             None => m,
         }
     };
-    let tile = [
-        ("tile-left", "Left Half"),
-        ("tile-right", "Right Half"),
-        ("tile-top", "Top Half"),
-        ("tile-bottom", "Bottom Half"),
-        ("", ""),
-        ("tile-top-left", "Top Left Quarter"),
-        ("tile-top-right", "Top Right Quarter"),
-        ("tile-bottom-left", "Bottom Left Quarter"),
-        ("tile-bottom-right", "Bottom Right Quarter"),
-        ("", ""),
-        ("tile-left-third", "Left Third"),
-        ("tile-center-third", "Center Third"),
-        ("tile-right-third", "Right Third"),
-        ("tile-left-two-thirds", "Left Two Thirds"),
-        ("tile-right-two-thirds", "Right Two Thirds"),
-    ]
-    .iter()
-    .fold(Menu::new("Tile"), |m, (id, label)| if id.is_empty() { m.separator() } else { shortcut(m, id, label) });
+    // Halves, quarters, thirds and two thirds, a line between each.
+    let mut tile = Menu::new("Tile");
+    let mut family = None;
+    for t in olo_protocol::Tile::CHOOSABLE {
+        let Some(id) = t.shortcut_id() else { continue };
+        if family.is_some_and(|f| f != t.family()) {
+            tile = tile.separator();
+        }
+        family = Some(t.family());
+        tile = shortcut(tile, id, t.title());
+    }
     // Every display's workspaces, left to right as Deskbar's heading
     // menus list them; its own display's with their keys.
     let mut displays: Vec<(Option<&str>, Option<i32>)> = f.others.iter().map(|(o, n)| (Some(o.as_str()), Some(*n))).collect();
@@ -335,6 +339,13 @@ pub fn build(f: &Facts) -> Menu {
                 m = with_keys(m.item("Float Window Group", "float-group"));
             }
         }
+    }
+    // Main and Stack: this one the main window, or the one before back
+    // (Ben, 2026-11-14: "if a new window takes the main area i want to be
+    // able to swap it back with the previous window").
+    if f.main_and_stack {
+        m = shortcut(m, "make-main", "Make Main").enabled(!f.main);
+        m = shortcut(m, "swap-main", "Swap with Previous Main").enabled(f.previous_main);
     }
     m = m.separator().submenu(tile);
     // Beside another window (not in Focus, which zooms them all; not a
@@ -607,6 +618,9 @@ mod tests {
             focus: false,
             floating: false,
             floats_always: false,
+            main_and_stack: false,
+            main: false,
+            previous_main: false,
             app_floats: false,
             keys: changed,
             path: None,
@@ -669,6 +683,28 @@ mod tests {
         let mut only = Vec::new();
         commands(&build(&Facts { windows: Vec::new(), ..facts.clone() }), &mut only);
         assert!(!only.iter().any(|c| c.starts_with("window-to:") || c.starts_with("group-to:")), "no other windows: no Move to Window");
+        // Every part a window tiles into, the two thirds of each side too.
+        for t in olo_protocol::Tile::CHOOSABLE {
+            assert!(all.contains(&format!("shortcut:{}", t.shortcut_id().unwrap())), "{t:?}");
+        }
+        // Make Main and Swap with Previous Main only for a tile of Main
+        // and Stack's: Make Main dimmed for the main window, Swap with
+        // Previous Main while there's none before it.
+        let mains = |f: &Facts| {
+            let mut out = Vec::new();
+            for i in &build(f).items {
+                if let menu::MenuItem::Action(a) = i
+                    && ["shortcut:make-main", "shortcut:swap-main"].contains(&a.command.as_str())
+                {
+                    out.push((a.label.to_string(), a.enabled, a.keys.is_some()));
+                }
+            }
+            out
+        };
+        assert!(mains(&facts).is_empty() && mains(&Facts { auto: true, ..facts.clone() }).is_empty());
+        let tile = Facts { auto: true, main_and_stack: true, ..facts.clone() };
+        assert_eq!(mains(&tile), [("Make Main".into(), true, true), ("Swap with Previous Main".into(), false, true)]);
+        assert_eq!(mains(&Facts { main: true, previous_main: true, ..tile.clone() }), [("Make Main".into(), false, true), ("Swap with Previous Main".into(), true, true)]);
         // Open in Tracker only for a window that shows a file or folder.
         assert!(!all.contains(&tracker::COMMAND.to_owned()));
         let mut doc = Vec::new();

@@ -236,6 +236,13 @@ pub enum Shortcut {
     Center,
     /// Float the focused window over auto-tiled ones, or tile it again.
     Float,
+    /// Main and Stack: the focused window is the main one, in the main
+    /// window's place; the one that was takes its place in the stack.
+    MakeMain,
+    /// Main and Stack: the main window before this one is the main one
+    /// again, and this one goes back to the stack (a new window took
+    /// the main place: put it back).
+    SwapMain,
     /// Hide the focused window (minimize it to Deskbar).
     Hide,
     /// Roll the focused window up to just its tab, or back down.
@@ -345,6 +352,10 @@ pub enum Tile {
     RightThird,
     LeftTwoThirds,
     RightTwoThirds,
+    /// The middle two thirds across, a sixth either side.
+    CenterTwoThirds,
+    TopTwoThirds,
+    BottomTwoThirds,
     /// A cell an arranging command (Tile All, Tile App, Smart Tiling)
     /// chose: where it is is the window's part (`TilePart`), so its edges
     /// drag its neighbours like any tile's. Alone, the whole area.
@@ -369,7 +380,108 @@ impl Tile {
             Tile::RightThird => (2.0 * T, 0.0, T, 1.0),
             Tile::LeftTwoThirds => (0.0, 0.0, 2.0 * T, 1.0),
             Tile::RightTwoThirds => (T, 0.0, 2.0 * T, 1.0),
+            Tile::CenterTwoThirds => (T / 2.0, 0.0, 2.0 * T, 1.0),
+            Tile::TopTwoThirds => (0.0, 0.0, 1.0, 2.0 * T),
+            Tile::BottomTwoThirds => (0.0, T, 1.0, 2.0 * T),
             Tile::Cell => (0.0, 0.0, 1.0, 1.0),
+        }
+    }
+
+    /// Every part a person can choose (the window menu's Tile, Main and
+    /// Stack's main window), as the menus list them: halves, quarters,
+    /// thirds, two thirds.
+    pub const CHOOSABLE: [Tile; 16] = [
+        Tile::Left,
+        Tile::Right,
+        Tile::Top,
+        Tile::Bottom,
+        Tile::TopLeft,
+        Tile::TopRight,
+        Tile::BottomLeft,
+        Tile::BottomRight,
+        Tile::LeftThird,
+        Tile::CenterThird,
+        Tile::RightThird,
+        Tile::LeftTwoThirds,
+        Tile::CenterTwoThirds,
+        Tile::RightTwoThirds,
+        Tile::TopTwoThirds,
+        Tile::BottomTwoThirds,
+    ];
+
+    /// Its name in menus: "Left Half", "Center Two Thirds".
+    pub fn title(self) -> &'static str {
+        match self {
+            Tile::Left => "Left Half",
+            Tile::Right => "Right Half",
+            Tile::Top => "Top Half",
+            Tile::Bottom => "Bottom Half",
+            Tile::TopLeft => "Top Left Quarter",
+            Tile::TopRight => "Top Right Quarter",
+            Tile::BottomLeft => "Bottom Left Quarter",
+            Tile::BottomRight => "Bottom Right Quarter",
+            Tile::LeftThird => "Left Third",
+            Tile::CenterThird => "Center Third",
+            Tile::RightThird => "Right Third",
+            Tile::LeftTwoThirds => "Left Two Thirds",
+            Tile::CenterTwoThirds => "Center Two Thirds",
+            Tile::RightTwoThirds => "Right Two Thirds",
+            Tile::TopTwoThirds => "Top Two Thirds",
+            Tile::BottomTwoThirds => "Bottom Two Thirds",
+            Tile::Cell => "Cell",
+        }
+    }
+
+    /// Its shortcut's id ("tile-left"); none for a cell.
+    pub fn shortcut_id(self) -> Option<&'static str> {
+        SHORTCUTS.iter().find(|s| s.action == Shortcut::Tile(self)).map(|s| s.id)
+    }
+
+    /// Main and Stack's parts (x, y, width, height, as fractions of the
+    /// tiling area) with its main window here and `stack` more, as
+    /// app_server lays them out until an edge is dragged: the main
+    /// window's, then the stack's in order. Beside an edge, the rest is a
+    /// column (or a row) of them each as big; in the middle, a column
+    /// either side, the right one taking the first half (and the odd
+    /// one); in a corner, the other half takes all but the last, which
+    /// has the rest of the main window's column.
+    pub fn main_and_stack_parts(self, stack: usize) -> Vec<(f32, f32, f32, f32)> {
+        let (x, y, w, h) = self.fraction();
+        let column = |(cx, cy, cw, ch): (f32, f32, f32, f32), n: usize| (0..n).map(move |i| (cx, cy + ch * i as f32 / n as f32, cw, ch / n as f32));
+        let row = |(cx, cy, cw, ch): (f32, f32, f32, f32), n: usize| (0..n).map(move |i| (cx + cw * i as f32 / n as f32, cy, cw / n as f32, ch));
+        let mut out = vec![(x, y, w, h)];
+        match self {
+            Tile::Left | Tile::LeftThird | Tile::LeftTwoThirds | Tile::Cell => out.extend(column((w, 0.0, 1.0 - w, 1.0), stack)),
+            Tile::Right | Tile::RightThird | Tile::RightTwoThirds => out.extend(column((0.0, 0.0, x, 1.0), stack)),
+            Tile::Top | Tile::TopTwoThirds => out.extend(row((0.0, h, 1.0, 1.0 - h), stack)),
+            Tile::Bottom | Tile::BottomTwoThirds => out.extend(row((0.0, 0.0, 1.0, y), stack)),
+            Tile::CenterThird | Tile::CenterTwoThirds => {
+                let right = stack.div_ceil(2);
+                out.extend(column((x + w, 0.0, 1.0 - x - w, 1.0), right));
+                out.extend(column((0.0, 0.0, x, 1.0), stack - right));
+            }
+            Tile::TopLeft | Tile::TopRight | Tile::BottomLeft | Tile::BottomRight => {
+                let other = if x > 0.0 { (0.0, 0.0, x, 1.0) } else { (w, 0.0, 1.0 - w, 1.0) };
+                let below = if y > 0.0 { (x, 0.0, w, y) } else { (x, h, w, 1.0 - h) };
+                let n = if stack >= 2 { stack - 1 } else { stack };
+                out.extend(column(other, n));
+                if stack >= 2 {
+                    out.push(below);
+                }
+            }
+        }
+        out
+    }
+
+    /// Which group of the menus it is in (halves, quarters, thirds, two
+    /// thirds), for separators between them.
+    pub fn family(self) -> u8 {
+        match self {
+            Tile::Left | Tile::Right | Tile::Top | Tile::Bottom => 0,
+            Tile::TopLeft | Tile::TopRight | Tile::BottomLeft | Tile::BottomRight => 1,
+            Tile::LeftThird | Tile::CenterThird | Tile::RightThird => 2,
+            Tile::LeftTwoThirds | Tile::CenterTwoThirds | Tile::RightTwoThirds | Tile::TopTwoThirds | Tile::BottomTwoThirds => 3,
+            Tile::Cell => 4,
         }
     }
 }
@@ -551,7 +663,10 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::Tile(Tile::CenterThird), "tile-center-third", WINDOWS, "Center third", &["Ctrl+Alt+F"], &["Alt+Cmd+F"], &["Ctrl+Cmd+F"]),
     s(Shortcut::Tile(Tile::RightThird), "tile-right-third", WINDOWS, "Right third", &["Ctrl+Alt+G"], &["Alt+Cmd+G"], &["Ctrl+Cmd+G"]),
     s(Shortcut::Tile(Tile::LeftTwoThirds), "tile-left-two-thirds", WINDOWS, "Left two thirds", &["Ctrl+Alt+E"], &["Alt+Cmd+E"], &["Ctrl+Cmd+E"]),
+    s(Shortcut::Tile(Tile::CenterTwoThirds), "tile-center-two-thirds", WINDOWS, "Center two thirds", &["Ctrl+Alt+R"], &["Alt+Cmd+W"], &["Ctrl+Cmd+R"]),
     s(Shortcut::Tile(Tile::RightTwoThirds), "tile-right-two-thirds", WINDOWS, "Right two thirds", &["Ctrl+Alt+T"], &["Alt+Cmd+R"], &["Ctrl+Cmd+T"]),
+    s(Shortcut::Tile(Tile::TopTwoThirds), "tile-top-two-thirds", WINDOWS, "Top two thirds", &["Ctrl+Alt+Y"], &["Alt+Cmd+Y"], &["Ctrl+Cmd+Y"]),
+    s(Shortcut::Tile(Tile::BottomTwoThirds), "tile-bottom-two-thirds", WINDOWS, "Bottom two thirds", &["Ctrl+Alt+B"], &["Alt+Cmd+B"], &["Ctrl+Cmd+B"]),
     s(Shortcut::Zoom, "zoom", WINDOWS, "Zoom or unzoom", &["Ctrl+Alt+Return"], &["Cmd+Up"], &["Ctrl+Alt+Z"]),
     s(Shortcut::ZoomVertical, "zoom-vertical", WINDOWS, "Zoom vertically", &["Ctrl+Alt+Shift+Up", "Ctrl+Alt+Shift+Down"], &["Shift+Cmd+Up"], &["Ctrl+Shift+Cmd+Up", "Ctrl+Shift+Cmd+Down"]),
     s(Shortcut::ZoomHorizontal, "zoom-horizontal", WINDOWS, "Zoom horizontally", &["Ctrl+Alt+Shift+Left", "Ctrl+Alt+Shift+Right"], &[], &["Ctrl+Shift+Cmd+Left", "Ctrl+Shift+Cmd+Right"]),
@@ -559,6 +674,8 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::RestoreOrHide, "restore-or-hide", WINDOWS, "Back to its own size, or hide", &[], &["Cmd+Down"], &[]),
     s(Shortcut::Center, "center", WINDOWS, "Center", &["Ctrl+Alt+C"], &["Alt+Cmd+C"], &["Ctrl+Cmd+C"]),
     s(Shortcut::Float, "float-window", WINDOWS, "Float over the tiles, or tile", &["Ctrl+Alt+Cmd+F"], &["Ctrl+Alt+Cmd+F"], &["Ctrl+Alt+Cmd+F"]),
+    s(Shortcut::MakeMain, "make-main", WINDOWS, "Make it the main window", &["Ctrl+Alt+Cmd+M"], &["Ctrl+Alt+Cmd+M"], &["Ctrl+Alt+Cmd+M"]),
+    s(Shortcut::SwapMain, "swap-main", WINDOWS, "Swap with the previous main window", &["Ctrl+Alt+Cmd+Backspace"], &["Ctrl+Alt+Cmd+Backspace"], &["Ctrl+Alt+Cmd+Backspace"]),
     s(Shortcut::Hide, "hide-window", WINDOWS, "Hide window", &["Cmd+M"], &[], &["Ctrl+Alt+M"]),
     s(Shortcut::HideApp, "hide-app", WINDOWS, "Hide the application", &["Cmd+H"], &[], &["Ctrl+Alt+H"]),
     s(Shortcut::RollUp, "roll-up", WINDOWS, "Roll up or down", &["Ctrl+Cmd+M"], &["Alt+Cmd+M"], &["Ctrl+Alt+R"]),
@@ -789,8 +906,10 @@ pub enum TilingLayout {
     /// along its longer side (as bspwm and Hyprland's dwindle do).
     #[default]
     Halves,
-    /// One main window on the left, the rest stacked on the right, each
-    /// as tall as the others; a new window is the main one (as dwm's).
+    /// One main window in its place (`TilingSettings::main_place_of`:
+    /// the middle two thirds unless chosen), the rest stacked in the
+    /// rest, each as big as the others; a new window is the main one (as
+    /// dwm's, and its centred main).
     MainAndStack,
 }
 
@@ -809,7 +928,7 @@ impl TilingLayout {
     pub fn detail(self) -> &'static str {
         match self {
             TilingLayout::Halves => "Each new window takes half of the one you were using.",
-            TilingLayout::MainAndStack => "A new window is the main one, on the left; the others stack on the right.",
+            TilingLayout::MainAndStack => "A new window is the main one, in its place; the others stack around it.",
         }
     }
 
@@ -850,6 +969,18 @@ pub struct TilingSettings {
     /// How auto-tiling lays windows out, everywhere it's on (Preferences
     /// ▸ Windows, Deskbar's Window Arrangement menu).
     pub layout: TilingLayout,
+    /// Where Main and Stack's main window goes on every workspace (and
+    /// display) that hasn't a place of its own (Preferences ▸ Windows):
+    /// any part a window can be tiled into ([`Tile::CHOOSABLE`]), the
+    /// others stacked in the rest (Ben, 2026-11-14: "let's have the
+    /// default be center two-thirds").
+    pub main_place: Tile,
+    /// The workspaces (and displays of them) whose main window goes
+    /// elsewhere (Deskbar's tray, `Request::SetMainPlace`; see
+    /// [`TilingSettings::main_place_of`]). app_server keeps it as they
+    /// are chosen: a copy sent back with the rest is ignored, as
+    /// `modes`.
+    pub main_places: Vec<MainPlaceChoice>,
     /// The workspaces (and displays of them) whose mode isn't the
     /// default (see [`TilingSettings::mode`]). app_server keeps it as
     /// modes are chosen (`Request::SetWindowingMode`): a copy sent back
@@ -871,10 +1002,21 @@ impl Default for TilingSettings {
             floating_apps: Vec::new(),
             default_mode: WindowingMode::Standard,
             layout: TilingLayout::Halves,
+            main_place: Tile::CenterTwoThirds,
+            main_places: Vec::new(),
             modes: Vec::new(),
             auto: Vec::new(),
         }
     }
+}
+
+/// Where Main and Stack's main window goes on a display's (`display`,
+/// its `display_key`) workspace (counting from 0).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MainPlaceChoice {
+    pub workspace: u32,
+    pub display: String,
+    pub place: Tile,
 }
 
 /// The windowing mode of a display's (`display`, its `display_key`)
@@ -917,6 +1059,22 @@ impl TilingSettings {
     pub fn mode(&self, workspace: u32, display: &str) -> WindowingMode {
         let find = |d: Option<&str>| self.modes.iter().find(|a| a.workspace == workspace && a.display.as_deref() == d).map(|a| a.mode);
         find(Some(display)).or_else(|| find(None)).unwrap_or(self.default_mode)
+    }
+
+    /// Where Main and Stack's main window goes on the display `display`
+    /// (its key) on its workspace `workspace`: its own place, else the
+    /// default.
+    pub fn main_place_of(&self, workspace: u32, display: &str) -> Tile {
+        self.main_places.iter().find(|m| m.workspace == workspace && m.display == display).map_or(self.main_place, |m| m.place)
+    }
+
+    /// Choose where the main window goes on `display`'s workspace
+    /// `workspace`; only a place that isn't the default is kept.
+    pub fn set_main_place(&mut self, workspace: u32, display: &str, place: Tile) {
+        self.main_places.retain(|m| !(m.workspace == workspace && m.display == display));
+        if place != self.main_place {
+            self.main_places.push(MainPlaceChoice { workspace, display: display.to_owned(), place });
+        }
     }
 
     /// Whether auto-tiling is the mode there (as `mode` reads it).

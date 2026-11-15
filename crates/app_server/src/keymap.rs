@@ -398,6 +398,12 @@ impl Keymap {
         }
     }
 
+    /// Control was used with a key something else took (hints', the
+    /// overview's Ctrl+letter): letting it go is no tap of it.
+    pub fn ctrl_used(&mut self) {
+        self.ctrl_presses = None;
+    }
+
     pub fn recording(&self) -> bool {
         self.recording
     }

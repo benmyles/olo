@@ -3,8 +3,10 @@
 //! window's controls, the other windows (on their tabs) and Deskbar.
 //! Typing a letter clicks what it marks or, for a part with more inside
 //! (a box of controls, Deskbar, another window), letters what is inside,
-//! and so on down; Backspace goes back up and Esc puts them away. When a
-//! click opens a menu, its items are lettered next.
+//! and so on down; Backspace goes back up and Esc (or a tap of Control)
+//! puts them away. When a click opens a menu, its items are lettered
+//! next. Typed with Control held, another window's letter makes it its
+//! tiles' main window (Main and Stack, `make_main`).
 //!
 //! What can be picked comes from the kit's widget trees (the same ones
 //! agents read, `olo-menus-PID.sock`), asked for on worker threads; the
@@ -525,6 +527,10 @@ pub struct Hints {
     ahead: Option<(Instant, Option<Vec<Node>>)>,
     /// When Control was pressed twice (how long the letters take).
     asked: Option<Instant>,
+    /// Control pressed while they showed, and whether a letter was typed
+    /// with it held: let go alone (a tap), it puts them away; with a
+    /// window's letter, that window is made main (Main and Stack).
+    ctrl: Option<bool>,
     overlay: Overlay,
 }
 
@@ -563,6 +569,7 @@ impl Hints {
         self.levels.clear();
         self.fetching = false;
         self.ahead = None;
+        self.ctrl = None;
         self.generation += 1;
     }
 
@@ -624,16 +631,23 @@ impl<B: Backend + 'static> AnvilState<B> {
         const BACKSPACE: u32 = 14;
         // Ctrl, Shift, Alt, Super and Caps Lock pass.
         const MODIFIERS: [u32; 9] = [29, 97, 42, 54, 56, 100, 125, 126, 58];
+        let ctrl_key = crate::keymap::ctrl_key(key, crate::keymap::Options::from(&self.settings.keyboard));
         if !pressed {
+            // Control tapped again (as Esc does) puts them away, and still
+            // goes on to be Control (the first of the next two presses).
+            if ctrl_key && self.hints.ctrl.take() == Some(false) {
+                self.hints.close();
+                return false;
+            }
             let Some(i) = self.hints.swallowed.iter().position(|k| *k == key) else { return false };
             self.hints.swallowed.swap_remove(i);
             return true;
         }
-        // Control again (as Esc does) puts them away, and still goes on
-        // to be Control (held for a shortcut, or the first of the next
-        // two presses).
-        if self.hints.active() && crate::keymap::ctrl_key(key, crate::keymap::Options::from(&self.settings.keyboard)) {
-            self.hints.close();
+        // Control held: a letter typed with it is picked, a window's made
+        // main (Ben, 2026-11-14: "if i hold down ctrl and type the letter
+        // of a window it makes it main"). It still goes on to be Control.
+        if self.hints.active() && ctrl_key {
+            self.hints.ctrl = Some(false);
             return false;
         }
         if !self.hints.active() || MODIFIERS.contains(&key) {
@@ -669,7 +683,24 @@ impl<B: Backend + 'static> AnvilState<B> {
             return true;
         };
         self.hints.swallowed.push(key);
+        let held = self.hints.ctrl.is_some();
+        if held {
+            self.hints.ctrl = Some(true);
+            // (No tap of Control's, for its next two presses.)
+            self.keymap.ctrl_used();
+        }
         if let Some(node) = self.hints.showing().get(pick).cloned() {
+            // With Control held, another window is made the main one, if
+            // its tiles are Main and Stack's; else picked as ever.
+            if held
+                && let Node::Window { id, .. } = node
+                && let Some(w) = self.window_by_id(id)
+                && self.make_main(&w)
+            {
+                self.hints.close();
+                self.focus_window(&w);
+                return true;
+            }
             self.pick_hint(node);
         }
         true

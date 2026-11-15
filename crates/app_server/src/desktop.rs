@@ -601,6 +601,7 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     pub fn window_infos(&self) -> Vec<WindowInfo> {
         let focused = self.seat.get_keyboard().and_then(|k| k.current_focus()).and_then(|f| f.wl_surface().map(|s| s.into_owned()));
+        let mains = self.main_windows();
         let mut infos: Vec<WindowInfo> = self
             .all_windows()
             .into_iter()
@@ -641,6 +642,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     floating: self.floats(&w),
                     float: Self::float_override(&w),
                     floats_always: Self::floats_always(&w),
+                    main: mains.contains(&meta.id),
                     output: self.display_of(&w).map(|o| o.name()),
                     tab: place.map(|(_, t)| t),
                     behind: self.behind_in_group(&w),
@@ -2015,10 +2017,11 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn set_settings(&mut self, mut settings: Settings) {
         // A backup restored from before keyboard profiles.
         settings.migrate();
-        // Windowing modes are kept as they are chosen, not from a client's
-        // copy (which may be older).
+        // Windowing modes and Main and Stack's places are kept as they are
+        // chosen, not from a client's copy (which may be older).
         let own = self.rescue.as_ref().map_or(&self.settings, |r| &r.real);
         settings.tiling.modes = own.tiling.modes.clone();
+        settings.tiling.main_places = own.tiling.main_places.clone();
         settings.tiling.auto.clear();
         if let Some(r) = &mut self.rescue {
             keep_brightness(&mut settings, &r.real);
@@ -2066,7 +2069,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         if olo_xdg::themes::set(&settings.appearance.icon_theme) {
             crate::twitcher::theme_changed();
         }
-        if settings.tiling.default_mode != self.settings.tiling.default_mode || settings.tiling.layout != self.settings.tiling.layout {
+        if settings.tiling.default_mode != self.settings.tiling.default_mode || settings.tiling.layout != self.settings.tiling.layout || settings.tiling.main_place != self.settings.tiling.main_place {
             self.auto.changed();
         }
         // Group Windows on again for an app: its windows taken out by hand

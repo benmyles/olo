@@ -4144,5 +4144,17 @@
   "title": "Agent Screens' History back from another tab shows its rows",
   "caption": "Before (left): History, then Stats, then History again on a screen with 2,104 actions: the list blank, its scroll bar at the end, and the wheel did nothing (Ben's report). The display thread let go of the list's scroller while Stats showed and started it again at its top, while the looper had it at the end; every report after carried an old mark and was dropped. After (right): every scroll layer carries where its looper has it, and the display thread starts one it hasn't from there, so a list on any tab comes back where it was.",
   "image": "2026-11-14/165438-agent-screens-history-back-from-another-tab-show.png"
+ },
+ {
+  "time": "2026-11-14T17:36:51",
+  "title": "Main and Stack: the main window in any place, Center Two Thirds by default",
+  "caption": "Auto-tiling's Main and Stack puts its main window in a place chosen for each display's workspace (Deskbar's Window Arrangement \u25b8 Main Window, any part a window tiles into; Preferences \u25b8 Windows for the default, Center Two Thirds), the rest stacked around it: a column either side of a main window in the middle. Make Main (\u2303\u2325\u2318M) and Swap with Previous Main (\u2303\u2325\u2318\u232b) in the arrangement menu, the window menu, the command palette, the overview (Ctrl+letter) and keyboard hints (Ctrl held with a window's letter).",
+  "image": "2026-11-14/173651-main-and-stack-the-main-window-in-any-place-cent.png"
+ },
+ {
+  "time": "2026-11-14T17:36:53",
+  "title": "A menu bar too narrow for its menus keeps them under \u00bb",
+  "caption": "Before (left): StyledEdit tiled at its least width, its Document menu cut off past the window's edge (the live review's error). After (right): the titles that don't fit go in a \u00bb title at the bar's end, whose menu has them as submenus, as Qt's menu bar extension and the kit toolbar's \u00bb do; agents read it as More Menus.",
+  "image": "2026-11-14/173653-a-menu-bar-too-narrow-for-its-menus-keeps-them-u.png"
  }
 ]

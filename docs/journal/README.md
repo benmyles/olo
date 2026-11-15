@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-14
 
+### A menu bar too narrow for its menus keeps them under »
+
+*17:36* — Before (left): StyledEdit tiled at its least width, its Document menu cut off past the window's edge (the live review's error). After (right): the titles that don't fit go in a » title at the bar's end, whose menu has them as submenus, as Qt's menu bar extension and the kit toolbar's » do; agents read it as More Menus.
+
+![A menu bar too narrow for its menus keeps them under »](2026-11-14/173653-a-menu-bar-too-narrow-for-its-menus-keeps-them-u.png)
+
+### Main and Stack: the main window in any place, Center Two Thirds by default
+
+*17:36* — Auto-tiling's Main and Stack puts its main window in a place chosen for each display's workspace (Deskbar's Window Arrangement ▸ Main Window, any part a window tiles into; Preferences ▸ Windows for the default, Center Two Thirds), the rest stacked around it: a column either side of a main window in the middle. Make Main (⌃⌥⌘M) and Swap with Previous Main (⌃⌥⌘⌫) in the arrangement menu, the window menu, the command palette, the overview (Ctrl+letter) and keyboard hints (Ctrl held with a window's letter).
+
+![Main and Stack: the main window in any place, Center Two Thirds by default](2026-11-14/173651-main-and-stack-the-main-window-in-any-place-cent.png)
+
 ### Agent Screens' History back from another tab shows its rows
 
 *16:54* — Before (left): History, then Stats, then History again on a screen with 2,104 actions: the list blank, its scroll bar at the end, and the wheel did nothing (Ben's report). The display thread let go of the list's scroller while Stats showed and started it again at its top, while the looper had it at the end; every report after carried an old mark and was dropped. After (right): every scroll layer carries where its looper has it, and the display thread starts one it hasn't from there, so a list on any tab comes back where it was.

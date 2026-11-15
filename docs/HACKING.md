@@ -2847,7 +2847,12 @@ it.
   settings). The window's `Frame` has the keyboard when
   nothing in it does and takes the bar's keys that nothing else took
   (a text field's ⌘C stays its own). With no `agent::set_menus`, the
-  command palette reads and invokes the front window's bar.
+  command palette reads and invokes the front window's bar. Titles
+  that don't fit the window (tiled at its least width, a side of Main
+  and Stack) go in a » title at the bar's end, its menu ("More Menus",
+  to agents too) having them as submenus, as Qt's menu bar extension and
+  the toolbar's » (`title_rects`, `toolbar::chevrons`); BeOS cut them
+  off, and the live review called the cut title an error.
   `agent::invoking(cx)` says whether the command being run came through
   the commands socket (an agent's `invoke`, the palette) rather than a
   hand on the display (a click, a key): for the few a program mustn't
@@ -6656,15 +6661,44 @@ Auto-Tiling mode; `{"type":"set_auto_tiling","on":true}` and
 (`TilingSettings::layout`, everywhere it's on: Deskbar's windowing mode
 menu ▸ Auto-Tiling Layout, Preferences ▸ Windows, `{"type":
 "set_tiling_layout","layout":"main_and_stack"}`): Halves, below, and
-Main and Stack, as dwm's: one main window on the left (`MAIN_RATIO`,
-55% of the width, till its edge is dragged; least sizes win, as in
-Halves), the rest stacked on the right each as tall. It's the same tree,
-built in that shape from its tiles in reading order (`main_and_stack`)
-when the layout is chosen (`AutoTiler::built_as`) and whenever the
-number of tiles changes, a new window (not one going back into a place
-kept for it) first, the main one, the old main window at the top of the
-stack; between those the tree is the person's (edges dragged, tiles
-swapped, Tile All), kept as it is. Laying out, in either, sends every
+Main and Stack, as dwm's (and its centred main): one main window in its
+place, the rest stacked in the rest, each as big. The place is any part
+a window tiles into (`Tile::CHOOSABLE`), chosen for each display's
+workspace (Deskbar's Window Arrangement ▸ Main Window,
+`{"type":"set_main_place","place":"Left"}`, kept in
+`TilingSettings::main_places` as modes are) and by default
+(`TilingSettings::main_place`, Preferences ▸ Windows ▸ Main window;
+Center Two Thirds, Ben 2026-11-14). Beside an edge the stack is a
+column (a row) beside it; in the middle, a column either side, the right
+one taking the first half and the odd one; in a corner, the rest of its
+column takes the last and the other half the rest
+(`Tile::main_and_stack_parts` says the parts, what Preferences'
+miniature draws; a test holds app_server's layout to it). The main
+window keeps its place alone too (a lone window in the middle two
+thirds of a wide display, not all of it): a part with nobody in it is
+room for the next window. Least sizes win, as in Halves, and where the
+parts are too small for their windows `autofit` arranges them otherwise
+(a narrow laptop's sixths). It's the same tree, built in that shape
+(`main_and_stack`) when the layout or place is chosen
+(`AutoTiler::built_as`) and whenever the number of tiles with room
+changes (`tiles_with_room`: a window came, went or hid), from the shape
+as it was (`main_and_stack_of`: its main window, the stack's order and
+where its edges were dragged) or, a tree of another shape, in reading
+order (`main_and_stack_again`). A new window (not one going back into a
+place kept for it) is the main one, the old main window first in the
+stack; a main window that closes or hides gives its place to the one
+before it (`AutoTiler::mains`: each tree's main window and the one
+before). Make Main (`Shortcut::MakeMain`, ⌃⌥⌘M on every profile; the
+window menu, Deskbar's arrangement menu, the palette,
+`{"type":"make_main","id":N}`) makes a tile the main one, the old one
+taking its place in the stack; Swap with Previous Main (⌃⌥⌘⌫,
+`{"type":"swap_main"}`) makes the one before main again. The overview
+does it to the window it picks with Ctrl held (its letter, or Return),
+and keyboard hints to a window's letter typed with Ctrl held (a tap of
+Ctrl alone still puts them away, on its release). Agents read it in
+`WindowInfo::main` and `WindowingModeInfo` (`layout`, `main_place`,
+`main`, `previous_main`). Between those the tree is the person's
+(edges dragged, tiles swapped, Tile All), kept as it is. Laying out, in either, sends every
 window changing size its size in one round (`auto_apply`: a collected
 round, as an edge drag's last, `rounds.rs`), so they land in the same
 frame, each held till the others have drawn or 50 ms pass; a drag's
@@ -7060,8 +7094,13 @@ come within `KeyboardSettings::double_press_ms` of the first (Preferences
 ▸ Keyboard ▸ Double-press speed, 400 ms by default) and each press be
 shorter than that. A yellow key cap with a letter goes on everything
 that can be picked, as Vim's EasyMotion does. Typing a letter picks it; Backspace goes back a level;
-Esc, Control (pressed once: it still goes on to be Control), a click or
-any other key (which then does what it does) puts them away. Letters are by key position, as on a
+Esc, Control (tapped once: on its release, and it still goes on to be
+Control), a click or any other key (which then does what it does) puts
+them away. A letter typed with Control held picks it as ever, but
+another window's (on its tab) makes it its tiles' main window where
+they are Main and Stack's (`make_main`), and the hints go (Ben,
+2026-11-14: "if i hold down ctrl and type the letter of a window it
+makes it main"). Letters are by key position, as on a
 US keyboard, home row first (`LETTERS`).
 
 They must show at once, however busy the screen. What can be picked

@@ -517,6 +517,28 @@ fn disable(menu: &mut Menu) {
     }
 }
 
+/// Two chevrons pointing on along a bar (down a vertical one), in the
+/// middle of `r`: the » of what didn't fit (a toolbar's, a menu bar's).
+pub(crate) fn chevrons(g: &mut olo_interface::Painter, r: olo_interface::Bounds<olo_interface::Pixels>, ink: Hsla, vertical: bool) {
+    let c = style::snap_centred(g, r.center(), 8.0, 8.0);
+    for k in 0..2 {
+        let d = px(4.0 * k as f32 - 2.0);
+        let mut path = PathBuilder::stroke(style::hairline(g) * 1.5);
+        if vertical {
+            path.move_to(point(c.left(), c.center().y + d - px(2.0)));
+            path.line_to(point(c.center().x, c.center().y + d + px(1.0)));
+            path.line_to(point(c.right(), c.center().y + d - px(2.0)));
+        } else {
+            path.move_to(point(c.center().x + d - px(2.0), c.top()));
+            path.line_to(point(c.center().x + d + px(1.0), c.center().y));
+            path.line_to(point(c.center().x + d - px(2.0), c.bottom()));
+        }
+        if let Ok(path) = path.build() {
+            g.paint_path(path, ink);
+        }
+    }
+}
+
 /// The » at a bar's end: what didn't fit, as a menu.
 fn more_button(id: &str, menu: MakeMenu, vertical: bool, f: OnCommand) -> Element {
     let (w, h) = if vertical { (TOOL, MORE) } else { (MORE, TOOL) };
@@ -526,24 +548,7 @@ fn more_button(id: &str, menu: MakeMenu, vertical: bool, f: OnCommand) -> Elemen
         if s.hovered || s.pressed {
             style::fill_rect(g, r, style::shade(&p, p.panel_background, if s.pressed { 1.16 } else { 1.06 }));
         }
-        // Two chevrons pointing on along the bar.
-        let c = style::snap_centred(g, r.center(), 8.0, 8.0);
-        for k in 0..2 {
-            let d = px(4.0 * k as f32 - 2.0);
-            let mut path = PathBuilder::stroke(style::hairline(g) * 1.5);
-            if vertical {
-                path.move_to(point(c.left(), c.center().y + d - px(2.0)));
-                path.line_to(point(c.center().x, c.center().y + d + px(1.0)));
-                path.line_to(point(c.right(), c.center().y + d - px(2.0)));
-            } else {
-                path.move_to(point(c.center().x + d - px(2.0), c.top()));
-                path.line_to(point(c.center().x + d + px(1.0), c.center().y));
-                path.line_to(point(c.center().x + d - px(2.0), c.bottom()));
-            }
-            if let Ok(path) = path.build() {
-                g.paint_path(path, ink);
-            }
-        }
+        chevrons(g, r, ink, vertical);
     })
     .look(vertical)
     .agent("Button", "More Tools", None)

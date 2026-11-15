@@ -21,7 +21,7 @@ pub fn launch(app: &str) -> &'static [&'static [&'static str]] {
     }
 }
 
-pub const TILES: [&str; 13] = [
+pub const TILES: [&str; 16] = [
     "tile-left",
     "tile-right",
     "tile-top",
@@ -34,9 +34,13 @@ pub const TILES: [&str; 13] = [
     "tile-center-third",
     "tile-right-third",
     "tile-left-two-thirds",
+    "tile-center-two-thirds",
     "tile-right-two-thirds",
+    "tile-top-two-thirds",
+    "tile-bottom-two-thirds",
 ];
-const WINDOW_EXTRA: [&str; 11] = ["zoom", "zoom-vertical", "zoom-horizontal", "restore", "center", "hide-window", "roll-up", "next-tab", "previous-tab", "next-display", "previous-display"];
+const WINDOW_EXTRA: [&str; 13] =
+    ["zoom", "zoom-vertical", "zoom-horizontal", "restore", "center", "hide-window", "roll-up", "next-tab", "previous-tab", "next-display", "previous-display", "make-main", "swap-main"];
 const ARRANGE_CMDS: [&str; 9] = ["tile-all", "zoom-all", "cascade-all", "fan-out", "cascade-others", "fan-out-others", "undo-arrangement", "redo-arrangement", "show-desktop"];
 const WORKSPACE_CMDS: [&str; 10] = [
     "next-workspace",

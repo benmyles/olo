@@ -18,7 +18,7 @@ use olo_kit::{
     style::{self, c},
     theme,
 };
-use olo_protocol::{OutputInfo, Settings, TilingLayout, WindowingMode};
+use olo_protocol::{OutputInfo, Settings, Tile, TilingLayout, WindowingMode};
 
 use crate::form::Ui;
 
@@ -32,6 +32,9 @@ const DESKBAR_GAP: f32 = 4.0;
 /// miniature (points).
 const TAB_H: f32 = 22.0;
 const MIN_TAB_H: f32 = 7.0;
+/// What the miniature adds to the gap between windows (points), as a
+/// tab keeps a size that reads.
+const MIN_GAP: f32 = 4.0;
 
 pub fn ui(ui: &mut Ui, outputs: &[OutputInfo]) {
     // (Two columns: in one, with the apps that float, it was taller than
@@ -53,6 +56,12 @@ pub fn ui(ui: &mut Ui, outputs: &[OutputInfo]) {
             let i = TilingLayout::ALL.iter().position(|l| *l == s.tiling.layout).unwrap_or(0);
             ui.menu("tiling-layout", layouts, i, |f| f.label("Auto-tiling layout:"), |s, i| s.tiling.layout = TilingLayout::ALL[i]);
             ui.note(s.tiling.layout.detail());
+            // Where Main and Stack's main window goes on a workspace that
+            // hasn't a place of its own (Deskbar's tray ▸ Main Window).
+            let places: Vec<(Tile, &str)> = Tile::CHOOSABLE.iter().map(|t| (*t, t.title())).collect();
+            ui.enabled_if(s.tiling.layout == TilingLayout::MainAndStack, |ui| {
+                ui.choose("main-place", &places, &s.tiling.main_place, |f| f.label("Main window:"), |s, t| s.tiling.main_place = t);
+            });
         });
         // The apps whose windows always float over the tiles (a window's
         // menu ▸ Float Window ▸ Always), by name; unchecked, one's
@@ -112,8 +121,9 @@ fn app_name(id: &str) -> String {
 }
 
 /// The main display to scale, Deskbar in its corner and three windows
-/// tiled as app_server would: the left half, and the right half's top
-/// and bottom.
+/// tiled as app_server would: in Halves, the left half and the right
+/// half's top and bottom; in Main and Stack, the main window in its
+/// place (in front) and two more in the rest.
 fn miniature(g: &mut Painter, well: Bounds<Pixels>, p: &Palette, s: &Settings, (dw, dh): (f32, f32)) {
     style::fill_rect(g, well, c(p.document_background));
     style::sunken(g, well, p, false);
@@ -135,11 +145,26 @@ fn miniature(g: &mut Painter, well: Bounds<Pixels>, p: &Palette, s: &Settings, (
         let usable = (dw - DESKBAR_WIDTH - DESKBAR_GAP, dh);
         let margin = (s.tiling.margin.min(400) as f32).min(usable.0 / 4.0).min(usable.1 / 4.0);
         let (ax, ay, aw, ah) = (margin, margin, usable.0 - 2.0 * margin, usable.1 - 2.0 * margin);
-        let gap = s.tiling.gap.min(200) as f32;
+        // (A gap to scale is a sliver, two frames' edges almost one: four
+        // points more than that, so they read as two, and the slider
+        // still moves them.)
+        let gap = if s.tiling.gap > 0 { s.tiling.gap.min(200) as f32 + MIN_GAP / k } else { 0.0 };
         let (lo, hi) = ((gap / 2.0).floor(), gap - (gap / 2.0).floor());
-        let half_w = (aw / 2.0).round();
-        let half_h = (ah / 2.0).round();
-        let windows = [(ax, ay, half_w - lo, ah, false), (ax + half_w + hi, ay, aw - half_w - hi, half_h - lo, false), (ax + half_w + hi, ay + half_h + hi, aw - half_w - hi, ah - half_h - hi, true)];
+        let parts = match s.tiling.layout {
+            TilingLayout::MainAndStack => s.tiling.main_place.main_and_stack_parts(2),
+            TilingLayout::Halves => vec![(0.0, 0.0, 0.5, 1.0), (0.5, 0.0, 0.5, 0.5), (0.5, 0.5, 0.5, 0.5)],
+        };
+        let front = if s.tiling.layout == TilingLayout::MainAndStack { 0 } else { parts.len() - 1 };
+        // (An edge inside the area gives up half the gap, each side.)
+        let windows = parts.iter().enumerate().map(|(i, &(px, py, pw, ph))| {
+            let edge = |a: f32, b: f32, start: f32, len: f32| {
+                let (lo_in, hi_in) = (a > 1e-3, a + b < 1.0 - 1e-3);
+                let (s0, s1) = ((start + a * len).round() + if lo_in { hi } else { 0.0 }, (start + (a + b) * len).round() - if hi_in { lo } else { 0.0 });
+                (s0, s1 - s0)
+            };
+            let ((x, w), (y, h)) = (edge(px, pw, ax, aw), edge(py, ph, ay, ah));
+            (x, y, w, h, i == front)
+        });
         // Tabs to scale would be slivers; they keep a size that reads.
         let tab_h = (TAB_H * k).max(MIN_TAB_H) / k;
         for (x, y, w, h, front) in windows {

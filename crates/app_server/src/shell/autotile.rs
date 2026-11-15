@@ -26,14 +26,24 @@
 //! else the one that overlaps least.
 //!
 //! Two layouts (`TilingSettings::layout`): Halves, as above, and Main and
-//! Stack, as dwm's: one main window on the left (`MAIN_RATIO` of the
-//! width till its edge is dragged), the rest stacked on the right, each as
-//! tall. It's the same tree, built in that shape from its tiles in reading
-//! order ([`main_and_stack`]) when the layout is chosen and whenever the
-//! number of tiles changes; a new window (not one going back into a place
-//! kept for it) comes first, the main one. Between those the tree is the
-//! person's: edges dragged, tiles swapped, a tiling command, kept as they
-//! are.
+//! Stack, as dwm's: one main window in its place (any part a window can be
+//! tiled into, chosen for each display's workspace, `main_place_of`; the
+//! middle two thirds unless chosen), the rest stacked in the rest, each as
+//! big: a column beside it, one either side of a main window in the
+//! middle (dwm's centred main), or the rest of a corner's column and the
+//! other half. It keeps its place alone too; a part with no window yet is
+//! room for the next. It's the same tree, built in that shape
+//! ([`main_and_stack`]) when the layout or the place is chosen and
+//! whenever the number of tiles with room changes, from the shape as it
+//! was ([`main_and_stack_of`]: its main window, the stack's order, where
+//! the person dragged its edges), or in reading order. A new window (not
+//! one going back into a place kept for it) is the main one, the one that
+//! was first in the stack; a main window that closes or hides gives its
+//! place to the one before it. Make Main (⌃⌥⌘M) makes any tile the main
+//! one, the one that was taking its place, and Swap with Previous Main
+//! (⌃⌥⌘⌫) puts back the one before ([`Mains`]). Between those the tree is
+//! the person's: edges dragged, tiles swapped, a tiling command, kept as
+//! they are.
 //!
 //! Laying out sends every window changing size its size in one round
 //! (`rounds.rs`, as an edge drag's): they draw it and land together, in the
@@ -602,46 +612,219 @@ pub(super) fn overflow(node: &Node, room: (f32, f32), min: &dyn Fn(u64) -> (f32,
     (m[0].min.0 - room.0).max(0.0) + (m[0].min.1 - room.1).max(0.0)
 }
 
-/// Main and Stack's main window's share of the width, till its edge is
-/// dragged (dwm's `mfact`).
-pub const MAIN_RATIO: f32 = 0.55;
-
-/// Main and Stack's tree for `leaves` (reading order: the first the main
-/// window), its main window `ratio` of the width, the rest each as tall.
-pub fn main_and_stack(mut leaves: Vec<Node>, ratio: f32) -> Option<Node> {
-    if leaves.is_empty() {
-        return None;
-    }
-    let main = leaves.remove(0);
-    if leaves.is_empty() {
-        return Some(main);
-    }
-    fn stack(mut tiles: Vec<Node>) -> Node {
-        let n = tiles.len();
-        let first = tiles.remove(0);
-        if tiles.is_empty() {
-            return first;
-        }
-        Node::split(Cut::Rows, 1.0 / n as f32, first, stack(tiles))
-    }
-    Some(Node::split(Cut::Columns, ratio.clamp(0.1, 0.9), main, stack(leaves)))
+/// Where Main and Stack's main window is, by its place's side: beside
+/// one edge, in the middle across, or in a corner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MainSide {
+    Left,
+    Right,
+    Top,
+    Bottom,
+    Center,
+    Corner { left: bool, top: bool },
 }
 
-/// Its main window's share, if `node` is Main and Stack's shape (one
-/// tile is: then the default).
-pub fn main_ratio(node: &Node) -> Option<f32> {
-    fn stacked(n: &Node) -> bool {
-        match n {
-            Node::Split { cut: Cut::Rows, a, b, .. } => !matches!(**a, Node::Split { .. }) && stacked(b),
-            Node::Split { .. } => false,
-            _ => true,
+fn main_side(place: Tile) -> MainSide {
+    match place {
+        Tile::Left | Tile::LeftThird | Tile::LeftTwoThirds | Tile::Cell => MainSide::Left,
+        Tile::Right | Tile::RightThird | Tile::RightTwoThirds => MainSide::Right,
+        Tile::Top | Tile::TopTwoThirds => MainSide::Top,
+        Tile::Bottom | Tile::BottomTwoThirds => MainSide::Bottom,
+        Tile::CenterThird | Tile::CenterTwoThirds => MainSide::Center,
+        Tile::TopLeft => MainSide::Corner { left: true, top: true },
+        Tile::TopRight => MainSide::Corner { left: false, top: true },
+        Tile::BottomLeft => MainSide::Corner { left: true, top: false },
+        Tile::BottomRight => MainSide::Corner { left: false, top: false },
+    }
+}
+
+/// `tiles` one above the other (`Rows`) or side by side, each as big;
+/// none, room for the next window.
+fn evenly(cut: Cut, mut tiles: Vec<Node>) -> Node {
+    let n = tiles.len();
+    if n == 0 {
+        return Node::hole();
+    }
+    let first = tiles.remove(0);
+    if tiles.is_empty() {
+        return first;
+    }
+    Node::split(cut, 1.0 / n as f32, first, evenly(cut, tiles))
+}
+
+/// What [`evenly`] made of them: its tiles in order, none for room left
+/// for the next window; None if `node` isn't that shape.
+fn evenly_of(cut: Cut, node: &Node) -> Option<Vec<Node>> {
+    match node {
+        Node::Split { cut: c, a, b, .. } if *c == cut && !matches!(**a, Node::Split { .. }) => {
+            let mut rest = evenly_of(cut, b)?;
+            rest.insert(0, (**a).clone());
+            Some(rest)
+        }
+        Node::Split { .. } => None,
+        n if *n == Node::hole() => Some(Vec::new()),
+        n => Some(vec![n.clone()]),
+    }
+}
+
+/// Main and Stack's tree (as dwm's, and its centred main's): `main` at
+/// `at` (its part of the area as fractions: its place's, or where its
+/// edges were dragged to), by `place`'s side, and `stack`, in order, in
+/// the rest, each as big as the others there. Beside an edge, the rest
+/// is a column (a row, under or over it); in the middle, a column either
+/// side, the right one taking the first half (and the odd one); in a
+/// corner, the rest of its column takes one and the other half the rest.
+/// It keeps its place alone too (Ben's default, the middle two thirds,
+/// is a window in the middle of a wide display, not all of it): a part
+/// with no window in it yet is room for the next one. `away`, places
+/// kept for windows away that take no room, go at the stack's end.
+pub fn main_and_stack(main: Node, mut stack: Vec<Node>, away: Vec<Node>, place: Tile, at: Part) -> Node {
+    use Cut::{Columns, Rows};
+    let (x, y, w, h) = at;
+    let ratio = |r: f32| r.clamp(0.05, 0.95);
+    // (A place kept that takes no room, in with the last of the windows.)
+    let with_away = |mut tiles: Vec<Node>| {
+        tiles.extend(away.iter().cloned());
+        tiles
+    };
+    match main_side(place) {
+        MainSide::Left => Node::split(Columns, ratio(w), main, evenly(Rows, with_away(stack))),
+        MainSide::Right => Node::split(Columns, ratio(x), evenly(Rows, with_away(stack)), main),
+        MainSide::Top => Node::split(Rows, ratio(h), main, evenly(Columns, with_away(stack))),
+        MainSide::Bottom => Node::split(Rows, ratio(y), evenly(Columns, with_away(stack)), main),
+        MainSide::Center => {
+            let left = stack.split_off(stack.len().div_ceil(2));
+            let (right, left) = if left.is_empty() { (with_away(stack), left) } else { (stack, with_away(left)) };
+            Node::split(Columns, ratio(x), evenly(Rows, left), Node::split(Columns, ratio(w / (1.0 - x).max(0.05)), main, evenly(Rows, right)))
+        }
+        MainSide::Corner { left, top } => {
+            // (One in the rest of its column, once there are two.)
+            let below = if stack.len() >= 2 { stack.pop() } else { None };
+            let (other, below) = match below {
+                Some(b) => (evenly(Rows, stack), evenly(Rows, with_away(vec![b]))),
+                None => (evenly(Rows, with_away(stack)), Node::hole()),
+            };
+            let column = if top { Node::split(Rows, ratio(h), main, below) } else { Node::split(Rows, ratio(y), below, main) };
+            if left { Node::split(Columns, ratio(w), column, other) } else { Node::split(Columns, ratio(x), other, column) }
         }
     }
-    match node {
-        Node::Split { cut: Cut::Columns, ratio, a, b } if !matches!(**a, Node::Split { .. }) && stacked(b) => Some(*ratio),
-        Node::Split { .. } => None,
-        _ => Some(MAIN_RATIO),
+}
+
+/// The main window, the stack in its order and the main window's part
+/// (as fractions of the area), if `tree` is Main and Stack's shape for
+/// `place`, as [`main_and_stack`] builds it (places away that take no
+/// room in the stack where they are). None if it isn't: the person
+/// rearranged it, or it was fitted to its windows' least sizes.
+pub fn main_and_stack_of(tree: &Node, place: Tile) -> Option<(Node, Vec<Node>, Part)> {
+    use Cut::{Columns, Rows};
+    let leaf = |n: &Node| (!matches!(n, Node::Split { .. })).then(|| n.clone());
+    let split = |n: &Node, want: Cut| match n {
+        Node::Split { cut, ratio, a, b } if *cut == want => Some((*ratio, (**a).clone(), (**b).clone())),
+        _ => None,
+    };
+    match main_side(place) {
+        MainSide::Left => {
+            let (r, a, b) = split(tree, Columns)?;
+            Some((leaf(&a)?, evenly_of(Rows, &b)?, (0.0, 0.0, r, 1.0)))
+        }
+        MainSide::Right => {
+            let (r, a, b) = split(tree, Columns)?;
+            Some((leaf(&b)?, evenly_of(Rows, &a)?, (r, 0.0, 1.0 - r, 1.0)))
+        }
+        MainSide::Top => {
+            let (r, a, b) = split(tree, Rows)?;
+            Some((leaf(&a)?, evenly_of(Columns, &b)?, (0.0, 0.0, 1.0, r)))
+        }
+        MainSide::Bottom => {
+            let (r, a, b) = split(tree, Rows)?;
+            Some((leaf(&b)?, evenly_of(Columns, &a)?, (0.0, r, 1.0, 1.0 - r)))
+        }
+        MainSide::Center => {
+            let (x, left, inner) = split(tree, Columns)?;
+            let (r, main, right) = split(&inner, Columns)?;
+            let mut stack = evenly_of(Rows, &right)?;
+            stack.extend(evenly_of(Rows, &left)?);
+            Some((leaf(&main)?, stack, (x, 0.0, r * (1.0 - x), 1.0)))
+        }
+        MainSide::Corner { left, top } => {
+            let (rx, a, b) = split(tree, Columns)?;
+            let (column, other) = if left { (a, b) } else { (b, a) };
+            let (ry, ca, cb) = split(&column, Rows)?;
+            let (main, below) = if top { (ca, cb) } else { (cb, ca) };
+            let mut stack = evenly_of(Rows, &other)?;
+            stack.extend(evenly_of(Rows, &below)?);
+            let (x, w) = if left { (0.0, rx) } else { (rx, 1.0 - rx) };
+            let (y, h) = if top { (0.0, ry) } else { (ry, 1.0 - ry) };
+            Some((leaf(&main)?, stack, (x, y, w, h)))
+        }
     }
+}
+
+/// A leaf of Main and Stack's that has room: a window, or a place kept
+/// that holds its room (not a hole: room for the next window).
+fn has_room(n: &Node) -> bool {
+    match n {
+        Node::Window(_) => true,
+        Node::Kept(k) => k.holds && k.who != Who::Nobody,
+        Node::Split { .. } => false,
+    }
+}
+
+/// How many tiles with room `tree` has: Main and Stack is built again
+/// when that changes (a window came, went, or went away for a while).
+fn tiles_with_room(tree: &Node) -> usize {
+    let mut n = 0;
+    tree.each_leaf(&mut |l| n += has_room(l) as usize);
+    n
+}
+
+/// Main and Stack's tree for `tree` again, its main window in `place`:
+/// from its shape as built for `was` (the place it was built for), its
+/// main window and stack's order and where its edges were dragged (in a
+/// place changed, its new part); a tree of another shape, in reading
+/// order. A `new` window (not in it yet) is the main one, the one that
+/// was first in the stack. Else the main window is `first` if it has
+/// room there (a window made main), the one that was main taking its
+/// place in the stack; else the one in the main place, else `main` (the
+/// main window as last built), else `before` (the one before it: the
+/// main window closed or hid, the one it took the place of comes back),
+/// else the first. None for a tree with nothing in it.
+pub fn main_and_stack_again(tree: &Node, place: Tile, was: Tile, new: Option<u64>, first: Option<u64>, main: Option<u64>, before: Option<u64>) -> Option<Node> {
+    let (mut order, at) = match main_and_stack_of(tree, was) {
+        Some((m, mut stack, at)) => {
+            stack.insert(0, m);
+            (stack, if was == place { at } else { place.fraction() })
+        }
+        None => (leaves(tree), place.fraction()),
+    };
+    // (Room for the next window is the shape's to leave.)
+    order.retain(|n| *n != Node::hole() && !n.is_gap());
+    let shaped = main_and_stack_of(tree, was).map(|(m, ..)| m);
+    let (first, shaped) = match new {
+        Some(id) => {
+            order.insert(0, Node::Window(id));
+            (Some(id), None)
+        }
+        None => (first, shaped),
+    };
+    let pick = |want: Option<Node>, order: &[Node]| want.and_then(|w| order.iter().position(|n| *n == w && has_room(n)));
+    let i = pick(first.map(Node::Window), &order)
+        .or_else(|| pick(shaped, &order))
+        .or_else(|| pick(main.map(Node::Window), &order))
+        .or_else(|| pick(before.map(Node::Window), &order))
+        .or_else(|| order.iter().position(has_room));
+    let Some(i) = i else {
+        // (Only places away: kept as they are.)
+        return (!order.is_empty()).then(|| tree.clone());
+    };
+    // The one in the main place goes where the new main window was.
+    let chosen = order.remove(i);
+    if i > 0 && !order.is_empty() && first.is_some() {
+        let old = order.remove(0);
+        order.insert(i - 1, old);
+    }
+    let (stack, away): (Vec<Node>, Vec<Node>) = order.into_iter().partition(has_room);
+    Some(main_and_stack(chosen, stack, away, place, at))
 }
 
 /// Every leaf (windows and kept places), in reading order.
@@ -756,9 +939,12 @@ pub fn tiled_into(rest: Option<Node>, w: u64, tile: Tile, centre: &dyn Fn(u64) -
         Tile::RightThird => Node::split(Columns, 2.0 * T, whole(rest), me),
         Tile::LeftTwoThirds => Node::split(Columns, 2.0 * T, me, whole(rest)),
         Tile::RightTwoThirds => Node::split(Columns, T, whole(rest), me),
-        Tile::CenterThird => {
-            let (left, right) = take_nearest(rest, (T / 2.0, 0.5), centre);
-            Node::split(Columns, T, left, Node::split(Columns, 0.5, me, right))
+        Tile::TopTwoThirds => Node::split(Rows, 2.0 * T, me, whole(rest)),
+        Tile::BottomTwoThirds => Node::split(Rows, T, whole(rest), me),
+        Tile::CenterThird | Tile::CenterTwoThirds => {
+            let (x, _, w, _) = tile.fraction();
+            let (left, right) = take_nearest(rest, (x / 2.0, 0.5), centre);
+            Node::split(Columns, x, left, Node::split(Columns, w / (1.0 - x), me, right))
         }
         Tile::TopLeft | Tile::TopRight | Tile::BottomLeft | Tile::BottomRight => {
             let left = matches!(tile, Tile::TopLeft | Tile::BottomLeft);
@@ -783,6 +969,8 @@ fn rest_room(tile: Tile) -> (f32, f32) {
         Tile::Top | Tile::Bottom => (1.0, 0.5),
         Tile::LeftThird | Tile::RightThird => (2.0 / 3.0, 1.0),
         Tile::CenterThird | Tile::LeftTwoThirds | Tile::RightTwoThirds => (1.0 / 3.0, 1.0),
+        Tile::CenterTwoThirds => (1.0 / 6.0, 1.0),
+        Tile::TopTwoThirds | Tile::BottomTwoThirds => (1.0, 1.0 / 3.0),
         Tile::Cell => (1.0, 1.0),
     }
 }
@@ -935,14 +1123,27 @@ enum Undo {
     TurnedOn(u32, Vec<String>, olo_protocol::WindowingMode),
 }
 
+/// Main and Stack's main window of a tree, as last built, and the one
+/// that was before it (still in the tree).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct Mains {
+    now: Option<u64>,
+    before: Option<u64>,
+}
+
 /// app_server's auto-tiling: a tree per workspace and display (by
 /// connector) that has it on.
 #[derive(Debug)]
+
 pub struct AutoTiler {
     trees: HashMap<(u32, String), Node>,
-    /// The layout each tree was last built in: chosen anew, it's built in
-    /// that one (Main and Stack's shape), once.
-    built_as: HashMap<(u32, String), olo_protocol::TilingLayout>,
+    /// The layout each tree was last built in, and Main and Stack's main
+    /// window's place: chosen anew, it's built in that one (Main and
+    /// Stack's shape), once.
+    built_as: HashMap<(u32, String), (olo_protocol::TilingLayout, Tile)>,
+    /// Main and Stack: each tree's main window, and the one before it
+    /// (Swap with Previous Main).
+    mains: HashMap<(u32, String), Mains>,
     /// Each tree as last laid out with all its windows there
     /// ([`as_laid_out`]): what a restart keeps, though windows are
     /// closing as it comes (an upgrade re-executes their apps).
@@ -989,6 +1190,7 @@ impl Default for AutoTiler {
         AutoTiler {
             trees: HashMap::new(),
             built_as: HashMap::new(),
+            mains: HashMap::new(),
             laid: HashMap::new(),
             kept_for: HashMap::new(),
             awaiting: std::collections::HashSet::new(),
@@ -1449,7 +1651,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let now = Instant::now();
         let mut tree = self.auto.trees.remove(&key);
         let before = tree.as_ref().map(|t| t.to_string());
-        let tiles_before = tree.as_ref().map_or(0, |t| leaves(t).len());
+        let tiles_before = tree.as_ref().map_or(0, tiles_with_room);
         let units = self.auto_units(output, tree.as_ref());
         if tree.is_none() && !units.is_empty() {
             tree = self.auto_adopt(output, area, &units);
@@ -1553,7 +1755,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             .cloned()
             .collect();
         for w in &fresh {
-            self.auto_insert(&mut tree, w, area);
+            self.auto_insert(&mut tree, w, area, &key);
             // Gone from the place it left in another tree.
             for t in self.auto.trees.values_mut() {
                 let id = w.id();
@@ -1563,20 +1765,23 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
             }
         }
-        // Main and Stack: built in its shape when it's just been chosen, or
-        // as the number of tiles changes (the stack each as tall again);
-        // otherwise as the person left it.
+        // Main and Stack: built in its shape when it's just been chosen (or
+        // its main window's place), or as the number of tiles with room
+        // changes (a window came, went, or hid: the stack each as big
+        // again, and a main window gone gives its place to the one before
+        // it); otherwise as the person left it.
         let layout = self.settings.tiling.layout;
+        let (place, was) = self.main_places(&key);
         if let Some(t) = tree.as_mut()
             && layout == olo_protocol::TilingLayout::MainAndStack
-            && (self.auto.built_as.get(&key) != Some(&layout) || leaves(t).len() != tiles_before)
+            && (self.auto.built_as.get(&key) != Some(&(layout, place)) || tiles_with_room(t) != tiles_before)
         {
-            let ratio = main_ratio(t).unwrap_or(MAIN_RATIO);
-            if let Some(built) = main_and_stack(leaves(t), ratio) {
+            let m = self.auto.mains.get(&key).copied().unwrap_or_default();
+            if let Some(built) = main_and_stack_again(t, place, was, None, None, m.now, m.before) {
                 *t = built;
             }
         }
-        self.auto.built_as.insert(key.clone(), layout);
+        self.auto.built_as.insert(key.clone(), (layout, place));
         // Tiles too small for their windows' least sizes, where another
         // arrangement has room for them all (or overlaps less): that one.
         if let Some(t) = tree.as_mut() {
@@ -1590,6 +1795,25 @@ impl<B: Backend + 'static> AnvilState<B> {
         for w in &units {
             let group = self.groups.place(w).map(|(n, _)| n);
             self.auto.known.insert(w.id(), Known { app_id: w.app_id(), title: w.title(), group });
+        }
+        // Which is the main window now (as built, or as the person
+        // swapped tiles), and the one before it. (A tree of another shape,
+        // fitted to its windows' least sizes, keeps what it knew.)
+        if layout == olo_protocol::TilingLayout::MainAndStack
+            && let Some(t) = &tree
+            && let Some((m, ..)) = main_and_stack_of(t, place)
+        {
+            let now = if let Node::Window(id) = m { Some(id) } else { None };
+            let rec = self.auto.mains.entry(key.clone()).or_default();
+            if rec.now != now {
+                if rec.now.is_some_and(|o| t.contains(o)) {
+                    rec.before = rec.now;
+                } else if rec.before == now {
+                    rec.before = None;
+                }
+                rec.now = now;
+                info!(output = key.1, main = ?now, before = ?rec.before, "the main window");
+            }
         }
         if let Some(t) = tree {
             let now = t.to_string();
@@ -1674,10 +1898,17 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// `w` into `tree`: back in its kept place, if it has one; else in
     /// room a tiling command left; else taking half of the tile that had
     /// the focus last (or the biggest), across its longer side.
-    fn auto_insert(&self, tree: &mut Option<Node>, w: &WindowElement, area: Rectangle<i32, Logical>) {
+    fn auto_insert(&self, tree: &mut Option<Node>, w: &WindowElement, area: Rectangle<i32, Logical>, key: &(u32, String)) {
         let id = w.id();
         let Some(t) = tree.as_mut() else {
-            *tree = Some(Node::Window(id));
+            // (Main and Stack's main window keeps its place alone too.)
+            *tree = Some(match self.settings.tiling.layout {
+                olo_protocol::TilingLayout::MainAndStack => {
+                    let place = self.main_places(key).0;
+                    main_and_stack(Node::Window(id), Vec::new(), Vec::new(), place, place.fraction())
+                }
+                _ => Node::Window(id),
+            });
             return;
         };
         if t.replace(&|n| matches!(n, Node::Kept(Kept { who: Who::Window(i), .. }) if *i == id), Node::Window(id)) {
@@ -1690,6 +1921,17 @@ impl<B: Backend + 'static> AnvilState<B> {
                 return;
             }
         }
+        // Main and Stack: the new window is the main one, the one that was
+        // first in the stack (the shape leaves its own room for the next
+        // window, not a hole a tiling command left).
+        if self.settings.tiling.layout == olo_protocol::TilingLayout::MainAndStack {
+            let (place, was) = self.main_places(key);
+            let m = self.auto.mains.get(key).copied().unwrap_or_default();
+            if let Some(built) = main_and_stack_again(t, place, was, Some(id), None, m.now, m.before) {
+                *t = built;
+            }
+            return;
+        }
         let windows = self.all_windows();
         let mins = self.auto_mins(&windows, area);
         let min = |i: u64| mins.get(&i).copied().unwrap_or((0.0, 0.0));
@@ -1698,17 +1940,6 @@ impl<B: Backend + 'static> AnvilState<B> {
         let biggest_hole = laid.iter().filter(|(n, _)| *n == Node::hole()).enumerate().max_by(|a, b| size(&a.1.1).total_cmp(&size(&b.1.1)));
         if let Some((nth, _)) = biggest_hole {
             t.replace_nth(&|n| *n == Node::hole(), nth, Node::Window(id));
-            return;
-        }
-        // Main and Stack: the new window is the main one, the rest stacked
-        // beside it in their order.
-        if self.settings.tiling.layout == olo_protocol::TilingLayout::MainAndStack {
-            let ratio = main_ratio(t).unwrap_or(MAIN_RATIO);
-            let mut all = leaves(t);
-            all.insert(0, Node::Window(id));
-            if let Some(built) = main_and_stack(all, ratio) {
-                *t = built;
-            }
             return;
         }
         let tiles: Vec<(u64, Part)> = laid.iter().filter_map(|(n, p)| if let Node::Window(i) = n { Some((*i, *p)) } else { None }).collect();
@@ -1865,7 +2096,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             let units = self.auto_units(&output, None);
             tree = self.auto_adopt(&output, area, &units);
         }
-        self.auto_insert(&mut tree, &w, area);
+        self.auto_insert(&mut tree, &w, area, &key);
         self.auto.trees.insert(key, tree.unwrap_or(Node::Window(w.id())));
         info!(window = w.id(), app_id = w.app_id(), "a new window into its tile");
         // At once, so its first configure has its tile's size.
@@ -2187,6 +2418,110 @@ impl<B: Backend + 'static> AnvilState<B> {
         true
     }
 
+    /// Where Main and Stack's main window goes in tree `key` now (its
+    /// display's workspace's place, else the default), and where it went
+    /// as the tree was last built (the same, unless it was just chosen
+    /// or the tree wasn't built in Main and Stack).
+    fn main_places(&self, key: &(u32, String)) -> (Tile, Tile) {
+        let tiling = &self.settings.tiling;
+        let place = match self.space.outputs().find(|o| o.name() == key.1) {
+            Some(o) => tiling.main_place_of(key.0, &crate::desktop::display_key(o)),
+            None => tiling.main_place,
+        };
+        let was = match self.auto.built_as.get(key) {
+            Some((olo_protocol::TilingLayout::MainAndStack, p)) => *p,
+            _ => place,
+        };
+        (place, was)
+    }
+
+    /// Main and Stack's main window of `w`'s tiles, if `w` is in tiles
+    /// laid out so.
+    pub fn main_window_of(&self, key: &(u32, String)) -> Option<u64> {
+        if self.settings.tiling.layout != olo_protocol::TilingLayout::MainAndStack {
+            return None;
+        }
+        let tree = self.auto.trees.get(key)?;
+        self.auto.mains.get(key)?.now.filter(|id| tree.contains(*id))
+    }
+
+    /// The main window before tree `key`'s (Main and Stack), still in it.
+    pub fn previous_main_of(&self, key: &(u32, String)) -> Option<u64> {
+        self.main_window_of(key)?;
+        let tree = self.auto.trees.get(key)?;
+        self.auto.mains.get(key)?.before.filter(|id| tree.contains(*id))
+    }
+
+    /// Whether `w` is its tiles' main window (Main and Stack).
+    pub fn is_main(&self, w: &WindowElement) -> bool {
+        self.tree_of(w).and_then(|k| self.main_window_of(&k)) == Some(w.id())
+    }
+
+    /// Every main window (Main and Stack), of every tree: for the IPC's
+    /// window list, at once.
+    pub fn main_windows(&self) -> Vec<u64> {
+        self.auto.trees.keys().filter_map(|k| self.main_window_of(k)).collect()
+    }
+
+    /// Main and Stack's tree of `w` ready for a command on its main
+    /// window (`name`, for Undo Window Arrangement): its key, the tree
+    /// and the main window's place in it. None where `w` isn't a tile of
+    /// Main and Stack's.
+    fn main_take(&mut self, w: &WindowElement, name: &str) -> Option<((u32, String), Node, Tile)> {
+        if self.settings.tiling.layout != olo_protocol::TilingLayout::MainAndStack || self.floats(w) {
+            return None;
+        }
+        let key = self.tree_of(w)?;
+        let place = self.main_places(&key).0;
+        let (key, tree) = self.auto_take(w, name)?;
+        Some((key, tree, place))
+    }
+
+    /// Make Main (⌃⌥⌘M, the window menu, `Request::MakeMain`): `w` is
+    /// its tiles' main window, and the one that was takes its place in
+    /// the stack. False where its tiles aren't Main and Stack's.
+    pub fn make_main(&mut self, w: &WindowElement) -> bool {
+        if self.is_main(w) {
+            return self.tree_of(w).is_some();
+        }
+        let Some((key, tree, place)) = self.main_take(w, "Make Main") else { return false };
+        let m = self.auto.mains.get(&key).copied().unwrap_or_default();
+        let built = main_and_stack_again(&tree, place, place, None, Some(w.id()), m.now, m.before).unwrap_or(tree);
+        info!(window = w.id(), "made the main window");
+        self.auto_put(key, built);
+        true
+    }
+
+    /// Swap with Previous Main (⌃⌥⌘⌫, `Request::SwapMain`): the main
+    /// window before the one that is now (on `output`'s workspace
+    /// showing, else the active display's) is main again, and the one
+    /// that is goes back to the stack where it was. False if there was
+    /// none there.
+    pub fn swap_main(&mut self, output: Option<Output>) -> bool {
+        let Some(output) = output.or_else(|| self.active_output()) else { return false };
+        let key = (self.showing(&output), output.name());
+        let Some(before) = self.auto.mains.get(&key).and_then(|m| m.before) else { return false };
+        let Some(w) = self.window_by_id(before).filter(|_| self.auto.trees.get(&key).is_some_and(|t| t.contains(before))) else { return false };
+        self.make_main(&w)
+    }
+
+    /// Choose where Main and Stack's main window goes on `output` (the
+    /// active display unless given) on its workspace `workspace` (the one
+    /// showing unless given): its tiles are built again so.
+    pub fn set_main_place(&mut self, place: Tile, workspace: Option<u32>, output: Option<Output>) -> bool {
+        if place == Tile::Cell {
+            return false;
+        }
+        let Some(output) = output.or_else(|| self.active_output()) else { return false };
+        let ws = workspace.unwrap_or_else(|| self.showing(&output)).min(self.settings.workspace_count.max(1) - 1);
+        self.settings.tiling.set_main_place(ws, &crate::desktop::display_key(&output), place);
+        self.settings_changed();
+        info!(workspace = ws, output = output.name(), ?place, "the main window's place");
+        self.auto.changed();
+        self.auto_tick();
+        true
+    }
+
     /// Zoom Vertically or Horizontally for a tile: a full column (or row)
     /// beside the rest; again, the tiles as they were (or, if they have
     /// changed since, back among them).
@@ -2208,7 +2543,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 } else {
                     let rest = tree.without(&|n| *n == Node::Window(id));
                     let mut t = rest;
-                    self.auto_insert(&mut t, w, area);
+                    self.auto_insert(&mut t, w, area, &key);
                     t.unwrap_or(Node::Window(id))
                 }
             }
@@ -2490,27 +2825,129 @@ mod tests {
         }
     }
 
-    /// Main and Stack: the first tile the main one at its share, the rest
-    /// stacked beside it each as tall; what is and isn't that shape.
+    /// Each window's part of the area as `t` lays out (no gaps, no least
+    /// sizes).
+    fn laid_parts(t: &Node) -> Vec<(Node, Part)> {
+        layout(t, &|_| (0.0, 0.0), Inset::default()).into_iter().map(|(n, p)| (n.clone(), p)).collect()
+    }
+
+    fn part_of(t: &Node, id: u64) -> Part {
+        laid_parts(t).into_iter().find(|(n, _)| *n == Node::Window(id)).map(|(_, p)| p).unwrap_or_else(|| panic!("{id} not in {t}"))
+    }
+
+    /// Main and Stack, its main window in each kind of place: beside an
+    /// edge with the stack in a column (a row) beside it, in the middle
+    /// with a column either side (the right one first, with the odd one),
+    /// in a corner with the rest of its column taking one; alone, in its
+    /// place, with room left for the next window. Read back as it was
+    /// built: the main window, the stack in order and its part.
     #[test]
-    fn main_and_stack_shape() {
-        assert_eq!(main_and_stack(Vec::new(), 0.5), None);
-        assert_eq!(main_and_stack(vec![w(1)], 0.5), Some(w(1)));
-        let t = main_and_stack(vec![w(1), w(2), w(3), w(4)], 0.6).unwrap();
-        assert_eq!(t.windows(), [1, 2, 3, 4]);
-        assert_eq!(main_ratio(&t), Some(0.6));
-        let laid = layout(&t, &|_| (0.0, 0.0), Inset::of(Rectangle::new((0, 0).into(), (1200, 900).into()), 0));
-        let part = |id: u64| laid.iter().find(|(n, _)| **n == Node::Window(id)).map(|(_, p)| *p).unwrap();
-        assert!((part(1).2 - 0.6).abs() < 1e-4 && (part(1).3 - 1.0).abs() < 1e-4, "{:?}", part(1));
-        for id in 2..=4 {
-            let p = part(id);
-            assert!((p.0 - 0.6).abs() < 1e-4 && (p.2 - 0.4).abs() < 1e-4 && (p.3 - 1.0 / 3.0).abs() < 1e-3, "{id}: {p:?}");
+    fn main_and_stack_shapes() {
+        let ids = |v: Vec<Node>| v.into_iter().map(|n| if let Node::Window(i) = n { i } else { 0 }).collect::<Vec<u64>>();
+        let cases: [(Tile, usize, Vec<(u64, Part)>); 6] = [
+            (Tile::Left, 2, vec![(1, (0.0, 0.0, 0.5, 1.0)), (2, (0.5, 0.0, 0.5, 0.5)), (3, (0.5, 0.5, 0.5, 0.5))]),
+            (Tile::RightTwoThirds, 1, vec![(1, (1.0 / 3.0, 0.0, 2.0 / 3.0, 1.0)), (2, (0.0, 0.0, 1.0 / 3.0, 1.0))]),
+            (Tile::TopTwoThirds, 2, vec![(1, (0.0, 0.0, 1.0, 2.0 / 3.0)), (2, (0.0, 2.0 / 3.0, 0.5, 1.0 / 3.0)), (3, (0.5, 2.0 / 3.0, 0.5, 1.0 / 3.0))]),
+            (Tile::CenterTwoThirds, 3, vec![(1, (1.0 / 6.0, 0.0, 2.0 / 3.0, 1.0)), (2, (5.0 / 6.0, 0.0, 1.0 / 6.0, 0.5)), (3, (5.0 / 6.0, 0.5, 1.0 / 6.0, 0.5)), (4, (0.0, 0.0, 1.0 / 6.0, 1.0))]),
+            (Tile::BottomLeft, 3, vec![(1, (0.0, 0.5, 0.5, 0.5)), (2, (0.5, 0.0, 0.5, 0.5)), (3, (0.5, 0.5, 0.5, 0.5)), (4, (0.0, 0.0, 0.5, 0.5))]),
+            (Tile::CenterThird, 0, vec![(1, (1.0 / 3.0, 0.0, 1.0 / 3.0, 1.0))]),
+        ];
+        for (place, n, want) in cases {
+            let stack: Vec<Node> = (2..2 + n as u64).map(w).collect();
+            let t = main_and_stack(w(1), stack.clone(), Vec::new(), place, place.fraction());
+            for (id, p) in want {
+                assert!(near(part_of(&t, id), p), "{place:?}: {id} at {:?}, not {p:?}, in {t}", part_of(&t, id));
+            }
+            let (main, back, at) = main_and_stack_of(&t, place).unwrap_or_else(|| panic!("{place:?}: {t} isn't its shape"));
+            assert_eq!((main, ids(back)), (w(1), ids(stack)), "{place:?}");
+            assert!(near(at, place.fraction()), "{place:?}: {at:?}");
+            // Alone in the middle, room either side for the next windows.
+            if n == 0 {
+                assert_eq!(laid_parts(&t).iter().filter(|(n, _)| *n == Node::hole()).count(), 2, "{t}");
+            }
         }
-        // Not the shape: rows at the top, or a split for a main window.
-        assert_eq!(main_ratio(&Node::split(Cut::Rows, 0.5, w(1), w(2))), None);
-        assert_eq!(main_ratio(&Node::split(Cut::Columns, 0.5, Node::split(Cut::Rows, 0.5, w(1), w(2)), w(3))), None);
-        assert_eq!(main_ratio(&Node::split(Cut::Columns, 0.5, w(1), Node::split(Cut::Columns, 0.5, w(2), w(3)))), None);
-        assert_eq!(main_ratio(&w(1)), Some(MAIN_RATIO));
+        // Not its shape: another place's, or the person's own.
+        let t = main_and_stack(w(1), vec![w(2), w(3)], Vec::new(), Tile::Left, Tile::Left.fraction());
+        assert!(main_and_stack_of(&t, Tile::Top).is_none() && main_and_stack_of(&t, Tile::CenterTwoThirds).is_none());
+        assert!(main_and_stack_of(&Node::split(Cut::Columns, 0.5, Node::split(Cut::Rows, 0.5, w(1), w(2)), w(3)), Tile::Left).is_none());
+    }
+
+    /// Main and Stack laid out as the protocol says it is
+    /// (`Tile::main_and_stack_parts`, what Preferences' miniature draws),
+    /// in every place, with none to five more windows.
+    #[test]
+    fn main_and_stack_parts_are_the_protocols() {
+        for place in Tile::CHOOSABLE {
+            for n in 0..=5usize {
+                let t = main_and_stack(w(0), (1..=n as u64).map(w).collect(), Vec::new(), place, place.fraction());
+                for (i, want) in place.main_and_stack_parts(n).into_iter().enumerate() {
+                    let got = part_of(&t, i as u64);
+                    assert!(near(got, want), "{place:?} with {n}: {i} at {got:?}, not {want:?}, in {t}");
+                }
+            }
+        }
+    }
+
+    /// Main and Stack built again: a new window is the main one, the one
+    /// that was first in the stack; a window made main takes the main
+    /// place and the one that was takes its place in the stack; a main
+    /// window gone gives its place to the one before it, and its place
+    /// kept (taking no room) goes to the stack's end; a place changed
+    /// keeps the main window and the stack's order; an edge dragged stays
+    /// where it was let go.
+    #[test]
+    fn main_and_stack_built_again() {
+        let place = Tile::CenterTwoThirds;
+        let order = |t: &Node| {
+            let (m, stack, _) = main_and_stack_of(t, place).unwrap_or_else(|| panic!("{t}"));
+            std::iter::once(m).chain(stack).map(|n| if let Node::Window(i) = n { i } else { 0 }).collect::<Vec<u64>>()
+        };
+        let t = main_and_stack(w(1), vec![w(2), w(3)], Vec::new(), place, place.fraction());
+        let new = main_and_stack_again(&t, place, place, Some(5), None, Some(1), None).unwrap();
+        assert_eq!(order(&new), [5, 1, 2, 3]);
+        let made = main_and_stack_again(&new, place, place, None, Some(2), Some(5), Some(1)).unwrap();
+        assert_eq!(order(&made), [2, 1, 5, 3], "2 the main window, 5 where 2 was");
+        // The main window closed (its place kept a while, taking no room):
+        // the one before it is main again.
+        let closed = Node::Kept(Kept { who: Who::Like { app_id: "a".into(), title: "t".into() }, holds: false, until: None });
+        let mut gone = made.clone();
+        gone.replace(&|n| *n == w(2), closed.clone());
+        let back = main_and_stack_again(&gone, place, place, None, None, Some(2), Some(5)).unwrap();
+        assert_eq!(main_and_stack_of(&back, place).map(|(m, ..)| m), Some(w(5)));
+        let (_, stack, _) = main_and_stack_of(&back, place).unwrap();
+        assert_eq!(stack.last(), Some(&closed), "its place at the stack's end: {back}");
+        assert!(laid_parts(&back).iter().all(|(n, _)| *n != closed), "taking no room: {back}");
+        // Another place: the same main window and order, in its part.
+        let left = main_and_stack_again(&made, Tile::Left, place, None, None, Some(2), Some(5)).unwrap();
+        let (m, stack, at) = main_and_stack_of(&left, Tile::Left).unwrap();
+        assert_eq!((m, stack), (w(2), vec![w(1), w(5), w(3)]));
+        assert!(near(at, Tile::Left.fraction()), "{at:?}");
+        // Its edge dragged (the main window wider), then a window more: as
+        // dragged.
+        let mut dragged = made.clone();
+        if let Node::Split { ratio, .. } = &mut dragged {
+            *ratio = 0.1;
+        }
+        let more = main_and_stack_again(&dragged, place, place, Some(9), None, Some(2), None).unwrap();
+        assert!((part_of(&more, 9).0 - 0.1).abs() < 1e-4, "{:?}", part_of(&more, 9));
+        // A tree of another shape: in reading order, its main window kept.
+        let other = Node::split(Cut::Rows, 0.5, w(7), Node::split(Cut::Columns, 0.5, w(8), w(2)));
+        let built = main_and_stack_again(&other, place, place, None, None, Some(2), None).unwrap();
+        assert_eq!(order(&built), [2, 7, 8]);
+    }
+
+    /// The two-thirds tiles in auto-tiling: the window in its part, the
+    /// rest around it (in the middle, the nearest on its side).
+    #[test]
+    fn two_thirds_tiles_tile_the_rest_around() {
+        let rest = || Some(Node::split(Cut::Columns, 0.5, w(2), w(3)));
+        let centre = |i: u64| if i == 2 { (0.25, 0.5) } else { (0.75, 0.5) };
+        for tile in [Tile::CenterTwoThirds, Tile::TopTwoThirds, Tile::BottomTwoThirds] {
+            let t = tiled_into(rest(), 1, tile, &centre);
+            assert!(near(part_of(&t, 1), tile.fraction()), "{tile:?}: {:?} in {t}", part_of(&t, 1));
+        }
+        let t = tiled_into(rest(), 1, Tile::CenterTwoThirds, &centre);
+        assert!(near(part_of(&t, 2), (0.0, 0.0, 1.0 / 6.0, 1.0)) && near(part_of(&t, 3), (5.0 / 6.0, 0.0, 1.0 / 6.0, 1.0)), "{t}");
     }
 
     /// A tree kept across a restart comes back the same shape and ratios,

@@ -1223,18 +1223,40 @@ pub fn menus_beginning(cx: &mut WindowCx, mut menus: Vec<Menu>) {
     bar.menus = menus;
 }
 
-/// Where each title is in a bar at `b`.
-fn title_rects(titles: &[(SharedString, f32)], b: Bounds<Pixels>) -> Vec<Bounds<Pixels>> {
+/// The » title's width: what doesn't fit a bar is in its menu.
+const MORE_TITLE: f32 = 16.0 + 2.0 * BAR_PAD;
+
+/// Where each title is in a bar at `b`, as many as fit; where they
+/// don't all fit, the » title after them, whose menu has the rest (as
+/// Qt's menu bar's extension, and the toolbar's »: a window tiled narrow
+/// keeps every menu), and the first of those (the » title's index).
+fn title_rects(titles: &[(SharedString, f32)], b: Bounds<Pixels>) -> (Vec<Bounds<Pixels>>, Option<usize>) {
     // The first title's text lines up with the window's content.
-    let mut x = b.left() + px(olo_kit_base::metrics::WINDOW_INSET - BAR_PAD);
-    titles
-        .iter()
-        .map(|(_, w)| {
-            let r = Bounds { origin: point(x, b.top() + px(1.0)), size: size(px(*w), px(BAR_HEIGHT - 2.0)) };
-            x += px(*w);
-            r
-        })
-        .collect()
+    let start = f32::from(b.left()) + olo_kit_base::metrics::WINDOW_INSET - BAR_PAD;
+    let room = f32::from(b.right()) - start;
+    let mut fit = titles.len();
+    if titles.iter().map(|(_, w)| w).sum::<f32>() > room {
+        let mut used = MORE_TITLE;
+        fit = titles
+            .iter()
+            .take_while(|(_, w)| {
+                used += w;
+                used <= room
+            })
+            .count();
+    }
+    let mut x = start;
+    let mut at = |w: f32| {
+        let r = Bounds { origin: point(px(x), b.top() + px(1.0)), size: size(px(w), px(BAR_HEIGHT - 2.0)) };
+        x += w;
+        r
+    };
+    let mut rects: Vec<Bounds<Pixels>> = titles[..fit].iter().map(|(_, w)| at(*w)).collect();
+    let more = (fit < titles.len()).then(|| {
+        rects.push(at(MORE_TITLE));
+        fit
+    });
+    (rects, more)
 }
 
 /// The window's menu bar's command for `k` (Frame takes the keys nothing
@@ -1278,10 +1300,17 @@ pub fn set_menus(cx: &mut WindowCx, menus: Vec<Menu>) {
 struct Offered(Vec<Menu>);
 
 /// Opens bar menu `i` under its title `title` (in the window), by a
-/// press on it or sliding onto it.
-fn open_bar_menu(cx: &mut WindowCx, i: usize, title: Bounds<Pixels>, pressed: bool) {
+/// press on it or sliding onto it; the » title's (`more`, the first menu
+/// that didn't fit), the rest of them as its submenus.
+fn open_bar_menu(cx: &mut WindowCx, i: usize, title: Bounds<Pixels>, pressed: bool, more: Option<usize>) {
     let bar = cx.window_state::<Bar>();
-    let Some(menu) = bar.menus.get(i).cloned() else { return };
+    let menu = match more {
+        Some(first) if i == first => bar.menus[first.min(bar.menus.len())..].iter().fold(Menu::new("More Menus"), |m, sub| m.submenu(sub.clone())),
+        _ => match bar.menus.get(i) {
+            Some(m) => m.clone(),
+            None => return,
+        },
+    };
     let on_command = bar.on_command.clone();
     close_bar_menu(cx);
     // Its popup gone (chosen, put away, a click elsewhere): no menu open,
@@ -1344,7 +1373,8 @@ impl IntoElement for MenuBar {
             style::hline_above(g, b.left(), b.right(), b.bottom(), style::tint(p.menu_background, 1.4));
             let open = shared.open.get();
             let font = style::ui_font(FontWeight::NORMAL);
-            for (i, ((title, _), r)) in titles.iter().zip(title_rects(&titles, b)).enumerate() {
+            let (rects, more) = title_rects(&titles, b);
+            for (i, r) in rects.into_iter().enumerate() {
                 let ink = if open == Some(i) {
                     // Between the bar's bevel lines, on device pixels.
                     let line = style::hairline(g);
@@ -1353,8 +1383,16 @@ impl IntoElement for MenuBar {
                 } else {
                     style::c(p.menu_item_text)
                 };
-                style::label(g, r.left() + px(BAR_PAD), r.center().y, style::Align::Left, title.clone(), style::PLAIN_SIZE, font.clone(), ink);
-                g.agent(agent::Node { role: "MenuBarItem", name: Some(title.clone()), bounds: r, enabled: true, clickable: true, selected: Some(open == Some(i)), ..Default::default() });
+                // (The » of the menus that didn't fit.)
+                let title = if more == Some(i) {
+                    crate::widgets::toolbar::chevrons(g, r, ink, false);
+                    SharedString::from("More Menus")
+                } else {
+                    let title = titles[i].0.clone();
+                    style::label(g, r.left() + px(BAR_PAD), r.center().y, style::Align::Left, title.clone(), style::PLAIN_SIZE, font.clone(), ink);
+                    title
+                };
+                g.agent(agent::Node { role: "MenuBarItem", name: Some(title), bounds: r, enabled: true, clickable: true, selected: Some(open == Some(i)), ..Default::default() });
             }
         })
         .paint_key(look)
@@ -1366,14 +1404,14 @@ impl IntoElement for MenuBar {
             let b = cx.listener_bounds();
             let node = cx.listener_node();
             cx.window_state::<Bar>().node = node;
-            let rects = title_rects(&down, b);
+            let (rects, more) = title_rects(&down, b);
             let Some(i) = rects.iter().position(|r| r.contains(&e.position)) else { return };
             // Its menu was open: the press put it away (`press_in`), and
             // away it stays; or it slid open, and stays for this press.
             let bar = cx.window_state::<Bar>();
             let (put_away, showing) = (bar.closed.take() == Some(i), bar.open.is_some_and(|(o, ..)| o == i));
             if !put_away && !showing {
-                open_bar_menu(cx, i, rects[i], true);
+                open_bar_menu(cx, i, rects[i], true, more);
             }
             cx.stop_propagation();
         })
@@ -1384,11 +1422,11 @@ impl IntoElement for MenuBar {
             let bar = cx.window_state::<Bar>();
             bar.node = node;
             let Some((open, ..)) = bar.open else { return };
-            let rects = title_rects(&slide, b);
+            let (rects, more) = title_rects(&slide, b);
             if let Some(i) = rects.iter().position(|r| r.contains(&e.position))
                 && i != open
             {
-                open_bar_menu(cx, i, rects[i], false);
+                open_bar_menu(cx, i, rects[i], false, more);
             }
         })
         .w_full()
@@ -1400,6 +1438,24 @@ impl IntoElement for MenuBar {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A bar's titles where they fit; where they don't, as many as fit
+    /// with the » after them, inside the bar, its menu the rest.
+    #[test]
+    fn titles_that_dont_fit_go_in_the_more_title() {
+        let titles: Vec<(SharedString, f32)> = ["File", "Edit", "Font", "Paragraph", "Table", "Document"].iter().map(|t| (SharedString::from(*t), 50.0)).collect();
+        let bar = |w: f32| Bounds { origin: point(px(0.0), px(0.0)), size: size(px(w), px(BAR_HEIGHT)) };
+        let (rects, more) = title_rects(&titles, bar(400.0));
+        assert_eq!((rects.len(), more), (6, None));
+        let (rects, more) = title_rects(&titles, bar(250.0));
+        let first = more.expect("they don't all fit");
+        assert_eq!(rects.len(), first + 1);
+        assert!(first >= 3 && first < 6, "{first}");
+        assert!(rects.last().is_some_and(|r| r.right() <= px(250.0) && (f32::from(r.size.width) - MORE_TITLE).abs() < 1e-3), "{rects:?}");
+        // None fits: the » alone.
+        let (rects, more) = title_rects(&titles, bar(40.0));
+        assert_eq!((rects.len(), more), (1, Some(0)));
+    }
 
     /// Every tabbed app's Move to Window ▸: the other windows by title in
     /// natural order, each its command; none, a greyed line.

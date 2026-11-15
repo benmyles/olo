@@ -1430,27 +1430,6 @@ something nobody here has is in "Blocked", with what it waits for.
   iterated, with second opinions from OpenAI's Astra; then every icon
   (apps, Preferences' panels, Deskbar, Tracker's kinds) made again for
   each theme per docs/ICONS.md, checked large and at Deskbar's size.
-- **Main and Stack: Make Main, where the main window goes, by keys**
-  (Ben, 2026-11-14: "let's add a proper command with shortcut and
-  menu item. i also want to make it configurable e.g. there should be
-  an option to set the main window layout for a workspace in main and
-  stack mode where i can choose any of these [the Tile submenu] and
-  let's have the default be center two-thirds (you'll need to add
-  two-thirds options for all of them). and there needs to be keyboard
-  shortcuts for it all e.g. if a new window takes the main area i want
-  to be able to swap it back with the previous window. i also want to
-  be able to change the main window with the kb from the ctrl+up
-  overview screen. and also from the ctrl+ctrl menu, e.g. maybe in
-  that menu if i hold down ctrl and type the letter of a window it
-  makes it main. and of course all these shortcuts need to be
-  configurable and use the right defaults based on the chosen keyboard
-  profile and also shown in the keyboard shortcuts help and available
-  in the command pallette.") Two-thirds for every side (Center, Top,
-  Bottom Two Thirds), Make Main and Swap with Previous Main as
-  shortcuts and window menu items, a per-workspace (and display) main
-  placement chosen from Deskbar's tray, its default in Preferences ▸
-  Windows, Ctrl+letter in the overview and the hints making a window
-  main; said to agents in `WindowInfo` and `WindowingModeInfo`.
 - **Olo Doctor: fix the problems, apply the suggestions, or both**
   (Ben, 2026-11-14: "the fix all button only fixes all problems but
   there's no way to apply all suggestions. we need a way to do both
@@ -1547,6 +1526,56 @@ something nobody here has is in "Blocked", with what it waits for.
   (paths with .. or absolute ones refused); undo; agent-readable and
   drivable; HACKING and the Olo Book.
 ## Done, waiting for Ben to try or confirm
+
+- **Main and Stack: Make Main, where the main window goes, by keys**
+  (Ben, 2026-11-14: "let's add a proper command with shortcut and
+  menu item. i also want to make it configurable e.g. there should be
+  an option to set the main window layout for a workspace in main and
+  stack mode where i can choose any of these [the Tile submenu] and
+  let's have the default be center two-thirds (you'll need to add
+  two-thirds options for all of them). and there needs to be keyboard
+  shortcuts for it all e.g. if a new window takes the main area i want
+  to be able to swap it back with the previous window. i also want to
+  be able to change the main window with the kb from the ctrl+up
+  overview screen. and also from the ctrl+ctrl menu, e.g. maybe in
+  that menu if i hold down ctrl and type the letter of a window it
+  makes it main. and of course all these shortcuts need to be
+  configurable and use the right defaults based on the chosen keyboard
+  profile and also shown in the keyboard shortcuts help and available
+  in the command pallette.") Two-thirds for every side (Center, Top,
+  Bottom Two Thirds), Make Main and Swap with Previous Main as
+  shortcuts and window menu items, a per-workspace (and display) main
+  placement chosen from Deskbar's tray, its default in Preferences ▸
+  Windows, Ctrl+letter in the overview and the hints making a window
+  main; said to agents in `WindowInfo` and `WindowingModeInfo`.
+  Done (2026-11-14): Center, Top and Bottom Two Thirds join Tile (⌃⌥R,
+  ⌃⌥Y, ⌃⌥B on a Mac; the window menu's Tile in four groups). Main and
+  Stack's main window goes in any of those parts, chosen for each
+  display's workspace (Deskbar's Window Arrangement ▸ Main Window,
+  `set_main_place`) and by default (Preferences ▸ Windows ▸ Main window,
+  Center Two Thirds), the rest stacked around it: a column either side
+  of a main window in the middle (dwm's centred main), a column or row
+  beside one at an edge, the rest of a corner's column and the other
+  half. It keeps its place alone too, room left either side for the
+  next windows (a lone window in the middle of a wide display). Make
+  Main (⌃⌥⌘M) and Swap with Previous Main (⌃⌥⌘⌫) on every profile,
+  configurable as every shortcut, in the window menu (dimmed where they
+  can't), Deskbar's arrangement menu, the command palette and the
+  shortcuts sheet; a new window is main and the one it displaced first
+  in the stack, and a main window closed or hidden gives its place back
+  to the one before. In the overview, the window picked with Ctrl held
+  (its letter, or Return) is made main; in keyboard hints, a window's
+  letter typed with Ctrl held (a tap of Ctrl alone still puts them
+  away). Agents: `WindowInfo::main`, `WindowingModeInfo` (layout, place,
+  main, previous main), `make_main`, `swap_main`. Preferences'
+  miniature draws Main and Stack in its place. Checked headless at 1600
+  × 1000: windows opening into the main place, Make Main and Swap by
+  IPC, keys, the overview and hints, a main closed, the place changed
+  from Deskbar; the review clean at 1×, 1.5× and 2× (a narrow tile
+  showed StyledEdit's Document menu cut off: the kit's menu bar now
+  puts titles that don't fit under a »). Ben: try Main and Stack on the
+  Studio Display, and say whether a lone main window should keep its
+  place (as now) or fill the display.
 
 - **Agent Screens' History empty** (Ben, 2026-11-14: "there is a bug in
   agent screens i can't see any history it's just empty"; his

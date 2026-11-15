@@ -809,6 +809,11 @@ impl Deskbar {
         let focused = self.focused_window().is_some();
         let mut menu = self.modes_menu(mode);
         menu.title = "Window Arrangement".into();
+        // Main and Stack's: the focused window the main one, or the one
+        // before back.
+        if mode == WindowingMode::AutoTiling && self.tiling.layout == olo_protocol::TilingLayout::MainAndStack {
+            menu = menu.separator().item("Make Main", "arrange:make-main").enabled(focused).item("Swap with Previous Main", "arrange:swap-main");
+        }
         menu.separator()
             .item("Tile All", "arrange:tile-all")
             .item("Smart Tile", "arrange:smart-tile")
@@ -842,7 +847,28 @@ impl Deskbar {
         for l in olo_protocol::TilingLayout::ALL {
             layouts = layouts.item(l.title(), format!("layout:{}", l.id())).checked(l == self.tiling.layout);
         }
-        menu.submenu(layouts)
+        menu = menu.submenu(layouts);
+        // Where Main and Stack's main window goes on this workspace (Ben,
+        // 2026-11-14: "an option to set the main window layout for a
+        // workspace in main and stack mode where i can choose any of
+        // these"): any part a window tiles into.
+        if self.tiling.layout == olo_protocol::TilingLayout::MainAndStack {
+            let display = self.menu_output.clone().or_else(|| self.showing.iter().find(|d| d.active).map(|d| d.output.clone()));
+            let ws = self.menu_workspace.unwrap_or_else(|| self.showing(display.as_deref()));
+            let key = self.outputs.iter().find(|o| Some(&o.name) == display.as_ref()).map(|o| o.key.clone()).unwrap_or_default();
+            let now = self.tiling.main_place_of(ws, &key);
+            let mut places = Menu::new("Main Window");
+            let mut family = None;
+            for (i, t) in olo_protocol::Tile::CHOOSABLE.iter().enumerate() {
+                if family.is_some_and(|f| f != t.family()) {
+                    places = places.separator();
+                }
+                family = Some(t.family());
+                places = places.item(t.title(), format!("main-place:{i}")).checked(*t == now);
+            }
+            menu = menu.submenu(places);
+        }
+        menu
     }
 
     /// Go to one of `display`'s workspaces, or move the focused window to
@@ -1239,6 +1265,17 @@ impl Deskbar {
             Some(("mode", id)) => {
                 if let Some(mode) = WindowingMode::from_id(id) {
                     self.set_mode(self.menu_output.clone(), self.menu_workspace, mode);
+                }
+            }
+            // For the display and workspace it was chosen for; at once here
+            // too.
+            Some(("main-place", i)) => {
+                if let Some(place) = i.parse::<usize>().ok().and_then(|i| olo_protocol::Tile::CHOOSABLE.get(i).copied()) {
+                    let output = self.menu_output.clone().or_else(|| self.showing.iter().find(|d| d.active).map(|d| d.output.clone()));
+                    let key = self.outputs.iter().find(|o| Some(&o.name) == output.as_ref()).map(|o| o.key.clone()).unwrap_or_default();
+                    let at = self.menu_workspace.unwrap_or_else(|| self.showing(output.as_deref()));
+                    self.tiling.set_main_place(at, &key, place);
+                    request(Request::SetMainPlace { place, workspace: self.menu_workspace, output });
                 }
             }
             // (At once here too, so the menu shows it before the settings

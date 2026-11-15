@@ -36,7 +36,7 @@ pub mod touchpad;
 pub mod voice;
 pub use notifications::{AppNotifications, CardSize, HistoryView, NoteApp, NoteLook, NoteStyle, NotificationSettings, NotificationState};
 pub use sharing::SharingState;
-pub use shortcuts::{AutoTiling, Chord, CommandKey, KeyboardProfile, ModeChoice, Platform, Shortcut, ShortcutSettings, Tile, TilingLayout, TilingSettings, WindowingMode};
+pub use shortcuts::{AutoTiling, Chord, CommandKey, KeyboardProfile, MainPlaceChoice, ModeChoice, Platform, Shortcut, ShortcutSettings, Tile, TilingLayout, TilingSettings, WindowingMode};
 
 pub const SOCKET_ENV: &str = "OLO_SOCKET";
 
@@ -452,6 +452,34 @@ pub enum Request {
     /// Saved; answered `Reply::Ok`.
     SetTilingLayout {
         layout: TilingLayout,
+    },
+    /// Where Main and Stack's main window goes (any part a window can be
+    /// tiled into, `Tile::CHOOSABLE`) on one display (`output`, a
+    /// connector; else the active display), on one of its workspaces
+    /// (the one showing unless given): its tiles are laid out again so.
+    /// Remembered (`TilingSettings::main_places`); where none is
+    /// chosen, `TilingSettings::main_place`. Answered `Reply::Ok`.
+    SetMainPlace {
+        place: Tile,
+        #[serde(default)]
+        workspace: Option<u32>,
+        #[serde(default)]
+        output: Option<String>,
+    },
+    /// Main and Stack: window `id` (auto-tiled) is its display's main
+    /// window, in the main window's place, and the one that was takes its
+    /// place in the stack (the window menu's Make Main, ⌃⌥⌘M). Answered
+    /// `Reply::Ok`, or an error where its tiles aren't Main and Stack's.
+    MakeMain {
+        id: WindowId,
+    },
+    /// Main and Stack: the main window before the one that is now is the
+    /// main window again on one display (`output`; else the active
+    /// display) on the workspace showing, as Swap with Previous Main
+    /// (⌃⌥⌘⌫) does. Answered `Reply::Ok`, or an error if there was none.
+    SwapMain {
+        #[serde(default)]
+        output: Option<String>,
     },
     /// Whether auto-tiling is on for each display on a workspace (each
     /// display's showing unless given).
@@ -1232,6 +1260,10 @@ pub struct WindowInfo {
     /// it as it is).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub floats_always: bool,
+    /// The main window of its display's tiles, auto-tiled in Main and
+    /// Stack ([`TilingLayout::MainAndStack`], `Request::MakeMain`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub main: bool,
     /// The display it is on (its connector), or was on while hidden or
     /// on another workspace.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1314,6 +1346,24 @@ pub struct WindowingModeInfo {
     /// The workspace it is about (the display's showing, unless asked).
     #[serde(default)]
     pub workspace: u32,
+    /// How auto-tiling lays its windows out (every display's), and, in
+    /// Main and Stack, where the main window goes there
+    /// (`TilingSettings::main_place_of`, `Request::SetMainPlace`) and
+    /// which window is it.
+    #[serde(default)]
+    pub layout: TilingLayout,
+    #[serde(default = "default_main_place")]
+    pub main_place: Tile,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub main: Option<WindowId>,
+    /// The main window before it, still a tile there: the one Swap with
+    /// Previous Main (`Request::SwapMain`) makes main again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_main: Option<WindowId>,
+}
+
+fn default_main_place() -> Tile {
+    TilingSettings::default().main_place
 }
 
 /// The workspace a display (its connector) shows. Each display has its

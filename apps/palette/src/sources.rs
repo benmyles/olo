@@ -303,7 +303,11 @@ pub fn context() -> (Option<WindowInfo>, Vec<Item>) {
             "{} {}{}",
             info.id.replace('-', " "),
             info.group,
-            if info.action == olo_protocol::Shortcut::Hide { " minimize minimise" } else { "" }
+            match info.action {
+                olo_protocol::Shortcut::Hide => " minimize minimise",
+                olo_protocol::Shortcut::MakeMain | olo_protocol::Shortcut::SwapMain => " main and stack master tiling",
+                _ => "",
+            }
         ));
         item.keys = keys.first().map(|c| c.label(profile.platform));
         // Window shortcuts need a window to act on.

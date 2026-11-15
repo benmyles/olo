@@ -1,10 +1,11 @@
-//! The overview (⌃Space): every display's workspaces at once, each a
+//! The overview (⌃↑ on a Mac, `Shortcut::Overview`): every display's workspaces at once, each a
 //! pane with its windows spread out so none covers another, all of them
 //! live (they go on drawing, those on other workspaces too). Clicking a
 //! window, or typing the letter on it, makes it the active window, on its
 //! workspace, and leaves; the arrows walk the windows and Return picks
-//! one. Esc, ⌃Space again or a click on nothing leaves everything as it
-//! was.
+//! one. With Ctrl held, the window picked is made its tiles' main window
+//! too (Main and Stack). Esc, its shortcut again or a click on nothing
+//! leaves everything as it was.
 //!
 //! BeOS had nothing like it: its Workspaces applet draws every
 //! workspace's windows as outlines, too small to tell apart. This is
@@ -846,8 +847,8 @@ impl<B: Backend + 'static> AnvilState<B> {
             ESC => self.close_overview(None),
             RETURN | KP_ENTER => {
                 let chosen = o.chosen().and_then(|id| o.cells.iter().find(|c| c.window.id() == id)).map(|c| c.window.clone());
-                if chosen.is_some() {
-                    self.close_overview(chosen);
+                if let Some(w) = chosen {
+                    self.pick_from_overview(w, key);
                 }
             }
             LEFT | RIGHT | UP | DOWN => {
@@ -862,12 +863,27 @@ impl<B: Backend + 'static> AnvilState<B> {
             }
             k => {
                 let chosen = crate::hints::letter(k).and_then(|c| o.cells.iter().find(|cell| cell.letter == Some(c))).map(|c| c.window.clone());
-                if chosen.is_some() {
-                    self.close_overview(chosen);
+                if let Some(w) = chosen {
+                    self.pick_from_overview(w, key);
                 }
             }
         }
         true
+    }
+
+    /// A window picked from the overview by `key` (its letter, or Return
+    /// for the one walked to): it's the active one, and it leaves. With
+    /// Ctrl held, it's made its tiles' main window too, if they are Main
+    /// and Stack's (Ben, 2026-11-14: "i also want to be able to change
+    /// the main window with the kb from the ctrl+up overview screen"):
+    /// on its workspace first, so its tiles are the ones showing.
+    fn pick_from_overview(&mut self, w: WindowElement, key: u32) {
+        if self.keymap.chord_now(key).ctrl {
+            self.keymap.ctrl_used();
+            self.restore(&w);
+            self.make_main(&w);
+        }
+        self.close_overview(Some(w));
     }
 
     /// Frame callbacks for the windows it shows that aren't on screen
