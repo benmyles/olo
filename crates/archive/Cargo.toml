@@ -1,0 +1,21 @@
+[package]
+name = "olo-archive"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# Every archive read and written in Rust, in process (Tracker's Compress
+# and Extract, Quick Look's look inside): zip (and its AES), tar with
+# gzip, bzip2, xz and zstd, 7-Zip (and its AES), RAR (read: RARLAB's own
+# unpacker, built from its source), ISO 9660 (Rock Ridge and Joliet
+# names), cpio.
+zip = { version = "9", default-features = false, features = ["deflate", "deflate64", "bzip2", "zstd", "lzma", "aes-crypto"] }
+tar = "0.4"
+flate2 = "1"
+bzip2 = "0.6"
+liblzma = { version = "0.4", features = ["static"] }
+zstd = "0.14"
+sevenz-rust2 = "0.24"
+unrar = "0.5"
+libc = "0.2"

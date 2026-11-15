@@ -416,6 +416,10 @@ impl FolderWin {
             menu = fs::grouping_item(menu, self.selected_entries().first());
         }
         menu = menu.item("Get Info", "info").key("i").item("Edit Name", "rename").key("e").enabled(one).item("Duplicate", "duplicate").key("d").item("Create Link", "link");
+        // Compress ▸, and Extract for archives (archives.rs).
+        if !in_trash {
+            menu = crate::archives::menu_items(menu, &self.selected_entries());
+        }
         // DiskBackup's versions of a file (Ben: "if you right click a file in
         // tracker it should show older versions that you can restore").
         if crate::backups::on() {
@@ -510,11 +514,11 @@ impl FolderWin {
             .key("d")
             .enabled(has_sel)
             .item("Create Link", "link")
-            .enabled(has_sel)
-            .separator()
-            .item("Move to Trash", "trash")
-            .key("t")
-            .enabled(has_sel && !in_trash);
+            .enabled(has_sel);
+        if has_sel && !in_trash {
+            file = crate::archives::menu_items(file, &self.selected_entries());
+        }
+        let mut file = file.separator().item("Move to Trash", "trash").key("t").enabled(has_sel && !in_trash);
         if in_trash {
             file = file.item("Restore", "restore").enabled(has_sel && self.current_dir() == fs::trash_files()).item("Empty Trash", "empty-trash").enabled(!fs::trash_is_empty());
         }
@@ -1360,6 +1364,9 @@ impl FolderWin {
     pub fn run(&mut self, cmd: &str, cx: &mut Cx<Self>) {
         let (selected, entries, dir) = (self.selected_paths(), self.selected_entries(), self.current_dir());
         let job = |kind: ops::Kind, sources: Vec<PathBuf>, id: u64| to_hub(ToHub::Job { kind, sources, dest: None, origin: Some(id) });
+        if (cmd.starts_with("compress") || cmd.starts_with("extract")) && crate::archives::command(cmd, selected.clone(), dir.clone(), self.id) {
+            return;
+        }
         match cmd {
             "quick-look" => to_hub(ToHub::QuickLook(self.id)),
             "open" => {

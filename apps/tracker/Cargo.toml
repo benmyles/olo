@@ -10,6 +10,7 @@ name = "olo-tracker"
 path = "src/main.rs"
 
 [dependencies]
+olo-archive.workspace = true
 olo-crash.workspace = true
 olo-sync.workspace = true
 olo-kit.workspace = true

@@ -4270,5 +4270,11 @@
   "title": "OS Updates: Fedora's packages, chosen and reviewed",
   "caption": "A new app, through DNF5's own daemon: every update with its check box (Choose: All \u00b7 Security Updates \u00b7 Bug Fixes \u00b7 Enhancements \u00b7 Other Updates \u00b7 None, and Update 20), searched and filtered by kind, severity, repository and chosen, the most pressing first; the selected one's versions, sizes, advisories with their CVEs linked, and its changelog since what's installed. Each change is reviewed before it runs; Repositories, History with Undo and Upgrade Fedora beside it. (Against dnf-fake: made-up updates.)",
   "image": "2026-11-15/085557-os-updates-fedora-s-packages-chosen-and-reviewed.png"
+ },
+ {
+  "time": "2026-11-15T09:22:07",
+  "title": "Tracker: Compress and Extract",
+  "caption": "Tracker compresses and extracts, natively (olo-archive, in Rust: zip with AES, tar with gzip, xz, zstd or bzip2, 7-Zip with AES; it reads RAR, ISO 9660 and cpio too): a selection's Compress \u25b8 makes an archive beside it, Compress As\u2026 names it, chooses its format and gives it a password; an archive's Extract Here and Extract To\u2026 take everything out (one thing as it is, several in a folder named for it), nothing written outside. Jobs with progress and Stop in Tracker Status, undone by Edit \u25b8 Undo; a password asked for when one is needed.",
+  "image": "2026-11-15/092207-tracker-compress-and-extract.png"
  }
 ]

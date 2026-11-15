@@ -1995,6 +1995,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "constant_time_eq"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9eb6feb175df65d0a3ccd3e73484e940d0ac664e8034f0519fd49a93db3071d9"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2851,6 +2860,7 @@ dependencies = [
  "const-oid",
  "crypto-common 0.2.2",
  "ctutils",
+ "zeroize",
 ]
 
 [[package]]
@@ -7098,6 +7108,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-archive"
+version = "0.1.0"
+dependencies = [
+ "bzip2",
+ "flate2",
+ "libc",
+ "liblzma",
+ "sevenz-rust2",
+ "tar",
+ "unrar",
+ "zip",
+ "zstd 0.14.3",
+]
+
+[[package]]
 name = "olo-brush"
 version = "0.1.0"
 dependencies = [
@@ -8003,6 +8028,7 @@ dependencies = [
  "lofty",
  "matroska-demuxer",
  "mp4",
+ "olo-archive",
  "olo-color",
  "olo-crash",
  "olo-images",
@@ -8469,6 +8495,7 @@ dependencies = [
  "image",
  "libc",
  "olo-appimage",
+ "olo-archive",
  "olo-crash",
  "olo-images",
  "olo-kit",
@@ -13396,6 +13423,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "unrar"
+version = "0.5.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92ec61343a630d2b50d13216dea5125e157d3fc180a7d3f447d22fe146b648fc"
+dependencies = [
+ "bitflags 2.13.2",
+ "regex",
+ "unrar_sys",
+ "widestring",
+]
+
+[[package]]
+name = "unrar_sys"
+version = "0.5.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b77675b883cfbe6bf41e6b7a5cd6008e0a83ba497de3d96e41a064bbeead765"
+dependencies = [
+ "cc",
+ "libc",
+ "winapi",
+]
+
+[[package]]
 name = "untrusted"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -14168,6 +14218,12 @@ dependencies = [
  "bytemuck",
  "safe_arch",
 ]
+
+[[package]]
+name = "widestring"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72069c3113ab32ab29e5584db3c6ec55d416895e60715417b5b883a357c3e471"
 
 [[package]]
 name = "wild"
@@ -15135,17 +15191,23 @@ version = "9.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "518b847fd864440c379748ad684c449f293af68978a485a4ff16f7c901c1f7c4"
 dependencies = [
+ "aes",
  "bzip2",
+ "constant_time_eq",
  "crc32fast",
  "deflate64",
  "flate2",
  "getrandom 0.4.3",
+ "hmac",
  "indexmap 2.14.2",
  "lzma-rust2",
  "memchr",
  "nix 0.31.3",
+ "pbkdf2",
+ "sha1",
  "typed-path",
  "windows-sys 0.61.2",
+ "zeroize",
  "zopfli",
  "zstd 0.14.3",
 ]

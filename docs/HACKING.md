@@ -14542,6 +14542,86 @@ deferred so the Tracker can update the window back):
   says so and stays. Agents and the palette: `go-to` opens it,
   `go-to:<path>` goes straight there.
 
+## Archives (crates/archive, `olo-archive`; Tracker's Compress and Extract)
+
+Every archive read and written in Rust, in process, never a program run
+(Ben, 2026-11-14: "olo's tracker should have native support for
+compression/archives … support all the common formats including zip,
+tar, gz, tar.gz, bzip, 7z, rar, iso and so on"). `olo_archive::kind`
+says what a file is by its first bytes (inside a compression, by what
+the compression holds: a tar, a cpio, or one file), then its name;
+`list` what's in one; `extract` everything out; `compress` files and
+folders into a new one. Written: zip (deflate; AES-256 with a password),
+tar plain or with gzip, bzip2, xz or zstd, 7-Zip (LZMA2; AES-256, its
+names hidden too, with a password). Read, also: RAR (RARLAB's own
+unpacker, the `unrar` crate, built from its source: reading only, as
+its licence has it), ISO 9660 (its own reader, `iso.rs`: Rock Ridge's
+names, permissions and links, else Joliet's names, else the 8.3 ones;
+a tree walked once, its loops and depth bounded), cpio (newc and odc,
+`cpio.rs`: initramfs, RPM's payload), and a single file in gzip, bzip2,
+xz or zstd. (The `cdfs` crate was looked at for ISO and left: it
+requires FUSE, clap and a logger.)
+
+**Nothing outside.** Extraction goes into a hidden folder of its own in
+the destination (`.olo-extracting-PID-N`) through one `Sink`: every
+name a `safe_path` (no `..`, nothing absolute, no drive letter, a
+backslash a separator), every file made new (`O_EXCL`, `O_NOFOLLOW`),
+every folder on the way one it made itself, and links made last: a
+symbolic one only when what it points to stays inside (never absolute,
+never more `..` than it's deep), a hard one only to a file it wrote; so
+an entry "through" a link to a folder lands in a real folder, never
+where the link points. setuid, setgid and sticky are dropped;
+permissions and times kept (a folder's set at the end, deepest first,
+so a read-only folder is still filled). Then what came out is put in
+place as Finder's Archive Utility does: one thing at its top as it is,
+beside the archive; several in a folder named for the archive
+(`base_name`: "photos" for photos.tar.gz); a name taken gets a number
+("report 2.pdf", `unique`). Made archives are written beside their
+place under a hidden name and renamed into it at the end. Stopped or
+failed, nothing is left: not the hidden folder, not a half-made archive.
+
+**Progress and Stop.** Each takes a `Control`: how far (bytes of how
+many: the entries' sizes, or for a stream how much of the file has been
+read; at most twenty reports a second, and always one per item) and a
+flag that stops it between reads. A password-protected archive says so
+(`Error::Password(false)`), and a wrong password (`true`) is told apart
+where the format can (zip's check, 7-Zip's, RAR's).
+
+**In Tracker** (archives.rs, ops.rs `Kind::Compress(Format)` and
+`Kind::Extract`): Compress ▸ (Zip; Tar, gzip; Tar, xz; Tar, zstd; Tar,
+bzip2; Tar; 7-Zip; Compress As…) on any selection's menu and in File,
+Extract Here and Extract To… (a folder chosen in the kit's panel) when
+everything selected is an archive (by its kind: nothing is read on the
+UI thread to decide). They're jobs like Copy's: on a worker, in Tracker
+Status with its bar (bytes) and Stop, what they made selected after,
+and Edit ▸ Undo puts it in the Trash (`undo::Change::Made`); a long one
+says it's done in a notification. Compress names its archive "photos.zip"
+for one item and "Archive.zip" for several; Compress As… (a dialog:
+Name, Format, Protect it with a password, which only Zip and 7-Zip
+take) names it and chooses. An archive wanting a password brings up a
+dialog asking for it (the job's `Outcome::needs_password`; "That
+password isn't right. Try again:" when it was wrong), and the job runs
+again with it (`ToHub::ArchiveJob`). Commands, for agents and the
+palette: `compress:zip`, `compress:tar.gz` (any `Format`'s ending),
+`compress-as`, `extract-here`, `extract-to`.
+
+**Quick Look** lists what's in any of them (`olo_preview::archive`,
+through `list`), says when one is protected by a password, and for a
+single compressed file what it unpacks to and how big.
+
+**Tests.** `cargo test -p olo-archive`: every format written round
+trips (contents, the executable bit, links but in 7-Zip, times), a
+password asked for and checked (zip, 7-Zip), a tar made by hand to
+write outside (`../`, absolute paths, links out, a file through a link)
+writes nothing outside, a single gzip, a cpio and an ISO 9660 made in
+the test, RAR read (the `unrar` crate's sample archives, one with a
+password), Stop leaving nothing. Tracker's `ops::tests::compress_and_extract`
+runs them as jobs. Tried in a test session: Compress ▸ Zip of two items
+(Archive.zip, selected), Extract Here (a folder "Archive"), Undo (it went
+to the Trash), Compress As… 7-Zip with a password, its Extract asking,
+a wrong password asked again, the right one; the dialogs reviewed at 1×,
+1.5× and 2×, light and dark. Nothing per frame changes.
+
 ## Agent Screens (apps/screen)
 
 Agents get screens of their own: `olo-screen start [NAME] [--size WxH]

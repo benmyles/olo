@@ -50,109 +50,44 @@ fn sort(items: &mut [Item]) {
     items.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
 }
 
+/// What's in an archive (`olo_archive`: zip, tar in its compressions,
+/// 7-Zip, RAR, ISO 9660, cpio), or what a single compressed file holds.
 pub fn archive(path: &Path, name: &str, cancel: &Arc<AtomicBool>) -> Result<Update, String> {
-    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-    let mut magic = [0u8; 6];
-    let n = (&file).read(&mut magic).unwrap_or(0);
-    let magic = &magic[..n];
-    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-    let reader = std::io::BufReader::new(file);
-    let (kind, mut items) = if magic.starts_with(b"PK") {
-        ("Zip archive", zip_items(reader)?)
-    } else if magic.starts_with(&[b'7', b'z', 0xbc, 0xaf, 0x27, 0x1c]) {
-        ("7-Zip archive", seven_items(path)?)
-    } else if magic.starts_with(&[0x1f, 0x8b]) {
-        tar_or_single("gzip", Box::new(flate2::read::MultiGzDecoder::new(reader)), name, ".gz", cancel)?
-    } else if magic.starts_with(&[0xfd, b'7', b'z', b'X', b'Z', 0]) {
-        tar_or_single("xz", Box::new(liblzma::read::XzDecoder::new(reader)), name, ".xz", cancel)?
-    } else if magic.starts_with(b"BZh") {
-        tar_or_single("bzip2", Box::new(bzip2::read::MultiBzDecoder::new(reader)), name, ".bz2", cancel)?
-    } else if magic.starts_with(&[0x28, 0xb5, 0x2f, 0xfd]) {
-        let d = zstd::stream::read::Decoder::new(reader).map_err(|e| e.to_string())?;
-        tar_or_single("zstd", Box::new(d), name, ".zst", cancel)?
-    } else if name.ends_with(".tar") {
-        ("Tar archive", tar_items(Box::new(reader), cancel)?)
-    } else {
+    let _ = name;
+    let Some(kind) = olo_archive::kind(path) else {
         return Ok(Update::Body(Body::Card { note: "Archive (this kind can't be looked inside)".into() }));
+    };
+    let mut items: Vec<Item> = if let olo_archive::Kind::Single(codec) = kind {
+        // One file: say what it unpacks to, and how big (counting as we go).
+        let mut size = 0u64;
+        if let Ok(mut r) = std::fs::File::open(path).map_err(|e| e.to_string()).and_then(|f| codec.reader(f).map_err(|e| e.to_string())) {
+            let mut buf = vec![0u8; 1 << 16];
+            while !cancel.load(Ordering::Relaxed) {
+                match r.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => size += n as u64,
+                }
+            }
+        }
+        vec![Item { name: olo_archive::base_name(path, kind), is_dir: false, size }]
+    } else {
+        match olo_archive::list(path, None, cancel) {
+            Ok(entries) => entries
+                .into_iter()
+                .map(|e| Item { name: e.name.trim_end_matches('/').to_owned(), is_dir: e.kind == olo_archive::EntryKind::Dir, size: e.size })
+                .filter(|i| !i.name.is_empty() && i.name != ".")
+                .collect(),
+            Err(olo_archive::Error::Password(_)) => return Ok(Update::Body(Body::Card { note: format!("{}, protected by a password", kind.name()) })),
+            Err(olo_archive::Error::Cancelled) => Vec::new(),
+            Err(e) => return Err(format!("This archive can't be read ({e}).")),
+        }
     };
     let total = items.len();
     sort(&mut items);
     items.truncate(MAX_ITEMS);
     let unpacked: u64 = items.iter().map(|i| i.size).sum();
-    let note = format!("{kind}, {total} item{}, {} unpacked", if total == 1 { "" } else { "s" }, fs::format_size(unpacked));
+    let note = format!("{}, {total} item{}, {} unpacked", kind.name(), if total == 1 { "" } else { "s" }, fs::format_size(unpacked));
     Ok(Update::Body(Body::Listing { items, note }))
-}
-
-type Stream = Box<dyn Read + Send>;
-
-/// A compressed stream is a tarball if it unpacks to one; otherwise it is
-/// one compressed file.
-fn tar_or_single(codec: &str, stream: Stream, name: &str, suffix: &str, cancel: &Arc<AtomicBool>) -> Result<(&'static str, Vec<Item>), String> {
-    let is_tar = name.contains(".tar") || name.ends_with(".tgz") || name.ends_with(".tbz2") || name.ends_with(".txz");
-    if is_tar {
-        let kind = match codec {
-            "gzip" => "Tar archive (gzip)",
-            "xz" => "Tar archive (xz)",
-            "bzip2" => "Tar archive (bzip2)",
-            _ => "Tar archive (zstd)",
-        };
-        return Ok((kind, tar_items(stream, cancel)?));
-    }
-    // One file: say what it unpacks to, and how big (counting as we go).
-    let mut size = 0u64;
-    let mut stream = stream;
-    let mut buf = vec![0u8; 1 << 16];
-    loop {
-        if cancel.load(Ordering::Relaxed) {
-            break;
-        }
-        match stream.read(&mut buf) {
-            Ok(0) | Err(_) => break,
-            Ok(n) => size += n as u64,
-        }
-    }
-    let inner = name.strip_suffix(suffix).unwrap_or(name).to_owned();
-    let kind = match codec {
-        "gzip" => "gzip file",
-        "xz" => "xz file",
-        "bzip2" => "bzip2 file",
-        _ => "zstd file",
-    };
-    Ok((kind, vec![Item { name: inner, is_dir: false, size }]))
-}
-
-fn tar_items(stream: Stream, cancel: &Arc<AtomicBool>) -> Result<Vec<Item>, String> {
-    let mut ar = tar::Archive::new(stream);
-    let mut items = Vec::new();
-    for e in ar.entries().map_err(|e| e.to_string())? {
-        if cancel.load(Ordering::Relaxed) {
-            break;
-        }
-        let Ok(e) = e else { break };
-        let is_dir = e.header().entry_type().is_dir();
-        let name = e.path().map(|p| p.to_string_lossy().trim_end_matches('/').to_owned()).unwrap_or_default();
-        if name.is_empty() || name == "." {
-            continue;
-        }
-        items.push(Item { name, is_dir, size: e.size() });
-    }
-    Ok(items)
-}
-
-fn zip_items(reader: std::io::BufReader<std::fs::File>) -> Result<Vec<Item>, String> {
-    let mut z = zip::ZipArchive::new(reader).map_err(|e| format!("This archive can't be read ({e})."))?;
-    let mut items = Vec::new();
-    for i in 0..z.len() {
-        let Ok(f) = z.by_index_raw(i) else { continue };
-        let name = f.name().map(|n| n.trim_end_matches('/').to_owned()).unwrap_or_default();
-        items.push(Item { name, is_dir: f.is_dir(), size: f.size() });
-    }
-    Ok(items)
-}
-
-fn seven_items(path: &Path) -> Result<Vec<Item>, String> {
-    let ar = sevenz_rust2::Archive::open(path).map_err(|e| format!("This archive can't be read ({e})."))?;
-    Ok(ar.files.iter().map(|f| Item { name: f.name().trim_end_matches('/').to_owned(), is_dir: f.is_directory(), size: f.size() }).collect())
 }
 
 #[cfg(test)]

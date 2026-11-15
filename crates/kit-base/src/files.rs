@@ -82,7 +82,7 @@ pub fn kind_for(path: &Path, is_dir: bool, mode: u32) -> Kind {
         "png" | "jpg" | "jpeg" | "jxl" | "gif" | "webp" | "bmp" | "tif" | "tiff" | "svg" | "heic" | "heif" | "hif" | "avif" | "ico" => Kind::Image,
         "mp3" | "flac" | "ogg" | "oga" | "wav" | "m4a" | "aac" | "opus" | "aiff" | "aif" => Kind::Audio,
         "mp4" | "mkv" | "webm" | "mov" | "avi" | "m4v" => Kind::Video,
-        "zip" | "tar" | "gz" | "xz" | "bz2" | "zst" | "7z" | "rar" | "tgz" | "rpm" | "deb" => Kind::Archive,
+        "zip" | "tar" | "gz" | "xz" | "bz2" | "zst" | "7z" | "rar" | "tgz" | "tbz2" | "tbz" | "txz" | "tzst" | "iso" | "cpio" | "rpm" | "deb" => Kind::Archive,
         "pdf" => Kind::Pdf,
         "docx" | "doc" | "odt" | "rtf" | "pages" => Kind::WordDocument,
         "xlsx" | "xlsm" | "xlsb" | "xls" | "ods" | "numbers" => Kind::Spreadsheet,

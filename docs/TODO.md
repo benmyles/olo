@@ -1485,6 +1485,15 @@ something nobody here has is in "Blocked", with what it waits for.
   permissions, times and links kept; never writing outside the target
   (paths with .. or absolute ones refused); undo; agent-readable and
   drivable; HACKING and the Olo Book.
+  Done (2026-11-15): `olo-archive` (zip and 7-Zip with AES, tar with
+  gzip, bzip2, xz and zstd, written; RAR, ISO 9660, cpio and single
+  compressed files read too), every extraction kept inside its folder
+  (names, links checked; permissions and times kept); Tracker's
+  Compress ▸, Compress As… (name, format, password), Extract Here and
+  Extract To… as jobs with progress, Stop and Undo, a password asked
+  for; Quick Look lists all of them. Left: browsing into an archive as
+  a folder (and opening one thing from it), and offering Passwords'
+  saved password for an archive.
 
 ## Done, waiting for Ben to try or confirm
 

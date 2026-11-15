@@ -25,6 +25,7 @@ olo-syntax = { path = "crates/syntax" }
 olo-camera = { path = "crates/camera" }
 olo-theme = { path = "crates/theme" }
 olo-preview = { path = "crates/preview" }
+olo-archive = { path = "crates/archive" }
 olo-richtext = { path = "crates/richtext" }
 olo-print = { path = "crates/print" }
 olo-xdg = { path = "crates/xdg" }

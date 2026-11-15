@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Tracker: Compress and Extract
+
+*09:22* — Tracker compresses and extracts, natively (olo-archive, in Rust: zip with AES, tar with gzip, xz, zstd or bzip2, 7-Zip with AES; it reads RAR, ISO 9660 and cpio too): a selection's Compress ▸ makes an archive beside it, Compress As… names it, chooses its format and gives it a password; an archive's Extract Here and Extract To… take everything out (one thing as it is, several in a folder named for it), nothing written outside. Jobs with progress and Stop in Tracker Status, undone by Edit ▸ Undo; a password asked for when one is needed.
+
+![Tracker: Compress and Extract](2026-11-15/092207-tracker-compress-and-extract.png)
+
 ### OS Updates: Fedora's packages, chosen and reviewed
 
 *08:55* — A new app, through DNF5's own daemon: every update with its check box (Choose: All · Security Updates · Bug Fixes · Enhancements · Other Updates · None, and Update 20), searched and filtered by kind, severity, repository and chosen, the most pressing first; the selected one's versions, sizes, advisories with their CVEs linked, and its changelog since what's installed. Each change is reviewed before it runs; Repositories, History with Undo and Upgrade Fedora beside it. (Against dnf-fake: made-up updates.)

@@ -17,7 +17,8 @@ use std::{
 };
 
 use olo_kit::{
-    Bounds, Child, ClickEvent, Cx, Element, IntoElement as _, Messenger, ParentElement as _, Pixels, Point, ScrollHandle, Styled as _, View, WindowOptions, agent, div, metrics as m, px, style, theme,
+    Bounds, Child, ClickEvent, Cx, Element, InteractiveElement as _, IntoElement as _, Messenger, ParentElement as _, Pixels, Point, ScrollHandle, Styled as _, View, WindowOptions, agent, div,
+    metrics as m, px, style, theme,
     widgets::{Button, CheckBox, Column, ColumnListView, ListModel, RadioButton, ScrollView, StringView, TextControl, TextField, TextFieldEvent, button_row, check_box_look, open_alert, text_field},
 };
 use olo_system::dnf::{self, Opts, Repo};
@@ -548,7 +549,7 @@ fn copr(project: &str, release: u32) -> Result<(String, String), String> {
 
 impl AddRepo {
     pub fn open(to_main: Messenger<AppMsg>) {
-        olo_kit::open_window(WindowOptions::new("Add Repository", 560.0, 420.0).dialog().fits_content(), move |cx| {
+        olo_kit::open_window(WindowOptions { fixed: true, ..WindowOptions::new("Add Repository", 560.0, 200.0).dialog().fits_content() }, move |cx| {
             let address = text_field(cx, |f| f.name("Address").hint("https://example.org/example.repo"));
             let copr = text_field(cx, |f| f.name("Copr project").hint("owner/project"));
             for field in [&address, &copr] {
@@ -671,7 +672,13 @@ impl View for AddRepo {
         let p = theme::palette();
         let way = self.way;
         let radio = |label: &str, w: Way, cx: &mut Cx<Self>| RadioButton::new(label.to_owned(), way == w).on_select(cx.msg(AddMsg::Way(w)));
-        let mut col = div().w_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).bg(style::c(p.panel_background));
+        let mut col = div().w_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).bg(style::c(p.panel_background)).on_window_key_down(cx.listener(
+            |_: &mut AddRepo, e: &olo_kit::KeyDownEvent, cx| {
+                if e.keystroke.key == "escape" {
+                    cx.close_window();
+                }
+            },
+        ));
         col = col.child(StringView::new("Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.").wrap(true));
         col = col.child(radio("A .repo file’s address", Way::Address, cx));
         if way == Way::Address {

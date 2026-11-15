@@ -10,6 +10,7 @@
 //! what each window shows) is the app's, behind locks.
 
 mod appimages;
+mod archives;
 mod backups;
 mod columns;
 mod desktop;
@@ -133,6 +134,16 @@ pub enum ToHub {
     LookStep(isize),
     LookClosed,
     StopJob(u64),
+    /// Compress or Extract (`archives.rs`): `targets`, a name chosen for
+    /// the archive; `password`, an archive's.
+    ArchiveJob {
+        kind: ops::Kind,
+        sources: Vec<PathBuf>,
+        dest: Option<PathBuf>,
+        targets: Vec<PathBuf>,
+        origin: Option<u64>,
+        password: Option<String>,
+    },
     /// A window to another display has its copy there: it goes here.
     Gone(u64),
     Quit,
@@ -898,12 +909,26 @@ impl Hub {
     }
 
     fn run_job(&mut self, kind: ops::Kind, sources: Vec<PathBuf>, dest: Option<PathBuf>, targets: Vec<PathBuf>, origin: Option<u64>, record: Option<(String, undo::Purpose)>) {
+        self.run_job_with(kind, sources, dest, targets, origin, record, None);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run_job_with(
+        &mut self,
+        kind: ops::Kind,
+        sources: Vec<PathBuf>,
+        dest: Option<PathBuf>,
+        targets: Vec<PathBuf>,
+        origin: Option<u64>,
+        record: Option<(String, undo::Purpose)>,
+        password: Option<String>,
+    ) {
         let id = self.next_job;
         self.next_job += 1;
         if let Some(r) = record {
             self.recording.insert(id, r);
         }
-        let job = Arc::new(ops::start(id, kind, sources, dest, targets, move |outcome| to_hub(ToHub::JobDone(id, outcome))));
+        let job = Arc::new(ops::start_with(id, kind, sources, dest, targets, password, move |outcome| to_hub(ToHub::JobDone(id, outcome))));
         std::thread::spawn(move || {
             std::thread::sleep(STATUS_DELAY);
             to_hub(ToHub::JobSlow(id));
@@ -947,6 +972,10 @@ impl Hub {
             if let Some(d) = job.dest.clone() {
                 self.note_dirs.insert(n, d);
             }
+        }
+        // An archive wants its password: asked for, then done again.
+        if let Some(wrong) = outcome.needs_password {
+            archives::AskPassword::open(archives::Again { kind: job.kind, sources: job.sources.clone(), dest: job.dest.clone(), origin }, wrong);
         }
         if let Some(e) = outcome.error {
             let what = job.title.chars().next().map(|c| c.to_lowercase().chain(job.title.chars().skip(1)).collect::<String>());
@@ -1042,6 +1071,10 @@ impl Hub {
                 }
             }
             ToHub::Job { kind, sources, dest, origin } => self.start_job(kind, sources, dest, origin),
+            ToHub::ArchiveJob { kind, sources, dest, targets, origin, password } => {
+                let record = Some((undo::name_of(kind).to_owned(), undo::Purpose::Do));
+                self.run_job_with(kind, sources, dest, targets, origin, record, password);
+            }
             ToHub::Done(name, change) => self.done(&name, change),
             ToHub::UndoRedo(redo, origin) => self.undo_redo(redo, origin),
             ToHub::Hidden => {

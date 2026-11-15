@@ -1,5 +1,5 @@
 //! File operations — copy, move, duplicate, move to Trash, restore from
-//! the Trash, empty Trash —
+//! the Trash, empty Trash, compress, extract —
 //! on worker threads, with live progress and cancellation, so Tracker never
 //! blocks however big the job (see "The responsiveness rule").
 //!
@@ -39,6 +39,11 @@ pub enum Kind {
     /// Each source back to exactly its target (`start_to`): a move
     /// undone. Not over anything now there, nor of anything gone.
     PutBack,
+    /// The sources into a new archive of this format, beside them
+    /// (`olo_archive`).
+    Compress(olo_archive::Format),
+    /// Each archive's contents out beside it (or into `dest`).
+    Extract,
 }
 
 /// Counters the worker updates and the status window reads.
@@ -85,6 +90,8 @@ pub struct Job {
     pub finished: String,
     /// Where the items went, if anywhere.
     pub dest: Option<PathBuf>,
+    /// What it was started on (to run it again with a password).
+    pub sources: Vec<PathBuf>,
     pub progress: Arc<Progress>,
     pub cancel: Arc<AtomicBool>,
     pub started: Instant,
@@ -99,6 +106,9 @@ pub struct Outcome {
     pub moved: Vec<(PathBuf, PathBuf)>,
     pub error: Option<String>,
     pub cancelled: bool,
+    /// An archive wants a password: none was given (false), or the one
+    /// given was wrong (true).
+    pub needs_password: Option<bool>,
 }
 
 fn title(kind: Kind, sources: &[PathBuf], dest: Option<&Path>) -> String {
@@ -115,6 +125,8 @@ fn title(kind: Kind, sources: &[PathBuf], dest: Option<&Path>) -> String {
         Kind::Restore => format!("Restoring {what}"),
         Kind::EmptyTrash => "Emptying the Trash".into(),
         Kind::PutBack => format!("Putting {what} back"),
+        Kind::Compress(f) => format!("Compressing {what} ({})", f.label()),
+        Kind::Extract => format!("Extracting {what}"),
     }
 }
 
@@ -128,13 +140,20 @@ fn finished(kind: Kind, sources: &[PathBuf], dest: Option<&Path>) -> String {
 
 /// Start a job on a worker thread (`targets`: each source's own, for
 /// `Kind::PutBack`); `done` runs on that thread when it ends.
+#[cfg(test)]
 pub fn start(id: u64, kind: Kind, sources: Vec<PathBuf>, dest: Option<PathBuf>, targets: Vec<PathBuf>, done: impl FnOnce(Outcome) + Send + 'static) -> Job {
+    start_with(id, kind, sources, dest, targets, None, done)
+}
+
+/// `start`, with an archive's password (Compress, Extract).
+pub fn start_with(id: u64, kind: Kind, sources: Vec<PathBuf>, dest: Option<PathBuf>, targets: Vec<PathBuf>, password: Option<String>, done: impl FnOnce(Outcome) + Send + 'static) -> Job {
     let job = Job {
         id,
         kind,
         title: title(kind, &sources, dest.as_deref()),
         finished: finished(kind, &sources, dest.as_deref()),
         dest: dest.clone(),
+        sources: sources.clone(),
         progress: Arc::new(Progress { counting: AtomicBool::new(true), ..Default::default() }),
         cancel: Arc::new(AtomicBool::new(false)),
         started: Instant::now(),
@@ -145,7 +164,10 @@ pub fn start(id: u64, kind: Kind, sources: Vec<PathBuf>, dest: Option<PathBuf>, 
         .spawn(move || {
             let w = Worker { p: &progress, cancel: &cancel };
             let mut out = Outcome::default();
-            let r = w.run(kind, &sources, dest.as_deref(), &targets, &mut out);
+            let r = match kind {
+                Kind::Compress(_) | Kind::Extract => w.archive(kind, &sources, dest.as_deref(), targets.first().map(PathBuf::as_path), password.as_deref(), &mut out),
+                _ => w.run(kind, &sources, dest.as_deref(), &targets, &mut out),
+            };
             match r {
                 Ok(()) => {}
                 Err(e) if e.kind() == io::ErrorKind::Interrupted => out.cancelled = true,
@@ -176,6 +198,47 @@ fn context(e: io::Error, p: &Path) -> io::Error {
 }
 
 impl Worker<'_> {
+    /// Compress or extract (`olo_archive`), its progress as bytes of the
+    /// whole; what it made in `out.created`.
+    fn archive(&self, kind: Kind, sources: &[PathBuf], dest: Option<&Path>, named: Option<&Path>, password: Option<&str>, out: &mut Outcome) -> io::Result<()> {
+        let p = self.p;
+        let mut progress = |pr: &olo_archive::Progress| {
+            p.total_bytes.store(pr.total, Ordering::Relaxed);
+            p.done_bytes.store(pr.done, Ordering::Relaxed);
+            if pr.total > 0 {
+                p.counting.store(false, Ordering::Relaxed);
+            }
+            if let Ok(mut c) = p.current.lock() {
+                *c = pr.item.rsplit('/').next().unwrap_or(&pr.item).to_owned();
+            }
+        };
+        let ctl = olo_archive::Control::new(self.cancel, &mut progress);
+        let result = match kind {
+            Kind::Compress(format) => {
+                let dir = match dest {
+                    Some(d) => d.to_owned(),
+                    None => sources.first().and_then(|s| s.parent()).unwrap_or(Path::new("/")).to_owned(),
+                };
+                // (Named by Compress As…, or after what's in it.)
+                let to = olo_archive::unique(&named.map(Path::to_owned).unwrap_or_else(|| dir.join(olo_archive::archive_name(sources, format))));
+                olo_archive::compress(sources, format, &to, password, &ctl).map(|()| out.created.push(to))
+            }
+            _ => sources.iter().try_for_each(|s| {
+                let into = dest.map(Path::to_owned).unwrap_or_else(|| s.parent().unwrap_or(Path::new("/")).to_owned());
+                olo_archive::extract(s, &into, password, &ctl).map(|made| out.created.extend(made))
+            }),
+        };
+        match result {
+            Ok(()) => Ok(()),
+            Err(olo_archive::Error::Cancelled) => Err(cancelled()),
+            Err(olo_archive::Error::Password(wrong)) => {
+                out.needs_password = Some(wrong);
+                Ok(())
+            }
+            Err(e) => Err(io::Error::other(e.to_string())),
+        }
+    }
+
     fn check(&self) -> io::Result<()> {
         if self.cancel.load(Ordering::Relaxed) { Err(cancelled()) } else { Ok(()) }
     }
@@ -277,6 +340,8 @@ impl Worker<'_> {
                     self.p.done_items.fetch_add(1, Ordering::Relaxed);
                 }
             }
+            // (Run by `archive`.)
+            Kind::Compress(_) | Kind::Extract => {}
             Kind::EmptyTrash => {
                 // Empty at once, as far as anyone looking can tell: the
                 // Trash's files and info are swapped for empty folders (one
@@ -588,6 +653,41 @@ mod tests {
         put_back(&old_files, &old_info, &files, &info);
         assert_eq!(sfs::read_to_string(files.join("a 2.txt")).unwrap(), "a");
         assert!(info.join("a 2.txt.trashinfo").exists() && sfs::read_dir(&old_files).unwrap().next().is_none());
+        let _ = sfs::remove_dir_all(&dir);
+    }
+
+    fn run_pw(kind: Kind, sources: Vec<PathBuf>, dest: Option<PathBuf>, password: Option<&str>) -> Outcome {
+        let (tx, rx) = mpsc::channel();
+        start_with(1, kind, sources, dest, Vec::new(), password.map(str::to_owned), move |o| tx.send(o).unwrap());
+        rx.recv().unwrap()
+    }
+
+    /// Compress beside, extract beside (into a folder named for it when
+    /// it holds several things), a password asked for and checked.
+    #[test]
+    fn compress_and_extract() {
+        let dir = std::env::current_exe().unwrap().parent().unwrap().join(format!("olo-arch-ops-{}", std::process::id()));
+        let _ = sfs::remove_dir_all(&dir);
+        sfs::create_dir_all(dir.join("photos/sub")).unwrap();
+        sfs::write(dir.join("photos/sub/a.txt"), "a").unwrap();
+        sfs::write(dir.join("notes.txt"), "n").unwrap();
+        let o = run(Kind::Compress(olo_archive::Format::Zip), vec![dir.join("photos"), dir.join("notes.txt")], None);
+        assert!(o.error.is_none(), "{o:?}");
+        assert_eq!(o.created, [dir.join("Archive.zip")]);
+        let o = run(Kind::Extract, vec![dir.join("Archive.zip")], None);
+        assert_eq!(o.created, [dir.join("Archive")]);
+        assert_eq!(sfs::read_to_string(dir.join("Archive/photos/sub/a.txt")).unwrap(), "a");
+        // Undo puts what they made in the Trash: it's what they made.
+        assert!(matches!(crate::undo::Change::of(Kind::Extract, &o), Some(crate::undo::Change::Made(_))));
+
+        let o = run_pw(Kind::Compress(olo_archive::Format::SevenZip), vec![dir.join("notes.txt")], None, Some("pw"));
+        assert_eq!(o.created, [dir.join("notes.txt.7z")]);
+        let o = run(Kind::Extract, vec![dir.join("notes.txt.7z")], Some(dir.join("photos")));
+        assert_eq!(o.needs_password, Some(false), "{o:?}");
+        let o = run_pw(Kind::Extract, vec![dir.join("notes.txt.7z")], Some(dir.join("photos")), Some("no"));
+        assert!(o.needs_password == Some(true) || o.error.is_some(), "{o:?}");
+        let o = run_pw(Kind::Extract, vec![dir.join("notes.txt.7z")], Some(dir.join("photos")), Some("pw"));
+        assert_eq!(o.created, [dir.join("photos/notes.txt")], "{o:?}");
         let _ = sfs::remove_dir_all(&dir);
     }
 
