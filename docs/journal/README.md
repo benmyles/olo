@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-14
 
+### The command palette: Olo's own, then files, then other apps, by Ctrl
+
+*19:13* — Left: ⌘Space finds Olo's own at first (its apps, commands, shortcuts, settings, windows): "term" is Olo's Terminal and its settings. Right: two taps of Ctrl later, other programs' apps only: GNOME's Terminal. The key hint says what the next tap finds (Files, Other Apps, Olo). Light, 2×.
+
+![The command palette: Olo's own, then files, then other apps, by Ctrl](2026-11-14/191323-the-command-palette-olo-s-own-then-files-then-ot.png)
+
 ### A Deskbar widget's own name
 
 *18:42* — Preferences ▸ Deskbar ▸ Widget has Name:, its hint what the widget is called by what it measures (CPU); the Deskbar shows the name in its row, beside others and as its card's title (CPU · over the last minute under it), a long one cut with … (Ben: "let me provide a custom name for the widget"). Dark, 1.5×.

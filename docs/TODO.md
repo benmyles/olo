@@ -1430,11 +1430,6 @@ something nobody here has is in "Blocked", with what it waits for.
   iterated, with second opinions from OpenAI's Astra; then every icon
   (apps, Preferences' panels, Deskbar, Tracker's kinds) made again for
   each theme per docs/ICONS.md, checked large and at Deskbar's size.
-- **The command palette's scopes, cycled with Ctrl** (Ben, 2026-11-14:
-  "change the cmd+space command palette so that by default it only
-  suggests olo apps/shortcuts, then ctrl changes to files then ctrl
-  again changes to showing other apps (e.g. gnome apps and so on) and
-  ctrl again continues to cycle through the 3").
 - **Passwords makes and manages vaults** (Ben, 2026-11-14: "olo
   passwords should support creating/managing new vaults"): a new
   vault, and renaming, describing and deleting one, from Passwords
@@ -1510,6 +1505,23 @@ something nobody here has is in "Blocked", with what it waits for.
   drivable; HACKING and the Olo Book.
 
 ## Done, waiting for Ben to try or confirm
+
+- **The command palette's scopes, cycled with Ctrl** (Ben, 2026-11-14:
+  "change the cmd+space command palette so that by default it only
+  suggests olo apps/shortcuts, then ctrl changes to files then ctrl
+  again changes to showing other apps (e.g. gnome apps and so on) and
+  ctrl again continues to cycle through the 3").
+  Done (2026-11-14): `Scope` (Olo, Files, Apps). At first Olo's own
+  (apps, commands, shortcuts, settings, windows, Passwords' items,
+  sums, slash commands, the web); a tap of Ctrl, files and folders; the
+  next, other programs' apps by their desktop entries (with nothing
+  typed, all of them, the latest chosen first, then by name); the next,
+  Olo's again. The placeholder says what's found, the key hint what
+  the next tap finds. Tried headless: "term" finds Olo's Terminal and
+  its settings, then GNOME's Terminal alone; round and back; the review
+  clean at 1×, 1.25×, 1.5×, 1.75× and 2×, light and dark. *Left for
+  Ben:* whether the open windows (other programs' too) belong with
+  Olo's, as now.
 
 - **The keyring's password asked once at login, not twice** (Ben,
   2026-11-14: "when i first login after a restart i'm being asked for

@@ -13734,15 +13734,25 @@ put it away.
   pressed once the overlay has let the keyboard go, through the profile
   as the person's own; nothing else is asked first, as an `Activate`
   then moved the keyboard after them and they were lost).
-* **Commands or files**: at first everything but files and folders;
-  a tap of Ctrl on its own (not ⌘, which comes as the right Ctrl)
-  switches to files and folders only, and back (`files_mode`,
-  `modifiers`), the placeholder saying what it finds and a `KeyHint`
-  at the field's right ("Ctrl Files", "Ctrl Commands", on the query's
-  baseline: `level_with(QUERY_SIZE)`) what the tap finds instead; a path copied or typed is offered either way. The
-  field is a little taller than its line on the device grid (it sets
-  its text by the capitals' middle, so a field just a line tall cut the
-  letters' tops at 1.25×).
+* **Olo's own, files, other apps** (`Scope`; Ben, 2026-11-14: "by
+  default it only suggests olo apps/shortcuts, then ctrl changes to
+  files then ctrl again changes to showing other apps (e.g. gnome apps
+  and so on) and ctrl again continues to cycle through the 3"): at
+  first Olo's own (its apps, the front app's menu commands, the
+  desktop's shortcuts, Preferences' panels and settings, the open
+  windows, Passwords' items, sums, slash commands and the web search);
+  a tap of Ctrl on its own (not ⌘, which comes as the right Ctrl) goes
+  on to files and folders only, the next to other programs' apps only
+  (their desktop entries: `sources::other_app`, an `Action::Launch`;
+  with nothing typed, every one, those chosen lately first, then by
+  name), the next back to Olo's (`next_scope`, `modifiers`). The
+  placeholder says what it finds and a `KeyHint` at the field's right
+  ("Ctrl Files", "Ctrl Other Apps", "Ctrl Olo", on the query's
+  baseline: `level_with(QUERY_SIZE)`) what the next tap finds; a path
+  copied or typed is offered with Olo's and the files, and a sum in
+  any. The field is a little taller than its line on the device grid
+  (it sets its text by the capitals' middle, so a field just a line
+  tall cut the letters' tops at 1.25×).
 * **Sources** (`sources.rs`): applications (ours, then desktop entries),
   "Go to ~/src/olo" for a path copied (offered first, before anything
   is typed) or typed whole (`sources::go_to`: absolute, `~/…`, a

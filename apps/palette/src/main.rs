@@ -313,11 +313,9 @@ struct Palette {
     top: usize,
     /// ⌘ held: a file's row says Open in Tracker.
     command: bool,
-    /// Files and folders shown rather than commands, shortcuts and the
-    /// rest (a tap of Ctrl goes from one to the other: Ben, 2026-11-03,
-    /// "not show file/folder matches by default, and you have to press
-    /// ctrl to have it show them").
-    files_mode: bool,
+    /// What it finds: Olo's own at first, a tap of Ctrl going on to
+    /// files, then other apps, then round again (`Scope`).
+    scope: Scope,
     /// Ctrl went down on its own and nothing else yet: let go, it's a tap.
     ctrl_tap: bool,
     /// Ctrl has been seen up since the palette opened: until then a Ctrl
@@ -428,7 +426,7 @@ fn snapped_centred(scale: f32, center: Point<Pixels>, w: f32, h: f32) -> Bounds<
 
 impl Palette {
     fn new(shared: Shared, front: Option<WindowInfo>, context: Vec<Item>, cx: &mut Cx<Self>) -> Palette {
-        let query = text_field(cx, |f| f.name("Search").font_size(QUERY_SIZE).hint(hint(false)));
+        let query = text_field(cx, |f| f.name("Search").font_size(QUERY_SIZE).hint(Scope::Olo.hint()));
         query.focus(cx);
         cx.subscribe(&query, |p: &mut Palette, e: &TextFieldEvent, cx| match e {
             TextFieldEvent::Entered => {
@@ -458,7 +456,7 @@ impl Palette {
             selected: 0,
             top: 0,
             command: false,
-            files_mode: false,
+            scope: Scope::Olo,
             ctrl_tap: false,
             ctrl_free: false,
             context,
@@ -504,8 +502,8 @@ impl Palette {
     /// The results for the query now.
     fn refresh(&mut self) {
         let query = self.query_text.clone();
-        // A slash command: its own results alone.
-        if !self.files_mode
+        // A slash command: its own results alone (Olo's).
+        if self.scope == Scope::Olo
             && let Some(items) = slash(&query)
         {
             self.features = vec![None; items.len()];
@@ -517,14 +515,28 @@ impl Palette {
         let mut scored: Vec<(i32, Item)> = Vec::new();
         let mut features: Vec<Option<[f32; model::F]>> = Vec::new();
         if words.is_empty() {
-            // Nothing typed: what was chosen lately.
-            let all = self.fixed.iter().chain(&self.context);
+            let scope = self.scope;
+            let all = self.fixed.iter().chain(&self.context).filter(|i| scope.has(i));
             let recents = self.recents.lock().unwrap_or_else(|e| e.into_inner());
-            let mut recent: Vec<(i32, Item)> = all.filter_map(|i| i.action.key().map(|k| (recents.boost(&k), i.clone()))).filter(|(b, _)| *b > 0).collect();
+            let boosted: Vec<(i32, Item)> = all.map(|i| (i.action.key().map_or(0, |k| recents.boost(&k)), i.clone())).collect();
             drop(recents);
-            recent.sort_by_key(|r| std::cmp::Reverse(r.0));
-            // The path in the clipboard first: likeliest wanted.
-            scored = self.copied.iter().map(|i| (0, i.clone())).chain(recent).take(ROWS).collect();
+            scored = match scope {
+                // Nothing typed: what was chosen lately, the path in the
+                // clipboard first (likeliest wanted).
+                Scope::Olo => {
+                    let mut recent: Vec<(i32, Item)> = boosted.into_iter().filter(|(b, _)| *b > 0).collect();
+                    recent.sort_by_key(|r| std::cmp::Reverse(r.0));
+                    self.copied.iter().map(|i| (0, i.clone())).chain(recent).take(ROWS).collect()
+                }
+                Scope::Files => self.copied.iter().map(|i| (0, i.clone())).collect(),
+                // Every other app, those chosen lately first, then by
+                // name: a launcher's list.
+                Scope::Apps => {
+                    let mut apps = boosted;
+                    apps.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.title.to_lowercase().cmp(&b.1.title.to_lowercase())));
+                    apps
+                }
+            };
         } else {
             if let Some(v) = calc::eval(&query) {
                 let shown = calc::show(v);
@@ -538,9 +550,10 @@ impl Palette {
             {
                 scored.push((i32::MAX / 2 - 1, item.clone()));
             }
-            // Files and folders, or (at first) everything else, no file
-            // among them (Ben: "i only want to see commands unless i press
-            // ctrl then only files"); the path in the clipboard either way.
+            // What the scope finds: Olo's own (at first), files and
+            // folders (Ben: "i only want to see commands unless i press
+            // ctrl then only files"), or other apps; the path in the
+            // clipboard with Olo's and the files.
             // Ranked by the model (`model`): the matches' features, scored
             // in one pass.
             features.resize(scored.len(), None);
@@ -558,17 +571,19 @@ impl Palette {
                     .collect();
                 ranker.scores(&rows).iter().map(|v| (v * 100.0).round() as i32).collect()
             };
-            let found = if self.files_mode {
-                sources::ranked_with(&words, self.files.iter().chain(&self.copied), by_model)
-            } else {
-                let all = self.fixed.iter().chain(&self.context).chain(&self.menus).chain(&self.passwords).chain(&self.copied);
-                sources::ranked_with(&words, all, by_model)
+            let found = match self.scope {
+                Scope::Files => sources::ranked_with(&words, self.files.iter().chain(&self.copied), by_model),
+                Scope::Olo => {
+                    let all = self.fixed.iter().chain(&self.context).filter(|i| Scope::Olo.has(i)).chain(&self.menus).chain(&self.passwords).chain(&self.copied);
+                    sources::ranked_with(&words, all, by_model)
+                }
+                Scope::Apps => sources::ranked_with(&words, self.fixed.iter().filter(|i| Scope::Apps.has(i)), by_model),
             };
             for (s, item, n) in found {
                 scored.push((s, item));
                 features.push(rows.get(n).copied());
             }
-            if !self.files_mode {
+            if self.scope == Scope::Olo {
                 let q = query.trim().to_owned();
                 scored.push((i32::MIN, Item::new(Kind::Web, format!("Search the web for “{q}”"), Action::Search(q)).icon("browser").subtitle("Web browser")));
                 features.push(None);
@@ -593,8 +608,8 @@ impl Palette {
         self.selected = 0;
         self.top = 0;
         // Files are searched only while they're what's shown (a tap of
-        // Ctrl); commands are found here, as typed.
-        if self.files_mode {
+        // Ctrl); the rest is found here, as typed.
+        if self.scope == Scope::Files {
             let _ = self.shared.workers.files.send((self.asked, rank::words(&self.query_text)));
         }
         let _ = self.shared.workers.passwords.send((self.asked, self.query_text.clone()));
@@ -608,17 +623,17 @@ impl Palette {
         cx.invalidate();
     }
 
-    /// Files and folders, or back to the rest (a tap of Ctrl).
-    fn switch_files(&mut self, cx: &mut Cx<Self>) {
-        self.files_mode = !self.files_mode;
-        let files = self.files_mode;
-        // To files: what's typed, looked for now (not while commands were
-        // shown); their answer keeps to this query's number.
-        if files {
+    /// The next scope (a tap of Ctrl): Olo's, files, other apps, round.
+    fn next_scope(&mut self, cx: &mut Cx<Self>) {
+        self.scope = self.scope.next();
+        let scope = self.scope;
+        // To files: what's typed, looked for now (not while the others
+        // were shown); their answer keeps to this query's number.
+        if scope == Scope::Files {
             self.files.clear();
             let _ = self.shared.workers.files.send((self.asked, rank::words(&self.query_text)));
         }
-        self.query.update(cx, |f, cx| f.set_hint(hint(files), cx));
+        self.query.update(cx, |f, cx| f.set_hint(scope.hint(), cx));
         self.selected = 0;
         self.top = 0;
         self.refresh();
@@ -627,7 +642,7 @@ impl Palette {
 
     /// The modifiers changed: ⌘ held (Open in Tracker), and a tap of
     /// Ctrl on its own (not ⌘, which comes as the right Ctrl with a
-    /// command key) switches to files and back.
+    /// command key) goes on to the next scope.
     fn modifiers(&mut self, e: &ModifiersChangedEvent, cx: &mut Cx<Self>) {
         let held = e.modifiers.platform || e.modifiers.control;
         if self.command != held {
@@ -649,7 +664,7 @@ impl Palette {
             self.ctrl_tap = true;
         } else if !m.control && self.ctrl_tap {
             self.ctrl_tap = false;
-            self.switch_files(cx);
+            self.next_scope(cx);
         } else if !alone {
             self.ctrl_tap = false;
         }
@@ -809,7 +824,7 @@ impl Palette {
         let shown = text.clone();
         self.query.update(cx, |f, cx| {
             f.set_text(shown, cx);
-            f.set_hint(hint(false), cx);
+            f.set_hint(Scope::Olo.hint(), cx);
         });
         self.query_text = text;
     }
@@ -1117,8 +1132,8 @@ impl View for Palette {
         // the field's edge cut the first letter's side.)
         let text_left = snap_at(scale, glass.right() + px(10.0));
         let line = px((QUERY_SIZE * style::LINE_HEIGHT).ceil());
-        // After it, what a tap of Ctrl shows instead, there as it's typed.
-        let other = if self.files_mode { "Commands" } else { "Files" };
+        // After it, what a tap of Ctrl shows next, there as it's typed.
+        let other = self.scope.next().name();
         // (A little taller than its line, about the same middle: the field
         // sets its text by the capitals' middle, so the line's box rises
         // past the top of a field just its height, and its clip cut the
@@ -1200,10 +1215,62 @@ impl View for Palette {
     }
 }
 
-/// The query's placeholder: what it finds (the key hint after it says
-/// what a tap of Ctrl finds instead).
-fn hint(files: bool) -> &'static str {
-    if files { "Search files and folders" } else { "Search apps, commands and shortcuts" }
+/// What the palette finds, a tap of Ctrl going on to the next, round
+/// the three (Ben, 2026-11-14: "change the cmd+space command palette so
+/// that by default it only suggests olo apps/shortcuts, then ctrl
+/// changes to files then ctrl again changes to showing other apps (e.g.
+/// gnome apps and so on) and ctrl again continues to cycle through the
+/// 3").
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Scope {
+    /// Olo's own (at first): its apps, the front app's commands, the
+    /// desktop's shortcuts, Preferences' panels and settings, the open
+    /// windows, Passwords' items, sums, slash commands and the web.
+    Olo,
+    /// Files and folders under home.
+    Files,
+    /// Other programs' apps, by their desktop entries (GNOME's, Chrome's
+    /// web apps, a game).
+    Apps,
+}
+
+impl Scope {
+    fn next(self) -> Scope {
+        match self {
+            Scope::Olo => Scope::Files,
+            Scope::Files => Scope::Apps,
+            Scope::Apps => Scope::Olo,
+        }
+    }
+
+    /// The query's placeholder: what it finds (the key hint after it
+    /// says what a tap of Ctrl finds next).
+    fn hint(self) -> &'static str {
+        match self {
+            Scope::Olo => "Search Olo’s apps, commands and shortcuts",
+            Scope::Files => "Search files and folders",
+            Scope::Apps => "Search other apps",
+        }
+    }
+
+    /// Its name in the key hint ("Ctrl Files").
+    fn name(self) -> &'static str {
+        match self {
+            Scope::Olo => "Olo",
+            Scope::Files => "Files",
+            Scope::Apps => "Other Apps",
+        }
+    }
+
+    /// Whether `item` (one of the palette's own, not a file) is found
+    /// in it.
+    fn has(self, item: &Item) -> bool {
+        match self {
+            Scope::Olo => !sources::other_app(item),
+            Scope::Files => item.kind == Kind::File,
+            Scope::Apps => sources::other_app(item),
+        }
+    }
 }
 
 fn main() {
@@ -1261,4 +1328,27 @@ fn main() {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A tap of Ctrl goes round the three, Olo's own first; each finds
+    /// its own: Olo's apps, commands and settings, files, or other
+    /// programs' apps (by their desktop entries).
+    #[test]
+    fn ctrl_goes_round_olo_files_and_other_apps() {
+        assert_eq!([Scope::Olo.next(), Scope::Olo.next().next(), Scope::Olo.next().next().next()], [Scope::Files, Scope::Apps, Scope::Olo]);
+        let terminal = Item::new(Kind::Application, "Terminal", Action::Spawn(vec!["olo-terminal".into()]));
+        let gimp = Item::new(Kind::Application, "GNU Image Manipulation Program", Action::Launch("gimp-3.0 %U".into(), "org.gimp.GIMP.desktop".into()));
+        let setting = Item::new(Kind::Setting, "Pinch to zoom", Action::Spawn(vec!["olo-preferences".into()]));
+        let window = Item::new(Kind::Window, "Google Chrome", Action::Shortcut("1".into()));
+        for olo in [&terminal, &setting, &window] {
+            assert!(Scope::Olo.has(olo) && !Scope::Apps.has(olo), "{} is Olo's", olo.title);
+        }
+        assert!(Scope::Apps.has(&gimp) && !Scope::Olo.has(&gimp));
+        // The key hint says what the next tap finds.
+        assert_eq!([Scope::Olo, Scope::Files, Scope::Apps].map(|s| s.next().name()), ["Files", "Other Apps", "Olo"]);
+    }
 }

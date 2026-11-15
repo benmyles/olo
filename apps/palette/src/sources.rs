@@ -233,6 +233,12 @@ const KNOWN_AS: &[(&str, &str, &str)] = &[
     ("windows", "Default mode", "tiling floating stacking"),
 ];
 
+/// Whether `item` is another program's app (a desktop entry's, not
+/// one of Olo's), which the palette finds after a second tap of Ctrl.
+pub fn other_app(item: &Item) -> bool {
+    item.kind == Kind::Application && matches!(item.action, Action::Launch(..))
+}
+
 /// Installed applications, our own first, the preference panels and the
 /// settings in them, and the desktop's appearance.
 pub fn fixed() -> Vec<Item> {
