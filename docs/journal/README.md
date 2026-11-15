@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Backgrounds: Windows 3.1, 95 and 98
+
+*05:06* — Windows 3.1's eleven tiles (here Argyle), Windows 95's Clouds and its thirteen tiles, and Windows 98's fifteen desktop pictures, their logos left out: 39 more in the pack, 445 in all. The pixel-art tiles made larger by nearest neighbour (one original pixel, exactly 2×2 device pixels at 2×); 95's photographic Forest and Sandstone by 4x-UltraSharp; 98's pictures widened to 4K and their colours set back to the originals'.
+
+![Backgrounds: Windows 3.1, 95 and 98](2026-11-15/050646-backgrounds-windows-3-1-95-and-98.png)
+
 ### Icons at 16 and 24 px drawn for their size
 
 *04:52* — Classic (top two rows) and Platinum (bottom two), before and after, magnified 4×: at 16 and 24 px every icon is sharpened a touch and gets a contour a pixel wide, as BeOS R5's mini icons had, so light things (pages, keyboards, the AirPods' case, the ruler) read on a light panel instead of fading into it.

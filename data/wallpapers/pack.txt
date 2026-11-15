@@ -405,6 +405,45 @@ amiga-pattern-boing-psychedelic-pixel|Boing Psychedelic (Pixel)|AmigaOS 3.9 Patt
 amiga-pattern-boing-smooth-pixel|Boing Smooth (Pixel)|AmigaOS 3.9 Patterns|tile:64
 amiga-pattern-boing-stoned-pixel|Boing Stoned (Pixel)|AmigaOS 3.9 Patterns|tile:64
 amiga-pattern-boing-wall-pixel|Boing Wall (Pixel)|AmigaOS 3.9 Patterns|tile:64
+win31-arcade|Arcade|Windows 3.1|tile:32
+win31-argyle|Argyle|Windows 3.1|tile:32
+win31-castle|Castle|Windows 3.1|tile:33
+win31-egypt|Egypt|Windows 3.1|tile:32
+win31-honey|Honey|Windows 3.1|tile:28
+win31-red-brick|Red Brick|Windows 3.1|tile:32
+win31-rivets|Rivets|Windows 3.1|tile:32
+win31-squares|Squares|Windows 3.1|tile:32
+win31-thatch|Thatch|Windows 3.1|tile:31
+win31-zigzag|Zigzag|Windows 3.1|tile:32
+win31-256-color|256 Color|Windows 3.1|tile:80
+win95-clouds|Clouds|Windows 95
+win95-bubbles|Bubbles|Windows 95|tile:64
+win95-circles|Circles|Windows 95|tile:32
+win95-houndstooth|Houndstooth|Windows 95|tile:27
+win95-pinstripe|Pinstripe|Windows 95|tile:30
+win95-red-blocks|Red Blocks|Windows 95|tile:32
+win95-blue-rivets|Blue Rivets|Windows 95|tile:16
+win95-black-thatch|Black Thatch|Windows 95|tile:31
+win95-gold-weave|Gold Weave|Windows 95|tile:96
+win95-straw-mat|Straw Mat|Windows 95|tile:30
+win95-triangles|Triangles|Windows 95|tile:16
+win95-3d-blocks|3D Blocks|Windows 95|tile:54
+win95-forest|Forest|Windows 95|tile:256
+win95-sandstone|Sandstone|Windows 95|tile:256
+win98-baseball|Baseball|Windows 98
+win98-dangerous-creatures|Dangerous Creatures|Windows 98
+win98-inside-your-computer|Inside Your Computer|Windows 98
+win98-jungle|Jungle|Windows 98
+win98-leonardo-da-vinci|Leonardo da Vinci|Windows 98
+win98-mystery|Mystery|Windows 98
+win98-nature|Nature|Windows 98
+win98-science|Science|Windows 98
+win98-space|Space|Windows 98
+win98-sports|Sports|Windows 98
+win98-the-60s-usa|The 60's USA|Windows 98
+win98-the-golden-era|The Golden Era|Windows 98
+win98-travel|Travel|Windows 98
+win98-underwater|Underwater|Windows 98
 dusk-gradient|Dusk|Olo
 boing|Boing|Olo
 be-blue|Be Blue|Olo

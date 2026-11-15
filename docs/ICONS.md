@@ -243,9 +243,19 @@ in Backgrounds by Collection:
 | Mac OS X Abstract, Nature, Black & White, Patterns | What each release added: the Abstracts, Flows, Lines and Tiles; Cheetah's and Jaguar's photographs and Tiger's Nature and Plants; Tiger's Black & White; the Ripples tiles (the 128-pixel solid colours left out: Desktop Colour is that) | the same; one of each, a wide-screen original over its 5:4 twin |
 | AmigaOS 3.9 | Its 30 backdrops (1024×768) | the AmigaOS 3.9 CD (ISO 9660) |
 | AmigaOS 3.9 Patterns | Its Workbench patterns (JPEG and IFF ILBM tiles; Pixel64's twins of Pixel128's left out) | the same |
+| Windows 3.1 | Its eleven tiles (Arcade, Argyle, Castle, Egypt, Honey, Red Brick, Rivets, Squares, Thatch, Zigzag, 256 Color; its logo left out) | Windows 3.11's floppies (FAT; MS COMPRESS's KWAJ files, expanded with libmspack) |
+| Windows 95 | Clouds, and its tiles (Bubbles, Circles, Houndstooth, Pinstripe, Red Blocks, Blue Rivets, Black Thatch, Gold Weave, Straw Mat, Triangles, 3D Blocks, Forest, Sandstone) | Windows 98 SE's CD (its cabinets carry 95's set) |
+| Windows 98 | Its fifteen desktop pictures but those that are its logo (Setup, More Windows, Windows 98) | the same |
 
 BeOS shipped no wallpapers worth having (two Be logos, a TV overlay, two
-photos of its people) and NeXTSTEP none (its desktop was a plain grey).
+photos of its people) and NeXTSTEP none (its desktop was a plain grey);
+IRIX drew its backgrounds as it ran. CDE's backdrops (in its source,
+`programs/backdrops`) are pictures in symbolic colours the window
+manager filled from the palette, so they wait for its rule (which of
+the palette's colour sets, and Motif's shadows) to be read from dtwm,
+rather than be shown in colours nobody saw. Pixel-art tiles (Mac OS 9's
+8 and 16 pixel ones, Windows 3.1's and 95's) are made larger by nearest
+neighbour, 4×: their pixels are the design.
 Each theme names its default (`Theme::wallpaper`): Classic Blueberry
 Oxygen (the nearest to Be's blue), Platinum Quantum Foam; those two have
 a dark version and an ultrawide crop, as PNG; the rest are 4K JPEGs
