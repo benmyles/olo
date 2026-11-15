@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Icons at 16 and 24 px drawn for their size
+
+*04:52* — Classic (top two rows) and Platinum (bottom two), before and after, magnified 4×: at 16 and 24 px every icon is sharpened a touch and gets a contour a pixel wide, as BeOS R5's mini icons had, so light things (pages, keyboards, the AirPods' case, the ruler) read on a light panel instead of fading into it.
+
+![Icons at 16 and 24 px drawn for their size](2026-11-15/045237-icons-at-16-and-24-px-drawn-for-their-size.png)
+
 ### Backgrounds: Mac OS X 10.0–10.4's desktop pictures
 
 *04:47* — From the 10.0–10.4 install discs: each release's Aqua Blue and Graphite (here Tiger's), the Abstracts, Flows, Lines and Tiles, the Nature and Plants photographs, Tiger's Black & White, and the Ripples as tiles; 60 at 4K. Wide originals cropped and finished from their own pixels; 4:3 ones widened and their colours set back to the originals'; the Lines and Tiles never redrawn by the model.

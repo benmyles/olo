@@ -186,6 +186,14 @@ Rules:
 * The theme sets were first drawn one image per icon (about 500), not as
   two candidates each, and then reviewed on a contact sheet per theme.
   Redraw any icon that drifts with `--variants 2` as usual.
+* **16 and 24 px are drawn for their size** (`mkicons.py`'s `small`),
+  as BeOS R5's mini icons were: sharpened a touch after resampling, and
+  a contour a pixel wide round the silhouette, dark and part
+  see-through (0.6 at 16 px, 0.4 at 24; none from 32 up), so a light
+  thing (a page, a keyboard, a white case, a ruler) reads on a light
+  panel instead of fading into it; on a dark one it costs nothing.
+  `mkicons.py --small [--theme ID]` draws just those two sizes again
+  from each icon's 256-pixel picture.
 * The PNGs are in Git LFS (`.gitattributes`). Install and upgrade copy
   each theme's `icons/` and `brand/` to `~/.local/share/olo/themes/`.
 
