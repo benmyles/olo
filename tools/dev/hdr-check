@@ -189,11 +189,11 @@ def main():
 
         # The pack's wallpaper in HDR (its gain map): its lights above SDR's
         # white, most of it at or below it.
-        print("An HDR wallpaper (the pack's BeBox, its gain map):")
+        print("An HDR wallpaper (the pack's Classic, its gain map):")
         for w in ipc({"type": "list_windows"}).get("windows", []):
             ipc({"type": "minimize", "id": w["id"]})
         settings = ipc({"type": "get_settings"})["settings"]
-        settings["wallpaper"] = "pack:bebox"
+        settings["wallpaper"] = "pack:classic"
         ipc({"type": "set_settings", "settings": settings})
         time.sleep(3.0)
         wall = shot("wallpaper", True)

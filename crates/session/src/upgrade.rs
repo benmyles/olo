@@ -491,7 +491,8 @@ fn sync_fonts(from: &Path, to: &Path) -> std::io::Result<usize> {
 
 /// Copy the build tree's themes (`data/themes/<id>`: each one's sizes and
 /// wordmark, not its sources or references) into `to` where new or
-/// newer; how many.
+/// newer, and take away the ones it no longer has (the themes there were
+/// before Classic and Platinum); how many changed.
 fn sync_themes(from: &Path, to: &Path) -> std::io::Result<usize> {
     let Some(src) = from.ancestors().skip(1).take(4).map(|d| d.join("data/themes")).find(|d| d.is_dir()) else {
         return Ok(0);
@@ -506,12 +507,19 @@ fn sync_themes(from: &Path, to: &Path) -> std::io::Result<usize> {
             n += sync_pngs(&theme.join("brand"), &dest.join("brand"))?;
         }
     }
+    for e in std::fs::read_dir(to).into_iter().flatten().flatten() {
+        if e.path().is_dir() && !src.join(e.file_name()).is_dir() {
+            std::fs::remove_dir_all(e.path())?;
+            n += 1;
+        }
+    }
     Ok(n)
 }
 
 /// Copy the build tree's wallpaper pack (`data/wallpapers`: the manifest,
 /// both shapes and the previews) into `to` where new or newer, by clone
-/// where the file system can (the pack is ~90 MB); how many files.
+/// where the file system can (the pack is ~90 MB), and take away the
+/// pictures it no longer has; how many files changed.
 fn sync_wallpapers(from: &Path, to: &Path) -> std::io::Result<usize> {
     let Some(src) = from.ancestors().skip(1).take(4).map(|d| d.join("data/wallpapers")).find(|d| d.join("pack.txt").is_file()) else {
         return Ok(0);
@@ -526,6 +534,13 @@ fn sync_wallpapers(from: &Path, to: &Path) -> std::io::Result<usize> {
             if e.path().is_file() && (name.ends_with(".png") || name == "pack.txt") && is_newer(&e.path(), &to_dir.join(&name)) {
                 install(&e.path(), &to_dir, &name)?;
                 std::fs::set_permissions(to_dir.join(&name), std::fs::Permissions::from_mode(0o644))?;
+                n += 1;
+            }
+        }
+        for e in std::fs::read_dir(&to_dir)?.flatten() {
+            let name = e.file_name();
+            if e.path().is_file() && name.to_string_lossy().ends_with(".png") && !from_dir.join(&name).is_file() {
+                std::fs::remove_file(e.path())?;
                 n += 1;
             }
         }
@@ -748,7 +763,7 @@ mod tests {
         let base = std::env::temp_dir().join(format!("olo-themes-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         let build = base.join("repo/target/release");
-        let theme = base.join("repo/data/themes/soft-be");
+        let theme = base.join("repo/data/themes/platinum");
         std::fs::create_dir_all(&build).unwrap();
         for dir in ["icons/16", "brand", "src", "reference"] {
             std::fs::create_dir_all(theme.join(dir)).unwrap();
@@ -759,11 +774,34 @@ mod tests {
         std::fs::write(theme.join("reference/lock.png"), "ref").unwrap();
         std::fs::write(theme.join("style.txt"), "clay").unwrap();
         let to = base.join("prefix/share/olo/themes");
-        assert_eq!(sync_themes(&build, &to).unwrap(), 2);
-        let ours = to.join("soft-be");
+        // A theme there was once, installed before.
+        std::fs::create_dir_all(to.join("soft-be/icons/16")).unwrap();
+        std::fs::write(to.join("soft-be/icons/16/lock.png"), "png").unwrap();
+        assert_eq!(sync_themes(&build, &to).unwrap(), 3);
+        let ours = to.join("platinum");
         assert!(ours.join("icons/16/lock.png").is_file() && ours.join("brand/olo-wordmark.png").is_file());
         assert!(!ours.join("src").exists() && !ours.join("reference").exists() && !ours.join("style.txt").exists());
+        assert!(!to.join("soft-be").exists(), "a theme that went stayed");
         assert_eq!(sync_themes(&build, &to).unwrap(), 0);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn wallpapers_come_along_and_old_ones_go() {
+        let base = std::env::temp_dir().join(format!("olo-wallpapers-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let build = base.join("repo/target/release");
+        let pack = base.join("repo/data/wallpapers");
+        std::fs::create_dir_all(&build).unwrap();
+        std::fs::create_dir_all(pack.join("4k")).unwrap();
+        std::fs::write(pack.join("pack.txt"), "classic|Classic\n").unwrap();
+        std::fs::write(pack.join("4k/classic.png"), "png").unwrap();
+        let to = base.join("prefix/share/olo/wallpapers");
+        std::fs::create_dir_all(to.join("4k")).unwrap();
+        std::fs::write(to.join("4k/bebox.png"), "png").unwrap();
+        assert_eq!(sync_wallpapers(&build, &to).unwrap(), 3);
+        assert!(to.join("4k/classic.png").is_file() && to.join("pack.txt").is_file() && !to.join("4k/bebox.png").exists());
+        assert_eq!(sync_wallpapers(&build, &to).unwrap(), 0);
         let _ = std::fs::remove_dir_all(&base);
     }
 

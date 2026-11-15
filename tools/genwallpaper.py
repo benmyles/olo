@@ -6,7 +6,7 @@
     genwallpaper.py THEME --dark-from SRC.png     the same picture for dark mode
     genwallpaper.py THEME --promote SRC.png [--dark] [--crop-y PX]
 
-Each theme (data/themes, and classic) has a wallpaper of its own in the
+Each theme (Classic, and Platinum in data/themes) has a wallpaper of its own in the
 pack, named after it (see "Themes" in docs/ICONS.md). It is drawn by the
 same model at quality "high" and full 4K (3840x2160), with the theme's
 reference icons and wordmark as style references, so it is in the
@@ -51,71 +51,12 @@ COMMON = (
 # Each theme's scene, in its own material. The hero is the wordmark's o,
 # on its own, as an object.
 SCENES = {
-    "soft-be": (
-        "Scene: a dreamy miniature diorama made of soft matte modelling clay and soft-touch vinyl: gently "
-        "rolling, plump, rounded hills in softened Be blue and mint green, a few puffy rounded clay clouds in "
-        "a pale sky that fades from soft blue to warm white, and, resting on a hill left of centre, a big "
-        "plump Be blue clay ring like the o of the attached wordmark (a ring-shaped object, not a letter), "
-        "with a short plump BeOS-yellow pill-shaped pillar beside it. Everything rounded, puffy and friendly "
-        "with no sharp edges, a faint satin sheen, soft ambient occlusion and a soft diffuse shadow under "
-        "each form. Pastel, airy and restful."
-    ),
-    "bebox": (
-        "Scene: a vast, calm, minimalist landscape in soft morning light: a smooth pale warm-grey "
-        "plain stretching to a low, distant horizon under a wide, clean sky that fades from pale "
-        "blue-grey overhead to warm light at the horizon. Left of centre, set back so they are "
-        "modest in the frame with a long soft shadow each across the plain, stand two monumental "
-        "sculptures in the BeBox's materials: a huge upright ring like the o of the attached "
-        "wordmark (a ring-shaped object, not a letter), matte graphite with a Be blue face and "
-        "crisp bevelled edges, and beside it a tall graphite pillar with a single vertical column "
-        "of small square LEDs glowing BeOS tab yellow. Far off on the horizon, a few low graphite "
-        "blocks. Matte graphite plastic, crisp bevels, smooth gradients, the icons' clean outlines;"
-        " no clutter. Serene, spacious and precise, like a classic 1990s computer's desktop picture"
-        " made with today's care."
-    ),
-    "toybox": (
-        "Scene: a cheerful still life of hand-made wooden toys on a pale beech-wood tabletop, against a soft "
-        "out-of-focus warm cream wall: a big Be blue painted wooden ring like the o of the attached wordmark "
-        "(a ring-shaped object, not a letter) stands upright left of centre beside a BeOS-yellow painted "
-        "wooden peg; a few small toy blocks, a tomato-red cylinder and a leaf-green disc further back, softly "
-        "out of focus. Smooth beech wood in soft satin enamel paint, well-rounded edges, natural end grain "
-        "where the wood is unpainted, soft window light from the upper left, a gentle shallow depth of field."
-    ),
-    "papercraft": (
-        "Scene: a landscape folded from matte coloured card: faceted low-poly hills and distant mountains in "
-        "Be blue, white card and warm folder tan, a sky of large flat pale blue card panels with a few folded "
-        "paper clouds; left of centre, a big faceted Be blue card ring like the o of the attached wordmark (a "
-        "ring-shaped object, not a letter) stands on a hill beside a folded BeOS-yellow card pillar. Every "
-        "face one flat tone set only by which way it faces the light, like the faceted shading of BeOS R5 "
-        "icons; crisp straight folds, a faint paper texture, slightly softened fold edges, soft shadows. "
-        "Quiet and orderly."
-    ),
-    "enamel": (
-        "Scene: a single large hard enamel pin shaped like the o of the attached wordmark (a ring-shaped "
-        "pin, not a letter), its raised outlines polished gold and its faces smooth, slightly glossy Be blue "
-        "enamel, lies left of centre on a deep navy-blue felt cloth with a soft, fine fabric texture, beside "
-        "a small BeOS-yellow enamel bar pin; far off to the right, a few tiny enamel pins (a yellow folder, a "
-        "red-roofed house) softly out of focus. Soft studio light from the upper left, a gentle sheen on the "
-        "gold, deep rich colour, lots of calm navy space."
-    ),
-    "halftone": (
-        "Scene: a bold 1990s computer-magazine cover illustration printed in flat ink: a big Be blue ring "
-        "like the o of the attached wordmark (a ring-shaped object, not a letter) with a BeOS-yellow bar "
-        "beside it, both with heavy black outlines and halftone-dot shading, stand on a flat horizon left of "
-        "centre; behind them a wide sky of flat Be blue with broad radiating sunburst rays in a slightly "
-        "lighter blue and a pale yellow halftone glow along the horizon; the cast shadows are coarse "
-        "halftone dots. Flat solid inks, a slightly coarse dot screen, no gradients except printed dots, a "
-        "crisp printed look."
-    ),
-    "cube": (
-        "Scene: a calm, exact studio still life with the weight of a photograph, seen nearly straight on at eye "
-        "level: a smooth satin floor of mid grey running back to a seamless backdrop that fades from charcoal "
-        "at the floor to a soft light grey at the top, lit from the upper left. Left of centre stand two "
-        "objects made as the attached wordmark's letters are: a big upright ring like its o (a ring-shaped "
-        "object, not a letter), a solid body of matte black plastic with crisp bevelled edges, its front face "
-        "Be blue, and beside it a matte black cube with a BeOS-yellow front face; each with a fine highlight "
-        "along its lit edges, a soft shadow and a faint reflection in the floor. Nothing else: spare, quiet, "
-        "precise, like a 1990s workstation maker's product photograph."
+    "classic": (
+        "Scene: Olo's first look, glossy, bright and saturated: a big glossy Be blue ring like the o of the "
+        "attached wordmark (a ring-shaped object, not a letter), with a glossy BeOS-yellow bar beside it, "
+        "stands left of centre on a softly reflective pale blue floor that fades into a bright, luminous "
+        "sky-blue backdrop; glossy plastic with crisp highlights and soft reflections, a bold dark outline as "
+        "in the icons, cheerful bright light from the upper left."
     ),
     "platinum": (
         "Scene: a friendly, clean late-1990s desktop picture: soft rounded hills in pale lilac-grey and "
@@ -125,22 +66,6 @@ SCENES = {
         "seen in a gentle view from slightly above. Crisp even black outlines as in the icons, flat colour "
         "with gentle smooth shading and one soft highlight on each form, a small soft grey shadow to the "
         "lower right. Cheerful, tidy and restful."
-    ),
-    "workbench": (
-        "Scene: a landscape as crisp pixel art at a large zoom, on a coarse, clearly visible pixel grid with "
-        "no anti-aliasing, a small fixed palette and ordered dithering for every gradient: a steel-blue sky "
-        "dithering in bands to pale sky blue at a low horizon, flat rows of grey and warm beige pixel hills "
-        "and a few blocky white pixel clouds; left of centre, standing on the nearest hill, a big Be blue "
-        "pixel ring like the o of the attached wordmark (a ring-shaped object, not a letter) beside a "
-        "BeOS-yellow pixel bar, both with hard black one-pixel outlines and bright one-pixel highlights on "
-        "their lit edges. Like a 1990s home computer's screen, enlarged: orderly, bright and calm."
-    ),
-    "classic": (
-        "Scene: Olo's first look, glossy, bright and saturated: a big glossy Be blue ring like the o of the "
-        "attached wordmark (a ring-shaped object, not a letter), with a glossy BeOS-yellow bar beside it, "
-        "stands left of centre on a softly reflective pale blue floor that fades into a bright, luminous "
-        "sky-blue backdrop; glossy plastic with crisp highlights and soft reflections, a bold dark outline as "
-        "in the icons, cheerful bright light from the upper left."
     ),
 }
 
@@ -152,12 +77,7 @@ DARK = (
     "the upper left. {extra}No text, no letters, no numbers, no logos, no watermark, no user interface."
 )
 DARK_EXTRA = {
-    "bebox": "The pillar's LEDs glow brightly in yellow and cast a faint warm light on the plain. ",
-    "halftone": "Still flat printed inks and halftone dots: a deep navy night sky, the rays a little lighter navy. ",
-    "papercraft": "Still flat card faces, one tone each: a deep navy card sky with a few small folded paper stars. ",
-    "cube": "A near-black studio, the floor and backdrop deep charcoal, the blue and yellow faces softly lit. ",
     "platinum": "Still black outlines and flat, gently shaded colour: a deep periwinkle dusk, hills in dark lilac-grey. ",
-    "workbench": "Still crisp pixel art with ordered dithering and one-pixel outlines: a deep navy night sky with a few one-pixel stars. ",
 }
 
 

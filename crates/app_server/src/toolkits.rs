@@ -154,19 +154,19 @@ mod tests {
             std::fs::create_dir_all(data.join("themes").join(name)).unwrap();
             std::fs::write(data.join("themes").join(name).join("index.theme"), index).unwrap();
         }
-        write_files(&data, &config, &css, "toybox", "catppuccin").unwrap();
-        write_files(&data, &config, &css, "toybox", "catppuccin").unwrap();
+        write_files(&data, &config, &css, "platinum", "beos").unwrap();
+        write_files(&data, &config, &css, "platinum", "beos").unwrap();
         let user = std::fs::read_to_string(config.join("gtk-4.0/gtk.css")).unwrap();
         assert_eq!(user.matches("@import").count(), 1, "{user}");
         assert!(user.lines().nth(1).unwrap().starts_with("@import") && user.ends_with("label { color: red; }\n"));
-        assert!(data.join("themes/Olo-toybox-catppuccin-dark/gtk-3.0/gtk.css").exists() && css.exists());
-        let g3 = std::fs::read_to_string(data.join("themes/Olo-toybox-catppuccin-dark/gtk-3.0/gtk.css")).unwrap();
-        assert!(g3.contains("@define-color theme_bg_color #24273a;"), "Macchiato's base");
-        clear_old_themes(&data, "toybox", "catppuccin");
+        assert!(data.join("themes/Olo-platinum-beos-dark/gtk-3.0/gtk.css").exists() && css.exists());
+        let g3 = std::fs::read_to_string(data.join("themes/Olo-platinum-beos-dark/gtk-3.0/gtk.css")).unwrap();
+        assert!(g3.contains("@define-color theme_bg_color #2b2b2b;"), "BeOS's dark panel");
+        clear_old_themes(&data, "platinum", "beos");
         let left: Vec<String> = std::fs::read_dir(data.join("themes")).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
         let mut left = left;
         left.sort();
-        assert_eq!(left, ["Olo-mine", "Olo-toybox-catppuccin", "Olo-toybox-catppuccin-dark"]);
+        assert_eq!(left, ["Olo-mine", "Olo-platinum-beos", "Olo-platinum-beos-dark"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

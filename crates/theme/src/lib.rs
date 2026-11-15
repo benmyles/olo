@@ -1,6 +1,6 @@
 //! The Olo look: every colour the desktop draws with ([`Palette`]), in
-//! whole looks ([`looks`]: each theme's own colours, BeOS's and
-//! Catppuccin's, light and dark), BeOS's tint helpers and metrics.
+//! whole looks ([`looks`]: each theme's own colours and BeOS's, light
+//! and dark), BeOS's tint helpers and metrics.
 //!
 //! Both app_server (window tabs and frames) and the Interface Kit (every
 //! widget) draw from [`Palette`], so a change of look changes everything
@@ -10,7 +10,6 @@
 
 use serde::{Deserialize, Serialize};
 
-pub mod catppuccin;
 pub mod looks;
 pub mod toolkit;
 
@@ -136,10 +135,10 @@ impl Hues {
 /// the others Terminal offers ([`looks::terminals`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Terminal {
-    /// What Terminal's settings keep (`bebox-light`, `beos-dark`,
-    /// `latte`, …; see [`looks::terminal`]).
+    /// What Terminal's settings keep (`classic-light`, `beos-dark`, …;
+    /// see [`looks::terminal`]).
     pub id: String,
-    /// Its name in menus ("BeBox Light", "Catppuccin Latte").
+    /// Its name in menus ("Classic Light", "BeOS Dark").
     pub name: String,
     /// The mode it is made for.
     pub mode: ThemeMode,

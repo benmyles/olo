@@ -2261,8 +2261,9 @@ pub struct Appearance {
     /// `olo_theme::looks::THEMES`; unknown ids draw the default).
     pub icon_theme: String,
     /// Which of the theme's colour sets everything is drawn in: `theme`
-    /// (its own), `beos` or `catppuccin` (`olo_theme::looks::ColorSet`;
-    /// unknown ids are the theme's own). [`Request::Looks`] lists them.
+    /// (its own) or `beos` (`olo_theme::looks::ColorSet`; unknown ids,
+    /// Catppuccin's among them, are the theme's own). [`Request::Looks`]
+    /// lists them.
     pub colors: String,
     /// A new window glows for a moment, to draw the eye to it.
     pub glow_new_windows: bool,
@@ -2586,7 +2587,7 @@ impl Default for Settings {
             workspace_colors: vec![[51, 102, 152], [0, 128, 128], [102, 51, 153], [96, 96, 96]],
             // A new install starts with the default theme's own wallpaper
             // (`olo_xdg::themes::wallpaper`), the pack's first.
-            wallpaper: Some("pack:bebox".into()),
+            wallpaper: Some("pack:classic".into()),
             focus_follows_mouse: false,
             touchpad: TouchpadSettings::default(),
             keyboard: KeyboardSettings::default(),

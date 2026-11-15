@@ -55,14 +55,13 @@ login screen. Run it again any time: each step only does what isn't done
 yet. After a `git pull` and a build, Deskbar offers the new build, and
 its Upgrade installs it and reloads the running desktop in place.
 
-## Ten themes
+## Two themes
 
-Each theme draws every icon, window and control in its own style, with a
-wallpaper to match, in light and dark. From the top left: BeBox, Soft
-Be, Toybox (dark), Papercraft, Enamel (dark); Halftone, Cube (dark),
-Platinum, Workbench and Classic (dark).
+Classic, after BeOS, and Platinum, after Mac OS 9: each draws every
+icon, window and control in its own style, with a wallpaper to match,
+in light and dark. Classic, light and dark, on top; Platinum under it.
 
-![The same desktop in each of Olo's ten themes](docs/img/olo-themes.jpg)
+![The same desktop in Classic and Platinum, light and dark](docs/img/olo-themes.jpg)
 
 ## The desktop
 
@@ -80,8 +79,8 @@ Platinum, Workbench and Classic (dark).
   windows, files, settings and the web.
 - **Notifications**: banners, a history, Do Not Disturb, and per-app
   settings.
-- **Light, dark and night modes**, ten themes with their own icons and
-  wallpapers, fractional scaling (1×, 1.5×, 2× and between) with
+- **Light, dark and night modes**, two themes (Classic and Platinum)
+  with their own icons and wallpapers, fractional scaling (1×, 1.5×, 2× and between) with
   pixel-exact drawing at every one, HDR and wide-gamut colour,
   variable refresh rate, and each display on its own GPU.
 - **Keyboard profiles** for Mac, Windows and BeOS keys, keyboard hints for

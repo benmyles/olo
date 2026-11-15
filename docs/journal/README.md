@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-14
 
+### Themes: two, Classic and Platinum, as cards
+
+*23:59* — Olo has two themes now, Classic (after BeOS) and Platinum (after Mac OS 9); the other eight and Catppuccin's colours went, and a setting naming one draws Classic. Preferences ▸ Themes shows them as two cards, each a preview of its wallpaper with a small window in its own colours and a few of its icons, its name and wordmark, a line about it and a row of its icons; its colour sets (its own and BeOS's) under them. (The wallpapers here are the old ones: new ones come next.)
+
+![Themes: two, Classic and Platinum, as cards](2026-11-14/235920-themes-two-classic-and-platinum-as-cards.png)
+
 ### Weather: every layer of the forecast, with an assistant
 
 *22:57* — A new app (apps/weather): saved places, now in six cards (cloud base and ceiling, visibility, wind, precipitation, humidity, UV), the next hour by the minute, and Rest of Today, Next 3 Days and Next 7 Days over the kit's new Timeline (temperature, clouds drawn from their base up, visibility, precipitation by kind, wind, humidity and pressure, UV; the pointer reads every layer at an hour). The assistant at the right gets the whole forecast; the spans it names are marked on the chart and listed under its answer. tomorrow.io's data for Seattle, at 2×; the answer here is a test stand-in's, not a model's.

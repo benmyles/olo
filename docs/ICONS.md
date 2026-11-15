@@ -137,34 +137,28 @@ python3 tools/iconsheet.py docs/img/icon-reference.png \
 
 ## Themes
 
-The whole set, the `olo` mark and the wordmark come in ten looks, chosen
+The whole set, the `olo` mark and the wordmark come in two looks, chosen
 in Preferences ▸ Themes (`Appearance::icon_theme`; new users get
-BeBox). Every app follows the choice at once. The style above is **Classic**:
-`data/icons` and `data/brand` themselves. Every other theme draws the same
-subjects in its own medium, and keeps the Be grammar: a three-quarter
-view from the upper left, flat things lying on the desk, chunky shapes that
-read at 16 px, a soft cast shadow to the lower right, and Be blue and BeOS
-tab yellow as the brand colours.
+Classic). Every app follows the choice at once.
 
 | Id | Name | Medium |
 |---|---|---|
-| `bebox` | BeBox (the default) | Graphite plastic, panel lines and the BeBox's LED columns. |
-| `soft-be` | Soft Be | Soft matte clay. |
-| `toybox` | Toybox | Painted beech toys. |
-| `papercraft` | Papercraft | Folded card, one flat tone per face, as in R5. |
-| `enamel` | Enamel | Hard enamel pins with polished gold rims for the outline. |
-| `halftone` | Halftone | Flat ink, a heavy black line and halftone-dot shading. |
-| `cube` | Cube | After NeXTSTEP: workstation greys and photographic airbrushed objects, nearly straight on; black-bodied letters. |
+| `classic` | Classic (the default) | After BeOS: this guide's glossy set, `data/icons` and `data/brand` themselves. |
 | `platinum` | Platinum | After Mac OS 9: friendly black-outlined icons, lilac folders, gentle isometric devices. |
-| `workbench` | Workbench | After AmigaOS 3 (MagicWB): crisp pixel art, dithered, grey drawers and a steel-blue palette. |
-| `classic` | Classic | This guide's glossy set. |
+
+Platinum draws the same subjects in its own medium and keeps the Be
+grammar: a three-quarter view from the upper left, flat things lying on
+the desk, chunky shapes that read at 16 px, a soft cast shadow to the
+lower right, and Be blue and BeOS tab yellow as the brand colours.
+(There were ten themes until November 2026; the other eight went, and a
+setting naming one draws Classic.)
 
 A theme lives in `data/themes/<id>/`:
 
 | Path | What |
 |---|---|
 | `style.txt` | Its style prompt, used in place of the house style. |
-| `subjects.txt` | Optional: `name|subject` lines, a subject of its own for an icon where the manifest's names what it draws otherwise (Platinum's lilac folder, Workbench's drawers). |
+| `subjects.txt` | Optional: `name|subject` lines, a subject of its own for an icon where the manifest's names what it draws otherwise (Platinum's lilac folder). |
 | `reference/` | Its reference icons, 512 px: folder, application, disk, terminal and home. |
 | `src/` | Raw 1024² renders and their sidecars (gitignored). |
 | `icons/<px>/<name>.png` | The shipped sizes, laid out as in `data/icons`. |
@@ -197,12 +191,12 @@ Rules:
 
 ```sh
 # A new icon NAME, in every theme (one image each; skips ones already drawn)
-tools/genicons.sh --theme bebox,soft-be,toybox,papercraft,enamel,halftone,cube,platinum,workbench NAME
-# …or candidates for one theme
-python3 tools/genicon.py --theme toybox NAME "subject" --variants 2
+tools/genicons.sh --theme platinum NAME
+# …or candidates
+python3 tools/genicon.py --theme platinum NAME "subject" --variants 2
 # Review, then render the sizes
-python3 tools/mkicons.py --theme toybox NAME
-python3 tools/iconsheet.py /tmp/toybox.png --theme toybox
+python3 tools/mkicons.py --theme platinum NAME
+python3 tools/iconsheet.py /var/tmp/sheets/platinum.png --theme platinum
 ```
 
 ### Theme wordmarks
@@ -212,14 +206,14 @@ yellow) made in its material. `tools/genwordmark.py` draws it with the
 icons' model at quality "high", 1536×1024, with the Classic wordmark
 attached for its letters and colours and the theme's reference icons for
 its look; `NOTES` holds a theme's line on how it makes letters, where its
-icon style alone gives the Classic gloss (Cube's black bodies). Candidates
+icon style alone would give the Classic gloss. Candidates
 go to `data/themes/<id>/src/wordmark/`; `--promote` trims one and writes
 it 768 px wide to `brand/olo-wordmark.png`. Look at each on light and dark
 panels before promoting.
 
 ```sh
-python3 tools/genwordmark.py cube --variants 2
-python3 tools/genwordmark.py cube --promote data/themes/cube/src/wordmark/olo-wordmark-3.png
+python3 tools/genwordmark.py platinum --variants 2
+python3 tools/genwordmark.py platinum --promote data/themes/platinum/src/wordmark/olo-wordmark-3.png
 ```
 
 ### Theme wallpapers
@@ -241,10 +235,10 @@ with a `.json` sidecar. The API key is read from `OPENAI_API_KEY` or
 `~ben/.env`; never print, log or commit it.
 
 ```sh
-python3 tools/genwallpaper.py toybox --variants 2        # candidates
-python3 tools/genwallpaper.py toybox --dark-from data/wallpapers/src/toybox-1.png
-python3 tools/genwallpaper.py toybox --promote data/wallpapers/src/toybox-1.png --crop-y 300
-python3 tools/genwallpaper.py toybox --promote data/wallpapers/src/toybox-dark-1.png --dark --crop-y 300
+python3 tools/genwallpaper.py platinum --variants 2        # candidates
+python3 tools/genwallpaper.py platinum --dark-from data/wallpapers/src/platinum-1.png
+python3 tools/genwallpaper.py platinum --promote data/wallpapers/src/platinum-1.png --crop-y 300
+python3 tools/genwallpaper.py platinum --promote data/wallpapers/src/platinum-dark-1.png --dark --crop-y 300
 ```
 
 `--promote` writes the 4K picture, the 3840×1648 ultrawide band (from

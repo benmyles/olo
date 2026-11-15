@@ -1430,6 +1430,14 @@ something nobody here has is in "Blocked", with what it waits for.
   iterated, with second opinions from OpenAI's Astra; then every icon
   (apps, Preferences' panels, Deskbar, Tracker's kinds) made again for
   each theme per docs/ICONS.md, checked large and at Deskbar's size.
+  Started 2026-11-14 (Ben: "after the current / in flight work item(s)
+  do the theme work that i asked for earlier"). Step 1 done: two
+  themes, Classic the default; the other eight, their icons, wordmarks
+  and wallpapers gone (and pruned from installs on upgrade), a setting
+  naming one draws Classic, a wallpaper naming one shows Classic's;
+  Catppuccin's colours gone, Terminal's too; Preferences ▸ Themes as
+  two cards with a preview each. Next: the wallpapers, the colours,
+  the icons.
 
 - **OS Updates: Fedora's packages, for power users** (Ben, 2026-11-14:
   "add a new olo application OS Updates that is a GUI manager for

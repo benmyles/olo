@@ -5897,16 +5897,21 @@ lint at a time).
   pass the full buffer as `src` to `MemoryRenderBufferRenderElement::
   from_buffer`; without it the buffer counts as logical pixels and is
   drawn at twice its size on a 2× screen.
-* Themes (`themes.rs`): a row per theme in `olo_xdg::themes::THEMES`,
-  each drawn in that theme (`icons::paint_in`, `brand::wordmark_in`):
-  a radio button with its name, a line about it, its wordmark and six of
-  its icons; clicking anywhere on a row chooses it, and its wallpaper
-  (`choose`). Beside the rows, the chosen theme's colour sets one above
-  the other (its own, BeOS's, Catppuccin's: a preview of each in light
-  and dark), on a grid of their own (`review::own_grid`): side by side,
-  the panel fits 1280 × 800 with up to a dozen themes. The choice is
-  `Appearance::icon_theme` (an id; unknown ones draw the default,
-  `bebox`), so agents set it with `SetSettings` like any other.
+* Themes (`themes.rs`): the two themes of `olo_xdg::themes::THEMES`,
+  Classic and Platinum, as two cards side by side, each drawn in its
+  theme (`icons::paint_in`, `brand::wordmark_centred_in`): a preview
+  (its wallpaper as the mode is now, made at the preview's device width
+  on a worker, `pictures::thumbnail_soon`; a small window in its own
+  colours with a few of its icons; three of its icons on the desk), a
+  radio button with its name and its wordmark, a line about it, and a
+  row of seven of its icons. Anywhere on a card chooses it, and its
+  wallpaper (`choose`). Under them, the chosen theme's colour sets side
+  by side (its own and BeOS's: a preview of each in light and dark).
+  The previews are on grids of their own (`review::own_grid`). The
+  choice is `Appearance::icon_theme` (an id; unknown ones, the eight
+  themes there were before Classic and Platinum among them, draw the
+  default, `classic`), so agents set it with `SetSettings` like any
+  other.
   Every process draws in one theme, `olo_xdg::themes::current()`: the
   kit sets it from the settings before the first frame
   (`theme_watch::initial_palette`) and on every `SettingsChanged`
@@ -13013,15 +13018,14 @@ protocol's `CSI 1;3 D` / `C` and reads ESC b as Escape then b. (The
 arrows must stay legacy `CSI 1;mod X` keys there, so `view::kitty_code`
 has no code for them.)
 
-**Colours** (`src/colors.rs`, Settings ▸ Colors). Match Appearance,
+**Colours** (`src/colors.rs`, View ▸ Colors). Match Appearance,
 Always Light or Always Dark picks which of two schemes shows; Light
-Colors offers Olo Light, Catppuccin Latte and Catppuccin Frappé, Dark
-Colors Olo Dark, Catppuccin Macchiato and Mocha (`SchemeId::LIGHT` /
-`DARK`). Frappé, the lightest of Catppuccin's dark flavours, is the
-light default and Macchiato the dark one (`SchemeId::light` / `dark`).
-A Catppuccin scheme draws as its own ports do (`Scheme::catppuccin`:
-Text on Base, Rosewater cursor, its 16 ANSI colours); the choices are
-`Settings::light_colors` / `dark_colors`.
+Colors and Dark Colors each offer the look's own (the theme's, `Classic
+Light`, `Platinum Dark`, …) and BeOS's (`olo_theme::looks::terminals`),
+the look's by default (its ink on its document colour, Olo's ANSI
+colours kept readable on it, the cursor in its focus colour); the
+choices are `Settings::light_colors` / `dark_colors` (ids,
+`looks::terminal`; one that's gone, Catppuccin's, is the look's own).
 
 Text is kept legible whatever background a program had in mind
 (`colors::legible`, as iTerm's minimum contrast): a cell's text is at

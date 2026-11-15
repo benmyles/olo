@@ -18,8 +18,8 @@ use crate::{Palette, Rgba, tint};
 pub const GTK_THEME_PREFIX: &str = "Olo-";
 
 /// The GTK theme for theme `theme` in colour set `colors`, in `mode`
-/// (ids as the settings hold them): `Olo-bebox-theme`,
-/// `Olo-bebox-theme-dark`.
+/// (ids as the settings hold them): `Olo-classic-theme`,
+/// `Olo-platinum-beos-dark`.
 pub fn gtk_theme_name(theme: &str, colors: &str, mode: crate::ThemeMode) -> String {
     let t = crate::looks::resolve(theme).id;
     let c = crate::looks::ColorSet::resolve(colors).id();
@@ -337,8 +337,8 @@ mod tests {
     #[test]
     fn a_name_per_look() {
         use crate::ThemeMode::*;
-        assert_eq!(gtk_theme_name("toybox", "beos", Dark), "Olo-toybox-beos-dark");
-        assert_eq!(gtk_theme_name("nope", "", Light), "Olo-bebox-theme");
+        assert_eq!(gtk_theme_name("platinum", "beos", Dark), "Olo-platinum-beos-dark");
+        assert_eq!(gtk_theme_name("nope", "catppuccin", Light), "Olo-classic-theme");
         assert!(gtk_index("Olo-x").contains(GTK_INDEX_COMMENT));
     }
 }

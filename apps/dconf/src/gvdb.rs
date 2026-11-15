@@ -244,7 +244,7 @@ mod tests {
     #[test]
     fn written_and_read_back() {
         let mut db = Db::new();
-        db.insert("/org/gnome/desktop/interface/gtk-theme".into(), string("Olo-bebox-theme"));
+        db.insert("/org/gnome/desktop/interface/gtk-theme".into(), string("Olo-classic-theme"));
         db.insert("/org/gnome/desktop/interface/cursor-size".into(), vec![22, 0, 0, 0, 0, b'i']);
         db.insert("/org/gnome/desktop/wm/preferences/button-layout".into(), string("close:maximize"));
         db.insert("/top".into(), string("x"));

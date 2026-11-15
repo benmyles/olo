@@ -3,26 +3,20 @@
 //! sets (`Appearance::colors`), light or dark (`effective_theme`).
 //! [`palette`] makes the [`Palette`] for one.
 //!
-//! Every theme has three colour sets, each light and dark:
+//! There are two themes, Classic (BeOS's, made glossy and bright) and
+//! Platinum (Mac OS 9's), and each has two colour sets, each light and
+//! dark:
 //!
 //! - **Its own** ([`ColorSet::Theme`]): colours drawn from the theme's
-//!   pictures (BeBox's graphite and amber lights, Toybox's maple and
-//!   painted yellow, Enamel's ivory, navy and gold), made by [`build`]
-//!   from a few [`Seeds`] in BeOS's proportions.
+//!   pictures, made by [`build`] from a few [`Seeds`] in BeOS's
+//!   proportions.
 //! - **BeOS** ([`ColorSet::Beos`]): R5's grey and yellow as shipped, and
-//!   Olo's dark version of it; the same in every theme.
-//! - **Catppuccin** ([`ColorSet::Catppuccin`]): Latte by day, Macchiato
-//!   by night, the tab in the accent that suits the theme
-//!   ([`Theme::catppuccin`]).
+//!   Olo's dark version of it; the same in both themes.
 //!
 //! Each look carries its terminal's colours (`Palette::terminal`), and
 //! [`terminals`] lists what Terminal offers alongside them.
 
-use crate::{
-    ANSI_DARK, ANSI_LIGHT, BLACK, HUES_DARK, HUES_LIGHT, Hues, Palette, Rgba, Terminal, ThemeMode, WHITE,
-    catppuccin::{self, Accent, Flavour},
-    contrast, hex, mix, readable,
-};
+use crate::{ANSI_DARK, ANSI_LIGHT, BLACK, HUES_DARK, HUES_LIGHT, Hues, Palette, Rgba, Terminal, ThemeMode, WHITE, hex, mix, readable};
 
 /// A theme: its id (its directory under `themes/`, and what the setting
 /// holds), its name, a line about it, and its own colours.
@@ -35,8 +29,6 @@ pub struct Theme {
     pub colors_about: &'static str,
     pub light: Seeds,
     pub dark: Seeds,
-    /// The Catppuccin accent its tab takes.
-    pub catppuccin: Accent,
 }
 
 /// What a theme's own palette in one mode is made from; [`build`] works
@@ -113,331 +105,12 @@ const DARK: Seeds = Seeds {
     gloss: 40,
 };
 
-/// Process inks, for Halftone.
-const PROCESS_LIGHT: Hues = Hues {
-    red: hex(0xe2231a),
-    orange: hex(0xf07d00),
-    yellow: hex(0xf5c400),
-    green: hex(0x009a44),
-    teal: hex(0x0098a6),
-    blue: hex(0x0066cc),
-    purple: hex(0x7d3c98),
-    pink: hex(0xe6007e),
-    brown: hex(0x8b5a2b),
-    gray: hex(0x6d6e71),
-};
-
-const PROCESS_DARK: Hues = Hues {
-    red: hex(0xff4a3d),
-    orange: hex(0xff9a2e),
-    yellow: hex(0xffd21f),
-    green: hex(0x2fc46a),
-    teal: hex(0x21b8c4),
-    blue: hex(0x3d8bff),
-    purple: hex(0xb06ad6),
-    pink: hex(0xff4fa8),
-    brown: hex(0xc4874e),
-    gray: hex(0x9a9ba0),
-};
-
 /// Every theme, in the order Preferences shows them.
 pub const THEMES: &[Theme] = &[
     Theme {
-        id: "bebox",
-        name: "BeBox",
-        about: "Graphite and blinking lights.",
-        colors_about: "Graphite greys, Be blue and an amber tab.",
-        light: Seeds { panel: hex(0xd5d8dd), ink: hex(0x1c1f24), document: hex(0xf8f9fb), control: hex(0xeceef2), tab: hex(0xf5c400), on_tab: hex(0x1c1f24), tooltip: hex(0xfdf4cc), ..LIGHT },
-        dark: Seeds { panel: hex(0x2a2d32), ink: hex(0xe1e4e9), document: hex(0x1b1d21), control: hex(0x393d43), tooltip: hex(0x3c3a2e), ..DARK },
-        catppuccin: Accent::Peach,
-    },
-    Theme {
-        id: "soft-be",
-        name: "Soft Be",
-        about: "Soft matte clay on the Be desk.",
-        colors_about: "Putty, cornflower and butter yellow.",
-        light: Seeds {
-            panel: hex(0xe3e0d7),
-            ink: hex(0x2b2a33),
-            document: hex(0xfbfaf5),
-            control: hex(0xf2f0e9),
-            highlight: hex(0x4570c4),
-            navigation: hex(0x3d6cc4),
-            tab: hex(0xf2cd5c),
-            on_tab: hex(0x2b2a33),
-            tooltip: hex(0xfdf3d2),
-            status: hex(0x6b94de),
-            ..LIGHT
-        },
-        dark: Seeds {
-            panel: hex(0x2b2f3e),
-            ink: hex(0xe5e5ee),
-            document: hex(0x212431),
-            control: hex(0x393e51),
-            highlight: hex(0x4a6fc4),
-            navigation: hex(0x86a8f0),
-            tab: hex(0xdcb84e),
-            on_tab: hex(0x1d1d24),
-            tooltip: hex(0x3c3a33),
-            status: hex(0x6f95e8),
-            ..DARK
-        },
-        catppuccin: Accent::Green,
-    },
-    Theme {
-        id: "toybox",
-        name: "Toybox",
-        about: "Painted wooden toys.",
-        colors_about: "Maple, cream and painted yellow and blue.",
-        light: Seeds {
-            panel: hex(0xe6d9c3),
-            ink: hex(0x2d241c),
-            document: hex(0xfdf9f1),
-            control: hex(0xf6efe3),
-            highlight: hex(0x2f66c4),
-            navigation: hex(0x2a5fbf),
-            tab: hex(0xf2bd1c),
-            on_tab: hex(0x2d241c),
-            tooltip: hex(0xfff1c2),
-            status: hex(0x3577d6),
-            ..LIGHT
-        },
-        dark: Seeds {
-            panel: hex(0x342b24),
-            ink: hex(0xefe6da),
-            document: hex(0x251f1a),
-            control: hex(0x43382f),
-            highlight: hex(0x3f6fc8),
-            navigation: hex(0x78a6f2),
-            tab: hex(0xe3ab18),
-            on_tab: hex(0x1f1a14),
-            tooltip: hex(0x46392a),
-            status: hex(0x4f86e0),
-            ..DARK
-        },
-        catppuccin: Accent::Red,
-    },
-    Theme {
-        id: "papercraft",
-        name: "Papercraft",
-        about: "Folded card, one tone a face.",
-        colors_about: "Sage card stock, teal ink and a kraft tab; flat, no gloss.",
-        light: Seeds {
-            panel: hex(0xdbe2d2),
-            ink: hex(0x232d27),
-            document: hex(0xfafbf5),
-            control: hex(0xeef2e7),
-            highlight: hex(0x2a7a71),
-            navigation: hex(0x23716a),
-            tab: hex(0xe0b45e),
-            on_tab: hex(0x232d27),
-            tooltip: hex(0xf8eed0),
-            status: hex(0x34978b),
-            gloss: 0,
-            ..LIGHT
-        },
-        dark: Seeds {
-            panel: hex(0x26302a),
-            ink: hex(0xe2e9e1),
-            document: hex(0x1a211d),
-            control: hex(0x343f38),
-            highlight: hex(0x2c8579),
-            navigation: hex(0x7accbf),
-            tab: hex(0xcaa252),
-            on_tab: hex(0x1b1d1b),
-            tooltip: hex(0x37382a),
-            status: hex(0x3fa596),
-            gloss: 0,
-            ..DARK
-        },
-        catppuccin: Accent::Teal,
-    },
-    Theme {
-        id: "enamel",
-        name: "Enamel",
-        about: "Enamel pins in polished gold.",
-        colors_about: "Gilt ivory, navy enamel and gold lettering.",
-        light: Seeds {
-            panel: hex(0xe8dfc3),
-            ink: hex(0x1b2238),
-            document: hex(0xfcf9ef),
-            control: hex(0xf6f0df),
-            highlight: hex(0x27458f),
-            on_highlight: hex(0xfbf6e6),
-            navigation: hex(0x2a4fa8),
-            tab: hex(0x22397a),
-            on_tab: hex(0xf2d27c),
-            tooltip: hex(0xfbefcb),
-            status: hex(0x2f56b0),
-            ..LIGHT
-        },
-        dark: Seeds {
-            panel: hex(0x1a2148),
-            ink: hex(0xece5d4),
-            document: hex(0x121735),
-            control: hex(0x283160),
-            highlight: hex(0x3a5cc0),
-            on_highlight: hex(0xfbf6e6),
-            navigation: hex(0x8aa6f0),
-            tab: hex(0xd4a12a),
-            on_tab: hex(0x161616),
-            tooltip: hex(0x3a3524),
-            status: hex(0x4a6fd0),
-            ..DARK
-        },
-        catppuccin: Accent::Yellow,
-    },
-    Theme {
-        id: "halftone",
-        name: "Halftone",
-        about: "Flat ink and halftone dots.",
-        colors_about: "Newsprint, black ink and process colours; flat.",
-        light: Seeds {
-            panel: hex(0xf2efe7),
-            ink: hex(0x121212),
-            document: hex(0xfffdf6),
-            control: hex(0xfaf7ee),
-            highlight: hex(0x1a66d6),
-            navigation: hex(0x1a5fd0),
-            tab: hex(0xffd21f),
-            on_tab: hex(0x121212),
-            tooltip: hex(0xfff4b0),
-            status: hex(0x1a66d6),
-            hues: PROCESS_LIGHT,
-            border: Some(hex(0x1c1c1c)),
-            gloss: 0,
-            ..LIGHT
-        },
-        dark: Seeds {
-            panel: hex(0x1d1d1d),
-            ink: hex(0xf3f0e6),
-            document: hex(0x121212),
-            control: hex(0x2c2c2c),
-            highlight: hex(0x2d6fd8),
-            navigation: hex(0x5b9bff),
-            tab: hex(0xf5c800),
-            on_tab: hex(0x111111),
-            tooltip: hex(0x3a3720),
-            status: hex(0x2d74e0),
-            hues: PROCESS_DARK,
-            gloss: 0,
-            ..DARK
-        },
-        catppuccin: Accent::Pink,
-    },
-    Theme {
-        id: "cube",
-        name: "Cube",
-        about: "Black cubes and workstation greys.",
-        colors_about: "Workstation greys, deep blue and a black tab.",
-        light: Seeds {
-            panel: hex(0xb0b0b0),
-            ink: hex(0x000000),
-            document: hex(0xffffff),
-            control: hex(0xc8c8c8),
-            highlight: hex(0x2e4f86),
-            navigation: hex(0x1f3f78),
-            tab: hex(0x161616),
-            on_tab: hex(0xffffff),
-            tooltip: hex(0xf2efdc),
-            status: hex(0x3a5f9e),
-            gloss: 30,
-            ..LIGHT
-        },
-        dark: Seeds {
-            panel: hex(0x2f2f2f),
-            ink: hex(0xe8e8e8),
-            document: hex(0x1a1a1a),
-            control: hex(0x404040),
-            highlight: hex(0x3a5f9e),
-            navigation: hex(0x8fb0e8),
-            tab: hex(0xb4b4b4),
-            on_tab: hex(0x000000),
-            tooltip: hex(0x3c3a30),
-            status: hex(0x4a6fb0),
-            gloss: 20,
-            ..DARK
-        },
-        catppuccin: Accent::Lavender,
-    },
-    Theme {
-        id: "platinum",
-        name: "Platinum",
-        about: "Platinum grey and friendly outlines.",
-        colors_about: "Platinum grey, a lavender tab and lilac-blue.",
-        light: Seeds {
-            panel: hex(0xdddddd),
-            ink: hex(0x000000),
-            document: hex(0xffffff),
-            control: hex(0xeeeeee),
-            highlight: hex(0x4a4ac4),
-            navigation: hex(0x3c3cb8),
-            tab: hex(0xb4b4f0),
-            on_tab: hex(0x000000),
-            tooltip: hex(0xffffcc),
-            status: hex(0x6363d6),
-            gloss: 50,
-            ..LIGHT
-        },
-        dark: Seeds {
-            panel: hex(0x2c2c34),
-            ink: hex(0xe6e6f0),
-            document: hex(0x1c1c22),
-            control: hex(0x3a3a46),
-            highlight: hex(0x5656c8),
-            navigation: hex(0xa8a8ff),
-            tab: hex(0x9a9ae6),
-            on_tab: hex(0x111118),
-            tooltip: hex(0x3c3a2c),
-            status: hex(0x6c6cdc),
-            gloss: 30,
-            ..DARK
-        },
-        catppuccin: Accent::Mauve,
-    },
-    Theme {
-        id: "workbench",
-        name: "Workbench",
-        about: "Crisp pixels in grey and blue.",
-        colors_about: "Grey and blue by day, deep blue and orange by night; flat.",
-        light: Seeds {
-            panel: hex(0xaaaaaa),
-            ink: hex(0x000000),
-            document: hex(0xffffff),
-            control: hex(0xbcbcbc),
-            highlight: hex(0x6688bb),
-            on_highlight: hex(0x000000),
-            navigation: hex(0x2a4a8a),
-            tab: hex(0x6688bb),
-            on_tab: hex(0x000000),
-            tooltip: hex(0xf0e6d6),
-            status: hex(0x6688bb),
-            border: Some(hex(0x1a1a1a)),
-            gloss: 0,
-            ..LIGHT
-        },
-        dark: Seeds {
-            panel: hex(0x0a3f80),
-            ink: hex(0xf2f2f2),
-            document: hex(0x062c5c),
-            control: hex(0x16509a),
-            highlight: hex(0xff8800),
-            on_highlight: hex(0x000000),
-            navigation: hex(0xffaa44),
-            tab: hex(0xff8800),
-            on_tab: hex(0x000000),
-            tooltip: hex(0x1c4a88),
-            status: hex(0xff8800),
-            border: Some(hex(0x000022)),
-            gloss: 0,
-            ..DARK
-        },
-        catppuccin: Accent::Sapphire,
-    },
-    Theme {
         id: CLASSIC,
         name: "Classic",
-        about: "Olo's first set: glossy, bright.",
+        about: "After BeOS: glossy, bright and friendly.",
         colors_about: "Glossy sky grey by day and ocean blue by night.",
         light: Seeds {
             panel: hex(0xdbe3ee),
@@ -467,12 +140,46 @@ pub const THEMES: &[Theme] = &[
             gloss: 60,
             ..DARK
         },
-        catppuccin: Accent::Sky,
+    },
+    Theme {
+        id: "platinum",
+        name: "Platinum",
+        about: "After Mac OS 9: platinum grey, friendly outlines.",
+        colors_about: "Platinum grey, a lavender tab and lilac-blue.",
+        light: Seeds {
+            panel: hex(0xdddddd),
+            ink: hex(0x000000),
+            document: hex(0xffffff),
+            control: hex(0xeeeeee),
+            highlight: hex(0x4a4ac4),
+            navigation: hex(0x3c3cb8),
+            tab: hex(0xb4b4f0),
+            on_tab: hex(0x000000),
+            tooltip: hex(0xffffcc),
+            status: hex(0x6363d6),
+            gloss: 50,
+            ..LIGHT
+        },
+        dark: Seeds {
+            panel: hex(0x2c2c34),
+            ink: hex(0xe6e6f0),
+            document: hex(0x1c1c22),
+            control: hex(0x3a3a46),
+            highlight: hex(0x5656c8),
+            navigation: hex(0xa8a8ff),
+            tab: hex(0x9a9ae6),
+            on_tab: hex(0x111118),
+            tooltip: hex(0x3c3a2c),
+            status: hex(0x6c6cdc),
+            gloss: 30,
+            ..DARK
+        },
     },
 ];
 
-/// The theme a new user gets (and an unknown setting falls back to).
-pub const DEFAULT: &str = "bebox";
+/// The theme a new user gets (and an unknown setting falls back to: the
+/// themes there were before these two, too).
+pub const DEFAULT: &str = CLASSIC;
 
 /// The theme whose icons are the set in `<data>/icons` itself.
 pub const CLASSIC: &str = "classic";
@@ -494,22 +201,21 @@ pub enum ColorSet {
     #[default]
     Theme,
     Beos,
-    Catppuccin,
 }
 
 impl ColorSet {
-    pub const ALL: [ColorSet; 3] = [ColorSet::Theme, ColorSet::Beos, ColorSet::Catppuccin];
+    pub const ALL: [ColorSet; 2] = [ColorSet::Theme, ColorSet::Beos];
 
     /// What the setting holds.
     pub fn id(self) -> &'static str {
         match self {
             ColorSet::Theme => "theme",
             ColorSet::Beos => "beos",
-            ColorSet::Catppuccin => "catppuccin",
         }
     }
 
-    /// The set `id` names; unknown ids are the theme's own.
+    /// The set `id` names; unknown ids (Catppuccin's, which went) are the
+    /// theme's own.
     pub fn resolve(id: &str) -> ColorSet {
         ColorSet::ALL.into_iter().find(|c| c.id() == id).unwrap_or_default()
     }
@@ -519,7 +225,6 @@ impl ColorSet {
         match self {
             ColorSet::Theme => theme.name,
             ColorSet::Beos => "BeOS",
-            ColorSet::Catppuccin => "Catppuccin",
         }
     }
 
@@ -528,7 +233,6 @@ impl ColorSet {
         match self {
             ColorSet::Theme => theme.colors_about.to_owned(),
             ColorSet::Beos => "BeOS R5's grey panels and yellow tab, and a dark version.".to_owned(),
-            ColorSet::Catppuccin => format!("Latte by day and Macchiato by night, with a {} tab.", theme.catppuccin.name()),
         }
     }
 }
@@ -544,10 +248,6 @@ pub fn palette(theme: &str, colors: &str, mode: ThemeMode) -> Palette {
         (ColorSet::Theme, ThemeMode::Dark) => build(&t.dark, ThemeMode::Dark, own_terminal(t, ThemeMode::Dark)),
         (ColorSet::Beos, ThemeMode::Light) => Palette::light(),
         (ColorSet::Beos, ThemeMode::Dark) => Palette::dark(),
-        (ColorSet::Catppuccin, mode) => {
-            let f = catppuccin_flavour(mode);
-            build(&catppuccin_seeds(f, t.catppuccin), mode, f.terminal())
-        }
     };
     (p.theme, p.colors) = (t.id.into(), set.id().into());
     p
@@ -563,7 +263,6 @@ pub fn palette(theme: &str, colors: &str, mode: ThemeMode) -> Palette {
 ///   softened; at night each lifted to read on the dark panel.
 /// - **Classic's own and the BeOS colours**: BeOS's (its tab's yellow, the
 ///   red and blue of its marks), even and bright, as Be's were.
-/// - **Every other**: the look's own hues.
 ///
 /// By day the fills are deep enough for white names (all but yellow and
 /// orange, and Mac OS 9's bright green and cyan, kept as they were); at
@@ -572,9 +271,7 @@ pub fn palette(theme: &str, colors: &str, mode: ThemeMode) -> Palette {
 pub fn group_colors(p: &crate::Palette) -> [crate::GroupColor; crate::GROUP_COLORS] {
     const NAMES: [&str; crate::GROUP_COLORS] = ["Red", "Orange", "Yellow", "Green", "Teal", "Blue", "Purple", "Gray"];
     let dark = p.mode == ThemeMode::Dark;
-    let own = p.colors == ColorSet::Theme.id();
-    let platinum = own && p.theme == "platinum";
-    let beos = p.colors == ColorSet::Beos.id() || (own && p.theme == CLASSIC);
+    let platinum = p.colors == ColorSet::Theme.id() && p.theme == "platinum";
     let (names, fills): ([&str; 8], [Rgba; 8]) = if platinum {
         let names = ["Red", "Orange", "Yellow", "Green", "Cyan", "Blue", "Magenta", "Brown"];
         if dark {
@@ -582,63 +279,12 @@ pub fn group_colors(p: &crate::Palette) -> [crate::GroupColor; crate::GROUP_COLO
         } else {
             (names, [hex(0xdd0806), hex(0xff6402), hex(0xf5d60a), hex(0x1fb714), hex(0x02abea), hex(0x0000d4), hex(0xf20884), hex(0x8a5a2a)])
         }
-    } else if beos {
-        if dark {
-            (NAMES, [hex(0xe5574c), hex(0xf29236), hex(0xf0c21a), hex(0x4db65c), hex(0x34b3bf), hex(0x5288ea), hex(0xa070de), hex(0x9097a0)])
-        } else {
-            (NAMES, [hex(0xd9372b), hex(0xee7d10), hex(0xffcb00), hex(0x28863a), hex(0x11818d), hex(0x2e6bd6), hex(0x8350c8), hex(0x6f757d)])
-        }
+    } else if dark {
+        (NAMES, [hex(0xe5574c), hex(0xf29236), hex(0xf0c21a), hex(0x4db65c), hex(0x34b3bf), hex(0x5288ea), hex(0xa070de), hex(0x9097a0)])
     } else {
-        let h = &p.hues;
-        (NAMES, [h.red, h.orange, h.yellow, h.green, h.teal, h.blue, h.purple, h.gray])
+        (NAMES, [hex(0xd9372b), hex(0xee7d10), hex(0xffcb00), hex(0x28863a), hex(0x11818d), hex(0x2e6bd6), hex(0x8350c8), hex(0x6f757d)])
     };
     std::array::from_fn(|i| crate::GroupColor { name: names[i], fill: fills[i], ink: p.label_ink(fills[i]) })
-}
-
-/// The flavour the Catppuccin colours take in `mode`.
-fn catppuccin_flavour(mode: ThemeMode) -> &'static Flavour {
-    match mode {
-        ThemeMode::Light => &catppuccin::LATTE,
-        ThemeMode::Dark => &catppuccin::MACCHIATO,
-    }
-}
-
-/// A Catppuccin flavour as seeds: Text on the flavour's ramp, Blue for
-/// what is chosen, the theme's accent on the tab, its accents as hues.
-fn catppuccin_seeds(f: &Flavour, accent: Accent) -> Seeds {
-    let light = f.mode == ThemeMode::Light;
-    let tab = f.accent(accent);
-    let on_tab = if contrast(f.text, tab) >= contrast(f.crust, tab) { f.text } else { f.crust };
-    Seeds {
-        panel: if light { f.crust } else { f.base },
-        ink: f.text,
-        document: if light { f.base } else { f.mantle },
-        control: if light { f.base } else { f.surface0 },
-        highlight: f.blue,
-        on_highlight: if light { f.base } else { f.crust },
-        navigation: f.blue,
-        tab,
-        on_tab: readable(on_tab, tab, 4.5),
-        tooltip: if light { f.mantle } else { f.surface0 },
-        status: f.blue,
-        success: f.green,
-        failure: f.red,
-        warning: f.yellow,
-        hues: Hues {
-            red: f.red,
-            orange: f.peach,
-            yellow: f.yellow,
-            green: f.green,
-            teal: f.teal,
-            blue: f.blue,
-            purple: f.mauve,
-            pink: f.pink,
-            brown: mix(f.peach, f.surface2, 0.45),
-            gray: f.overlay1,
-        },
-        border: Some(if light { f.overlay1 } else { f.crust }),
-        gloss: 0,
-    }
 }
 
 /// A theme's own terminal: its ink on its document colour, Olo's ANSI
@@ -782,26 +428,15 @@ pub fn build(s: &Seeds, mode: ThemeMode, terminal: Terminal) -> Palette {
 }
 
 /// The terminal colours Terminal offers in `mode` while theme `theme` is
-/// on: the theme's own, BeOS's, and Catppuccin's (Latte and Frappé for
-/// light mode, Frappé being the lightest of its darks; Macchiato and
-/// Mocha for dark).
+/// on: the theme's own and BeOS's.
 pub fn terminals(theme: &str, mode: ThemeMode) -> Vec<Terminal> {
     let t = resolve(theme);
-    let mut all = vec![own_terminal(t, mode), palette(t.id, ColorSet::Beos.id(), mode).terminal];
-    let flavours: [&Flavour; 2] = match mode {
-        ThemeMode::Light => [&catppuccin::LATTE, &catppuccin::FRAPPE],
-        ThemeMode::Dark => [&catppuccin::MACCHIATO, &catppuccin::MOCHA],
-    };
-    all.extend(flavours.iter().map(|f| f.terminal()));
-    all
+    vec![own_terminal(t, mode), palette(t.id, ColorSet::Beos.id(), mode).terminal]
 }
 
-/// The terminal colours `id` names (any theme's own, `<theme>-light` or
-/// `-dark`; `beos-light`, `beos-dark`; a Catppuccin flavour's id).
+/// The terminal colours `id` names (either theme's own, `<theme>-light`
+/// or `-dark`; `beos-light`, `beos-dark`).
 pub fn terminal(id: &str) -> Option<Terminal> {
-    if let Some(f) = catppuccin::FLAVOURS.iter().find(|f| f.id == id) {
-        return Some(f.terminal());
-    }
     let (theme, mode) = id.rsplit_once('-')?;
     let mode = match mode {
         "light" => ThemeMode::Light,
@@ -817,7 +452,7 @@ pub fn terminal(id: &str) -> Option<Terminal> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Hue;
+    use crate::{Hue, contrast};
 
     fn every() -> impl Iterator<Item = (String, Palette)> {
         THEMES.iter().flat_map(|t| ColorSet::ALL.into_iter().flat_map(move |c| [ThemeMode::Light, ThemeMode::Dark].map(|m| (format!("{} {} {m:?}", t.id, c.id()), palette(t.id, c.id(), m)))))
@@ -863,15 +498,15 @@ mod tests {
             assert_eq!(p.mode == ThemeMode::Dark, crate::luminance(p.panel_background) < 0.18, "{a}");
             for (b, q) in &all[..i] {
                 assert_ne!(p, q, "{a} is {b}");
-                if !(a.contains(" beos ") && b.contains(" beos ")) && !(a.contains(" catppuccin ") && b.contains(" catppuccin ")) {
+                if !(a.contains(" beos ") && b.contains(" beos ")) {
                     assert_ne!(colors_of(p), colors_of(q), "{a} is {b}");
                 }
             }
         }
-        // Catppuccin's are the same but for the tab.
-        let (x, y) = (palette("bebox", "catppuccin", ThemeMode::Dark), palette("toybox", "catppuccin", ThemeMode::Dark));
-        assert_ne!(x.tab_focused, y.tab_focused);
-        assert_eq!((x.panel_background, x.terminal.id.as_str()), (y.panel_background, "macchiato"));
+        // The themes that went, and Catppuccin's colours, are the
+        // default's own now.
+        assert_eq!(palette("bebox", "catppuccin", ThemeMode::Dark), palette(DEFAULT, "theme", ThemeMode::Dark));
+        assert_eq!(DEFAULT, CLASSIC);
     }
 
     /// WCAG AA for text (4.5:1) wherever text is set, in every look.
@@ -914,25 +549,23 @@ mod tests {
             assert!(contrast(t.foreground, t.background) >= 7.0, "{} text: {:.2}", t.name, contrast(t.foreground, t.background));
             assert!(contrast(t.foreground, t.selection) >= 4.5, "{} selection: {:.2}", t.name, contrast(t.foreground, t.selection));
             assert_ne!(t.cursor, t.background, "{}", t.name);
-            // Olo's own: every colour but the one that matches the ground
-            // reads (Catppuccin's are as its palette gives them).
-            if !t.name.starts_with("Catppuccin") {
-                let skip = if t.mode == ThemeMode::Light { [7, 15] } else { [0, 8] };
-                for (i, c) in t.ansi.iter().enumerate().filter(|(i, _)| !skip.contains(i)) {
-                    assert!(contrast(*c, t.background) >= 3.0, "{} colour {i}: {:.2}", t.name, contrast(*c, t.background));
-                }
+            // Every colour but the one that matches the ground reads.
+            let skip = if t.mode == ThemeMode::Light { [7, 15] } else { [0, 8] };
+            for (i, c) in t.ansi.iter().enumerate().filter(|(i, _)| !skip.contains(i)) {
+                assert!(contrast(*c, t.background) >= 3.0, "{} colour {i}: {:.2}", t.name, contrast(*c, t.background));
             }
             assert_eq!(terminal(&t.id).as_ref(), Some(t), "{}", t.id);
         }
         assert_eq!(terminal("nope"), None);
         assert_eq!(terminal("nope-light"), None);
+        assert_eq!(terminal("mocha"), None);
     }
 
     #[test]
     fn terminal_choices() {
-        let names = |m| terminals("toybox", m).into_iter().map(|t| t.id).collect::<Vec<_>>();
-        assert_eq!(names(ThemeMode::Light), ["toybox-light", "beos-light", "latte", "frappe"]);
-        assert_eq!(names(ThemeMode::Dark), ["toybox-dark", "beos-dark", "macchiato", "mocha"]);
+        let names = |m| terminals("platinum", m).into_iter().map(|t| t.id).collect::<Vec<_>>();
+        assert_eq!(names(ThemeMode::Light), ["platinum-light", "beos-light"]);
+        assert_eq!(names(ThemeMode::Dark), ["platinum-dark", "beos-dark"]);
         // The look's own terminal is among its mode's choices.
         for (look, p) in every() {
             let theme = look.split(' ').next().unwrap();
@@ -942,12 +575,12 @@ mod tests {
 
     #[test]
     fn palettes_round_trip_as_json() {
-        let p = palette("enamel", "theme", ThemeMode::Dark);
+        let p = palette("platinum", "theme", ThemeMode::Dark);
         let json = serde_json::to_value(&p).unwrap();
-        assert_eq!(json["panel_background"], "#1a2148");
+        assert_eq!(json["panel_background"], crate::to_hex(p.panel_background));
         assert_eq!(json["desktop_text_shadow"], "#000000c8");
         assert_eq!(json["hues"]["red"], crate::to_hex(p.hues.red));
-        assert_eq!(json["terminal"]["id"], "enamel-dark");
+        assert_eq!(json["terminal"]["id"], "platinum-dark");
         assert_eq!(serde_json::from_value::<Palette>(json).unwrap(), p);
     }
 }

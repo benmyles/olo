@@ -39,11 +39,7 @@ LEAD = (
 
 # How a theme makes its letters, where its icon style alone gave the
 # Classic wordmark's gloss.
-NOTES = {
-    "cube": "Here the letters are made as NeXTSTEP made its objects: solid bodies of matte black plastic with crisp "
-    "bevelled edges and a fine highlight along the lit ones, only their front faces in the blue and the yellow, "
-    "upright, seen nearly straight on. ",
-}
+NOTES = {}
 
 
 def style(theme):

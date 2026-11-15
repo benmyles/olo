@@ -1,7 +1,7 @@
 //! Terminal colours, as alacritty's types: the look's own
 //! (`Palette::terminal`), or one chosen in View ▸ Colors from those
-//! `olo_theme::looks::terminals` offers (the theme's own, BeOS's and
-//! Catppuccin's four flavours; see `Settings::light_colors`).
+//! `olo_theme::looks::terminals` offers (the theme's own and BeOS's; see
+//! `Settings::light_colors`).
 
 use alacritty_terminal::{
     term::color::Colors,
@@ -153,9 +153,10 @@ mod tests {
 
     #[test]
     fn from_the_look() {
-        let t = olo_theme::looks::terminal("mocha").unwrap();
+        let t = olo_theme::looks::terminal("platinum-dark").unwrap();
         let s = Scheme::from(&t);
-        assert_eq!((s.name.as_str(), s.background, s.ansi[1]), ("Catppuccin Mocha", Rgb { r: 0x1e, g: 0x1e, b: 0x2e }, Rgb { r: 0xf3, g: 0x8b, b: 0xa8 }));
+        assert_eq!((s.name.as_str(), s.background), ("Platinum Dark", rgb(t.background)));
+        assert_eq!(s.ansi, t.ansi.map(rgb));
         assert_eq!(Scheme::light().background, Rgb { r: 0xfb, g: 0xfa, b: 0xf6 });
     }
 

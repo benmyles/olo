@@ -109,7 +109,7 @@ def close_all():
     time.sleep(1)
 
 
-def look(theme="light", icons="bebox", colors="theme", wallpaper=None):
+def look(theme="light", icons="classic", colors="theme", wallpaper=None):
     def change(s):
         a = s["appearance"]
         a["theme"] = theme
@@ -205,7 +205,7 @@ def scene_desktop():
     shot("olo-desktop-dark")
 
 
-THEMES = [("bebox", "light"), ("soft-be", "light"), ("toybox", "dark"), ("papercraft", "light"), ("enamel", "dark"), ("halftone", "light"), ("cube", "dark"), ("platinum", "light"), ("workbench", "light"), ("classic", "dark")]
+THEMES = [("classic", "light"), ("classic", "dark"), ("platinum", "light"), ("platinum", "dark")]
 
 
 def grab(name, crop=None):
@@ -230,8 +230,8 @@ def save(im, name, width=None):
 
 
 def scene_themes():
-    """The desktop in each of the ten themes, five by two, in the
-    Themes panel's order."""
+    """The desktop in each of the two themes, light and dark, two by
+    two, in the Themes panel's order."""
     from PIL import Image
 
     close_all()
@@ -242,11 +242,11 @@ def scene_themes():
     for icons, mode in THEMES:
         look(mode, icons)
         settle(3)
-        tiles.append(grab(f"theme-{icons}").resize((640, 400), Image.LANCZOS))
+        tiles.append(grab(f"theme-{icons}-{mode}").resize((1280, 800), Image.LANCZOS))
     gap = 10
-    sheet = Image.new("RGB", (5 * 640 + 4 * gap, 2 * 400 + gap), (128, 128, 128))
+    sheet = Image.new("RGB", (2 * 1280 + gap, 2 * 800 + gap), (128, 128, 128))
     for i, t in enumerate(tiles):
-        sheet.paste(t, ((i % 5) * (640 + gap), (i // 5) * (400 + gap)))
+        sheet.paste(t, ((i % 2) * (1280 + gap), (i // 2) * (800 + gap)))
     save(sheet, "olo-themes")
     look("light")
 

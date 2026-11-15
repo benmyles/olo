@@ -57,16 +57,24 @@ const ULTRAWIDE: f64 = 2.0;
 
 /// The file to show for `setting` on a screen of `size` pixels, in dark
 /// mode or not: a pack picture's version for the screen's shape and the
-/// mode (falling back to the light one), or the person's own file.
+/// mode (falling back to the light one), or the person's own file. A pack
+/// picture that's gone (a theme's there were once: BeBox, Toybox, …)
+/// shows the default theme's.
 pub fn resolve(setting: &str, size: (u32, u32), dark: bool) -> Option<PathBuf> {
     let setting = setting.trim();
-    let Some(name) = setting.strip_prefix(PACK) else {
+    if !setting.starts_with(PACK) {
         return (!setting.is_empty()).then(|| PathBuf::from(setting));
-    };
-    let dir = dir()?;
+    }
+    resolve_in(&dir()?, setting, size, dark)
+}
+
+/// [`resolve`] for a pack setting, the pack in `dir`.
+fn resolve_in(dir: &Path, setting: &str, size: (u32, u32), dark: bool) -> Option<PathBuf> {
+    let name = setting.strip_prefix(PACK)?;
     let shape = if size.0 as f64 >= size.1.max(1) as f64 * ULTRAWIDE { "ultrawide" } else { "4k" };
     let file = |n: &str| Some(dir.join(shape).join(format!("{n}.png"))).filter(|p| p.is_file());
-    dark.then(|| file(&format!("{name}-dark"))).flatten().or_else(|| file(name))
+    let pick = |name: &str| dark.then(|| file(&format!("{name}-dark"))).flatten().or_else(|| file(name));
+    pick(name).or_else(|| pick(crate::themes::resolve(crate::themes::DEFAULT).id))
 }
 
 /// `picture` has an HDR version (its gain map beside it,
@@ -101,6 +109,13 @@ mod tests {
         assert_eq!(pack[0].setting(), "pack:dusk");
         assert_eq!(resolve("/x/mine.jpg", (100, 100), true), Some(PathBuf::from("/x/mine.jpg")));
         assert_eq!(resolve("  ", (100, 100), true), None);
+        assert_eq!(resolve_in(&dir, "pack:dusk", (100, 100), true), Some(dir.join("4k/dusk-dark.png")));
+        assert_eq!(resolve_in(&dir, "pack:blue", (300, 100), true), Some(dir.join("ultrawide/blue.png")));
+        // One that's gone: the default theme's.
+        for d in ["4k", "ultrawide"] {
+            std::fs::write(dir.join(d).join(format!("{}.png", crate::themes::DEFAULT)), "png").unwrap();
+        }
+        assert_eq!(resolve_in(&dir, "pack:bebox", (100, 100), true), Some(dir.join(format!("4k/{}.png", crate::themes::DEFAULT))));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

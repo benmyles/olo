@@ -1,6 +1,6 @@
 //! Terminal: a shell in a window, BeOS style (one process, any number of
 //! windows), on alacritty's terminal emulator. Drawn with olo-kit (ui.rs, view.rs),
-//! with Olo's own light and dark colour schemes and Catppuccin's
+//! with the look's own light and dark colour schemes and BeOS's
 //! (colors.rs), one for each appearance. A window can hold
 //! several shells as tabs, and be a named, coloured group of them that
 //! can be saved and opened again (groups.rs). Tabs running a coding agent
@@ -2499,7 +2499,7 @@ impl Terminal {
         for s in TEXT_SIZES {
             text = text.item(format!("{s}"), format!("size-{s}")).checked(self.settings.text_size == s);
         }
-        // The look's own colours, BeOS's and Catppuccin's for each mode
+        // The look's own colours and BeOS's for each mode
         // (and the one chosen, if it is none of those).
         let pick = |title: &str, mode: ThemeMode| {
             let chosen = self.colors_for(mode);
