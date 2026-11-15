@@ -241,6 +241,9 @@ pub(crate) struct WindowCore {
     /// The node whose handler is running now.
     pub(crate) current: Option<NodeId>,
     pub(crate) next_frame: Vec<NextFrame>,
+    /// What's done once the window has next drawn what changed
+    /// (`WindowCx::after_flush`).
+    pub(crate) after_flush: Vec<NextFrame>,
     /// Views invalidated for the next frame (`Cx::invalidate_at_frame`),
     /// kept while the stage waits to draw one, and since when.
     pub(crate) at_frame: Vec<ViewId>,
@@ -627,6 +630,7 @@ impl WindowCore {
             default_prevented: false,
             current: None,
             next_frame: Vec::new(),
+            after_flush: Vec::new(),
             at_frame: Vec::new(),
             held_since: None,
             pace: opened.pace,
@@ -1494,6 +1498,14 @@ impl<'a> WindowCx<'a> {
         if self.core.closed || self.core.awaits_size {
             return;
         }
+        self.flush_once();
+        // (Asked for in what it drew, too: done now, not a flush later.)
+        for f in std::mem::take(&mut self.core.after_flush) {
+            f(self);
+        }
+    }
+
+    fn flush_once(&mut self) {
         // What's kept for the next frame, if one can be drawn now.
         self.core.release_at_frame(false);
         let flushing = Instant::now();
@@ -2474,6 +2486,15 @@ impl<'a> WindowCx<'a> {
         self.core.current.map(|id| self.core.window_bounds(id)).unwrap_or_default()
     }
 
+    /// Exactly what shows now of the element whose handler is running,
+    /// in the coordinates it's drawn in (within its parents' clips and
+    /// scrolled as they are): for what follows the pointer over it kept
+    /// to what can be seen (a chart's readout in a scroll view). Unlike
+    /// `Painter::visible_bounds`, not rounded out to bands.
+    pub fn listener_shown(&self) -> Bounds<Pixels> {
+        self.core.current.and_then(|id| Some(self.core.seen_at(id, false).intersect(&self.core.nodes.get(id)?.bounds))).unwrap_or_default()
+    }
+
     /// The element whose handler is running now, to draw it again later
     /// ([`Self::repaint_node`]) when something it shows from outside the
     /// tree changes (a menu bar's open title, once its menu has gone).
@@ -2576,6 +2597,18 @@ impl<'a> WindowCx<'a> {
     /// What would have happened by default doesn't.
     pub fn prevent_default(&mut self) {
         self.core.default_prevented = true;
+    }
+
+    /// Does `f` once the window has drawn what changed (its views'
+    /// bodies said and their drawings made, when the looper's queue is
+    /// next dry; what's sent to the stage may wait for a frame): what
+    /// must read the window as it is after a change, not as it was. A
+    /// test asking a window to change and then what it drew, each on
+    /// its looper, could have the second asked before the window drew
+    /// (the looper draws when its queue is dry, and a question sent
+    /// back at once keeps it from being so).
+    pub fn after_flush(&mut self, f: impl FnOnce(&mut WindowCx) + 'static) {
+        self.core.after_flush.push(Box::new(f));
     }
 
     /// Does `f` as the next frame starts: an animation's next step.

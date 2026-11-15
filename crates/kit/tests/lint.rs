@@ -128,11 +128,19 @@ impl View for Waits {
     }
 }
 
-/// What `f` says of the window's view, on its looper.
+/// What `f` says of the window's view, on its looper, answered once the
+/// window has drawn what `f` changed (`WindowCx::after_flush`). Answered
+/// at once, the next question could reach the looper before it drew:
+/// it draws when its queue is dry, and a question sent straight back
+/// kept it from being so, read before the drawing ("only the changed
+/// row is drawn again" found none drawn, now and then).
 fn ask<V: View, R: Send + 'static>(window: &olo_kit::WindowHandle<V>, f: impl FnOnce(&mut V, &mut Cx<V>) -> R + Send + 'static) -> R {
     let (tx, rx) = std::sync::mpsc::channel();
     window.update(move |v, cx| {
-        let _ = tx.send(f(v, cx));
+        let answer = f(v, cx);
+        cx.after_flush(move |_| {
+            let _ = tx.send(answer);
+        });
     });
     rx.recv_timeout(std::time::Duration::from_secs(10)).expect("the window's looper answers")
 }
