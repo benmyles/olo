@@ -490,8 +490,8 @@ something nobody here has is in "Blocked", with what it waits for.
      adapter looking), a fingerprint or a face enrolled, Power ▸
      Apply, an integration connected, Backup's import, About's
      restart, a display mode kept (the headless output has one mode).
-     *Next:* the tools (bench, ui-lint, lockcheck), then HACKING and
-     the Olo Book.
+     *Then:* the tools (bench, ui-lint, lockcheck), HACKING and the
+     Olo Book: stage 5, done 2026-11-12.
   8. **AirPlay: send a window, a workspace, an agent screen or a video
      file to an AirPlay display** (Ben, 2026-11-12: "after this work
      please add airplay support to olo so that i can broadcast/stream

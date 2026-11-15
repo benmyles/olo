@@ -651,6 +651,25 @@ cx.work(move || read_the_thing(path), Msg::Read);     // result -> message
   returns false, and that's its cue to stop.
 - See "The responsiveness rule" in HACKING.md: live progress, results
   as they come, cancellable, never a frozen window.
+- A library's long job takes the same two things from you. olo-archive
+  (Tracker's Compress and Extract) reads the flag and reports through a
+  `Control`, at most twenty times a second, with the item and the bytes
+  done of all of them; a stopped job leaves nothing behind:
+
+```rust
+let (flag, progress) = (stop.clone(), cx.messenger());
+cx.work(
+    move || {
+        let mut said = |p: &olo_archive::Progress| { progress.send(Msg::Progress(which, p.clone())); };
+        olo_archive::extract(&archive, &into, password.as_deref(), &olo_archive::Control::new(&flag, &mut said))
+    },
+    move |made| Msg::Extracted(which, made.map_err(|e| e.to_string())),
+);
+```
+
+  Tracker runs these as its jobs (`ops::start_with`): progress and Stop
+  in Tracker Status, Edit ▸ Undo after, a password asked for when the
+  error is `Error::Password`.
 
 ### Views in views, windows and what they share
 
