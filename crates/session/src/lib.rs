@@ -544,6 +544,18 @@ impl Session {
         if !greeter {
             s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
         }
+        // Just installed (an upgrade re-executed us into this version):
+        // what comes with the programs copied again, by this version,
+        // which may know to copy more than the one that installed it did
+        // (Ben, 2026-11-15: Backgrounds' choices didn't stay, the pack's
+        // JPEG pictures and tiles left out by the version before). Not
+        // on a reload long after: nothing is installed unasked.
+        if let Some(w) = &s.upgrades
+            && just_installed()
+        {
+            let (from, to) = w.paths();
+            std::thread::spawn(move || upgrade::sync_data(&from, &to));
+        }
         // A new proxy (this upgrade's) takes new programs from now on.
         s.renew_proxy_if_upgraded();
         // A service this version no longer runs, stopped rather than
@@ -1406,6 +1418,11 @@ fn proxy_binary() -> Option<(u64, i64, i64)> {
     use std::os::unix::fs::MetadataExt;
     let m = std::fs::metadata(exe().parent()?.join("olo-wlproxy")).ok()?;
     Some((m.ino(), m.mtime(), m.mtime_nsec()))
+}
+
+/// Whether our program was put in place by an upgrade moments ago.
+fn just_installed() -> bool {
+    std::fs::metadata(exe()).and_then(|m| m.modified()).is_ok_and(|t| t.elapsed().is_ok_and(|e| e < Duration::from_secs(300)))
 }
 
 fn own_binary() -> Option<(u64, SystemTime)> {

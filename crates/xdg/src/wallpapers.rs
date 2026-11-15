@@ -85,7 +85,10 @@ pub fn resolve(setting: &str, size: (u32, u32), dark: bool) -> Option<PathBuf> {
 /// has gone (`pack:platinum`, from before the themes' pictures were
 /// Mac OS 9's; BeBox's): the one [`resolve`] shows instead. app_server
 /// keeps settings this way, so Backgrounds shows the picture that's on
-/// the desktop chosen.
+/// the desktop chosen. A picture the pack still lists is never moved,
+/// though its file isn't there: an install that's missing it (one made
+/// by a version that copied only some) mustn't cost the person their
+/// choice, which shows once the file comes.
 pub fn moved(setting: &str) -> Option<String> {
     moved_in(&dir()?, setting)
 }
@@ -94,6 +97,11 @@ fn moved_in(dir: &Path, setting: &str) -> Option<String> {
     let name = setting.trim().strip_prefix(PACK)?;
     let here = |n: &str| ["4k/{n}.png", "4k/{n}.jpg", "tiles/{n}.png"].iter().any(|f| dir.join(f.replace("{n}", n)).is_file());
     if here(name) {
+        return None;
+    }
+    // (By name alone: `parse` looks at the disk for each.)
+    let listed = std::fs::read_to_string(dir.join("pack.txt")).unwrap_or_default();
+    if listed.lines().map(str::trim).filter(|l| !l.starts_with('#')).any(|l| l.split('|').next().map(str::trim) == Some(name)) {
         return None;
     }
     let instead = crate::themes::resolve(name).wallpaper;
@@ -183,6 +191,12 @@ mod tests {
         assert_eq!(moved_in(&dir, "pack:toybox"), Some(format!("pack:{default}")));
         assert_eq!(moved_in(&dir, "pack:dusk"), None);
         assert_eq!(moved_in(&dir, "/x/mine.jpg"), None);
+        // One the pack lists whose file isn't there (an install missing
+        // it): kept as chosen, the default drawn meanwhile.
+        std::fs::write(dir.join("pack.txt"), "dusk|Dusk|Mac OS 9\nlost|Lost|Mac OS 9\n").unwrap();
+        assert_eq!(moved_in(&dir, "pack:lost"), None);
+        assert_eq!(resolve_in(&dir, "pack:lost", (100, 100), false), Some(dir.join(format!("4k/{default}.png"))));
+        assert_eq!(moved_in(&dir, "pack:toybox"), Some(format!("pack:{default}")));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

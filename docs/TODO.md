@@ -1484,6 +1484,24 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Done, waiting for Ben to try or confirm
 
+- **Backgrounds: a picture clicked didn't stay chosen** (Ben,
+  2026-11-15: "after opening backgrounds on my main display and trying
+  to click the images they're not clicking properly and not staying
+  selected"). Found: his install's wallpaper pack had 12 of its
+  pictures, all PNGs: the upgrade that installed the JPEG collections
+  was done by the version before it, whose copy took only PNGs and no
+  tiles, and app_server, finding a chosen picture's file missing, put
+  the theme's own back in the settings (a rule for the retired themes'
+  names), so each click was undone at once (reproduced headless with a
+  pack like his). Now app_server moves only a picture the pack no
+  longer lists (one it lists but hasn't the file of stays chosen, the
+  default drawn until it comes), and a session restarted into a
+  version installed moments ago copies what comes with the programs
+  again itself (`upgrade::sync_data`), so what an older version didn't
+  know to copy comes with the upgrade, not the one after. *For Ben:*
+  Upgrade (the session running now copies JPEGs and tiles already),
+  then choose again.
+
 - **Tracker compresses and extracts, natively** (Ben, 2026-11-14:
   "olo's tracker should have native support for compression/archives
   so that it can compress files and folders (i.e. multi select them

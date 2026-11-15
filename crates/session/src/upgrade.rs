@@ -105,6 +105,11 @@ impl Watcher {
         }
     }
 
+    /// The build tree it installs from and the directory it installs to.
+    pub fn paths(&self) -> (PathBuf, PathBuf) {
+        (self.from.clone(), self.to.clone())
+    }
+
     /// Install what's newer; the programs that were.
     pub fn install(&mut self) -> Vec<String> {
         if building(&self.from) {
@@ -133,33 +138,7 @@ impl Watcher {
             }
         }
         // New and redrawn icons come with them (a new panel's, say).
-        if let Some(prefix) = self.to.parent() {
-            match sync_icons(&self.from, &prefix.join("share/olo/icons")) {
-                Ok(0) => {}
-                Ok(n) => crate::log(format!("installed {n} new or changed icons")),
-                Err(e) => crate::log(format!("could not install icons: {e}")),
-            }
-            match sync_brand(&self.from, &prefix.join("share/olo/brand")) {
-                Ok(0) => {}
-                Ok(n) => crate::log(format!("installed {n} new or changed brand pictures")),
-                Err(e) => crate::log(format!("could not install the brand pictures: {e}")),
-            }
-            match sync_fonts(&self.from, &prefix.join("share/olo/fonts")) {
-                Ok(0) => {}
-                Ok(n) => crate::log(format!("installed {n} new or changed fonts")),
-                Err(e) => crate::log(format!("could not install the fonts: {e}")),
-            }
-            match sync_themes(&self.from, &prefix.join("share/olo/themes")) {
-                Ok(0) => {}
-                Ok(n) => crate::log(format!("installed {n} new or changed theme pictures")),
-                Err(e) => crate::log(format!("could not install the themes: {e}")),
-            }
-            match sync_wallpapers(&self.from, &prefix.join("share/olo/wallpapers")) {
-                Ok(0) => {}
-                Ok(n) => crate::log(format!("installed {n} new or changed wallpapers")),
-                Err(e) => crate::log(format!("could not install wallpapers: {e}")),
-            }
-        }
+        sync_data(&self.from, &self.to);
         self.pending = newer(&self.from, &self.to).unwrap_or_default();
         self.publish();
         done
@@ -516,6 +495,42 @@ fn sync_themes(from: &Path, to: &Path) -> std::io::Result<usize> {
     Ok(n)
 }
 
+/// What comes with the programs (icons, the brand's pictures, fonts,
+/// themes, the wallpaper pack), copied from the build tree `from` to the
+/// install beside `to` where new or newer. An upgrade does it as it
+/// installs, and the version it installed does it again once running
+/// (`Session::resume`): what an older version didn't know to copy (the
+/// pack's JPEG pictures and tiles, 2026-11-15) comes then, not at the
+/// upgrade after.
+pub fn sync_data(from: &Path, to: &Path) {
+    let Some(prefix) = to.parent() else { return };
+    match sync_icons(from, &prefix.join("share/olo/icons")) {
+        Ok(0) => {}
+        Ok(n) => crate::log(format!("installed {n} new or changed icons")),
+        Err(e) => crate::log(format!("could not install icons: {e}")),
+    }
+    match sync_brand(from, &prefix.join("share/olo/brand")) {
+        Ok(0) => {}
+        Ok(n) => crate::log(format!("installed {n} new or changed brand pictures")),
+        Err(e) => crate::log(format!("could not install the brand pictures: {e}")),
+    }
+    match sync_fonts(from, &prefix.join("share/olo/fonts")) {
+        Ok(0) => {}
+        Ok(n) => crate::log(format!("installed {n} new or changed fonts")),
+        Err(e) => crate::log(format!("could not install the fonts: {e}")),
+    }
+    match sync_themes(from, &prefix.join("share/olo/themes")) {
+        Ok(0) => {}
+        Ok(n) => crate::log(format!("installed {n} new or changed theme pictures")),
+        Err(e) => crate::log(format!("could not install the themes: {e}")),
+    }
+    match sync_wallpapers(from, &prefix.join("share/olo/wallpapers")) {
+        Ok(0) => {}
+        Ok(n) => crate::log(format!("installed {n} new or changed wallpapers")),
+        Err(e) => crate::log(format!("could not install wallpapers: {e}")),
+    }
+}
+
 /// Copy the build tree's wallpaper pack (`data/wallpapers`: the manifest,
 /// both shapes and the previews) into `to` where new or newer, by clone
 /// where the file system can (the pack is ~90 MB), and take away the
@@ -797,11 +812,16 @@ mod tests {
         std::fs::create_dir_all(pack.join("4k")).unwrap();
         std::fs::write(pack.join("pack.txt"), "classic|Classic\n").unwrap();
         std::fs::write(pack.join("4k/classic.png"), "png").unwrap();
+        // The retro collections' pictures are JPEGs, their patterns tiles.
+        std::fs::write(pack.join("4k/blueberry-union.jpg"), "jpg").unwrap();
+        std::fs::create_dir_all(pack.join("tiles")).unwrap();
+        std::fs::write(pack.join("tiles/weave.png"), "png").unwrap();
         let to = base.join("prefix/share/olo/wallpapers");
         std::fs::create_dir_all(to.join("4k")).unwrap();
         std::fs::write(to.join("4k/bebox.png"), "png").unwrap();
-        assert_eq!(sync_wallpapers(&build, &to).unwrap(), 3);
+        assert_eq!(sync_wallpapers(&build, &to).unwrap(), 5);
         assert!(to.join("4k/classic.png").is_file() && to.join("pack.txt").is_file() && !to.join("4k/bebox.png").exists());
+        assert!(to.join("4k/blueberry-union.jpg").is_file() && to.join("tiles/weave.png").is_file());
         assert_eq!(sync_wallpapers(&build, &to).unwrap(), 0);
         let _ = std::fs::remove_dir_all(&base);
     }
