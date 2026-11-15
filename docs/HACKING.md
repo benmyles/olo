@@ -6613,7 +6613,12 @@ it) rather than handing them to the screen beside. When displays come
 or go (`follow_main_output` → `rehome_windows`), windows left on none go to
 the main display, cascaded and shrunk to fit, the rest are re-tiled,
 re-zoomed or fitted where they are, and the pointer is brought back; a
-minimized window is fitted when it comes back.
+minimized window is fitted when it comes back. Fitting (`refit`) works
+both ways: a window squeezed under the least its app sets (a bigger
+scale, a smaller screen) grows back to that least as soon as its
+display has room again, not left at the squeezed size (Weather at 2× on
+a 1600 × 1000 screen was 800 × 500; back at 1× it stayed so, its columns
+run past its edge, until this).
 
 A display unplugged (`display_leaving`, before its output leaves the
 space: udev's `connector_disconnected`, a display made a mirror, a test

@@ -1578,7 +1578,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         // margins are for arranging).
         let area = self.window_output(window).and_then(|o| self.usable_area(&o));
         let (Some(area), Some(frame)) = (area, self.space.element_geometry(window)) else { return };
-        let size = Size::from((frame.size.w.min(area.size.w), frame.size.h.min(area.size.h)));
+        // Back up to the least its app needs, as far as there's room: a
+        // display that was too small for it (a bigger scale, a smaller
+        // screen) squeezed it under that, and a roomier one gives it back.
+        let least = super::groups::least_frame(window);
+        let size = Size::from((frame.size.w.max(least.w).min(area.size.w), frame.size.h.max(least.h).min(area.size.h)));
         if size == frame.size && in_reach(frame, area) {
             return;
         }
