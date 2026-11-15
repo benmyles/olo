@@ -2,7 +2,8 @@
 //! silently fail like this something should tell me that it needs
 //! unlocking and let me do it"). While Olo's keyring is on but locked
 //! (the password not given, or something went wrong opening it), a
-//! notification says so, with Unlock, until it's open. And anyone can ask
+//! notification says so, with Unlock (shown again each time it stays
+//! locked), until it's open. And anyone can ask
 //! for it to be opened, over the session bus:
 //!
 //! ```text
@@ -131,12 +132,12 @@ impl Note {
         };
         let mut hints: HashMap<&str, Value<'_>> = HashMap::new();
         hints.insert(olo_protocol::notifications::hint::TYPE, Value::from("important"));
+        // (Not resident: Unlock closes it, as the prompt comes up where it
+        // was; still locked after, it's shown again.)
         hints.insert("urgency", Value::from(2u8));
-        hints.insert("resident", Value::from(true));
         let actions = vec!["default", "", "unlock", "Unlock…"];
-        let sent: zbus::Result<u32> = zbus::blocking::Proxy::new(conn, NOTIFICATIONS, NOTIFICATIONS_PATH, NOTIFICATIONS).and_then(|p| {
-            p.call("Notify", &("Programs’ Secrets", self.id.load(Ordering::Relaxed), "dialog-password", "Programs’ secrets are locked", olo_kit_base::notify::escape(&body), actions, hints, 0i32))
-        });
+        let sent: zbus::Result<u32> = zbus::blocking::Proxy::new(conn, NOTIFICATIONS, NOTIFICATIONS_PATH, NOTIFICATIONS)
+            .and_then(|p| p.call("Notify", &("Programs’ Secrets", self.id.load(Ordering::Relaxed), "key", "Programs’ secrets are locked", olo_kit_base::notify::escape(&body), actions, hints, 0i32)));
         match sent {
             Ok(id) => self.id.store(id, Ordering::Relaxed),
             Err(e) => tracing::warn!("secrets: couldn't say the keyring is locked: {e}"),

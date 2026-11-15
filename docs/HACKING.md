@@ -13502,7 +13502,11 @@ wakeups) and follows the switch live.
   `pam_olo_keyring.so`, in olo-login's password service in
   `pam_gnome_keyring`'s place: `-auth optional` after `password-auth`,
   `-session optional` after `pam_keyinit`; tools/install-login.sh puts it
-  in /usr/lib64/security). At authentication it derives the key the
+  in /usr/lib64/security, as does Olo Doctor's login screen fix, from
+  `~/.local/lib/olo/pam_olo_keyring.so`, where every upgrade keeps the
+  build's (`upgrade::sync_pam_module`; a person's install never had it
+  before, so their typed password opened nothing, and Doctor now says
+  "Logging in doesn't open your keyring" while it's missing or older). At authentication it derives the key the
   typed password gives and keeps it with the PAM handle; once the
   session opens it puts it in the login's session keyring
   (`olo-secrets:login-key`, the user's, gone in ten minutes, and with
@@ -13613,7 +13617,7 @@ wakeups) and follows the switch live.
   needs unlocking and let me do it"). While Olo's keyring is on but
   locked (Not Now, or it couldn't be opened), the status says
   `"locked": true` and a notification says so ("Programs’ secrets are
-  locked", resident, until it's open), its Unlock asking for the
+  locked", until it's open; Unlock closes it, and it comes back if it stays locked), its Unlock asking for the
   password again. Anyone can ask over the bus:
   `busctl --user call org.olo.Secrets1 /org/olo/Secrets1
   org.olo.Secrets1 Unlock b true` asks (if locked) and answers whether

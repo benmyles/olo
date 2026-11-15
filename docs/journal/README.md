@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Programs' secrets locked: said, with Unlock
+
+*15:12* — Olo's keyring never stays locked in silence: when the login password isn't given (Not Now), or it can't be opened, a notification says so with Unlock…, which asks again (and it comes back while it stays locked). Programs asking for a secret bring the prompt too, but not again within two minutes of a Not Now; org.olo.Secrets1.Unlock asks over the bus (light, 2x).
+
+![Programs' secrets locked: said, with Unlock](2026-11-15/151208-programs-secrets-locked-said-with-unlock.png)
+
+### Programs' Secrets asks with its words
+
+*15:10* — Olo's keyring prompter read every property of a gcr prompt as empty (each value is a variant in a variant), so olo-secrets' password prompts came up with no title or text. Now peeled: this one moves the keyring's key over from GNOME Keyring's file, read natively, once (light, 2x).
+
+![Programs' Secrets asks with its words](2026-11-15/151024-programs-secrets-asks-with-its-words.png)
+
 ### Tracker reads UDF disc images
 
 *09:54* — Windows' install images, DVDs and Blu-ray discs keep their files in a UDF tree; their ISO 9660 tree holds at most a note saying so. olo-archive reads UDF 1.02 to 2.60 now (its metadata partition, a write-once disc's virtual allocation table), so an image like this one, made by genisoimage, opens in Tracker with its long and Unicode names, and Extract takes them out.
