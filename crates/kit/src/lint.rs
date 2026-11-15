@@ -135,19 +135,34 @@ fn until<V: View>(window: &WindowHandle<V>, done: impl Fn(&mut WindowCx) -> bool
 /// itself to what it shows asks for that size and is given it, a turn
 /// or two later.
 fn settle<V: View>(window: &WindowHandle<V>) {
+    // Laid out at a size that stays, and nothing it asked for still to
+    // come: a window that fits what it shows asks for a size once its
+    // content says how tall it is (on the looper, before the next `on`),
+    // and has it when the display thread answers, which takes as long as
+    // the machine takes; meanwhile its frames are held. By what's so, not
+    // by a quiet spell: two reads alike 4 ms apart were once taken for
+    // settled on a busy machine, and DiskBackup's window was checked at
+    // its old height; so was one whose resize took longer than the hold
+    // (`RESIZE_WAIT`). (`SETTLE_MOST`: only for one that never settles.)
     let mut last = None;
-    for _ in 0..40 {
+    let since = Instant::now();
+    while since.elapsed() < SETTLE_MOST {
         let now = on(window, |cx| {
             cx.flush_now();
-            cx.viewport_size()
+            (cx.viewport_size(), cx.commit_held() || cx.resize_pending())
         });
-        if now.is_some() && now == last {
+        let Some((size, waiting)) = now else { return };
+        if !waiting && last == Some(size) {
             return;
         }
-        last = now;
-        std::thread::sleep(Duration::from_millis(4));
+        last = (!waiting).then_some(size);
+        std::thread::sleep(SETTLE_POLL);
     }
 }
+
+/// How often [`settle`] looks, and for how long at most.
+const SETTLE_POLL: Duration = Duration::from_millis(4);
+const SETTLE_MOST: Duration = Duration::from_secs(20);
 
 /// The window's tabs, as agents find them: each one's name, its middle,
 /// and whether it's the one showing.

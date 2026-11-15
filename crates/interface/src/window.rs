@@ -175,6 +175,9 @@ pub(crate) struct WindowCore {
     pub(crate) bounds_changed: Vec<NodeId>,
     /// Nothing is shown until then (`WindowCx::hold_commit`).
     pub(crate) commit_held: Option<Instant>,
+    /// The size last asked of the display (`WindowCx::resize_window`),
+    /// until the window is that size.
+    pub(crate) size_asked: Option<Size<Pixels>>,
     /// How app_server holds the window.
     pub(crate) state: WindowState,
     /// Layout is to be worked out again though nothing in the tree says
@@ -602,6 +605,7 @@ impl WindowCore {
             row_nodes: Vec::new(),
             bounds_changed: Vec::new(),
             commit_held: None,
+            size_asked: None,
             state: WindowState::default(),
             relayout: true,
             everything: true,
@@ -1414,6 +1418,11 @@ impl<'a> WindowCx<'a> {
             self.refresh();
         }
         let core = &mut *self.core;
+        // (What was asked for has come: within a device pixel of it, as
+        // the display rounds a size to its pixels.)
+        if core.size_asked.is_some_and(|a| (f32::from(a.width - size.width)).abs() * scale < 1.0 && (f32::from(a.height - size.height)).abs() * scale < 1.0) {
+            core.size_asked = None;
+        }
         if core.size != size {
             core.size = size;
             SIZE.with(|s| s.set(size));
@@ -2020,6 +2029,13 @@ impl<'a> WindowCx<'a> {
         }
     }
 
+    /// Its frames are held back now ([`Self::hold_commit`]): something it
+    /// asked for (a window that fits what it shows, a new size) is still
+    /// to come. The layout lint waits on it, not on time.
+    pub fn commit_held(&self) -> bool {
+        self.core.commit_held.is_some_and(|until| Instant::now() < until)
+    }
+
     /// How app_server holds the window (maximized, full screen, in a
     /// tile).
     pub fn held_state(&self) -> WindowState {
@@ -2240,7 +2256,15 @@ impl<'a> WindowCx<'a> {
     /// Asks for the window to be this size (app_server may give
     /// another: a window in a tile keeps its tile's).
     pub fn resize_window(&mut self, size: Size<Pixels>) {
+        self.core.size_asked = Some(size);
         self.on_display(move |window| window.resize(size));
+    }
+
+    /// A size it asked for ([`Self::resize_window`]) hasn't come yet. (A
+    /// compositor may give another and never that one: the layout lint,
+    /// whose headless display gives what's asked, waits on it.)
+    pub fn resize_pending(&self) -> bool {
+        self.core.size_asked.is_some()
     }
 
     // ---- The window ----
