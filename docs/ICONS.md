@@ -246,14 +246,24 @@ in Backgrounds by Collection:
 | Windows 3.1 | Its eleven tiles (Arcade, Argyle, Castle, Egypt, Honey, Red Brick, Rivets, Squares, Thatch, Zigzag, 256 Color; its logo left out) | Windows 3.11's floppies (FAT; MS COMPRESS's KWAJ files, expanded with libmspack) |
 | Windows 95 | Clouds, and its tiles (Bubbles, Circles, Houndstooth, Pinstripe, Red Blocks, Blue Rivets, Black Thatch, Gold Weave, Straw Mat, Triangles, 3D Blocks, Forest, Sandstone) | Windows 98 SE's CD (its cabinets carry 95's set) |
 | Windows 98 | Its fifteen desktop pictures but those that are its logo (Setup, More Windows, Windows 98) | the same |
+| CDE | Its 24 backdrops (Sun's logo, the plain fills and "no backdrop" left out), in the Default palette as CDE drew them: KnitLight, WaterDrops, RicePaper and Pebbles in their workspaces' colours (sets 3, 5, 6, 7), the rest in workspace One's | CDE 2.5.2's source (`programs/backdrops`, `programs/palettes`), rendered by `tools/cdebackdrops.py` |
 
 BeOS shipped no wallpapers worth having (two Be logos, a TV overlay, two
 photos of its people) and NeXTSTEP none (its desktop was a plain grey);
-IRIX drew its backgrounds as it ran. CDE's backdrops (in its source,
-`programs/backdrops`) are pictures in symbolic colours the window
-manager filled from the palette, so they wait for its rule (which of
-the palette's colour sets, and Motif's shadows) to be read from dtwm,
-rather than be shown in colours nobody saw. Pixel-art tiles (Mac OS 9's
+IRIX drew its backgrounds as it ran. CDE's backdrops are pictures in
+symbolic colours the window manager filled from the palette, so
+`tools/cdebackdrops.py` does what CDE did, each step read from its
+source rather than guessed: a palette colour's shadows and select
+colour by Motif's CalculateColorsRGB (lib/Xm/Color.c, integer arithmetic
+as C truncates it); workspace n's colour set {3, 5, 6, 7}[n mod 4] and a
+backdrop's foreground the set's background, its background the set's
+bottom shadow (dtwm, WmResource.c); an XBM's set bits the foreground and
+the rest the background; an XPM's `background`, `foreground`,
+`topShadowColor`, `bottomShadowColor` and `selectColor` the set's own
+(Motif's ImageCache.c finds the set that holds the two colours it was
+given) and its `iconGray`/`iconColor` symbols the file's colours, its
+strings read literally as libXpm does (the skies use `\` as a pixel).
+Pixel-art tiles (Mac OS 9's
 8 and 16 pixel ones, Windows 3.1's and 95's) are made larger by nearest
 neighbour, 4×: their pixels are the design.
 Each theme names its default (`Theme::wallpaper`): Classic Blueberry

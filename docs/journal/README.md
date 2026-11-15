@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Backgrounds: CDE's backdrops, in CDE's own colours
+
+*05:21* — CDE's 24 backdrops (here KnitLight, workspace One's default) rendered as CDE drew them: the Default palette's colour sets, each colour's shadows by Motif's own arithmetic, workspace n's set {3, 5, 6, 7}, an XPM's symbolic colours from that set and a bitmap in its background on its bottom shadow (read from dtwm, dtsession and Motif's source). Tiles that aren't square now keep their shape (CDE's skies were one flat colour, Honey's hexagons squashed).
+
+![Backgrounds: CDE's backdrops, in CDE's own colours](2026-11-15/052103-backgrounds-cde-s-backdrops-in-cde-s-own-colours.png)
+
 ### Backgrounds: Windows 3.1, 95 and 98
 
 *05:06* — Windows 3.1's eleven tiles (here Argyle), Windows 95's Clouds and its thirteen tiles, and Windows 98's fifteen desktop pictures, their logos left out: 39 more in the pack, 445 in all. The pixel-art tiles made larger by nearest neighbour (one original pixel, exactly 2×2 device pixels at 2×); 95's photographic Forest and Sandstone by 4x-UltraSharp; 98's pictures widened to 4K and their colours set back to the originals'.

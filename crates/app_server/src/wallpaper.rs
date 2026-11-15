@@ -224,17 +224,24 @@ fn load(path: &Path, (w, h): (u32, u32)) -> Result<RgbaImage, String> {
     Ok(out)
 }
 
-/// Tile `path` made `side` device pixels square (once, filtered) and
-/// repeated across `size` from its top left, as a desktop pattern is.
+/// Tile `path` made `side` device pixels wide and as tall as its picture
+/// says (once, filtered) and repeated across `size` from its top left, as
+/// a desktop pattern is. Not made square: a tile needn't be (Windows 3.1's
+/// Honey is 28 × 46, CDE's skies 8 × 1024, Mac OS 9's strips 16 × 256),
+/// and `load` crops to cover what it's asked, so a strip kept only its
+/// middle (CDE's SkyLight, a gradient, came out one flat colour).
 fn load_tile(path: &Path, side: u32, (w, h): (u32, u32)) -> Result<RgbaImage, String> {
-    let tile = load(path, (side.max(1), side.max(1)))?;
-    let side = tile.width() as usize;
+    let (pw, ph) = image::image_dimensions(path).map_err(|e| e.to_string())?;
+    let wide = side.max(1);
+    let tall = (wide as f64 * ph as f64 / pw.max(1) as f64).round().max(1.0) as u32;
+    let tile = load(path, (wide, tall))?;
+    let (tw, th) = (tile.width() as usize, tile.height() as usize);
     let mut out = RgbaImage::new(w, h);
-    let (row_bytes, tile_bytes) = (w as usize * 4, side * 4);
+    let (row_bytes, tile_bytes) = (w as usize * 4, tw * 4);
     let src = tile.as_raw();
     let dst: &mut [u8] = &mut out;
     for y in 0..h as usize {
-        let from = &src[(y % side) * tile_bytes..(y % side + 1) * tile_bytes];
+        let from = &src[(y % th) * tile_bytes..(y % th + 1) * tile_bytes];
         let row = &mut dst[y * row_bytes..(y + 1) * row_bytes];
         for chunk in row.chunks_mut(tile_bytes) {
             chunk.copy_from_slice(&from[..chunk.len()]);
@@ -416,6 +423,26 @@ mod tests {
         assert!(out.get_pixel(0, 25)[0] > 200);
         assert!(out.get_pixel(49, 25)[2] > 200);
         assert!(load(&dir.join("missing.png"), (10, 10)).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A tile that isn't square repeats at its own height: CDE's skies
+    /// (8 × 1024) came out one flat colour when every tile was made
+    /// square (and so cropped to its middle).
+    #[test]
+    fn a_tall_tile_keeps_its_shape() {
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-wallpaper-tile-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // 4 × 32: its top half white, its bottom half black.
+        let img = RgbaImage::from_fn(4, 32, |_, y| if y < 16 { image::Rgba([255, 255, 255, 255]) } else { image::Rgba([0, 0, 0, 255]) });
+        let path = dir.join("tall.png");
+        img.save(&path).unwrap();
+        // 2 device pixels wide, so 16 tall: white rows 0–7, black 8–15, again from 16.
+        let out = load_tile(&path, 2, (6, 40)).unwrap();
+        assert_eq!(out.dimensions(), (6, 40));
+        for (y, white) in [(2, true), (12, false), (18, true), (28, false), (34, true)] {
+            assert_eq!(out.get_pixel(5, y)[0] > 128, white, "row {y}");
+        }
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

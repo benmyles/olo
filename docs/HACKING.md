@@ -5756,9 +5756,12 @@ lint at a time).
   too, so an agent switching looks over IPC sets both
   `appearance.icon_theme` and `wallpaper` (`themes::wallpaper(id)`).
   A pack entry can be a tile (`|tile:N`: a desktop pattern, `tiles/NAME.png`,
-  `Wallpaper::tile`): app_server makes it N points on a side at the
-  display's scale, once, and repeats it across the display from its top
-  left into the one picture it shows (`load_tile`), so the scale
+  `Wallpaper::tile`): app_server makes it N points wide at the
+  display's scale and as tall as its picture says (a tile needn't be
+  square: Windows 3.1's Honey is 28 × 46, CDE's skies 8 × 1024; made
+  square, `load`'s cover-crop kept only a strip's middle), once, and
+  repeats it across the display from its top left into the one picture
+  it shows (`load_tile`), so the scale
   changing redraws it (`Asked::scale`). A picture may be a JPEG and have
   no ultrawide version (`resolve` takes the 4K one, cropped).
   app_server keeps settings naming what's gone current as it loads them

@@ -444,6 +444,30 @@ win98-the-60s-usa|The 60's USA|Windows 98
 win98-the-golden-era|The Golden Era|Windows 98
 win98-travel|Travel|Windows 98
 win98-underwater|Underwater|Windows 98
+cde-ankh|Ankh|CDE|tile:261
+cde-brick-wall|Brick Wall|CDE|tile:50
+cde-concave|Concave|CDE|tile:8
+cde-convex|Convex|CDE|tile:8
+cde-corduroy|Corduroy|CDE|tile:64
+cde-crochet|Crochet|CDE|tile:198
+cde-inlay-color|Inlay Color|CDE|tile:205
+cde-inlay-plain|Inlay Plain|CDE|tile:205
+cde-knit-light|Knit Light|CDE|tile:164
+cde-lattice|Lattice|CDE|tile:35
+cde-lattice-big|Lattice Big|CDE|tile:36
+cde-leaves|Leaves|CDE|tile:104
+cde-old-chars|Old Chars|CDE|tile:64
+cde-paver|Paver|CDE|tile:108
+cde-pebbles|Pebbles|CDE|tile:162
+cde-pin-stripe|Pin Stripe|CDE|tile:28
+cde-raked-sand|Raked Sand|CDE|tile:128
+cde-rice-paper|Rice Paper|CDE|tile:164
+cde-sky-dark|Sky Dark|CDE|tile:8
+cde-sky-light|Sky Light|CDE|tile:8
+cde-sprinkles|Sprinkles|CDE|tile:64
+cde-toronto|Toronto|CDE|tile:213
+cde-water-drops|Water Drops|CDE|tile:158
+cde-wooly|Wooly|CDE|tile:64
 dusk-gradient|Dusk|Olo
 boing|Boing|Olo
 be-blue|Be Blue|Olo

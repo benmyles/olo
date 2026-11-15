@@ -1461,9 +1461,10 @@ something nobody here has is in "Blocked", with what it waits for.
   outlined, BeOS light's terminal white); every icon reviewed in both
   themes at 48 and 16 px (consistent; at 16 and 24 px drawn for their
   size now, with R5's contour, so light things read on light panels);
-  Windows 3.1's, 95's and 98's (39). Left: CDE's backdrops (palette
-  colours: dtwm's rule to read first), OS/2's, Windows 2000/ME's;
-  individual icons redrawn where one drifts.
+  Windows 3.1's, 95's and 98's (39); CDE's 24 backdrops, in CDE's own
+  colours (dtwm's, dtsession's and Motif's rules read from their
+  source). Left: OS/2's, Windows 2000/ME's; individual icons redrawn
+  where one drifts.
 
 - **OS Updates: Fedora's packages, for power users** (Ben, 2026-11-14:
   "add a new olo application OS Updates that is a GUI manager for
