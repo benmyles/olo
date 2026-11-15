@@ -49,7 +49,7 @@ pub fn extract(path: &Path, codec: Codec, sink: &mut Sink, ctl: &Control) -> Res
     for e in a.entries().map_err(|e| stopped_or(e, ctl))? {
         let mut e = e.map_err(|e| stopped_or(e, ctl))?;
         let name = String::from_utf8_lossy(&e.path_bytes()).into_owned();
-        let Some(rel) = safe_path(&name) else { continue };
+        let Some(rel) = safe_path(&name).and_then(|r| sink.map(r)) else { continue };
         ctl.item(&name)?;
         let h = e.header();
         let (kind, mode, mtime) = (h.entry_type(), h.mode().ok(), h.mtime().ok().map(|t| t as i64));
@@ -58,7 +58,7 @@ pub fn extract(path: &Path, codec: Codec, sink: &mut Sink, ctl: &Control) -> Res
             EntryType::Directory => sink.dir(&rel, mode, mtime)?,
             EntryType::Symlink => sink.symlink(&rel, &link.unwrap_or_default()),
             EntryType::Link => {
-                if let Some(target) = link.as_deref().and_then(safe_path) {
+                if let Some(target) = link.as_deref().and_then(safe_path).and_then(|t| sink.map(t)) {
                     sink.hardlink(&rel, target);
                 }
             }

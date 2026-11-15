@@ -65,7 +65,7 @@ pub fn extract(path: &Path, sink: &mut Sink, pw: Option<&str>, ctl: &Control) ->
         if e.is_anti_item {
             return Ok(true);
         }
-        let Some(rel) = safe_path(&e.name) else { return Ok(true) };
+        let Some(rel) = safe_path(&e.name).and_then(|r| sink.map(r)) else { return Ok(true) };
         if let Err(err) = ctl.item(&e.name) {
             failed = Some(err);
             return Ok(false);

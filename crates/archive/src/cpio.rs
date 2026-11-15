@@ -112,7 +112,7 @@ pub fn extract(path: &Path, codec: Codec, sink: &mut Sink, ctl: &Control) -> Res
     let mut r = codec.reader(ctl.counted(File::open(path)?))?;
     while let Some(h) = next(&mut r).map_err(|e| stopped_or(e, ctl))? {
         let name = h.name.trim_start_matches("./").to_owned();
-        let rel = safe_path(&name);
+        let rel = safe_path(&name).and_then(|r| sink.map(r));
         let (mode, mtime) = (Some(h.mode & 0o7777), Some(h.mtime));
         match (kind_of(h.mode), rel) {
             (Some(EntryKind::Dir), Some(rel)) => {

@@ -10,6 +10,7 @@
 //! what each window shows) is the app's, behind locks.
 
 mod appimages;
+mod archive_win;
 mod archives;
 mod backups;
 mod columns;
@@ -134,6 +135,8 @@ pub enum ToHub {
     LookStep(isize),
     LookClosed,
     StopJob(u64),
+    /// An archive, looked into in a window of its own (`archive_win.rs`).
+    OpenArchive(PathBuf),
     /// Compress or Extract (`archives.rs`): `targets`, a name chosen for
     /// the archive; `password`, an archive's.
     ArchiveJob {
@@ -1071,6 +1074,10 @@ impl Hub {
                 }
             }
             ToHub::Job { kind, sources, dest, origin } => self.start_job(kind, sources, dest, origin),
+            ToHub::OpenArchive(path) => {
+                let options = archive_win::options(&path);
+                olo_kit::open_window(options, move |cx| archive_win::ArchiveWin::new(path, cx));
+            }
             ToHub::ArchiveJob { kind, sources, dest, targets, origin, password } => {
                 let record = Some((undo::name_of(kind).to_owned(), undo::Purpose::Do));
                 self.run_job_with(kind, sources, dest, targets, origin, record, password);

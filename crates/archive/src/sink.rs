@@ -30,6 +30,9 @@ pub struct Sink {
     hardlinks: Vec<(PathBuf, PathBuf)>,
     /// Folders' permissions and times, set at the end.
     dir_meta: Vec<(PathBuf, Option<u32>, Option<i64>)>,
+    /// Only these entries (and what's in them), their paths with `strip`
+    /// taken off: `extract_some`.
+    only: Option<(Vec<PathBuf>, PathBuf)>,
 }
 
 /// Permissions as they're kept: the ordinary bits, without setuid,
@@ -51,7 +54,23 @@ pub(crate) fn set_mtime(path: &Path, mtime: i64) {
 
 impl Sink {
     pub fn new(root: &Path) -> Sink {
-        Sink { root: root.to_owned(), dirs: HashSet::new(), files: HashSet::new(), symlinks: Vec::new(), hardlinks: Vec::new(), dir_meta: Vec::new() }
+        Sink { root: root.to_owned(), dirs: HashSet::new(), files: HashSet::new(), symlinks: Vec::new(), hardlinks: Vec::new(), dir_meta: Vec::new(), only: None }
+    }
+
+    /// Only `names` (entries' paths, folders with what's in them), each
+    /// written with `strip` taken off the front of its path.
+    pub fn only(mut self, names: Vec<PathBuf>, strip: PathBuf) -> Sink {
+        self.only = Some((names, strip));
+        self
+    }
+
+    /// Where an entry at `rel` goes, or None when it isn't wanted.
+    pub fn map(&self, rel: PathBuf) -> Option<PathBuf> {
+        let Some((names, strip)) = &self.only else { return Some(rel) };
+        if !names.iter().any(|n| rel.starts_with(n)) {
+            return None;
+        }
+        rel.strip_prefix(strip).ok().map(Path::to_owned).filter(|p| !p.as_os_str().is_empty())
     }
 
     /// Every folder above `rel`, made (or one made already: never a link
@@ -229,6 +248,20 @@ pub(crate) fn settle(stage: &Path, into: &Path, base: &str) -> Result<Vec<PathBu
             Ok(vec![folder])
         }
     }
+}
+
+/// What came out, each thing at the top put in `into` as it is (a name
+/// taken gets a number).
+pub(crate) fn settle_each(stage: &Path, into: &Path) -> Result<Vec<PathBuf>> {
+    let mut top: Vec<PathBuf> = fs::read_dir(stage)?.flatten().map(|e| e.path()).collect();
+    top.sort();
+    let mut made = Vec::new();
+    for p in top {
+        let to = unique(&into.join(p.file_name().unwrap_or_default()));
+        fs::rename(&p, &to)?;
+        made.push(to);
+    }
+    Ok(made)
 }
 
 /// What goes into an archive.

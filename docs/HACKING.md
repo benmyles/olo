@@ -14605,6 +14605,22 @@ again with it (`ToHub::ArchiveJob`). Commands, for agents and the
 palette: `compress:zip`, `compress:tar.gz` (any `Format`'s ending),
 `compress-as`, `extract-here`, `extract-to`.
 
+**Looked into as a folder** (archive_win.rs): opening an archive Olo
+reads (`fs::open`; an .rpm or .deb opens as it always has) shows a
+window of what's in it, a level at a time, as a folder's list (folders
+first, then by name; size, modified; `children` makes the levels from
+the entries' paths, folders implied by what's deeper): a folder in it
+opens in the same window (Enclosing Folder, Go ▸ Enclosing Folder,
+back out to it selected), a file opens with what opens its kind, taken
+out first into Tracker's cache (`~/.cache/olo/tracker/archives/<the
+archive's path, size and time>/`, once: opened again, it's there).
+Extract Selected… takes what's selected out into a folder chosen
+(`olo_archive::extract_some`: only those entries, the folder being
+looked at taken off their paths; on a worker with the window's bar;
+Undo's, as `Extract`), Extract All everything beside the archive
+(Tracker's job). A password is asked for in the window when listing or
+taking something out needs one.
+
 **Quick Look** lists what's in any of them (`olo_preview::archive`,
 through `list`), says when one is protected by a password, and for a
 single compressed file what it unpacks to and how big.

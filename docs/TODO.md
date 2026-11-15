@@ -1491,9 +1491,10 @@ something nobody here has is in "Blocked", with what it waits for.
   (names, links checked; permissions and times kept); Tracker's
   Compress ▸, Compress As… (name, format, password), Extract Here and
   Extract To… as jobs with progress, Stop and Undo, a password asked
-  for; Quick Look lists all of them. Left: browsing into an archive as
-  a folder (and opening one thing from it), and offering Passwords'
-  saved password for an archive.
+  for; Quick Look lists all of them; opening an archive looks into it
+  as a folder (folders in it opened in the window, a file opened from
+  Tracker's cache, Extract Selected… and Extract All). Left: offering
+  Passwords' saved password for an archive.
 
 ## Done, waiting for Ben to try or confirm
 

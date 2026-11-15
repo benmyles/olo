@@ -346,3 +346,26 @@ fn rar_is_read() {
     }
     let _ = fs::remove_dir_all(&d);
 }
+
+#[test]
+fn some_of_it_comes_out() {
+    let d = scratch("some");
+    let src = d.join("src");
+    fs::create_dir_all(&src).unwrap();
+    let sources = tree(&src);
+    let (stop, mut said) = quiet();
+    for format in [Format::Zip, Format::TarGz, Format::SevenZip] {
+        let out = d.join(format!("a{}", format.extension()));
+        compress(&sources, format, &out, None, &Control::new(&stop, &mut said)).unwrap();
+        let into = d.join(format!("some{}", format.extension().replace('.', "-")));
+        fs::create_dir_all(&into).unwrap();
+        // From inside "photos": its "sub" folder and a.jpg, as they are there.
+        let made = extract_some(&out, &["photos/sub".into(), "photos/a.jpg".into()], "photos", &into, None, &Control::new(&stop, &mut said)).unwrap();
+        let mut names: Vec<String> = made.iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect();
+        names.sort();
+        assert_eq!(names, ["a.jpg", "sub"], "{format:?}");
+        assert_eq!(fs::read_to_string(into.join("sub/b.txt")).unwrap(), "hello", "{format:?}");
+        assert!(!into.join("notes.txt").exists() && !into.join("run.sh").exists(), "{format:?}: only what was asked for");
+    }
+    let _ = fs::remove_dir_all(&d);
+}

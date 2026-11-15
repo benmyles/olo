@@ -434,12 +434,30 @@ pub fn unique(path: &Path) -> PathBuf {
 /// out in a folder named for the archive; a name taken gets a number).
 /// What it made at `into`'s top, for undo.
 pub fn extract(path: &Path, into: &Path, password: Option<&str>, ctl: &Control) -> Result<Vec<PathBuf>> {
+    extract_with(path, into, password, ctl, None)
+}
+
+/// Extract only `names` (entries' paths as `list` gives them; a folder
+/// with what's in it) into `into`, each without `strip` at the front of
+/// its path (the folder being looked at in the archive): each thing at
+/// the top as it is, a taken name numbered. What it made.
+pub fn extract_some(path: &Path, names: &[String], strip: &str, into: &Path, password: Option<&str>, ctl: &Control) -> Result<Vec<PathBuf>> {
+    let names: Vec<PathBuf> = names.iter().filter_map(|n| safe_path(n)).collect();
+    let strip = safe_path(strip).unwrap_or_default();
+    extract_with(path, into, password, ctl, Some((names, strip)))
+}
+
+fn extract_with(path: &Path, into: &Path, password: Option<&str>, ctl: &Control, only: Option<(Vec<PathBuf>, PathBuf)>) -> Result<Vec<PathBuf>> {
     let kind = kind(path).ok_or_else(|| Error::Unsupported("This isn't an archive Olo can read.".into()))?;
     // Into a hidden folder of its own beside where it goes, so nothing
     // half made is ever seen, and nothing there is overwritten.
     let stage = sink::stage_dir(into)?;
+    let some = only.is_some();
     let made = (|| {
         let mut sink = Sink::new(&stage);
+        if let Some((names, strip)) = only {
+            sink = sink.only(names, strip);
+        }
         match kind {
             Kind::Zip => zipfmt::extract(path, &mut sink, password, ctl)?,
             Kind::SevenZip => sevenz::extract(path, &mut sink, password, ctl)?,
@@ -459,7 +477,7 @@ pub fn extract(path: &Path, into: &Path, password: Option<&str>, ctl: &Control) 
         }
         sink.finish()?;
         ctl.done();
-        sink::settle(&stage, into, &base_name(path, kind))
+        if some { sink::settle_each(&stage, into) } else { sink::settle(&stage, into, &base_name(path, kind)) }
     })();
     let _ = std::fs::remove_dir_all(&stage);
     made

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Tracker: an archive looked into as a folder
+
+*09:32* — Opening an archive in Tracker (zip, tar, 7-Zip, RAR, ISO, cpio) shows what's in it, a level at a time: folders open in the window (Enclosing Folder comes back out), a file opens with what opens its kind, taken out into Tracker's cache once; Extract Selected… takes what's selected out to a folder chosen, Extract All everything beside the archive. A password, when it has one, is asked for in the window.
+
+![Tracker: an archive looked into as a folder](2026-11-15/093222-tracker-an-archive-looked-into-as-a-folder.png)
+
 ### Tracker: Compress and Extract
 
 *09:22* — Tracker compresses and extracts, natively (olo-archive, in Rust: zip with AES, tar with gzip, xz, zstd or bzip2, 7-Zip with AES; it reads RAR, ISO 9660 and cpio too): a selection's Compress ▸ makes an archive beside it, Compress As… names it, chooses its format and gives it a password; an archive's Extract Here and Extract To… take everything out (one thing as it is, several in a folder named for it), nothing written outside. Jobs with progress and Stop in Tracker Status, undone by Edit ▸ Undo; a password asked for when one is needed.

@@ -220,7 +220,7 @@ pub fn extract(path: &Path, sink: &mut Sink, ctl: &Control) -> Result<()> {
     let (mut f, recs) = walk(path).map_err(|e| crate::Error::Bad(e.to_string()))?;
     ctl.total(recs.iter().filter(|(_, r)| !r.dir && r.link.is_none()).map(|(_, r)| r.len).sum());
     for (name, r) in recs {
-        let Some(rel) = crate::safe_path(&name) else { continue };
+        let Some(rel) = crate::safe_path(&name).and_then(|r| sink.map(r)) else { continue };
         ctl.item(&name)?;
         let mode = r.mode.map(|m| m & 0o7777);
         if let Some(l) = &r.link {

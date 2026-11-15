@@ -62,7 +62,7 @@ pub fn extract(path: &Path, sink: &mut Sink, pw: Option<&str>, ctl: &Control) ->
         let e = h.entry();
         let name = e.filename.to_string_lossy().into_owned();
         let (dir, size, mtime) = (e.is_directory(), e.unpacked_size, dos(e.file_time));
-        match safe_path(&name) {
+        match safe_path(&name).and_then(|r| sink.map(r)) {
             None => a = h.skip().map_err(rar_error)?,
             Some(rel) => {
                 ctl.item(&name)?;

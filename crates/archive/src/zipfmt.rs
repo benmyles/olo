@@ -86,7 +86,7 @@ pub fn extract(path: &Path, sink: &mut Sink, password: Option<&str>, ctl: &Contr
         };
         let mut f = f.map_err(zip_error)?;
         let name = f.name().map(|n| n.into_owned()).unwrap_or_else(|_| String::from_utf8_lossy(f.name_raw()).into_owned());
-        let Some(rel) = safe_path(&name) else { continue };
+        let Some(rel) = safe_path(&name).and_then(|r| sink.map(r)) else { continue };
         ctl.item(&name)?;
         let mode = f.unix_mode();
         let mtime = f.last_modified().map(unix_of);

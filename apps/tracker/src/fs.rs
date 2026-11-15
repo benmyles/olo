@@ -409,6 +409,11 @@ pub fn open_in_viewer(path: &Path) {
 /// Open a file with the right application: ours where we have one,
 /// otherwise the user's default (see `olo_xdg::open`). Programs run.
 pub fn open(entry: &Entry) {
+    // An archive Olo reads is looked into in Tracker, as a folder is.
+    if !entry.is_dir && entry.kind == Kind::Archive && opens_inside(&entry.name) {
+        crate::to_hub(crate::ToHub::OpenArchive(entry.path.clone()));
+        return;
+    }
     let (path, program) = (entry.path.clone(), matches!(entry.kind, Kind::Executable | Kind::Application));
     // Finding the handler reads files: not on the UI thread.
     std::thread::spawn(move || {
@@ -417,6 +422,13 @@ pub fn open(entry: &Entry) {
             tracing::warn!("open {}: {e}", path.display());
         }
     });
+}
+
+/// Whether an archive by this name is one Tracker looks into (not a
+/// package: an .rpm or .deb opens as it always has).
+fn opens_inside(name: &str) -> bool {
+    let n = name.to_lowercase();
+    !(n.ends_with(".rpm") || n.ends_with(".deb"))
 }
 
 /// Recursive size of a folder and the number of items (files and folders)
