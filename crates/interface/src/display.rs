@@ -177,8 +177,10 @@ impl Display {
             .name("display".into())
             .spawn(move || {
                 // Frames are drawn here: on a fast core at a high clock,
-                // not where the scheduler puts a mostly idle thread.
+                // not where the scheduler puts a mostly idle thread; and
+                // realtime while the program has the keyboard.
                 crate::util_floor();
+                crate::guard_ui_thread(crate::app::DISPLAY_RT_PRIORITY);
                 let wayland = std::env::var_os("WAYLAND_DISPLAY").filter(|d| !d.is_empty()).or_else(|| std::env::var_os("WAYLAND_SOCKET")).is_some();
                 let client = if wayland && std::env::var_os("OLO_HEADLESS").is_none() { Client::Wayland(WaylandClient::new()) } else { Client::Headless(HeadlessClient::new()) };
                 let headless = matches!(client, Client::Headless(_));

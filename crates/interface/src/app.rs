@@ -418,6 +418,12 @@ impl AppCx<'_> {
     }
 }
 
+/// A window's thread's realtime priority, while its program has the
+/// keyboard (below app_server's, 10, and its input thread's, 12).
+pub const WINDOW_RT_PRIORITY: u32 = 8;
+/// The display thread's.
+pub const DISPLAY_RT_PRIORITY: u32 = 9;
+
 /// Opens a window on a looper of its own (see [`AppCx::open_window`]).
 /// From any thread of a running program.
 pub fn open_window<V: View>(options: WindowSpec, build: impl FnOnce(&mut Cx<V>) -> V + Send + 'static) -> WindowHandle<V> {
@@ -427,6 +433,10 @@ pub fn open_window<V: View>(options: WindowSpec, build: impl FnOnce(&mut Cx<V>) 
     let looper = Looper::spawn(name, move |looper| {
         // Its frames' work is done here: on a fast core.
         crate::util_floor();
+        // ...and realtime while it has the keyboard (app_server makes it
+        // so, `realtime::focus`, guarded here: put back should it run
+        // 50 ms without sleeping).
+        crate::guard_ui_thread(WINDOW_RT_PRIORITY);
         let title = options.title.clone();
         if let Err(e) = crate::window::open(looper, id, options.params(), title, build) {
             tracing::error!("a window couldn't be opened: {e:#}");

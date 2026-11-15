@@ -731,6 +731,7 @@ pub fn run() {
         Some("--fix" | "--apply") => std::process::exit(fix_from_the_command_line(&args[1..])),
         Some("--fans") => std::process::exit(crate::fans::from_the_command_line(&args[1..])),
         Some("--scheduler") => std::process::exit(crate::scheduler::from_the_command_line(&args[1..])),
+        Some("--keep-core") => std::process::exit(crate::kept_core::from_the_command_line(&args[1..])),
         Some(flag @ ("--ignore" | "--unignore")) => std::process::exit(ignore_from_the_command_line(flag == "--ignore", &args[1..])),
         Some("--crashes") => return crate::crashes::print(args.get(1).is_some_and(|a| a == "--json")),
         _ => {}

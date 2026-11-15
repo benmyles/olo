@@ -7722,9 +7722,11 @@ calls it with `true` and renders again.
 Preferences ▸ Performance ▸ Scheduler ▸ Pointer, "Move the pointer on a
 thread of its own" (`Settings::input_thread`, off until tried on Ben's
 ThinkPad; `OLO_INPUT_THREAD=1` or `0` overrides it): libinput is read on
-a thread of its own, `olo-input`, at nice −15 (the most rtkit gives; not
-realtime, as rtkit's limit on a realtime thread that spins would end
-app_server and the whole desktop with it), and while app_server's loop
+a thread of its own, `olo-input`, at nice −15 (the most rtkit gives) and
+realtime above the loop (12; guarded, as "Realtime threads and the kept
+core" says: rtkit's limit on a realtime thread that spins would end
+app_server and the whole desktop with it, and the guard puts it back to
+its nice first), on the kept core beside the loop, and while app_server's loop
 is held, that thread moves the cursor itself. Why: the loop does
 everything (clients' requests, every display's frames), and under load
 it was seen held 78 and 142 ms in the GPU driver waiting for a buffer's
@@ -10929,6 +10931,135 @@ in each state (2026-11-12: a driver that takes no levels, kept and
 not; the service stopped; running and silent; a level held; a level
 refused), the card at 1×, 1.5× and 2×.
 
+## Realtime threads and the kept core (`olo_app::realtime`, `olo_xdg::realtime`, `olo_system::cores`)
+
+Nothing anyone runs may hold the desktop up (Ben, 2026-11-15: "nothing
+should ever be able to impact the responsiveness of olo"; "any audio i/o
+and other stuff like that should be realtime too"; "an option -- enabled
+by default -- to reserve a cpu core just for olo's most important
+threads"). A nice isn't enough, measured: under others' builds and a
+GPU job, app_server's loop at nice −10 waited on a run queue 100–300 ms
+of every second and the display stalled for up to 2.5 s under scx_lavd
+(which gives a nice little weight), and still 8 s in 80 under the
+kernel's own. Two reasons a nice can't help: the processor is shared out
+between sibling cgroups by their weights before any nice counts (below),
+and a nice orders shares, not who runs first.
+
+**Realtime, guarded.** The threads someone waits on are SCHED_RR,
+through rtkit (`MakeThreadRealtimeWithPID`), above every normal and
+sched_ext thread under any scheduler:
+
+| Thread | Priority | Made realtime by |
+|---|---|---|
+| PipeWire's data loops | 20 | libpipewire, as a stream starts |
+| A player's, recorder's or AirPlay's sound (`SOUND_PRIORITY`) | 15 | itself, `olo_xdg::realtime::promote_if_wanted` |
+| app_server's input thread (`olo-input`) | 12 | itself |
+| app_server's loop | 10 | itself |
+| The keyboard's program's display thread, and the proxy's loop | 9 | app_server (`realtime::focus`); olo-wlproxy itself |
+| The keyboard's program's windows' loopers (`w>…`), and Deskbar's | 8 | app_server (`realtime::focus`, `realtime::always`) |
+
+Only the person's own: a headless app_server, an agent's screen
+(`OLO_SCREEN`) and `OLO_REALTIME=0` leave everything at its nice
+(`OLO_REALTIME=1` makes a headless one realtime, to measure). A window
+that loses the keyboard goes back to its nice.
+
+A realtime thread that spun would take a core for good (Fedora's kernel
+doesn't throttle realtime threads), and rtkit's hard limit on realtime
+CPU without sleeping (`RLIMIT_RTTIME`, 200 ms) ends the whole process.
+So every thread that may be realtime is registered first with the guard
+in `olo_app::realtime` (every Olo program has it, plain system calls):
+a soft limit of 50 ms under rtkit's hard one, and a SIGXCPU handler that
+puts the thread that ran over back to the normal class at once (the
+kernel delivers the signal to the thread running, the one that ran
+over; landed elsewhere, every registered realtime thread goes back).
+`olo_xdg::realtime`'s keeper thread, asleep on a pipe the handler writes
+to, makes it realtime again two seconds later and logs it: slowed, never
+ended. app_server makes another program's threads realtime only when
+its limits say it has the guard (`olo_app::realtime::guarded`, read from
+/proc). The kit registers each window's looper and its display thread
+as they start (`guard_ui_thread`), and a registration is forgotten as
+its thread ends (a thread-local's destructor: the kernel gives the id
+to new threads). Two kernel details the guard depends on, each found by
+`a_thread_that_runs_over_is_slowed_never_ended` (olo-xdg, ignored: it
+asks rtkit), which runs a realtime thread over twice:
+
+- rtkit gives SCHED_RR with SCHED_RESET_ON_FORK, and the kernel refuses
+  (EPERM) an unprivileged caller that would clear that flag: a thread
+  is put back with `SCHED_OTHER | SCHED_RESET_ON_FORK`
+  (`olo_app::realtime::demote`), or it can't be at all. Without it the
+  guard did nothing and the test's process was SIGKILLed.
+- At the soft limit the kernel raises it by a second (so SIGXCPU comes
+  once a second): over the hard one, the next thread to run over meets
+  the hard limit. The handler sets the limits back first. Without it
+  the second overrun was SIGKILL. The guard also sets them again at
+  every registration: libpipewire's realtime module sets soft and hard
+  both to 200 ms in any program that uses it, and
+  `olo_system::priority::realtime` leaves a process whose hard limit is
+  already rtkit's alone.
+
+rtkit gives realtime to so many processes and threads a user (15 and 25
+by default); Olo Doctor's rtkit drop-in raises them (64 and 256).
+
+**The kept core** (`Settings::keep_core`, on by default; Preferences ▸
+Performance ▸ Scheduler ▸ Kept Core). One core, the fastest
+(`olo_system::cores::kept`: ACPI CPPC's `highest_perf`, else the highest
+clock; all its hardware threads; never CPU 0; only with four or more
+online; `OLO_KEPT_CORE` chooses another), has app_server's loop and
+input thread to itself: they are homed there alone (single threads: one
+core is all either can use), and nothing else of the person's runs
+there. With the person's own programs it needs no privilege: app_server
+(the person's only, never a headless one, even realtime) sweeps every
+thread of the account off it as it starts and as the setting changes
+(`cores::sweep`, on its realtime worker, once: on the ThinkPad about
+1,900 threads, whose affinity read takes 8.5 ms even from Python), and every program started later inherits a parent's
+affinity. Threads already realtime are left as they are (PipeWire's;
+what they are for is never waiting), as is an affinity a program chose
+(one pinned to the kept core alone, or to others). The system's
+services are root's: Olo Doctor's "Keep Them Off" (`olo-doctor
+--keep-core on|off`, Preferences' button beside the setting) writes
+systemd's own `CPUAffinity=` (`/etc/systemd/system.conf.d/50-olo-kept-core.conf`),
+inherited by everything systemd starts from the next boot, and sweeps
+what runs now as root (`Step::KeepOffCores`). Affinity, not a cgroup's
+cpuset: Intel's low-power daemon (intel_lpmd, running on the ThinkPad)
+sets the slices' `AllowedCPUs` itself, and the two combine (a thread
+runs where both allow; under its low-power mode, the kept core isn't
+among the low-power cores, and the loop runs where the cgroup allows).
+
+Measured (`tools/dev/loadtest`, a test session's app_server with
+Charts animating, eight burners at nice 10 on the E-cores 4–11, the
+person's session keeping the rest; 30 s each, 2026-11-15):
+
+| app_server's loop | Waited for a processor | Worst 50 ms | Heartbeat latest |
+|---|---|---|---|
+| nice 0 | 61 ms | 4.8 ms | 3.45 ms |
+| realtime | 0.1 ms | 0.03 ms | 0.34 ms |
+| realtime, on a kept core (CPU 11) | 0.6 ms | 0.01 ms | 0.27 ms |
+
+Realtime alone takes the waiting away, under any scheduler; the kept
+core adds nothing measurable to that here. What it adds is beside the
+waiting: the loop's frames on the fastest core at its full clock, its
+caches its own, and a core free when other realtime work (PipeWire's at
+20, other programs' sound) is on the rest.
+
+**Groups' weights.** The processor is shared between sibling cgroups by
+weight first. Fedora's uresourced raises the active user's manager
+(`user@UID.service`, where GNOME's shell runs) to 500; Olo runs in
+logind's scope for the session (`session-N.scope`: app_server, every
+app, the terminal's jobs), at 100. Whatever ran as a service of the
+person's (a browser's scope, a build service, kache's daemon) had five
+times the whole desktop's share, and no nice reached it. Olo Doctor's
+"Give the Desktop Its Share" gives every session's scope the manager's
+weight (`/etc/systemd/system/session-.scope.d/50-olo-weight.conf`, and
+this session's cgroup now); the supervisor lowers a build service as a
+whole (below).
+
+`tools/dev/loadtest HOME SECONDS [--cpus 4-11] [--burners N] [--kept
+CPU] [--session NAME]` measures a test session (`OLO_REALTIME=1
+tsession start NAME --home HOME` for a realtime one; an animating client
+in it): its loop's run-queue waits every 50 ms, the heartbeat's
+lateness and its slowest step, with burners like a build's beside it on
+`--cpus` only, so the person's session keeps the rest of the computer.
+
 ## The scheduler (`scx_lavd`, tools/build-scheduler.sh)
 
 Which scheduler the computer runs under is the person's to choose
@@ -10938,9 +11069,17 @@ and if the user enables it then olo should handle installing"): the
 kernel's own (EEVDF), or LAVD, `scx_lavd` of sched-ext/scx (GPL-2.0;
 the Latency-criticality Aware Virtual Deadline scheduler), loaded over
 the kernel's through sched_ext (Linux 6.12 and later). LAVD is made
-for a computer someone is sitting at: what is being waited for runs
-first, long work around it. If it stops, or the kernel puts it out,
-the kernel's own takes over again by itself.
+for a computer someone is sitting at: what it judges is being waited
+for runs first, long work around it. If it stops, or the kernel puts it
+out, the kernel's own takes over again by itself.
+
+The kernel's own is the one recommended now (2026-11-15). Measured under
+others' builds and a GPU job, app_server's loop (at nice −10) waited on
+a run queue 23.8 s of 80 under LAVD, which gives a nice little weight,
+and 8.3 s under the kernel's own; Ben went back to the kernel's. Olo's
+threads someone waits on are realtime since ("Realtime threads and the
+kept core"), above either scheduler's normal threads, so what the
+scheduler decides is how the rest share what's left.
 
 It is built as the fans' profile is, in the same three parts:
 
@@ -11126,6 +11265,18 @@ profile: "The fans", above), `olo-doctor --scheduler [kernel|lavd]`
   (boltd is told to remember it, `Step::AllowThunderbolt`, where the
   kernel's `authorized` was written for the once).
 - **rtkit** not running (the supervisor's priority tiers need it).
+- **Your own services get five times the desktop's share of the
+  processor** (a problem, where the login session's scope weighs less
+  than the person's manager, `user@UID.service`, which uresourced raises
+  to 500): Give the Desktop Its Share writes
+  `/etc/systemd/system/session-.scope.d/50-olo-weight.conf` (every
+  session's scope at the manager's weight, CPU and I/O) and this
+  session's cgroup's `cpu.weight` and `io.weight` now.
+- **The system's services can run on the window server's core**
+  (advice, with the kept core on and systemd's drop-in missing or for
+  another core): Keep Them Off writes it and moves what runs now
+  (`apps/doctor/src/kept_core.rs`); with the kept core turned off and
+  the drop-in still there, Let Them Back removes it.
 - **Bluetooth not listening for the AirPods** (only with AirPods
   paired): BlueZ started without its experimental interfaces, where its
   advertisement monitor is. Fixed by a drop-in
@@ -12133,7 +12284,21 @@ the folder's change time, `Owners`; each file in one read) and:
   settings' list: compilers, linkers, build tools, indexers) or a
   terminal's job busy for a minute and more, has every thread lowered:
   nice up to the setting's (never down: unprivileged, it couldn't come
-  back), `SCHED_BATCH`, idle I/O priority. Never the active window's app
+  back), `SCHED_BATCH`, idle I/O priority. Never a realtime thread (a
+  program's sound), and putting back only touches threads at batch, so
+  one made realtime meanwhile stays so (it once put every thread to
+  `SCHED_OTHER`). A nice orders threads only inside their cgroup: one
+  running in a unit of the person's own manager (a build service, a
+  `systemd-run` scope; `olo_system::systemd::user_unit_of`, from its
+  cgroup) has the unit lowered whole as well (`CPUWeight=idle` for as
+  long as it runs, its cgroup's `cpu.idle`: it gets the processor only
+  when nothing beside it wants it; `priority::unit_lowerable`: never an
+  app the person started, `app-…`, nor a unit with a weight of its own),
+  put back as its last lowered process ends or the supervisor is turned
+  off. That's why lowering a build's compilers didn't help before: in a
+  service of the user manager they were in a cgroup with five times the
+  desktop's weight ("Realtime threads and the kept core", Groups'
+  weights); Activity Monitor says when a unit was lowered. Never the active window's app
   and what it started (followed from app_server's `WindowsChanged`), and
   never Olo's own programs (by name, or beside the supervisor). Turned
   off, batch and the I/O priority are put back (a raised nice stays until

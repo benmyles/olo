@@ -9,3 +9,4 @@ license.workspace = true
 olo-sync = { workspace = true }
 async-task = "4.7"
 tracing = { workspace = true }
+libc = "0.2"

@@ -328,6 +328,13 @@ impl<BackendData: Backend> WlrLayerShellHandler for AnvilState<BackendData> {
     }
 
     fn new_layer_surface(&mut self, surface: WlrLayerSurface, wl_output: Option<wl_output::WlOutput>, _layer: Layer, namespace: String) {
+        // Deskbar: realtime whatever has the keyboard (`realtime::always`).
+        if namespace == "deskbar"
+            && let Ok(client) = self.display_handle.get_client(surface.wl_surface().id())
+            && let Some(pid) = crate::state::client_pid(&client, &self.display_handle)
+        {
+            crate::realtime::always(pid);
+        }
         let asked = wl_output.as_ref().and_then(Output::from_resource);
         // The palette opens on the display in use (the focused window's,
         // else the pointer's), as shortcuts act there, not on the main one.

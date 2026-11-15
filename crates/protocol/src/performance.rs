@@ -311,6 +311,10 @@ pub struct Lowered {
     pub policy: String,
     /// "idle" or "normal".
     pub io: String,
+    /// The person's own manager's unit it runs in, lowered whole
+    /// (`CPUWeight=idle`) with it: a build run as a service.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

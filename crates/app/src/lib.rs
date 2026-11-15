@@ -37,6 +37,7 @@ mod latest;
 mod looper;
 mod messenger;
 pub mod pool;
+pub mod realtime;
 mod task;
 
 pub use answer::{Answer, Reply, ask};

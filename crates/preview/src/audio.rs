@@ -329,6 +329,10 @@ fn run(input: &Input, playing: bool, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc:
     let mut reader = BufReader::new(sock.try_clone().map_err(|e| e.to_string())?);
     let (_, info) = protocol::read_reply_message::<protocol::CreatePlaybackStreamReply>(&mut reader, version).map_err(err)?;
     let channel = info.channel;
+    // Opened (the file read and probed, at its nice): from here this
+    // thread only decodes what the server asks for, a fifth of a second
+    // ahead, and under load at its nice it missed that.
+    olo_xdg::realtime::promote_if_wanted(olo_xdg::realtime::SOUND_PRIORITY, "a player's sound");
 
     // Server messages arrive on their own thread and join the UI's
     // controls in one queue.
@@ -538,6 +542,7 @@ impl LiveSink {
         std::thread::Builder::new()
             .name("live-sound".into())
             .spawn(move || {
+                olo_xdg::realtime::promote_if_wanted(olo_xdg::realtime::SOUND_PRIORITY, "live sound");
                 let mut out = Vec::new();
                 let mut send = |w: &mut UnixStream, length: usize| {
                     sh.take(length, &mut out);
@@ -648,6 +653,7 @@ impl Recorder {
         std::thread::Builder::new()
             .name("recorder".into())
             .spawn(move || {
+                olo_xdg::realtime::promote_if_wanted(olo_xdg::realtime::SOUND_PRIORITY, "a recorder's sound");
                 use std::io::Read;
                 let mut payload = Vec::new();
                 let mut samples = Vec::new();

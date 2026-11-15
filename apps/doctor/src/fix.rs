@@ -191,6 +191,13 @@ pub enum Step {
         device: PathBuf,
         driver: PathBuf,
     },
+    /// Every running program's threads kept off processors `kept` (`on`;
+    /// the kept core's, `olo_system::cores`), or let back on: as root,
+    /// every process's (the kernel's own and realtime threads aside).
+    KeepOffCores {
+        kept: Vec<usize>,
+        on: bool,
+    },
     /// Start one of Olo's own programs (`olo-…`) with these arguments,
     /// detached, as the person (never as root): its own command line
     /// does the fix (`olo-diskbackup --now`).
@@ -241,6 +248,10 @@ impl Step {
             Step::SelinuxLabels { restore, .. } => format!("Labelling {} for SELinux", restore.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")),
             Step::RebuildInitramfs => "Making the start-up images again".into(),
             Step::StartProgram { argv } => format!("Running {}", argv.join(" ")),
+            Step::KeepOffCores { kept, on } => {
+                let list = olo_system::cores::format_list(kept);
+                if *on { format!("Moving the programs running on processor {list} to the others") } else { format!("Letting every program run on processor {list} again") }
+            }
         }
     }
 
@@ -331,6 +342,11 @@ impl Step {
             }
             Step::RestartGpu { address, modules, services, in_use_by } => restart_gpu(address, modules, services, in_use_by),
             Step::RestartBluetooth { device, driver } => restart_bluetooth(device, driver),
+            Step::KeepOffCores { kept, on } => {
+                let swept = crate::kept_core::sweep_all(kept, *on);
+                tracing::info!(processes = swept.processes, threads = swept.threads, failed = swept.failed, "{}", self.describe());
+                Ok(())
+            }
             Step::StartProgram { argv } => {
                 // (Olo's own, as the person: never another program, never root.)
                 // SAFETY: geteuid has no preconditions.

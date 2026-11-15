@@ -559,7 +559,18 @@ fn supervised(me: &Me, st: &olo_protocol::performance::SupervisorState, pid: i32
     if let Some(l) = lowered {
         out = out
             .child(heading("Lowered".into()))
-            .child(para(format!("As {}: nice {} → {}, {} scheduling, {} I/O priority, so the active window’s app and Olo stay quick.", l.why, l.nice_before, l.nice, l.policy, l.io), text))
+            .child(para(
+                format!(
+                    "As {}: nice {} → {}, {} scheduling, {} I/O priority{}, so the active window’s app and Olo stay quick.",
+                    l.why,
+                    l.nice_before,
+                    l.nice,
+                    l.policy,
+                    l.io,
+                    l.unit.as_ref().map(|u| format!(", and {u} as a whole idle")).unwrap_or_default()
+                ),
+                text,
+            ))
             .child(gap());
     }
     if favoured {

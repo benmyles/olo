@@ -7080,6 +7080,7 @@ name = "olo-app"
 version = "0.1.0"
 dependencies = [
  "async-task",
+ "libc",
  "olo-sync",
  "tracing",
 ]
@@ -8619,6 +8620,7 @@ name = "olo-xdg"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "olo-app",
  "olo-sync",
  "olo-theme",
  "png 0.18.1",

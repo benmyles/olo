@@ -124,12 +124,33 @@ impl Supervisor {
         }
     }
 
+    /// The units lowered whole (each once).
+    fn lowered_units(&self) -> Vec<String> {
+        let mut units: Vec<String> = self.lowered.values().filter_map(|l| l.unit.clone()).collect();
+        units.sort();
+        units.dedup();
+        units
+    }
+
+    /// Units of `before` none of whose lowered processes is left: back to
+    /// their default weight (gone already: nothing to do).
+    fn units_put_back(&mut self, before: &[String]) {
+        let now = self.lowered_units();
+        for unit in before.iter().filter(|u| !now.contains(u)) {
+            if olo_system::systemd::set_user_cpu_weight(unit, None).is_ok() {
+                self.note(format!("Put {unit} back to its weight"));
+            }
+        }
+    }
+
     /// Put back what was lowered and forget it all (turned off).
     fn stand_down(&mut self) {
+        let units = self.lowered_units();
         let lowered: Vec<Lowered> = self.lowered.drain().map(|(_, l)| l).collect();
         for l in &lowered {
             priority::restore(l.pid);
         }
+        self.units_put_back(&units);
         if !lowered.is_empty() {
             let kept: Vec<String> = lowered.iter().filter(|l| l.nice != l.nice_before).map(|l| l.name.clone()).collect();
             let mut text = format!("Turned off: {} put back to normal scheduling and I/O", lowered.len());
@@ -323,7 +344,9 @@ impl Supervisor {
         }
 
         // Priorities: background work lowered, as it starts.
+        let units_before = self.lowered_units();
         self.lowered.retain(|pid, _| alive.contains(pid));
+        self.units_put_back(&units_before);
         if settings.priorities {
             let background: HashSet<&str> = settings.background.iter().map(String::as_str).collect();
             for p in &procs {
@@ -340,7 +363,24 @@ impl Supervisor {
                 let nice = settings.background_nice.clamp(1, 19);
                 if let Some(before) = priority::lower(p.pid, nice) {
                     let why = if by_name { "background work (by its name)".to_owned() } else { "a terminal's job, busy for a minute and more".to_owned() };
-                    self.lowered.insert(p.pid, Lowered { pid: p.pid, name: p.name.clone(), why: why.clone(), nice_before: before, nice: before.max(nice), policy: "batch".into(), io: "idle".into() });
+                    // Its unit too, if it runs in one of the person's own
+                    // manager's: there its nice doesn't reach past it.
+                    let unit = olo_system::systemd::user_unit_of(p.pid).filter(|u| priority::unit_lowerable(u));
+                    if let Some(unit) = &unit
+                        && !self.lowered.values().any(|l| l.unit.as_ref() == Some(unit))
+                    {
+                        match olo_system::systemd::user_cpu_weight(unit) {
+                            // (One with a weight of its own set is left as it is.)
+                            Ok(None) => match olo_system::systemd::set_user_cpu_weight(unit, Some(0)) {
+                                Ok(()) => self.note(format!("Lowered {unit} as a whole (idle): {} runs in it", p.name)),
+                                Err(e) => tracing::info!("supervisor: {unit} not lowered: {e}"),
+                            },
+                            Ok(Some(_)) => {}
+                            Err(e) => tracing::info!("supervisor: {unit}'s weight not read: {e}"),
+                        }
+                    }
+                    self.lowered
+                        .insert(p.pid, Lowered { pid: p.pid, name: p.name.clone(), why: why.clone(), nice_before: before, nice: before.max(nice), policy: "batch".into(), io: "idle".into(), unit });
                     // (Builds start many: noted once a name a minute.)
                     let recent = self.log.iter().rev().take(10).any(|e| e.text.starts_with(&format!("Lowered {}", p.name)) && now_secs().saturating_sub(e.at) < 60);
                     if !recent {
@@ -349,10 +389,12 @@ impl Supervisor {
                 }
             }
         } else if !self.lowered.is_empty() {
+            let units = self.lowered_units();
             for l in self.lowered.values() {
                 priority::restore(l.pid);
             }
             self.lowered.clear();
+            self.units_put_back(&units);
             self.note("Priorities off: background work put back".into());
         }
 
@@ -435,6 +477,9 @@ impl Supervisor {
                 self.lowered.insert(l.pid, l);
             } else {
                 priority::restore(l.pid);
+                if let Some(unit) = &l.unit {
+                    let _ = olo_system::systemd::set_user_cpu_weight(unit, None);
+                }
                 put_back += 1;
             }
         }

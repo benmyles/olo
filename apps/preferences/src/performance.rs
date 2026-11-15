@@ -12,8 +12,11 @@
 //! Doctor set it (`olo-doctor --scheduler`, as root through polkit), and
 //! what's shown is read from the system (`olo_system::scheduler`).
 //!
-//! Beside it, the pointer on a thread of its own: app_server's setting
-//! (`Settings::input_thread`, through the form like any other).
+//! Beside it, the kept core (`Settings::keep_core`, app_server's, and the
+//! system's services kept off it too, Olo Doctor's as root:
+//! `olo-doctor --keep-core`), and the pointer on a thread of its own:
+//! app_server's settings (`Settings::input_thread`), through the form
+//! like any other.
 
 use std::{
     sync::{
@@ -44,6 +47,14 @@ struct Scheduler {
     applying: Option<Choice>,
     /// How the last change went, until the next.
     said: Option<Result<String, String>>,
+    /// The kept core's processors (None: too few to keep one), and those
+    /// the system's services are kept off (Olo Doctor's drop-in).
+    kept: Option<Vec<usize>>,
+    system_kept: Option<Vec<usize>>,
+    /// The system's part being changed (Olo Doctor, a password asked),
+    /// and how it went.
+    keeping: bool,
+    keep_said: Option<Result<String, String>>,
 }
 
 pub struct State {
@@ -92,20 +103,27 @@ impl State {
         // time). Tests: LAVD chosen and scheduling.
         let scheduler: Arc<Mutex<Scheduler>> = Default::default();
         if cfg!(test) {
-            scheduler.lock().unwrap().state = Some(Some(scheduler::State { chosen: Choice::Lavd, installed: true, loaded: Some("lavd_1.1.4_x86_64_unknown_linux_gnu".into()) }));
+            let mut s = scheduler.lock().unwrap();
+            s.state = Some(Some(scheduler::State { chosen: Choice::Lavd, installed: true, loaded: Some("lavd_1.1.4_x86_64_unknown_linux_gnu".into()) }));
+            // (The ThinkPad's, its services not yet kept off: the longest
+            // the box gets.)
+            s.kept = Some(vec![2]);
         } else {
             let (out, proxy) = (Arc::downgrade(&scheduler), olo_kit::proxy());
             std::thread::Builder::new()
                 .name("scheduler".into())
                 .spawn(move || {
                     let places = scheduler::Places::here();
+                    let kept = olo_system::cores::kept();
                     // Ends once the panel (the only strong reference) has closed.
                     while let Some(shared) = out.upgrade() {
                         let now = scheduler::look(&places);
+                        let system_kept = olo_system::cores::system_kept();
                         {
                             let mut s = shared.lock().unwrap();
-                            if s.state.as_ref() != Some(&now) {
+                            if s.state.as_ref() != Some(&now) || s.system_kept != system_kept || s.kept != kept {
                                 s.state = Some(now);
+                                (s.system_kept, s.kept) = (system_kept, kept.clone());
                                 proxy.send(Msg::Redraw);
                             }
                         }
@@ -189,6 +207,68 @@ fn scheduler_tab(ui: &mut Ui, shared: &Arc<Mutex<Scheduler>>) {
             _ => ui.note(state.now()),
         }
         ui.note("Chosen for the whole computer and kept across restarts. It's the computer's, not this account's, so choosing asks for an administrator's password.");
+    });
+}
+
+/// The system's part of the kept core put as `on`: Olo Doctor does it
+/// (`olo-doctor --keep-core`: its helper, as root through polkit), on a
+/// thread; how it went is said in the box.
+fn set_system_kept(shared: Arc<Mutex<Scheduler>>, proxy: olo_kit::Proxy, on: bool) {
+    {
+        let mut s = shared.lock().unwrap();
+        if s.keeping {
+            return;
+        }
+        s.keeping = true;
+        s.keep_said = None;
+    }
+    proxy.send(Msg::Redraw);
+    std::thread::Builder::new()
+        .name("kept-core-apply".into())
+        .spawn(move || {
+            let said = crate::ask_doctor(&["--keep-core", if on { "on" } else { "off" }]);
+            let system_kept = olo_system::cores::system_kept();
+            let mut s = shared.lock().unwrap();
+            (s.keeping, s.keep_said, s.system_kept) = (false, Some(said), system_kept);
+            drop(s);
+            proxy.send(Msg::Redraw);
+        })
+        .expect("thread");
+}
+
+/// The kept core (app_server's `keep_core`, through the form like any
+/// other): which processor, and the system's services kept off it too,
+/// which is root's (Olo Doctor).
+fn kept_core_box(ui: &mut Ui, shared: &Arc<Mutex<Scheduler>>) {
+    let sch = shared.lock().unwrap().clone();
+    let Some(kept) = sch.kept.clone() else { return };
+    let list = olo_system::cores::format_list(&kept);
+    ui.bbox("Kept Core", |ui| {
+        let on = ui.s.keep_core;
+        ui.check("Keep a core for the window server", on, |s, v| s.keep_core = v);
+        ui.note(&format!(
+            "Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {list}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting."
+        ));
+        let system_off = sch.system_kept.as_ref() == Some(&kept);
+        let (text, button) = match (on, sch.system_kept.is_some()) {
+            (true, _) if system_off => ("The system's services are kept off it too.", None),
+            (true, _) => ("The system's services (updates, indexing) can still run there.", Some(("Keep Them Off", true))),
+            (false, true) => ("The system's services are still kept off it.", Some(("Let Them Back", false))),
+            (false, false) => ("", None),
+        };
+        if !text.is_empty() {
+            let mut row = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(StringView::new(text).dim(true).wrap(true)));
+            if let Some((label, want)) = button {
+                let (shared, proxy) = (shared.clone(), olo_kit::proxy());
+                row = row.child(Button::new(label).enabled(!sch.keeping).on_click(move |_, _| set_system_kept(shared.clone(), proxy.clone(), want)));
+            }
+            ui.add(row);
+        }
+        match (&sch.keeping, &sch.keep_said) {
+            (true, _) => ui.note("Setting it: an administrator's password is asked…"),
+            (false, Some(Err(why))) => ui.add(StringView::new(format!("Not changed. {why}")).wrap(true).color(style::c(theme::palette().failure))),
+            _ => {}
+        }
     });
 }
 
@@ -284,6 +364,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let items = ui.collect(|ui| {
         if tab == 2 {
             scheduler_tab(ui, &scheduler);
+            kept_core_box(ui, &scheduler);
             return pointer_box(ui);
         }
         if tab == 0 {

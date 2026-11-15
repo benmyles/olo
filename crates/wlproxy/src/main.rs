@@ -68,6 +68,10 @@ extern "C" fn term(_: libc::c_int) {
     TERM.store(true, Ordering::Relaxed);
 }
 
+/// The loop's realtime priority: as a kit program's display thread
+/// (`olo_interface::app::DISPLAY_RT_PRIORITY`), below app_server's.
+const PROXY_RT_PRIORITY: u32 = 9;
+
 fn main() {
     olo_crash::install();
     // A session or install from before the rename (Tabula) carries on.
@@ -75,6 +79,12 @@ fn main() {
     // Every outside program's Wayland traffic goes through here: with the
     // shell, above apps (olo_protocol::performance::tier; -5).
     let _ = olo_system::priority::raise_self(-5);
+    // ...and realtime, guarded (`olo_xdg::realtime`): every key and frame
+    // of Chrome's passes through this loop, and at its nice it waited on
+    // a run queue under others' builds as app_server did. Not on an
+    // agent's screen (nor its keeper thread: the fork below is a screen's
+    // alone, and wants one thread).
+    olo_xdg::realtime::promote_if_wanted(PROXY_RT_PRIORITY, "the proxy's loop");
     let (Some(fd), Some(upstream)) = (std::env::var("OLO_WAYLAND_FD").ok().and_then(|f| f.parse::<i32>().ok()), std::env::var_os("OLO_WAYLAND_UPSTREAM")) else {
         eprintln!("olo-wlproxy is started by olo-session (OLO_WAYLAND_FD, OLO_WAYLAND_UPSTREAM)");
         std::process::exit(2);
@@ -116,8 +126,9 @@ fn main() {
             // person's display carry on, in a process of their own: this
             // one exits at once, so the session isn't kept waiting for
             // it, and the one serving them is out of the screen's group.
-            // SAFETY: this program has one thread; the child carries on
-            // with every descriptor.
+            // SAFETY: this program has one thread (on a screen, never
+            // realtime, so no keeper either); the child carries on with
+            // every descriptor.
             match unsafe { libc::fork() } {
                 0 => {
                     // SAFETY: setsid in the child.

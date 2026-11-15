@@ -498,6 +498,9 @@ impl<BackendData: Backend> SeatHandler for AnvilState<BackendData> {
         let wl_surface = target.and_then(WaylandFocus::wl_surface);
 
         let focus = wl_surface.and_then(|s| dh.get_client(s.id()).ok());
+        // The program with the keyboard made realtime (its windows'
+        // threads), the one before put back (`realtime::focus`).
+        crate::realtime::focus(focus.as_ref().and_then(|c| client_pid(c, dh)));
         set_data_device_focus(dh, seat, focus.clone());
         set_primary_focus(dh, seat, focus);
         // Text waiting for the keyboard to leave whoever asked (`insert`):
@@ -1325,6 +1328,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                 olo_xdg::link_op_here(settings.security.passwords.op_cli);
                 crate::shell::deco::set_title_chars(settings.tab_title_chars);
                 olo_xdg::themes::set(&settings.appearance.icon_theme);
+                crate::realtime::keep_core(settings.keep_core);
                 settings
             },
             ipc: Default::default(),

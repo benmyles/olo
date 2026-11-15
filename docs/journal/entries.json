@@ -4204,5 +4204,11 @@
   "title": "Backgrounds: the retro collection, tiled patterns",
   "caption": "Mac OS 9's desktop pictures finished at 4K (JPEG), AmigaOS 3.9's 30 backdrops and its 79 Workbench patterns as a collection each; a pattern is tiled at its own size, one texture pixel to a device pixel, at every scale (here Boing Chess at 1\u00d7). The HDR gain is a little more subtle (1.25 stops at most, from 2).",
   "image": "2026-11-15/033235-backgrounds-the-retro-collection-tiled-patterns.png"
+ },
+ {
+  "time": "2026-11-15T03:34:11",
+  "title": "Performance: a kept core, realtime threads",
+  "caption": "Preferences \u25b8 Performance \u25b8 Scheduler: \"Keep a core for the window server\" (on by default): app_server's loop and input thread have the fastest core to themselves and every other program runs on the others; Keep Them Off asks Olo Doctor to keep the system's services off it too. The kernel's own scheduler is the recommended one now: Olo's threads someone waits on are realtime under either.",
+  "image": "2026-11-15/033411-performance-a-kept-core-realtime-threads.png"
  }
 ]

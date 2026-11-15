@@ -7,7 +7,17 @@
 //! writes only when nobody else's are waiting). Batch and the I/O
 //! priority are put back when the supervisor stops or is turned off;
 //! nice stays where it went until the process ends, which for builds is
-//! soon.
+//! soon. A realtime thread (a program's sound) is never touched, lowering
+//! or putting back: only threads at batch are put back, so one made
+//! realtime meanwhile stays so.
+//!
+//! Nice orders threads only inside their cgroup: the processor is shared
+//! out between cgroups first, by their weights. A build run as a service
+//! of the person's own manager (`user@UID.service/…`) is in a cgroup of
+//! its own, beside Olo's login session rather than inside it, and Fedora's
+//! uresourced gives the user manager five times the session's weight; so
+//! the unit itself is lowered as well (`unit_lowerable`, main.rs:
+//! `CPUWeight=idle`, its cgroup's `cpu.idle`), and put back with it.
 
 use std::path::Path;
 
@@ -53,17 +63,32 @@ pub fn lower(pid: i32, nice: i32) -> Option<i32> {
             // SAFETY: setpriority on one of our own threads.
             unsafe { libc::setpriority(libc::PRIO_PROCESS, tid as libc::id_t, nice) };
         }
+        // (Realtime: what it's for is never waiting.)
+        if olo_system::realtime::is_realtime(tid as u32) {
+            continue;
+        }
         any |= policy(tid, libc::SCHED_BATCH);
         ioprio_set(tid, IOPRIO_CLASS_IDLE, 0);
     }
     any.then_some(before)
 }
 
+/// Whether the user manager's unit `unit` may be lowered whole: a
+/// service, or a scope `systemd-run` made (`run-…`); not an app the
+/// person started (`app-…`), nor the manager's own.
+pub fn unit_lowerable(unit: &str) -> bool {
+    (unit.ends_with(".service") || (unit.starts_with("run-") && unit.ends_with(".scope"))) && !unit.starts_with("app-") && unit != "init.scope"
+}
+
 /// Put `pid`'s scheduling and I/O priority back (its nice can't come
 /// down without privileges).
 pub fn restore(pid: i32) {
     for tid in threads(pid) {
-        policy(tid, libc::SCHED_OTHER);
+        // (Only what was lowered: one made realtime since stays so.)
+        // SAFETY: sched_getscheduler only reads.
+        if unsafe { libc::sched_getscheduler(tid) } & !libc::SCHED_RESET_ON_FORK == libc::SCHED_BATCH {
+            policy(tid, libc::SCHED_OTHER);
+        }
         ioprio_set(tid, IOPRIO_CLASS_BE, 4);
     }
 }

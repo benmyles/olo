@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Performance: a kept core, realtime threads
+
+*03:34* — Preferences ▸ Performance ▸ Scheduler: "Keep a core for the window server" (on by default): app_server's loop and input thread have the fastest core to themselves and every other program runs on the others; Keep Them Off asks Olo Doctor to keep the system's services off it too. The kernel's own scheduler is the recommended one now: Olo's threads someone waits on are realtime under either.
+
+![Performance: a kept core, realtime threads](2026-11-15/033411-performance-a-kept-core-realtime-threads.png)
+
 ### Backgrounds: the retro collection, tiled patterns
 
 *03:32* — Mac OS 9's desktop pictures finished at 4K (JPEG), AmigaOS 3.9's 30 backdrops and its 79 Workbench patterns as a collection each; a pattern is tiled at its own size, one texture pixel to a device pixel, at every scale (here Boing Chess at 1×). The HDR gain is a little more subtle (1.25 stops at most, from 2).

@@ -59,6 +59,24 @@ fn main() {
             Ok(nice) => tracing::info!(nice, "the main thread's priority (rtkit)"),
             Err(e) => tracing::info!("the main thread stays at its nice: {e}"),
         }
+    }
+    // Realtime besides (the nice is where it goes back to): no load, in
+    // any program, under any scheduler, holds the desktop up.
+    if app_server::realtime::wanted(headless) {
+        match app_server::realtime::promote_self(app_server::realtime::MAIN_PRIORITY) {
+            Ok(()) => tracing::info!(priority = app_server::realtime::MAIN_PRIORITY, "the main thread is realtime (rtkit)"),
+            Err(e) => tracing::info!("the main thread isn't realtime: {e}"),
+        }
+        // ...and the program with the keyboard, and Deskbar, too.
+        app_server::realtime::enable();
+    }
+    // ...and, the person's, on a core of its own (`Settings::keep_core`,
+    // applied with the settings).
+    if !headless {
+        app_server::realtime::persons();
+        app_server::realtime::home_self();
+    }
+    if !headless {
         // ...and on a fast core at a high clock, not where the scheduler
         // puts a mostly idle thread.
         let util_min = std::env::var("OLO_UTIL_MIN").ok().and_then(|v| v.parse().ok()).unwrap_or(olo_protocol::performance::CORE_UTIL_MIN);

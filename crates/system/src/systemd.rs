@@ -105,3 +105,78 @@ pub fn enable(name: &str, enable: bool) -> Result<()> {
 pub fn reload() -> Result<()> {
     bus::call::<_, ()>(bus::system()?, SYSTEMD, MANAGER, MANAGER_IFACE, "Reload", &())
 }
+
+/// The unit of the person's own (user) manager process `pid` runs in,
+/// from its cgroup ("…/user@1000.service/app.slice/build.service":
+/// `build.service`); None for one outside it (the login session's scope,
+/// where Olo runs, or the system's).
+pub fn user_unit_of(pid: i32) -> Option<String> {
+    let text = std::fs::read_to_string(format!("/proc/{pid}/cgroup")).ok()?;
+    user_unit_in(text.lines().find_map(|l| l.strip_prefix("0::"))?)
+}
+
+/// `user_unit_of`, from a cgroup's path.
+pub fn user_unit_in(cgroup: &str) -> Option<String> {
+    let (_, inside) = cgroup.split_once(".service/").filter(|(manager, _)| manager.rsplit('/').next().is_some_and(|m| m.starts_with("user@")))?;
+    inside.split('/').rev().find(|part| part.ends_with(".service") || part.ends_with(".scope")).map(str::to_owned)
+}
+
+/// The user manager's unit `unit`'s CPU weight as set (None: not set,
+/// its parent's default; Some(0): idle).
+pub fn user_cpu_weight(unit: &str) -> Result<Option<u64>> {
+    let conn = bus::session()?;
+    let path: zvariant::OwnedObjectPath = bus::call(conn, SYSTEMD, MANAGER, MANAGER_IFACE, "GetUnit", &(unit,))?;
+    let iface = if unit.ends_with(".scope") { "org.freedesktop.systemd1.Scope" } else { "org.freedesktop.systemd1.Service" };
+    let value: zvariant::OwnedValue = bus::call(conn, SYSTEMD, path.as_str(), "org.freedesktop.DBus.Properties", "Get", &(iface, "CPUWeight"))?;
+    let weight = u64::try_from(value).map_err(|e| zbus::Error::Failure(e.to_string()))?;
+    Ok((weight != u64::MAX).then_some(weight))
+}
+
+/// Set the user manager's unit `unit`'s CPU weight until it ends (or the
+/// manager restarts): Some(0) idle (its cgroup's `cpu.idle`: it runs only
+/// when no other cgroup beside it wants the processor), None back to its
+/// default. The person's own manager: no privilege asked.
+pub fn set_user_cpu_weight(unit: &str, weight: Option<u64>) -> Result<()> {
+    let props = vec![("CPUWeight", zvariant::Value::U64(weight.unwrap_or(u64::MAX)))];
+    bus::call::<_, ()>(bus::session()?, SYSTEMD, MANAGER, MANAGER_IFACE, "SetUnitProperties", &(unit, true, props))
+}
+
+#[cfg(test)]
+mod user_unit_tests {
+    use super::*;
+
+    #[test]
+    fn a_processs_unit_is_read_from_its_cgroup() {
+        assert_eq!(user_unit_in("/user.slice/user-1000.slice/user@1000.service/app.slice/shiftup-nightly.service").as_deref(), Some("shiftup-nightly.service"));
+        assert_eq!(user_unit_in("/user.slice/user-1000.slice/user@1000.service/app.slice/app-com.google.Chrome-1967770.scope").as_deref(), Some("app-com.google.Chrome-1967770.scope"));
+        assert_eq!(user_unit_in("/user.slice/user-1000.slice/user@1000.service/app.slice/kache.service/sub").as_deref(), Some("kache.service"));
+        assert_eq!(user_unit_in("/user.slice/user-1000.slice/session-3.scope"), None, "the login session's: Olo's");
+        assert_eq!(user_unit_in("/system.slice/dnf.service"), None, "the system's");
+        assert_eq!(user_unit_in("/user.slice/user-1000.slice/user@1000.service/init.scope").as_deref(), Some("init.scope"));
+    }
+
+    /// On the person's own manager: a scope of this test's, holding a
+    /// child of its own, made idle and put back, then gone with it.
+    #[test]
+    #[ignore = "asks the session's systemd"]
+    fn a_units_weight_goes_idle_and_back() {
+        let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+        let unit = format!("olo-test-weight-{}.scope", child.id());
+        let props = vec![("PIDs", zvariant::Value::from(vec![child.id()]))];
+        let aux: Vec<(&str, Vec<(&str, zvariant::Value)>)> = Vec::new();
+        let _: zvariant::OwnedObjectPath = bus::call(bus::session().unwrap(), SYSTEMD, MANAGER, MANAGER_IFACE, "StartTransientUnit", &(unit.as_str(), "fail", props, aux)).unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        assert_eq!(user_unit_of(child.id() as i32).as_deref(), Some(unit.as_str()));
+        assert_eq!(user_cpu_weight(&unit).unwrap(), None);
+        set_user_cpu_weight(&unit, Some(0)).unwrap();
+        assert_eq!(user_cpu_weight(&unit).unwrap(), Some(0));
+        let cgroup = std::fs::read_to_string(format!("/proc/{}/cgroup", child.id())).unwrap();
+        let dir = format!("/sys/fs/cgroup{}", cgroup.trim().strip_prefix("0::").unwrap());
+        assert_eq!(std::fs::read_to_string(format!("{dir}/cpu.idle")).unwrap().trim(), "1");
+        set_user_cpu_weight(&unit, None).unwrap();
+        assert_eq!(user_cpu_weight(&unit).unwrap(), None);
+        assert_eq!(std::fs::read_to_string(format!("{dir}/cpu.idle")).unwrap().trim(), "0");
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+}

@@ -1,0 +1,200 @@
+#!/usr/bin/python3
+"""How a headless app_server keeps up under load: its loop's waits for a
+processor, how late its heartbeat came, and its late frames, with
+programs as busy as a build beside it (HACKING, "Realtime threads and the
+kept core").
+
+  loadtest HOME SECONDS [--cpus 4-11] [--burners N] [--kept CPU]
+
+HOME is the test session's (`tsession start NAME --home HOME`, with
+`OLO_REALTIME=1` for a realtime one; an animating client in it, such as
+`CHARTS_LIVE=1 target/release/examples/charts`). Its processes, and N
+burners (nice 10, each walking 256 MB as a compiler does; N: one per
+processor of --cpus), are kept on --cpus, so the person's own session
+keeps the rest of the computer. --kept CPU: app_server's loop and input
+thread on CPU alone and everything else off it, as the kept core
+(`olo_system::cores`) does. Every 50 ms the loop's run-queue wait is read
+(/proc's schedstat): the total, the worst 50 ms, and how many 50 ms had
+more than 4 ms of waiting (a frame at 120 Hz is 8.3 ms).
+
+Only the session's processes and its own burners are touched; the
+burners end with it. Stop the session afterwards (`tsession stop`).
+"""
+
+import json
+import os
+import subprocess
+import sys
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+BURN = """
+import os, sys, time
+os.nice(10)
+end = time.time() + float(sys.argv[1])
+buf = bytearray(256 << 20)
+i = 0
+while time.time() < end:
+    for j in range(0, len(buf), 4096):
+        buf[j] = (buf[j] + i) & 255
+    i += 1
+"""
+
+
+def cpus_of(text):
+    out = []
+    for part in text.split(","):
+        if "-" in part:
+            a, b = part.split("-")
+            out.extend(range(int(a), int(b) + 1))
+        elif part:
+            out.append(int(part))
+    return out
+
+
+def environ(pid):
+    try:
+        with open(f"/proc/{pid}/environ", "rb") as f:
+            return dict(kv.split(b"=", 1) for kv in f.read().split(b"\0") if b"=" in kv)
+    except OSError:
+        return {}
+
+
+def comm(pid):
+    try:
+        with open(f"/proc/{pid}/comm") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def session_pids(home):
+    me = os.getuid()
+    out = []
+    for name in os.listdir("/proc"):
+        if not name.isdigit():
+            continue
+        pid = int(name)
+        try:
+            if os.stat(f"/proc/{pid}").st_uid != me:
+                continue
+        except OSError:
+            continue
+        if environ(pid).get(b"HOME") == home.encode():
+            out.append(pid)
+    return out
+
+
+def threads(pid):
+    try:
+        return [int(t) for t in os.listdir(f"/proc/{pid}/task")]
+    except OSError:
+        return []
+
+
+def schedstat(tid, pid):
+    with open(f"/proc/{pid}/task/{tid}/schedstat") as f:
+        run, wait, _ = f.read().split()
+    return int(run), int(wait)
+
+
+def ipc(name, request):
+    out = subprocess.run([sys.executable, os.path.join(HERE, "tsession"), "ipc", name, json.dumps(request)], capture_output=True, text=True)
+    try:
+        return json.loads(out.stdout)
+    except json.JSONDecodeError:
+        return {}
+
+
+def main():
+    args = sys.argv[1:]
+    if len(args) < 2:
+        print(__doc__)
+        sys.exit(2)
+    home, seconds = args[0], float(args[1])
+    opt = {k: v for k, v in zip(args[2::2], args[3::2])}
+    cpus = cpus_of(opt.get("--cpus", "4-11"))
+    kept = int(opt["--kept"]) if "--kept" in opt else None
+    others = [c for c in cpus if c != kept]
+    burners = int(opt.get("--burners", len(cpus)))
+    name = opt.get("--session")
+
+    pids = session_pids(home)
+    servers = [p for p in pids if comm(p) == "olo-app-server"]
+    if len(servers) != 1:
+        sys.exit(f"loadtest: {len(servers)} app_servers with HOME={home}")
+    server = servers[0]
+    loop_threads = [server] + [t for t in threads(server) if comm_t(server, t) == "olo-input"]
+    for pid in pids:
+        for t in threads(pid):
+            try:
+                os.sched_setaffinity(t, [kept] if (kept is not None and t in loop_threads) else others)
+            except OSError:
+                pass
+    if name:
+        ipc(name, {"type": "timings"})
+        ipc(name, {"type": "frames"})
+
+    procs = []
+    for _ in range(burners):
+        p = subprocess.Popen([sys.executable, "-I", "-c", BURN, str(seconds + 1)], preexec_fn=lambda: os.sched_setaffinity(0, others))
+        procs.append(p)
+    try:
+        time.sleep(1.0)
+        start = time.monotonic()
+        last = schedstat(server, server)
+        first = last
+        worst, over4 = 0, 0
+        samples = 0
+        while time.monotonic() - start < seconds:
+            time.sleep(0.05)
+            now = schedstat(server, server)
+            wait = now[1] - last[1]
+            worst = max(worst, wait)
+            over4 += wait > 4_000_000
+            samples += 1
+            last = now
+        total_wait = (last[1] - first[1]) / 1e6
+        total_run = (last[0] - first[0]) / 1e6
+    finally:
+        for p in procs:
+            p.kill()
+        for p in procs:
+            p.wait()
+    result = {
+        "seconds": seconds,
+        "loop_realtime": realtime(server),
+        "loop_cpus": sorted(os.sched_getaffinity(server)),
+        "burners": burners,
+        "loop_ran_ms": round(total_run, 1),
+        "loop_waited_ms": round(total_wait, 1),
+        "worst_50ms_wait_ms": round(worst / 1e6, 2),
+        "intervals_over_4ms": over4,
+        "intervals": samples,
+    }
+    if name:
+        t = ipc(name, {"type": "timings"}).get("timings", {})
+        result["heartbeat_latest_ms"] = round(t.get("latest_beat_us", 0) / 1000, 2)
+        result["slowest"] = t.get("slowest")
+        frames = ipc(name, {"type": "frames"})
+        result["frames"] = [{k: d.get(k) for k in ("output", "fps", "late_minute", "render_p50_us", "render_p95_us", "render_max_us")} for d in frames.get("frames", frames.get("displays", []))]
+    print(json.dumps(result, indent=1))
+
+
+def comm_t(pid, tid):
+    try:
+        with open(f"/proc/{pid}/task/{tid}/comm") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def realtime(tid):
+    try:
+        return os.sched_getscheduler(tid) & ~0x40000000 in (os.SCHED_FIFO, os.SCHED_RR)
+    except OSError:
+        return False
+
+
+if __name__ == "__main__":
+    main()

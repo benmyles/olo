@@ -130,7 +130,22 @@ impl LinuxCommon {
     }
 }
 
-/// asks the scheduler to take this thread as at least
+/// Register the calling thread (a window's looper, the display thread) with
+/// the realtime guard (`olo_app::realtime`): app_server makes it realtime
+/// at `priority` while this program has the keyboard, and the guard puts
+/// it back should it run 50 ms without sleeping. Not on an agent's screen,
+/// in a headless program, or with `OLO_REALTIME=0`.
+pub(crate) fn guard_ui_thread(priority: u32) {
+    if env::var("OLO_REALTIME").as_deref() == Ok("0") || env::var_os("OLO_SCREEN").is_some() || env::var_os("OLO_HEADLESS").is_some() {
+        return;
+    }
+    if let Err(e) = olo_app::realtime::register_self(priority) {
+        tracing::debug!("this thread can't be made realtime: {e}");
+    }
+}
+
+/// The calling thread (a window's looper, the display thread) asks the
+/// scheduler to take it as at least
 /// `olo_protocol::performance::UI_UTIL_MIN` busy while it runs (its
 /// uclamp.min; `OLO_UTIL_MIN` instead, 0 for none, to compare): a frame
 /// on a slow core at a low clock took three or four times as long. The

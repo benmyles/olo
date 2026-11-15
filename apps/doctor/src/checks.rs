@@ -660,6 +660,8 @@ pub fn scan(roots: &Roots) -> Report {
     voice_realtime(roots, &procs, &mut r);
     airpods_listening(roots, &procs, &mut r);
     util_clamp(roots, &mut r);
+    kept_core(roots, &mut r);
+    session_weight(roots, &mut r);
     let gpus = pci_devices(&roots.fs);
     idle_gpu(roots, &gpus, &mut r);
     gpu_stuck(roots, &gpus, &procs, &mut r);
@@ -1756,6 +1758,100 @@ fn util_clamp(roots: &Roots, r: &mut Report) {
         }),
         _ => r.fine.push(Fine { title: "Frames run on the fast cores".into(), detail: "app_server and every window can ask the scheduler for a fast core at a high clock while they draw.".into() }),
     }
+}
+
+/// Where every login session's scope gets its weight (Olo Doctor's).
+pub const SESSION_WEIGHT_CONF: &str = "etc/systemd/system/session-.scope.d/50-olo-weight.conf";
+
+/// The drop-in giving every login session's scope `weight`.
+fn session_weight_conf(weight: u64) -> String {
+    format!(
+        "# Olo: a login session (where Olo runs: app_server, every app, the terminal's jobs) weighs as much as the account's own manager,\n# which uresourced raises for whoever is at the computer (it's where GNOME's shell runs, and Olo's doesn't).\n[Scope]\nCPUWeight={weight}\nIOWeight={weight}\n"
+    )
+}
+
+/// The login session's weight beside the person's own manager's. The
+/// processor is shared out between sibling cgroups by weight before any
+/// nice counts: Fedora's uresourced raises the active user's manager
+/// (`user@UID.service`, where GNOME's shell runs) to 500, and Olo runs in
+/// logind's scope for the session, at 100. Whatever runs as a service of
+/// the person's (a browser's scope, a build service, a cache daemon)
+/// then had five times the share of the whole desktop under load, and no
+/// nice could reach it. The fix gives every session's scope the
+/// manager's weight, from now (this session's cgroup) and for every
+/// later login (a drop-in for `session-*.scope`).
+fn session_weight(roots: &Roots, r: &mut Report) {
+    let Some(scope) = roots.scope.as_deref() else { return };
+    let slice = roots.fs.join(format!("sys/fs/cgroup/user.slice/user-{}.slice", roots.uid));
+    let weight = |unit: &str, file: &str| read(&slice.join(unit).join(file)).and_then(|t| t.trim().parse::<u64>().ok());
+    let (Some(ours), Some(theirs)) = (weight(scope, "cpu.weight"), weight(&format!("user@{}.service", roots.uid), "cpu.weight")) else { return };
+    if ours >= theirs {
+        r.fine.push(Fine {
+            title: "The desktop's share of the processor is the account's services'".into(),
+            detail: format!("Olo's session weighs {ours} beside your own services' {theirs}: under load, a browser or a build run as a service can't take more of the processor than the desktop has."),
+        });
+        return;
+    }
+    let mut steps = vec![Step::WriteFile { path: PathBuf::from("/").join(SESSION_WEIGHT_CONF), content: session_weight_conf(theirs), mode: 0o644 }];
+    for file in ["cpu.weight", "io.weight"] {
+        if roots.fs.join(format!("sys/fs/cgroup/user.slice/user-{}.slice/{scope}/{file}", roots.uid)).exists() {
+            steps.push(Step::WriteSysfs {
+                path: PathBuf::from(format!("/sys/fs/cgroup/user.slice/user-{}.slice/{scope}/{file}", roots.uid)),
+                value: if file == "io.weight" { format!("default {theirs}") } else { theirs.to_string() },
+            });
+        }
+    }
+    r.findings.push(Finding {
+        id: "session-weight".into(),
+        severity: Severity::Problem,
+        title: "Your own services get five times the desktop's share of the processor".into(),
+        detail: format!(
+            "The processor is shared between groups of programs before any program's priority counts. uresourced gives your account's services (a browser started from the desktop, a build or cache service) a weight of {theirs}, made for desktops whose shell runs among them; Olo's session, where app_server, every app and the terminal's jobs run, has {ours}. Under load the desktop then gets {:.0}% of what those services get, and lowering a build's priority doesn't help. The fix gives login sessions the same weight, now and at every login.",
+            ours as f64 / theirs as f64 * 100.0
+        ),
+        fix: Some(Fix { label: "Give the Desktop Its Share".into(), root: true, steps }),
+    });
+}
+
+/// The kept core (`olo_system::cores`, `Settings::keep_core`, on by
+/// default): the person's programs are kept off it by app_server; the
+/// system's services by systemd's drop-in, root's (`kept_core`).
+fn kept_core(roots: &Roots, r: &mut Report) {
+    let cpus = roots.fs.join(olo_system::cores::CPU_DIR.trim_start_matches('/'));
+    let Some(kept) = olo_system::cores::kept_in(&cpus) else { return };
+    let online = olo_system::cores::online_in(&cpus);
+    let settings: olo_protocol::Settings = read(&roots.temp.config.join("olo/app_server.json")).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    let list = olo_system::cores::format_list(&kept);
+    let steps = crate::kept_core::steps(settings.keep_core, &kept, &online, &roots.fs);
+    if steps.is_empty() {
+        if settings.keep_core {
+            r.fine.push(Fine {
+                title: format!("Processor {list} is kept for the window server"),
+                detail: "Every key press and every frame go through app_server's loop and input thread, which have it to themselves: neither your programs nor the system's services run there.".into(),
+            });
+        }
+        return;
+    }
+    r.findings.push(if settings.keep_core {
+        Finding {
+            id: "kept-core".into(),
+            severity: Severity::Advice,
+            title: "The system's services can run on the window server's core".into(),
+            detail: format!(
+                "Processor {list} is kept for app_server's loop and input thread (Preferences ▸ Performance ▸ Scheduler), and your programs run on the others, but the system's (an update, an indexer, a service's build) can still run there. The fix keeps them off it too: systemd starts them on the other {} from now on, and those running now are moved.",
+                online.len() - kept.len()
+            ),
+            fix: Some(Fix { label: "Keep Them Off".into(), root: true, steps }),
+        }
+    } else {
+        Finding {
+            id: "kept-core".into(),
+            severity: Severity::Advice,
+            title: format!("The system's services are kept off processor {list}"),
+            detail: "No core is kept for the window server now (Preferences ▸ Performance ▸ Scheduler), but systemd still starts the system's services on the other processors. The fix lets them use every one.".into(),
+            fix: Some(Fix { label: "Let Them Back".into(), root: true, steps }),
+        }
+    });
 }
 
 /// A PCI device, as sysfs has it.

@@ -1845,7 +1845,8 @@ fn supervisor(app: &Activity, me: &Me, _: &Cx<Activity>) -> Vec<Element> {
         // Each wrapped: what it is, then what was done and why.
         let mut card = Card::new("lowered", "Lowered").caption("Background work, so the rest stays quick");
         for l in st.lowered.iter().take(SHOWN) {
-            card = card.child(para(format!("{} ({}): nice {} → {}, {} scheduling, {} I/O, as {}", l.name, l.pid, l.nice_before, l.nice, l.policy, l.io, l.why), ink.text));
+            let unit = l.unit.as_ref().map(|u| format!(", {u} idle")).unwrap_or_default();
+            card = card.child(para(format!("{} ({}): nice {} → {}, {} scheduling, {} I/O{unit}, as {}", l.name, l.pid, l.nice_before, l.nice, l.policy, l.io, l.why), ink.text));
         }
         let more = st.lowered.len().saturating_sub(SHOWN);
         if more > 0 {

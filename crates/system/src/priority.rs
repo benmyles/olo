@@ -30,37 +30,34 @@ pub fn high_priority(pid: u32, tid: u32, nice: i32) -> Result<()> {
 /// 200 ms, as PipeWire's own module does. The process must be the
 /// caller's user's.
 pub fn realtime(pid: u32, tid: u32, priority: u32) -> Result<()> {
-    let conn = crate::bus::system()?;
-    let most = conn
-        .call_method(Some(RTKIT), PATH, Some("org.freedesktop.DBus.Properties"), "Get", &(RTKIT, "MaxRealtimePriority"))
-        .ok()
-        .and_then(|r| r.body().deserialize::<zvariant::OwnedValue>().ok())
-        .and_then(|v| i32::try_from(v).ok())
-        .unwrap_or(20)
-        .max(1) as u32;
-    let limit = libc::rlimit { rlim_cur: 200_000, rlim_max: 200_000 };
-    // SAFETY: prlimit sets, and doesn't read back (null), a resource limit
-    // of a process of our own user: lowering a limit needs no privilege.
-    if unsafe { libc::prlimit(pid as libc::pid_t, libc::RLIMIT_RTTIME, &limit, std::ptr::null_mut()) } != 0 {
-        return Err(std::io::Error::last_os_error().into());
+    // (A process whose hard limit is low enough already keeps its own: an
+    // Olo program's guard, `olo_app::realtime`, has a lower soft one, where
+    // a thread that runs over is slowed, not ended.)
+    let mut now = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+    // SAFETY: prlimit only reads (null new limit) into `now`.
+    let read = unsafe { libc::prlimit(pid as libc::pid_t, libc::RLIMIT_RTTIME, std::ptr::null(), &mut now) } == 0;
+    if !read || now.rlim_max > 200_000 {
+        let limit = libc::rlimit { rlim_cur: 200_000, rlim_max: 200_000 };
+        // SAFETY: prlimit sets, and doesn't read back (null), a resource
+        // limit of a process of our own user: lowering a limit needs no
+        // privilege.
+        if unsafe { libc::prlimit(pid as libc::pid_t, libc::RLIMIT_RTTIME, &limit, std::ptr::null_mut()) } != 0 {
+            return Err(std::io::Error::last_os_error().into());
+        }
     }
-    conn.call_method(Some(RTKIT), PATH, Some(RTKIT), "MakeThreadRealtimeWithPID", &(pid as u64, tid as u64, priority.min(most)))?;
-    Ok(())
+    make_realtime(pid, tid, priority)
 }
 
-/// Whether thread `tid` runs realtime (SCHED_FIFO or SCHED_RR).
-pub fn is_realtime(tid: u32) -> bool {
-    // SAFETY: sched_getscheduler only reads.
-    realtime_policy(unsafe { libc::sched_getscheduler(tid as libc::pid_t) })
+/// Thread `tid` of `pid` made realtime through rtkit, the process's
+/// RLIMIT_RTTIME as it is (rtkit refuses one without a hard limit at most
+/// its `RTTimeUSecMax`, 200 ms: the caller has set it). Priority at most
+/// rtkit's `MaxRealtimePriority`. (`olo_xdg::realtime`'s, where the kit's
+/// programs reach it.)
+pub fn make_realtime(pid: u32, tid: u32, priority: u32) -> Result<()> {
+    olo_xdg::realtime::make_realtime(pid, tid, priority).map_err(zbus::Error::Failure)
 }
 
-/// Whether `sched_getscheduler`'s answer is a realtime policy. rtkit
-/// gives SCHED_RR with SCHED_RESET_ON_FORK, which comes back OR'd into
-/// the policy (0x40000002): read as it was, every thread rtkit made
-/// realtime (PipeWire's, the voice services') looked not to be.
-fn realtime_policy(policy: libc::c_int) -> bool {
-    policy >= 0 && matches!(policy & !libc::SCHED_RESET_ON_FORK, libc::SCHED_FIFO | libc::SCHED_RR)
-}
+pub use olo_xdg::realtime::is_realtime;
 
 /// The lowest nice rtkit gives (−15 by default), or None without it.
 pub fn min_nice() -> Option<i32> {
@@ -191,15 +188,6 @@ mod tests {
         assert!((-20..=19).contains(&n));
         // Already there (or below): nothing asked of rtkit.
         assert_eq!(raise_thread(me, me, n), Ok(n));
-    }
-
-    #[test]
-    fn rtkits_reset_on_fork_is_still_realtime() {
-        assert!(realtime_policy(libc::SCHED_RR | libc::SCHED_RESET_ON_FORK));
-        assert!(realtime_policy(libc::SCHED_FIFO));
-        assert!(!realtime_policy(libc::SCHED_OTHER | libc::SCHED_RESET_ON_FORK));
-        assert!(!realtime_policy(libc::SCHED_IDLE));
-        assert!(!realtime_policy(-1));
     }
 
     /// Through the system's rtkit, on a thread of this test's own.

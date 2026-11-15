@@ -372,6 +372,12 @@ fn round(shared: &Shared, description: &str, quit: Quit, got: Rc<RefCell<Got>>, 
     let made = (|| -> Result<_, String> {
         let mainloop = pw::main_loop::MainLoopRc::new(None).map_err(|e| e.to_string())?;
         let context = pw::context::ContextRc::new(&mainloop, None).map_err(|e| e.to_string())?;
+        // The capture's `process` runs on this loop (not PipeWire's
+        // realtime data loop): realtime, guarded, so others' builds don't
+        // make it miss a period and drop sound. After the context, whose
+        // realtime module sets the process's limits its own way (the
+        // guard sets them back).
+        olo_xdg::realtime::promote_if_wanted(olo_xdg::realtime::SOUND_PRIORITY, "AirPlay's sound");
         let core = context.connect_rc(None).map_err(|e| format!("can't reach PipeWire: {e}"))?;
         Ok((mainloop, context, core))
     })();

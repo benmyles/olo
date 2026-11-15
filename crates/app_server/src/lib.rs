@@ -52,6 +52,7 @@ pub mod plymouth;
 pub mod power;
 pub mod power_button;
 pub mod private;
+pub mod realtime;
 pub mod rescue;
 pub mod saver;
 pub mod screenshot;

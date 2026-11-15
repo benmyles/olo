@@ -1648,6 +1648,11 @@ pub struct Settings {
     /// Scheduler; `OLO_INPUT_THREAD` 1 or 0 overrides it). Off while it's
     /// tried.
     pub input_thread: bool,
+    /// A processor core kept for app_server's loop and input thread,
+    /// none of the person's other programs (nor, with Olo Doctor's part,
+    /// the system's services) running there (`olo_system::cores`;
+    /// Preferences ▸ Performance ▸ Scheduler). On by default.
+    pub keep_core: bool,
     pub terminal: TerminalSettings,
     pub security: SecuritySettings,
     pub ai: AiSettings,
@@ -2609,6 +2614,7 @@ impl Default for Settings {
             startup_sound: true,
             startup_chime: StartupChime::default(),
             input_thread: false,
+            keep_core: true,
             terminal: TerminalSettings::default(),
             security: SecuritySettings::default(),
             ai: AiSettings::default(),

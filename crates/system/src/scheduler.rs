@@ -1,6 +1,6 @@
 //! Which scheduler the computer runs under, as anyone may read it: the
 //! kernel's own, or one loaded over it (sched_ext, Linux 6.12 and
-//! later). Olo's is `scx_lavd` (sched-ext/scx, GPL-2.0: the
+//! later). Olo carries `scx_lavd` (sched-ext/scx, GPL-2.0: the
 //! Latency-criticality Aware Virtual Deadline scheduler), run by a
 //! service of the system's (`olo-scheduler.service`); chosen means that
 //! service starts with the computer. The kernel says what is loaded
@@ -40,16 +40,18 @@ impl Choice {
 
     pub fn label(self) -> &'static str {
         match self {
-            Choice::Kernel => "The kernel's own",
-            Choice::Lavd => "LAVD (recommended)",
+            Choice::Kernel => "The kernel's own (recommended)",
+            Choice::Lavd => "LAVD",
         }
     }
 
     pub fn about(self) -> &'static str {
         match self {
-            Choice::Kernel => "Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing.",
+            Choice::Kernel => {
+                "Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one."
+            }
             Choice::Lavd => {
-                "scx_lavd, made for a computer someone is sitting at: what is being waited for (the window typed in, a frame about to be drawn, sound) runs first, with builds and other long work around it. It is loaded over the kernel's own, which takes over again by itself if LAVD ever stops."
+                "scx_lavd, made for a computer someone is sitting at: what it judges is being waited for runs first, with builds and other long work around it. It gives a program's priority little weight, and under heavy work the window server waited for the processor three times as long as with the kernel's own. It is loaded over the kernel's own, which takes over again by itself if LAVD ever stops."
             }
         }
     }

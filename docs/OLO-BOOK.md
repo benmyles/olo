@@ -330,6 +330,26 @@ Three kinds of thread, then, and what may run on each:
 | The display thread | the kit only: input in, frames out, scrolling | your code, ever |
 | Workers (`cx.work`, `pool`) | everything slow | touching a view (send it a message) |
 
+While a program has the keyboard, app_server makes its windows' loopers
+and its display thread **realtime**: they run before anything else that
+wants the processor, whatever else is running (HACKING, "Realtime
+threads and the kept core"). The kit registers them with a guard as they
+start, so that's safe: one that runs 50 ms without sleeping is put back
+to its nice at once and stays there until the window next gets the
+keyboard. It's one more reason the window's looper never does slow
+work: what runs there runs ahead of the person's other programs, and
+past 50 ms it loses that. A thread of your own that someone listens to
+(one feeding sound to the sound server a buffer at a time) asks for it
+itself, as it starts its steady work:
+
+```rust
+olo_xdg::realtime::promote_if_wanted(olo_xdg::realtime::SOUND_PRIORITY, "my player's sound");
+```
+
+Only for a thread that wakes, does a little and sleeps again; never for
+one that decodes a whole file or waits on a lock a worker holds. Not on
+an agent's screen, and logged (not an error) where rtkit says no.
+
 ### Views
 
 ```rust

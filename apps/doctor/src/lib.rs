@@ -10,6 +10,7 @@ pub mod fans;
 pub mod fix;
 pub mod helper;
 pub mod ignored;
+pub mod kept_core;
 pub mod login_screen;
 pub mod notify;
 pub mod releases;

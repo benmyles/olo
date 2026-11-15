@@ -8,7 +8,7 @@ license.workspace = true
 [features]
 # The views drawn with olo-kit (the Viewer's and Quick Look's), and
 # video decoded on GPUs for them (olo-video's NVDEC, olo-vaapi's VA-API).
-kit = ["gpu", "dep:olo-kit", "dep:smallvec", "dep:olo-xdg"]
+kit = ["gpu", "dep:olo-kit", "dep:smallvec"]
 # Pictures as planes for a window's GPU (`olo_yuv`), and video decoded
 # on GPUs for them: what the views turn on.
 gpu = ["dep:olo-yuv", "dep:olo-video", "dep:olo-vaapi"]
@@ -21,7 +21,7 @@ olo-crash.workspace = true
 olo-sync.workspace = true
 olo-kit = { workspace = true, optional = true }
 smallvec = { version = "1.6", optional = true }
-olo-xdg = { workspace = true, optional = true }
+olo-xdg.workspace = true
 olo-kit-base.workspace = true
 olo-images.workspace = true
 olo-color.workspace = true

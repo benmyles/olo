@@ -2082,6 +2082,9 @@ impl<B: Backend + 'static> AnvilState<B> {
         if settings.security.passwords.op_cli != self.settings.security.passwords.op_cli {
             olo_xdg::link_op_here(settings.security.passwords.op_cli);
         }
+        if settings.keep_core != self.settings.keep_core {
+            crate::realtime::keep_core(settings.keep_core);
+        }
         // Fields app_server owns are recomputed, not taken from the client.
         settings.appearance.effective_theme = self.settings.appearance.effective_theme;
         settings.appearance.night_light_active = self.settings.appearance.night_light_active;
