@@ -17,6 +17,7 @@ pub mod cores;
 pub mod cpu_tuning;
 pub mod dconf;
 pub mod disks;
+pub mod dnf;
 pub mod edid;
 pub mod env;
 pub mod face;
