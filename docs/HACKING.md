@@ -18296,7 +18296,19 @@ rows), Copy Name. Edit ▸ Copy copies the selected updates as "name
 old → new".
 
 **The review** (review.rs, its own window and session): a plan (what
-to mark) is resolved first and shown: the summary ("This will update 7
+to mark) is resolved first and shown. Updates are asked for as dnf
+names what's installed (`Update::upgrade_spec`: `name.arch` when the
+new build's architecture is the same, else the name alone), and an
+update is paired with the installed build of its name in another
+architecture when it moves between noarch and one (Ben, 2026-11-15:
+"Update 517 packages" said "Nothing to do." and "Packages for argument
+'python3-wcwidth.x86_64' available, but installed for a different
+architecture": asked by the new build's name.arch, dnf refused it, and
+one refused argument empties a whole transaction). Whatever dnf still
+refuses (`dnf::refused_arguments`, from its problems) is left out and
+it's resolved again without it, a few times at most, saying what was
+left out and why ("Left out, as dnf wouldn't take it: …"); refused
+all, dnf's problem shows. Then the summary ("This will update 7
 packages, install 3 packages and remove 2 packages. It downloads 159.1
 MB and takes 63.0 MB more disk space."), every item (action, package,
 old → new version, each replaced version paired once with its new one,

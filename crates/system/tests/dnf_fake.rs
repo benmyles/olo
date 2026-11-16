@@ -43,7 +43,7 @@ fn against_the_fake() {
     // What it reads.
     let s = open();
     let u = s.updates().unwrap();
-    assert_eq!(u.updates.len(), 20, "{:?}", u.updates.iter().map(|x| &x.new.name).collect::<Vec<_>>());
+    assert_eq!(u.updates.len(), 21, "{:?}", u.updates.iter().map(|x| &x.new.name).collect::<Vec<_>>());
     let security = u.updates.iter().filter(|x| x.kind(&u.advisories) == "security").count();
     assert_eq!(security, 9);
     let firefox = u.updates.iter().find(|x| x.new.name == "firefox").unwrap();
@@ -82,7 +82,7 @@ fn against_the_fake() {
     drop(s);
     let s = open();
     let u = s.updates().unwrap();
-    assert_eq!(u.updates.len(), 18, "firefox and nss done");
+    assert_eq!(u.updates.len(), 19, "firefox and nss done");
     assert_eq!(s.history(1).unwrap()[0].comment, "Updated Firefox");
 
     // Cancelled while it downloads: nothing done.
@@ -143,6 +143,27 @@ fn against_the_fake() {
     s.downgrade(&["expat-2.8.3-1.fc45".into()]).unwrap();
     let r = s.resolve(false).unwrap();
     assert!(r.items.iter().any(|i| i.action == "Downgrade" && i.package.evr == "2.8.3-1.fc45"), "{:?}", r.items);
+
+    // A package moving architecture (noarch to x86_64; Ben's, 2026-11-15):
+    // asked for by its new build's name.arch, dnf refuses it, and with it
+    // everything asked for together; asked for as installed
+    // (`Update::upgrade_spec`), it's an update like any.
+    let u = s.updates().unwrap();
+    let w = u.updates.iter().find(|x| x.new.name == "python3-wcwidth").expect("offered");
+    let other = u.updates.iter().find(|x| x.new.name == "rust").expect("rust");
+    assert_eq!((w.installed.arch.as_str(), w.new.arch.as_str()), ("noarch", "x86_64"));
+    s.reset().unwrap();
+    s.upgrade(&[w.new.key(), other.new.key()]).unwrap();
+    let r = s.resolve(false).unwrap();
+    assert!(!r.ok() && r.items.is_empty() && r.problems.iter().any(|p| p.contains("different architecture")), "{:?}", r.problems);
+    assert_eq!(dnf::refused_arguments(&r.problems).first().map(|(a, _)| a.as_str()), Some("python3-wcwidth.x86_64"));
+    s.reset().unwrap();
+    s.upgrade(&[w.upgrade_spec(), other.upgrade_spec()]).unwrap();
+    let r = s.resolve(false).unwrap();
+    assert!(r.ok(), "{:?}", r.problems);
+    assert!(r.items.iter().any(|i| i.action == "Upgrade" && i.package.name == "python3-wcwidth" && i.package.arch == "x86_64"), "{:?}", r.items);
+    assert!(r.items.iter().any(|i| i.action == "Replaced" && i.package.name == "python3-wcwidth" && i.package.arch == "noarch"));
+    assert!(r.items.iter().any(|i| i.action == "Upgrade" && i.package.name == "rust"));
 
     // Nothing by that name.
     s.reset().unwrap();

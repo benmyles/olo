@@ -280,6 +280,13 @@ fn sample() -> Model {
             pkg("akmod-nvidia", "3:620.70.06-1.fc45", "x86_64", "rpmfusion-nonfree-updates", "Akmod package for nvidia kernel module(s)", 46, 101),
         ),
         (pkg("olo-tools", "0.9.0-1.fc45", "noarch", "copr:olo", "Olo's command-line tools", 120, 400), pkg("olo-tools", "0.9.1-1.fc45", "noarch", "copr:olo", "Olo's command-line tools", 121, 402)),
+        // Moving between noarch and an architecture (Ben's, 2026-11-15:
+        // asked for by the new build's name.arch, dnf refused it, and with
+        // it all 517 updates).
+        (
+            pkg("python3-wcwidth", "0.2.13-5.fc45", "noarch", "fedora", "Measures the width of unicode strings in a terminal", 60, 200),
+            pkg("python3-wcwidth", "0.2.14-1.fc45", "x86_64", "updates", "Measures the width of unicode strings in a terminal", 62, 210),
+        ),
     ];
     let mut installed = Vec::new();
     let mut available = Vec::new();
@@ -548,6 +555,11 @@ impl Model {
     fn newest(&self, key: &str) -> Option<&Pkg> {
         self.available.iter().filter(|p| p.key() == key && self.enabled(&p.repo)).max_by(|a, b| a.built.cmp(&b.built).then(a.evr().cmp(&b.evr())))
     }
+    /// The newest build of `p` in another architecture, one of the two
+    /// noarch: dnf's update of it.
+    fn moved(&self, p: &Pkg) -> Option<&Pkg> {
+        self.available.iter().filter(|a| a.name == p.name && a.arch != p.arch && (a.arch == "noarch" || p.arch == "noarch") && self.enabled(&a.repo)).max_by_key(|a| a.built)
+    }
     /// Installed packages with something newer.
     fn upgradable(&self) -> Vec<(&Pkg, &Pkg)> {
         let mut seen = HashSet::new();
@@ -562,6 +574,11 @@ impl Model {
             {
                 let old = self.installed.iter().find(|q| q.key() == p.key() && q.evr() == newest_installed.evr()).unwrap_or(p);
                 out.push((old, n));
+            } else if let Some(n) = self.moved(p)
+                && n.built > newest_installed.built
+            {
+                // (As dnf: noarch to an architecture, or back, is an update.)
+                out.push((p, n));
             }
         }
         out
@@ -898,6 +915,12 @@ fn resolve(m: &Model, release: &str, goal: &[(String, Vec<String>)]) -> (Vec<Ite
                 add(&mut items, "Install", "User", &p);
                 continue;
             }
+            // An update moving architecture asked for by its new build's
+            // name.arch: refused, as dnf5 does.
+            if op == "upgrade" && m.upgradable().iter().any(|(o, n)| o.arch != n.arch && *spec == n.key()) {
+                problems.push(format!("Packages for argument '{spec}' available, but installed for a different architecture."));
+                continue;
+            }
             let found: Vec<&Pkg> = match op.as_str() {
                 "remove" => m.installed.iter().filter(|p| p.matches(spec)).collect(),
                 "downgrade" | "install" | "reinstall" => m.available.iter().filter(|p| m.enabled(&p.repo) && p.matches(spec)).collect(),
@@ -911,7 +934,11 @@ fn resolve(m: &Model, release: &str, goal: &[(String, Vec<String>)]) -> (Vec<Ite
                 continue;
             }
             for p in found {
-                let installed: Vec<&Pkg> = m.installed_of(&p.key());
+                let mut installed: Vec<&Pkg> = m.installed_of(&p.key());
+                // (Its build in the other architecture, for one moving.)
+                if installed.is_empty() && op == "upgrade" {
+                    installed = m.installed.iter().filter(|q| q.name == p.name).collect();
+                }
                 match op.as_str() {
                     "remove" => add(&mut items, "Remove", "User", p),
                     "reinstall" => add(&mut items, "Reinstall", "User", p),
@@ -963,6 +990,11 @@ fn resolve(m: &Model, release: &str, goal: &[(String, Vec<String>)]) -> (Vec<Ite
                 }
             }
         }
+    }
+    // An argument it can't take leaves nothing to do, as dnf5's (strict:
+    // skip_unavailable off) does.
+    if !problems.is_empty() {
+        items.clear();
     }
     (items, problems)
 }

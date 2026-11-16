@@ -266,7 +266,17 @@ impl State {
             (_, [one]) => format!("Update {one}"),
             _ => format!("Update {}", words::count(keys.len(), "package", "packages")),
         };
-        review::open(Plan { title: what.clone(), ops: vec![(op, keys)], release: None, offline_only: false, comment: what }, cx.messenger());
+        // Asked for as dnf names what's installed (an update's new build
+        // may be another architecture: `Update::upgrade_spec`).
+        let specs: Vec<String> = keys
+            .iter()
+            .map(|k| match (op, updates.updates.iter().find(|u| u.new.key() == *k)) {
+                (Op::Upgrade, Some(u)) => u.upgrade_spec(),
+                (Op::Reinstall, Some(u)) => u.installed.key(),
+                _ => k.clone(),
+            })
+            .collect();
+        review::open(Plan { title: what.clone(), ops: vec![(op, specs)], release: None, offline_only: false, comment: what }, cx.messenger());
     }
 }
 

@@ -1904,7 +1904,10 @@ something nobody here has is in "Blocked", with what it waits for.
   resolve without it and say which was left out and why, in the
   review's words, not dnf's. A test against `dnf-fake` with a package
   installed noarch and offered x86_64 (and the other way), and the
-  whole system's update with one such among many.
+  whole system's update with one such among many. Done (HACKING
+  "The review"): `Update::upgrade_spec`, updates paired by name across
+  architectures, `refused_arguments` left out and said; dnf-fake offers
+  python3-wcwidth noarch to x86_64 and refuses as dnf5 does.
 - **Weather: a native app, every detail, with an assistant** (Ben,
   2026-11-14: "create an olo weather native app that has configurable
   data providers and comes with for now tomorrow.io as the provider.

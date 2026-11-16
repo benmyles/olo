@@ -94,7 +94,9 @@ struct Run {
 
 #[derive(Clone)]
 pub enum Msg {
-    Resolved(Result<(Arc<Session>, Arc<Resolved>), String>),
+    /// The session, what it comes to, and what dnf wouldn't take (each
+    /// argument and why), left out.
+    Resolved(Result<(Arc<Session>, Arc<Resolved>, Vec<(String, String)>), String>),
     Event(Box<Event>),
     Ran(Result<(), String>),
     Go(bool),
@@ -114,13 +116,15 @@ pub struct Review {
     rows: Rc<Vec<[String; 6]>>,
     log_scroll: ScrollHandle,
     restart: bool,
+    /// What dnf wouldn't take, left out: each argument and why.
+    left_out: Vec<(String, String)>,
 }
 
 impl Review {
     fn new(plan: Plan, to_main: Messenger<AppMsg>, cx: &mut Cx<Self>) -> Review {
         let p = plan.clone();
-        cx.work(move || resolve(&p), |r| Msg::Resolved(r.map(|(s, r)| (s, Arc::new(r)))));
-        Review { plan, to_main, session: None, stage: Stage::Resolving, list: ListModel::new(true), rows: Rc::default(), log_scroll: ScrollHandle::new(), restart: false }
+        cx.work(move || resolve(&p), |r| Msg::Resolved(r.map(|(s, r, left)| (s, Arc::new(r), left))));
+        Review { plan, to_main, session: None, stage: Stage::Resolving, list: ListModel::new(true), rows: Rc::default(), log_scroll: ScrollHandle::new(), restart: false, left_out: Vec::new() }
     }
 
     fn rows_of(r: &Resolved) -> Vec<[String; 6]> {
@@ -141,9 +145,17 @@ impl Review {
             .into_iter()
             .map(|i| {
                 let p = &i.package;
-                let candidates: Vec<usize> =
-                    (0..r.items.len()).filter(|&k| !used[k] && r.items[k].action == "Replaced" && r.items[k].package.name == p.name && r.items[k].package.arch == p.arch).collect();
-                let pick = candidates.iter().copied().find(|&k| r.items[k].package.version == p.version).or(candidates.first().copied());
+                // (Its own architecture's first; then one it moves from or to,
+                // noarch and an architecture: python3-wcwidth.)
+                let same = |k: usize| r.items[k].package.arch == p.arch;
+                let candidates: Vec<usize> = (0..r.items.len())
+                    .filter(|&k| {
+                        let q = &r.items[k].package;
+                        !used[k] && r.items[k].action == "Replaced" && q.name == p.name && (q.arch == p.arch || q.arch == "noarch" || p.arch == "noarch")
+                    })
+                    .collect();
+                let pick =
+                    candidates.iter().copied().find(|&k| same(k) && r.items[k].package.version == p.version).or_else(|| candidates.iter().copied().find(|&k| same(k))).or(candidates.first().copied());
                 let old = pick.map(|k| {
                     used[k] = true;
                     r.items[k].package.evr.clone()
@@ -327,8 +339,41 @@ impl Review {
     }
 }
 
-/// Mark the plan in a new session and resolve it.
-fn resolve(plan: &Plan) -> Result<(Arc<Session>, Resolved), String> {
+/// Mark the plan in a new session and resolve it. An argument dnf won't
+/// take (one refused empties the whole transaction: "Update 517
+/// packages", nothing to do) is left out and it's resolved again without
+/// it, a few times at most: what it comes to, and what was left out and
+/// why.
+#[allow(clippy::type_complexity)]
+fn resolve(plan: &Plan) -> Result<(Arc<Session>, Resolved, Vec<(String, String)>), String> {
+    resolve_leaving_out(plan, resolve_once)
+}
+
+/// [`resolve`], each try by `once`.
+#[allow(clippy::type_complexity)]
+fn resolve_leaving_out<S>(plan: &Plan, once: impl Fn(&Plan) -> Result<(S, Resolved), String>) -> Result<(S, Resolved, Vec<(String, String)>), String> {
+    let resolve_once = once;
+    let mut plan = plan.clone();
+    let mut left_out: Vec<(String, String)> = Vec::new();
+    for _ in 0..3 {
+        let (s, r) = resolve_once(&plan)?;
+        let refused: Vec<(String, String)> = if r.ok() { Vec::new() } else { dnf::refused_arguments(&r.problems) };
+        // Only what was asked for (a problem naming another isn't ours to drop).
+        let ours: Vec<(String, String)> = refused.into_iter().filter(|(a, _)| plan.ops.iter().any(|(_, specs)| specs.contains(a))).collect();
+        let rest: usize = plan.ops.iter().map(|(_, specs)| specs.iter().filter(|x| !ours.iter().any(|(a, _)| a == *x)).count()).sum();
+        if ours.is_empty() || rest == 0 {
+            return Ok((s, r, left_out));
+        }
+        for (_, specs) in &mut plan.ops {
+            specs.retain(|x| !ours.iter().any(|(a, _)| a == x));
+        }
+        left_out.extend(ours);
+    }
+    let (s, r) = resolve_once(&plan)?;
+    Ok((s, r, left_out))
+}
+
+fn resolve_once(plan: &Plan) -> Result<(Arc<Session>, Resolved), String> {
     let text = |e: olo_system::Error| dnf::error_text(&e);
     let s = Session::open(&Open { release: plan.release.clone(), changelogs: false, ..Default::default() }).map_err(text)?;
     if plan.release.is_some() {
@@ -354,7 +399,8 @@ impl View for Review {
 
     fn message(&mut self, message: Msg, cx: &mut Cx<Self>) {
         match message {
-            Msg::Resolved(Ok((session, r))) => {
+            Msg::Resolved(Ok((session, r, left_out))) => {
+                self.left_out = left_out;
                 self.session = Some(session);
                 self.rows = Rc::new(Self::rows_of(&r));
                 self.stage = Stage::Resolved(Arc::try_unwrap(r).unwrap_or_else(|r| (*r).clone()));
@@ -466,6 +512,13 @@ impl View for Review {
             }
             Stage::Resolved(r) => {
                 col = col.child(title(self.plan.title.clone())).child(StringView::new(Self::summary(r)).wrap(true));
+                // What dnf wouldn't take, left out so the rest goes ahead.
+                if !self.left_out.is_empty() {
+                    let names: Vec<&str> = self.left_out.iter().map(|(a, _)| a.as_str()).collect();
+                    let why: Vec<&str> = self.left_out.iter().map(|(_, w)| w.as_str()).collect();
+                    let said = format!("Left out, as dnf wouldn’t take {}: {}. ({})", if names.len() == 1 { "it" } else { "them" }, names.join(", "), why.join(" "));
+                    col = col.child(StringView::new(said).dim(true).wrap(true));
+                }
                 if !r.problems.is_empty() {
                     let color = if r.ok() { p.panel_text } else { p.failure };
                     col = col.child(StringView::new(r.problems.join("\n")).wrap(true).color(style::c(color)));
@@ -538,5 +591,35 @@ impl View for Review {
             }
         }
         col.into_element()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// dnf refusing one argument (a whole transaction empty, as \"Update
+    /// 517 packages\" was): resolved again without it, and it's said.
+    #[test]
+    fn what_dnf_refuses_is_left_out_and_the_rest_goes_ahead() {
+        let plan = Plan { title: "Update 3 packages".into(), ops: vec![(Op::Upgrade, vec!["a".into(), "b.x86_64".into(), "c".into()])], release: None, offline_only: false, comment: String::new() };
+        let once = |p: &Plan| -> Result<((), Resolved), String> {
+            let specs = &p.ops[0].1;
+            Ok((
+                (),
+                if specs.iter().any(|s| s == "b.x86_64") {
+                    Resolved { items: Vec::new(), result: 2, problems: vec!["Packages for argument 'b.x86_64' available, but installed for a different architecture.".into()] }
+                } else {
+                    Resolved { items: Vec::new(), result: 0, problems: Vec::new() }
+                },
+            ))
+        };
+        let ((), r, left) = resolve_leaving_out(&plan, once).unwrap();
+        assert!(r.ok());
+        assert_eq!(left.iter().map(|(a, _)| a.as_str()).collect::<Vec<_>>(), ["b.x86_64"]);
+        // Everything refused: nothing left to leave out from, said as dnf said it.
+        let all = Plan { ops: vec![(Op::Upgrade, vec!["b.x86_64".into()])], ..plan.clone() };
+        let ((), r, left) = resolve_leaving_out(&all, once).unwrap();
+        assert!(!r.ok() && left.is_empty());
     }
 }

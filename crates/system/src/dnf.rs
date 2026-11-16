@@ -276,6 +276,17 @@ pub struct Update {
 }
 
 impl Update {
+    /// How to ask dnf to upgrade it (Ben, 2026-11-15: one refused
+    /// argument left "Update 517 packages" with nothing to do): as
+    /// `dnf upgrade` takes what's installed, its `name.arch` when the new
+    /// build's is the same, else its name alone. A package moving between
+    /// `noarch` and an architecture (python3-wcwidth) is refused by the new
+    /// build's: "Packages for argument 'python3-wcwidth.x86_64' available,
+    /// but installed for a different architecture."
+    pub fn upgrade_spec(&self) -> String {
+        if self.installed.arch == self.new.arch { self.new.key() } else { self.new.name.clone() }
+    }
+
     /// The most pressing kind among its advisories: "security", then
     /// "bugfix", "enhancement", "newpackage"; "" with none.
     pub fn kind<'a>(&self, advisories: &'a HashMap<String, Advisory>) -> &'a str {
@@ -744,7 +755,11 @@ impl Session {
                 let mut ids = by_package.remove(&k).unwrap_or_default();
                 ids.sort_by_key(|id| (advisories.get(id).map(|a| (a.kind != "security", severity(&a.severity))).unwrap_or((true, 5)), id.clone()));
                 ids.dedup();
-                Update { installed: installed.get(&k).cloned().unwrap_or_default(), new: n, advisories: ids }
+                // What it updates: the installed build of its name.arch, else
+                // of its name in another architecture (one moving between
+                // noarch and an architecture, as python3-wcwidth did).
+                let was = installed.get(&k).or_else(|| installed.values().filter(|q| q.name == n.name).max_by_key(|q| q.buildtime)).cloned().unwrap_or_default();
+                Update { installed: was, new: n, advisories: ids }
             })
             .collect();
         updates.sort_by(|a, b| a.new.name.cmp(&b.new.name).then(a.new.arch.cmp(&b.new.arch)));
@@ -1196,5 +1211,50 @@ mod live {
                 println!("  {} {} {} {}", i.action, i.reason, i.package.nevra, i.package.download_size);
             }
         }
+    }
+}
+
+/// The arguments dnf refused, in its problems, each with the problem:
+/// "Packages for argument 'X' available, but …", "No match for argument:
+/// X", "Argument 'X' matches only …".
+pub fn refused_arguments(problems: &[String]) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    for problem in problems {
+        for line in problem.lines() {
+            let quoted = ["argument '", "Argument '"].iter().find_map(|m| line.find(m).map(|at| &line[at + m.len()..])).and_then(|rest| rest.split_once('\'').map(|(a, _)| a));
+            let after = line.find("argument: ").map(|at| line[at + "argument: ".len()..].split_whitespace().next().unwrap_or("").trim_end_matches(['.', ','])).filter(|a| !a.is_empty());
+            if let Some(arg) = quoted.or(after)
+                && !out.iter().any(|(a, _)| a == arg)
+            {
+                out.push((arg.to_owned(), line.trim().to_owned()));
+            }
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod refused_tests {
+    use super::*;
+
+    #[test]
+    fn refused_arguments_are_read_from_problems() {
+        let problems = vec![
+            "Packages for argument 'python3-wcwidth.x86_64' available, but installed for a different architecture.".to_owned(),
+            "No match for argument: no-such-package".to_owned(),
+            "Problem 1: something else entirely".to_owned(),
+        ];
+        let r = refused_arguments(&problems);
+        assert_eq!(r.iter().map(|(a, _)| a.as_str()).collect::<Vec<_>>(), ["python3-wcwidth.x86_64", "no-such-package"]);
+        assert!(r[0].1.contains("different architecture"));
+    }
+
+    #[test]
+    fn an_update_is_asked_for_as_installed() {
+        let p = |arch: &str| Package { name: "python3-wcwidth".into(), arch: arch.into(), ..Package::default() };
+        let u = |a: &str, b: &str| Update { installed: p(a), new: p(b), advisories: Vec::new() };
+        assert_eq!(u("x86_64", "x86_64").upgrade_spec(), "python3-wcwidth.x86_64");
+        assert_eq!(u("noarch", "x86_64").upgrade_spec(), "python3-wcwidth", "moving architecture: by name");
+        assert_eq!(u("x86_64", "noarch").upgrade_spec(), "python3-wcwidth");
     }
 }

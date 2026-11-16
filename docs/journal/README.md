@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### OS Updates: a package changing architecture no longer empties the update
+
+*17:46* — Updating everything chosen used to come to "Nothing to do" when one package's update moved between noarch and an architecture (python3-wcwidth): it was asked for by the new build's name and architecture, which dnf refuses, and one refused argument empties a whole transaction. Each update is now asked for as dnf names what's installed, and anything dnf still refuses is left out with a line saying so, so the rest goes ahead (here against the stand-in daemon, light, 2x).
+
+![OS Updates: a package changing architecture no longer empties the update](2026-11-15/174630-os-updates-a-package-changing-architecture-no-lo.png)
+
 ### Weather: places in your own order
 
 *17:29* — Places are dragged into the order you want (the kit's Sidebar::on_reorder: a line shows where the row will go among its section's rows), or moved with Move Up and Move Down on a place's menu; the place shown stays shown. Every place's sky and temperature now stay up to date by themselves, each fetched as its forecast gets old, without clicking it (light, 2x).
