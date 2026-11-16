@@ -6986,6 +6986,31 @@ its commit moved on only as it changes). The same keys again take it
 back; on another tile, it moves there. A tile too small for the window
 beside it may still be rearranged by least sizes (`autofit`), as any.
 
+Scrolling (`auto_apply_scrolling`, `scrolling_frames`): the windows,
+in order, are columns side by side in a strip, each its own width (a
+fraction of the display's room, half by default: `AutoTiler::widths`;
+at least what it needs), as tall as the room, the gap between them. The
+strip is scrolled (`AutoTiler::scroll`, points, each tree its own) as
+little as brings the window that had the focus last wholly into view,
+never centring, never past the strip's ends; it scrolls as the focus
+moves (`note_recent` marks the tiler), so focus by direction or in
+order walks the strip. Column Width (⌃⌥⌘W) takes the focused column
+round a third, a half, two thirds and all of the display (niri's
+presets); Resize by direction left and right make it a step narrower or
+wider. A new window goes beside the active one (the setting's "first"
+means that here: there's no main window), "last" at the strip's end.
+Columns scrolled past the display's edges aren't laid out again by
+least sizes (`autofit`) and are kept to their display
+(`WindowMeta::confined`: `window_output` says that display wherever
+most of the window lies; `render` draws it there alone, cut at the
+edge; `window_under`, which input, hints and drops use instead of
+`Space::element_under`, finds it at points on that display only;
+`keep_in_tile_area` and `keep_on_screen` leave it where Scrolling put
+it, which pulled a column past the edge back onto whichever display
+its middle was over). Its part says where it is in the strip: left of
+0 or past 1 for one out of view. A window moved to another display,
+or a tree no longer Scrolling, frees its windows (`auto_unconfine`).
+
 In the layout's order, as dwm, xmonad and Amethyst move (`in_order_step`,
 `windows_in_order`: Main and Stack's main windows then its stack, each
 layout's own): Focus the Next / Previous Tile (⌃⌥⌘N, ⌃⌥⌘P, round),
@@ -7070,7 +7095,9 @@ must be just as good as them"), Columns and Rows (Amethyst's), Grid
 (xmonad's: the square root of how many columns, rounded up, one more
 for each further width on a display over twice as wide as tall) and
 Spiral (awesome's and bspwm's: each takes half of the room left, going
-round). Those four are built in their shape from the tiles in order
+round), and Scrolling (niri's, PaperWM's: every window a column of its
+own width in a strip as wide as they need, scrolled to the active one;
+below). Those four are built in their shape from the tiles in order
 (`built_again`) as the layout is chosen and as the number of tiles with
 room changes; between those, as the person left them (edges dragged,
 tiles swapped). Halves chosen arranges the tiles as it would have made

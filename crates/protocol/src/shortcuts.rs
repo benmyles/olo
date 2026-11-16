@@ -322,6 +322,9 @@ pub enum Shortcut {
     Preselect(Dir),
     SwapInOrder(bool),
     RotateWindows(bool),
+    /// Scrolling: the focused column's width the next of a third, a half,
+    /// two thirds and all of the display (niri's preset widths).
+    ColumnWidth,
     /// The focused window into the scratchpad (hidden, floating), or out
     /// of it; and the scratchpad's next window shown over the active
     /// workspace, centred, or hidden again (i3's and sway's).
@@ -811,6 +814,7 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::FocusInOrder(false), "focus-previous-tile", WINDOWS, "Focus the previous tile", &["Ctrl+Alt+Cmd+P"], &["Ctrl+Alt+Cmd+P"], &["Ctrl+Alt+Cmd+P"]),
     s(Shortcut::SwapInOrder(true), "swap-next-tile", WINDOWS, "Swap with the next tile", &["Ctrl+Alt+Shift+Cmd+N"], &["Ctrl+Alt+Shift+Cmd+N"], &["Ctrl+Alt+Shift+Cmd+N"]),
     s(Shortcut::SwapInOrder(false), "swap-previous-tile", WINDOWS, "Swap with the previous tile", &["Ctrl+Alt+Shift+Cmd+P"], &["Ctrl+Alt+Shift+Cmd+P"], &["Ctrl+Alt+Shift+Cmd+P"]),
+    s(Shortcut::ColumnWidth, "column-width", WINDOWS, "Next column width (Scrolling)", &["Ctrl+Alt+Cmd+W"], &["Ctrl+Alt+Cmd+W"], &["Ctrl+Alt+Cmd+W"]),
     s(Shortcut::RotateWindows(true), "rotate-windows", ARRANGE, "Move every tile's window on one", &["Ctrl+Alt+Shift+Cmd+Period"], &["Ctrl+Alt+Shift+Cmd+Period"], &["Ctrl+Alt+Shift+Cmd+Period"]),
     s(Shortcut::RotateWindows(false), "rotate-windows-back", ARRANGE, "Move every tile's window back one", &["Ctrl+Alt+Shift+Cmd+Comma"], &["Ctrl+Alt+Shift+Cmd+Comma"], &["Ctrl+Alt+Shift+Cmd+Comma"]),
     s(Shortcut::ToScratchpad, "to-scratchpad", WINDOWS, "Move to the scratchpad", &["Ctrl+Alt+Shift+Cmd+Minus"], &["Ctrl+Alt+Shift+Cmd+Minus"], &["Ctrl+Alt+Shift+Cmd+Minus"]),
@@ -1060,6 +1064,10 @@ pub enum TilingLayout {
     /// Each takes half of the room left, going round (awesome's and
     /// bspwm's spiral).
     Spiral,
+    /// Side by side in a strip as wide as they need, each its own width
+    /// (half the display at first), scrolled to the active one (niri's,
+    /// PaperWM's).
+    Scrolling,
 }
 
 /// The layouts offered by name (Deskbar's Auto-Tiling Layout menu,
@@ -1067,7 +1075,7 @@ pub enum TilingLayout {
 /// goes (Ben, 2026-11-15: "make one of the auto-tile layout options
 /// having the main window be the left half and then the stack be the
 /// right half"). Any other place is Main and Stack's Main Window menu.
-pub const LAYOUT_PRESETS: [(&str, TilingLayout, Option<Tile>); 7] = [
+pub const LAYOUT_PRESETS: [(&str, TilingLayout, Option<Tile>); 8] = [
     ("Main Two Thirds, Stack a Third", TilingLayout::MainAndStack, Some(Tile::LeftTwoThirds)),
     ("Main Half, Stack Half", TilingLayout::MainAndStack, Some(Tile::Left)),
     ("Halves", TilingLayout::Halves, None),
@@ -1075,15 +1083,16 @@ pub const LAYOUT_PRESETS: [(&str, TilingLayout, Option<Tile>); 7] = [
     ("Rows", TilingLayout::Rows, None),
     ("Grid", TilingLayout::Grid, None),
     ("Spiral", TilingLayout::Spiral, None),
+    ("Scrolling", TilingLayout::Scrolling, None),
 ];
 
 impl TilingLayout {
-    pub const ALL: [TilingLayout; 6] = [TilingLayout::MainAndStack, TilingLayout::Halves, TilingLayout::Columns, TilingLayout::Rows, TilingLayout::Grid, TilingLayout::Spiral];
+    pub const ALL: [TilingLayout; 7] = [TilingLayout::MainAndStack, TilingLayout::Halves, TilingLayout::Columns, TilingLayout::Rows, TilingLayout::Grid, TilingLayout::Spiral, TilingLayout::Scrolling];
 
     /// Whether it's built in its own shape from the tiles in order (as
     /// the number of tiles changes), not grown a split at a time.
     pub fn built(self) -> bool {
-        matches!(self, TilingLayout::Columns | TilingLayout::Rows | TilingLayout::Grid | TilingLayout::Spiral)
+        matches!(self, TilingLayout::Columns | TilingLayout::Rows | TilingLayout::Grid | TilingLayout::Spiral | TilingLayout::Scrolling)
     }
 
     /// Its name in menus.
@@ -1095,6 +1104,7 @@ impl TilingLayout {
             TilingLayout::Rows => "Rows",
             TilingLayout::Grid => "Grid",
             TilingLayout::Spiral => "Spiral",
+            TilingLayout::Scrolling => "Scrolling",
         }
     }
 
@@ -1107,6 +1117,7 @@ impl TilingLayout {
             TilingLayout::Rows => "Every window a row, each as tall.",
             TilingLayout::Grid => "The windows in rows of about square cells.",
             TilingLayout::Spiral => "Each window takes half of the room left, round in a spiral.",
+            TilingLayout::Scrolling => "Every window a column of its own width, in a strip that scrolls to the active one.",
         }
     }
 
@@ -1119,6 +1130,7 @@ impl TilingLayout {
             TilingLayout::Rows => "rows",
             TilingLayout::Grid => "grid",
             TilingLayout::Spiral => "spiral",
+            TilingLayout::Scrolling => "scrolling",
         }
     }
 

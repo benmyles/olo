@@ -373,6 +373,12 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// the one under the middle of its frame, else the one it overlaps
     /// most, else the main one.
     pub fn window_output(&self, window: &WindowElement) -> Option<smithay::output::Output> {
+        // (Kept to a display: on it, wherever most of it lies.)
+        if let Some((name, _)) = window.meta().confined.borrow().as_ref()
+            && let Some(o) = self.space.outputs().find(|o| o.name() == *name)
+        {
+            return Some(o.clone());
+        }
         let frame = self.heading_frame(window);
         if let Some(f) = frame {
             let middle = (f.loc + f.size.downscale(2).to_point()).to_f64();

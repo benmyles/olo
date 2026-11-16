@@ -59,8 +59,8 @@ APPS = [
     ["OLO_DOCTOR_HELPER=off", "olo-doctor"],
     ["olo-viewer", IMAGE],
 ]
-SHORTCUTS = "preselect-left preselect-down preselect-up preselect-right focus-next-tile focus-previous-tile swap-next-tile swap-previous-tile rotate-windows rotate-windows-back all-workspaces to-scratchpad scratchpad scratchpad bigger-main smaller-main more-main-windows fewer-main-windows rotate-tiles rotate-tiles-back flip-tiles-across flip-tiles-up-down even-out-tiles toggle-split more-gap less-gap make-main swap-main focus-left focus-down focus-up focus-right swap-left swap-down swap-up swap-right resize-left resize-right resize-up resize-down next-layout previous-layout tile-all smart-tile zoom-all cascade-all fan-out undo-arrangement redo-arrangement tile-left tile-right-third zoom restore float-window hide-window next-display next-tab".split()
-LAYOUTS = ["main_and_stack", "halves", "columns", "rows", "grid", "spiral"]
+SHORTCUTS = "column-width preselect-left preselect-down preselect-up preselect-right focus-next-tile focus-previous-tile swap-next-tile swap-previous-tile rotate-windows rotate-windows-back all-workspaces to-scratchpad scratchpad scratchpad bigger-main smaller-main more-main-windows fewer-main-windows rotate-tiles rotate-tiles-back flip-tiles-across flip-tiles-up-down even-out-tiles toggle-split more-gap less-gap make-main swap-main focus-left focus-down focus-up focus-right swap-left swap-down swap-up swap-right resize-left resize-right resize-up resize-down next-layout previous-layout tile-all smart-tile zoom-all cascade-all fan-out undo-arrangement redo-arrangement tile-left tile-right-third zoom restore float-window hide-window next-display next-tab".split()
+LAYOUTS = ["main_and_stack", "halves", "columns", "rows", "grid", "spiral", "scrolling"]
 PLACES = ["Left", "Right", "Top", "Bottom", "LeftTwoThirds", "CenterTwoThirds", "RightThird", "TopLeft", "BottomRight"]
 MODES = ["auto_tiling"] * 6 + ["standard", "focus"]
 
@@ -107,8 +107,15 @@ def check(what):
             continue
         tiles = [w for w in ws if w.get("output") == o and w.get("workspace", 0) == d["workspace"] and not w.get("minimized") and not w.get("floating") and not w.get("behind") and w.get("tiled") and w.get("frame")]
         ox, oy, ow, oh = outs[o]
+        # Scrolling: columns lie in a strip past the display's edges (not
+        # drawn there, kept to it); the focused one is wholly on it.
+        scrolling = d.get("layout") == "scrolling"
         for w in tiles:
             f = w["frame"]
+            if scrolling:
+                if w.get("focused") and f["width"] <= ow and (f["x"] < ox - 1 or f["x"] + f["width"] > ox + ow + 1):
+                    problems.append(f"{w['id']} {w['title'][:12]} focused but scrolled off {o} {outs[o]}: {f}")
+                continue
             fits = f["width"] <= ow and f["height"] <= oh
             if fits and (f["x"] < ox - 1 or f["y"] < oy - 1 or f["x"] + f["width"] > ox + ow + 1 or f["y"] + f["height"] > oy + oh + 1):
                 problems.append(f"{w['id']} {w['title'][:12]} outside {o} {outs[o]}: {f}")
@@ -130,7 +137,7 @@ def check(what):
         # (Only a tile that has the whole area: one beside a place kept
         # for a window away, holding its room, keeps its margins, as two
         # tiles do; the places kept aren't in the window list.)
-        if SMART[0] and len(tiles) == 1 and not tiles[0].get("zoomed") and tiles[0].get("part") == [0.0, 0.0, 1.0, 1.0]:
+        if SMART[0] and not scrolling and len(tiles) == 1 and not tiles[0].get("zoomed") and tiles[0].get("part") == [0.0, 0.0, 1.0, 1.0]:
             f, p = tiles[0]["frame"], tiles[0]["part"]
             want = (round(ox + p[0] * ow), round(oy + p[1] * oh), round(p[2] * ow), round(p[3] * oh))
             got = (f["x"], f["y"], f["width"], f["height"])
@@ -147,7 +154,7 @@ def check(what):
             if pa is None:
                 problems.append(f"{a['id']} {a['title'][:12]} tiled with no part ({d['layout']})")
                 continue
-            if min(pa) < -1e-3 or pa[0] + pa[2] > 1.001 or pa[1] + pa[3] > 1.001:
+            if not scrolling and (min(pa) < -1e-3 or pa[0] + pa[2] > 1.001 or pa[1] + pa[3] > 1.001):
                 problems.append(f"{a['id']} {a['title'][:12]} part outside: {pa}")
             for b in tiles[i + 1:]:
                 pb = b.get("part")

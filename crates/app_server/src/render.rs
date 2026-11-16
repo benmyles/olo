@@ -347,7 +347,8 @@ where
             let (Some(bbox), Some(at)) = (space.element_bbox(w), space.element_location(w)) else { continue };
             // Behind the window Focus shows (`shell::modes`), or filling
             // a display (drawn by that one).
-            if !region.overlaps(bbox) || w.meta().covered.get() || w.meta().fullscreen.get() {
+            // (Kept to another display: not drawn on this one.)
+            if !region.overlaps(bbox) || w.meta().covered.get() || w.meta().fullscreen.get() || w.meta().confined.borrow().as_ref().is_some_and(|(_, c)| !c.overlaps(region)) {
                 continue;
             }
             if dim.as_ref().is_some_and(|(bright, _)| !bright.contains(&w.id())) {

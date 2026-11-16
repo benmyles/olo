@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-16
 
+### Preferences: the Scrolling layout
+
+*05:55* — Preferences ▸ Windows with Scrolling chosen: the miniature shows columns half the display wide, scrolled to the middle one, cut at the room beside Deskbar (1×).
+
+![Preferences: the Scrolling layout](2026-11-16/055515-preferences-the-scrolling-layout.png)
+
+### Auto-tiling: Scrolling, niri's columns
+
+*05:55* — Scrolling lays windows out as columns of their own widths in a strip, scrolled to the active one (niri's, PaperWM's). Here Logs and Doctor at two thirds: Doctor's column goes past the first display's edge, cut there; the second display (right) shows its own desktop, not the column (2560 × 1440 and 1920 × 1200, 1×, half size).
+
+![Auto-tiling: Scrolling, niri's columns](2026-11-16/055513-auto-tiling-scrolling-niri-s-columns.png)
+
 ### Auto-tiling: preselecting where the next window goes
 
 *05:15* — Ctrl+Shift+Cmd+J on a tile: the next window opens below it, the half it will take tinted in the keyboard-navigation colour till then (bspwm's preselection, i3's split before a window opens); the same keys again take it back (1.5×).

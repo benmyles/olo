@@ -427,6 +427,33 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         }
     }
 
+    /// The window under `pos` (global), front first, as
+    /// `Space::element_under` finds it (its bounding box, then its input
+    /// region, from where it's drawn), but not one kept to another display
+    /// (`WindowMeta::confined`) at a point outside that display.
+    pub fn window_under(&self, pos: impl Into<Point<f64, Logical>>) -> Option<(&WindowElement, Point<i32, Logical>)> {
+        let pos = pos.into();
+        let elsewhere = |w: &WindowElement| w.meta().confined.borrow().as_ref().is_some_and(|(_, c)| !c.to_f64().contains(pos));
+        // (Smithay's own, which reads each window's box from its list: the
+        // window there unless it's kept to another display. Looked for one
+        // by one instead, each window's box and place searched out, every
+        // move cost 0.4 µs more with six windows.)
+        let found = self.space.element_under(pos)?;
+        if !elsewhere(found.0) {
+            return Some(found);
+        }
+        self.space.elements().rev().find_map(|w| {
+            if elsewhere(w) {
+                return None;
+            }
+            if !self.space.element_bbox(w)?.to_f64().contains(pos) {
+                return None;
+            }
+            let at = self.space.element_location(w)? - smithay::desktop::space::SpaceElement::geometry(w).loc;
+            smithay::desktop::space::SpaceElement::is_in_input_region(w, &(pos - at.to_f64())).then_some((w, at))
+        })
+    }
+
     pub fn window_for_surface(&self, surface: &WlSurface) -> Option<WindowElement> {
         self.space.elements().find(|window| window.wl_surface().map(|s| &*s == surface).unwrap_or(false)).cloned()
     }
@@ -453,6 +480,12 @@ pub struct SurfaceData {
 /// asked back to the size it was given, or to fit the screen, unless its
 /// minimum size leaves no choice.
 fn keep_on_screen(space: &mut Space<WindowElement>, surface: &WlSurface, window: &WindowElement, held: (bool, bool)) {
+    // (Kept to a display by Scrolling, which puts its columns past the
+    // display's edges on purpose: pulled back on, onto whichever display
+    // its middle was over, it covered the columns there.)
+    if window.meta().confined.borrow().is_some() {
+        return;
+    }
     let Some(geo) = space.element_geometry(window) else { return };
     if geo.size.w <= 0 || geo.size.h <= 0 {
         return;

@@ -1384,6 +1384,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// (it was unplugged, and is back): exactly as it left, whatever Olo
     /// did with it meanwhile.
     pub(crate) fn move_to_output(&mut self, window: &WindowElement, from: &Output, to: &Output, home: bool) {
+        // (No longer kept to the display it leaves.)
+        if self.auto.confined.remove(&window.id()) {
+            *window.meta().confined.borrow_mut() = None;
+        }
         self.carry_to_output(window, from, to, home);
         window.meta().arrived.set(self.space.element_geometry(window));
         // Full screen, it fills the display it's on now, at its size (off
@@ -1557,8 +1561,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// is less than StyledEdit's) gives way inwards, so it stays in the
     /// tiling area rather than hanging out past its edge.
     pub fn keep_in_tile_area(&mut self, window: &WindowElement) {
-        // (Full screen, it's held by its display, not a tile.)
-        if window.meta().fullscreen.get() {
+        // (Full screen, it's held by its display, not a tile; a Scrolling
+        // column, kept to its display, lies past its edges on purpose.)
+        if window.meta().fullscreen.get() || window.meta().confined.borrow().is_some() {
             return;
         }
         // (Zoomed along one axis, it keeps its own place along the other.)

@@ -4498,5 +4498,17 @@
   "title": "Auto-tiling: preselecting where the next window goes",
   "caption": "Ctrl+Shift+Cmd+J on a tile: the next window opens below it, the half it will take tinted in the keyboard-navigation colour till then (bspwm's preselection, i3's split before a window opens); the same keys again take it back (1.5\u00d7).",
   "image": "2026-11-16/051509-auto-tiling-preselecting-where-the-next-window-g.png"
+ },
+ {
+  "time": "2026-11-16T05:55:13",
+  "title": "Auto-tiling: Scrolling, niri's columns",
+  "caption": "Scrolling lays windows out as columns of their own widths in a strip, scrolled to the active one (niri's, PaperWM's). Here Logs and Doctor at two thirds: Doctor's column goes past the first display's edge, cut there; the second display (right) shows its own desktop, not the column (2560 \u00d7 1440 and 1920 \u00d7 1200, 1\u00d7, half size).",
+  "image": "2026-11-16/055513-auto-tiling-scrolling-niri-s-columns.png"
+ },
+ {
+  "time": "2026-11-16T05:55:15",
+  "title": "Preferences: the Scrolling layout",
+  "caption": "Preferences \u25b8 Windows with Scrolling chosen: the miniature shows columns half the display wide, scrolled to the middle one, cut at the room beside Deskbar (1\u00d7).",
+  "image": "2026-11-16/055515-preferences-the-scrolling-layout.png"
  }
 ]

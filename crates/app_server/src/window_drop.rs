@@ -82,7 +82,10 @@ impl<B: Backend> AnvilState<B> {
     /// is over (the top one there, not covered), and where in it.
     pub fn own_window_under(&self, moved: &WindowElement, p: Point<f64, Logical>) -> Option<(WindowElement, Point<f64, Logical>)> {
         let client = moved.meta().owner.borrow().as_ref().map(|(_, c)| c.clone())?;
-        let target = self.space.elements().rev().filter(|w| *w != moved && !w.meta().covered.get()).find(|w| self.space.element_bbox(w).is_some_and(|b| b.to_f64().contains(p)))?;
+        // (Not one kept to another display, under `p` only where it isn't
+        // drawn: a Scrolling column past its display's edge.)
+        let elsewhere = |w: &WindowElement| w.meta().confined.borrow().as_ref().is_some_and(|(_, c)| !c.to_f64().contains(p));
+        let target = self.space.elements().rev().filter(|w| *w != moved && !w.meta().covered.get() && !elsewhere(w)).find(|w| self.space.element_bbox(w).is_some_and(|b| b.to_f64().contains(p)))?;
         if target.meta().owner.borrow().as_ref().map(|(_, c)| c) != Some(&client) || target.tab_only() {
             return None;
         }

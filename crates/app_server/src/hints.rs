@@ -721,7 +721,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.hints.close();
                 // Its window brought forward with the keyboard, as a click
                 // would (the hints may be over a window behind).
-                if let Some((window, _)) = self.space.element_under(rect.centre()).map(|(w, p)| (w.clone(), p)) {
+                if let Some((window, _)) = self.window_under(rect.centre()).map(|(w, p)| (w.clone(), p)) {
                     self.focus_window(&window);
                 }
                 std::thread::spawn(move || focus(pid, surface, node));
@@ -746,7 +746,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 });
                 // A menu it opened is lettered next (it may have the
                 // keyboard, so the window is the one clicked).
-                let window = self.space.element_under((x, y)).map(|(w, _)| w.clone());
+                let window = self.window_under((x, y)).map(|(w, _)| w.clone());
                 let generation = self.hints.generation;
                 let _ = self.handle.insert_source(Timer::from_duration(SETTLE), move |_, _, state| {
                     if state.hints.generation == generation && !state.hints.active() {

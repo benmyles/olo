@@ -179,6 +179,11 @@ pub struct WindowMeta {
     /// In the scratchpad (`to-scratchpad`): floating, hidden until
     /// `scratchpad` shows it over the active workspace.
     pub scratch: Cell<bool>,
+    /// Kept to one display (its connector and area): drawn and found under
+    /// the pointer there alone, and on it whatever part of it is past its
+    /// edges (a column of the Scrolling layout scrolled out of view, which
+    /// would otherwise show on the display beside it).
+    pub confined: RefCell<Option<(String, Rectangle<i32, Logical>)>>,
 }
 
 impl WindowMeta {
@@ -236,6 +241,7 @@ impl WindowElement {
             pip: Cell::new(false),
             all_workspaces: Cell::new(false),
             scratch: Cell::new(false),
+            confined: RefCell::new(None),
             on_top: Cell::new(false),
         });
         self.user_data().get::<WindowMeta>().unwrap()
@@ -1136,6 +1142,10 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.pressed_display = None;
             self.recent.retain(|r| *r != id);
             self.recent.insert(0, id);
+            // (A column of a Scrolling tree: the strip scrolls to it.)
+            if self.auto_scrolls(id) {
+                self.auto.changed();
+            }
             let alive: Vec<u64> = self.recent.iter().copied().filter(|r| self.window_by_id(*r).is_some()).collect();
             self.recent = alive;
         }

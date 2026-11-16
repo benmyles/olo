@@ -552,6 +552,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     self.set_main_count(count, Some(ws), Some(o));
                 }
             }
+            S::ColumnWidth => {
+                if let Some(w) = focused {
+                    self.column_width(&w, None);
+                }
+            }
             S::Preselect(dir) => {
                 if let Some(w) = focused {
                     self.preselect(&w, dir);
@@ -713,8 +718,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         }
 
         let inhibited = self
-            .space
-            .element_under(self.pointer.current_location())
+            .window_under(self.pointer.current_location())
             .and_then(|(window, _)| {
                 let surface = window.wl_surface()?;
                 self.seat.keyboard_shortcuts_inhibitor_for_surface(&surface)
@@ -930,7 +934,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 }
             }
 
-            if let Some((window, _)) = self.space.element_under(location).map(|(w, p)| (w.clone(), p)) {
+            if let Some((window, _)) = self.window_under(location).map(|(w, p)| (w.clone(), p)) {
                 self.space.raise_element(&window, true);
                 self.keep_children_above();
                 keyboard.set_focus(self, Some(window.into()), serial);
@@ -1011,7 +1015,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         {
             under = Some(focus)
         } else if let Some(focus) =
-            self.space.element_under(pos).and_then(|(window, loc)| window.surface_under(pos - loc.to_f64(), WindowSurfaceType::ALL).map(|(surface, surf_loc)| (surface, surf_loc + loc)))
+            self.window_under(pos).and_then(|(window, loc)| window.surface_under(pos - loc.to_f64(), WindowSurfaceType::ALL).map(|(surface, surf_loc)| (surface, surf_loc + loc)))
         {
             under = Some(focus);
         } else if let Some(focus) = layer_under(WlrLayer::Bottom).or_else(|| layer_under(WlrLayer::Background)) {

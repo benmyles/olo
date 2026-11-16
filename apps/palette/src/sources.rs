@@ -325,6 +325,7 @@ pub fn context() -> (Option<WindowInfo>, Vec<Item>) {
                 olo_protocol::Shortcut::AllWorkspaces => " sticky every workspace pin visible everywhere",
                 olo_protocol::Shortcut::FocusInOrder(_) | olo_protocol::Shortcut::SwapInOrder(_) => " tiling next previous stack order cycle",
                 olo_protocol::Shortcut::Preselect(_) => " tiling preselect split next window where direction",
+                olo_protocol::Shortcut::ColumnWidth => " tiling scrolling niri column width wider narrower preset",
                 olo_protocol::Shortcut::RotateWindows(_) => " tiling rotate cycle windows round order",
                 olo_protocol::Shortcut::ToScratchpad | olo_protocol::Shortcut::Scratchpad => " scratchpad hidden toggle quake drop down special workspace",
                 _ => "",

@@ -45,8 +45,8 @@ something nobody here has is in "Blocked", with what it waits for.
   new windows go; windows on all workspaces and the scratchpad. Monocle
   is Focus mode (one at a time, the others a key away). Apps on
   workspaces of their own; focus, swap and rotate in order; preselecting
-  where the next window goes. Left: maybe scrolling columns as niri's;
-  gaps per workspace.
+  where the next window goes; Scrolling (niri's columns in a strip).
+  Left: gaps per workspace.
 
 - **The kits' costs, where they're above GPUI's** (from the move to the
   kits: "each within a frame's budget; to be brought down"). A whole

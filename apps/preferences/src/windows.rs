@@ -198,8 +198,15 @@ fn miniature(g: &mut Painter, well: Bounds<Pixels>, p: &Palette, s: &Settings, (
             TilingLayout::Rows => (0..3).map(|i| (0.0, i as f32 / 3.0, 1.0, 1.0 / 3.0)).collect(),
             // (Three on a wide display: two above, one the width below.)
             TilingLayout::Grid => vec![(0.0, 0.0, 0.5, 0.5), (0.5, 0.0, 0.5, 0.5), (0.0, 0.5, 1.0, 0.5)],
+            // (Columns half the room wide, the strip scrolled to the middle
+            // one: the third partly past the right edge, cut there.)
+            TilingLayout::Scrolling => vec![(-0.25, 0.0, 0.5, 1.0), (0.25, 0.0, 0.5, 1.0), (0.75, 0.0, 0.5, 1.0)],
         };
-        let front = if s.tiling.layout == TilingLayout::MainAndStack { 0 } else { parts.len() - 1 };
+        let front = match s.tiling.layout {
+            TilingLayout::MainAndStack => 0,
+            TilingLayout::Scrolling => 1,
+            _ => parts.len() - 1,
+        };
         // (An edge inside the area gives up half the gap, each side.)
         let windows = parts.iter().enumerate().map(|(i, &(px, py, pw, ph))| {
             let edge = |a: f32, b: f32, start: f32, len: f32| {
@@ -212,13 +219,18 @@ fn miniature(g: &mut Painter, well: Bounds<Pixels>, p: &Palette, s: &Settings, (
         });
         // Tabs to scale would be slivers; they keep a size that reads.
         let tab_h = (TAB_H * k).max(MIN_TAB_H) / k;
-        for (x, y, w, h, front) in windows {
-            let (body, tab) = (at(g, x, y + tab_h, w, h - tab_h), at(g, x, y, (w * 0.55).min(220.0), tab_h));
-            let line = c(p.frame_focused[0]);
-            style::fill_rect(g, tab, c(if front { p.tab_focused } else { p.tab_unfocused }));
-            style::frame_rect(g, tab, line);
-            style::fill_rect(g, body, c(p.document_background));
-            style::frame_rect(g, body, line);
-        }
+        // (Cut at the room beside Deskbar: a Scrolling column past its
+        // edge goes under Deskbar, not over it.)
+        let room = at(g, 0.0, 0.0, usable.0, usable.1);
+        g.with_content_mask(Some(ContentMask { bounds: room }), |g| {
+            for (x, y, w, h, front) in windows {
+                let (body, tab) = (at(g, x, y + tab_h, w, h - tab_h), at(g, x, y, (w * 0.55).min(220.0), tab_h));
+                let line = c(p.frame_focused[0]);
+                style::fill_rect(g, tab, c(if front { p.tab_focused } else { p.tab_unfocused }));
+                style::frame_rect(g, tab, line);
+                style::fill_rect(g, body, c(p.document_background));
+                style::frame_rect(g, body, line);
+            }
+        });
     });
 }

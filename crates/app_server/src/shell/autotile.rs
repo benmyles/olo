@@ -77,6 +77,7 @@
 use std::{
     cell::Cell,
     collections::HashMap,
+    collections::HashSet,
     time::{Duration, Instant},
 };
 
@@ -523,6 +524,39 @@ pub fn presel_shown() -> Option<(u64, olo_protocol::Dir)> {
 
 fn show_presel(p: Option<(u64, olo_protocol::Dir)>) {
     *PRESEL_SHOWN.lock().unwrap_or_else(|e| e.into_inner()) = p;
+}
+
+/// The default width of a Scrolling column, and the widths Column Width
+/// goes round (fractions of the display's room).
+pub const COLUMN_WIDTH: f32 = 0.5;
+pub const COLUMN_WIDTHS: [f32; 4] = [1.0 / 3.0, 0.5, 2.0 / 3.0, 1.0];
+
+/// Scrolling's frames: the windows of `order` as columns side by side in
+/// a strip, each `width(id)` points wide, `gap` apart, as tall as `area`;
+/// the strip moved left `scroll` points, or as little more or less as
+/// brings `focus`'s column wholly into view (niri's, never centring), at
+/// least 0 and no more than leaves the last column at the right edge.
+/// The frames and the scroll they were laid out at.
+pub fn scrolling_frames(order: &[u64], width: &dyn Fn(u64) -> i32, gap: i32, area: Rectangle<i32, Logical>, focus: Option<u64>, scroll: i32) -> (Vec<(u64, Rectangle<i32, Logical>)>, i32) {
+    let mut x = 0;
+    let mut cols = Vec::with_capacity(order.len());
+    for &id in order {
+        let w = width(id).max(1);
+        cols.push((id, x, w));
+        x += w + gap;
+    }
+    let total = (x - gap).max(0);
+    let mut s = scroll;
+    if let Some(&(_, fx, fw)) = focus.and_then(|f| cols.iter().find(|(id, ..)| *id == f)) {
+        if fx < s {
+            s = fx;
+        } else if fx + fw > s + area.size.w {
+            s = fx + fw - area.size.w;
+        }
+    }
+    let s = s.clamp(0, (total - area.size.w).max(0));
+    let frames = cols.into_iter().map(|(id, cx, w)| (id, Rectangle::new((area.loc.x + cx - s, area.loc.y).into(), (w, area.size.h).into()))).collect();
+    (frames, s)
 }
 
 /// The half of `frame` the next window takes, preselected `dir`.
@@ -1016,6 +1050,9 @@ pub fn built_again(layout: olo_protocol::TilingLayout, tree: &Node, aspect: f32)
         L::Rows => evenly(Cut::Rows, room),
         L::Grid => grid(room, aspect),
         L::Spiral => spiral(room)?,
+        // (Scrolling keeps its order as columns; where they go is
+        // `scrolling_frames`'.)
+        L::Scrolling => evenly(Cut::Columns, room),
         L::Halves | L::MainAndStack => return None,
     };
     // (Kept places with no room: beside it, taking none.)
@@ -1448,6 +1485,13 @@ pub struct AutoTiler {
     /// Stack's shape), once.
     /// Where the next new window goes (`preselect`): beside this window,
     /// that way. Shown on its tile (`render`) till used or taken back.
+    /// Scrolling: each window's column width (a fraction of the display's
+    /// room), where it isn't the default half; each tree's scroll (points
+    /// the strip is moved left); and the windows kept to their display
+    /// meanwhile (`WindowMeta::confined`).
+    pub widths: HashMap<u64, f32>,
+    pub scroll: HashMap<(u32, String), i32>,
+    pub confined: HashSet<u64>,
     pub presel: Option<(u64, olo_protocol::Dir)>,
     built_as: HashMap<(u32, String), (olo_protocol::TilingLayout, Tile, u32)>,
     /// Main and Stack: each tree's main window, and the one before it
@@ -1498,6 +1542,9 @@ impl Default for AutoTiler {
     fn default() -> Self {
         AutoTiler {
             trees: HashMap::new(),
+            widths: HashMap::new(),
+            scroll: HashMap::new(),
+            confined: HashSet::new(),
             presel: None,
             built_as: HashMap::new(),
             mains: HashMap::new(),
@@ -1881,6 +1928,9 @@ impl<B: Backend + 'static> AnvilState<B> {
         kept.extend(self.auto.trees.values().flat_map(|t| t.windows()));
         self.auto.known.retain(|id, _| kept.contains(id));
         self.auto.along.retain(|id, _| kept.contains(id));
+        self.auto.widths.retain(|id, _| kept.contains(id));
+        self.auto.scroll.retain(|k, _| trees.contains(k));
+        self.auto_unconfine();
         self.keep_floating_above();
         self.auto_timer();
     }
@@ -2134,7 +2184,10 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.auto.built_as.insert(key.clone(), (layout, place, count));
         // Tiles too small for their windows' least sizes, where another
         // arrangement has room for them all (or overlaps less): that one.
-        if let Some(t) = tree.as_mut() {
+        // (Not Scrolling's: its strip is as wide as they need.)
+        if let Some(t) = tree.as_mut()
+            && layout != olo_protocol::TilingLayout::Scrolling
+        {
             let mins = self.auto_mins(&units, area);
             let aspect = area.size.w as f32 / area.size.h.max(1) as f32;
             if let Some(better) = super::autofit::refit(t, &|id| mins.get(&id).copied().unwrap_or((0.0, 0.0)), aspect) {
@@ -2314,6 +2367,15 @@ impl<B: Backend + 'static> AnvilState<B> {
             }
         };
         let chosen = self.layout_of(key);
+        // (Scrolling has no main window: first is beside the active one,
+        // as niri opens it.)
+        let at = match at {
+            NewAt::First if chosen == olo_protocol::TilingLayout::Scrolling => {
+                let in_tree = t.windows();
+                self.recent.iter().find(|r| **r != id && in_tree.contains(r)).map_or(NewAt::Last, |r| NewAt::After(*r))
+            }
+            a => a,
+        };
         if chosen == olo_protocol::TilingLayout::MainAndStack {
             let (place, was) = self.main_places(key);
             let m = self.auto.mains.get(key).copied().unwrap_or_default();
@@ -2414,6 +2476,16 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     fn auto_apply_tiles(&mut self, output: &Output, tree: &Node, units: &[WindowElement]) {
+        let key = (self.showing(output), output.name());
+        if self.layout_of(&key) == olo_protocol::TilingLayout::Scrolling {
+            return self.auto_apply_scrolling(output, tree, units, key);
+        }
+        // (Not Scrolling: none of its windows kept to the display.)
+        for w in units {
+            if self.auto.confined.remove(&w.id()) {
+                *w.meta().confined.borrow_mut() = None;
+            }
+        }
         let Some((area, gap)) = self.auto_area(output, tree) else { return };
         let mins = self.auto_mins(units, area);
         let min = |i: u64| mins.get(&i).copied().unwrap_or((0.0, 0.0));
@@ -2455,6 +2527,96 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
             }
         }
+    }
+
+    /// Scrolling's `auto_apply_tiles`: each window a column in the strip
+    /// (`scrolling_frames`), its width its own (`AutoTiler::widths`, at
+    /// least what it needs), the strip scrolled to the window that had the
+    /// focus last, and every window kept to the display (`confined`), so a
+    /// column scrolled past its edge doesn't show on the next one. Its
+    /// part is where it is in the strip, in fractions of the display's
+    /// room: left of 0 or past 1 for one scrolled out of view.
+    fn auto_apply_scrolling(&mut self, output: &Output, tree: &Node, units: &[WindowElement], key: (u32, String)) {
+        let Some((area, gap)) = self.auto_area(output, tree) else { return };
+        let Some(screen) = self.space.output_geometry(output) else { return };
+        let order = windows_in_order(olo_protocol::TilingLayout::Scrolling, Tile::Left, tree);
+        let room = area.size.w.max(1);
+        let mins: HashMap<u64, i32> = units.iter().map(|w| (w.id(), self.min_frame(w).w)).collect();
+        let widths = &self.auto.widths;
+        let width = |id: u64| ((widths.get(&id).copied().unwrap_or(COLUMN_WIDTH) * (room + gap) as f32).round() as i32 - gap).max(mins.get(&id).copied().unwrap_or(0));
+        let focus = self.recent.iter().find(|r| order.contains(r)).copied();
+        let scroll = self.auto.scroll.get(&key).copied().unwrap_or(0);
+        let (frames, scroll) = scrolling_frames(&order, &width, gap, area, focus, scroll);
+        self.auto.scroll.insert(key, scroll);
+        let moving_by_drag = |s: &Self, w: &WindowElement| s.tile_drag.as_ref().is_some_and(|d| d.moves(w));
+        for (id, rect) in frames {
+            let Some(w) = units.iter().find(|w| w.id() == id).cloned() else { continue };
+            *w.meta().confined.borrow_mut() = Some((output.name(), screen));
+            self.auto.confined.insert(id);
+            let was_tiled = Self::tiled(&w).is_some();
+            let f = (((rect.loc.x - area.loc.x) as f32) / room as f32, 0.0, rect.size.w as f32 / room as f32, 1.0);
+            Self::set_tile_state(&w, Some(Tile::Cell), Some(f));
+            if self.is_zoomed(&w) || fullscreen(&w) || self.auto.moving.as_ref() == Some(&w) || moving_by_drag(self, &w) {
+                continue;
+            }
+            let Some(geo) = self.space.element_geometry(&w) else { continue };
+            if !was_tiled && w.meta().placed.get() && geo.size.w > 1 {
+                w.user_data().insert_if_missing(PreZoom::default);
+                w.user_data().get::<PreZoom>().unwrap().0.borrow_mut().get_or_insert(geo);
+            }
+            self.auto_place(&w, geo, rect);
+        }
+        for w in units {
+            for mate in self.groups.mates(w) {
+                if mate != *w {
+                    self.share_arrangement(w, &mate);
+                }
+            }
+        }
+    }
+
+    /// Whether window `id` is a column of a Scrolling tree.
+    pub(crate) fn auto_scrolls(&self, id: u64) -> bool {
+        self.auto.trees.iter().any(|(k, t)| t.contains(id) && self.layout_of(k) == olo_protocol::TilingLayout::Scrolling)
+    }
+
+    /// Windows kept to a display for a Scrolling tree they're no longer
+    /// in: free again (a layout changed, a window taken out or gone).
+    fn auto_unconfine(&mut self) {
+        if self.auto.confined.is_empty() {
+            return;
+        }
+        let scrolling: HashSet<u64> = self.auto.trees.iter().filter(|(k, _)| self.layout_of(k) == olo_protocol::TilingLayout::Scrolling).flat_map(|(_, t)| t.windows()).collect();
+        let gone: Vec<u64> = self.auto.confined.iter().filter(|id| !scrolling.contains(id)).copied().collect();
+        for id in gone {
+            self.auto.confined.remove(&id);
+            if let Some(w) = self.window_by_id(id) {
+                *w.meta().confined.borrow_mut() = None;
+            }
+        }
+    }
+
+    /// Scrolling's Column Width (⌃⌥⌘W): the focused column the next of
+    /// `COLUMN_WIDTHS`; Resize by direction's left and right a step
+    /// narrower or wider (`grow`). Whether it changed.
+    pub fn column_width(&mut self, w: &WindowElement, grow: Option<bool>) -> bool {
+        let Some(key) = self.tree_of(w) else { return false };
+        if self.layout_of(&key) != olo_protocol::TilingLayout::Scrolling {
+            return false;
+        }
+        let now = self.auto.widths.get(&w.id()).copied().unwrap_or(COLUMN_WIDTH);
+        let next = match grow {
+            None => COLUMN_WIDTHS.iter().copied().find(|c| *c > now + 0.01).unwrap_or(COLUMN_WIDTHS[0]),
+            Some(g) => (now + if g { RESIZE_STEP } else { -RESIZE_STEP }).clamp(0.1, 1.0),
+        };
+        if (next - now).abs() < 1e-4 {
+            return false;
+        }
+        self.auto.widths.insert(w.id(), next);
+        info!(window = w.id(), width = next, "column width");
+        self.auto.changed();
+        self.auto_tick();
+        true
     }
 
     /// `w` (now at `geo`) to `rect`: moved at once if that's all; sized
@@ -3011,6 +3173,15 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn resize_toward(&mut self, w: &WindowElement, dir: olo_protocol::Dir) -> bool {
         if self.floats(w) {
             return false;
+        }
+        // Scrolling: its column narrower or wider (its height is the
+        // display's).
+        if self.tree_of(w).is_some_and(|k| self.layout_of(&k) == olo_protocol::TilingLayout::Scrolling) {
+            return match dir {
+                olo_protocol::Dir::Right => self.column_width(w, Some(true)),
+                olo_protocol::Dir::Left => self.column_width(w, Some(false)),
+                _ => false,
+            };
         }
         let Some(key) = self.tree_of(w) else { return false };
         let Some(output) = self.space.outputs().find(|o| o.name() == key.1).cloned() else { return false };
@@ -3742,6 +3913,30 @@ mod tests {
         assert_eq!(presel_half(f, Dir::Right), r(61, 20, 50, 51));
         assert_eq!(presel_half(f, Dir::Up), r(10, 20, 101, 25));
         assert_eq!(presel_half(f, Dir::Down), r(10, 46, 101, 25));
+    }
+
+    /// Scrolling's strip: columns side by side, the scroll moved as
+    /// little as brings the focused column into view, never past the
+    /// strip's ends.
+    #[test]
+    fn scrolling_strip() {
+        let area = Rectangle::<i32, Logical>::new((100, 8).into(), (1000, 600).into());
+        let xs = |(f, s): (Vec<(u64, Rectangle<i32, Logical>)>, i32)| (f.iter().map(|(_, r)| r.loc.x).collect::<Vec<_>>(), s);
+        let w500 = |_: u64| 500;
+        // The first in view: from the left edge, the third past the right.
+        assert_eq!(xs(scrolling_frames(&[1, 2, 3], &w500, 10, area, Some(1), 0)), (vec![100, 610, 1120], 0));
+        // The third: scrolled just far enough (its right edge at the room's).
+        assert_eq!(xs(scrolling_frames(&[1, 2, 3], &w500, 10, area, Some(3), 0)), (vec![-420, 90, 600], 520));
+        // Back to the second from there: just far enough the other way.
+        assert_eq!(xs(scrolling_frames(&[1, 2, 3], &w500, 10, area, Some(2), 520)), (vec![-410, 100, 610], 510));
+        // Already in view: no scroll.
+        assert_eq!(xs(scrolling_frames(&[1, 2, 3], &w500, 10, area, Some(2), 300)).1, 300);
+        // Narrower than the room: at the left, no scroll whatever was kept.
+        assert_eq!(xs(scrolling_frames(&[1, 2], &|_| 300, 10, area, Some(2), 400)), (vec![100, 410], 0));
+        // Each its own width; heights the room's.
+        let (f, _) = scrolling_frames(&[1, 2], &|id| if id == 1 { 700 } else { 200 }, 10, area, None, 0);
+        assert_eq!(f[1].1, Rectangle::new((810, 8).into(), (200, 600).into()));
+        assert_eq!(scrolling_frames(&[], &w500, 10, area, None, 50).0.len(), 0);
     }
 
     fn with_kept_spiral(t: &Node) -> Node {
