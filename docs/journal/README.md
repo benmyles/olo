@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-16
 
+### Preferences: apps with their own workspace
+
+*04:36* — Preferences ▸ Windows lists the apps whose new windows open on a workspace of their own; unchecking one opens its windows where you are again (1.5×).
+
+![Preferences: apps with their own workspace](2026-11-16/043654-preferences-apps-with-their-own-workspace.png)
+
+### Window menu: an app's own workspace
+
+*04:36* — Always Open StyledEdit on Workspace 1: an app's new windows open on a workspace of their own (i3's assign, Hyprland's workspace rules), on the display they open on, without it going there; chosen again, as any app's (1.5×).
+
+![Window menu: an app's own workspace](2026-11-16/043653-window-menu-an-app-s-own-workspace.png)
+
 ### Window menu: All Workspaces and the scratchpad
 
 *01:53* — A window can be shown on every workspace of its display (BeOS's All Workspaces, i3's sticky windows: it floats) or put in the scratchpad (i3's and sway's: hidden, floating, brought over the active workspace by Ctrl+Alt+Cmd+Minus and hidden again), from its window menu or by keys (1.5×).

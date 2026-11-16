@@ -253,6 +253,12 @@ for step in range(steps):
         o = rng.choice(list(outputs()))
         op = f"layout {l} on {o}"
         ipc({"type": "set_tiling_layout", "layout": l, "output": o})
+    elif r < 0.685:
+        # An app's new windows on a workspace of their own, or not.
+        apps = ["olo.styled-edit", "olo.disk-usage", "olo.logs", "olo.kache", "olo.doctor", "olo.viewer"]
+        app, to = rng.choice(apps), rng.choice([None, 0, 1])
+        op = f"app workspace {app} {to}"
+        ipc({"type": "set_app_workspace", "app_id": app, "workspace": to})
     elif r < 0.69:
         # Where new windows go: first, after the active one, last.
         st = ipc({"type": "get_settings"})["settings"]

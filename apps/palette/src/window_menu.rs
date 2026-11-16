@@ -86,6 +86,8 @@ pub struct Facts {
     /// Its app's windows float always (Float Window ▸ Always:
     /// `TilingSettings::floating_apps`).
     pub app_floats: bool,
+    /// The workspace its app's new windows open on, if it has one.
+    pub app_workspace: Option<u32>,
     /// Shortcut keys changed from the defaults, to show the ones in use.
     pub keys: KeyboardProfile,
     /// The file or folder it shows, if its program says
@@ -134,8 +136,8 @@ pub fn learn(ask: Ask, proxy: Proxy) {
         let display = w.output.as_deref().and_then(|o| olo_protocol::display_number(&outputs, o));
         let others =
             outputs.iter().filter(|o| o.mirror_of.is_none() && Some(&o.name) != w.output.as_ref()).filter_map(|o| Some((o.name.clone(), olo_protocol::display_number(&outputs, &o.name)?))).collect();
-        let (keys, app_floats) = match c.request(&Request::GetSettings) {
-            Ok(Reply::Settings { settings }) => (settings.keyboard.profile, !w.app_id.is_empty() && settings.tiling.floating_apps.contains(&w.app_id)),
+        let (keys, app_floats, app_workspace) = match c.request(&Request::GetSettings) {
+            Ok(Reply::Settings { settings }) => (settings.keyboard.profile, !w.app_id.is_empty() && settings.tiling.floating_apps.contains(&w.app_id), settings.tiling.app_workspace(&w.app_id)),
             _ => Default::default(),
         };
         let info = match c.request(&Request::WindowingMode { workspace: Some(w.workspace) }) {
@@ -216,6 +218,7 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             main,
             previous_main,
             app_floats,
+            app_workspace,
             keys,
             path,
             app,
@@ -396,6 +399,13 @@ pub fn build(f: &Facts) -> Menu {
     };
     m = with(m.item("Show on All Workspaces", "shortcut:all-workspaces").checked(f.all_workspaces), "all-workspaces");
     m = with(m.item("In the Scratchpad", "shortcut:to-scratchpad").checked(f.scratch), "to-scratchpad");
+    // Its app's new windows on this workspace (i3's `assign`): checked if
+    // they open here; chosen again, as any app's.
+    if !f.app.app_id.is_empty() && f.workspaces > 1 {
+        let here = f.app_workspace == Some(f.workspace);
+        let command = if here { "app-workspace:none".to_owned() } else { format!("app-workspace:{}", f.workspace) };
+        m = m.item(format!("Always Open {} on Workspace {}", f.app.name, f.workspace + 1), command).checked(here);
+    }
     m = m.item("Send to Back", "send-to-back").separator();
     // The app's own Close and Quit, as its keys press them.
     let item = |m: Menu, label: String, command: &'static str, keys: Option<String>, enabled: bool| {
@@ -495,6 +505,7 @@ pub fn perform(window: u64, app: &Owner, command: &str) {
             "float-group" => Request::SetFloating { id: window, floating: Some(true), alone: false },
             "unfloat" => Request::SetFloating { id: window, floating: Some(false), alone: false },
             "float-always" | "unfloat-always" if !app.app_id.is_empty() => Request::SetAppFloating { app_id: app.app_id.clone(), floating: command == "float-always" },
+            c if c.starts_with("app-workspace:") && !app.app_id.is_empty() => Request::SetAppWorkspace { app_id: app.app_id.clone(), workspace: c["app-workspace:".len()..].parse().ok() },
             "ungroup" => Request::UngroupWindow { id: window },
             "close" => Request::Close { id: window },
             _ => return,
@@ -638,6 +649,7 @@ mod tests {
             main: false,
             previous_main: false,
             app_floats: false,
+            app_workspace: None,
             keys: changed,
             path: None,
             display: Some(1),
@@ -675,6 +687,7 @@ mod tests {
                 || c.strip_prefix("tile-with:").is_some_and(|id| id.parse::<u64>().is_ok())
                 || c.strip_prefix("window-to:").is_some_and(|id| id.parse::<u64>().is_ok())
                 || c.strip_prefix("group-to:").is_some_and(|id| id.parse::<u64>().is_ok())
+                || c.strip_prefix("app-workspace:").is_some_and(|n| n == "none" || n.parse::<u32>().is_ok())
                 || ["send-to-back", "on-top", "close", "close-others", "quit-all", "ungroup", "float", "float-group", "unfloat", tracker::COMMAND].contains(&c.as_str());
             assert!(known, "{c}");
         }

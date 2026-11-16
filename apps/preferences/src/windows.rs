@@ -99,6 +99,25 @@ pub fn ui(ui: &mut Ui, outputs: &[OutputInfo]) {
                 ui.note("Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.");
             }
         });
+        // Apps whose new windows open on a workspace of their own (a
+        // window's menu ▸ Always Open on Workspace N); unchecked, as any
+        // app's again.
+        ui.bbox("Apps With Their Own Workspace", |ui| {
+            if s.tiling.app_workspaces.is_empty() {
+                ui.note("None. To give an app one, choose Always Open on Workspace in the window menu of one of its windows.");
+            }
+            for a in &s.tiling.app_workspaces {
+                let id = a.app_id.clone();
+                ui.check(format!("{} on Workspace {}", app_name(&a.app_id), a.workspace + 1), true, move |s, on| {
+                    if !on {
+                        s.tiling.set_app_workspace(&id, None);
+                    }
+                });
+            }
+            if !s.tiling.app_workspaces.is_empty() {
+                ui.note("Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.");
+            }
+        });
     });
     let right = ui.collect(|ui| {
         ui.bbox("Space Around Arranged Windows", |ui| {

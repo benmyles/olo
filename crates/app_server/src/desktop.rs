@@ -1023,6 +1023,25 @@ impl<B: Backend + 'static> AnvilState<B> {
         true
     }
 
+    /// A new window (not one coming back where it was) of an app with a
+    /// workspace of its own (`TilingSettings::app_workspaces`): there, on
+    /// the display it opened on, without that display going there (i3's
+    /// `assign`). Not a dialog or an alert, which stay with their window.
+    pub fn place_on_app_workspace(&mut self, surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) {
+        let Some(w) = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(surface)).cloned() else { return };
+        let Some(ws) = self.settings.tiling.app_workspace(&w.app_id()) else { return };
+        if w.0.toplevel().is_some_and(|t| t.parent().is_some()) || crate::shell::groups::is_parentless_alert(&w) {
+            return;
+        }
+        let Some(o) = self.window_output(&w) else { return };
+        let ws = ws.min(self.settings.workspace_count.max(1) - 1);
+        if self.showing(&o) == ws {
+            return;
+        }
+        info!(window = w.id(), app = w.app_id(), workspace = ws, "on its app's workspace");
+        self.move_to_workspace(&w, ws);
+    }
+
     pub fn minimize(&mut self, window: &WindowElement) {
         if self.space.element_location(window).is_none() {
             return;

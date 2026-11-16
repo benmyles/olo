@@ -628,6 +628,16 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.set_app_floating(&app_id, floating);
                 Reply::Ok
             }
+            Request::SetAppWorkspace { app_id, workspace } => {
+                if app_id.is_empty() {
+                    return Some(Reply::Error { message: "no app".into() });
+                }
+                let last = self.settings.workspace_count.max(1) - 1;
+                self.settings.tiling.set_app_workspace(&app_id, workspace.map(|w| w.min(last)));
+                self.settings_changed();
+                tracing::info!(app = app_id, ?workspace, "an app's own workspace");
+                Reply::Ok
+            }
             Request::Workspaces => Reply::Workspaces { current: self.workspace(), count: self.settings.workspace_count, displays: self.display_workspaces() },
             Request::SwitchWorkspace { index, output: None } => {
                 self.switch_workspace(index);

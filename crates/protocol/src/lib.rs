@@ -38,8 +38,8 @@ pub mod voice;
 pub use notifications::{AppNotifications, CardSize, HistoryView, NoteApp, NoteLook, NoteStyle, NotificationSettings, NotificationState};
 pub use sharing::SharingState;
 pub use shortcuts::{
-    AutoTiling, Chord, CommandKey, Dir, KeyboardProfile, LAYOUT_PRESETS, LayoutChoice, MAX_MAINS, MainCountChoice, MainPlaceChoice, ModeChoice, NewWindows, Platform, Shortcut, ShortcutSettings,
-    TILING_VERSION, Tile, TilingLayout, TilingSettings, WindowingMode,
+    AppWorkspace, AutoTiling, Chord, CommandKey, Dir, KeyboardProfile, LAYOUT_PRESETS, LayoutChoice, MAX_MAINS, MainCountChoice, MainPlaceChoice, ModeChoice, NewWindows, Platform, Shortcut,
+    ShortcutSettings, TILING_VERSION, Tile, TilingLayout, TilingSettings, WindowingMode,
 };
 
 pub const SOCKET_ENV: &str = "OLO_SOCKET";
@@ -551,6 +551,15 @@ pub enum Request {
     SetAppFloating {
         app_id: String,
         floating: bool,
+    },
+    /// App `app_id`'s new windows open on workspace `workspace` (counting
+    /// from 0) of the display they open on, from now on; or (None) as any
+    /// app's: kept in `TilingSettings::app_workspaces`. Answered
+    /// `Reply::Ok`.
+    SetAppWorkspace {
+        app_id: String,
+        #[serde(default)]
+        workspace: Option<u32>,
     },
     /// Inject input as if from a device (for automated UI tests).
     Synthetic {

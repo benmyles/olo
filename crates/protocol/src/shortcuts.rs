@@ -1122,6 +1122,11 @@ pub struct TilingSettings {
     /// (`Request::SetAppFloating`). A window floated or tiled by hand
     /// goes by that instead.
     pub floating_apps: Vec<String>,
+    /// Apps whose new windows open on a workspace of their own (a window
+    /// menu's Always Open on Workspace N; i3's `assign`, Hyprland's
+    /// workspace rules), on the display they open on. A window coming back
+    /// where it was, or a dialog with its window, goes as before.
+    pub app_workspaces: Vec<AppWorkspace>,
     /// The windowing mode of every workspace (and display) that hasn't
     /// one of its own (Preferences ▸ Windows).
     pub default_mode: WindowingMode,
@@ -1196,6 +1201,7 @@ impl Default for TilingSettings {
             margin: 8,
             ungrouped_apps: Vec::new(),
             floating_apps: Vec::new(),
+            app_workspaces: Vec::new(),
             default_mode: WindowingMode::Standard,
             layout: TilingLayout::MainAndStack,
             layouts: Vec::new(),
@@ -1219,6 +1225,14 @@ pub struct MainPlaceChoice {
     pub workspace: u32,
     pub display: String,
     pub place: Tile,
+}
+
+/// An app's own workspace ([`TilingSettings::app_workspaces`]), counting
+/// from 0.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AppWorkspace {
+    pub app_id: String,
+    pub workspace: u32,
 }
 
 /// Where a new window goes among the tiles ([`TilingSettings::new_windows`]).
@@ -1363,6 +1377,19 @@ impl TilingSettings {
         }
     }
 
+    /// The workspace `app_id`'s new windows open on, if it has one.
+    pub fn app_workspace(&self, app_id: &str) -> Option<u32> {
+        self.app_workspaces.iter().find(|a| a.app_id == app_id).map(|a| a.workspace)
+    }
+
+    /// Give `app_id` a workspace of its own, or (None) none.
+    pub fn set_app_workspace(&mut self, app_id: &str, workspace: Option<u32>) {
+        self.app_workspaces.retain(|a| a.app_id != app_id);
+        if let Some(workspace) = workspace {
+            self.app_workspaces.push(AppWorkspace { app_id: app_id.to_owned(), workspace });
+        }
+    }
+
     /// How many main windows Main and Stack has on `display`'s workspace
     /// `workspace`: its own number if it was given one, else the default;
     /// 1 to [`MAX_MAINS`].
@@ -1473,6 +1500,22 @@ mod tests {
         assert_eq!(c.label(Platform::Beos), "Ctrl+Opt+Shift+←");
         assert_eq!("Ctrl+Alt+Delete".parse::<Chord>().unwrap().label(Platform::Beos), "Ctrl+Alt+Del");
         assert_eq!("win+s".parse::<Chord>().unwrap().label(Platform::Windows), "Win+S");
+    }
+
+    #[test]
+    fn apps_own_workspaces() {
+        let mut t = TilingSettings::default();
+        assert_eq!(t.app_workspace("olo.logs"), None);
+        t.set_app_workspace("olo.logs", Some(2));
+        t.set_app_workspace("olo.kache", Some(1));
+        assert_eq!((t.app_workspace("olo.logs"), t.app_workspace("olo.kache")), (Some(2), Some(1)));
+        t.set_app_workspace("olo.logs", Some(0));
+        assert_eq!(t.app_workspaces.len(), 2, "one each");
+        t.set_app_workspace("olo.logs", None);
+        assert_eq!((t.app_workspace("olo.logs"), t.app_workspace("olo.kache")), (None, Some(1)));
+        // Read from settings written before there were any.
+        let old: TilingSettings = serde_json::from_str(r#"{"gap": 4}"#).unwrap();
+        assert!(old.app_workspaces.is_empty());
     }
 
     #[test]

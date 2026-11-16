@@ -6994,6 +6994,16 @@ it hadn't drawn the size floating asked of it). Moved to the scratchpad
 again, it's taken out, staying where it is. Both are kept across a
 restart (`Placement`).
 
+An app's own workspace (i3's `assign`, Hyprland's workspace rules;
+`TilingSettings::app_workspaces`, `{"type":"set_app_workspace",
+"app_id":"olo.logs","workspace":2}`, None to clear): its new windows
+open on that workspace of the display they open on, without the display
+going there (`place_on_app_workspace`, as a new window first shows); a
+window coming back where it was, a dialog or an alert stays as it would.
+The window menu's Always Open App on Workspace N sets it to the window's
+workspace (checked there; chosen again, cleared), and Preferences ▸
+Windows ▸ Apps With Their Own Workspace lists them, unchecked to clear.
+
 Reshaping, as bspwm's rotate, flip and balance, i3's and Hyprland's
 toggled split and their gap keys (`shell/reshape.rs`, functions of the
 tree alone, `reshape_tiles`): Rotate the Tiles (⌃⌥⌘R, back with ⇧)
