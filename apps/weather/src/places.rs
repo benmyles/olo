@@ -23,12 +23,37 @@ pub struct Place {
     /// Its height above sea level, metres.
     #[serde(default)]
     pub elevation: Option<f64>,
+    /// The name the person gave it ("Home", "The drop zone"), shown for
+    /// it everywhere (Ben, 2026-11-15: "in the weather app i should be
+    /// able to set custom names for places i've added"); `name` is what
+    /// it was found as, still shown beside.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
 }
 
 impl Place {
     /// The made-up place the demo forecasts.
     pub fn demo() -> Place {
-        Place { name: "Sample Field".into(), region: "A made-up place".into(), lat: 45.0, lon: 7.0, timezone: Some("Europe/Rome".into()), elevation: Some(240.0) }
+        Place { name: "Sample Field".into(), region: "A made-up place".into(), lat: 45.0, lon: 7.0, timezone: Some("Europe/Rome".into()), elevation: Some(240.0), label: None }
+    }
+
+    /// What it's called: the person's own name for it, else the one it
+    /// was found as.
+    pub fn title(&self) -> &str {
+        self.label.as_deref().filter(|l| !l.trim().is_empty()).unwrap_or(&self.name)
+    }
+
+    /// Whether `name` names it (its own name or the one it was found as,
+    /// whatever their case): an agent's `place:NAME`, `--print NAME`.
+    pub fn named(&self, name: &str) -> bool {
+        self.title().eq_ignore_ascii_case(name) || self.name.eq_ignore_ascii_case(name)
+    }
+
+    /// What it was found as, with where, when it has a name of its own
+    /// ("Seattle, Washington, United States"): shown beside that name.
+    pub fn found_as(&self) -> Option<String> {
+        self.label.as_ref().filter(|l| !l.trim().is_empty())?;
+        Some(if self.region.is_empty() { self.name.clone() } else { format!("{}, {}", self.name, self.region) })
     }
 
     /// Its offset from UTC at time `t` (seconds): its time zone's, else
@@ -63,7 +88,15 @@ impl Place {
 pub fn coordinates(text: &str) -> Option<Place> {
     let parts: Vec<f64> = text.split([',', ' ', ';']).filter(|s| !s.is_empty()).map(|s| s.trim().parse::<f64>()).collect::<Result<_, _>>().ok()?;
     let [lat, lon] = parts[..] else { return None };
-    ((-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lon)).then(|| Place { name: format!("{lat:.3}, {lon:.3}"), region: String::new(), lat, lon, timezone: None, elevation: None })
+    ((-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lon)).then(|| Place {
+        name: format!("{lat:.3}, {lon:.3}"),
+        region: String::new(),
+        lat,
+        lon,
+        timezone: None,
+        elevation: None,
+        label: None,
+    })
 }
 
 /// Places called `query`, the likeliest first (on a worker).
@@ -100,6 +133,7 @@ pub fn parse_search(v: &serde_json::Value) -> Vec<Place> {
                         lon: r["longitude"].as_f64()?,
                         timezone: r["timezone"].as_str().map(str::to_owned),
                         elevation: r["elevation"].as_f64(),
+                        label: None,
                     })
                 })
                 .collect()
@@ -110,6 +144,25 @@ pub fn parse_search(v: &serde_json::Value) -> Vec<Place> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A place's own name is what it's called, found by (as is the name it
+    /// was found as), and kept only when it says something.
+    #[test]
+    fn a_place_goes_by_its_own_name() {
+        let mut p = Place { name: "Seattle".into(), region: "Washington, United States".into(), ..Place::demo() };
+        assert_eq!((p.title(), p.found_as()), ("Seattle", None));
+        p.label = Some("Home".into());
+        assert_eq!(p.title(), "Home");
+        assert_eq!(p.found_as().as_deref(), Some("Seattle, Washington, United States"));
+        assert!(p.named("home") && p.named("SEATTLE") && !p.named("Tacoma"));
+        // Kept with it, and a place from before has none.
+        let json = serde_json::to_string(&p).unwrap();
+        assert_eq!(serde_json::from_str::<Place>(&json).unwrap().title(), "Home");
+        p.label = None;
+        assert!(!serde_json::to_string(&p).unwrap().contains("label"));
+        p.label = Some("  ".into());
+        assert_eq!(p.title(), "Seattle", "blank: its found name");
+    }
 
     #[test]
     fn coordinates_are_a_place() {

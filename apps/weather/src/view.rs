@@ -121,7 +121,7 @@ fn sidebar(w: &mut Weather, cx: &mut Cx<Weather>) -> Element {
             Some((f, s)) => (model::icon(s.code(), f.is_night(now)), s.get(Layer::Temperature).map(|t| w.settings.units.degrees(t)).unwrap_or_default()),
             None => ("weather", String::new()),
         };
-        rows.push(Row::new(icon, place.name.clone()).value(temp));
+        rows.push(Row::new(icon, place.title().to_owned()).value(temp));
     }
     let chosen = w.settings.chosen.min(w.settings.places.len().saturating_sub(1)) + 1;
     let list = Sidebar::new("weather-places", rows, chosen)
@@ -136,13 +136,15 @@ fn sidebar(w: &mut Weather, cx: &mut Cx<Weather>) -> Element {
                 return;
             }
             let i = i - 1;
-            let menu = olo_kit::Menu::new("Place").item("Show", format!("place:{i}")).item("Remove Place", format!("remove:{i}"));
+            let menu = olo_kit::Menu::new("Place").item("Show", format!("place:{i}")).item("Rename…", format!("rename-at:{i}")).item("Remove Place", format!("remove:{i}"));
             let view = cx.view_ref();
             olo_kit::menu::context_menu(cx, menu, *at, move |cmd, cx| {
                 let cmd = cmd.to_owned();
                 view.update(cx, move |v: &mut Weather, cx| {
                     if let Some(i) = cmd.strip_prefix("remove:").and_then(|i| i.parse().ok()) {
                         v.remove_place(i, cx);
+                    } else if let Some(i) = cmd.strip_prefix("rename-at:").and_then(|i| i.parse().ok()) {
+                        v.open_rename(i, cx);
                     } else {
                         v.command(&cmd, cx);
                     }
@@ -279,10 +281,13 @@ fn header(place: &Place, f: &Forecast, units: &Units, now: i64, (status, wrong):
     let local = local_of(place, f)(now as f64);
     let (h, mi, wd, d) = olo_kit::widgets::timeline::parts(local);
     let clock = format!("{} {d}, {h:02}:{mi:02} there", olo_kit::widgets::timeline::WEEKDAYS[wd]);
-    let name = place.name.clone();
+    let name = place.title().to_owned();
     let mut about = vec![];
-    if !place.region.is_empty() {
-        about.push(place.region.clone());
+    // (Its own name in the title: what it was found as beside, then.)
+    match place.found_as() {
+        Some(found) => about.push(found),
+        None if !place.region.is_empty() => about.push(place.region.clone()),
+        None => {}
     }
     about.push(place.coordinates());
     if let Some(e) = place.elevation {
@@ -963,7 +968,10 @@ pub fn summary(w: &Weather) -> String {
     let u = &w.settings.units;
     let now = provider::now();
     let local = local_of(place, &f);
-    let mut out = vec![format!("{} ({})", place.name, place.coordinates())];
+    let mut out = vec![match place.found_as() {
+        Some(found) => format!("{} ({found}; {})", place.title(), place.coordinates()),
+        None => format!("{} ({})", place.title(), place.coordinates()),
+    }];
     if let Some(s) = f.now(now) {
         let say = |l: Layer| s.get(l).map(|v| format!("{} {}", l.info().label, u.say(l.info().quantity, v)));
         let parts: Vec<String> =

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Weather: a place's own name
+
+*16:13* — A kept place can have a name of its own (File > Rename Place..., or its right-click's Rename...): shown in the list, the title, Copy and what the assistant is told, with what it was found as beside it in the header; empty, it goes back to that name. Agents: rename:NAME, and place:NAME finds it by either name (light, 2x).
+
+![Weather: a place's own name](2026-11-15/161313-weather-a-place-s-own-name.png)
+
 ### Weather: ten questions to start with
 
 *16:09* — The assistant offers ten questions covering what people ask of a forecast most: rain (when it stops, while it rains), what to wear, how warm or cold, wind, storms, the weekend, the week, the sun, a time for a run, and Ben's own, "Will the clouds be high enough to skydive?". After five in the evening the day's become tomorrow's. A question wider than the column wraps (the kit's LinkButton::wrap_at), shown here at the window's least width (light, 2x).

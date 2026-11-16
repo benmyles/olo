@@ -17973,6 +17973,16 @@ unlocked. The key is held in memory while Weather runs, zeroed when
 dropped, and written nowhere else. With no key, the forecast's place
 says what's needed and offers Give a Key….
 
+**A place's own name** (Ben, 2026-11-15: "in the weather app i should
+be able to set custom names for places i've added"): File ▸ Rename
+Place… and a place's right-click Rename… (`dialogs::RenamePlace`: a
+name field, the found name its hint, empty to go back to it) keep it
+as `Place::label` with the place in `weather.json`. `Place::title` is
+what it's called everywhere: the list, the header (with
+`found_as`, "Seattle, Washington, United States", beside it), Edit ▸
+Copy, and the assistant, told both. Forecasts are kept by the place's
+coordinates, so a rename keeps its forecast.
+
 **The assistant** (`assistant.rs`): Preferences ▸ AI ▸ Weather's model
 (Astra 6 thinking at Medium by default, through the Token Pool). A
 question goes on a worker with the place, its clock now, the person's
@@ -18002,7 +18012,9 @@ window's). Tests never call a model
 
 **For agents.** Every command of the menus is on Weather's menus
 socket (`{"invoke":…}`), with more: `tab:N`, `place:N` or
-`place:NAME`, `ask:QUESTION`, `units:metric|imperial|c|f|kmh|mph|ms|kt|m|ft|km|mi|mm|in|hpa|inhg`.
+`place:NAME` (its own name or the one it was found as),
+`rename:NAME` (the chosen place's own name; empty: back to the found
+one), `ask:QUESTION`, `units:metric|imperial|c|f|kmh|mph|ms|kt|m|ft|km|mi|mm|in|hpa|inhg`.
 The tree has every card (figure and caption), each day's row (its whole
 detail), each chart's plots as Figures (each track's first, lowest and
 highest values and when), the spans, and the conversation.

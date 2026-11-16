@@ -156,7 +156,10 @@ In \"windows\", give the spans of time the answer points to, if any (a dry spell
 its start and end as ISO 8601 with the place's UTC offset, and a label of two to four words (\"Dry and calm\", \"Base over \
 1,500 m\"). None when nothing in particular.\n\n\
 Forecast data:\n{data}",
-        name = place.name,
+        name = match place.found_as() {
+            Some(found) => format!("{} (the person's name for it; it's {found})", place.title()),
+            None => place.name.clone(),
+        },
         coords = place.coordinates(),
         provider = crate::provider::by_id(&forecast.provider).name(),
         data = forecast.raw,

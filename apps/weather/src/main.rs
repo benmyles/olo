@@ -127,6 +127,9 @@ pub enum Msg {
     AddPlace(Place),
     /// A provider and where its key is (Data Provider).
     Provider(String, key::Source),
+    /// A kept place's own name (Rename Place; empty: the name it was
+    /// found as).
+    RenamePlace(usize, String),
 }
 
 pub struct Weather {
@@ -147,6 +150,7 @@ pub struct Weather {
     pub spans: Vec<assistant::Window>,
     key_dialog: Option<WindowHandle<dialogs::KeyDialog>>,
     add_dialog: Option<WindowHandle<dialogs::AddPlace>>,
+    rename_dialog: Option<WindowHandle<dialogs::RenamePlace>>,
 }
 
 /// What's kept across an upgrade in place.
@@ -201,6 +205,7 @@ impl Weather {
             spans: Vec::new(),
             key_dialog: None,
             add_dialog: None,
+            rename_dialog: None,
         };
         w.show_chosen(false, cx);
         w
@@ -371,6 +376,25 @@ impl Weather {
         self.add_dialog = Some(dialogs::AddPlace::open(cx.messenger()));
     }
 
+    /// Rename Place… for place `i`.
+    pub fn open_rename(&mut self, i: usize, cx: &mut Cx<Self>) {
+        if olo_kit::raise(self.rename_dialog.as_ref()) {
+            return;
+        }
+        let Some(place) = self.settings.places.get(i) else { return };
+        self.rename_dialog = Some(dialogs::RenamePlace::open(i, place, cx.messenger()));
+    }
+
+    /// Place `i` called `name` (empty, or the name it was found as: no
+    /// name of its own), kept.
+    pub fn rename_place(&mut self, i: usize, name: &str, cx: &mut Cx<Self>) {
+        let Some(place) = self.settings.places.get_mut(i) else { return };
+        let name = name.trim();
+        place.label = (!name.is_empty() && name != place.name).then(|| name.to_owned());
+        self.save();
+        cx.invalidate();
+    }
+
     pub fn open_key_dialog(&mut self, cx: &mut Cx<Self>) {
         if olo_kit::raise(self.key_dialog.as_ref()) {
             return;
@@ -469,6 +493,8 @@ impl Weather {
                 .app_items(&["ai"])
                 .item("Add Place…", "add-place")
                 .key("n")
+                .item("Rename Place…", "rename-place")
+                .enabled(has)
                 .item("Remove Place", "remove-place")
                 .enabled(has)
                 .separator()
@@ -612,6 +638,7 @@ impl View for Weather {
                 self.settings.chosen = usize::MAX;
                 self.choose(at, cx);
             }
+            Msg::RenamePlace(i, name) => self.rename_place(i, &name, cx),
             Msg::Provider(provider, source) => {
                 let changed = provider != self.settings.provider || source != self.settings.key;
                 self.settings.provider = provider;
@@ -636,6 +663,9 @@ impl View for Weather {
         match command {
             "add-place" => self.open_add_place(cx),
             "remove-place" => self.remove_place(self.settings.chosen, cx),
+            "rename-place" => self.open_rename(self.settings.chosen, cx),
+            // (An agent's: the chosen place's own name, at once.)
+            c if c.starts_with("rename:") => self.rename_place(self.settings.chosen, &c[7..], cx),
             "provider" => self.open_key_dialog(cx),
             "refresh" => self.show_chosen(true, cx),
             "copy" => olo_kit::clipboard::write(olo_kit::ClipboardItem::new_string(self.as_text())),
@@ -665,7 +695,7 @@ impl View for Weather {
             c if c.starts_with("place:") => {
                 // (An agent's: by its place in the list, or its name.)
                 let which = &c[6..];
-                let i = which.parse::<usize>().ok().or_else(|| self.settings.places.iter().position(|p| p.name.eq_ignore_ascii_case(which)));
+                let i = which.parse::<usize>().ok().or_else(|| self.settings.places.iter().position(|p| p.named(which)));
                 match i {
                     Some(i) => self.choose(i, cx),
                     None => return false,
@@ -726,7 +756,7 @@ fn print(args: &[String]) -> std::process::ExitCode {
     let name = args.iter().skip(1).find(|a| !a.starts_with("--")).cloned();
     let settings: Settings = if demo() { Settings { provider: "demo".into(), places: vec![Place::demo()], ..Settings::default() } } else { olo_kit::store::load(&settings_path()).unwrap_or_default() };
     let Some(place) = (match &name {
-        Some(n) => settings.places.iter().find(|p| p.name.eq_ignore_ascii_case(n)),
+        Some(n) => settings.places.iter().find(|p| p.named(n)),
         None => settings.places.get(settings.chosen).or(settings.places.first()),
     }) else {
         eprintln!("olo-weather: no such place kept{}", name.map(|n| format!(" (“{n}”)")).unwrap_or_default());

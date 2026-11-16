@@ -1470,7 +1470,9 @@ something nobody here has is in "Blocked", with what it waits for.
   right-click and an Edit menu item, in the places list, the window's
   title row and what the assistant and agents are told; the place it
   stands for (its found name and region) still shown beside it, and kept
-  with the place across restarts.
+  with the place across restarts. Done (HACKING, Weather): File ▸ Rename Place… and the
+  right-click's Rename…; the found name beside it in the header; agents'
+  `rename:NAME`.
 
 - **Weather: a Deskbar widget, customizable and beautiful** (Ben,
   2026-11-15: "the weather app should make available a deskbar widget

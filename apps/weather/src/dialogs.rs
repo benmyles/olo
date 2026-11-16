@@ -1,6 +1,7 @@
 //! Weather's dialogs: Add Place (find a place by name, or give its
-//! coordinates) and Data Provider (which provider, and its key: typed
-//! once and kept in Passwords, or a reference to one already there).
+//! coordinates), Rename Place (a name of the person's own for it) and
+//! Data Provider (which provider, and its key: typed once and kept in
+//! Passwords, or a reference to one already there).
 
 use std::{
     sync::atomic::{AtomicU64, Ordering},
@@ -402,5 +403,72 @@ impl View for KeyDialog {
                 .child(Button::new("Save").default(true).enabled(!saving).min_width(bw).on_click(cx.listener(|v: &mut KeyDialog, _: &ClickEvent, cx| v.save(cx)))),
         )
         .into_element()
+    }
+}
+
+/// Rename Place: a name of the person's own for a kept place ("Home"),
+/// shown for it everywhere; empty, it goes back to the name it was found
+/// as (the field's hint).
+pub struct RenamePlace {
+    index: usize,
+    name: olo_kit::Child<TextField>,
+    /// What it was found as, with where.
+    found: String,
+    to_main: ToMain,
+}
+
+impl RenamePlace {
+    pub fn open(index: usize, place: &Place, to_main: ToMain) -> WindowHandle<RenamePlace> {
+        let (label, hint) = (place.label.clone().unwrap_or_default(), place.name.clone());
+        let found = if place.region.is_empty() { place.name.clone() } else { format!("{}, {}", place.name, place.region) };
+        olo_kit::open_window(WindowOptions { fixed: true, ..WindowOptions::new("Rename Place", 420.0, 130.0).dialog() }, move |cx| {
+            let name = text_field(cx, |f| f.name("Name").hint(hint).with_text(label));
+            name.update(cx, |f, cx| f.select_all_text(cx));
+            name.focus(cx);
+            cx.subscribe(&name, |v: &mut RenamePlace, e: &TextFieldEvent, cx| {
+                if matches!(e, TextFieldEvent::Entered) {
+                    v.done(true, cx);
+                }
+            });
+            RenamePlace { index, name, found, to_main }
+        })
+    }
+
+    fn done(&mut self, ok: bool, cx: &mut Cx<Self>) {
+        if ok {
+            let typed = self.name.read(cx).text().trim().to_owned();
+            self.to_main.send(Msg::RenamePlace(self.index, typed));
+        }
+        cx.close_window();
+    }
+}
+
+impl View for RenamePlace {
+    type Message = ();
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let bw = button_width("Rename", false).max(button_width("Cancel", false));
+        div()
+            .p(px(m::WINDOW_INSET))
+            .flex()
+            .flex_col()
+            .gap(px(m::STACK))
+            .on_key_down(cx.listener(|v: &mut RenamePlace, e: &KeyDownEvent, cx| {
+                if e.keystroke.key == "escape" {
+                    v.done(false, cx);
+                }
+            }))
+            .child(TextControl::new(cx, &self.name).label("Name:").divider(DIVIDER))
+            .child(div().pl(px(DIVIDER)).child(StringView::new(format!("Found as {}. Leave it empty for that name.", self.found)).dim(true).wrap(true)))
+            .child(
+                div()
+                    .mt(px(m::SPACING))
+                    .flex()
+                    .justify_end()
+                    .gap(px(m::SPACING))
+                    .child(Button::new("Cancel").min_width(bw).on_click(cx.listener(|v: &mut RenamePlace, _: &ClickEvent, cx| v.done(false, cx))))
+                    .child(Button::new("Rename").default(true).min_width(bw).on_click(cx.listener(|v: &mut RenamePlace, _: &ClickEvent, cx| v.done(true, cx))))
+                    .into_element(),
+            )
     }
 }
