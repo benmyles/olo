@@ -50,9 +50,14 @@ pub fn when(ms: u64, now: u64) -> String {
     }
 }
 
-/// "3 min ago", "just now".
-pub fn ago(ms: u64, now: u64) -> String {
-    match now.saturating_sub(ms) / 1000 {
+/// "3 min ago", "just now": said again as it changes (`olo_kit::ago`).
+pub fn ago(ms: u64, _now: u64) -> String {
+    olo_kit::ago::ago_ms(ms, ago_words)
+}
+
+/// An age as `ago` says it.
+fn ago_words(age: std::time::Duration) -> String {
+    match age.as_secs() {
         0..10 => "just now".into(),
         s @ 10..60 => format!("{s} s ago"),
         s => format!("{} ago", span(s * 1000)),

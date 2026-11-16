@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Agent Screens: every screen's last use as it happens
+
+*18:00* — A screen's time in the sidebar moved on only when you clicked it: only the chosen screen's history was followed, the others' read only when screens came or went. Now every listed screen's history is followed (left: beta 20 min; middle: an agent acted on it, now, with no click), and every time said relative to now in Olo follows the clock by itself (right, a minute later: 2 min and 1 min). The kit's olo_kit::ago says it and the window draws again exactly when the words change, nothing in between (light, 2x).
+
+![Agent Screens: every screen's last use as it happens](2026-11-15/180007-agent-screens-every-screen-s-last-use-as-it-happ.png)
+
 ### OS Updates: a package changing architecture no longer empties the update
 
 *17:46* — Updating everything chosen used to come to "Nothing to do" when one package's update moved between noarch and an architecture (python3-wcwidth): it was asked for by the new build's name and architecture, which dnf refuses, and one refused argument empties a whole transaction. Each update is now asked for as dnf names what's installed, and anything dnf still refuses is left out with a line saying so, so the rest goes ahead (here against the stand-in daemon, light, 2x).

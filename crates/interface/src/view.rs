@@ -21,7 +21,7 @@ use std::{
     marker::PhantomData,
     ops::{Deref, DerefMut},
     rc::Rc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use olo_app::{Messenger, Task};
@@ -212,6 +212,9 @@ pub(crate) struct ViewSlot {
     pub(crate) subscribers: Vec<(TypeId, Subscriber)>,
     /// Timers and tasks that end with it.
     pub(crate) timers: Vec<olo_app::TimerId>,
+    /// Its body again then: what it said of the time holds till then
+    /// (`holds_until`), and the timer for it.
+    pub(crate) wakes: Option<(Instant, olo_app::TimerId)>,
 }
 
 thread_local! {

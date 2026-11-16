@@ -1643,6 +1643,29 @@ render say what's next); `Notice` is a message that goes of itself
 `Due`): Passwords' status line ("Deleted “Bank”.", its auto-lock and
 sync on the same `Due`), Telegram's problem banner.
 
+**Times said relative to now follow the clock by themselves**
+(`olo_kit::ago`; Ben, 2026-11-15: "it seems to only update when i click
+on it. i've noticed the same thing happen in other apps too ... please
+root cause and fix universally"). An app says an age in its own words
+(`ago_ms(at, say)`, `ago_secs`, `ago(SystemTime)`, `age(Duration)`;
+`ago::short` "5 min", `ago::long` "5 min ago" for the common ones);
+`until_change` finds when those words next change (each unit's
+boundaries searched by halves: the whole second or minute of the age
+where `say` says something else; further on, the hour before the whole
+hour where it does, then to the minute, for words that follow the
+calendar, "yesterday at 14:05"), and says so with
+`olo_interface::holds_until(at)`: the window draws the view saying it
+again then (`wake_view_at`: one timer a view, for the soonest of what
+its `body` said; kept if it's for that time; gone with the view; none
+while nothing said would change). No app keeps a timer for its times
+and none goes stale until something else draws the window. Say it in
+`body` (said while painting, it's no one's). Through it: Agent Screens'
+sidebar, header and stats, OS Updates' "Checked …", Disk Backup's
+"Backed up …" (its calendar words of the moment described, not the
+clock read), Weather's "Updated …" (whole minutes: words changing
+mid-minute aren't found on its boundaries). Idle: Agent Screens, 0
+wakeups a second over 30 s before and after (release, test session).
+
 Text fields behave the same everywhere: a click places the caret, a
 double click selects a word, a triple click the line, and a right press
 opens Cut / Copy / Paste / Select All, keeping the selection it landed
@@ -14966,7 +14989,10 @@ list shows when a search or filter leaves some out, else all; the file
 says a part ("NAME (12 actions).mp4"). The sidebar (the
 kit's `Sidebar`) has every screen running and every one stopped, under
 Running and Stopped, by last use (`viewer::rows`,
-read on a worker; the chosen one's as it acts), each with how long ago,
+read on a worker; every listed one's as it acts: its history's folder
+watched, `follow_use`, a file's time read as an action is added, so a
+row's time is right without being chosen: it used to change only when
+clicked), each with how long ago (`olo_kit::ago`, following the clock),
 and New Screen under them. A screen can be given a name of its own
 (Screen ▸ Rename…, or a click on its title in the header: a field over
 it, Return keeps it, Escape puts the old back; `olo-screen rename NAME

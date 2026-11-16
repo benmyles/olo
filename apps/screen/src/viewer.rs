@@ -72,6 +72,8 @@ pub enum Msg {
     /// Every screen to list: running, or stopped with a history kept;
     /// each with when it was last used, most recent first.
     Rows(Vec<Row>),
+    /// A listed screen's history grew: used then (ms since 1970).
+    Used(String, u64),
     Frame {
         name: String,
         shot: Arc<Shot>,
@@ -171,23 +173,6 @@ fn rows(running: &[Screen]) -> Vec<Row> {
         .collect();
     rows.sort_by_key(|r| (std::cmp::Reverse(r.last_used), r.name.clone()));
     rows
-}
-
-/// How long ago, as a sidebar says it: "now", "5 min", "3 h", "2 d".
-fn ago_short(ms: u64, now: u64) -> String {
-    let s = now.saturating_sub(ms) / 1000;
-    match s {
-        0..60 => "now".into(),
-        60..3600 => format!("{} min", s / 60),
-        3600..86_400 => format!("{} h", s / 3600),
-        _ => format!("{} d", s / 86_400),
-    }
-}
-
-/// When what's said of a time `age` ms ago next changes ("12 s ago",
-/// "3 min ago"): a second on while under a minute, else the next minute.
-fn next_change(age: u64) -> Duration {
-    if age < 60_000 { Duration::from_millis(1000 - age % 1000) } else { Duration::from_millis(60_000 - age % 60_000) }
 }
 
 /// The screens to show: all but the one this viewer itself is on, if it
@@ -537,9 +522,10 @@ pub struct Viewer {
     /// The chosen screen's history, followed as it grows.
     replay: Option<Child<Replay>>,
     stats_scroll: ScrollHandle,
-    /// Times said ("3 s ago") move on: when the next changes, and its
-    /// timer.
-    ticking: Option<(Instant, olo_kit::TimerId)>,
+    /// Every listed screen's history followed (its row's last use as it
+    /// grows, not only the chosen one's: Ben, 2026-11-15, a row's time
+    /// moved on only when it was clicked).
+    used_watch: Option<olo_kit::watch::Watch>,
     proxy: Proxy,
     /// The chosen screen's name being changed: its field in the header.
     renaming: Option<Child<TextField>>,
@@ -598,7 +584,7 @@ impl Viewer {
             stats_scroll: ScrollHandle::new(),
             shares: None,
             shares_everywhere: None,
-            ticking: None,
+            used_watch: None,
             proxy,
             renaming: None,
             title_at: Default::default(),
@@ -934,7 +920,15 @@ impl Viewer {
             }
             Msg::Rows(rows) => {
                 self.rows = rows;
+                self.follow_use();
                 self.keep_choice_listed(cx);
+            }
+            Msg::Used(name, at) => {
+                if let Some(r) = self.rows.iter_mut().find(|r| r.name == name)
+                    && r.last_used.is_none_or(|t| t < at)
+                {
+                    r.last_used = Some(at);
+                }
             }
             Msg::Changed(failed) => {
                 // (Shown at once; the list read again, to show what is.)
@@ -1403,34 +1397,26 @@ impl Viewer {
         self.replay = Some(replay);
     }
 
-    /// Times said move on: draw again when the next one changes.
-    fn tick(&mut self, ages: impl IntoIterator<Item = u64>, cx: &mut Cx<Self>) {
-        let Some(wait) = ages.into_iter().map(next_change).min() else {
-            if let Some((_, timer)) = self.ticking.take() {
-                cx.cancel(timer);
+    /// Every listed screen's history followed as it grows (its folder
+    /// watched: a file's time read as an action is added, nothing read
+    /// whole), each row's last use said as it changes.
+    fn follow_use(&mut self) {
+        let dirs: Vec<std::path::PathBuf> = self.rows.iter().map(|r| crate::history::dir(&r.name)).collect();
+        let proxy = self.proxy.clone();
+        self.used_watch = olo_kit::watch::watch(dirs, move |changed| {
+            for path in changed.iter().filter(|p| p.file_name().is_some_and(|n| n == "actions.jsonl")) {
+                let Some(name) = path.parent().and_then(|d| d.file_name()).and_then(|n| n.to_str()) else { continue };
+                let Some(at) = std::fs::metadata(path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()) else { continue };
+                proxy.send(Msg::Used(name.to_owned(), at.as_millis() as u64));
             }
-            return;
-        };
-        // (Drawn again before then: the timer set stands.)
-        let due = Instant::now() + wait;
-        if self.ticking.as_ref().is_some_and(|(at, _)| *at <= due + Duration::from_millis(20)) {
-            return;
-        }
-        if let Some((_, timer)) = self.ticking.take() {
-            cx.cancel(timer);
-        }
-        let timer = cx.after_do(wait, |v, cx| {
-            v.ticking = None;
-            cx.invalidate();
         });
-        self.ticking = Some((due, timer));
     }
 
     /// The screens: running, then stopped ones with a history; New
     /// Screen under them.
     fn sidebar(&mut self, side_w: f32, cx: &mut Cx<Self>) -> Element {
-        let now = crate::history::now_ms();
-        // The chosen one's last use as it happens; the others' as listed.
+        // The chosen one's last use as it happens; the others' as their
+        // histories grow (`follow_use`).
         let latest = self.replay.as_ref().and_then(|r| {
             let r = r.read(cx);
             r.actions().last().map(|a| (r.name.clone(), a.at + a.ms))
@@ -1451,7 +1437,7 @@ impl Viewer {
             for r in rs {
                 let row = sidebar::Row::new("agent-screens", r.shown().to_owned());
                 items.push(match last_used(r) {
-                    Some(t) => row.value(ago_short(t, now)),
+                    Some(t) => row.value(olo_kit::ago::ago_ms(t, olo_kit::ago::short)),
                     None => row,
                 });
                 names.push(Some(r.name.clone()));
@@ -1530,7 +1516,7 @@ impl Viewer {
             parts.push("Running".to_owned());
             parts.push(format!("{} × {}", s.width, s.height));
             if let Some(t) = started {
-                parts.push(format!("up {}", stats::span(now.saturating_sub(t))));
+                parts.push(olo_kit::ago::ago_ms(t, |a| format!("up {}", stats::span(a.as_millis() as u64))));
             }
         } else if self.rows.iter().any(|r| r.name == name && r.archived) {
             parts.push("Archived".to_owned());
@@ -1891,7 +1877,6 @@ impl View for Viewer {
             let empty = EmptyState::new("No agent screens yet. An agent starts one with “olo-screen start”, or start one yourself.")
                 .icon("agent-screens")
                 .action(if busy { "Starting…" } else { "New Screen" }, cx.listener(|v: &mut Viewer, _, cx| v.new_screen(cx)));
-            self.tick(None, cx);
             return root.child(div().flex_1().min_h_0().p(px(m::WINDOW_INSET)).child(empty)).into_any_element();
         }
         let full_w = f32::from(cx.viewport_size().width);
@@ -1943,17 +1928,7 @@ impl View for Viewer {
                 v.set_tab(*tab, cx);
             }
         }));
-        // Times said move on ("3 s ago", "up 2 min").
-        let now = crate::history::now_ms();
-        let (last, started) = self.replay.as_ref().map_or((None, None), |r| {
-            let r = r.read(cx);
-            (r.actions().last().map(|a| a.at + a.ms), r.started())
-        });
-        let mut ages: Vec<u64> = self.rows.iter().filter_map(|r| r.last_used).chain(last).map(|t| now.saturating_sub(t)).collect();
-        if running {
-            ages.extend(started.map(|t| now.saturating_sub(t)));
-        }
-        self.tick(ages, cx);
+        // (Times said move on by themselves: `olo_kit::ago`.)
         root.child(
             div()
                 .flex_1()

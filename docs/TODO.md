@@ -1525,7 +1525,11 @@ something nobody here has is in "Blocked", with what it waits for.
   kit app showing such times), and fix it in the kit so every relative
   time follows the clock (one timer for the next change of any shown,
   nothing while none would change), with a test and the apps' times
-  checked.
+  checked. Done (HACKING
+  "Times said relative to now", Agent Screens): every listed screen's
+  history followed; `olo_interface::holds_until` and `olo_kit::ago`, so
+  every relative time follows the clock (Agent Screens, OS Updates,
+  Disk Backup, Weather).
 
 - **Power: each SSD by its own name, every kind of SSD** (Ben,
   2026-11-15, a screenshot of Power ▸ Power Modes, its row "SSD": "the

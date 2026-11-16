@@ -1013,7 +1013,11 @@ Each of these is here because breaking it cost a bug or a slow frame.
 7. No file, socket, D-Bus call, decode or subprocess on a looper.
    `cx.work`.
 8. No `sleep`, no waiting on a channel, no `Answer::wait` on a looper.
-9. No timer that looks for changes. Find the event.
+9. No timer that looks for changes. Find the event. A time said
+   relative to now ("3 min ago"): `olo_kit::ago`, in `body`, and the
+   window draws it again as its words change, no timer of yours; and
+   what it's the time of followed as it changes (a watch), not read
+   only when something's clicked.
 10. Show progress, stream results, let it be stopped.
 
 **Drawing**

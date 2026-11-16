@@ -7,6 +7,7 @@
 //! app does the same way.
 
 pub mod agent;
+pub mod ago;
 mod app;
 pub mod app_menu;
 pub mod brand;

@@ -432,17 +432,24 @@ fn now() -> i64 {
 }
 
 /// "just now", "12 minutes ago", "3 hours ago", "yesterday at 14:05",
-/// "on Tue at 14:05", "on 3 Nov".
+/// "on Tue at 14:05", "on 3 Nov": said again as it changes
+/// (`olo_kit::ago`), in a view's body.
 pub fn ago(t: i64) -> String {
+    olo_kit::ago::ago_secs(t, move |age| ago_at(t, t + age.as_secs() as i64))
+}
+
+/// [`ago`] as said at `now`.
+fn ago_at(t: i64, now: i64) -> String {
     use chrono::{Local, TimeZone};
-    let d = (now() - t).max(0);
+    let d = (now - t).max(0);
     match d {
         0..60 => "just now".into(),
         60..3600 => format!("{} ago", minutes(d / 60)),
         3600..43_200 => format!("{} ago", if d / 3600 == 1 { "an hour".into() } else { format!("{} hours", d / 3600) }),
         _ => {
             let Some(at) = Local.timestamp_opt(t, 0).single() else { return String::new() };
-            let days = (Local::now().date_naive() - at.date_naive()).num_days();
+            let Some(then) = Local.timestamp_opt(now, 0).single() else { return String::new() };
+            let days = (then.date_naive() - at.date_naive()).num_days();
             match days {
                 0 => format!("today at {}", at.format("%H:%M")),
                 1 => format!("yesterday at {}", at.format("%H:%M")),

@@ -57,17 +57,20 @@ pub fn date_time(t: i64) -> String {
     format!("{}, {:02}:{:02}", date(t), secs / 3600, secs % 3600 / 60)
 }
 
-/// "just now", "5 minutes ago", "3 hours ago", "on 15 Nov 2026".
+/// "just now", "5 minutes ago", "3 hours ago", "on 15 Nov 2026": said
+/// again as it changes (`olo_kit::ago`), in a view's body.
 pub fn ago(t: i64) -> String {
-    let d = (now() - t).max(0);
-    match d {
-        0..60 => "just now".into(),
-        60..120 => "a minute ago".into(),
-        120..3600 => format!("{} minutes ago", d / 60),
-        3600..7200 => "an hour ago".into(),
-        7200..86_400 => format!("{} hours ago", d / 3600),
-        _ => format!("on {}", date(t)),
-    }
+    olo_kit::ago::ago_secs(t, move |age| {
+        let d = age.as_secs() as i64;
+        match d {
+            0..60 => "just now".into(),
+            60..120 => "a minute ago".into(),
+            120..3600 => format!("{} minutes ago", d / 60),
+            3600..7200 => "an hour ago".into(),
+            7200..86_400 => format!("{} hours ago", d / 3600),
+            _ => format!("on {}", date(t)),
+        }
+    })
 }
 
 /// An advisory's kind as people say it.

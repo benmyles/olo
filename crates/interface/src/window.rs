@@ -42,6 +42,21 @@ thread_local! {
     /// when the window is sized).
     static SIZE_READ: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static ACTIVE_READ: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// When what the view saying what it shows says of the time stops
+    /// being true (`holds_until`): the soonest, since this was cleared.
+    static HOLDS_UNTIL: std::cell::Cell<Option<Instant>> = const { std::cell::Cell::new(None) };
+}
+
+/// What the view whose `body` is running says holds only until `at` (a
+/// time said relative to now, "3 min ago", until the next minute): it
+/// says what it shows again then, by itself, with no timer of its own;
+/// one timer a view, for the soonest of what it said, and nothing while
+/// nothing it says would change (Ben, 2026-11-15: times in Agent Screens'
+/// sidebar, and other apps', moved on only when clicked). The kit's
+/// `ago` says times so. (Said while painting rather than in `body`, it's
+/// no one's: say it in `body`.)
+pub fn holds_until(at: Instant) {
+    HOLDS_UNTIL.with(|h| h.set(Some(h.get().map_or(at, |t| t.min(at)))));
 }
 
 /// The size of the window that's being worked on now, on this thread
@@ -701,7 +716,7 @@ impl WindowCore {
     /// A view's owner let go of it: it and what it showed are gone.
     fn end_view(&mut self, view: ViewId) {
         let Some(slot) = self.views.remove(view) else { return };
-        self.ended_timers.extend(slot.timers.iter().copied());
+        self.ended_timers.extend(slot.timers.iter().copied().chain(slot.wakes.map(|(_, t)| t)));
         if let Some(root) = slot.root
             && let Some(node) = self.nodes.get_mut(root)
         {
@@ -1232,7 +1247,7 @@ impl WindowCore {
         });
         // Its views' timers stop with it (on a looper it shares with
         // the window it belongs to, nothing else would stop them).
-        for timer in self.views.values().flat_map(|slot| slot.timers.iter().copied()).chain(self.ended_timers.drain(..)).collect::<Vec<_>>() {
+        for timer in self.views.values().flat_map(|slot| slot.timers.iter().copied().chain(slot.wakes.map(|(_, t)| t))).chain(self.ended_timers.drain(..)).collect::<Vec<_>>() {
             looper.cancel(timer);
         }
         // (Views first: what they own may want the tree.)
@@ -1548,8 +1563,10 @@ impl<'a> WindowCx<'a> {
                 let Some(mut boxed) = self.core.views[view].view.take() else { continue };
                 SIZE_READ.with(|r| r.set(false));
                 ACTIVE_READ.with(|r| r.set(false));
+                HOLDS_UNTIL.with(|h| h.set(None));
                 let began = Instant::now();
                 let mut element = boxed.body(view, self);
+                let holds = HOLDS_UNTIL.with(|h| h.take());
                 // (Which view's, when one takes a while: `OLO_FRAME_PHASES`.)
                 let said = began.elapsed();
                 let slow = (crate::stats::frame_phases() && said >= Duration::from_millis(1)).then(|| boxed.type_name());
@@ -1558,6 +1575,7 @@ impl<'a> WindowCx<'a> {
                     slot.reads_size = SIZE_READ.with(|r| r.get());
                     slot.reads_active = ACTIVE_READ.with(|r| r.get());
                 }
+                self.wake_view_at(view, holds);
                 if matches!(element.kind, crate::element::Kind::View(_)) {
                     // (A view that is only another view: held in a box
                     // of its own, as the node is this view's.)
@@ -1829,7 +1847,7 @@ impl<'a> WindowCx<'a> {
 
     /// Makes a view in this window; whoever keeps the [`Child`] owns it.
     pub fn new_view<T: View>(&mut self, build: impl FnOnce(&mut Cx<T>) -> T) -> Child<T> {
-        let id = self.core.views.insert(ViewSlot { view: None, root: None, dirty: false, reads_size: false, reads_active: false, subscribers: Vec::new(), timers: Vec::new() });
+        let id = self.core.views.insert(ViewSlot { view: None, root: None, dirty: false, reads_size: false, reads_active: false, subscribers: Vec::new(), timers: Vec::new(), wakes: None });
         let view = build(&mut Cx::new(self, id));
         if let Some(slot) = self.core.views.get_mut(id) {
             slot.view = Some(Box::new(view));
@@ -2197,6 +2215,32 @@ impl<'a> WindowCx<'a> {
 
     /// Stops a timer (`Cx::every`, `Cx::after_do`): it doesn't fire
     /// again, or at all.
+    /// View `view`'s body again at `at` (what it said of the time holds
+    /// until then, `holds_until`): its one such timer moved there, or
+    /// gone with None; kept if it's for that time already.
+    fn wake_view_at(&mut self, view: ViewId, at: Option<Instant>) {
+        let Some(slot) = self.core.views.get_mut(view) else { return };
+        if slot.wakes.map(|(t, _)| t) == at {
+            return;
+        }
+        if let Some((_, timer)) = slot.wakes.take() {
+            self.looper.cancel(timer);
+        }
+        let Some(at) = at else { return };
+        let window = self.core.id;
+        let timer = self.looper.after(at.saturating_duration_since(Instant::now()), move |looper| {
+            with_window(looper, window, |cx| {
+                if let Some(slot) = cx.core.views.get_mut(view) {
+                    slot.wakes = None;
+                }
+                cx.core.invalidate_view(view);
+            });
+        });
+        if let Some(slot) = self.core.views.get_mut(view) {
+            slot.wakes = Some((at, timer));
+        }
+    }
+
     pub fn cancel(&mut self, timer: olo_app::TimerId) {
         self.looper.cancel(timer);
     }

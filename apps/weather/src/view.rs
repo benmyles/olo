@@ -278,15 +278,17 @@ fn status_line(w: &Weather) -> (String, bool) {
     }
 }
 
-/// "just now", "12 minutes ago", "2 hours ago".
+/// "just now", "a minute ago", "12 minutes ago", "2 hours ago": said
+/// again as it changes (`olo_kit::ago`).
 fn ago(seconds: i64) -> String {
-    match seconds {
-        s if s < 90 => "just now".into(),
-        s if s < 3600 => format!("{} minutes ago", (s + 30) / 60),
+    olo_kit::ago::age(std::time::Duration::from_secs(seconds.max(0) as u64), |age| match age.as_secs() {
+        s if s < 60 => "just now".into(),
+        s if s < 120 => "a minute ago".into(),
+        s if s < 3600 => format!("{} minutes ago", s / 60),
         s if s < 2 * 3600 => "an hour ago".into(),
         s if s < 86_400 => format!("{} hours ago", s / 3600),
         s => format!("{} days ago", s / 86_400),
-    }
+    })
 }
 
 /// The sky now, the temperature, what it's doing; the place, its clock.
