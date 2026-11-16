@@ -83,6 +83,16 @@ something nobody here has is in "Blocked", with what it waits for.
   rate, delivery rate, retransmissions, round-trip time and its
   variance; the link's own: Wi-Fi's rate, signal and band, or the wired
   speed), live as the test runs, and readable by agents.
+- **A notification's click goes to its own window and tab** (Ben,
+  2026-11-16: "when a notification appears in olo for a tab within a
+  group of windows, e.g. i noticed it with terminal where i'll get a
+  notification about an agent, and i click the notification it just
+  takes me to the window group with whatever i was last looking at
+  selected, it doesn't (but should) take me to the specific window and
+  tab that the notification is about"). Clicking it brings up the
+  window the notification is about within its group (app_server's
+  window groups), and the tab in it (Terminal's agent tab), not the
+  group as it was last left.
 - **An idle window keeps its whole swapchain** (found 2026-11-16,
   answering Ben's "doesn't 6gb of memory seem really high for olo app
   server too?"): a full-size window on his 5K display (4640 × 2840

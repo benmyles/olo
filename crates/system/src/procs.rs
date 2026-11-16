@@ -90,7 +90,8 @@ pub struct GpuClient {
     /// Which GPU (in `System::gpus`' order).
     #[serde(default)]
     pub gpu: usize,
-    /// Memory it has on the GPU (resident), in bytes.
+    /// Memory it has on the GPU (resident), in bytes: its own and, but
+    /// for the display server, what it shares ([`DISPLAY_SERVER`]).
     pub memory: u64,
     /// GPU time used each second, as a share of one engine, where the
     /// driver reports engine time.
@@ -239,11 +240,46 @@ pub fn processes(before: Before, elapsed: f64, users: &HashMap<u32, String>, pag
     (list, ticks, io)
 }
 
+/// Olo's display server, by its process's name. What it shares on the
+/// GPU isn't its own: every window's buffers, which it holds only to
+/// show them (through its render node and again through its display
+/// node), counted for the app that draws them. (Ben, 2026-11-16, of
+/// Activity's 6.3 GB beside it: "is there a leak or something?"; its own
+/// were the displays' frames, 0.35 GB.)
+pub const DISPLAY_SERVER: &str = "olo-app-server";
+
+/// What a DRM client's fdinfo says it has on the GPU, in bytes: what's
+/// resident (`drm-resident-*`, every kind of memory), and how much of
+/// what it holds another client holds too (`drm-shared-*`).
+fn drm_memory(info: &str) -> (u64, u64) {
+    let (mut resident, mut shared) = (0u64, 0u64);
+    for l in info.lines() {
+        let Some((k, v)) = l.split_once(':') else { continue };
+        let to = if k.starts_with("drm-resident-") {
+            &mut resident
+        } else if k.starts_with("drm-shared-") {
+            &mut shared
+        } else {
+            continue;
+        };
+        let mut words = v.split_whitespace();
+        let n = words.next().map_or(0, num);
+        *to += n * match words.next() {
+            Some("KiB") => 1024,
+            Some("MiB") => 1024 * 1024,
+            Some("GiB") => 1024 * 1024 * 1024,
+            _ => 1,
+        };
+    }
+    (resident, shared)
+}
+
 /// Who has each GPU open: each DRM client's memory and, where the driver
 /// says, engine time (`drm-engine-*`, nanoseconds; xe's `drm-cycles-*`
 /// of `drm-total-cycles-*`), by the render or card node it opened (which
 /// GPU); NVIDIA's from its library while it's awake. A program's
-/// descriptors sharing a client count once.
+/// descriptors sharing a client count once, and the display server's
+/// memory is its own alone ([`DISPLAY_SERVER`]).
 pub fn gpu_clients(gpus: &[crate::gpu_load::Probe], pids: &[(i32, String)], before: &HashMap<(u64, u64), (u64, u64)>, elapsed: f64) -> (Vec<GpuClient>, HashMap<(u64, u64), (u64, u64)>) {
     use std::os::unix::fs::MetadataExt as _;
     // Each GPU's device numbers (its card and render nodes).
@@ -274,20 +310,13 @@ pub fn gpu_clients(gpus: &[crate::gpu_load::Probe], pids: &[(i32, String)], befo
                 continue;
             }
             let client = clients.entry(gpu).or_insert_with(|| GpuClient { pid: *pid, name: name.clone(), gpu, ..Default::default() });
+            let (resident, shared) = drm_memory(&info);
+            client.memory += if name == DISPLAY_SERVER { resident.saturating_sub(shared) } else { resident };
             let (mut ns, mut cycles, mut total) = (None, 0u64, 0u64);
             for l in info.lines() {
                 let Some((k, v)) = l.split_once(':') else { continue };
-                let mut words = v.split_whitespace();
-                let n = words.next().map_or(0, num);
-                let scale = match words.next() {
-                    Some("KiB") => 1024,
-                    Some("MiB") => 1024 * 1024,
-                    Some("GiB") => 1024 * 1024 * 1024,
-                    _ => 1,
-                };
-                if k.starts_with("drm-resident-") {
-                    client.memory += n * scale;
-                } else if k.starts_with("drm-engine-") && !k.starts_with("drm-engine-capacity") {
+                let n = v.split_whitespace().next().map_or(0, num);
+                if k.starts_with("drm-engine-") && !k.starts_with("drm-engine-capacity") {
                     *ns.get_or_insert(0u64) += n;
                 } else if k.starts_with("drm-total-cycles-") {
                     total = total.max(n);
@@ -558,6 +587,21 @@ mod tests {
         }
         let cpu = fresh.top(&Rank::Cpu, 50).unwrap();
         assert!(!cpu.is_empty(), "something used the CPU");
+    }
+
+    /// A DRM client's memory, as xe's fdinfo gives it: app_server's render
+    /// node held 2.9 GiB resident, all but 316 KiB of it windows' buffers
+    /// shared with their apps (Ben's session, 2026-11-16).
+    #[test]
+    fn a_drm_clients_memory() {
+        let info = "pos:\t0\nflags:\t02100002\ndrm-driver:\txe\ndrm-client-id:\t20914\ndrm-pdev:\t0000:00:02.0\n\
+                    drm-total-system:\t276 KiB\ndrm-shared-system:\t0\ndrm-active-system:\t0\ndrm-resident-system:\t0\ndrm-purgeable-system:\t0\n\
+                    drm-total-gtt:\t3025052 KiB\ndrm-shared-gtt:\t3024736 KiB\ndrm-active-gtt:\t0\ndrm-resident-gtt:\t3025052 KiB\n\
+                    drm-total-stolen:\t0\ndrm-shared-stolen:\t0\ndrm-resident-stolen:\t0\ndrm-total-cycles-rcs:\t1452840405258\n";
+        let (resident, shared) = drm_memory(info);
+        assert_eq!((resident, shared), (3025052 * 1024, 3024736 * 1024));
+        assert_eq!(resident - shared, 316 * 1024);
+        assert_eq!(drm_memory("drm-resident-vram0:\t2 MiB\ndrm-resident-system:\t4096\n"), (2 * 1024 * 1024 + 4096, 0));
     }
 
     /// Its own process's disk counters are read at every look; another
