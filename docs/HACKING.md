@@ -5306,7 +5306,10 @@ or the docs waits for nothing), runs `cargo ui-lint`;
 the pre-push hook runs `tools/dev/ui-lint` on the apps the push changed
 (all of them when the kits, or what they're built on, did), after a release build of the
 workspace, and neither when none of them has a window the lint opens.
-A finding stops it
+The build reads the working tree, so the push stops at once, saying
+why, when that isn't what's pushed: changes not committed, or another
+commit checked out (edits begun after a commit once failed the push of
+that commit, which built). A finding stops it
 (`OLO_SKIP_UI_LINT=1` to push regardless, saying why). Each says how
 long its parts took. With everything built, the commit's lint takes
 8 s and a push 4 s: what's waited for beyond that is compiling. The
