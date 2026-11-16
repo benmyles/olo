@@ -309,6 +309,15 @@ pub enum Shortcut {
     /// The focused window on every workspace of its display, or back on
     /// one (BeOS's `B_ALL_WORKSPACES`, i3's sticky).
     AllWorkspaces,
+    /// In the auto-tiled windows' order (Main and Stack's main windows
+    /// then its stack; each layout's own): the keyboard to the next
+    /// (`true`) or previous window, wrapping round (dwm's focusstack,
+    /// xmonad's focusDown / focusUp); the focused window traded with it
+    /// (xmonad's swapDown / swapUp); every window one place on, or back
+    /// (Amethyst's rotate), the arrangement's shape kept.
+    FocusInOrder(bool),
+    SwapInOrder(bool),
+    RotateWindows(bool),
     /// The focused window into the scratchpad (hidden, floating), or out
     /// of it; and the scratchpad's next window shown over the active
     /// workspace, centred, or hidden again (i3's and sway's).
@@ -790,6 +799,12 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::BiggerMain, "bigger-main", ARRANGE, "Make the main windows bigger", &["Ctrl+Alt+Cmd+Period"], &["Ctrl+Alt+Cmd+Period"], &["Ctrl+Alt+Cmd+Period"]),
     s(Shortcut::SmallerMain, "smaller-main", ARRANGE, "Make the main windows smaller", &["Ctrl+Alt+Cmd+Comma"], &["Ctrl+Alt+Cmd+Comma"], &["Ctrl+Alt+Cmd+Comma"]),
     s(Shortcut::AllWorkspaces, "all-workspaces", WINDOWS, "Show on all workspaces", &["Ctrl+Alt+Cmd+A"], &["Ctrl+Alt+Cmd+A"], &["Ctrl+Alt+Cmd+A"]),
+    s(Shortcut::FocusInOrder(true), "focus-next-tile", WINDOWS, "Focus the next tile", &["Ctrl+Alt+Cmd+N"], &["Ctrl+Alt+Cmd+N"], &["Ctrl+Alt+Cmd+N"]),
+    s(Shortcut::FocusInOrder(false), "focus-previous-tile", WINDOWS, "Focus the previous tile", &["Ctrl+Alt+Cmd+P"], &["Ctrl+Alt+Cmd+P"], &["Ctrl+Alt+Cmd+P"]),
+    s(Shortcut::SwapInOrder(true), "swap-next-tile", WINDOWS, "Swap with the next tile", &["Ctrl+Alt+Shift+Cmd+N"], &["Ctrl+Alt+Shift+Cmd+N"], &["Ctrl+Alt+Shift+Cmd+N"]),
+    s(Shortcut::SwapInOrder(false), "swap-previous-tile", WINDOWS, "Swap with the previous tile", &["Ctrl+Alt+Shift+Cmd+P"], &["Ctrl+Alt+Shift+Cmd+P"], &["Ctrl+Alt+Shift+Cmd+P"]),
+    s(Shortcut::RotateWindows(true), "rotate-windows", ARRANGE, "Move every tile's window on one", &["Ctrl+Alt+Shift+Cmd+Period"], &["Ctrl+Alt+Shift+Cmd+Period"], &["Ctrl+Alt+Shift+Cmd+Period"]),
+    s(Shortcut::RotateWindows(false), "rotate-windows-back", ARRANGE, "Move every tile's window back one", &["Ctrl+Alt+Shift+Cmd+Comma"], &["Ctrl+Alt+Shift+Cmd+Comma"], &["Ctrl+Alt+Shift+Cmd+Comma"]),
     s(Shortcut::ToScratchpad, "to-scratchpad", WINDOWS, "Move to the scratchpad", &["Ctrl+Alt+Shift+Cmd+Minus"], &["Ctrl+Alt+Shift+Cmd+Minus"], &["Ctrl+Alt+Shift+Cmd+Minus"]),
     s(Shortcut::Scratchpad, "scratchpad", ARRANGE, "Show or hide the scratchpad", &["Ctrl+Alt+Cmd+Minus"], &["Ctrl+Alt+Cmd+Minus"], &["Ctrl+Alt+Cmd+Minus"]),
     s(Shortcut::Hide, "hide-window", WINDOWS, "Hide window", &["Cmd+M"], &[], &["Ctrl+Alt+M"]),

@@ -465,6 +465,34 @@ impl Inset {
     }
 }
 
+/// `tree`'s windows (not places kept) in `layout`'s order (`in_order`).
+pub fn windows_in_order(layout: olo_protocol::TilingLayout, place: Tile, tree: &Node) -> Vec<u64> {
+    in_order(layout, place, tree).into_iter().filter_map(|n| if let Node::Window(i) = n { Some(i) } else { None }).collect()
+}
+
+/// `tree` with each window `order[i]` put where `order[i ∓ 1]` was: every
+/// window one place on in the order (`on`), or back, the shape kept
+/// (Amethyst's rotate). A window not in `order` stays.
+pub fn rotated_windows(tree: &Node, order: &[u64], on: bool) -> Node {
+    let n = order.len();
+    if n < 2 {
+        return tree.clone();
+    }
+    // Where window `order[i]` was, the one before it in the order now (on).
+    let into = |id: u64| -> u64 {
+        let Some(i) = order.iter().position(|o| *o == id) else { return id };
+        if on { order[(i + n - 1) % n] } else { order[(i + 1) % n] }
+    };
+    fn relabel(node: &Node, into: &dyn Fn(u64) -> u64) -> Node {
+        match node {
+            Node::Window(id) => Node::Window(into(*id)),
+            Node::Split { cut, ratio, a, b } => Node::split(*cut, *ratio, relabel(a, into), relabel(b, into)),
+            leaf => leaf.clone(),
+        }
+    }
+    relabel(tree, &into)
+}
+
 /// What's wrong with tiles' parts, if anything: one outside the area, not
 /// a number, or two overlapping.
 pub fn parts_wrong(parts: &[(u64, Part)]) -> Option<String> {
@@ -482,6 +510,14 @@ pub fn parts_wrong(parts: &[(u64, Part)]) -> Option<String> {
         }
     }
     None
+}
+
+/// A step in the auto-tiled windows' order (`in_order_step`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum OrderStep {
+    Focus(bool),
+    Swap(bool),
+    Rotate(bool),
 }
 
 /// Where a new window goes in Main and Stack's order
@@ -3032,6 +3068,56 @@ impl<B: Backend + 'static> AnvilState<B> {
         true
     }
 
+    /// In the auto-tiled windows' order on `w`'s display (else the active
+    /// display's): the keyboard to the next or previous one, `w` traded
+    /// with it, or every window one place on or back. Whether anything
+    /// changed.
+    pub fn in_order_step(&mut self, w: Option<WindowElement>, step: OrderStep) -> bool {
+        let key = match w.as_ref().and_then(|w| self.tree_of(w)) {
+            Some(k) => k,
+            None => {
+                let Some(o) = self.active_output() else { return false };
+                let ws = self.showing(&o);
+                if !self.auto_on(&o, ws) {
+                    return false;
+                }
+                (ws, o.name())
+            }
+        };
+        let Some(tree) = self.auto.trees.get(&key) else { return false };
+        let layout = self.layout_of(&key);
+        let place = self.main_places(&key).0;
+        let order = windows_in_order(layout, place, tree);
+        if order.len() < 2 {
+            return false;
+        }
+        let at = w.as_ref().and_then(|w| order.iter().position(|o| *o == w.id()));
+        let next = |forward: bool| at.map(|i| order[if forward { (i + 1) % order.len() } else { (i + order.len() - 1) % order.len() }]);
+        match step {
+            OrderStep::Focus(forward) => {
+                let id = next(forward).unwrap_or(order[0]);
+                let Some(target) = self.window_by_id(id) else { return false };
+                self.focus_window(&target);
+                true
+            }
+            OrderStep::Swap(forward) => {
+                let (Some(w), Some(other)) = (w, next(forward)) else { return false };
+                let Some((key, mut tree)) = self.auto_take(&w, "Swap Tiles") else { return false };
+                tree.swap(w.id(), other);
+                info!(window = w.id(), with = other, "tiles swapped in order");
+                self.auto_put(key, tree);
+                true
+            }
+            OrderStep::Rotate(on) => {
+                let rotated = rotated_windows(tree, &order, on);
+                let Some((key, _)) = self.auto_take_key(key, "Rotate Windows") else { return false };
+                info!(output = key.1, on, tree = %rotated, "windows moved round");
+                self.auto_put(key, rotated);
+                true
+            }
+        }
+    }
+
     /// Toggle split (⌃⌥⌘S): the split auto-tiled `w` shares with its
     /// neighbour turned the other way. Whether there was one.
     pub fn toggle_split(&mut self, w: &WindowElement) -> bool {
@@ -3542,6 +3628,29 @@ mod tests {
         assert!(parts_wrong(&[(1, (0.0, 0.0, 0.6, 1.0)), (2, (0.5, 0.0, 0.5, 1.0))]).is_some_and(|w| w.contains("overlaps")));
         assert!(parts_wrong(&[(1, (0.6, 0.0, 0.5, 1.0))]).is_some_and(|w| w.contains("outside")));
         assert!(parts_wrong(&[(1, (f32::NAN, 0.0, 0.5, 1.0))]).is_some());
+    }
+
+    /// Every window one place on in the order, or back, the shape kept:
+    /// in Main and Stack the next one is main; round and back, as it was.
+    #[test]
+    fn windows_rotate_round_in_order() {
+        use olo_protocol::TilingLayout as L;
+        let place = Tile::LeftTwoThirds;
+        let t = main_and_stack(vec![w(1)], vec![w(2), w(3)], Vec::new(), place, place.fraction());
+        let order = windows_in_order(L::MainAndStack, place, &t);
+        assert_eq!(order, [1, 2, 3]);
+        let on = rotated_windows(&t, &order, true);
+        assert_eq!(windows_in_order(L::MainAndStack, place, &on), [3, 1, 2], "{on}");
+        assert!(near(part_of(&on, 3), part_of(&t, 1)), "3 where 1 was");
+        let back = rotated_windows(&on, &windows_in_order(L::MainAndStack, place, &on), false);
+        assert_eq!(back, t);
+        // Spiral, in its own order (its tree's differs).
+        let sp = spiral((1..=4).map(w).collect()).unwrap();
+        let o = windows_in_order(L::Spiral, place, &sp);
+        assert_eq!(o, [1, 2, 3, 4]);
+        assert_eq!(windows_in_order(L::Spiral, place, &rotated_windows(&sp, &o, false)), [2, 3, 4, 1]);
+        // One window: as it was.
+        assert_eq!(rotated_windows(&w(5), &[5], true), w(5));
     }
 
     fn with_kept_spiral(t: &Node) -> Node {

@@ -552,6 +552,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     self.set_main_count(count, Some(ws), Some(o));
                 }
             }
+            S::FocusInOrder(forward) => {
+                self.in_order_step(focused, crate::shell::autotile::OrderStep::Focus(forward));
+            }
+            S::SwapInOrder(forward) => {
+                self.in_order_step(focused, crate::shell::autotile::OrderStep::Swap(forward));
+            }
+            S::RotateWindows(on) => {
+                self.in_order_step(focused, crate::shell::autotile::OrderStep::Rotate(on));
+            }
             S::AllWorkspaces => {
                 if let Some(w) = focused {
                     let on = !w.meta().all_workspaces.get();

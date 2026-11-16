@@ -323,6 +323,8 @@ pub fn context() -> (Option<WindowInfo>, Vec<Item>) {
                 olo_protocol::Shortcut::MoreMains | olo_protocol::Shortcut::FewerMains => " tiling main and stack master nmaster count increase decrease",
                 olo_protocol::Shortcut::BiggerMain | olo_protocol::Shortcut::SmallerMain => " tiling main and stack master expand shrink grow size mfact",
                 olo_protocol::Shortcut::AllWorkspaces => " sticky every workspace pin visible everywhere",
+                olo_protocol::Shortcut::FocusInOrder(_) | olo_protocol::Shortcut::SwapInOrder(_) => " tiling next previous stack order cycle",
+                olo_protocol::Shortcut::RotateWindows(_) => " tiling rotate cycle windows round order",
                 olo_protocol::Shortcut::ToScratchpad | olo_protocol::Shortcut::Scratchpad => " scratchpad hidden toggle quake drop down special workspace",
                 _ => "",
             }

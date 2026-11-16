@@ -6975,6 +6975,14 @@ the tree kept as laid out so least sizes hold, and a press that moves
 nothing on screen records nothing for Undo. Agents run them as any
 shortcut (`{"type":"run_shortcut","id":"swap-left"}`).
 
+In the layout's order, as dwm, xmonad and Amethyst move (`in_order_step`,
+`windows_in_order`: Main and Stack's main windows then its stack, each
+layout's own): Focus the Next / Previous Tile (⌃⌥⌘N, ⌃⌥⌘P, round),
+Swap with the Next / Previous Tile (⌃⌥⇧⌘N, ⌃⌥⇧⌘P: the main window's
+next is the first of the stack, which becomes main), and Move Every
+Tile's Window On / Back One (⌃⌥⇧⌘. and ⌃⌥⇧⌘,; `rotated_windows`: the
+shape kept, the last window main in Main and Stack).
+
 On all workspaces and in the scratchpad (BeOS's `B_ALL_WORKSPACES`;
 i3's and sway's sticky windows and scratchpad): Show on All Workspaces
 (⌃⌥⌘A, the window menu, `{"type":"run_shortcut","id":"all-workspaces",
