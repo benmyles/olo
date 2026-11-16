@@ -1,0 +1,32 @@
+# olo-gpu-memory: graphics memory stays in memory (apps/gpu-memory).
+# The kernel's GPU memory manager backs windows' buffers up to swap when
+# memory is short, and the desktop stalls while they come back. At each
+# start this builds Olo's live patch (kernel/gpu-memory, olo_gpu_memory)
+# for the running kernel where it hasn't yet, and loads it: GPU buffers
+# are then never backed up, and the computer keeps its swap for ordinary
+# memory. Installed by Olo Doctor ("Keep Graphics Memory in Memory").
+# To go back:
+#   sudo systemctl disable --now olo-gpu-memory.service
+#   sudo /usr/local/libexec/olo/olo-gpu-memory --remove
+[Unit]
+Description=Olo: graphics memory stays out of swap (a live patch for the running kernel)
+ConditionPathIsDirectory=/sys/kernel/livepatch
+After=local-fs.target systemd-modules-load.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/libexec/olo/olo-gpu-memory
+ExecStop=/usr/local/libexec/olo/olo-gpu-memory --remove
+StateDirectory=olo-gpu-memory
+# (How it went, for Olo Doctor: there while it's in, and after a failure.)
+RuntimeDirectory=olo-gpu-memory
+RuntimeDirectoryPreserve=yes
+# (A new kernel's first start builds the patch for it: a few seconds.)
+TimeoutStartSec=300
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateNetwork=yes
+
+[Install]
+WantedBy=multi-user.target

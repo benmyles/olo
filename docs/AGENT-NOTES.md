@@ -63,6 +63,20 @@ Each note: what to do, then why (what happened), then how to apply it.
 - **Watch memory on live tests.** Sample GPU and RAM through any test
   that runs per frame for long: an atlas leak once took 35 GB.
 
+- **Never `pkill -f PATTERN` (or `pgrep -f`) with PATTERN in your own
+  command line.** It matches the shell running it: `pkill -f
+  "holdwatch.py 3887902" -n` killed its own shell (exit 144,
+  2026-11-16). Stop what you started through its task, or by the PID
+  you recorded when you started it.
+- **A long capture's last lines are not flushed until it ends.** A
+  Python sampler printing with `flush=True` only on its heading lines
+  left the details in its buffer; flush every line you may want to read
+  while it runs.
+- **Don't split a tool's output on spaces in a `for` loop.** `for t in
+  $(… | python3 -c "print('ERR', message)")` turned each compiler
+  message into a hundred "test binaries"; write the list to a file, one
+  item a line, and read that.
+
 ## Measuring
 
 - **Count instructions unscaled: `perf stat --no-scale`.** This
@@ -83,6 +97,20 @@ Each note: what to do, then why (what happened), then how to apply it.
 - **Measure browsers alone.** Olo against Chrome: each with the machine
   to itself, from `/proc/PID/stat`, the load average checked first;
   `tools/dev/cost` misses short-lived threads.
+- **A stall is traced in the kernel, as root** (Ben gave sudo for it,
+  2026-11-16: ask). `sudo tools/dev/gpu-holds` names who holds the
+  buffer lock app_server's GPU submission waits for, with the holder's
+  kernel stack; `/proc/PID/task/TID/wchan` and `stack` (root) say where
+  a thread waits. bpftrace: `kretprobe` on a module's function may
+  never fire here (xe's didn't): use `fexit:MODULE:FUNCTION`, which also
+  gives typed arguments (`args.shrink->private_data`).
+- **`swapoff` alone doesn't last.** systemd turns a swap area back on
+  the next time any system service starts (swap's target wants its
+  unit: off at 11:47, on again at 11:58 with PackageKit). To keep swap
+  off for a measurement: take the unit away first (an empty
+  `/etc/systemd/zram-generator.conf`, `systemctl daemon-reload`), then
+  `swapoff -a`; and look at `/proc/swaps` at the end of the run, not
+  only at its start.
 - **Check which scheduler runs before measuring.** scx_lavd (sched_ext)
   ran from 2026-11-10 to 2026-11-15 02:30 and is disabled since (the
   kernel's EEVDF): look at `/sys/kernel/sched_ext/state`.
@@ -91,7 +119,20 @@ Each note: what to do, then why (what happened), then how to apply it.
 
 - **Don't probe sudo.** Even `sudo -n` runs face unlock (the IR camera)
   and fprintd. Anything that needs root goes to Ben (`! command`), or to
-  Olo Doctor's helper, which asks through polkit.
+  Olo Doctor's helper, which asks through polkit. (Unless he has said
+  to use it for the task at hand, as on 2026-11-16 for the stalls: then
+  only for that.) A fix's steps can be run as root as Doctor's own
+  helper runs them, without the window: `sudo target/release/olo-doctor
+  --helper` reads a line of JSON, `{"Run":{"id":1,"steps":[…]}}`.
+- **Kernel facts** (7.2.15-300.fc45, 2026-11-16): Secure Boot is off
+  and lockdown none, so unsigned modules load; live patching is built
+  in; SELinux is enforcing, and a system service may load a module only
+  from `/lib/modules` (`modules_object_t`), never from `/var/lib`;
+  `kernel-devel-matched` is installed (NVIDIA's akmod needs it), so
+  each new kernel brings its headers. Olo's live patch
+  (`olo_gpu_memory`, HACKING "Windows' buffers stay in memory") is in
+  since 12:23 that day, by `olo-gpu-memory.service`; bpftrace was
+  installed for the tracing.
 - **olo-fans is running**: a root service keeping the fans on the cool
   profile. It needs `thinkpad_acpi fan_control=Y`, kept in
   `/etc/modprobe.d` since 2026-11-12.

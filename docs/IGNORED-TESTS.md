@@ -57,6 +57,7 @@ Ways in that keep the person's session out of it:
 | olo-diskbackup-app `serve_google` | the fake Google it serves (`OLO_FAKE_GOOGLE_AT`); the build's DiskBackup on an agent screen with its own HOME and config, `OLO_DISKBACKUP_DIR`, `_KEY`, `_GOOGLE_API`, `_GOOGLE`; the browser played as `set_up_drive` plays it | pass: the setup window from the client's ID through the sign-in to "Backed up … 2 snapshots kept" in the fake Drive |
 | olo-doctor `fix::live::rpm_fusion_s_release_package_is_there` | network | pass |
 | olo-doctor `releases::tests::installs_from_github` | network; two binaries into /var/tmp, removed | pass |
+| olo-gpu-memory `tests::builds_for_this_kernel` | as is (needs kernel-devel for the running kernel, make and gcc; builds the live patch into /var/tmp, loads nothing) | pass, 2026-11-16: 1.9 s, a live patch of `ttm_backup_bytes_avail` for 7.2.15 |
 
 ## Media: olo-images, olo-preview, olo-video, olo-eld, olo-face
 

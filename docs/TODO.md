@@ -13,9 +13,94 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-(Nothing.)
+- **Never a stall: the compositor's loop held in the kernel** (Ben,
+  2026-11-16: "i just had a responsiveness stall when i was typing and
+  it actually even repeated a letter eg "sunbursst" please root cause
+  and fix", then "i don't ever want it stalling figure out how to make
+  that happen … go as low level as you need to").
+  *Found and fixed, 2026-11-16* (HACKING, "Windows' buffers stay in
+  memory"): Intel's xe driver backed windows' GPU buffers up to swap
+  whenever kswapd ran (a build's file cache is enough), and brought
+  them back inside the next GPU submission, under locks app_server's
+  every submission takes. Olo's live patch (`olo_gpu_memory`,
+  kernel/gpu-memory) makes TTM's one gate say there's no swap for it;
+  `olo-gpu-memory` (a root service) builds it for each kernel and loads
+  it at every start; Olo Doctor installs it ("Keep Graphics Memory in
+  Memory"), or turns swap off where the kernel can't take it. The same
+  build: 47 slow frames (the worst 951 ms) and three late keys before;
+  none after, swap on. In on Ben's computer since 12:23 (installed by
+  Doctor's own steps, as root).
+  *Left, as Ben asked the same day:*
+  - **Swappiness 1** ("could we just make it set swapiness to 1 … maybe
+    that combined with the swapiness to 1"): Doctor's fix, measured
+    before and after (it doesn't govern the GPU's shrinker; it keeps
+    programs' own memory in RAM while there's file cache to drop).
+  - **The core never swapped** ("prevent the latency-sensitive olo
+    processes from being swapped out … any realtime/rtkit type
+    processes e.g. libinput/pipewire/etc … keep all those core
+    "responsiveness" processes out of swap always"): `mlockall` in the
+    programs that are always realtime (app_server and its input
+    thread, the session's watchdog, the supervisor, Deskbar, the proxy,
+    the voice service), PipeWire and WirePlumber by their own setting,
+    the account's locked-memory limit raised beside its realtime one
+    (Doctor's Allow Realtime). app_server had taken 7,669 major page
+    faults in 2 h 20 min.
+  - **Swap as large as memory, suggested** ("have olo doctor suggest a
+    swap size equal to the ram size, e.g. 64gb for this machine, and
+    have it offer to set it for the user if it isn't already >= that
+    target"): a suggestion, only where graphics memory is kept out of
+    swap; zram-generator's size.
+  - **Doctor offers all of it** ("make sure olo doctor will offer to
+    configure all this automatically for the user if not already
+    done").
+  - **A key can't repeat for a late release**: repeats made by
+    app_server for clients that take them (wl_keyboard version 10: the
+    kit), from the keyboard's own timing, so a hold of the loop, for
+    whatever cause, never types a letter twice.
 
 ## Not started (highest priority first)
+
+- **Olo Doctor offers BBRv3 for TCP** (Ben, 2026-11-16: "once you
+  finish this work, i also want olo doctor to offer to set the tcp
+  congestion control algo to BBRv3 if it's not. if BBRv3 is not shipped
+  with fedora then vendor the kernel module/patches and adapt if needed
+  and then have olo doctor take care of doing everything needed to
+  switch to BBRv3"). First find what this kernel's `tcp_bbr` is (v1, as
+  mainline's has been, or v3); if it isn't v3, Google's BBRv3 carried in
+  the repository as a module built for the running kernel, as
+  kernel/gpu-memory's patch is (apps/gpu-memory builds and loads it at
+  each start), and Doctor's finding sets it (the module, `fq` where it
+  needs it, `net.ipv4.tcp_congestion_control`), now and at every start.
+  Measured before and after (throughput and latency under loss), not
+  assumed. *With it, a Network Speed Test app* (Ben, 2026-11-16: "also
+  with the BBRv3 work add a new olo native Network Speed Test app that
+  show not just total up/down but also all the advaned metrics/data
+  about the connection that we are able to get"): native, on the kits;
+  beside download and upload, everything that can be measured or read
+  of the connection (latency and its spread, loaded and idle; jitter;
+  loss; the path's MTU; the kernel's own figures for the test's
+  sockets, `TCP_INFO`: the congestion control in use, its window, pacing
+  rate, delivery rate, retransmissions, round-trip time and its
+  variance; the link's own: Wi-Fi's rate, signal and band, or the wired
+  speed), live as the test runs, and readable by agents.
+- **An idle window keeps its whole swapchain** (found 2026-11-16,
+  answering Ben's "doesn't 6gb of memory seem really high for olo app
+  server too?"): a full-size window on his 5K display (4640 × 2840
+  pixels at 2.5×) holds 3 or 4 buffers of 50 MiB whether or not it
+  draws; twelve of them, 2.1 GiB (the kernel's list of shared buffers:
+  221, 3.4 GiB in all). A window that hasn't drawn for a while could
+  give its spare buffers back and take new ones at its next frame
+  (measured: what the first frame after costs).
+- **A new window's glow takes 6 to 11 ms to draw** (app_server's log,
+  2026-11-16: "slow window elements: … glow 10.9 ms", each time a
+  window opens): over a frame at 120 Hz. Found while reading the log
+  for the stalls; not looked into.
+- **Quick Look of a PowerPoint shows only its slides' numbers** (Ben,
+  2026-11-16: "pptx doesn't render properly in the viewer, when i hit
+  space on /home/ben/Documents/ShiftUp-JackHenry-AI-Architecture.pptx
+  it just shows" a list of "Slide 1" to "Slide 4" headings, nothing of
+  what's on them). Each slide drawn as it looks (its shapes, text,
+  pictures, theme), natively, in Quick Look and in Viewer.
 
 - **Voice Processing: a quiet microphone brought up, and its device
   named as processed** (Ben, 2026-11-16: "some inputs like airpods are

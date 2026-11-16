@@ -322,7 +322,9 @@ message):
   (readable by the same user): 2026-11-12, under a build, app_server's
   main thread waited up to 142 ms in the GPU driver
   (`drm_exec_lock_contended`: waiting for a buffer's lock, held by
-  something else using the GPU). With libinput on its own thread
+  something else using the GPU; by what, and why, "Windows' buffers
+  stay in memory": `sudo tools/dev/gpu-holds` names the holder). With
+  libinput on its own thread
   (Preferences ▸ Performance ▸ Scheduler ▸ Pointer) the pointer keeps moving meanwhile ("The pointer
   on a thread of its own").
 * `tools/dev/bench` (every app's frames against the budget; `--env
@@ -8234,6 +8236,123 @@ Left: the first frame after a hold may have been drawn before it, so
 the pointer can step back to there for a frame (seen once, 1 px); and Ben's Intel panel
 (PSR2) may take the kernel's slow path for a legacy cursor move, a
 commit a move, which only his machine shows.
+
+## Windows' buffers stay in memory (kernel/gpu-memory, apps/gpu-memory; Olo Doctor; tools/dev/gpu-holds)
+
+The desktop stood still for up to two seconds under a build, keys and
+all (Ben, 2026-11-16: "i just had a responsiveness stall when i was
+typing and it actually even repeated a letter eg "sunbursst" please
+root cause and fix", then "i don't ever want it stalling … go as low
+level as you need to"). His log had 126 holds of 100 ms or more in a
+day, every one in the same place: app_server handing a frame to the GPU
+("slow frame: finishing it took_ms=1916", "input (key) came 2045 ms
+late: the loop was held by look (whole)"). A key pressed just before a
+hold had its release delivered after the client's repeat delay (300 ms),
+so the client typed it twice.
+
+**What held it**, traced in the kernel (bpftrace, as root; kept as
+`tools/dev/gpu-holds`):
+
+* Intel's xe driver takes, for every GPU submission
+  (`DRM_IOCTL_XE_EXEC`), the lock of every buffer its client shares
+  with another (`drm_gpuvm_exec_lock`: each "external object" bound in
+  its address space). app_server shares every window's buffers with the
+  app that draws them: 221 buffers, 3.4 GiB, on his desktop; 15,000 lock
+  takes a second. Whatever holds one of those locks holds the
+  compositor's loop (`drm_exec_lock_contended`).
+* TTM, the memory manager under xe, backs GPU buffers up to swap when
+  the kernel is short of memory (`xe_shrinker_scan`, called by kswapd as
+  any shrinker is: 138 times in 30 s of a build), were it only short of
+  file cache, which a build's output always makes it. Over 1 GiB of 101
+  programs' buffers were out; an idle app's, all of them.
+* A buffer backed up comes back inside its program's next submission
+  (`xe_exec_ioctl` → `xe_vm_validate_rebind` → `ttm_tt_restore` →
+  `ttm_pool_restore_commit`: pages copied back one by one, their
+  caching changed, each a round of every processor), under that
+  submission's locks: its window's buffers', which app_server's every
+  submission takes too. The lock's owner during his compositor's waits
+  was an app's `display` thread in exactly that stack (Tracker's,
+  Terminal's, Chrome's GPU process). And every buffer of every window
+  sits in app_server's own address space too, so its own next frame
+  brought back the ones it shares.
+
+The same from-scratch build of three apps (6 to 9 minutes; app_server's
+own log, and every lock its loop took, traced):
+
+| | slow frames (4 ms or more handing over) | keys late | lock waits of 20 ms or more |
+|---|---|---|---|
+| 8 GB of zram swap, as Fedora sets it | 47 (12 over 100 ms, the worst 951 ms) | 3 (149, 188, 887 ms) | 30 |
+| swap off | 0 | 0 | 0 |
+| swap on, Olo's patch in | 0 | 0 | 0 (of 9.5 million takes, one of 1 ms) |
+
+**The gate.** TTM backs a buffer up only while there is swap space free:
+`ttm_backup_bytes_avail()` (free swap, in bytes) is the one question
+(`ttm_pool_backup` refuses without it, and xe's shrinker then counts
+nothing it could shrink but what programs have given up: purgeable
+buffers, still freed). No setting turns it off, a program can't pin its
+buffers (xe has no such call), and the kernel's swappiness doesn't
+govern it: it is asked for whenever kswapd runs. With no swap at all the
+answer is zero, which is why turning swap off cured it.
+
+**Olo's patch** (`kernel/gpu-memory/olo_gpu_memory.c`, GPL-2.0 as the
+kernel is): a live patch that replaces that one function in the running
+kernel with one that says none. GPU buffers are never backed up; the
+computer keeps its swap for ordinary memory (Ben: "is there a way to
+just prevent stuff that is going to be used with the gpu from going
+into swap?"). One function, no restart, undone by unloading it; not a
+replacement of the driver (which could only be tried by restarting the
+session, and would be the whole driver's to carry for each kernel).
+
+A module is built for one kernel. **`olo-gpu-memory`** (apps/gpu-memory;
+root, systemd's `olo-gpu-memory.service`, at every start) builds the
+patch for the running kernel where it hasn't yet (a new kernel's first
+start: three seconds, with the kernel's own build system, `make` and
+the compiler: one of the few places Olo runs another program, there
+being no other way to build a module for a kernel; its headers are
+`kernel-devel`'s, which `kernel-devel-matched` brings with each new
+kernel), installs it to `/lib/modules/KERNEL/extra/olo/` (where locally
+built modules go, and the one place SELinux lets a service load a
+module from: from /var/lib the kernel refused it, "Permission denied")
+and loads it (`finit_module`). Its work is in
+`/var/lib/olo-gpu-memory/KERNEL`; what it built for kernels since
+removed, it removes. It says how it went in `/run/olo-gpu-memory/status`
+("patched", or "failed: " and why), and `olo-gpu-memory --status`
+prints what there is as JSON (anyone); `--remove` takes the patch out
+(its service's stop; an upgrade's restart takes an older patch out and
+puts this one in). Where it can't (no headers, no live patching in the
+kernel, Secure Boot refusing an unsigned module), the kernel is as it
+was and the service ends failed.
+
+**Olo Doctor** (`graphics_swap` in checks.rs): where xe drives a display
+and swap is on, "Windows' graphics memory is moved out to swap"
+(Problem), whose fix, **Keep Graphics Memory in Memory**, installs the
+service (root's copy of the program in /usr/local/libexec/olo, its unit,
+enabled and started; what building needs installed first where it's
+missing). Where the kernel can't take the patch (Secure Boot; no live
+patching) or the service tried and couldn't, the fix is **Turn Swap
+Off** instead: zram-generator told to make none (an /etc file naming no
+device), /etc/fstab's swap lines commented, systemd reloaded *before*
+the areas are turned off (`Step::SwapOff`: `swapoff(2)` each).
+That order matters: turned off alone, an area is back within minutes,
+as swap's target still wants its unit and the next system service to
+start brings the target's wants up again (measured: off at 11:47, on
+again at 11:58 as PackageKit started). The patch loaded but its service
+not installed (or an older build's): "kept out of swap only until the
+next start", **Keep It at Every Start**.
+
+**Looking again** (`sudo tools/dev/gpu-holds [SECONDS]`): whether swap
+is on, how much of each program's GPU memory is out of memory now
+(fdinfo's total less resident), then, on the compositor's loop, every
+wait of 20 ms or more on a buffer's lock with the lock's owner and its
+kernel stack, display commits that waited, and at the end all its lock
+waits by length, how often xe's shrinker ran and who brought buffers
+back. It needs bpftrace (`dnf install bpftrace`); with the patch in,
+the kernel's own probes on xe and TTM still attach.
+
+Not the cause, though each looked it: the scheduler (the loop is
+realtime, and waited on no run queue), the GPU being busy (the wait is
+for a lock, before anything is submitted), memory running out (40 GB
+were available; file cache alone makes kswapd run).
 
 ## Every frame on time (app_server frames.rs; Activity Monitor ▸ Displays)
 

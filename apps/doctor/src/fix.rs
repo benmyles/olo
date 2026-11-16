@@ -219,6 +219,15 @@ pub enum Step {
         home: PathBuf,
         name: String,
     },
+    /// Turn swap off: every swap area in use (`/proc/swaps`), each with
+    /// swapoff(2), which brings what's in it back into memory first (and
+    /// fails, the area left on, where there isn't the memory). For now
+    /// only: what keeps it off from the next start goes beside it
+    /// (zram-generator's file written, `FstabSwapOff`).
+    SwapOff,
+    /// Take the swap lines out of /etc/fstab (each commented, saying who
+    /// did), so none is turned on at the next start.
+    FstabSwapOff,
 }
 
 impl Step {
@@ -266,6 +275,8 @@ impl Step {
             Step::RebuildInitramfs => "Making the start-up images again".into(),
             Step::StartProgram { argv } => format!("Running {}", argv.join(" ")),
             Step::RemoveKeptBuild { home, name } => format!("Removing the kept build {} and its login screen entry", home.join(KEPT_BUILDS).join(name).display()),
+            Step::SwapOff => "Turning swap off".into(),
+            Step::FstabSwapOff => "Taking swap out of /etc/fstab".into(),
             Step::KeepOffCores { kept, on } => {
                 let list = olo_system::cores::format_list(kept);
                 if *on { format!("Moving the programs running on processor {list} to the others") } else { format!("Letting every program run on processor {list} again") }
@@ -383,6 +394,8 @@ impl Step {
                 olo_xdg::open::spawn(&argv).map_err(failed)
             }
             Step::RemoveKeptBuild { home, name } => remove_kept_build(home, name, SESSION_ENTRIES).map_err(failed),
+            Step::SwapOff => swap_off(Path::new("/proc/swaps")).map_err(|e| format!("{}: {e}", self.describe())),
+            Step::FstabSwapOff => fstab_swap_off(Path::new("/etc/fstab")).map_err(failed),
             Step::AddShell { path } => add_shell(path).map_err(failed),
             Step::AddKernelArgument { arg } => add_kernel_argument(Path::new("/"), arg).map_err(failed),
             Step::TryShell { path } => try_shell(path),
@@ -679,6 +692,79 @@ fn short_list(names: &[String]) -> String {
 }
 
 /// `path` listed in /etc/shells (it is already: nothing written).
+/// The swap areas the kernel lists (`/proc/swaps`' text): each line's
+/// device or file, after the heading's, and its size in bytes. (A space
+/// in a name comes as the kernel writes it, `\040`: undone.)
+pub fn swap_areas(swaps: &str) -> Vec<(String, u64)> {
+    let unescaped = |name: &str| {
+        let (mut out, mut rest) = (Vec::new(), name.as_bytes());
+        while let Some((&b, tail)) = rest.split_first() {
+            let octal = tail.get(..3).filter(|d| b == b'\\' && d.iter().all(|c| (b'0'..=b'7').contains(c)));
+            match octal {
+                Some(d) => {
+                    out.push(d.iter().fold(0u32, |n, c| n * 8 + (c - b'0') as u32) as u8);
+                    rest = &tail[3..];
+                }
+                None => {
+                    out.push(b);
+                    rest = tail;
+                }
+            }
+        }
+        String::from_utf8_lossy(&out).into_owned()
+    };
+    swaps
+        .lines()
+        .skip(1)
+        .filter_map(|l| {
+            let mut words = l.split_whitespace();
+            let (name, _kind, kib) = (words.next()?, words.next()?, words.next()?.parse::<u64>().ok()?);
+            Some((unescaped(name), kib * 1024))
+        })
+        .collect()
+}
+
+/// Every swap area in `swaps` (/proc/swaps) turned off. All are tried;
+/// the first that couldn't be is the error.
+fn swap_off(swaps: &Path) -> Result<(), String> {
+    let text = std::fs::read_to_string(swaps).map_err(|e| e.to_string())?;
+    let mut failed = None;
+    for (area, _) in swap_areas(&text) {
+        let Ok(path) = std::ffi::CString::new(area.as_bytes()) else { continue };
+        // SAFETY: swapoff(2) with a NUL-terminated path.
+        if unsafe { libc::swapoff(path.as_ptr()) } != 0 {
+            let e = std::io::Error::last_os_error();
+            failed.get_or_insert(format!("{area}: {e}"));
+        }
+    }
+    failed.map_or(Ok(()), Err)
+}
+
+/// `fstab`'s text with its swap lines commented out (None: it has none).
+pub fn fstab_without_swap(fstab: &str) -> Option<String> {
+    let is_swap = |l: &str| !l.trim_start().starts_with('#') && l.split_whitespace().nth(2) == Some("swap");
+    if !fstab.lines().any(is_swap) {
+        return None;
+    }
+    let mut out = String::with_capacity(fstab.len() + 64);
+    for l in fstab.lines() {
+        if is_swap(l) {
+            out.push_str("# Olo Doctor turned swap off: ");
+        }
+        out.push_str(l);
+        out.push('\n');
+    }
+    Some(out)
+}
+
+fn fstab_swap_off(fstab: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt as _;
+    let text = std::fs::read_to_string(fstab)?;
+    let Some(new) = fstab_without_swap(&text) else { return Ok(()) };
+    let mode = std::fs::metadata(fstab).map(|m| m.permissions().mode() & 0o7777).unwrap_or(0o644);
+    write_file(fstab, &new, mode)
+}
+
 fn add_shell(path: &Path) -> std::io::Result<()> {
     add_shell_to(Path::new("/etc/shells"), path)
 }
@@ -917,6 +1003,54 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
     use super::*;
+
+    /// The kernel's list of swap areas read: each one's name (a space in
+    /// it as the kernel writes it) and size; none in an empty list.
+    #[test]
+    fn swap_areas_read() {
+        let swaps = "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n/dev/zram0                              partition\t8388604\t\t6403060\t\t100\n/var/swap\\040file                          file\t\t1048572\t\t0\t\t-2\n";
+        assert_eq!(swap_areas(swaps), [("/dev/zram0".to_owned(), 8388604 * 1024), ("/var/swap file".to_owned(), 1048572 * 1024)]);
+        assert!(swap_areas("Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n").is_empty());
+        assert!(swap_areas("").is_empty());
+    }
+
+    /// /etc/fstab's swap lines commented out, the rest as it was; one
+    /// with none (or only ones already commented) left alone.
+    #[test]
+    fn fstab_loses_its_swap() {
+        let fstab = "# /etc/fstab\nUUID=aa-bb / btrfs subvol=root,compress=zstd:1 0 0\nUUID=cc-dd none swap defaults 0 0\n/swapfile swap swap defaults,pri=5 0 0\n#UUID=ee none swap defaults 0 0\n";
+        let new = fstab_without_swap(fstab).expect("changed");
+        assert_eq!(
+            new,
+            "# /etc/fstab\nUUID=aa-bb / btrfs subvol=root,compress=zstd:1 0 0\n# Olo Doctor turned swap off: UUID=cc-dd none swap defaults 0 0\n# Olo Doctor turned swap off: /swapfile swap swap defaults,pri=5 0 0\n#UUID=ee none swap defaults 0 0\n"
+        );
+        assert_eq!(fstab_without_swap(&new), None);
+        assert_eq!(fstab_without_swap("UUID=aa-bb / btrfs defaults 0 0\n"), None);
+        // In a file: written back whole, with the mode it had.
+        let dir = PathBuf::from(format!("/var/tmp/olo-doctor-fstab-swap-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("fstab");
+        std::fs::write(&file, fstab).unwrap();
+        fstab_swap_off(&file).unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), new);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Turning swap off where none is on does nothing, and says so
+    /// (the kernel's list as a file: no real swap is touched).
+    #[test]
+    fn no_swap_to_turn_off() {
+        let dir = PathBuf::from(format!("/var/tmp/olo-doctor-no-swap-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let swaps = dir.join("swaps");
+        std::fs::write(&swaps, "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n").unwrap();
+        assert_eq!(swap_off(&swaps), Ok(()));
+        // One that isn't a swap area (nor ours to turn off: not root):
+        // refused by the kernel, and said.
+        std::fs::write(&swaps, format!("Filename Type Size Used Priority\n{} file 4 0 -2\n", dir.join("none").display())).unwrap();
+        assert!(swap_off(&swaps).is_err_and(|e| e.contains("none")));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     /// A kept build goes with its login entry, and only it: an odd name
     /// or a link is refused, a link's target left as it is.

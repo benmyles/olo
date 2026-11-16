@@ -1,0 +1,193 @@
+#!/usr/bin/python3
+"""What holds app_server's loop inside the GPU driver, traced in the kernel.
+
+  sudo tools/dev/gpu-holds [SECONDS] [--pid PID] [--min MS]
+
+app_server hands every frame to the GPU on its loop's thread, and Intel's
+xe driver takes, for each submission, the lock of every buffer the
+compositor shares with its clients (every window's). Whatever holds one
+of those locks holds the loop: windows stop drawing and keys arrive
+late. app_server's log says when ("slow frame: finishing it", "input …
+came N ms late: the loop was held by …"); this says by whom and doing
+what.
+
+For SECONDS (60), on app_server's main thread (the person's own unless
+--pid: read-only, it changes nothing):
+
+* each wait of MS (20) or more on a buffer's lock (`ww_mutex_lock`),
+  with the lock's owner as it changed during the wait (every 5 ms) and
+  the owner's kernel stack: a client bringing swapped-out buffers back
+  (`ttm_tt_restore` under `xe_exec_ioctl`), one reclaiming memory, one
+  waiting for the GPU;
+* display commits that waited for the one before (`swap_state`), a
+  commit's wait for its frame's GPU work, and its tail's time;
+* at the end: all its lock waits by length, how often the driver's
+  shrinker ran and for whom (`xe_shrinker_scan`: it moves buffers out to
+  swap), and who brought buffers back (`ttm_tt_restore`).
+
+First it says whether swap is on and how much of each program's GPU
+memory is out of memory now (fdinfo: total less resident).
+
+Needs root and bpftrace (`dnf install bpftrace`). HACKING, "Windows'
+buffers stay in memory".
+"""
+
+import os
+import re
+import subprocess
+import sys
+import time
+
+PROGRAM = r"""
+kprobe:ww_mutex_lock_interruptible,kprobe:ww_mutex_lock /tid == $1/
+{
+  @wl = arg0;
+  @ws = nsecs;
+}
+kretprobe:ww_mutex_lock_interruptible,kretprobe:ww_mutex_lock /tid == $1 && @ws != 0/
+{
+  $us = (uint64)(nsecs - @ws) / 1000;
+  @lock_wait_ms = hist($us / 1000);
+  if ($us > 5000) { printf("R|%llu\n", $us); }
+  @wl = 0; @ws = 0;
+}
+interval:ms:5
+{
+  $ws = @ws;
+  $wl = @wl;
+  if ($ws != 0 && $wl != 0 && nsecs - $ws > 5000000) {
+    $l = (struct ww_mutex *)$wl;
+    $owner = (uint64)$l->base.owner.counter & 0xfffffffffffffff8;
+    if ($owner != 0) {
+      $t = (struct task_struct *)$owner;
+      printf("O|%llu|%d|%d|%s\n", (uint64)(nsecs - $ws) / 1000000, $t->tgid, $t->pid, $t->comm);
+    } else {
+      printf("O|%llu|0|0|-\n", (uint64)(nsecs - $ws) / 1000000);
+    }
+  }
+}
+kprobe:drm_atomic_helper_swap_state /tid == $1/ { @ss = nsecs; }
+kretprobe:drm_atomic_helper_swap_state /tid == $1 && @ss != 0/
+{
+  $us = (uint64)(nsecs - @ss) / 1000;
+  if ($us > 10000) { printf("S|%llu\n", $us); }
+  @ss = 0;
+}
+kprobe:drm_atomic_helper_wait_for_fences { @fs[tid] = nsecs; }
+kretprobe:drm_atomic_helper_wait_for_fences /@fs[tid]/
+{
+  $us = (uint64)(nsecs - @fs[tid]) / 1000;
+  if ($us > 10000) { printf("F|%s|%d|%llu\n", comm, tid, $us); }
+  delete(@fs[tid]);
+}
+kprobe:intel_atomic_commit_tail { @ts[tid] = nsecs; }
+kretprobe:intel_atomic_commit_tail /@ts[tid]/
+{
+  $us = (uint64)(nsecs - @ts[tid]) / 1000;
+  if ($us > 20000) { printf("T|%s|%d|%llu\n", comm, tid, $us); }
+  delete(@ts[tid]);
+}
+fentry:xe:xe_shrinker_scan { @shrinker_scans[comm] = count(); }
+fentry:ttm:ttm_tt_restore { @buffers_brought_back[comm] = count(); }
+END { clear(@fs); clear(@ts); clear(@wl); clear(@ws); clear(@ss); }
+"""
+
+
+def read(path):
+    try:
+        with open(path) as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def app_server():
+    """The person's app_server: the one that isn't an Agent Screen's or a
+    test session's."""
+    for p in sorted(filter(str.isdigit, os.listdir("/proc")), key=int):
+        if read(f"/proc/{p}/comm").strip() != "olo-app-server":
+            continue
+        env = read(f"/proc/{p}/environ").split("\0")
+        if not any(e.startswith(("OLO_SCREEN=", "OLO_DEV_SESSION=")) for e in env) and "--headless" not in read(f"/proc/{p}/cmdline").split("\0"):
+            return int(p)
+    return None
+
+
+def gpu_memory():
+    """Each xe client's GPU memory (KiB): (total, resident, pid, name)."""
+    seen = {}
+    for p in filter(str.isdigit, os.listdir("/proc")):
+        try:
+            fds = os.listdir(f"/proc/{p}/fdinfo")
+        except OSError:
+            continue
+        for fd in fds:
+            t = read(f"/proc/{p}/fdinfo/{fd}")
+            if "drm-driver:\txe" not in t:
+                continue
+            client = re.search(r"drm-client-id:\s*(\d+)", t)
+            if not client or client.group(1) in seen:
+                continue
+            kib = lambda k: sum(int(n) for n in re.findall(rf"{k}-\w+:\s*(\d+) KiB", t))
+            seen[client.group(1)] = (kib("drm-total"), kib("drm-resident"), int(p), read(f"/proc/{p}/comm").strip())
+    return list(seen.values())
+
+
+def short(stack):
+    frames = [l.split("] ", 1)[-1].split("+0x")[0] for l in stack.strip().split("\n") if l.strip()]
+    keep = [f for f in frames if not f.startswith(("asm_", "do_syscall", "entry_SYSCALL", "__x64_sys", "x64_sys"))]
+    return " < ".join(keep[:14]) or "(running)"
+
+
+def main():
+    args = sys.argv[1:]
+    take = lambda flag, default: (args.pop(args.index(flag) + 1), args.remove(flag))[0] if flag in args else default
+    pid = int(take("--pid", 0)) or app_server()
+    min_ms = float(take("--min", 20))
+    seconds = int(args[0]) if args else 60
+    if os.geteuid() != 0:
+        sys.exit("gpu-holds: needs root (sudo tools/dev/gpu-holds)")
+    if not pid:
+        sys.exit("gpu-holds: no app_server found (--pid PID)")
+
+    swaps = read("/proc/swaps").strip().split("\n")[1:]
+    print("swap: " + ("; ".join(" ".join(l.split()[:3:2]) + " KiB" for l in swaps) if swaps else "off"))
+    clients = gpu_memory()
+    out = sum(t - r for t, r, *_ in clients if t > r)
+    print(f"GPU memory out of memory: {out / 1048576:.2f} GiB, in {sum(1 for t, r, *_ in clients if t > r)} of {len(clients)} clients (each client's handles: a shared buffer counts in each)")
+    for t, r, p, name in sorted(clients, key=lambda c: c[1] - c[0])[:5]:
+        if t > r:
+            print(f"  {name}[{p}]: {(t - r) / 1024:.0f} of {t / 1024:.0f} MiB")
+    print(f"tracing app_server {pid} for {seconds} s: lock waits of {min_ms:.0f} ms or more", flush=True)
+
+    bt = subprocess.Popen(["timeout", str(seconds), "bpftrace", "-q", "--no-warnings", "-B", "line", "-e", PROGRAM, str(pid)], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    owners = []
+    for line in bt.stdout:
+        f = line.rstrip("\n").split("|")
+        if f[0] == "O" and len(f) >= 5:
+            ms, tgid, tid, comm = f[1:5]
+            owners.append((ms, f"{comm}[{tgid}/{tid}] {short(read(f'/proc/{tgid}/task/{tid}/stack'))}" if tid != "0" else "(no owner: handed on)"))
+        elif f[0] == "R":
+            ms = int(f[1]) / 1000
+            if ms >= min_ms:
+                print(f"\n{time.strftime('%H:%M:%S')} waited {ms:.0f} ms on a buffer's lock")
+                seen = {}
+                for at, who in owners:
+                    seen.setdefault(who, [at, 0])[1] += 1
+                for who, (at, n) in seen.items():
+                    print(f"  from {at} ms, x{n}: {who}")
+                sys.stdout.flush()
+            owners = []
+        elif f[0] == "S":
+            print(f"\n{time.strftime('%H:%M:%S')} a display commit waited {int(f[1]) / 1000:.0f} ms for the one before", flush=True)
+        elif f[0] == "F":
+            print(f"{time.strftime('%H:%M:%S')}   {f[1]}[{f[2]}]: a commit waited {int(f[3]) / 1000:.0f} ms for its frame's GPU work", flush=True)
+        elif f[0] == "T":
+            print(f"{time.strftime('%H:%M:%S')}   {f[1]}[{f[2]}]: a commit's tail took {int(f[3]) / 1000:.0f} ms", flush=True)
+        elif line.strip():
+            print(line.rstrip(), flush=True)
+    bt.wait()
+
+
+if __name__ == "__main__":
+    main()

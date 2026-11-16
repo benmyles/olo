@@ -7466,6 +7466,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-gpu-memory"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "olo-crash",
+]
+
+[[package]]
 name = "olo-greet"
 version = "0.1.0"
 dependencies = [

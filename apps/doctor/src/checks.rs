@@ -673,6 +673,7 @@ pub fn scan(roots: &Roots) -> Report {
     idle_gpu(roots, &gpus, &mut r);
     gpu_stuck(roots, &gpus, &procs, &mut r);
     gpu_driver(roots, &gpus, &mut r);
+    graphics_swap(roots, &gpus, &mut r);
     intel_video(roots, &gpus, &mut r);
     builtin_sound(roots, &gpus, &mut r);
     thunderbolt(roots, &mut r);
@@ -2291,6 +2292,209 @@ fn gpu_driver(roots: &Roots, pcis: &[Pci], r: &mut Report) {
 
 /// NVIDIA's driver, as Fedora's repositories name it.
 const NVIDIA_DRIVER: &str = "akmod-nvidia";
+
+/// The swap areas in use, as the kernel lists them.
+const SWAPS_PATH: &str = "proc/swaps";
+/// zram-generator's settings for this computer, which replace the
+/// system's own whole (Fedora's: a swap in compressed memory, up to
+/// 8 GB): one naming no device makes none.
+pub const ZRAM_CONF_PATH: &str = "etc/systemd/zram-generator.conf";
+pub const ZRAM_OFF_CONF: &str = "# Olo: no swap in compressed memory (Olo Doctor, \"Turn Swap Off\").\n# Intel's graphics driver (xe) moves windows' buffers out to swap whenever\n# the kernel tidies memory, and the desktop stalls while they come back.\n# This file, naming no device, replaces the system's own\n# (/usr/lib/systemd/zram-generator.conf); remove it to have that back.\n";
+
+/// Olo's live patch that keeps graphics memory out of swap
+/// (kernel/gpu-memory, `olo_gpu_memory`): the service that builds it for
+/// the running kernel and loads it at each start (apps/gpu-memory), its
+/// program beside ours and where root's copy and its unit go, where the
+/// kernel lists the patch once it's in, and where the service says how
+/// it went.
+pub const GPU_MEMORY_UNIT: &str = include_str!("../../../data/systemd/olo-gpu-memory.service");
+pub const GPU_MEMORY_SERVICE: &str = "olo-gpu-memory.service";
+pub const GPU_MEMORY_PROGRAM: &str = "olo-gpu-memory";
+const GPU_MEMORY_PROGRAM_PATH: &str = "usr/local/libexec/olo/olo-gpu-memory";
+const GPU_MEMORY_UNIT_PATH: &str = "etc/systemd/system/olo-gpu-memory.service";
+const GPU_MEMORY_PATCH: &str = "sys/kernel/livepatch/olo_gpu_memory";
+const LIVE_PATCHES: &str = "sys/kernel/livepatch";
+/// What building the patch for a kernel takes: its headers (the package
+/// that follows each new kernel), the compiler and make.
+const KERNEL_BUILD_PACKAGES: &[&str] = &["kernel-devel-matched", "gcc", "make"];
+
+/// Olo's patch is in the running kernel: GPU buffers aren't backed up to
+/// swap.
+fn graphics_memory_patched(fs: &Path) -> bool {
+    read(&fs.join(GPU_MEMORY_PATCH).join("enabled")).is_some_and(|e| e.trim() == "1")
+}
+
+/// The steps that turn swap off and keep it off: what turns each area on
+/// at every start first; then systemd told, so the units it made for the
+/// areas are gone before they're turned off (turned off alone, an area
+/// is back within minutes: swap's target wants its unit, and the next
+/// system service that starts brings the target's wants up again; Ben's
+/// computer, 2026-11-16: off at 11:47, on again at 11:58 as PackageKit
+/// started); then zram's devices given back (their set-up services,
+/// which systemd no longer stops with the swap once their units are
+/// gone).
+fn swap_off_steps(roots: &Roots, areas: &[(String, u64)]) -> Vec<Step> {
+    let mut steps = Vec::new();
+    if areas.iter().any(|(name, _)| name.starts_with("/dev/zram")) {
+        steps.push(Step::WriteFile { path: PathBuf::from("/").join(ZRAM_CONF_PATH), content: ZRAM_OFF_CONF.into(), mode: 0o644 });
+    }
+    if areas.iter().any(|(name, _)| !name.starts_with("/dev/zram")) {
+        steps.push(Step::FstabSwapOff);
+    }
+    steps.push(Step::Unit { name: "swap".into(), action: UnitAction::Reload });
+    steps.push(Step::SwapOff);
+    for (name, _) in areas {
+        let Some(device) = name.strip_prefix("/dev/").filter(|d| d.starts_with("zram")) else { continue };
+        let service = format!("systemd-zram-setup@{device}.service");
+        if (roots.units)(&service).is_ok_and(|u| u.active) {
+            steps.push(Step::Unit { name: service, action: UnitAction::Stop });
+        }
+    }
+    steps
+}
+
+/// The steps that put Olo's patch service in place, from the
+/// `olo-gpu-memory` beside ours: only what isn't so already (its program
+/// and unit where they're missing or not this build's, enabled, and
+/// started (again, if either changed: it takes an older patch out and
+/// builds this one), with what the kernel's build needs installed first
+/// where it's missing).
+fn graphics_memory_steps(roots: &Roots) -> Vec<Step> {
+    let fs = &roots.fs;
+    let mut steps = Vec::new();
+    let release = read(&fs.join("proc/sys/kernel/osrelease")).map(|r| r.trim().to_owned()).unwrap_or_default();
+    let can_build = fs.join("lib/modules").join(&release).join("build/Makefile").is_file() && fs.join("usr/bin/make").is_file() && fs.join("usr/bin/gcc").is_file();
+    if !can_build {
+        steps.push(Step::InstallPackages { names: KERNEL_BUILD_PACKAGES.iter().map(|n| (*n).to_owned()).collect() });
+    }
+    let (from, program, unit) = (roots.bin.join(GPU_MEMORY_PROGRAM), PathBuf::from("/").join(GPU_MEMORY_PROGRAM_PATH), PathBuf::from("/").join(GPU_MEMORY_UNIT_PATH));
+    let mut changed = false;
+    if !same_contents(&from, &fs.join(GPU_MEMORY_PROGRAM_PATH)) {
+        steps.push(Step::CopyFile { from, to: program.clone(), mode: 0o755 });
+        // (Its label as the folder's own says: a program systemd may run.)
+        steps.push(Step::SelinuxLabels { rules: Vec::new(), restore: vec![program] });
+        changed = true;
+    }
+    if std::fs::read_to_string(fs.join(GPU_MEMORY_UNIT_PATH)).ok().as_deref() != Some(GPU_MEMORY_UNIT) {
+        steps.push(Step::WriteFile { path: unit, content: GPU_MEMORY_UNIT.into(), mode: 0o644 });
+        changed = true;
+    }
+    if changed {
+        steps.push(Step::Unit { name: GPU_MEMORY_SERVICE.into(), action: UnitAction::Reload });
+    }
+    let state = (roots.units)(GPU_MEMORY_SERVICE).ok();
+    if changed || !state.as_ref().is_some_and(|s| s.enabled) {
+        steps.push(Step::Unit { name: GPU_MEMORY_SERVICE.into(), action: UnitAction::Enable });
+    }
+    if changed || !can_build || !graphics_memory_patched(fs) || !state.as_ref().is_some_and(|s| s.active) {
+        steps.push(Step::Unit { name: GPU_MEMORY_SERVICE.into(), action: UnitAction::Restart });
+    }
+    steps
+}
+
+/// Windows' graphics memory moved out to swap. Intel's xe driver backs
+/// its buffers up to swap (TTM's shrinker: `xe_shrinker_scan`) whenever
+/// the kernel is short of memory, were it only file cache (a build's
+/// output), and only while there is swap space to take them. A buffer
+/// comes back inside its program's next GPU submission, under its
+/// window buffers' locks, which app_server's every submission takes
+/// too: its loop stood still while any window's came back (windows not
+/// drawn, keys late, one pressed before the wait typed twice). Ben's
+/// computer, 2026-11-16, building three apps: 47 frames held (the worst
+/// 951 ms) and three keys late with 8 GB of zram swap, 1 GiB of buffers
+/// out; none with swap off, and none with it on and Olo's patch in
+/// (HACKING, "Windows' buffers stay in memory").
+///
+/// The fix is Olo's live patch (`graphics_memory_steps`): the driver is
+/// told there is no swap for its buffers, and the computer keeps its
+/// swap for the rest. Where the kernel can't take it (Secure Boot loads
+/// only signed modules; a kernel without live patching), or its service
+/// couldn't build or load it, swap is turned off instead
+/// (`swap_off_steps`).
+fn graphics_swap(roots: &Roots, pcis: &[Pci], r: &mut Report) {
+    if !pcis.iter().any(|p| p.display() && p.driver.as_deref() == Some("xe")) {
+        return;
+    }
+    let fs = &roots.fs;
+    let areas = read(&fs.join(SWAPS_PATH)).map(|t| crate::fix::swap_areas(&t)).unwrap_or_default();
+    if areas.is_empty() {
+        r.fine.push(Fine { title: "Windows' graphics memory stays in memory".into(), detail: "Swap is off, so Intel's graphics driver (xe) has nowhere to move windows' buffers out to.".into() });
+        return;
+    }
+    // (Without the service's program beside ours, an Olo from before it
+    // or a build tree's, there's nothing to install it from.)
+    let ours = roots.bin.join(GPU_MEMORY_PROGRAM).is_file();
+    let patched = graphics_memory_patched(fs);
+    let steps = if ours { graphics_memory_steps(roots) } else { Vec::new() };
+    let kept = fs.join(GPU_MEMORY_UNIT_PATH).is_file() && (roots.units)(GPU_MEMORY_SERVICE).is_ok_and(|s| s.enabled);
+    if patched && steps.is_empty() && (ours || kept) {
+        r.fine.push(Fine {
+            title: "Windows' graphics memory stays in memory".into(),
+            detail: "Olo's kernel patch (olo_gpu_memory) is in: Intel's graphics driver (xe) is told there's no swap for windows' buffers, and the computer keeps its swap for everything else.".into(),
+        });
+        return;
+    }
+    if patched {
+        r.findings.push(Finding {
+            id: "graphics-swap:service".into(),
+            severity: Severity::Advice,
+            title: "Windows' graphics memory is kept out of swap only until the next start".into(),
+            detail: format!(
+                "Olo's kernel patch (olo_gpu_memory) is in the running kernel, but the service that builds it for each kernel and loads it at every start isn't installed, or isn't this build's. {}",
+                if ours { "The fix puts it in place." } else { "This Olo has no olo-gpu-memory beside it to install it from." }
+            ),
+            fix: ours.then(|| Fix { label: "Keep It at Every Start".into(), root: true, steps }),
+        });
+        return;
+    }
+    let total: u64 = areas.iter().map(|(_, size)| size).sum();
+    let size = olo_system::dnf::size_words(total).replace(' ', "\u{a0}");
+    let what = match (areas.iter().any(|(n, _)| n.starts_with("/dev/zram")), areas.iter().any(|(n, _)| !n.starts_with("/dev/zram"))) {
+        (true, false) => "in compressed memory",
+        (false, _) => "on disk",
+        (true, true) => "in compressed memory and on disk",
+    };
+    let trouble = format!(
+        "Swap is on ({size} {what}), and Intel's graphics driver (xe) moves windows' buffers out to it whenever the kernel tidies memory, even when it's only a build's or a copy's files filling it. A window's next frame then waits in the kernel while its buffers come back, and everything on screen waits with it: windows stop drawing and keys arrive late (a letter typed twice), for up to seconds."
+    );
+    let swap_off = "Without swap, a computer that runs out of memory has its largest program stopped rather than slowing down.";
+    let secure_boot = read_bytes(&fs.join(SECURE_BOOT_VAR)).is_some_and(|b| b.last() == Some(&1));
+    // How the service's last try went, where it has tried.
+    let said = read(&fs.join("run/olo-gpu-memory/status")).map(|s| s.trim().to_owned()).filter(|s| !s.is_empty());
+    let failed = said.as_deref().and_then(|s| s.strip_prefix("failed: "));
+    let (detail, label, steps) = if !ours || secure_boot || !fs.join(LIVE_PATCHES).is_dir() {
+        let why = if secure_boot {
+            "Olo's kernel patch would keep them in memory and leave swap on, but with Secure Boot this kernel loads only signed modules. "
+        } else if ours {
+            "Olo's kernel patch would keep them in memory and leave swap on, but this kernel can't be patched while it runs. "
+        } else {
+            ""
+        };
+        (format!("{trouble} {why}The fix turns swap off, now and at every start; the driver then keeps every buffer in memory. {swap_off}"), "Turn Swap Off", swap_off_steps(roots, &areas))
+    } else if let Some(why) = failed.filter(|why| !why.contains("headers aren't installed") && !why.contains("make couldn't be run")) {
+        (
+            format!("{trouble} Olo's kernel patch, which keeps them in memory and leaves swap on, couldn't be put in: {why}. The fix turns swap off instead, now and at every start. {swap_off}"),
+            "Turn Swap Off",
+            swap_off_steps(roots, &areas),
+        )
+    } else {
+        (
+            format!(
+                "{trouble} The fix puts Olo's kernel patch in (olo_gpu_memory: one function of the running kernel replaced, no restart): the driver is told there's no swap for its buffers, and the computer keeps its swap for everything else. A service builds the patch for each new kernel at its first start (a few seconds) and loads it at every start{}.",
+                if steps.iter().any(|s| matches!(s, Step::InstallPackages { .. })) { "; what building it needs (the kernel's headers, the compiler, make) is installed first" } else { "" }
+            ),
+            "Keep Graphics Memory in Memory",
+            steps,
+        )
+    };
+    r.findings.push(Finding {
+        id: "graphics-swap".into(),
+        severity: Severity::Problem,
+        title: "Windows' graphics memory is moved out to swap".into(),
+        detail,
+        fix: Some(Fix { label: label.into(), root: true, steps }),
+    });
+}
 
 /// Intel's full video driver (iHD with every codec), as RPM Fusion's
 /// nonfree repository names it, and where it and its kind put theirs
@@ -4544,6 +4748,157 @@ mod tests {
         thunderbolt(&roots, &mut r);
         assert!(r.findings.is_empty());
         assert_eq!(r.fine[0].title, "Thunderbolt devices are let in");
+    }
+
+    /// Intel's xe driver with swap on: its windows' buffers can be moved
+    /// out, so swap is turned off (what turns it on at each start first:
+    /// zram-generator's file, /etc/fstab's lines); fine with none; and
+    /// nothing said of another driver's.
+    #[test]
+    fn xe_and_swap() {
+        let (fs, roots) = machine("graphics-swap");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        let heading = "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n";
+        w("sys/bus/pci/devices/0000:00:02.0/class", "0x030000\n");
+        w("sys/bus/pci/devices/0000:00:02.0/vendor", "0x8086\n");
+        w("proc/swaps", &format!("{heading}/dev/zram0                              partition\t8388604\t\t6403060\t\t100\n"));
+        // Another driver's (i915): nothing said.
+        let driver = |name: &str| {
+            let link = fs.join("sys/bus/pci/devices/0000:00:02.0/driver");
+            let _ = std::fs::remove_file(&link);
+            std::fs::create_dir_all(fs.join("sys/bus/pci/drivers").join(name)).unwrap();
+            std::os::unix::fs::symlink(fs.join("sys/bus/pci/drivers").join(name), link).unwrap();
+        };
+        driver("i915");
+        let r = scan(&roots);
+        assert!(r.find("graphics-swap").is_none() && r.fine.iter().all(|f| !f.title.starts_with("Windows' graphics memory")));
+        // xe's, Fedora's zram swap on: off, and kept off.
+        driver("xe");
+        let r = scan(&roots);
+        let f = r.find("graphics-swap").expect("found");
+        assert_eq!((f.severity, f.title.as_str()), (Severity::Problem, "Windows' graphics memory is moved out to swap"));
+        assert!(f.detail.starts_with("Swap is on (8.59\u{a0}GB in compressed memory), and Intel's graphics driver (xe) moves windows' buffers out to it"), "{}", f.detail);
+        let fix = f.fix.as_ref().unwrap();
+        assert!(fix.root && fix.label == "Turn Swap Off");
+        assert_eq!(
+            fix.steps,
+            [
+                Step::WriteFile { path: "/etc/systemd/zram-generator.conf".into(), content: ZRAM_OFF_CONF.into(), mode: 0o644 },
+                Step::Unit { name: "swap".into(), action: UnitAction::Reload },
+                Step::SwapOff
+            ]
+        );
+        // (The file names no device: zram-generator makes none.)
+        assert!(ZRAM_OFF_CONF.lines().all(|l| l.starts_with('#')));
+        // A partition's beside it: /etc/fstab's line too.
+        w("proc/swaps", &format!("{heading}/dev/zram0 partition 8388604 0 100\n/dev/nvme0n1p3 partition 16777212 0 -2\n"));
+        let f = scan(&roots).find("graphics-swap").unwrap().clone();
+        assert!(f.detail.contains("in compressed memory and on disk"), "{}", f.detail);
+        assert_eq!(
+            f.fix.unwrap().steps.iter().map(Step::describe).collect::<Vec<_>>(),
+            ["Writing /etc/systemd/zram-generator.conf", "Taking swap out of /etc/fstab", "Reloading systemd for swap", "Turning swap off"]
+        );
+        // zram's set-up service running (as it is while its swap is on):
+        // stopped last, its device given back.
+        let roots = Roots { units: Box::new(|name: &str| if name == "systemd-zram-setup@zram0.service" { Ok(UnitState { active: true, ..Default::default() }) } else { Err("none".into()) }), ..roots };
+        assert_eq!(scan(&roots).find("graphics-swap").unwrap().fix.as_ref().unwrap().steps.last().map(Step::describe).as_deref(), Some("Stopping systemd-zram-setup@zram0.service"));
+        // None on: fine, and said.
+        w("proc/swaps", heading);
+        let r = scan(&roots);
+        assert!(r.find("graphics-swap").is_none());
+        assert!(r.fine.iter().any(|f| f.title == "Windows' graphics memory stays in memory"));
+    }
+
+    /// Intel's xe driver with swap on, where Olo's kernel patch can go in:
+    /// its service installed (what building the patch needs first, where
+    /// it's missing), swap left on; fine once it's in and kept; kept at
+    /// each start where it was only loaded by hand; and swap turned off
+    /// instead where the kernel can't take it or its service couldn't.
+    #[test]
+    fn xe_swap_and_olos_patch() {
+        let (fs, roots) = machine("graphics-patch");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        w("sys/bus/pci/devices/0000:00:02.0/class", "0x030000\n");
+        w("sys/bus/pci/devices/0000:00:02.0/vendor", "0x8086\n");
+        std::fs::create_dir_all(fs.join("sys/bus/pci/drivers/xe")).unwrap();
+        std::os::unix::fs::symlink(fs.join("sys/bus/pci/drivers/xe"), fs.join("sys/bus/pci/devices/0000:00:02.0/driver")).unwrap();
+        w("proc/swaps", "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n/dev/zram0 partition 8388604 0 100\n");
+        w("proc/sys/kernel/osrelease", "7.2.15-300.fc45.x86_64\n");
+        std::fs::create_dir_all(fs.join("sys/kernel/livepatch")).unwrap();
+        std::fs::write(roots.bin.join("olo-gpu-memory"), "the service").unwrap();
+        let said = |roots: &Roots| scan(roots).find("graphics-swap").map(|f| f.fix.as_ref().unwrap().steps.iter().map(Step::describe).collect::<Vec<_>>());
+        let install = [
+            "Installing /usr/local/libexec/olo/olo-gpu-memory",
+            "Labelling /usr/local/libexec/olo/olo-gpu-memory for SELinux",
+            "Writing /etc/systemd/system/olo-gpu-memory.service",
+            "Reloading systemd for olo-gpu-memory.service",
+            "Enabling olo-gpu-memory.service",
+            "Restarting olo-gpu-memory.service",
+        ];
+        // Nothing to build with: installed first.
+        let f = scan(&roots).find("graphics-swap").unwrap().clone();
+        assert_eq!((f.severity, f.fix.as_ref().unwrap().label.as_str()), (Severity::Problem, "Keep Graphics Memory in Memory"));
+        assert!(f.detail.contains("The fix puts Olo's kernel patch in (olo_gpu_memory") && f.detail.ends_with("the compiler, make) is installed first."), "{}", f.detail);
+        assert_eq!(said(&roots).unwrap(), [&["Installing kernel-devel-matched, gcc, make"][..], &install[..]].concat());
+        // The kernel's headers, make and the compiler there: the service alone.
+        w("lib/modules/7.2.15-300.fc45.x86_64/build/Makefile", "");
+        w("usr/bin/make", "");
+        w("usr/bin/gcc", "");
+        assert_eq!(said(&roots).unwrap(), install);
+        assert!(scan(&roots).find("graphics-swap").unwrap().detail.ends_with("loads it at every start."));
+        // In, its service this build's, enabled and run: fine, swap on.
+        w("sys/kernel/livepatch/olo_gpu_memory/enabled", "1\n");
+        w("usr/local/libexec/olo/olo-gpu-memory", "the service");
+        w("etc/systemd/system/olo-gpu-memory.service", GPU_MEMORY_UNIT);
+        let kept = |name: &str| -> Result<UnitState, String> { if name == GPU_MEMORY_SERVICE { Ok(UnitState { loaded: true, active: true, enabled: true, path: None }) } else { Err("none".into()) } };
+        let roots = Roots { units: Box::new(kept), ..roots };
+        let r = scan(&roots);
+        assert!(
+            r.find("graphics-swap").is_none() && r.find("graphics-swap:service").is_none(),
+            "{:?}",
+            r.find("graphics-swap").or(r.find("graphics-swap:service")).map(|f| f.fix.as_ref().unwrap().steps.iter().map(Step::describe).collect::<Vec<_>>())
+        );
+        assert!(r.fine.iter().any(|f| f.title == "Windows' graphics memory stays in memory" && f.detail.starts_with("Olo's kernel patch (olo_gpu_memory) is in")));
+        // In by hand, from an Olo with no service program beside it: said,
+        // nothing to offer.
+        std::fs::remove_file(roots.bin.join("olo-gpu-memory")).unwrap();
+        std::fs::remove_file(fs.join("etc/systemd/system/olo-gpu-memory.service")).unwrap();
+        let f = scan(&roots).find("graphics-swap:service").unwrap().clone();
+        assert!(f.fix.is_none() && f.detail.ends_with("no olo-gpu-memory beside it to install it from."), "{}", f.detail);
+        std::fs::write(roots.bin.join("olo-gpu-memory"), "the service").unwrap();
+        w("etc/systemd/system/olo-gpu-memory.service", GPU_MEMORY_UNIT);
+        // An older build's program there: brought up to date (taken out
+        // and built again as its service starts again).
+        w("usr/local/libexec/olo/olo-gpu-memory", "an older service");
+        let f = scan(&roots).find("graphics-swap:service").unwrap().clone();
+        assert_eq!((f.severity, f.fix.as_ref().unwrap().label.as_str()), (Severity::Advice, "Keep It at Every Start"));
+        assert_eq!(f.fix.unwrap().steps.iter().map(Step::describe).collect::<Vec<_>>(), [install[0], install[1], install[3], install[4], install[5]]);
+        w("usr/local/libexec/olo/olo-gpu-memory", "the service");
+        // Secure Boot: the kernel takes no unsigned module, so swap off.
+        std::fs::remove_dir_all(fs.join("sys/kernel/livepatch/olo_gpu_memory")).unwrap();
+        w("sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c", "\u{6}\0\0\0\u{1}");
+        let f = scan(&roots).find("graphics-swap").unwrap().clone();
+        assert_eq!(f.fix.as_ref().unwrap().label, "Turn Swap Off");
+        assert!(f.detail.contains("with Secure Boot this kernel loads only signed modules"), "{}", f.detail);
+        assert_eq!(f.fix.unwrap().steps.last(), Some(&Step::SwapOff));
+        std::fs::remove_file(fs.join("sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c")).unwrap();
+        // Its service tried and couldn't: why, and swap off instead.
+        w("run/olo-gpu-memory/status", "failed: the kernel's build failed: no rule to make target\n");
+        let f = scan(&roots).find("graphics-swap").unwrap().clone();
+        assert_eq!(f.fix.as_ref().unwrap().label, "Turn Swap Off");
+        assert!(f.detail.contains("couldn't be put in: the kernel's build failed: no rule to make target. The fix turns swap off instead"), "{}", f.detail);
+        // Only this kernel's headers missing: they're installed, and it's tried again.
+        w("run/olo-gpu-memory/status", "failed: this kernel's headers aren't installed (the kernel-devel package for 7.2.15-300.fc45.x86_64)\n");
+        std::fs::remove_file(fs.join("lib/modules/7.2.15-300.fc45.x86_64/build/Makefile")).unwrap();
+        assert_eq!(said(&roots).unwrap(), ["Installing kernel-devel-matched, gcc, make", "Restarting olo-gpu-memory.service"]);
     }
 
     /// Intel graphics on Fedora with its own driver: RPM Fusion's full
