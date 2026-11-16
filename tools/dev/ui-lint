@@ -56,6 +56,8 @@ def apps(home):
         # (Against dnf-fake on the session's own bus: never the system's
         # packages. "@session-bus" is that bus, the fake started on it.)
         ("OS Updates", ["olo-updates"], {"OLO_DNF_BUS": "@session-bus", "OLO_UPDATES_HELPER": "off"}, False),
+        # (Made up: never the person's kache, its service or its files.)
+        ("Kache", ["olo-kache"], {"OLO_KACHE_DEMO": "1"}, False),
         ("Logs", ["olo-logs"], {}, False),
         ("Passwords", ["olo-passwords"], {"OLO_PASSWORDS_KEYFILE": os.path.join(home, ".pw-key")}, False),
         ("StyledEdit", ["olo-styled-edit", os.path.join(home, "README.md")], {}, False),

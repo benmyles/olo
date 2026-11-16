@@ -4384,5 +4384,35 @@
   "title": "Power: each SSD by its own name",
   "caption": "Power Modes named its NVMe row \"SSD\" (\"SSD 1\", \"SSD 2\" with more), which said nothing of which drive is which. Each is named by its model now (here SKHynix HFS002TFM9X179N, cut with its whole name in the tip), with its size, then its device, added only where two would read alike; the summary line says it too. Each was already set on its own, by its serial (light, 2x).",
   "image": "2026-11-15/180522-power-each-ssd-by-its-own-name.png"
+ },
+ {
+  "time": "2026-11-15T19:43:28",
+  "title": "Kache: the build cache's status",
+  "caption": "A new app for kache (our fork): the service and its buttons (Clean Up Now, Restart, Stop), the store against its limit, the last 24 hours' hit rate and time saved, the pool's slots now, and builds by the hour. The demo (OLO_KACHE_DEMO), light, 2\u00d7.",
+  "image": "2026-11-15/194328-kache-the-build-cache-s-status.png"
+ },
+ {
+  "time": "2026-11-15T19:43:29",
+  "title": "Kache in dark at 1.5\u00d7",
+  "caption": "Status in dark mode at 1.5\u00d7: the same cards, the chart's hues from the palette.",
+  "image": "2026-11-15/194329-kache-in-dark-at-1-5.png"
+ },
+ {
+  "time": "2026-11-15T19:43:30",
+  "title": "Kache: builds",
+  "caption": "The projects built most and the slowest compiles over the day, then each build: when, crate, project, result, how long, how big.",
+  "image": "2026-11-15/194330-kache-builds.png"
+ },
+ {
+  "time": "2026-11-15T19:43:31",
+  "title": "Kache: kache's settings",
+  "caption": "The [cache] keys worth tuning, each field showing what kache does when it's left empty and what it is beside it; saved into config.toml keeping its comments. Dark, 1\u00d7.",
+  "image": "2026-11-15/194331-kache-kache-s-settings.png"
+ },
+ {
+  "time": "2026-11-15T19:43:32",
+  "title": "Kache's Deskbar widget",
+  "caption": "Build Cache: the day's hit rate, the pool's slots in use, and the last 6 hours (builds, and a bar of the share that were hits). Slots without icons now drop the kit's icon row. 1\u00d7 (doubled), 1.5\u00d7, 2\u00d7.",
+  "image": "2026-11-15/194332-kache-s-deskbar-widget.png"
  }
 ]

@@ -5,6 +5,36 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Kache's Deskbar widget
+
+*19:43* — Build Cache: the day's hit rate, the pool's slots in use, and the last 6 hours (builds, and a bar of the share that were hits). Slots without icons now drop the kit's icon row. 1× (doubled), 1.5×, 2×.
+
+![Kache's Deskbar widget](2026-11-15/194332-kache-s-deskbar-widget.png)
+
+### Kache: kache's settings
+
+*19:43* — The [cache] keys worth tuning, each field showing what kache does when it's left empty and what it is beside it; saved into config.toml keeping its comments. Dark, 1×.
+
+![Kache: kache's settings](2026-11-15/194331-kache-kache-s-settings.png)
+
+### Kache: builds
+
+*19:43* — The projects built most and the slowest compiles over the day, then each build: when, crate, project, result, how long, how big.
+
+![Kache: builds](2026-11-15/194330-kache-builds.png)
+
+### Kache in dark at 1.5×
+
+*19:43* — Status in dark mode at 1.5×: the same cards, the chart's hues from the palette.
+
+![Kache in dark at 1.5×](2026-11-15/194329-kache-in-dark-at-1-5.png)
+
+### Kache: the build cache's status
+
+*19:43* — A new app for kache (our fork): the service and its buttons (Clean Up Now, Restart, Stop), the store against its limit, the last 24 hours' hit rate and time saved, the pool's slots now, and builds by the hour. The demo (OLO_KACHE_DEMO), light, 2×.
+
+![Kache: the build cache's status](2026-11-15/194328-kache-the-build-cache-s-status.png)
+
 ### Power: each SSD by its own name
 
 *18:05* — Power Modes named its NVMe row "SSD" ("SSD 1", "SSD 2" with more), which said nothing of which drive is which. Each is named by its model now (here SKHynix HFS002TFM9X179N, cut with its whole name in the tip), with its size, then its device, added only where two would read alike; the summary line says it too. Each was already set on its own, by its serial (light, 2x).

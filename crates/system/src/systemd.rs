@@ -106,6 +106,69 @@ pub fn reload() -> Result<()> {
     bus::call::<_, ()>(bus::system()?, SYSTEMD, MANAGER, MANAGER_IFACE, "Reload", &())
 }
 
+/// A unit of the person's own (user) manager, as it stands: whether
+/// there's one, its state ("active", "inactive", "failed",
+/// "activating") and sub-state ("running", "dead"), since when (µs since
+/// 1970), its main process, the memory it holds.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct UserUnit {
+    pub loaded: bool,
+    pub active: String,
+    pub sub: String,
+    pub since_us: u64,
+    pub pid: u32,
+    pub memory: Option<u64>,
+}
+
+impl UserUnit {
+    pub fn running(&self) -> bool {
+        self.active == "active"
+    }
+}
+
+/// User unit `name` as it stands (one that isn't there comes back
+/// `loaded: false`); Err only when the user manager can't be asked.
+pub fn user_unit(name: &str) -> Result<UserUnit> {
+    let conn = bus::session()?;
+    let path: zvariant::OwnedObjectPath = bus::call(conn, SYSTEMD, MANAGER, MANAGER_IFACE, "LoadUnit", &(name,))?;
+    let text = |p: &str| bus::property::<String>(conn, SYSTEMD, path.as_str(), UNIT_IFACE, p);
+    if text("LoadState")? == "not-found" {
+        return Ok(UserUnit::default());
+    }
+    const SERVICE: &str = "org.freedesktop.systemd1.Service";
+    Ok(UserUnit {
+        loaded: true,
+        active: text("ActiveState")?,
+        sub: text("SubState").unwrap_or_default(),
+        since_us: bus::property::<u64>(conn, SYSTEMD, path.as_str(), UNIT_IFACE, "ActiveEnterTimestamp").unwrap_or(0),
+        pid: bus::property::<u32>(conn, SYSTEMD, path.as_str(), SERVICE, "MainPID").unwrap_or(0),
+        memory: bus::property::<u64>(conn, SYSTEMD, path.as_str(), SERVICE, "MemoryCurrent").ok().filter(|m| *m != u64::MAX),
+    })
+}
+
+/// Restart user unit `name` (`"RestartUnit"`), or start or stop it, and
+/// wait (ten seconds at most) until it stands so: on a worker.
+pub fn user_job(name: &str, method: &str) -> Result<UserUnit> {
+    let conn = bus::session()?;
+    bus::call::<_, zvariant::OwnedObjectPath>(conn, SYSTEMD, MANAGER, MANAGER_IFACE, method, &(name, "replace"))?;
+    let want_running = method != "StopUnit";
+    let until = Instant::now() + Duration::from_secs(10);
+    let began = Instant::now();
+    loop {
+        let u = user_unit(name)?;
+        // (A restart's own: the state since it was asked.)
+        let fresh = method != "RestartUnit" || u.since_us / 1000 >= now_ms().saturating_sub(began.elapsed().as_millis() as u64 + 1000);
+        if (u.running() == want_running && fresh) || u.active == "failed" || Instant::now() >= until {
+            return Ok(u);
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
+}
+
 /// The unit of the person's own (user) manager process `pid` runs in,
 /// from its cgroup ("…/user@1000.service/app.slice/build.service":
 /// `build.service`); None for one outside it (the login session's scope,

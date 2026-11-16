@@ -24,6 +24,7 @@ pub const OUR_APPS: &[(&str, &str, &str)] = &[
     ("olo-doctor", "Olo Doctor", "doctor"),
     ("olo-updates", "OS Updates", "software-update"),
     ("olo-weather", "Weather", "weather"),
+    ("olo-kache", "Kache", "kache"),
 ];
 
 /// Our apps that are a web app in Olo's Chrome (olo-slack): the Wayland

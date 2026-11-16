@@ -832,6 +832,9 @@ compiler cache (`cargo install kache --locked`, then
 restored instead of rebuilt, in any target directory or worktree. It is
 ben's setup, so build as ben (as above); `kache doctor` checks it,
 `kache stats --last-build` shows the hits, `KACHE_DISABLED=1` bypasses it.
+Olo's Kache app (`olo-kache`, "Kache (apps/kache)" below) shows it all
+live (the store, the day's hits and misses, the pool, each build) and
+sets and restarts it; `olo-kache --print` says the same as JSON.
 Know what it is for: a cache pays off when the same inputs come back
 (a branch switched and switched back, a revert, a second checkout or
 target directory), not in a straight edit-build loop, where every build's
@@ -16304,7 +16307,8 @@ app only to make what's next.
   it) and their options (`Opt`: a menu of values, the first the one it
   comes with). A widget of one is `Measure::App { app, glance,
   options }` (`Measure::app`, `same_kind`; `kinds()` lists them after
-  the meters). Weather gives Now, Next Hours and Next Days.
+  the meters). Weather gives Now, Next Hours and Next Days; Kache, Build
+  Cache.
 * **What one shows**: a `Timeline` of `Entry`s, each a `Glance` from a
   minute on (`Timeline::at`): a headline (icon, value, title, detail),
   a note, a `Body` (`Slots` across: label, icon, value, level, drawn
@@ -16341,7 +16345,9 @@ app only to make what's next.
   at their device size, each column and bar on whole device pixels.
   Each line is recorded for agents as a label, each slot and span as a
   list item with its value ("14, 46°, 60%"; "Tue, 40° to 52°"), and
-  the widget as a Meter whose value is its tip. Its tip is a card
+  the widget as a Meter whose value is its tip. Slots with no icon
+  among them (Kache's hours) drop the icon row: the label over the
+  value (`SLOTS_PLAIN`). Its tip is a card
   (`Glances::card`: its title and detail, its value, the body as rows,
   the note); a click opens its app (`glances::opens`); the other
   button, its app and Deskbar Preferences.
@@ -18451,3 +18457,106 @@ runs it against the fake on the session's bus (`@session-bus`).
 2×). Moving down the list: two frames a step (the selection, then its
 details from a worker), 1.4 ms on average, the slowest 3.7 ms.
 Reviewed at 1×, 1.25×, 1.5×, 1.75× and 2×, light and dark.
+
+## Kache (apps/kache)
+
+The build cache, watched and run from Olo (Ben, 2026-11-15: "an olo
+native kache frontend app that lets me monitor the status of kache, see
+stats/metrics/charts etc, configure/tweak settings, manage it like
+restart or whatever, and anything else useful to know or do"): our
+fork of [kache](https://github.com/kunobi-ninja/kache), `~/src/kache`
+branch `olo`. All of it read natively, never kache's CLI.
+
+**What it shows.** Three sections down the left (each row's value: the
+service on or off, the day's hit rate):
+
+- *Status*: the service (`kache.service`, the user unit, over systemd's
+  D-Bus: `olo_system::systemd::user_unit`), its version, how long it's
+  run, its process and memory; Clean Up Now, Restart and Stop (or
+  Start). The store (what it holds against its limit, red when over;
+  what's on disk once shared files are counted once; what builds'
+  target folders still share, which no clean-up can take; the last
+  clean-up and what it freed), the last 24 hours (the hit rate of what
+  could be cached, hits, misses, what couldn't be, the time hits saved:
+  each hit's original compile less what the hit took), Now (the pool's
+  slots held by compiles and by tests, of its size, builds waiting,
+  what's compiling) and the day by the hour, stacked (hits, misses, the
+  rest) with its legend.
+- *Builds*: the projects built most over the day (builds, hit rate),
+  the slowest compiles (misses, by crate), and the latest 300 builds:
+  when, crate, project, result, how long, how big.
+- *Settings*: the `[cache]` keys worth tuning (`data::SETTINGS`: the
+  store's limit and whether what builds share counts toward it, idle
+  and orphaned target folders, the scheduler's pool, test slots and
+  wait, letting more in while the machine has room and to what), each
+  with what kache does when it's unset (from its source: a switch's
+  state, a field's hint) and what it is beside it. Save writes them into
+  `~/.config/kache/config.toml` with `toml_edit`, the rest of the file
+  and its comments as they were; a value that doesn't read as its kind
+  (a size such as `95GiB`, a whole number) is refused, saying which.
+  kache takes them as it starts again: Restart kache is beside Save.
+
+**Where it reads.** The daemon's socket (`~/.cache/kache/daemon.sock`,
+a line of JSON each way): `{"stats":{…, "event_hours": 0}}` for the
+store and what's in flight (with the day's events the daemon takes
+0.17 s an ask; without, 0.035 s), `{"gc_v2":{"mode":"automatic"}}` to
+clean up as kache's own CLI asks. The build log (`events.jsonl`, a line
+a compile) read as it grows (`data::Live`: only what was added since
+the last look; read again when kache rotates it), and the rotated logs
+(`events.jsonl.archive/`, zstd, named by their last and first events'
+seconds) that reach into the day, read once and kept. The last clean-up
+(`gc_stats.json`). The pool from the kernel's list of locks
+(`/proc/locks`): each admitted compile holds a lease file under
+`scheduler/permits/` locked, a test its markers under
+`scheduler/tests/`; matched by inode (on btrfs the lock's device is the
+filesystem's, not the subvolume's `stat` gives), never by taking one.
+
+**When it reads.** On a worker as it opens, after anything done in it,
+and when kache's files change (an inotify watch of the build log, the
+last clean-up, the daemon's socket, which goes and comes as the daemon
+stops and starts, and the settings file): a burst of builds is one look
+at most every two seconds. Not the daemon's `daemon.state.json`: that's
+a heartbeat, written every five seconds. Nothing runs while nothing
+changes; relative times ("46 min ago") follow the clock through
+`olo_kit::ago`.
+
+**Deskbar's widget** (`glance.rs`; see Deskbar, "An app's widgets"):
+`olo-kache --glance`, started by Deskbar, no window. Build Cache: the
+day's hit rate (or "off" with kache stopped), the pool's slots in use,
+a note when kache is stopped or the store is over its limit, and the
+last 6 or 12 hours across, each its builds and a bar of the share that
+were hits; its tip says the store too. Made from `data::read` as
+kache's files change, but at most every ten seconds (a burst of builds
+writes the log many times a second: nothing is written between), and
+as the hour turns. Cost (release, reading this laptop's kache while
+agents built, 40 s): 0.1% of a core, 7 wakeups a second (the serve
+loop woken by the log and let go, and a look's D-Bus calls every ten
+seconds); none with nothing built.
+
+**Agents.** Every action is a menu command (`refresh`, `restart`,
+`stop`, `start`, `clean-up`, `save-settings`, `revert-settings`,
+`open-log`, `show-status`, `show-builds`, `show-settings`); the tree has
+each card's facts, the chart's hours as text, the list's rows.
+`olo-kache --print` prints it all as JSON (the service, the daemon, the
+pool, the last clean-up, the day with its hours, projects and slowest
+compiles, the settings), with no window.
+
+**Testing.** `OLO_KACHE_DEMO=1` makes it all up (a day of builds, a
+daemon with work in flight, a pool, a clean-up): nothing of the
+person's kache is read or touched, and Save, Restart and Clean Up do
+nothing. `OLO_KACHE_DIR` and `OLO_KACHE_CONFIG` point it at another
+store and settings file. `tools/dev/ui-lint` runs the demo. `cargo test
+-p olo-kache`: the daemon's answer, a day of builds by the hour,
+projects and slowest, the live log read as it grows (a half-written
+line left for next time, a rotation read from the start), the pool's
+leases held (taken with `flock` as kache does, and let go), settings
+written keeping the file and refused when wrong, switches as kache has
+them unset; the widget's words, its hours and its note (stopped, over
+the limit).
+
+**Cost.** Idle: 0.0% of a core, no wakeups, no frames (30 s, release,
+2×, reading this laptop's kache; a build event in that time: one look,
+two frames, 0.7 ms each). Opening: the day read in 0.20 s on a worker
+(30,000 events; 0.45 s before the events were read typed and the
+daemon asked without its hours). Reviewed at 1×, 1.5× and 2×, light and
+dark, each section.

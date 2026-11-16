@@ -7656,6 +7656,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-kache"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "libc",
+ "olo-crash",
+ "olo-kit",
+ "olo-protocol",
+ "olo-system",
+ "olo-theme",
+ "olo-xdg",
+ "serde",
+ "serde_json",
+ "toml_edit",
+ "zstd 0.14.3",
+]
+
+[[package]]
 name = "olo-keychain"
 version = "0.1.0"
 dependencies = [

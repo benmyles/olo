@@ -37,9 +37,17 @@ const HEAD: f32 = 40.0;
 const HEAD_LARGE: f32 = 50.0;
 /// The note's line.
 const NOTE: f32 = 16.0;
-/// Slots: their label, icon and value; and their levels' columns under.
+/// Slots: their label, icon and value (with no icon among them, the label
+/// over the value: Kache's hours); and their levels' columns under.
 const SLOTS: f32 = 46.0;
+const SLOTS_PLAIN: f32 = 30.0;
 const LEVELS: f32 = 12.0;
+
+/// How tall slots are: their row, and their levels' if any has one.
+fn slots_height(slots: &[Slot]) -> f32 {
+    let row = if slots.iter().any(|s| s.icon.is_some()) { SLOTS } else { SLOTS_PLAIN };
+    row + if slots.iter().any(|s| s.level.is_some()) { LEVELS } else { 0.0 }
+}
 /// A span's row.
 const SPAN: f32 = 18.0;
 /// A small glance's one line.
@@ -60,7 +68,7 @@ pub fn height(glance: Option<&Glance>, size: Size) -> f32 {
         h += NOTE;
     }
     match &gl.body {
-        Some(Body::Slots { slots, .. }) => h += SLOTS + if slots.iter().any(|s| s.level.is_some()) { LEVELS } else { 0.0 },
+        Some(Body::Slots { slots, .. }) => h += slots_height(slots),
         Some(Body::Spans { spans, .. }) => h += 2.0 + spans.len() as f32 * SPAN,
         None => {}
     }
@@ -178,24 +186,26 @@ fn paint_slots(g: &mut Painter, left: f32, right: f32, top: f32, slots: &[Slot],
     let w = (right - left) / slots.len() as f32;
     let icon_size = if size == Size::Large { 24.0 } else { 20.0 };
     let levels = slots.iter().any(|s| s.level.is_some());
+    let icons = slots.iter().any(|s| s.icon.is_some());
+    let row = if icons { SLOTS } else { SLOTS_PLAIN };
     let colour = hue_of(p, hue);
     let ground = style::c(olo_theme::mix(p.panel_background, p.panel_text, 0.07));
     let s = g.scale_factor();
     for (i, slot) in slots.iter().enumerate() {
         let cx = left + w * (i as f32 + 0.5);
-        let cell = Bounds::from_corners(point(px(left + w * i as f32), px(top)), point(px(left + w * (i + 1) as f32), px(top + SLOTS + if levels { LEVELS } else { 0.0 })));
+        let cell = Bounds::from_corners(point(px(left + w * i as f32), px(top)), point(px(left + w * (i + 1) as f32), px(top + slots_height(slots))));
         style::label_fit(g, px(cx), px(top + 6.0), Align::Center, slot.label.clone(), style::SMALL_SIZE, plain.clone(), dim, px(w));
         if let Some(icon) = &slot.icon {
             let b = style::snap_centred(g, point(px(cx), px(top + 13.0 + 10.0)), icon_size, icon_size);
             icons::paint(g, b, icon);
         }
-        style::label_fit(g, px(cx), px(top + 39.0), Align::Center, slot.value.clone(), style::SMALL_SIZE, plain.clone(), ink, px(w));
+        style::label_fit(g, px(cx), px(top + if icons { 39.0 } else { 22.0 }), Align::Center, slot.value.clone(), style::SMALL_SIZE, plain.clone(), ink, px(w));
         let mut value = slot.value.clone();
         if levels {
             // A column as wide as a finger's breadth of the slot, its
             // height the level, rounded at its top.
             let bw = ((w - 8.0).min(12.0) * s).round() / s;
-            let bottom = top + SLOTS + LEVELS - 2.0;
+            let bottom = top + row + LEVELS - 2.0;
             let full = LEVELS - 3.0;
             let track = style::snap(g, Bounds::from_corners(point(px(cx - bw / 2.0), px(bottom - full)), point(px(cx + bw / 2.0), px(bottom))));
             g.paint_quad(fill(track, ground).corner_radii(px(1.5)));
@@ -389,10 +399,13 @@ mod tests {
         assert_eq!(height(Some(&gl), Size::Medium), PAD + HEAD + PAD);
         assert_eq!(height(None, Size::Medium), height(Some(&gl), Size::Medium), "not come yet: as tall as its headline");
         gl.note = Some("Rain stopping in 34 minutes".into());
-        gl.body = Some(Body::Slots { slots: vec![Slot { label: "14".into(), ..Slot::default() }; 6], hue: None });
+        gl.body = Some(Body::Slots { slots: vec![Slot { label: "14".into(), icon: Some("weather".into()), ..Slot::default() }; 6], hue: None });
         assert_eq!(height(Some(&gl), Size::Medium), PAD + HEAD + NOTE + SLOTS + PAD);
-        gl.body = Some(Body::Slots { slots: vec![Slot { level: Some(0.4), ..Slot::default() }; 6], hue: None });
+        gl.body = Some(Body::Slots { slots: vec![Slot { level: Some(0.4), icon: Some("weather".into()), ..Slot::default() }; 6], hue: None });
         assert_eq!(height(Some(&gl), Size::Large), PAD + HEAD_LARGE + NOTE + SLOTS + LEVELS + PAD);
+        // No icon among them: the label over the value.
+        gl.body = Some(Body::Slots { slots: vec![Slot { label: "14".into(), value: "17".into(), level: Some(0.6), ..Slot::default() }; 6], hue: None });
+        assert_eq!(height(Some(&gl), Size::Medium), PAD + HEAD + NOTE + SLOTS_PLAIN + LEVELS + PAD);
         gl.note = None;
         gl.body = Some(Body::Spans { spans: vec![Span::default(); 7], min: 0.0, max: 1.0 });
         assert_eq!(height(Some(&gl), Size::Medium), PAD + HEAD + 2.0 + 7.0 * SPAN + PAD);

@@ -70,31 +70,46 @@ pub struct Opt {
 
 /// Every app that gives widgets. (An app adds its own here; what it
 /// gives is its own to draw from: `Timeline`.)
-pub const PROVIDERS: &[Provider] = &[Provider {
-    app: "weather",
-    name: "Weather",
-    program: "olo-weather",
-    arg: "--glance",
-    icon: "weather",
-    kinds: &[
-        Kind { id: "now", menu: "Weather: Now", about: "The sky and temperature now, and what's coming.", options: &[] },
-        Kind {
-            id: "hours",
-            menu: "Weather: Next Hours",
-            about: "The next hours, each its sky and temperature, with the chance of rain or the cloud.",
-            options: &[
-                Opt { id: "span", label: "Hours:", values: &[("6", "The next 6 hours"), ("3", "The next 3 hours"), ("12", "The next 12 hours")] },
-                Opt { id: "level", label: "Bars show:", values: &[("rain", "Chance of rain"), ("cloud", "Cloud cover"), ("none", "Nothing")] },
-            ],
-        },
-        Kind {
-            id: "days",
-            menu: "Weather: Next Days",
-            about: "The coming days, each its sky, low and high.",
-            options: &[Opt { id: "days", label: "Days:", values: &[("7", "7 days"), ("5", "5 days"), ("3", "3 days")] }],
-        },
-    ],
-}];
+pub const PROVIDERS: &[Provider] = &[
+    Provider {
+        app: "weather",
+        name: "Weather",
+        program: "olo-weather",
+        arg: "--glance",
+        icon: "weather",
+        kinds: &[
+            Kind { id: "now", menu: "Weather: Now", about: "The sky and temperature now, and what's coming.", options: &[] },
+            Kind {
+                id: "hours",
+                menu: "Weather: Next Hours",
+                about: "The next hours, each its sky and temperature, with the chance of rain or the cloud.",
+                options: &[
+                    Opt { id: "span", label: "Hours:", values: &[("6", "The next 6 hours"), ("3", "The next 3 hours"), ("12", "The next 12 hours")] },
+                    Opt { id: "level", label: "Bars show:", values: &[("rain", "Chance of rain"), ("cloud", "Cloud cover"), ("none", "Nothing")] },
+                ],
+            },
+            Kind {
+                id: "days",
+                menu: "Weather: Next Days",
+                about: "The coming days, each its sky, low and high.",
+                options: &[Opt { id: "days", label: "Days:", values: &[("7", "7 days"), ("5", "5 days"), ("3", "3 days")] }],
+            },
+        ],
+    },
+    Provider {
+        app: "kache",
+        name: "Kache",
+        program: "olo-kache",
+        arg: "--glance",
+        icon: "kache",
+        kinds: &[Kind {
+            id: "status",
+            menu: "Kache: Build Cache",
+            about: "The day's hit rate, the pool's slots in use, and the last hours' builds and hits.",
+            options: &[Opt { id: "span", label: "Hours:", values: &[("6", "The last 6 hours"), ("12", "The last 12 hours")] }],
+        }],
+    },
+];
 
 /// App `app`'s provider.
 pub fn provider(app: &str) -> Option<&'static Provider> {
@@ -317,7 +332,7 @@ mod tests {
         assert!(json.contains("\"kind\":\"app\"") && json.contains("\"span\":\"6\""), "{json}");
         assert_eq!(serde_json::from_str::<Widget>(&json).unwrap(), w);
         assert!(m.same_kind(&Measure::app("weather", "hours")) && !m.same_kind(&Measure::app("weather", "days")));
-        assert_eq!(Measure::kinds().iter().filter(|k| matches!(k, Measure::App { .. })).count(), 3);
+        assert_eq!(Measure::kinds().iter().filter(|k| matches!(k, Measure::App { .. })).count(), PROVIDERS.iter().map(|p| p.kinds.len()).sum::<usize>(), "every app's kinds");
         assert_eq!((m.kind_name(), w.label()), ("Weather: Next Hours", "Weather".to_owned()));
     }
 

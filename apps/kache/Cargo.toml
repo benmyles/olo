@@ -1,0 +1,26 @@
+[package]
+name = "olo-kache"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "olo-kache"
+path = "src/main.rs"
+
+[dependencies]
+olo-crash.workspace = true
+olo-kit.workspace = true
+olo-protocol.workspace = true
+olo-system.workspace = true
+olo-theme.workspace = true
+olo-xdg.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+# kache's settings edited keeping the file's comments.
+toml_edit = "0.25"
+zstd = "0.14"
+
+[dev-dependencies]
+libc = "0.2"
