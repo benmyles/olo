@@ -107,8 +107,9 @@ impl TextSystem {
     /// printing, on a worker).
     pub fn layout_line_now(&self, text: &str, font_size: Pixels, runs: &[TextRun]) -> LineLayout {
         let mut font_runs: Vec<FontRun> = Vec::with_capacity(runs.len());
+        let mut last = None;
         for run in runs {
-            let font_id = self.resolve_font(&run.font);
+            let font_id = self.resolve_font_after(&run.font, &mut last);
             match font_runs.last_mut() {
                 Some(last) if last.font_id == font_id && last.size == run.size => last.len += run.len,
                 _ => font_runs.push(FontRun { len: run.len, font_id, size: run.size }),
@@ -166,6 +167,22 @@ impl TextSystem {
                 _ => None,
             })
             .next()
+    }
+
+    /// [`Self::resolve_font`] for the runs of a line, one after another:
+    /// the last run's font and id kept in `last`, so a run in the same font
+    /// (a line's highlighted words, each its own colour) takes them again
+    /// without the lock and the hash. (Olo: Logs' resize spent 9% of its
+    /// instructions here, every run of every row looked up each frame.)
+    pub(crate) fn resolve_font_after(&self, font: &Font, last: &mut Option<(Font, FontId)>) -> FontId {
+        if let Some((f, id)) = last.as_ref()
+            && f == font
+        {
+            return *id;
+        }
+        let id = self.resolve_font(font);
+        *last = Some((font.clone(), id));
+        id
     }
 
     /// Resolves the specified font, falling back to the default font stack if
@@ -579,6 +596,7 @@ impl WindowTextSystem {
     pub fn shape_text(&self, text: SharedString, font_size: Pixels, runs: &[TextRun], wrap_width: Option<Pixels>, line_clamp: Option<usize>) -> Result<SmallVec<[WrappedLine; 1]>> {
         let mut runs = runs.iter().filter(|run| run.len > 0).cloned().peekable();
         let mut font_runs = self.font_runs_pool.lock().pop().unwrap_or_default();
+        let mut last_font = None;
 
         let mut lines = SmallVec::new();
         let mut line_start = 0;
@@ -617,7 +635,7 @@ impl WindowTextSystem {
                     true
                 };
 
-                let font_id = self.resolve_font(&run.font);
+                let font_id = self.resolve_font_after(&run.font, &mut last_font);
                 if let Some(font_run) = font_runs.last_mut()
                     && font_id == font_run.font_id
                     && font_run.size == run.size
@@ -700,6 +718,7 @@ impl WindowTextSystem {
         SharedString: From<Text>,
     {
         let mut last_run = None::<&TextRun>;
+        let mut last_font = None;
         let mut font_runs = self.font_runs_pool.lock().pop().unwrap_or_default();
         font_runs.clear();
 
@@ -720,7 +739,7 @@ impl WindowTextSystem {
             // Olo: a run joins the last only in the same face (upstream
             // compared the last face with itself, so a bold word the
             // same colour as its neighbours was laid out regular).
-            let font_id = self.resolve_font(&run.font);
+            let font_id = self.resolve_font_after(&run.font, &mut last_font);
             if let Some(font_run) = font_runs.last_mut()
                 && font_run.font_id == font_id
                 && font_run.size == run.size

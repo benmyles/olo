@@ -16,6 +16,13 @@ what the resize's own seconds cost a step.
   resize-cost prf old 6 olo.tracker ~/.local/olo-kept/before-kits/bin/olo-tracker /var/tmp/olo-bench/home/Big
   resize-cost prf new 6 olo.tracker target/release/olo-tracker /var/tmp/olo-bench/home/Big
 
+A program whose window another command opens (Notifications' history,
+asked of its daemon) takes that command in THEN, run in the session two
+seconds after the program starts:
+
+  THEN="target/release/olo-notifications --bus unix:path=/var/tmp/olo-dev/prf/bus --history" \
+    resize-cost prf new 6 olo.notifications target/release/olo-notifications --bus unix:path=/var/tmp/olo-dev/prf/bus
+
 Compare builds in turn (old, new, old, new…), three or four rounds, and
 by medians: a run varies by a sixth with what else the computer is
 doing, the app's own workers among it. Instructions vary less than
@@ -23,7 +30,7 @@ cycles. For where the cost is, OLO_FRAME_PHASES=1 (a frame's phases),
 `perf record` the same way, and tools/dev/memhist (who allocates):
 HACKING, "Fast and light".
 """
-import glob, json, os, signal, socket, subprocess, sys, time
+import glob, json, os, shlex, signal, socket, subprocess, sys, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TS = ["/usr/bin/python3", os.path.join(ROOT, "tools/dev/tsession")]
@@ -57,12 +64,33 @@ def main():
 
     for w in req({"type": "list_windows"}).get("windows", []):
         req({"type": "close", "id": w["id"]})
+    # Earlier copies of the program in this session (a daemon with no
+    # window, as Notifications' is, outlives its window and takes the next
+    # run's request, the measured one sitting idle): ended, by pid, only
+    # those with this session's socket in their environment.
+    sock = json.load(open(f"{d}/env.json"))["OLO_SOCKET"].encode()
+    base = os.path.basename(cmd[0]).encode()
+    for pid in [p for p in os.listdir("/proc") if p.isdigit()]:
+        try:
+            argv0 = open(f"/proc/{pid}/cmdline", "rb").read().split(b"\0")[0]
+            environ = open(f"/proc/{pid}/environ", "rb").read()
+        except OSError:
+            continue
+        if os.path.basename(argv0) == base and b"OLO_SOCKET=" + sock in environ.split(b"\0"):
+            os.kill(int(pid), signal.SIGTERM)
     time.sleep(1.0)
     out = f"{d}/resize-cost-{label}.txt"
     if os.path.exists(out):
         os.remove(out)
     began = time.time()
     ts("run", name, "perf", "stat", "-I", "200", "-x,", "-e", "instructions:u,cycles:u", "-o", out, "--", *cmd)
+    # A program whose window another command asks for (Notifications'
+    # history, of its running daemon): that, once it's up.
+    if os.environ.get("THEN"):
+        time.sleep(2.0)
+        then = shlex.split(os.environ["THEN"])
+        then[0] = os.path.abspath(os.path.expanduser(then[0])) if "/" in then[0] else then[0]
+        ts("run", name, *then)
     time.sleep(float(os.environ.get("SETTLE", "14")))
     win = next((w for w in req({"type": "list_windows"})["windows"] if w["app_id"] == app_id), None)
     if win is None:

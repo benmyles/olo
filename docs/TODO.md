@@ -13,10 +13,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-(Nothing.)
-
-## Not started (highest priority first)
-
 - **The kits' costs, where they're above GPUI's** (from the move to the
   kits: "each within a frame's budget; to be brought down"). A whole
   window drawn again each frame costs more than GPUI's one thread did
@@ -36,6 +32,21 @@ something nobody here has is in "Blocked", with what it waits for.
   client's own dispatch, which only fewer events would cut, at a drawing
   app's cost: each of the rest wants profiling again before work, as
   the kits have changed since the list was made.)
+  Measured again 2026-11-16 (`tools/dev/resize-cost`, the old build in
+  `~/.local/olo-kept/before-kits`, instructions a step of a live
+  resize): Tracker is below GPUI's now (1.05–1.48 M against
+  2.19–3.23 M), Notifications' history level (13.6 against 12.9–14.3),
+  Logs above (8.7–10.9 against 6.1–7.3). Logs: each message's
+  highlighting worked out once, not each frame (a tenth of its work),
+  and the text system taking a run's font id from the run before it
+  when it's the same font (9%, now 2.5%): 9.0 → 8.0 M a step. Next:
+  the screen savers, every frame drawn several times over for each one
+  shown (StringTheme 190 M instructions a second against GPUI's 40 M,
+  and 51 frames a second at 120 Hz against 120).
+
+## Not started (highest priority first)
+
+(Nothing.)
 
 ## Done, waiting for Ben to try or confirm
 

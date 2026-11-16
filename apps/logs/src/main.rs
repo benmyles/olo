@@ -156,7 +156,19 @@ struct Logs {
     /// The Agent Screens' logs, as last looked for (File ▸ Agent Screen
     /// Logs), and when.
     screen_logs: (Option<Instant>, Vec<(String, PathBuf)>),
+    /// Each message's highlighting as its row shows it, by its line (an
+    /// index into `lines`) and the message's length (a message only
+    /// grows, by lines that continue it, so the two say what it holds):
+    /// worked out once, not again for every frame a row is painted (a
+    /// live resize paints every row it shows each step: a tenth of its
+    /// work was this). Let go of when it holds more than `SPANS_KEPT`,
+    /// and with the lines.
+    spans: std::cell::RefCell<std::collections::HashMap<(usize, usize), Rc<[(Range<usize>, highlight::Kind)]>>>,
 }
+
+/// The most messages' highlighting `Logs::spans` keeps (a few screens'
+/// worth: a list shows its rows, not its lines).
+const SPANS_KEPT: usize = 4096;
 
 /// What the window is told.
 enum Msg {
@@ -231,6 +243,11 @@ fn rgba(h: Hsla) -> [u8; 4] {
 /// `text` highlighted in the palette's colours (highlight.rs), on `base`,
 /// what `query`'s words find marked.
 fn highlighted(text: &str, font: &Font, base: Hsla, p: &Palette, query: &search::Query) -> Vec<TextRun> {
+    highlighted_as(text, &highlight::spans(text), font, base, p, query)
+}
+
+/// [`highlighted`] with `text`'s highlighting worked out already.
+fn highlighted_as(text: &str, kinds: &[(Range<usize>, highlight::Kind)], font: &Font, base: Hsla, p: &Palette, query: &search::Query) -> Vec<TextRun> {
     use highlight::Kind;
     use olo_theme::mix;
     let bg = p.document_background;
@@ -246,7 +263,7 @@ fn highlighted(text: &str, font: &Font, base: Hsla, p: &Palette, query: &search:
         Kind::Type => c(mix(p.failure, p.tab_focused, 0.5)),
         Kind::Bad => c(p.failure),
     };
-    let spans: Vec<(Range<usize>, Hsla)> = highlight::spans(text).into_iter().map(|(r, k)| (r, color(k))).collect();
+    let spans: Vec<(Range<usize>, Hsla)> = kinds.iter().map(|(r, k)| (r.clone(), color(*k))).collect();
     search::runs(text, font, base, &spans, &search::found(text, query), search::mark_color(p))
 }
 
@@ -304,6 +321,7 @@ impl Logs {
             generation: Arc::new(AtomicU64::new(0)),
             panel: None,
             screen_logs: (None, Vec::new()),
+            spans: Default::default(),
         };
         logs.start(cx);
         logs.tick(cx);
@@ -323,6 +341,9 @@ impl Logs {
     fn start(&mut self, cx: &mut Cx<Self>) {
         let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
         self.lines.clear();
+        // (Their messages' highlighting goes with them: kept by the
+        // line's index, which a new source's lines take again.)
+        self.spans.borrow_mut().clear();
         self.view.clear();
         (self.warnings, self.errors) = (0, 0);
         self.programs.clear();
@@ -735,7 +756,7 @@ impl Logs {
             (false, Some(_)) => "Reading…",
         };
         ColumnListView::new(cx, "logs-lines", &self.list, columns, self.view.len(), |logs: &Logs, cell, g| {
-            let Some(l) = logs.view.get(cell.row).and_then(|&i| logs.lines.get(i)) else { return };
+            let Some((i, l)) = logs.view.get(cell.row).and_then(|&i| Some((i, logs.lines.get(i)?))) else { return };
             // (The program's name is shared already and the level's is
             // fixed: neither is copied for a cell.)
             let text: SharedString = match cell.column {
@@ -756,7 +777,14 @@ impl Logs {
                     cell.text_with(g, text, style::ui_font(FontWeight::NORMAL), color);
                 }
                 3 if !cell.selected => {
-                    let runs = highlighted(&text, &style::ui_font(FontWeight::NORMAL), cell.text_color, &p, &logs.query.words);
+                    let kinds = {
+                        let mut kept = logs.spans.borrow_mut();
+                        if kept.len() > SPANS_KEPT {
+                            kept.clear();
+                        }
+                        kept.entry((i, l.message.len())).or_insert_with(|| highlight::spans(&text).into()).clone()
+                    };
+                    let runs = highlighted_as(&text, &kinds, &style::ui_font(FontWeight::NORMAL), cell.text_color, &p, &logs.query.words);
                     cell.text_runs(g, text, &runs);
                 }
                 _ => cell.text(g, text),
