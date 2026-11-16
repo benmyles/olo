@@ -36,6 +36,19 @@ something nobody here has is in "Blocked", with what it waits for.
   expected to take 5 s or more, never a quick one) and HACKING, and
   each other button that starts a job that long.
 
+- **Voice Processing: a quiet microphone brought up, and its device
+  named as processed** (Ben, 2026-11-16: "some inputs like airpods are
+  not loud enough on microphone input. add the ability in voice
+  processing to optionally boost the input level to some target level
+  and have it suggest the ideal level. also in chrome it doesn't show me
+  which airpods device has the processing it all jsut says "Airpods"
+  like 3 times. it should show it as like "Airpods (Voice Processing)"
+  or something"). An optional boost of the processed input up to a
+  target level, with the ideal level suggested from what the microphone
+  gives (measured, not guessed); and the processed source's name, as
+  programs list it (Chrome's device menu), saying it's processed:
+  "AirPods (Voice Processing)", the raw one left as it is.
+
 ## Done, waiting for Ben to try or confirm
 
 - **Agent Screens' Export Video: the small fast-forward mark, and time
