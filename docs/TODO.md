@@ -38,12 +38,13 @@ something nobody here has is in "Blocked", with what it waits for.
   Spiral; Halves chosen rearranges as it would have built (dwindle);
   Next / Previous Layout (⌃⌥⌘Space); the windows' order kept across
   layouts; each workspace's layout in `WindowingModeInfo`; the random
-  tree test and `tools/dev/tile-qa`. Left: more than one main window
-  (nmaster) and keys for how many and the main share; Monocle (one at a
-  time, the others a key away) and maybe scrolling columns as niri's;
-  rotate and flip a tree; choosing where the next window goes (preselect,
-  or beside / after the focused one / at the end); smart gaps (none with
-  one window) and gaps per workspace with keys; sticky and scratchpad
+  tree test and `tools/dev/tile-qa`; rotate, flip, even out, turn a
+  split, gap keys; a layout made while a round is on its way no longer
+  strands a move. Left: more than one main window (nmaster) and keys
+  for how many and the main share; Monocle (one at a time, the others a
+  key away) and maybe scrolling columns as niri's; choosing where the
+  next window goes (preselect, or beside / after the focused one / at
+  the end); smart gaps (none with one window) and gaps per workspace; sticky and scratchpad
   windows; rules for apps by workspace; Preferences for each of those;
   tile-qa with groups, fullscreen and displays coming and going.
 

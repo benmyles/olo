@@ -50,7 +50,7 @@ APPS = [
     ["olo-deskcalc"],
     ["OLO_DOCTOR_HELPER=off", "olo-doctor"],
 ]
-SHORTCUTS = "make-main swap-main focus-left focus-down focus-up focus-right swap-left swap-down swap-up swap-right resize-left resize-right resize-up resize-down next-layout previous-layout tile-all smart-tile zoom-all cascade-all fan-out undo-arrangement redo-arrangement tile-left tile-right-third zoom restore float-window hide-window next-display next-tab".split()
+SHORTCUTS = "rotate-tiles rotate-tiles-back flip-tiles-across flip-tiles-up-down even-out-tiles toggle-split more-gap less-gap make-main swap-main focus-left focus-down focus-up focus-right swap-left swap-down swap-up swap-right resize-left resize-right resize-up resize-down next-layout previous-layout tile-all smart-tile zoom-all cascade-all fan-out undo-arrangement redo-arrangement tile-left tile-right-third zoom restore float-window hide-window next-display next-tab".split()
 LAYOUTS = ["main_and_stack", "halves", "columns", "rows", "grid", "spiral"]
 PLACES = ["Left", "Right", "Top", "Bottom", "LeftTwoThirds", "CenterTwoThirds", "RightThird", "TopLeft", "BottomRight"]
 MODES = ["auto_tiling"] * 6 + ["standard", "focus"]

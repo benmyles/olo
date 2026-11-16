@@ -6737,7 +6737,14 @@ which `end_resize` leaves to it, with the neighbours' last sizes and
 whatever auto-tiling lays out otherwise as the drag ends, which `follow`
 puts in it while it's made: `round_collecting`; a tile that only moves
 then, drawn at its size already, moves as the round shows,
-`round_move`, not a frame or more before the rest). A round that runs
+`round_move`, not a frame or more before the rest). A layout made while
+a round is on its way adds its windows to those waiting for the next
+(`round_then`, never replacing them), its moves land as the round shows
+when it has no window to size, and a window laid out again gives up the
+move on its way (`round_unmove`): `tools/dev/tile-qa` found Rotate then
+Swap pressed at once leaving two windows in one place, the swap's
+window compared with where it still was, its rotate move landing after.
+A round that runs
 out of time names the windows that didn't keep up in the log;
 `RUST_LOG=info,olo::rounds=debug` (a `tsession start` takes it) traces
 every round: what each window was asked, each commit (in which round,
@@ -6934,6 +6941,22 @@ else, at the display's edge, its other one (`directional::resize_split`),
 the tree kept as laid out so least sizes hold, and a press that moves
 nothing on screen records nothing for Undo. Agents run them as any
 shortcut (`{"type":"run_shortcut","id":"swap-left"}`).
+
+Reshaping, as bspwm's rotate, flip and balance, i3's and Hyprland's
+toggled split and their gap keys (`shell/reshape.rs`, functions of the
+tree alone, `reshape_tiles`): Rotate the Tiles (⌃⌥⌘R, back with ⇧)
+turns the active display's arrangement a quarter; Flip (⌃⌥⌘X left and
+right, ⌃⌥⌘Y top and bottom) mirrors it; Even Out (⌃⌥⌘=) makes each run
+of tiles side by side (or one above the other) as big as each other,
+keeping the arrangement; Turn the Tile's Split (⌃⌥⌘S) turns the split
+the focused tile shares with its neighbour the other way. Each is a
+change of tiles Undo takes back. Main and Stack keeps its shape by its
+main window's place, so there they turn or mirror the place
+(`rotated_place`: Left, Top, Right, Bottom round, the two thirds and
+corners likewise, the thirds side by side and the middle ones staying;
+`flipped_place`), and Even Out builds it again at the place's share.
+More and Less Space Between Windows (⌃⌥⌘] and [) step
+`TilingSettings::gap` by 4 points within Preferences' 0 to 48, saved.
 
 Auto-tiling (`shell/autotile.rs`; its module doc is the design) is the
 Auto-Tiling mode; `{"type":"set_auto_tiling","on":true}` and

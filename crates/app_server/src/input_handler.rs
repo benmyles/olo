@@ -542,6 +542,31 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     self.set_tiling_layout(next, Some(ws), Some(o));
                 }
             }
+            // Reshaping the arrangement (shell/reshape.rs).
+            S::RotateTiles(cw) => {
+                self.reshape_tiles(None, crate::shell::autotile::Reshape::Rotate(cw));
+            }
+            S::FlipTiles(across) => {
+                self.reshape_tiles(None, crate::shell::autotile::Reshape::Flip(across));
+            }
+            S::EvenOutTiles => {
+                self.reshape_tiles(None, crate::shell::autotile::Reshape::EvenOut);
+            }
+            S::ToggleSplit => {
+                if let Some(w) = focused {
+                    self.toggle_split(&w);
+                }
+            }
+            // A step of the space between arranged windows, as Preferences'
+            // slider has it (0 to 48), saved and laid out at once.
+            S::MoreGap | S::LessGap => {
+                let mut settings = self.settings.clone();
+                let gap = settings.tiling.gap as i32 + if shortcut == S::MoreGap { 4 } else { -4 };
+                settings.tiling.gap = gap.clamp(0, 48) as u32;
+                if settings.tiling.gap != self.settings.tiling.gap {
+                    self.set_settings(settings);
+                }
+            }
             // By direction (shell/directional.rs).
             S::Focus(dir) => {
                 self.focus_toward(focused, dir);

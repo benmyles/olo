@@ -283,6 +283,21 @@ pub enum Shortcut {
     /// cycle theirs.
     NextLayout,
     PreviousLayout,
+    /// The active display's auto-tiled arrangement turned a quarter,
+    /// clockwise (`true`) or back; mirrored left and right (`true`) or top
+    /// and bottom; its runs of tiles made as big as each other (Main and
+    /// Stack: its main window's place turned or mirrored, its share put
+    /// back), as bspwm's rotate, flip and balance.
+    RotateTiles(bool),
+    FlipTiles(bool),
+    EvenOutTiles,
+    /// The split the focused tile shares with its neighbour turned the
+    /// other way (i3's and Hyprland's toggled split).
+    ToggleSplit,
+    /// More or less space between arranged windows (`TilingSettings::gap`,
+    /// a step of 4 points), as Hyprland's and i3's gap keys.
+    MoreGap,
+    LessGap,
     /// Hide the focused window (minimize it to Deskbar).
     Hide,
     /// Roll the focused window up to just its tab, or back down.
@@ -732,6 +747,14 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::Resize(Dir::Down), "resize-down", WINDOWS, "Move the tile's edge down", &["Ctrl+Alt+Shift+Cmd+Down"], &["Ctrl+Alt+Shift+Cmd+Down"], &["Ctrl+Alt+Shift+Cmd+Down"]),
     s(Shortcut::NextLayout, "next-layout", ARRANGE, "Next auto-tiling layout", &["Ctrl+Alt+Cmd+Space"], &["Ctrl+Alt+Cmd+Space"], &["Ctrl+Alt+Cmd+Space"]),
     s(Shortcut::PreviousLayout, "previous-layout", ARRANGE, "Previous auto-tiling layout", &["Ctrl+Alt+Shift+Cmd+Space"], &["Ctrl+Alt+Shift+Cmd+Space"], &["Ctrl+Alt+Shift+Cmd+Space"]),
+    s(Shortcut::RotateTiles(true), "rotate-tiles", ARRANGE, "Rotate the tiles", &["Ctrl+Alt+Cmd+R"], &["Ctrl+Alt+Cmd+R"], &["Ctrl+Alt+Cmd+R"]),
+    s(Shortcut::RotateTiles(false), "rotate-tiles-back", ARRANGE, "Rotate the tiles back", &["Ctrl+Alt+Shift+Cmd+R"], &["Ctrl+Alt+Shift+Cmd+R"], &["Ctrl+Alt+Shift+Cmd+R"]),
+    s(Shortcut::FlipTiles(true), "flip-tiles-across", ARRANGE, "Flip the tiles left and right", &["Ctrl+Alt+Cmd+X"], &["Ctrl+Alt+Cmd+X"], &["Ctrl+Alt+Cmd+X"]),
+    s(Shortcut::FlipTiles(false), "flip-tiles-up-down", ARRANGE, "Flip the tiles top and bottom", &["Ctrl+Alt+Cmd+Y"], &["Ctrl+Alt+Cmd+Y"], &["Ctrl+Alt+Cmd+Y"]),
+    s(Shortcut::EvenOutTiles, "even-out-tiles", ARRANGE, "Even out the tiles", &["Ctrl+Alt+Cmd+Equal"], &["Ctrl+Alt+Cmd+Equal"], &["Ctrl+Alt+Cmd+Equal"]),
+    s(Shortcut::ToggleSplit, "toggle-split", WINDOWS, "Turn the tile's split", &["Ctrl+Alt+Cmd+S"], &["Ctrl+Alt+Cmd+S"], &["Ctrl+Alt+Cmd+S"]),
+    s(Shortcut::MoreGap, "more-gap", ARRANGE, "More space between windows", &["Ctrl+Alt+Cmd+BracketRight"], &["Ctrl+Alt+Cmd+BracketRight"], &["Ctrl+Alt+Cmd+BracketRight"]),
+    s(Shortcut::LessGap, "less-gap", ARRANGE, "Less space between windows", &["Ctrl+Alt+Cmd+BracketLeft"], &["Ctrl+Alt+Cmd+BracketLeft"], &["Ctrl+Alt+Cmd+BracketLeft"]),
     s(Shortcut::Hide, "hide-window", WINDOWS, "Hide window", &["Cmd+M"], &[], &["Ctrl+Alt+M"]),
     s(Shortcut::HideApp, "hide-app", WINDOWS, "Hide the application", &["Cmd+H"], &[], &["Ctrl+Alt+H"]),
     s(Shortcut::RollUp, "roll-up", WINDOWS, "Roll up or down", &["Ctrl+Cmd+M"], &["Alt+Cmd+M"], &["Ctrl+Alt+R"]),

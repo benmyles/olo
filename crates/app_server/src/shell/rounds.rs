@@ -151,7 +151,15 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
     /// its way has shown.
     pub fn round_last(&mut self, windows: Vec<WindowElement>) {
         if self.in_round() {
-            self.round_then = windows;
+            // (Added to what's waiting: two layouts made while one round is
+            // on its way each have windows to size, the second's no fewer
+            // than the first's. Replaced, a size the first asked was never
+            // sent: Rotate then Swap at once.)
+            for w in windows {
+                if !self.round_then.contains(&w) {
+                    self.round_then.push(w);
+                }
+            }
         } else {
             self.round_send(&windows);
         }
@@ -163,6 +171,18 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
     pub fn round_move(&mut self, w: &WindowElement, loc: Point<i32, Logical>) {
         self.round_moves.retain(|(m, _)| m != w);
         self.round_moves.push((w.clone(), loc));
+    }
+
+    /// A move of `w`'s on its way (in the round being shown, or waiting
+    /// for the next) given up for a newer place: laid out again before it
+    /// lands (Rotate then Swap at once), the newer place is where it goes,
+    /// and a window already there stays put, not moved back by the old
+    /// one afterwards.
+    pub fn round_unmove(&mut self, w: &WindowElement) {
+        if let Some(r) = self.round.as_mut() {
+            r.moves.retain(|(m, _)| m != w);
+        }
+        self.round_moves.retain(|(m, _)| m != w);
     }
 
     /// Send `windows` the sizes waiting for them (their pending state), as
@@ -293,6 +313,12 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         self.backend_data.wake(None);
         let then = std::mem::take(&mut self.round_then);
         if then.is_empty() {
+            // Moves made while it was on its way, with no window to size
+            // (a swap of two tiles as big as each other, after Rotate):
+            // now, after its own. Left waiting, they'd go with whatever
+            // round came next, two windows over each other till then.
+            let moves = std::mem::take(&mut self.round_moves);
+            self.round_moved(moves);
             self.tile_drag_next();
         } else {
             self.round_send(&then);

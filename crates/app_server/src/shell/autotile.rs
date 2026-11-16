@@ -465,6 +465,16 @@ impl Inset {
     }
 }
 
+/// How the auto-tiled arrangement is reshaped (`reshape_tiles`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Reshape {
+    /// A quarter turn, clockwise or back.
+    Rotate(bool),
+    /// Mirrored left and right, or top and bottom.
+    Flip(bool),
+    EvenOut,
+}
+
 /// A step of Resize by direction: a twentieth of the display along that
 /// way, at least `RESIZE_STEP_PX` points.
 pub const RESIZE_STEP: f32 = 0.05;
@@ -2220,6 +2230,9 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// edge). So it is asked for this one instead, from where it began.
     fn auto_place(&mut self, w: &WindowElement, geo: Rectangle<i32, Logical>, rect: Rectangle<i32, Logical>) {
         let WindowSurface::Wayland(t) = w.0.underlying_surface();
+        // (Where it is now is where it stays unless moved here: a move a
+        // layout a moment ago queued is given up.)
+        self.round_unmove(w);
         if geo.size == rect.size && super::groups::size_on_the_way(w).is_none() {
             // Drawn at its tile's size, and asked for no other: there now.
             // (Following, it is where it was going: it would move nowhere
@@ -2539,6 +2552,11 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// the step called `name`.
     fn auto_take(&mut self, w: &WindowElement, name: &str) -> Option<((u32, String), Node)> {
         let key = self.tree_of(w)?;
+        self.auto_take_key(key, name)
+    }
+
+    /// [`auto_take`] of the tree `key` names (a workspace and display).
+    fn auto_take_key(&mut self, key: (u32, String), name: &str) -> Option<((u32, String), Node)> {
         let tree = self.auto.trees.remove(&key)?;
         self.auto.undo = Some(Undo::Tree(key.clone(), Some(tree.clone())));
         self.arrangement_step(name, super::tiling::ArrangedKind::Auto);
@@ -2785,6 +2803,72 @@ impl<B: Backend + 'static> AnvilState<B> {
         let Some((key, _)) = self.auto_take(w, "Resize Tile") else { return false };
         info!(window = w.id(), dir = dir.id(), "tile resized by direction");
         self.auto_put(key, now);
+        true
+    }
+
+    /// Rotate, flip or even out the auto-tiled arrangement on `output`'s
+    /// workspace (the active display's; `reshape`): in Main and Stack its
+    /// main window's place turned or mirrored, its stack made even and
+    /// the main window its place's share again. Whether anything changed.
+    pub fn reshape_tiles(&mut self, output: Option<Output>, how: Reshape) -> bool {
+        use super::reshape::{even_out, flip, flipped_place, rotate, rotated_place};
+        let Some(o) = output.or_else(|| self.active_output()) else { return false };
+        let ws = self.showing(&o);
+        if !self.auto_on(&o, ws) {
+            return false;
+        }
+        let key = (ws, o.name());
+        let Some(tree) = self.auto.trees.get(&key) else { return false };
+        let name = match how {
+            Reshape::Rotate(_) => "Rotate Tiles",
+            Reshape::Flip(_) => "Flip Tiles",
+            Reshape::EvenOut => "Even Out Tiles",
+        };
+        let new = if self.layout_of(&key) == olo_protocol::TilingLayout::MainAndStack {
+            let place = self.main_places(&key).0;
+            match how {
+                Reshape::Rotate(cw) => return rotated_place(place, cw).is_some_and(|p| self.set_main_place(p, Some(ws), Some(o))),
+                Reshape::Flip(across) => {
+                    let p = flipped_place(place, across);
+                    return p != place && self.set_main_place(p, Some(ws), Some(o));
+                }
+                Reshape::EvenOut => {
+                    let m = self.auto.mains.get(&key).copied().unwrap_or_default();
+                    let flat = evenly(Cut::Columns, in_order(olo_protocol::TilingLayout::MainAndStack, place, tree));
+                    let Some(built) = main_and_stack_again(&flat, place, None, None, None, m.now, m.before) else { return false };
+                    built
+                }
+            }
+        } else {
+            match how {
+                Reshape::Rotate(cw) => rotate(tree, cw),
+                Reshape::Flip(across) => flip(tree, across),
+                Reshape::EvenOut => even_out(tree),
+            }
+        };
+        if new == *tree {
+            return false;
+        }
+        let Some((key, _)) = self.auto_take_key(key, name) else { return false };
+        info!(output = key.1, tree = %new, "{name}");
+        self.auto_put(key, new);
+        true
+    }
+
+    /// Toggle split (⌃⌥⌘S): the split auto-tiled `w` shares with its
+    /// neighbour turned the other way. Whether there was one.
+    pub fn toggle_split(&mut self, w: &WindowElement) -> bool {
+        if self.floats(w) {
+            return false;
+        }
+        let Some(key) = self.tree_of(w) else { return false };
+        let Some(mut tree) = self.auto.trees.get(&key).cloned() else { return false };
+        if !super::reshape::toggle_split(&mut tree, w.id()) {
+            return false;
+        }
+        let Some((key, _)) = self.auto_take_key(key, "Turn Split") else { return false };
+        info!(window = w.id(), tree = %tree, "split turned");
+        self.auto_put(key, tree);
         true
     }
 
@@ -3268,7 +3352,7 @@ mod tests {
             let mut mins: HashMap<u64, (f32, f32)> = HashMap::new();
             for step in 0..60 {
                 let what = format!("round {round} step {step}");
-                match rnd(9) {
+                match rnd(10) {
                     // A window comes, splitting one (or the first).
                     0 | 1 => {
                         let id = next;
@@ -3335,6 +3419,24 @@ mod tests {
                             assert_eq!(now, order, "{what}: {lay:?} → {l:?} reordered, {t}");
                         }
                         (lay, place) = (l, p);
+                    }
+                    // Rotated, flipped, evened out, a split turned.
+                    8 => {
+                        if let Some(t) = tree.as_mut() {
+                            use super::super::reshape as r;
+                            *t = match rnd(4) {
+                                0 => r::rotate(t, rnd(2) == 0),
+                                1 => r::flip(t, rnd(2) == 0),
+                                2 => r::even_out(t),
+                                _ => {
+                                    let ids = t.windows();
+                                    if !ids.is_empty() {
+                                        r::toggle_split(t, ids[rnd(ids.len())]);
+                                    }
+                                    t.clone()
+                                }
+                            };
+                        }
                     }
                     // Kept as laid out with least sizes; refitted to them.
                     7 => {

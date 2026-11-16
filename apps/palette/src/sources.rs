@@ -316,6 +316,10 @@ pub fn context() -> (Option<WindowInfo>, Vec<Item>) {
                 olo_protocol::Shortcut::Swap(_) => " tiling direction move tile exchange",
                 olo_protocol::Shortcut::Resize(_) => " tiling direction grow shrink size edge split",
                 olo_protocol::Shortcut::NextLayout | olo_protocol::Shortcut::PreviousLayout => " tiling layout cycle columns rows grid spiral halves main stack",
+                olo_protocol::Shortcut::RotateTiles(_) | olo_protocol::Shortcut::FlipTiles(_) => " tiling turn mirror rotate flip arrangement",
+                olo_protocol::Shortcut::EvenOutTiles => " tiling balance equalize equal even sizes",
+                olo_protocol::Shortcut::ToggleSplit => " tiling split direction vertical horizontal",
+                olo_protocol::Shortcut::MoreGap | olo_protocol::Shortcut::LessGap => " tiling gaps space margin",
                 _ => "",
             }
         ));

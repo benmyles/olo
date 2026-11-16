@@ -46,6 +46,7 @@ mod grabs;
 pub mod groups;
 pub mod modes;
 pub mod pip;
+pub mod reshape;
 pub mod rounds;
 pub mod spring;
 pub mod tabdrag;
