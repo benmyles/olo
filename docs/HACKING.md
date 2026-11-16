@@ -11942,8 +11942,24 @@ have olo installer and olo doctor install the needed packagekit/dnf
 stuff", choosing one dnf call over a package manager of Olo's own:
 `olo_system::packages::bootstrap`, Doctor's `Step::InstallPackageServices`,
 which every package step takes first where they're missing), then asks
-the bus to read its activation files again. *Not yet tried on a
-minimal Fedora* (`tools/dev/installer-check` installs Workstation).
+the bus to read its activation files again. Tried on a minimal Fedora
+45 (2026-11-15, a `@core` install in a VM: no desktop, no display
+manager, no PackageKit, no graphics drivers): the console installer
+over SSH with a terminal, the password typed when sudo asked, then the
+machine started again with a 3D GPU: Olo's login screen, and the
+password into Olo's desktop. What it found, each fixed: Wayland's
+server library missing (app_server opens it as it starts: "NoWaylandLib";
+every Workstation has it, so the package list never named it: the list
+is Doctor's now, `olo_doctor::needs`, with each library Olo's programs
+open checked against that machine, and Doctor's "Olo needs …" installs
+what's missing); SELinux's `semanage` missing for the login screen's
+labels (installed first where SELinux is on and it isn't); the
+computer set to start to its console (`multi-user.target`: the
+login-screen steps make `graphical.target` the default where it
+isn't, `UnitAction::MakeDefault`, systemd's `SetDefaultTarget`); GDM
+named as the display manager to turn off where there's none; and Olo
+not made the person's session (the test-run guard took the console's
+`OLO_SETUP_HELPER=sudo` for a test's `direct`).
 
 One program a person downloads from Olo's releases and runs on a stock
 Fedora Workstation (Ben, 2026-11-06: "a full screen gui app that

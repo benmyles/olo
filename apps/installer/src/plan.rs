@@ -22,33 +22,9 @@ use olo_doctor::{
 
 use crate::bundle;
 
-/// What Olo needs to run, from Fedora's own repositories (what its
-/// programs link, the services a session talks to, and the fonts it
-/// doesn't carry): those not installed are, through PackageKit.
-pub const PACKAGES: &[&str] = &[
-    "mesa-dri-drivers",
-    "mesa-vulkan-drivers",
-    "vulkan-loader",
-    "mesa-libEGL",
-    "mesa-libgbm",
-    "libseat",
-    "libdisplay-info",
-    "libinput",
-    "libwacom",
-    "pixman",
-    "lua-libs",
-    "libgudev",
-    "pipewire",
-    "pipewire-libs",
-    "wireplumber",
-    "xdg-desktop-portal",
-    "polkit",
-    "NetworkManager",
-    "bluez",
-    "upower",
-    "accountsservice",
-    "google-noto-sans-cjk-vf-fonts",
-];
+/// What Olo needs to run, from Fedora's own repositories: Olo Doctor's
+/// list, which it also checks (`olo_doctor::needs`).
+pub use olo_doctor::needs::PACKAGES;
 
 /// What the person chose (the Choose page).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -441,10 +417,15 @@ pub fn install(choices: Choices, given: Option<String>, stop: Arc<AtomicBool>, t
         stage("Installing Olo's login screen");
         // (Steps shared with Olo Doctor's "Use Olo's Login Screen", in
         // place of whichever display manager the system starts.)
-        let instead = olo_doctor::login_screen::display_manager(Path::new("/")).or_else(|| Some("gdm.service".into()));
+        // (GDM where it's installed but not the display manager; none on
+        // a computer with no login screen, a minimal Fedora.)
+        let dm = olo_doctor::login_screen::display_manager(Path::new("/"));
+        let none = dm.is_none() && !Path::new("/usr/lib/systemd/system/gdm.service").exists();
+        let instead = dm.or_else(|| (!none).then(|| "gdm.service".into()));
         let steps = olo_doctor::login_screen::steps(&olo.join("bin"), &olo.join("share/olo"), instead.as_deref());
         match root.run(steps, &say) {
             Ok(()) => restart = true,
+            Err(e) if none => return say(fail("Installing Olo's login screen", e, "Try again: this computer has no other login screen, so Olo needs its own.")),
             Err(e) => return say(fail("Installing Olo's login screen", e, "Try again, or leave it out: Olo is on GDM's session menu either way.")),
         }
     }
@@ -475,8 +456,9 @@ pub fn install(choices: Choices, given: Option<String>, stop: Arc<AtomicBool>, t
 /// Make `session` the person's session at the next login, as the login
 /// screen's own menu does (AccountsService's `SetSession`).
 fn default_session(session: &str) -> Result<(), String> {
-    // (Never in a test run on someone's own computer.)
-    if std::env::var_os("OLO_SETUP_HELPER").is_some() {
+    // (Never in a test run on someone's own computer: its helper run
+    // directly, not through pkexec or, on a console, sudo.)
+    if std::env::var("OLO_SETUP_HELPER").as_deref() == Ok("direct") {
         return Err("a test run".into());
     }
     let conn = zbus::blocking::Connection::system().map_err(|e| e.to_string())?;

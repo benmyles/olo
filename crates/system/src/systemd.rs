@@ -101,6 +101,12 @@ pub fn enable(name: &str, enable: bool) -> Result<()> {
     Ok(())
 }
 
+/// Make target `name` what the computer starts to (`SetDefaultTarget`,
+/// as `systemctl set-default` does).
+pub fn set_default(name: &str) -> Result<()> {
+    bus::call::<_, Vec<(String, String, String)>>(bus::system()?, SYSTEMD, MANAGER, MANAGER_IFACE, "SetDefaultTarget", &(name, true)).map(|_| ())
+}
+
 /// Have systemd read its unit files again (after one is removed).
 pub fn reload() -> Result<()> {
     bus::call::<_, ()>(bus::system()?, SYSTEMD, MANAGER, MANAGER_IFACE, "Reload", &())

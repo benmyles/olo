@@ -47,7 +47,7 @@ pub fn run(mut choices: Choices, given: Option<String>, agreed: bool) -> std::pr
     let tx = std::sync::Mutex::new(tx);
     let stop = Arc::new(AtomicBool::new(false));
     let worker = std::thread::spawn(move || plan::install(choices, given, stop, move |e| _ = tx.lock().unwrap_or_else(|e| e.into_inner()).send(e)));
-    let mut last = String::new();
+    let mut last = Said::default();
     let mut code = std::process::ExitCode::FAILURE;
     for e in rx {
         match say(&e, &mut last) {
@@ -60,19 +60,36 @@ pub fn run(mut choices: Choices, given: Option<String>, agreed: bool) -> std::pr
     code
 }
 
-/// An event written to the terminal (`last`: the progress line last
-/// written, not written again); Some at the end, whether it worked.
-fn say(e: &Event, last: &mut String) -> Option<Result<(), ()>> {
+/// What's been written: the progress line last written (not written
+/// again), and the step it was under ("Installing mesa-dri-drivers and 21
+/// more"), said once with its details under it.
+#[derive(Default)]
+struct Said {
+    line: String,
+    step: String,
+}
+
+/// An event written to the terminal; Some at the end, whether it worked.
+fn say(e: &Event, last: &mut Said) -> Option<Result<(), ()>> {
     match e {
-        Event::Stage { n, of, title } => println!("\n[{n}/{of}] {title}"),
+        Event::Stage { n, of, title } => {
+            println!("\n[{n}/{of}] {title}");
+            last.step.clear();
+        }
         Event::Progress { share, text } => {
-            let line = match share {
-                Some(s) => format!("  {:>3.0}%  {text}", s * 100.0),
-                None => format!("        {text}"),
-            };
-            if line != *last {
-                println!("{line}");
-                *last = line;
+            // (A share only where it's known: a stage's own steps say theirs.)
+            let pct = share.filter(|s| *s > 0.0).map_or(String::new(), |s| format!("{:>3.0}%  ", s * 100.0));
+            let (step, detail) = text.split_once(": ").map_or((text.as_str(), None), |(a, b)| (a, Some(b)));
+            if step != last.step {
+                println!("  {pct}{step}");
+                last.step = step.to_owned();
+            }
+            if let Some(d) = detail {
+                let line = format!("      {pct}{}", d.trim());
+                if line != last.line {
+                    println!("{line}");
+                    last.line = line;
+                }
             }
         }
         Event::Note(n) => println!("  {n}"),
@@ -100,10 +117,13 @@ mod tests {
 
     #[test]
     fn what_it_says() {
-        let mut last = String::new();
+        let mut last = Said::default();
         assert_eq!(say(&Event::Stage { n: 1, of: 6, title: "This computer".into() }, &mut last), None);
         assert_eq!(say(&Event::Progress { share: Some(0.5), text: "Downloading".into() }, &mut last), None);
-        assert_eq!(last, "   50%  Downloading");
+        assert_eq!(last.step, "Downloading");
+        // A step's details under it, the step said once.
+        assert_eq!(say(&Event::Progress { share: Some(0.0), text: "Installing mesa and 21 more: harfbuzz".into() }, &mut last), None);
+        assert_eq!((last.step.as_str(), last.line.as_str()), ("Installing mesa and 21 more", "      harfbuzz"));
         assert_eq!(say(&Event::Done { version: "1.0".into(), restart: true }, &mut last), Some(Ok(())));
         assert_eq!(say(&Event::Failed { what: "Getting what Olo needs".into(), why: "no network".into(), advice: "Check it.".into() }, &mut last), Some(Err(())));
     }

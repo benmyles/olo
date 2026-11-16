@@ -13,6 +13,33 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
+(Nothing.)
+
+## Not started (highest priority first)
+
+- **Auto-tiling's main window two thirds** (Ben, 2026-11-15: "change the
+  default auto-tiling so that the main window gets the left 2/3 and the
+  stack is the right 1/3"). The default split of Main and Stack: the main
+  window the left two thirds, the stack the right third; layouts and
+  settings the person changed kept as they are.
+
+- **The kits' costs, where they're above GPUI's** (from the move to the
+  kits: "each within a frame's budget; to be brought down"). A whole
+  window drawn again each frame costs more than GPUI's one thread did
+  (Logs resized live 65 → 95 ms for 36 steps, Notifications 128 → 195, a
+  drawing that moves every frame 0.12 ms a frame more). To try, each
+  measured before and after (`OLO_FRAME_PHASES`, perf, memhist): a
+  drawing that's the only thing changed handed to the frame without the
+  copy; `Scene::append` moving a recording whose clip holds all of it
+  without looking at each thing in it; `finish` swapping the glyphs'
+  list in when the runs are in order already; a list's rows of text
+  keeping their recordings when only their width grew; Tracker's resize
+  wrapping each text again (450 shapings a step); StyledEdit's text as
+  one `String` (a rope or gap buffer); the display thread's own 20–60
+  ms a sweep of the pointer (every move reaching it).
+
+## Done, waiting for Ben to try or confirm
+
 - **From GPUI to Olo's own kits: retained, message passing, a looper a
   window** (Ben, 2026-11-10: "scrapping gpui in olo and replacing with
   our own beos inspired retained mode, smp first, message passing
@@ -1409,12 +1436,20 @@ something nobody here has is in "Blocked", with what it waits for.
      mechanical rename shadows. A port that compiles is compared
      before it's believed: a script that opened nothing compared two
      empty desktops and found them the same.
-
-## Not started (highest priority first)
-
-(Nothing.)
-
-## Done, waiting for Ben to try or confirm
+  *Finished* (every app on the kits, GPUI and olo-ui gone since
+  2026-11-12). What became of what was left (2026-11-15): the restart
+  after a protocol error gives up at the third in a row (547765822,
+  HACKING, "No app may die of an upgrade"); the kit's three parity
+  features aren't needed and aren't made, as `part` wasn't: pictures are
+  drawn through the painter wherever they're shown (`paint_image`), the
+  animated ones (Telegram's stickers) decoded on a worker and drawn once
+  a frame when due, and the long lists of differing rows lay out their
+  own (Telegram's conversation, Notifications' history, Logs) or are
+  uniform (`uniform_rows`); the region picker's shape labels against
+  GPUI's can't be compared any more (GPUI is gone; the same place and
+  extent); the kits' costs where they're above GPUI's are an item of
+  their own (Not started, "The kits' costs"). *Left for Ben:* the
+  camera bubble (Record ▸ Show Camera: it turns the camera on).
 
 - **Olo independent of GNOME, 100%** (Ben, 2026-11-15: "we should be
   100% independent of gnome and not rely on any of its services etc so
@@ -1444,9 +1479,13 @@ something nobody here has is in "Blocked", with what it waits for.
   login screen chosen where there's none; PackageKit and dnf's service
   put in place first with one dnf call where they're missing (Ben chose
   it over a package manager of Olo's own), by the Installer and by
-  Doctor ("Software can't be installed here", Install Them). *Left:*
-  the whole path tried in `tools/dev/installer-check`'s VM with a
-  minimal kickstart.
+  Doctor ("Software can't be installed here", Install Them). Tried
+  end to end on a minimal Fedora 45 in a VM (2026-11-15, HACKING, "The
+  Installer"): the console installer, then Olo's login screen and its
+  desktop; five things found on the way, each fixed (Wayland's server
+  library, `semanage`, the computer starting to its console, GDM where
+  there's none, the session not set). *Left for Ben:* nothing; a
+  minimal kickstart for `installer-check` itself would keep it tried.
 
 - **Power: each SSD by its own name, every kind of SSD** (Ben,
   2026-11-15, a screenshot of Power ▸ Power Modes, its row "SSD": "the

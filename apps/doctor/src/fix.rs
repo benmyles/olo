@@ -17,6 +17,10 @@ pub enum UnitAction {
     Reload,
     /// Start it, or start it again (an updated program).
     Restart,
+    /// Make this target what the computer starts to (a minimal Fedora
+    /// starts to its console, `multi-user.target`, and a login screen
+    /// needs `graphical.target`).
+    MakeDefault,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -229,6 +233,7 @@ impl Step {
                     UnitAction::Disable => "Disabling",
                     UnitAction::Reload => "Reloading systemd for",
                     UnitAction::Restart => "Restarting",
+                    UnitAction::MakeDefault => "Starting the computer to",
                 };
                 format!("{verb} {name}")
             }
@@ -242,7 +247,7 @@ impl Step {
             Step::TryShell { path } => format!("Trying {}", path.display()),
             Step::SetLoginShell { user, shell } => format!("Making {} {user}'s login shell", shell.display()),
             Step::InstallPackages { names } => format!("Installing {}", short_list(names)),
-            Step::InstallPackageServices => "Installing PackageKit and dnf's service, which Olo installs software through".into(),
+            Step::InstallPackageServices => "Installing PackageKit and dnf's service".into(),
             Step::UpdatePackages { names } => format!("Updating {}", short_list(names)),
             Step::InstallRelease { name, release, .. } => format!("Installing {name} from github.com/{}", release.repo),
             Step::InstallRepository { name, .. } => format!("Adding the {name} repository"),
@@ -793,6 +798,7 @@ fn unit(name: &str, action: &UnitAction) -> Result<(), String> {
         UnitAction::Disable => systemd::enable(name, false),
         UnitAction::Reload => systemd::reload(),
         UnitAction::Restart => systemd::restart(name),
+        UnitAction::MakeDefault => systemd::set_default(name),
     }
     .map_err(|e| e.to_string())
 }

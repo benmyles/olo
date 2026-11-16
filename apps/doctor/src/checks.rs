@@ -688,6 +688,7 @@ pub fn scan(roots: &Roots) -> Report {
     token_pool(roots, &procs, &mut r);
     kache(roots, &procs, &mut r);
     package_services(roots, &mut r);
+    needed_packages(roots, &mut r);
     login_entry(roots, &mut r);
     login_screen_handed_over(roots, &mut r);
     own_login_screen(roots, &mut r);
@@ -921,6 +922,33 @@ pub fn prepare(id: &str) -> Result<(), String> {
 /// finished for days (Back Up Now), its key only on this computer (Keep
 /// Key in Passwords: without it, the backups can't be read elsewhere);
 /// else when it last backed up, as fine.
+/// What Olo needs from Fedora's repositories to run (`crate::needs`),
+/// where it's missing: on Fedora, Olo installed (its session there), and
+/// PackageKit answering.
+fn needed_packages(roots: &Roots, r: &mut Report) {
+    let fedora = read(&roots.fs.join("etc/os-release")).is_some_and(|t| t.lines().any(|l| l.trim() == "ID=fedora"));
+    if !fedora || !roots.bin.join("olo-session").exists() {
+        return;
+    }
+    let Some(found) = (roots.packages)(crate::needs::PACKAGES) else { return };
+    let missing: Vec<String> = crate::needs::PACKAGES.iter().filter(|n| !found.iter().any(|(f, installed)| f == *n && *installed)).map(|n| (*n).to_owned()).collect();
+    if missing.is_empty() {
+        return;
+    }
+    r.findings.push(Finding {
+        id: "packages:needed".into(),
+        severity: Severity::Problem,
+        title: if missing.len() == 1 { format!("Olo needs {}", missing[0]) } else { format!("Olo needs {} packages that aren't installed", missing.len()) },
+        detail: format!(
+            "{} {} from Fedora's repositories, which Olo's programs need to run (a computer set up without a desktop comes without {}).",
+            missing.join(", "),
+            if missing.len() == 1 { "isn't installed" } else { "aren't installed" },
+            if missing.len() == 1 { "it" } else { "them" }
+        ),
+        fix: Some(Fix { label: "Install Them".into(), root: true, steps: vec![Step::InstallPackages { names: missing }] }),
+    });
+}
+
 /// The services software is installed through (PackageKit, dnf's): a
 /// minimal Fedora has neither, so Olo's fixes that install packages, OS
 /// Updates and the Installer couldn't (Ben, 2026-11-15: "just have olo
@@ -3535,6 +3563,27 @@ mod tests {
         assert_eq!(f.fix.unwrap().label, "Set Them Again");
         save(&followed, 1);
         assert!(scan(&roots).find("power-modes:changed").is_none(), "just written: the follower may be on its way");
+    }
+
+    /// What Olo needs to run, missing: said with the packages, the fix
+    /// installs them; nothing said where Olo isn't installed or
+    /// PackageKit doesn't answer.
+    #[test]
+    fn needed_packages_missing() {
+        let (fs, mut roots) = machine("needed-packages");
+        std::fs::create_dir_all(fs.join("etc")).unwrap();
+        std::fs::write(fs.join("etc/os-release"), "ID=fedora\n").unwrap();
+        roots.packages = Box::new(|names| Some(names.iter().map(|n| ((*n).to_owned(), *n != "libwayland-server")).collect()));
+        let _ = std::fs::remove_file(roots.bin.join("olo-session"));
+        assert!(scan(&roots).find("packages:needed").is_none(), "Olo not installed here");
+        std::fs::create_dir_all(&roots.bin).unwrap();
+        std::fs::write(roots.bin.join("olo-session"), "").unwrap();
+        let r = scan(&roots);
+        let f = r.find("packages:needed").expect("said");
+        assert_eq!(f.title, "Olo needs libwayland-server");
+        assert_eq!(f.fix.as_ref().unwrap().steps, [Step::InstallPackages { names: vec!["libwayland-server".into()] }]);
+        roots.packages = Box::new(|_| None);
+        assert!(scan(&roots).find("packages:needed").is_none(), "PackageKit not answering: nothing said");
     }
 
     /// No PackageKit or dnf's service (a minimal Fedora): said, and the fix

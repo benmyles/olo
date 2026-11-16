@@ -42,6 +42,15 @@ pub const SERVICE: &str = "olo-login.service";
 /// in `bin` (and `pam_olo_keyring.so` there) and Olo's data in `share`;
 /// `instead` is the display manager it takes the place of (its unit,
 /// disabled: `gdm.service`), if there is one.
+/// Whether the computer under `fs` is set to start to something other
+/// than `graphical.target` (its `default.target` link).
+pub fn starts_to_console(fs: &Path) -> bool {
+    std::fs::read_link(fs.join("etc/systemd/system/default.target")).is_ok_and(|t| t.file_name().is_some_and(|n| n != "graphical.target"))
+}
+
+/// The package with SELinux's `semanage`.
+pub const SEMANAGE_PACKAGE: &str = "policycoreutils-python-utils";
+
 pub fn steps(bin: &Path, share: &Path, instead: Option<&str>) -> Vec<Step> {
     let libexec = PathBuf::from(LIBEXEC);
     let mut steps = Vec::new();
@@ -73,6 +82,12 @@ pub fn steps(bin: &Path, share: &Path, instead: Option<&str>) -> Vec<Step> {
     // and its sysusers service runs only after an update).
     steps.push(Step::MakeSystemUsers { config: "/etc/sysusers.d/olo-greeter.conf".into() });
     steps.extend(folders(TMPFILES));
+    // (SELinux's labels are set with its own semanage, which a minimal
+    // Fedora doesn't have: installed first where SELinux is on and it
+    // isn't, 2026-11-15.)
+    if Path::new("/sys/fs/selinux/enforce").exists() && !Path::new("/usr/sbin/semanage").exists() {
+        steps.push(Step::InstallPackages { names: vec![SEMANAGE_PACKAGE.into()] });
+    }
     steps.push(Step::SelinuxLabels {
         rules: SELINUX_LABELS.iter().map(|(r, t)| ((*r).to_owned(), (*t).to_owned())).collect(),
         restore: [LIBEXEC, "/run/olo-login", "/var/lib/olo-greeter"].map(PathBuf::from).to_vec(),
@@ -81,6 +96,11 @@ pub fn steps(bin: &Path, share: &Path, instead: Option<&str>) -> Vec<Step> {
     steps.push(Step::Unit { name: SERVICE.into(), action: UnitAction::Reload });
     if let Some(other) = instead.filter(|u| *u != SERVICE) {
         steps.push(Step::Unit { name: other.into(), action: UnitAction::Disable });
+    }
+    // (A computer that starts to its console, a minimal Fedora's
+    // multi-user.target, never starts a login screen.)
+    if starts_to_console(Path::new("/")) {
+        steps.push(Step::Unit { name: "graphical.target".into(), action: UnitAction::MakeDefault });
     }
     steps.push(Step::Unit { name: SERVICE.into(), action: UnitAction::Enable });
     steps
