@@ -101,7 +101,9 @@ pub fn linked(addr: &str, name: &str) {
     let ring: Arc<Mutex<Ring>> = Default::default();
     let node: Arc<Mutex<Option<String>>> = Default::default();
     let (quit, quit_rx) = pw::channel::channel::<()>();
-    let (r, n, a, label) = (ring.clone(), node.clone(), addr.to_owned(), format!("{name} Microphone"));
+    // (Listed by its model, so Chrome shows it apart from the pair's
+    // call microphone: `olo_system::audio::listed_name`.)
+    let (r, n, a, label) = (ring.clone(), node.clone(), addr.to_owned(), olo_system::audio::listed_name(&format!("{name} Microphone")));
     let spawned = std::thread::Builder::new().name("airpods-mic".into()).spawn(move || {
         if let Err(e) = source(&a, &label, r, n, quit_rx) {
             tracing::warn!("airpods {a}: the microphone's source: {e}");

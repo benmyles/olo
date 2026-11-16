@@ -29,16 +29,20 @@ something nobody here has is in "Blocked", with what it waits for.
   gives (measured, not guessed); and the processed source's name, as
   programs list it (Chrome's device menu), saying it's processed:
   "AirPods (Voice Processing)", the raw one left as it is.
-  *Looked at 2026-11-16:* the processed source is already named so
-  (`apps/voice/src/engine.rs`, `Config::description`, tested), and what
-  PulseAudio clients (Chrome among them) are told says it: `pactl list
-  sources` on Ben's session gives "AirPods Pro Microphone (Voice
-  Processing)" (olo_voice), "AirPods Pro Microphone" (Olo's AirPods
-  microphone) and "AirPods Pro" (BlueZ's headset input), each its own.
-  Chrome on an Agent Screen lists ALSA's devices instead (no PulseAudio
-  there), so it can't show what Ben's sees. *Needs Ben:* where the three
-  "AirPods" show (Chrome's Settings ▸ Microphone, or a site's picker:
-  which?) and a picture of it.
+  *Its name, done 2026-11-16:* Chrome lists any device whose name has
+  "AirPods" in it as plain "AirPods" (its privacy measure: AirPods are
+  named after their owner), so Meet showed three; measured in Chrome
+  with a sound sandbox ("Beats…", "Galaxy Buds…", "air pods…" all shown
+  as written). Olo's two AirPods sources (the processed one and the
+  wideband microphone) are named by their model, from "AirPods" on, with
+  an invisible word joiner inside the word (`olo_system::audio::
+  listed_name`): Chrome then lists "AirPods Pro Microphone (Voice
+  Processing)" and "AirPods Pro Microphone" as written; BlueZ's call
+  microphone stays "AirPods". *Left:* the boost (an optional level to
+  bring a quiet microphone up to, the ideal suggested from what it
+  gives), measured on Ben's AirPods with him; and Ben to see the names
+  in Meet after upgrading (Chrome reads its devices again when it
+  starts).
 
 ## Done, waiting for Ben to try or confirm
 

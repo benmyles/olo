@@ -180,6 +180,24 @@ fn bluetooth(props: &protocol::Props) -> Option<Bluetooth> {
     Some(Bluetooth { address: prop(props, "api.bluez5.address")?, codec: prop(props, "api.bluez5.codec").unwrap_or_default(), profile: prop(props, "api.bluez5.profile").unwrap_or_default() })
 }
 
+/// The name one of Olo's own sources is listed by in other programs (the
+/// voice service's processed one, the AirPods' wideband microphone).
+/// Chrome lists any device whose name has "AirPods" in it as just
+/// "AirPods" (a privacy measure: AirPods are named after their owner,
+/// "Ben's AirPods Pro"), so in Google Meet a pair's call microphone,
+/// Olo's wideband one and the processed one were three "AirPods" (Ben,
+/// 2026-11-16). Such a name keeps the model alone, from "AirPods" on (no
+/// one's name), with an invisible word joiner (U+2060) between "Air" and
+/// "Pods", which Chrome lets through and text shapers hide (Olo's too:
+/// `a_word_joiner_is_nothing_to_see`): "AirPods Pro Microphone (Voice
+/// Processing)" as it's written. Others are as they are.
+pub fn listed_name(name: &str) -> String {
+    match name.find("AirPods") {
+        Some(at) => name[at..].replace("AirPods", "Air\u{2060}Pods"),
+        None => name.to_owned(),
+    }
+}
+
 /// Drop Apple board codes ("MacBook Pro J416 Speakers" → "MacBook Pro
 /// Speakers"), which mean nothing to people.
 fn tidy_description(s: &str) -> String {
@@ -645,6 +663,18 @@ mod tests {
         assert_eq!(tidy_description("MacBook Pro J416 Speakers"), "MacBook Pro Speakers");
         assert_eq!(tidy_description("MacBook Air J413s Microphone"), "MacBook Air Microphone");
         assert_eq!(tidy_description("JBL Flip 5"), "JBL Flip 5");
+    }
+
+    /// Olo's AirPods sources listed by their model, joined so Chrome
+    /// shows them as they're called; others as they are.
+    #[test]
+    fn airpods_listed_by_their_model() {
+        assert_eq!(listed_name("AirPods Pro Microphone (Voice Processing)"), "Air\u{2060}Pods Pro Microphone (Voice Processing)");
+        assert_eq!(listed_name("Ben’s AirPods Pro Microphone"), "Air\u{2060}Pods Pro Microphone");
+        assert_eq!(listed_name("MacBook Pro Microphone (Voice Processing)"), "MacBook Pro Microphone (Voice Processing)");
+        // (Joined already: as it is.)
+        let once = listed_name("AirPods Max");
+        assert_eq!(listed_name(&once), once);
     }
 
     /// Reads (never changes) the real server: `cargo test -- --ignored`.

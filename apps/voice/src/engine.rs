@@ -58,10 +58,12 @@ pub struct Config {
 }
 
 impl Config {
-    /// The source's name: "AirPods (Voice Processing)".
+    /// The source's name: "AirPods Pro Microphone (Voice Processing)", as
+    /// programs list it (`olo_system::audio::listed_name`: an AirPods one
+    /// joined, so Chrome shows it whole).
     pub fn description(&self) -> String {
         let label = if self.label.trim().is_empty() { "Microphone" } else { self.label.trim() };
-        format!("{label} (Voice Processing)")
+        olo_system::audio::listed_name(&format!("{label} (Voice Processing)"))
     }
 
     /// The buffering around the processing: the graph's quantum asked for
@@ -587,7 +589,8 @@ mod tests {
     #[test]
     fn named_after_its_microphone() {
         let c = |label: &str| Config { microphone: "m".into(), label: label.into(), speakers: None, settings: Settings::default() };
-        assert_eq!(c("AirPods").description(), "AirPods (Voice Processing)");
+        assert_eq!(c("AirPods").description(), "Air\u{2060}Pods (Voice Processing)");
+        assert_eq!(c("Ben’s AirPods Pro Microphone").description(), "Air\u{2060}Pods Pro Microphone (Voice Processing)");
         assert_eq!(c("MacBook Pro Microphone").description(), "MacBook Pro Microphone (Voice Processing)");
         assert_eq!(c(" ").description(), "Microphone (Voice Processing)");
     }

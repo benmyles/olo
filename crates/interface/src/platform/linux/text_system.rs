@@ -1067,6 +1067,26 @@ impl OutlinePen for Pen<'_> {
 mod tests {
     use super::*;
 
+    /// A word joiner (U+2060) inside a word takes no room and draws
+    /// nothing: "Air⁠Pods" (joined so Chrome lists Olo's sources by their
+    /// names, `olo_system::audio::listed_name`) lays out as "AirPods" does.
+    #[test]
+    fn a_word_joiner_is_nothing_to_see() {
+        let system = OloTextSystem::new();
+        let data = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/fonts/NotoSans[wght].ttf")).expect("Olo's Noto Sans");
+        system.add_fonts(vec![Cow::Owned(data)]).unwrap();
+        let id = system.font_id(&crate::font("Noto Sans")).unwrap();
+        let line = |t: &str| system.layout_line(t, px(13.0), &[FontRun { len: t.len(), font_id: id, size: None }]);
+        let (plain, joined) = (line("AirPods Pro"), line("Air\u{2060}Pods Pro"));
+        assert_eq!(plain.width, joined.width);
+        // Each letter where it was (the joiner's 3 bytes, at 3, between).
+        let at = |l: &crate::LineLayout, index: usize| l.runs.iter().flat_map(|r| r.glyphs.iter()).find(|g| g.index == index).map(|g| g.position.x);
+        for i in [0, 1, 2, 3, 4, 8] {
+            let j = if i < 3 { i } else { i + 3 };
+            assert_eq!(at(&plain, i), at(&joined, j), "the letter at {i}");
+        }
+    }
+
     /// How long a line never laid out before takes, as a table's cells
     /// are (`cargo test --release -p olo-interface shaping_cost -- --ignored --nocapture`).
     #[test]
