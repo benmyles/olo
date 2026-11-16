@@ -321,5 +321,16 @@ for step in range(steps):
         print("    last ops:", " | ".join(log[-6:]))
         if fails >= 5:
             break
+# What app_server said went wrong meanwhile: a panic, or its own check of
+# the tiles as laid out (development builds).
+try:
+    said = [l for l in open(os.path.join(ts.sdir(name), "app_server.log"), errors="replace") if "panicked" in l or "tiles laid out wrong" in l]
+except OSError:
+    said = []
+if said:
+    fails += 1
+    print(f"app_server said, {len(said)} times:")
+    for l in said[:5]:
+        print("   ", l.strip()[:300])
 print(f"{len(log)} steps, {fails} with problems; {SEEN['pairs']} tile pairs checked; layouts seen with 3+ tiles: {sorted(SEEN['layouts'])}")
 sys.exit(1 if fails else 0)

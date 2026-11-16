@@ -7162,7 +7162,11 @@ area without overlapping, and windows overlap only where a least size
 holds one past its part; none is neither tiled nor floating. `--dense`
 keeps it on one auto-tiled workspace for many tiles at once (an
 arranging command that turns it to Standard is followed by Auto-Tiling
-again: re-adopting any arrangement). Run it after changing the tiler:
+again: re-adopting any arrangement). In development builds (every test session's) app_server checks each
+tree's parts as it lays them out (`parts_wrong`: outside the area, not
+a number, two overlapping) and says so in its log ("tiles laid out
+wrong"); tile-qa reports that, and any panic, from the session's log
+at its end. Run it after changing the tiler:
 1,518 tile pairs in 250 dense steps came through every layout with
 three tiles or more, no problem.
 

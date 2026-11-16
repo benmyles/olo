@@ -465,6 +465,25 @@ impl Inset {
     }
 }
 
+/// What's wrong with tiles' parts, if anything: one outside the area, not
+/// a number, or two overlapping.
+pub fn parts_wrong(parts: &[(u64, Part)]) -> Option<String> {
+    const E: f32 = 1e-3;
+    for (i, (a, p)) in parts.iter().enumerate() {
+        if ![p.0, p.1, p.2, p.3].iter().all(|v| v.is_finite()) || p.0 < -E || p.1 < -E || p.0 + p.2 > 1.0 + E || p.1 + p.3 > 1.0 + E {
+            return Some(format!("{a} at {p:?}, outside the area"));
+        }
+        for (b, q) in &parts[i + 1..] {
+            let ox = (p.0 + p.2).min(q.0 + q.2) - p.0.max(q.0);
+            let oy = (p.1 + p.3).min(q.1 + q.3) - p.1.max(q.1);
+            if ox > E && oy > E {
+                return Some(format!("{a} at {p:?} overlaps {b} at {q:?}"));
+            }
+        }
+    }
+    None
+}
+
 /// Where a new window goes in Main and Stack's order
 /// (`main_and_stack_again`): first (the main window), right after a
 /// window, or last.
@@ -2305,6 +2324,14 @@ impl<B: Backend + 'static> AnvilState<B> {
         let min = |i: u64| mins.get(&i).copied().unwrap_or((0.0, 0.0));
         let moving_by_drag = |s: &Self, w: &WindowElement| s.tile_drag.as_ref().is_some_and(|d| d.moves(w));
         let placed: Vec<(u64, Part)> = layout(tree, &min, Inset::of(area, gap)).into_iter().filter_map(|(n, p)| if let Node::Window(i) = n { Some((*i, p)) } else { None }).collect();
+        // (Development builds, every test session's: the parts as laid
+        // out hold to the tree's invariants, said in the log if not, where
+        // tile-qa looks.)
+        if cfg!(debug_assertions)
+            && let Some(wrong) = parts_wrong(&placed)
+        {
+            tracing::error!(output = output.name(), tree = %tree, wrong, "tiles laid out wrong");
+        }
         for (id, f) in placed {
             let Some(w) = units.iter().find(|w| w.id() == id).cloned() else { continue };
             let was_tiled = Self::tiled(&w).is_some();
@@ -3507,6 +3534,14 @@ mod tests {
         assert_eq!(order(&last), (vec![1], vec![2, 3, 9]));
         let after_main = main_and_stack_again(&t, place, Some(place), 1, Some((9, NewAt::After(1))), None, Some(1), None).unwrap();
         assert_eq!(order(&after_main), (vec![1], vec![9, 2, 3]));
+    }
+
+    #[test]
+    fn parts_wrong_says_what() {
+        assert_eq!(parts_wrong(&[(1, (0.0, 0.0, 0.5, 1.0)), (2, (0.5, 0.0, 0.5, 1.0))]), None);
+        assert!(parts_wrong(&[(1, (0.0, 0.0, 0.6, 1.0)), (2, (0.5, 0.0, 0.5, 1.0))]).is_some_and(|w| w.contains("overlaps")));
+        assert!(parts_wrong(&[(1, (0.6, 0.0, 0.5, 1.0))]).is_some_and(|w| w.contains("outside")));
+        assert!(parts_wrong(&[(1, (f32::NAN, 0.0, 0.5, 1.0))]).is_some());
     }
 
     fn with_kept_spiral(t: &Node) -> Node {
