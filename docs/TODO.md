@@ -1511,6 +1511,22 @@ something nobody here has is in "Blocked", with what it waits for.
   30 minutes; the prompt weighing whatever plan is mentioned, assuming
   none; the skydiving suggestion now "How cloudy will it be today?".
 
+- **"Last active" times that change only when clicked** (Ben,
+  2026-11-15: "when i have multiple active agent screens and i click on
+  one of the other tabs in the tabbar on the left it often then updates
+  the last activity timer to say "now" or something other than what it
+  is before, it seems to only update when i click on it. i've noticed
+  the same thing happen in other apps too so it might be a problem in
+  the olo kit itself. please root cause and fix universally"). A time
+  said relative to now ("2 min ago", "now") must be drawn again when
+  its words would change, not when something else makes the window
+  draw; and choosing a tab must not itself count as the screen's
+  activity. To do: find why (Agent Screens' sidebar first, then every
+  kit app showing such times), and fix it in the kit so every relative
+  time follows the clock (one timer for the next change of any shown,
+  nothing while none would change), with a test and the apps' times
+  checked.
+
 - **Power: each SSD by its own name, every kind of SSD** (Ben,
   2026-11-15, a screenshot of Power ▸ Power Modes, its row "SSD": "the
   settings for SSD in power shouldn't just assume there's one SSD we
