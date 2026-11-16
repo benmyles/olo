@@ -29,6 +29,16 @@ something nobody here has is in "Blocked", with what it waits for.
   gives (measured, not guessed); and the processed source's name, as
   programs list it (Chrome's device menu), saying it's processed:
   "AirPods (Voice Processing)", the raw one left as it is.
+  *Looked at 2026-11-16:* the processed source is already named so
+  (`apps/voice/src/engine.rs`, `Config::description`, tested), and what
+  PulseAudio clients (Chrome among them) are told says it: `pactl list
+  sources` on Ben's session gives "AirPods Pro Microphone (Voice
+  Processing)" (olo_voice), "AirPods Pro Microphone" (Olo's AirPods
+  microphone) and "AirPods Pro" (BlueZ's headset input), each its own.
+  Chrome on an Agent Screen lists ALSA's devices instead (no PulseAudio
+  there), so it can't show what Ben's sees. *Needs Ben:* where the three
+  "AirPods" show (Chrome's Settings ▸ Microphone, or a site's picker:
+  which?) and a picture of it.
 
 ## Done, waiting for Ben to try or confirm
 
