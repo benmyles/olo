@@ -1440,6 +1440,16 @@ something nobody here has is in "Blocked", with what it waits for.
   from the console, or from Olo's login screen), then the whole path
   tried in `tools/dev/installer-check`'s VM with a minimal kickstart.
 
+- **Weather: the assistant's suggested questions, redone** (Ben,
+  2026-11-15: "redo the suggested questions in the weather app -- i want
+  about 10 of them that cover all the common things someone might want
+  to ask about the weather"). About ten, covering what people commonly
+  ask: rain today and when it stops or starts, what to wear, the
+  weekend, the warmest and coldest coming, wind and gusts, storms, the
+  sun's times and UV, a good time for something outside, how the week
+  looks; worded for the place and the time of day where it helps, and
+  still fitting the assistant's column at every scale.
+
 - **Weather: a place's own name** (Ben, 2026-11-15: "in the weather app
   i should be able to set custom names for places i've added"). A place
   renamed as the person likes ("Home", "The drop zone"), from its
