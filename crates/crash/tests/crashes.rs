@@ -46,6 +46,14 @@ fn child() {
             }
             std::hint::black_box(deeper(0));
         }
+        // Printing until the reader stops reading, as `| head` does.
+        "pipe" => {
+            println!("ready");
+            for i in 0..100_000 {
+                println!("line {i}");
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        }
         "thread" => {
             // A worker's panic: the program goes on.
             let _ = std::thread::Builder::new().name("worker".into()).spawn(|| panic!("in the worker")).unwrap().join();
@@ -128,6 +136,34 @@ fn a_panic_is_reported_with_its_backtrace() {
     }
     // The backtrace names where (release builds keep line tables).
     assert!(r[0].contains("crashes.rs"), "{}", r[0]);
+}
+
+/// Output whose reader stopped reading (`olo-screen --help | head`): the
+/// program ends as a shell expects (141, SIGPIPE's), and it's no crash.
+#[test]
+fn output_cut_off_ends_quietly_without_a_report() {
+    use std::io::BufRead as _;
+    let state = scratch("pipe");
+    let mut child = Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "child", "--nocapture", "--test-threads", "1"])
+        .env("OLO_CRASH_CHILD", "pipe")
+        .env("XDG_STATE_HOME", &state)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    // Read until it's ready (its hook in; the test runner's "test child
+    // ... " before it on the line), then stop reading.
+    let mut reader = std::io::BufReader::new(child.stdout.take().unwrap());
+    let mut line = String::new();
+    while !line.trim_end().ends_with("ready") {
+        line.clear();
+        assert!(reader.read_line(&mut line).unwrap() > 0, "it never said it was ready");
+    }
+    drop(reader);
+    let status = child.wait().unwrap();
+    assert_eq!(status.code(), Some(141), "{status:?}");
+    assert!(reports(&state).is_empty(), "{:?}", reports(&state));
 }
 
 #[test]

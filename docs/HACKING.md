@@ -656,7 +656,12 @@ brush and the root Wi-Fi healer carry it as lightly as the kit's apps.
     panic is reported though the window stays): `message`, `place`
     (file:line:column) and `backtrace` (release builds keep line
     tables, so it names files and lines), from a panic hook that then
-    calls std's (its message on stderr as ever);
+    calls std's (its message on stderr as ever). Not one: output whose
+    reader stopped reading (`olo-screen --help | head`). Rust ignores
+    SIGPIPE, so the write fails and `println!` panics; the hook ends
+    such a program as a shell expects of one cut off (141, SIGPIPE's
+    128 + 13), with no report (`output_cut_off`; on 2026-11-15 an
+    agent's `olo-screen --help | head` read as Agent Screens crashing);
   - a fatal signal (SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT): `signal`,
     `code`, and the fault's `address` or, for one sent (kill), `sent_by`;
     `core` names `coredumpctl info PID`. The handler is

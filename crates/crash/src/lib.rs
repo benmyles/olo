@@ -102,6 +102,12 @@ fn program_name(exe: &Path) -> String {
     name.chars().map(|c| if c.is_ascii_alphanumeric() || "-_.".contains(c) { c } else { '_' }).collect()
 }
 
+/// Whether a panic's message is `print!`'s or `eprint!`'s on a pipe its
+/// reader closed.
+fn output_cut_off(message: Option<&str>) -> bool {
+    message.is_some_and(|m| (m.starts_with("failed printing to stdout") || m.starts_with("failed printing to stderr")) && m.contains("Broken pipe"))
+}
+
 fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }
@@ -124,6 +130,14 @@ pub fn install() {
     }
     let before = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
+        // Output a reader stopped reading (`olo-screen --help | head`):
+        // not a crash, the end a shell expects of a program whose output
+        // was cut off, as SIGPIPE's (128 + 13), with no report. (Rust
+        // ignores SIGPIPE, so the write fails and `println!` panics: on
+        // 2026-11-15 that read as Agent Screens crashing.)
+        if output_cut_off(info.payload_as_str()) {
+            std::process::exit(141);
+        }
         PANICKED.store(true, Ordering::SeqCst);
         if REPORTED.fetch_add(1, Ordering::SeqCst) < MOST {
             panic_report(info);
@@ -446,6 +460,14 @@ unsafe fn signal_report(setup: &Setup, sig: libc::c_int, info: &libc::siginfo_t)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn output_cut_off_is_told_apart() {
+        assert!(output_cut_off(Some("failed printing to stdout: Broken pipe (os error 32)")));
+        assert!(output_cut_off(Some("failed printing to stderr: Broken pipe (os error 32)")));
+        assert!(!output_cut_off(Some("failed printing to stdout: No space left on device (os error 28)")));
+        assert!(!output_cut_off(Some("Broken pipe")) && !output_cut_off(None));
+    }
 
     #[test]
     fn names_and_numbers_as_written() {
