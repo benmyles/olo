@@ -13,7 +13,52 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-(Nothing.)
+- **BBRv3 for TCP, as a module** (the first item below; started
+  2026-11-16). What was found and decided, so the work can be picked up
+  from here:
+  - Fedora's `tcp_bbr` (7.2.15) is BBRv1, as mainline's is. Google's
+    BBRv3 (github.com/google/bbr, branch `v3`, commit 90210de4, on
+    6.13.7) is `net/ipv4/tcp_bbr.c` plus about 17 patches to TCP itself:
+    per packet, the packets in flight and the losses so far when it was
+    sent (`tx.in_flight`, `tx.lost`, in `tcp_skb_cb`), a hook when a
+    packet is marked lost (`skb_marked_lost`), a TLP-recovery event,
+    its own TSO sizing, ECN for shallow marking, a bigger private
+    state (144 bytes; this kernel's is 104). XanMod carries all of it
+    rebased on 7.2 as one patch (gitlab.com/xanmod/linux-patches,
+    `linux-7.2.y-xanmod/net/tcp/0001-tcp_bbr-v3-…`): its `tcp_bbr.c`
+    differs from Google's only by `cwnd_event_tx_start`,
+    `tcp_ecn_mode_any` and `WRITE_ONCE(snd_ssthresh)`. TCP is built
+    into the kernel, so those patches mean a whole kernel rebuilt at
+    every update; not that.
+  - Decided: Google's `tcp_bbr.c` as a module of its own for the stock
+    kernel (`kernel/bbr3`, `tcp_bbr3`, the congestion control named
+    `bbr3`), its algorithm untouched, and what it needs of TCP made in
+    the module from what this kernel gives a congestion control:
+    its state allocated (the private area holds a pointer); the packets
+    in flight and losses at a packet's sending looked up in a log of
+    snapshots the module takes whenever it's called before data is sent
+    (`min_tso_segs`, at each burst; `cong_control`, at each ACK), by
+    the packet's sequence number (`rate_sample.last_end_seq`) for new
+    data and by its `tx.delivered` for a retransmission; lost packets
+    from an fprobe on `tcp_mark_skb_lost` (the function Google's hook
+    sits in); TLP recovery from `in_ack_event` + `set_state(CWR)`;
+    `tcp_rate_check_app_limited` called from `in_ack_event`; TSO sizing
+    left to the kernel's (`min_tso_segs`), which has had BBR's
+    round-trip allowance since 5.18; ECN parts inert (they need a
+    per-route feature this kernel lacks; BBRv3 on the Internet runs
+    without them); the receiver's fast-ACK mode not there.
+  - To be shown, not assumed: in a KVM guest running this computer's
+    own kernel (`/lib/modules/…/vmlinuz`, an initramfs made of this
+    computer's programs; nothing of the person's kernel touched, no
+    root), (1) the looked-up values against the true ones, taken by a
+    kprobe on `__tcp_transmit_skb` in a self-checking build, and (2)
+    the module against true BBRv3 (7.2.15 + XanMod's patch, a small
+    kernel built for the guest) over the same links (netem: rate,
+    delay, buffer, loss; alone and beside CUBIC).
+  - Then: the service that builds and loads it at each start (as
+    apps/gpu-memory does; the shared part in a crate), Doctor's finding
+    and fix, the docs; then the Network Speed Test app.
+  - Scratch: /var/tmp/claude-bbr (upstream sources, XanMod's patch).
 
 ## Not started (highest priority first)
 
