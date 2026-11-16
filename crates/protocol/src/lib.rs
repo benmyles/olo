@@ -38,8 +38,8 @@ pub mod voice;
 pub use notifications::{AppNotifications, CardSize, HistoryView, NoteApp, NoteLook, NoteStyle, NotificationSettings, NotificationState};
 pub use sharing::SharingState;
 pub use shortcuts::{
-    AutoTiling, Chord, CommandKey, Dir, KeyboardProfile, LAYOUT_PRESETS, LayoutChoice, MAX_MAINS, MainCountChoice, MainPlaceChoice, ModeChoice, Platform, Shortcut, ShortcutSettings, TILING_VERSION,
-    Tile, TilingLayout, TilingSettings, WindowingMode,
+    AutoTiling, Chord, CommandKey, Dir, KeyboardProfile, LAYOUT_PRESETS, LayoutChoice, MAX_MAINS, MainCountChoice, MainPlaceChoice, ModeChoice, NewWindows, Platform, Shortcut, ShortcutSettings,
+    TILING_VERSION, Tile, TilingLayout, TilingSettings, WindowingMode,
 };
 
 pub const SOCKET_ENV: &str = "OLO_SOCKET";

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-16
 
+### Preferences: where new windows go
+
+*01:17* — New windows go first (as the main window), after the active window, or last, in Main and Stack and the layouts built in order; Halves always halves the active tile (1×).
+
+![Preferences: where new windows go](2026-11-16/011729-preferences-where-new-windows-go.png)
+
 ### Preferences: no space around a window alone
 
 *00:59* — Smart gaps, as i3 and sway have them: with the box checked, an auto-tiled window alone on its display fills it, no margin or gap; they come back with a second tile (1×).

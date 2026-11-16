@@ -1068,7 +1068,7 @@ impl TilingLayout {
     pub fn detail(self) -> &'static str {
         match self {
             TilingLayout::Halves => "Each new window takes half of the one you were using.",
-            TilingLayout::MainAndStack => "A new window is the main one, in its place; the others stack around it.",
+            TilingLayout::MainAndStack => "The main window in its place; the others stack around it.",
             TilingLayout::Columns => "Every window a column, each as wide.",
             TilingLayout::Rows => "Every window a row, each as tall.",
             TilingLayout::Grid => "The windows in rows of about square cells.",
@@ -1152,6 +1152,11 @@ pub struct TilingSettings {
     /// (Preferences ▸ Windows). The margin and gap come back with a
     /// second tile.
     pub smart_gaps: bool,
+    /// Where a new window goes among the tiles in Main and Stack and the
+    /// layouts built in order (Columns, Rows, Grid, Spiral), as dwm's
+    /// attach, xmonad's insertPosition, Amethyst's "new windows to main"
+    /// (Preferences ▸ Windows). Halves always halves the active tile.
+    pub new_windows: NewWindows,
     /// The workspaces (and displays of them) with another number of main
     /// windows (Deskbar's tray ▸ Number of Main Windows, ⌃⌥⌘I / ⌃⌥⌘D,
     /// `Request::SetMainCount`; see [`TilingSettings::main_count_of`]).
@@ -1188,6 +1193,7 @@ impl Default for TilingSettings {
             main_places: Vec::new(),
             main_count: 1,
             smart_gaps: false,
+            new_windows: NewWindows::First,
             main_counts: Vec::new(),
             modes: Vec::new(),
             auto: Vec::new(),
@@ -1202,6 +1208,31 @@ pub struct MainPlaceChoice {
     pub workspace: u32,
     pub display: String,
     pub place: Tile,
+}
+
+/// Where a new window goes among the tiles ([`TilingSettings::new_windows`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NewWindows {
+    /// First: Main and Stack's main window (the others move down one).
+    #[default]
+    First,
+    /// Right after the tile that had the focus.
+    AfterActive,
+    /// At the end: the bottom of the stack.
+    Last,
+}
+
+impl NewWindows {
+    pub const ALL: [NewWindows; 3] = [NewWindows::First, NewWindows::AfterActive, NewWindows::Last];
+
+    pub fn title(self) -> &'static str {
+        match self {
+            NewWindows::First => "First, as the main window",
+            NewWindows::AfterActive => "After the active window",
+            NewWindows::Last => "Last",
+        }
+    }
 }
 
 /// How many main windows Main and Stack has on a display's (`display`,

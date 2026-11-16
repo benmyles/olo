@@ -465,6 +465,26 @@ impl Inset {
     }
 }
 
+/// Where a new window goes in Main and Stack's order
+/// (`main_and_stack_again`): first (the main window), right after a
+/// window, or last.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum NewAt {
+    First,
+    After(u64),
+    Last,
+}
+
+/// `id` into `order` where `at` says (after a window not in it: last).
+fn put_new(order: &mut Vec<Node>, id: u64, at: NewAt) {
+    let i = match at {
+        NewAt::First => 0,
+        NewAt::After(f) => order.iter().position(|n| *n == Node::Window(f)).map_or(order.len(), |i| i + 1),
+        NewAt::Last => order.len(),
+    };
+    order.insert(i, Node::Window(id));
+}
+
 /// How the auto-tiled arrangement is reshaped (`reshape_tiles`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Reshape {
@@ -842,7 +862,7 @@ fn tiles_with_room(tree: &Node) -> usize {
 /// main window closed or hid, the one it took the place of comes back),
 /// else the first. None for a tree with nothing in it.
 #[allow(clippy::too_many_arguments)]
-pub fn main_and_stack_again(tree: &Node, place: Tile, was: Option<Tile>, count: usize, new: Option<u64>, first: Option<u64>, main: Option<u64>, before: Option<u64>) -> Option<Node> {
+pub fn main_and_stack_again(tree: &Node, place: Tile, was: Option<Tile>, count: usize, new: Option<(u64, NewAt)>, first: Option<u64>, main: Option<u64>, before: Option<u64>) -> Option<Node> {
     let shape = was.and_then(|was| Some((main_and_stack_of(tree, was)?, was)));
     let (mut order, at) = match shape.clone() {
         Some(((mut mains, mut stack, at), was)) => {
@@ -854,10 +874,16 @@ pub fn main_and_stack_again(tree: &Node, place: Tile, was: Option<Tile>, count: 
     // (Room for the next window is the shape's to leave.)
     order.retain(|n| *n != Node::hole() && !n.is_gap());
     let shaped = shape.and_then(|((m, ..), _)| m.into_iter().next());
+    // (A new window first is the main one; anywhere else, the main one
+    // stays.)
     let (first, shaped) = match new {
-        Some(id) => {
+        Some((id, NewAt::First)) => {
             order.insert(0, Node::Window(id));
             (Some(id), None)
+        }
+        Some((id, at)) => {
+            put_new(&mut order, id, at);
+            (first, shaped)
         }
         None => (first, shaped),
     };
@@ -896,7 +922,10 @@ pub fn main_and_stack_again(tree: &Node, place: Tile, was: Option<Tile>, count: 
 /// height (a grid's rows and columns about square).
 pub fn built_again(layout: olo_protocol::TilingLayout, tree: &Node, aspect: f32) -> Option<Node> {
     use olo_protocol::TilingLayout as L;
-    let all = leaves(tree);
+    // (In the layout's own order: Spiral's tree has a tile on the right
+    // or below after the rest, and read as its tree has them, a window
+    // opening or closing moved the others round.)
+    let all = in_order(layout, Tile::Left, tree);
     let (room, rest): (Vec<Node>, Vec<Node>) = all.into_iter().partition(has_room);
     if room.is_empty() {
         return None;
@@ -2159,12 +2188,35 @@ impl<B: Backend + 'static> AnvilState<B> {
         // Main and Stack: the new window is the main one, the one that was
         // first in the stack (the shape leaves its own room for the next
         // window, not a hole a tiling command left).
-        if self.layout_of(key) == olo_protocol::TilingLayout::MainAndStack {
+        // Where it goes in the order (`TilingSettings::new_windows`):
+        // after the tile that had the focus last, if that's the choice.
+        let at = match self.settings.tiling.new_windows {
+            olo_protocol::NewWindows::First => NewAt::First,
+            olo_protocol::NewWindows::Last => NewAt::Last,
+            olo_protocol::NewWindows::AfterActive => {
+                let in_tree = t.windows();
+                self.recent.iter().find(|r| **r != id && in_tree.contains(r)).map_or(NewAt::First, |r| NewAt::After(*r))
+            }
+        };
+        let chosen = self.layout_of(key);
+        if chosen == olo_protocol::TilingLayout::MainAndStack {
             let (place, was) = self.main_places(key);
             let m = self.auto.mains.get(key).copied().unwrap_or_default();
-            if let Some(built) = main_and_stack_again(t, place, was, self.main_count_of(key) as usize, Some(id), None, m.now, m.before) {
+            if let Some(built) = main_and_stack_again(t, place, was, self.main_count_of(key) as usize, Some((id, at)), None, m.now, m.before) {
                 *t = built;
             }
+            return;
+        }
+        // Columns, Rows, Grid, Spiral: into their order, built again in
+        // their shape as the number of tiles changes (not a split of a
+        // tile, which another shape has no place for).
+        if chosen.built() {
+            let mut order = in_order(chosen, Tile::Left, t);
+            put_new(&mut order, id, at);
+            // (Built here: claimed at its first commit, the tree has it
+            // before the rebuild looks, which then sees no new tile.)
+            let flat = evenly(Cut::Columns, order);
+            *t = built_again(chosen, &flat, area.size.w as f32 / area.size.h.max(1) as f32).unwrap_or(flat);
             return;
         }
         let windows = self.all_windows();
@@ -3370,7 +3422,7 @@ mod tests {
         near_all(parts_of(&d), &[(1, (0.0, 0.0, 0.5, 1.0)), (2, (0.5, 0.0, 0.5, 0.5)), (3, (0.5, 0.5, 0.25, 0.5)), (4, (0.75, 0.5, 0.25, 0.5))]);
         // Spiral: left half, then the top of the rest, then its right,
         // then the bottom.
-        let sp = built_again(L::Spiral, &tree, 1.6).unwrap();
+        let sp = built_again(L::Spiral, &evenly(Cut::Columns, (1..=4).map(w).collect()), 1.6).unwrap();
         near_all(parts_of(&sp), &[(1, (0.0, 0.0, 0.5, 1.0)), (2, (0.5, 0.0, 0.5, 0.5)), (3, (0.75, 0.5, 0.25, 0.5)), (4, (0.5, 0.5, 0.25, 0.5))]);
         // A place kept with no room goes on, taking none; Halves and
         // Main and Stack aren't built here.
@@ -3412,6 +3464,42 @@ mod tests {
         let halves = Node::split(Cut::Columns, 0.5, w(1), w(2));
         let m = main_and_stack_again(&halves, Tile::LeftTwoThirds, None, 1, None, None, None, None).unwrap();
         assert!(near(parts_of(&m)[0].1, (0.0, 0.0, Tile::LeftTwoThirds.fraction().2, 1.0)), "{:?}", parts_of(&m));
+    }
+
+    /// Built layouts keep their own order as windows come and go: a
+    /// window closing in Spiral (its place kept, taking no room) leaves the
+    /// others where they were in its order, and a new one goes into the
+    /// order where it's put, not a split of a tile.
+    #[test]
+    fn built_layouts_keep_their_order() {
+        use olo_protocol::TilingLayout as L;
+        let ids = |v: Vec<Node>| -> Vec<u64> { v.into_iter().filter_map(|n| if let Node::Window(i) = n { Some(i) } else { None }).collect() };
+        let sp = spiral((1..=5).map(w).collect()).unwrap();
+        let mut closed = sp.clone();
+        closed.replace(&|n| *n == w(2), Node::Kept(Kept { who: Who::Window(2), holds: false, until: None }));
+        let again = built_again(L::Spiral, &closed, 1.6).unwrap();
+        assert_eq!(ids(in_order(L::Spiral, Tile::Left, &again)), [1, 3, 4, 5], "{again}");
+        // (Before: its tree's own order, 1 3 5 4, swapped two of them.)
+        for (at, want) in [(NewAt::First, vec![9, 1, 2, 3, 4, 5]), (NewAt::After(3), vec![1, 2, 3, 9, 4, 5]), (NewAt::Last, vec![1, 2, 3, 4, 5, 9]), (NewAt::After(77), vec![1, 2, 3, 4, 5, 9])] {
+            let mut order = in_order(L::Spiral, Tile::Left, &sp);
+            put_new(&mut order, 9, at);
+            let built = built_again(L::Spiral, &evenly(Cut::Columns, order), 1.6).unwrap();
+            assert_eq!(ids(in_order(L::Spiral, Tile::Left, &built)), want, "{at:?}");
+        }
+        // Main and Stack: after a stack window, or last; the main window
+        // stays.
+        let place = Tile::LeftTwoThirds;
+        let t = main_and_stack(vec![w(1)], vec![w(2), w(3)], Vec::new(), place, place.fraction());
+        let order = |t: &Node| {
+            let (m, s, _) = main_and_stack_of(t, place).unwrap();
+            (ids(m), ids(s))
+        };
+        let after = main_and_stack_again(&t, place, Some(place), 1, Some((9, NewAt::After(2))), None, Some(1), None).unwrap();
+        assert_eq!(order(&after), (vec![1], vec![2, 9, 3]));
+        let last = main_and_stack_again(&t, place, Some(place), 1, Some((9, NewAt::Last)), None, Some(1), None).unwrap();
+        assert_eq!(order(&last), (vec![1], vec![2, 3, 9]));
+        let after_main = main_and_stack_again(&t, place, Some(place), 1, Some((9, NewAt::After(1))), None, Some(1), None).unwrap();
+        assert_eq!(order(&after_main), (vec![1], vec![9, 2, 3]));
     }
 
     fn with_kept_spiral(t: &Node) -> Node {
@@ -3672,7 +3760,7 @@ mod tests {
         assert_eq!(order(&all), (vec![1, 2, 3, 4], vec![]));
         // A new window is the first main window; Make Main of a stack window
         // puts it first, the one that was first where it was.
-        let new = main_and_stack_again(&two, place, Some(place), 2, Some(9), None, Some(1), None).unwrap();
+        let new = main_and_stack_again(&two, place, Some(place), 2, Some((9, NewAt::First)), None, Some(1), None).unwrap();
         assert_eq!(order(&new), (vec![9, 1], vec![2, 3, 4]));
         let made = main_and_stack_again(&two, place, Some(place), 2, None, Some(4), Some(1), None).unwrap();
         assert_eq!(order(&made), (vec![4, 2], vec![3, 1]));
@@ -3709,7 +3797,7 @@ mod tests {
             m.into_iter().chain(stack).map(|n| if let Node::Window(i) = n { i } else { 0 }).collect::<Vec<u64>>()
         };
         let t = main_and_stack(vec![w(1)], vec![w(2), w(3)], Vec::new(), place, place.fraction());
-        let new = main_and_stack_again(&t, place, Some(place), 1, Some(5), None, Some(1), None).unwrap();
+        let new = main_and_stack_again(&t, place, Some(place), 1, Some((5, NewAt::First)), None, Some(1), None).unwrap();
         assert_eq!(order(&new), [5, 1, 2, 3]);
         let made = main_and_stack_again(&new, place, Some(place), 1, None, Some(2), Some(5), Some(1)).unwrap();
         assert_eq!(order(&made), [2, 1, 5, 3], "2 the main window, 5 where 2 was");
@@ -3734,7 +3822,7 @@ mod tests {
         if let Node::Split { ratio, .. } = &mut dragged {
             *ratio = 0.1;
         }
-        let more = main_and_stack_again(&dragged, place, Some(place), 1, Some(9), None, Some(2), None).unwrap();
+        let more = main_and_stack_again(&dragged, place, Some(place), 1, Some((9, NewAt::First)), None, Some(2), None).unwrap();
         assert!((part_of(&more, 9).0 - 0.1).abs() < 1e-4, "{:?}", part_of(&more, 9));
         // A tree of another shape: in reading order, its main window kept.
         let other = Node::split(Cut::Rows, 0.5, w(7), Node::split(Cut::Columns, 0.5, w(8), w(2)));

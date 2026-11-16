@@ -6985,7 +6985,18 @@ round). Those four are built in their shape from the tiles in order
 room changes; between those, as the person left them (edges dragged,
 tiles swapped). Halves chosen arranges the tiles as it would have made
 them, each the next one's half across its longer side (`dwindle`), and
-grows a split at a time from then on. Changing layout keeps the
+grows a split at a time from then on. A new window goes into the
+order where `TilingSettings::new_windows` says (Preferences ▸ Windows ▸
+New windows go, as dwm's attach, xmonad's insertPosition and
+Amethyst's "new windows to main": First, the main window, by default;
+After the active window; Last, the bottom of the stack), built again in
+the layout's shape at once (`auto_insert`, `put_new`, `NewAt`; claimed
+at its first commit, the tree has it before the rebuild looks, so it
+waits for nothing: tried first, four in Spiral were four columns);
+Halves always halves the active tile. A closing window's place is kept
+where it was, and the layouts read their own order back (`built_again`
+by `in_order`: read as their tree has them, a window opening or closing
+in Spiral swapped two others). Changing layout keeps the
 windows' order, as tilers keep a window list: the tiles in the order
 the last layout had them (`in_order`: Main and Stack's main window then
 its stack, Spiral's round from the outside in, the others' as their

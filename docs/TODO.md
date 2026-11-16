@@ -41,11 +41,9 @@ something nobody here has is in "Blocked", with what it waits for.
   tree test and `tools/dev/tile-qa`; rotate, flip, even out, turn a
   split, gap keys; a layout made while a round is on its way no longer
   strands a move; several main windows (nmaster) with keys, Deskbar and
-  Preferences; the main share from any tile by key; smart gaps. Left:
-  Monocle (one at a time, the others a
-  key away) and maybe scrolling columns as niri's; choosing where the
-  next window goes (preselect, or beside / after the focused one / at
-  the end); gaps per workspace; sticky and scratchpad
+  Preferences; the main share from any tile by key; smart gaps; where
+  new windows go. Left: Monocle (one at a time, the others a
+  key away) and maybe scrolling columns as niri's; preselecting where the next window splits (bspwm's); gaps per workspace; sticky and scratchpad
   windows; rules for apps by workspace; Preferences for each of those;
   tile-qa with groups, fullscreen and displays coming and going.
 

@@ -335,6 +335,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "tracker", tab: "", group: "New Windows Open In", name: "Mini Icon View", role: "RadioButton" },
     Setting { panel: "windows", tab: "", group: "Windowing Mode", name: "Default mode", role: "ComboBox" },
     Setting { panel: "windows", tab: "", group: "Windowing Mode", name: "Auto-tiling layout", role: "ComboBox" },
+    Setting { panel: "windows", tab: "", group: "Windowing Mode", name: "New windows go", role: "ComboBox" },
     Setting { panel: "windows", tab: "", group: "Windowing Mode", name: "Main window", role: "ComboBox" },
     Setting { panel: "windows", tab: "", group: "Windowing Mode", name: "Number of main windows", role: "ComboBox" },
     Setting { panel: "windows", tab: "", group: "Space Around Arranged Windows", name: "Space at the edges", role: "Slider" },

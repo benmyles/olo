@@ -18,7 +18,7 @@ use olo_kit::{
     style::{self, c},
     theme,
 };
-use olo_protocol::{MAX_MAINS, OutputInfo, Settings, Tile, TilingLayout, WindowingMode};
+use olo_protocol::{MAX_MAINS, NewWindows, OutputInfo, Settings, Tile, TilingLayout, WindowingMode};
 
 use crate::form::Ui;
 
@@ -58,6 +58,13 @@ pub fn ui(ui: &mut Ui, outputs: &[OutputInfo]) {
             // (The one a workspace starts with: each keeps its own, chosen
             // from Deskbar's tray.)
             ui.note(format!("{} A workspace starts with this; choose its own from Deskbar's tray.", s.tiling.layout.detail()));
+            // Where a new window goes among the tiles (Halves always halves
+            // the active one).
+            let news: Vec<SharedString> = NewWindows::ALL.iter().map(|n| SharedString::from(n.title())).collect();
+            let i = NewWindows::ALL.iter().position(|n| *n == s.tiling.new_windows).unwrap_or(0);
+            ui.enabled_if(s.tiling.layout != TilingLayout::Halves, |ui| {
+                ui.menu("new-windows", news, i, |f| f.label("New windows go:"), |s, i| s.tiling.new_windows = NewWindows::ALL[i]);
+            });
             // Where Main and Stack's main window goes on a workspace that
             // hasn't a place of its own (Deskbar's tray ▸ Main Window).
             let places: Vec<(Tile, &str)> = Tile::CHOOSABLE.iter().map(|t| (*t, t.title())).collect();

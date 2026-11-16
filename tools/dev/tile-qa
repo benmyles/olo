@@ -192,6 +192,12 @@ for step in range(steps):
         o = rng.choice(list(outputs()))
         op = f"layout {l} on {o}"
         ipc({"type": "set_tiling_layout", "layout": l, "output": o})
+    elif r < 0.69:
+        # Where new windows go: first, after the active one, last.
+        st = ipc({"type": "get_settings"})["settings"]
+        st["tiling"]["new_windows"] = rng.choice(["first", "after_active", "last"])
+        op = f"new windows {st['tiling']['new_windows']}"
+        ipc({"type": "set_settings", "settings": st})
     elif r < 0.70:
         # Smart gaps on or off: a window alone fills its display, or not.
         st = ipc({"type": "get_settings"})["settings"]

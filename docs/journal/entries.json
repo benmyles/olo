@@ -4468,5 +4468,11 @@
   "title": "Preferences: no space around a window alone",
   "caption": "Smart gaps, as i3 and sway have them: with the box checked, an auto-tiled window alone on its display fills it, no margin or gap; they come back with a second tile (1\u00d7).",
   "image": "2026-11-16/005933-preferences-no-space-around-a-window-alone.png"
+ },
+ {
+  "time": "2026-11-16T01:17:29",
+  "title": "Preferences: where new windows go",
+  "caption": "New windows go first (as the main window), after the active window, or last, in Main and Stack and the layouts built in order; Halves always halves the active tile (1\u00d7).",
+  "image": "2026-11-16/011729-preferences-where-new-windows-go.png"
  }
 ]
