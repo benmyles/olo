@@ -292,6 +292,9 @@ fn power_mode(ui: &mut Ui, modes: Option<Option<Modes>>, shared: &Modes_, gpus_f
             ui.note("No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.");
             return;
         };
+        // The modes side by side, each its description under it (stacked,
+        // with a SATA SSD's row the tab outgrew a 1280 × 800 screen).
+        let mut columns = Vec::new();
         for mode in Mode::ALL.into_iter().filter(|m| modes.available.contains(m)) {
             let shared = shared.clone();
             let pick = ui.on_view(move |_, _: &(), cx| {
@@ -306,10 +309,14 @@ fn power_mode(ui: &mut Ui, modes: Option<Option<Modes>>, shared: &Modes_, gpus_f
                 });
                 cx.notify();
             });
-            ui.add(RadioButton::new(mode.label(), modes.active == mode).id(format!("power-{}", mode.id())).on_select(move |_window, cx| pick(&(), cx)));
-            // (Under the label, past the mark.)
-            ui.add(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).child(StringView::new(mode.about()).dim(true).wrap(true)));
+            let items = ui.collect(|ui| {
+                ui.add(RadioButton::new(mode.label(), modes.active == mode).id(format!("power-{}", mode.id())).on_select(move |_window, cx| pick(&(), cx)));
+                // (Under the label, past the mark.)
+                ui.add(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).child(StringView::new(mode.about()).dim(true).wrap(true)));
+            });
+            columns.push(div().flex_1().min_w(px(0.0)).flex().flex_col().gap(px(m::STACK)).children(items));
         }
+        ui.add(div().flex().flex_row().items_start().gap(px(m::SPACING * 2.0)).children(columns));
         if let Some(why) = modes.degraded_text() {
             ui.note(why);
         }

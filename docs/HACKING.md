@@ -850,13 +850,41 @@ loading the workspace) and could not compile the kit's styles
 edit to an app or the kits in a debug build, and ~90 s for a
 release build of every app after an edit to the kits, which is linking
 dozens of binaries of 200 MB.
+**The toolchain** is a nightly, pinned to a date in `rust-toolchain.toml`
+(Ben, 2026-11-15: "just switch to nightly"): for cargo's workspace-wide
+feature unification (`.cargo/config.toml`, `[resolver]
+feature-unification = "workspace"`, `[unstable]`), which stable doesn't
+have. Without it cargo unified features over the packages each command
+asked for, so `cargo build -p A` and `-p B` built serde, tracing,
+image… with different features and every Olo crate above them again
+under a new hash: 59 builds of olo-kit's library and 127 of its
+examples lived in `target/release` at once, 310 GB of `target/` used
+within two days. Now any selection builds the units `--workspace` does.
+Pinned, not `nightly`: each new compiler rebuilds everything and misses
+all of kache's store. To move it on: install the new date (`rustup
+toolchain install nightly-YYYY-MM-DD --profile minimal -c rustfmt -c
+clippy -c rust-src`), change the file, build the workspace and run the
+tests; the next sweep removes what the old one built. Measured after the
+switch: `cargo build --release -p olo-kache`, then `-p olo-weather -p
+olo-doctor`, used the one build of olo-kit's library the workspace's had
+(three selections, one unit). The front end runs on eight threads too
+(`-Zthreads=8` in `.cargo/config.toml`'s rustflags; Ben: "just use
+Zthreads"): a release compile of olo-kit is code generation's, 30 s
+with or without it (kache bypassed, `KACHE_DISABLED=1`); what it
+shortens is the front end, most of a dev or check build.
 Builds are kept lean on memory and disk. Dev builds keep only line tables (file and
 line in panics and backtraces), and dependencies keep no debuginfo, so debug binaries
 stay small and cheap to link. Full debuginfo made each one 600–850 MB, and twelve
-links at once ran a 30 GiB laptop out of memory. On ben's machine,
-`~/.cargo/config.toml` also caps `build.jobs` at 6 and links with lld
-(`-C link-arg=-fuse-ld=lld`). `~/.config/kache/config.toml` caps the cache at
-15 GiB. The target directory is swept by `tools/dev/sweep`: cargo never
+links at once ran a 30 GiB laptop out of memory. Release builds the same
+(2026-11-15): Olo's crates keep line tables, dependencies none; of
+olo-kache's 290 MB, 258 had been debug info. The line tables stay in the
+executable, not split out (`split-debuginfo`): an installed copy's crash
+report needs them, and `target/` is swept. On ben's machine,
+`~/.cargo/config.toml` sets kache as rustc's wrapper; the workspace's
+`.cargo/config.toml` links with mold. kache's store keeps under its own
+limit (5% of the disk, at most 100 GiB, unless `local_max_size` in
+`~/.config/kache/config.toml` says; Kache ▸ Settings), except for what
+target folders still share with it. The target directory is swept by `tools/dev/sweep`: cargo never
 deletes an artifact, so every edit to a flag, feature or dependency leaves
 the old crate's rlib, binaries and build script behind under a new hash
 (olo's `target/` reached 435 GB; one build's live set is ~110 GB, debug
@@ -864,7 +892,16 @@ and release together). The sweep removes every unit no build has
 considered for two days (cargo touches `.fingerprint/<unit>/invoked.timestamp`
 on each build that wants a unit, compiled or fresh), with everything in
 `deps/`, `build/`, `examples/` and `incremental/` carrying its hash; the
-first run freed 172 GB in 11 s. `tools/dev/sweep --install` (also done by
+first run freed 172 GB in 11 s. Cargo 1.100 keeps each unit in a folder
+of its own (`build/<package>/<hash>/`: its `fingerprint/`, `out/`, a
+build script's `run/`), which the sweep didn't see until 2026-11-15
+(`target/` had reached 564 GB); it sweeps both layouts. A unit built by
+another compiler and last used before the one building here now first
+did is swept too, whatever its age: after the switch to nightly that was
+430 GB of files (counted uncompressed; `/home` is zstd-compressed and much
+of it was kache's blocks, so 44 GB came back at once), and kache's
+clean-up then took the 301 GB of its store those files had held.
+`tools/dev/sweep --install` (also done by
 `tools/setup.sh`) puts it on a daily systemd user timer, `olo-sweep.timer`;
 `--dry-run` reports, `--days N` changes the window, and a directory is only
 swept when it has cargo's `CACHEDIR.TAG`. Scratch target directories
@@ -3976,9 +4013,8 @@ missing (its `NEEDS`: compilers and libclang, the libraries linked,
 PipeWire's headers, Git LFS, Mesa's DRI and Vulkan drivers and the
 Vulkan loader, the session's services, the fonts, Pillow for the dev
 tools; each checked first, so a remix's own builds count), fetches Git
-LFS's files (the voice model is built in), installs Rust through rustup
-if there's none new enough (`RUST_MIN`, the newest `rust-version` a crate
-asks for), builds and installs (`tools/install-session.sh`: GDM's and
+LFS's files (the voice model is built in), installs the toolchain
+`rust-toolchain.toml` pins through rustup (see "The toolchain"), builds and installs (`tools/install-session.sh`: GDM's and
 SDDM's session menus), and turns on the sweep, the hooks and kache's
 daemon; `--check` only reports. Every package it names was checked
 against Fedora 45's x86_64 repository (2026-11-03). `tools/dev/x86-check` type-checks the workspace for x86_64
@@ -8428,7 +8464,25 @@ configurable with reasonable defaults"), in three tabs:
   back on PS0, so the follower sets the drives again as logind says the
   computer woke (`power::watch_wake`), the drives alone. Drives are
   known in the plan by serial ("balanced/nvme:SERIAL"), as names can
-  change between starts. A GPU's are Cooler and Quieter,
+  change between starts. Then a row for each SATA SSD (`olo_system::
+  sata_power`, 2026-11-15: "configure the settings independently for
+  all SSD/nvme drives"; libata's disks, `/sys/block/sd*` under an `ata`
+  port and not spinning, so not USB's), named and kept by serial the
+  same way (its unit serial page, `vpd_pg80`, else its `wwid`): the same
+  three choices, a SATA drive's power being its link's (ALPM: Cooler
+  `med_power_with_dipm`, "the link naps", Coolest `min_power`, "the link
+  sleeps"), set on its host adapter's
+  `link_power_management_policy` by the follower (version 4), which
+  keeps the policy it found before it first changed one
+  (`Followed::sata_found`) and puts that back for As It Is. Tried with a
+  fake /sys (a SATA SSD, a spinning disk, a USB stick: only the SSD);
+  this ThinkPad has none. The names' column is as wide as the longest
+  name (a drive's model, a GPU's), on the 4-point grid, 152 to 216
+  (the panel 968 wide for it); the three modes above stand side by
+  side, each its description under it (stacked, the tab outgrew 1280 ×
+  800 with a SATA row). `OLO_POWER_DEMO=1` shows the made-up machine
+  the lint draws (two GPUs, an NVMe drive, a SATA SSD) on a test
+  desktop. A GPU's are Cooler and Quieter,
   Balanced, Fastest (`gpu_tuning::preset`) or Custom (its own knobs, on
   Graphics). The On Battery column is "As the Mode" or a preset that
   holds whatever the mode. The defaults: each mode's own, and on battery
@@ -11458,6 +11512,12 @@ profile: "The fans", above), `olo-doctor --scheduler [kernel|lavd]`
   (`OLO_POOL_KEEPER` in its environment), a copy finishing after handing
   over, a launch younger than 15 s, the command line's own (`--status`),
   nor one on a port of its own (a test's). Else which serves, as fine.
+- **Software can't be installed here** (`package_services`, on Fedora):
+  PackageKit or dnf's service (`dnf5daemon-server`) missing, as on a
+  minimal Fedora, so Olo's fixes that install something and OS Updates
+  can't; a problem; Install Them puts them in place with Fedora's own
+  dnf, this once (`Step::InstallPackageServices`; every package step
+  does it first where they're missing).
 - **The build cache** (`kache`, where kache is used: its store,
   `~/.cache/kache`, there). Its daemon not running (no `kache-engine
   daemon` process of this user's) with its service installed
@@ -11857,6 +11917,24 @@ knows.
     idle 0 context switches and 0 CPU over 10 s.
 
 ## The Installer (apps/installer, tools/release.sh)
+
+**On a Fedora with no desktop** (a minimal install; Ben, 2026-11-15:
+"we should be 100% independent of gnome"): `olo-installer --console
+[--yes] [--login-screen] [--boot-splash] [--rpm-fusion]` (`console.rs`)
+runs the same plan in the terminal, its stages and progress written as
+lines, the licence agreed to by typing "agree"; the administrator's
+helper is started through sudo (`helper::Way::Sudo`, `OLO_SETUP_HELPER=
+sudo`), which asks on the terminal (no polkit agent there, polkit maybe
+not installed yet); with no display manager at all, Olo's own login
+screen is chosen too. A minimal Fedora has no PackageKit or dnf's
+service either, which Olo installs software through: the package stage
+first puts them in place with Fedora's own dnf, this once (Ben: "just
+have olo installer and olo doctor install the needed packagekit/dnf
+stuff", choosing one dnf call over a package manager of Olo's own:
+`olo_system::packages::bootstrap`, Doctor's `Step::InstallPackageServices`,
+which every package step takes first where they're missing), then asks
+the bus to read its activation files again. *Not yet tried on a
+minimal Fedora* (`tools/dev/installer-check` installs Workstation).
 
 One program a person downloads from Olo's releases and runs on a stock
 Fedora Workstation (Ben, 2026-11-06: "a full screen gui app that
@@ -18494,19 +18572,48 @@ service on or off, the day's hit rate):
   each hit's original compile less what the hit took), Now (the pool's
   slots held by compiles and by tests, of its size, builds waiting,
   what's compiling) and the day by the hour, stacked (hits, misses, the
-  rest) with its legend.
+  rest) with its legend. Under them, the tests holding slots, each with
+  End (`held.rs`: kache's test runner holds a marker a slot under
+  `scheduler/tests/`, each locked; the kernel's list of locks names the
+  process holding each, so each is its program, its project, its slots
+  and since when; End sends it SIGTERM after finding it there again;
+  agents' `end-test:PID`).
 - *Builds*: the projects built most over the day (builds, hit rate),
-  the slowest compiles (misses, by crate), and the latest 300 builds:
-  when, crate, project, result, how long, how big.
-- *Settings*: the `[cache]` keys worth tuning (`data::SETTINGS`: the
-  store's limit and whether what builds share counts toward it, idle
-  and orphaned target folders, the scheduler's pool, test slots and
-  wait, letting more in while the machine has room and to what), each
-  with what kache does when it's unset (from its source: a switch's
-  state, a field's hint) and what it is beside it. Save writes them into
-  `~/.config/kache/config.toml` with `toml_edit`, the rest of the file
-  and its comments as they were; a value that doesn't read as its kind
-  (a size such as `95GiB`, a whole number) is refused, saying which.
+  the slowest compiles (misses, by crate), why the misses missed, and
+  the latest 300 builds: when, crate, project, result (a miss with its
+  cause: "Miss: its source changed"), how long, how big. Why (`data::
+  causes`): each build records what its cache key was made of (kache's
+  `key_fields`: a hash for its compiler, flags, sources, dependencies,
+  environment…), so a miss is set against the last build of the same
+  crate in the same project with the same flags (a crate built as a
+  library and as a test alternates between two keys, each cached): the
+  first part that changed, in the order that explains most (a new
+  compiler, then the environment, a dependency, its source, other build
+  settings); none with its flags but one without, "flags or features";
+  none at all, "first build here"; nothing changed, "evicted from the
+  store" (it was there; the store is too small); kache's own word where
+  it has one ("not supported by kache"). The day's on this laptop
+  (2026-11-15): flags or features 10,736 (the per-command features the
+  nightly switch ends), a dependency changed 3,669, first build here
+  2,749, its source changed 1,028, a new compiler 507, evicted 39.
+  Kept small: each key's parts an index and a 64-bit hash.
+- *Settings*: the `[cache]` keys worth tuning (`data::SETTINGS`), in two
+  groups side by side, the store's (its limit, whether what builds
+  share counts toward it, the age limit, idle and orphaned target
+  folders) and the pool's (compiles at once, the slots a test takes, how
+  long a test waits, letting more in while the machine has room and to
+  what), in rows so each pair starts level, each switch in the block of
+  the setting it qualifies. Each value a slider over its valid steps
+  alone, the one chosen said with its unit (Ben, 2026-11-15: "what is
+  store limit supposed to be? mb? percent? make it a slider with only
+  valid values possible"; `data::steps`): kache's own first (what kache
+  does unset, from its source; the store's as it stands now, "kache's
+  own: 102 GB now"), then the store's 10 to 500 GiB, ages of a day to 90
+  days, the pool's 1 to twice the processors, a test's wait of 10
+  seconds to an hour, room of 50% to 100%; a value the file holds that
+  isn't a step (set by hand, "120GiB") one too, in its place, as
+  written. Save writes them into `~/.config/kache/config.toml` with
+  `toml_edit`, the rest of the file and its comments as they were.
   kache takes them as it starts again: Restart kache is beside Save.
 
 **Where it reads.** The daemon's socket (`~/.cache/kache/daemon.sock`,
@@ -18558,7 +18665,8 @@ seconds); none with nothing built.
 running, Start It (`olo-kache --start`, `--restart`, `--stop`: the
 service with no window, saying how it stands; `--clean-up`, a clean-up,
 saying what it did); its store held over its limit by builds' target
-folders, Open Kache.
+folders, Open Kache. `--print` has the day's miss causes and the tests
+holding slots too.
 
 **Agents.** Every action is a menu command (`refresh`, `restart`,
 `stop`, `start`, `clean-up`, `save-settings`, `revert-settings`,

@@ -47,6 +47,7 @@ pub mod procs;
 pub mod realtime;
 pub mod recording;
 pub mod rfkill;
+pub mod sata_power;
 pub mod scheduler;
 pub mod secrets;
 pub mod shaping;

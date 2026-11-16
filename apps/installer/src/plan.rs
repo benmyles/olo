@@ -263,6 +263,7 @@ impl Root {
         if self.helper.is_none() {
             let way = match std::env::var("OLO_SETUP_HELPER").as_deref() {
                 Ok("direct") => Way::Direct,
+                Ok("sudo") => Way::Sudo,
                 _ => Way::Pkexec,
             };
             tell(Event::Password);
@@ -335,6 +336,15 @@ pub fn install(choices: Choices, given: Option<String>, stop: Arc<AtomicBool>, t
     say(Event::Note(format!("Fedora {} {}, {}; {:.0} GB free.", c.fedora.unwrap_or(0), c.variant, bundle::arch(), c.free as f64 / (1u64 << 30) as f64)));
 
     stage("Getting what Olo needs");
+    // (A minimal Fedora has no PackageKit, which the rest installs
+    // through: put in place first, with Fedora's own dnf, this once.)
+    let missing = olo_system::packages::missing_services();
+    if !missing.is_empty() {
+        say(Event::Note(format!("Installing {} first, which Olo installs software through.", missing.join(" and "))));
+        if let Err(e) = root.run(vec![Step::InstallPackageServices], &say) {
+            return say(fail("Getting what Olo needs", e, "Check the network connection, then try again."));
+        }
+    }
     let mut packages: Vec<String> = PACKAGES.iter().map(|s| (*s).to_owned()).collect();
     if choices.boot_splash {
         packages.push("plymouth-plugin-two-step".into());

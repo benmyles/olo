@@ -19,6 +19,11 @@
 //!                                  those chosen (tests; an agent)
 //! olo-installer --bundle URL|FILE  that archive (its .sha256 beside it),
 //!                                  not the newest release's
+//! olo-installer --console [--yes] [--login-screen] [--boot-splash] [--rpm-fusion]
+//!                                  the same, in the terminal, with no
+//!                                  window: a Fedora with no desktop (a
+//!                                  minimal install); sudo asks for the
+//!                                  password (console.rs)
 //! olo-installer --check            whether this computer can have Olo,
 //!                                  as JSON; opens nothing
 //! olo-installer --helper           the privileged helper (pkexec runs it)
@@ -26,6 +31,7 @@
 
 mod assets;
 mod bundle;
+mod console;
 mod plan;
 mod session;
 mod ui;
@@ -53,6 +59,9 @@ fn main() {
     let auto = args.iter().any(|a| a == "--yes");
     let choices =
         plan::Choices { login_screen: args.iter().any(|a| a == "--login-screen"), boot_splash: args.iter().any(|a| a == "--boot-splash"), rpm_fusion: args.iter().any(|a| a == "--rpm-fusion") };
+    if args.iter().any(|a| a == "--console") {
+        std::process::exit(if console::run(choices, given, auto) == std::process::ExitCode::SUCCESS { 0 } else { 1 });
+    }
     // The kit's fonts and Setup's icons, from what it carries.
     if let Some(dir) = assets::unpack() {
         // SAFETY: single-threaded, before anything else starts.

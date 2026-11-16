@@ -307,6 +307,10 @@ pub struct Roots {
     /// The names of the packages with an update waiting (None: no
     /// PackageKit).
     pub updates: Box<dyn Fn() -> Option<Vec<String>> + Send + Sync>,
+    /// The services software is installed through that aren't here
+    /// (`olo_system::packages::missing_services`: PackageKit, dnf's), by
+    /// package.
+    pub package_services: Box<dyn Fn() -> Vec<&'static str> + Send + Sync>,
     /// Where the session's programs keep temporary files (`temp_files`).
     pub temp: TempFiles,
     /// The port Token Pool's gateway listens on (`token_pool`).
@@ -414,6 +418,7 @@ impl Roots {
             bluetooth_stuck,
             packages: Box::new(real_packages),
             updates: Box::new(real_updates),
+            package_services: Box::new(olo_system::packages::missing_services),
             temp: TempFiles::real(),
             pool_port: std::env::var("OLO_POOL_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(POOL_PORT),
         }
@@ -682,6 +687,7 @@ pub fn scan(roots: &Roots) -> Report {
     stale(roots, &procs, &mut r);
     token_pool(roots, &procs, &mut r);
     kache(roots, &procs, &mut r);
+    package_services(roots, &mut r);
     login_entry(roots, &mut r);
     login_screen_handed_over(roots, &mut r);
     own_login_screen(roots, &mut r);
@@ -915,6 +921,30 @@ pub fn prepare(id: &str) -> Result<(), String> {
 /// finished for days (Back Up Now), its key only on this computer (Keep
 /// Key in Passwords: without it, the backups can't be read elsewhere);
 /// else when it last backed up, as fine.
+/// The services software is installed through (PackageKit, dnf's): a
+/// minimal Fedora has neither, so Olo's fixes that install packages, OS
+/// Updates and the Installer couldn't (Ben, 2026-11-15: "just have olo
+/// installer and olo doctor install the needed packagekit/dnf stuff").
+/// Only on Fedora, where they'd be.
+fn package_services(roots: &Roots, r: &mut Report) {
+    let fedora = read(&roots.fs.join("etc/os-release")).is_some_and(|t| t.lines().any(|l| l.trim() == "ID=fedora"));
+    let missing = (roots.package_services)();
+    if !fedora || missing.is_empty() {
+        return;
+    }
+    let names = missing.join(" and ");
+    let (is, them, they_are) = if missing.len() == 1 { ("isn't", "it", "it is") } else { ("aren't", "them", "they are") };
+    r.findings.push(Finding {
+        id: "packages:services".into(),
+        severity: Severity::Problem,
+        title: "Software can't be installed here".into(),
+        detail: format!(
+            "{names} {is} installed (a minimal Fedora comes without {them}): Olo installs software and updates through {them}, so its fixes that install something, and OS Updates, can't until {they_are}. Installing {them} uses Fedora's own dnf, this once."
+        ),
+        fix: Some(Fix { label: if missing.len() == 1 { "Install It" } else { "Install Them" }.into(), root: true, steps: vec![Step::InstallPackageServices] }),
+    });
+}
+
 /// kache, the build cache (Olo's Kache app, `apps/kache`), where it's
 /// used (its store in the cache folder): its daemon running, else builds
 /// compile everything again and nothing keeps the store under its limit;
@@ -3362,6 +3392,7 @@ mod tests {
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
+            package_services: Box::new(Vec::new),
             temp: TempFiles::default(),
             pool_port: POOL_PORT,
         };
@@ -3504,6 +3535,26 @@ mod tests {
         assert_eq!(f.fix.unwrap().label, "Set Them Again");
         save(&followed, 1);
         assert!(scan(&roots).find("power-modes:changed").is_none(), "just written: the follower may be on its way");
+    }
+
+    /// No PackageKit or dnf's service (a minimal Fedora): said, and the fix
+    /// installs them; on Fedora only.
+    #[test]
+    fn no_package_services() {
+        let (fs, mut roots) = machine("package-services");
+        std::fs::create_dir_all(fs.join("etc")).unwrap();
+        std::fs::write(fs.join("etc/os-release"), "NAME=\"Fedora Linux\"\nID=fedora\nVERSION_ID=45\n").unwrap();
+        assert!(scan(&roots).find("packages:services").is_none(), "both there");
+        roots.package_services = Box::new(|| vec!["PackageKit", "dnf5daemon-server"]);
+        let r = scan(&roots);
+        let f = r.find("packages:services").expect("said");
+        assert!(f.detail.starts_with("PackageKit and dnf5daemon-server aren't installed"), "{}", f.detail);
+        assert_eq!(f.fix.as_ref().map(|x| (x.root, x.steps.clone())), Some((true, vec![Step::InstallPackageServices])));
+        roots.package_services = Box::new(|| vec!["dnf5daemon-server"]);
+        let f = scan(&roots).find("packages:services").cloned().expect("said");
+        assert!(f.detail.starts_with("dnf5daemon-server isn't installed"), "{}", f.detail);
+        std::fs::write(fs.join("etc/os-release"), "ID=debian\n").unwrap();
+        assert!(scan(&roots).find("packages:services").is_none(), "Fedora only");
     }
 
     /// The build cache: nothing said where kache isn't used; its daemon
@@ -3662,6 +3713,7 @@ mod tests {
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
+            package_services: Box::new(Vec::new),
             temp: TempFiles { config: fs.join("home/me/.config"), cache: fs.join("home/me/.cache/olo"), ..TempFiles::default() },
             pool_port: POOL_PORT,
         };
@@ -3744,6 +3796,7 @@ mod tests {
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
+            package_services: Box::new(Vec::new),
             temp: TempFiles { config: fs.join("home/me/.config"), ..TempFiles::default() },
             pool_port: POOL_PORT,
         };
@@ -4721,6 +4774,7 @@ mod tests {
                 bluetooth_stuck: Vec::new(),
                 packages: Box::new(|_| None),
                 updates: Box::new(|| None),
+                package_services: Box::new(Vec::new),
                 temp: TempFiles {
                     tmp_in_memory,
                     tmpdir: tmpdir.map(str::to_owned),

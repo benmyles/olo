@@ -27,7 +27,7 @@ use std::io::{Read, Write};
 use olo_system::{
     battery, cpu_tuning,
     gpu_tuning::{self, Tuning},
-    gpus, nvme_power, power_profile, systemd,
+    gpus, nvme_power, power_profile, sata_power, systemd,
 };
 
 use gpu_tuning::{
@@ -144,7 +144,7 @@ fn follow_now(mode: power_profile::Mode, on_battery: bool) -> Vec<(String, gpu_t
     let mut out = follow_plan(mode, on_battery);
     let kept = Tuning::load();
     let before = gpu_tuning::Followed::load(std::path::Path::new("/")).unwrap_or_default();
-    let (done, drives, limited) = follow_drives(&kept.plan, mode, on_battery, &before.limited);
+    let (done, drives, limited, sata_found) = follow_drives(&kept.plan, mode, on_battery, &before);
     out.extend(done);
     let followed = gpu_tuning::Followed {
         version: gpu_tuning::FOLLOWER_VERSION,
@@ -156,6 +156,7 @@ fn follow_now(mode: power_profile::Mode, on_battery: bool) -> Vec<(String, gpu_t
         cpu_after: cpu_tuning::caps(),
         drives,
         limited,
+        sata_found,
     };
     if let Err(e) = followed.save() {
         eprintln!("olo-gpu-tune: couldn't say what was done: {e}");
@@ -171,8 +172,13 @@ fn failures(out: &[(String, gpu_tuning::Applied)]) -> Vec<String> {
 /// Each NVMe drive on the plan's preset for `mode` and the supply: a
 /// lower working state set, or, As It Is, put back on PS0 only if the
 /// follower had lowered it (`limited`, by serial: else it's left quite
-/// alone). What was done, each drive as it is now, and those lowered.
-fn follow_drives(plan: &gpu_tuning::Plan, mode: power_profile::Mode, on_battery: bool, limited: &[String]) -> (Vec<(String, gpu_tuning::Applied)>, Vec<nvme_power::DriveState>, Vec<String>) {
+/// alone). Each SATA SSD likewise, its link's policy: As It Is puts back
+/// the policy found before the follower first changed it
+/// (`sata_found`). What was done, each drive as it is now, those
+/// lowered, and the SATA policies found.
+type Drives = (Vec<(String, gpu_tuning::Applied)>, Vec<nvme_power::DriveState>, Vec<String>, std::collections::BTreeMap<String, String>);
+fn follow_drives(plan: &gpu_tuning::Plan, mode: power_profile::Mode, on_battery: bool, before: &gpu_tuning::Followed) -> Drives {
+    let limited = &before.limited;
     let (mut out, mut drives, mut lowered) = (Vec::new(), Vec::new(), Vec::new());
     for d in nvme_power::drives() {
         let what = format!("{} ({})", d.label(), d.name);
@@ -194,9 +200,34 @@ fn follow_drives(plan: &gpu_tuning::Plan, mode: power_profile::Mode, on_battery:
             lowered.push(d.serial.clone());
         }
         let now = nvme_power::current(&d.name).ok();
-        drives.push(nvme_power::DriveState { serial: d.serial, model: d.model, name: d.name, states, now });
+        drives.push(nvme_power::DriveState { serial: d.serial, model: d.model, name: d.name, states, now, ..Default::default() });
     }
-    (out, drives, lowered)
+    let mut found = before.sata_found.clone();
+    for s in sata_power::drives() {
+        let d = s.drive;
+        let what = format!("{} ({})", d.label(), d.name);
+        let preset = plan.nvme_now(mode, on_battery, &d.serial);
+        let now = sata_power::current(&s.host).ok();
+        let target = match sata_power::policy(preset) {
+            Some(p) => {
+                // (What it was before the follower first changed it.)
+                if !found.contains_key(&d.serial)
+                    && let Some(n) = &now
+                {
+                    found.insert(d.serial.clone(), n.clone());
+                }
+                lowered.push(d.serial.clone());
+                Some(p.to_owned())
+            }
+            None => limited.contains(&d.serial).then(|| found.remove(&d.serial)).flatten(),
+        };
+        if let Some(t) = target.filter(|t| now.as_deref() != Some(t.as_str())) {
+            out.push((what, vec![sata_power::set(&s.host, &t).map(|()| format!("its link on {t} ({})", sata_power::policy_words(&t))).map_err(|e| e.to_string())]));
+        }
+        let link = sata_power::current(&s.host).ok();
+        drives.push(nvme_power::DriveState { serial: d.serial, model: d.model, name: d.name, link, sata: true, ..Default::default() });
+    }
+    (out, drives, lowered, found)
 }
 
 fn follow_plan(mode: power_profile::Mode, on_battery: bool) -> Vec<(String, gpu_tuning::Applied)> {
@@ -308,12 +339,12 @@ fn follow() -> i32 {
                 // NVIDIA's GPU isn't woken for it).
                 if let Some(m) = mode {
                     let mut followed = gpu_tuning::Followed::load(std::path::Path::new("/")).unwrap_or_default();
-                    let (done, drives, limited) = follow_drives(&Tuning::load().plan, m, on_battery, &followed.limited);
+                    let (done, drives, limited, sata_found) = follow_drives(&Tuning::load().plan, m, on_battery, &followed);
                     if !done.is_empty() {
                         println!("woke: the drives set again");
-                        followed.failed.retain(|f| !f.contains("(nvme"));
+                        followed.failed.retain(|f| !f.contains("(nvme") && !f.contains("(sd"));
                         followed.failed.extend(failures(&done));
-                        (followed.drives, followed.limited) = (drives, limited);
+                        (followed.drives, followed.limited, followed.sata_found) = (drives, limited, sata_found);
                         let _ = followed.save();
                         report(done);
                     }

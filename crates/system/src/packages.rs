@@ -197,6 +197,81 @@ pub fn update(ids: Vec<String>, progress: &mut dyn FnMut(Progress)) -> Result<()
     transaction("UpdatePackages", &(ONLY_TRUSTED, ids), progress).map(|_| ())
 }
 
+/// The services Olo installs and updates software through: PackageKit
+/// (Olo Setup, Doctor) and dnf's own (OS Updates, `crate::dnf`), each by
+/// its package and its name on the system bus.
+pub const SERVICES: &[(&str, &str)] = &[("PackageKit", DEST), ("dnf5daemon-server", "org.rpm.dnf.v0")];
+
+/// Whether `name` can be asked on the system bus: running, or started
+/// when asked (its activation file there).
+fn on_the_bus(name: &str) -> bool {
+    let Ok(conn) = bus::system() else { return false };
+    let has = |method: &str| -> Vec<String> { bus::call(conn, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", method, &()).unwrap_or_default() };
+    has("ListActivatableNames").iter().chain(has("ListNames").iter()).any(|n| n == name)
+}
+
+/// The services of [`SERVICES`] that aren't here, by package.
+pub fn missing_services() -> Vec<&'static str> {
+    SERVICES.iter().filter(|(_, name)| !on_the_bus(name)).map(|(package, _)| *package).collect()
+}
+
+/// PackageKit and dnf's service put in place where they aren't (root): a
+/// minimal Fedora has neither, and nothing else on the bus installs
+/// software, so this one step runs Fedora's own dnf (Ben, 2026-11-15:
+/// "just have olo installer and olo doctor install the needed
+/// packagekit/dnf stuff", choosing one dnf call over a package manager
+/// of Olo's own). Everything after goes through the services. Then the
+/// bus is told to read its activation files again, and the services
+/// waited for (ten seconds at most). What dnf says goes to `progress`
+/// line by line.
+pub fn bootstrap(progress: &mut dyn FnMut(Progress)) -> Result<()> {
+    let missing = missing_services();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let dnf = ["/usr/bin/dnf5", "/usr/bin/dnf"]
+        .into_iter()
+        .find(|p| std::path::Path::new(p).exists())
+        .ok_or_else(|| zbus::Error::Failure("neither PackageKit nor dnf is installed: nothing here can install software".into()))?;
+    progress(Progress::Status("Installing the software service"));
+    let mut child = std::process::Command::new(dnf)
+        .args(["install", "-y", "--setopt=install_weak_deps=False"])
+        .args(&missing)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| zbus::Error::Failure(format!("dnf couldn't start: {e}")))?;
+    // (Its errors kept to say; what it does said as it goes.)
+    let err = child.stderr.take().map(|e| std::thread::spawn(move || std::io::read_to_string(e).unwrap_or_default()));
+    if let Some(out) = child.stdout.take() {
+        use std::io::BufRead as _;
+        for line in std::io::BufReader::new(out).lines().map_while(std::result::Result::ok) {
+            let line = line.trim();
+            if !line.is_empty() {
+                progress(Progress::Package(line.to_owned()));
+            }
+        }
+    }
+    let status = child.wait().map_err(|e| zbus::Error::Failure(e.to_string()))?;
+    let said = err.and_then(|t| t.join().ok()).unwrap_or_default();
+    if !status.success() {
+        let last = said.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("it stopped").trim().to_owned();
+        return Err(zbus::Error::Failure(format!("installing {} didn't work: {last}", missing.join(" and "))));
+    }
+    if let Ok(conn) = bus::system() {
+        let _ = bus::call::<_, ()>(conn, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "ReloadConfig", &());
+    }
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !missing_services().is_empty() {
+        if std::time::Instant::now() >= until {
+            return Err(zbus::Error::Failure(format!("{} installed, but not yet on the system bus", missing.join(" and "))));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+    Ok(())
+}
+
 /// Whether a package called `name` is installed (PackageKit's word; None
 /// without PackageKit).
 pub fn installed(name: &str) -> Option<bool> {

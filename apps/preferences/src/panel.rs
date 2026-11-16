@@ -237,7 +237,9 @@ impl Panel {
             // Three tabs: the power modes and what each sets (a grid of
             // the processors and each GPU), the GPUs side by side, and the
             // battery with when idle beside it.
-            Panel::Power => (900, 520),
+            // (Its modes' table's names as wide as a drive's or GPU's longest,
+            // up to 216: `gpus::modes`.)
+            Panel::Power => (968, 520),
             Panel::ScreenSaver => (500, 400),
             // Passwords' settings, security keys beside them.
             Panel::Security => (880, 440),

@@ -35,6 +35,10 @@ pub struct Drive {
     /// What it holds, its namespaces together (bytes).
     #[serde(default)]
     pub size: u64,
+    /// A SATA SSD (`crate::sata_power`: its name "sda", its power its
+    /// link's), not an NVMe drive.
+    #[serde(default)]
+    pub sata: bool,
 }
 
 impl Drive {
@@ -162,7 +166,7 @@ pub fn drives_under(class: &Path) -> Vec<Drive> {
                     .filter_map(|n| read(n.path().join("size")).parse::<u64>().ok())
                     .sum::<u64>()
                     * 512;
-                Drive { model: read(p.join("model")), serial: read(p.join("serial")), size, name }
+                Drive { model: read(p.join("model")), serial: read(p.join("serial")), size, name, sata: false }
             })
         })
         .collect();
@@ -272,6 +276,10 @@ pub struct DriveState {
     pub states: Vec<PowerState>,
     /// The working state it's on (None: it couldn't be asked).
     pub now: Option<u8>,
+    /// A SATA SSD: its link's policy now (`crate::sata_power`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub link: Option<String>,
+    pub sata: bool,
 }
 
 /// What a preset is on a drive in words, with what it draws at most:
@@ -343,7 +351,7 @@ mod tests {
     /// device.
     #[test]
     fn drives_are_named_apart() {
-        let d = |name: &str, model: &str, size: u64| Drive { name: name.into(), model: model.into(), serial: format!("S{name}"), size };
+        let d = |name: &str, model: &str, size: u64| Drive { name: name.into(), model: model.into(), serial: format!("S{name}"), size, sata: false };
         assert_eq!(titles(&[d("nvme0", "SKHynix_HFS002TFM9X179N", 2_048_408_248_320)]), ["SKHynix HFS002TFM9X179N"]);
         let two = titles(&[d("nvme0", "Samsung SSD 990 PRO", 2_000_398_934_016), d("nvme1", "Samsung SSD 990 PRO", 1_000_204_886_016)]);
         assert_eq!(two, ["Samsung SSD 990 PRO, 2 TB", "Samsung SSD 990 PRO, 1 TB"]);

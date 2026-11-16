@@ -102,11 +102,82 @@ pub struct Event {
     /// less what the hit took).
     pub compile_ms: u64,
     pub size: u64,
+    /// What its cache key was made of (kache's `key_fields`: each part's
+    /// hash), by [`KEY_FIELDS`]' index; and the crate it's of in its
+    /// project (its folder, name and kind together, hashed).
+    pub keys: Vec<(u8, u64)>,
+    pub ident: u64,
+    /// kache's own word for a miss ("unsupported"; "other" for most).
+    pub miss_reason: Option<Box<str>>,
+    /// Why a miss missed, worked out ([`causes`]).
+    pub cause: Option<&'static str>,
 }
 
 impl Event {
     pub fn hit(&self) -> bool {
         self.result.ends_with("hit")
+    }
+}
+
+/// The parts of kache's cache key it records for each build.
+pub const KEY_FIELDS: &[&str] = &["args", "compiler", "crate", "diagnostics", "outcome_lints", "remap", "sources", "externs", "link", "native_bundle_audit", "env_deps"];
+
+/// Why each miss missed (Ben's Kache request: "misses and what caused
+/// them (a changed input, feature unification, a new toolchain)"): its key
+/// against the last one of the same crate in the same project (`events`
+/// oldest first), the first part that changed, in the order that explains
+/// most (a new compiler changes everything after it); none before it,
+/// "first build here"; nothing changed, "evicted" (it was there, and the
+/// store let it go).
+pub fn causes(events: &mut [Event]) {
+    // (The last build of each crate, and of each crate with the same
+    // flags: a crate built as a library and as a test alternates between
+    // two, each cached, and a miss of one is explained by its own last.)
+    let args = KEY_FIELDS.iter().position(|f| *f == "args").unwrap_or(0) as u8;
+    let flags = |e: &Event| e.keys.iter().find(|(k, _)| *k == args).map(|(_, v)| *v);
+    let mut last: std::collections::HashMap<u64, usize> = std::collections::HashMap::new();
+    let mut last_alike: std::collections::HashMap<(u64, Option<u64>), usize> = std::collections::HashMap::new();
+    for i in 0..events.len() {
+        if events[i].result == "miss" {
+            let e = &events[i];
+            let alike = last_alike.get(&(e.ident, flags(e))).copied();
+            events[i].cause = Some(match (e.miss_reason.as_deref(), alike, last.get(&e.ident)) {
+                (Some(r), ..) if r != "other" => match r {
+                    "unsupported" => "not supported by kache",
+                    "not-a-compile" => "not a compile",
+                    _ => "kache's own reason",
+                },
+                _ if e.keys.is_empty() => "not recorded",
+                (_, Some(j), _) => changed(&events[j].keys, &e.keys),
+                (_, None, Some(_)) => "flags or features",
+                (_, None, None) => "first build here",
+            });
+        }
+        if !events[i].keys.is_empty() {
+            last.insert(events[i].ident, i);
+            last_alike.insert((events[i].ident, flags(&events[i])), i);
+        }
+    }
+}
+
+/// The first part of a key that differs between `before` and `now`, said.
+fn changed(before: &[(u8, u64)], now: &[(u8, u64)]) -> &'static str {
+    let get = |keys: &[(u8, u64)], field: &str| KEY_FIELDS.iter().position(|f| *f == field).and_then(|i| keys.iter().find(|(k, _)| *k as usize == i).map(|(_, v)| *v));
+    let differs = |field: &str| get(before, field) != get(now, field);
+    if differs("compiler") {
+        "a new compiler"
+    } else if differs("args") {
+        "flags or features"
+    } else if differs("env_deps") {
+        "the environment"
+    } else if differs("externs") {
+        "a dependency changed"
+    } else if differs("sources") {
+        "its source changed"
+    } else if before != now {
+        "build settings"
+    } else {
+        "evicted from the store"
     }
 }
 
@@ -126,6 +197,8 @@ pub struct Day {
     pub slowest: Vec<(String, u64)>,
     /// Time the hits saved (ms): what their compiles took less what they did.
     pub saved_ms: u64,
+    /// Why the misses missed, each cause's count, most first.
+    pub causes: Vec<(&'static str, u64)>,
 }
 
 /// A project's builds over the day.
@@ -190,6 +263,8 @@ pub struct Snapshot {
     /// The latest builds, newest first.
     pub recent: Vec<Event>,
     pub pool: Option<Pool>,
+    /// Tests holding the pool's slots.
+    pub held: Vec<crate::held::Held>,
 }
 
 /// The builds kept to list.
@@ -208,12 +283,14 @@ pub fn read() -> Snapshot {
     let since = now.saturating_sub(24 * 3_600_000);
     let mut events = archived_since(&dir.join("events.jsonl.archive"), since);
     events.extend(LIVE.lock().unwrap_or_else(|e| e.into_inner()).read(&dir.join("events.jsonl"), since).iter().cloned());
+    causes(&mut events);
     let day = day_of(&events, now);
     let mut recent: Vec<Event> = events.into_iter().rev().take(RECENT).collect();
     recent.shrink_to_fit();
     let permits = settings_at(&config_path(), "scheduler_permits").and_then(|v| v.parse().ok());
     let pool = pool(&dir, permits);
-    Snapshot { unit, daemon, cleanup, day, recent, pool }
+    let held = crate::held::held(&dir);
+    Snapshot { unit, daemon, cleanup, day, recent, pool, held }
 }
 
 /// The live build log, read as it grows: what was read is kept, and each
@@ -363,6 +440,10 @@ pub fn parse_events(text: &str) -> Vec<Event> {
         compile_time_ms: Option<u64>,
         #[serde(default)]
         size: Option<u64>,
+        #[serde(borrow, default)]
+        key_fields: Option<std::collections::BTreeMap<Cow<'a, str>, Cow<'a, str>>>,
+        #[serde(borrow, default)]
+        miss_reason: Option<Cow<'a, str>>,
     }
     text.lines()
         .filter_map(|l| serde_json::from_str::<Line>(l).ok())
@@ -370,14 +451,26 @@ pub fn parse_events(text: &str) -> Vec<Event> {
             let at_ms = chrono::DateTime::parse_from_rfc3339(&v.ts).ok()?.timestamp_millis().max(0) as u64;
             // (A build's root is its project's folder or its target folder.)
             let project = v.root.as_deref().and_then(|r| r.rsplit('/').find(|p| !p.is_empty() && *p != "target")).unwrap_or_default().to_owned();
+            let keys: Vec<(u8, u64)> = v.key_fields.iter().flatten().filter_map(|(k, h)| Some((KEY_FIELDS.iter().position(|f| *f == k.as_ref())? as u8, u64::from_str_radix(h, 16).ok()?))).collect();
+            let crate_name = v.crate_name.map(Cow::into_owned).unwrap_or_default();
+            let ident = {
+                use std::hash::{Hash as _, Hasher as _};
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                (&project, &crate_name, keys.iter().find(|(k, _)| KEY_FIELDS[*k as usize] == "crate").map(|(_, v)| *v)).hash(&mut h);
+                h.finish()
+            };
             Some(Event {
                 at_ms,
-                crate_name: v.crate_name.map(Cow::into_owned).unwrap_or_default(),
+                crate_name,
                 project,
                 result: v.result.into_owned(),
                 elapsed_ms: v.elapsed_ms.unwrap_or(0),
                 compile_ms: v.compile_time_ms.unwrap_or(0),
                 size: v.size.unwrap_or(0),
+                keys,
+                ident,
+                miss_reason: v.miss_reason.map(|r| r.into()),
+                cause: None,
             })
         })
         .collect()
@@ -423,6 +516,15 @@ pub fn day_of(events: &[Event], now: u64) -> Day {
     slowest.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     slowest.truncate(TOP);
     d.slowest = slowest;
+    let mut causes: std::collections::BTreeMap<&'static str, u64> = std::collections::BTreeMap::new();
+    for e in events.iter().filter(|e| e.at_ms >= from && e.at_ms <= now) {
+        if let Some(c) = e.cause {
+            *causes.entry(c).or_default() += 1;
+        }
+    }
+    let mut causes: Vec<(&'static str, u64)> = causes.into_iter().collect();
+    causes.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+    d.causes = causes;
     d
 }
 
@@ -495,17 +597,103 @@ pub enum Kind {
 
 /// The settings Kache offers, in order.
 pub const SETTINGS: &[Setting] = &[
-    Setting { key: "local_max_size", label: "Store limit:", about: "Before what's used least goes.", kind: Kind::Size, default: "5% of its disk, up to 100GiB" },
+    Setting {
+        key: "local_max_size",
+        label: "Store limit",
+        about: "The most the store keeps: past it, what's used least goes. kache's own is 5% of its disk, up to 100 GiB.",
+        kind: Kind::Size,
+        default: "5% of the disk",
+    },
     Setting { key: "count_held_in_max_size", label: "", about: "Count what builds' target folders share toward the limit", kind: Kind::Switch, default: "false" },
-    Setting { key: "gc_max_age_hours", label: "Age limit:", about: "Hours unused before a clean-up takes an entry.", kind: Kind::Number, default: "none" },
-    Setting { key: "auto_clean_idle_targets_days", label: "Idle targets:", about: "Days unused before a target folder is cleaned.", kind: Kind::Number, default: "never" },
+    Setting { key: "gc_max_age_hours", label: "Age limit", about: "How long an entry may go unused before a clean-up takes it.", kind: Kind::Number, default: "none" },
+    Setting { key: "auto_clean_idle_targets_days", label: "Idle target folders", about: "How long a build's target folder may go unused before it's cleaned.", kind: Kind::Number, default: "never" },
     Setting { key: "auto_clean_orphaned_targets", label: "", about: "Clean target folders whose project is gone", kind: Kind::Switch, default: "true" },
-    Setting { key: "scheduler_permits", label: "At once:", about: "Compiles and tests run together.", kind: Kind::Number, default: "one a processor" },
-    Setting { key: "scheduler_test_slots", label: "Test slots:", about: "The most of those one test binary takes.", kind: Kind::Number, default: "all" },
-    Setting { key: "scheduler_test_wait_secs", label: "Test wait:", about: "Seconds a test waits for its slots.", kind: Kind::Number, default: "1800" },
+    Setting {
+        key: "scheduler_permits",
+        label: "Compiles at once",
+        about: "Compiles and tests run together: the pool's slots. kache's own is one a processor.",
+        kind: Kind::Number,
+        default: "one a processor",
+    },
+    Setting { key: "scheduler_test_slots", label: "Slots a test takes", about: "The most of the pool one test binary holds.", kind: Kind::Number, default: "all" },
+    Setting { key: "scheduler_test_wait_secs", label: "Test wait", about: "How long a test waits for its slots before it runs without them.", kind: Kind::Number, default: "30 minutes" },
     Setting { key: "scheduler_dynamic", label: "", about: "Let more in while the machine has room to spare", kind: Kind::Switch, default: "true" },
-    Setting { key: "scheduler_cpu_percent", label: "Room to:", about: "Percent of the processors kept busy.", kind: Kind::Number, default: "85" },
+    Setting { key: "scheduler_cpu_percent", label: "Room to spare, up to", about: "How busy letting more in keeps the processors.", kind: Kind::Number, default: "85%" },
 ];
+
+/// A setting's choices, the only ones a slider offers (Ben, 2026-11-15:
+/// "what is store limit supposed to be? mb? percent? make it a slider with
+/// only valid values possible"): what's written for each (None: not set,
+/// kache's own, always first) and its name with its unit. A value the
+/// file holds that isn't among them (set by hand) is one too, in its
+/// place. `processors`: this computer's, for the pool's steps.
+pub fn steps(s: &Setting, current: Option<&str>, processors: u32) -> Vec<(Option<String>, String)> {
+    let own = (None, format!("kache's own: {}", s.default));
+    let n = |v: u64, name: String| (Some(v.to_string()), name);
+    let plural = |v: u64, one: &str, many: &str| if v == 1 { format!("1 {one}") } else { format!("{v} {many}") };
+    let mut steps: Vec<(Option<String>, String)> = match s.key {
+        "local_max_size" => [10u64, 25, 50, 75, 100, 150, 200, 300, 500].into_iter().map(|g| (Some(format!("{g}GiB")), format!("{g} GiB"))).collect(),
+        "gc_max_age_hours" => [(24u64, "1 day"), (72, "3 days"), (168, "1 week"), (336, "2 weeks"), (720, "30 days"), (2160, "90 days")].into_iter().map(|(h, name)| n(h, name.into())).collect(),
+        "auto_clean_idle_targets_days" => [1u64, 2, 3, 7, 14, 30, 90].into_iter().map(|d| n(d, plural(d, "day", "days"))).collect(),
+        "scheduler_permits" | "scheduler_test_slots" => (1..=u64::from(processors.max(1)) * 2).map(|k| n(k, plural(k, "slot", "slots"))).collect(),
+        "scheduler_test_wait_secs" => [(10u64, "10 seconds"), (30, "30 seconds"), (60, "1 minute"), (120, "2 minutes"), (300, "5 minutes"), (600, "10 minutes"), (3600, "1 hour")]
+            .into_iter()
+            .map(|(v, name)| n(v, name.into()))
+            .collect(),
+        "scheduler_cpu_percent" => (10..=20u64).map(|k| k * 5).filter(|p| *p != 85).map(|p| n(p, format!("{p}%"))).collect(),
+        _ => Vec::new(),
+    };
+    // (A value set by hand: kept, in its place by its size.)
+    let measure = |v: &str| if s.kind == Kind::Size { size_bytes(v) } else { v.parse::<u64>().ok() };
+    if let Some(cur) = current.map(str::trim).filter(|c| !c.is_empty())
+        && !steps.iter().any(|(v, _)| v.as_deref() == Some(cur) || (measure(cur).is_some() && v.as_deref().and_then(measure) == measure(cur)))
+    {
+        // (As written: "120GiB" → "120 GiB".)
+        let name = match s.kind {
+            Kind::Size => {
+                let i = cur.find(|c: char| !c.is_ascii_digit() && c != '.').unwrap_or(cur.len());
+                let (n, unit) = cur.split_at(i);
+                if unit.trim().is_empty() { bytes(n.parse().unwrap_or(0)) } else { format!("{n} {}", unit.trim()) }
+            }
+            _ => cur.to_owned(),
+        };
+        let at = steps.iter().position(|(v, _)| v.as_deref().and_then(measure).zip(measure(cur)).is_some_and(|(a, b)| a > b)).unwrap_or(steps.len());
+        steps.insert(at, (Some(cur.to_owned()), name));
+    }
+    steps.insert(0, own);
+    steps
+}
+
+/// Which of `steps` the file's `current` value is (0: kache's own).
+pub fn step_of(steps: &[(Option<String>, String)], current: Option<&str>, size: bool) -> usize {
+    let measure = |v: &str| if size { size_bytes(v) } else { v.trim().parse::<u64>().ok() };
+    let Some(cur) = current.map(str::trim).filter(|c| !c.is_empty()) else { return 0 };
+    steps.iter().position(|(v, _)| v.as_deref() == Some(cur) || (measure(cur).is_some() && v.as_deref().and_then(measure) == measure(cur))).unwrap_or(0)
+}
+
+/// A size as kache reads one, in bytes: "95GiB", "1.5 TB", "1000".
+pub fn size_bytes(v: &str) -> Option<u64> {
+    let v = v.trim();
+    if let Ok(b) = v.parse::<u64>() {
+        return Some(b);
+    }
+    let i = v.find(|c: char| !c.is_ascii_digit() && c != '.').unwrap_or(v.len());
+    let (n, unit) = v.split_at(i);
+    let n: f64 = n.parse().ok()?;
+    let f: f64 = match unit.trim().to_ascii_lowercase().as_str() {
+        "b" => 1.0,
+        "k" | "kb" => 1e3,
+        "m" | "mb" => 1e6,
+        "g" | "gb" => 1e9,
+        "t" | "tb" => 1e12,
+        "kib" => 1024.0,
+        "mib" => 1024f64.powi(2),
+        "gib" => 1024f64.powi(3),
+        "tib" => 1024f64.powi(4),
+        _ => return None,
+    };
+    Some((n * f) as u64)
+}
 
 /// One setting's value in the file at `path`.
 fn settings_at(path: &std::path::Path, key: &str) -> Option<String> {
@@ -625,6 +813,9 @@ pub fn made_up(now: u64) -> Snapshot {
             elapsed_ms: 200 + (i * 37) % 9000,
             compile_ms: 20_000 + (i * 53) % 9000,
             size: (i % 5) * 4_000_000,
+            cause: (result == "miss")
+                .then(|| ["its source changed", "a dependency changed", "its source changed", "first build here", "flags or features", "evicted from the store"][(i % 6) as usize]),
+            ..Event::default()
         });
     }
     events.sort_by_key(|e| e.at_ms);
@@ -633,7 +824,8 @@ pub fn made_up(now: u64) -> Snapshot {
     let daemon = Daemon { version: "2.1.1".into(), size: 88_000_000_000, disk: 61_000_000_000, limit: 102_005_473_280, entries: 9_412, in_flight: vec!["olo-kit".into(), "app_server".into()] };
     let cleanup = Cleanup { at_ms: now - 40 * 60_000, freed: 19_702_859_847, held: Some(41_000_000_000), unreclaimable: 512 };
     let pool = Pool { size: 16, compiles: 5, tests: 4, waiting: 2 };
-    Snapshot { unit: Some(unit), daemon: Some(daemon), cleanup: Some(cleanup), day, recent: events.into_iter().rev().take(RECENT).collect(), pool: Some(pool) }
+    let held = vec![crate::held::Held { pid: 41_002, name: "olo_kit".into(), project: "olo".into(), slots: 4, since_ms: now - 3 * 60_000 }];
+    Snapshot { unit: Some(unit), daemon: Some(daemon), cleanup: Some(cleanup), day, recent: events.into_iter().rev().take(RECENT).collect(), pool: Some(pool), held }
 }
 
 #[cfg(test)]
@@ -713,7 +905,7 @@ mod tests {
         assert!(set_in(text, &values).unwrap_err().contains("Store limit"));
         values[at("local_max_size")] = None;
         values[at("scheduler_test_slots")] = Some("eight".into());
-        assert!(set_in(text, &values).unwrap_err().contains("Test slots"));
+        assert!(set_in(text, &values).unwrap_err().contains("Slots a test takes"));
     }
 
     /// The live log read as it grows; read again when rotated.
@@ -749,6 +941,49 @@ mod tests {
         let s = |k: &str| SETTINGS.iter().find(|s| s.key == k).unwrap();
         assert!(switched(s("scheduler_dynamic"), None) && !switched(s("scheduler_dynamic"), Some("false")));
         assert!(!switched(s("count_held_in_max_size"), None) && switched(s("count_held_in_max_size"), Some("true")));
+    }
+
+    /// Each miss's cause from its key against the same crate's last.
+    #[test]
+    fn why_misses_missed() {
+        let now = 1_794_800_000_000u64;
+        let line = |ts: u64, result: &str, keys: &str, extra: &str| {
+            format!(
+                r#"{{"ts":"{}","crate_name":"serde","root":"/home/ben/src/olo","result":"{result}","key_fields":{{{keys}}}{extra}}}"#,
+                chrono::DateTime::from_timestamp_millis((now - 10_000 + ts) as i64).unwrap().to_rfc3339()
+            )
+        };
+        let k = |compiler: &str, args: &str, sources: &str, externs: &str| format!(r#""crate":"aa","compiler":"{compiler}","args":"{args}","sources":"{sources}","externs":"{externs}""#);
+        let text = [
+            line(1000, "miss", &k("01", "02", "03", "04"), ""),
+            line(2000, "miss", &k("01", "02", "05", "04"), ""),
+            line(3000, "local_hit", &k("01", "02", "05", "04"), ""),
+            line(4000, "miss", &k("01", "02", "05", "06"), ""),
+            line(5000, "miss", &k("01", "07", "08", "06"), ""),
+            line(6000, "miss", &k("09", "07", "08", "06"), ""),
+            line(7000, "miss", &k("09", "07", "08", "06"), ""),
+            line(8000, "miss", &k("09", "07", "08", "06"), r#","miss_reason":"unsupported""#),
+        ]
+        .join("\n");
+        let mut events = parse_events(&text);
+        causes(&mut events);
+        let said: Vec<_> = events.iter().map(|e| e.cause.unwrap_or("-")).collect();
+        assert_eq!(said, ["first build here", "its source changed", "-", "a dependency changed", "flags or features", "a new compiler", "evicted from the store", "not supported by kache"]);
+        let d = day_of(&events, now);
+        assert_eq!(d.causes.iter().map(|(_, n)| *n).sum::<u64>(), 7, "every miss, counted once");
+        assert!(d.causes.iter().all(|(_, n)| *n == 1));
+        // A library and its test alternating: each against its own last.
+        let text = [
+            line(1000, "miss", &k("01", "0a", "03", "04"), ""),
+            line(2000, "miss", &k("01", "0b", "03", "04"), ""),
+            line(3000, "miss", &k("01", "0a", "05", "04"), ""),
+            line(4000, "miss", &k("01", "0b", "05", "04"), ""),
+        ]
+        .join("\n");
+        let mut events = parse_events(&text);
+        causes(&mut events);
+        let said: Vec<_> = events.iter().map(|e| e.cause.unwrap_or("-")).collect();
+        assert_eq!(said, ["first build here", "flags or features", "its source changed", "its source changed"]);
     }
 
     /// Slots held are read from the kernel's locks, never taken.
@@ -794,6 +1029,30 @@ mod tests {
         assert_eq!(cleanup_of(&swept).held, None);
         let sized = serde_json::json!({"last_run": "2026-11-16T02:45:11.437513609+00:00", "entries_evicted": 309, "bytes_held": 450_481_390_286u64, "entries_unreclaimable": 4548});
         assert_eq!(cleanup_of(&sized).held, Some(450_481_390_286));
+    }
+
+    /// Only valid steps, kache's own first; a value set by hand kept in
+    /// its place.
+    #[test]
+    fn settings_steps() {
+        let s = |k: &str| SETTINGS.iter().find(|s| s.key == k).unwrap();
+        let store = steps(s("local_max_size"), None, 16);
+        assert_eq!(store[0], (None, "kache's own: 5% of the disk".into()));
+        assert_eq!(store[1], (Some("10GiB".into()), "10 GiB".into()));
+        assert_eq!(step_of(&store, Some("100GiB"), true), 5);
+        assert_eq!(step_of(&store, None, true), 0);
+        // "120GiB" by hand: between 100 and 150.
+        let hand = steps(s("local_max_size"), Some("120GiB"), 16);
+        let at = step_of(&hand, Some("120GiB"), true);
+        assert_eq!((hand[at - 1].1.as_str(), hand[at].1.as_str(), hand[at + 1].1.as_str()), ("100 GiB", "120 GiB", "150 GiB"));
+        let permits = steps(s("scheduler_permits"), Some("16"), 16);
+        assert_eq!((permits.len(), step_of(&permits, Some("16"), false), permits[16].1.as_str()), (33, 16, "16 slots"));
+        let wait = steps(s("scheduler_test_wait_secs"), Some("120"), 16);
+        assert_eq!(wait[step_of(&wait, Some("120"), false)].1, "2 minutes");
+        let room = steps(s("scheduler_cpu_percent"), None, 16);
+        assert!(room.iter().skip(1).all(|(v, _)| v.as_deref().is_some_and(|v| v.parse::<u32>().is_ok_and(|p| (50..=100).contains(&p) && p % 5 == 0))));
+        let idle = steps(s("auto_clean_idle_targets_days"), Some("1"), 16);
+        assert_eq!(idle[step_of(&idle, Some("1"), false)].1, "1 day");
     }
 
     #[test]

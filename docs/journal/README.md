@@ -5,6 +5,30 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Kache: tests holding slots
+
+*21:47* — Status: the tests holding the pool's slots (read from the kernel's list of locks), each with End.
+
+![Kache: tests holding slots](2026-11-15/214715-kache-tests-holding-slots.png)
+
+### Kache: why misses missed
+
+*21:47* — Builds: each miss with its cause (from kache's key fields: the first part that changed against the same crate's last build with the same flags), and the day's causes counted.
+
+![Kache: why misses missed](2026-11-15/214711-kache-why-misses-missed.png)
+
+### Kache: settings as sliders
+
+*21:47* — Every setting a slider over its valid steps alone, its value said with its unit, kache's own first; the store's on the left, the pool's on the right, in rows that start level. Dark, 2×.
+
+![Kache: settings as sliders](2026-11-15/214708-kache-settings-as-sliders.png)
+
+### Power: SATA SSDs, each by its name
+
+*21:47* — Preferences ▸ Power ▸ Power Modes with a SATA SSD beside the NVMe drive (its link's power: Cooler naps, Coolest sleeps), the names' column as wide as the longest name, and the three modes side by side so the tab fits 1280 × 800. The made-up machine (OLO_POWER_DEMO), light, 2×.
+
+![Power: SATA SSDs, each by its name](2026-11-15/214703-power-sata-ssds-each-by-its-name.png)
+
 ### Kache's Deskbar widget
 
 *19:43* — Build Cache: the day's hit rate, the pool's slots in use, and the last 6 hours (builds, and a bar of the share that were hits). Slots without icons now drop the kit's icon row. 1× (doubled), 1.5×, 2×.

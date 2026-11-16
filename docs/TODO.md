@@ -1412,6 +1412,10 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+(Nothing.)
+
+## Done, waiting for Ben to try or confirm
+
 - **Olo independent of GNOME, 100%** (Ben, 2026-11-15: "we should be
   100% independent of gnome and not rely on any of its services etc so
   please also make sure that is done after this"). Done, in an Olo
@@ -1434,11 +1438,112 @@ something nobody here has is in "Blocked", with what it waits for.
   frontend, AccountsService, …), and Olo's 63 release programs link no
   GNOME library (no GLib, GIO, GTK or libsecret: libc, xkbcommon, GBM,
   PipeWire, libinput, libseat, libudev, libpam, pixman,
-  libdisplay-info, zlib, libelf). *Left:* a Fedora without GNOME at
-  all (a minimal install) can't run Setup, which is a window on the
-  desktop the person has: installing there needs a way of its own (Setup
-  from the console, or from Olo's login screen), then the whole path
-  tried in `tools/dev/installer-check`'s VM with a minimal kickstart.
+  libdisplay-info, zlib, libelf). A Fedora without GNOME at all (a
+  minimal install): `olo-installer --console` (2026-11-15, HACKING, "The
+  Installer"), the plan in the terminal, sudo for the password, Olo's
+  login screen chosen where there's none; PackageKit and dnf's service
+  put in place first with one dnf call where they're missing (Ben chose
+  it over a package manager of Olo's own), by the Installer and by
+  Doctor ("Software can't be installed here", Install Them). *Left:*
+  the whole path tried in `tools/dev/installer-check`'s VM with a
+  minimal kickstart.
+
+- **Power: each SSD by its own name, every kind of SSD** (Ben,
+  2026-11-15, a screenshot of Power ▸ Power Modes, its row "SSD": "the
+  settings for SSD in power shouldn't just assume there's one SSD we
+  should be able to configure the settings independently for all
+  SSD/nvme drives so use their device name or something instead of
+  generic SSD that would only work for one"). Today each NVMe drive is
+  kept by its serial (`Plan::nvme`, `set_nvme`) but named "SSD", or "SSD
+  1", "SSD 2" with more (`apps/preferences/src/gpus.rs`), which says
+  nothing of which is which; and a SATA SSD isn't offered at all. To do:
+  name each row by the drive as people know it (its model made readable,
+  "SK hynix PC801 2 TB", from the controller's model and its size; two
+  alike told apart by where they're mounted or by nvme0/nvme1), the
+  same name in the summary line ("the SK hynix PC801 As It Is") and to
+  agents; every SSD listed (SATA too: its link power, ALPM, as its
+  choices), each set on its own, a drive that's gone keeping its setting
+  for when it's back; the Graphics tab's GPU rows likewise if they're
+  only numbered. Tried with two drives (a test home with fakes of
+  `/sys/class/nvme`), and on this ThinkPad's one (SKHynix
+  HFS002TFM9X179N, 1.9 TB). Names done
+  (HACKING, Power: `nvme_power::titles`, its size and device where two
+  are alike, the summary too). SATA SSDs done too (2026-11-15, HACKING,
+  Power: `sata_power`, their link's power through the follower, version
+  4, the policy found put back for As It Is; tried with a fake /sys:
+  this ThinkPad has none); the Graphics tab's GPUs were never numbered
+  (each by its own name). *Left for Ben:* a real SATA SSD tried.
+
+- **Two themes, Classic and Platinum, made exquisite** (Ben,
+  2026-11-14: "let's simplify a bit so we just have 2 themes for now:
+  Classic and Platinum (with light/dark variations). then, let's have
+  each theme come with just one background (with light/dark
+  variations) but i want you to make it look really good: use sunburst
+  on max/4k and really try to come up with something for each theme
+  that is perfect for a background: not too "in your face", subtle
+  beos (for classic) and macos9 (for platinum) throwbacks/nostalgia,
+  and if you need to do a bunch of iterations to get them just right
+  please do it don't just accept the first one. and make sure all the
+  theme colors in both light and dark modes are optimized -- visually
+  try them all out and really think about it. you can use the openai
+  api and astra model to also get second opinions on all the visuals
+  from astra. and then, once you've perfected all that, i want you to
+  re-create full icon sets (all the olo icons for all apps and
+  preferences and everything, customized for each theme) and really
+  make every one pixel perfect, checking it looks good both at large
+  sizes and small sizes (e.g. in deskbar). they also need consistency
+  in terms of style so that they perfectly fit the theme. also, you
+  can drop the catppuccin colors selection so each theme just has its
+  theme colors option or the BeOS colors option. really spend a lot of
+  time on this, getting everything including every single icon just
+  absolutely perfect and exquisite. i want people to fall in love with
+  it."). After the tab look is approved (Ben: "once i approve you can
+  do this work"). The other themes go, settings naming them move to
+  Classic; Catppuccin's colour set goes (its terminal colours too, if
+  nothing else needs them); each theme's own colours and BeOS's, light
+  and dark, tried on every kit app at 1×, 1.5× and 2×; one wallpaper a
+  theme, light and dark, at 4K and ultrawide (sunburst, max quality),
+  iterated, with second opinions from OpenAI's Astra; then every icon
+  (apps, Preferences' panels, Deskbar, Tracker's kinds) made again for
+  each theme per docs/ICONS.md, checked large and at Deskbar's size.
+  Started 2026-11-14 (Ben: "after the current / in flight work item(s)
+  do the theme work that i asked for earlier"). Step 1 done: two
+  themes, Classic the default; the other eight, their icons, wordmarks
+  and wallpapers gone (and pruned from installs on upgrade), a setting
+  naming one draws Classic, a wallpaper naming one shows Classic's;
+  Catppuccin's colours gone, Terminal's too; Preferences ▸ Themes as
+  two cards with a preview each. Step 2, the wallpapers (2026-11-15):
+  drawn quiet scenes were rejected (Ben: "those wallpapers are awful
+  they have no kind of retro os nostalgia"; "i don't want landscapes or
+  nature"), and BeOS shipped none worth having, so (Ben: "just upscale
+  all the macos 9 ones and use them for both themes … leave out the mac
+  face one") Mac OS 9's nineteen desktop pictures, made 4K with
+  sunburst: Classic's default Blueberry Oxygen, Platinum's Quantum
+  Foam, each with a dark version; Backgrounds by collection. Next (Ben:
+  "download the latest amigaos, nextstep, and other classic desktops
+  and create upscaled versions of all of their wallpapers … for a
+  complete retro os collection"; "also include upscaled wallpapers from
+  other macos versions if they are different"): the other systems'
+  sets, then the colours, then the icons. Since (2026-11-15): tiling
+  (`|tile:N`, "don't skip the tiled ones … add tiling support to olo"),
+  every picture finished with 4x-UltraSharp ("make them all perfect and
+  stunning"), the HDR gain subtler; the collections now Mac OS 9 (19),
+  its CD extras (Extras 26, Photos 34, Nostalgia 21), its Patterns (111)
+  and Large Patterns (20), AmigaOS 3.9 (30) and its Patterns (79).
+  BeOS and NeXTSTEP shipped nothing usable. Then Mac OS X 10.0–10.4's
+  (60: each release's Aqua, Abstract 18, Nature 24, Black & White 5,
+  Ripples tiles 5), and the colours (the six looks tried on the README's
+  desktop with Astra: secondary text at 4.5:1, dark mode's check boxes
+  outlined, BeOS light's terminal white); every icon reviewed in both
+  themes at 48 and 16 px (consistent; at 16 and 24 px drawn for their
+  size now, with R5's contour, so light things read on light panels);
+  Windows 3.1's, 95's and 98's (39); CDE's 24 backdrops, in CDE's own
+  colours (dtwm's, dtsession's and Motif's rules read from their
+  source); Windows 2000's eleven tiles. Windows ME added nothing of its
+  own (its cabinets carry 98's and 2000's pictures, and "More Windows",
+  a logo). OS/2 Warp 4's (its PACK2 bundles unpacked with deark): its
+  eight pictures and 35 textures, the dither blurred away first; 523 in
+  the pack. Left: individual icons redrawn where one drifts.
 
 - **Weather: a place by its address, hyperlocal** (Ben, 2026-11-15: "i
   should be able to put an address into the weather app and have it
@@ -1531,37 +1636,16 @@ something nobody here has is in "Blocked", with what it waits for.
   every relative time follows the clock (Agent Screens, OS Updates,
   Disk Backup, Weather).
 
-- **Power: each SSD by its own name, every kind of SSD** (Ben,
-  2026-11-15, a screenshot of Power ▸ Power Modes, its row "SSD": "the
-  settings for SSD in power shouldn't just assume there's one SSD we
-  should be able to configure the settings independently for all
-  SSD/nvme drives so use their device name or something instead of
-  generic SSD that would only work for one"). Today each NVMe drive is
-  kept by its serial (`Plan::nvme`, `set_nvme`) but named "SSD", or "SSD
-  1", "SSD 2" with more (`apps/preferences/src/gpus.rs`), which says
-  nothing of which is which; and a SATA SSD isn't offered at all. To do:
-  name each row by the drive as people know it (its model made readable,
-  "SK hynix PC801 2 TB", from the controller's model and its size; two
-  alike told apart by where they're mounted or by nvme0/nvme1), the
-  same name in the summary line ("the SK hynix PC801 As It Is") and to
-  agents; every SSD listed (SATA too: its link power, ALPM, as its
-  choices), each set on its own, a drive that's gone keeping its setting
-  for when it's back; the Graphics tab's GPU rows likewise if they're
-  only numbered. Tried with two drives (a test home with fakes of
-  `/sys/class/nvme`), and on this ThinkPad's one (SKHynix
-  HFS002TFM9X179N, 1.9 TB). Names done
-  (HACKING, Power: `nvme_power::titles`, its size and device where two
-  are alike, the summary too). *Left:* SATA SSDs (their link power,
-  ALPM, through the follower) and the Graphics tab's rows if numbered.
-
 - **Kache: an Olo app for the build cache** — *done (2026-11-15,
   HACKING "Kache"): Status (the service, the store, the day, the pool,
   by the hour), Builds (projects, slowest compiles, each build),
   Settings (kache's own defaults shown, saved keeping comments),
   Restart/Stop/Start/Clean Up, `--print`, a Deskbar widget (Build
   Cache), Doctor's checks (not running: Start It; held over its limit:
-  Open Kache). Left: why each miss missed (kache's events don't say),
-  ending a test that holds slots.* (Ben, 2026-11-15: "an olo
+  Open Kache); then Clean Up Now fixed (its request lacked the age
+  limit), why each miss missed (from kache's key fields), tests holding
+  slots shown and ended, and every setting a slider over its valid
+  steps (Ben: "make it a slider with only valid values possible").* (Ben, 2026-11-15: "an olo
   native kache frontend app that lets me monitor the status of kache,
   see stats/metrics/charts etc, configure/tweak settings, manage it like
   restart or whatever, and anything else useful to know or do"). For
@@ -1669,95 +1753,6 @@ something nobody here has is in "Blocked", with what it waits for.
   panels and kept at the top once the chart reaches it, its panels
   scrolling under; in Next 7 Days only once the hourly chart comes up.
   The kit's `ScrollView::sticky` and `Timeline::axis` for any app.
-
-- **The supervisor deprioritises background work, for real** (Ben,
-  2026-11-15: "make it so that olo's supervisor can truly and properly
-  deprioritize the background work in a way that works (in the past you
-  said renicing it alone wasn't enough) -- if olo doctor needs to set up
-  something to give it more perms or some config to be able to do it
-  that's fine"). A nice orders shares inside a cgroup only, and the
-  processor is shared between sibling cgroups first (a build run as a
-  service, another scope); and scx_lavd weighs nice its own way. To
-  work out and measure: moving background work (builds, indexers,
-  caches) into a cgroup of its own with `cpu.idle` (and a low
-  `io.weight`), which needs the right to move processes there (the
-  user's delegated subtree, or Olo Doctor setting up a delegated slice
-  or a root helper); how scx_lavd treats it; measured under a real
-  build with the desktop's frame times and input latency, before and
-  after.
-
-- **Two themes, Classic and Platinum, made exquisite** (Ben,
-  2026-11-14: "let's simplify a bit so we just have 2 themes for now:
-  Classic and Platinum (with light/dark variations). then, let's have
-  each theme come with just one background (with light/dark
-  variations) but i want you to make it look really good: use sunburst
-  on max/4k and really try to come up with something for each theme
-  that is perfect for a background: not too "in your face", subtle
-  beos (for classic) and macos9 (for platinum) throwbacks/nostalgia,
-  and if you need to do a bunch of iterations to get them just right
-  please do it don't just accept the first one. and make sure all the
-  theme colors in both light and dark modes are optimized -- visually
-  try them all out and really think about it. you can use the openai
-  api and astra model to also get second opinions on all the visuals
-  from astra. and then, once you've perfected all that, i want you to
-  re-create full icon sets (all the olo icons for all apps and
-  preferences and everything, customized for each theme) and really
-  make every one pixel perfect, checking it looks good both at large
-  sizes and small sizes (e.g. in deskbar). they also need consistency
-  in terms of style so that they perfectly fit the theme. also, you
-  can drop the catppuccin colors selection so each theme just has its
-  theme colors option or the BeOS colors option. really spend a lot of
-  time on this, getting everything including every single icon just
-  absolutely perfect and exquisite. i want people to fall in love with
-  it."). After the tab look is approved (Ben: "once i approve you can
-  do this work"). The other themes go, settings naming them move to
-  Classic; Catppuccin's colour set goes (its terminal colours too, if
-  nothing else needs them); each theme's own colours and BeOS's, light
-  and dark, tried on every kit app at 1×, 1.5× and 2×; one wallpaper a
-  theme, light and dark, at 4K and ultrawide (sunburst, max quality),
-  iterated, with second opinions from OpenAI's Astra; then every icon
-  (apps, Preferences' panels, Deskbar, Tracker's kinds) made again for
-  each theme per docs/ICONS.md, checked large and at Deskbar's size.
-  Started 2026-11-14 (Ben: "after the current / in flight work item(s)
-  do the theme work that i asked for earlier"). Step 1 done: two
-  themes, Classic the default; the other eight, their icons, wordmarks
-  and wallpapers gone (and pruned from installs on upgrade), a setting
-  naming one draws Classic, a wallpaper naming one shows Classic's;
-  Catppuccin's colours gone, Terminal's too; Preferences ▸ Themes as
-  two cards with a preview each. Step 2, the wallpapers (2026-11-15):
-  drawn quiet scenes were rejected (Ben: "those wallpapers are awful
-  they have no kind of retro os nostalgia"; "i don't want landscapes or
-  nature"), and BeOS shipped none worth having, so (Ben: "just upscale
-  all the macos 9 ones and use them for both themes … leave out the mac
-  face one") Mac OS 9's nineteen desktop pictures, made 4K with
-  sunburst: Classic's default Blueberry Oxygen, Platinum's Quantum
-  Foam, each with a dark version; Backgrounds by collection. Next (Ben:
-  "download the latest amigaos, nextstep, and other classic desktops
-  and create upscaled versions of all of their wallpapers … for a
-  complete retro os collection"; "also include upscaled wallpapers from
-  other macos versions if they are different"): the other systems'
-  sets, then the colours, then the icons. Since (2026-11-15): tiling
-  (`|tile:N`, "don't skip the tiled ones … add tiling support to olo"),
-  every picture finished with 4x-UltraSharp ("make them all perfect and
-  stunning"), the HDR gain subtler; the collections now Mac OS 9 (19),
-  its CD extras (Extras 26, Photos 34, Nostalgia 21), its Patterns (111)
-  and Large Patterns (20), AmigaOS 3.9 (30) and its Patterns (79).
-  BeOS and NeXTSTEP shipped nothing usable. Then Mac OS X 10.0–10.4's
-  (60: each release's Aqua, Abstract 18, Nature 24, Black & White 5,
-  Ripples tiles 5), and the colours (the six looks tried on the README's
-  desktop with Astra: secondary text at 4.5:1, dark mode's check boxes
-  outlined, BeOS light's terminal white); every icon reviewed in both
-  themes at 48 and 16 px (consistent; at 16 and 24 px drawn for their
-  size now, with R5's contour, so light things read on light panels);
-  Windows 3.1's, 95's and 98's (39); CDE's 24 backdrops, in CDE's own
-  colours (dtwm's, dtsession's and Motif's rules read from their
-  source); Windows 2000's eleven tiles. Windows ME added nothing of its
-  own (its cabinets carry 98's and 2000's pictures, and "More Windows",
-  a logo). OS/2 Warp 4's (its PACK2 bundles unpacked with deark): its
-  eight pictures and 35 textures, the dither blurred away first; 523 in
-  the pack. Left: individual icons redrawn where one drifts.
-
-## Done, waiting for Ben to try or confirm
 
 - **The desktop went blank and came back, 13:29** (Ben, 2026-11-15:
   "i think something just crashed my whole desktop went blank and then
@@ -5120,6 +5115,42 @@ Each waits for what its entry's "Left" says: Ben at the machine (a
 password, a touch, a camera, a reboot he agrees to), hardware nobody
 here has plugged in, an account to sign in with, or data from more
 people.
+
+- **The supervisor deprioritises background work, for real** (Ben,
+  2026-11-15: "make it so that olo's supervisor can truly and properly
+  deprioritize the background work in a way that works (in the past you
+  said renicing it alone wasn't enough) -- if olo doctor needs to set up
+  something to give it more perms or some config to be able to do it
+  that's fine"). A nice orders shares inside a cgroup only, and the
+  processor is shared between sibling cgroups first (a build run as a
+  service, another scope); and scx_lavd weighs nice its own way. To
+  work out and measure: moving background work (builds, indexers,
+  caches) into a cgroup of its own with `cpu.idle` (and a low
+  `io.weight`), which needs the right to move processes there (the
+  user's delegated subtree, or Olo Doctor setting up a delegated slice
+  or a root helper); how scx_lavd treats it; measured under a real
+  build with the desktop's frame times and input latency, before and
+  after. Measured 2026-11-15, under the kernel's EEVDF (scx_lavd was
+  stopped and disabled at 02:30 that day): every build here runs in the
+  login session's scope, the desktop's own cgroup (cargo, rustc, kache's
+  wrappers, Terminal, agents), so a nice and a policy order them against
+  the desktop directly; app_server's thread is realtime (`RR`), out of
+  any build's reach; the supervisor had the builds at nice 10 and
+  `SCHED_BATCH`. A nice-0 thread's wake-up lateness (sleep 1 ms, again
+  and again) beside a release build of the workspace and another
+  project's builds (load 25 on 16 threads): 22 µs at the median, 1.5–2
+  ms at p99, 4–6 ms at p99.9, the build at nice 10 batch, at nice 19
+  batch, or at `SCHED_IDLE` alike; with none of the build's load (the
+  other project's only), p99 0.5–1.8 ms. Pinned to two cores with four
+  loops of its own beside the probe, nice 0, nice 19 batch and
+  `SCHED_IDLE` didn't separate either (p99.9 1.9–2.7 ms in each). So the
+  tail comes from load the supervisor doesn't own (another project's
+  builds, already lowered) and timer noise, and what's left needs a
+  quiet machine: the same probe with one build lowered each way, and a
+  cgroup of its own with `cpu.idle` (the session's scope delegated,
+  `Delegate=yes` in a drop-in for `session-.scope`, Doctor's to set up). *Blocked on a quiet machine* (agents
+  build on it day and night, and their load sets the tail the probe
+  sees), and on Ben for the delegation drop-in's root step.
 
 - **The DRM backend's screenshots read back asynchronously too** (the
   rest of "A screenshot holds app_server's loop", in Done): headless's

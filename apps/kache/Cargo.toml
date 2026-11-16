@@ -21,6 +21,6 @@ chrono = { version = "0.4", default-features = false, features = ["std", "clock"
 # kache's settings edited keeping the file's comments.
 toml_edit = "0.25"
 zstd = "0.14"
-
-[dev-dependencies]
+# Tests holding slots: their locks read, one ended (held.rs).
 libc = "0.2"
+

@@ -55,8 +55,9 @@ pub const FOLLOWER_RULE: &str =
 /// (not with every build): a follower that says an older one is out of
 /// date (Olo Doctor, Preferences ▸ Power). 2: the processors' top speed
 /// (Balanced's 75%) and Balanced leaning to saving on battery. 3: NVMe
-/// drives' power states, and set again after a resume.
-pub const FOLLOWER_VERSION: u32 = 3;
+/// drives' power states, and set again after a resume. 4: SATA SSDs'
+/// link power (`sata_power`), kept per drive.
+pub const FOLLOWER_VERSION: u32 = 4;
 
 /// What the follower last did, written by it after each change to
 /// `/run/olo-gpu-follow.json` (readable by all): which version it is,
@@ -81,6 +82,10 @@ pub struct Followed {
     /// The drives the follower put on a lower state (by serial): back on
     /// PS0 when the plan says As It Is again.
     pub limited: Vec<String>,
+    /// Each SATA SSD's link policy as the follower found it before it
+    /// first changed it (by serial): put back when the plan says As It Is
+    /// again (`crate::sata_power`).
+    pub sata_found: std::collections::BTreeMap<String, String>,
 }
 
 impl Followed {

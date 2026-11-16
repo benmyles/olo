@@ -28,18 +28,18 @@
 
 mod data;
 mod glance;
+mod held;
 
 use std::{rc::Rc, sync::Mutex, time::Duration};
 
 use olo_kit::{
-    Child, ClickEvent, Cx, Element, FontWeight, IntoElement as _, Menu, MenuBar, ParentElement as _, Styled as _, View, WindowOptions, canvas, div,
+    ClickEvent, Cx, Element, FontWeight, IntoElement as _, Menu, MenuBar, ParentElement as _, Styled as _, View, WindowOptions, canvas, div,
     instance::{self, Launch},
     metrics as m, px, style, theme,
     widgets::{
-        Button, CheckBox, Column, ColumnListView, EmptyState, ListModel, StringView, TextControl, TextField, button_row,
+        Button, CheckBox, Column, ColumnListView, EmptyState, ListModel, StringView, button_row,
         dashboard::{Card, Facts},
         sidebar::{Row, Sidebar},
-        text_field,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -50,9 +50,6 @@ const MIN_WIDTH: f32 = 860.0;
 const MIN_HEIGHT: f32 = 560.0;
 /// The least time between two looks while builds go on.
 const LOOK_EVERY: Duration = Duration::from_secs(2);
-/// The settings' labels' column, and their fields' width.
-const DIVIDER: f32 = 100.0;
-const FIELD: f32 = 210.0;
 /// Status's Now card.
 const NOW_CARD: f32 = 240.0;
 
@@ -115,7 +112,10 @@ struct Kache {
     note: Option<(String, bool)>,
     /// Settings: a field each for those typed, a switch each for the
     /// others, as in the file now.
-    fields: Vec<Option<Child<TextField>>>,
+    /// Each stepped setting's steps (`data::steps`) and the one chosen;
+    /// each switch's state.
+    steps: Vec<Vec<(Option<String>, String)>>,
+    chosen: Vec<usize>,
     switches: Vec<bool>,
     saved_values: Vec<Option<String>>,
     builds: ListModel,
@@ -130,20 +130,10 @@ impl Kache {
     fn new(cx: &mut Cx<Self>) -> Kache {
         let saved: Saved = olo_kit::restored_state().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
         let values = data::settings();
-        let fields = data::SETTINGS
-            .iter()
-            .zip(&values)
-            .map(|(s, v)| {
-                (s.kind != data::Kind::Switch).then(|| {
-                    let name = s.label.trim_end_matches(':');
-                    let f = text_field(cx, |f| f.name(name).hint(s.default));
-                    if let Some(v) = v.clone() {
-                        f.update(cx, move |f, cx| f.set_text(&v, cx));
-                    }
-                    f
-                })
-            })
-            .collect();
+        let processors = std::thread::available_parallelism().map_or(1, |n| n.get() as u32);
+        let steps: Vec<Vec<(Option<String>, String)>> =
+            data::SETTINGS.iter().zip(&values).map(|(s, v)| if s.kind == data::Kind::Switch { Vec::new() } else { data::steps(s, v.as_deref(), processors) }).collect();
+        let chosen = data::SETTINGS.iter().zip(&values).zip(&steps).map(|((s, v), st)| data::step_of(st, v.as_deref(), s.kind == data::Kind::Size)).collect();
         let switches = data::SETTINGS.iter().zip(&values).map(|(s, v)| data::switched(s, v.as_deref())).collect();
         // Kache's records followed: what's written there is looked at.
         // (Its daemon's socket, not its state file: that's written every
@@ -166,7 +156,8 @@ impl Kache {
             again: false,
             doing: None,
             note: None,
-            fields,
+            steps,
+            chosen,
             switches,
             saved_values: values,
             builds: ListModel::new(false),
@@ -216,21 +207,21 @@ impl Kache {
     }
 
     /// The settings as edited.
-    fn values(&self, cx: &Cx<Self>) -> Vec<Option<String>> {
+    fn values(&self) -> Vec<Option<String>> {
         data::SETTINGS
             .iter()
             .enumerate()
-            .map(|(i, s)| match &self.fields[i] {
-                Some(f) => Some(f.read(cx).text().trim().to_owned()).filter(|t| !t.is_empty()),
+            .map(|(i, s)| match s.kind {
+                data::Kind::Switch if self.saved_values[i].is_none() && self.switches[i] == data::switched(s, None) => None,
                 // (A switch as kache has it unset, and never set: left out.)
-                None if self.saved_values[i].is_none() && self.switches[i] == data::switched(s, None) => None,
-                None => Some(self.switches[i].to_string()),
+                data::Kind::Switch => Some(self.switches[i].to_string()),
+                _ => self.steps[i].get(self.chosen[i]).and_then(|(v, _)| v.clone()),
             })
             .collect()
     }
 
     fn save_settings(&mut self, cx: &mut Cx<Self>) {
-        let values = self.values(cx);
+        let values = self.values();
         if data::demo() {
             self.saved_values = values;
             self.say("Saved (made up). Restart kache for it to take them.", false);
@@ -248,12 +239,11 @@ impl Kache {
 
     fn revert_settings(&mut self, cx: &mut Cx<Self>) {
         let values = self.saved_values.clone();
-        for (i, v) in values.iter().enumerate() {
-            if let Some(f) = &self.fields[i] {
-                let t = v.clone().unwrap_or_default();
-                f.update(cx, move |f, cx| f.set_text(&t, cx));
+        for (i, (s, v)) in data::SETTINGS.iter().zip(&values).enumerate() {
+            if s.kind == data::Kind::Switch {
+                self.switches[i] = data::switched(s, v.as_deref());
             } else {
-                self.switches[i] = data::switched(&data::SETTINGS[i], v.as_deref());
+                self.chosen[i] = data::step_of(&self.steps[i], v.as_deref(), s.kind == data::Kind::Size);
             }
         }
         self.note = None;
@@ -269,6 +259,11 @@ impl Kache {
             "clean-up" => self.clean_up(cx),
             "save-settings" => self.save_settings(cx),
             "revert-settings" => self.revert_settings(cx),
+            c if c.starts_with("end-test:") => {
+                if let Ok(pid) = c["end-test:".len()..].parse::<i32>() {
+                    self.end_test(pid, cx);
+                }
+            }
             "open-log" => {
                 let log = data::cache_dir().join("daemon.log");
                 if let Err(e) = olo_xdg::spawn_detached(&format!("olo-logs '{}'", log.display().to_string().replace('\'', "'\\''"))) {
@@ -283,6 +278,17 @@ impl Kache {
         }
         cx.invalidate();
         true
+    }
+
+    /// End a test holding slots (on a worker: it's looked for again
+    /// first).
+    fn end_test(&mut self, pid: i32, cx: &mut Cx<Self>) {
+        if data::demo() {
+            self.say(format!("Ended the test (process {pid}, made up)."), false);
+            return cx.invalidate();
+        }
+        let dir = data::cache_dir();
+        cx.work(move || held::end(&dir, pid).map(|()| format!("Ended the test (process {pid}): its slots go back to the pool.")), Msg::CleanedUp);
     }
 
     fn running(&self) -> Option<bool> {
@@ -448,6 +454,31 @@ impl Kache {
         let hours =
             Card::new("kache-hours", "Builds by the hour").caption("the last 24 hours").child(div().flex().flex_col().gap(px(m::STACK)).child(hours_chart(&snap.day)).child(hours_legend(&snap.day)));
         col = col.child(div().flex().gap(px(m::SPACING)).child(div().w(px(NOW_CARD)).flex_shrink_0().child(card.child(Facts::new(now)))).child(div().flex_1().min_w_0().child(hours)));
+        // Tests holding slots, each to end.
+        if !snap.held.is_empty() {
+            let mut list = div().flex().flex_col().gap(px(m::STACK));
+            for h in &snap.held {
+                let since = if h.since_ms > 0 { format!(", for {}", olo_kit::ago::ago_ms(h.since_ms, |a| olo_kit::ago::long(a).replace(" ago", ""))) } else { String::new() };
+                let what = format!(
+                    "{}{} · {} slot{}{since} · process {}",
+                    h.name,
+                    if h.project.is_empty() { String::new() } else { format!(" ({})", h.project) },
+                    h.slots,
+                    if h.slots == 1 { "" } else { "s" },
+                    h.pid
+                );
+                let pid = h.pid;
+                list = list.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(m::SPACING))
+                        .child(div().flex_1().min_w_0().child(StringView::new(what).cut(true)))
+                        .child(Button::new("End").id(format!("end-test-{pid}")).small().on_click(cx.listener(move |v: &mut Kache, _: &ClickEvent, cx| v.end_test(pid, cx)))),
+                );
+            }
+            col = col.child(Card::new("kache-tests", "Tests holding slots").caption("ending one gives its slots back to the pool").child(list));
+        }
         if let Some(line) = self.status_line() {
             col = col.child(line);
         }
@@ -469,7 +500,12 @@ impl Kache {
                     "error" => "Error",
                     other => other,
                 };
-                [when, e.crate_name.clone(), e.project.clone(), result.to_owned(), data::span(e.elapsed_ms), if e.size > 0 { data::bytes(e.size) } else { String::new() }]
+                // (A miss says why: "Miss: its source changed".)
+                let result = match e.cause {
+                    Some(c) if e.result == "miss" => format!("{result}: {c}"),
+                    _ => result.to_owned(),
+                };
+                [when, e.crate_name.clone(), e.project.clone(), result, data::span(e.elapsed_ms), if e.size > 0 { data::bytes(e.size) } else { String::new() }]
             })
             .collect()
     }
@@ -490,17 +526,21 @@ impl Kache {
             })
             .collect();
         let slowest: Vec<(olo_kit::SharedString, olo_kit::SharedString)> = day.slowest.iter().map(|(c, ms)| (c.clone().into(), data::span(*ms).into())).collect();
+        // Why the misses missed, most first.
+        let causes: Vec<(olo_kit::SharedString, olo_kit::SharedString)> =
+            day.causes.iter().take(data::TOP + 1).map(|(c, n)| (olo_kit::SharedString::from(sentence_case(c)), style::thousands(*n as usize).into())).collect();
         let cards = div()
             .flex()
             .flex_shrink_0()
             .gap(px(m::SPACING))
             .child(div().flex_1().min_w_0().child(Card::new("kache-projects", "Projects").caption("built most, the last 24 hours").child(Facts::new(projects))))
-            .child(div().flex_1().min_w_0().child(Card::new("kache-slowest", "Slowest compiles").caption("misses, the last 24 hours").child(Facts::new(slowest))));
+            .child(div().flex_1().min_w_0().child(Card::new("kache-slowest", "Slowest compiles").caption("misses, the last 24 hours").child(Facts::new(slowest))))
+            .child(div().flex_1().min_w_0().child(Card::new("kache-causes", "Why misses missed").caption("the last 24 hours").child(Facts::new(causes))));
         let columns = vec![
             Column::new("When", 90.0),
-            Column::new("Crate", 200.0),
-            Column::new("Project", 140.0),
-            Column::new("Result", 110.0),
+            Column::new("Crate", 160.0),
+            Column::new("Project", 110.0),
+            Column::new("Result", 210.0),
             Column::new("Took", 80.0).right(),
             Column::new("Size", 80.0).right(),
         ];
@@ -515,30 +555,78 @@ impl Kache {
     }
 
     fn settings(&mut self, cx: &mut Cx<Self>) -> Element {
-        let mut col = div().flex().flex_col().gap(px(m::STACK)).child(
-            StringView::new(format!("kache's own settings, in {}. Left empty, a setting is kache's own; kache takes them as it starts again.", data::config_path().display())).dim(true).wrap(true),
-        );
+        let mut col = div()
+            .flex()
+            .flex_col()
+            .gap(px(m::SPACING))
+            .child(StringView::new(format!("kache's own settings, in {}; kache takes them as it starts again.", data::config_path().display())).dim(true).wrap(true));
+        // Each setting's block: a slider over its steps alone, the one
+        // chosen said with its unit, what it is under it; a switch, its
+        // check box. Then laid out in rows of two, the store's on the
+        // left and the pool's on the right, each row's two starting level,
+        // each switch in the block of the setting it qualifies.
+        let mut blocks: Vec<Option<Element>> = Vec::new();
         for (i, s) in data::SETTINGS.iter().enumerate() {
-            match &self.fields[i] {
-                // Label, field, and what it is beside it.
-                Some(f) => {
-                    col = col.child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(m::SPACING))
-                            .child(TextControl::new(cx, f).label(s.label).divider(DIVIDER).width(DIVIDER + FIELD))
-                            .child(div().flex_1().min_w_0().child(StringView::new(s.about).dim(true).wrap(true))),
-                    );
-                }
-                None => {
-                    let on = self.switches[i];
-                    col = col.child(div().pl(px(DIVIDER)).child(CheckBox::new(s.about, on).on_toggle(cx.listener(move |v: &mut Kache, on: &bool, cx| {
-                        v.switches[i] = *on;
+            if s.kind == data::Kind::Switch {
+                let on = self.switches[i];
+                blocks.push(Some(
+                    div()
+                        .child(CheckBox::new(s.about, on).on_toggle(cx.listener(move |v: &mut Kache, on: &bool, cx| {
+                            v.switches[i] = *on;
+                            cx.invalidate();
+                        })))
+                        .into_element(),
+                ));
+                continue;
+            }
+            let steps = &self.steps[i];
+            let at = self.chosen[i].min(steps.len().saturating_sub(1));
+            let mut said = steps.get(at).map(|(_, n)| n.clone()).unwrap_or_default();
+            // (kache's own store limit as it stands now, from its daemon.)
+            if s.key == "local_max_size"
+                && at == 0
+                && let Some(d) = self.snap.daemon.as_ref().filter(|d| d.limit > 0)
+            {
+                said = format!("kache's own: {} now", data::bytes(d.limit));
+            }
+            let short = |n: &str| n.split(':').next().unwrap_or(n).to_owned();
+            let slider = olo_kit::widgets::Slider::new(format!("kache-{}", s.key), at as f32, 0.0..=(steps.len().max(2) - 1) as f32)
+                .step(1.0)
+                .label(s.label)
+                .value_text(said)
+                .limits(steps.first().map_or(String::new(), |(_, n)| short(n)), steps.last().map_or(String::new(), |(_, n)| n.clone()))
+                .on_change(cx.listener(move |v: &mut Kache, x: &f32, cx| {
+                    let k = x.round().max(0.0) as usize;
+                    if v.chosen[i] != k {
+                        v.chosen[i] = k;
                         cx.invalidate();
-                    }))));
+                    }
+                }));
+            blocks.push(Some(div().flex().flex_col().gap(px(m::TIGHT)).child(slider).child(StringView::new(s.about).dim(true).small(true).wrap(true)).into_element()));
+        }
+        let at = |key: &str| data::SETTINGS.iter().position(|s| s.key == key);
+        let mut take = |keys: &[&str]| -> Element {
+            let mut cell = div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING));
+            for k in keys {
+                if let Some(b) = at(k).and_then(|i| blocks.get_mut(i)).and_then(Option::take) {
+                    cell = cell.child(b);
                 }
             }
+            cell.into_element()
+        };
+        let rows: [(&[&str], &[&str]); 4] = [
+            (&["local_max_size", "count_held_in_max_size"], &["scheduler_permits"]),
+            (&["gc_max_age_hours"], &["scheduler_test_slots"]),
+            (&["auto_clean_idle_targets_days", "auto_clean_orphaned_targets"], &["scheduler_test_wait_secs"]),
+            (&[], &["scheduler_dynamic", "scheduler_cpu_percent"]),
+        ];
+        let gap = m::SPACING * 3.0;
+        col = col.child(
+            div().flex().gap(px(gap)).child(div().flex_1().min_w_0().child(StringView::new("The store").bold(true))).child(div().flex_1().min_w_0().child(StringView::new("The pool").bold(true))),
+        );
+        for (left, right) in rows {
+            let (l, r) = (take(left), take(right));
+            col = col.child(div().flex().items_start().gap(px(gap)).child(l).child(r));
         }
         let buttons = button_row()
             .child(Button::new("Revert").on_click(cx.listener(|v: &mut Kache, _: &ClickEvent, cx| v.revert_settings(cx))))
@@ -550,6 +638,12 @@ impl Kache {
         }
         olo_kit::widgets::ScrollView::new(&self.settings_scroll).border(false).auto_hide(true).child(col.pr(px(m::SPACING))).into_element()
     }
+}
+
+/// "its source changed" → "Its source changed".
+fn sentence_case(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
 }
 
 /// The last 24 hours, a bar an hour: hits, misses, and what couldn't be
@@ -727,7 +821,9 @@ fn print() -> std::process::ExitCode {
         "pool": s.pool.as_ref().map(|p| serde_json::json!({"slots": p.size, "compiles": p.compiles, "tests": p.tests, "waiting": p.waiting})),
         "last_24_hours": {"hits": s.day.hits, "misses": s.day.misses, "not_cacheable": s.day.others, "hit_rate": s.day.rate(), "saved_ms": s.day.saved_ms, "by_hour": s.day.hours,
             "projects": s.day.projects.iter().map(|t| serde_json::json!({"name": t.name, "hits": t.hits, "misses": t.misses, "not_cacheable": t.others})).collect::<Vec<_>>(),
-            "slowest_compiles": s.day.slowest.iter().map(|(c, ms)| serde_json::json!({"crate": c, "ms": ms})).collect::<Vec<_>>()},
+            "slowest_compiles": s.day.slowest.iter().map(|(c, ms)| serde_json::json!({"crate": c, "ms": ms})).collect::<Vec<_>>(),
+            "miss_causes": s.day.causes.iter().map(|(c, n)| serde_json::json!({"cause": c, "misses": n})).collect::<Vec<_>>()},
+        "tests_holding_slots": s.held.iter().map(|h| serde_json::json!({"pid": h.pid, "test": h.name, "project": h.project, "slots": h.slots, "since_ms": h.since_ms})).collect::<Vec<_>>(),
         "settings": data::SETTINGS.iter().zip(data::settings()).map(|(k, v)| (k.key.to_owned(), serde_json::json!(v))).collect::<serde_json::Map<_, _>>(),
     });
     println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());

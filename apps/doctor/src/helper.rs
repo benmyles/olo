@@ -44,6 +44,10 @@ pub enum FromHelper {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Way {
     Pkexec,
+    /// Through sudo, which asks for the password on the terminal: a
+    /// console with no polkit agent (or no polkit yet), as the
+    /// Installer's `--console` runs.
+    Sudo,
     Direct,
     Off,
 }
@@ -161,6 +165,11 @@ impl Helper {
             Way::Pkexec => {
                 let mut c = Command::new("pkexec");
                 c.arg("--disable-internal-agent").arg(&exe);
+                c
+            }
+            Way::Sudo => {
+                let mut c = Command::new("sudo");
+                c.arg(&exe);
                 c
             }
             Way::Direct => Command::new(&exe),

@@ -4414,5 +4414,29 @@
   "title": "Kache's Deskbar widget",
   "caption": "Build Cache: the day's hit rate, the pool's slots in use, and the last 6 hours (builds, and a bar of the share that were hits). Slots without icons now drop the kit's icon row. 1\u00d7 (doubled), 1.5\u00d7, 2\u00d7.",
   "image": "2026-11-15/194332-kache-s-deskbar-widget.png"
+ },
+ {
+  "time": "2026-11-15T21:47:03",
+  "title": "Power: SATA SSDs, each by its name",
+  "caption": "Preferences \u25b8 Power \u25b8 Power Modes with a SATA SSD beside the NVMe drive (its link's power: Cooler naps, Coolest sleeps), the names' column as wide as the longest name, and the three modes side by side so the tab fits 1280 \u00d7 800. The made-up machine (OLO_POWER_DEMO), light, 2\u00d7.",
+  "image": "2026-11-15/214703-power-sata-ssds-each-by-its-name.png"
+ },
+ {
+  "time": "2026-11-15T21:47:08",
+  "title": "Kache: settings as sliders",
+  "caption": "Every setting a slider over its valid steps alone, its value said with its unit, kache's own first; the store's on the left, the pool's on the right, in rows that start level. Dark, 2\u00d7.",
+  "image": "2026-11-15/214708-kache-settings-as-sliders.png"
+ },
+ {
+  "time": "2026-11-15T21:47:11",
+  "title": "Kache: why misses missed",
+  "caption": "Builds: each miss with its cause (from kache's key fields: the first part that changed against the same crate's last build with the same flags), and the day's causes counted.",
+  "image": "2026-11-15/214711-kache-why-misses-missed.png"
+ },
+ {
+  "time": "2026-11-15T21:47:15",
+  "title": "Kache: tests holding slots",
+  "caption": "Status: the tests holding the pool's slots (read from the kernel's list of locks), each with End.",
+  "image": "2026-11-15/214715-kache-tests-holding-slots.png"
  }
 ]

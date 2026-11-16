@@ -117,9 +117,10 @@ struct Entry {
 /// (`wake`: that GPU asked even if it's asleep). The window isn't shown
 /// until it's in, briefly (`hold`).
 fn read(shared: Arc<Mutex<Shared>>, proxy: olo_kit::Proxy, wake: Option<String>, hold: Option<olo_kit::FirstShowHold>) {
-    // Tests (the layout lint): a hybrid laptop's two, as the ThinkPad P1
-    // Gen 9's are.
-    if cfg!(test) {
+    // Tests (the layout lint) and `OLO_POWER_DEMO=1` (looking at it on a
+    // test desktop): a hybrid laptop's two, as the ThinkPad P1 Gen 9's
+    // are, an NVMe drive and a SATA SSD.
+    if cfg!(test) || std::env::var_os("OLO_POWER_DEMO").is_some() {
         let gpu = |pci: &str, name: &str, driver: &str, boot: bool, connectors: &[&str]| Gpu {
             pci: pci.into(),
             vendor: if driver == "nvidia" { 0x10de } else { 0x8086 },
@@ -143,10 +144,14 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_kit::Proxy, wake: Option<String>,
         {
             use olo_system::nvme_power::{Drive, PowerState};
             let state = |index: u8, max_watts: f32, operational: bool| PowerState { index, max_watts, operational };
-            s.drives = vec![(
-                Drive { name: "nvme0".into(), model: "SKHynix_HFS002TFM9X179N".into(), serial: "SJ0001".into(), size: 2_048_408_248_320 },
-                vec![state(0, 8.25, true), state(1, 6.3, true), state(2, 5.4, true), state(3, 0.05, false)],
-            )];
+            s.drives = vec![
+                (
+                    Drive { name: "nvme0".into(), model: "SKHynix_HFS002TFM9X179N".into(), serial: "SJ0001".into(), size: 2_048_408_248_320, sata: false },
+                    vec![state(0, 8.25, true), state(1, 6.3, true), state(2, 5.4, true), state(3, 0.05, false)],
+                ),
+                // (A SATA SSD beside it: its link's power, no states.)
+                (Drive { name: "sda".into(), model: "Samsung SSD 870 EVO 1TB".into(), serial: "S6PUNX0R123456A".into(), size: 1_000_204_886_016, sata: true }, Vec::new()),
+            ];
         }
         s.gpus = Some(vec![
             Entry { gpu: gpu("0000:00:02.0", "Intel Graphics", "xe", true, &["eDP-1", "DP-1", "HDMI-A-1"]), caps: Some(xe), asleep: false, unanswered: None, power_failed: false },
@@ -182,6 +187,8 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_kit::Proxy, wake: Option<String>,
                     let states = found.drives.iter().find(|f| f.serial == d.serial).map(|f| f.states.clone()).unwrap_or_default();
                     (d, states)
                 })
+                // (SATA SSDs: their link's power, no states to read.)
+                .chain(olo_system::sata_power::drives().into_iter().map(|s| (s.drive, Vec::new())))
                 .collect::<Vec<_>>();
             let mode = olo_system::power_profile::modes().ok().flatten().map(|m| m.active);
             let on_battery = !olo_system::battery::on_ac();
@@ -430,12 +437,21 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
     // (On the 4-point grid, as the gaps are: whole device pixels at every
     // scale, 1.25× and 1.75× too; at 146 and 150 every cell started on a
     // half pixel at 1.25× and the gaps came out 11.2 and 12.8.)
-    const LABEL_W: f32 = 152.0;
+    // The names' column as wide as the longest name (a drive's model:
+    // "SKHynix HFS002TFM9X179N" was cut at 152), on the grid too, from 152
+    // to 216; longer still, cut with "…" and whole in its tip.
     const CELL_W: f32 = 144.0;
+    let names_w = {
+        let font = style::ui_font(olo_kit::FontWeight::NORMAL);
+        let titles = olo_system::nvme_power::titles(&drives.iter().map(|(d, _)| d.clone()).collect::<Vec<_>>());
+        let gpu_names = gpus.iter().map(|e| short_name(&e.gpu));
+        titles.into_iter().chain(gpu_names).chain(["Processors".to_owned(), "Top speed".to_owned()]).map(|n| style::text_width_app(&n, style::PLAIN_SIZE, &font)).fold(0.0f32, f32::max)
+    };
+    let label_w = (((names_w + 2.0) / 4.0).ceil() * 4.0).clamp(152.0, 216.0);
     let plain = theme::palette().panel_text;
     ui.bbox("What Each Mode Sets", |ui| {
         // The columns: each mode, and running on battery (bold: in force).
-        let mut head = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().w(px(LABEL_W)).flex_shrink_0());
+        let mut head = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().w(px(label_w)).flex_shrink_0());
         for w in When::ALL {
             let now = match w {
                 When::Mode(m) => mode == Some(m),
@@ -447,7 +463,7 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
         // A row: its name, and a menu per column.
         let row = |ui: &mut Ui, id: &str, name: String, cells: Vec<(Vec<SharedString>, usize, Box<dyn Fn(&mut Tuning, usize)>)>| {
             // (A long name cut with "…": whole in its tip.)
-            let mut r = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().w(px(LABEL_W)).flex_shrink_0().child(StringView::new(name.clone()).cut(true).color(style::c(plain))));
+            let mut r = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().w(px(label_w)).flex_shrink_0().child(StringView::new(name.clone()).cut(true).color(style::c(plain))));
             for (k, (options, chosen, set)) in cells.into_iter().enumerate() {
                 let shared = st.shared.clone();
                 let on = ui.on_view(move |_, &i: &usize, cx: &mut Cx<PanelView>| {
@@ -513,15 +529,17 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
                 .collect();
             row(ui, &e.gpu.pci, short_name(&e.gpu), cells);
         }
-        // Each NVMe drive by its own name (`nvme_power::titles`): As It Is
-        // unless chosen; with the watts each choice allows once the
-        // follower has read them.
+        // Each SSD by its own name (`nvme_power::titles`): As It Is unless
+        // chosen; an NVMe drive's choices with the watts each allows once
+        // the follower has read them, a SATA drive's by how its link
+        // sleeps.
         let titles = olo_system::nvme_power::titles(&drives.iter().map(|(d, _)| d.clone()).collect::<Vec<_>>());
         for (k, (d, states)) in drives.iter().enumerate() {
             use olo_system::nvme_power::{NvmePreset, choice_name};
             // (A drive with one working state has nothing cooler.)
-            let offered: Vec<NvmePreset> = NvmePreset::ALL.into_iter().filter(|p| states.is_empty() || *p == NvmePreset::AsIs || p.state(states).is_some()).collect();
-            let names = |battery: bool| -> Vec<SharedString> { battery.then(|| SharedString::from("As the Mode")).into_iter().chain(offered.iter().map(|p| SharedString::from(choice_name(*p, states)))).collect() };
+            let offered: Vec<NvmePreset> = NvmePreset::ALL.into_iter().filter(|p| d.sata || states.is_empty() || *p == NvmePreset::AsIs || p.state(states).is_some()).collect();
+            let said = |p: NvmePreset| if d.sata { olo_system::sata_power::choice_name(p) } else { choice_name(p, states) };
+            let names = |battery: bool| -> Vec<SharedString> { battery.then(|| SharedString::from("As the Mode")).into_iter().chain(offered.iter().map(|p| SharedString::from(said(*p)))).collect() };
             let cells = When::ALL
                 .into_iter()
                 .map(|w| {
@@ -537,7 +555,7 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
                 .collect();
             row(ui, &format!("nvme-{}", d.serial), titles[k].clone(), cells);
         }
-        ui.note("Saving Power slows the processors and turns turbo off, Balanced speeds them up for work (leaning to saving on battery), Fastest keeps them quick; Top speed caps them (Balanced's 75% leaves out their hottest quarter). A GPU's Cooler and Quieter caps its clocks (Custom: its own, on Graphics), an SSD's Cooler and Coolest the power it may draw. On battery, a row not As the Mode holds whatever the mode.");
+        ui.note("Saving Power slows the processors and turns turbo off, Balanced speeds them up for work (leaning to saving on battery), Fastest keeps them quick; Top speed caps them (Balanced's 75% leaves out their hottest quarter). A GPU's Cooler and Quieter caps its clocks (Custom: its own, on Graphics), an SSD's Cooler and Coolest the power it may draw (a SATA SSD's, how deeply its link may sleep between commands). On battery, a row not As the Mode holds whatever the mode.");
         match (mode, follower) {
             (_, Follower::Missing) => ui.note("Apply once to let Olo follow the mode and the power supply: an administrator's password is asked, this once."),
             (_, Follower::Old) => ui.note("What follows them is from an older Olo: Apply to bring it up to date (an administrator's password is asked)."),

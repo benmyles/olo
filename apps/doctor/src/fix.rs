@@ -100,6 +100,9 @@ pub enum Step {
     InstallPackages {
         names: Vec<String>,
     },
+    /// Put PackageKit and dnf's service in place where they aren't (a
+    /// minimal Fedora), with Fedora's own dnf: `packages::bootstrap`.
+    InstallPackageServices,
     /// Update these packages (those of them with an update waiting).
     UpdatePackages {
         names: Vec<String>,
@@ -239,6 +242,7 @@ impl Step {
             Step::TryShell { path } => format!("Trying {}", path.display()),
             Step::SetLoginShell { user, shell } => format!("Making {} {user}'s login shell", shell.display()),
             Step::InstallPackages { names } => format!("Installing {}", short_list(names)),
+            Step::InstallPackageServices => "Installing PackageKit and dnf's service, which Olo installs software through".into(),
             Step::UpdatePackages { names } => format!("Updating {}", short_list(names)),
             Step::InstallRelease { name, release, .. } => format!("Installing {name} from github.com/{}", release.repo),
             Step::InstallRepository { name, .. } => format!("Adding the {name} repository"),
@@ -266,7 +270,15 @@ impl Step {
                 P::Package(name) => progress(name),
             }
         };
+        // (A system with no PackageKit yet, a minimal Fedora: put in place
+        // first, so a package step works there too.)
+        if matches!(self, Step::InstallPackages { .. } | Step::UpdatePackages { .. } | Step::InstallRepository { .. } | Step::InstallPackageServices)
+            && !olo_system::packages::missing_services().is_empty()
+        {
+            olo_system::packages::bootstrap(&mut said).map_err(|e| format!("{}: {e}", Step::InstallPackageServices.describe()))?;
+        }
         match self {
+            Step::InstallPackageServices => Ok(()),
             Step::InstallPackages { names } => {
                 let names: Vec<&str> = names.iter().map(String::as_str).collect();
                 olo_system::packages::install(&names, &mut said).map_err(|e| format!("{}: {e}", self.describe()))
@@ -360,7 +372,7 @@ impl Step {
             Step::AddKernelArgument { arg } => add_kernel_argument(Path::new("/"), arg).map_err(failed),
             Step::TryShell { path } => try_shell(path),
             Step::SetLoginShell { user, shell } => set_login_shell(user, shell).map_err(|e| format!("{}: {e}", self.describe())),
-            Step::InstallPackages { .. } | Step::UpdatePackages { .. } | Step::InstallRelease { .. } | Step::InstallRepository { .. } => self.run_with(&mut |_| {}),
+            Step::InstallPackages { .. } | Step::UpdatePackages { .. } | Step::InstallRelease { .. } | Step::InstallRepository { .. } | Step::InstallPackageServices => self.run_with(&mut |_| {}),
             Step::CopyTree { from, to, mode } => copy_tree(from, to, *mode).map_err(failed),
             Step::MakeDir { path, mode, owner } => make_dir(path, *mode, owner.as_deref()).map_err(failed),
             Step::SelinuxLabels { rules, restore } => selinux_labels(rules, restore).map_err(|e| format!("{}: {e}", self.describe())),
