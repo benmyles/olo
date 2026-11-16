@@ -24,6 +24,8 @@ mod painter;
 mod path_builder;
 mod platform;
 mod scene;
+#[cfg(test)]
+mod scene_bench;
 mod scroll;
 mod shared_string;
 mod shared_uri;

@@ -569,23 +569,21 @@ impl<'a> Painter<'a> {
         let reach = half + ScaledPixels(1.0) + if round { half } else { ScaledPixels(0.0) };
         let color = color.opacity(self.element_opacity());
         let content_mask = self.content_mask().scale(scale);
-        let segments = pieces
-            .iter()
-            .map(|(from, to)| {
-                let (a, b) = (from.scale(scale), to.scale(scale));
-                Segment {
-                    order: 0,
-                    round: round as u32,
-                    bounds: Bounds::from_corners(point(a.x.min(b.x) - reach, a.y.min(b.y) - reach), point(a.x.max(b.x) + reach, a.y.max(b.y) + reach)),
-                    content_mask: content_mask.clone(),
-                    color,
-                    from: a,
-                    to: b,
-                    half_width: half,
-                    bottom: ScaledPixels(0.0),
-                }
-            })
-            .collect();
+        // (Each written into the scene as it's made: no list of them.)
+        let segments = pieces.iter().map(|(from, to)| {
+            let (a, b) = (from.scale(scale), to.scale(scale));
+            Segment {
+                order: 0,
+                round: round as u32,
+                bounds: Bounds::from_corners(point(a.x.min(b.x) - reach, a.y.min(b.y) - reach), point(a.x.max(b.x) + reach, a.y.max(b.y) + reach)),
+                content_mask: content_mask.clone(),
+                color,
+                from: a,
+                to: b,
+                half_width: half,
+                bottom: ScaledPixels(0.0),
+            }
+        });
         self.scene.insert_segments(segments);
     }
 

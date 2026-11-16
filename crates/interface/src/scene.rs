@@ -144,7 +144,7 @@ impl Scene {
         let len = out.len();
         kind(&was.quads, &self.quads, equal, |q| q.bounds.intersect(&q.content_mask.bounds), out);
         kind(&was.underlines, &self.underlines, equal, |u| u.bounds.intersect(&u.content_mask.bounds), out);
-        kind(&was.segments, &self.segments, equal, |g| g.bounds.intersect(&g.content_mask.bounds), out);
+        kind(&was.segments, &self.segments, same_sprites, |g| g.bounds.intersect(&g.content_mask.bounds), out);
         // (One turned or moved by its matrix shows anywhere in its clip.)
         let mono = |m: &MonochromeSprite| if m.transformation == TransformationMatrix::unit() { m.bounds.intersect(&m.content_mask.bounds) } else { m.content_mask.bounds };
         // Glyphs line by line first, as their runs were made (a page of
@@ -447,32 +447,49 @@ impl Scene {
     }
 
     /// Olo: many segments at once (`Painter::paint_segments`).
-    pub fn insert_segments(&mut self, mut segments: Vec<Segment>) {
+    pub fn insert_segments(&mut self, segments: impl IntoIterator<Item = Segment>) {
         let recording = self.recording;
         let layer = self.layer_stack.last().copied();
         let mut reach: Option<Bounds<ScaledPixels>> = None;
-        segments.retain_mut(|segment| {
+        // (Written in where they go, as they're made, then clipped where
+        // they are: a curve of a thousand pieces, where a list of them was
+        // made, gone over to clip them, again for their order and then
+        // copied in, a fifth more of the time (`scene_bench`'s cycles).
+        // Pushed one by one, each looking for room, was slower still.)
+        let start = self.segments.len();
+        self.segments.extend(segments);
+        let mut gone = false;
+        for segment in &mut self.segments[start..] {
             let clipped = segment.bounds.intersect(&segment.content_mask.bounds);
             if clipped.is_empty() {
-                return false;
-            }
-            if recording {
+                gone = true;
+            } else if recording {
                 reach = Some(reach.map_or(clipped, |r| r.union(&clipped)));
             } else {
                 segment.order = layer.unwrap_or_else(|| self.primitive_bounds.insert(clipped));
             }
-            true
-        });
+        }
+        if gone {
+            // (Those clipped away whole, left out: seldom any.)
+            let mut kept = start;
+            for i in start..self.segments.len() {
+                let s = &self.segments[i];
+                if !s.bounds.intersect(&s.content_mask.bounds).is_empty() {
+                    self.segments.swap(kept, i);
+                    kept += 1;
+                }
+            }
+            self.segments.truncate(kept);
+        }
         // (A recording's: one order for them all, by what they reach.)
         if let Some(reach) = reach {
             self.reach(reach);
             let order = self.next_order(Kind::Segment, ((0, 0), (0, 0)), reach);
-            for segment in &mut segments {
+            for segment in &mut self.segments[start..] {
                 segment.order = order;
             }
         }
-        self.count += segments.len();
-        self.segments.append(&mut segments);
+        self.count += self.segments.len() - start;
     }
 
     /// Olo: many glyphs' sprites at once (`Painter::paint_glyphs`, a
@@ -627,7 +644,13 @@ impl Scene {
             }};
         }
         // (A list of one kind: placed, when all of it shows; else taken,
-        // those still there. `$moved`: what else of it moves.)
+        // and those clipped away whole left out. `$moved`: what else of
+        // it moves. Taken in a loop of its own, not by a filter's
+        // closure: that was called for each thing, not put in place, and
+        // each went through it and out as an `Option` before it was
+        // pushed: a line of a screen saver's 1,500, drawn in part, took
+        // 168 instructions more than one drawn whole; now 90
+        // (`scene_bench`).)
         macro_rules! put {
             ($list:ident, |$x:ident| $moved:block) => {
                 put!($list, |$x| $moved, $x.bounds)
@@ -640,10 +663,14 @@ impl Scene {
                         $x
                     }));
                 } else {
-                    self.$list.extend(recorded.$list.iter().cloned().filter_map(|mut $x| {
+                    self.$list.reserve(recorded.$list.len());
+                    for $x in &recorded.$list {
+                        let mut $x = $x.clone();
                         $moved
-                        take!($x, $reach).then_some($x)
-                    }));
+                        if take!($x, $reach) {
+                            self.$list.push($x);
+                        }
+                    }
                 }
             };
         }
@@ -1644,17 +1671,44 @@ const _: () = {
                 + size_of::<TransformationMatrix>()
     );
     assert!(size_of::<MonochromeSprite>() == 28 * 4);
+    // (And a segment.)
+    assert!(size_of::<Point<ScaledPixels>>() == 2 * size_of::<f32>() && size_of::<Bounds<ScaledPixels>>() == 4 * size_of::<f32>());
+    assert!(
+        size_of::<Segment>()
+            == size_of::<DrawOrder>()
+                + size_of::<u32>()
+                + size_of::<Bounds<ScaledPixels>>()
+                + size_of::<ContentMask<ScaledPixels>>()
+                + size_of::<Hsla>()
+                + 2 * size_of::<Point<ScaledPixels>>()
+                + 2 * size_of::<ScaledPixels>()
+    );
+    assert!(size_of::<Segment>() == 20 * 4);
 };
 
-/// Olo: whether two stretches of glyph sprites are the same, byte for
-/// byte (a block of them one comparison of memory, where comparing each
-/// field of each is a branch a number). Two the same to the byte are the
-/// same; two that differ only in a zero's sign are taken for different,
-/// which draws a glyph's few pixels again.
-fn same_sprites(a: &[MonochromeSprite], b: &[MonochromeSprite]) -> bool {
-    fn bytes(s: &[MonochromeSprite]) -> &[u8] {
-        // SAFETY: a sprite has no padding (checked above), so all of its
-        // bytes are initialized; u8 has no alignment to keep.
+/// Olo: four-byte numbers with nothing between them (checked above), so
+/// every byte of one is one of its numbers'.
+///
+/// # Safety
+///
+/// Only for a type with no padding.
+unsafe trait Packed: Sized {}
+// SAFETY: checked above.
+unsafe impl Packed for MonochromeSprite {}
+// SAFETY: checked above.
+unsafe impl Packed for Segment {}
+
+/// Olo: whether two stretches of glyph sprites (or segments) are the
+/// same, byte for byte (a block of them one comparison of memory, where
+/// comparing each field of each is a branch a number: a screen saver's
+/// 1,500 lines compared with the last frame's, the same half the time,
+/// were a quarter of its work). Two the same to the byte are the same;
+/// two that differ only in a zero's sign are taken for different, which
+/// draws a few pixels again.
+fn same_sprites<T: Packed>(a: &[T], b: &[T]) -> bool {
+    fn bytes<T: Packed>(s: &[T]) -> &[u8] {
+        // SAFETY: `T` has no padding (`Packed`), so all of its bytes are
+        // initialized; u8 has no alignment to keep.
         unsafe { slice::from_raw_parts(s.as_ptr().cast::<u8>(), std::mem::size_of_val(s)) }
     }
     a.len() == b.len() && bytes(a) == bytes(b)
@@ -1955,6 +2009,63 @@ mod cull_tests {
 
     fn quad(order: u32, b: Bounds<ScaledPixels>, alpha: f32) -> Quad {
         Quad { order, bounds: b, content_mask: ContentMask { bounds: rect(0.0, 0.0, 4000.0, 4000.0) }, background: solid_background(hsla(0.5, 0.5, 0.5, alpha)), ..Default::default() }
+    }
+
+    fn segment(x: f32, mask: Bounds<ScaledPixels>) -> Segment {
+        let (from, to) = (point(ScaledPixels(x + 5.0), ScaledPixels(10.0)), point(ScaledPixels(x + 45.0), ScaledPixels(40.0)));
+        Segment {
+            order: 0,
+            round: 1,
+            bounds: rect(x, 0.0, 50.0, 50.0),
+            content_mask: ContentMask { bounds: mask },
+            color: hsla(0.5, 0.5, 0.5, 1.0),
+            from,
+            to,
+            half_width: ScaledPixels(1.0),
+            bottom: ScaledPixels(0.0),
+        }
+    }
+
+    /// Segments clipped away whole are left out as they're recorded, the
+    /// rest kept in order, one order for them all, reaching what they do.
+    #[test]
+    fn segments_recorded_leave_out_what_shows_nothing() {
+        let mut rec = Scene::recording();
+        let mask = rect(0.0, 0.0, 420.0, 1000.0);
+        rec.insert_segments((0..10).map(|i| segment(i as f32 * 100.0, mask)));
+        let xs: Vec<f32> = rec.segments.iter().map(|s| s.bounds.origin.x.0).collect();
+        assert_eq!(xs, [0.0, 100.0, 200.0, 300.0, 400.0]);
+        assert!(rec.segments.iter().all(|s| s.order == rec.segments[0].order));
+        assert_eq!(rec.extent(), rect(0.0, 0.0, 420.0, 50.0));
+        assert_eq!(rec.len(), 5);
+        // None shows: nothing recorded.
+        let mut none = Scene::recording();
+        none.insert_segments((0..3).map(|i| segment(500.0 + i as f32 * 100.0, mask)));
+        assert!(none.segments.is_empty() && none.is_empty());
+    }
+
+    /// A drawing put in a frame that draws part of the window: what
+    /// shows of it kept, in order, moved, its clip cut by the frame's;
+    /// the rest left out.
+    #[test]
+    fn a_drawing_put_in_part_keeps_what_shows() {
+        let mut rec = Scene::recording();
+        let everywhere = rect(0.0, 0.0, 4000.0, 4000.0);
+        rec.insert_segments((0..10).map(|i| segment(i as f32 * 100.0, everywhere)));
+        rec.quads = (0..10).map(|i| quad(0, rect(i as f32 * 100.0, 60.0, 50.0, 20.0), 1.0)).collect();
+        let mut frame = Scene::default();
+        frame.append(&rec, point(ScaledPixels(10.0), ScaledPixels(0.0)), &rect(0.0, 0.0, 420.0, 1000.0));
+        let xs: Vec<f32> = frame.segments.iter().map(|s| s.bounds.origin.x.0).collect();
+        assert_eq!(xs, [10.0, 110.0, 210.0, 310.0, 410.0]);
+        assert!(frame.segments.iter().all(|s| s.content_mask.bounds == rect(10.0, 0.0, 410.0, 1000.0)));
+        assert_eq!((frame.segments[4].from.x.0, frame.segments[4].to.x.0), (415.0, 455.0));
+        let qs: Vec<f32> = frame.quads.iter().map(|q| q.bounds.origin.x.0).collect();
+        assert_eq!(qs, [10.0, 110.0, 210.0, 310.0, 410.0]);
+        // All of it showing: all of it, as it was, moved.
+        let mut all = Scene::default();
+        all.append(&rec, point(ScaledPixels(10.0), ScaledPixels(0.0)), &everywhere);
+        assert_eq!(all.segments.len(), 10);
+        assert_eq!(all.quads.len(), 10);
     }
 
     #[test]

@@ -39,10 +39,20 @@ something nobody here has is in "Blocked", with what it waits for.
   Logs above (8.7–10.9 against 6.1–7.3). Logs: each message's
   highlighting worked out once, not each frame (a tenth of its work),
   and the text system taking a run's font id from the run before it
-  when it's the same font (9%, now 2.5%): 9.0 → 8.0 M a step. Next:
-  the screen savers, every frame drawn several times over for each one
-  shown (StringTheme 190 M instructions a second against GPUI's 40 M,
-  and 51 frames a second at 120 Hz against 120).
+  when it's the same font (9%, now 2.5%): 9.0 → 8.0 M a step. The
+  screen savers: an animation's step that changed nothing waited for
+  the next frame instead of running again at once (StringTheme 179–210
+  M instructions a second at 60 Hz → 76–93 M, GPUI's 33–43 M; a scroll
+  arrow held at a list's end 114% of a core → 0.5–1.5%); and the
+  scene's work on a drawing of many lines: segments compared by their
+  bytes, written into the scene as they're made, and a frame drawn in
+  part taking them in a loop of its own, not through a filter's
+  closure (`scene_bench`: 1,362 → 815 M instructions, 309 → 168 M
+  cycles; StringTheme 1.19–1.32 → 0.94–1.11 M instructions a paint).
+  Left there: StringTheme's ~1.0 M a paint against GPUI's 0.65 M a
+  frame, in making its 1,500 segments (`insert_segments`, 45% with the
+  painter's) and copying them into the frame (`Scene::append`, 14%:
+  the first idea above).
 
 ## Not started (highest priority first)
 
