@@ -6920,18 +6920,28 @@ has a smaller one.
 
 Auto-tiling (`shell/autotile.rs`; its module doc is the design) is the
 Auto-Tiling mode; `{"type":"set_auto_tiling","on":true}` and
-`{"type":"auto_tiling"}` still work, as the mode. It has two layouts
-(`TilingSettings::layout`, everywhere it's on: Deskbar's windowing mode
-menu ▸ Auto-Tiling Layout, Preferences ▸ Windows, `{"type":
-"set_tiling_layout","layout":"main_and_stack"}`): Halves, below, and
-Main and Stack, as dwm's (and its centred main): one main window in its
-place, the rest stacked in the rest, each as big. The place is any part
-a window tiles into (`Tile::CHOOSABLE`), chosen for each display's
-workspace (Deskbar's Window Arrangement ▸ Main Window,
+`{"type":"auto_tiling"}` still work, as the mode. It has two layouts,
+chosen for each display's workspace and kept for it (Ben, 2026-11-15:
+"remember it per-desktop-workspace": `TilingSettings::layouts`, kept as
+modes are; Deskbar's windowing mode menu ▸ Auto-Tiling Layout,
+`{"type":"set_tiling_layout","layout":"halves","workspace":1}`), each
+starting with the default (`TilingSettings::layout`, Preferences ▸
+Windows): Halves, below, and Main and Stack, as dwm's (and its centred
+main): one main window in its place, the rest stacked in the rest, each
+as big. Deskbar's menu names them as people think of them
+(`LAYOUT_PRESETS`: Main Two Thirds, Stack a Third; Main Half, Stack
+Half; Halves; and Main and Stack with its main window elsewhere,
+`preset_of` checking the one in use). The place is any part a window
+tiles into (`Tile::CHOOSABLE`), chosen for each display's workspace
+(Deskbar's Window Arrangement ▸ Main Window,
 `{"type":"set_main_place","place":"Left"}`, kept in
 `TilingSettings::main_places` as modes are) and by default
-(`TilingSettings::main_place`, Preferences ▸ Windows ▸ Main window;
-Center Two Thirds, Ben 2026-11-14). Beside an edge the stack is a
+(`TilingSettings::main_place`, Preferences ▸ Windows ▸ Main window).
+The defaults (Ben, 2026-11-15: "the main window gets the left 2/3 and
+the stack is the right 1/3"): Main and Stack, its main window in the
+left two thirds; settings written before them (`TilingSettings::version`
+0) holding the old defaults (Halves, the middle two thirds) move to
+them once as they're read (`upgrade`), what was chosen kept. Beside an edge the stack is a
 column (a row) beside it; in the middle, a column either side, the right
 one taking the first half and the odd one; in a corner, the rest of its
 column takes the last and the other half the rest

@@ -55,7 +55,9 @@ pub fn ui(ui: &mut Ui, outputs: &[OutputInfo]) {
             let layouts: Vec<SharedString> = TilingLayout::ALL.iter().map(|l| SharedString::from(l.title())).collect();
             let i = TilingLayout::ALL.iter().position(|l| *l == s.tiling.layout).unwrap_or(0);
             ui.menu("tiling-layout", layouts, i, |f| f.label("Auto-tiling layout:"), |s, i| s.tiling.layout = TilingLayout::ALL[i]);
-            ui.note(s.tiling.layout.detail());
+            // (The one a workspace starts with: each keeps its own, chosen
+            // from Deskbar's tray.)
+            ui.note(format!("{} A workspace starts with this; choose its own from Deskbar's tray.", s.tiling.layout.detail()));
             // Where Main and Stack's main window goes on a workspace that
             // hasn't a place of its own (Deskbar's tray ▸ Main Window).
             let places: Vec<(Tile, &str)> = Tile::CHOOSABLE.iter().map(|t| (*t, t.title())).collect();

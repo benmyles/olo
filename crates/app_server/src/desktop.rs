@@ -2048,6 +2048,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let own = self.rescue.as_ref().map_or(&self.settings, |r| &r.real);
         settings.tiling.modes = own.tiling.modes.clone();
         settings.tiling.main_places = own.tiling.main_places.clone();
+        settings.tiling.layouts = own.tiling.layouts.clone();
         settings.tiling.auto.clear();
         if let Some(r) = &mut self.rescue {
             keep_brightness(&mut settings, &r.real);

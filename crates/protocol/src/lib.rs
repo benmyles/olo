@@ -37,7 +37,10 @@ pub mod touchpad;
 pub mod voice;
 pub use notifications::{AppNotifications, CardSize, HistoryView, NoteApp, NoteLook, NoteStyle, NotificationSettings, NotificationState};
 pub use sharing::SharingState;
-pub use shortcuts::{AutoTiling, Chord, CommandKey, KeyboardProfile, MainPlaceChoice, ModeChoice, Platform, Shortcut, ShortcutSettings, Tile, TilingLayout, TilingSettings, WindowingMode};
+pub use shortcuts::{
+    AutoTiling, Chord, CommandKey, KeyboardProfile, LAYOUT_PRESETS, LayoutChoice, MainPlaceChoice, ModeChoice, Platform, Shortcut, ShortcutSettings, TILING_VERSION, Tile, TilingLayout,
+    TilingSettings, WindowingMode,
+};
 
 pub const SOCKET_ENV: &str = "OLO_SOCKET";
 
@@ -448,12 +451,19 @@ pub enum Request {
         #[serde(default)]
         output: Option<String>,
     },
-    /// How auto-tiling lays windows out (`TilingSettings::layout`),
-    /// everywhere it's on: each display's tiles are laid out again in it
+    /// How auto-tiling lays windows out on one display (`output`, a
+    /// connector; else the active display), on one of its workspaces
+    /// (the one showing unless given): its tiles are laid out again in it
     /// (Main and Stack: in reading order, the first the main window).
+    /// Remembered for that workspace (`TilingSettings::layouts`); the
+    /// default for the others is `TilingSettings::layout` (Preferences).
     /// Saved; answered `Reply::Ok`.
     SetTilingLayout {
         layout: TilingLayout,
+        #[serde(default)]
+        workspace: Option<u32>,
+        #[serde(default)]
+        output: Option<String>,
     },
     /// Where Main and Stack's main window goes (any part a window can be
     /// tiled into, `Tile::CHOOSABLE`) on one display (`output`, a

@@ -546,14 +546,15 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.set_windowing_mode(mode, workspace, o);
                 Reply::WindowingMode { workspace: ws, displays: self.windowing_mode_infos(workspace) }
             }
-            Request::SetTilingLayout { layout } => {
-                if self.settings.tiling.layout != layout {
-                    info!(layout = layout.id(), "tiling layout");
-                    self.settings.tiling.layout = layout;
-                    self.settings_changed();
-                    self.auto.changed();
-                }
-                Reply::Ok
+            Request::SetTilingLayout { layout, workspace, output } => {
+                let o = match output {
+                    Some(name) => match self.space.outputs().find(|o| o.name() == name).cloned() {
+                        Some(o) => Some(o),
+                        None => return Some(Reply::Error { message: format!("no display {name:?}") }),
+                    },
+                    None => None,
+                };
+                if self.set_tiling_layout(layout, workspace, o) { Reply::Ok } else { Reply::Error { message: "no display to lay out".into() } }
             }
             Request::SetMainPlace { place, workspace, output } => {
                 let o = match output {

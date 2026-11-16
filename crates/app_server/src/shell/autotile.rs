@@ -1770,7 +1770,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         // changes (a window came, went, or hid: the stack each as big
         // again, and a main window gone gives its place to the one before
         // it); otherwise as the person left it.
-        let layout = self.settings.tiling.layout;
+        let layout = self.layout_of(&key);
         let (place, was) = self.main_places(&key);
         if let Some(t) = tree.as_mut()
             && layout == olo_protocol::TilingLayout::MainAndStack
@@ -1902,7 +1902,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let id = w.id();
         let Some(t) = tree.as_mut() else {
             // (Main and Stack's main window keeps its place alone too.)
-            *tree = Some(match self.settings.tiling.layout {
+            *tree = Some(match self.layout_of(key) {
                 olo_protocol::TilingLayout::MainAndStack => {
                     let place = self.main_places(key).0;
                     main_and_stack(Node::Window(id), Vec::new(), Vec::new(), place, place.fraction())
@@ -1924,7 +1924,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         // Main and Stack: the new window is the main one, the one that was
         // first in the stack (the shape leaves its own room for the next
         // window, not a hole a tiling command left).
-        if self.settings.tiling.layout == olo_protocol::TilingLayout::MainAndStack {
+        if self.layout_of(key) == olo_protocol::TilingLayout::MainAndStack {
             let (place, was) = self.main_places(key);
             let m = self.auto.mains.get(key).copied().unwrap_or_default();
             if let Some(built) = main_and_stack_again(t, place, was, Some(id), None, m.now, m.before) {
@@ -2418,6 +2418,16 @@ impl<B: Backend + 'static> AnvilState<B> {
         true
     }
 
+    /// Auto-tiling's layout in tree `key` (its display's workspace's own,
+    /// else the default).
+    fn layout_of(&self, key: &(u32, String)) -> olo_protocol::TilingLayout {
+        let tiling = &self.settings.tiling;
+        match self.space.outputs().find(|o| o.name() == key.1) {
+            Some(o) => tiling.layout_of(key.0, &crate::desktop::display_key(o)),
+            None => tiling.layout,
+        }
+    }
+
     /// Where Main and Stack's main window goes in tree `key` now (its
     /// display's workspace's place, else the default), and where it went
     /// as the tree was last built (the same, unless it was just chosen
@@ -2438,7 +2448,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// Main and Stack's main window of `w`'s tiles, if `w` is in tiles
     /// laid out so.
     pub fn main_window_of(&self, key: &(u32, String)) -> Option<u64> {
-        if self.settings.tiling.layout != olo_protocol::TilingLayout::MainAndStack {
+        if self.layout_of(key) != olo_protocol::TilingLayout::MainAndStack {
             return None;
         }
         let tree = self.auto.trees.get(key)?;
@@ -2468,10 +2478,13 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// and the main window's place in it. None where `w` isn't a tile of
     /// Main and Stack's.
     fn main_take(&mut self, w: &WindowElement, name: &str) -> Option<((u32, String), Node, Tile)> {
-        if self.settings.tiling.layout != olo_protocol::TilingLayout::MainAndStack || self.floats(w) {
+        if self.floats(w) {
             return None;
         }
         let key = self.tree_of(w)?;
+        if self.layout_of(&key) != olo_protocol::TilingLayout::MainAndStack {
+            return None;
+        }
         let place = self.main_places(&key).0;
         let (key, tree) = self.auto_take(w, name)?;
         Some((key, tree, place))
@@ -2508,6 +2521,23 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// Choose where Main and Stack's main window goes on `output` (the
     /// active display unless given) on its workspace `workspace` (the one
     /// showing unless given): its tiles are built again so.
+    /// Auto-tiling's layout on one display's workspace (the active display
+    /// and the workspace showing, unless given), remembered for it.
+    pub fn set_tiling_layout(&mut self, layout: olo_protocol::TilingLayout, workspace: Option<u32>, output: Option<Output>) -> bool {
+        let Some(output) = output.or_else(|| self.active_output()) else { return false };
+        let ws = workspace.unwrap_or_else(|| self.showing(&output)).min(self.settings.workspace_count.max(1) - 1);
+        let key = crate::desktop::display_key(&output);
+        if self.settings.tiling.layout_of(ws, &key) == layout {
+            return true;
+        }
+        self.settings.tiling.set_layout(ws, &key, layout);
+        self.settings_changed();
+        info!(workspace = ws, output = output.name(), layout = layout.id(), "tiling layout");
+        self.auto.changed();
+        self.auto_tick();
+        true
+    }
+
     pub fn set_main_place(&mut self, place: Tile, workspace: Option<u32>, output: Option<Output>) -> bool {
         if place == Tile::Cell {
             return false;

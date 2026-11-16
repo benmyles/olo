@@ -904,14 +904,26 @@ impl WindowingMode {
 pub enum TilingLayout {
     /// Each new window takes half of the tile that had the focus, cut
     /// along its longer side (as bspwm and Hyprland's dwindle do).
-    #[default]
     Halves,
     /// One main window in its place (`TilingSettings::main_place_of`:
-    /// the middle two thirds unless chosen), the rest stacked in the
-    /// rest, each as big as the others; a new window is the main one (as
-    /// dwm's, and its centred main).
+    /// the left two thirds unless chosen), the rest stacked in the rest,
+    /// each as big as the others; a new window is the main one (as
+    /// dwm's, and its centred main). The default (Ben, 2026-11-15: "the
+    /// main window gets the left 2/3 and the stack is the right 1/3").
+    #[default]
     MainAndStack,
 }
+
+/// The layouts offered by name (Deskbar's Auto-Tiling Layout menu,
+/// Preferences): a layout, and for Main and Stack where its main window
+/// goes (Ben, 2026-11-15: "make one of the auto-tile layout options
+/// having the main window be the left half and then the stack be the
+/// right half"). Any other place is Main and Stack's Main Window menu.
+pub const LAYOUT_PRESETS: [(&str, TilingLayout, Option<Tile>); 3] = [
+    ("Main Two Thirds, Stack a Third", TilingLayout::MainAndStack, Some(Tile::LeftTwoThirds)),
+    ("Main Half, Stack Half", TilingLayout::MainAndStack, Some(Tile::Left)),
+    ("Halves", TilingLayout::Halves, None),
+];
 
 impl TilingLayout {
     pub const ALL: [TilingLayout; 2] = [TilingLayout::Halves, TilingLayout::MainAndStack];
@@ -966,9 +978,21 @@ pub struct TilingSettings {
     /// The windowing mode of every workspace (and display) that hasn't
     /// one of its own (Preferences ▸ Windows).
     pub default_mode: WindowingMode,
-    /// How auto-tiling lays windows out, everywhere it's on (Preferences
-    /// ▸ Windows, Deskbar's Window Arrangement menu).
+    /// How auto-tiling lays windows out on every workspace (and display)
+    /// that hasn't a layout of its own (Preferences ▸ Windows).
     pub layout: TilingLayout,
+    /// The workspaces (and displays of them) whose layout isn't the
+    /// default (Deskbar's Window Arrangement menu,
+    /// `Request::SetTilingLayout`; see [`TilingSettings::layout_of`];
+    /// Ben, 2026-11-15: "remember it per-desktop-workspace"). app_server
+    /// keeps it as they are chosen: a copy sent back with the rest is
+    /// ignored, as `modes`.
+    pub layouts: Vec<LayoutChoice>,
+    /// What these settings were written as: 0 before 2026-11-15, whose
+    /// defaults were Halves and the middle two thirds
+    /// ([`TilingSettings::upgrade`] moves those to today's).
+    #[serde(default)]
+    pub version: u32,
     /// Where Main and Stack's main window goes on every workspace (and
     /// display) that hasn't a place of its own (Preferences ▸ Windows):
     /// any part a window can be tiled into ([`Tile::CHOOSABLE`]), the
@@ -993,6 +1017,9 @@ pub struct TilingSettings {
     pub auto: Vec<AutoTiling>,
 }
 
+/// What [`TilingSettings`] are written as today (`version`).
+pub const TILING_VERSION: u32 = 1;
+
 impl Default for TilingSettings {
     fn default() -> Self {
         TilingSettings {
@@ -1001,8 +1028,10 @@ impl Default for TilingSettings {
             ungrouped_apps: Vec::new(),
             floating_apps: Vec::new(),
             default_mode: WindowingMode::Standard,
-            layout: TilingLayout::Halves,
-            main_place: Tile::CenterTwoThirds,
+            layout: TilingLayout::MainAndStack,
+            layouts: Vec::new(),
+            version: TILING_VERSION,
+            main_place: Tile::LeftTwoThirds,
             main_places: Vec::new(),
             modes: Vec::new(),
             auto: Vec::new(),
@@ -1017,6 +1046,15 @@ pub struct MainPlaceChoice {
     pub workspace: u32,
     pub display: String,
     pub place: Tile,
+}
+
+/// Auto-tiling's layout on a display's (`display`, its `display_key`)
+/// workspace (counting from 0).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LayoutChoice {
+    pub workspace: u32,
+    pub display: String,
+    pub layout: TilingLayout,
 }
 
 /// The windowing mode of a display's (`display`, its `display_key`)
@@ -1044,6 +1082,22 @@ impl TilingSettings {
     /// Settings from before windowing modes: auto-tiling's ons and offs
     /// as modes.
     pub fn upgrade(&mut self) {
+        // Settings from before today's defaults (Ben, 2026-11-15: "change
+        // the default auto-tiling so that the main window gets the left
+        // 2/3 and the stack is the right 1/3"): what was the default then
+        // is today's default; what was chosen stays.
+        if self.version < 1 {
+            if self.layout == TilingLayout::Halves {
+                self.layout = TilingLayout::MainAndStack;
+            }
+            if self.main_place == Tile::CenterTwoThirds {
+                self.main_place = Tile::LeftTwoThirds;
+            }
+            // (A workspace's own place that's now the default isn't kept.)
+            let main_place = self.main_place;
+            self.main_places.retain(|m| m.place != main_place);
+        }
+        self.version = TILING_VERSION;
         for a in std::mem::take(&mut self.auto) {
             let mode = if a.on { WindowingMode::AutoTiling } else { WindowingMode::Standard };
             if !self.modes.iter().any(|m| m.workspace == a.workspace && m.display == a.display) {
@@ -1059,6 +1113,28 @@ impl TilingSettings {
     pub fn mode(&self, workspace: u32, display: &str) -> WindowingMode {
         let find = |d: Option<&str>| self.modes.iter().find(|a| a.workspace == workspace && a.display.as_deref() == d).map(|a| a.mode);
         find(Some(display)).or_else(|| find(None)).unwrap_or(self.default_mode)
+    }
+
+    /// Auto-tiling's layout on the display `display` (its key) on its
+    /// workspace `workspace`: its own, else the default.
+    pub fn layout_of(&self, workspace: u32, display: &str) -> TilingLayout {
+        self.layouts.iter().find(|l| l.workspace == workspace && l.display == display).map_or(self.layout, |l| l.layout)
+    }
+
+    /// Choose auto-tiling's layout on `display`'s workspace `workspace`;
+    /// only one that isn't the default is kept.
+    pub fn set_layout(&mut self, workspace: u32, display: &str, layout: TilingLayout) {
+        self.layouts.retain(|l| !(l.workspace == workspace && l.display == display));
+        if layout != self.layout {
+            self.layouts.push(LayoutChoice { workspace, display: display.to_owned(), layout });
+        }
+    }
+
+    /// The preset (`LAYOUT_PRESETS`, by its index) the display's
+    /// workspace is on, if any.
+    pub fn preset_of(&self, workspace: u32, display: &str) -> Option<usize> {
+        let (layout, place) = (self.layout_of(workspace, display), self.main_place_of(workspace, display));
+        LAYOUT_PRESETS.iter().position(|(_, l, p)| *l == layout && p.is_none_or(|p| p == place))
     }
 
     /// Where Main and Stack's main window goes on the display `display`
@@ -1095,6 +1171,50 @@ impl TilingSettings {
 
 #[cfg(test)]
 mod tests {
+    /// Each workspace's layout its own once chosen, else the default;
+    /// the presets read back from the layout and place.
+    #[test]
+    fn layouts_by_workspace() {
+        let mut t = TilingSettings::default();
+        assert_eq!((t.layout, t.main_place), (TilingLayout::MainAndStack, Tile::LeftTwoThirds), "today's defaults");
+        assert_eq!(t.preset_of(0, "eDP-1"), Some(0), "Main Two Thirds, Stack a Third");
+        t.set_layout(1, "eDP-1", TilingLayout::Halves);
+        assert_eq!((t.layout_of(1, "eDP-1"), t.layout_of(1, "DP-2"), t.layout_of(0, "eDP-1")), (TilingLayout::Halves, TilingLayout::MainAndStack, TilingLayout::MainAndStack));
+        assert_eq!(t.preset_of(1, "eDP-1"), Some(2), "Halves, whatever the place");
+        t.set_main_place(2, "eDP-1", Tile::Left);
+        assert_eq!(t.preset_of(2, "eDP-1"), Some(1), "Main Half, Stack Half");
+        t.set_main_place(3, "eDP-1", Tile::CenterThird);
+        assert_eq!(t.preset_of(3, "eDP-1"), None, "Main and Stack elsewhere");
+        // Back to the default: not kept.
+        t.set_layout(1, "eDP-1", TilingLayout::MainAndStack);
+        assert!(t.layouts.is_empty());
+        // Kept through a round trip; a copy without them reads none.
+        t.set_layout(4, "eDP-1", TilingLayout::Halves);
+        let back: TilingSettings = serde_json::from_str(&serde_json::to_string(&t).unwrap()).unwrap();
+        assert_eq!(back.layout_of(4, "eDP-1"), TilingLayout::Halves);
+    }
+
+    /// Settings from before today's defaults move to them where they held
+    /// the old ones; what was chosen stays; once.
+    #[test]
+    fn old_defaults_move_to_new_ones() {
+        let old = r#"{"layout":"halves","main_place":"CenterTwoThirds","main_places":[{"workspace":0,"display":"Dell","place":"CenterThird"}],"modes":[]}"#;
+        let mut t: TilingSettings = serde_json::from_str(old).unwrap();
+        assert_eq!(t.version, 0, "written before versions");
+        t.upgrade();
+        assert_eq!((t.layout, t.main_place, t.version), (TilingLayout::MainAndStack, Tile::LeftTwoThirds, TILING_VERSION));
+        assert_eq!(t.main_place_of(0, "Dell"), Tile::CenterThird, "a workspace's own place stays");
+        // Chosen ones stay: a layout or a place that wasn't the old default.
+        let chosen = r#"{"layout":"main_and_stack","main_place":"RightThird"}"#;
+        let mut t: TilingSettings = serde_json::from_str(chosen).unwrap();
+        t.upgrade();
+        assert_eq!((t.layout, t.main_place), (TilingLayout::MainAndStack, Tile::RightThird));
+        // Once: today's settings holding Halves (chosen since) keep it.
+        let mut t = TilingSettings { layout: TilingLayout::Halves, ..TilingSettings::default() };
+        t.upgrade();
+        assert_eq!(t.layout, TilingLayout::Halves);
+    }
+
     use super::*;
 
     #[test]

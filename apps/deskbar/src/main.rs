@@ -820,7 +820,8 @@ impl Deskbar {
         menu.title = "Window Arrangement".into();
         // Main and Stack's: the focused window the main one, or the one
         // before back.
-        if mode == WindowingMode::AutoTiling && self.tiling.layout == olo_protocol::TilingLayout::MainAndStack {
+        let (_, ws, key) = self.menu_place();
+        if mode == WindowingMode::AutoTiling && self.tiling.layout_of(ws, &key) == olo_protocol::TilingLayout::MainAndStack {
             menu = menu.separator().item("Make Main", "arrange:make-main").enabled(focused).item("Swap with Previous Main", "arrange:swap-main");
         }
         menu.separator()
@@ -852,19 +853,25 @@ impl Deskbar {
         for m in WindowingMode::ALL {
             menu = menu.item(m.title(), format!("mode:{}", m.id())).checked(m == mode);
         }
+        // The layouts by name, for this display's workspace (each
+        // workspace keeps its own; Preferences sets the one a workspace
+        // starts with): the presets, and Main and Stack with its main
+        // window anywhere else (the Main Window menu).
+        let (_, ws, key) = self.menu_place();
+        let layout = self.tiling.layout_of(ws, &key);
+        let preset = self.tiling.preset_of(ws, &key);
         let mut layouts = Menu::new("Auto-Tiling Layout");
-        for l in olo_protocol::TilingLayout::ALL {
-            layouts = layouts.item(l.title(), format!("layout:{}", l.id())).checked(l == self.tiling.layout);
+        for (i, (title, ..)) in olo_protocol::LAYOUT_PRESETS.iter().enumerate() {
+            layouts = layouts.item(*title, format!("layout-preset:{i}")).checked(preset == Some(i));
         }
+        let elsewhere = layout == olo_protocol::TilingLayout::MainAndStack && preset.is_none();
+        layouts = layouts.item("Main and Stack, Main Elsewhere", "layout:main_and_stack").checked(elsewhere);
         menu = menu.submenu(layouts);
         // Where Main and Stack's main window goes on this workspace (Ben,
         // 2026-11-14: "an option to set the main window layout for a
         // workspace in main and stack mode where i can choose any of
         // these"): any part a window tiles into.
-        if self.tiling.layout == olo_protocol::TilingLayout::MainAndStack {
-            let display = self.menu_output.clone().or_else(|| self.showing.iter().find(|d| d.active).map(|d| d.output.clone()));
-            let ws = self.menu_workspace.unwrap_or_else(|| self.showing(display.as_deref()));
-            let key = self.outputs.iter().find(|o| Some(&o.name) == display.as_ref()).map(|o| o.key.clone()).unwrap_or_default();
+        if layout == olo_protocol::TilingLayout::MainAndStack {
             let now = self.tiling.main_place_of(ws, &key);
             let mut places = Menu::new("Main Window");
             let mut family = None;
@@ -878,6 +885,16 @@ impl Deskbar {
             menu = menu.submenu(places);
         }
         menu
+    }
+
+    /// The display a menu is for (the one it was opened on, else the
+    /// active one), the workspace (the menu's, else the one showing there)
+    /// and the display's key.
+    fn menu_place(&self) -> (Option<String>, u32, String) {
+        let display = self.menu_output.clone().or_else(|| self.showing.iter().find(|d| d.active).map(|d| d.output.clone()));
+        let ws = self.menu_workspace.unwrap_or_else(|| self.showing(display.as_deref()));
+        let key = self.outputs.iter().find(|o| Some(&o.name) == display.as_ref()).map(|o| o.key.clone()).unwrap_or_default();
+        (display, ws, key)
     }
 
     /// Go to one of `display`'s workspaces, or move the focused window to
@@ -1291,8 +1308,22 @@ impl Deskbar {
             // come back.)
             Some(("layout", id)) => {
                 if let Some(layout) = olo_protocol::TilingLayout::from_id(id) {
-                    self.tiling.layout = layout;
-                    request(Request::SetTilingLayout { layout });
+                    let (output, ws, key) = self.menu_place();
+                    self.tiling.set_layout(ws, &key, layout);
+                    request(Request::SetTilingLayout { layout, workspace: self.menu_workspace, output });
+                }
+            }
+            // A layout by name: the layout, and Main and Stack's place, for
+            // this display's workspace.
+            Some(("layout-preset", i)) => {
+                if let Some((_, layout, place)) = i.parse::<usize>().ok().and_then(|i| olo_protocol::LAYOUT_PRESETS.get(i).copied()) {
+                    let (output, ws, key) = self.menu_place();
+                    if let Some(place) = place {
+                        self.tiling.set_main_place(ws, &key, place);
+                        request(Request::SetMainPlace { place, workspace: self.menu_workspace, output: output.clone() });
+                    }
+                    self.tiling.set_layout(ws, &key, layout);
+                    request(Request::SetTilingLayout { layout, workspace: self.menu_workspace, output });
                 }
             }
             Some(("workspace", n)) => {

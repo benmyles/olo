@@ -17,11 +17,22 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Auto-tiling's main window two thirds** (Ben, 2026-11-15: "change the
-  default auto-tiling so that the main window gets the left 2/3 and the
-  stack is the right 1/3"). The default split of Main and Stack: the main
-  window the left two thirds, the stack the right third; layouts and
-  settings the person changed kept as they are.
+- **Tiling as good as the best tiling window managers** (Ben,
+  2026-11-15: "make it all very configurable/customizable and make sure
+  the tiling logic is rock solid / bulletproof. look to the other most
+  popular tiling WMs to make sure we support all the stuff they do when
+  it comes to tiling layouts and so on. olo must be just as good as
+  them. keep pushing on it until you get it perfect with rock solid
+  lints/tests/and your own adversarial live qa trying to break it by
+  doing weird stuff in agent screens changing between them all in
+  unexpected ways and so on"). What i3/sway, bspwm, Hyprland, dwm,
+  xmonad, awesome, river, niri, Amethyst and yabai offer, set against
+  Olo's auto-tiling, and what's missing made: layouts, their knobs, the
+  commands and keys, per workspace and per display, Preferences for
+  all of it; property tests of the tree under random sequences of
+  everything a person and an agent can do; and live adversarial QA on
+  test desktops (switching layouts, modes, workspaces and displays under
+  windows coming and going, groups, floats, fullscreen, minimum sizes).
 
 - **The kits' costs, where they're above GPUI's** (from the move to the
   kits: "each within a frame's budget; to be brought down"). A whole
@@ -39,6 +50,29 @@ something nobody here has is in "Blocked", with what it waits for.
   ms a sweep of the pointer (every move reaching it).
 
 ## Done, waiting for Ben to try or confirm
+
+- **Auto-tiling's main window two thirds** (Ben, 2026-11-15: "change the
+  default auto-tiling so that the main window gets the left 2/3 and the
+  stack is the right 1/3"). The default split of Main and Stack: the main
+  window the left two thirds, the stack the right third; layouts and
+  settings the person changed kept as they are. Done (2026-11-15,
+  HACKING, Auto-tiling): Main and Stack the default, its main window in
+  the left two thirds; settings holding the old defaults (Halves, the
+  middle two thirds) move to the new ones once. And (Ben: "make one of
+  the auto-tile layout options having the main window be the left half
+  and then the stack be the right half"): Deskbar's Auto-Tiling Layout
+  menu names Main Two Thirds, Stack a Third; Main Half, Stack Half;
+  Halves; and Main and Stack with its main window elsewhere.
+
+- **Auto-tiling's method chosen, and remembered for each workspace**
+  (Ben, 2026-11-15: "make the default auto-tiling method configurable
+  though and also remember it per-desktop-workspace"). The method a
+  workspace starts with is a setting (Preferences), and the one a
+  workspace is using is kept for that workspace, across restarts and
+  upgrades. Done (2026-11-15): `TilingSettings::layouts`, kept as modes
+  and main places are; Preferences ▸ Windows sets the one a workspace
+  starts with; tried on a test desktop (Halves on one workspace, Main
+  and Stack on another, Main Half after).
 
 - **From GPUI to Olo's own kits: retained, message passing, a looper a
   window** (Ben, 2026-11-10: "scrapping gpui in olo and replacing with
