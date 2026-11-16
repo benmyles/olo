@@ -681,6 +681,7 @@ pub fn scan(roots: &Roots) -> Report {
     panel_hdr(roots, &mut r);
     stale(roots, &procs, &mut r);
     token_pool(roots, &procs, &mut r);
+    kache(roots, &procs, &mut r);
     login_entry(roots, &mut r);
     login_screen_handed_over(roots, &mut r);
     own_login_screen(roots, &mut r);
@@ -914,6 +915,106 @@ pub fn prepare(id: &str) -> Result<(), String> {
 /// finished for days (Back Up Now), its key only on this computer (Keep
 /// Key in Passwords: without it, the backups can't be read elsewhere);
 /// else when it last backed up, as fine.
+/// kache, the build cache (Olo's Kache app, `apps/kache`), where it's
+/// used (its store in the cache folder): its daemon running, else builds
+/// compile everything again and nothing keeps the store under its limit;
+/// and the store able to get under its limit: its last clean-up
+/// (`gc_stats.json`) couldn't take what builds' target folders still share
+/// with it, and when that alone is more than the limit, no clean-up gets
+/// it under.
+fn kache(roots: &Roots, procs: &[Proc], r: &mut Report) {
+    let Some(store) = roots.temp.cache.parent().filter(|c| !c.as_os_str().is_empty()).map(|c| c.join("kache")) else { return };
+    if !store.is_dir() {
+        return;
+    }
+    let args = |pid: i32| -> Vec<String> {
+        std::fs::read(roots.fs.join(format!("proc/{pid}/cmdline"))).unwrap_or_default().split(|b| *b == 0).skip(1).map(|a| String::from_utf8_lossy(a).into_owned()).collect()
+    };
+    // (`kache-engine daemon run`, as its service runs it; `kache daemon …`
+    // before.)
+    let running = procs.iter().any(|p| p.uid == roots.uid && p.name.starts_with("kache") && args(p.pid).iter().any(|a| a == "daemon"));
+    let open = || Some(Fix { label: "Open Kache".into(), root: false, steps: vec![Step::StartProgram { argv: vec!["olo-kache".into()] }] });
+    if !running {
+        if roots.temp.config.join("systemd/user/kache.service").exists() {
+            r.findings.push(Finding {
+                id: "kache:not-running".into(),
+                severity: Severity::Advice,
+                title: "The build cache isn't running".into(),
+                detail: "kache's daemon (kache.service) isn't running: builds go on, but compile everything again, and nothing keeps kache's store under its limit until it starts.".into(),
+                fix: Some(Fix { label: "Start It".into(), root: false, steps: vec![Step::StartProgram { argv: vec!["olo-kache".into(), "--start".into()] }] }),
+            });
+        }
+        return;
+    }
+    let gc: serde_json::Value = read(&store.join("gc_stats.json")).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    let held = gc["bytes_held"].as_u64().unwrap_or(0);
+    let limit = kache_limit(roots, &store);
+    if held > limit {
+        let n = gc["entries_unreclaimable"].as_u64().unwrap_or(0);
+        r.findings.push(Finding {
+            id: "kache:over-limit".into(),
+            severity: Severity::Advice,
+            title: "The build cache can't keep under its limit".into(),
+            detail: format!(
+                "Builds' target folders still share {} with kache's store ({n} entries), more than its {} limit: no clean-up can take them while those folders are there. They go as the folders do: have kache clean idle target folders sooner (Kache ▸ Settings ▸ Idle targets), or remove old projects' target folders.",
+                gb(held),
+                gb(limit)
+            ),
+            fix: open(),
+        });
+    } else {
+        r.fine.push(Fine { title: "The build cache is running".into(), detail: format!("kache's daemon is running, and its store can keep under its {} limit.", gb(limit)) });
+    }
+}
+
+/// kache's store's limit: its settings' `local_max_size`, else as kache
+/// sets it, 5% of the store's disk rounded to a GiB, from 5 to 100 GiB.
+fn kache_limit(roots: &Roots, store: &Path) -> u64 {
+    const GIB: u64 = 1 << 30;
+    let set = read(&roots.temp.config.join("kache/config.toml"))
+        .and_then(|t| t.parse::<toml_edit::DocumentMut>().ok())
+        .and_then(|d| d.get("cache")?.get("local_max_size").and_then(|v| v.as_str().map(str::to_owned).or_else(|| v.as_integer().map(|i| i.to_string()))));
+    if let Some(bytes) = set.as_deref().and_then(size_of) {
+        return bytes;
+    }
+    let disk = std::ffi::CString::new(store.as_os_str().as_encoded_bytes()).ok().and_then(|c| {
+        let mut s: libc::statvfs = unsafe { std::mem::zeroed() };
+        // SAFETY: statvfs fills `s` from a NUL-terminated path.
+        (unsafe { libc::statvfs(c.as_ptr(), &mut s) } == 0).then(|| s.f_blocks as u64 * s.f_frsize as u64)
+    });
+    disk.map_or(50 * GIB, |d| ((d / 20 + GIB / 2) / GIB * GIB).clamp(5 * GIB, 100 * GIB))
+}
+
+/// A size as kache reads one ("95GiB", "1.5 TB", bytes).
+fn size_of(v: &str) -> Option<u64> {
+    let v = v.trim();
+    if let Ok(n) = v.parse::<u64>() {
+        return Some(n);
+    }
+    let end = v.find(|c: char| !c.is_ascii_digit() && c != '.').unwrap_or(v.len());
+    let (n, unit) = v.split_at(end);
+    let n: f64 = n.parse().ok()?;
+    let factor: f64 = match unit.trim().to_ascii_lowercase().as_str() {
+        "b" => 1.0,
+        "k" | "kb" => 1e3,
+        "m" | "mb" => 1e6,
+        "g" | "gb" => 1e9,
+        "t" | "tb" => 1e12,
+        "kib" => 1024.0,
+        "mib" => 1024f64.powi(2),
+        "gib" => 1024f64.powi(3),
+        "tib" => 1024f64.powi(4),
+        _ => return None,
+    };
+    Some((n * factor) as u64)
+}
+
+/// Bytes, as people read them ("450 GB").
+fn gb(n: u64) -> String {
+    let g = n as f64 / 1e9;
+    if g >= 10.0 { format!("{g:.0} GB") } else { format!("{g:.1} GB") }
+}
+
 fn diskbackup(roots: &Roots, r: &mut Report) {
     use olo_protocol::diskbackup::{Settings, State, Target};
     if roots.temp.config.as_os_str().is_empty() {
@@ -3397,6 +3498,44 @@ mod tests {
         assert_eq!(f.fix.unwrap().label, "Set Them Again");
         save(&followed, 1);
         assert!(scan(&roots).find("power-modes:changed").is_none(), "just written: the follower may be on its way");
+    }
+
+    /// The build cache: nothing said where kache isn't used; its daemon
+    /// not running (its service there), started by the fix; running, its
+    /// store held past its limit by builds' target folders, else fine.
+    #[test]
+    fn the_build_cache() {
+        let (fs, mut roots) = machine("kache");
+        roots.temp.cache = fs.join("home/me/.cache/olo");
+        roots.temp.config = fs.join("home/me/.config");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        // Not used here: nothing said.
+        let r = scan(&roots);
+        assert!(r.find("kache:not-running").is_none() && r.find("kache:over-limit").is_none());
+        // Its store and service, its daemon not running.
+        w("home/me/.cache/kache/gc_stats.json", r#"{"bytes_held": 450481390286, "entries_unreclaimable": 4548}"#);
+        w("home/me/.config/systemd/user/kache.service", "[Service]\n");
+        w("home/me/.config/kache/config.toml", "[cache]\nlocal_max_size = \"95GiB\"\n");
+        let r = scan(&roots);
+        let f = r.find("kache:not-running").expect("not running");
+        assert_eq!(f.fix.as_ref().unwrap().steps, [Step::StartProgram { argv: vec!["olo-kache".into(), "--start".into()] }]);
+        assert!(r.find("kache:over-limit").is_none(), "nothing more said of one not running");
+        // Running (as its service runs it): held past its limit.
+        w("proc/960/cmdline", "/home/me/.cargo/bin/kache-engine\0daemon\0run\0");
+        let r = scan(&roots);
+        assert!(r.find("kache:not-running").is_none());
+        let f = r.find("kache:over-limit").expect("over");
+        assert!(f.detail.contains("share 450 GB") && f.detail.contains("4548 entries") && f.detail.contains("102 GB limit"), "{}", f.detail);
+        assert_eq!(f.fix.as_ref().unwrap().label, "Open Kache");
+        // Held under it: fine.
+        w("home/me/.cache/kache/gc_stats.json", r#"{"bytes_held": 1000}"#);
+        let r = scan(&roots);
+        assert!(r.find("kache:over-limit").is_none() && r.fine.iter().any(|f| f.title == "The build cache is running"));
+        assert_eq!((size_of("95GiB"), size_of("1.5 TB"), size_of("12"), size_of("lots")), (Some(102_005_473_280), Some(1_500_000_000_000), Some(12), None));
     }
 
     /// Token Pool running twice (Ben, 2026-11-09): the copy serving holds

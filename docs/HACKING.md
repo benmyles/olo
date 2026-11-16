@@ -11458,6 +11458,18 @@ profile: "The fans", above), `olo-doctor --scheduler [kernel|lavd]`
   (`OLO_POOL_KEEPER` in its environment), a copy finishing after handing
   over, a launch younger than 15 s, the command line's own (`--status`),
   nor one on a port of its own (a test's). Else which serves, as fine.
+- **The build cache** (`kache`, where kache is used: its store,
+  `~/.cache/kache`, there). Its daemon not running (no `kache-engine
+  daemon` process of this user's) with its service installed
+  (`~/.config/systemd/user/kache.service`): "The build cache isn't
+  running", advice, Start It (`olo-kache --start`: the unit started over
+  systemd's D-Bus). Running, its last clean-up (`gc_stats.json`) held
+  back more than its limit by builds' target folders (`bytes_held`; the
+  limit its settings' `local_max_size`, else as kache sets it, 5% of the
+  store's disk from 5 to 100 GiB): "The build cache can't keep under
+  its limit", advice, Open Kache; no clean-up takes those while the
+  folders are there (counting them toward the limit only evicts others
+  harder). Else running, as fine.
 - **The login screen's entry** (/usr/share/wayland-sessions, or
   /usr/local/share's on an atomic system) missing or pointing at
   nothing.
@@ -18532,6 +18544,11 @@ as the hour turns. Cost (release, reading this laptop's kache while
 agents built, 40 s): 0.1% of a core, 7 wakeups a second (the serve
 loop woken by the log and let go, and a look's D-Bus calls every ten
 seconds); none with nothing built.
+
+**Doctor** (see Olo Doctor, "The build cache"): kache's daemon not
+running, Start It (`olo-kache --start`, `--restart`, `--stop`: the
+service with no window, saying how it stands); its store held over its
+limit by builds' target folders, Open Kache.
 
 **Agents.** Every action is a menu command (`refresh`, `restart`,
 `stop`, `start`, `clean-up`, `save-settings`, `revert-settings`,

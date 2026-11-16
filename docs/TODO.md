@@ -1559,8 +1559,9 @@ something nobody here has is in "Blocked", with what it waits for.
   by the hour), Builds (projects, slowest compiles, each build),
   Settings (kache's own defaults shown, saved keeping comments),
   Restart/Stop/Start/Clean Up, `--print`, a Deskbar widget (Build
-  Cache). Left: why each miss missed (kache's events don't say), ending
-  a test that holds slots, Doctor linking here.* (Ben, 2026-11-15: "an olo
+  Cache), Doctor's checks (not running: Start It; held over its limit:
+  Open Kache). Left: why each miss missed (kache's events don't say),
+  ending a test that holds slots.* (Ben, 2026-11-15: "an olo
   native kache frontend app that lets me monitor the status of kache,
   see stats/metrics/charts etc, configure/tweak settings, manage it like
   restart or whatever, and anything else useful to know or do"). For

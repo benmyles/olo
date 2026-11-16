@@ -22,7 +22,9 @@
 //! seconds while builds go on), and after anything done here: nothing runs
 //! while nothing changes. Everything's on its menus (agents: by
 //! command); `olo-kache --print` says it all as JSON, with no window;
-//! `olo-kache --glance` serves its Deskbar widget (`glance.rs`).
+//! `olo-kache --glance` serves its Deskbar widget (`glance.rs`);
+//! `--start`, `--restart` and `--stop` act on the service with no window
+//! (Doctor's fix).
 
 mod data;
 mod glance;
@@ -736,6 +738,29 @@ fn main() -> std::process::ExitCode {
     }
     if args.first().is_some_and(|a| a == "--glance") {
         return glance::serve();
+    }
+    // The service started, restarted or stopped, with no window (Doctor's
+    // fix; agents).
+    if let Some(method) = args.first().and_then(|a| match a.as_str() {
+        "--start" => Some("StartUnit"),
+        "--restart" => Some("RestartUnit"),
+        "--stop" => Some("StopUnit"),
+        _ => None,
+    }) {
+        return match data::service(method) {
+            Ok(u) if u.active == "failed" => {
+                eprintln!("olo-kache: kache failed as it started: see {}", data::cache_dir().join("daemon.log").display());
+                std::process::ExitCode::FAILURE
+            }
+            Ok(u) => {
+                println!("kache is {}", if u.running() { "running" } else { "stopped" });
+                std::process::ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("olo-kache: {e}");
+                std::process::ExitCode::FAILURE
+            }
+        };
     }
     if instance::forward(APP_ID, &args) {
         return std::process::ExitCode::SUCCESS;
