@@ -1440,6 +1440,16 @@ something nobody here has is in "Blocked", with what it waits for.
   from the console, or from Olo's login screen), then the whole path
   tried in `tools/dev/installer-check`'s VM with a minimal kickstart.
 
+- **Weather: a place by its address, hyperlocal** (Ben, 2026-11-15: "i
+  should be able to put an address into the weather app and have it
+  autocomplete it and automatically translate to lat/lon for a
+  hyperlocal forecast"). Add Place… takes a street address as well as a
+  town: suggestions as it's typed (on a worker, the last asked only,
+  cancelled as typing goes on), the one chosen turned into its latitude
+  and longitude (a geocoder that knows addresses, natively over HTTP;
+  today's finds towns only), and the forecast asked for that point. Its
+  name the address's short form (renamable: "a place's own name").
+
 - **Weather: the assistant's suggested questions, redone** (Ben,
   2026-11-15: "redo the suggested questions in the weather app -- i want
   about 10 of them that cover all the common things someone might want
@@ -1448,7 +1458,11 @@ something nobody here has is in "Blocked", with what it waits for.
   weekend, the warmest and coldest coming, wind and gusts, storms, the
   sun's times and UV, a good time for something outside, how the week
   looks; worded for the place and the time of day where it helps, and
-  still fitting the assistant's column at every scale.
+  still fitting the assistant's column at every scale. Done: ten
+  (`assistant::suggestions`), the day's tomorrow's after five in the
+  evening, rain's "when will it stop" while it rains; Ben's skydive
+  question in his words ("Will the clouds be high enough to skydive?");
+  "socked in" gone; a long one wraps (`LinkButton::wrap_at`).
 
 - **Weather: a place's own name** (Ben, 2026-11-15: "in the weather app
   i should be able to set custom names for places i've added"). A place

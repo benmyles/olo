@@ -56,8 +56,40 @@ pub enum Asked {
     Done(u64, Result<(String, Vec<Window>), String>),
 }
 
-/// The questions offered before any is asked.
-pub const SUGGESTIONS: &[&str] = &["When will the rain stop?", "Will the clouds be high enough to jump today?", "Will it be socked in tomorrow?", "When’s a good time to run this afternoon?"];
+/// The questions offered before any is asked: about ten of what people
+/// ask of a forecast most (Ben, 2026-11-15: "i want about 10 of them that
+/// cover all the common things someone might want to ask about the
+/// weather"): rain, what to wear, how warm and how cold, wind, storms,
+/// the weekend, the week, the sun, a time to be outside, and the clouds
+/// for a skydive. For the place's own `hour` (0–23): after five in the
+/// evening the day's questions are tomorrow's; and while it's `raining`
+/// there, when it stops.
+pub fn suggestions(hour: u32, raining: bool) -> Vec<String> {
+    let late = hour >= 17;
+    let day = if late { "tomorrow" } else { "today" };
+    let rain = match (raining, late) {
+        (true, _) => "When will the rain stop?".to_owned(),
+        (false, false) => "Will it rain today?".to_owned(),
+        (false, true) => "Will it rain tomorrow?".to_owned(),
+    };
+    // (Short: a link is one line, and the assistant's column is 260
+    // points at its narrowest.)
+    let warmth = if late { "How cold will it get tonight?" } else { "How warm will it get today?" };
+    let sun = if late { "When does the sun rise tomorrow?" } else { "Do I need sunscreen today?" };
+    vec![
+        rain,
+        format!("What should I wear {day}?"),
+        warmth.to_owned(),
+        format!("How windy will it be {day}?"),
+        "Any storms on the way?".to_owned(),
+        "How’s the weekend looking?".to_owned(),
+        "Which day this week looks best?".to_owned(),
+        sun.to_owned(),
+        format!("Best time for a run {day}?"),
+        // (Ben's words: "Will the clouds be high enough to skydive".)
+        "Will the clouds be high enough to skydive?".to_owned(),
+    ]
+}
 
 pub fn schema() -> Value {
     json!({
@@ -184,6 +216,28 @@ pub fn ask(n: u64, question: String, system: String, history: Vec<olo_ai::Turn>,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// About ten, each asked once; the day's become tomorrow's after five
+    /// in the evening, and the rain's is when it stops while it rains.
+    #[test]
+    fn suggestions_follow_the_places_day() {
+        let morning = suggestions(9, false);
+        assert!((9..=12).contains(&morning.len()), "{}", morning.len());
+        let mut seen = morning.clone();
+        seen.sort();
+        seen.dedup();
+        assert_eq!(seen.len(), morning.len(), "none twice");
+        assert_eq!(morning[0], "Will it rain today?");
+        assert!(morning.iter().any(|q| q.contains("wear today")));
+        // (One line each in the assistant's narrowest column.)
+        for q in suggestions(9, false).iter().chain(&suggestions(19, true)) {
+            assert!(q.chars().count() <= 42, "too long for one line: {q}");
+        }
+        let evening = suggestions(19, false);
+        assert_eq!(evening[0], "Will it rain tomorrow?");
+        assert!(evening.iter().all(|q| !q.contains("today")), "{evening:?}");
+        assert_eq!(suggestions(19, true)[0], "When will the rain stop?");
+    }
 
     #[test]
     fn an_answer_is_read_with_its_spans() {

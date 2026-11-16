@@ -2358,7 +2358,8 @@ it.
   `LABEL_ROW` tall: an action in a line with no room for a button;
   `beside(size)` puts its words on the baseline a push button's label
   of that size has in the same row, so links and buttons in one row
-  read as one line),
+  read as one line; `wrap_at(width)` breaks words that don't fit onto
+  more lines, still one control: Weather's suggested questions),
   `EmptyState` (an icon, a line, a detail and an action button,
   centred in what it's given: a list or pane with nothing in it),
   `Tag` (a word in a pill saying what kind a thing is, Olo Doctor's
@@ -17986,8 +17987,17 @@ one showing doesn't) and listed under the answer with their day
 answer's spans again. A follow-up carries the conversation; Stop or
 Escape lets an answer go (as much as came stays; one stopped before a
 word says "Stopped." quietly and isn't carried on); New Conversation
-starts again. Suggestions
-show before the first question. Tests never call a model
+starts again. Ten suggested questions show before the first
+(`assistant::suggestions(hour, raining)`; Ben, 2026-11-15: "i want about
+10 of them that cover all the common things someone might want to ask
+about the weather"): rain (when it stops, while it rains there), what
+to wear, how warm (or, late, how cold tonight), wind, storms, the
+weekend, the week, the sun (sunscreen, or tomorrow's sunrise), a time
+for a run, and "Will the clouds be high enough to skydive?" (his
+words); after five in the evening at the place, the day's become
+tomorrow's. Each a link that wraps when the column is too narrow for it
+(`LinkButton::wrap_at`, the column's width worked out from the
+window's). Tests never call a model
 (`OLO_AI_BASE_URL` to a stand-in).
 
 **For agents.** Every command of the menus is on Weather's menus

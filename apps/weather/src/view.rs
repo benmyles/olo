@@ -908,9 +908,28 @@ fn assistant_pane(w: &mut Weather, cx: &mut Cx<Weather>) -> Element {
     }
     if w.turns.is_empty() && w.asking.is_none() {
         conv = conv.child(StringView::new("Ask anything about the forecast here: the assistant is given all of it, every layer hour by hour.").dim(true).wrap(true));
-        for (i, s) in crate::assistant::SUGGESTIONS.iter().enumerate() {
-            let q = s.to_string();
-            conv = conv.child(div().flex().child(LinkButton::new(*s).id(format!("suggestion-{i}")).on_click(cx.listener(move |v: &mut Weather, _: &ClickEvent, cx| v.ask(q.clone(), cx)))));
+        // (For the place's time of day, and whether it's raining there.)
+        let now = provider::now();
+        let forecast = w.entry().and_then(|e| e.forecast.clone());
+        let (hour, raining) = match (w.place(), forecast.as_ref()) {
+            (Some(place), Some(f)) => {
+                let local = local_of(place, f);
+                let wet = f.minutely.iter().find(|s| s.time + 60 > now).and_then(|s| s.precipitation()).or_else(|| f.hour(now).and_then(|h| h.precipitation())).is_some_and(|r| r >= 0.05);
+                (olo_kit::widgets::timeline::parts(local(now as f64)).0, wet)
+            }
+            _ => (12, false),
+        };
+        // (A question wider than the column wraps: the column's width as
+        // the row gives it, less its well's edges, its padding and the
+        // scroll bar's room while there is one.)
+        let room = f32::from(cx.viewport_size().width) - 2.0 * m::WINDOW_INSET - SIDEBAR - 2.0 * m::SPACING;
+        let column = (room - MAIN_MIN).clamp(ASSISTANT_MIN, ASSISTANT);
+        let bar = if w.chat_scroll.max_offset().height > px(0.5) { olo_kit::widgets::scroll::SCROLL_BAR } else { 0.0 };
+        let wrap = column - 2.0 * e - 2.0 * m::SPACING - bar;
+        for (i, s) in crate::assistant::suggestions(hour, raining).into_iter().enumerate() {
+            let q = s.clone();
+            conv =
+                conv.child(div().flex().child(LinkButton::new(s).wrap_at(wrap).id(format!("suggestion-{i}")).on_click(cx.listener(move |v: &mut Weather, _: &ClickEvent, cx| v.ask(q.clone(), cx)))));
         }
     }
     let scroller = ScrollView::new(&w.chat_scroll).border(false).auto_hide(true).background(p.document_background).child(conv);

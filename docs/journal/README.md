@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Weather: ten questions to start with
+
+*16:09* — The assistant offers ten questions covering what people ask of a forecast most: rain (when it stops, while it rains), what to wear, how warm or cold, wind, storms, the weekend, the week, the sun, a time for a run, and Ben's own, "Will the clouds be high enough to skydive?". After five in the evening the day's become tomorrow's. A question wider than the column wraps (the kit's LinkButton::wrap_at), shown here at the window's least width (light, 2x).
+
+![Weather: ten questions to start with](2026-11-15/160947-weather-ten-questions-to-start-with.png)
+
 ### Weather: the time axis stays at the top
 
 *15:59* — Weather's chart has its time axis over the panels now (the days, then the hours), and once the chart reaches the top of its scroll view the axis stays there as the panels scroll under it, so the hour of what's under the pointer is always in sight; in Next 7 Days it pins once the hourly chart comes up, never over the day rows. The kit's ScrollView::sticky and Timeline::axis do it for any app. Review clean at 1x, 1.5x, 2x; dark too (light, 2x).

@@ -117,13 +117,24 @@ pub struct LinkButton {
     label: SharedString,
     enabled: bool,
     beside: Option<f32>,
+    /// The widest it may be: wider words wrap onto more lines.
+    wrap: Option<f32>,
     on_click: Option<Handler>,
 }
 
 impl LinkButton {
     pub fn new(label: impl Into<SharedString>) -> LinkButton {
         let label = label.into();
-        LinkButton { id: label.clone(), label, enabled: true, beside: None, on_click: None }
+        LinkButton { id: label.clone(), label, enabled: true, beside: None, wrap: None, on_click: None }
+    }
+
+    /// At most `width` wide: words that don't fit go onto the next line,
+    /// and it's as tall as its lines (a question offered in a narrow
+    /// column: Weather's assistant). Still one control: focused, pressed
+    /// and read by agents as one.
+    pub fn wrap_at(mut self, width: f32) -> Self {
+        self.wrap = Some(width);
+        self
     }
 
     /// Its words on the baseline that text of `size` centred in the same
@@ -157,8 +168,65 @@ pub fn link_button_width(label: &str) -> f32 {
     (tw / 2.0).ceil() * 2.0
 }
 
+/// `label`'s words in lines no wider than `width` (a word wider than that
+/// alone on its line).
+fn link_lines(label: &str, width: f32) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    for word in label.split_whitespace() {
+        match lines.last_mut() {
+            Some(line) if link_button_width(&format!("{line} {word}")) <= width => {
+                line.push(' ');
+                line.push_str(word);
+            }
+            _ => lines.push(word.to_owned()),
+        }
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
+}
+
 impl IntoElement for LinkButton {
     fn into_element(self) -> Element {
+        // Wrapped: its lines, a row each (the first the usual row).
+        let lines: Option<Vec<String>> = self.wrap.filter(|w| link_button_width(&self.label) > *w).map(|w| link_lines(&self.label, w));
+        if let Some(lines) = lines {
+            let row = style::line_row(style::DETAIL_SIZE);
+            let w = lines.iter().map(|l| link_button_width(l)).fold(0.0, f32::max);
+            let h = m::LABEL_ROW + row * (lines.len() - 1) as f32;
+            let first = (m::LABEL_ROW - row) / 2.0;
+            let mut c = control(self.id.clone(), w, h, move |g, r, s| {
+                let p = theme::palette();
+                let link = olo_theme::readable(p.hue(olo_theme::Hue::Blue), p.panel_background, 4.5);
+                let color = if !s.enabled {
+                    style::disabled_text(&p)
+                } else if s.pressed {
+                    style::shade(&p, link, 1.25)
+                } else {
+                    style::c(link)
+                };
+                let font = style::ui_font(FontWeight::NORMAL);
+                for (i, line) in lines.iter().enumerate() {
+                    let cy = r.top() + px(first + row * (i as f32 + 0.5));
+                    let text = style::label(g, r.left(), cy, style::Align::Left, line.clone(), style::DETAIL_SIZE, font.clone(), color);
+                    if s.focused {
+                        focus_underline(g, text, &p);
+                    } else if s.hovered && s.enabled {
+                        style::hline_above(g, text.left(), text.right(), text.bottom(), color);
+                    }
+                }
+            })
+            .look((&self.label, self.wrap.map(f32::to_bits)))
+            .enabled(self.enabled)
+            .focusable()
+            .pointing()
+            .agent("Button", self.label.clone(), None);
+            if let Some(f) = self.on_click {
+                c = c.on_click(move |event, cx| f(event, cx));
+            }
+            return c.into_element();
+        }
         let w = link_button_width(&self.label);
         let (label, beside) = (self.label.clone(), self.beside);
         let mut c = control(self.id.clone(), w, m::LABEL_ROW, move |g, r, s| {
