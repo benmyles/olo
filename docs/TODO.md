@@ -17,6 +17,28 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **The kits' costs, where they're above GPUI's** (from the move to the
+  kits: "each within a frame's budget; to be brought down"). A whole
+  window drawn again each frame costs more than GPUI's one thread did
+  (Logs resized live 65 → 95 ms for 36 steps, Notifications 128 → 195, a
+  drawing that moves every frame 0.12 ms a frame more). To try, each
+  measured before and after (`OLO_FRAME_PHASES`, perf, memhist): a
+  drawing that's the only thing changed handed to the frame without the
+  copy; `Scene::append` moving a recording whose clip holds all of it
+  without looking at each thing in it; `finish` swapping the glyphs'
+  list in when the runs are in order already; a list's rows of text
+  keeping their recordings when only their width grew; Tracker's resize
+  wrapping each text again (450 shapings a step); StyledEdit's text as
+  one `String` (a rope or gap buffer); the display thread's own 20–60
+  ms a sweep of the pointer (every move reaching it). (Looked at 2026-11-16:
+  `finish` already leaves the glyphs where they are, the renderer
+  reading each batch run by run; and the pointer's floor is the Wayland
+  client's own dispatch, which only fewer events would cut, at a drawing
+  app's cost: each of the rest wants profiling again before work, as
+  the kits have changed since the list was made.)
+
+## Done, waiting for Ben to try or confirm
+
 - **Tiling as good as the best tiling window managers** (Ben,
   2026-11-15: "make it all very configurable/customizable and make sure
   the tiling logic is rock solid / bulletproof. look to the other most
@@ -46,24 +68,11 @@ something nobody here has is in "Blocked", with what it waits for.
   is Focus mode (one at a time, the others a key away). Apps on
   workspaces of their own; focus, swap and rotate in order; preselecting
   where the next window goes; Scrolling (niri's columns in a strip).
-  Left: gaps per workspace.
-
-- **The kits' costs, where they're above GPUI's** (from the move to the
-  kits: "each within a frame's budget; to be brought down"). A whole
-  window drawn again each frame costs more than GPUI's one thread did
-  (Logs resized live 65 → 95 ms for 36 steps, Notifications 128 → 195, a
-  drawing that moves every frame 0.12 ms a frame more). To try, each
-  measured before and after (`OLO_FRAME_PHASES`, perf, memhist): a
-  drawing that's the only thing changed handed to the frame without the
-  copy; `Scene::append` moving a recording whose clip holds all of it
-  without looking at each thing in it; `finish` swapping the glyphs'
-  list in when the runs are in order already; a list's rows of text
-  keeping their recordings when only their width grew; Tracker's resize
-  wrapping each text again (450 shapings a step); StyledEdit's text as
-  one `String` (a rope or gap buffer); the display thread's own 20–60
-  ms a sweep of the pointer (every move reaching it).
-
-## Done, waiting for Ben to try or confirm
+  Each found bug fixed at its cause (HACKING, Auto-tiling, and the
+  commits from a36fc06a8 to 6890418c0). *Left for Ben:* try it (the
+  keys are in Preferences ▸ Keyboard ▸ Shortcuts, Windows and Arrange);
+  gaps of their own for a workspace or a display, if wanted (the gap is
+  one setting today, read in 21 places with no workspace at hand).
 
 - **Auto-tiling's main window two thirds** (Ben, 2026-11-15: "change the
   default auto-tiling so that the main window gets the left 2/3 and the
