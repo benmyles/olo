@@ -4081,7 +4081,8 @@ its `bin/` as `CARGO_TARGET_DIR`, `OLO_DATA` as its entry sets it, and
 its own tree's `tsession start NAME --session --shell --home` a
 scratch home (the one from before the kits, 2026-11-12: its desktop,
 Deskbar and DeskCalc came up from `~/.local/olo-kept/before-kits`). A
-kept build is there to fall back to, not to measure against: Olo's
+kept build is there to fall back to (one from before the kits, which
+runs GPUI, Olo Doctor suggests removing), not to measure against: Olo's
 speed is measured in absolute terms (a frame's work against its budget,
 CPU at rest and while animating, latency), and a change against the
 build from just before it (Ben, 2026-11-16: "GPUI should be gone we
@@ -12036,6 +12037,19 @@ build tree, which mustn't be installed again).
   the root helper's does). Olo doesn't take them away again. `cargo test
   -p olo-doctor installs_from_github -- --ignored` installs both, for
   real, into a scratch folder.
+- **A build kept from before the kits, removed** (Ben, 2026-11-16:
+  "the doctor should handle removing that pre-kits login fallback"): a
+  build kept to fall back to (`tools/keep-build.sh`, ~/.local/olo-kept)
+  whose login entry says it was made before 2026-11-11, when Olo's own
+  kits replaced GPUI, runs GPUI, which is gone for good: suggested for
+  removal ("Remove “Olo Desktop (before the kits)” from the login
+  screen", its size said), unless it's the session running. As root,
+  `Step::RemoveKeptBuild { home, name }` does what `keep-build.sh
+  --remove` does and nothing more: the folder `home`/.local/olo-kept/
+  `name` (a plain one-word name, not a link; `remove_dir_all` follows
+  none inside) and `olo-kept-NAME.desktop` in /usr/share/wayland-sessions
+  or /usr/local's, then the kept builds' folder if it was the last.
+  Not undone: it's gone.
 - **worktrunk's worktrees where Terminal makes them** (with `wt`
   there): its `worktree-path` in ~/.config/worktrunk/config.toml
   (`$XDG_CONFIG_HOME`'s if set) set to Terminal's place

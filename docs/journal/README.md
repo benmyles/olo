@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-16
 
+### Olo Doctor suggests removing the build kept from before the kits
+
+*10:16* — A build kept to fall back to (tools/keep-build.sh) from before Olo's own kits runs GPUI, which is gone for good: Doctor suggests removing it and its login screen entry, with its size, never the session running. Here with a stand-in kept build; the number and its unit stay on one line now that the kit's wrapping keeps a no-break space whole.
+
+![Olo Doctor suggests removing the build kept from before the kits](2026-11-16/101603-olo-doctor-suggests-removing-the-build-kept-from.png)
+
 ### Preferences: the Scrolling layout
 
 *05:55* — Preferences ▸ Windows with Scrolling chosen: the miniature shows columns half the display wide, scrolled to the middle one, cut at the room beside Deskbar (1×).

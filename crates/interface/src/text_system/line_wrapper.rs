@@ -140,9 +140,12 @@ impl LineWrapper {
     /// white space, as egui wraps and as typesetters do: a curly
     /// apostrophe (computer’s), quotes, brackets, a path's slashes and an
     /// emoji stay with what they're beside. Chinese and Japanese, written
-    /// without spaces, break between any two of their characters.
+    /// without spaces, break between any two of their characters. A
+    /// no-break space (and the narrow and figure ones) joins what's either
+    /// side of it, as it's meant to: "3.0 MB" stays on one line (counted
+    /// as white space, a line broke there and began with it).
     pub(crate) fn is_word_char(c: char) -> bool {
-        !c.is_whitespace()
+        (!c.is_whitespace() || matches!(c, '\u{00A0}' | '\u{2007}' | '\u{202F}'))
             && !matches!(c,
                 // CJK radicals, punctuation, kana, Bopomofo, ideographs
                 '\u{2E80}'..='\u{9FFF}'
@@ -255,5 +258,20 @@ pub struct Boundary {
 impl Boundary {
     fn new(ix: usize, next_indent: u32) -> Self {
         Self { ix, next_indent }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LineWrapper;
+
+    #[test]
+    fn a_no_break_space_joins_what_is_either_side() {
+        for c in ['\u{00A0}', '\u{2007}', '\u{202F}', 'a', '’', '/'] {
+            assert!(LineWrapper::is_word_char(c), "{c:?} breaks a word");
+        }
+        for c in [' ', '\t', '\u{2003}', '世'] {
+            assert!(!LineWrapper::is_word_char(c), "{c:?} doesn't break");
+        }
     }
 }

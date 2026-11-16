@@ -20,6 +20,12 @@
 //!   them (just, uv), else from their maker's latest GitHub release into
 //!   ~/.local/bin, its SHA-256 checked (`releases`). Installed, they're
 //!   said to be; Olo doesn't take them away.
+//! - **A build kept from before the kits, removed**: a build kept to
+//!   fall back to (`tools/keep-build.sh`, ~/.local/olo-kept) made before
+//!   Olo's own kits replaced GPUI (2026-11-11) runs GPUI, which is gone
+//!   for good (Ben, 2026-11-16: "the doctor should handle removing that
+//!   pre-kits login fallback"): its folder and its login screen entry
+//!   removed, as `keep-build.sh --remove` does. Not the one running.
 //! - **Worktrunk's worktrees where Terminal makes them**: with `wt`
 //!   there, its `worktree-path` (~/.config/worktrunk/config.toml) set to
 //!   Terminal's place (Preferences ▸ Terminal,
@@ -46,7 +52,56 @@ pub fn scan() -> Report {
     brush(&mut r);
     tools(&mut r);
     worktrunk_place(&mut r);
+    kept_builds(&mut r, &home(), std::env::current_exe().ok().as_deref());
     r
+}
+
+/// The day Olo's own kits replaced GPUI: a kept build from before it runs
+/// GPUI.
+const KITS_DAY: &str = "2026-11-11";
+
+/// Kept builds (`fix::KEPT_BUILDS` in `home`) from before the kits,
+/// suggested for removal; not the one `running` is from.
+fn kept_builds(r: &mut Report, home: &Path, running: Option<&Path>) {
+    let Ok(dir) = std::fs::read_dir(home.join(crate::fix::KEPT_BUILDS)) else { return };
+    for e in dir.flatten() {
+        let (path, name) = (e.path(), e.file_name().to_string_lossy().into_owned());
+        if !e.file_type().is_ok_and(|t| t.is_dir()) || running.is_some_and(|exe| exe.starts_with(&path)) {
+            continue;
+        }
+        // Its login entry says what it's called and what it was made from:
+        // "Comment=A build of Olo kept to fall back to (cc785d65 of 2026-11-09)".
+        let entry = std::fs::read_to_string(path.join("olo-kept.desktop")).unwrap_or_default();
+        let field = |k: &str| entry.lines().find_map(|l| l.strip_prefix(k)).map(str::trim);
+        let Some(made) = field("Comment=").and_then(|c| c.rsplit(" of ").next()).map(|d| d.trim_end_matches(')')) else { continue };
+        if made.len() != KITS_DAY.len() || made >= KITS_DAY {
+            continue;
+        }
+        let label = field("Name=").unwrap_or(&name);
+        // (A number and its unit kept on one line.)
+        let size = olo_system::dnf::size_words(tree_size(&path)).replace(' ', "\u{a0}");
+        r.findings.push(Finding {
+            id: format!("kept-build:{name}"),
+            severity: Severity::Suggestion,
+            title: format!("Remove “{label}” from the login screen"),
+            detail: format!(
+                "A build of Olo kept to fall back to, made on {made}, before Olo's own kits: it runs GPUI, which Olo no longer uses. Removing it takes it off the login screen and frees {size} (~/.local/olo-kept/{name})."
+            ),
+            fix: Some(Fix { label: "Remove It".into(), root: true, steps: vec![Step::RemoveKeptBuild { home: home.to_owned(), name }] }),
+        });
+    }
+}
+
+/// How many bytes the files under `path` take (links not followed).
+fn tree_size(path: &Path) -> u64 {
+    let Ok(dir) = std::fs::read_dir(path) else { return 0 };
+    dir.flatten()
+        .map(|e| match e.file_type() {
+            Ok(t) if t.is_dir() => tree_size(&e.path()),
+            Ok(t) if t.is_file() => e.metadata().map_or(0, |m| m.len()),
+            _ => 0,
+        })
+        .sum()
 }
 
 /// brush is the login shell: so said, with its undo (`previous` again).
@@ -308,6 +363,37 @@ fn worktrunk_place(r: &mut Report) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Kept builds from before the kits are suggested for removal; one
+    /// made after, the one running and what isn't a kept build aren't.
+    #[test]
+    fn builds_kept_from_before_the_kits_are_suggested_for_removal() {
+        let home = PathBuf::from(format!("/var/tmp/olo-doctor-kept-builds-{}", std::process::id()));
+        let kept = home.join(crate::fix::KEPT_BUILDS);
+        let make = |name: &str, label: &str, made: &str| {
+            let d = kept.join(name);
+            std::fs::create_dir_all(d.join("bin")).unwrap();
+            std::fs::write(d.join("bin/olo-session"), vec![0u8; 3000]).unwrap();
+            let entry = format!("[Desktop Entry]\nName={label}\nComment=A build of Olo kept to fall back to (cc785d65 of {made})\n");
+            std::fs::write(d.join("olo-kept.desktop"), entry).unwrap();
+        };
+        make("before-kits", "Olo Desktop (before the kits)", "2026-11-09");
+        make("tiling", "Olo Desktop (before tiling)", "2026-11-14");
+        make("in-use", "Olo Desktop (in use)", "2026-11-08");
+        std::fs::write(kept.join("notes"), "not a build").unwrap();
+        let mut r = Report::default();
+        kept_builds(&mut r, &home, Some(&kept.join("in-use/bin/olo-session")));
+        let ids: Vec<&str> = r.findings.iter().map(|f| f.id.as_str()).collect();
+        assert_eq!(ids, ["kept-build:before-kits"]);
+        let f = &r.findings[0];
+        assert_eq!(f.severity, Severity::Suggestion);
+        assert_eq!(f.title, "Remove “Olo Desktop (before the kits)” from the login screen");
+        assert!(f.detail.contains("2026-11-09") && f.detail.contains("GPUI"), "{}", f.detail);
+        let fix = f.fix.as_ref().unwrap();
+        assert!(fix.root);
+        assert_eq!(fix.steps, [Step::RemoveKeptBuild { home: home.clone(), name: "before-kits".into() }]);
+        let _ = std::fs::remove_dir_all(&home);
+    }
 
     #[test]
     fn worktrunk_follows_terminals_place() {

@@ -211,6 +211,14 @@ pub enum Step {
     StartProgram {
         argv: Vec<String>,
     },
+    /// Remove a build of Olo kept to fall back to (`tools/keep-build.sh`):
+    /// its folder, `home`/.local/olo-kept/`name`, and its entry on the
+    /// login screen, as `keep-build.sh --remove` does. Nothing else:
+    /// `name` is one plain word and the folder not a link.
+    RemoveKeptBuild {
+        home: PathBuf,
+        name: String,
+    },
 }
 
 impl Step {
@@ -257,6 +265,7 @@ impl Step {
             Step::SelinuxLabels { restore, .. } => format!("Labelling {} for SELinux", restore.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")),
             Step::RebuildInitramfs => "Making the start-up images again".into(),
             Step::StartProgram { argv } => format!("Running {}", argv.join(" ")),
+            Step::RemoveKeptBuild { home, name } => format!("Removing the kept build {} and its login screen entry", home.join(KEPT_BUILDS).join(name).display()),
             Step::KeepOffCores { kept, on } => {
                 let list = olo_system::cores::format_list(kept);
                 if *on { format!("Moving the programs running on processor {list} to the others") } else { format!("Letting every program run on processor {list} again") }
@@ -373,6 +382,7 @@ impl Step {
                 let argv: Vec<std::ffi::OsString> = argv.iter().map(Into::into).collect();
                 olo_xdg::open::spawn(&argv).map_err(failed)
             }
+            Step::RemoveKeptBuild { home, name } => remove_kept_build(home, name, SESSION_ENTRIES).map_err(failed),
             Step::AddShell { path } => add_shell(path).map_err(failed),
             Step::AddKernelArgument { arg } => add_kernel_argument(Path::new("/"), arg).map_err(failed),
             Step::TryShell { path } => try_shell(path),
@@ -417,6 +427,40 @@ fn selinux_labels(rules: &[(String, String)], restore: &[PathBuf]) -> Result<(),
 }
 
 /// `path` made with `mode`, owned by user `owner` and their group.
+/// Where builds kept to fall back to are, in a home (`tools/keep-build.sh`).
+pub const KEPT_BUILDS: &str = ".local/olo-kept";
+
+/// Where a kept build's login screen entry may be (an image-based system's
+/// /usr is read-only: /usr/local's).
+const SESSION_ENTRIES: &[&str] = &["/usr/share/wayland-sessions", "/usr/local/share/wayland-sessions"];
+
+/// `Step::RemoveKeptBuild`: `home`'s kept build `name` and its entry in
+/// any of `sessions`, then the kept builds' folder if that was the last.
+fn remove_kept_build(home: &Path, name: &str, sessions: &[&str]) -> std::io::Result<()> {
+    let plain = !name.is_empty() && !name.starts_with('.') && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    if !plain || !home.is_absolute() {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("not a kept build: {name}")));
+    }
+    let kept = home.join(KEPT_BUILDS);
+    let dir = kept.join(name);
+    match std::fs::symlink_metadata(&dir) {
+        // (`remove_dir_all` follows no link inside it.)
+        Ok(m) if m.is_dir() => std::fs::remove_dir_all(&dir)?,
+        Ok(_) => return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("{} isn't a folder", dir.display()))),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    }
+    for folder in sessions {
+        match std::fs::remove_file(Path::new(folder).join(format!("olo-kept-{name}.desktop"))) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+            _ => {}
+        }
+    }
+    // (The folder of them, if that was the last: as keep-build.sh leaves it.)
+    let _ = std::fs::remove_dir(&kept);
+    Ok(())
+}
+
 fn make_dir(path: &Path, mode: u32, owner: Option<&str>) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt as _;
     std::fs::create_dir_all(path)?;
@@ -873,6 +917,40 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
     use super::*;
+
+    /// A kept build goes with its login entry, and only it: an odd name
+    /// or a link is refused, a link's target left as it is.
+    #[test]
+    fn a_kept_build_and_its_entry_are_removed_and_nothing_else() {
+        let root = PathBuf::from(format!("/var/tmp/olo-doctor-remove-kept-{}", std::process::id()));
+        let (home, sessions) = (root.join("home"), root.join("sessions"));
+        let kept = home.join(KEPT_BUILDS);
+        std::fs::create_dir_all(kept.join("old/bin")).unwrap();
+        std::fs::write(kept.join("old/bin/olo-session"), "x").unwrap();
+        std::fs::create_dir_all(&sessions).unwrap();
+        std::fs::write(sessions.join("olo-kept-old.desktop"), "[Desktop Entry]").unwrap();
+        std::fs::write(sessions.join("olo.desktop"), "[Desktop Entry]").unwrap();
+        let s = sessions.to_str().unwrap();
+        remove_kept_build(&home, "old", &[s]).unwrap();
+        assert!(!kept.join("old").exists() && !sessions.join("olo-kept-old.desktop").exists());
+        assert!(sessions.join("olo.desktop").exists(), "another entry was touched");
+        assert!(!kept.exists(), "the kept builds' folder, empty, stays");
+        // (Already gone: fine.)
+        remove_kept_build(&home, "old", &[s]).unwrap();
+        for bad in ["", "..", ".hidden", "a/b", "a b", "../home"] {
+            assert!(remove_kept_build(&home, bad, &[s]).is_err(), "{bad:?} was taken");
+        }
+        // A link where a build would be: refused, its target kept.
+        let elsewhere = root.join("elsewhere");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::write(elsewhere.join("precious"), "x").unwrap();
+        std::fs::create_dir_all(&kept).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, kept.join("link")).unwrap();
+        assert!(remove_kept_build(&home, "link", &[s]).is_err());
+        assert!(elsewhere.join("precious").exists());
+        assert!(remove_kept_build(Path::new("relative"), "old", &[s]).is_err());
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     /// A release package from the first place that has one: a stale
     /// mirror's 404 and a page that isn't a package passed over, every

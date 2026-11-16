@@ -83,8 +83,8 @@ how to build with them. These rules are universal and non-negotiable:
 - **GPUI is gone, for good.** Olo's kits (`crates/interface`,
   `crates/kit`) are its own. Never add GPUI back, as a dependency or as
   code, and never compare Olo's performance with it or with the build
-  from before the kits (`~/.local/olo-kept/before-kits` is a login
-  fallback, not a yardstick).
+  from before the kits (`~/.local/olo-kept/before-kits` was a login
+  fallback, never a yardstick; Olo Doctor suggests removing it).
 - **Survive in-place reload.** Apps reconnect when app_server restarts and
   re-exec after an upgrade; implement `View::save_state` (and
   `olo_kit::on_upgrade` for several windows) / `olo_kit::restored_state()`
