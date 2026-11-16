@@ -1448,9 +1448,10 @@ something nobody here has is in "Blocked", with what it waits for.
   cancelled as typing goes on), the one chosen turned into its latitude
   and longitude (a geocoder that knows addresses, natively over HTTP;
   today's finds towns only), and the forecast asked for that point. Its
-  name the address's short form (renamable: "a place's own name"). Done (HACKING, Weather): Photon's addresses
-  beside Open-Meteo's towns, as typed; the point's zone and height
-  looked up once added (`places::locate`).
+  name the address's short form (renamable: "a place's own name").
+  Done (HACKING, Weather): Photon's addresses beside Open-Meteo's
+  towns, as typed; the point's zone and height looked up once added
+  (`places::locate`).
 
 - **Weather: the assistant's suggested questions, redone** (Ben,
   2026-11-15: "redo the suggested questions in the weather app -- i want
@@ -1515,7 +1516,10 @@ something nobody here has is in "Blocked", with what it waits for.
   carry them; learning from new commands within about a second of
   each (only what changed, never a whole retrain), and suggesting as
   fast as now. Measured: suggestion latency, the cost of learning at
-  idle (none) and per command.
+  idle (none) and per command. Done (HACKING,
+  olo-complete): `carry::Habits`, learned from every command as it's
+  run, carries a start's options into what its program printed;
+  learned a second after a command; measured.
 
 - **Passwords: Approve Always, kept for good** (Ben, 2026-11-15: "once
   i allow the weather app to use the passwords item it should keep that

@@ -4342,5 +4342,11 @@
   "title": "Weather: a place by its address",
   "caption": "Add Place finds street addresses as they're typed (Photon, OpenStreetMap's, made for search as you type), beside towns and airfields (Open-Meteo's): here a drop zone by its name, then by its address. A place found by its address is forecast for that point; its time zone and ground height are looked up once it's added, the dialog never waiting on it (light, 2x).",
   "image": "2026-11-15/162131-weather-a-place-by-its-address.png"
+ },
+ {
+  "time": "2026-11-15T16:43:36",
+  "title": "Terminal: a resume line with the options it was started with",
+  "caption": "A program started with options (here a stand-in codex, --dangerously-bypass-approvals-and-sandbox) prints how to resume without them; typing co suggests the resume with them carried over, learned from how the person runs their programs (which options take a value, which they always give it, whether they carry them), not a rule for any program. New commands are learned within a second (light, 2x).",
+  "image": "2026-11-15/164336-terminal-a-resume-line-with-the-options-it-was-s.png"
  }
 ]

@@ -11680,7 +11680,9 @@ knows.
     person's), JSON lines, one request a connection (`protocol::Request`:
     suggest, ran, ended, accepted, continues, stats, learn, reload). `learn` is the
     first fine-tune, from the hand-written weights over everything; a
-    minute after the first new command a quick one from the current
+    second after the first new command (Ben, 2026-11-15: "it should
+    retrain pretty often when there are new commands, like once a second
+    or something"; it was a minute) a quick one from the current
     weights over the newest, on its own thread (the model locked only to
     copy the examples and to put the weights in). Asleep otherwise (a
     condvar, and poll on the socket and an inotify watch of its folder:
@@ -11722,14 +11724,45 @@ knows.
     stops (`TAIL_AFTER`: nothing while idle), a restored tab's
     scrollback among them, and removes it as the shell or olo-termd
     ends. The daemon reads it when the file changed (`named`, cached by
-    its time) for the commands it names (`output::commands`: what was
-    run at a prompt, a line or backquoted text starting with a program
-    the person runs: "Resume this session with:" and the command after
-    it, `git push --set-upstream origin topic`, "run `cargo fix`"; the
-    prompt being typed at left out), and the latest one that fits what's
-    typed comes first, ahead of the model's
+    its time, and again after each command run) for the commands it
+    names (`output::named`: what was run at a prompt, a line or
+    backquoted text starting with a program the person runs, or what
+    follows a colon after words saying to run it: "Resume this session
+    with:" and the command after it, "To continue this session, run:
+    codex resume …", `git push --set-upstream origin topic`, "run `cargo
+    fix`"; not "error: cargo build failed"; the prompt being typed at
+    left out), and the latest one that fits what's typed comes first,
+    ahead of the model's
     (`output::tests::bens_restored_tab_suggests_the_resume`: Ben's
-    restored tab, `cl` typed, his `claude … --resume 00000000-…`). Tried
+    restored tab, `cl` typed, his `claude … --resume 00000000-…`).
+  - A printed command, with how its program was started (`carry`; Ben,
+    2026-11-15: started as `codex
+    --dangerously-bypass-approvals-and-sandbox`, codex prints `codex
+    resume 01a1ddfb-…`, and "what i want is `codex
+    --dangerously-bypass-approvals-and-sandbox resume 01a1ddfb-…`. but
+    don't like hardcode that rule for codex/claude or anything"). Each
+    printed command knows its start: the command at the prompt above it,
+    the same program (`Named::start`), else the shell's last run of it.
+    `carry::Habits`, kept by the index from every command as it's run,
+    knows of each program's options which take a value (never seen
+    without a word after: `-m o3`), which come before its first other
+    word (the program's own, not a subcommand's), and which the person
+    gives it in most runs. `Habits::carry` puts into the printed command
+    the start's options it hasn't (by name: its own `--resume NEW` keeps
+    over the start's `--resume OLD`), each where it was: before the first
+    other word, or after a word the printed command has too (`git push
+    -f`'s after `push`); one belonging to a word it hasn't (`cargo build
+    --release`'s, for a printed `cargo fix`) isn't carried, nor a value of
+    more than one word (a prompt), nor the printed command's own
+    subcommand taken for a value. With no start shown, the options the
+    person gives the program in most of at least three runs. Both are
+    offered, the carried one first; typing the printed one's own words
+    (`codex r`) gets it as printed. What the person runs next votes
+    (`carry.json`): the carried one, or the printed one as printed; two
+    more as printed than carried and that program's are left as
+    printed. olo-termd gives each shell its own `OLO_SHELL_ID` only
+    (`shell_env`: a Terminal started from a Terminal shell had both
+    ids). Tried
     headless: a command printed by `printf`, `git l` typed in brush, the
     hint `og --oneline -3`. The installed `/usr/local/bin/brush` is the
     copy Olo Doctor's suggestion put there, brought up to date by its
@@ -11741,6 +11774,12 @@ knows.
     fine-tune 5 to 11 ms, a quick one about 2 ms; idle 0% of a core, 0
     wakeups a second; while Activity Monitor's AI shows, one a second
     in the daemon and 3 in Activity Monitor's poller (0.1% of a core).
+    With carrying and learning a second after (ThinkPad, release, 600
+    commands, a shell's tail with a printed resume, 2026-11-15): a
+    suggestion 4 µs at the median and 5 at p95 in the daemon, as the
+    build before it on the same history; a command learned 1.00 s after
+    it ran, its quick fine-tune 1.2 to 1.3 ms on about 2,000 examples;
+    idle 0 context switches and 0 CPU over 10 s.
 
 ## The Installer (apps/installer, tools/release.sh)
 

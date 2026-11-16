@@ -175,7 +175,7 @@ pub struct Plan {
 impl Plan {
     /// The first, on the whole history.
     pub const FIRST: Plan = Plan { epochs: 12, batch: 32, rate: 0.01, hold: 1e-3 };
-    /// A minute's commands, with some of what came before.
+    /// A second's commands, with some of what came before.
     pub const QUICK: Plan = Plan { epochs: 3, batch: 32, rate: 0.005, hold: 3e-3 };
 }
 

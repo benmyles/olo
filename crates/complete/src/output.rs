@@ -28,7 +28,9 @@ pub fn after_prompt(line: &str) -> Option<&str> {
 
 /// A command printed in `line` (not after a prompt): the line itself when
 /// its first word is a program the person runs (`known`) and it has an
-/// argument, or what's between backquotes when that is.
+/// argument, what's between backquotes when that is, or what follows the
+/// line's last colon after words saying to run it ("To continue this
+/// session, run: codex resume …"; not "error: cargo build failed").
 fn printed(line: &str, known: &dyn Fn(&str) -> bool) -> Vec<String> {
     let t = line.trim();
     let mut out = Vec::new();
@@ -40,11 +42,21 @@ fn printed(line: &str, known: &dyn Fn(&str) -> bool) -> Vec<String> {
             out.push(piece.trim().to_owned());
         }
     }
-    if out.is_empty() && !t.contains('`') && is_command(t, known) {
-        out.push(t.to_owned());
+    if out.is_empty() && !t.contains('`') {
+        if is_command(t, known) {
+            out.push(t.to_owned());
+        } else if let Some((before, after)) = t.rsplit_once(": ")
+            && before.split_whitespace().last().is_some_and(|w| RUN_CUES.contains(&w.to_lowercase().as_str()))
+            && is_command(after, known)
+        {
+            out.push(after.trim().to_owned());
+        }
     }
     out
 }
+
+/// The word before a colon that says what follows is to be run.
+const RUN_CUES: &[&str] = &["run", "with", "use", "try", "type", "execute", "enter", "command", "again", "resume", "continue", "rerun"];
 
 fn is_command(text: &str, known: &dyn Fn(&str) -> bool) -> bool {
     let mut words = text.split_whitespace();
@@ -53,25 +65,55 @@ fn is_command(text: &str, known: &dyn Fn(&str) -> bool) -> bool {
     known(first) && words.next().is_some() && !text.trim_end().ends_with(['.', '!', '?']) && text.len() <= 1000
 }
 
+/// A command a terminal's text names, and, for one a program printed, the
+/// command at the prompt above it that started that program (the same
+/// program), if it shows.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Named {
+    pub command: String,
+    /// Printed by a program, not run at a prompt.
+    pub printed: bool,
+    pub start: Option<String>,
+}
+
 /// The commands `text` (a terminal's last lines) names, oldest first: each
 /// line's command after a prompt, or printed for the person to run; the
 /// last prompt's (being typed now) left out.
 pub fn commands(text: &str, known: &dyn Fn(&str) -> bool) -> Vec<String> {
+    named(text, known).into_iter().map(|n| n.command).collect()
+}
+
+/// [`commands`], each printed one with its start ([`Named::start`]).
+pub fn named(text: &str, known: &dyn Fn(&str) -> bool) -> Vec<Named> {
     let lines: Vec<&str> = text.lines().collect();
     let lines = &lines[lines.len().saturating_sub(LINES)..];
     // The prompt being typed at: the last line that is one.
     let end = lines.iter().rposition(|l| after_prompt(l).is_some()).unwrap_or(lines.len());
-    let mut out: Vec<String> = Vec::new();
+    let program = |c: &str| c.split_whitespace().next().map(|w| w.rsplit('/').next().unwrap_or(w).to_owned());
+    let mut out: Vec<Named> = Vec::new();
+    let mut started: Option<String> = None;
     for line in &lines[..end] {
-        let found = match after_prompt(line) {
-            Some(c) if !c.is_empty() => vec![c.to_owned()],
-            Some(_) => Vec::new(),
-            None => printed(line, known),
+        let found: Vec<Named> = match after_prompt(line) {
+            Some(c) if !c.is_empty() => {
+                started = Some(c.to_owned());
+                vec![Named { command: c.to_owned(), printed: false, start: None }]
+            }
+            Some(_) => {
+                started = None;
+                Vec::new()
+            }
+            None => printed(line, known)
+                .into_iter()
+                .map(|c| {
+                    let start = started.clone().filter(|s| program(s) == program(&c) && *s != c);
+                    Named { command: c, printed: true, start }
+                })
+                .collect(),
         };
-        for c in found {
+        for n in found {
             // Each once, at its latest.
-            out.retain(|o| *o != c);
-            out.push(c);
+            out.retain(|o| o.command != n.command);
+            out.push(n);
         }
     }
     out
@@ -125,6 +167,31 @@ sam@laptop:~/src/notes$ cl";
         assert_eq!(latest_for(&found, "cd "), Some("cd ~/src/notes"));
     }
 
+    /// Ben's (2026-11-15): codex started with an option, its resume line
+    /// printed as it ended: named with that start.
+    #[test]
+    fn a_printed_command_knows_its_start() {
+        let text = "\
+me@box:~/x$ codex --dangerously-bypass-approvals-and-sandbox
+Token usage: total=12,345 input=10,000 output=2,345
+To continue this session, run: codex resume 01a1ddfb-20d0-7980-af3c-e082abab3e33
+me@box:~/x$ ";
+        let known = |w: &str| w == "codex";
+        let found = named(text, &known);
+        assert_eq!(found.len(), 2, "{found:?}");
+        let resume = &found[1];
+        assert_eq!(resume.command, "codex resume 01a1ddfb-20d0-7980-af3c-e082abab3e33");
+        assert_eq!(resume.start.as_deref(), Some("codex --dangerously-bypass-approvals-and-sandbox"));
+        assert!(found[1].printed && !found[0].printed);
+        assert_eq!(found[0].start, None, "a run has none");
+        // The command on a line of its own after the colon: the same.
+        let text = text.replace("run: codex", "run:\ncodex");
+        assert_eq!(named(&text, &known)[1], resume.clone());
+        // Not after a prompt of that program: no start.
+        let text = text.replace("$ codex --dangerously-bypass-approvals-and-sandbox", "$ ls");
+        assert_eq!(named(&text, &|w| w == "codex" || w == "ls").last().unwrap().start, None);
+    }
+
     #[test]
     fn printed_commands_and_prompts() {
         let text = "\
@@ -135,6 +202,7 @@ To push the current branch and set the remote as upstream, use
     git push --set-upstream origin topic
 
 warning: run `cargo fix --lib -p olo` to apply 2 suggestions
+error: cargo build failed
 git is a version control system.
 me@box:~/x$ ";
         let found = commands(text, &known);

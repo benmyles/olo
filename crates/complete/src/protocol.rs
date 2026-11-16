@@ -80,7 +80,7 @@ pub struct Stats {
     pub known: usize,
     pub seen: u64,
     /// Fine-tunes since it started, the last's report and when (seconds
-    /// since 1970), and whether one waits for the minute to pass.
+    /// since 1970), and whether one waits for its second to pass.
     pub fine_tunes: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_tune: Option<Tuned>,

@@ -16,7 +16,11 @@
 //!   and how well it does.
 //! - [`protocol`]: what brush and Olo's apps say to olo-complete (the
 //!   daemon: apps/complete).
+//! - [`output`]: the commands a terminal's recent text names, and
+//!   [`carry`]: one a program printed, with the options it was started
+//!   with, as the person's runs show they want.
 
+pub mod carry;
 pub mod history;
 pub mod index;
 pub mod kernels;

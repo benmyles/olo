@@ -1,6 +1,6 @@
 [package]
 name = "olo-complete-daemon"
-description = "olo-complete: brush's command suggestions from a tiny model of the person's history, served over a socket, fine-tuned every minute, computed with the processor's SIMD"
+description = "olo-complete: brush's command suggestions from a tiny model of the person's history, served over a socket, fine-tuned a second after new commands, computed with the processor's SIMD"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

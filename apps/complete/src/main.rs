@@ -10,10 +10,19 @@
 //! the examples made from it, and the weights (`model.json`: the
 //! hand-written ones until the first fine-tune). A suggestion is
 //! answered at once, computed with the processor's SIMD (about a
-//! microsecond). What's typed makes examples; a minute after the first
-//! new one, a quick fine-tune on a thread of its own (the model taken
-//! only to read its weights and put the new ones in, so suggestions
-//! never wait on it); with nothing new it sleeps, costing nothing.
+//! microsecond). Each command run is known at once (the index, and what
+//! it shows of the program's options: `carry`); the examples it makes are
+//! learned a second after the first of them (Ben, 2026-11-15: "it should
+//! retrain pretty often when there are new commands, like once a second
+//! or something"), in a quick fine-tune on a thread of its own (the model
+//! taken only to read its weights and put the new ones in, so
+//! suggestions never wait on it); with nothing new it sleeps, costing
+//! nothing.
+//!
+//! A command a program printed to run (a resume line) is offered with the
+//! options the person started that program with (`carry::Habits::carry`),
+//! as their runs show they want: what they run after one is printed is
+//! kept as a vote (`carry.json`).
 
 use std::{
     io::{BufRead, BufReader, Write},
@@ -37,9 +46,9 @@ use serde::{Deserialize, Serialize};
 const KEEP: usize = 8000;
 /// A quick fine-tune's: the newest examples it learns from.
 const QUICK_WINDOW: usize = 3000;
-/// How long after the first new command a quick fine-tune waits, so a
-/// minute's typing is learned in one go.
-const QUICK_AFTER: Duration = Duration::from_secs(60);
+/// How long after the first new command a quick fine-tune waits: a
+/// second's commands (a paste of several) learned in one go.
+const QUICK_AFTER: Duration = Duration::from_secs(1);
 /// Latencies kept, for the percentiles.
 const LATENCIES: usize = 512;
 
@@ -80,10 +89,23 @@ struct Daemon {
     learn: Condvar,
     settings: Mutex<Settings>,
     counters: Mutex<Counters>,
-    /// Each shell's recent text's commands (`output::commands`), read
-    /// again only when olo-termd has written it since: by session, when
-    /// read, what it named.
-    tails: Mutex<std::collections::HashMap<u64, (std::time::SystemTime, Vec<String>)>>,
+    /// Each shell's recent text's commands (`output::named`), read again
+    /// only when olo-termd has written it since or a command has run: by
+    /// session.
+    tails: Mutex<std::collections::HashMap<u64, Tail>>,
+}
+
+/// What a shell's recent text names.
+#[derive(Default)]
+struct Tail {
+    /// When olo-termd wrote it, and how many commands had been seen.
+    stamp: Option<std::time::SystemTime>,
+    seen: u64,
+    /// Each command, oldest first, and for one a program printed, it with
+    /// the options it was started with (`carry`).
+    found: Vec<(String, Option<String>)>,
+    /// What's suggested from: each, its carried one after it (preferred).
+    offered: Vec<String>,
 }
 
 fn record_path() -> PathBuf {
@@ -92,6 +114,11 @@ fn record_path() -> PathBuf {
 
 fn model_path() -> PathBuf {
     protocol::state_dir().join("model.json")
+}
+
+/// How the person runs what programs print (`carry::Votes`).
+fn votes_path() -> PathBuf {
+    protocol::state_dir().join("carry.json")
 }
 
 /// Olo's record; made from the history files the first time.
@@ -129,7 +156,10 @@ fn save_weights(w: &Weights, last: Option<&Tuned>) {
 impl Daemon {
     fn start(settings: Settings) -> Daemon {
         let entries = load_record();
-        let (mut examples, ix) = train::replay(&entries);
+        let (mut examples, mut ix) = train::replay(&entries);
+        if let Some(votes) = std::fs::read(votes_path()).ok().and_then(|b| serde_json::from_slice::<olo_complete::carry::Votes>(&b).ok()) {
+            ix.habits_mut().set_votes(&votes);
+        }
         if examples.len() > KEEP {
             examples.drain(..examples.len() - KEEP);
         }
@@ -151,23 +181,40 @@ impl Daemon {
     }
 
     /// The commands shell `session`'s recent text names (olo-termd's
-    /// tail of it; none for a shell outside Olo's Terminal).
-    fn named(&self, session: u64, ix: &Index) -> Vec<String> {
-        let Some(path) = protocol::tail_path(session) else { return Vec::new() };
-        let Ok(stamp) = std::fs::metadata(&path).and_then(|m| m.modified()) else { return Vec::new() };
+    /// tail of it; none for a shell outside Olo's Terminal), each printed
+    /// one with the options its program was started with: the start above
+    /// it, else the shell's last run of that program, else what the person
+    /// gives it in most runs.
+    /// (`f` is given it: read where it's kept, not copied for each key.)
+    fn named<R>(&self, session: u64, ix: &Index, f: impl FnOnce(&Tail) -> R) -> R {
+        let Some(path) = protocol::tail_path(session) else { return f(&Tail::default()) };
+        let Ok(stamp) = std::fs::metadata(&path).and_then(|m| m.modified()) else { return f(&Tail::default()) };
         let mut tails = self.tails.lock().unwrap();
-        if let Some((at, found)) = tails.get(&session)
-            && *at == stamp
+        if let Some(t) = tails.get(&session)
+            && t.stamp == Some(stamp)
+            && t.seen == ix.seen()
         {
-            return found.clone();
+            return f(t);
         }
         let text = std::fs::read_to_string(&path).unwrap_or_default();
-        let found = output::commands(&text, &|w| ix.knows_program(w));
+        let shell = ix.session_commands(session);
+        let found: Vec<(String, Option<String>)> = output::named(&text, &|w| ix.knows_program(w))
+            .into_iter()
+            .map(|n| {
+                let carried = n.printed.then(|| {
+                    let program = n.command.split_whitespace().next().unwrap_or("");
+                    let start = n.start.as_deref().or_else(|| shell.iter().rev().find(|c| c.split_whitespace().next() == Some(program)).copied());
+                    ix.habits().carry(&n.command, start)
+                });
+                (n.command, carried.flatten())
+            })
+            .collect();
+        let offered = found.iter().flat_map(|(c, carried)| std::iter::once(c.clone()).chain(carried.clone())).collect();
+        let t = Tail { stamp: Some(stamp), seen: ix.seen(), found, offered };
         if tails.len() > 64 {
             tails.clear();
         }
-        tails.insert(session, (stamp, found.clone()));
-        found
+        f(tails.entry(session).insert_entry(t).get())
     }
 
     fn suggest(&self, line: &str, cwd: Option<&str>, session: u64) -> Reply {
@@ -178,11 +225,11 @@ impl Daemon {
         // What the shell's screen names last that fits (a command run just
         // before, one a program printed to run) comes first: the moment's
         // context over the history's.
-        let named = self.named(session, &m.ix);
+        let named = self.named(session, &m.ix, |t| output::latest_for(&t.offered, line).map(str::to_owned));
         drop(m);
-        if let Some(c) = output::latest_for(&named, line) {
-            candidates.retain(|x| x != c);
-            candidates.insert(0, c.to_owned());
+        if let Some(c) = named {
+            candidates.retain(|x| *x != c);
+            candidates.insert(0, c);
             candidates.truncate(5);
         }
         let rest = candidates.first().and_then(|c| c.strip_prefix(line)).unwrap_or("").to_owned();
@@ -209,6 +256,23 @@ impl Daemon {
         let e = Entry { cwd, at: history::now(), session, ..Entry::new(command) };
         append_record(&e);
         let mut m = self.model.lock().unwrap();
+        // A command a program printed, run as printed or with the options
+        // carried: how this person wants them.
+        let vote = self.named(session, &m.ix, |t| {
+            t.found.iter().rev().find_map(|(printed, carried)| {
+                let carried = carried.as_ref()?;
+                (e.command == *carried).then_some(true).or((e.command == *printed).then_some(false)).map(|v| (printed.clone(), v))
+            })
+        });
+        if let Some((printed, carried)) = vote {
+            m.ix.habits_mut().vote(printed.split_whitespace().next().unwrap_or(""), carried);
+            let votes = m.ix.habits().votes();
+            let _ = std::fs::create_dir_all(protocol::state_dir());
+            let tmp = votes_path().with_extension("json.new");
+            if std::fs::write(&tmp, serde_json::to_vec(&votes).unwrap_or_default()).is_ok() {
+                let _ = std::fs::rename(tmp, votes_path());
+            }
+        }
         let mut made = 0;
         if m.ix.id(&e.command).is_some() {
             for k in train::typing_points(&e.command) {
@@ -259,7 +323,7 @@ impl Daemon {
     }
 
     /// The trainer: asleep until something new is typed, then a fine-tune
-    /// a minute after the first of it.
+    /// a second after the first of it.
     fn trainer(self: Arc<Self>) {
         loop {
             let m = self.model.lock().unwrap();

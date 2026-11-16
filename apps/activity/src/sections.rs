@@ -1202,7 +1202,7 @@ fn ai(app: &Activity, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
         ));
         figure = format!("{} right first", percent(in_use));
     }
-    rows.push(("Waiting".into(), if s.pending > 0 { format!("{} new examples, learned within the minute", style::thousands(s.pending)) } else { "Nothing new to learn".into() }));
+    rows.push(("Waiting".into(), if s.pending > 0 { format!("{} new examples, learned within a second", style::thousands(s.pending)) } else { "Nothing new to learn".into() }));
     out.push(Card::new("ai-learning", "Learning").figure(figure).caption("Fine-tuned on your newest commands a minute after you type them").child(facts(rows)).into_any_element());
     out
 }

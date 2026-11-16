@@ -591,13 +591,7 @@ fn handle(st: &St, conn: u64, f: Frame) {
                 lines.extend_from_slice(format!("\x1b[2mRestored from {when}\x1b[0m\r\n").as_bytes());
                 lines
             });
-            // Its id (olo-complete's session for it: its recent text is kept
-            // under it, `write_tail`), and the shell it stands in for.
-            let mut env = s.env.clone();
-            env.push((olo_complete::protocol::SHELL_ID_ENV.to_owned(), format!("{:x}", f.id)));
-            if let Some(from) = spawn.restore {
-                env.push((olo_complete::protocol::SHELL_RESTORED_ENV.to_owned(), format!("{from:x}")));
-            }
+            let env = shell_env(&s.env, f.id, spawn.restore);
             match pty::Pty::spawn(spawn.command.as_deref(), cwd.as_deref(), window_size(spawn.grid), &env) {
                 Ok(p) => {
                     new_shell(&mut s, f.id, p, spawn.grid, before.as_deref(), None);
@@ -862,6 +856,21 @@ fn upgrade(st: &St, binary: &Binary, listener: &UnixListener, lock: &File) {
 }
 
 /// Start Terminal again, to show the shells it left behind.
+/// A new shell's environment: Terminal's, with the shell's id
+/// (olo-complete's session for it: its recent text is kept under it,
+/// `write_tail`) and the shell it stands in for; not the ones of the shell
+/// Terminal was started from, if it was (they'd come twice, and a shell
+/// reading the other would take that tab's text for its own).
+fn shell_env(base: &[(String, String)], id: u64, restore: Option<u64>) -> Vec<(String, String)> {
+    use olo_complete::protocol::{SHELL_ID_ENV, SHELL_RESTORED_ENV};
+    let mut env: Vec<(String, String)> = base.iter().filter(|(k, _)| k != SHELL_ID_ENV && k != SHELL_RESTORED_ENV).cloned().collect();
+    env.push((SHELL_ID_ENV.to_owned(), format!("{id:x}")));
+    if let Some(from) = restore {
+        env.push((SHELL_RESTORED_ENV.to_owned(), format!("{from:x}")));
+    }
+    env
+}
+
 fn relaunch(env: &[(String, String)]) {
     let exe = std::env::current_exe().ok().and_then(|p| Some(p.parent()?.join("olo-terminal"))).filter(|p| p.exists());
     let mut cmd = std::process::Command::new(exe.unwrap_or_else(|| "olo-terminal".into()));
@@ -1215,6 +1224,19 @@ mod tests {
         term::{Config, Term},
         vte::ansi::Processor,
     };
+
+    /// A Terminal started from a Terminal shell: its shells have their own
+    /// id, once, not that shell's too.
+    #[test]
+    fn a_shell_has_one_id_its_own() {
+        use super::shell_env;
+        let base = vec![("HOME".to_owned(), "/home/sam".to_owned()), ("OLO_SHELL_ID".to_owned(), "b58c".to_owned()), ("OLO_SHELL_RESTORED".to_owned(), "a1".to_owned())];
+        let env = shell_env(&base, 0xe7fe, None);
+        assert_eq!(env, [("HOME".to_owned(), "/home/sam".to_owned()), ("OLO_SHELL_ID".to_owned(), "e7fe".to_owned())]);
+        let env = shell_env(&base, 0xe7fe, Some(0x42));
+        assert_eq!(env.iter().filter(|(k, _)| k.starts_with("OLO_SHELL")).count(), 2);
+        assert!(env.contains(&("OLO_SHELL_RESTORED".to_owned(), "42".to_owned())));
+    }
 
     #[test]
     fn the_tail_joins_wrapped_lines_and_keeps_the_last() {

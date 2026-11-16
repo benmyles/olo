@@ -74,6 +74,8 @@ pub struct Index {
     programs: std::collections::HashSet<String>,
     /// The person's last commands, any shell (most recent last).
     recent: Vec<u32>,
+    /// What their runs show of each program's options (`carry`).
+    habits: crate::carry::Habits,
     /// Commands seen, in all.
     seq: u64,
 }
@@ -123,8 +125,18 @@ impl Index {
         self.ids.get(command).copied()
     }
 
+    /// What the person's runs show of each program's options.
+    pub fn habits(&self) -> &crate::carry::Habits {
+        &self.habits
+    }
+
+    pub fn habits_mut(&mut self) -> &mut crate::carry::Habits {
+        &mut self.habits
+    }
+
     /// One more command run.
     pub fn add(&mut self, e: &Entry) {
+        self.habits.add(&e.command);
         let id = match self.ids.get(&e.command) {
             Some(&id) => id,
             None => {
