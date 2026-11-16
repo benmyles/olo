@@ -65,6 +65,16 @@ pub fn dir() -> PathBuf {
     olo_xdg::legacy::runtime_file(&runtime_dir(), "olo-screens")
 }
 
+/// Where screens' logs go: a folder of their own in `dir` (made as it's
+/// asked for), not among the screens listed, which Deskbar follows (each
+/// screen's session writes its log a few times a second: each a wake for
+/// it, 2026-11-15).
+fn logs_dir(dir: &Path) -> PathBuf {
+    let logs = dir.join("logs");
+    let _ = std::fs::create_dir_all(&logs);
+    logs
+}
+
 fn entry(name: &str) -> PathBuf {
     dir().join(format!("{name}.json"))
 }
@@ -338,7 +348,7 @@ impl Screen {
             let _ = std::fs::create_dir_all(&config);
             cmd.env("XDG_CONFIG_HOME", config);
         }
-        let log = std::fs::File::create(dir().join(format!("{}-{}.log", self.name, sanitize(program))));
+        let log = std::fs::File::create(logs_dir(&dir()).join(format!("{}-{}.log", self.name, sanitize(program))));
         if let Ok(log) = log {
             cmd.stdout(log.try_clone().map(Stdio::from).unwrap_or_else(|_| Stdio::null())).stderr(Stdio::from(log));
         }
@@ -518,7 +528,7 @@ pub fn start(name: &str, opts: &Options) -> Result<Screen, String> {
     std::fs::write(&settings_path, settings).map_err(|e| e.to_string())?;
 
     let session = olo_xdg::find_program("olo-session").ok_or("olo-session isn't installed")?;
-    let log_path = dir.join(format!("{name}.log"));
+    let log_path = logs_dir(&dir).join(format!("{name}.log"));
     let log = std::fs::File::create(&log_path).map_err(|e| e.to_string())?;
     // Pixels, as the backend takes them.
     let (pw, ph) = ((opts.width as f64 * opts.scale).round() as i32, (opts.height as f64 * opts.scale).round() as i32);
@@ -607,7 +617,7 @@ pub fn start(name: &str, opts: &Options) -> Result<Screen, String> {
     if let Ok(exe) = std::env::current_exe() {
         let mut rec = Command::new(exe);
         rec.args(["record", name]).process_group(pid).stdin(std::process::Stdio::null());
-        if let Ok(log) = std::fs::File::create(dir.join(format!("{name}-record.log"))) {
+        if let Ok(log) = std::fs::File::create(logs_dir(&dir).join(format!("{name}-record.log"))) {
             if let Ok(out) = log.try_clone() {
                 rec.stdout(out);
             }

@@ -948,6 +948,9 @@ fn hand_over(shared: &Arc<Shared>, open: &Open, proxy: &Proxy) -> bool {
     olo_kit::restore::hand_over(&mut cmd, Some(&state));
     // Launches go to the copy from now on (it listens as it starts).
     olo_kit::instance::close();
+    // (What's waiting written first: the new copy reads the file as it
+    // starts, and a request's bookkeeping waits up to `USAGE_EVERY`.)
+    shared.flush();
     let started = cmd.spawn();
     shared.drain.sealed();
     let child = match started {

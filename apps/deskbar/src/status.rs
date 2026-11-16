@@ -163,8 +163,8 @@ pub struct Supervisor {
 
 /// What olo-session offers to upgrade (see its upgrade.rs).
 fn upgrade_path() -> PathBuf {
-    let dir = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-    dir.join(format!("olo-upgrade-{}.json", olo_xdg::display_name()))
+    // (The session's `upgrade::state_path`.)
+    olo_xdg::state_runtime_dir().join(format!("upgrade-{}.json", olo_xdg::display_name()))
 }
 
 /// What's on offer, and whether olo-session waits for a build to finish

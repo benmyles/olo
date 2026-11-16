@@ -80,8 +80,7 @@ pub fn dir() -> PathBuf {
     if let Some(own) = std::env::var_os("OLO_AIRPLAY_DIR") {
         return PathBuf::from(own);
     }
-    let run = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"));
-    run.join("olo-airplay")
+    olo_xdg::state_runtime_dir().join("airplay")
 }
 
 pub fn path_of(pid: u32) -> PathBuf {

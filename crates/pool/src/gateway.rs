@@ -135,6 +135,23 @@ fn provider_index(p: Provider) -> usize {
 }
 
 /// The gateway's state, shared with the app.
+/// What the saver's told (`touch`, `noted`, `flush`).
+enum Save {
+    /// Something of the accounts changed: written a moment later.
+    Now,
+    /// A request's bookkeeping (when used, what it used): written with the
+    /// next save, or `USAGE_EVERY` after the first such at the latest.
+    Later,
+    /// Write what's waiting now, then say so (before a handover).
+    Flush(std::sync::mpsc::Sender<()>),
+}
+
+/// The longest a request's bookkeeping waits to be written (Ben's pool,
+/// 2026-11-15: each request asked for two saves, so with agents at work
+/// the sealed file was written more than once a second, 38 times in 30 s:
+/// disk, sealing, and a wake for everything watching the config folder).
+pub const USAGE_EVERY: Duration = Duration::from_secs(30);
+
 pub struct Shared {
     pub pool: Mutex<Pool>,
     store: Mutex<Option<Store>>,
@@ -143,7 +160,7 @@ pub struct Shared {
     up: Upstreams,
     /// One refresh at a time per account.
     locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
-    save: std::sync::mpsc::Sender<()>,
+    save: std::sync::mpsc::Sender<Save>,
     changed: Box<dyn Fn() + Send + Sync>,
     runtime: Mutex<Option<tokio::runtime::Handle>>,
     /// Make the sealed store when there's first something to keep.
@@ -265,7 +282,7 @@ impl Shared {
     }
 
     fn make(saved: Saved, store: Option<Store>, up: Upstreams, lazy: bool, changed: impl Fn() + Send + Sync + 'static) -> Arc<Shared> {
-        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let (tx, rx) = std::sync::mpsc::channel::<Save>();
         let http = olo_net::PerNetwork::new(|| {
             reqwest::Client::builder()
                 .connect_timeout(Duration::from_secs(20))
@@ -291,65 +308,72 @@ impl Shared {
             paused: Default::default(),
             opener: Mutex::new(None),
         });
-        // Saving off every async and UI thread, a batch at a time.
+        // Saving off every async and UI thread, a batch at a time: what
+        // changed of the accounts a moment after, a request's bookkeeping
+        // with it or `USAGE_EVERY` on at the latest, all of it at a flush.
         let weak = Arc::downgrade(&shared);
         let _ = std::thread::Builder::new().name("pool-save".into()).spawn(move || {
-            while rx.recv().is_ok() {
-                std::thread::sleep(Duration::from_millis(300));
-                while rx.try_recv().is_ok() {}
-                let Some(s) = weak.upgrade() else { break };
-                // Handed over: the new copy owns the file (a sign-in renewed
-                // here is written in on its own: `fresh`).
-                if s.drain.retired() {
-                    continue;
-                }
-                let mut snapshot = {
-                    let p = s.pool.lock().unwrap();
-                    if !p.loaded {
+            let mut later: Option<std::time::Instant> = None;
+            loop {
+                let got = match later {
+                    Some(t) => match rx.recv_timeout(t.saturating_duration_since(std::time::Instant::now())) {
+                        Ok(m) => Some(m),
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => None,
+                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                    },
+                    None => match rx.recv() {
+                        Ok(m) => Some(m),
+                        Err(_) => break,
+                    },
+                };
+                let mut flushed = Vec::new();
+                match got {
+                    Some(Save::Later) => {
+                        later.get_or_insert_with(|| std::time::Instant::now() + USAGE_EVERY);
                         continue;
                     }
-                    p.saved.clone()
-                };
-                let mut store = s.store.lock().unwrap();
-                // The copy this one took over from still finishing: a
-                // sign-in it renewed meanwhile is kept, not written over.
-                let _held = match store.as_ref().filter(|_| s.drain.overlapping()) {
-                    Some(st) => {
-                        let held = st.lock();
-                        if let Ok(disk) = st.read() {
-                            s.adopt_newer(&disk, &mut snapshot);
-                        }
-                        held
-                    }
-                    None => None,
-                };
-                // The first account made: the sealed file (and its key) now.
-                if store.is_none() && s.lazy {
-                    match Store::open() {
-                        Ok((st, _)) => *store = Some(st),
-                        Err(e) => {
-                            s.pool.lock().unwrap().error = Some(e);
-                            (s.changed)();
-                            continue;
-                        }
+                    Some(Save::Now) => std::thread::sleep(Duration::from_millis(300)),
+                    Some(Save::Flush(done)) => flushed.push(done),
+                    None => {}
+                }
+                while let Ok(m) = rx.try_recv() {
+                    if let Save::Flush(done) = m {
+                        flushed.push(done);
                     }
                 }
-                if let Some(st) = store.as_ref()
-                    && let Err(e) = st.save(&snapshot)
-                {
-                    tracing::warn!("pool: {e}");
-                    s.pool.lock().unwrap().error = Some(e);
-                    (s.changed)();
+                later = None;
+                let Some(s) = weak.upgrade() else { break };
+                save_once(&s);
+                drop(s);
+                for done in flushed {
+                    let _ = done.send(());
                 }
             }
         });
         shared
     }
 
-    /// Something changed: save it, and show it.
+    /// Something of the accounts changed: save it, and show it.
     pub fn touch(&self) {
-        let _ = self.save.send(());
+        let _ = self.save.send(Save::Now);
         (self.changed)();
+    }
+
+    /// A request's bookkeeping changed (when an account was used, what it
+    /// used): shown now, saved with the next save or within
+    /// `USAGE_EVERY`.
+    pub fn noted(&self) {
+        let _ = self.save.send(Save::Later);
+        (self.changed)();
+    }
+
+    /// Write what's waiting now, and return once it's written (a few
+    /// seconds at most): before another copy reads the file (a handover).
+    pub fn flush(&self) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        if self.save.send(Save::Flush(tx)).is_ok() {
+            let _ = rx.recv_timeout(Duration::from_secs(3));
+        }
     }
 
     /// Tell the app to look again (nothing to save).
@@ -1106,7 +1130,8 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
         };
         let (id, name, open) = match chosen {
             Ok(c) => {
-                s.touch();
+                // (Its use, bookkeeping: saved with the next, or soon.)
+                s.noted();
                 c
             }
             Err((any, retry)) => {
@@ -1329,7 +1354,8 @@ impl Drop for Finish {
                 p.served.pop_front();
             }
         }
-        s.touch();
+        // (What it used, bookkeeping: saved with the next, or soon.)
+        s.noted();
     }
 }
 
@@ -1443,6 +1469,53 @@ impl Scan {
 /// lasts longer (a renewal's always does).
 fn newer(theirs: &Credential, ours: &Credential) -> bool {
     theirs.access != ours.access && theirs.expires_at.unwrap_or(0) > ours.expires_at.unwrap_or(0)
+}
+
+/// One save of the pool as it is now (the saver's).
+fn save_once(s: &Shared) {
+    // Handed over: the new copy owns the file (a sign-in renewed
+    // here is written in on its own: `fresh`).
+    if s.drain.retired() {
+        return;
+    }
+    let mut snapshot = {
+        let p = s.pool.lock().unwrap();
+        if !p.loaded {
+            return;
+        }
+        p.saved.clone()
+    };
+    let mut store = s.store.lock().unwrap();
+    // The copy this one took over from still finishing: a
+    // sign-in it renewed meanwhile is kept, not written over.
+    let _held = match store.as_ref().filter(|_| s.drain.overlapping()) {
+        Some(st) => {
+            let held = st.lock();
+            if let Ok(disk) = st.read() {
+                s.adopt_newer(&disk, &mut snapshot);
+            }
+            held
+        }
+        None => None,
+    };
+    // The first account made: the sealed file (and its key) now.
+    if store.is_none() && s.lazy {
+        match Store::open() {
+            Ok((st, _)) => *store = Some(st),
+            Err(e) => {
+                s.pool.lock().unwrap().error = Some(e);
+                (s.changed)();
+                return;
+            }
+        }
+    }
+    if let Some(st) = store.as_ref()
+        && let Err(e) = st.save(&snapshot)
+    {
+        tracing::warn!("pool: {e}");
+        s.pool.lock().unwrap().error = Some(e);
+        (s.changed)();
+    }
 }
 
 #[cfg(test)]

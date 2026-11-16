@@ -1597,7 +1597,15 @@ something nobody here has is in "Blocked", with what it waits for.
   exists (IN_DELETE_SELF, IN_MOVE_SELF, IN_ATTRIB for its last link)
   and its folder only while it doesn't, or move what's watched in the
   runtime folder into folders of their own; measure Deskbar before and
-  after.
+  after. Done
+  (HACKING rule 7): a path that's there watched itself, never its
+  folder; state that comes and goes in `olo-state/`; Agent Screens' logs
+  in `olo-screens/logs`; Token Pool's vault saved in batches for a
+  request's bookkeeping (38 writes in 30 s before). Deskbar, release,
+  60 s idle beside the person's session: 4 watch wakes a second to 2,
+  frames 13 a minute to 3 (the rest the running screens' logs, written
+  beside their list until those screens start again with the new
+  build).
 
 - **Terminal: AI autocomplete that keeps how a program was started**
   (Ben, 2026-11-15: "when i quit an app in terminal like codex/claude it

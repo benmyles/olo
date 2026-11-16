@@ -1,5 +1,5 @@
 //! A screen recording going (olo-screenshot's recorder, recording.rs):
-//! kept in `$XDG_RUNTIME_DIR/olo-recording-<display>.json` while it
+//! kept in `$XDG_RUNTIME_DIR/olo-state/recording-<display>.json` while it
 //! runs, one a display (an Agent Screen's and the person's apart), for
 //! `--stop`, `--pause` and `--resume`, Deskbar's tray (a dot while
 //! recording, Pause and Stop Recording) and agents.
@@ -72,8 +72,7 @@ pub fn this_display() -> String {
 
 /// Where the recording going on `display` is said.
 pub fn path_for(display: &str) -> PathBuf {
-    let run = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"));
-    run.join(format!("olo-recording-{display}.json"))
+    olo_xdg::state_runtime_dir().join(format!("recording-{display}.json"))
 }
 
 /// The recording going on `display`, if one is (its process alive).

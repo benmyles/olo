@@ -78,7 +78,12 @@ like pixel alignment is.
    a watch grows and shrinks by what changed, `Watch::add` and
    `remove`, `set` looking only at what differs: the palette follows
    ~37,000 folders, and a folder made or removed among 30,000 was
-   105 ms of CPU, now 0.2), Tracker's
+   105 ms of CPU, now 0.2; a path that's there is watched itself, a
+   file's writes and its link count dropping as it's renamed over, a
+   folder's items, never its folder, and a path that isn't from the
+   nearest folder above until it comes: a watch of a folder wakes for
+   every change in it, and the runtime folder changes several times a
+   second, 2026-11-15), Tracker's
    own `watch.rs` (changed items stat'ed off the UI thread, a full relist
    on queue overflow, a folder renamed or swapped away watched again at
    its path, the nearest folder above watched for it to come back if
@@ -86,8 +91,17 @@ like pixel alignment is.
    being moved or deleted, which takes it from its path without a word
    to its own watch), and the mount table with `POLLPRI` on
    `/proc/self/mountinfo`. No timers that re-read the disk to look for
-   changes; keep busy files (frames, caches) out of a folder others
-   follow. What follows them: Tracker's windows, desktop, Trash, Get Info
+   changes; keep busy files (frames, caches, logs) out of a folder others
+   follow, and a file that's usually not there out of a busy one (it's
+   watched for from its folder): `olo_xdg::state_runtime_dir`
+   (`$XDG_RUNTIME_DIR/olo-state/`) for state that comes and goes (an
+   upgrade offered, a recording, notifications waiting, what's shared,
+   AirPlay's plays), Agent Screens' logs in `olo-screens/logs`. And save
+   what changes with every request in batches: Token Pool's vault took
+   two saves a request, more than one a second with agents at work;
+   a request's bookkeeping now waits up to `gateway::USAGE_EVERY` (30
+   s), an account's change still a moment, all of it flushed before a
+   handover. What follows them: Tracker's windows, desktop, Trash, Get Info
    and Find results; the file panels; StyledEdit's and Viewer's open
    files (another program's change is shown at once unless there are
    unsaved changes; told from our own save by its time and length) and
@@ -15758,7 +15772,9 @@ close came from, app_server's `asked to close a window` and `close box
 clicked` the window and who), dependencies only their warnings.
 
 Logs an app writes beside the journal are read too: File ▸ Agent Screen
-Logs lists the Agent Screens' (`$XDG_RUNTIME_DIR/olo-screens`: a
+Logs lists the Agent Screens' (`$XDG_RUNTIME_DIR/olo-screens/logs`, a
+folder of their own so that Deskbar, following the screens listed
+beside it, doesn't wake for each line: a
 screen's own `NAME.log` and each program run there, `NAME-PROGRAM.log`,
 the latest written first), File ▸ Open Log File… (⌘O) any other, and
 `olo-logs FILE` (or Tracker's Open With) opens one; File ▸ Journal goes

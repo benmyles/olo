@@ -320,6 +320,20 @@ pub fn ssh_agent_socket() -> std::path::PathBuf {
 /// This session's Wayland display by its name (`wayland-1`; empty if
 /// none), for files and sockets kept per display: `WAYLAND_DISPLAY` may
 /// name the socket by its full path instead.
+/// Where state that's usually not there is said in the runtime folder
+/// (an upgrade offered, a recording going, notifications waiting, what's
+/// shared, AirPlay's plays): `$XDG_RUNTIME_DIR/olo-state/`, made as it's
+/// asked for. A folder of its own, quiet: something waiting for one of
+/// these to come watches its folder, and a watch of the runtime folder
+/// itself wakes for every change in it (Token Pool's meters and the
+/// supervisor's state several times a second: Deskbar woke 5 times a
+/// second idle so, 2026-11-15).
+pub fn state_runtime_dir() -> std::path::PathBuf {
+    let dir = runtime_dir().join("olo-state");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
 pub fn display_name() -> String {
     let display = std::env::var("WAYLAND_DISPLAY").unwrap_or_default();
     display.rsplit('/').next().unwrap_or_default().to_owned()

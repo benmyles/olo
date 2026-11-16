@@ -110,7 +110,7 @@
 //! (OpenH264: 4K in 111 ms); by default into the Videos
 //! folder as "Screen Recording 2026-11-04 at 18.30.05.mp4", written as
 //! `.part` until whole. One at a time on each display: what's going is
-//! in `$XDG_RUNTIME_DIR/olo-recording-<display>.json` (so an Agent
+//! in `$XDG_RUNTIME_DIR/olo-state/recording-<display>.json` (so an Agent
 //! Screen's and the person's don't meet).
 //!
 //! The whole display recorded on the GPU that draws it (VA-API's H.264 or

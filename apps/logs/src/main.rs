@@ -178,13 +178,15 @@ enum Msg {
     Launch(Option<String>, Option<PathBuf>),
 }
 
-/// The Agent Screens' logs (`$XDG_RUNTIME_DIR/olo-screens`: a screen's
-/// own, `NAME.log`, and each program run there, `NAME-PROGRAM.log`), the
-/// latest written first.
+/// The Agent Screens' logs (`$XDG_RUNTIME_DIR/olo-screens/logs`, and
+/// beside the screens from before they had a folder of their own: a
+/// screen's own, `NAME.log`, and each program run there,
+/// `NAME-PROGRAM.log`), the latest written first.
 fn screen_logs() -> Vec<(String, PathBuf)> {
     let dir = std::env::var_os("XDG_RUNTIME_DIR").map_or_else(|| PathBuf::from("/tmp"), PathBuf::from).join("olo-screens");
-    let mut logs: Vec<(std::time::SystemTime, String, PathBuf)> = std::fs::read_dir(dir)
+    let mut logs: Vec<(std::time::SystemTime, String, PathBuf)> = [dir.join("logs"), dir]
         .into_iter()
+        .filter_map(|d| std::fs::read_dir(d).ok())
         .flatten()
         .flatten()
         .filter(|e| e.path().extension().is_some_and(|x| x == "log"))

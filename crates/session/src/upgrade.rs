@@ -39,7 +39,7 @@ pub struct Available {
 }
 
 pub fn state_path(display: &str) -> PathBuf {
-    crate::runtime_dir().join(format!("olo-upgrade-{display}.json"))
+    olo_xdg::state_runtime_dir().join(format!("upgrade-{display}.json"))
 }
 
 pub struct Watcher {
