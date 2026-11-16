@@ -324,6 +324,12 @@ fn paint_line_background(
     wrap_boundaries: &[WrapBoundary],
     p: &mut Painter,
 ) -> Result<()> {
+    // (Nearly every line has none: then nothing to look for, glyph by
+    // glyph, as every line painted did, a list's rows on each step of a
+    // live resize among them.)
+    if decoration_runs.iter().all(|run| run.background_color.is_none()) {
+        return Ok(());
+    }
     let line_bounds = Bounds::new(origin, size(layout.width, line_height * (wrap_boundaries.len() as f32 + 1.)));
     p.paint_layer(line_bounds, |p| {
         let mut decoration_runs = decoration_runs.iter();

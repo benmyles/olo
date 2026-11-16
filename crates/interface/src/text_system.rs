@@ -58,6 +58,9 @@ pub struct TextSystem {
     wrapper_pool: Mutex<FxHashMap<FontIdWithSize, Vec<LineWrapper>>>,
     font_runs_pool: Mutex<Vec<Vec<FontRun>>>,
     fallback_font_stack: SmallVec<[Font; 2]>,
+    /// Olo: which text system this is, for what a thread keeps of it
+    /// (`resolve_font`'s last font).
+    serial: u64,
 }
 
 /// Olo: what the glyph-warming thread draws ahead: a face's printable
@@ -69,7 +72,9 @@ enum Warm {
 
 impl TextSystem {
     pub(crate) fn new(platform_text_system: Arc<dyn PlatformTextSystem>) -> Self {
+        static SERIAL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         TextSystem {
+            serial: SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             platform_text_system,
             font_metrics: RwLock::default(),
             raster_bounds: RwLock::default(),
@@ -192,6 +197,23 @@ impl TextSystem {
     ///
     /// Panics if the font and none of the fallbacks can be resolved.
     pub fn resolve_font(&self, font: &Font) -> FontId {
+        // (The thread's last, again: a label's font is the one before
+        // it's nearly always, and the same font is the same id for good,
+        // as fonts are never let go. Looked up each time, under the map's
+        // lock and by the font's hash, every label painted did it: 2% of
+        // a list's live resize.)
+        thread_local! {
+            static LAST: std::cell::RefCell<Option<(u64, Font, FontId)>> = const { std::cell::RefCell::new(None) };
+        }
+        if let Some(id) = LAST.with_borrow(|last| last.as_ref().filter(|(serial, f, _)| *serial == self.serial && f == font).map(|(_, _, id)| *id)) {
+            return id;
+        }
+        let id = self.resolve_font_now(font);
+        LAST.with_borrow_mut(|last| *last = Some((self.serial, font.clone(), id)));
+        id
+    }
+
+    fn resolve_font_now(&self, font: &Font) -> FontId {
         if let Ok(font_id) = self.font_id(font) {
             return font_id;
         }

@@ -17,46 +17,35 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **The kits' costs, where they're above GPUI's** (from the move to the
-  kits: "each within a frame's budget; to be brought down"). A whole
-  window drawn again each frame costs more than GPUI's one thread did
-  (Logs resized live 65 → 95 ms for 36 steps, Notifications 128 → 195, a
-  drawing that moves every frame 0.12 ms a frame more). To try, each
-  measured before and after (`OLO_FRAME_PHASES`, perf, memhist): a
-  drawing that's the only thing changed handed to the frame without the
-  copy; `Scene::append` moving a recording whose clip holds all of it
-  without looking at each thing in it; `finish` swapping the glyphs'
-  list in when the runs are in order already; a list's rows of text
-  keeping their recordings when only their width grew; Tracker's resize
-  wrapping each text again (450 shapings a step); StyledEdit's text as
-  one `String` (a rope or gap buffer); the display thread's own 20–60
-  ms a sweep of the pointer (every move reaching it). (Looked at 2026-11-16:
-  `finish` already leaves the glyphs where they are, the renderer
-  reading each batch run by run; and the pointer's floor is the Wayland
-  client's own dispatch, which only fewer events would cut, at a drawing
-  app's cost: each of the rest wants profiling again before work, as
-  the kits have changed since the list was made.)
-  Measured again 2026-11-16 (`tools/dev/resize-cost`, the old build in
-  `~/.local/olo-kept/before-kits`, instructions a step of a live
-  resize): Tracker is below GPUI's now (1.05–1.48 M against
-  2.19–3.23 M), Notifications' history level (13.6 against 12.9–14.3),
-  Logs above (8.7–10.9 against 6.1–7.3). Logs: each message's
-  highlighting worked out once, not each frame (a tenth of its work),
-  and the text system taking a run's font id from the run before it
-  when it's the same font (9%, now 2.5%): 9.0 → 8.0 M a step. The
-  screen savers: an animation's step that changed nothing waited for
-  the next frame instead of running again at once (StringTheme 179–210
-  M instructions a second at 60 Hz → 76–93 M, GPUI's 33–43 M; a scroll
-  arrow held at a list's end 114% of a core → 0.5–1.5%); and the
-  scene's work on a drawing of many lines: segments compared by their
-  bytes, written into the scene as they're made, and a frame drawn in
-  part taking them in a loop of its own, not through a filter's
-  closure (`scene_bench`: 1,362 → 815 M instructions, 309 → 168 M
-  cycles; StringTheme 1.19–1.32 → 0.94–1.11 M instructions a paint).
-  Left there: StringTheme's ~1.0 M a paint against GPUI's 0.65 M a
-  frame, in making its 1,500 segments (`insert_segments`, 45% with the
-  painter's) and copying them into the frame (`Scene::append`, 14%:
-  the first idea above).
+- **The kits' costs, in absolute terms** (Ben, 2026-11-16: "GPUI should
+  be gone we don't care about it anymore just make sure we are
+  performant in absolute terms"). Every frame's work well inside its
+  budget (8.3 ms at 120 Hz), nothing at rest, animations as cheap as
+  they can be, measured with `perf stat --no-scale` (HACKING, "Fast and
+  light": scaled counts on this machine's two kinds of core doubled at
+  random, which was most of the "noise" before). Where things stand
+  (release, 2×): Logs resized live, 8,000 lines in a window about
+  1,500 × 1,000: one frame a step, its looper 5.03 M instructions and
+  0.7–1.3 ms a frame. StringTheme: 2.3–2.6% of a core at 60 Hz,
+  3.4–3.7% at 120 Hz. A scroll arrow held at a list's end: 0.5–1.5%
+  (it had spun at 114%). Done this round: each Logs message's
+  highlighting worked out once; a run's, then a label's, font id kept
+  rather than looked up; a line's background looked for only when a
+  run has one; an animation's step that changed nothing waiting for
+  the next frame; a drawing of many lines compared by its bytes, made
+  in place and put in a frame without a closure a line
+  (`scene_bench`: 1,362 → 815 M instructions). Left, each to be
+  measured before and after: a list's rows made again on every width
+  change (the row key holds every column's width, so a live resize
+  paints every row; cells that didn't change could keep theirs); every
+  row laid out again by taffy on a resize (about a fifth of the
+  frame); a cut-short cell shaping its cut text at each new width; a
+  drawing that's the only thing changed copied into the frame
+  (`Scene::append`) and its segments made a paint at a time (a saver's
+  1,500); Tracker's resize wrapping each text again (450 shapings a
+  step); StyledEdit's text as one `String` (a rope or gap buffer); the
+  display thread's own 20–60 ms a sweep of the pointer (every move
+  reaching it).
 
 ## Done, waiting for Ben to try or confirm
 
@@ -869,15 +858,14 @@ something nobody here has is in "Blocked", with what it waits for.
      second 52%, tabs 62%, menus 93%, a live resize 98%; the gallery
      39%, Notifications 70%, Logs 78%); a click to a menu's picture
      takes what it took (4 ms, Tracker's and Deskbar's).
-     *Left, where the kits cost more* (each within a frame's budget;
-     to be brought down):
-     - A whole window drawn again every frame costs more than GPUI's
-       one thread did: the looper paints each node's drawing, the
-       display thread copies them into the frame, then draws. A
-       list-heavy window resized live: Logs 65 → 95 ms for 36 steps,
-       Notifications 128 → 195, Tracker 27 → 43; a drawing that moves
-       every frame: StringTheme 44 → 70 ms for 210 frames (0.12 ms a
-       frame more: two threads woken, the drawing copied once more).
+     *Left* (now "The kits' costs, in absolute terms", Not started;
+     each within a frame's budget, to be brought down):
+     - A whole window drawn again every frame: the looper paints each
+       node's drawing, the display thread copies them into the frame,
+       then draws. A list-heavy window resized live: Logs 95 ms for 36
+       steps, Notifications 195, Tracker 43; a drawing that moves
+       every frame: StringTheme 70 ms for 210 frames (two threads
+       woken, the drawing copied once more).
        To try: a drawing that's the only thing changed handed to the
        frame without the copy; `Scene::append` moving a recording
        whose clip holds all of it without looking at each thing in it;
@@ -1523,10 +1511,8 @@ something nobody here has is in "Blocked", with what it waits for.
   animated ones (Telegram's stickers) decoded on a worker and drawn once
   a frame when due, and the long lists of differing rows lay out their
   own (Telegram's conversation, Notifications' history, Logs) or are
-  uniform (`uniform_rows`); the region picker's shape labels against
-  GPUI's can't be compared any more (GPUI is gone; the same place and
-  extent); the kits' costs where they're above GPUI's are an item of
-  their own (Not started, "The kits' costs"). *Left for Ben:* the
+  uniform (`uniform_rows`); the kits' costs are an item of their own
+  (Not started, "The kits' costs, in absolute terms"). *Left for Ben:* the
   camera bubble (Record ▸ Show Camera: it turns the camera on).
 
 - **Olo independent of GNOME, 100%** (Ben, 2026-11-15: "we should be
@@ -4898,8 +4884,8 @@ need Ben".)
   finding as a high-priority item here). The audit (lspci, lsusb,
   /proc/bus/input, sysfs, the kernel log, app_server's own report):
   - **The touch screen** (Wacom HID 53DD, Finger and Pen, on eDP-1):
-    app_server maps touches to the built-in display, but GPUI has no
-    `wl_touch`, so a touch on any Olo app, or on app_server's own
+    app_server maps touches to the built-in display, but the
+    Interface Kit has no `wl_touch`, so a touch on any Olo app, or on app_server's own
     frames and tabs, does nothing. Touch should work everywhere: as the
     pointer for clients without touch (and the frames), as touch for
     those with it (Chrome, GTK), with the pen as a tablet tool.
@@ -4962,8 +4948,8 @@ need Ben".)
     clicks, a move drags, two fingers scroll apps without touch, and the
     pointer hides while a finger is it (tried headless: a window dragged
     by its tab, a tap opening Activity's Processes, two fingers scrolling
-    its list). Pinch too: GPUI has `PinchEvent`/`on_pinch` now (it had
-    no pinches, so neither the screen's nor a touchpad's reached an Olo
+    its list). Pinch too: the Interface Kit has `PinchEvent`/`on_pinch`
+    (with none, neither the screen's nor a touchpad's reached an Olo
     app), and Viewer zooms on it (tried headless: a picture zoomed about
     the fingers). Left: try it on the panel; the pen's pressure in
     Olo's apps (blocked, see Blocked).
@@ -4994,8 +4980,8 @@ need Ben".)
     saying PQ) need none of this. Done besides: programs'
     own colours (`wp_color_management_v1`, tried with a test client),
     pictures converted from their profiles (`olo_images`), Viewer
-    drawing in Display P3 while it shows a wide photo (GPUI's
-    `Window::set_gamut`, tried headless), night light in HDR, and HDR
+    drawing in Display P3 while it shows a wide photo (the window's
+    `set_gamut`, tried headless), night light in HDR, and HDR
     video (HDR10, HLG) shown for SDR screens, and wide video (HDR's
     too) drawn in Display P3 rather than clipped to sRGB, and HDR video
     shown as HDR on a display whose HDR is on (Viewer's window in HDR10,
@@ -5305,7 +5291,7 @@ people.
   - Freeing the Studio Display's second tunnel: the kernel's Thunderbolt
     driver tunnels both its streams and offers no way to give one back.
   - The pen's pressure in Olo's apps: the Wacom pen is there (app_server
-    serves tablet-v2; GPUI doesn't bind it yet, so in Olo's apps the pen
+    serves tablet-v2; the Interface Kit doesn't bind it yet, so in Olo's apps the pen
     only points). No Olo app draws freehand yet: which should take
     pressure (a markup tool in the Viewer or Screenshot?) is Ben's call,
     and trying it needs the pen in hand.
