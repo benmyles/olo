@@ -674,6 +674,9 @@ pub fn scan(roots: &Roots) -> Report {
     gpu_stuck(roots, &gpus, &procs, &mut r);
     gpu_driver(roots, &gpus, &mut r);
     graphics_swap(roots, &gpus, &mut r);
+    memory_kept(roots, &procs, &mut r);
+    swappiness(roots, &mut r);
+    swap_size(roots, &gpus, &mut r);
     intel_video(roots, &gpus, &mut r);
     builtin_sound(roots, &gpus, &mut r);
     thunderbolt(roots, &mut r);
@@ -1740,8 +1743,191 @@ pub const REALTIME_LIMITS_CONF: &str = "etc/security/limits.d/80-olo-realtime.co
 fn realtime_limits_conf(uid: u32) -> String {
     let most = olo_system::realtime::MOST_PRIORITY;
     format!(
-        "# Olo: account {uid}'s programs may make their threads realtime themselves (app_server's loop and input, the window\n# with the keyboard, sound, PipeWire's in Olo's programs), with no limit on how long one runs: Olo ends a thread\n# stuck 30 s itself, with a report. Without this, realtime comes only through rtkit, which ends a program whose\n# realtime thread runs 200 ms without sleeping (app_server was, 2026-11-15). Written by Olo Doctor (Allow Realtime).\n{uid}:{uid} - rtprio {most}\n{uid}:{uid} - rttime unlimited\n"
+        "# Olo: account {uid}'s programs may make their threads realtime themselves (app_server's loop and input, the window\n# with the keyboard, sound, PipeWire's in Olo's programs), with no limit on how long one runs: Olo ends a thread\n# stuck 30 s itself, with a report. Without this, realtime comes only through rtkit, which ends a program whose\n# realtime thread runs 200 ms without sleeping (app_server was, 2026-11-15). Written by Olo Doctor (Allow Realtime).\n{uid}:{uid} - rtprio {most}\n{uid}:{uid} - rttime unlimited\n# ...and keep their memory in RAM: the desktop's core locks its own (app_server, the session, Deskbar, sound), so\n# no page of it is moved to swap, or dropped and read back from disk, while someone waits. Without a limit: with\n# one, what a program mapped past it would fail to map. (Olo Doctor, Keep the Core in Memory.)\n{uid}:{uid} - memlock unlimited\n"
     )
+}
+
+/// The sound server kept out of swap: its services (the person's own
+/// manager's: PipeWire, its PulseAudio side, WirePlumber) may use none
+/// (`MemorySwapMax=0`, a drop-in each, for every account). Not their own
+/// `mem.mlock-all`: with it each read in everything it had mapped, 40 MB
+/// become 260 to 310 (measured in a private sound server, 2026-11-16),
+/// where this costs nothing. (On Fedora their memory is shielded from
+/// being reclaimed at all besides: uresourced gives `session.slice`,
+/// where they run, 250 MB that is never taken; PipeWire's group had no
+/// page reclaimed in 22 hours.)
+pub const SOUND_MEMORY_CONFS: &[&str] =
+    &["etc/systemd/user/pipewire.service.d/50-olo-memory.conf", "etc/systemd/user/pipewire-pulse.service.d/50-olo-memory.conf", "etc/systemd/user/wireplumber.service.d/50-olo-memory.conf"];
+pub const SOUND_MEMORY_CONF: &str = "# Olo: the sound server's memory is never moved to swap (Olo Doctor, Keep the Core in Memory).\n[Service]\nMemorySwapMax=0\n";
+
+/// The desktop's core kept in memory. A page of app_server's moved to
+/// swap, or dropped and read back from disk, is a wait for everything on
+/// screen (it had taken 7,669 major page faults in 2 h 20 min on Ben's
+/// computer, 2026-11-16: "keep all those core "responsiveness" processes
+/// out of swap always … any realtime/rtkit type processes e.g.
+/// libinput/pipewire/etc"). Olo's programs that are realtime for as long
+/// as they run lock their own memory as they start
+/// (`olo_app::realtime::lock_memory`: app_server with its input thread,
+/// the session, the supervisor, Deskbar, the proxy, the voice service),
+/// where the account may lock without limit. The fix gives it that (the
+/// limits file Allow Realtime writes, with its memlock line; for the
+/// programs running now, their limit raised in place, so what starts
+/// from them has it without a new login), and keeps the sound server
+/// out of swap (`SOUND_MEMORY_CONFS`; in force once the person's
+/// manager has read them, which `after_fix` has it do). Olo's programs
+/// lock from their next start: an upgrade or a login.
+fn memory_kept(roots: &Roots, procs: &[Proc], r: &mut Report) {
+    let fs = &roots.fs;
+    let limits = read(&fs.join("proc/self/limits")).unwrap_or_default();
+    let Some(line) = limits.lines().find(|l| l.starts_with("Max locked memory")) else { return };
+    let unlimited = line["Max locked memory".len()..].split_whitespace().nth(1) == Some("unlimited");
+    let uid = roots.uid;
+    let conf = std::fs::read_to_string(fs.join(REALTIME_LIMITS_CONF)).unwrap_or_default();
+    let allowed = conf.lines().any(|l| l.trim() == format!("{uid}:{uid} - memlock unlimited"));
+    let sound = SOUND_MEMORY_CONFS.iter().all(|p| std::fs::read_to_string(fs.join(p)).ok().as_deref() == Some(SOUND_MEMORY_CONF));
+    let mut steps = Vec::new();
+    if !allowed {
+        steps.push(Step::WriteFile { path: PathBuf::from("/").join(REALTIME_LIMITS_CONF), content: realtime_limits_conf(uid), mode: 0o644 });
+    }
+    if !unlimited {
+        steps.push(Step::LetSessionLockMemory { uid });
+    }
+    if !sound {
+        steps.extend(SOUND_MEMORY_CONFS.iter().map(|p| Step::WriteFile { path: PathBuf::from("/").join(p), content: SOUND_MEMORY_CONF.into(), mode: 0o644 }));
+    }
+    if !steps.is_empty() {
+        r.findings.push(Finding {
+            id: "memory-kept".into(),
+            severity: Severity::Advice,
+            title: "The desktop's core can be moved out of memory".into(),
+            detail: "When memory fills (a build's files are enough), the kernel may move part of any program to swap, or drop its code to read it back from disk later: app_server's own, Deskbar's, the sound server's. Each such page is a wait for whoever is typing, watching or listening. Olo's core programs keep their memory in RAM themselves where the account may lock memory without limit; a login's limit is 8 MB. The fix lets it (now, and at every login), and keeps the sound server (PipeWire, WirePlumber) out of swap. Olo's core keeps its memory from its next start: an upgrade from Deskbar's tray, or a login.".into(),
+            fix: Some(Fix { label: "Keep the Core in Memory".into(), root: true, steps }),
+        });
+        return;
+    }
+    // Allowed: whether the person's app_server has locked its own yet.
+    let server = procs.iter().find(|p| p.uid == uid && p.name == "olo-app-server" && p.scope == roots.scope && roots.scope.is_some());
+    let locked = |pid: i32| {
+        read(&fs.join(format!("proc/{pid}/status"))).and_then(|s| s.lines().find_map(|l| l.strip_prefix("VmLck:")).and_then(|v| v.split_whitespace().next()?.parse::<u64>().ok())).unwrap_or(0)
+    };
+    match server {
+        Some(p) if locked(p.pid) == 0 => r.findings.push(Finding {
+            id: "memory-kept".into(),
+            severity: Severity::Advice,
+            title: "The desktop's core keeps its memory from Olo's next start".into(),
+            detail: "The account may lock memory without limit now, but app_server was started before (or is an Olo from before it locked its own): upgrade Olo from Deskbar's tray, or log out and in, and it, Deskbar and the session keep their memory in RAM.".into(),
+            fix: None,
+        }),
+        _ => r.fine.push(Fine {
+            title: "The desktop's core stays in memory".into(),
+            detail: "app_server, the session and Deskbar keep their own memory in RAM (no page of theirs is moved to swap, or read back from disk, while someone waits), and the sound server is never swapped.".into(),
+        }),
+    }
+}
+
+/// Where the kernel's readiness to swap is kept, and Olo's setting of it.
+const SWAPPINESS_PATH: &str = "proc/sys/vm/swappiness";
+pub const MEMORY_SYSCTL_PATH: &str = "etc/sysctl.d/80-olo-memory.conf";
+pub const MEMORY_SYSCTL: &str = "# Olo: when memory fills, files' cache goes before programs' own memory is moved to swap (Olo Doctor,\n# Keep Programs in Memory). Swap is still there for when memory is truly short.\nvm.swappiness = 1\n";
+
+/// Programs' own memory moved to swap while there is file cache to drop
+/// (`vm.swappiness`, 60 as the kernel has it: how readily it takes
+/// programs' memory rather than cache). A build fills memory with cache;
+/// at 60 the kernel moves part of what idle programs hold to swap to keep
+/// more of it, and they wait for it when next used. At 1 cache goes
+/// first, and swap is used when memory is truly short (Ben, 2026-11-16:
+/// "could we just make it set swapiness to 1 … without losing the
+/// benefits when it's really needed?"). It doesn't govern the graphics
+/// driver's own shrinker (`graphics_swap`).
+fn swappiness(roots: &Roots, r: &mut Report) {
+    let fs = &roots.fs;
+    if read(&fs.join(SWAPS_PATH)).map(|t| crate::fix::swap_areas(&t)).unwrap_or_default().is_empty() {
+        return;
+    }
+    let Some(now) = read(&fs.join(SWAPPINESS_PATH)).and_then(|v| v.parse::<u32>().ok()) else { return };
+    if now <= 1 {
+        r.fine.push(Fine {
+            title: "Programs stay in memory while there's cache to drop".into(),
+            detail: format!("vm.swappiness is {now}: files' cache goes first, and swap is used when memory is truly short."),
+        });
+        return;
+    }
+    r.findings.push(Finding {
+        id: "swappiness".into(),
+        severity: Severity::Advice,
+        title: "Programs' memory is moved to swap while files' cache could go".into(),
+        detail: format!(
+            "vm.swappiness is {now}: when memory fills with files' cache (a build, a big copy), the kernel moves part of programs' own memory to swap to keep more of the cache, and a program waits for it when it's next used. The fix sets it to 1, now and at every start: cache goes first, and swap is used when memory is truly short."
+        ),
+        fix: Some(Fix {
+            label: "Keep Programs in Memory".into(),
+            root: true,
+            steps: vec![
+                Step::WriteFile { path: PathBuf::from("/").join(MEMORY_SYSCTL_PATH), content: MEMORY_SYSCTL.into(), mode: 0o644 },
+                Step::WriteSysfs { path: PathBuf::from("/").join(SWAPPINESS_PATH), value: "1".into() },
+            ],
+        }),
+    });
+}
+
+/// zram-generator's own settings (Fedora's: a swap in compressed memory
+/// of 8 GB at most), and the one that makes it as large as memory.
+const ZRAM_DEFAULTS_PATH: &str = "usr/lib/systemd/zram-generator.conf";
+pub const ZRAM_FULL_CONF: &str = "# Olo: swap in compressed memory, as large as the computer's memory (Olo Doctor's suggestion, More Swap):\n# room for what should be swapped when memory is truly short. Empty, it takes a third of a percent of its\n# size (the kernel's tables for it); beyond that, what's in it, compressed.\n# This file replaces the system's own (/usr/lib/systemd/zram-generator.conf); remove it to have that back.\n[zram0]\nzram-size = ram\n";
+
+/// Swap as large as memory, suggested (Ben, 2026-11-16: "have olo doctor
+/// suggest a swap size equal to the ram size, e.g. 64gb for this
+/// machine, and have it offer to set it for the user if it isn't already
+/// >= that target. that way stuff that really should be swapped out can
+/// be and has plenty of swap available for it"). Only where it's the
+/// generator's swap in compressed memory (its size is a line of its
+/// settings; a disk's would be a partition's), and only where the
+/// graphics driver can't take the room for windows' buffers
+/// (`graphics_swap`: Olo's patch in, or another driver): more swap
+/// without it is more of them moved out. Not free: the kernel's tables
+/// for a swap area are there whether it's used or not, 222 MB for
+/// 62 GiB of zram on Ben's computer (`VmallocUsed` before and after), a
+/// third of a percent of its size, which the suggestion says.
+fn swap_size(roots: &Roots, pcis: &[Pci], r: &mut Report) {
+    let fs = &roots.fs;
+    let areas = read(&fs.join(SWAPS_PATH)).map(|t| crate::fix::swap_areas(&t)).unwrap_or_default();
+    let Some(memory) =
+        read(&fs.join("proc/meminfo")).and_then(|m| m.lines().find_map(|l| l.strip_prefix("MemTotal:")).and_then(|v| v.split_whitespace().next()?.parse::<u64>().ok())).map(|kb| kb * 1024)
+    else {
+        return;
+    };
+    let total: u64 = areas.iter().map(|(_, size)| size).sum();
+    // (As large already, to within what the kernel keeps of memory for
+    // itself: 64 GB of memory reads 62.)
+    if areas.is_empty() || total >= memory / 20 * 19 {
+        return;
+    }
+    let generated = areas.len() == 1 && areas[0].0 == "/dev/zram0" && fs.join(ZRAM_DEFAULTS_PATH).is_file();
+    let xe = pcis.iter().any(|p| p.display() && p.driver.as_deref() == Some("xe"));
+    if !generated || (xe && !graphics_memory_patched(fs)) {
+        return;
+    }
+    let words = |n: u64| olo_system::dnf::size_words(n).replace(' ', "\u{a0}");
+    let steps = vec![
+        Step::WriteFile { path: PathBuf::from("/").join(ZRAM_CONF_PATH), content: ZRAM_FULL_CONF.into(), mode: 0o644 },
+        Step::Unit { name: "swap".into(), action: UnitAction::Reload },
+        // (Made again at its new size: what's in it comes back into
+        // memory first.)
+        Step::RemakeZramSwap { device: "zram0".into() },
+    ];
+    r.findings.push(Finding {
+        id: "swap-size".into(),
+        severity: Severity::Suggestion,
+        title: "More swap, for what should be swapped".into(),
+        detail: format!(
+            "Swap is {} in compressed memory, and the computer has {} of memory. With swap as large as memory, what truly should be moved out when memory is short has room, where now the largest program is stopped once {} are full. Empty, it takes about {} for the kernel's own tables; beyond that, only what's in it, compressed. The fix sets its size to the computer's memory, now and at every start (what's in swap comes back into memory while it's made again).",
+            words(total),
+            words(memory),
+            words(total),
+            words(memory / 290)
+        ),
+        fix: Some(Fix { label: "Make Swap as Large as Memory".into(), root: true, steps }),
+    });
 }
 
 /// The account's leave to make its threads realtime itself (this
@@ -1902,6 +2088,14 @@ fn audio_threads(roots: &Roots, procs: &[Proc]) -> Vec<AudioThread> {
 pub fn after_fix(id: &str) -> Option<fn()> {
     match id {
         "voice-realtime" => Some(ask_realtime_again as fn()),
+        // (The sound server's drop-ins, written for every account: the
+        // person's own manager reads them now, and its running services
+        // take the setting without starting again.)
+        "memory-kept" => Some(|| {
+            if let Err(e) = olo_system::systemd::user_reload() {
+                tracing::warn!("the sound server's settings wait for the next login: {e}");
+            }
+        }),
         // (olo-secrets started again by the session, its status written
         // once it has merged: waited for, five seconds at most.)
         "secrets:two-logins" => Some(|| {
@@ -3668,6 +3862,192 @@ mod tests {
         limits(70, "200000", "200000");
         let mut r = Report::default();
         assert!(!realtime(&roots, &mut r));
+    }
+
+    /// The desktop's core kept in memory: where the account may lock only
+    /// its 8 MB, the fix lets it lock all (the limits file with its line,
+    /// the running programs' limit raised in place) and writes the sound
+    /// server's setting; let, app_server locks from its next start; and
+    /// locked, fine.
+    #[test]
+    fn the_core_is_kept_in_memory() {
+        let (fs, roots) = machine("memory-kept");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        let limits = |locked: &str| {
+            w(
+                "proc/self/limits",
+                &format!(
+                    "Limit                     Soft Limit           Hard Limit           Units     \nMax locked memory         {locked}              {locked}              bytes     \nMax realtime priority     70                   70                   \n"
+                ),
+            )
+        };
+        let u = roots.uid;
+        let look = |roots: &Roots| {
+            let (mut r, procs) = (Report::default(), processes(&roots.fs));
+            memory_kept(roots, &procs, &mut r);
+            r
+        };
+        // Nothing said where the limit can't be read.
+        assert!(look(&roots).findings.is_empty() && look(&roots).fine.is_empty());
+        // A login's 8 MB: everything the fix does.
+        limits("8388608");
+        let r = look(&roots);
+        let f = r.find("memory-kept").unwrap();
+        assert_eq!((f.severity, f.title.as_str()), (Severity::Advice, "The desktop's core can be moved out of memory"));
+        let fix = f.fix.as_ref().unwrap();
+        assert!(fix.root && fix.label == "Keep the Core in Memory");
+        assert_eq!(
+            fix.steps.iter().map(Step::describe).collect::<Vec<_>>(),
+            [
+                "Writing /etc/security/limits.d/80-olo-realtime.conf",
+                "Letting the programs running now keep their memory in RAM",
+                "Writing /etc/systemd/user/pipewire.service.d/50-olo-memory.conf",
+                "Writing /etc/systemd/user/pipewire-pulse.service.d/50-olo-memory.conf",
+                "Writing /etc/systemd/user/wireplumber.service.d/50-olo-memory.conf",
+            ]
+        );
+        let Step::WriteFile { content, .. } = &fix.steps[0] else { panic!("not a file") };
+        // (The realtime leave kept in the same file.)
+        assert!(
+            content.contains(&format!("{u}:{u} - memlock unlimited")) && content.contains(&format!("{u}:{u} - rtprio 70")) && content.contains(&format!("{u}:{u} - rttime unlimited")),
+            "{content}"
+        );
+        assert_eq!(fix.steps[1], Step::LetSessionLockMemory { uid: u });
+        assert!(SOUND_MEMORY_CONF.ends_with("[Service]\nMemorySwapMax=0\n") && after_fix("memory-kept").is_some());
+        // Allow Realtime's file from before the line (as Ben's was): the
+        // file again, with it.
+        w(REALTIME_LIMITS_CONF, &format!("{u}:{u} - rtprio 70\n{u}:{u} - rttime unlimited\n"));
+        assert!(matches!(&look(&roots).find("memory-kept").unwrap().fix.as_ref().unwrap().steps[0], Step::WriteFile { path, .. } if path.ends_with("80-olo-realtime.conf")));
+        // The file as it should be, this session from before it: the
+        // running programs' limit, and sound's setting.
+        w(REALTIME_LIMITS_CONF, &realtime_limits_conf(u));
+        assert_eq!(look(&roots).find("memory-kept").unwrap().fix.as_ref().unwrap().steps.len(), 4);
+        for p in SOUND_MEMORY_CONFS {
+            w(p, SOUND_MEMORY_CONF);
+        }
+        assert_eq!(look(&roots).find("memory-kept").unwrap().fix.as_ref().unwrap().steps, [Step::LetSessionLockMemory { uid: u }]);
+        // Let: app_server, started before, hasn't locked its own yet.
+        limits("unlimited");
+        w("proc/950/cmdline", "/home/me/.local/bin/olo-app-server\0");
+        w("proc/950/cgroup", "0::/user.slice/user-1000.slice/session-2.scope\n");
+        w("proc/950/status", "Name:\tolo-app-server\nVmLck:\t       0 kB\nVmRSS:\t  295820 kB\n");
+        // (The test's files are the test's user's: the account's.)
+        let roots = Roots { uid: std::fs::metadata(fs.join("proc/950")).map(|m| std::os::unix::fs::MetadataExt::uid(&m)).unwrap(), ..roots };
+        w(REALTIME_LIMITS_CONF, &realtime_limits_conf(roots.uid));
+        let r = look(&roots);
+        let f = r.find("memory-kept").unwrap();
+        assert!(f.fix.is_none() && f.title == "The desktop's core keeps its memory from Olo's next start", "{f:?}");
+        // Locked: fine.
+        w("proc/950/status", "Name:\tolo-app-server\nVmLck:\t  295820 kB\nVmRSS:\t  295820 kB\n");
+        let r = look(&roots);
+        assert!(r.findings.is_empty() && r.fine.iter().any(|f| f.title == "The desktop's core stays in memory"));
+    }
+
+    /// Swappiness: with swap on and the kernel's 60, set to 1 now and at
+    /// every start; fine at 1; nothing to say with no swap.
+    #[test]
+    fn swappiness_is_set_to_one() {
+        let (fs, roots) = machine("swappiness");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        let heading = "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n";
+        let look = |roots: &Roots| {
+            let mut r = Report::default();
+            swappiness(roots, &mut r);
+            r
+        };
+        w("proc/sys/vm/swappiness", "60\n");
+        w("proc/swaps", heading);
+        assert!(look(&roots).findings.is_empty() && look(&roots).fine.is_empty());
+        w("proc/swaps", &format!("{heading}/dev/zram0 partition 8388604 0 100\n"));
+        let r = look(&roots);
+        let f = r.find("swappiness").unwrap();
+        assert_eq!((f.severity, f.title.as_str()), (Severity::Advice, "Programs' memory is moved to swap while files' cache could go"));
+        assert!(f.detail.starts_with("vm.swappiness is 60: "), "{}", f.detail);
+        let fix = f.fix.as_ref().unwrap();
+        assert!(fix.root && fix.label == "Keep Programs in Memory");
+        assert_eq!(
+            fix.steps,
+            [
+                Step::WriteFile { path: "/etc/sysctl.d/80-olo-memory.conf".into(), content: MEMORY_SYSCTL.into(), mode: 0o644 },
+                Step::WriteSysfs { path: "/proc/sys/vm/swappiness".into(), value: "1".into() }
+            ]
+        );
+        assert!(MEMORY_SYSCTL.lines().any(|l| l == "vm.swappiness = 1"));
+        w("proc/sys/vm/swappiness", "1\n");
+        let r = look(&roots);
+        assert!(r.findings.is_empty() && r.fine[0].detail.starts_with("vm.swappiness is 1: "));
+    }
+
+    /// Swap as large as memory is suggested where it's the generator's
+    /// compressed-memory swap and smaller, and the graphics driver can't
+    /// take the room for windows' buffers; not otherwise.
+    #[test]
+    fn swap_as_large_as_memory_is_suggested() {
+        let (fs, roots) = machine("swap-size");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        let heading = "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n";
+        let driver = |name: &str| {
+            let link = fs.join("sys/bus/pci/devices/0000:00:02.0/driver");
+            let _ = std::fs::remove_file(&link);
+            std::fs::create_dir_all(fs.join("sys/bus/pci/drivers").join(name)).unwrap();
+            std::os::unix::fs::symlink(fs.join("sys/bus/pci/drivers").join(name), link).unwrap();
+        };
+        let look = |roots: &Roots| {
+            let mut r = Report::default();
+            swap_size(roots, &pci_devices(&roots.fs), &mut r);
+            r
+        };
+        w("sys/bus/pci/devices/0000:00:02.0/class", "0x030000\n");
+        w("sys/bus/pci/devices/0000:00:02.0/vendor", "0x8086\n");
+        driver("xe");
+        w("proc/meminfo", "MemTotal:       65263084 kB\nMemFree:         2114000 kB\n");
+        w("proc/swaps", &format!("{heading}/dev/zram0 partition 8388604 0 100\n"));
+        w("usr/lib/systemd/zram-generator.conf", "[zram0]\nzram-size = min(ram, 8192)\n");
+        // xe's without Olo's patch: more swap would be more buffers out.
+        assert!(look(&roots).findings.is_empty());
+        w("sys/kernel/livepatch/olo_gpu_memory/enabled", "1\n");
+        let r = look(&roots);
+        let f = r.find("swap-size").unwrap();
+        assert_eq!((f.severity, f.title.as_str()), (Severity::Suggestion, "More swap, for what should be swapped"));
+        assert!(f.detail.starts_with("Swap is 8.59\u{a0}GB in compressed memory, and the computer has 66.83\u{a0}GB of memory."), "{}", f.detail);
+        assert!(f.detail.contains("Empty, it takes about 230.4\u{a0}MB for the kernel's own tables"), "{}", f.detail);
+        let fix = f.fix.as_ref().unwrap();
+        assert!(fix.root && fix.label == "Make Swap as Large as Memory");
+        assert_eq!(
+            fix.steps,
+            [
+                Step::WriteFile { path: "/etc/systemd/zram-generator.conf".into(), content: ZRAM_FULL_CONF.into(), mode: 0o644 },
+                Step::Unit { name: "swap".into(), action: UnitAction::Reload },
+                Step::RemakeZramSwap { device: "zram0".into() },
+            ]
+        );
+        assert!(ZRAM_FULL_CONF.ends_with("[zram0]\nzram-size = ram\n"));
+        // As large as memory already (what the kernel shows of 64 GB).
+        w("proc/swaps", &format!("{heading}/dev/zram0 partition 65263080 0 100\n"));
+        assert!(look(&roots).findings.is_empty());
+        // A disk's swap: its size isn't a setting's.
+        w("proc/swaps", &format!("{heading}/dev/nvme0n1p3 partition 8388604 0 -2\n"));
+        assert!(look(&roots).findings.is_empty());
+        // None: nothing to enlarge (and that's the graphics fix's doing).
+        w("proc/swaps", heading);
+        assert!(look(&roots).findings.is_empty());
+        // Another driver's graphics: suggested without the patch.
+        w("proc/swaps", &format!("{heading}/dev/zram0 partition 8388604 0 100\n"));
+        std::fs::remove_dir_all(fs.join("sys/kernel/livepatch")).unwrap();
+        driver("i915");
+        assert!(look(&roots).find("swap-size").is_some());
     }
 
     /// The power modes as planned: nothing said without a power profiles

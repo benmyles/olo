@@ -69,6 +69,12 @@ fn main() {
         }
         // ...and the program with the keyboard, and Deskbar, too.
         app_server::realtime::enable();
+        // Its own memory in RAM for good: a page of the loop's read back
+        // from disk, or from swap, is a wait for everything on screen.
+        match olo_system::realtime::lock_memory() {
+            Ok(()) => tracing::info!("app_server's memory is kept in RAM, never swapped"),
+            Err(e) => tracing::info!("app_server's memory isn't kept in RAM: {e}"),
+        }
     }
     // ...and, the person's, on a core of its own (`Settings::keep_core`,
     // applied with the settings).

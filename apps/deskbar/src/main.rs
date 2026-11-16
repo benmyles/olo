@@ -3883,6 +3883,9 @@ fn main() {
     if let Err(e) = olo_system::priority::raise_self(olo_protocol::performance::SHELL_NICE) {
         tracing::debug!("Deskbar stays at its nice: {e}");
     }
+    // (The shell is realtime for as long as it runs, app_server's doing:
+    // its memory in RAM for good, as the rest of the desktop's core.)
+    olo_system::realtime::keep_in_memory("Deskbar");
     olo_kit::run("olo.deskbar", |app| {
         let proxy = olo_kit::proxy();
         watch_server(proxy.clone());

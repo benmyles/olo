@@ -8354,6 +8354,110 @@ realtime, and waited on no run queue), the GPU being busy (the wait is
 for a lock, before anything is submitted), memory running out (40 GB
 were available; file cache alone makes kswapd run).
 
+### The core stays in memory (`olo_app::realtime::lock_memory`; Olo Doctor's Keep the Core in Memory)
+
+A page of app_server's own moved to swap, or its code dropped and read
+back from disk, is a wait for everything on screen as surely as a lock
+is (Ben, 2026-11-16: "is there a way or anything we could/should do to
+also prevent the latency-sensitive olo processes from being swapped
+out? … and any realtime/rtkit type processes e.g.
+libinput/pipewire/etc … even if it isn't being swapped out right now i
+think it'd make sense to keep all those core "responsiveness" processes
+out of swap always"). It had taken 7,669 major page faults in 2 h 20
+min.
+
+**Olo's own.** The programs that are realtime for as long as they run
+lock their memory as they start: app_server (libinput's thread is in
+it), the session (its watchdog), the supervisor, Deskbar, the proxy
+(`olo-wlproxy`) and the voice service
+(`olo_system::realtime::keep_in_memory`, where realtime is `wanted`:
+not on an agent's screen, nor a headless app_server). `mlockall` with
+`MCL_CURRENT | MCL_FUTURE | MCL_ONFAULT`: everything mapped now and
+later, each page from when it's first touched, so nothing is read in
+for it and room only reserved takes none; what's locked is never
+swapped nor dropped. Not an app's: apps' memory is the bulk of what the
+desktop holds, and locked it could never be given up (swappiness keeps
+it in RAM while there's cache to drop, below). Not inherited: what
+app_server starts isn't locked.
+
+Only where the account may lock without limit (`RLIMIT_MEMLOCK`
+unlimited; a login's is 8 MB): with a limit, `mlockall` is refused when
+what's mapped is over it, and were it under, whatever the program
+mapped past it later would fail to map, and the program end for want of
+memory that was there. So a limited program doesn't lock, and says so
+("app_server's memory isn't kept in RAM: the account may lock 8 MB, not
+all a program has").
+
+**Olo Doctor** (`memory_kept`): "The desktop's core can be moved out of
+memory" (Recommended), **Keep the Core in Memory**:
+
+* `memlock unlimited` for the account, in the limits file Allow Realtime
+  writes (`/etc/security/limits.d/80-olo-realtime.conf`: in force at
+  every login);
+* the same for the programs running now (`Step::LetSessionLockMemory`:
+  `prlimit(2)` on each of the account's processes), so what starts from
+  them has it without a new login: app_server started again by an
+  upgrade locks its memory at once;
+* the sound server kept out of swap: `MemorySwapMax=0` for PipeWire, its
+  PulseAudio side and WirePlumber (drop-ins in /etc/systemd/user, read
+  at once by the person's manager, `after_fix`: a running unit takes the
+  setting on its manager's reload, tried on a unit of the test's own).
+  Not PipeWire's own `mem.mlock-all`: it locks without `MCL_ONFAULT`, so
+  each of the three read in everything it had mapped, 40 MB become 260
+  to 310 (measured in a private sound server, `tools/dev/pw-sandbox`,
+  with the limit raised). On Fedora their memory is shielded from being
+  reclaimed at all besides: uresourced gives `session.slice`, where
+  they run, 250 MB that is never taken (`memory.min`, handed down:
+  `memory_recursiveprot`); PipeWire's group had no page reclaimed in 22
+  hours.
+
+Then "The desktop's core keeps its memory from Olo's next start" until
+the person's app_server has locked its own (`VmLck` in its status), and
+fine after.
+
+### Swappiness and the size of swap (Olo Doctor)
+
+`vm.swappiness` is how readily the kernel moves programs' own memory to
+swap rather than dropping file cache: 60 as the kernel has it. Doctor's
+**Keep Programs in Memory** sets it to 1 where swap is on
+(`/etc/sysctl.d/80-olo-memory.conf`, and now): cache goes first, and
+swap is used when memory is truly short (Ben: "could we just make it
+set swapiness to 1 … without losing the benefits when it's really
+needed?"). It doesn't govern the graphics driver's shrinker (above),
+which is asked whenever kswapd runs. Measured little either way once
+the patch was in: in 26 minutes with a whole release build, 7.8 MiB of
+programs' memory went to swap at 60 (the 16.8 GB written to swap in the
+21 hours before were with windows' buffers among them).
+
+With graphics memory kept out of it, more swap costs nothing until it's
+used but its tables, and gives what should be moved out somewhere to go
+before the largest program is stopped. Doctor **suggests** swap as
+large as memory (Ben: "have olo doctor suggest a swap size equal to the
+ram size, e.g. 64gb for this machine, and have it offer to set it"):
+**Make Swap as Large as Memory** writes zram-generator's size
+(`zram-size = ram`), reloads systemd and makes the device again
+(`Step::RemakeZramSwap`). Only for the generator's swap in compressed
+memory (a disk's size is a partition's), and only where xe can't take
+the room for windows' buffers (Olo's patch in, or another driver). Not
+free: the kernel's tables for a swap area are there used or not, 222 MB
+for 62 GiB of zram on Ben's computer (`VmallocUsed`, 216 to 438 MB), a
+third of a percent of its size, which the suggestion says.
+
+`RemakeZramSwap` does the making itself: the swap turned off
+(`swapoff(2)`: what's in it comes back into memory), the device reset
+(`/sys/block/zramN/reset`, asked again for up to ten seconds while the
+kernel says busy), its swap unit started afresh
+(`olo_system::systemd::start_afresh`: its failures forgotten first),
+and the swap looked for in `/proc/swaps` before the step is done.
+Restarting zram-generator's own units, the first try, left his computer
+with no swap and both units failed while Doctor said "done": udev has
+the device open for a moment after its swap goes, the generator's reset
+asks once ("Device or resource busy"), and its next start then can't
+set a size ("Cannot change disksize for initialized device"). And
+Doctor's unit steps now fail where the unit stands failed after its
+start (`systemd::failed`), where before any start that systemd took
+was called done.
+
 ## Every frame on time (app_server frames.rs; Activity Monitor ▸ Displays)
 
 A display's frames are paced by app_server from each vblank: it waits,

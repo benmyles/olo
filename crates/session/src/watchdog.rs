@@ -132,6 +132,9 @@ impl Watchdog {
                 // (Above every other of Olo's threads: it gets to look
                 // whatever they do.)
                 olo_system::realtime::promote_if_wanted(olo_protocol::performance::SUPERVISOR_RT_PRIORITY, "the watchdog");
+                // (The session's whole program: small, and what brings
+                // the rest back.)
+                olo_system::realtime::keep_in_memory("the session");
                 loop {
                     std::thread::sleep(EVERY);
                     if ping(&path) {

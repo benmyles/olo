@@ -13,53 +13,23 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-- **Never a stall: the compositor's loop held in the kernel** (Ben,
-  2026-11-16: "i just had a responsiveness stall when i was typing and
-  it actually even repeated a letter eg "sunbursst" please root cause
-  and fix", then "i don't ever want it stalling figure out how to make
-  that happen … go as low level as you need to").
-  *Found and fixed, 2026-11-16* (HACKING, "Windows' buffers stay in
-  memory"): Intel's xe driver backed windows' GPU buffers up to swap
-  whenever kswapd ran (a build's file cache is enough), and brought
-  them back inside the next GPU submission, under locks app_server's
-  every submission takes. Olo's live patch (`olo_gpu_memory`,
-  kernel/gpu-memory) makes TTM's one gate say there's no swap for it;
-  `olo-gpu-memory` (a root service) builds it for each kernel and loads
-  it at every start; Olo Doctor installs it ("Keep Graphics Memory in
-  Memory"), or turns swap off where the kernel can't take it. The same
-  build: 47 slow frames (the worst 951 ms) and three late keys before;
-  none after, swap on. In on Ben's computer since 12:23 (installed by
-  Doctor's own steps, as root).
-  *Left, as Ben asked the same day:*
-  - **Swappiness 1** ("could we just make it set swapiness to 1 … maybe
-    that combined with the swapiness to 1"): Doctor's fix, measured
-    before and after (it doesn't govern the GPU's shrinker; it keeps
-    programs' own memory in RAM while there's file cache to drop).
-  - **The core never swapped** ("prevent the latency-sensitive olo
-    processes from being swapped out … any realtime/rtkit type
-    processes e.g. libinput/pipewire/etc … keep all those core
-    "responsiveness" processes out of swap always"): `mlockall` in the
-    programs that are always realtime (app_server and its input
-    thread, the session's watchdog, the supervisor, Deskbar, the proxy,
-    the voice service), PipeWire and WirePlumber by their own setting,
-    the account's locked-memory limit raised beside its realtime one
-    (Doctor's Allow Realtime). app_server had taken 7,669 major page
-    faults in 2 h 20 min.
-  - **Swap as large as memory, suggested** ("have olo doctor suggest a
-    swap size equal to the ram size, e.g. 64gb for this machine, and
-    have it offer to set it for the user if it isn't already >= that
-    target"): a suggestion, only where graphics memory is kept out of
-    swap; zram-generator's size.
-  - **Doctor offers all of it** ("make sure olo doctor will offer to
-    configure all this automatically for the user if not already
-    done").
-  - **A key can't repeat for a late release**: repeats made by
-    app_server for clients that take them (wl_keyboard version 10: the
-    kit), from the keyboard's own timing, so a hold of the loop, for
-    whatever cause, never types a letter twice.
+(Nothing.)
 
 ## Not started (highest priority first)
 
+- **A key can't repeat for a late release** (left from the stalls of
+  2026-11-16: a key pressed just before app_server's loop was held had
+  its release delivered after the client's 300 ms repeat delay, and the
+  client typed it twice, "sunbursst"). The holds found are gone, but a
+  client's own repeat timer can't know of a release its compositor
+  hasn't sent yet. wl_keyboard version 10 lets the compositor do the
+  repeating (`repeat_info` rate 0, then key events in the "repeated"
+  state): app_server makes repeats for the clients that take them, the
+  kit among them, from the keyboard's own timing (a repeat only in a
+  turn of the loop whose timer was on time, or after one that handled
+  what input had waited), so a hold, whatever its cause, never types a
+  letter twice. Smithay's seat is at version 9; the kit's client
+  repeats by its own timer (crates/interface wayland client.rs).
 - **Olo Doctor offers BBRv3 for TCP** (Ben, 2026-11-16: "once you
   finish this work, i also want olo doctor to offer to set the tcp
   congestion control algo to BBRv3 if it's not. if BBRv3 is not shipped
@@ -93,6 +63,21 @@ something nobody here has is in "Blocked", with what it waits for.
   window the notification is about within its group (app_server's
   window groups), and the tab in it (Terminal's agent tab), not the
   group as it was last left.
+- **A shared passkey needs no tap on an Agent Screen** (Ben,
+  2026-11-16: "if i have shared passwords that have passkeys to olo
+  agent screens then they should NOT require a tap / user approval to
+  use the passkey, it should be approved automatically but logged in
+  the agent history"). A passkey of an entry shared with an agent's
+  screen is used there without asking the person; each use is written
+  in that screen's history (which site, which entry, when). One not
+  shared with the screen is as it is now.
+- **Passwords reads a page's MFA QR code** (Ben, 2026-11-16: "olo
+  passwords and its chrome extension should be able to scan/detect a qr
+  code shown on a page for mfa setup and offer to add/update the mfa
+  one time code stuff in the associated passwords item"). The extension
+  finds a QR code on the page that holds a one-time-code secret
+  (`otpauth://`), decoded natively, and Passwords offers to add it to
+  the item for that site, or to replace the one it has.
 - **An idle window keeps its whole swapchain** (found 2026-11-16,
   answering Ben's "doesn't 6gb of memory seem really high for olo app
   server too?"): a full-size window on his 5K display (4640 × 2840
@@ -140,6 +125,51 @@ something nobody here has is in "Blocked", with what it waits for.
   starts).
 
 ## Done, waiting for Ben to try or confirm
+
+- **Never a stall: the compositor's loop held in the kernel** (Ben,
+  2026-11-16: "i just had a responsiveness stall when i was typing and
+  it actually even repeated a letter eg "sunbursst" please root cause
+  and fix", then "i don't ever want it stalling figure out how to make
+  that happen … go as low level as you need to"). HACKING, "Windows'
+  buffers stay in memory".
+  - *The cause, fixed:* Intel's xe driver backed windows' GPU buffers
+    up to swap whenever kswapd ran (a build's file cache is enough) and
+    brought them back inside the next GPU submission, under locks
+    app_server's every submission takes. Olo's live patch
+    (`olo_gpu_memory`, kernel/gpu-memory) makes TTM's one gate say
+    there's no swap for it; `olo-gpu-memory` (a root service) builds it
+    for each kernel and loads it at every start; Olo Doctor installs it
+    ("Keep Graphics Memory in Memory"), or turns swap off where the
+    kernel can't take it. The same build: 47 slow frames (the worst
+    951 ms) and three late keys before; none after, swap on.
+  - *The core never swapped* ("keep all those core "responsiveness"
+    processes out of swap always"): app_server (its input thread in
+    it), the session, the supervisor, Deskbar, the proxy and the voice
+    service lock their own memory as they start (`mlockall`, each page
+    from its first touch: 3 MB more resident, 0.29–0.31 ms a frame
+    either way); the sound server's three services are never swapped
+    (`MemorySwapMax=0`). Doctor: "Keep the Core in Memory" (the
+    account's locked-memory limit, now and at every login; the
+    services' setting).
+  - *Swappiness 1* ("maybe that combined with the swapiness to 1"):
+    Doctor's "Keep Programs in Memory". Little either way once the
+    patch was in (7.8 MiB swapped in 26 minutes of building at 60).
+  - *Swap as large as memory, suggested* ("have olo doctor suggest a
+    swap size equal to the ram size"): Doctor's suggestion, only where
+    graphics memory is kept out of swap; it says what an empty one
+    costs (a third of a percent of its size).
+  - *Doctor offers all of it* ("make sure olo doctor will offer to
+    configure all this automatically for the user if not already
+    done"): four findings, each with its fix, each run for real here.
+  *On Ben's computer now* (the fixes' own steps, as root, at his
+  word): the patch in since 12:23, swap 62 GiB, swappiness 1, the
+  limit raised, sound never swapped. *For Ben:* upgrade from Deskbar's
+  tray: app_server, Deskbar and the session then lock their memory
+  (Doctor says "The desktop's core keeps its memory from Olo's next
+  start" until they have); and say if anything still stalls
+  (`sudo tools/dev/gpu-holds` names what holds the loop). 1 GiB of
+  buffers swapped out before the patch came back as their apps drew
+  again, once each.
 
 - **A button that shows a slow job's progress** (Ben, 2026-11-16: "add
   a new button style/type/behavior/whatever makes sense to the kit

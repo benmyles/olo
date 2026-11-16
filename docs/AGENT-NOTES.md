@@ -111,6 +111,20 @@ Each note: what to do, then why (what happened), then how to apply it.
   `/etc/systemd/zram-generator.conf`, `systemctl daemon-reload`), then
   `swapoff -a`; and look at `/proc/swaps` at the end of the run, not
   only at its start.
+- **Run a Doctor fix for real before calling it done**, as root the
+  way Doctor does (`sudo target/release/olo-doctor --fix ID`: the steps
+  run there, the scan is the sudo user's; what the fix does after as
+  the person, `after_fix`, doesn't run under sudo: do that by hand, as
+  `systemctl --user daemon-reload`). Three of this day's fixes passed
+  their tests and failed on the machine: a module SELinux wouldn't let
+  a service load from /var/lib; `swapoff` undone by systemd eleven
+  minutes later; a zram device whose reset raced udev, with Doctor
+  saying "done" over two failed units. Look at what the fix was for
+  (`/proc/swaps`, the unit's state, the limit), not at its exit status.
+- **PipeWire's `mem.mlock-all` reads in everything it has mapped**
+  (`mlockall` without `MCL_ONFAULT`): 40 MB become 260 to 310 for each
+  of its three processes. Try a sound setting in `tools/dev/pw-sandbox`
+  first (its config folder takes drop-ins before `start`).
 - **Check which scheduler runs before measuring.** scx_lavd (sched_ext)
   ran from 2026-11-10 to 2026-11-15 02:30 and is disabled since (the
   kernel's EEVDF): look at `/sys/kernel/sched_ext/state`.
@@ -133,6 +147,15 @@ Each note: what to do, then why (what happened), then how to apply it.
   (`olo_gpu_memory`, HACKING "Windows' buffers stay in memory") is in
   since 12:23 that day, by `olo-gpu-memory.service`; bpftrace was
   installed for the tracing.
+- **Memory, as set on 2026-11-16** (Doctor's fixes, run as root at
+  Ben's word): swap is 62 GiB of zram (`zram-size = ram`), swappiness 1
+  (`/etc/sysctl.d/80-olo-memory.conf`), the account's locked-memory
+  limit unlimited (the limits file, and raised in place for what was
+  running), PipeWire's three services never swapped (drop-ins in
+  /etc/systemd/user). uresourced gives `session.slice` 250 MB that is
+  never reclaimed (`memory.min`), which is where PipeWire and
+  WirePlumber run; Olo's own programs are in the login's
+  `session-N.scope`, which has none: they lock their own memory.
 - **olo-fans is running**: a root service keeping the fans on the cool
   profile. It needs `thinkpad_acpi fan_control=Y`, kept in
   `/etc/modprobe.d` since 2026-11-12.

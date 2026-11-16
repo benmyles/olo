@@ -43,6 +43,14 @@ pub fn unit_state(name: &str) -> Result<UnitState> {
     })
 }
 
+/// Whether a unit stands failed (its last start or run went wrong).
+/// False where it can't be asked.
+pub fn failed(name: &str) -> bool {
+    let Ok(conn) = bus::system() else { return false };
+    let Ok(path) = bus::call::<_, zvariant::OwnedObjectPath>(conn, SYSTEMD, MANAGER, MANAGER_IFACE, "LoadUnit", &(name,)) else { return false };
+    bus::property::<String>(conn, SYSTEMD, path.as_str(), UNIT_IFACE, "ActiveState").is_ok_and(|s| s == "failed")
+}
+
 /// Start (`start` true) or stop a unit, and wait (up to five seconds)
 /// for it to get there, so what is asked straight after sees it.
 pub fn start_stop(name: &str, start: bool) -> Result<()> {
@@ -55,6 +63,18 @@ pub fn start_stop(name: &str, start: bool) -> Result<()> {
         }
         std::thread::sleep(Duration::from_millis(50));
     }
+    Ok(())
+}
+
+/// Start a unit and wait (at most `limit`) for its job to be done,
+/// whatever came of it: what was started is then there to look at, or
+/// isn't. A unit left failed by an earlier try is tried afresh (its
+/// start limit forgotten: `ResetFailedUnit`).
+pub fn start_afresh(name: &str, limit: Duration) -> Result<()> {
+    let conn = bus::system()?;
+    let _ = bus::call::<_, ()>(conn, SYSTEMD, MANAGER, MANAGER_IFACE, "ResetFailedUnit", &(name,));
+    let job = bus::call::<_, zvariant::OwnedObjectPath>(conn, SYSTEMD, MANAGER, MANAGER_IFACE, "StartUnit", &(name, "replace"))?;
+    wait_for_job(&job, limit);
     Ok(())
 }
 
@@ -169,6 +189,13 @@ pub fn user_job(name: &str, method: &str) -> Result<UserUnit> {
         }
         std::thread::sleep(Duration::from_millis(100));
     }
+}
+
+/// Have the person's own (user) manager read its unit files again: what
+/// changed in them of a running unit's resource settings (a drop-in's
+/// `MemorySwapMax`) is in force without the unit starting again.
+pub fn user_reload() -> Result<()> {
+    bus::call::<_, ()>(bus::session()?, SYSTEMD, MANAGER, MANAGER_IFACE, "Reload", &())
 }
 
 fn now_ms() -> u64 {

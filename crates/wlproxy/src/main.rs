@@ -84,6 +84,7 @@ fn main() {
     // a run queue under others' builds as app_server did. Not on an
     // agent's screen.
     olo_xdg::realtime::promote_if_wanted(PROXY_RT_PRIORITY, "the proxy's loop");
+    olo_xdg::realtime::keep_in_memory("the proxy");
     let (Some(fd), Some(upstream)) = (std::env::var("OLO_WAYLAND_FD").ok().and_then(|f| f.parse::<i32>().ok()), std::env::var_os("OLO_WAYLAND_UPSTREAM")) else {
         eprintln!("olo-wlproxy is started by olo-session (OLO_WAYLAND_FD, OLO_WAYLAND_UPSTREAM)");
         std::process::exit(2);

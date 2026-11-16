@@ -750,6 +750,7 @@ fn main() -> std::process::ExitCode {
             // (Above every other of Olo's threads: it gets to look whatever
             // they do.)
             olo_system::realtime::promote_if_wanted(olo_protocol::performance::SUPERVISOR_RT_PRIORITY, "the supervisor");
+            olo_system::realtime::keep_in_memory("the supervisor");
             loop {
                 let began = Instant::now();
                 sup.tick();

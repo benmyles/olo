@@ -25,7 +25,7 @@
 //! account's leave, threads keep their nice (rtkit still gives that, with
 //! no such limit).
 
-pub use olo_app::realtime::{HARD_LIMIT_US, STUCK_LIMIT_US, demote, forget, guarded, marked, registered, tid};
+pub use olo_app::realtime::{HARD_LIMIT_US, STUCK_LIMIT_US, demote, forget, guarded, lock_memory, locked_memory, marked, registered, tid};
 
 /// The highest realtime priority Olo's threads and PipeWire's in its
 /// programs use, and what Olo Doctor's Allow Realtime lets the account
@@ -84,6 +84,23 @@ pub fn promote_if_wanted(priority: u32, what: &str) {
     match promote_self(priority) {
         Ok(()) => tracing::debug!(priority, "{what}: realtime"),
         Err(e) => tracing::info!("{what} stays at its nice, not realtime: {e}"),
+    }
+}
+
+/// This program's memory kept in RAM for good, if realtime is [`wanted`]
+/// here (`olo_app::realtime::lock_memory`): for the programs that are
+/// realtime for as long as they run, the desktop's core (app_server, the
+/// session's watchdog, the supervisor, Deskbar, the proxy, the voice
+/// service), never for an app: an app's memory is the bulk of what the
+/// desktop holds, and locked it could never be given up. Why not,
+/// logged (it carries on as it was). `what` names the program in the log.
+pub fn keep_in_memory(what: &str) {
+    if !wanted() {
+        return;
+    }
+    match olo_app::realtime::lock_memory() {
+        Ok(()) => tracing::info!("{what}: its memory is kept in RAM, never swapped"),
+        Err(e) => tracing::info!("{what}'s memory isn't kept in RAM: {e}"),
     }
 }
 

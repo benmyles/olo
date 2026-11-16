@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-16
 
+### Olo Doctor keeps the desktop's memory in memory
+
+*12:45* — Three findings beside the one for windows' graphics memory (Ben, 2026-11-16, after a stall while typing): Keep the Core in Memory (app_server, Deskbar and the session lock their own memory; the sound server is never swapped), Keep Programs in Memory (swappiness 1) and, as a suggestion, swap as large as memory. Each sets itself up from its button.
+
+![Olo Doctor keeps the desktop's memory in memory](2026-11-16/124525-olo-doctor-keeps-the-desktop-s-memory-in-memory.png)
+
 ### A button showing the long job it started
 
 *10:32* — Button::working: a button that started a job of five seconds or more shows its progress on itself while it can't be pressed again: the status bar's sunken well filled as far as it's got, the label over it readable on both parts, or a band sweeping across when how far isn't known. Here at rest, at 0, 42%, 100%, unknown and on a default button (the kit's working example). Agent Screens' Export Video… and Kache's Clean Up Now use it.

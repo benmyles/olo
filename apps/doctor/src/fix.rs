@@ -228,6 +228,28 @@ pub enum Step {
     /// Take the swap lines out of /etc/fstab (each commented, saying who
     /// did), so none is turned on at the next start.
     FstabSwapOff,
+    /// Make a zram swap device again at the size its settings now give
+    /// (zram-generator's, read at systemd's reload before this step):
+    /// the swap on it turned off (`swapoff(2)`: what's in it comes back
+    /// into memory first), the device reset, and its swap unit started,
+    /// which sets the device up and turns the swap on; checked, the swap
+    /// is on at the end. The kernel refuses a reset while anything has
+    /// the device open, as udev does for a moment after its swap goes,
+    /// so it's asked again for up to ten seconds: zram-generator's own
+    /// reset (its unit's stop) asks once, and so failed on Ben's
+    /// computer, 2026-11-16, leaving the device at its old size and no
+    /// swap, its units failed.
+    RemakeZramSwap {
+        device: String,
+    },
+    /// Let every running program of account `uid` lock memory without
+    /// limit (RLIMIT_MEMLOCK, `prlimit(2)` on each): what the login's
+    /// limits file gives from the next login, given now, so a program
+    /// started (or started again) from one of them has it without one.
+    /// Until the account logs out.
+    LetSessionLockMemory {
+        uid: u32,
+    },
 }
 
 impl Step {
@@ -277,6 +299,8 @@ impl Step {
             Step::RemoveKeptBuild { home, name } => format!("Removing the kept build {} and its login screen entry", home.join(KEPT_BUILDS).join(name).display()),
             Step::SwapOff => "Turning swap off".into(),
             Step::FstabSwapOff => "Taking swap out of /etc/fstab".into(),
+            Step::LetSessionLockMemory { .. } => "Letting the programs running now keep their memory in RAM".into(),
+            Step::RemakeZramSwap { device } => format!("Making the swap on /dev/{device} again at its new size"),
             Step::KeepOffCores { kept, on } => {
                 let list = olo_system::cores::format_list(kept);
                 if *on { format!("Moving the programs running on processor {list} to the others") } else { format!("Letting every program run on processor {list} again") }
@@ -396,6 +420,11 @@ impl Step {
             Step::RemoveKeptBuild { home, name } => remove_kept_build(home, name, SESSION_ENTRIES).map_err(failed),
             Step::SwapOff => swap_off(Path::new("/proc/swaps")).map_err(|e| format!("{}: {e}", self.describe())),
             Step::FstabSwapOff => fstab_swap_off(Path::new("/etc/fstab")).map_err(failed),
+            Step::LetSessionLockMemory { uid } => let_lock_memory(Path::new("/proc"), *uid).map_err(|e| format!("{}: {e}", self.describe())),
+            Step::RemakeZramSwap { device } => {
+                let start = |unit: &str| olo_system::systemd::start_afresh(unit, std::time::Duration::from_secs(30)).map_err(|e| e.to_string());
+                remake_zram_swap(Path::new("/"), device, std::time::Duration::from_secs(10), &start).map_err(|e| format!("{}: {e}", self.describe()))
+            }
             Step::AddShell { path } => add_shell(path).map_err(failed),
             Step::AddKernelArgument { arg } => add_kernel_argument(Path::new("/"), arg).map_err(failed),
             Step::TryShell { path } => try_shell(path),
@@ -740,6 +769,77 @@ fn swap_off(swaps: &Path) -> Result<(), String> {
     failed.map_or(Ok(()), Err)
 }
 
+/// See `Step::RemakeZramSwap`. `root` is the file system's ("/"; a
+/// test's tree), `patience` how long the device is asked to reset and
+/// the swap waited for, `start` starts a system unit and waits for it.
+fn remake_zram_swap(root: &Path, device: &str, patience: std::time::Duration, start: &dyn Fn(&str) -> Result<(), String>) -> Result<(), String> {
+    if !device.starts_with("zram") || !device["zram".len()..].bytes().all(|b| b.is_ascii_digit()) {
+        return Err(format!("{device} isn't a zram device"));
+    }
+    let node = format!("/dev/{device}");
+    let on = |root: &Path| std::fs::read_to_string(root.join("proc/swaps")).is_ok_and(|t| swap_areas(&t).iter().any(|(name, _)| *name == node));
+    if on(root) {
+        let path = std::ffi::CString::new(node.as_bytes()).map_err(|e| e.to_string())?;
+        // SAFETY: swapoff(2) with a NUL-terminated path.
+        if unsafe { libc::swapoff(path.as_ptr()) } != 0 {
+            return Err(format!("its swap couldn't be turned off: {}", std::io::Error::last_os_error()));
+        }
+    }
+    // Reset, once nothing has it open.
+    let block = root.join("sys/block").join(device);
+    let empty = |block: &Path| std::fs::read_to_string(block.join("disksize")).is_ok_and(|s| s.trim() == "0");
+    let until = std::time::Instant::now() + patience;
+    while !empty(&block) {
+        match std::fs::write(block.join("reset"), "1") {
+            Ok(()) => break,
+            Err(e) if e.raw_os_error() == Some(libc::EBUSY) && std::time::Instant::now() < until => std::thread::sleep(std::time::Duration::from_millis(100)),
+            Err(e) => return Err(format!("the device couldn't be reset: {e}")),
+        }
+    }
+    // Its unit sets it up at the size its settings give, and turns it on.
+    start(&format!("dev-{device}.swap"))?;
+    let until = std::time::Instant::now() + patience;
+    while !on(root) {
+        if std::time::Instant::now() >= until {
+            return Err(format!("the swap on {node} didn't come back (systemctl status dev-{device}.swap says why)"));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    Ok(())
+}
+
+/// The processes of account `uid` under `proc` (/proc), by their ids.
+pub fn processes_of(proc: &Path, uid: u32) -> Vec<i32> {
+    use std::os::unix::fs::MetadataExt as _;
+    let mut pids: Vec<i32> =
+        std::fs::read_dir(proc).into_iter().flatten().flatten().filter(|e| e.metadata().is_ok_and(|m| m.uid() == uid)).filter_map(|e| e.file_name().to_string_lossy().parse::<i32>().ok()).collect();
+    pids.sort_unstable();
+    pids
+}
+
+/// Every running process of `uid` let lock memory without limit. Those
+/// that have ended meanwhile are passed over; the error is the first
+/// other refusal, when none could be changed.
+fn let_lock_memory(proc: &Path, uid: u32) -> Result<(), String> {
+    let all = libc::rlimit64 { rlim_cur: libc::RLIM64_INFINITY, rlim_max: libc::RLIM64_INFINITY };
+    let (mut changed, mut refused) = (0, None);
+    for pid in processes_of(proc, uid) {
+        // SAFETY: prlimit64(2) reads `all`; no old limit is asked for.
+        if unsafe { libc::prlimit64(pid, libc::RLIMIT_MEMLOCK, &all, std::ptr::null_mut()) } == 0 {
+            changed += 1;
+        } else {
+            let e = std::io::Error::last_os_error();
+            if e.raw_os_error() != Some(libc::ESRCH) {
+                refused.get_or_insert(e.to_string());
+            }
+        }
+    }
+    match refused {
+        Some(e) if changed == 0 => Err(e),
+        _ => Ok(()),
+    }
+}
+
 /// `fstab`'s text with its swap lines commented out (None: it has none).
 pub fn fstab_without_swap(fstab: &str) -> Option<String> {
     let is_swap = |l: &str| !l.trim_start().starts_with('#') && l.split_whitespace().nth(2) == Some("swap");
@@ -930,7 +1030,15 @@ fn unit(name: &str, action: &UnitAction) -> Result<(), String> {
         UnitAction::Restart => systemd::restart(name),
         UnitAction::MakeDefault => systemd::set_default(name),
     }
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    // A unit that stands failed after its start didn't start, whatever
+    // systemd said of being asked: said, so the fix isn't called done
+    // (a swap was "made again" whose two units had both failed,
+    // 2026-11-16).
+    if matches!(action, UnitAction::Start | UnitAction::Restart) && systemd::failed(name) {
+        return Err(format!("{name} failed to start (journalctl -u {name} says why)"));
+    }
+    Ok(())
 }
 
 /// How many times each place a release package might be is tried.
@@ -1034,6 +1142,69 @@ mod tests {
         fstab_swap_off(&file).unwrap();
         assert_eq!(std::fs::read_to_string(&file).unwrap(), new);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A zram swap made again: a device already reset is only started
+    /// (its unit turns the swap on); one whose swap doesn't come back is
+    /// said; and nothing but a zram device is touched.
+    #[test]
+    fn a_zram_swap_is_made_again() {
+        let root = PathBuf::from(format!("/var/tmp/olo-doctor-remake-zram-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("sys/block/zram0")).unwrap();
+        std::fs::create_dir_all(root.join("proc")).unwrap();
+        let heading = "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n";
+        std::fs::write(root.join("proc/swaps"), heading).unwrap();
+        std::fs::write(root.join("sys/block/zram0/disksize"), "0\n").unwrap();
+        let soon = std::time::Duration::from_millis(300);
+        // Its unit started, the swap there after: done.
+        let started = std::cell::RefCell::new(Vec::new());
+        let turns_on = |unit: &str| {
+            started.borrow_mut().push(unit.to_owned());
+            std::fs::write(root.join("proc/swaps"), format!("{heading}/dev/zram0 partition 65263080 0 100\n")).map_err(|e| e.to_string())
+        };
+        assert_eq!(remake_zram_swap(&root, "zram0", soon, &turns_on), Ok(()));
+        assert_eq!(*started.borrow(), ["dev-zram0.swap"]);
+        // A device still set up (and nothing of the test's to turn off):
+        // reset first (the file written), then started.
+        std::fs::write(root.join("proc/swaps"), heading).unwrap();
+        std::fs::write(root.join("sys/block/zram0/disksize"), "8589934592\n").unwrap();
+        assert_eq!(remake_zram_swap(&root, "zram0", soon, &turns_on), Ok(()));
+        assert_eq!(std::fs::read_to_string(root.join("sys/block/zram0/reset")).unwrap(), "1");
+        // Its unit started but no swap comes: said.
+        std::fs::write(root.join("proc/swaps"), heading).unwrap();
+        let e = remake_zram_swap(&root, "zram0", soon, &|_| Ok(())).unwrap_err();
+        assert_eq!(e, "the swap on /dev/zram0 didn't come back (systemctl status dev-zram0.swap says why)");
+        // Its unit can't be started: said as systemd says it.
+        assert_eq!(remake_zram_swap(&root, "zram0", soon, &|_| Err("no such unit".into())), Err("no such unit".into()));
+        // Not a zram device: refused.
+        assert_eq!(remake_zram_swap(&root, "nvme0n1p3", soon, &turns_on), Err("nvme0n1p3 isn't a zram device".into()));
+        assert_eq!(Step::RemakeZramSwap { device: "zram0".into() }.describe(), "Making the swap on /dev/zram0 again at its new size");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// The account's processes are found by who owns them; and letting
+    /// them lock memory is root's to do (this test isn't: refused, said).
+    #[test]
+    fn an_accounts_processes_let_lock_memory() {
+        use std::os::unix::fs::MetadataExt as _;
+        let me = std::fs::metadata("/proc/self").unwrap().uid();
+        let mine = processes_of(Path::new("/proc"), me);
+        assert!(mine.contains(&(std::process::id() as i32)));
+        assert!(mine.windows(2).all(|w| w[0] < w[1]));
+        // (pid 1 is root's.)
+        assert_eq!(mine.contains(&1), me == 0);
+        if me != 0 {
+            let mut limit = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+            // SAFETY: getrlimit writes `limit`.
+            unsafe { libc::getrlimit(libc::RLIMIT_MEMLOCK, &mut limit) };
+            // (Already without limit, as in a session it was given to:
+            // nothing to refuse.)
+            if limit.rlim_max != libc::RLIM_INFINITY {
+                assert_eq!(let_lock_memory(Path::new("/proc"), me), Err("Operation not permitted (os error 1)".into()));
+            }
+        }
+        assert_eq!(Step::LetSessionLockMemory { uid: 1000 }.describe(), "Letting the programs running now keep their memory in RAM");
     }
 
     /// Turning swap off where none is on does nothing, and says so

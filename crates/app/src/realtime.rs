@@ -196,6 +196,52 @@ pub fn registered() -> Vec<(i32, u32)> {
     TIDS.iter().zip(&PRIORITIES).filter_map(|(t, p)| Some((t.load(Ordering::Relaxed), p.load(Ordering::Relaxed))).filter(|(t, _)| *t > 0)).collect()
 }
 
+/// Keep this program's memory in RAM, for good: every page it has mapped
+/// and whatever it maps later, its code and its data, each locked from
+/// when it's first touched (`mlockall` with MCL_ONFAULT: nothing is read
+/// in for it, and room only reserved takes none). What's locked is never
+/// moved to swap, nor dropped to be read back from disk: a program
+/// someone waits on mustn't wait for its own pages (Ben, 2026-11-16:
+/// "keep all those core "responsiveness" processes out of swap always";
+/// app_server had taken 7,669 major page faults in 2 h 20 min).
+///
+/// Only where the account lets a program lock all it has
+/// (RLIMIT_MEMLOCK unlimited: Olo Doctor's Keep the Core in Memory). With
+/// a limit, whatever the program mapped past it would fail to map, and
+/// it would end for want of memory that was there. The error says why
+/// it isn't locked. (Not inherited: a program it starts isn't locked.)
+pub fn lock_memory() -> Result<(), String> {
+    let mut limit = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+    // SAFETY: getrlimit writes `limit`.
+    if unsafe { libc::getrlimit(libc::RLIMIT_MEMLOCK, &mut limit) } != 0 {
+        return Err(format!("its limit can't be read: {}", std::io::Error::last_os_error()));
+    }
+    if limit.rlim_max != libc::RLIM_INFINITY {
+        return Err(format!("the account may lock {} MB, not all a program has", limit.rlim_max >> 20));
+    }
+    if limit.rlim_cur != libc::RLIM_INFINITY {
+        let all = libc::rlimit { rlim_cur: libc::RLIM_INFINITY, rlim_max: libc::RLIM_INFINITY };
+        // SAFETY: setrlimit reads `all`; the soft limit raised to the hard one.
+        if unsafe { libc::setrlimit(libc::RLIMIT_MEMLOCK, &all) } != 0 {
+            return Err(format!("its limit can't be raised: {}", std::io::Error::last_os_error()));
+        }
+    }
+    // SAFETY: mlockall takes flags only.
+    if unsafe { libc::mlockall(libc::MCL_CURRENT | libc::MCL_FUTURE | libc::MCL_ONFAULT) } != 0 {
+        return Err(std::io::Error::last_os_error().to_string());
+    }
+    Ok(())
+}
+
+/// How much of this program is locked in memory, in bytes (the
+/// kernel's count, `VmLck`: what's mapped under the lock).
+pub fn locked_memory() -> u64 {
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|s| s.lines().find_map(|l| l.strip_prefix("VmLck:")).and_then(|v| v.split_whitespace().next()?.parse::<u64>().ok()))
+        .map_or(0, |kb| kb * 1024)
+}
+
 /// Whether process `pid`'s limits are this guard's (a thread there ends
 /// only stuck, 30 s, with a report). Read from /proc: for app_server,
 /// before it makes another program's threads realtime.
@@ -211,6 +257,28 @@ pub fn guarded(pid: u32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Memory is locked only where the account's limit is none; with
+    /// one, it's left as it is and the limit said. (Whichever this test's
+    /// own limit is: under a login's 8 MB it's refused; in a session Olo
+    /// Doctor has let lock, everything mapped is under the lock.)
+    #[test]
+    fn memory_is_locked_only_without_a_limit() {
+        let mut limit = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        // SAFETY: getrlimit writes `limit`.
+        unsafe { libc::getrlimit(libc::RLIMIT_MEMLOCK, &mut limit) };
+        match lock_memory() {
+            Ok(()) => {
+                assert_eq!(limit.rlim_max, libc::RLIM_INFINITY);
+                assert!(locked_memory() > 1 << 20, "{} bytes under the lock", locked_memory());
+            }
+            Err(e) => {
+                assert_ne!(limit.rlim_max, libc::RLIM_INFINITY, "{e}");
+                assert_eq!(e, format!("the account may lock {} MB, not all a program has", limit.rlim_max >> 20));
+                assert_eq!(locked_memory(), 0);
+            }
+        }
+    }
 
     #[test]
     fn a_guarded_program_says_so_in_its_limits() {
