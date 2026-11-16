@@ -17,35 +17,34 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **The kits' costs, in absolute terms** (Ben, 2026-11-16: "GPUI should
-  be gone we don't care about it anymore just make sure we are
-  performant in absolute terms"). Every frame's work well inside its
-  budget (8.3 ms at 120 Hz), nothing at rest, animations as cheap as
-  they can be, measured with `perf stat --no-scale` (HACKING, "Fast and
-  light": scaled counts on this machine's two kinds of core doubled at
-  random, which was most of the "noise" before). Where things stand
-  (release, 2×): Logs resized live, 8,000 lines in a window about
-  1,500 × 1,000: one frame a step, its looper 5.03 M instructions and
-  0.7–1.3 ms a frame. StringTheme: 2.3–2.6% of a core at 60 Hz,
-  3.4–3.7% at 120 Hz. A scroll arrow held at a list's end: 0.5–1.5%
-  (it had spun at 114%). Done this round: each Logs message's
-  highlighting worked out once; a run's, then a label's, font id kept
-  rather than looked up; a line's background looked for only when a
-  run has one; an animation's step that changed nothing waiting for
-  the next frame; a drawing of many lines compared by its bytes, made
-  in place and put in a frame without a closure a line
-  (`scene_bench`: 1,362 → 815 M instructions). Left, each to be
-  measured before and after: a list's rows made again on every width
-  change (the row key holds every column's width, so a live resize
-  paints every row; cells that didn't change could keep theirs); every
-  row laid out again by taffy on a resize (about a fifth of the
-  frame); a cut-short cell shaping its cut text at each new width; a
-  drawing that's the only thing changed copied into the frame
-  (`Scene::append`) and its segments made a paint at a time (a saver's
-  1,500); Tracker's resize wrapping each text again (450 shapings a
-  step); StyledEdit's text as one `String` (a rope or gap buffer); the
-  display thread's own 20–60 ms a sweep of the pointer (every move
-  reaching it).
+- **Agent Screens' Export Video: the small fast-forward mark, and time
+  to read** (Ben, 2026-11-16: "when exporting videos in agent screens,
+  the fast forward animation/visual should always be the small one at
+  the top never use the large overlay one it's too intrusive. also, we
+  are a little too quick to ff so you don't get time to read what's on
+  the page before it happens. add an extra 5s delay before and after
+  each fast forward"). A fast-forward is always shown by the small mark
+  at the top, never the large overlay; and the video stays at normal
+  speed 5 s longer before each fast-forward and 5 s longer after it.
+
+- **A button that shows a slow job's progress** (Ben, 2026-11-16: "add
+  a new button style/type/behavior/whatever makes sense to the kit
+  where a button that triggers some kind of slow processing can show
+  the progress in its disabled state as an animating meter filling up
+  the button itself, or some kind of progress indicator on the button,
+  whatever looks best and fits with olo look and feel. then use this
+  for the export video button in agent screens. still keep the
+  progress meter on history as well. also update the olo book and any
+  other existing places where it would be appropriate to use the same
+  button type (it should only be used when something is expected to
+  take 5s or more, not for very quick actions)"). In the kit: a
+  button that, once pressed, shows the job's progress on itself while
+  it can't be pressed again (a meter filling it, or what looks best in
+  Olo's look), in light, dark and night at every scale, read by agents
+  (its progress in its name or value). Then Agent Screens' Export
+  Video (History's meter stays), the Book (when to use it: a job
+  expected to take 5 s or more, never a quick one) and HACKING, and
+  each other button that starts a job that long.
 
 ## Done, waiting for Ben to try or confirm
 
@@ -858,8 +857,8 @@ something nobody here has is in "Blocked", with what it waits for.
      second 52%, tabs 62%, menus 93%, a live resize 98%; the gallery
      39%, Notifications 70%, Logs 78%); a click to a menu's picture
      takes what it took (4 ms, Tracker's and Deskbar's).
-     *Left* (now "The kits' costs, in absolute terms", Not started;
-     each within a frame's budget, to be brought down):
+     *Left* (then "The kits' costs, in absolute terms", done
+     2026-11-16; each within a frame's budget):
      - A whole window drawn again every frame: the looper paints each
        node's drawing, the display thread copies them into the frame,
        then draws. A list-heavy window resized live: Logs 95 ms for 36
@@ -1511,8 +1510,8 @@ something nobody here has is in "Blocked", with what it waits for.
   animated ones (Telegram's stickers) decoded on a worker and drawn once
   a frame when due, and the long lists of differing rows lay out their
   own (Telegram's conversation, Notifications' history, Logs) or are
-  uniform (`uniform_rows`); the kits' costs are an item of their own
-  (Not started, "The kits' costs, in absolute terms"). *Left for Ben:* the
+  uniform (`uniform_rows`); the kits' costs were an item of their own
+  ("The kits' costs, in absolute terms", done 2026-11-16). *Left for Ben:* the
   camera bubble (Record ▸ Show Camera: it turns the camera on).
 
 - **Olo independent of GNOME, 100%** (Ben, 2026-11-15: "we should be
@@ -5502,6 +5501,27 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**The kits' costs, in absolute terms**~~ (Ben, 2026-11-16: "GPUI
+  should be gone we don't care about it anymore just make sure we are
+  performant in absolute terms", then: "the general perf seems great
+  now so we don't need to micro-optimize stuff that is already working
+  well"; done 2026-11-16: d5254559c, acccd3811, 36c06198b, dfd3965e2).
+  Measured unscaled (`perf stat --no-scale`: scaled counts on this
+  machine's two kinds of core doubled at random): Logs resized live,
+  8,000 lines, one frame a step, its looper 5.03 M instructions and
+  0.7–1.3 ms of a frame's 8.3; StringTheme 2.3–2.6% of a core at 60 Hz,
+  3.4–3.7% at 120 Hz; a scroll arrow held at a list's end 0.5–1.5% (it
+  had spun at 114%: an animation's step that changed nothing now waits
+  for the next frame). Done: each Logs message's highlighting worked
+  out once; a run's and a label's font id kept; a line's background
+  looked for only when a run has one; a drawing of many lines compared
+  by its bytes, made in place and put in a frame without a closure a
+  line. What was listed beyond that (rows kept across a width change,
+  layout of rows on a resize, a cut-short cell's shaping, a saver's
+  segments, Tracker's wrapping on a resize, StyledEdit's text as one
+  string, the display thread's pointer sweep) was trimming what
+  already works well, and isn't done.
 
 - **What Doctor fixes stays fixed through a restart** (Ben,
   2026-11-10, with a picture of the YubiKey's finding back again:
