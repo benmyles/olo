@@ -447,10 +447,16 @@ pub struct ClickState {
 }
 
 pub(crate) struct KeyRepeat {
+    /// Repeats a second by this client's own timer; 0 where the
+    /// compositor makes them (wl_keyboard version 10: key events in the
+    /// "repeated" state), or none are wanted.
     characters_per_second: u32,
     delay: Duration,
     current_id: u64,
     current_keycode: Option<xkb::Keycode>,
+    /// What the key held down types, as its press made it (a composed
+    /// character and all): what a repeat of it types again.
+    current_keystroke: Option<Keystroke>,
 }
 
 pub(crate) enum PendingActivation {
@@ -716,13 +722,19 @@ const WL_DATA_DEVICE_MANAGER_VERSION: u32 = 3;
 fn wl_seat_version(version: u32) -> u32 {
     // We rely on the wl_pointer.frame event
     const WL_SEAT_MIN_VERSION: u32 = 5;
-    const WL_SEAT_MAX_VERSION: u32 = 9;
+    // (Version 10: a key event may say "repeated", the compositor's own
+    // repeat of a key held down, sent where it told a repeat rate of 0.)
+    const WL_SEAT_MAX_VERSION: u32 = 10;
 
     if version < WL_SEAT_MIN_VERSION {
         panic!("wl_seat below required version: {} < {}", version, WL_SEAT_MIN_VERSION);
     }
+    // `OLO_WL_SEAT=9`: an older seat, as a program from before version
+    // 10 binds it (it repeats by its own timer): to compare the two
+    // (tools/dev/key-repeat-check).
+    let most = std::env::var("OLO_WL_SEAT").ok().and_then(|v| v.parse::<u32>().ok()).map_or(WL_SEAT_MAX_VERSION, |v| v.clamp(WL_SEAT_MIN_VERSION, WL_SEAT_MAX_VERSION));
 
-    version.clamp(WL_SEAT_MIN_VERSION, WL_SEAT_MAX_VERSION)
+    version.clamp(WL_SEAT_MIN_VERSION, most)
 }
 
 fn wl_output_version(version: u32) -> u32 {
@@ -852,7 +864,7 @@ impl WaylandClient {
             drag: DragState { data_offer: None, window: None, position: Point::default(), types: Vec::new(), source_actions: DndAction::empty(), serial: 0, from_us: false, accept: None },
             drag_out: None,
             click: ClickState { last_click: Instant::now(), last_mouse_button: None, last_location: Point::default(), current_count: 0 },
-            repeat: KeyRepeat { characters_per_second: 16, delay: Duration::from_millis(500), current_id: 0, current_keycode: None },
+            repeat: KeyRepeat { characters_per_second: 16, delay: Duration::from_millis(500), current_id: 0, current_keycode: None, current_keystroke: None },
             modifiers: Modifiers { shift: false, control: false, alt: false, function: false, platform: false },
             capslock: Capslock { on: false },
             scroll_event_received: false,
@@ -1752,40 +1764,61 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandClientStatePtr {
 
                         state.repeat.current_id += 1;
                         state.repeat.current_keycode = Some(keycode);
+                        state.repeat.current_keystroke = Some(keystroke.clone());
 
                         let rate = state.repeat.characters_per_second;
                         let id = state.repeat.current_id;
-                        state
-                            .loop_handle
-                            .insert_source(Timer::from_duration(state.repeat.delay), {
-                                let input = PlatformInput::KeyDown(KeyDownEvent { keystroke, is_held: true });
-                                move |_event, _metadata, this| {
-                                    let mut client = this.get_client();
-                                    let mut state = client.borrow_mut();
-                                    let is_repeating = id == state.repeat.current_id && state.repeat.current_keycode.is_some() && state.keyboard_focused_window.is_some();
+                        // Its own timer only where the compositor doesn't
+                        // make the repeats (a rate of 0: they come as key
+                        // events in the "repeated" state, below, decided
+                        // with every key the compositor has in hand; this
+                        // timer can't know of a release not yet sent, and
+                        // typed a letter twice when app_server's loop was
+                        // held past the repeat delay).
+                        if rate > 0 {
+                            state
+                                .loop_handle
+                                .insert_source(Timer::from_duration(state.repeat.delay), {
+                                    let input = PlatformInput::KeyDown(KeyDownEvent { keystroke, is_held: true });
+                                    move |_event, _metadata, this| {
+                                        let mut client = this.get_client();
+                                        let mut state = client.borrow_mut();
+                                        let is_repeating = id == state.repeat.current_id && state.repeat.current_keycode.is_some() && state.keyboard_focused_window.is_some();
 
-                                    if !is_repeating || rate == 0 {
-                                        return TimeoutAction::Drop;
+                                        if !is_repeating || rate == 0 {
+                                            return TimeoutAction::Drop;
+                                        }
+
+                                        let focused_window = state.keyboard_focused_window.as_ref().unwrap().clone();
+
+                                        drop(state);
+                                        focused_window.handle_input(input.clone());
+
+                                        TimeoutAction::ToDuration(Duration::from_secs(1) / rate)
                                     }
-
-                                    let focused_window = state.keyboard_focused_window.as_ref().unwrap().clone();
-
-                                    drop(state);
-                                    focused_window.handle_input(input.clone());
-
-                                    TimeoutAction::ToDuration(Duration::from_secs(1) / rate)
-                                }
-                            })
-                            .unwrap();
+                                })
+                                .unwrap();
+                        }
 
                         drop(state);
                         focused_window.handle_input(input);
+                    }
+                    // The compositor's repeat of the key held down: typed
+                    // again as its press typed it.
+                    wl_keyboard::KeyState::Repeated if !keysym.is_modifier_key() => {
+                        if state.repeat.current_keycode != Some(keycode) {
+                            return;
+                        }
+                        let keystroke = state.repeat.current_keystroke.clone().unwrap_or_else(|| Keystroke::from_xkb(keymap_state, state.modifiers, keycode));
+                        drop(state);
+                        focused_window.handle_input(PlatformInput::KeyDown(KeyDownEvent { keystroke, is_held: true }));
                     }
                     wl_keyboard::KeyState::Released if !keysym.is_modifier_key() => {
                         let input = PlatformInput::KeyUp(KeyUpEvent { keystroke: Keystroke::from_xkb(keymap_state, state.modifiers, keycode) });
 
                         if state.repeat.current_keycode == Some(keycode) {
                             state.repeat.current_keycode = None;
+                            state.repeat.current_keystroke = None;
                         }
 
                         drop(state);

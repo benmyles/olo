@@ -15,7 +15,7 @@ use crate::{
     backend::input::{InputTime, KeyState, Keycode},
     input::{
         Seat, SeatHandler, WeakSeat,
-        keyboard::{KbdRc, KeyboardHandle, KeyboardTarget, KeysymHandle, ModifiersState},
+        keyboard::{KbdRc, KeyboardHandle, KeyboardTarget, KeysymHandle, ModifiersState, Repeatable},
     },
     utils::{HookId, Serial, iter::new_locked_obj_iter_from_vec},
     wayland::{
@@ -25,6 +25,135 @@ use crate::{
         text_input::TextInputSeat,
     },
 };
+
+/// (Olo) The version of wl_keyboard from which a key event may say
+/// "repeated": the compositor's own repeat of a key held down, sent to a
+/// keyboard it has told to make none itself (`repeat_info` with a rate
+/// of 0).
+pub const REPEATED_SINCE: u32 = 10;
+
+impl<D: SeatHandler> KbdRc<D> {
+    /// (Olo) The repeat rate `kbd` is told: none where its repeats come
+    /// from the compositor, else `rate`.
+    pub(crate) fn client_rate(&self, kbd: &WlKeyboard, rate: i32) -> i32 {
+        if self.makes_repeats.load(std::sync::atomic::Ordering::Relaxed) && kbd.version() >= REPEATED_SINCE {
+            0
+        } else {
+            rate
+        }
+    }
+
+    /// (Olo) A key on its way to `surface`'s keyboards: what a repeat
+    /// would repeat from now. A key that repeats, pressed, is it (where
+    /// one of the client's keyboards takes the compositor's repeats);
+    /// one that doesn't repeat ends the repeating, but for a modifier,
+    /// which leaves it as it is; the repeating key released ends it.
+    /// Whether it changed.
+    fn note_key(&self, surface: &WlSurface, key: &KeysymHandle<'_>, state: KeyState, time: u32) -> bool {
+        if !self.makes_repeats.load(std::sync::atomic::Ordering::Relaxed) {
+            return false;
+        }
+        let keycode = key.raw_code();
+        let mut repeatable = self.repeatable.lock().unwrap();
+        let was = repeatable.as_ref().map(|r| (r.keycode, r.time));
+        match state {
+            KeyState::Pressed if key.repeats() => {
+                let takes = self
+                    .known_kbds
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter_map(|k| k.upgrade().ok())
+                    .any(|k| k.version() >= REPEATED_SINCE && k.id().same_client_as(&surface.id()));
+                *repeatable = takes.then(|| Repeatable {
+                    surface: surface.downgrade(),
+                    keycode,
+                    time,
+                    at: std::time::Instant::now(),
+                });
+            }
+            KeyState::Pressed if !key.modified_sym().is_modifier_key() => *repeatable = None,
+            KeyState::Released if repeatable.as_ref().is_some_and(|r| r.keycode == keycode) => {
+                *repeatable = None
+            }
+            _ => {}
+        }
+        was != repeatable.as_ref().map(|r| (r.keycode, r.time))
+    }
+}
+
+impl<D> KeyboardHandle<D>
+where
+    D: SeatHandler + 'static,
+{
+    /// (Olo) Have the compositor make the repeats of a key held down, for
+    /// the keyboards that take them (wl_keyboard version 10: they're told
+    /// a repeat rate of 0, and get key events in the "repeated" state,
+    /// [`KeyboardHandle::send_repeat`]); older ones repeat by themselves
+    /// as before. A repeat made here is decided with every key the
+    /// compositor has in hand; a client's own timer can't know of a
+    /// release its compositor hasn't sent yet, and types the key again.
+    pub fn make_repeats(&self, on: bool) {
+        self.arc
+            .makes_repeats
+            .store(on, std::sync::atomic::Ordering::Relaxed);
+        if !on {
+            *self.arc.repeatable.lock().unwrap() = None;
+        }
+        let guard = self.arc.internal.lock().unwrap();
+        for kbd in self
+            .arc
+            .known_kbds
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|k| k.upgrade().ok())
+        {
+            if kbd.version() >= 4 {
+                kbd.repeat_info(self.arc.client_rate(&kbd, guard.repeat_rate), guard.repeat_delay);
+            }
+        }
+    }
+
+    /// (Olo) The key a repeat would repeat now, if any: its code, its
+    /// press's time (the keyboard's clock, milliseconds) and when the
+    /// press was sent to its client.
+    pub fn repeatable(&self) -> Option<(crate::input::keyboard::Keycode, u32, std::time::Instant)> {
+        self.arc
+            .repeatable
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|r| (r.keycode, r.time, r.at))
+    }
+
+    /// (Olo) Send one repeat of the repeatable key to its client's
+    /// keyboards that take them. False: there's nothing to repeat, or no
+    /// one to repeat it to.
+    pub fn send_repeat(&self, serial: Serial, time: u32) -> bool {
+        let Some(Repeatable { surface, keycode, .. }) = self.arc.repeatable.lock().unwrap().clone() else {
+            return false;
+        };
+        let Ok(surface) = surface.upgrade() else {
+            return false;
+        };
+        let mut sent = false;
+        for kbd in self
+            .arc
+            .known_kbds
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|k| k.upgrade().ok())
+        {
+            if kbd.version() >= REPEATED_SINCE && kbd.id().same_client_as(&surface.id()) {
+                kbd.key(serial.into(), time, keycode.raw() - 8, WlKeyState::Repeated);
+                sent = true;
+            }
+        }
+        sent
+    }
+}
 
 impl<D> KeyboardHandle<D>
 where
@@ -75,7 +204,7 @@ where
 
         let guard = self.arc.internal.lock().unwrap();
         if kbd.version() >= 4 {
-            kbd.repeat_info(guard.repeat_rate, guard.repeat_delay);
+            kbd.repeat_info(self.arc.client_rate(&kbd, guard.repeat_rate), guard.repeat_delay);
         }
         if let Some((focused, serial)) = guard.focus.as_ref() {
             if focused.same_client_as(&kbd.id()) {
@@ -266,6 +395,19 @@ impl<D: SeatHandler + 'static> KeyboardTarget<D> for WlSurface {
 
     fn leave(&self, seat: &Seat<D>, state: &mut D, serial: Serial) {
         *seat.get_keyboard().unwrap().arc.last_enter.lock().unwrap() = None;
+        // (Olo) Nothing repeats into a surface the keyboard has left.
+        if seat
+            .get_keyboard()
+            .unwrap()
+            .arc
+            .repeatable
+            .lock()
+            .unwrap()
+            .take()
+            .is_some()
+        {
+            state.repeatable_key_changed(seat);
+        }
         for_each_focused_kbds(seat, self, |kbd| kbd.leave(serial.into(), self));
         if let Some(hook_id) = with_states(self, |states| {
             states
@@ -293,12 +435,20 @@ impl<D: SeatHandler + 'static> KeyboardTarget<D> for WlSurface {
     fn key(
         &self,
         seat: &Seat<D>,
-        _data: &mut D,
+        data: &mut D,
         key: KeysymHandle<'_>,
         state: KeyState,
         serial: Serial,
         time: InputTime,
     ) {
+        // (Olo) Every key a client gets passes here, whatever grab sent
+        // it: where what a repeat would repeat is kept.
+        if seat
+            .get_keyboard()
+            .is_some_and(|k| k.arc.note_key(self, &key, state, time.millis()))
+        {
+            data.repeatable_key_changed(seat);
+        }
         for_each_focused_kbds(seat, self, |kbd| {
             kbd.key(
                 serial.into(),

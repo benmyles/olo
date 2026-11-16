@@ -42,6 +42,18 @@ Each note: what to do, then why (what happened), then how to apply it.
 - **tsession's clicks and crops are logical; its shots are device
   pixels** (divide by the scale). Anything that talks over a bus needs a
   private bus.
+- **What a test session's app was sent and what it holds.**
+  `tsession run NAME WAYLAND_DEBUG=1 olo-APP` writes every Wayland
+  message the app gets to `/var/tmp/olo-dev/NAME/olo-APP.log`
+  (`wl_keyboard#31.key(serial, time, code, state)`). A kit app's
+  widgets, with their values, come from its own socket: `{"tree":
+  true}` on `olo-menus-PID.sock` in the session's runtime folder
+  (`env.json`'s `XDG_RUNTIME_DIR`). Keys go down and up apart with the
+  session's IPC (`{"type":"synthetic","events":[{"type":"key","key":
+  CODE,"pressed":true}]}`), and its loop is held with
+  `{"type":"hold_loop","ms":N}` where the session was started with
+  `OLO_TEST_SEAT=1` in the environment (headless takes no seat from
+  it). tools/dev/key-repeat-check does all four.
 - **cargo test can wait behind kache.** Build with `cargo test -p CRATE
   --no-run --message-format=json` and run the test binaries it names
   directly. Never pick a binary with `ls -t deps/`: that once ran the

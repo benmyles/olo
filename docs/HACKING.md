@@ -6550,6 +6550,68 @@ dim over the desktop (Deskbar and other top layers stay above).
 window's frame, workspace, letter and whether it is chosen. The bench
 (`tools/dev/bench`) times its frames opening, walked and leaving.
 
+## Key repeat (app_server key_repeat.rs; Olo's smithay; the kit's Wayland client)
+
+A key held down repeats, and app_server makes the repeats for the
+clients that take them. Until wl_keyboard version 10 every client did
+it alone, from a timer started at the press it was sent, and a client's
+timer can't know of a release its compositor hasn't sent yet: when
+app_server's loop was held 316 ms just after a press (2026-11-16, in the
+graphics driver: "Windows' buffers stay in memory"), the release reached
+the client past its 300 ms repeat delay and the letter was typed twice
+(Ben: "it actually even repeated a letter eg "sunbursst""). That hold's
+cause is gone; this takes away what any hold could do to a key.
+
+* **The protocol.** From version 10 a compositor may tell a keyboard a
+  repeat rate of 0 and send key events in the "repeated" state. Olo's
+  smithay advertises the seat at 10 and, with
+  `KeyboardHandle::make_repeats(true)` (app_server, at start), tells
+  each keyboard of that version rate 0 (the delay as set), every older
+  one the rate as before: those repeat by themselves, as they did.
+* **What repeats** is kept where every key reaches a client, whatever
+  grab sent it (`KeyboardTarget for WlSurface`: a menu's popup grab
+  too; an input method's grab sends its keys elsewhere, and repeats
+  them itself): the last key the keymap says repeats, pressed and still
+  down there (`KeyboardHandle::repeatable`). A key that doesn't repeat
+  ends it, but for a modifier, which leaves it be; its own release ends
+  it; so does the keyboard leaving the surface. Only where one of the
+  client's keyboards takes the compositor's repeats.
+* **The timer** (`key_repeat.rs`). `SeatHandler::repeatable_key_changed`
+  starts it for the key's first repeat, the repeat delay after its
+  press was sent on, then at the repeat rate (Preferences ▸ Keyboard's;
+  none at a rate of 0). When it comes due it doesn't send: it asks for
+  the end of that turn of the loop (`insert_idle`), and the repeat is
+  sent there, if the key is still the one repeating. Whatever input
+  waited with the timer is handled first, in either order, so a release
+  that waited behind a hold always ends the repeating before a repeat
+  is sent, however late the timer fired. After a hold a key still down
+  repeats on from then, with no burst for the time missed
+  (`next_due`). The hook is called with the keyboard's state locked:
+  it asks the keyboard nothing but `repeatable`.
+* **The kit's client** binds the seat at 10 (`wl_seat_version`), types a
+  "repeated" key as its press typed it (the keystroke kept at the
+  press, a composed character and all: `KeyRepeat::current_keystroke`,
+  `is_held`), and starts its own timer only where it's told a rate
+  (an older compositor). `OLO_WL_SEAT=9` has it bind the older seat, to
+  compare.
+
+`tools/dev/key-repeat-check` runs DeskCalc both ways in a session of
+its own and reads the wire and what was typed: a key held a second (one
+press, 25 repeats from 300 ms on, every 28.6 ms; 26 typed either way),
+five quick presses (five typed, no repeat), a second key taking over
+from the first, and the late release: the key pressed, the loop held
+600 ms (`{"type":"hold_loop"}`), its release arriving meanwhile. The
+old way typed it 12 times; made here, once. Cost (release, a headless
+2× screen): while a key repeats, app_server 4.0% of a core and 65
+wakeups a second against 3.7% and 57 with the client's own timer (the
+rest is the client's frames); a key event 65,000 instructions against
+64,400 (`perf stat --no-scale`, 6,000 events of a key that types
+nothing); nothing while no key is held.
+
+Chrome and other programs bind the seat at the version they know: those
+at 9 or under repeat by their own timers still, and a late release can
+still type their key again.
+
 ## Keyboard profiles (olo_protocol::shortcuts and app_keys, app_server keymap.rs, olo_kit_base::keys)
 
 **Each keyboard's own** (Preferences ▸ Keyboard ▸ Keyboards): Alt and

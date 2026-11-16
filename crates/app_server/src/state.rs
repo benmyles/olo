@@ -231,6 +231,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub keymap: crate::keymap::Keymap,
     /// A tab's cut title, whole, under the pointer (`tabtip`).
     pub tab_tip: crate::tabtip::TabTip,
+    /// The key held down that app_server repeats (`key_repeat`).
+    pub key_repeat: crate::key_repeat::KeyRepeat,
     /// Text on its way into the focused field (`insert`).
     pub inserting: crate::insert::Inserting,
     pub pressing: crate::insert::Pressing,
@@ -518,6 +520,10 @@ impl<BackendData: Backend> SeatHandler for AnvilState<BackendData> {
 
     fn led_state_changed(&mut self, _seat: &Seat<Self>, led_state: LedState) {
         self.backend_data.update_led_state(led_state)
+    }
+
+    fn repeatable_key_changed(&mut self, _seat: &Seat<Self>) {
+        self.key_repeat_changed();
     }
 }
 
@@ -1193,7 +1199,10 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         let mut seat = seat_state.new_wl_seat(&dh, seat_name.clone());
 
         let pointer = seat.add_pointer();
-        seat.add_keyboard(XkbConfig::default(), 200, 25).expect("Failed to initialize the keyboard");
+        let keyboard = seat.add_keyboard(XkbConfig::default(), 200, 25).expect("Failed to initialize the keyboard");
+        // A key held down is repeated from here, for the clients that
+        // take it (`key_repeat`).
+        keyboard.make_repeats(true);
 
         let keyboard_shortcuts_inhibit_state = KeyboardShortcutsInhibitState::new::<Self>(&dh);
         let idle_notifier_state = smithay::wayland::idle_notify::IdleNotifierState::new(&dh, handle.clone());
@@ -1272,6 +1281,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             suppressed_keys: Vec::new(),
             keymap: Default::default(),
             tab_tip: Default::default(),
+            key_repeat: Default::default(),
             inserting: Default::default(),
             pressing: Default::default(),
             power: crate::power::Power::new(BackendData::IS_SESSION),

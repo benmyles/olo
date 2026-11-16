@@ -185,7 +185,9 @@ impl<D: SeatHandler + 'static> SeatState<D> {
     {
         let Seat { arc } = self.new_seat(name);
 
-        let global_id = display.create_global::<D, _, _>(9, SeatGlobalData { arc: arc.clone() });
+        // (Olo) Version 10: a key event may say "repeated", the
+        // compositor's own repeat (`KeyboardHandle::make_repeats`).
+        let global_id = display.create_global::<D, _, _>(10, SeatGlobalData { arc: arc.clone() });
         arc.inner.lock().unwrap().global = Some(global_id);
 
         Seat { arc }

@@ -1,0 +1,243 @@
+#!/usr/bin/python3
+"""Key repeat, checked in a headless session of its own: a key held down
+repeats as it should, and a release that waited behind a held loop never
+types the key again.
+
+  tools/dev/key-repeat-check [--keep] [--hold MS]
+
+app_server makes the repeats for clients whose keyboard is wl_keyboard
+version 10 (Olo's kit: `key_repeat.rs`); older clients repeat by their
+own timers. DeskCalc is run both ways (`OLO_WL_SEAT=9` has the kit bind
+the older seat), its Wayland messages logged (`WAYLAND_DEBUG`), and what
+it typed read from its expression field:
+
+  held        a key down for a second: one press, then repeats from the
+              repeat delay on at the repeat rate (the compositor's own,
+              "repeated" key events, for version 10; none on the wire
+              for version 9, whose client makes them), the same count
+              typed either way;
+  typed       five quick presses: five characters, no repeat;
+  taken over  a second key pressed while the first repeats: the second
+              repeats from then, the first no more;
+  late        the key pressed, app_server's loop held for --hold ms (600,
+              `{"type":"hold_loop"}`) with the release arriving while
+              it's held: version 10 types the key once; version 9 types
+              it again and again (its own timer can't know of the
+              release), which is what this is for (Ben, 2026-11-16:
+              "it actually even repeated a letter eg "sunbursst"").
+
+Exit status 1 if anything isn't so. Release builds (cargo build --release
+-p app_server -p olo-deskcalc). Nothing of the person's session is
+touched; --keep leaves the session's folder (/var/tmp/olo-dev/key-repeat)
+with its logs."""
+
+import json
+import os
+import re
+import socket
+import subprocess
+import sys
+import time
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+NAME = "key-repeat"
+DIR = f"/var/tmp/olo-dev/{NAME}"
+TS = ["/usr/bin/python3", os.path.join(ROOT, "tools/dev/tsession")]
+HOLD = int(sys.argv[sys.argv.index("--hold") + 1]) if "--hold" in sys.argv else 600
+KEY_1, KEY_2 = 2, 3  # evdev codes
+
+
+def ts(*args, env=None):
+    return subprocess.run(TS + list(args), capture_output=True, text=True, env=env).stdout
+
+
+def connect():
+    s = socket.socket(socket.AF_UNIX)
+    s.settimeout(10)
+    s.connect(json.load(open(f"{DIR}/env.json"))["OLO_SOCKET"])
+    return s
+
+
+def ask(s, req):
+    s.sendall((json.dumps(req) + "\n").encode())
+    buf = b""
+    while not buf.endswith(b"\n"):
+        got = s.recv(65536)
+        if not got:
+            break
+        buf += got
+    return json.loads(buf) if buf.strip() else None
+
+
+def key(s, code, pressed):
+    ask(s, {"type": "synthetic", "events": [{"type": "key", "key": code, "pressed": pressed}]})
+
+
+def typed(pid):
+    """What DeskCalc's expression field holds."""
+    rt = json.load(open(f"{DIR}/env.json"))["XDG_RUNTIME_DIR"]
+    s = socket.socket(socket.AF_UNIX)
+    s.settimeout(5)
+    s.connect(os.path.join(rt, f"olo-menus-{pid}.sock"))
+    s.sendall(b'{"tree": true}\n')
+    line = s.makefile().readline()
+    s.close()
+    for t in json.loads(line):
+        for n in t["nodes"]:
+            if n.get("role") == "TextInput":
+                return n.get("value") or ""
+    return ""
+
+
+def wire(log, since):
+    """The key events DeskCalc was sent after line `since` of its log:
+    (seconds, code, state) each, state 1 pressed, 2 repeated, 0 released."""
+    out = []
+    for line in open(log).read().split("\n")[since:]:
+        m = re.match(r"\[(\d+):(\d+):(\d+\.\d+)\] wl_keyboard#\d+\.key\(\d+, \d+, (\d+), (\d)\)", line)
+        if m:
+            out.append((int(m[1]) * 3600 + int(m[2]) * 60 + float(m[3]), int(m[4]), int(m[5])))
+    return out
+
+
+def lines(log):
+    return len(open(log).read().split("\n")) - 1
+
+
+def run(version):
+    """Each case with a DeskCalc whose seat is `version`: {case: facts}."""
+    env = dict(os.environ, TSESSION_PROFILE="release", OLO_TEST_SEAT="1", OLO_REALTIME="0")
+    ts("stop", NAME, env=env)
+    ts("start", NAME, "1280x800", env=env)
+    log = f"{DIR}/olo-deskcalc.log"
+    ts("run", NAME, "WAYLAND_DEBUG=1", f"OLO_WL_SEAT={version}", "olo-deskcalc", env=env)
+    s = connect()
+    pid = None
+    for _ in range(100):
+        ws = (ask(s, {"type": "list_windows"}) or {}).get("windows", [])
+        if ws and ws[0].get("focused"):
+            pid = ws[0]["pid"]
+            break
+        time.sleep(0.1)
+    if pid is None:
+        sys.exit("key-repeat-check: DeskCalc didn't open")
+    time.sleep(0.5)
+    said = re.findall(r"wl_keyboard#\d+\.repeat_info\((\d+), (\d+)\)", open(log).read())
+    rate, delay = (int(said[-1][0]), int(said[-1][1])) if said else (None, None)
+    out = {"told": (rate, delay)}
+
+    # Held: a second.
+    at, before = lines(log), len(typed(pid))
+    key(s, KEY_1, True)
+    time.sleep(1.0)
+    key(s, KEY_1, False)
+    time.sleep(0.3)
+    w = wire(log, at)
+    press = next(t for t, _, st in w if st == 1)
+    release = next(t for t, _, st in w if st == 0)
+    repeats = [t for t, _, st in w if st == 2]
+    gaps = [b - a for a, b in zip(repeats, repeats[1:])]
+    out["held"] = {
+        "held_ms": round((release - press) * 1000),
+        "repeats_sent": len(repeats),
+        "first_after_ms": round((repeats[0] - press) * 1000) if repeats else None,
+        "every_ms": round(sum(gaps) / len(gaps) * 1000, 1) if gaps else None,
+        "typed": len(typed(pid)) - before,
+    }
+
+    # Typed: five quick presses.
+    at, before = lines(log), len(typed(pid))
+    for _ in range(5):
+        key(s, KEY_1, True)
+        time.sleep(0.04)
+        key(s, KEY_1, False)
+        time.sleep(0.06)
+    time.sleep(0.5)
+    out["typed"] = {"repeats_sent": sum(1 for _, _, st in wire(log, at) if st == 2), "typed": len(typed(pid)) - before}
+
+    # Taken over: 1 held, then 2 pressed while it repeats.
+    at, before = lines(log), typed(pid)
+    key(s, KEY_1, True)
+    time.sleep(0.6)
+    key(s, KEY_2, True)
+    time.sleep(0.6)
+    key(s, KEY_2, False)
+    time.sleep(0.3)
+    key(s, KEY_1, False)
+    time.sleep(0.3)
+    w = wire(log, at)
+    second = next(t for t, code, st in w if st == 1 and code == KEY_2)
+    new = typed(pid)[len(before):]
+    out["taken over"] = {
+        "first_repeats_after_second": sum(1 for t, code, st in w if st == 2 and code == KEY_1 and t > second),
+        "second_repeats": sum(1 for _, code, st in w if st == 2 and code == KEY_2),
+        # (After the first "2": only "2"s.)
+        "typed_after_second": new[new.index("2"):] if "2" in new else new,
+        "typed": new,
+    }
+
+    # Late: the release arrives while the loop is held.
+    other = connect()
+    ask(other, {"type": "list_windows"})
+    at, before = lines(log), len(typed(pid))
+    key(s, KEY_1, True)
+    s.sendall((json.dumps({"type": "hold_loop", "ms": HOLD}) + "\n").encode())
+    time.sleep(0.1)
+    # (On a connection of its own, open already: waiting with the repeat's
+    # timer when the loop is free again, as a key's release waits.)
+    other.sendall((json.dumps({"type": "synthetic", "events": [{"type": "key", "key": KEY_1, "pressed": False}]}) + "\n").encode())
+    held = s.recv(65536)
+    if b"error" in held.lower():
+        sys.exit(f"key-repeat-check: the loop can't be held: {held.decode().strip()}")
+    other.recv(65536)
+    time.sleep(0.8)
+    w = wire(log, at)
+    out["late"] = {"repeats_sent": sum(1 for _, _, st in w if st == 2), "typed": len(typed(pid)) - before}
+    s.close()
+    other.close()
+    if "--keep" not in sys.argv or version != 10:
+        ts("stop", NAME, env=env)
+    return out
+
+
+def main():
+    for binary in ("olo-app-server", "olo-deskcalc"):
+        if not os.path.exists(os.path.join(ROOT, "target/release", binary)):
+            sys.exit(f"key-repeat-check: build first (cargo build --release -p app_server -p olo-deskcalc): no target/release/{binary}")
+    old, new = run(9), run(10)
+    print(json.dumps({"seat version 9 (the client's own timer)": old, "seat version 10 (app_server's repeats)": new, "loop held ms": HOLD}, indent=1))
+    wrong = []
+
+    def must(ok, what):
+        if not ok:
+            wrong.append(what)
+
+    rate, delay = old["told"]
+    must(rate and rate > 0, f"a version 9 keyboard is told a repeat rate ({rate})")
+    must(new["told"][0] == 0 and new["told"][1] == delay, f"a version 10 keyboard is told a rate of 0 and the delay ({new['told']})")
+    if rate and delay is not None:
+        h = new["held"]
+        expect = (h["held_ms"] - delay) * rate / 1000
+        must(abs(h["repeats_sent"] - expect) <= 2, f"held: {h['repeats_sent']} repeats sent in {h['held_ms']} ms, about {expect:.0f} expected")
+        must(h["first_after_ms"] is not None and abs(h["first_after_ms"] - delay) <= 15, f"held: the first repeat {h['first_after_ms']} ms after the press, the delay is {delay}")
+        must(h["every_ms"] is not None and abs(h["every_ms"] - 1000 / rate) <= 2, f"held: a repeat every {h['every_ms']} ms, the rate is {rate} a second")
+        must(h["typed"] == h["repeats_sent"] + 1, f"held: {h['typed']} typed for one press and {h['repeats_sent']} repeats")
+        must(old["held"]["repeats_sent"] == 0, "held: a version 9 keyboard is sent repeats")
+        must(abs(old["held"]["typed"] - h["typed"]) <= 3, f"held: {old['held']['typed']} typed the old way, {h['typed']} the new")
+    for which, r in (("9", old), ("10", new)):
+        must(r["typed"] == {"repeats_sent": 0, "typed": 5}, f"typed (version {which}): five presses gave {r['typed']}")
+        t = r["taken over"]
+        must(t["first_repeats_after_second"] == 0 and set(t["typed_after_second"]) <= {"2"}, f"taken over (version {which}): the first key went on repeating: {t}")
+        must(len(t["typed_after_second"]) > 5, f"taken over (version {which}): the second key didn't repeat: {t}")
+    must(new["taken over"]["second_repeats"] > 5, f"taken over: the second key's repeats weren't sent: {new['taken over']}")
+    must(new["late"] == {"repeats_sent": 0, "typed": 1}, f"late: a release behind a held loop typed the key again: {new['late']}")
+    if old["late"]["typed"] <= 1:
+        print(f"(late: the old way typed the key once this time; hold the loop longer than the delay, {delay} ms)")
+    for w in wrong:
+        print("NOT SO:", w)
+    print("key repeat is as it should be" if not wrong else f"{len(wrong)} wrong")
+    sys.exit(1 if wrong else 0)
+
+
+if __name__ == "__main__":
+    main()

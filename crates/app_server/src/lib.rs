@@ -40,6 +40,7 @@ pub mod handover;
 pub mod identify;
 pub mod insert;
 pub mod ipc;
+pub mod key_repeat;
 pub mod keymap;
 pub mod layout;
 pub mod lock;

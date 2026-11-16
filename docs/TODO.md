@@ -17,19 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **A key can't repeat for a late release** (left from the stalls of
-  2026-11-16: a key pressed just before app_server's loop was held had
-  its release delivered after the client's 300 ms repeat delay, and the
-  client typed it twice, "sunbursst"). The holds found are gone, but a
-  client's own repeat timer can't know of a release its compositor
-  hasn't sent yet. wl_keyboard version 10 lets the compositor do the
-  repeating (`repeat_info` rate 0, then key events in the "repeated"
-  state): app_server makes repeats for the clients that take them, the
-  kit among them, from the keyboard's own timing (a repeat only in a
-  turn of the loop whose timer was on time, or after one that handled
-  what input had waited), so a hold, whatever its cause, never types a
-  letter twice. Smithay's seat is at version 9; the kit's client
-  repeats by its own timer (crates/interface wayland client.rs).
 - **Olo Doctor offers BBRv3 for TCP** (Ben, 2026-11-16: "once you
   finish this work, i also want olo doctor to offer to set the tcp
   congestion control algo to BBRv3 if it's not. if BBRv3 is not shipped
@@ -98,6 +85,23 @@ something nobody here has is in "Blocked", with what it waits for.
   pictures, theme), natively, in Quick Look and in Viewer.
 
 ## Done, waiting for Ben to try or confirm
+
+- **A key can't repeat for a late release** (left from the stalls of
+  2026-11-16: a key pressed just before app_server's loop was held had
+  its release delivered after the client's 300 ms repeat delay, and the
+  client typed it twice, "sunbursst"). *Done 2026-11-16* (HACKING, "Key
+  repeat"): app_server makes a held key's repeats for the clients that
+  take them (wl_keyboard version 10: Olo's kit), each sent only at the
+  end of a turn of the loop, after whatever input waited with its
+  timer; the seat is at 10 in Olo's smithay, and the kit's client types
+  the compositor's repeats and keeps its own timer for an older
+  compositor. `tools/dev/key-repeat-check`: a release behind a 600 ms
+  hold typed the key 12 times the old way, once now; a held key, quick
+  presses and one key taking over from another as before. *For Ben,
+  after upgrading:* nothing to do; holding a key in any Olo app should
+  feel as it did (the delay and rate are Preferences ▸ Keyboard's).
+  Chrome repeats by its own timer still (it binds the seat at the
+  version it knows).
 
 - **Voice Processing: a quiet microphone brought up, and its device
   named as processed** (Ben, 2026-11-16: "some inputs like airpods are

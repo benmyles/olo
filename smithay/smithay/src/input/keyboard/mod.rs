@@ -426,6 +426,20 @@ pub enum Error {
     IoError(io::Error),
 }
 
+/// (Olo) The key a repeat would repeat: the last one that repeats pressed
+/// on a client's keyboard and still down there, with the surface it went
+/// to (`wayland::seat::keyboard`: where every key reaches a client).
+#[cfg(feature = "wayland_frontend")]
+#[derive(Debug, Clone)]
+pub(crate) struct Repeatable {
+    pub(crate) surface: Weak<wayland_server::protocol::wl_surface::WlSurface>,
+    pub(crate) keycode: Keycode,
+    /// Its press's time (the keyboard's clock, milliseconds), and when
+    /// the press was sent on.
+    pub(crate) time: u32,
+    pub(crate) at: std::time::Instant,
+}
+
 pub(crate) struct KbdRc<D: SeatHandler> {
     pub(crate) internal: Mutex<KbdInternal<D>>,
     #[cfg(feature = "wayland_frontend")]
@@ -434,6 +448,12 @@ pub(crate) struct KbdRc<D: SeatHandler> {
     pub(crate) known_kbds: Mutex<Vec<Weak<wayland_server::protocol::wl_keyboard::WlKeyboard>>>,
     #[cfg(feature = "wayland_frontend")]
     pub(crate) last_enter: Mutex<Option<Serial>>,
+    /// (Olo) The compositor makes the repeats for the keyboards that take
+    /// them (`KeyboardHandle::make_repeats`), and the key it would repeat.
+    #[cfg(feature = "wayland_frontend")]
+    pub(crate) makes_repeats: std::sync::atomic::AtomicBool,
+    #[cfg(feature = "wayland_frontend")]
+    pub(crate) repeatable: Mutex<Option<Repeatable>>,
     pub(crate) span: tracing::Span,
     #[cfg(feature = "wayland_frontend")]
     pub(crate) active_keymap: RwLock<KeymapFileId>,
@@ -484,6 +504,12 @@ impl<'a> KeysymHandle<'a> {
     /// If the key does not have exactly one keysym, returns [`keysyms::KEY_NoSymbol`].
     pub fn modified_sym(&self) -> Keysym {
         self.xkb.lock().unwrap().state.key_get_one_sym(self.keycode)
+    }
+
+    /// (Olo) Whether the keymap has this key repeat while it's held
+    /// (letters and arrows do; modifiers and locks don't).
+    pub fn repeats(&self) -> bool {
+        self.xkb.lock().unwrap().keymap.key_repeats(self.keycode)
     }
 
     /// Returns the syms for the underlying keycode with all modifications by the current keymap state applied.
@@ -803,6 +829,10 @@ impl<D: SeatHandler + 'static> KeyboardHandle<D> {
                 known_kbds: Mutex::new(Vec::new()),
                 #[cfg(feature = "wayland_frontend")]
                 last_enter: Mutex::new(None),
+                #[cfg(feature = "wayland_frontend")]
+                makes_repeats: std::sync::atomic::AtomicBool::new(false),
+                #[cfg(feature = "wayland_frontend")]
+                repeatable: Mutex::new(None),
                 #[cfg(feature = "wayland_frontend")]
                 active_keymap: RwLock::new(active_keymap),
                 span,
@@ -1389,7 +1419,8 @@ impl<D: SeatHandler + 'static> KeyboardHandle<D> {
                 continue;
             };
             if kbd.version() >= 4 {
-                kbd.repeat_info(rate, delay);
+                // (Olo) No rate for a keyboard whose repeats come from here.
+                kbd.repeat_info(self.arc.client_rate(&kbd, rate), delay);
             }
         }
     }

@@ -173,6 +173,15 @@ pub trait SeatHandler: Sized + 'static {
     /// Callback that will be notified whenever the keyboard led state changes.
     fn led_state_changed(&mut self, _seat: &Seat<Self>, _led_state: LedState) {}
 
+    /// (Olo) The key the compositor would repeat changed
+    /// (`KeyboardHandle::repeatable`: another key pressed, the repeating
+    /// one released, the keyboard's focus gone): the moment to start,
+    /// restart or stop the repeating. Only where the compositor makes the
+    /// repeats (`KeyboardHandle::make_repeats`). Called while a key is on
+    /// its way to its client, with the keyboard's own state locked: ask
+    /// the keyboard nothing here but `repeatable`.
+    fn repeatable_key_changed(&mut self, _seat: &Seat<Self>) {}
+
     /// Provides the implicit pointer grab for clicks
     ///
     /// When the user presses a pointer button, an implicit pointer grab is installed. If your

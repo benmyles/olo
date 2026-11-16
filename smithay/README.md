@@ -3,9 +3,8 @@
 The compositor library app_server is built on. It began as Smithay 0.7.0
 at upstream's commit 24647fc8d00131eb7f388efed26e35ea316b0018 (Smithay's
 authors, under the MIT licence, [smithay/LICENSE.txt](smithay/LICENSE.txt);
-https://github.com/Smithay/smithay), and is Olo's own now, like
-[GPUI](../gpui/README.md): changed as Olo needs, never synced with
-upstream.
+https://github.com/Smithay/smithay), and is Olo's own now: changed as
+Olo needs, never synced with upstream.
 
 - `smithay`: the library (`src/`, with its `build.rs` and the two C
   probes it compiles to see what the system's gbm can do).
@@ -72,3 +71,10 @@ What Olo changed, so far (see "Every frame on time" in
   dev-dependency with `renderer_test`, the dummy renderer they use
   (`cfg(doctest)` doesn't reach the library, rust-lang/rust#67295).
   Only test builds get it.
+- The seat is version 10, and the compositor can make a held key's
+  repeats (`KeyboardHandle::make_repeats`, `repeatable`, `send_repeat`;
+  `SeatHandler::repeatable_key_changed`): a keyboard of that version is
+  told a repeat rate of 0 and sent key events in the "repeated" state;
+  what would repeat is kept where every key reaches a client
+  (`KeyboardTarget for WlSurface`). app_server's `key_repeat.rs` is the
+  timer (HACKING, "Key repeat").
