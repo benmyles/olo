@@ -471,7 +471,9 @@ impl Live {
     }
 
     fn tell(&mut self, proxy: &olo_kit::Proxy) {
-        let wanted = if self.paused { Vec::new() } else { self.widgets.clone() };
+        // (An app's widgets aren't read: what the app gives is drawn,
+        // `crate::glances`.)
+        let wanted: Vec<Widget> = if self.paused { Vec::new() } else { self.widgets.iter().filter(|w| !matches!(w.measure, Measure::App { .. })).cloned().collect() };
         if !wanted.iter().any(|w| matches!(w.measure, Measure::Pool { .. })) {
             self.pool_watch = None;
         }
@@ -753,10 +755,13 @@ pub fn rows(widgets: &[Widget]) -> Vec<Vec<Widget>> {
 }
 
 /// A row's height: a widget on its own by its size (one with only words
-/// is shorter); side by side, the tallest's (each its label over its
-/// drawing).
-pub fn row_height(row: &[Widget]) -> f32 {
+/// is shorter; an app's, `app`, as tall as what it shows); side by side,
+/// the tallest's (each its label over its drawing).
+pub fn row_height(row: &[Widget], app: &dyn Fn(&Widget) -> f32) -> f32 {
     if let [w] = row {
+        if matches!(w.measure, Measure::App { .. }) {
+            return app(w);
+        }
         return match (w.size, w.look == Look::Number) {
             (Size::Small, _) => 24.0,
             (Size::Medium, true) => 28.0,
@@ -1082,6 +1087,30 @@ impl View for Layer {
             let placed = shelf.0.borrow().clone();
             let (t, p) = (clock(), theme::palette());
             for Placed { widget, spot } in placed {
+                // An app's: what it gives, drawn by the kit.
+                if matches!(widget.measure, Measure::App { .. }) {
+                    let m = model.read();
+                    let Some(gl) = m.glances.now(widget.id) else { continue };
+                    let r = match spot {
+                        Spot::Tray(r) => {
+                            olo_kit::glance::paint_tray(g, r, gl);
+                            r
+                        }
+                        Spot::Row(r) => {
+                            olo_kit::glance::paint(g, r, gl, widget.size, crate::TRAY_TEXT);
+                            r
+                        }
+                        Spot::Cell(r) => {
+                            olo_kit::glance::paint_cell(g, r, gl);
+                            r
+                        }
+                    };
+                    agent::record(
+                        g,
+                        agent::Node { role: "Meter", name: Some(label(&widget).into()), value: Some(gl.tip.clone().into()), bounds: r, enabled: true, clickable: true, ..Default::default() },
+                    );
+                    continue;
+                }
                 let s = model.read().live.shown(&widget);
                 let r = match spot {
                     Spot::Tray(r) => {

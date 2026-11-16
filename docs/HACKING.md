@@ -1491,6 +1491,11 @@ is drawn. Deskbar's widgets' tips are cards (see Deskbar);
 `widgets::dashboard::Card`, a box in a dashboard's grid: a tip's card
 is a window's whole.)
 
+An app's widget in Deskbar is drawn by the kit too (`olo_kit::glance`:
+a headline, a note, slots across or spans down, from what the app
+gives, `olo_protocol::glance`), and served by it (`glance::serve`: the
+provider's loop). See Deskbar, "An app's widgets", and the Olo Book.
+
 ### Text cut short (`olo_kit::cut`)
 
 Text that doesn't show in full shows whole in the kit's tip (`tip`)
@@ -16221,6 +16226,78 @@ to go back to that; where, look, size, name and value shown, beside
 the one before it, how often, how far back, colour), each changing the
 Deskbar at once; Defaults has none.
 
+### An app's widgets (glances.rs; olo_protocol::glance, olo_kit::glance)
+
+Ben, 2026-11-15: "the weather app should make available a deskbar
+widget that is customizable and can show useful stuff ... it should be
+able to render a customizable type of widget e.g. that shows visually
+with rain/clouds/sun etc ... make sure it looks beautiful and any new
+support/functionality you need try to add to the kit in a way that can
+be reusable for future apps that want to provide rich olo widgets for
+the deskbar". BeOS's replicants were an app's own view running in
+Deskbar; here the app says what to show and Olo draws it (as iOS's
+WidgetKit), so it looks like Olo's, agents read it, and it needs the
+app only to make what's next.
+
+* **What apps give** (`olo_protocol::glance::PROVIDERS`): each app's
+  program and its no-window argument (`olo-weather --glance`), its
+  kinds (`Kind`: an id, its name in Preferences' menus, a line about
+  it) and their options (`Opt`: a menu of values, the first the one it
+  comes with). A widget of one is `Measure::App { app, glance,
+  options }` (`Measure::app`, `same_kind`; `kinds()` lists them after
+  the meters). Weather gives Now, Next Hours and Next Days.
+* **What one shows**: a `Timeline` of `Entry`s, each a `Glance` from a
+  minute on (`Timeline::at`): a headline (icon, value, title, detail),
+  a note, a `Body` (`Slots` across: label, icon, value, level, drawn
+  as small columns in the body's hue; `Spans` down: label, icon, low
+  to high on the body's scale, coloured cold to warm, blue to orange in
+  the look's hues), and its tip in words.
+* **How it gets there**: a folder a display, `$XDG_RUNTIME_DIR/
+  olo-glance/DISPLAY/` (`glance::dir`; a folder of its own: a watch
+  follows a folder's parent too, and the runtime folder changes
+  several times a second, each a wake for nothing: the provider woke
+  4 times a second in it, 0 out of it). Deskbar writes each app's
+  `Requests` (`APP.requests.json`, only as they change: each widget's
+  id, kind, options and size) and starts its provider with
+  `OLO_GLANCE_DIR` set, on a worker: one from before (a lock, its pid
+  in it) is ended first, so after an upgrade the provider is the new
+  program; ended by itself, it's started again a minute after it last
+  started at the soonest. The provider (`olo_kit::glance::serve`)
+  holds the lock, makes every widget asked for, writes each one's
+  timeline (`ID.json`, whole: a rename) only when it changed, and
+  sleeps until the requests or one of the app's paths change or the
+  time it asked for comes; none asked for, it ends. Deskbar follows
+  the folder (one inotify watch; its own writes in it aren't news to
+  the provider), reads a widget's file as it changes, and switches each
+  to its entry for the time as its clock's minute comes
+  (`Glances::turned`: the layer drawn again only if one turned).
+* **Drawing** (`olo_kit::glance`, the same in a preview or an app's
+  window): in a row of its own, as tall as what it shows
+  (`glance::height`: small, one line, its icon, value and title;
+  medium and large, the headline (a 32-point icon, 40 large, the value
+  at 21 points, 26 large, the title on its baseline, the detail under),
+  the note, the body); beside other widgets, its icon and value over
+  its title (`paint_cell`); in the tray, its icon (`paint_tray`). Words
+  in the panel's text, quieter ones in `style::secondary_text`; icons
+  at their device size, each column and bar on whole device pixels.
+  Each line is recorded for agents as a label, each slot and span as a
+  list item with its value ("14, 46°, 60%"; "Tue, 40° to 52°"), and
+  the widget as a Meter whose value is its tip. Its tip is a card
+  (`Glances::card`: its title and detail, its value, the body as rows,
+  the note); a click opens its app (`glances::opens`); the other
+  button, its app and Deskbar Preferences.
+* **Preferences ▸ Deskbar**: the Add menu has each app's kinds ("Weather:
+  Next Hours"); an app widget's settings are what it shows, its kind's
+  line about it, a menu for each of its options, its name, where, its
+  size, beside the one before it (not look, words shown, how often or
+  colour: it looks as the app made it). Its list row: "Weather: Next
+  Hours, the next 6 hours, chance of rain, under the tray".
+* **Cost** (release, 2× headless, 60 s idle, `tools/dev/cost`): Deskbar
+  with Weather's three widgets, 0.0% of a core, 1 wakeup a second, 8
+  frames a minute at 762 µs (no widgets: 9 at 712 µs, 3 wakeups a
+  second, its status watches in the runtime folder); the provider,
+  0.0%, 0 wakeups a second, 14 MB resident.
+
 ## The lock screen (crates/app_server/src/lock.rs, apps/lock)
 
 `lock_screen()` (Ctrl+⌘Q, Deskbar ▸ Lock Screen, `Request::Lock`, the
@@ -18026,6 +18103,29 @@ that secret: "The keychain"). Either waits for Passwords to be
 unlocked. The key is held in memory while Weather runs, zeroed when
 dropped, and written nowhere else. With no key, the forecast's place
 says what's needed and offers Give a Key….
+
+**Deskbar's widgets** (`glance.rs`; Ben, 2026-11-15: "the weather app
+should make available a deskbar widget that is customizable and can
+show useful stuff like 3/6/12 hour rain/cloud forecast, 7 day high
+level forecast"): `olo-weather --glance`, started by Deskbar (see
+Deskbar, "An app's widgets"), no window, for the place chosen in
+Weather in its units. Now: the sky and temperature, feels like and
+the wind, and the next hour short ("Rain stops in 27 min",
+`short_sentence`), else the day's high and low. Next Hours (3, 6 or
+12; the bars the chance of rain, the cloud cover or nothing): six
+times across from now on the place's half hours, hours or two hours
+(`next_boundary`, its own clock: a half-hour zone's hours too), each
+its sky, temperature and level; over them what the rain does ("Rain
+until about 15:00", "Dry for the next 6 hours") or the cover's range.
+Next Days (3, 5 or 7): each day's sky and its low to its high. A
+timeline each, an entry at each of its times for 24 hours (as far as
+the forecast goes), so it moves on with nothing run. Made again as
+Weather's settings or cache change (the place, its name, the units, a
+fetch by the app), fetched as the app does when the forecast is 30
+minutes old (the cache shared: whichever fetched, the other uses it),
+5 minutes after an unreachable try and 15 after another failure; with
+no place or key, a widget that says so. The demo's forecast with
+provider "demo" (tests).
 
 **A place's own name** (Ben, 2026-11-15: "in the weather app i should
 be able to set custom names for places i've added"): File ▸ Rename

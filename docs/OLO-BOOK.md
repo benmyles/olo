@@ -941,6 +941,53 @@ row.child(chosen::bar("chosen", &counts, true,
 // …and in View::command: Choice::of_command(c) for the menu's Choose items.
 ```
 
+**A widget in Deskbar from your app** (`olo_protocol::glance`,
+`olo_kit::glance`; Ben, 2026-11-15: "any new support/functionality you
+need try to add to the kit in a way that can be reusable for future
+apps that want to provide rich olo widgets for the deskbar"). BeOS let
+an app put a live view of its own in the Deskbar (a replicant: the
+app's own `BView`, archived and run in Deskbar). Olo keeps the idea, a
+live thing of the app's in the bar, and takes the modern way of it (as
+iOS's WidgetKit does): the app says *what* to show, from each time on,
+and Olo draws it. So every app's looks like Olo's at every scale, in
+every look, agents read it as it shows, and it goes on with the app not
+running: a forecast moves on hour by hour with nothing run.
+
+- Declare what you give: a `Provider` in `glance::PROVIDERS` (your app,
+  its program and the argument that runs it with no window), each
+  `Kind` with its `Opt`ions (a choice each, the first what it comes
+  with). Preferences ▸ Deskbar offers them in its Add menu, with a menu
+  for each option, and keeps the widget as `Measure::App`.
+- Give what to show: a `Timeline` of `Entry`s, each a `Glance` from a
+  time on (minutes: Deskbar's clock switches them as it ticks). A
+  glance is a headline (an icon, a value, a title, a detail), a note,
+  and a body: `Body::Slots` (times across, each a label, an icon, a
+  value and a level) or `Body::Spans` (rows down, each a low to a high
+  on one scale), and its tip in words. Say it short: Deskbar is 172
+  points wide; the tip says it in full.
+- Serve it: your program, started with your `arg`, calls
+  `olo_kit::glance::serve(app, watched, make)`. Deskbar writes what it
+  wants of you (`Requests`: each widget's id, kind, options and size);
+  `make` returns each one's timeline and when to make them again; the
+  kit writes each where Deskbar reads it, only when it changed, and
+  sleeps until the requests change, a path in `watched` does (your
+  settings, your cache), or that time comes. It ends when Deskbar wants
+  nothing of you. Deskbar starts it while it's wanted (afresh as it
+  starts, so an upgrade's is the new program; again if it ends, once a
+  minute at most).
+- The kit draws it (`glance::paint`, `paint_cell`, `paint_tray`,
+  `height`) anywhere else too: a preview, your own window.
+
+```rust
+// main.rs: no window when Deskbar starts you for its widgets.
+if args.first().is_some_and(|a| a == "--glance") {
+    return olo_kit::glance::serve("weather", vec![olo_kit::config_dir()], |asked| {
+        let made = asked.iter().map(|r| (r.widget, timeline(r))).collect();
+        (made, Some(Duration::from_secs(30 * 60)))
+    });
+}
+```
+
 ## Best practices
 
 Each of these is here because breaking it cost a bug or a slow frame.

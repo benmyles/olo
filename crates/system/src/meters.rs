@@ -225,6 +225,12 @@ pub fn describe(measure: &Measure, sources: &Sources) -> String {
             };
             format!("Token Pool: {what}{how}")
         }
+        // "Weather: Next Hours, the next 6 hours, chance of rain".
+        Measure::App { app, glance, options } => match olo_protocol::glance::kind(app, glance) {
+            Some(k) if k.options.is_empty() => k.menu.to_owned(),
+            Some(k) => format!("{}, {}", k.menu, k.said(options)),
+            None => format!("{app}: {glance}"),
+        },
     }
 }
 
@@ -521,6 +527,8 @@ impl Reader {
                 let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
                 Some(pool_reading(PoolMeters::load().as_ref(), measure, now))
             }
+            // (What an app gives isn't read: `olo_protocol::glance`.)
+            Measure::App { .. } => None,
             Measure::Power => {
                 let Some(bat) = battery_dir() else { return Some(Reading::missing(Unit::Watts, "no battery")) };
                 let status = read(bat.join("status"));

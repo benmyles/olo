@@ -115,6 +115,7 @@ impl Widget {
             Measure::Temperature { .. } => "Temp".into(),
             Measure::Pool { provider, quotas, .. } if quotas.is_empty() => crate::pool::provider_name(provider),
             Measure::Pool { provider, quotas, .. } => format!("{} {}", crate::pool::provider_name(provider), quotas.join(", ")),
+            Measure::App { app, .. } => crate::glance::provider(app).map_or_else(|| app.clone(), |p| p.name.to_owned()),
             m => m.kind_name().into(),
         }
     }
@@ -138,6 +139,7 @@ impl Widget {
                 let name = crate::pool::provider_name(provider);
                 if quotas.is_empty() { name } else { format!("{name} {}", quotas.iter().map(|q| short_quota(q)).collect::<Vec<_>>().join("/")) }
             }
+            Measure::App { .. } => self.default_label(),
         }
     }
 
@@ -215,6 +217,15 @@ pub enum Measure {
         #[serde(default)]
         notify: bool,
     },
+    /// What an app shows (`crate::glance`): app `app`'s widget `glance`
+    /// (one of its kinds) with its options; drawn from what the app gives,
+    /// not read.
+    App {
+        app: String,
+        glance: String,
+        #[serde(default)]
+        options: std::collections::BTreeMap<String, String>,
+    },
 }
 
 fn yes() -> bool {
@@ -266,6 +277,20 @@ impl Measure {
         Measure::Pool { provider: provider.to_owned(), quotas: quotas.iter().map(|q| q.to_string()).collect(), view: PoolView::Together, used: false, count_off: false, warn: true, notify: false }
     }
 
+    /// App `app`'s widget `glance`, its options as they come.
+    pub fn app(app: &str, glance: &str) -> Measure {
+        let options = crate::glance::kind(app, glance).map(|k| k.defaults()).unwrap_or_default();
+        Measure::App { app: app.to_owned(), glance: glance.to_owned(), options }
+    }
+
+    /// The same kind as `other` (an app's widgets each a kind of its own).
+    pub fn same_kind(&self, other: &Measure) -> bool {
+        match (self, other) {
+            (Measure::App { app: a, glance: g, .. }, Measure::App { app: b, glance: h, .. }) => a == b && g == h,
+            _ => std::mem::discriminant(self) == std::mem::discriminant(other),
+        }
+    }
+
     /// Its kind's name ("CPU"), for menus and labels.
     pub fn kind_name(&self) -> &'static str {
         match self {
@@ -278,6 +303,7 @@ impl Measure {
             Measure::Temperature { .. } => "Temperature",
             Measure::Power => "Power",
             Measure::Pool { .. } => "Token Pool",
+            Measure::App { app, glance, .. } => crate::glance::kind(app, glance).map_or("App", |k| k.menu),
         }
     }
 
@@ -294,6 +320,7 @@ impl Measure {
             Measure::Power => Hue::Yellow,
             Measure::Pool { provider, .. } if provider == "codex" => Hue::Teal,
             Measure::Pool { .. } => Hue::Brown,
+            Measure::App { .. } => Hue::Blue,
         }
     }
 
@@ -310,6 +337,9 @@ impl Measure {
             Measure::Power,
             Measure::pool("claude", &[]),
         ]
+        .into_iter()
+        .chain(crate::glance::PROVIDERS.iter().flat_map(|p| p.kinds.iter().map(|k| Measure::app(p.app, k.id))))
+        .collect()
     }
 }
 

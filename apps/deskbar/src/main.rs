@@ -27,6 +27,7 @@
 //! reading draws only them.
 
 mod approve;
+mod glances;
 mod sni;
 mod status;
 mod widgets;
@@ -165,6 +166,10 @@ enum Msg {
     /// What there is to measure (the widgets' GPUs, disks and sensors by
     /// name).
     Sources(olo_system::meters::Sources),
+    /// An app widget's timeline written (`glances`): read again.
+    Glances,
+    /// An app's widget provider ended (`glances`).
+    GlanceEnded(&'static str),
 
     // A bar's (or the model's own), to the app.
     /// The model changed under a bar's hand: every bar draws again.
@@ -198,6 +203,8 @@ impl Msg {
             Msg::Meters(_) => "meters",
             Msg::Top(..) => "top",
             Msg::Sources(_) => "sources",
+            Msg::Glances => "glances",
+            Msg::GlanceEnded(_) => "glance ended",
             Msg::Changed => "changed",
             Msg::Tick => "tick",
             Msg::Displays => "displays",
@@ -393,6 +400,8 @@ struct Deskbar {
     tray_pictures: HashMap<(String, u64, u32), Option<Arc<RenderImage>>>,
     /// The live widgets, what they've read, and their worker.
     live: widgets::Live,
+    /// What apps give it to show (`glances`).
+    glances: glances::Glances,
     /// Token Pool widgets' notifications (made as the first is shown),
     /// one a widget's measure, each updated in place.
     pool_notes: Option<(olo_kit::notify::Notifier, HashMap<String, olo_kit::notify::NoteId>)>,
@@ -1550,6 +1559,7 @@ impl Deskbar {
                 self.menu_icons = s.menu_icons;
                 self.tiling = s.tiling;
                 self.keys = s.keys;
+                self.glances.set(&s.widgets, &proxy);
                 self.live.set(s.widgets, &proxy);
                 if seconds {
                     return Taken::Seconds(self.clock.show_seconds);
@@ -1582,6 +1592,17 @@ impl Deskbar {
                 return Taken::Retip(self.retip());
             }
             Msg::Sources(sources) => self.sources = sources,
+            // (Drawn again only if one changed: a timeline's shape may have,
+            // so the bars lay out again.)
+            Msg::Glances => {
+                if !self.glances.reread() {
+                    return Taken::Nothing;
+                }
+            }
+            Msg::GlanceEnded(app) => {
+                self.glances.ended(app, &proxy);
+                return Taken::Nothing;
+            }
             Msg::Tray(tray) => {
                 // Pictures no item has any more go.
                 self.tray_pictures.retain(|(key, serial, _), _| tray.items.iter().any(|i| i.key == *key && i.serial == *serial));
@@ -1612,7 +1633,15 @@ impl Deskbar {
     /// Widget `id`'s tip, a card (`widgets::Live::card`).
     fn card(&self, id: u32) -> Option<std::rc::Rc<olo_kit::card::Card>> {
         let w = self.live.widgets.iter().find(|w| w.id == id)?;
+        if matches!(w.measure, olo_protocol::deskbar::Measure::App { .. }) {
+            return Some(std::rc::Rc::new(self.glances.card(w)));
+        }
         Some(std::rc::Rc::new(self.live.card(w, &self.sources)))
+    }
+
+    /// Widget `w`'s tip in words: an app's from what it gives.
+    fn widget_tip(&self, w: &olo_protocol::deskbar::Widget) -> String {
+        if matches!(w.measure, olo_protocol::deskbar::Measure::App { .. }) { self.glances.tip(w) } else { self.live.tip(w, &self.sources) }
     }
 
     /// A network behind a captive portal: said in a notification as it's
@@ -1692,6 +1721,8 @@ enum Taken {
     Meters(Option<u32>),
     /// That tip alone.
     Retip(Option<u32>),
+    /// Nothing to draw.
+    Nothing,
 }
 
 /// Whether `app_id` is one of ours that opens a new window when asked.
@@ -2719,7 +2750,7 @@ impl Deskbar {
         // tray's left.
         for w in tray_widgets {
             let key = format!("widget:{}", w.id);
-            let tip_text = self.live.tip(&w, &self.sources);
+            let tip_text = self.widget_tip(&w);
             // (Drawn on the layer over the bar.)
             let (r, h) = tray_item(&mut d, &key, tip_text, Box::new(|_g, _| {}));
             d.placed.push(widgets::Placed { widget: w, spot: widgets::Spot::Tray(r) });
@@ -3540,7 +3571,8 @@ impl Deskbar {
             return y;
         }
         let top = y;
-        let height: f32 = rows.iter().map(|row| widgets::row_height(row)).sum();
+        let app_height = |w: &olo_protocol::deskbar::Widget| self.glances.height(w);
+        let height: f32 = rows.iter().map(|row| widgets::row_height(row, &app_height)).sum();
         let under_tray = place == olo_protocol::deskbar::Place::Top;
         let section = rect(0.0, top, WIDTH, height + TRAY_FOOT);
         d.paint(move |g| {
@@ -3553,13 +3585,13 @@ impl Deskbar {
         });
         let mut y = top + TRAY_FOOT / 2.0;
         for row in rows {
-            let h = widgets::row_height(&row);
+            let h = widgets::row_height(&row, &app_height);
             let r = rect(0.0, y, WIDTH, h);
             y += h;
             let spots: Vec<widgets::Spot> = if row.len() == 1 { vec![widgets::Spot::Row(r)] } else { widgets::cells(r, row.len(), TRAY_TEXT).into_iter().map(widgets::Spot::Cell).collect() };
             for (w, spot) in row.into_iter().zip(spots) {
                 let key = format!("widget:{}", w.id);
-                let tip_text = self.live.tip(&w, &self.sources);
+                let tip_text = self.widget_tip(&w);
                 let at = match spot {
                     widgets::Spot::Row(r) | widgets::Spot::Tray(r) => r,
                     // (A cell's hit takes in half the gap at each side;
@@ -3579,17 +3611,18 @@ impl Deskbar {
     /// menu with it and Deskbar's preferences.
     fn widget_hit(&self, h: Element, key: &str, r: Bounds<Pixels>, view: &ViewRef<BarView>, model: &Model) -> Element {
         let (m, v, key) = (model.clone(), view.clone(), key.to_owned());
-        let pool = key
-            .strip_prefix("widget:")
-            .or_else(|| key.strip_prefix("tray:widget:"))
-            .and_then(|id| id.parse::<u32>().ok())
-            .and_then(|id| self.live.widgets.iter().find(|w| w.id == id))
-            .is_some_and(|w| matches!(w.measure, olo_protocol::deskbar::Measure::Pool { .. }));
-        let (opens, name) = if pool { ("run:olo-pool", "Token Pool") } else { ("run:olo-activity", "Activity Monitor") };
+        let widget = key.strip_prefix("widget:").or_else(|| key.strip_prefix("tray:widget:")).and_then(|id| id.parse::<u32>().ok()).and_then(|id| self.live.widgets.iter().find(|w| w.id == id));
+        let pool = widget.is_some_and(|w| matches!(w.measure, olo_protocol::deskbar::Measure::Pool { .. }));
+        // (An app's widget opens its app.)
+        let (opens, name) = match widget.and_then(glances::opens) {
+            Some((opens, name)) => (opens, name),
+            None if pool => ("run:olo-pool".to_owned(), "Token Pool"),
+            None => ("run:olo-activity".to_owned(), "Activity Monitor"),
+        };
         h.on_any_button(move |e, cx| match button(e) {
-            MouseButton::Left => run(&m, opens, cx),
+            MouseButton::Left => run(&m, &opens, cx),
             MouseButton::Right => {
-                let menu = Menu::new("Widget").item(name, opens).separator().item(olo_kit::app_menu::settings_label("deskbar"), "pref:deskbar");
+                let menu = Menu::new("Widget").item(name, opens.clone()).separator().item(olo_kit::app_menu::settings_label("deskbar"), "pref:deskbar");
                 let mm = m.clone();
                 open_menu(cx, &v, &key, r, menu, move |cmd, cx| run(&mm, cmd, cx));
             }
@@ -3727,7 +3760,15 @@ impl Hub {
         let Ok(m) = message.downcast::<Msg>() else { return };
         tracing::debug!(what = m.name(), "told");
         match *m {
-            Msg::Changed | Msg::Tick => self.tell_bars(|| BarMsg::Changed),
+            Msg::Changed => self.tell_bars(|| BarMsg::Changed),
+            // The clock's minute: the bars, and an app widget's next entry
+            // if one's time came.
+            Msg::Tick => {
+                self.tell_bars(|| BarMsg::Changed);
+                if self.model.read().glances.turned() {
+                    self.tell_bars(|| BarMsg::Meters(None));
+                }
+            }
             Msg::Displays => {
                 self.sync_bars();
                 self.tell_bars(|| BarMsg::Changed);
@@ -3756,6 +3797,7 @@ impl Hub {
                     }
                     Taken::Meters(tip_now) => self.tell_bars(|| BarMsg::Meters(tip_now.clone())),
                     Taken::Retip(tip_now) => self.tell_bars(|| BarMsg::Retip(tip_now.clone())),
+                    Taken::Nothing => {}
                 }
             }
         }
@@ -3844,6 +3886,7 @@ fn main() {
             badges: Vec::new(),
             tray_pictures: HashMap::new(),
             live: widgets::Live::new(),
+            glances: glances::Glances::new(),
             pool_notes: None,
             portal_notes: None,
             portal_told: None,

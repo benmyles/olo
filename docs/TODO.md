@@ -1495,7 +1495,24 @@ something nobody here has is in "Blocked", with what it waits for.
   a rich widget from any app (an app-provided widget kind, its
   settings, drawing it from data the app sends, kept live without
   polling) added to the kit's Deskbar widget support, documented, and
-  used by Weather first.
+  used by Weather first. Done (HACKING "An app's widgets", Weather, the Olo
+  Book): `olo_protocol::glance` (what apps give, timelines),
+  `olo_kit::glance` (drawing, `serve`), Deskbar's `glances.rs`,
+  Preferences' options; Weather's Now, Next Hours and Next Days.
+
+- **The kit's watch wakes for every change in a watched path's
+  folder** (found 2026-11-15, measuring Deskbar's widgets): `watch`
+  follows each path's parent too (for the path coming, going or being
+  replaced), and inotify gives every change in that folder, so a watch
+  of something in the runtime folder wakes its thread for each of the
+  folder's changes (a terminal's tail as it prints, sockets): Deskbar,
+  its status watches there (`status.rs`), 1 to 3 wakeups a second idle
+  in a test session; the glance folder moved into a folder of its own
+  for that (0 a second from 4). To do: watch a path's own inode while it
+  exists (IN_DELETE_SELF, IN_MOVE_SELF, IN_ATTRIB for its last link)
+  and its folder only while it doesn't, or move what's watched in the
+  runtime folder into folders of their own; measure Deskbar before and
+  after.
 
 - **Terminal: AI autocomplete that keeps how a program was started**
   (Ben, 2026-11-15: "when i quit an app in terminal like codex/claude it

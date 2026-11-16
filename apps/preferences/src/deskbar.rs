@@ -7,7 +7,9 @@
 //! order beside the chosen one's settings: what it measures and which
 //! (a GPU, a disk, an interface, a sensor), its own name, where, its
 //! look and size, its words, how often it's read, how far back its graph
-//! looks, its colour. Each change shows in the Deskbar at once.
+//! looks, its colour; an app's widget (Weather's: `olo_protocol::glance`),
+//! its kind's options, where and how big. Each change shows in the
+//! Deskbar at once.
 
 use std::sync::{Arc, Mutex};
 
@@ -69,9 +71,13 @@ const EVERY: [(u32, &str); 8] =
     [(250, "¼ second"), (500, "½ second"), (1000, "1 second"), (2000, "2 seconds"), (5000, "5 seconds"), (10_000, "10 seconds"), (30_000, "30 seconds"), (60_000, "1 minute")];
 const SPANS: [(u32, &str); 7] = [(30, "30 seconds"), (60, "1 minute"), (120, "2 minutes"), (300, "5 minutes"), (600, "10 minutes"), (1800, "30 minutes"), (3600, "1 hour")];
 
-/// What a widget is, said in its list row: "CPU, a graph under the tray".
+/// What a widget is, said in its list row: "CPU, a graph under the tray";
+/// an app's, "Weather: Next Hours, the next 6 hours, chance of rain, under
+/// the tray".
 fn summary(w: &Widget, shares: bool, sources: &Sources) -> String {
+    let app = matches!(w.measure, Measure::App { .. });
     let look = match w.look {
+        _ if app => "",
         Look::Graph => "a graph",
         Look::Bars => "bars",
         Look::Meter => "a meter",
@@ -86,6 +92,9 @@ fn summary(w: &Widget, shares: bool, sources: &Sources) -> String {
     let beside = if shares { ", beside the one before" } else { "" };
     // (Its own name first: "Build box: CPU, a graph under the tray".)
     let named = w.own_name().map(|n| format!("{n}: ")).unwrap_or_default();
+    if app {
+        return format!("{named}{}, {place}{beside}", meters::describe(&w.measure, sources));
+    }
     format!("{named}{}, {look} {place}{beside}", meters::describe(&w.measure, sources))
 }
 
@@ -183,7 +192,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                         })),
                 ),
         );
-        ui.note("Each shows in the Deskbar as it changes. Click one there for Activity Monitor (a Token Pool one, Token Pool).");
+        ui.note("Each shows in the Deskbar as it changes. Click one there for Activity Monitor (a Token Pool one, Token Pool; an app's, its app).");
     });
     let right = ui.collect(|ui| match selected.and_then(|i| widgets.get(i)) {
         Some(w) => editor(ui, w, selected.is_some_and(|i| widgets[..i].iter().any(|o| o.place == w.place)), &sources),
@@ -208,7 +217,7 @@ fn editor(ui: &mut Ui, w: &Widget, after: bool, sources: &Sources) {
     ui.bbox("Widget", |ui| {
         // What it measures: its kind, and which of it.
         let kinds: Vec<(usize, &str)> = Measure::kinds().iter().enumerate().map(|(i, k)| (i, k.kind_name())).collect();
-        let kind_now = Measure::kinds().iter().position(|k| std::mem::discriminant(k) == std::mem::discriminant(&w.measure)).unwrap_or(0);
+        let kind_now = Measure::kinds().iter().position(|k| k.same_kind(&w.measure)).unwrap_or(0);
         ui.choose(
             "widget-kind",
             &kinds,
@@ -217,7 +226,7 @@ fn editor(ui: &mut Ui, w: &Widget, after: bool, sources: &Sources) {
             move |s, i| {
                 if let Some(w) = s.deskbar.get_mut(id)
                     && let Some(k) = Measure::kinds().into_iter().nth(i)
-                    && std::mem::discriminant(&k) != std::mem::discriminant(&w.measure)
+                    && !k.same_kind(&w.measure)
                 {
                     w.hue = Some(k.hue());
                     w.measure = k;
@@ -243,12 +252,18 @@ fn editor(ui: &mut Ui, w: &Widget, after: bool, sources: &Sources) {
         let name = ui.control_of(&field_id).label("Name:").divider(DIVIDER);
         ui.add(name);
         ui.choose("widget-place", &Place::ALL.map(|p| (p, p.name())), &w.place, |f| f.label("Where:").divider(DIVIDER), move |s, v| change(id, move |w| w.place = v)(s));
-        ui.choose("widget-look", &Look::ALL.map(|l| (l, l.name())), &w.look, |f| f.label("Look:").divider(DIVIDER), move |s, v| change(id, move |w| w.look = v)(s));
+        // (An app's widget looks as its app made it: where and how big.)
+        let app = matches!(w.measure, Measure::App { .. });
+        if !app {
+            ui.choose("widget-look", &Look::ALL.map(|l| (l, l.name())), &w.look, |f| f.label("Look:").divider(DIVIDER), move |s, v| change(id, move |w| w.look = v)(s));
+        }
         let in_tray = w.place == Place::Tray;
         ui.enabled_if(!in_tray, |ui| {
             ui.choose("widget-size", &Size::ALL.map(|z| (z, z.name())), &w.size, |f| f.label("Size:").divider(DIVIDER), move |s, v| change(id, move |w| w.size = v)(s));
-            ui.check("Show its name", w.label, move |s, v| change(id, move |w| w.label = v)(s));
-            ui.check("Show its value", w.value, move |s, v| change(id, move |w| w.value = v)(s));
+            if !app {
+                ui.check("Show its name", w.label, move |s, v| change(id, move |w| w.label = v)(s));
+                ui.check("Show its value", w.value, move |s, v| change(id, move |w| w.value = v)(s));
+            }
         });
         // (Side by side, each small: its name over its drawing.)
         ui.enabled_if(!in_tray && after, |ui| {
@@ -256,6 +271,10 @@ fn editor(ui: &mut Ui, w: &Widget, after: bool, sources: &Sources) {
         });
         if in_tray {
             ui.note("In the tray it's an icon's size; its name and value are in its tip.");
+        }
+        if app {
+            ui.note(if in_tray { "Its tip says the rest." } else { "Small: one line. Medium and Large: all it shows, Large's sky bigger." });
+            return;
         }
         ui.choose("widget-every", &EVERY, &w.every_ms, |f| f.label("Update every:").divider(DIVIDER), move |s, v| change(id, move |w| w.every_ms = v)(s));
         ui.enabled_if(w.look == Look::Graph, |ui| {
@@ -362,6 +381,32 @@ fn measure_options(ui: &mut Ui, w: &Widget, sources: &Sources, divider: f32) {
         Measure::Pool { provider, quotas, view, used, count_off, warn, notify } => {
             pool_options(ui, id, provider, quotas, *view, [*used, *count_off, *warn, *notify], w.look == Look::Heatmap, sources, divider)
         }
+        Measure::App { app, glance, options } => app_options(ui, id, app, glance, options, divider),
+    }
+}
+
+/// An app widget's options, as its kind offers them (`olo_protocol::glance`):
+/// a menu each.
+fn app_options(ui: &mut Ui, id: u32, app: &str, glance: &str, options: &std::collections::BTreeMap<String, String>, divider: f32) {
+    let Some(kind) = olo_protocol::glance::kind(app, glance) else { return };
+    ui.note(kind.about);
+    for opt in kind.options {
+        let values: Vec<(String, &str)> = opt.values.iter().map(|(v, name)| ((*v).to_owned(), *name)).collect();
+        let now = kind.value(options, opt.id).to_owned();
+        let oid = opt.id;
+        ui.choose(
+            &format!("widget-{app}-{oid}"),
+            &values,
+            &now,
+            |f| f.label(opt.label).divider(divider),
+            move |s, v: String| {
+                if let Some(w) = s.deskbar.get_mut(id)
+                    && let Measure::App { options, .. } = &mut w.measure
+                {
+                    options.insert(oid.to_owned(), v);
+                }
+            },
+        );
     }
 }
 

@@ -114,7 +114,7 @@ struct Kept {
     raw: serde_json::Value,
 }
 
-fn cache_dir() -> PathBuf {
+pub fn cache_dir() -> PathBuf {
     std::env::var_os("XDG_CACHE_HOME")
         .filter(|d| !d.is_empty())
         .map(PathBuf::from)

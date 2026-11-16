@@ -19,6 +19,7 @@ pub mod dnd;
 pub mod due;
 pub mod editor;
 pub mod file_panel;
+pub mod glance;
 pub mod icons;
 mod kept;
 pub mod keys;

@@ -20,6 +20,7 @@ pub mod color;
 pub mod deskbar;
 pub mod diskbackup;
 pub mod doctor;
+pub mod glance;
 pub mod keyboards;
 pub mod mice;
 pub mod notifications;

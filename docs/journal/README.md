@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Deskbar: Weather's widgets, dark
+
+*17:20* — The same three widgets in the dark look: the day spans' colours run cold to warm in its own hues (dark, 2x).
+
+![Deskbar: Weather's widgets, dark](2026-11-15/172039-deskbar-weather-s-widgets-dark.png)
+
+### Deskbar: Weather's widgets
+
+*17:20* — Weather gives Deskbar three widgets (Preferences > Deskbar, Add): Now (the sky and temperature, feels like and wind, what the next hour does), Next Hours (3, 6 or 12: six times across, each its sky and temperature, the chance of rain or the cloud as small columns) and Next Days (3, 5 or 7: each day's sky and its low to its high, cold to warm). Any app can give Deskbar widgets this way: it says what to show from each time on, and Olo draws it, so it goes on hour by hour with nothing running (light, 2x).
+
+![Deskbar: Weather's widgets](2026-11-15/172036-deskbar-weather-s-widgets.png)
+
 ### Terminal: a resume line with the options it was started with
 
 *16:43* — A program started with options (here a stand-in codex, --dangerously-bypass-approvals-and-sandbox) prints how to resume without them; typing co suggests the resume with them carried over, learned from how the person runs their programs (which options take a value, which they always give it, whether they carry them), not a rule for any program. New commands are learned within a second (light, 2x).

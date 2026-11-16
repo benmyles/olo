@@ -25,6 +25,7 @@
 mod assistant;
 mod demo;
 mod dialogs;
+mod glance;
 mod key;
 mod model;
 mod places;
@@ -836,6 +837,10 @@ fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|a| a == "--print") {
         return print(&args);
+    }
+    // Deskbar's widgets, with no window (`glance`).
+    if args.first().is_some_and(|a| a == "--glance") {
+        return glance::serve();
     }
     if instance::forward(APP_ID, &args) {
         return std::process::ExitCode::SUCCESS;
