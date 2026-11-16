@@ -596,6 +596,25 @@ pub fn made_up(now: u64) -> Snapshot {
 mod tests {
     use super::*;
 
+    /// A test's folder on disk, removed however the test ends (a failed
+    /// one left `/var/tmp/olo-kache-pool-PID` behind, 2026-11-15).
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new(name: &str) -> Scratch {
+            let dir = PathBuf::from(format!("/var/tmp/olo-kache-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            Scratch(dir)
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     /// The daemon's answer as it came (2026-11-15, trimmed).
     #[test]
     fn the_daemons_stats_are_read() {
@@ -657,9 +676,8 @@ mod tests {
     #[test]
     fn the_live_log_is_read_as_it_grows() {
         use std::io::Write as _;
-        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-kache-live-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+        let scratch = Scratch::new("live");
+        let dir = scratch.0.clone();
         let path = dir.join("events.jsonl");
         let now = now_ms();
         let line = |name: &str, at: u64| format!("{}\n", serde_json::json!({"ts": chrono::DateTime::from_timestamp_millis(at as i64).unwrap().to_rfc3339(), "crate_name": name, "result": "miss"}));
@@ -679,7 +697,6 @@ mod tests {
         std::fs::rename(dir.join("new"), &path).unwrap();
         let names: Vec<_> = live.read(&path, 0).iter().map(|e| e.crate_name.clone()).collect();
         assert_eq!(names, ["d"]);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// A switch is as kache has it unset until set.
@@ -693,8 +710,8 @@ mod tests {
     /// Slots held are read from the kernel's locks, never taken.
     #[test]
     fn the_pools_slots_held() {
-        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-kache-pool-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let scratch = Scratch::new("pool");
+        let dir = scratch.0.clone();
         for sub in ["scheduler/permits", "scheduler/tests", "scheduler/waiters"] {
             std::fs::create_dir_all(dir.join(sub)).unwrap();
         }
@@ -709,7 +726,6 @@ mod tests {
         drop(files);
         assert_eq!(pool(&dir, Some(16)).unwrap().compiles, 0, "a lease let go");
         assert!(pool(&dir.join("nowhere"), None).is_none());
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
