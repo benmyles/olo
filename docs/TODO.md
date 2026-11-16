@@ -1511,6 +1511,26 @@ something nobody here has is in "Blocked", with what it waits for.
   30 minutes; the prompt weighing whatever plan is mentioned, assuming
   none; the skydiving suggestion now "How cloudy will it be today?".
 
+- **Power: each SSD by its own name, every kind of SSD** (Ben,
+  2026-11-15, a screenshot of Power ▸ Power Modes, its row "SSD": "the
+  settings for SSD in power shouldn't just assume there's one SSD we
+  should be able to configure the settings independently for all
+  SSD/nvme drives so use their device name or something instead of
+  generic SSD that would only work for one"). Today each NVMe drive is
+  kept by its serial (`Plan::nvme`, `set_nvme`) but named "SSD", or "SSD
+  1", "SSD 2" with more (`apps/preferences/src/gpus.rs`), which says
+  nothing of which is which; and a SATA SSD isn't offered at all. To do:
+  name each row by the drive as people know it (its model made readable,
+  "SK hynix PC801 2 TB", from the controller's model and its size; two
+  alike told apart by where they're mounted or by nvme0/nvme1), the
+  same name in the summary line ("the SK hynix PC801 As It Is") and to
+  agents; every SSD listed (SATA too: its link power, ALPM, as its
+  choices), each set on its own, a drive that's gone keeping its setting
+  for when it's back; the Graphics tab's GPU rows likewise if they're
+  only numbered. Tried with two drives (a test home with fakes of
+  `/sys/class/nvme`), and on this ThinkPad's one (SKHynix
+  HFS002TFM9X179N, 1.9 TB).
+
 - **Kache: an Olo app for the build cache** (Ben, 2026-11-15: "an olo
   native kache frontend app that lets me monitor the status of kache,
   see stats/metrics/charts etc, configure/tweak settings, manage it like
