@@ -85,6 +85,30 @@ something nobody here has is in "Blocked", with what it waits for.
   rate, delivery rate, retransmissions, round-trip time and its
   variance; the link's own: Wi-Fi's rate, signal and band, or the wired
   speed), live as the test runs, and readable by agents.
+- **Other kernel patches that are a win for a desktop, and a Kernel tab
+  for them** (Ben, 2026-11-16: "after you finish the bbr3 work, research
+  what other linux kernel patches are recommended for high performance,
+  responsive desktop operating systems and if you find any that are
+  win-win over the fedora 45 kernel and would be a win for olo users then
+  also integrate them into olo like bbr3 so that olo doctor can offer
+  them. let's also have a new tab in the performance prefs for kernel
+  tuning where this stuff can live and be configured and show any
+  stats/details/data in there about the running patches too"). Research
+  first (what XanMod, CachyOS, Liquorix, Zen and Clear Linux carry over
+  mainline, and what each is shown to do: scheduling, memory reclaim
+  (MGLRU's settings, le9's working-set protection), preemption and the
+  timer rate, I/O, networking), keeping only what is a win with nothing
+  given up against Fedora 45's kernel, measured here and not taken on
+  report; each carried as BBRv3 is (a module or a live patch built for
+  the running kernel by a service of Olo's on `olo-kmod`, never a
+  replaced kernel; settings where a setting is all it takes), offered by
+  Olo Doctor. And Preferences ▸ Performance gets a **Kernel** tab: each
+  of Olo's kernel pieces (BBRv3, the graphics-memory patch, the ones
+  found) with what it is, whether it's in the running kernel, switching
+  it on and off (through its service, as root), and its own live figures
+  (for BBRv3: the connections using it, what they send, their
+  retransmissions and round trips; for the graphics patch: buffers kept
+  in memory).
 - **A notification's click goes to its own window and tab** (Ben,
   2026-11-16: "when a notification appears in olo for a tab within a
   group of windows, e.g. i noticed it with terminal where i'll get a
