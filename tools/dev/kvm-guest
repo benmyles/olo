@@ -1,0 +1,288 @@
+#!/usr/bin/python3
+"""A kernel of its own to test with: this computer's kernel (or another)
+started in a KVM guest, with a root made of this computer's programs.
+
+  tools/dev/kvm-guest [options] SCRIPT [ARG…]
+  tools/dev/kvm-guest [options] -c 'COMMANDS'
+
+For what can't be tried in the person's own kernel: a kernel module of
+Olo's (a bug in one stops the whole computer), a qdisc or a sysctl, a
+network of namespaces. Nothing of the running system is touched and no
+root is needed: the guest is QEMU with KVM (`/dev/kvm`), its kernel the
+running one's image (`/lib/modules/RELEASE/vmlinuz`, so a module built
+for this kernel loads in it), its root an initramfs put together here
+from the programs named (with the libraries they load) and the kernel
+modules named (with what they need), gone when the guest ends.
+
+SCRIPT (bash) runs as the guest's root, in /, with ARGs. Its standard
+output comes out as this tool's (through a serial port of its own, so
+it's clean); its standard error and the kernel's messages go to this
+tool's standard error (`--quiet`: only if it failed). The exit status is
+the script's (124 if the guest outlived --timeout, 125 if it never said
+how it ended: a panic, shown).
+
+  --kernel IMAGE       another kernel (a bzImage); with it, --modules-dir
+  --modules-dir DIR    where that kernel's modules are (a `lib/modules/R`)
+  --module NAME        a kernel module to have loaded, by name (repeat)
+  --ko FILE[:PARAMS]   a module file to have in /ko (not loaded: the
+                       script does, `insmod /ko/NAME.ko`) (repeat)
+  --bin PATH           a program more for /bin (repeat); always there:
+                       bash, cat, ls, sleep, mkdir, mount, grep, sed, awk,
+                       head, tail, sort, wc, date, dmesg, sysctl, insmod,
+                       rmmod, lsmod, ip, tc, ss, ethtool, taskset, ping
+  --file SRC:DEST      a file more, at DEST in the guest (repeat)
+  --cpus N  --mem MB   4 and 2048
+  --timeout SECONDS    300
+  --append 'ARGS'      more for the kernel's command line
+  --keep               leave the initramfs (its path is said)
+
+HACKING, "A kernel to test with".
+"""
+
+import gzip
+import io
+import lzma
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+ALWAYS = ["bash", "cat", "ls", "sleep", "mkdir", "mount", "grep", "sed", "awk", "head", "tail", "sort", "wc", "date", "dmesg", "sysctl", "insmod", "rmmod", "lsmod", "ip", "tc", "ss", "ethtool", "taskset", "ping"]
+
+INIT = r"""#!/bin/bash
+export PATH=/bin HOME=/ TERM=dumb
+mount -t proc proc /proc
+mount -t sysfs sys /sys
+mount -t devtmpfs dev /dev
+mount -t tmpfs tmp /tmp
+mount -t tmpfs run /run
+mount -t debugfs debug /sys/kernel/debug 2>/dev/null
+ip link set lo up
+while read -r m; do
+  insmod "$m" || echo "kvm-guest: $m didn't load" >&2
+done < /modules/order
+cd /
+bash /script "$@" > /dev/ttyS1
+status=$?
+echo "kvm-guest: the script ended $status" > /dev/console
+echo 1 > /proc/sys/kernel/sysrq
+echo o > /proc/sysrq-trigger
+sleep 30
+"""
+
+
+class Cpio:
+    """An initramfs, written as the kernel reads it ("newc")."""
+
+    def __init__(self):
+        self.out = io.BytesIO()
+        self.ino = 0
+        self.seen = set()
+
+    def entry(self, name, mode, data=b"", rdev=(0, 0)):
+        if name in self.seen:
+            return
+        self.seen.add(name)
+        self.ino += 1
+        fields = [self.ino, mode, 0, 0, 1, 0, len(data), 0, 0, rdev[0], rdev[1], len(name) + 1, 0]
+        self.out.write(b"070701" + b"".join(b"%08x" % f for f in fields))
+        self.out.write(name.encode() + b"\0")
+        self.pad()
+        self.out.write(data)
+        self.pad()
+
+    def pad(self):
+        self.out.write(b"\0" * (-self.out.tell() % 4))
+
+    def dir(self, name):
+        parts = name.strip("/").split("/")
+        for i in range(1, len(parts) + 1):
+            self.entry("/".join(parts[:i]), 0o040755)
+
+    def file(self, name, data, mode=0o644):
+        name = name.strip("/")
+        if "/" in name:
+            self.dir(name.rsplit("/", 1)[0])
+        self.entry(name, 0o100000 | mode, data)
+
+    def link(self, name, to):
+        name = name.strip("/")
+        if "/" in name:
+            self.dir(name.rsplit("/", 1)[0])
+        self.entry(name, 0o120777, to.encode())
+
+    def done(self):
+        self.entry("TRAILER!!!", 0)
+        return self.out.getvalue()
+
+
+def libraries(path):
+    """The shared libraries a program loads, by `ldd`."""
+    out = subprocess.run(["ldd", path], capture_output=True, text=True).stdout
+    libs = []
+    for line in out.splitlines():
+        parts = line.split()
+        if "=>" in parts and len(parts) >= 3 and parts[2].startswith("/"):
+            libs.append(parts[2])
+        elif parts and parts[0].startswith("/"):
+            libs.append(parts[0])
+    return libs
+
+
+def which(name):
+    if "/" in name:
+        return name if os.path.isfile(name) else None
+    for d in ("/usr/bin", "/usr/sbin", "/bin", "/sbin"):
+        if os.path.isfile(os.path.join(d, name)):
+            return os.path.join(d, name)
+    return None
+
+
+def module_files(names, modules_dir):
+    """The module files to load for `names`, what each needs first, in
+    order, as (name in the guest, bytes)."""
+    release = os.path.basename(modules_dir.rstrip("/"))
+    base = os.path.dirname(os.path.dirname(os.path.dirname(modules_dir.rstrip("/")))) or "/"
+    files, seen = [], set()
+    for name in names:
+        out = subprocess.run(["/usr/sbin/modprobe", "-d", base, "-S", release, "--show-depends", name], capture_output=True, text=True)
+        if out.returncode != 0:
+            sys.exit(f"kvm-guest: no module {name} for {release}: {out.stderr.strip()}")
+        for line in out.stdout.splitlines():
+            parts = line.split()
+            if parts[0] != "insmod" or parts[1] in seen:
+                continue
+            seen.add(parts[1])
+            data = open(parts[1], "rb").read()
+            guest = os.path.basename(parts[1])
+            if guest.endswith(".xz"):
+                data, guest = lzma.decompress(data), guest[:-3]
+            elif guest.endswith(".zst"):
+                data, guest = subprocess.run(["zstd", "-dc", parts[1]], capture_output=True).stdout, guest[:-4]
+            elif guest.endswith(".gz"):
+                data, guest = gzip.decompress(data), guest[:-3]
+            files.append((guest, data))
+    return files
+
+
+def main():
+    args = sys.argv[1:]
+    if not args or args[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0
+
+    def many(flag):
+        got = []
+        while flag in args:
+            i = args.index(flag)
+            got.append(args[i + 1])
+            del args[i : i + 2]
+        return got
+
+    def one(flag, default):
+        got = many(flag)
+        return got[-1] if got else default
+
+    def has(flag):
+        if flag in args:
+            args.remove(flag)
+            return True
+        return False
+
+    release = os.uname().release
+    kernel = one("--kernel", f"/lib/modules/{release}/vmlinuz")
+    modules_dir = one("--modules-dir", f"/lib/modules/{release}")
+    modules, kos, bins, files = many("--module"), many("--ko"), many("--bin"), many("--file")
+    cpus, mem, timeout = int(one("--cpus", 4)), int(one("--mem", 2048)), int(one("--timeout", 300))
+    append, keep, quiet = one("--append", ""), has("--keep"), has("--quiet")
+    if args and args[0] == "-c":
+        script, script_args = args[1].encode(), args[2:]
+    elif args:
+        script, script_args = open(args[0], "rb").read(), args[1:]
+    else:
+        sys.exit("kvm-guest: a SCRIPT, or -c 'COMMANDS'")
+    if not os.access("/dev/kvm", os.R_OK | os.W_OK):
+        sys.exit("kvm-guest: /dev/kvm can't be opened (KVM is off, or isn't this user's to use)")
+    if not os.path.isfile(kernel):
+        sys.exit(f"kvm-guest: no kernel at {kernel}")
+
+    cpio = Cpio()
+    for d in ("bin", "dev", "proc", "sys", "tmp", "run", "etc", "ko", "modules", "var", "lib64", "usr"):
+        cpio.dir(d)
+    cpio.entry("dev/console", 0o020600, rdev=(5, 1))
+    cpio.link("lib", "lib64")
+    cpio.link("usr/lib64", "../lib64")
+    cpio.link("usr/bin", "../bin")
+    cpio.link("sbin", "bin")
+    cpio.link("var/run", "../run")
+    cpio.file("etc/passwd", b"root:x:0:0:root:/:/bin/bash\n")
+    cpio.file("init", INIT.encode(), 0o755)
+    cpio.file("script", script, 0o755)
+    libs = set()
+    for name in ALWAYS + bins:
+        path = which(name)
+        if not path:
+            sys.exit(f"kvm-guest: no program {name} on this computer")
+        cpio.file("bin/" + os.path.basename(path), open(path, "rb").read(), 0o755)
+        libs.update(libraries(path))
+    for lib in sorted(libs):
+        cpio.file("lib64/" + os.path.basename(lib), open(os.path.realpath(lib), "rb").read(), 0o755)
+    order = []
+    for guest, data in module_files(modules, modules_dir):
+        cpio.file("modules/" + guest, data)
+        order.append("/modules/" + guest)
+    cpio.file("modules/order", ("\n".join(order) + "\n").encode() if order else b"")
+    for ko in kos:
+        cpio.file("ko/" + os.path.basename(ko), open(ko, "rb").read())
+    for f in files:
+        src, dest = f.split(":", 1)
+        cpio.file(dest, open(src, "rb").read(), os.stat(src).st_mode & 0o777)
+
+    work = tempfile.mkdtemp(prefix="olo-kvm-guest-", dir="/var/tmp")
+    try:
+        initrd, out = os.path.join(work, "initramfs.gz"), os.path.join(work, "out")
+        with gzip.open(initrd, "wb", compresslevel=1) as f:
+            f.write(cpio.done())
+        open(out, "w").close()
+        # (The kernel's own quoting: double quotes around what has spaces.)
+        if any('"' in a for a in script_args):
+            sys.exit('kvm-guest: an ARG can\'t hold a double quote (the kernel\'s command line has no way to say one)')
+        quoted = " ".join(f'"{a}"' if (" " in a or not a) else a for a in script_args)
+        qemu = [
+            "qemu-system-x86_64", "-enable-kvm", "-cpu", "host", "-smp", str(cpus), "-m", str(mem),
+            "-display", "none", "-no-reboot", "-nodefaults",
+            "-kernel", kernel, "-initrd", initrd,
+            "-append", f"console=ttyS0 panic=-1 loglevel=4 rdinit=/init {append} -- {quoted}".strip(),
+            "-serial", "stdio", "-serial", f"file:{out}",
+        ]  # fmt: skip
+        try:
+            ran = subprocess.run(qemu, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout)
+            console, timed_out = ran.stdout.decode(errors="replace"), False
+        except subprocess.TimeoutExpired as e:
+            console, timed_out = (e.stdout or b"").decode(errors="replace"), True
+        sys.stdout.write(open(out, errors="replace").read().replace("\r\n", "\n"))
+        sys.stdout.flush()
+        status = 124 if timed_out else 125
+        shown = []
+        for line in console.replace("\r\n", "\n").split("\n"):
+            if line.startswith("kvm-guest: the script ended "):
+                status = int(line.rsplit(" ", 1)[1])
+            else:
+                shown.append(line)
+        if status != 0 or not quiet:
+            sys.stderr.write("\n".join(shown).rstrip("\n") + "\n")
+        if timed_out:
+            sys.stderr.write(f"kvm-guest: the guest was still going after {timeout} s; stopped\n")
+        elif status == 125:
+            sys.stderr.write("kvm-guest: the guest ended without its script saying how (above)\n")
+        if keep:
+            sys.stderr.write(f"kvm-guest: kept {work}\n")
+        return status
+    finally:
+        if not keep:
+            shutil.rmtree(work, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

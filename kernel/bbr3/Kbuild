@@ -1,0 +1,2 @@
+obj-m := tcp_bbr3.o
+ccflags-$(BBR3_SELFCHECK) += -DBBR3_SELFCHECK

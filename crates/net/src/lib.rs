@@ -34,6 +34,7 @@
 
 mod netlink;
 mod sockets;
+pub mod tcp_info;
 
 #[cfg(feature = "ureq")]
 pub mod http;
