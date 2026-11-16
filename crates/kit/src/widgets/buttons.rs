@@ -25,13 +25,15 @@ pub struct Button {
     small: bool,
     enabled: bool,
     min_width: f32,
+    /// Working on what it started (`Button::working`): how far, if known.
+    working: Option<Option<f32>>,
     on_click: Option<Handler>,
 }
 
 impl Button {
     pub fn new(label: impl Into<SharedString>) -> Button {
         let label = label.into();
-        Button { id: label.clone(), label, default: false, pushed: false, small: false, enabled: true, min_width: m::BUTTON_MIN_WIDTH, on_click: None }
+        Button { id: label.clone(), label, default: false, pushed: false, small: false, enabled: true, min_width: m::BUTTON_MIN_WIDTH, working: None, on_click: None }
     }
 
     /// Its id, when two buttons share a label.
@@ -68,6 +70,20 @@ impl Button {
         self
     }
 
+    /// Working on the job it started, its progress shown on itself while
+    /// it can't be pressed again: its face the status bar's sunken well,
+    /// filled to `done` (0–1) as the job goes, its label over it (light on
+    /// what's filled, dark on the rest); with `None` (how far isn't known)
+    /// a band sweeping across it. Only for a job expected to take five
+    /// seconds or more (an export, an install, a download), never a quick
+    /// one: a flash of a meter says nothing. Agents read it as a button
+    /// not enabled, its value how far ("42%", or "Working").
+    pub fn working(mut self, done: Option<f32>) -> Self {
+        self.working = Some(done);
+        self.enabled = false;
+        self
+    }
+
     /// Takes a click. (Where the button is, for a menu to open under
     /// it: `WindowCx::listener_bounds`.)
     pub fn on_click(mut self, f: impl Fn(&ClickEvent, &mut WindowCx) + 'static) -> Self {
@@ -92,12 +108,25 @@ impl IntoElement for Button {
         let tw = f32::from(style::text_width(self.label.clone(), font_size, style::ui_font(FontWeight::NORMAL)));
         let w = (((tw + 2.0 * pad).max(self.min_width)) / 2.0).ceil() * 2.0;
         let h = if self.small { SMALL_BUTTON_HEIGHT } else { m::CONTROL_HEIGHT };
-        let (label, default, pushed) = (self.label.clone(), self.default, self.pushed);
-        let mut c = control(self.id.clone(), w, h, move |g, r, s| paint_button(g, r, s, &label, default, pushed, font_size))
-            .look((&self.label, default, pushed, self.small))
-            .enabled(self.enabled)
-            .focusable()
-            .agent("Button", self.label.clone(), None);
+        let (label, default, pushed, working) = (self.label.clone(), self.default, self.pushed, self.working);
+        let mut c = control(self.id.clone(), w, h, move |g, r, s| match working {
+            Some(done) => paint_working(g, r, &label, done, font_size),
+            None => paint_button(g, r, s, &label, default, pushed, font_size),
+        })
+        // (How far, to a thousandth: drawn again as it moves, not for
+        // each tick of a job's count.)
+        .look((&self.label, default, pushed, self.small, working.map(|d| d.map(|f| (f.clamp(0.0, 1.0) * 1000.0).round() as u32))))
+        .enabled(self.enabled)
+        .focusable();
+        if working.is_some() {
+            // (Its meter says it can't be pressed now: not faded too.)
+            c = c.unfaded();
+        }
+        c = match working {
+            Some(Some(f)) => c.agent_value("Button", self.label.clone(), format!("{:.0}%", f.clamp(0.0, 1.0) * 100.0)),
+            Some(None) => c.agent_value("Button", self.label.clone(), "Working"),
+            None => c.agent("Button", self.label.clone(), None),
+        };
         if default {
             c = c.default_key();
         }
@@ -300,6 +329,52 @@ fn paint_button(g: &mut Painter, r: Bounds<Pixels>, s: ControlState, label: &str
     let text = style::label(g, c.x + off, c.y + off, style::Align::Center, label.to_string(), font_size, style::ui_font(FontWeight::NORMAL), color);
     if s.focused {
         focus_underline(g, text, &p);
+    }
+}
+
+/// A working button's face (`Button::working`): the status bar's sunken
+/// well, filled to `done` as `level_bar` fills it, or, how far not known,
+/// a band of its fill sweeping across every 1.6 s (drawn again each frame
+/// only then: a known fraction is drawn again only as it moves). The
+/// label centred over it, in the control's text colour, and over what's
+/// filled in white or black, whichever reads better on the fill.
+fn paint_working(g: &mut Painter, r: Bounds<Pixels>, label: &str, done: Option<f32>, font_size: f32) {
+    let p = theme::palette();
+    let filled = match done {
+        Some(f) => super::status::level_bar(g, r, f, None, &p),
+        None => {
+            static SINCE: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+            let inner = style::inset(g, r, 1.0);
+            style::fill_rect(g, inner, style::c(p.document_background));
+            let t = SINCE.get_or_init(std::time::Instant::now).elapsed().as_secs_f32() % 1.6 / 1.6;
+            let band = inner.size.width * 0.3;
+            let left = inner.left() - band + (inner.size.width + band) * t;
+            let (x0, x1) = (style::snap_coord(g, left.max(inner.left())), style::snap_coord(g, (left + band).min(inner.right())));
+            let swept = Bounds::from_corners(point(x0, inner.top()), point(x1.max(x0), inner.bottom()));
+            if swept.size.width > px(0.0) {
+                let rgb = olo_interface::Rgba::from(style::c(p.status_bar));
+                let lower: olo_interface::Hsla = olo_interface::Rgba { r: rgb.r * 0.8, g: rgb.g * 0.8, b: rgb.b * 0.8, a: 1.0 }.into();
+                style::vgradient(g, swept, style::c(p.status_bar), lower);
+                style::hline(g, swept.left(), swept.right(), swept.top(), style::c(p.gloss));
+            }
+            style::bevel(g, r, style::shade(&p, p.panel_background, 1.45), style::c(p.shine));
+            g.paint_again_within(0.0);
+            swept
+        }
+    };
+    let on_fill = if olo_theme::contrast(olo_theme::WHITE, p.status_bar) >= olo_theme::contrast(olo_theme::BLACK, p.status_bar) { olo_theme::WHITE } else { olo_theme::BLACK };
+    let c = r.center();
+    let font = style::ui_font(FontWeight::NORMAL);
+    let rest = [Bounds::from_corners(r.origin, point(filled.left(), r.bottom())), Bounds::from_corners(point(filled.right(), r.top()), r.bottom_right())];
+    for part in rest.into_iter().filter(|b| b.size.width > px(0.0)) {
+        g.with_content_mask(Some(olo_interface::ContentMask { bounds: part }), |g| {
+            style::label(g, c.x, c.y, style::Align::Center, label.to_string(), font_size, font.clone(), style::c(p.control_text));
+        });
+    }
+    if filled.size.width > px(0.0) {
+        g.with_content_mask(Some(olo_interface::ContentMask { bounds: filled }), |g| {
+            style::label(g, c.x, c.y, style::Align::Center, label.to_string(), font_size, font.clone(), style::c(on_fill));
+        });
     }
 }
 

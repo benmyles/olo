@@ -101,6 +101,9 @@ pub enum Msg {
     CleanedUp(Result<String, String>),
 }
 
+/// What `doing` says while the store is cleaned up.
+const CLEANING_UP: &str = "Cleaning up the store…";
+
 struct Kache {
     section: Section,
     snap: Rc<data::Snapshot>,
@@ -201,7 +204,7 @@ impl Kache {
         if self.doing.is_some() {
             return;
         }
-        self.doing = Some("Cleaning up the store…");
+        self.doing = Some(CLEANING_UP);
         cx.work(data::clean_up, Msg::CleanedUp);
         cx.invalidate();
     }
@@ -380,7 +383,13 @@ impl Kache {
         let buttons = div()
             .flex()
             .gap(px(m::SPACING))
-            .child(Button::new("Clean Up Now").enabled(!busy && snap.daemon.is_some()).on_click(cx.listener(|v: &mut Kache, _: &ClickEvent, cx| v.clean_up(cx))))
+            // (Cleaning up a large store takes the daemon seconds to
+            // minutes, how far unsaid: its button shows it working.)
+            .child(if self.doing == Some(CLEANING_UP) {
+                Button::new("Clean Up Now").working(None)
+            } else {
+                Button::new("Clean Up Now").enabled(!busy && snap.daemon.is_some()).on_click(cx.listener(|v: &mut Kache, _: &ClickEvent, cx| v.clean_up(cx)))
+            })
             .child(Button::new("Restart").enabled(!busy && running.is_some()).on_click(cx.listener(|v: &mut Kache, _: &ClickEvent, cx| v.service("RestartUnit", cx))))
             .child(if running == Some(true) {
                 Button::new("Stop").enabled(!busy).on_click(cx.listener(|v: &mut Kache, _: &ClickEvent, cx| v.service("StopUnit", cx)))

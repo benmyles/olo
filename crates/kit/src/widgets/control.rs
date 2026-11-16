@@ -40,6 +40,9 @@ pub struct Control {
     shrinks: bool,
     /// What its tip says, once the pointer has rested on it.
     tip: Option<SharedString>,
+    /// Not enabled, it draws its own look for that, unfaded
+    /// (`Control::unfaded`).
+    unfaded: bool,
 }
 
 /// A control `width` by `height`, drawn by `paint`.
@@ -59,6 +62,7 @@ pub fn control(id: impl Into<ElementId>, width: f32, height: f32, paint: impl Fn
         default: false,
         shrinks: false,
         tip: None,
+        unfaded: false,
     }
 }
 
@@ -127,6 +131,13 @@ impl Control {
         self
     }
 
+    /// Not enabled, it says so by its own drawing (a button working on
+    /// its job, `Button::working`), not faded as other controls are.
+    pub fn unfaded(mut self) -> Self {
+        self.unfaded = true;
+        self
+    }
+
     /// Its width at most what it's in: narrower, its paint draws what
     /// fits (a menu field's long choice cut short; the layout lint found
     /// Sound's and Display's run out of their windows).
@@ -141,6 +152,9 @@ impl IntoElement for Control {
         let paint = self.paint;
         let tip_key = self.id.clone();
         let mut element = control_canvas(move |g, bounds, state| paint(g, bounds, state)).id(self.id).w(self.width).h(self.height).flex_shrink_0().disabled(!self.enabled);
+        if self.unfaded {
+            element = element.unfaded();
+        }
         if let Some(key) = self.paint_key {
             element = element.paint_key(key);
         }

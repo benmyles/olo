@@ -665,6 +665,14 @@ cx.work(move || read_the_thing(path), Msg::Read);     // result -> message
   returns false, and that's its cue to stop.
 - See "The responsiveness rule" in HACKING.md: live progress, results
   as they come, cancellable, never a frozen window.
+- A button that starts a job expected to take five seconds or more (an
+  export, an install, a clean-up) shows the job's progress on itself
+  while it can't be pressed again: `Button::working(Some(done))`, or
+  `working(None)` when how far isn't known (a band sweeps across it).
+  Never for a quick job: a meter that flashes says nothing, and the
+  plain disabled button is right for those. A job with a page or a
+  panel of its own (a backup's progress, an update's) keeps that, and
+  where it can be stopped a Stop button beats a busy one.
 - A library's long job takes the same two things from you. olo-archive
   (Tracker's Compress and Extract) reads the flag and reports through a
   `Control`, at most twenty times a second, with the item and the bytes

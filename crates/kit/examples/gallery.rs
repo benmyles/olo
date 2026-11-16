@@ -129,6 +129,10 @@ impl View for Gallery {
                     .child(Button::new("Disabled").enabled(false))
                     .child(Button::new("OK").default(true)),
             )
+            .child(
+                // A button working on a long job, its progress on itself.
+                div().mt(px(6.0)).flex().gap(px(m::SPACING)).child(Button::new("Export Video…").working(Some(0.42))),
+            )
             .child(StringView::new(format!("Alert answer: {}", self.answer)).dim(true))
             .child(
                 div().w(px(300.0)).child(

@@ -17,6 +17,21 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Voice Processing: a quiet microphone brought up, and its device
+  named as processed** (Ben, 2026-11-16: "some inputs like airpods are
+  not loud enough on microphone input. add the ability in voice
+  processing to optionally boost the input level to some target level
+  and have it suggest the ideal level. also in chrome it doesn't show me
+  which airpods device has the processing it all jsut says "Airpods"
+  like 3 times. it should show it as like "Airpods (Voice Processing)"
+  or something"). An optional boost of the processed input up to a
+  target level, with the ideal level suggested from what the microphone
+  gives (measured, not guessed); and the processed source's name, as
+  programs list it (Chrome's device menu), saying it's processed:
+  "AirPods (Voice Processing)", the raw one left as it is.
+
+## Done, waiting for Ben to try or confirm
+
 - **A button that shows a slow job's progress** (Ben, 2026-11-16: "add
   a new button style/type/behavior/whatever makes sense to the kit
   where a button that triggers some kind of slow processing can show
@@ -34,22 +49,17 @@ something nobody here has is in "Blocked", with what it waits for.
   (its progress in its name or value). Then Agent Screens' Export
   Video (History's meter stays), the Book (when to use it: a job
   expected to take 5 s or more, never a quick one) and HACKING, and
-  each other button that starts a job that long.
-
-- **Voice Processing: a quiet microphone brought up, and its device
-  named as processed** (Ben, 2026-11-16: "some inputs like airpods are
-  not loud enough on microphone input. add the ability in voice
-  processing to optionally boost the input level to some target level
-  and have it suggest the ideal level. also in chrome it doesn't show me
-  which airpods device has the processing it all jsut says "Airpods"
-  like 3 times. it should show it as like "Airpods (Voice Processing)"
-  or something"). An optional boost of the processed input up to a
-  target level, with the ideal level suggested from what the microphone
-  gives (measured, not guessed); and the processed source's name, as
-  programs list it (Chrome's device menu), saying it's processed:
-  "AirPods (Voice Processing)", the raw one left as it is.
-
-## Done, waiting for Ben to try or confirm
+  each other button that starts a job that long. Done 2026-11-16:
+  `Button::working(Some(done))` (the status bar's sunken well filled as
+  far as it's got, the label over it readable on the fill and on the
+  rest) and `working(None)` (a band sweeping across); not faded, read by
+  agents as a button not enabled with its progress as its value; the
+  kit's `working` example and the gallery. Used by Agent Screens'
+  Export Video… (History's bar kept) and Kache's Clean Up Now; looked
+  at and left: DiskBackup (Stop replaces Back Up Now as it runs),
+  Tracker's archive Extract (instant to minutes: its status bar
+  stays), AirPlay's Search (2 s), OS Updates (a page of its own).
+  *Left for Ben:* export a video and clean up kache, and see them.
 
 - **Agent Screens' Export Video: the small fast-forward mark, and time
   to read** (Ben, 2026-11-16: "when exporting videos in agent screens,

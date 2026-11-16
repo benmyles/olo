@@ -74,8 +74,8 @@ impl IntoElement for StatusBar {
 }
 
 /// The bar alone: a sunken well filled to `fraction` (with `fill`, or the
-/// palette's status bar colour), glossed along the top.
-pub fn level_bar(g: &mut Painter, bar: Bounds<Pixels>, fraction: f32, fill: Option<Hsla>, p: &olo_theme::Palette) {
+/// palette's status bar colour), glossed along the top. What's filled.
+pub fn level_bar(g: &mut Painter, bar: Bounds<Pixels>, fraction: f32, fill: Option<Hsla>, p: &olo_theme::Palette) -> Bounds<Pixels> {
     let inner = style::inset(g, bar, 1.0);
     style::fill_rect(g, inner, style::c(p.document_background));
     let fill = fill.unwrap_or(style::c(p.status_bar));
@@ -90,4 +90,5 @@ pub fn level_bar(g: &mut Painter, bar: Bounds<Pixels>, fraction: f32, fill: Opti
         style::hline(g, done.left(), done.right(), done.top(), style::c(p.gloss));
     }
     style::bevel(g, bar, style::shade(p, p.panel_background, 1.45), style::c(p.shine));
+    done
 }

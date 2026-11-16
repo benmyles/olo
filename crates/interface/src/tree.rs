@@ -770,7 +770,7 @@ impl WindowCore {
                     NodeKind::Canvas(spec) => {
                         if let Some(view) = views.get(node.owner).and_then(|v| v.view.as_ref()) {
                             // A control that can't be used now is faded.
-                            let fade = (!state.enabled && node.inter.as_ref().is_some_and(|i| i.paints_by_state)).then_some(crate::DISABLED_OPACITY);
+                            let fade = (!state.enabled && node.inter.as_ref().is_some_and(|i| i.paints_by_state && !i.unfaded)).then_some(crate::DISABLED_OPACITY);
                             p.with_element_opacity(fade, |p| (spec.paint)(view.as_any(), p, bounds, state));
                         }
                     }

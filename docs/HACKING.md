@@ -2429,7 +2429,20 @@ it.
   `Control::pointing` (the pointing hand: a link).
 - The BeOS controls (see them all in the kit's `gallery`, `controls`
   and `widgets` examples, `crates/kit/examples`, run in a test
-  session): `Button` (`default`, `pushed`, `small`, `on_click`),
+  session): `Button` (`default`, `pushed`, `small`, `on_click`;
+  `working(done)`: the job it started under way, for one expected to
+  take five seconds or more, its progress on the button itself while it
+  can't be pressed again: its face the status bar's sunken well filled
+  to `done` as `level_bar` fills it, the label over it light or dark by
+  what reads best on the fill and on the rest, or with `None`, how far
+  unknown, a band of the fill sweeping across (the one case drawn each
+  frame: 60 a second at 0.27 ms, 2.6% of a core at 60 Hz, only while
+  such a job runs; a known fraction is drawn again only as it moves, to
+  a thousandth). Not faded as a control that can't be used is
+  (`Control::unfaded`, the element's `unfaded`: it says so by its own
+  drawing); agents read it as a button not enabled, its value how far,
+  "42%" or "Working". The `working` example shows each; Agent Screens'
+  Export Video… and Kache's Clean Up Now use it),
   `CheckBox` (`mixed`, `on_toggle`; `mark_only`: only its mark, beside
   a title that names it already, its label still its name for agents:
   an item checked to be acted on with others, `chosen`), `RadioButton`
@@ -15378,7 +15391,10 @@ the skip quickly: under 30 s in half a second, longer in 1.5 s, racing
 on, always under the small ⏩ badge at the top saying how long, never a
 card over the screen (Ben, 2026-11-16: "never use the large overlay
 one it's too intrusive"; "add an extra 5s delay before and after each
-fast forward"). The screen changing by itself (a page's
+fast forward"). While it runs, the window's Export Video… button
+shows how far (`Button::working`, told by History's `ExportProgress` as
+each percent passes) and History its bar and Cancel. The screen
+changing by itself (a page's
 animation, a spinner, a clock) isn't something happening: counted so,
 real histories were busy nearly every second. The work follows what's
 kept, not the history's length: `record::Player` plays forward once
@@ -18850,8 +18866,9 @@ service on or off, the day's hit rate):
 
 - *Status*: the service (`kache.service`, the user unit, over systemd's
   D-Bus: `olo_system::systemd::user_unit`), its version, how long it's
-  run, its process and memory; Clean Up Now, Restart and Stop (or
-  Start). The store (what it holds against its limit, red when over;
+  run, its process and memory; Clean Up Now (its band sweeping while
+  the daemon cleans up, which takes seconds to minutes: `Button::working`),
+  Restart and Stop (or Start). The store (what it holds against its limit, red when over;
   what's on disk once shared files are counted once; what builds'
   target folders still share, which no clean-up can take; the last
   clean-up and what it freed), the last 24 hours (the hit rate of what

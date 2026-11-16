@@ -303,6 +303,9 @@ pub struct Interactivity {
     /// leaves, or the keyboard comes or goes.
     pub(crate) paints_by_state: bool,
     pub(crate) disabled: bool,
+    /// Olo: a control that, not enabled, draws its own look for it and
+    /// isn't faded (a button working on its job shows how far it's got).
+    pub(crate) unfaded: bool,
     /// Return clicks it from anywhere in its window, when nothing that
     /// has the keyboard takes Return (a default button).
     pub(crate) default_key: bool,
@@ -921,6 +924,13 @@ pub trait InteractiveElement: Sized {
     /// It can't be used now: it takes nothing.
     fn disabled(mut self, disabled: bool) -> Self {
         self.interactivity().disabled = disabled;
+        self
+    }
+
+    /// Olo: a control that, when it can't be used, says so by its own
+    /// drawing and isn't faded as others are (`Button::working`).
+    fn unfaded(mut self) -> Self {
+        self.interactivity().unfaded = true;
         self
     }
 

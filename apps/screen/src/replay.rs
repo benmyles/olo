@@ -67,6 +67,11 @@ pub enum ReplayMsg {
 /// What the window hears from a history: an export ended.
 pub struct Exported(pub Result<PathBuf, String>);
 
+/// And that one under way has got a percent further (`Replay::export_done`
+/// says how far): the window's Export Video… button shows it
+/// (`Button::working`).
+pub struct ExportProgress;
+
 /// How long a click's ring and a key's caption stay over the picture.
 const RING_MS: u64 = 700;
 const CAPTION_MS: u64 = 1500;
@@ -431,6 +436,7 @@ impl Replay {
             ReplayMsg::Progress { name, done } if name == self.name => {
                 if let Some((d, _)) = &mut self.exporting {
                     *d = done;
+                    cx.emit(ExportProgress);
                     cx.invalidate();
                 }
             }
@@ -490,6 +496,11 @@ impl Replay {
 
     pub fn exporting(&self) -> bool {
         self.exporting.is_some()
+    }
+
+    /// How far an export under way has got (0–1), if one is.
+    pub fn export_done(&self) -> Option<f32> {
+        self.exporting.as_ref().map(|(done, _)| *done)
     }
 
     /// Whether action `i` is one the search and filters keep (`now`:

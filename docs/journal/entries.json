@@ -4516,5 +4516,11 @@
   "title": "Olo Doctor suggests removing the build kept from before the kits",
   "caption": "A build kept to fall back to (tools/keep-build.sh) from before Olo's own kits runs GPUI, which is gone for good: Doctor suggests removing it and its login screen entry, with its size, never the session running. Here with a stand-in kept build; the number and its unit stay on one line now that the kit's wrapping keeps a no-break space whole.",
   "image": "2026-11-16/101603-olo-doctor-suggests-removing-the-build-kept-from.png"
+ },
+ {
+  "time": "2026-11-16T10:32:43",
+  "title": "A button showing the long job it started",
+  "caption": "Button::working: a button that started a job of five seconds or more shows its progress on itself while it can't be pressed again: the status bar's sunken well filled as far as it's got, the label over it readable on both parts, or a band sweeping across when how far isn't known. Here at rest, at 0, 42%, 100%, unknown and on a default button (the kit's working example). Agent Screens' Export Video\u2026 and Kache's Clean Up Now use it.",
+  "image": "2026-11-16/103243-a-button-showing-the-long-job-it-started.png"
  }
 ]

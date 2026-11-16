@@ -48,7 +48,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     picture::{PictureWell, Shot},
-    replay::{self, Exported, Replay, ReplayMsg},
+    replay::{self, ExportProgress, Exported, Replay, ReplayMsg},
     screens::{self, Screen},
     stats,
 };
@@ -1394,6 +1394,8 @@ impl Viewer {
         let proxy = self.proxy.clone();
         let replay = cx.new_view(|cx| Replay::new(name, proxy, cx));
         cx.subscribe(&replay, |v: &mut Viewer, e: &Exported, cx| v.exported(&e.0, cx));
+        // (Its Export Video… button shows how far an export has got.)
+        cx.subscribe(&replay, |_: &mut Viewer, _: &ExportProgress, cx| cx.invalidate());
         self.replay = Some(replay);
     }
 
@@ -1607,7 +1609,13 @@ impl Viewer {
         } else {
             Button::new("Clear History…").min_width(96.0).on_click(cx.listener(|v: &mut Viewer, _, cx| v.ask_clear(cx)))
         };
-        let export = Button::new("Export Video…").min_width(96.0).enabled(self.can_export(cx)).on_click(cx.listener(|v: &mut Viewer, _, cx| v.ask_export(cx)));
+        // Exporting, it shows how far (an export takes seconds to minutes),
+        // History's bar too.
+        let exporting = self.replay.as_ref().and_then(|r| r.read(cx).export_done());
+        let export = match exporting {
+            Some(done) => Button::new("Export Video…").min_width(96.0).working(Some(done)),
+            None => Button::new("Export Video…").min_width(96.0).enabled(self.can_export(cx)).on_click(cx.listener(|v: &mut Viewer, _, cx| v.ask_export(cx))),
+        };
         let row = div().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(HEADER_H)).flex_shrink_0().child(face).child(export).child(first);
         // Stopped: started again as it was (one shown, `start_chosen`
         // takes the others chosen with it too).

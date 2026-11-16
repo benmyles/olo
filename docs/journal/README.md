@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-16
 
+### A button showing the long job it started
+
+*10:32* — Button::working: a button that started a job of five seconds or more shows its progress on itself while it can't be pressed again: the status bar's sunken well filled as far as it's got, the label over it readable on both parts, or a band sweeping across when how far isn't known. Here at rest, at 0, 42%, 100%, unknown and on a default button (the kit's working example). Agent Screens' Export Video… and Kache's Clean Up Now use it.
+
+![A button showing the long job it started](2026-11-16/103243-a-button-showing-the-long-job-it-started.png)
+
 ### Olo Doctor suggests removing the build kept from before the kits
 
 *10:16* — A build kept to fall back to (tools/keep-build.sh) from before Olo's own kits runs GPUI, which is gone for good: Doctor suggests removing it and its login screen entry, with its size, never the session running. Here with a stand-in kept build; the number and its unit stay on one line now that the kit's wrapping keeps a no-break space whole.
