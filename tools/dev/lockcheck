@@ -31,12 +31,10 @@ writes its report to /var/tmp/olo-lockbud/report-<time>.txt as well
 as the screen. Slow (a whole debug build) and noisy: read each finding
 against the code.
 
-(GPUI's own double lock, an entity read or updated while it was being
-updated, had a third mode here and a rustc driver, tools/reentry. They
-went with GPUI: on Olo's kits a view has one owner, who alone reaches
-into it (`Child::update`), and everyone else sends it a message, taken
-once what's running now is done, so nothing can reach a view that's
-busy.)
+(A view read or updated while it's being updated can't happen: on
+Olo's kits a view has one owner, who alone reaches into it
+(`Child::update`), and everyone else sends it a message, taken once
+what's running now is done, so nothing can reach a view that's busy.)
 """
 import json, os, shutil, subprocess, sys, time
 

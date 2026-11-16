@@ -125,8 +125,7 @@ Ways in that keep the person's session out of it:
 
 Documentation examples fenced `ignore` (olo-kit-base's, Smithay's,
 two of them in generated bindings) are illustrations, not meant to
-compile. (The table's results are 2026-11-08's, when the first three
-rows were GPUI's and the kit's was olo-ui's: the same tests, moved
+compile. (The table's results are 2026-11-08's: the same tests, moved
 with the code on 2026-11-11.)
 
 Of the 115 tests: 111 pass as run above, 4 haven't run (the cameras;

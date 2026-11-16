@@ -22,7 +22,11 @@ how to build with them. These rules are universal and non-negotiable:
   event or while idle is measured on release builds before and after
   (`tools/dev/cost PID`, app_server's `timings`, `tools/dev/bench`,
   `scroll-check`), latency included, with the numbers in the commit
-  message; it isn't done until it is. See "Fast and light" in
+  message; it isn't done until it is. Judge it in absolute terms (a
+  frame's work against its budget, 8.3 ms at 120 Hz; CPU at rest and
+  while animating; latency), never against another toolkit. Count
+  instructions with `perf stat --no-scale` (this machine's two kinds of
+  core made scaled counts double at random). See "Fast and light" in
   HACKING.md.
 - **Never block the UI.** Anything that can take more than a frame runs on a
   worker thread, shows live progress, streams results and can be cancelled.
@@ -76,6 +80,11 @@ how to build with them. These rules are universal and non-negotiable:
   consistent experience.
 - **Build on the shared kit.** If an app needs a widget or behaviour another
   app could use, add it to `crates/kit` and document it in HACKING.md.
+- **GPUI is gone, for good.** Olo's kits (`crates/interface`,
+  `crates/kit`) are its own. Never add GPUI back, as a dependency or as
+  code, and never compare Olo's performance with it or with the build
+  from before the kits (`~/.local/olo-kept/before-kits` is a login
+  fallback, not a yardstick).
 - **Survive in-place reload.** Apps reconnect when app_server restarts and
   re-exec after an upgrade; implement `View::save_state` (and
   `olo_kit::on_upgrade` for several windows) / `olo_kit::restored_state()`

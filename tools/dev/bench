@@ -370,9 +370,8 @@ def cpu_ns(pid):
     """How long a process has run, every thread of it, in nanoseconds
     (the scheduler's own count, /proc/PID/task/*/schedstat): what a step
     cost it is the difference across the step. However a frame's mark is
-    made (the kit's count the looper's work for it; GPUI's left out what
-    an input handler did before the frame), this is the processor's
-    time, so two builds are compared by it."""
+    made, this is the processor's time, so two builds of Olo (before a
+    change and after it) are compared by it."""
     total = 0
     try:
         for t in os.listdir(f"/proc/{pid}/task"):

@@ -275,10 +275,9 @@ What it means in numbers, on release builds:
   styled with `.hover(..)`/`.active(..)`): no handler, no view asked
   what it shows. Never `cx.refresh()` for it, which draws the whole
   window again (that is for what changes all of it: its look, its
-  text's rendering): on the GPUI kit, buttons, sidebars, cards, slim
-  scroll bars and tab strips once did, and a pointer swept over
-  Notifications' history (a screen of 200 cards) took frames of 9 to
-  46 ms.
+  text's rendering): buttons, sidebars, cards, slim scroll bars and
+  tab strips once did, and a pointer swept over Notifications'
+  history (a screen of 200 cards) took frames of 9 to 46 ms.
 * **A lot changing** (scrolling, a live resize, video): every frame
   within 8.3 ms (rule 9), drawn by the GPU, and no more CPU than that
   takes.
@@ -370,9 +369,18 @@ message):
   `perf report -i FILE --no-children --sort symbol --stdio`. What's
   refused to an unprivileged user: a process already running (`-p`),
   the kernel's side (`cycles` without `:u`), and every kind of call
-  graph (fp, dwarf, lbr). `perf stat -I 200 -x, -e
+  graph (fp, dwarf, lbr). `perf stat --no-scale -I 200 -x, -e
   instructions:u,cycles:u` the same way counts what a stretch of work
-  cost: sum the intervals of that stretch. Counts barely depend on
+  cost: sum the intervals of that stretch, and both kinds of core's
+  counts (`cpu_core/`, `cpu_atom/`). Always `--no-scale` here: this
+  computer's cores are of two kinds, each counting on its own, a
+  thread counted only on the kind it's running on, and perf by
+  default scales each count up by the time it wasn't counting, so a
+  thread that moved between them was counted up to twice over, at
+  random (the same build of Logs measured 5.0 M instructions a frame
+  or 9.4 M, run to run: the "noise" was this). Unscaled, a window's
+  looper counted alone (`perf stat --no-scale -t TID` over the drag)
+  gave 5.140, 5.142 and 5.140 M a frame. Counts barely depend on
   what else the machine is doing, where times do; two builds are
   compared by running each three times, in turn, and taking the
   middle. (Instructions don't see copying: a copy of 3 KB is a few
@@ -390,10 +398,11 @@ message):
   the instructions and cycles a step of the drag's own seconds
   printed. Give each step time to be drawn (its `STEP_MS`, 45 by
   itself): at the display's own rate a build that skips frames counts
-  as the cheaper one. And they do depend on the machine more than was
-  thought, by a sixth from run to run in either build (the app's own
-  workers and what the frames wait on): four rounds in turn and the
-  medians, not one of each.
+  as the cheaper one. (Its counts scattered by a sixth and more from
+  run to run until it counted unscaled: the two kinds of core, above.
+  Three rounds in turn and the medians still.) Read what it says in
+  absolute terms: a step's work against a frame's budget (8.3 ms at
+  120 Hz), not against another toolkit's.
   When the profile says a fifth of a frame is libc's `memmove` and
   `malloc` and can't say whose, `tools/dev/memhist` can: it runs the
   app with a small probe (`memhist.c`, built into /var/tmp) that
@@ -402,7 +411,7 @@ message):
   `count PID` before and after the work, `report PID --per STEPS`).
   What it found the first time it was used (2026-11-12, lists resized
   live), all in the kits and none of it visible in a frame's phases:
-  a shaped line was 3 KB, for the 32 decoration runs GPUI kept room
+  a shaped line was 3 KB, for the 32 decoration runs it kept room
   for in it, and every label painted copied that twice (now one run
   in the line, the rest on the heap: `DecorationRuns`); every `font()`
   allocated its empty list of features (one shared now); every line
@@ -421,8 +430,8 @@ message):
   **a quarter of a Tracker frame was in the GPU's driver**, for 108
   draws of 616 things. A kept drawing gave a thing a new order at
   every change of kind, so a list painted row by row (icon, name,
-  arrow; icon, name, arrow) was three draws a row, where GPUI's
-  scene, which looked at what overlapped what, had three in all.
+  arrow; icon, name, arrow) was three draws a row, where three in all
+  will do.
   `Scene::next_order` puts a thing in the lowest order of its kind
   above everything it's over (each order's reach is kept; over none
   of it, over none of its things), and with what it's over where
@@ -793,7 +802,7 @@ long after a way out comes back.
 | `crates/protocol` | JSON-lines IPC between app_server and our apps (`Client`, `Request`, `Reply`, `Event`, `Settings`). |
 | `crates/theme` | `Palette` (light/dark), BeOS tint helpers, decorator metrics, font lists. |
 | `crates/app` | `olo-app`, the Application Kit: loopers (a thread and its queue, taken one message at a time, asleep when there's none), handlers and messengers with typed messages, timers, `ask` and its `Answer`, `Latest` (what would flood a queue, gathered) and the pool that work longer than a frame runs on. No drawing. |
-| `crates/interface` | `olo-interface`, the Interface Kit: a window on a looper of its own; views (`View`: its state, the messages it takes, the `body` that says what it shows) and the elements they're made of, kept and laid out between frames (taffy); what each draws kept as a display list (`Painter`, `canvas`); the display thread (`Stage`), which draws the frames, scrolls and springs without the looper; text, the Wayland client and the GPU renderer (which began as GPUI's: `vendor/README.md`, "From GPUI"). |
+| `crates/interface` | `olo-interface`, the Interface Kit: a window on a looper of its own; views (`View`: its state, the messages it takes, the `body` that says what it shows) and the elements they're made of, kept and laid out between frames (taffy); what each draws kept as a display list (`Painter`, `canvas`); the display thread (`Stage`), which draws the frames, scrolls and springs without the looper; text, the Wayland client and the GPU renderer, all Olo's own. |
 | `crates/kit` | `olo-kit`: the Interface Kit (re-exported whole) with Olo's look, the BeOS widgets, menus and the menu bar, alerts, panels, the editor, icons, the agent tree and socket, the layout review and lint, upgrades. **All apps are built on it** ("The kit" below; the Olo Book, `docs/OLO-BOOK.md`). |
 | `crates/kit-base` | `olo-kit-base`: what the kit has that doesn't draw, re-exported by olo-kit under the same names: `instance` (one process per app), `settings`, `notify`, `files`, `places`, `watch`, `tracker`, `metrics` (the spacing system), `Proxy`, `search` (the query language, facets and suggestions), `masonry` (cards in columns), and `store` (an app's own files, written whole), `commands`, the socket agents and the command palette read apps through (its protocol, server and client), with `review`'s findings and `layout_review`'s checks, `list` (a list's selection and type-select), `spell` and `keys` (the keyboard profile's keys). Nothing in it draws. |
 | `crates/yuv` | `olo-yuv`: a video's picture as its decoder made it (`YuvFrame`: Y'CbCr 4:2:0 planes, or `YuvMemory`, the decoder's own memory) and the matrix that makes RGB of it. olo-interface draws it (`Painter::paint_yuv`) and re-exports it; what decodes (olo-images, olo-video, olo-vaapi) makes it. |
@@ -814,12 +823,12 @@ long after a way out comes back.
 | `crates/voice` | `olo-voice`: what Olo does to every microphone, 10 ms at a time: echo cancellation (its own fullband Kalman filter), noise suppression (DeepFilterNet3, vendored in `vendor/deep_filter`), level normalization (WebRTC's AGC2, vendored in `vendor/sonora`). See "Voice processing". |
 | `crates/pool` | `olo-token-pool`: token pooling for Claude Code and Codex (see "Token Pool"): the accounts, their sealed store, the drain order, the loopback gateway and the clients' proxy (its own certificate authority, and which program is connecting, from /proc). |
 | `crates/ai` | `olo-ai`: how AI features reach their models (see "AI features"): `ask(&settings.ai, &feature, &Ask)` → the answer's JSON. Blocking; call off the UI thread. |
-| `crates/preview` | `olo-preview`: native previews of every file kind (text, images, PDF, audio, video, archives, office documents, fonts). Its decoding needs no toolkit (pictures are `Bitmap`s, premultiplied RGBA; token classes are `olo_theme::Syntax`, coloured by `Palette::syntax`)); its views (`PreviewView`, `rich::RichView`, `table::TableView`) are `kit`, on olo-kit, behind its `kit` feature (what the loader finds comes as messages, `kit::Msg`; a document is laid out as its `body` runs, for the width layout says, and draws only what `Painter::visible_bounds` shows; pictures let go leave the GPU's atlas by themselves). Either turns on `gpu`: pictures as planes for a window's GPU (`olo_yuv::YuvFrame`, one type both frameworks draw) and video decoded on GPUs. Source code is coloured by syntect's bundled Sublime grammars plus Olo's own in `src/syntaxes` (TOML, with Cargo.lock and other lock files; INI, with systemd units, .desktop entries and git and editor configs; just, `justfile`, `Justfile`, `.justfile` and `*.just`, its recipe bodies bash with `{{ }}` found in them, in the shell's strings too, through `with_prototype`), its scopes mapped onto the theme's token classes (`text::classify`). Spreadsheets and CSV (`table.rs`, sheets shared as `Arc`s): every column, scrolled sideways; the first row as the columns' names when it looks like a header (all text, with numbers or blanks below); number columns lined up on the right; a bar with Search (every word, in all columns or the one chosen beside it; Escape clears, then lets go) and how many rows show ("14 of 120 rows"); a header click sorts (again to reverse): numbers as numbers (a thousands comma, a currency sign or a percent allowed) before text, text naturally and without case ("file2" before "file10"), empty cells last, ties in the file's order. A sheet of more than 40,000 cells is searched and sorted on a worker (cancelled when asked again), the rows shown until then staying put and the bar saying "Searching…". Quick Look's own keys (Space, the arrows, F) stand aside while a field has the keyboard. Formatted documents (Markdown, and Word, OpenDocument, RTF and PowerPoint text) are blocks (`doc::Block`) set as a page by `rich.rs`: Word, OpenDocument text and RTF are read by `olo-richtext` (`doc::rich`: headings, lists numbered as they count, quotations, neighbouring code lines as one block, tables as tables; empty paragraphs are spacing, left out), slides by `doc.rs`'s own zip and XML; Markdown is CommonMark with GitHub's tables (their alignment, and styled cells), task lists, strikethrough and alerts (`> [!NOTE]` and the rest, a bar and title in the alert's hue), typographer's quotes and dashes; raw HTML keeps its text (`<br>` breaks, `<img>` is an image, comments go); code blocks are coloured by their fence's language (`text::highlight`, the text preview's grammars); pictures beside the document are shown (local files only, never fetched; a remote one's alt text shows instead), resampled exactly to their device size. The page is at most 680 points wide, centred, body text 13 points on a 20-point line, headings 26 to 13 points with room above them (rules under the first two), lists with hanging indents (bullets drawn, numbers lined up on the right, tasks as `check_box_look`s), inline code on a tint with a small no-break space either side (a line doesn't break between "(" and code), and links in the link hue, underlined under the pointer; they open with `olo_xdg::open` (a relative one beside the document) and a `#heading` scrolls to it (GitHub's anchors). Blocks are laid out once for a width, scale, look and font generation: those in view first (at most 5 ms), the rest 3 ms a frame after, and a spinner shows over a part not laid out yet; only blocks in view are drawn. Agents read each block (`Heading`, `Paragraph`, `ListItem`, `Code`, `Table`, `Image`) and click its links (`Link`). Text and formatted documents' text is selected as anywhere in Olo (a drag; a word with a double-click, a line with a triple; ⇧ extends; an I-beam over it), drawn behind the text in the kit's selection (`style::selection_behind`, the text fields' too): the text preview's places are a line and a byte, hit by each line shaped as drawn (any characters, not only monospaced ASCII), a whole line's selection taking its line break; a document's are a block, one of its texts, a line and a byte (`WrappedLine::closest_index_for_position`, painted row by row from `position_for_index`, just behind each text so a code block's ground stays under it). `PreviewView::copy` gives what's selected (a document's partial selection: paragraphs apart, a list's items a line apart, a table's cells by tabs and its rows by lines; Select All: every block's own text, laid out yet or not), and `open_find` the kit's find bar (`widgets::find_bar`, Viewer's PDFs' too): a text's matches by line, a document's over what's laid out (found again as more is, "…" until it all is), each marked, the one shown selected and centred. With nothing selected or found the views do nothing more a frame (TODO.md in the rich view scrolling at 60 frames a second: 484 to 535 µs a frame before, 499 to 522 after; the text view's listeners cost about 25 µs a frame). Used by Tracker's Quick Look (`PreviewView::new(item, generation, false, cx)`, images capped at 3200 px; a PDF shows its first page as a picture, in the same `ImageView`, the card until it comes, the rest the Viewer's, and its arrows step through the folder as a picture's do: it had shown only its card, and Up and Down did nothing on it) and the Viewer (zoomable: full resolution up to the GPU texture limit, zoom and pan through its `ImageView`). Video (`video.rs`, H.264 in mp4 or Matroska, AV1 and VP9 in Matroska/WebM or mp4, HEVC in mp4 (`hvc1` and `hev1`: `media::mp4_hevc` walks the boxes to its `hvcC` and `colr`, which the mp4 crate skips) or Matroska (`V_MPEGH/ISO/HEVC`, the record in its CodecPrivate, its `Colour`), with `media.playable` set; the mp4 crate doesn't know AV1's `av01` sample entry, so `media::mp4_av1` walks the boxes to it for the track and its `av1C` sequence header, sent before each key frame): a worker demuxes and decodes (OpenH264, rav1d through `olo_images::av1::Decoder`, filmcraft-vp9 through `olo_images::vp9::Decoder`, or rust_h265 through `olo_images::hevc::Decoder`, whose pictures are `av1::Frame`s too: HEVC's from its decoder configuration record's parameter sets, on four threads in display order, its matrix and range the container's, else BT.709 from 720 lines and BT.601 under) up to six frames ahead, giving each picture the earliest outstanding presentation time (VP9's carry their sample's own, and times left behind by samples that showed nothing are dropped) (OpenH264 returns display order; it must be made with `Flush::NoFlush`, as the crate's default flush after every packet breaks B-frame reordering and every B-frame then fails), mp4 times shifted by the track's edit list; `Video::tick` shows frames against a clock that follows the sound's reported position when an `audio::Player` is playing it and runs alone otherwise (no sound server in tests, silent files). Seeks go to the key frame before the target (Matroska: scans back for one, further each time) and drop pictures before it, all but the one still showing at the target (a still screen in a screen recording is one picture, seconds long: seeking into it showed the next change; `seeks_into_a_long_picture`): the last before it is held (made) unless its sample's duration (an MP4's, a Matroska block's own) says it ended first, and queued at the target's time when the next starts after it; past the last picture's end, that one is decoded again (`Lead`). Holding every picture cost a 4K H.264 seek a sixth more (`seek_cost`: 386 ms against 329; with durations, 317); a paused seek still shows its frame. `OLO_SAMPLES=dir cargo test --release -p olo-preview video -- --ignored` checks seeking on test.mp4/mkv (one key frame) and gop.mp4/mkv (one a second), made with ffmpeg's testsrc2, plus av1.webm (svt-av1, Opus sound), vp9.webm (libvpx with `-auto-alt-ref 1 -lag-in-frames 25`, so hidden frames in superframes), av1.mp4 (`av1_in_mp4`: 4 s of testsrc2 through libsvtav1, a key frame a second), vp9.mp4 and vp9-10bit.webm (`vp9_plays`: profile 0 in mp4, profile 2 in WebM; every picture, posters, facts), hevc.mp4, hvc1.mp4, hevc.mkv and hevc-10bit.mp4 (`hevc_plays`: 1080p HEVC with B-frames as `hev1`, `hvc1` and Matroska, remuxed by `ffmpeg -c copy`, and JCT-VC's Main 10 WPP_D in an mp4; every picture, seeks, posters, facts) and bframes.mp4 (any x264-made H.264 High clip with B-frames; `b_frames` checks every picture comes out, in order); `keeps_up` needs av1-1080.mkv (1080p AV1), vp9-1080.webm (1080p VP9), gop.mp4 and av1.mp4 to decode at well over 30 frames a second (72 on the M2 Max, 195 now; VP9 120; av1.mp4 600; `OLO_ONLY=a,b` picks samples; the YUV to RGB fast path is fixed-point with tables, checked against the float path by `yuv_fast_path`). Drawn by the GPU from its planes (Ben, 2026-11-06: "the viewer app can't even play 4k video at 60fps smoothly"): a window's player asks for `Options::yuv`, and each SDR 4:2:0 picture comes as `Picture::Yuv`, a `gpui::YuvFrame` made on the worker (luma packed, Cb and Cr interleaved; 10-bit samples in the high bits of 16; H.264's limited-range BT.601 as OpenH264's, the others' matrix and range as `olo_images::av1::Frame::yuv420` says), which the window paints with `Window::paint_yuv`: GPUI's Linux renderer keeps two pairs of textures a stream (R8/RG8, or R16/RG16 unorm, added to blade), uploads each new picture into the pair the frame before isn't reading, and the surface shader makes RGB with the picture's own matrix (`YuvFrame::rgb_matrix`). A 4K picture is 12 MB rather than 33 of RGBA, and nothing converts it on the CPU; HDR, wide-gamut and 4:2:2/4:4:4 pictures keep the RGBA path. Measured on 4K60 clips (`make_4k60`: 10 s of 3840 × 2160 through NVENC) on a headless 4K screen: H.264 29.6 frames a second before, 60.0 after; HEVC 24.4 to 59.8; AV1 52.2 to 60.0; the window's own work 18 to 25 ms a frame before (making the picture BGRA and a texture of it), 0.5 ms after. Decoded on NVIDIA's GPU where there is one (`olo_video::nvdec`: NVDEC's API through vendor/nvdec-sys's declarations, `libnvcuvid.so.1` and `libcuda.so.1` opened at run time, nothing linked; its parser takes the stream, HEVC as Annex B with its parameter sets before each key frame; each picture NV12 or P016, copied from the GPU into a `YuvFrame`; its colour from the stream's own H.273 numbers): H.264, HEVC (8- and 10-bit), VP9 and AV1, each asked of the GPU first (`cuvidGetDecoderCaps`). What decodes is chosen by `video::Device` (`Options::device`): `Default` follows Preferences ▸ Power ▸ Graphics ▸ Video Playback (`settings.video.decoder`: `auto`, `nvidia`, `intel`, `cpu`), `Automatic` is the built-in GPU where it decodes the video, else NVIDIA's (on battery too, unless `settings.video.nvidia_on_battery` is off: Ben, 2026-11-06), else the processor, or one named; a decoder that fails mid-stream hands over to the processor at the last key frame, the video playing on. `Video::decoding` says what is decoding ("NVIDIA's GPU (NVDEC)", "the processor"), `PreviewEvent::Decoding` when it changes, and `PreviewView::set_decode_with` starts the video again on another at the same place, playing or not (the Viewer's View ▸ Decode With). Measured on the 4K60 clips: all at 60 frames a second either way; the process's CPU HEVC 246% of a core on the processor to 41.6% on NVDEC, H.264 100% to 29%, AV1 368% to 26%. Every codec decodes on Intel's (or AMD's) GPU too (`olo_vaapi::decode`: VA-API through vendor/va-sys, libva opened at run time). Fedora's iHD (and Mesa) leave out H.264 and HEVC for their patents, and its Mesa compiles them out of Vulkan Video too (ANV shows AV1 and VP9 decoding only with `ANV_DEBUG=video-decode`); RPM Fusion's `intel-media-driver` (nonfree) has them all, in `/usr/lib64/dri-nonfree`, which libva reads before Fedora's folder, and Olo Doctor installs it (`intel_video`: an Intel GPU on Fedora without it; the fix adds RPM Fusion's free and nonfree repositories by their release packages, as rpmfusion.org says, `Step::InstallRepository`, then the driver through PackageKit). H.264 and HEVC go through cros-codecs' stateless decoders (vendor/cros-codecs: its parsers and what a decoder keeps between pictures, the decoded picture buffer, picture order, reference lists and marking, bumping; its own backends and encoders, which link libva and libgbm, gated off) driving a backend of ours (`decode/stateless.rs`: a picture in one of the session's surfaces, back in the free list when nothing holds its handle; `h264.rs` and `h265.rs` fill VA-API's picture, scaling list and slice parameters as ChromeOS's backend does, HEVC's slices a slice behind so the last says so). AV1 and VP9: cros-codecs' parsers read the OBUs and frames, and each picture's parameters are filled as FFmpeg's and ChromeOS's decoders fill them; references are eight slots of surfaces; AV1's film grain is applied by the driver into a display surface of its own; VP9's superframes and shown-again frames are decoded as libvpx does. A picture comes back by the driver's copy engine (`vaCopy`) into a linear surface in memory of ours (`USER_PTR`, the chroma right after the luma rows, as iHD lays it whatever offset it's given), then into planes: mapping the decoder's own (tiled) surface had the processor untile it, 7.5 ms a 4K picture, and `vaGetImage` 7 ms, so 4K60 dropped to 58; the video processor isn't a copy (it changed pictures). A GPU decoder's pictures are held, not copied out (`Decoder::hold`, `Nvdec::hold`; `OLO_VIDEO_HELD=0` copies, to compare): each decoder keeps up to 16 pieces of page-aligned memory (VA-API's linear surfaces, NVDEC's buffers), copies a picture into one nothing holds, and hands it on as it is (`Picture::held`: its planes' offsets and row pitch), as a `gpui::YuvMemory` on the `YuvFrame`; GPUI's renderer imports that memory as a Vulkan buffer (blade's `import_host_buffer`, VK_EXT_external_memory_host) and copies it into the stream's textures on the GPU, letting both go once the GPU is past that frame (a picture it can't import is staged as before, at its pitch). NVDEC's memory is registered with its CUDA context (`cuMemHostRegister`: its copy goes by DMA, not through the processor as into pageable memory), the context shared with that memory and destroyed when the last of it goes (`Cuda`), and made with blocking sync (waiting for a copy, the thread sleeps rather than spins). 4K60 AV1, the Viewer's share of a core, copied → held: Intel's GPU 21.9% → 7.1%, NVIDIA's 30.3% → 21.9%, pinned 13.8%, blocking 7.0% (its video thread 19.9% → 1.1%; 4K60 VP9 7.0%; nothing dropped). `crates/video/tests/reference.rs` decodes reference streams on every device here, each picture against the reference decoder's MD5 (libvpx's VP9 profile 2 and 1080p in tiles, libaom's AV1 10-bit, the HEVC conformance suite's Main 10 in wavefronts; NVDEC takes VP9 only from 128 × 128, said before trying); cros-codecs' per-picture HEVC reference-set warnings are debug notes (ordinary streams do it). `crates/vaapi/tests/decode.rs` checks every picture's MD5 against the reference decoder's (cros-codecs' AV1, VP9, H.264 and HEVC streams: B-frames, H.264 High, HEVC films, VP9's shown-again frames, a reset; a codec no GPU here decodes is said and passed: `LIBVA_DRIVERS_PATH=DIR` points the test alone at RPM Fusion's driver unpacked there). `Automatic` takes the built-in GPU where it decodes the video, else NVIDIA's (on battery too); `Video::decoders` says which GPUs could (the Viewer's menu enables those). 4K60 on the ThinkPad's Intel GPU (Panther Lake, RPM Fusion's iHD 26.3.5), the process's share of a core: H.264 25% (NVDEC 29%, the processor 100%), HEVC 21% (41.6%, 246%), AV1 22% (26%, 368%); a minute of each, with six ahead and the clock waiting for the first picture, played every picture but one (H.264 3600 of 3600, HEVC 3599, AV1 3600, none late; NVDEC's H.264 5 dropped, all at the switch to it), where at two ahead NVDEC had dropped 155, 68 and 176. On the processor, rav1d's and OpenH264's x86 assembly (SSE4 and AVX2, chosen at run time) is built in: nasm assembles it (tools/setup.sh installs it; OpenH264 leaves its assembly out without saying so when there's no nasm, and rav1d's `asm` feature fails the build). `keeps_up` on the 4K60 clips (`OLO_SAMPLES=/var/tmp/olo-4k OLO_ONLY=…`): AV1 32 → 85 pictures a second, H.264 45 → 53–98 (OpenH264 decodes on one thread, as fast as the core the scheduler gives it; its threads crash it), HEVC 108 → 140 (rust_h265, no assembly; the machine was busier for the first); the Viewer playing 4K60 AV1 on the processor 368% → 175% of a core. A frame keeps 8-bit video's samples as bytes (`av1::Planes`, words only deeper; every conversion runs over either through one macro): it had widened them to 16 bits and the queue counted each 4K picture 50 MB, one ahead, so 4K60 AV1 on the processor dropped 1,510 of 3,600 pictures in a minute, now 3 (its video thread 57% of a core → 17.5%). The worker keeps up to six pictures ahead within 80 MB (`QUEUE_BYTES`: six 4K pictures as planes; at 24 MB a 4K picture had two, 33 ms at 60 frames a second, and every hiccup of a decoder's dropped pictures, NVDEC's H.264 150 a minute), and with no sound to follow the clock waits for a late decoder up to 200 ms (`HOLD`: starting, a stall), so a picture shows late rather than the ones after it being passed over; one that can't keep up at all is caught up with by passing pictures over. How smoothly a video played is counted (`Video::playback`: pictures shown, dropped, already late when their turn came, and shown late, more than 25 ms after their time) and logged when the player goes ("video: 3600 pictures shown, 0 dropped, 0 late; decoded on Intel's GPU (VA-API)"); `make_4k60` makes longer clips with `OLO_SECONDS`. Audio decodes with symphonia plus `opus.rs` (opus-decoder, OpusHead parsing and pre-skip trim) for Ogg Opus. `audio::Player` speaks the PulseAudio protocol itself, and its client says who is playing as libpulse does (`application.process.id`, `.binary`, `.user`, `.host`, beside the app's name and icon): Fedora's uresourced follows the programs playing sound by their process, and crashed at every Olo login on the start-up sound's stream (a null process id). Picture editing (`edit.rs`): an `Editor` keeps a list of `Op`s (rotate, flip, crop, resize) with undo/redo and a saved mark, and a worker that loads the full picture once, applies new steps to its last result, sends `EditEvent::Shown` (downscaled for the screen) for `PreviewView::show_edited`, and writes PNG, JPEG (quality 92), WebP, BMP, TIFF or GIF atomically (`write`, through a hidden `.name.saving` file); `edit::editable` says which files it can write back. The Viewer's crop overlay (`crop.rs`: drag a frame, move it or its edges) sits where `ImageView::picture_bounds` says the picture is, `set_still` stopping pan and zoom while it is up. The Viewer's Image menu and File ▸ Save / Save As / Revert use it; Quick Look's footer has Rotate Left / Right (⌘L / ⌘R), which save at once. |
+| `crates/preview` | `olo-preview`: native previews of every file kind (text, images, PDF, audio, video, archives, office documents, fonts). Its decoding needs no toolkit (pictures are `Bitmap`s, premultiplied RGBA; token classes are `olo_theme::Syntax`, coloured by `Palette::syntax`)); its views (`PreviewView`, `rich::RichView`, `table::TableView`) are `kit`, on olo-kit, behind its `kit` feature (what the loader finds comes as messages, `kit::Msg`; a document is laid out as its `body` runs, for the width layout says, and draws only what `Painter::visible_bounds` shows; pictures let go leave the GPU's atlas by themselves). Either turns on `gpu`: pictures as planes for a window's GPU (`olo_yuv::YuvFrame`) and video decoded on GPUs. Source code is coloured by syntect's bundled Sublime grammars plus Olo's own in `src/syntaxes` (TOML, with Cargo.lock and other lock files; INI, with systemd units, .desktop entries and git and editor configs; just, `justfile`, `Justfile`, `.justfile` and `*.just`, its recipe bodies bash with `{{ }}` found in them, in the shell's strings too, through `with_prototype`), its scopes mapped onto the theme's token classes (`text::classify`). Spreadsheets and CSV (`table.rs`, sheets shared as `Arc`s): every column, scrolled sideways; the first row as the columns' names when it looks like a header (all text, with numbers or blanks below); number columns lined up on the right; a bar with Search (every word, in all columns or the one chosen beside it; Escape clears, then lets go) and how many rows show ("14 of 120 rows"); a header click sorts (again to reverse): numbers as numbers (a thousands comma, a currency sign or a percent allowed) before text, text naturally and without case ("file2" before "file10"), empty cells last, ties in the file's order. A sheet of more than 40,000 cells is searched and sorted on a worker (cancelled when asked again), the rows shown until then staying put and the bar saying "Searching…". Quick Look's own keys (Space, the arrows, F) stand aside while a field has the keyboard. Formatted documents (Markdown, and Word, OpenDocument, RTF and PowerPoint text) are blocks (`doc::Block`) set as a page by `rich.rs`: Word, OpenDocument text and RTF are read by `olo-richtext` (`doc::rich`: headings, lists numbered as they count, quotations, neighbouring code lines as one block, tables as tables; empty paragraphs are spacing, left out), slides by `doc.rs`'s own zip and XML; Markdown is CommonMark with GitHub's tables (their alignment, and styled cells), task lists, strikethrough and alerts (`> [!NOTE]` and the rest, a bar and title in the alert's hue), typographer's quotes and dashes; raw HTML keeps its text (`<br>` breaks, `<img>` is an image, comments go); code blocks are coloured by their fence's language (`text::highlight`, the text preview's grammars); pictures beside the document are shown (local files only, never fetched; a remote one's alt text shows instead), resampled exactly to their device size. The page is at most 680 points wide, centred, body text 13 points on a 20-point line, headings 26 to 13 points with room above them (rules under the first two), lists with hanging indents (bullets drawn, numbers lined up on the right, tasks as `check_box_look`s), inline code on a tint with a small no-break space either side (a line doesn't break between "(" and code), and links in the link hue, underlined under the pointer; they open with `olo_xdg::open` (a relative one beside the document) and a `#heading` scrolls to it (GitHub's anchors). Blocks are laid out once for a width, scale, look and font generation: those in view first (at most 5 ms), the rest 3 ms a frame after, and a spinner shows over a part not laid out yet; only blocks in view are drawn. Agents read each block (`Heading`, `Paragraph`, `ListItem`, `Code`, `Table`, `Image`) and click its links (`Link`). Text and formatted documents' text is selected as anywhere in Olo (a drag; a word with a double-click, a line with a triple; ⇧ extends; an I-beam over it), drawn behind the text in the kit's selection (`style::selection_behind`, the text fields' too): the text preview's places are a line and a byte, hit by each line shaped as drawn (any characters, not only monospaced ASCII), a whole line's selection taking its line break; a document's are a block, one of its texts, a line and a byte (`WrappedLine::closest_index_for_position`, painted row by row from `position_for_index`, just behind each text so a code block's ground stays under it). `PreviewView::copy` gives what's selected (a document's partial selection: paragraphs apart, a list's items a line apart, a table's cells by tabs and its rows by lines; Select All: every block's own text, laid out yet or not), and `open_find` the kit's find bar (`widgets::find_bar`, Viewer's PDFs' too): a text's matches by line, a document's over what's laid out (found again as more is, "…" until it all is), each marked, the one shown selected and centred. With nothing selected or found the views do nothing more a frame (TODO.md in the rich view scrolling at 60 frames a second: 484 to 535 µs a frame before, 499 to 522 after; the text view's listeners cost about 25 µs a frame). Used by Tracker's Quick Look (`PreviewView::new(item, generation, false, cx)`, images capped at 3200 px; a PDF shows its first page as a picture, in the same `ImageView`, the card until it comes, the rest the Viewer's, and its arrows step through the folder as a picture's do: it had shown only its card, and Up and Down did nothing on it) and the Viewer (zoomable: full resolution up to the GPU texture limit, zoom and pan through its `ImageView`). Video (`video.rs`, H.264 in mp4 or Matroska, AV1 and VP9 in Matroska/WebM or mp4, HEVC in mp4 (`hvc1` and `hev1`: `media::mp4_hevc` walks the boxes to its `hvcC` and `colr`, which the mp4 crate skips) or Matroska (`V_MPEGH/ISO/HEVC`, the record in its CodecPrivate, its `Colour`), with `media.playable` set; the mp4 crate doesn't know AV1's `av01` sample entry, so `media::mp4_av1` walks the boxes to it for the track and its `av1C` sequence header, sent before each key frame): a worker demuxes and decodes (OpenH264, rav1d through `olo_images::av1::Decoder`, filmcraft-vp9 through `olo_images::vp9::Decoder`, or rust_h265 through `olo_images::hevc::Decoder`, whose pictures are `av1::Frame`s too: HEVC's from its decoder configuration record's parameter sets, on four threads in display order, its matrix and range the container's, else BT.709 from 720 lines and BT.601 under) up to six frames ahead, giving each picture the earliest outstanding presentation time (VP9's carry their sample's own, and times left behind by samples that showed nothing are dropped) (OpenH264 returns display order; it must be made with `Flush::NoFlush`, as the crate's default flush after every packet breaks B-frame reordering and every B-frame then fails), mp4 times shifted by the track's edit list; `Video::tick` shows frames against a clock that follows the sound's reported position when an `audio::Player` is playing it and runs alone otherwise (no sound server in tests, silent files). Seeks go to the key frame before the target (Matroska: scans back for one, further each time) and drop pictures before it, all but the one still showing at the target (a still screen in a screen recording is one picture, seconds long: seeking into it showed the next change; `seeks_into_a_long_picture`): the last before it is held (made) unless its sample's duration (an MP4's, a Matroska block's own) says it ended first, and queued at the target's time when the next starts after it; past the last picture's end, that one is decoded again (`Lead`). Holding every picture cost a 4K H.264 seek a sixth more (`seek_cost`: 386 ms against 329; with durations, 317); a paused seek still shows its frame. `OLO_SAMPLES=dir cargo test --release -p olo-preview video -- --ignored` checks seeking on test.mp4/mkv (one key frame) and gop.mp4/mkv (one a second), made with ffmpeg's testsrc2, plus av1.webm (svt-av1, Opus sound), vp9.webm (libvpx with `-auto-alt-ref 1 -lag-in-frames 25`, so hidden frames in superframes), av1.mp4 (`av1_in_mp4`: 4 s of testsrc2 through libsvtav1, a key frame a second), vp9.mp4 and vp9-10bit.webm (`vp9_plays`: profile 0 in mp4, profile 2 in WebM; every picture, posters, facts), hevc.mp4, hvc1.mp4, hevc.mkv and hevc-10bit.mp4 (`hevc_plays`: 1080p HEVC with B-frames as `hev1`, `hvc1` and Matroska, remuxed by `ffmpeg -c copy`, and JCT-VC's Main 10 WPP_D in an mp4; every picture, seeks, posters, facts) and bframes.mp4 (any x264-made H.264 High clip with B-frames; `b_frames` checks every picture comes out, in order); `keeps_up` needs av1-1080.mkv (1080p AV1), vp9-1080.webm (1080p VP9), gop.mp4 and av1.mp4 to decode at well over 30 frames a second (72 on the M2 Max, 195 now; VP9 120; av1.mp4 600; `OLO_ONLY=a,b` picks samples; the YUV to RGB fast path is fixed-point with tables, checked against the float path by `yuv_fast_path`). Drawn by the GPU from its planes (Ben, 2026-11-06: "the viewer app can't even play 4k video at 60fps smoothly"): a window's player asks for `Options::yuv`, and each SDR 4:2:0 picture comes as `Picture::Yuv`, an `olo_yuv::YuvFrame` made on the worker (luma packed, Cb and Cr interleaved; 10-bit samples in the high bits of 16; H.264's limited-range BT.601 as OpenH264's, the others' matrix and range as `olo_images::av1::Frame::yuv420` says), which the window paints with `Painter::paint_yuv`: the renderer keeps two pairs of textures a stream (R8/RG8, or R16/RG16 unorm, added to blade), uploads each new picture into the pair the frame before isn't reading, and the surface shader makes RGB with the picture's own matrix (`YuvFrame::rgb_matrix`). A 4K picture is 12 MB rather than 33 of RGBA, and nothing converts it on the CPU; HDR, wide-gamut and 4:2:2/4:4:4 pictures keep the RGBA path. Measured on 4K60 clips (`make_4k60`: 10 s of 3840 × 2160 through NVENC) on a headless 4K screen: H.264 29.6 frames a second before, 60.0 after; HEVC 24.4 to 59.8; AV1 52.2 to 60.0; the window's own work 18 to 25 ms a frame before (making the picture BGRA and a texture of it), 0.5 ms after. Decoded on NVIDIA's GPU where there is one (`olo_video::nvdec`: NVDEC's API through vendor/nvdec-sys's declarations, `libnvcuvid.so.1` and `libcuda.so.1` opened at run time, nothing linked; its parser takes the stream, HEVC as Annex B with its parameter sets before each key frame; each picture NV12 or P016, copied from the GPU into a `YuvFrame`; its colour from the stream's own H.273 numbers): H.264, HEVC (8- and 10-bit), VP9 and AV1, each asked of the GPU first (`cuvidGetDecoderCaps`). What decodes is chosen by `video::Device` (`Options::device`): `Default` follows Preferences ▸ Power ▸ Graphics ▸ Video Playback (`settings.video.decoder`: `auto`, `nvidia`, `intel`, `cpu`), `Automatic` is the built-in GPU where it decodes the video, else NVIDIA's (on battery too, unless `settings.video.nvidia_on_battery` is off: Ben, 2026-11-06), else the processor, or one named; a decoder that fails mid-stream hands over to the processor at the last key frame, the video playing on. `Video::decoding` says what is decoding ("NVIDIA's GPU (NVDEC)", "the processor"), `PreviewEvent::Decoding` when it changes, and `PreviewView::set_decode_with` starts the video again on another at the same place, playing or not (the Viewer's View ▸ Decode With). Measured on the 4K60 clips: all at 60 frames a second either way; the process's CPU HEVC 246% of a core on the processor to 41.6% on NVDEC, H.264 100% to 29%, AV1 368% to 26%. Every codec decodes on Intel's (or AMD's) GPU too (`olo_vaapi::decode`: VA-API through vendor/va-sys, libva opened at run time). Fedora's iHD (and Mesa) leave out H.264 and HEVC for their patents, and its Mesa compiles them out of Vulkan Video too (ANV shows AV1 and VP9 decoding only with `ANV_DEBUG=video-decode`); RPM Fusion's `intel-media-driver` (nonfree) has them all, in `/usr/lib64/dri-nonfree`, which libva reads before Fedora's folder, and Olo Doctor installs it (`intel_video`: an Intel GPU on Fedora without it; the fix adds RPM Fusion's free and nonfree repositories by their release packages, as rpmfusion.org says, `Step::InstallRepository`, then the driver through PackageKit). H.264 and HEVC go through cros-codecs' stateless decoders (vendor/cros-codecs: its parsers and what a decoder keeps between pictures, the decoded picture buffer, picture order, reference lists and marking, bumping; its own backends and encoders, which link libva and libgbm, gated off) driving a backend of ours (`decode/stateless.rs`: a picture in one of the session's surfaces, back in the free list when nothing holds its handle; `h264.rs` and `h265.rs` fill VA-API's picture, scaling list and slice parameters as ChromeOS's backend does, HEVC's slices a slice behind so the last says so). AV1 and VP9: cros-codecs' parsers read the OBUs and frames, and each picture's parameters are filled as FFmpeg's and ChromeOS's decoders fill them; references are eight slots of surfaces; AV1's film grain is applied by the driver into a display surface of its own; VP9's superframes and shown-again frames are decoded as libvpx does. A picture comes back by the driver's copy engine (`vaCopy`) into a linear surface in memory of ours (`USER_PTR`, the chroma right after the luma rows, as iHD lays it whatever offset it's given), then into planes: mapping the decoder's own (tiled) surface had the processor untile it, 7.5 ms a 4K picture, and `vaGetImage` 7 ms, so 4K60 dropped to 58; the video processor isn't a copy (it changed pictures). A GPU decoder's pictures are held, not copied out (`Decoder::hold`, `Nvdec::hold`; `OLO_VIDEO_HELD=0` copies, to compare): each decoder keeps up to 16 pieces of page-aligned memory (VA-API's linear surfaces, NVDEC's buffers), copies a picture into one nothing holds, and hands it on as it is (`Picture::held`: its planes' offsets and row pitch), as an `olo_yuv::YuvMemory` on the `YuvFrame`; the renderer imports that memory as a Vulkan buffer (blade's `import_host_buffer`, VK_EXT_external_memory_host) and copies it into the stream's textures on the GPU, letting both go once the GPU is past that frame (a picture it can't import is staged as before, at its pitch). NVDEC's memory is registered with its CUDA context (`cuMemHostRegister`: its copy goes by DMA, not through the processor as into pageable memory), the context shared with that memory and destroyed when the last of it goes (`Cuda`), and made with blocking sync (waiting for a copy, the thread sleeps rather than spins). 4K60 AV1, the Viewer's share of a core, copied → held: Intel's GPU 21.9% → 7.1%, NVIDIA's 30.3% → 21.9%, pinned 13.8%, blocking 7.0% (its video thread 19.9% → 1.1%; 4K60 VP9 7.0%; nothing dropped). `crates/video/tests/reference.rs` decodes reference streams on every device here, each picture against the reference decoder's MD5 (libvpx's VP9 profile 2 and 1080p in tiles, libaom's AV1 10-bit, the HEVC conformance suite's Main 10 in wavefronts; NVDEC takes VP9 only from 128 × 128, said before trying); cros-codecs' per-picture HEVC reference-set warnings are debug notes (ordinary streams do it). `crates/vaapi/tests/decode.rs` checks every picture's MD5 against the reference decoder's (cros-codecs' AV1, VP9, H.264 and HEVC streams: B-frames, H.264 High, HEVC films, VP9's shown-again frames, a reset; a codec no GPU here decodes is said and passed: `LIBVA_DRIVERS_PATH=DIR` points the test alone at RPM Fusion's driver unpacked there). `Automatic` takes the built-in GPU where it decodes the video, else NVIDIA's (on battery too); `Video::decoders` says which GPUs could (the Viewer's menu enables those). 4K60 on the ThinkPad's Intel GPU (Panther Lake, RPM Fusion's iHD 26.3.5), the process's share of a core: H.264 25% (NVDEC 29%, the processor 100%), HEVC 21% (41.6%, 246%), AV1 22% (26%, 368%); a minute of each, with six ahead and the clock waiting for the first picture, played every picture but one (H.264 3600 of 3600, HEVC 3599, AV1 3600, none late; NVDEC's H.264 5 dropped, all at the switch to it), where at two ahead NVDEC had dropped 155, 68 and 176. On the processor, rav1d's and OpenH264's x86 assembly (SSE4 and AVX2, chosen at run time) is built in: nasm assembles it (tools/setup.sh installs it; OpenH264 leaves its assembly out without saying so when there's no nasm, and rav1d's `asm` feature fails the build). `keeps_up` on the 4K60 clips (`OLO_SAMPLES=/var/tmp/olo-4k OLO_ONLY=…`): AV1 32 → 85 pictures a second, H.264 45 → 53–98 (OpenH264 decodes on one thread, as fast as the core the scheduler gives it; its threads crash it), HEVC 108 → 140 (rust_h265, no assembly; the machine was busier for the first); the Viewer playing 4K60 AV1 on the processor 368% → 175% of a core. A frame keeps 8-bit video's samples as bytes (`av1::Planes`, words only deeper; every conversion runs over either through one macro): it had widened them to 16 bits and the queue counted each 4K picture 50 MB, one ahead, so 4K60 AV1 on the processor dropped 1,510 of 3,600 pictures in a minute, now 3 (its video thread 57% of a core → 17.5%). The worker keeps up to six pictures ahead within 80 MB (`QUEUE_BYTES`: six 4K pictures as planes; at 24 MB a 4K picture had two, 33 ms at 60 frames a second, and every hiccup of a decoder's dropped pictures, NVDEC's H.264 150 a minute), and with no sound to follow the clock waits for a late decoder up to 200 ms (`HOLD`: starting, a stall), so a picture shows late rather than the ones after it being passed over; one that can't keep up at all is caught up with by passing pictures over. How smoothly a video played is counted (`Video::playback`: pictures shown, dropped, already late when their turn came, and shown late, more than 25 ms after their time) and logged when the player goes ("video: 3600 pictures shown, 0 dropped, 0 late; decoded on Intel's GPU (VA-API)"); `make_4k60` makes longer clips with `OLO_SECONDS`. Audio decodes with symphonia plus `opus.rs` (opus-decoder, OpusHead parsing and pre-skip trim) for Ogg Opus. `audio::Player` speaks the PulseAudio protocol itself, and its client says who is playing as libpulse does (`application.process.id`, `.binary`, `.user`, `.host`, beside the app's name and icon): Fedora's uresourced follows the programs playing sound by their process, and crashed at every Olo login on the start-up sound's stream (a null process id). Picture editing (`edit.rs`): an `Editor` keeps a list of `Op`s (rotate, flip, crop, resize) with undo/redo and a saved mark, and a worker that loads the full picture once, applies new steps to its last result, sends `EditEvent::Shown` (downscaled for the screen) for `PreviewView::show_edited`, and writes PNG, JPEG (quality 92), WebP, BMP, TIFF or GIF atomically (`write`, through a hidden `.name.saving` file); `edit::editable` says which files it can write back. The Viewer's crop overlay (`crop.rs`: drag a frame, move it or its edges) sits where `ImageView::picture_bounds` says the picture is, `set_still` stopping pan and zoom while it is up. The Viewer's Image menu and File ▸ Save / Save As / Revert use it; Quick Look's footer has Rotate Left / Right (⌘L / ⌘R), which save at once. |
 | `crates/richtext` | `olo-richtext`: formatted text documents in and out, natively (zip and quick-xml): Word (`.docx`: styles, numbering, hyperlinks' relationships), OpenDocument text (`.odt`: automatic and named styles, nested lists, `text:s` for runs of spaces) and RTF (`rtf.rs`: a reader of groups and control words — font and colour tables, the style sheet's names for kinds or else `\outlinelevel`, lists from the list table or Word 95's `\pn`, links from `HYPERLINK` fields, tables from `\intbl` paragraphs, `\cell` and `\row` (`\trhdr` a header), any Windows code page by `\ansicpg` or a font's `\fcharset`, `\u` with its fallbacks skipped, surrogate pairs; pictures, headers, footers, notes, hidden text and unknown `\*` destinations left out — and a writer of plain ASCII with a style sheet, a list table per numbered list and every paragraph's look spelled out, as RTF readers take a paragraph's look from its own words, not its style; the reader takes each kind's look off again). A `Document` of `Paragraph`s (kind: body, title, heading 1–3, quote, code; a list, bulleted or numbered, and its level; an indent; alignment; or a `Table` in the flow: rows of cells of paragraphs, the first row maybe a header, and the columns' widths if they have their own (`widths`, shares of the table after `tidy`: Word's `w:gridCol`s, OpenDocument's column styles, RTF's first row's `\cellx` edges), written ruled across the page in each format) of `Span`s (bold, italic, underline, struck out, size, colour, font, monospace, link), indents beyond the levels in points (`left`, `first`, `right`; read as whole levels and the rest) and tab stops (`Tab`: left, centre, right, decimal), and the document's font. `read`/`write` go by the file's extension; `Document::tidy` runs same-styled spans together and makes a line break a new paragraph (in cells too), and gives every row a cell for each column and every cell a paragraph. Light on purpose (StyledEdit links it; `preview` is far heavier), and round-trip tested; its files open in LibreOffice as they look in StyledEdit (`OLO_RICHTEXT_OUT=dir cargo test -p olo-richtext writes_samples` writes a sample of each; `OLO_RICHTEXT_READ=file cargo test -p olo-richtext reads_named_file -- --nocapture` prints how another program's file reads). |
 | `crates/syntax` | `olo-syntax`: source code coloured by syntax, in process: tree-sitter's grammars for 43 languages (Rust, C, C++, Go, Python, JavaScript, TypeScript and TSX, shell and fish, Ruby, Java, Kotlin, Swift, C#, PHP, Lua, SQL, HTML, CSS, JSON, YAML, TOML, XML, Makefiles, Dockerfiles, CMake, Scala, Haskell, Zig, Elixir, Erlang, Nix, R, Julia, OCaml, Dart, Objective-C, Protocol Buffers, PowerShell, INI, diffs), each compiled in, with its highlight query (its crate's, or `queries/`: Kotlin's is Olo's own) whose captures map to the palette's token classes (`class_of`: `function.method.call` a function, `variable` plain inside a string). `LANGUAGES`; `detect(path, first_line)` (a whole name like `Makefile`, the extension, a `#!` line's interpreter, `env -S` and versions too); `by_name` (an id, alias or extension: what a Markdown fence says). A `Highlighter` keeps one text's tree: `edit(&Edit)` per change (`Edit::new` with the lines it's on, or `Edit::in_text` counting them), `job(text)` the parse to run on a worker (one out at a time; a language's query compiles in its first, up to half a second for Swift's), `done(parsed)` takes the tree (edits made meanwhile applied to it; what changed: `Changed`), `classes(text, range)` the query over just those bytes (inner captures and a node's first pattern win). 100,000 lines of Rust: parsed in a second, a keystroke's reparse 16 ms (both on the worker), a screenful coloured in 0.35 ms. The kit's `code` module puts it in the editor. |
 | `crates/print` | `olo-print`: printing, natively. `Page`s of `Item`s (text at a baseline with its font, size, colour, width and lines; rectangles; lines; pictures, a PNG, JPEG, GIF or WebP file's bytes in a box), in points from the top left, made into a PDF by `pdf` (krilla: fonts found by fontdb, Olo's own for text naming none, embedded and subset, text stays text; a character the font lacks drawn from a face that has it, `ttf-parser` telling; bold from a variable font's default instance stroked as well as filled, as browsers print it). `ipp`: CUPS spoken to over IPP on `/run/cups/cups.sock` (else `localhost:631`; `OLO_CUPS_SOCKET` for a test's stand-in, as `talks_to_cups` has): `printers()` (name, description, state, paper), `default_printer()`, `print(printer, pdf, &Job)` (copies, paper, pages, sides). `panel::PrintPanel`: the Print window (printer or PDF File, paper, copies, pages; the printers asked for on a worker); `Paper`, `PAPERS` and `local_paper()` (US Letter where it is used, else A4). |
 | `apps/<name>` | One crate per application, binary named `olo-<name>`. Picked up by the workspace glob. |
-| `vendor/` | Patched copies of dependencies (`[patch.crates-io]`), libraries owned outright, and what the Interface Kit still uses of GPUI's helper crates and Blade, each explained in `vendor/README.md`. |
+| `vendor/` | Patched copies of dependencies (`[patch.crates-io]`), libraries owned outright (a few small helper crates the Interface Kit keeps, and Blade), each explained in `vendor/README.md`. |
 | `data/icons` | Icon set, pre-scaled to device sizes (`data/icons/<px>/<name>.png`). |
 | `data/themes` | The other looks of the icons and wordmark (`data/themes/<id>/icons/<px>/<name>.png`, `brand/`), chosen in Preferences ▸ Themes; see "Themes" in [ICONS.md](ICONS.md). |
 | `data/session` | `olo.desktop` for the login screen (installed by `tools/install-session.sh`). |
@@ -828,7 +837,7 @@ long after a way out comes back.
 Build: `cargo build -p olo-<app>` (plus `cargo build --bin olo-app-server` once, for headless testing; as root set `CARGO_HOME=/home/ben/.cargo` to share the registry) (repo is owned by `ben`; when running as
 root use `sudo -u ben bash -lc 'cd … && cargo build …'` in the main checkout).
 How long a release build takes after a change (ThinkPad, 16 threads,
-2026-11-05, the whole workspace): the kit (then olo-ui, on GPUI) 92 s, app_server 47
+2026-11-05, the whole workspace): the kit (then olo-ui) 92 s, app_server 47
 s, a leaf app 2.8 s. A kit change is bound by CPU, not by any one step:
 olo-ui 21 s, then some 35 apps compiled and linked at once, about 1,000
 CPU-seconds in all (olo-portal alone, with the machine to itself, is 15
@@ -2324,10 +2333,10 @@ Every Olo app is built on olo-kit: the Interface Kit
 and what every app does the same way. **How the kits work, how a
 program is put together with them, and the practices to keep are in
 the Olo Book ([OLO-BOOK.md](OLO-BOOK.md)); this section is the
-catalogue: every widget and what it does.** (The kits replaced a kit on
-GPUI, `crates/ui`, on 2026-11-11, which had replaced one on egui on
-2026-11-02. A note below that says how "the GPUI kit" did something
-is history, kept where it explains why a thing is as it is.)
+catalogue: every widget and what it does.** (The kits are Olo's own,
+and replaced GPUI on 2026-11-11. GPUI is gone, for good: never bring
+it back, as a dependency or as code, and never measure Olo against it.
+How fast Olo is is measured in absolute terms: "Fast and light".)
 
 An app calls `olo_kit::run(id, build)` and opens windows with
 `open_window(WindowOptions, |cx| view)`: each on a looper of its own,
@@ -2343,9 +2352,7 @@ gives any thread a `Proxy` to send messages the app takes in
 (`child.update(cx, ..)`, now) and can't be inside it when it does;
 everyone else sends it a message, or asks for something to be done to
 it later (`ViewRef::update`), taken once what's running is done. So
-there is no re-entry to guard against, and nothing to lock. (On GPUI,
-an entity read while it was being updated panicked at run time, and a
-rustc driver, `tools/reentry`, hunted for it; both are gone.) A window
+there is no re-entry to guard against, and nothing to lock. A window
 opened from a handler draws its first frame before any event reaches
 it.
 
@@ -2517,8 +2524,7 @@ it.
   whole device pixels, for laying out beside it. Its drawing has a key
   (what it shows: its tools' states, picker values and length), so it
   is drawn again only when that changes: typing in StyledEdit doesn't
-  lay its forty tools out again (on the GPUI kit they cost ~280 µs a
-  key until the bar was a cached view of its own). `Menu::swatch(color)` gives a
+  lay its forty tools out again. `Menu::swatch(color)` gives a
   menu item a colour swatch in the icons' column (`color::paint_swatch`,
   `ColorWell`'s look).
 - Custom drawing in a `canvas` paints with its `Painter` (`g`): `g.paint_quad`
@@ -3062,10 +3068,9 @@ it.
 - A menu bar's menus are built when the view that holds it says what
   it shows (its `body`), not each time the window draws: a window
   whose picture moves (a video, a live agent screen, a scan's progress)
-  draws that picture alone. (On the GPUI kit every view above one that
-  changed drew again, the menu bar with it: building, resolving and
-  copying the Viewer's menus was 32 µs of its 261 µs a 4K60 frame.)
-  Opening a menu, a key the bar takes and an agent's or the palette's
+  draws that picture alone. (Building, resolving and copying the
+  Viewer's menus each frame would be 32 µs of a 4K60 frame.) Opening
+  a menu, a key the bar takes and an agent's or the palette's
   look read the menus the view last gave, so a view whose menus depend
   on its state invalidates itself when that changes.
   `Menu::keys_from(bar)` gives a context menu the bar's keys.
@@ -4074,9 +4079,13 @@ headless from its own folder: a folder whose `release` is a link to
 its `bin/` as `CARGO_TARGET_DIR`, `OLO_DATA` as its entry sets it, and
 its own tree's `tsession start NAME --session --shell --home` a
 scratch home (the one from before the kits, 2026-11-12: its desktop,
-Deskbar and DeskCalc came up from `~/.local/olo-kept/before-kits`). To
-measure against it again, the same folder is the old build for
-`tools/dev/bench` run from a worktree of its commit.
+Deskbar and DeskCalc came up from `~/.local/olo-kept/before-kits`). A
+kept build is there to fall back to, not to measure against: Olo's
+speed is measured in absolute terms (a frame's work against its budget,
+CPU at rest and while animating, latency), and a change against the
+build from just before it (Ben, 2026-11-16: "GPUI should be gone we
+don't care about it anymore just make sure we are performant in
+absolute terms").
 
 Install for the login screen with `tools/install-session.sh` (as
 yourself; it asks for sudo once). It builds release binaries into
@@ -4544,25 +4553,18 @@ is left out of the frame of the window that opened it, and
 `OLO_FRAME_PHASES=1` prints it by itself (`window made in N ms`): a
 menu's opening read 9 to 17 ms as a frame of the window under it, and
 the benchmark failed every app's menus for it, though from the press
-to the menu's picture reaching the compositor takes what it took on
-GPUI (3.7 to 4.9 ms against 3.0 to 4.6, most of it app_server's
-answer: measured from each client's own `WAYLAND_DEBUG` log).
+to the menu's picture reaching the compositor takes 3.7 to 4.9 ms,
+most of it app_server's answer (measured from each client's own
+`WAYLAND_DEBUG` log).
 
-**Marks are one kit's own count; the processor's time is the measure
-between builds.** GPUI's marks left out what an input handler did
-before the frame and what making a window cost; the kits' count the
-looper's work. So two builds are compared by what each step cost the
-process, every thread (`cpu_ms` in the benchmark, from the
-scheduler's own count, `/proc/PID/task/*/schedstat`), or by a time
-both show the same way (a client's Wayland log), never by one's marks
-against the other's. So measured, the kits use 88% of what the GPUI
-build did over the whole benchmark at 2× (2026-11-12: scrolling 80%,
-typing 76%, an idle second 52%, tabs 62%, menus 93%, a live resize
-98%), and more where a whole window is drawn again every frame, the
-price of drawing on a thread of its own: a list-heavy window resized
-live (Logs 65 → 95 ms for 36 steps, Notifications 128 → 195), a
-drawing that moves every frame (StringTheme 44 → 70 ms for 210
-frames), and what's first shown as a program starts.
+**The processor's time is the measure between builds.** Two builds of
+Olo (the one before a change and the one after) are compared by what
+each step cost the process, every thread (`cpu_ms` in the benchmark,
+from the scheduler's own count, `/proc/PID/task/*/schedstat`), or by a
+time both show the same way (a client's Wayland log), and either is
+read against its budget: a frame's work within its frame (8.3 ms at
+120 Hz), nothing at rest. Never against another toolkit (GPUI is gone,
+and isn't a yardstick).
 
 `tools/dev/scroll-check NAME --app NAME` measures scrolling with them: on
 a long list under the pointer it drives a steady two-finger scroll (at a
@@ -10506,9 +10508,7 @@ agents as a `Button` named by its key), so the pointer coming over one
 draws that key again and nothing else; the display is a
 `style::sunken` well holding a right-aligned `TextField` that keeps
 the keyboard (Enter, ↑, ↓ and Escape are the window's, which the
-field's keys pass through); typed characters flash their keys. (It
-was the first app on the GPUI kit, 2026-10: against the egui version,
-57 MB against 83, 42 frames for 20 clicks against 210.)
+field's keys pass through); typed characters flash their keys.
 
 ## StyledEdit (apps/styled-edit)
 
@@ -10798,16 +10798,13 @@ worker and tells the inspectors what's theirs (the graphs' span and
 smoothness, the interval, the menus' checks); the main window writes
 them at once as it closes and before an upgrade replaces the program.
 
-On olo-kit against the GPUI build (release, 2× on a headless screen,
-10 s each, under the same load): Overview 3.7% of a core (4.1: the UI
-0.9 in both, on two threads now, the display's and the window's), the
-same 11.9 frames a second at 472 µs each (598); Processes 5.1 (5.2),
-its once-a-second frame 1.68 ms (1.67); 77.5 MB resident (77.9) and
-78.9 (78.3); CPU 4.0 (4.8), 23.3 frames a second at 512 µs (22.5 at
-920); Sensors, with its Fans card, 3.9 (3.8), 23.1 frames a second at
-455 µs (11.4 at 686: two graphs the window's width there now, each
-moving a device pixel at a time). The sampler thread is the same code,
-and most of either.
+What it costs (release, 2× on a headless screen, 10 s each): Overview
+3.7% of a core (the UI 0.9, on two threads, the display's and the
+window's), 11.9 frames a second at 472 µs each; Processes 5.1%, its
+once-a-second frame 1.68 ms; 77.5 to 78.9 MB resident; CPU 4.0%, 23.3
+frames a second at 512 µs; Sensors, with its Fans card, 3.9%, 23.1
+frames a second at 455 µs (two graphs the window's width, each moving
+a device pixel at a time). The sampler thread is most of it.
 
 Against the egui Activity Monitor (release, 2× on a headless screen,
 each section 20 s, the UI thread alone; the sampler thread is the same
@@ -12947,8 +12944,8 @@ back what was typed (`Msg::Submit`), drawn as alerts with fields
 field, and Escape cancels, the keyboard kept in the form), each window
 as tall as what it shows as fields come and go (`fits_content`: an
 `AlertFrame` lays what it holds out in flow, so its window knows how
-tall that is; on the GPUI kit it didn't, and Format's form was cut off at
-its Encrypt box); a resize's form asks what the file system allows on
+tall that is, or Format's form would be cut off at its Encrypt box); a
+resize's form asks what the file system allows on
 a worker of its own; the benchmark is a window on a looper of its own,
 told its samples by its own thread; the map is one canvas keyed by a
 count of what it shows changing, a click found again from the same
@@ -13511,8 +13508,8 @@ as `cwd`, else its own, the tab running the same agent first,
 `agent_context::own_agent`), and hands the title to that tab's Terminal
 on the tab's display (`olo-terminal --set-tab-title SHELL TITLE`
 through the single-instance socket, `instance::forward_on`, which
-Terminal listens on: the GPUI port had dropped `instance::listen`, so
-no title and no second launch ever arrived). The snapshot and the
+Terminal listens on: without `instance::listen`, no title and no
+second launch arrive). The snapshot and the
 socket are found in `olo_xdg::runtime_dir()` (`XDG_RUNTIME_DIR`, else
 /run/user/UID). `olo-terminal --mcp` still serves the same over stdin
 and stdout (a line each way), for an agent whose settings named it
@@ -13679,7 +13676,7 @@ in, its worktrees and local branches when `worktrees/*/HEAD`,
 `refs/heads` or `packed-refs` change (the windows drawn again, as their
 menus list them). GitHub's thread sleeps until the branches wanted
 change or its next ask is due. Idle, Terminal wakes for none of this (2
-wakeups in 30 s, GPUI's own, from 3 a second).
+wakeups in 30 s).
 * A window whose tabs are all in one repository becomes its group on its
   own (`Group::auto`, named after it, in the colour of another window of
   it if there is one); the automatic group follows the tabs (gone when
@@ -14521,9 +14518,8 @@ its bell's click reaches your own notification service. Unit tests:
 On olo-kit: what lasts between its showings (the applications, what
 was chosen, the model, the workers) is a `Hub` on the program's
 looper; each showing is a window with a `Palette` view of its own,
-told what's found. Hidden, nothing wakes it. (On the GPUI kit it
-opened in 28 ms from the forward to the first frame, egui's 47, and
-held 113.6 MB shown, egui's 154.1.)
+told what's found. Hidden, nothing wakes it. (It opened in 28 ms from
+the forward to the first frame, and held 113.6 MB shown.)
 
 ⌘Space (`Shortcut::Palette`, the profile's: ⊞S on Windows, Alt+Space
 on BeOS; Find moved to ⌥⌘Space) or a tap of the Super key (if chosen in
@@ -16542,20 +16538,12 @@ ProcessController put their bars in its tray.
   out (`Shelf`) and draws their ground, tips and clicks, the layer
   draws them; a reading or a step of motion draws the layer alone (the
   bar too only while a widget's tip is up, for its words).
-* **Cost on olo-kit** against the GPUI build (release, 2× headless,
-  the same five widgets: a tray's bars and number, two graphs and a
-  meter, 20 s): 0.7% of a core (1.4), 78 wakeups a second (78), 12.8
-  frames a second at 307 µs (15.8 at 494), 107.5 MB (107.9). With no
-  widgets, on two displays at 1.5×: 0.0%, a frame each few seconds as
-  the status watchers say something new (10 in 30 s, the GPUI build
-  7), 452 µs each (570).
-* **Cost** of the GPUI build, over 20 s on release builds at 2× (`tools/dev/cost`): no
-  widgets, 0.1% of a core, 2 wakeups a second, 0.2 frames a second;
-  eight (most read every second: three graphs, 16 cores' bars, a
-  meter, a tray heatmap and number), 0.9%, 45 wakeups, 9.6 frames a
-  second at 614 µs (a frame of the layer alone: ~200 µs of GPUI's own,
-  ~27 µs a widget, ~200 submitting). Before they moved: 0.3%, 2.1
-  frames a second at 773 µs, the whole bar each.
+* **Cost** (release, 2× headless, five widgets: a tray's bars and
+  number, two graphs and a meter, 20 s, `tools/dev/cost`): 0.7% of a
+  core, 78 wakeups a second, 12.8 frames a second at 307 µs, 107.5
+  MB. With no widgets, on two displays at 1.5×: 0.0%, a frame each few
+  seconds as the status watchers say something new (10 in 30 s), 452
+  µs each.
 * **Tips' top five** (Ben: "for relevant widgets like cpu, gpu,
   memory, network make it so that hovering over the widget also shows
   the top 5 highest consuming processes"): with the pointer on a CPU,
@@ -18356,23 +18344,14 @@ A Telegram client of Olo's own: MTProto in process through grammers
   any button, and the right one opens a menu here). A conversation is
   put where it's scrolled to once it's laid out (`reveal_span`: a chat
   just opened is taller than its scroller knew), on a device pixel.
-  Against the GPUI build (release, 2× headless, the demo account, a
-  chat open): idle 0.0% of a core (0.1), the caret's 0.9 frames a
-  second at 275 µs (937); 80 notches of the wheel 4.2% (4.0), 27
-  frames a second at 978 µs (934); the pointer run down the list 0.6%
-  (0.4), 2.2 frames a second at 942 µs (860); 114 MB (108). The same
-  to the eye and, the times shown apart, to the pixel through a chat
-  opened, scrolled, a message's and a row's menus, text typed, Info,
-  the File and Chat menus, Contacts and a second chat; nothing in the
-  layout review at 1×, 1.5× and 2×.
-* **What a frame cost on the GPUI kit**: the list, the conversation and the composer
-  were panes, each a view of its own drawn as a cached view
-  (`AnyView::cached` with its bounds): the account's news (the model
-  notifies) draws them all again, but the pointer over a row, a
-  scroll, or the caret blinking in the composer draws only its own pane
-  (a hover notifies just its pane's view: `cx.notify(id)`), the others
-  replayed from the last frame. On olo-kit one `body` says all three
-  and the window draws again what differs. The conversation is planned once per
+  What it costs (release, 2× headless, the demo account, a chat open):
+  idle 0.0% of a core, the caret's 0.9 frames a second at 275 µs; 80
+  notches of the wheel 4.2%, 27 frames a second at 978 µs; the pointer
+  run down the list 0.6%, 2.2 frames a second at 942 µs; 114 MB.
+  Nothing in the layout review at 1×, 1.5× and 2×.
+* **What a frame costs**: one `body` says the list, the conversation
+  and the composer, and the window draws again what differs. The
+  conversation is planned once per
   change to its thread (each entry's top and height), so a frame does
   only what's in view; a newly opened chat is laid out newest first,
   3 ms a frame, the rest guessed until the next; the layouts of the
@@ -18428,7 +18407,7 @@ A Telegram client of Olo's own: MTProto in process through grammers
   device pixels, one to one); each frame is drawn into the conversation
   as it comes, and the next asked for at its time by a timer (nothing
   polled; several playing still draw the conversation once a display
-  frame, GPUI drawing what was notified at its next frame). It plays
+  frame). It plays
   once as it comes into view, again while the pointer is over it, then
   rests on its first frame (drawn at its size, sharper than Telegram's
   thumbnail); out of view it stops and lets its frames go, and frames
@@ -18437,10 +18416,7 @@ A Telegram client of Olo's own: MTProto in process through grammers
   Mira's chat. Measured (release, 2×): resting 0.0% of a core; looping
   8.4% (60 frames a second: the conversation drawn 60 times, 0.61 ms
   each, 5.1–5.8%; the worker 2.2% after opaque and empty pixels were
-  left out of un-premultiplying, 3.0% before). A sticker drawn in its
-  own view would have had to be outside the conversation's pane (GPUI
-  marks a notified view's ancestors dirty) and a frame behind it while
-  scrolling, so it isn't.
+  left out of un-premultiplying, 3.0% before).
   Video stickers (WebM: VP9, 512 pixels, its alpha a second VP9 stream
   in each block's BlockAdditional) are told from Lottie ones by the
   file's first bytes (EBML's magic) and play the same way, decoded on

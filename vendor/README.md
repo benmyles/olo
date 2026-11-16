@@ -7,8 +7,8 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
   only when there were more threads than the limit, and the limit is
   set to 500 when the first thread starts, so an idle thread never
   stopped: each woke every half second for good, in every program that
-  had once read a file or socket through it (zbus for UDisks, smol in
-  GPUI): DriveSetup idled at 4 wakeups a second from two of them. The
+  had once read a file or socket through it (zbus for UDisks, smol):
+  DriveSetup idled at 4 wakeups a second from two of them. The
   patch (`Executor::main_loop` in `src/lib.rs`) stops a thread that is
   over the limit *or* has had nothing to do for half a second, as its
   comment says it should.
@@ -43,9 +43,9 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
   entry's boxes for it. Its sample-file doc example fails as published
   (the file isn't in the crate).
 - **taffy 0.9.0** (MIT): layout for a tree kept from one layout to the
-  next went wrong when part of it was laid out again. GPUI never met it
-  (it built the tree anew for every frame); olo-interface keeps its
-  tree. Two faults, both in how a node's results are kept
+  next went wrong when part of it was laid out again (a tree built anew
+  for every frame never meets it; olo-interface keeps its tree). Two
+  faults, both in how a node's results are kept
   (`src/tree/cache.rs`, `src/tree/taffy_tree.rs`, each marked "Olo:"):
   - A node's results were told apart by its known size and the space it
     had, not by its parent's size, which its percentages are of. A
@@ -68,14 +68,13 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
     drops a node's kept final layout when measuring it placed a child,
     and tells what holds it, on up, that something under it is out of
     place, so each final layout on the way is done again; nothing else
-    is worked out twice (dropping it on every measuring pass cost
-    GPUI's list a steady 13% a frame; this, nothing measurable).
+    is worked out twice (dropping it on every measuring pass cost a
+    list a steady 13% a frame; this, nothing measurable).
   olo-interface's `a_kept_tree_lays_out_again_as_a_new_one_would` and
   `what_fills_a_pane_keeps_its_size_when_a_neighbour_changes` fail
   without them. Its examples are left out. Later releases (0.15) key
   the cache much as the first does (their code read, not tried); drop
-  the patch when olo-interface moves to one and both tests still pass
-  (GPUI, while it's here, pins 0.9.0).
+  the patch when olo-interface moves to one and both tests still pass.
 - **brush-interactive 0.4.0** (MIT): brush's line editor gives no way in
   for its hints or for the lines entered. The patch adds `src/hooks.rs`
   (`set_hooks`: a program's own hinter, given the shell's folder and last
@@ -142,6 +141,11 @@ Owned here outright (path dependencies), not tracking a release.
   examples are left out. Drop it if upstream reads the VUI.
 
 # From GPUI
+
+**GPUI is gone for good.** Never add it back, as a dependency or as
+code, and never measure Olo against it (Ben, 2026-11-16: "GPUI is gone,
+never add it back, don't compare to it anymore"). What follows is where
+some of Olo's code came from, kept for its licence.
 
 Olo's apps were once drawn with GPUI (Zed Industries' UI framework,
 GPUI 0.2.2 from crates.io, Apache-2.0), as Olo had changed it. They are

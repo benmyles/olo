@@ -194,7 +194,9 @@ place, keeping everything.
 ## Licence
 
 Olo is under the MIT License ([LICENSE](LICENSE)). It carries others'
-work under their own licences: GPUI (Apache 2.0), Smithay (MIT), the
+work under their own licences: code that began in Zed's GPUI (Apache
+2.0: the Interface Kit's renderer and a few helper crates, Olo's own
+now; GPUI itself is gone and won't come back), Smithay (MIT), the
 Noto fonts (SIL Open Font License 1.1), Haiku's cursors (MIT), and the
 crates listed in its source.
 

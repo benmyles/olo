@@ -285,10 +285,11 @@ sender.
 
 ## The Interface Kit (olo-interface)
 
-`crates/interface`, re-exported whole by `olo_kit`. Its lower half
-(the Wayland client, text, the scene, the GPU renderer) began as GPUI
-(see `vendor/README.md`, "From GPUI"); everything from the window up is
-Olo's own.
+`crates/interface`, re-exported whole by `olo_kit`. All of it is
+Olo's own. (Its lower half, the Wayland client, text, the scene and the
+GPU renderer, began as code from Zed's GPUI, under its Apache licence:
+`vendor/README.md`. GPUI itself is gone: never add it back, as a
+dependency or as code, and never measure Olo against it.)
 
 ### The program, its windows and their threads
 
@@ -1096,10 +1097,10 @@ other side.
   looked like a regression in the kit for an hour. A result that
   surprises is run again, alone, before anything is made of it.
 - **Two builds compared by their own marks**: every menu in every app
-  "took 9 to 17 ms" on the kits against 1 on GPUI, because the kits'
-  marks counted the window's making and GPUI's didn't. From the press
-  to the menu's picture, measured the same way for both, it was 4 ms
-  in each.
+  once "took 9 to 17 ms", because the marks counted the window's
+  making. From the press to the menu's picture, measured from the
+  Wayland log, it was 4 ms. Compare what both builds show the same
+  way.
 - **A fix that drew twice**: to keep a scroll in step, the answer to
   input was drawn at once even when a frame had just been drawn. No
   stall, and forty frames too many in one drag. The fix that stayed
@@ -1243,8 +1244,7 @@ message.
   what each step cost the process (`cpu_ms`). **Compare two builds by
   that**, the processor's own time, not by their frames' marks: a mark
   is made by the build it measures, and two builds needn't count the
-  same things (GPUI's left out what input handlers did; the kits'
-  count the looper's work). For a wait the person feels (a click to a
+  same things. For a wait the person feels (a click to a
   menu), compare what both show the same way: each client's Wayland
   log (`WAYLAND_DEBUG=client`), from the event to the commit.
 - `tools/dev/scroll-check NAME --at X Y`: a drag, a flick and wheel

@@ -13,7 +13,7 @@ every step is drawn, so two builds draw the same number of frames; at
 16.7 a build that skips frames looks cheaper than it is), and prints
 what the resize's own seconds cost a step.
 
-  resize-cost prf old 6 olo.tracker ~/.local/olo-kept/before-kits/bin/olo-tracker /var/tmp/olo-bench/home/Big
+  resize-cost prf old 6 olo.tracker /var/tmp/me/olo-tracker.before /var/tmp/olo-bench/home/Big
   resize-cost prf new 6 olo.tracker target/release/olo-tracker /var/tmp/olo-bench/home/Big
 
 A program whose window another command opens (Notifications' history,
@@ -23,10 +23,12 @@ seconds after the program starts:
   THEN="target/release/olo-notifications --bus unix:path=/var/tmp/olo-dev/prf/bus --history" \
     resize-cost prf new 6 olo.notifications target/release/olo-notifications --bus unix:path=/var/tmp/olo-dev/prf/bus
 
-Compare builds in turn (old, new, old, new…), three or four rounds, and
-by medians: a run varies by a sixth with what else the computer is
-doing, the app's own workers among it. Instructions vary less than
-cycles. For where the cost is, OLO_FRAME_PHASES=1 (a frame's phases),
+(The old build: a copy of the program from before the change,
+`cp --reflink=always` into /var/tmp.) Compare builds in turn (old, new,
+old, new…), three rounds, and by medians. Counted unscaled
+(`--no-scale`: this computer's two kinds of core each count on their
+own, and scaled, a thread that moved between them was counted up to
+twice). Instructions vary less than cycles. For where the cost is, OLO_FRAME_PHASES=1 (a frame's phases),
 `perf record` the same way, and tools/dev/memhist (who allocates):
 HACKING, "Fast and light".
 """
@@ -83,7 +85,12 @@ def main():
     if os.path.exists(out):
         os.remove(out)
     began = time.time()
-    ts("run", name, "perf", "stat", "-I", "200", "-x,", "-e", "instructions:u,cycles:u", "-o", out, "--", *cmd)
+    # (Unscaled: this computer's cores are of two kinds, each with its own
+    # counter, and a thread counts on one kind at a time. Scaled, as perf
+    # does by default, each kind's count was taken up by the time it
+    # wasn't counting, so a thread that moved between them was counted
+    # up to twice over: a run of the same build said 5 M a step or 9.4.)
+    ts("run", name, "perf", "stat", "--no-scale", "-I", "200", "-x,", "-e", "instructions:u,cycles:u", "-o", out, "--", *cmd)
     # A program whose window another command asks for (Notifications'
     # history, of its running daemon): that, once it's up.
     if os.environ.get("THEN"):
