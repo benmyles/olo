@@ -38,6 +38,19 @@ pub use linux::ImeInput;
 pub(crate) use linux::*;
 pub(crate) use linux::{lock_session_on_display, unlock_session_on_display};
 
+static PROTOCOL_ERROR: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// The compositor's word on a protocol error this program made, if that's
+/// why its connection went ("wl_surface 2: …"): its own fault, not the
+/// compositor going away, so starting again won't mend it.
+pub fn protocol_error() -> Option<String> {
+    PROTOCOL_ERROR.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+pub(crate) fn note_protocol_error(what: String) {
+    *PROTOCOL_ERROR.lock().unwrap_or_else(|e| e.into_inner()) = Some(what);
+}
+
 /// Whether the GPU device was lost (a driver reset): nothing more can be
 /// drawn with it, and the program starts again with its state.
 pub fn gpu_device_lost() -> bool {

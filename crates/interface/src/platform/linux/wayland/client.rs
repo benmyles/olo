@@ -2771,6 +2771,11 @@ fn compositor_lost_check(state: &Rc<RefCell<WaylandClientState>>) {
         return;
     }
     state.borrow_mut().lost = true;
+    // (The compositor's own word on what this program did wrong: kept, so
+    // a program that starts again into the same error can give up.)
+    if let Some(e) = state.borrow().connection.protocol_error() {
+        crate::platform::note_protocol_error(format!("{} {}: {}", e.object_interface, e.code, e.message));
+    }
     if gpu {
         // (A driver reset: the windows can't be drawn again, so the
         // program starts anew as it does for the compositor gone.)

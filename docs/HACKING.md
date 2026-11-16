@@ -3898,6 +3898,15 @@ for a 3-second `sleep`.
   GPU is broken, not reset, and the app ends rather than go round. Test
   with the app socket's debug-only `{"lose_gpu":true}`
   (`olo-menus-PID.sock`), which marks the device lost.
+* Nor go round for ever on a protocol error of its own (a request the
+  compositor refused: a 1 × 1 point layer surface at 1.25× once
+  restarted an app over and over): the client keeps the compositor's
+  word on it (`olo_interface::protocol_error`, "zwlr_layer_surface_v1 2:
+  …"), and the app, re-executing as for the compositor gone, counts
+  them in a row (`OLO_PROTOCOL_ERRORS`, "N:seconds", claimed as it
+  starts): each within 30 s of the start before it, the third ends it,
+  the error logged. app_server going away isn't a protocol error, and
+  reconnects as ever.
 * A re-executed app keeps its pid, so the children its previous self
   started are its own still, but nothing in it waits for them: Activity
   Monitor's helper, its input pipe closed with the exec, ended and

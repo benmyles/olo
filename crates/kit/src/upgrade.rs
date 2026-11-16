@@ -174,7 +174,7 @@ pub(crate) fn move_to(to: olo_kit_base::moving::MoveTo, reply: std::sync::mpsc::
     let binary = Binary::current();
     std::thread::sleep(Duration::from_millis(150));
     let state = saved_state();
-    binary.exec_with(state, false, Some(&env));
+    binary.exec_with(state, false, None, Some(&env));
 }
 
 /// The state the previous version left (once; None if it left none).
@@ -244,6 +244,23 @@ fn lost_compositor(binary: &Binary) {
         olo_interface::quit();
         return;
     }
+    // A protocol error is this program's own (a request the compositor
+    // refused), and starting again repeats it: a 1 × 1 point layer
+    // surface at 1.25× restarted a kit app over and over. Started again
+    // for each, up to `PROTOCOL_TRIES` in a row each within
+    // `PROTOCOL_AGAIN` of the start before it; then it ends, saying why.
+    let protocol = (!gpu).then(olo_interface::protocol_error).flatten();
+    let errors = protocol.as_ref().map(|e| {
+        let (n, at) = protocol_errors_before();
+        (e.clone(), in_a_row(n, at, SystemTime::now()))
+    });
+    if let Some((e, n)) = &errors
+        && *n >= PROTOCOL_TRIES
+    {
+        tracing::error!("a protocol error ({e}) {n} times in a row, each soon after starting: ending rather than start again");
+        olo_interface::quit();
+        return;
+    }
     if gpu {
         tracing::warn!("the GPU device is lost: re-executing to start anew, with the state saved");
     } else {
@@ -257,7 +274,7 @@ fn lost_compositor(binary: &Binary) {
     // The person's app on an agent screen that has gone goes back to
     // their display.
     let env = (!gpu).then(going_home).flatten();
-    binary.exec_with(state, gpu, env.as_ref());
+    binary.exec_with(state, gpu, errors.map(|(_, n)| n), env.as_ref());
     // (It couldn't: nothing to show on, nothing to become.)
     olo_interface::quit();
 }
@@ -286,6 +303,36 @@ const HOME_WAIT: Duration = Duration::from_secs(2);
 /// How soon the GPU lost again means it's broken, not reset.
 const GPU_AGAIN: Duration = Duration::from_secs(10);
 
+/// Protocol errors in a row, each this soon after the start before it,
+/// before the app gives up.
+const PROTOCOL_TRIES: u32 = 3;
+const PROTOCOL_AGAIN: Duration = Duration::from_secs(30);
+
+/// Names how many protocol errors in a row the previous selves ended
+/// with, and when the last was ("2:1794812345").
+const PROTOCOL_ENV: &str = "OLO_PROTOCOL_ERRORS";
+
+/// How many protocol errors in a row this one makes: the previous
+/// selves' `n` and one more, if the last (`at`) was within
+/// [`PROTOCOL_AGAIN`] of `now`; else it's the first.
+fn in_a_row(n: u32, at: Option<SystemTime>, now: SystemTime) -> u32 {
+    if at.is_some_and(|at| now.duration_since(at).unwrap_or_default() < PROTOCOL_AGAIN) { n + 1 } else { 1 }
+}
+
+/// The previous selves' protocol errors in a row, and when the last one
+/// was; claimed at start-up as [`gpu_lost_before`] is.
+fn protocol_errors_before() -> (u32, Option<SystemTime>) {
+    static BEFORE: OnceLock<(u32, Option<SystemTime>)> = OnceLock::new();
+    *BEFORE.get_or_init(|| {
+        let Ok(v) = std::env::var(PROTOCOL_ENV) else { return (0, None) };
+        // SAFETY: claimed at start-up (`run`, first thing), before the app
+        // starts threads that read the environment.
+        unsafe { std::env::remove_var(PROTOCOL_ENV) };
+        let (n, at) = v.split_once(':').unwrap_or(("0", ""));
+        (n.parse().unwrap_or(0), at.parse().ok().map(|s| SystemTime::UNIX_EPOCH + Duration::from_secs(s)))
+    })
+}
+
 /// Names when the GPU device was last lost, for the program re-executed
 /// because of it (seconds since the epoch).
 const GPU_LOST_ENV: &str = "OLO_GPU_LOST_AT";
@@ -307,6 +354,7 @@ fn gpu_lost_before() -> Option<SystemTime> {
 /// Takes what the previous self left in the environment, at start-up.
 pub(crate) fn claim() {
     gpu_lost_before();
+    protocol_errors_before();
     handed_connection();
 }
 
@@ -350,7 +398,7 @@ impl Binary {
     /// Replaces this process with the binary now on disk, handing it
     /// `state` (and, when the GPU device was lost, when that was), with
     /// the environment `env` changes (another display's: a move).
-    fn exec_with(&self, state: Option<String>, gpu_lost: bool, env: Option<&olo_kit_base::moving::MoveTo>) {
+    fn exec_with(&self, state: Option<String>, gpu_lost: bool, protocol_errors: Option<u32>, env: Option<&olo_kit_base::moving::MoveTo>) {
         let mut cmd = std::process::Command::new(&self.path);
         cmd.args(std::env::args_os().skip(1));
         olo_xdg::upgrade_env(&mut cmd);
@@ -358,9 +406,12 @@ impl Binary {
             olo_kit_base::moving::apply(env, &mut cmd);
         }
         olo_kit_base::restore::hand_over(&mut cmd, state.as_deref());
+        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
         if gpu_lost {
-            let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
             cmd.env(GPU_LOST_ENV, now.as_secs().to_string());
+        }
+        if let Some(n) = protocol_errors {
+            cmd.env(PROTOCOL_ENV, format!("{n}:{}", now.as_secs()));
         }
         tracing::info!(path = %self.path.display(), "re-executing");
         // What the app saved, and how its windows were left, is on disk
@@ -427,8 +478,26 @@ pub(crate) fn init() {
                     return;
                 }
                 wait_until_free();
-                binary.exec_with(saved_state(), false, None);
+                binary.exec_with(saved_state(), false, None, None);
             }
         })
         .ok();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Protocol errors counted in a row while each comes soon after the
+    /// start before it; the third ends the app; one long after starts the
+    /// count again.
+    #[test]
+    fn protocol_errors_in_a_row() {
+        let t = SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000);
+        assert_eq!(in_a_row(0, None, t), 1, "the first");
+        assert_eq!(in_a_row(1, Some(t), t + Duration::from_secs(5)), 2);
+        let third = in_a_row(2, Some(t), t + Duration::from_secs(5));
+        assert!(third >= PROTOCOL_TRIES, "the third gives up");
+        assert_eq!(in_a_row(2, Some(t), t + PROTOCOL_AGAIN + Duration::from_secs(1)), 1, "long after: counted afresh");
+    }
 }
