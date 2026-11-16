@@ -281,7 +281,12 @@ struct FrameLoop {
     /// A draw is queued on the event loop.
     queued: Cell<bool>,
     /// A configure was acknowledged: commit even if nothing is drawn.
+    /// (Or the stage asked for the next frame's callback, drawing
+    /// nothing: `want_frame`.)
     needs_commit: Cell<bool>,
+    /// Olo: the frame being drawn is the compositor's: its callback came
+    /// (`RequestFrameOptions::started`).
+    called: Cell<bool>,
     /// Olo: a frame was ever drawn (the surface has a buffer: until then
     /// it isn't shown, and a commit gets no frame callback).
     drawn: Cell<bool>,
@@ -819,6 +824,7 @@ impl WaylandWindow {
                 callback: Cell::new(FrameCallback::None),
                 queued: Cell::new(false),
                 needs_commit: Cell::new(false),
+                called: Cell::new(false),
                 drawn: Cell::new(false),
                 committed_at: Cell::new(std::time::Instant::now()),
                 force: Cell::new(false),
@@ -999,6 +1005,7 @@ impl WaylandWindowStatePtr {
     /// The compositor's frame callback came: the last frame is showing.
     pub fn frame_done(&self) {
         self.frames.callback.set(FrameCallback::None);
+        self.frames.called.set(true);
         self.frame();
     }
 
@@ -1041,7 +1048,7 @@ impl WaylandWindowStatePtr {
         frames.queued.set(false);
 
         let mut cb = self.callbacks.borrow_mut();
-        let options = RequestFrameOptions { force_render: frames.force.take(), ..Default::default() };
+        let options = RequestFrameOptions { force_render: frames.force.take(), started: frames.called.take() };
         frames.in_frame.set(true);
         let drew = match cb.request_frame.as_mut() {
             Some(fun) => fun(options),
@@ -2320,6 +2327,12 @@ impl PlatformWindow for WaylandWindow {
 
     fn hold_wheel(&self) {
         self.0.frames.wheel_held.set(true);
+    }
+
+    fn want_frame(&self) {
+        // (Committed, with the callback asked for as this frame began,
+        // once the stage has said it drew nothing.)
+        self.0.frames.needs_commit.set(true);
     }
 
     fn frame_after(&self, after: std::time::Duration) {

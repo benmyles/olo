@@ -185,13 +185,19 @@ def main():
         for app in apps:
             for scale in scales:
                 shots = []
-                for damage in (True, False):
-                    # (A home of its own each run: what an app keeps
-                    # between runs stays out of the next.)
-                    home = os.path.join(work, f"home-{app}-{scale}-{damage}")
+                # (A home of its own each run: what an app keeps between
+                # runs stays out of the next. Both made at once, within
+                # one minute: Tracker shows a file's Created time, which
+                # can't be set as the others are, and two homes made a
+                # run apart showed 7:44 and 7:45.)
+                if time.localtime().tm_sec >= 55:
+                    time.sleep(61 - time.localtime().tm_sec)
+                homes = {damage: os.path.join(work, f"home-{app}-{scale}-{damage}") for damage in (True, False)}
+                for home in homes.values():
                     fixture(home)
+                for damage in (True, False):
                     out = os.path.join(work, f"{app}-{scale}-{'damage' if damage else 'whole'}.png")
-                    run(app, scale, damage, home, out)
+                    run(app, scale, damage, homes[damage], out)
                     shots.append(out)
                 a, b = (Image.open(s).convert("RGB") for s in shots)
                 diff = ImageChops.difference(a, b)

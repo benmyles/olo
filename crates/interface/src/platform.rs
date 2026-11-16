@@ -235,9 +235,12 @@ impl Tiling {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
 pub(crate) struct RequestFrameOptions {
-    pub(crate) require_presentation: bool,
     /// Force refresh of all rendering states when true
     pub(crate) force_render: bool,
+    /// Olo: a frame starts: the compositor said so (its callback for the
+    /// last came). Otherwise the window is asked between frames, for
+    /// something that changed.
+    pub(crate) started: bool,
 }
 
 pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
@@ -411,6 +414,12 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// input (`stage::INPUT_HOLD`), and draws it without the answer if
     /// that takes longer.
     fn frame_after(&self, _after: std::time::Duration) {}
+
+    /// Olo: nothing new to draw, but the stage is to hear when the next
+    /// frame starts (what moves with time drew what it showed already):
+    /// the compositor is asked for its callback all the same, with a
+    /// commit of nothing else.
+    fn want_frame(&self) {}
 }
 
 /// Olo: data dragged out of a window to another app or a folder (the

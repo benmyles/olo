@@ -1460,12 +1460,16 @@ impl<'a> WindowCx<'a> {
         if clock.nodes.is_empty() || clock.timer.is_some() {
             return;
         }
-        let step = clock.pace.min(clock.finest).clamp(1.0 / 240.0, 60.0);
+        let finest = clock.pace.min(clock.finest);
+        let step = finest.clamp(1.0 / 240.0, 60.0);
         let since = clock.asked_at.map_or(0.0, |at| at.elapsed().as_secs_f64());
-        if step <= since {
-            // (Due already: asked for every frame, a screen saver's
-            // drawing, it's drawn for the next as this one shows, with
-            // no timer between.)
+        if finest <= 0.0 || step <= since {
+            // (Due already, or asked for every frame, a screen saver's
+            // drawing: it's drawn for the next as this one starts (the
+            // display's, `WindowEvent::Frame`), with no timer between.
+            // Timed from the frame instead, a 240th of a second on, it
+            // was drawn mid-frame, and again at the frame if it hadn't
+            // changed.)
             return self.tick_clock();
         }
         let id = self.core.id;

@@ -458,6 +458,20 @@ How Olo keeps it (do the same):
   commit, a scroller that moved or a drawing that asked to be drawn
   again in time; a window that doesn't show gets no frame callbacks.
   Don't invalidate on a timer to look for changes.
+* **Animation at the display's pace.** A step of an animation
+  (`cx.on_next_frame`, and a drawing that moves every frame,
+  `paint_again_within(0.0)`) runs as a frame starts, when the
+  compositor's frame callback comes (`RequestFrameOptions::started`):
+  once a frame, whether or not the last step changed what shows. A
+  commit between frames that changed nothing asks for the next
+  callback (`PlatformWindow::want_frame`: a commit of nothing else)
+  instead of starting the next step at once; one drawn between frames
+  starts it with the next callback. Started at once, a step that
+  changed nothing was taken again as fast as the looper and the stage
+  could pass it: a scroll arrow held at a list's end, 114% of a core
+  and 176,000 wakeups a second; a screen saver whose picture changes
+  less often than the display's frames, its whole drawing made four
+  times for each frame shown.
 * **Work done once is kept**, keyed by what it was made from:
   Terminal's rows (`RowCache`: each row's cells compared with those it
   was drawn from, only changed rows laid out again), a drawing's

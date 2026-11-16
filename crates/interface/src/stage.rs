@@ -1097,7 +1097,19 @@ impl Stage {
             // next one that does doesn't take their work for its own.)
             showing.work = Duration::ZERO;
             if animating {
-                self.link.send(WindowEvent::Frame);
+                if options.started {
+                    self.link.send(WindowEvent::Frame);
+                } else if let Some(window) = self.window.borrow().as_ref() {
+                    // A commit between frames that changed nothing (what
+                    // moves with time drew what it showed: a screen saver
+                    // stepping 60 times a second on a 120 Hz display):
+                    // the looper hears when the next frame starts, not
+                    // now. (Told at once, it drew again at once, for as
+                    // long as it drew the same: a saver's whole drawing
+                    // made four times for each frame shown, at the
+                    // clock's quickest, and half the frames missed.)
+                    window.want_frame();
+                }
             }
             return false;
         }
@@ -1191,7 +1203,12 @@ impl Stage {
         // (Marked when it was drawn, not when what led to it began: how
         // evenly frames come is read from these.)
         showing.stats.record(started, work, whole, scrolls);
-        if animating {
+        // (Drawn as a frame started: the looper's next begins now. Drawn
+        // between frames, for a commit that came after one started: it
+        // begins with the next, whose callback goes with this drawing.
+        // Told now, it drew again before that, its drawing a frame old
+        // when shown, and a screen saver's twice for each picture.)
+        if animating && options.started {
             self.link.send(WindowEvent::Frame);
         }
         if springing {

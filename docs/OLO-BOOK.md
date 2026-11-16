@@ -636,9 +636,11 @@ doing, and its content isn't drawn again to move.
   blink, a debounce), never for looking to see whether something
   changed: that has an event (a file: `olo_kit::watch`; a setting:
   `settings`; a child: `subscribe`; a worker: its message).
-- `cx.on_next_frame(f)` is for animation the kit itself paces. A
-  window that drew nothing gets no frame: work that must go on with
-  nothing to draw runs on a timer, not on frames.
+- `cx.on_next_frame(f)` is for animation the kit itself paces: `f`
+  runs as the display's next frame starts (the compositor's frame
+  callback), a step a frame, whether or not the last step changed what
+  shows. A window that isn't shown gets no frames: work that must go on
+  regardless runs on a timer, not on frames.
 
 ### Work
 
@@ -1065,7 +1067,8 @@ other side.
   had moved over it). A drawing's place is the bounds it's handed; a
   pointer's is `cx.listener_bounds()`.
 - **Work on `on_next_frame` that stopped**, because a window that
-  draws nothing gets no frames. Timers.
+  isn't shown (on another workspace, minimized, a tab behind another)
+  gets no frames. Timers.
 - **A parent showing a child's title that never updated**: the
   parent's `body` doesn't run with the child's. The child emits.
 - **`ViewRef::update` taken for immediate**: it runs later.
