@@ -23,8 +23,7 @@ use std::sync::{
 };
 
 use olo_kit::{
-    Bounds, Cx, Element, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, ScrollHandle, SharedString, Styled as _, View, canvas, div, icons, metrics as m, point, px, size, style,
-    theme,
+    Bounds, Cx, Element, FontWeight, IntoElement, ParentElement as _, ScrollHandle, SharedString, Styled as _, View, canvas, div, icons, metrics as m, point, px, size, style, theme,
     widgets::{Button, CheckBox, MenuField, PaneSwitch, ScrollView, StatusBar, StringView},
 };
 

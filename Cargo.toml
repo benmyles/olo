@@ -79,6 +79,16 @@ taffy = { path = "vendor/taffy" }
 [profile.release]
 debug = "line-tables-only"
 
+# Dependencies with no debug info (Ben, 2026-11-15: "keep debug info out of
+# the executables ... no debug info for dependency crates"), as in dev
+# builds: of olo-kache's 290 MB, 258 were debug info, most of it the
+# hundreds of crates under Olo's own. Olo's crates keep their line tables,
+# in the executable itself (not split out: an installed copy's crash
+# report needs them, and target/ is swept), so a crash says file and line
+# in Olo's code, and a dependency's frame its function.
+[profile.release.package."*"]
+debug = false
+
 [profile.dev]
 opt-level = 1
 # File and line in backtraces, without full debuginfo: it made debug

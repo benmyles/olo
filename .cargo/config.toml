@@ -13,8 +13,29 @@ ui-lint = "test -p olo-kit -p olo-preferences -p olo-diskbackup-app --features o
 # and cc finds it as `ld.mold` on PATH. One 227 MB app relinked alone:
 # 0.35 s against LLD's 0.9; eight at once, as a whole build links them,
 # 1.45 s against 0.75 to 1.0 (each mold takes every core).
+#
+# And the compiler's front end on eight threads (nightly's -Zthreads; Ben,
+# 2026-11-15: "just use Zthreads"): parsing, type checking and borrow
+# checking a crate in parallel, as code generation already is. A release
+# compile of olo-kit is code generation's: 30 s either way, measured;
+# what it shortens is the front end's share, most of a dev or check build.
 [target.x86_64-unknown-linux-gnu]
-rustflags = ["-Clinker-features=-lld", "-Clink-arg=-fuse-ld=mold"]
+rustflags = ["-Clinker-features=-lld", "-Clink-arg=-fuse-ld=mold", "-Zthreads=8"]
 
 [target.aarch64-unknown-linux-gnu]
-rustflags = ["-Clinker-features=-lld", "-Clink-arg=-fuse-ld=mold"]
+rustflags = ["-Clinker-features=-lld", "-Clink-arg=-fuse-ld=mold", "-Zthreads=8"]
+
+# Features unified across the whole workspace, whatever is built (Ben,
+# 2026-11-15: "why is there 564gb in use in olo?"). Per command, cargo
+# unified features over the packages asked for, so `cargo build -p A` and
+# `-p B` built serde, tracing, image… with different features, and every
+# Olo crate above them again under a new hash: 59 builds of olo-kit's
+# library and 127 of its examples lived in target/release at once, 310 GB
+# of target/ used within two days. Unified over the workspace, every
+# selection builds the same units as `--workspace`. (Nightly: the
+# toolchain is rust-toolchain.toml's.)
+[unstable]
+feature-unification = true
+
+[resolver]
+feature-unification = "workspace"

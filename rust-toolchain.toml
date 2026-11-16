@@ -1,0 +1,10 @@
+# Nightly, pinned (Ben, 2026-11-15: "just switch to nightly"): for
+# cargo's workspace-wide feature unification (.cargo/config.toml,
+# [resolver]), which stable doesn't have. Pinned to a date, not
+# "nightly": a new compiler each day would rebuild everything each day and
+# miss kache's whole store. Move it on deliberately (docs/HACKING.md,
+# "The toolchain").
+[toolchain]
+channel = "nightly-2026-11-14"
+components = ["rustfmt", "clippy", "rust-src"]
+profile = "minimal"

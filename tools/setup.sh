@@ -69,10 +69,6 @@ have_it() {
         font:*) fc-list "${what//_/ }" family 2>/dev/null | grep -q . ;;
     esac
 }
-# The oldest Rust that builds Olo: the newest `rust-version` any of its
-# crates asks for (filmcraft's, 1.95; `cargo metadata` lists them), past
-# edition 2024's let chains (1.88). Fedora 45's own is 1.98.
-RUST_MIN=1.95
 
 say "This machine"
 [ "$(id -u)" = 0 ] && fail "run this as yourself, not root (it uses sudo when it must)"
@@ -170,20 +166,25 @@ fi
 
 say "Rust"
 [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
-version_ok() { [ "$(printf '%s\n%s\n' "$RUST_MIN" "$1" | sort -V | head -1)" = "$RUST_MIN" ]; }
-have=$(rustc --version 2>/dev/null | awk '{print $2}' || true)
-if [ -n "$have" ] && version_ok "$have"; then
-    ok "rustc $have"
+# The toolchain is rust-toolchain.toml's, a pinned nightly (for cargo's
+# workspace-wide feature unification): rustup installs it, and runs it
+# for every build in this tree. (A distribution's own rustc can't build
+# Olo: it ignores the file.)
+PINNED=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+if command -v rustup > /dev/null 2>&1 && rustup toolchain list | grep -q "^$PINNED"; then
+    ok "rustc $(rustc --version | awk '{print $2}') ($PINNED)"
 elif [ $CHECK = 1 ]; then
-    todo "needs Rust $RUST_MIN or newer (have: ${have:-none})"
-elif command -v rustup > /dev/null 2>&1 && rustup show > /dev/null 2>&1; then
-    rustup update stable
-    ok "rustc $(rustc --version | awk '{print $2}')"
+    todo "needs Rust $PINNED through rustup (rust-toolchain.toml)"
 else
-    command -v rustup-init > /dev/null 2>&1 || sudo dnf install -y rustup
-    rustup-init -y --profile minimal --no-modify-path
-    . "$HOME/.cargo/env"
-    ok "rustc $(rustc --version | awk '{print $2}') (rustup, in ~/.cargo)"
+    if ! command -v rustup > /dev/null 2>&1; then
+        command -v rustup-init > /dev/null 2>&1 || sudo dnf install -y rustup
+        rustup-init -y --profile minimal --default-toolchain none --no-modify-path
+        . "$HOME/.cargo/env"
+    fi
+    # (No toolchain named: the one rust-toolchain.toml pins, with its
+    # components.)
+    rustup toolchain install
+    ok "rustc $(rustc --version | awk '{print $2}') ($PINNED, rustup, in ~/.cargo)"
 fi
 
 say "Building and installing"
