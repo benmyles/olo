@@ -127,6 +127,9 @@ pub enum Msg {
     AddPlace(Place),
     /// A provider and where its key is (Data Provider).
     Provider(String, key::Source),
+    /// A place's time zone and height looked up (by its id), for one found
+    /// without them.
+    Located(String, Result<(Option<String>, Option<f64>), Error>),
     /// A kept place's own name (Rename Place; empty: the name it was
     /// found as).
     RenamePlace(usize, String),
@@ -151,6 +154,8 @@ pub struct Weather {
     key_dialog: Option<WindowHandle<dialogs::KeyDialog>>,
     add_dialog: Option<WindowHandle<dialogs::AddPlace>>,
     rename_dialog: Option<WindowHandle<dialogs::RenamePlace>>,
+    /// The places whose time zone is being looked up, by id.
+    locating: std::collections::HashSet<String>,
 }
 
 /// What's kept across an upgrade in place.
@@ -206,9 +211,28 @@ impl Weather {
             key_dialog: None,
             add_dialog: None,
             rename_dialog: None,
+            locating: Default::default(),
         };
         w.show_chosen(false, cx);
+        w.locate_missing(cx);
         w
+    }
+
+    /// The time zone and height of each place kept without them (found by
+    /// its address, or typed as coordinates), looked up on a worker and
+    /// kept: once each, or again at the next start if it couldn't be.
+    fn locate_missing(&mut self, cx: &mut Cx<Self>) {
+        if self.demo {
+            return;
+        }
+        for p in &self.settings.places {
+            let id = place_id(p);
+            if p.timezone.is_some() || !self.locating.insert(id.clone()) {
+                continue;
+            }
+            let (lat, lon) = (p.lat, p.lon);
+            cx.work(move || places::locate(lat, lon), move |r| Msg::Located(id, r));
+        }
     }
 
     pub fn provider(&self) -> &'static dyn Provider {
@@ -637,6 +661,20 @@ impl View for Weather {
                 };
                 self.settings.chosen = usize::MAX;
                 self.choose(at, cx);
+                self.locate_missing(cx);
+            }
+            Msg::Located(id, result) => {
+                self.locating.remove(&id);
+                let Ok((zone, elevation)) = result else { return };
+                let Some(p) = self.settings.places.iter_mut().find(|p| place_id(p) == id) else { return };
+                if p.timezone.is_none() {
+                    p.timezone = zone;
+                }
+                if p.elevation.is_none() {
+                    p.elevation = elevation;
+                }
+                self.save();
+                cx.invalidate();
             }
             Msg::RenamePlace(i, name) => self.rename_place(i, &name, cx),
             Msg::Provider(provider, source) => {

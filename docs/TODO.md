@@ -1448,7 +1448,9 @@ something nobody here has is in "Blocked", with what it waits for.
   cancelled as typing goes on), the one chosen turned into its latitude
   and longitude (a geocoder that knows addresses, natively over HTTP;
   today's finds towns only), and the forecast asked for that point. Its
-  name the address's short form (renamable: "a place's own name").
+  name the address's short form (renamable: "a place's own name"). Done (HACKING, Weather): Photon's addresses
+  beside Open-Meteo's towns, as typed; the point's zone and height
+  looked up once added (`places::locate`).
 
 - **Weather: the assistant's suggested questions, redone** (Ben,
   2026-11-15: "redo the suggested questions in the weather app -- i want

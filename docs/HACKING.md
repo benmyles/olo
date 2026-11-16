@@ -17960,11 +17960,23 @@ forecast at once. Fetched on a worker (ureq, rustls, gzip, by network:
 `olo_net::PerNetwork`), every 30 minutes (`FRESH`, by a timer set to
 when it's due: nothing runs between); a limit hit waits as long as the
 provider says (else 15 minutes), unreachable 5. 401, 403 and 429 are
-said as what they mean. Places come from Open-Meteo's geocoder (no key)
-or are typed as coordinates; each keeps its own time zone
-(`chrono-tz`), and every time is shown in the place's clock.
-`OLO_WEATHER_TOMORROW_URL` and `OLO_WEATHER_GEOCODE_URL` point them
-elsewhere (tests).
+said as what they mean. Places are found by name (Open-Meteo's geocoder:
+towns, airfields) and by street address (Photon, komoot's OpenStreetMap
+geocoder, made for search as you type; Nominatim's terms forbid that),
+both without a key, asked at once on Add Place's worker, the addresses
+first when what's typed has a number in it (`places::merge`; Ben,
+2026-11-15: "i should be able to put an address into the weather app
+and have it autocomplete it and automatically translate to lat/lon for
+a hyperlocal forecast"), or are typed as coordinates. A search more
+typing overtook isn't sent. A place found by its address is forecast
+for that point (tomorrow.io takes four decimals, about 10 m). Each
+keeps its own time zone (`chrono-tz`), and every time is shown in the
+place's clock: one found without (an address, coordinates) is given
+its zone and ground height by Open-Meteo once it's added
+(`places::locate`, on a worker; the dialog doesn't wait; again at the
+next start if it couldn't be). `OLO_WEATHER_TOMORROW_URL`,
+`OLO_WEATHER_GEOCODE_URL`, `OLO_WEATHER_ADDRESS_URL` and
+`OLO_WEATHER_ZONE_URL` point them elsewhere (tests).
 
 **The key** (`key.rs`), always in Passwords: typed once in File ▸ Data
 Provider… and kept as Weather's own Password item ("Weather: tomorrow.io

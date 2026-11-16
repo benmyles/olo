@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Weather: a place by its address
+
+*16:21* — Add Place finds street addresses as they're typed (Photon, OpenStreetMap's, made for search as you type), beside towns and airfields (Open-Meteo's): here a drop zone by its name, then by its address. A place found by its address is forecast for that point; its time zone and ground height are looked up once it's added, the dialog never waiting on it (light, 2x).
+
+![Weather: a place by its address](2026-11-15/162131-weather-a-place-by-its-address.png)
+
 ### Weather: a place's own name
 
 *16:13* — A kept place can have a name of its own (File > Rename Place..., or its right-click's Rename...): shown in the list, the title, Copy and what the assistant is told, with what it was found as beside it in the header; empty, it goes back to that name. Agents: rename:NAME, and place:NAME finds it by either name (light, 2x).

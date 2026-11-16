@@ -1,5 +1,5 @@
-//! Weather's dialogs: Add Place (find a place by name, or give its
-//! coordinates), Rename Place (a name of the person's own for it) and
+//! Weather's dialogs: Add Place (find a place by its name or its street
+//! address, or give its coordinates), Rename Place (a name of the person's own for it) and
 //! Data Provider (which provider, and its key: typed once and kept in
 //! Passwords, or a reference to one already there).
 
@@ -24,8 +24,9 @@ use crate::{
 const DIVIDER: f32 = 84.0;
 
 /// Add Place: what's typed is looked up as it's typed (a moment after the
-/// last key); a result is chosen by a click or the arrow keys, and added
-/// with Add or Return.
+/// last key; a search more typing has overtaken isn't sent), as a town's
+/// name and as a street address at once; a result is chosen by a click or
+/// the arrow keys, and added with Add or Return.
 pub struct AddPlace {
     find: olo_kit::Child<TextField>,
     results: Vec<Place>,
@@ -52,6 +53,9 @@ pub enum AddMsg {
 
 static SEARCHES: AtomicU64 = AtomicU64::new(0);
 
+/// What Add Place's list says before anything's typed.
+const TYPE_ONE: &str = "Type a town, an address, or a latitude and longitude.";
+
 impl AddPlace {
     /// Scroll the results so the chosen one shows.
     fn reveal_chosen(&self) {
@@ -61,7 +65,7 @@ impl AddPlace {
 
     pub fn open(to_main: ToMain) -> WindowHandle<AddPlace> {
         olo_kit::open_window(WindowOptions::new("Add Place", 460.0, 300.0).dialog(), move |cx| {
-            let find = text_field(cx, |f| f.name("Find").hint("A town, an airfield, or 47.61, -122.33"));
+            let find = text_field(cx, |f| f.name("Find").hint("A town, an address, or 47.61, -122.33"));
             cx.subscribe(&find, |v: &mut AddPlace, e: &TextFieldEvent, cx| match e {
                 TextFieldEvent::Changed => {
                     let n = SEARCHES.fetch_add(1, Ordering::Relaxed) + 1;
@@ -72,7 +76,7 @@ impl AddPlace {
                 _ => {}
             });
             find.focus(cx);
-            AddPlace { find, results: Vec::new(), chosen: 0, note: "Type a place’s name, or its latitude and longitude.".into(), searches: 0, scroll: olo_kit::ScrollHandle::new(), to_main }
+            AddPlace { find, results: Vec::new(), chosen: 0, note: TYPE_ONE.into(), searches: 0, scroll: olo_kit::ScrollHandle::new(), to_main }
         })
     }
 
@@ -96,10 +100,11 @@ impl View for AddPlace {
                 let q = self.find.read(cx).text().trim().to_owned();
                 if q.is_empty() {
                     self.results.clear();
-                    self.note = "Type a place’s name, or its latitude and longitude.".into();
+                    self.note = TYPE_ONE.into();
                 } else {
                     self.note = "Searching…".into();
-                    cx.work(move || places::search(&q), move |r| AddMsg::Found(n, r));
+                    // (Overtaken while it waited for a worker: not sent.)
+                    cx.work(move || if SEARCHES.load(Ordering::Relaxed) == n { places::search(&q) } else { Ok(Vec::new()) }, move |r| AddMsg::Found(n, r));
                 }
             }
             AddMsg::Found(n, result) => {
@@ -108,7 +113,7 @@ impl View for AddPlace {
                 }
                 match result {
                     Ok(found) => {
-                        self.note = if found.is_empty() { "Nothing by that name.".into() } else { String::new() };
+                        self.note = if found.is_empty() { "Nothing found by that name or address.".into() } else { String::new() };
                         self.results = found;
                         self.chosen = 0;
                         self.reveal_chosen();
