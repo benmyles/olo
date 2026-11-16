@@ -15358,10 +15358,13 @@ last (`record::Player`) rather than from a keyframe each time.
 process, of what the agent did: each action from 0.8 s before it to
 1.5 s after it ended (a wait over 10 s: its start and its end), played
 as it went at 10 frames a second; gaps under 3 s play through, and the
-rest is skipped, showing the screen across it quickly: under 30 s in
-half a second under a ⏩ badge with how long, longer in 1.5 s, dimmed
-under a card ("Fast-forwarding 4 h 12 min", the time of day racing on,
-a bar; Ben, 2026-11-15). The screen changing by itself (a page's
+rest is skipped, the screen playing on as it went for 5 s more before
+each skip and after it (time to read what's on it), then shown across
+the skip quickly: under 30 s in half a second, longer in 1.5 s, racing
+on, always under the small ⏩ badge at the top saying how long, never a
+card over the screen (Ben, 2026-11-16: "never use the large overlay
+one it's too intrusive"; "add an extra 5s delay before and after each
+fast forward"). The screen changing by itself (a page's
 animation, a spinner, a clock) isn't something happening: counted so,
 real histories were busy nearly every second. The work follows what's
 kept, not the history's length: `record::Player` plays forward once
@@ -15371,7 +15374,7 @@ saying whether the picture changed); a picture is encoded only when it
 changed (one that didn't is the one before, its MP4 sample longer); it
 goes to the encoder in BGRA, zoomed in the same pass (each pixel z × z,
 crisp; as far as H.264 goes, `export::zooms`); a skip's screen is drawn
-once a sample and only its card again each frame. The encoder is
+once a sample, its badge over it. The encoder is
 `olo_video::Encoder`, chosen by the work (`open_encoder`: up to about
 600 million pixels, the built-in GPU's or the processor's, at once;
 more, NVIDIA's, whose start takes two seconds). Measured 2026-11-15

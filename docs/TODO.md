@@ -17,16 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Agent Screens' Export Video: the small fast-forward mark, and time
-  to read** (Ben, 2026-11-16: "when exporting videos in agent screens,
-  the fast forward animation/visual should always be the small one at
-  the top never use the large overlay one it's too intrusive. also, we
-  are a little too quick to ff so you don't get time to read what's on
-  the page before it happens. add an extra 5s delay before and after
-  each fast forward"). A fast-forward is always shown by the small mark
-  at the top, never the large overlay; and the video stays at normal
-  speed 5 s longer before each fast-forward and 5 s longer after it.
-
 - **A button that shows a slow job's progress** (Ben, 2026-11-16: "add
   a new button style/type/behavior/whatever makes sense to the kit
   where a button that triggers some kind of slow processing can show
@@ -47,6 +37,20 @@ something nobody here has is in "Blocked", with what it waits for.
   each other button that starts a job that long.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Agent Screens' Export Video: the small fast-forward mark, and time
+  to read** (Ben, 2026-11-16: "when exporting videos in agent screens,
+  the fast forward animation/visual should always be the small one at
+  the top never use the large overlay one it's too intrusive. also, we
+  are a little too quick to ff so you don't get time to read what's on
+  the page before it happens. add an extra 5s delay before and after
+  each fast forward"). Done 2026-11-16: every skip is shown under the
+  small ⏩ badge at the top saying how long (a long one still takes
+  1.5 s, the screen racing on under it), never the card over a dimmed
+  screen, which is gone; and the screen plays on as it went for 5 s
+  more before each skip and after it (gaps too short for that play
+  through). *Left for Ben:* export a history and see that it reads
+  well.
 
 - **Tiling as good as the best tiling window managers** (Ben,
   2026-11-15: "make it all very configurable/customizable and make sure

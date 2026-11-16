@@ -3,11 +3,14 @@
 //! result showing) played as they went, at 10 frames a second, and the
 //! time between them skipped (Ben, 2026-11-15: "only include the actual
 //! parts where actions/events occurred, skipping over all the
-//! inactivity"). A skip shows the screen across what it skips, quickly:
-//! under `CARD_FROM_MS` in half a second under a badge saying how long; a
-//! longer one in `FF_MS`, dimmed under a card, "Fast-forwarding 4 h 12
-//! min", the time of day racing on ("like it is fast forwarding through
-//! time to the next point where activity starts"). The screen changing
+//! inactivity"). A skip shows the screen across what it skips, quickly
+//! (in half a second; one of `LONG_SKIP_MS` or more in `FF_MS`, the
+//! screen racing on: "like it is fast forwarding through time to the next
+//! point where activity starts"), under a small badge at the top saying
+//! how long, never a card over the screen ("too intrusive"), and the
+//! screen plays on as it went for `FF_PAD_MS` more before each skip and
+//! after it, so what's on it can be read ("a little too quick to ff":
+//! Ben, 2026-11-16). The screen changing
 //! by itself (a page's animation, a spinner, a clock) isn't something
 //! happening: on real histories it was, nearly every second of them.
 //!
@@ -43,11 +46,15 @@ const LONG_MS: u64 = 10_000;
 /// of a second or two, its badge come and gone, was choppier than the
 /// seconds it saved).
 const PLAY_THROUGH_MS: u64 = 3000;
-/// A skip this long or longer is the fast-forward card, in `FF_MS`;
-/// shorter, a quick skip in `QUICK_MS`, under a badge.
-const CARD_FROM_MS: u64 = 30_000;
+/// A skip this long or longer takes `FF_MS`, the screen racing on under
+/// its badge; shorter, `QUICK_MS`.
+const LONG_SKIP_MS: u64 = 30_000;
 const FF_MS: u64 = 1500;
 const QUICK_MS: u64 = 500;
+/// The screen as it went, kept this much longer before each skip and
+/// after it: time to read what's on it (Ben, 2026-11-16: "add an extra
+/// 5s delay before and after each fast forward").
+const FF_PAD_MS: u64 = 5_000;
 
 /// One piece of the video: the screen from `from` to `to` as it went, or
 /// skipped through.
@@ -71,13 +78,15 @@ fn pieces(actions: &[(u64, u64)]) -> Vec<Piece> {
     let mut out = Vec::new();
     let Some(&(mut from, mut to)) = spans.first() else { return out };
     for &(a, b) in &spans[1..] {
-        if a <= to + PLAY_THROUGH_MS {
+        // (What's between, less the time kept on either side of a skip,
+        // as short as a play-through: it plays through.)
+        if a <= to + PLAY_THROUGH_MS + 2 * FF_PAD_MS {
             to = to.max(b);
             continue;
         }
-        out.push(Piece::Screen { from, to });
-        out.push(Piece::Skip { from: to, to: a });
-        (from, to) = (a, b);
+        out.push(Piece::Screen { from, to: to + FF_PAD_MS });
+        out.push(Piece::Skip { from: to + FF_PAD_MS, to: a - FF_PAD_MS });
+        (from, to) = (a - FF_PAD_MS, b);
     }
     out.push(Piece::Screen { from, to });
     out
@@ -85,7 +94,7 @@ fn pieces(actions: &[(u64, u64)]) -> Vec<Piece> {
 
 /// How many pictures a skip of `ms` takes.
 fn skip_frames(ms: u64) -> u64 {
-    (if ms >= CARD_FROM_MS { FF_MS } else { QUICK_MS } / STEP_MS).max(2)
+    (if ms >= LONG_SKIP_MS { FF_MS } else { QUICK_MS } / STEP_MS).max(2)
 }
 
 /// "4 min 12 s".
@@ -96,16 +105,6 @@ fn span(ms: u64) -> String {
         60..3600 => format!("{} min {} s", s / 60, s % 60),
         _ => format!("{} h {} min", s / 3600, s / 60 % 60),
     }
-}
-
-/// "2:31 PM" (local), at `ms` since the epoch.
-fn clock(ms: u64) -> String {
-    let t = olo_kit::clock::local((ms / 1000) as i64);
-    let h = match t.hour % 12 {
-        0 => 12,
-        h => h,
-    };
-    format!("{h}:{:02} {}", t.minute, if t.hour < 12 { "AM" } else { "PM" })
 }
 
 /// The video being written: the picture last encoded is held until the
@@ -237,14 +236,12 @@ fn export_from(actions: &[(u64, u64)], segments: &[record::Segment], encoder: ol
                     }
                 }
                 Piece::Skip { from, to } => {
-                    // A few of the screen's pictures across it, each kept
-                    // for frames on end (the card on it drawn anew for
-                    // each: its time and its bar move).
+                    // A few of the screen's pictures across it (a long
+                    // one's racing on), each kept for frames on end,
+                    // under the badge saying how long.
                     let n = skip_frames(to - from);
-                    let card = to - from >= CARD_FROM_MS;
-                    let samples = if card { 5 } else { 2 };
+                    let samples = if to - from >= LONG_SKIP_MS { 5 } else { 2 };
                     let mut sampled = None;
-                    let mut drawn: Option<Rect> = None;
                     for i in 0..n {
                         let s = i * samples / n;
                         let t = from + (to - from) * s / (samples - 1).max(1);
@@ -253,22 +250,14 @@ fn export_from(actions: &[(u64, u64)], segments: &[record::Segment], encoder: ol
                             if player.at(t.max(first)).is_some() {
                                 put(&player.frame, w, h, z, &mut under);
                             }
-                            if card {
-                                dim(&mut under);
-                            }
-                            pic.copy_from_slice(&under);
-                        } else if !card {
-                            // (A quick skip's badge doesn't change: the same
-                            // picture, longer.)
-                            if video.again() {
-                                step(&mut done)?;
-                                continue;
-                            }
-                        } else if let Some(r) = drawn {
-                            restore(&mut pic, &under, vw, r);
+                        } else if video.again() {
+                            // (The badge doesn't change: the same picture,
+                            // longer.)
+                            step(&mut done)?;
+                            continue;
                         }
-                        let frame_t = from + (to - from) * i / (n - 1);
-                        drawn = Some(if card { fast_forward(&mut pic, vw, vh, &span(to - from), &clock(frame_t), i as f32 / (n - 1) as f32) } else { badge(&mut pic, vw, vh, &span(to - from)) });
+                        pic.copy_from_slice(&under);
+                        badge(&mut pic, vw, vh, &span(to - from));
                         video.picture(&pic, vw * 4)?;
                         step(&mut done)?;
                     }
@@ -355,21 +344,6 @@ fn put(f: &Frame, w: usize, h: usize, z: usize, out: &mut [u8]) {
     }
 }
 
-/// The screen dimmed, under a fast-forward's card.
-fn dim(bgra: &mut [u8]) {
-    for b in bgra.iter_mut() {
-        *b = ((*b as u16 * 102) >> 8) as u8;
-    }
-}
-
-/// What `r` held in `under`, back in `pic` (both `w` wide).
-fn restore(pic: &mut [u8], under: &[u8], w: usize, (x0, y0, x1, y1): Rect) {
-    for y in y0..y1 {
-        let (a, b) = ((y * w + x0) * 4, (y * w + x1) * 4);
-        pic[a..b].copy_from_slice(&under[a..b]);
-    }
-}
-
 /// `(x0, y0, x1, y1)` as whole pixels inside `w` × `h`, a pixel round.
 fn covering((x0, y0, x1, y1): (f32, f32, f32, f32), w: usize, h: usize) -> Rect {
     let c = |v: f32, most: usize| (v.max(0.0) as usize).min(most);
@@ -387,8 +361,8 @@ fn ff_mark(bgra: &mut [u8], w: usize, h: usize, x: f32, baseline: f32, size: f32
     icon
 }
 
-/// A quick skip's look over the screen: a badge at the top, ⏩ and how
-/// long is skipped. Where it drew.
+/// A skip's look over the screen: a badge at the top, ⏩ and how long is
+/// skipped. Where it drew.
 fn badge(bgra: &mut [u8], w: usize, h: usize, how_long: &str) -> Rect {
     let unit = (h as f32 / 40.0).max(8.0);
     let size = unit * 1.3;
@@ -404,34 +378,6 @@ fn badge(bgra: &mut [u8], w: usize, h: usize, how_long: &str) -> Rect {
     if let Some(font) = &font {
         draw_text(bgra, w, h, font, size, x0 + unit + icon + gap, base, how_long, [235, 235, 240]);
     }
-    covering(card, w, h)
-}
-
-/// A fast-forward's card over the (dimmed) screen in `bgra`: ⏩,
-/// "Fast-forwarding" and how long, the time of day there big below, and a
-/// bar for how far through (`done`, 0–1). Where it drew.
-fn fast_forward(bgra: &mut [u8], w: usize, h: usize, how_long: &str, time: &str, done: f32) -> Rect {
-    let unit = (h as f32 / 40.0).max(8.0);
-    let (cw, ch) = ((w as f32 * 0.42).max(unit * 24.0).min(w as f32 - 2.0 * unit), unit * 9.0);
-    let (x0, y0) = ((w as f32 - cw) / 2.0, (h as f32 - ch) / 2.0);
-    let card = (x0, y0, x0 + cw, y0 + ch);
-    round_rect(bgra, w, h, card, unit * 0.8, [24, 26, 32], 0.92);
-    if let Some(font) = ui_font().and_then(|d| ab_glyph::FontRef::try_from_slice_and_index(&d.0, d.1).ok()) {
-        // ⏩ and the words, as one line.
-        let small = unit * 1.3;
-        let words = format!("Fast-forwarding {how_long}");
-        let line = small * 1.3 + small * 0.6 + text_width(&font, small, &words);
-        let (x, base) = ((w as f32 - line) / 2.0, y0 + unit * 2.7);
-        let icon = ff_mark(bgra, w, h, x, base, small, [235, 235, 240]);
-        draw_text(bgra, w, h, &font, small, x + icon + small * 0.6, base, &words, [235, 235, 240]);
-        // The time there, racing on.
-        let big = unit * 3.2;
-        draw_text(bgra, w, h, &font, big, (w as f32 - text_width(&font, big, time)) / 2.0, y0 + unit * 6.6, time, [255, 255, 255]);
-    }
-    // How far through.
-    let (bx0, bx1, by) = (x0 + unit * 1.5, x0 + cw - unit * 1.5, y0 + ch - unit * 1.4);
-    round_rect(bgra, w, h, (bx0, by, bx1, by + unit * 0.35), unit * 0.17, [70, 74, 84], 1.0);
-    round_rect(bgra, w, h, (bx0, by, bx0 + (bx1 - bx0) * done.clamp(0.0, 1.0), by + unit * 0.35), unit * 0.17, [120, 170, 255], 1.0);
     covering(card, w, h)
 }
 
@@ -539,27 +485,32 @@ mod tests {
     #[test]
     fn what_happened_is_kept_the_rest_skipped() {
         // Two close together, one a while after, a long wait.
+        // (Each skip with 5 s more of the screen on either side.)
         let p = pieces(&[(10_000, 300), (11_000, 200), (100_000, 500), (200_000, 60_000)]);
         assert_eq!(
             p,
             [
-                Piece::Screen { from: 9_200, to: 12_700 },
-                Piece::Skip { from: 12_700, to: 99_200 },
-                Piece::Screen { from: 99_200, to: 102_000 },
-                Piece::Skip { from: 102_000, to: 199_200 },
+                Piece::Screen { from: 9_200, to: 17_700 },
+                Piece::Skip { from: 17_700, to: 94_200 },
+                Piece::Screen { from: 94_200, to: 107_000 },
+                Piece::Skip { from: 107_000, to: 194_200 },
                 // The wait: its start and its end.
-                Piece::Screen { from: 199_200, to: 201_500 },
-                Piece::Skip { from: 201_500, to: 259_200 },
-                Piece::Screen { from: 259_200, to: 261_500 },
+                Piece::Screen { from: 194_200, to: 206_500 },
+                Piece::Skip { from: 206_500, to: 254_200 },
+                Piece::Screen { from: 254_200, to: 261_500 },
             ]
         );
+        // Closer than a play-through and the time kept either side: they
+        // play through.
+        assert_eq!(pieces(&[(10_000, 0), (24_000, 0)]), [Piece::Screen { from: 9_200, to: 25_500 }]);
+        assert_eq!(pieces(&[(10_000, 0), (25_400, 0)]).len(), 3);
         assert_eq!((skip_frames(5_000), skip_frames(86_500)), (5, 15));
         assert_eq!(span(252_000), "4 min 12 s");
         assert!(pieces(&[]).is_empty());
     }
 
     /// A screen's colours come out as they were (red stays red: the
-    /// pictures go to the encoder in BGRA), and the cards' too.
+    /// pictures go to the encoder in BGRA), and a skip's badge over it.
     #[test]
     fn colours_come_out_as_they_were() {
         let dir = std::path::PathBuf::from(format!("/var/tmp/olo-export-colours-{}", std::process::id()));
@@ -578,9 +529,13 @@ mod tests {
         let near = |a: [u8; 3], b: [u8; 3]| a.iter().zip(b).all(|(x, y)| x.abs_diff(y) <= 12);
         let screen = px(0.5, 20, 20);
         assert!(near(screen, [230, 60, 40]), "the screen came out {screen:?}");
-        // In the fast-forward (from 2.4 s), the card's bar: blue.
-        let bar = px(3.8, w / 2 - 40, h / 2 + 30);
-        assert!(bar[2] > bar[0], "the bar came out {bar:?}");
+        // In the skip (from 7.4 s, the first action's 2.4 s and 5 s more),
+        // the badge at the top, dark over the red; the screen below it as
+        // it was, not dimmed.
+        let badge = px(8.0, w / 2, 14);
+        assert!(badge.iter().all(|&c| c < 90), "the badge came out {badge:?}");
+        let under = px(8.0, 20, h / 2);
+        assert!(near(under, [230, 60, 40]), "the screen under the badge came out {under:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -630,9 +585,10 @@ mod tests {
         let took = started.elapsed();
         eprintln!("12 hours: {shown} frames, {encoded} pictures encoded, in {took:?}");
         assert!(out.is_file());
-        // 0.8 s before the first action to 1.5 s after the second (0.2 to
-        // 7.3 s), the fast-forward, and the last action's 0.8 + 0.4 + 1.5 s.
-        assert_eq!(shown, 71 + 15 + 27);
+        // 0.8 s before the first action to 1.5 s after the second and 5 s
+        // more (0.2 to 12.3 s), the fast-forward, and 5 s and the last
+        // action's 0.8 + 0.4 + 1.5 s.
+        assert_eq!(shown, 121 + 15 + 77);
         // The still 2.3 s after the second action not encoded again (a
         // keyframe in it, once).
         assert!(encoded <= shown - 20, "{encoded} of {shown} encoded");
