@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-16
 
+### Preferences: no space around a window alone
+
+*00:59* — Smart gaps, as i3 and sway have them: with the box checked, an auto-tiled window alone on its display fills it, no margin or gap; they come back with a second tile (1×).
+
+![Preferences: no space around a window alone](2026-11-16/005933-preferences-no-space-around-a-window-alone.png)
+
 ### Preferences: the number of main windows
 
 *00:28* — Preferences ▸ Windows sets how many main windows a workspace starts with; the miniature shows two sharing the left two thirds (1.5×).

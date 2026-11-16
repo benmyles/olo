@@ -321,6 +321,7 @@ pub fn context() -> (Option<WindowInfo>, Vec<Item>) {
                 olo_protocol::Shortcut::ToggleSplit => " tiling split direction vertical horizontal",
                 olo_protocol::Shortcut::MoreGap | olo_protocol::Shortcut::LessGap => " tiling gaps space margin",
                 olo_protocol::Shortcut::MoreMains | olo_protocol::Shortcut::FewerMains => " tiling main and stack master nmaster count increase decrease",
+                olo_protocol::Shortcut::BiggerMain | olo_protocol::Shortcut::SmallerMain => " tiling main and stack master expand shrink grow size mfact",
                 _ => "",
             }
         ));

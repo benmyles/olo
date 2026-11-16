@@ -302,6 +302,10 @@ pub enum Shortcut {
     /// display's workspace (dwm's and xmonad's nmaster keys).
     MoreMains,
     FewerMains,
+    /// Main and Stack's main part a step bigger or smaller, whichever
+    /// tile has the focus (dwm's and xmonad's Expand / Shrink).
+    BiggerMain,
+    SmallerMain,
     /// Hide the focused window (minimize it to Deskbar).
     Hide,
     /// Roll the focused window up to just its tab, or back down.
@@ -775,6 +779,8 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::LessGap, "less-gap", ARRANGE, "Less space between windows", &["Ctrl+Alt+Cmd+BracketLeft"], &["Ctrl+Alt+Cmd+BracketLeft"], &["Ctrl+Alt+Cmd+BracketLeft"]),
     s(Shortcut::MoreMains, "more-main-windows", ARRANGE, "More main windows", &["Ctrl+Alt+Cmd+I"], &["Ctrl+Alt+Cmd+I"], &["Ctrl+Alt+Cmd+I"]),
     s(Shortcut::FewerMains, "fewer-main-windows", ARRANGE, "Fewer main windows", &["Ctrl+Alt+Cmd+D"], &["Ctrl+Alt+Cmd+D"], &["Ctrl+Alt+Cmd+D"]),
+    s(Shortcut::BiggerMain, "bigger-main", ARRANGE, "Make the main windows bigger", &["Ctrl+Alt+Cmd+Period"], &["Ctrl+Alt+Cmd+Period"], &["Ctrl+Alt+Cmd+Period"]),
+    s(Shortcut::SmallerMain, "smaller-main", ARRANGE, "Make the main windows smaller", &["Ctrl+Alt+Cmd+Comma"], &["Ctrl+Alt+Cmd+Comma"], &["Ctrl+Alt+Cmd+Comma"]),
     s(Shortcut::Hide, "hide-window", WINDOWS, "Hide window", &["Cmd+M"], &[], &["Ctrl+Alt+M"]),
     s(Shortcut::HideApp, "hide-app", WINDOWS, "Hide the application", &["Cmd+H"], &[], &["Ctrl+Alt+H"]),
     s(Shortcut::RollUp, "roll-up", WINDOWS, "Roll up or down", &["Ctrl+Cmd+M"], &["Alt+Cmd+M"], &["Ctrl+Alt+R"]),
@@ -1141,6 +1147,11 @@ pub struct TilingSettings {
     /// place across the top or bottom), as dwm's and xmonad's nmaster.
     /// 1 to [`MAX_MAINS`].
     pub main_count: u32,
+    /// No space around an auto-tiled window alone on its display: it
+    /// fills the display beside Deskbar, as i3's and sway's smart gaps
+    /// (Preferences ▸ Windows). The margin and gap come back with a
+    /// second tile.
+    pub smart_gaps: bool,
     /// The workspaces (and displays of them) with another number of main
     /// windows (Deskbar's tray ▸ Number of Main Windows, ⌃⌥⌘I / ⌃⌥⌘D,
     /// `Request::SetMainCount`; see [`TilingSettings::main_count_of`]).
@@ -1176,6 +1187,7 @@ impl Default for TilingSettings {
             main_place: Tile::LeftTwoThirds,
             main_places: Vec::new(),
             main_count: 1,
+            smart_gaps: false,
             main_counts: Vec::new(),
             modes: Vec::new(),
             auto: Vec::new(),

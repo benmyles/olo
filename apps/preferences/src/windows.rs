@@ -99,6 +99,8 @@ pub fn ui(ui: &mut Ui, outputs: &[OutputInfo]) {
             ui.slider("margin", margin, 0.0..=64.0, |sl| sl.step(1.0).label("Space at the edges").value_text(format!("{margin:.0}")).limits("None", "Wide"), |s, v| s.tiling.margin = v as u32);
             let gap = s.tiling.gap as f32;
             ui.slider("gap", gap, 0.0..=48.0, |sl| sl.step(1.0).label("Space between windows").value_text(format!("{gap:.0}")).limits("None", "Wide"), |s, v| s.tiling.gap = v as u32);
+            // (i3's smart gaps: a window alone fills the display.)
+            ui.check("No space around an auto-tiled window alone", s.tiling.smart_gaps, |s, on| s.tiling.smart_gaps = on);
         });
         let main = outputs.iter().find(|o| o.main).or(outputs.first());
         let display = main.map(crate::display::logical).map_or((1280.0, 800.0), |(w, h)| (w as f32, h as f32));

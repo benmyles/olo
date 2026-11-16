@@ -728,6 +728,36 @@ pub fn main_and_stack(mains: Vec<Node>, mut stack: Vec<Node>, away: Vec<Node>, p
     }
 }
 
+/// Main and Stack's main part `at` (fractions of the area) for `place`
+/// made `step` (a fraction of the area along the way it grows) bigger, or
+/// smaller (negative), from its side: the edge into the rest moves (both,
+/// for a place in the middle, which stays in the middle; a corner's
+/// column grows across). Kept between a tenth and nine tenths.
+pub fn main_part_grown(place: Tile, at: Part, step: f32) -> Part {
+    let (x, y, w, h) = at;
+    let size = |s: f32| (s + step).clamp(0.1, 0.9);
+    match main_side(place) {
+        MainSide::Left => (0.0, y, size(w), h),
+        MainSide::Right => {
+            let w = size(w);
+            (1.0 - w, y, w, h)
+        }
+        MainSide::Top => (x, 0.0, w, size(h)),
+        MainSide::Bottom => {
+            let h = size(h);
+            (x, 1.0 - h, w, h)
+        }
+        MainSide::Center => {
+            let nw = size(w);
+            ((x - (nw - w) / 2.0).clamp(0.0, 1.0 - nw), y, nw, h)
+        }
+        MainSide::Corner { left, .. } => {
+            let nw = size(w);
+            (if left { 0.0 } else { 1.0 - nw }, y, nw, h)
+        }
+    }
+}
+
 /// The main window, the stack in its order and the main window's part
 /// (as fractions of the area), if `tree` is Main and Stack's shape for
 /// `place`, as [`main_and_stack`] builds it (places away that take no
@@ -2195,9 +2225,23 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
     }
 
+    /// Where `tree`'s tiles go on `output`, and the gap between them: the
+    /// tiling area, or, a tile alone with smart gaps on, the whole usable
+    /// area and none.
+    fn auto_area(&self, output: &Output, tree: &Node) -> Option<(Rectangle<i32, Logical>, i32)> {
+        if self.settings.tiling.smart_gaps && tiles_with_room(tree) == 1 { Some((self.usable_area(output)?, 0)) } else { Some((self.tile_area(output)?, self.tile_gap())) }
+    }
+
+    /// The area auto-tiled `w`'s tile is in ([`Self::auto_area`]), if it
+    /// is one.
+    pub(super) fn auto_area_of(&self, w: &WindowElement) -> Option<Rectangle<i32, Logical>> {
+        let key = self.tree_of(w)?;
+        let output = self.space.outputs().find(|o| o.name() == key.1)?;
+        self.auto_area(output, self.auto.trees.get(&key)?).map(|(a, _)| a)
+    }
+
     fn auto_apply_tiles(&mut self, output: &Output, tree: &Node, units: &[WindowElement]) {
-        let Some(area) = self.tile_area(output) else { return };
-        let gap = self.tile_gap();
+        let Some((area, gap)) = self.auto_area(output, tree) else { return };
         let mins = self.auto_mins(units, area);
         let min = |i: u64| mins.get(&i).copied().unwrap_or((0.0, 0.0));
         let moving_by_drag = |s: &Self, w: &WindowElement| s.tile_drag.as_ref().is_some_and(|d| d.moves(w));
@@ -2868,6 +2912,40 @@ impl<B: Backend + 'static> AnvilState<B> {
         true
     }
 
+    /// Main and Stack's main part a step bigger or smaller on the active
+    /// display's workspace, whichever tile has the focus (dwm's and
+    /// xmonad's Shrink / Expand, ⌃⌥⌘. and ⌃⌥⌘,), kept as dragged edges
+    /// are. Whether it changed.
+    pub fn grow_main(&mut self, grow: bool) -> bool {
+        let Some(o) = self.active_output() else { return false };
+        let ws = self.showing(&o);
+        let key = (ws, o.name());
+        if !self.auto_on(&o, ws) || self.layout_of(&key) != olo_protocol::TilingLayout::MainAndStack {
+            return false;
+        }
+        let place = self.main_places(&key).0;
+        let Some(tree) = self.auto.trees.get(&key) else { return false };
+        let Some((mains, stack, at)) = main_and_stack_of(tree, place) else { return false };
+        let Some(area) = self.tile_area(&o) else { return false };
+        // A step of the display along the way it grows, at least
+        // `RESIZE_STEP_PX` points.
+        let along = if place.mains_side_by_side() { area.size.h } else { area.size.w }.max(1) as f32;
+        let step = RESIZE_STEP.max(RESIZE_STEP_PX / along);
+        let built = main_and_stack(mains, stack, Vec::new(), place, main_part_grown(place, at, if grow { step } else { -step }));
+        let windows = self.all_windows();
+        let mins = self.auto_mins(&windows, area);
+        let min = |id: u64| mins.get(&id).copied().unwrap_or((0.0, 0.0));
+        let inset = Inset::of(area, self.tile_gap());
+        let (now, was) = (as_laid_out(&built, &min, inset), as_laid_out(tree, &min, inset));
+        if now == was {
+            return false;
+        }
+        let Some((key, _)) = self.auto_take_key(key, if grow { "Bigger Main" } else { "Smaller Main" }) else { return false };
+        info!(output = key.1, grow, tree = %now, "main part");
+        self.auto_put(key, now);
+        true
+    }
+
     /// Toggle split (⌃⌥⌘S): the split auto-tiled `w` shares with its
     /// neighbour turned the other way. Whether there was one.
     pub fn toggle_split(&mut self, w: &WindowElement) -> bool {
@@ -3533,6 +3611,27 @@ mod tests {
         assert_eq!(main_and_stack_of(&two, Tile::Left).map(|(m, s, _)| (m, s)), Some((vec![w(1), w(2)], vec![w(3)])));
         let own = Node::split(Cut::Columns, 0.5, Node::split(Cut::Rows, 0.5, w(1), Node::split(Cut::Columns, 0.5, w(2), w(4))), w(3));
         assert!(main_and_stack_of(&own, Tile::Left).is_none());
+    }
+
+    /// Bigger and smaller main parts, from each kind of place: the edge
+    /// into the rest moves, a middle one stays in the middle, a tenth to
+    /// nine tenths.
+    #[test]
+    fn main_part_grows_from_its_side() {
+        let t = 1.0 / 3.0;
+        assert!(near(main_part_grown(Tile::LeftTwoThirds, Tile::LeftTwoThirds.fraction(), 0.05), (0.0, 0.0, 2.0 * t + 0.05, 1.0)));
+        assert!(near(main_part_grown(Tile::Right, Tile::Right.fraction(), -0.1), (0.6, 0.0, 0.4, 1.0)));
+        assert!(near(main_part_grown(Tile::Top, Tile::Top.fraction(), 0.1), (0.0, 0.0, 1.0, 0.6)));
+        assert!(near(main_part_grown(Tile::BottomTwoThirds, Tile::BottomTwoThirds.fraction(), 0.1), (0.0, t - 0.1, 1.0, 2.0 * t + 0.1)));
+        let c = main_part_grown(Tile::CenterTwoThirds, Tile::CenterTwoThirds.fraction(), 0.1);
+        assert!(near(c, (t / 2.0 - 0.05, 0.0, 2.0 * t + 0.1, 1.0)), "{c:?}");
+        assert!(near(main_part_grown(Tile::TopRight, Tile::TopRight.fraction(), 0.1), (0.4, 0.0, 0.6, 0.5)));
+        assert!(near(main_part_grown(Tile::Left, (0.0, 0.0, 0.88, 1.0), 0.1), (0.0, 0.0, 0.9, 1.0)), "nine tenths at most");
+        assert!(near(main_part_grown(Tile::Left, (0.0, 0.0, 0.12, 1.0), -0.1), (0.0, 0.0, 0.1, 1.0)), "a tenth at least");
+        // Built at it: the main window there.
+        let at = main_part_grown(Tile::LeftTwoThirds, Tile::LeftTwoThirds.fraction(), 0.05);
+        let built = main_and_stack(vec![w(1)], vec![w(2)], Vec::new(), Tile::LeftTwoThirds, at);
+        assert!(near(part_of(&built, 1), at), "{:?}", part_of(&built, 1));
     }
 
     /// Several main windows (dwm's nmaster): they share the main place,

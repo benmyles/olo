@@ -6956,7 +6956,14 @@ main window's place, so there they turn or mirror the place
 corners likewise, the thirds side by side and the middle ones staying;
 `flipped_place`), and Even Out builds it again at the place's share.
 More and Less Space Between Windows (⌃⌥⌘] and [) step
-`TilingSettings::gap` by 4 points within Preferences' 0 to 48, saved.
+`TilingSettings::gap` by 4 points within Preferences' 0 to 48, saved. With
+smart gaps on (i3's and sway's; `TilingSettings::smart_gaps`,
+Preferences ▸ Windows ▸ No space around an auto-tiled window alone), a
+tile alone on its display has no margin and no gap: it fills the area
+beside Deskbar (`auto_area`), and `keep_in_tile_area` holds it to that
+area, not the one with margins (`auto_area_of`: it pushed the lone
+window back to the margin, 8 points out past the display's other
+edges, the first time it was tried).
 
 Auto-tiling (`shell/autotile.rs`; its module doc is the design) is the
 Auto-Tiling mode; `{"type":"set_auto_tiling","on":true}` and
@@ -7004,7 +7011,12 @@ Windows ⌃⌥⌘I and ⌃⌥⌘D, `{"type":"set_main_count","count":2}`, kept i
 the other, or side by side in a place across the top or bottom
 (`Tile::mains_side_by_side`, `main_and_stack_parts_with`). One more
 takes the first of the stack; one fewer gives the last back to it, the
-order kept; a new window, or one made main, is the first of them.
+order kept; a new window, or one made main, is the first of them. Make
+the Main Windows Bigger and Smaller (⌃⌥⌘. and ⌃⌥⌘,, dwm's and
+xmonad's Expand and Shrink) move the main part's edge into the rest a
+step from whichever tile has the focus (`grow_main`,
+`main_part_grown`: a place in the middle grows both ways and stays in
+the middle; a tenth to nine tenths), kept as a dragged edge is.
 The defaults (Ben, 2026-11-15: "the main window gets the left 2/3 and
 the stack is the right 1/3"): Main and Stack, its main window in the
 left two thirds; settings written before them (`TilingSettings::version`

@@ -1522,7 +1522,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             return;
         }
         let (Some(loc), Some(geo)) = (self.space.element_location(window), self.space.element_geometry(window)) else { return };
-        let Some(area) = self.window_output(window).and_then(|o| self.tile_area(&o)) else { return };
+        // (An auto-tiled window's own area: alone with smart gaps, the
+        // whole usable area, not pushed in by the margin it hasn't.)
+        let Some(area) = self.auto_area_of(window).or_else(|| self.window_output(window).and_then(|o| self.tile_area(&o))) else { return };
         let inside = |pos: i32, len: i32, lo: i32, span: i32| if len <= span { pos.clamp(lo, lo + span - len) } else { lo };
         let x = inside(geo.loc.x, geo.size.w, area.loc.x, area.size.w);
         let y = inside(geo.loc.y, geo.size.h, area.loc.y, area.size.h);

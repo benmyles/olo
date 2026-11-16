@@ -4462,5 +4462,11 @@
   "title": "Preferences: the number of main windows",
   "caption": "Preferences \u25b8 Windows sets how many main windows a workspace starts with; the miniature shows two sharing the left two thirds (1.5\u00d7).",
   "image": "2026-11-16/002809-preferences-the-number-of-main-windows.png"
+ },
+ {
+  "time": "2026-11-16T00:59:33",
+  "title": "Preferences: no space around a window alone",
+  "caption": "Smart gaps, as i3 and sway have them: with the box checked, an auto-tiled window alone on its display fills it, no margin or gap; they come back with a second tile (1\u00d7).",
+  "image": "2026-11-16/005933-preferences-no-space-around-a-window-alone.png"
  }
 ]

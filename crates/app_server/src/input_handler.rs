@@ -552,6 +552,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     self.set_main_count(count, Some(ws), Some(o));
                 }
             }
+            S::BiggerMain | S::SmallerMain => {
+                self.grow_main(shortcut == S::BiggerMain);
+            }
             // Reshaping the arrangement (shell/reshape.rs).
             S::RotateTiles(cw) => {
                 self.reshape_tiles(None, crate::shell::autotile::Reshape::Rotate(cw));
