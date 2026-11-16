@@ -289,6 +289,17 @@ mod tests {
         assert_eq!(p.title(), "Seattle", "blank: its found name");
     }
 
+    /// A place moved: the one shown is still the one shown, wherever it
+    /// went.
+    #[test]
+    fn the_shown_place_follows_a_move() {
+        use crate::moved_index;
+        // [a, b, c, d]: b (1) moved to 3 is [a, c, d, b].
+        assert_eq!((moved_index(1, 1, 3), moved_index(2, 1, 3), moved_index(3, 1, 3), moved_index(0, 1, 3)), (3, 1, 2, 0));
+        // d (3) moved to 0 is [d, a, b, c].
+        assert_eq!((moved_index(3, 3, 0), moved_index(0, 3, 0), moved_index(2, 3, 0)), (0, 1, 3));
+    }
+
     #[test]
     fn coordinates_are_a_place() {
         let p = coordinates("47.61, -122.33").unwrap();

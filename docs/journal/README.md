@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Weather: places in your own order
+
+*17:29* — Places are dragged into the order you want (the kit's Sidebar::on_reorder: a line shows where the row will go among its section's rows), or moved with Move Up and Move Down on a place's menu; the place shown stays shown. Every place's sky and temperature now stay up to date by themselves, each fetched as its forecast gets old, without clicking it (light, 2x).
+
+![Weather: places in your own order](2026-11-15/172934-weather-places-in-your-own-order.png)
+
 ### Deskbar: Weather's widgets, dark
 
 *17:20* — The same three widgets in the dark look: the day spans' colours run cold to warm in its own hues (dark, 2x).

@@ -131,12 +131,29 @@ fn sidebar(w: &mut Weather, cx: &mut Cx<Weather>) -> Element {
                 v.choose(i - 1, cx);
             }
         }))
-        .on_menu(cx.listener(|_: &mut Weather, (i, at): &(usize, olo_kit::Point<Pixels>), cx| {
+        // (Dragged into another order: the places' own, the heading
+        // first.)
+        .on_reorder(cx.listener(|v: &mut Weather, (from, to): &(usize, usize), cx| {
+            if *from > 0 && *to > 0 {
+                v.move_place(from - 1, to - 1, cx);
+            }
+        }))
+        .on_menu(cx.listener(|v: &mut Weather, (i, at): &(usize, olo_kit::Point<Pixels>), cx| {
             if *i == 0 {
                 return;
             }
             let i = i - 1;
-            let menu = olo_kit::Menu::new("Place").item("Show", format!("place:{i}")).item("Rename…", format!("rename-at:{i}")).item("Remove Place", format!("remove:{i}"));
+            let last = v.settings.places.len().saturating_sub(1);
+            let menu = olo_kit::Menu::new("Place")
+                .item("Show", format!("place:{i}"))
+                .item("Rename…", format!("rename-at:{i}"))
+                .separator()
+                .item("Move Up", format!("move-place:{i}:{}", i.saturating_sub(1)))
+                .enabled(i > 0)
+                .item("Move Down", format!("move-place:{i}:{}", (i + 1).min(last)))
+                .enabled(i < last)
+                .separator()
+                .item("Remove Place", format!("remove:{i}"));
             let view = cx.view_ref();
             olo_kit::menu::context_menu(cx, menu, *at, move |cmd, cx| {
                 let cmd = cmd.to_owned();

@@ -16,6 +16,13 @@
 //! while it has the keyboard to [`Sidebar::on_select_all`], and a
 //! secondary click to [`Sidebar::on_menu`] (the row and where).
 //!
+//! Rows the person may put in their own order ([`Sidebar::on_reorder`]:
+//! Weather's places) are dragged: a press on one, moved past a few
+//! points, shows a line where it would go among the rows of its section
+//! (between its headings), and the release there tells the app where
+//! from and where to. Its keyboard and agents' way is the app's (a menu's
+//! Move Up and Move Down).
+//!
 //! It keeps its scroller and its keyboard with the window, by its id, so
 //! it's built with the window to hand:
 //!
@@ -95,6 +102,10 @@ type ChooseFn = Rc<dyn Fn(&usize, &mut WindowCx)>;
 type PickFn = Rc<dyn Fn(&(usize, Modifiers), &mut WindowCx)>;
 type MenuFn = Rc<dyn Fn(&(usize, Point<Pixels>), &mut WindowCx)>;
 type AllFn = Rc<dyn Fn(&(), &mut WindowCx)>;
+type ReorderFn = Rc<dyn Fn(&(usize, usize), &mut WindowCx)>;
+
+/// How far a press moves before it's a drag (points).
+const DRAG: f32 = 4.0;
 
 /// A sidebar filling its box: see the module.
 pub struct Sidebar {
@@ -107,6 +118,7 @@ pub struct Sidebar {
     on_pick: Option<PickFn>,
     on_menu: Option<MenuFn>,
     on_select_all: Option<AllFn>,
+    on_reorder: Option<ReorderFn>,
     bare: bool,
 }
 
@@ -116,12 +128,19 @@ struct SidebarState {
     scroll: ScrollHandle,
     /// The row last brought into view (the chosen one moves: it's shown).
     revealed: Cell<Option<usize>>,
+    /// A press on a row (its index, where), and once it's a drag, where
+    /// the row would go: the index of the row it would go before (one
+    /// past its section's last: after it).
+    press: Cell<Option<(usize, Point<Pixels>)>>,
+    drop_at: Cell<Option<usize>>,
+    /// The top of its rows as last drawn (in the window: scrolled too).
+    top: Cell<Pixels>,
 }
 
 impl Sidebar {
     /// `chosen` is a row's index (never a heading's).
     pub fn new(id: impl Into<SharedString>, rows: impl Into<Rc<[Row]>>, chosen: usize) -> Sidebar {
-        Sidebar { id: id.into(), rows: rows.into(), chosen, also: Rc::from([]), on_choose: None, on_pick: None, on_menu: None, on_select_all: None, bare: false }
+        Sidebar { id: id.into(), rows: rows.into(), chosen, also: Rc::from([]), on_choose: None, on_pick: None, on_menu: None, on_select_all: None, on_reorder: None, bare: false }
     }
 
     /// Without its ground and edge: over what's behind it (a list's well:
@@ -163,6 +182,36 @@ impl Sidebar {
         self.on_select_all = Some(Rc::new(f));
         self
     }
+
+    /// Rows dragged into another order, within their section: the row's
+    /// index and the index it's to have (both among `rows`, headings
+    /// counted), as the app should move it.
+    pub fn on_reorder(mut self, f: impl Fn(&(usize, usize), &mut WindowCx) + 'static) -> Self {
+        self.on_reorder = Some(Rc::new(f));
+        self
+    }
+}
+
+/// The rows of row `i`'s section: from after the heading before it to
+/// the next heading (or the end).
+fn section(rows: &[Row], i: usize) -> std::ops::Range<usize> {
+    let start = rows[..i].iter().rposition(|r| r.heading).map_or(0, |h| h + 1);
+    let end = rows[i..].iter().position(|r| r.heading).map_or(rows.len(), |n| i + n);
+    start..end
+}
+
+/// Where row `from` would go with the pointer `y` points below the rows'
+/// top: the index of the row it would go before, within its section
+/// (its end: after the last).
+fn drop_slot(rows: &[Row], from: usize, y: f32) -> usize {
+    let s = section(rows, from);
+    let top = |i: usize| m::TIGHT + rows[..i].iter().map(Row::tall).sum::<f32>();
+    (s.start..s.end).find(|&i| y < top(i) + rows[i].tall() / 2.0).unwrap_or(s.end)
+}
+
+/// The index row `from` is to have, dropped before `slot`.
+fn moved_to(from: usize, slot: usize) -> usize {
+    if slot > from { slot - 1 } else { slot }
 }
 
 /// The row `step` on from `from` (↑ −1, ↓ +1), over headings.
@@ -183,9 +232,16 @@ impl Sidebar {
     /// The sidebar, in the window `cx` is (which keeps its scroller and
     /// its keyboard, by its id).
     pub fn build(self, cx: &mut WindowCx) -> Element {
-        let state = cx.keyed_state(SharedString::from(format!("olo-sidebar-{}", self.id)), |_| SidebarState { focus: FocusHandle::new(), scroll: ScrollHandle::new(), revealed: Cell::new(None) });
+        let state = cx.keyed_state(SharedString::from(format!("olo-sidebar-{}", self.id)), |_| SidebarState {
+            focus: FocusHandle::new(),
+            scroll: ScrollHandle::new(),
+            revealed: Cell::new(None),
+            press: Cell::new(None),
+            drop_at: Cell::new(None),
+            top: Cell::new(px(0.0)),
+        });
         let focused = state.focus.contains_focused(cx);
-        let Sidebar { id, rows, chosen, also, on_choose, on_pick, on_menu, on_select_all, bare } = self;
+        let Sidebar { id, rows, chosen, also, on_choose, on_pick, on_menu, on_select_all, on_reorder, bare } = self;
         // The chosen row brought into view when it changes.
         if state.revealed.replace(Some(chosen)) != Some(chosen) {
             let top: f32 = m::TIGHT + rows[..chosen.min(rows.len())].iter().map(Row::tall).sum::<f32>();
@@ -249,8 +305,12 @@ impl Sidebar {
                 return el;
             }
             let (focus, choose, pick, menu) = (state.focus.clone(), on_choose.clone(), on_pick.clone(), on_menu.clone());
+            let (kept, reorders) = (state.clone(), on_reorder.is_some());
             el.on_any_mouse_down(move |e, cx| {
                 focus.focus(cx);
+                // (A press that may become a drag into another order.)
+                kept.drop_at.set(None);
+                kept.press.set((reorders && e.button == MouseButton::Left && !e.modifiers.modified()).then_some((i, e.position)));
                 if e.button == MouseButton::Right {
                     if let Some(f) = &menu {
                         f(&(i, e.position), cx);
@@ -272,8 +332,28 @@ impl Sidebar {
                 }
             })
         }));
-        // (Its rows go where their own heights put them.)
-        let grid = canvas(|g, b| review::own_grid(g, b)).paint_key(0).absolute().inset_0();
+        // (Its rows go where their own heights put them; where they start,
+        // kept for a drag.)
+        let kept = state.clone();
+        let grid = canvas(move |g, b| {
+            kept.top.set(b.top());
+            review::own_grid(g, b)
+        })
+        .absolute()
+        .inset_0();
+        // A drag's line, where the row would go.
+        let (kept, line_rows) = (state.clone(), rows.clone());
+        let drop_line = canvas(move |g, b| {
+            let Some(slot) = kept.drop_at.get() else { return };
+            let y = b.top() + px(m::TIGHT + line_rows[..slot.min(line_rows.len())].iter().map(Row::tall).sum::<f32>());
+            let p = theme::palette();
+            let thick = 2.0;
+            let r = style::snap_centred(g, point(b.center().x, y), f32::from(b.size.width) - 2.0 * m::TIGHT, thick);
+            g.paint_quad(olo_interface::fill(r, style::c(p.control_highlight)).corner_radii(px(thick / 2.0)));
+        })
+        .paint_key(style::key(state.drop_at.get()))
+        .absolute()
+        .inset_0();
         let keys_rows = rows.clone();
         let backdrop = canvas(|g, b| {
             let p = theme::palette();
@@ -283,9 +363,43 @@ impl Sidebar {
         .paint_key(0)
         .absolute()
         .inset_0();
-        div()
-            .id(SharedString::from(format!("sidebar-{id}")))
-            .track_focus(&state.focus)
+        // A press on a row moved past `DRAG`: the row's new place followed
+        // (anywhere in the window), and taken on release.
+        let (kept, drag_rows) = (state.clone(), rows.clone());
+        let on_drag = move |e: &olo_interface::MouseMoveEvent, cx: &mut WindowCx| {
+            let Some((from, at)) = kept.press.get() else { return };
+            if e.pressed_button != Some(MouseButton::Left) {
+                return;
+            }
+            let d = e.position - at;
+            if kept.drop_at.get().is_none() && (f32::from(d.x).powi(2) + f32::from(d.y).powi(2)).sqrt() < DRAG {
+                return;
+            }
+            let slot = drop_slot(&drag_rows, from, f32::from(e.position.y - kept.top.get()));
+            if kept.drop_at.replace(Some(slot)) != Some(slot) {
+                cx.invalidate_owner();
+            }
+        };
+        let (kept, done) = (state.clone(), on_reorder.clone());
+        let on_release = move |_: &olo_interface::MouseUpEvent, cx: &mut WindowCx| {
+            let (press, slot) = (kept.press.take(), kept.drop_at.take());
+            if let (Some((from, _)), Some(slot)) = (press, slot) {
+                cx.invalidate_owner();
+                let to = moved_to(from, slot);
+                if to != from
+                    && let Some(f) = &done
+                {
+                    f(&(from, to), cx);
+                }
+            }
+        };
+        let on_release_out = on_release.clone();
+        let reorders = on_reorder.is_some();
+        let mut sidebar = div().id(SharedString::from(format!("sidebar-{id}"))).track_focus(&state.focus);
+        if reorders {
+            sidebar = sidebar.on_drag_move(on_drag).on_mouse_up(MouseButton::Left, on_release).on_mouse_up_out(MouseButton::Left, on_release_out);
+        }
+        sidebar
             .tab_stop()
             // (Its chosen row shows whether it has the keyboard.)
             .on_focus_changed(|_, cx| cx.invalidate_owner())
@@ -311,7 +425,7 @@ impl Sidebar {
                 }
             })
             .children((!bare).then_some(backdrop))
-            .child(ScrollView::new(&state.scroll).border(false).auto_hide(true).child(div().relative().w_full().child(grid).child(list)).into_element())
+            .child(ScrollView::new(&state.scroll).border(false).auto_hide(true).child(div().relative().w_full().child(grid).child(list).children(reorders.then_some(drop_line))).into_element())
     }
 }
 
@@ -326,5 +440,22 @@ mod tests {
         assert_eq!(stepped(&rows, 3, -1), Some(1));
         assert_eq!(stepped(&rows, 1, -1), None);
         assert_eq!(height(&rows), m::TIGHT + 2.0 * HEADING + 2.0 * ROW);
+    }
+
+    /// A row dragged goes among its section's rows: before the one whose
+    /// middle the pointer is above, after the last past them all, never
+    /// into another section.
+    #[test]
+    fn a_dragged_row_stays_in_its_section() {
+        let rows = [Row::heading("Places"), Row::new("", "a"), Row::new("", "b"), Row::new("", "c"), Row::heading("Other"), Row::new("", "x")];
+        assert_eq!(section(&rows, 2), 1..4);
+        assert_eq!(section(&rows, 5), 5..6);
+        // Rows' tops: a at TIGHT + HEADING, then each ROW on.
+        let a = m::TIGHT + HEADING;
+        assert_eq!(drop_slot(&rows, 3, a + 2.0), 1, "over a's top half: before a");
+        assert_eq!(drop_slot(&rows, 1, a + ROW + ROW * 0.6), 3, "past b's middle: before c");
+        assert_eq!(drop_slot(&rows, 1, 1000.0), 4, "far below: after c, not into Other");
+        assert_eq!(drop_slot(&rows, 2, -50.0), 1, "far above: first");
+        assert_eq!((moved_to(1, 3), moved_to(3, 1), moved_to(2, 2), moved_to(2, 3)), (2, 1, 2, 2));
     }
 }

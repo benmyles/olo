@@ -1500,6 +1500,17 @@ something nobody here has is in "Blocked", with what it waits for.
   `olo_kit::glance` (drawing, `serve`), Deskbar's `glances.rs`,
   Preferences' options; Weather's Now, Next Hours and Next Days.
 
+- **Weather: places in their own order, all kept up to date, an
+  assistant for anyone** (Ben, 2026-11-15: "places should be reorderable
+  by dragging them"; "and they should also all refresh without needing
+  a click on them"; "the weather app ai seems to have it built into its
+  prompt to talk about skydiving. the prompts shouldn't assume that they
+  should be general enough to apply to any olo user"). Done (HACKING
+  Weather, the kit's Sidebar): `Sidebar::on_reorder`, Move Up and Move
+  Down, `move-place:FROM:TO`; `Weather::refresh`, every place on its own
+  30 minutes; the prompt weighing whatever plan is mentioned, assuming
+  none; the skydiving suggestion now "How cloudy will it be today?".
+
 - **Kache: an Olo app for the build cache** (Ben, 2026-11-15: "an olo
   native kache frontend app that lets me monitor the status of kache,
   see stats/metrics/charts etc, configure/tweak settings, manage it like

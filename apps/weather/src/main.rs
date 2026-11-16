@@ -100,8 +100,11 @@ pub struct Entry {
     /// The fetch under way: its number, its stop, and what it's doing.
     pub fetching: Option<(u64, Arc<AtomicBool>, &'static str)>,
     pub error: Option<Error>,
-    /// The cache has been looked in.
+    /// The cache has been asked for, and has answered.
     pub loaded: bool,
+    pub read: bool,
+    /// After a fetch failed: not before then (seconds).
+    pub retry_at: Option<i64>,
 }
 
 /// A question being answered.
@@ -168,6 +171,19 @@ struct Saved {
     turns: Vec<(String, String, bool)>,
 }
 
+/// Where the place at `i` is once the one at `from` moved to `to`.
+pub fn moved_index(i: usize, from: usize, to: usize) -> usize {
+    if i == from {
+        to
+    } else if from < i && i <= to {
+        i - 1
+    } else if to <= i && i < from {
+        i + 1
+    } else {
+        i
+    }
+}
+
 /// A place's id (its cache's and its entry's).
 pub fn place_id(p: &Place) -> String {
     format!("{:.3},{:.3}", p.lat, p.lon)
@@ -214,7 +230,7 @@ impl Weather {
             rename_dialog: None,
             locating: Default::default(),
         };
-        w.show_chosen(false, cx);
+        w.refresh(false, cx);
         w.locate_missing(cx);
         w
     }
@@ -259,22 +275,49 @@ impl Weather {
         }
     }
 
-    /// The chosen place shown: what the cache has at once, then fetched
-    /// if that's old (or `force`).
-    fn show_chosen(&mut self, force: bool, cx: &mut Cx<Self>) {
-        let Some(place) = self.place().cloned() else { return };
-        let id = place_id(&place);
-        let entry = self.entries.entry(id.clone()).or_default();
-        if !entry.loaded {
-            entry.loaded = true;
-            let provider = self.provider();
-            let (p, i) = (place.clone(), id.clone());
-            cx.work(move || provider::cached(provider, &p).map(Arc::new), move |f| Msg::Loaded(i, f));
+    /// Every place kept up to date (Ben, 2026-11-15: "they should also all
+    /// refresh without needing a click on them"): each read from the cache
+    /// once, then fetched when its forecast is 30 minutes old (`FRESH`;
+    /// `force`, the shown one now), the shown one first, one fetch at a
+    /// time (tomorrow.io takes three requests a second, and a fetch is two),
+    /// a place whose fetch failed waited out by itself (a limit, all of
+    /// them); then a look again when the next is due. Nothing runs between.
+    fn refresh(&mut self, force: bool, cx: &mut Cx<Self>) {
+        let now = provider::now();
+        let provider = self.provider();
+        let n = self.settings.places.len();
+        let chosen = self.settings.chosen.min(n.saturating_sub(1));
+        let order: Vec<usize> = std::iter::once(chosen).chain((0..n).filter(|i| *i != chosen)).filter(|i| *i < n).collect();
+        let mut reading = false;
+        for &i in &order {
+            let place = self.settings.places[i].clone();
+            let id = place_id(&place);
+            let entry = self.entries.entry(id.clone()).or_default();
+            if !entry.read {
+                entry.read = true;
+                cx.work(move || provider::cached(provider, &place).map(Arc::new), move |f| Msg::Loaded(id, f));
+            }
+            reading |= !entry.loaded;
+        }
+        // (What the cache has first: a fetch only for what it hasn't.)
+        if reading || self.entries.values().any(|e| e.fetching.is_some()) {
             return;
         }
-        let old = entry.forecast.as_ref().is_none_or(|f| provider::now() - f.fetched >= FRESH || f.provider != self.settings.provider);
-        if (old || force) && entry.fetching.is_none() {
-            self.fetch(place, cx);
+        let mut next: Option<i64> = None;
+        for &i in &order {
+            let place = self.settings.places[i].clone();
+            let Some(e) = self.entries.get(&place_id(&place)) else { continue };
+            let kept = e.forecast.as_ref().filter(|f| f.provider == self.settings.provider);
+            let old_at = kept.map_or(now, |f| f.fetched + FRESH);
+            let due = e.retry_at.map_or(old_at, |t| t.max(old_at));
+            if due <= now || (force && i == chosen) {
+                self.fetch(place, cx);
+                return;
+            }
+            next = Some(next.map_or(due, |t| t.min(due)));
+        }
+        if let Some(t) = next {
+            self.look_again_in(t - now, cx);
         }
     }
 
@@ -320,7 +363,7 @@ impl Weather {
         cx.invalidate();
     }
 
-    /// Look again in `seconds` whether the shown forecast is old.
+    /// Look again in `seconds` whether a forecast is old.
     fn look_again_in(&mut self, seconds: i64, cx: &mut Cx<Self>) {
         self.due += 1;
         cx.after(Duration::from_secs(seconds.clamp(60, FRESH) as u64), Msg::Due(self.due));
@@ -331,7 +374,7 @@ impl Weather {
             self.settings.chosen = i;
             self.spans.clear();
             self.save();
-            self.show_chosen(false, cx);
+            self.refresh(false, cx);
             cx.invalidate();
         }
     }
@@ -381,7 +424,7 @@ impl Weather {
         }
         self.spans.clear();
         self.save();
-        self.show_chosen(false, cx);
+        self.refresh(false, cx);
         cx.invalidate();
         cx.invalidate();
     }
@@ -399,6 +442,22 @@ impl Weather {
             return;
         }
         self.add_dialog = Some(dialogs::AddPlace::open(cx.messenger()));
+    }
+
+    /// Place `from` moved to `to` (dragged in the list, Move Up, Move
+    /// Down; Ben, 2026-11-15: "places should be reorderable by dragging
+    /// them"), the one shown still shown, kept.
+    pub fn move_place(&mut self, from: usize, to: usize, cx: &mut Cx<Self>) {
+        let n = self.settings.places.len();
+        if from >= n || to >= n || from == to {
+            return;
+        }
+        let shown = self.settings.chosen.min(n - 1);
+        let place = self.settings.places.remove(from);
+        self.settings.places.insert(to, place);
+        self.settings.chosen = moved_index(shown, from, to);
+        self.save();
+        cx.invalidate();
     }
 
     /// Rename Place… for place `i`.
@@ -565,17 +624,13 @@ impl View for Weather {
         match message {
             Msg::Loaded(id, forecast) => {
                 if let Some(e) = self.entries.get_mut(&id) {
+                    e.loaded = true;
                     if e.forecast.is_none() {
                         e.forecast = forecast;
                     }
                 }
-                // Then fetched, if what was kept is old.
-                if self.place().is_some_and(|p| place_id(p) == id) {
-                    self.show_chosen(false, cx);
-                    if let Some(f) = self.entry().and_then(|e| e.forecast.clone()) {
-                        self.look_again_in(FRESH - (provider::now() - f.fetched), cx);
-                    }
-                }
+                // Then fetched, what was kept that's old.
+                self.refresh(false, cx);
             }
             Msg::Stage(n, stage) => {
                 for e in self.entries.values_mut() {
@@ -599,7 +654,7 @@ impl View for Weather {
                     Ok(f) => {
                         e.forecast = Some(f);
                         e.error = None;
-                        self.look_again_in(FRESH, cx);
+                        e.retry_at = None;
                     }
                     Err(Error::Stopped) => {}
                     Err(err) => {
@@ -614,15 +669,26 @@ impl View for Weather {
                             Error::Unreachable(_) => 5 * 60,
                             _ => FRESH,
                         };
-                        e.error = Some(err);
-                        self.look_again_in(retry, cx);
+                        let at = provider::now() + retry;
+                        e.retry_at = Some(at);
+                        // (A limit is the key's: every place waits.)
+                        if matches!(err, Error::Limit(..)) {
+                            for other in self.entries.values_mut() {
+                                other.retry_at = Some(other.retry_at.map_or(at, |t| t.max(at)));
+                            }
+                        }
+                        if let Some(e) = self.entries.get_mut(&id) {
+                            e.error = Some(err);
+                        }
                     }
                 }
+                // The next place, or a look again when one's due.
+                self.refresh(false, cx);
                 cx.invalidate();
             }
             Msg::Due(n) => {
                 if n == self.due {
-                    self.show_chosen(false, cx);
+                    self.refresh(false, cx);
                 }
                 return;
             }
@@ -689,8 +755,9 @@ impl View for Weather {
                 if changed {
                     for e in self.entries.values_mut() {
                         e.error = None;
+                        e.retry_at = None;
                     }
-                    self.show_chosen(true, cx);
+                    self.refresh(true, cx);
                 }
                 cx.invalidate();
             }
@@ -705,8 +772,13 @@ impl View for Weather {
             "rename-place" => self.open_rename(self.settings.chosen, cx),
             // (An agent's: the chosen place's own name, at once.)
             c if c.starts_with("rename:") => self.rename_place(self.settings.chosen, &c[7..], cx),
+            // (An agent's: place FROM to TO, by their places in the list.)
+            c if c.starts_with("move-place:") => {
+                let Some((from, to)) = c[11..].split_once(':').and_then(|(a, b)| Some((a.parse().ok()?, b.parse().ok()?))) else { return false };
+                self.move_place(from, to, cx);
+            }
             "provider" => self.open_key_dialog(cx),
-            "refresh" => self.show_chosen(true, cx),
+            "refresh" => self.refresh(true, cx),
             "copy" => olo_kit::clipboard::write(olo_kit::ClipboardItem::new_string(self.as_text())),
             "assistant" => {
                 self.settings.assistant = !self.settings.assistant;

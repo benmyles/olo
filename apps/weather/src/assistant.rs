@@ -60,8 +60,10 @@ pub enum Asked {
 /// ask of a forecast most (Ben, 2026-11-15: "i want about 10 of them that
 /// cover all the common things someone might want to ask about the
 /// weather"): rain, what to wear, how warm and how cold, wind, storms,
-/// the weekend, the week, the sun, a time to be outside, and the clouds
-/// for a skydive. For the place's own `hour` (0–23): after five in the
+/// the weekend, the week, the sun, a time to be outside, and the clouds;
+/// none assuming what the person does (Ben, 2026-11-15: "the prompts
+/// shouldn't assume that they should be general enough to apply to any
+/// olo user"). For the place's own `hour` (0–23): after five in the
 /// evening the day's questions are tomorrow's; and while it's `raining`
 /// there, when it stops.
 pub fn suggestions(hour: u32, raining: bool) -> Vec<String> {
@@ -86,8 +88,7 @@ pub fn suggestions(hour: u32, raining: bool) -> Vec<String> {
         "Which day this week looks best?".to_owned(),
         sun.to_owned(),
         format!("Best time for a run {day}?"),
-        // (Ben's words: "Will the clouds be high enough to skydive".)
-        "Will the clouds be high enough to skydive?".to_owned(),
+        format!("How cloudy will it be {day}?"),
     ]
 }
 
@@ -146,12 +147,14 @@ today (\"14:00\", \"tomorrow 09:00\", \"Tuesday 16:00\"). Be direct and specific
 chances), and why (the layers that decide it). Use the data, not the climate in general; if the data can't tell, say what's \
 missing. Keep it short: a sentence or two, then a few short lines if they help. Plain text: no Markdown headings, tables or \
 emphasis; lines starting with \"• \" are fine.\n\n\
-The person may skydive. For jumping, weigh the cloud base and ceiling (exits are usually at 3–4 km, 10,000–13,500 ft, and \
-need the sky clear below them over the jump run and the landing area; a base under about 1 km stops most jumping), cloud \
-cover, visibility, the wind and gusts at the ground (students are usually held to about 25 km/h or 14 kt, experienced jumpers \
-to about 40 km/h or 22 kt), rain and thunderstorms. \"Socked in\" means low cloud or fog over everything: a low base, high \
-cover, poor visibility, often a small dew point spread. For running or being outside, weigh the temperature and feels-like, \
-rain and its chance, wind, UV and daylight (the sun's times are in the daily data).\n\n\
+Don't assume what the person does: answer what they ask, for the plans they mention, weighing what decides them, and with \
+none, for an ordinary day out (the temperature and feels-like, rain and its chance, wind and gusts). What decides a plan \
+depends on it: being outside, the temperature and feels-like, rain and its chance, wind, UV and daylight (the sun's times are \
+in the daily data); anything in the air (flying, drones, paragliding, skydiving), the cloud base and ceiling, cover, \
+visibility, wind and gusts, thunderstorms; on the water or the hills, wind and gusts, visibility, storms, the temperature \
+falling; the garden, frost (the night's low), rain amounts, wind and heat; driving, ice, snow, fog and heavy rain. Say what \
+the data shows for it; leave its rules (limits, thresholds) to the person unless they're well known and you say they're \
+typical.\n\n\
 In \"windows\", give the spans of time the answer points to, if any (a dry spell, when the base lifts, the fog's hours): each \
 its start and end as ISO 8601 with the place's UTC offset, and a label of two to four words (\"Dry and calm\", \"Base over \
 1,500 m\"). None when nothing in particular.\n\n\

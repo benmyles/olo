@@ -3275,7 +3275,14 @@ it.
   takes ⌘- (or Ctrl-) and ⇧-clicks (the row and the modifiers),
   `.on_menu(f)` a secondary click (the row and where), and
   `.on_select_all(f)` ⌘A while it has the keyboard; a plain click with
-  others chosen chooses that one alone (Agent Screens).
+  others chosen chooses that one alone (Agent Screens). Rows the person
+  puts in their own order: `.on_reorder(f)` (Weather's places): a press
+  on a row moved 4 points is a drag (followed anywhere in the window),
+  a line in the accent shows where it would go among its section's rows
+  (between its headings; on whole device pixels, 2 points), and the
+  release tells `f` the row's index and the index it's to have
+  (`drop_slot`, `moved_to`); the keyboard's and agents' way is the
+  app's own (a menu's Move Up and Move Down, a command).
 - `widgets::SidePane` and `side_divider(&pane, x, top, height, name,
   on_change)` (a pane beside the rest the person sizes and puts away:
   a chat list, a source list, an inspector): the view keeps a
@@ -18076,7 +18083,18 @@ forecast at once. Fetched on a worker (ureq, rustls, gzip, by network:
 `olo_net::PerNetwork`), every 30 minutes (`FRESH`, by a timer set to
 when it's due: nothing runs between); a limit hit waits as long as the
 provider says (else 15 minutes), unreachable 5. 401, 403 and 429 are
-said as what they mean. Places are found by name (Open-Meteo's geocoder:
+said as what they mean. Every place kept is kept up to date, not only
+the one shown (Ben, 2026-11-15: "they should also all refresh without
+needing a click on them"; `Weather::refresh`): each read from the cache
+as Weather starts, then fetched when its forecast is 30 minutes old, the
+one shown first, one fetch at a time (tomorrow.io takes three requests
+a second; a fetch is two), a failure waited out by that place alone (a
+limit, by them all: it's the key's), and one timer for the next one due:
+nothing runs between (0 wakeups a second idle with three places). The
+list's skies and temperatures are each place's own. The places are in
+the person's order: dragged in the list (the kit's
+`Sidebar::on_reorder`), or Move Up and Move Down on a place's menu
+(`move_place`; the one shown stays shown, `moved_index`). Places are found by name (Open-Meteo's geocoder:
 towns, airfields) and by street address (Photon, komoot's OpenStreetMap
 geocoder, made for search as you type; Nominatim's terms forbid that),
 both without a key, asked at once on Add Place's worker, the addresses
@@ -18140,8 +18158,11 @@ coordinates, so a rename keeps its forecast.
 **The assistant** (`assistant.rs`): Preferences ▸ AI ▸ Weather's model
 (Astra 6 thinking at Medium by default, through the Token Pool). A
 question goes on a worker with the place, its clock now, the person's
-units, how to weigh things for skydiving (bases, exit altitudes, wind
-limits, "socked in") and for being outside, and the provider's whole
+units, how to weigh what decides a plan without assuming one (Ben,
+2026-11-15: "the prompts shouldn't assume that they should be general
+enough to apply to any olo user": being outside, anything in the air,
+water and hills, the garden, driving; with none mentioned, an ordinary
+day out; rules of thumb only as typical), and the provider's whole
 answer as it came (every layer by the minute, hour and day, about
 200 KB). The answer is JSON (`schema`): its words, shown as they stream,
 and the spans of time it points to (`windows`), marked on the chart in
@@ -18157,8 +18178,9 @@ starts again. Ten suggested questions show before the first
 about the weather"): rain (when it stops, while it rains there), what
 to wear, how warm (or, late, how cold tonight), wind, storms, the
 weekend, the week, the sun (sunscreen, or tomorrow's sunrise), a time
-for a run, and "Will the clouds be high enough to skydive?" (his
-words); after five in the evening at the place, the day's become
+for a run, and the clouds ("How cloudy will it be today?", for anyone:
+it was a skydiver's, Ben's words, until he asked for them general);
+after five in the evening at the place, the day's become
 tomorrow's. Each a link that wraps when the column is too narrow for it
 (`LinkButton::wrap_at`, the column's width worked out from the
 window's). Tests never call a model
@@ -18167,6 +18189,7 @@ window's). Tests never call a model
 **For agents.** Every command of the menus is on Weather's menus
 socket (`{"invoke":…}`), with more: `tab:N`, `place:N` or
 `place:NAME` (its own name or the one it was found as),
+`move-place:FROM:TO` (by their places in the list, as dragging does),
 `rename:NAME` (the chosen place's own name; empty: back to the found
 one), `ask:QUESTION`, `units:metric|imperial|c|f|kmh|mph|ms|kt|m|ft|km|mi|mm|in|hpa|inhg`.
 The tree has every card (figure and caption), each day's row (its whole
