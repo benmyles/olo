@@ -38,8 +38,8 @@ pub mod voice;
 pub use notifications::{AppNotifications, CardSize, HistoryView, NoteApp, NoteLook, NoteStyle, NotificationSettings, NotificationState};
 pub use sharing::SharingState;
 pub use shortcuts::{
-    AutoTiling, Chord, CommandKey, Dir, KeyboardProfile, LAYOUT_PRESETS, LayoutChoice, MainPlaceChoice, ModeChoice, Platform, Shortcut, ShortcutSettings, TILING_VERSION, Tile, TilingLayout,
-    TilingSettings, WindowingMode,
+    AutoTiling, Chord, CommandKey, Dir, KeyboardProfile, LAYOUT_PRESETS, LayoutChoice, MAX_MAINS, MainCountChoice, MainPlaceChoice, ModeChoice, Platform, Shortcut, ShortcutSettings, TILING_VERSION,
+    Tile, TilingLayout, TilingSettings, WindowingMode,
 };
 
 pub const SOCKET_ENV: &str = "OLO_SOCKET";
@@ -473,6 +473,18 @@ pub enum Request {
     /// chosen, `TilingSettings::main_place`. Answered `Reply::Ok`.
     SetMainPlace {
         place: Tile,
+        #[serde(default)]
+        workspace: Option<u32>,
+        #[serde(default)]
+        output: Option<String>,
+    },
+    /// How many main windows Main and Stack has on a display (`output`, a
+    /// connector; else the active display), on one of its workspaces (the
+    /// one showing unless given): 1 to `MAX_MAINS`, its tiles laid out
+    /// again so. Remembered (`TilingSettings::main_counts`); where none is
+    /// chosen, `TilingSettings::main_count`. Answered `Reply::Ok`.
+    SetMainCount {
+        count: u32,
         #[serde(default)]
         workspace: Option<u32>,
         #[serde(default)]
@@ -1367,12 +1379,20 @@ pub struct WindowingModeInfo {
     pub layout: TilingLayout,
     #[serde(default = "default_main_place")]
     pub main_place: Tile,
+    /// How many main windows Main and Stack has there
+    /// (`TilingSettings::main_count_of`, `Request::SetMainCount`).
+    #[serde(default = "one")]
+    pub main_count: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub main: Option<WindowId>,
     /// The main window before it, still a tile there: the one Swap with
     /// Previous Main (`Request::SwapMain`) makes main again.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub previous_main: Option<WindowId>,
+}
+
+fn one() -> u32 {
+    1
 }
 
 fn default_main_place() -> Tile {

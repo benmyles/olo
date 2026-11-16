@@ -556,6 +556,18 @@ impl<B: Backend + 'static> AnvilState<B> {
                 };
                 if self.set_tiling_layout(layout, workspace, o) { Reply::Ok } else { Reply::Error { message: "no display to lay out".into() } }
             }
+            Request::SetMainCount { count, workspace, output } => {
+                let o = match output {
+                    Some(name) => match self.space.outputs().find(|o| o.name() == name).cloned() {
+                        Some(o) => Some(o),
+                        None => return Some(Reply::Error { message: format!("no display {name:?}") }),
+                    },
+                    None => None,
+                };
+                // (The same number again is no error: nothing to change.)
+                self.set_main_count(count, workspace, o);
+                Reply::Ok
+            }
             Request::SetMainPlace { place, workspace, output } => {
                 let o = match output {
                     Some(name) => match self.space.outputs().find(|o| o.name() == name).cloned() {

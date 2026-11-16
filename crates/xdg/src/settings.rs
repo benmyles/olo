@@ -336,6 +336,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "windows", tab: "", group: "Windowing Mode", name: "Default mode", role: "ComboBox" },
     Setting { panel: "windows", tab: "", group: "Windowing Mode", name: "Auto-tiling layout", role: "ComboBox" },
     Setting { panel: "windows", tab: "", group: "Windowing Mode", name: "Main window", role: "ComboBox" },
+    Setting { panel: "windows", tab: "", group: "Windowing Mode", name: "Number of main windows", role: "ComboBox" },
     Setting { panel: "windows", tab: "", group: "Space Around Arranged Windows", name: "Space at the edges", role: "Slider" },
     Setting { panel: "windows", tab: "", group: "Space Around Arranged Windows", name: "Space between windows", role: "Slider" },
     Setting { panel: "workspaces", tab: "", group: "", name: "Workspaces", role: "Slider" },

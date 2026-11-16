@@ -3,6 +3,20 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-16
+
+### Preferences: the number of main windows
+
+*00:28* — Preferences ▸ Windows sets how many main windows a workspace starts with; the miniature shows two sharing the left two thirds (1.5×).
+
+![Preferences: the number of main windows](2026-11-16/002809-preferences-the-number-of-main-windows.png)
+
+### Deskbar: Number of Main Windows
+
+*00:28* — Main and Stack can have several main windows sharing the main place (dwm's and xmonad's nmaster), chosen for each display's workspace from Deskbar's tray, or one more and one fewer with Ctrl+Alt+Cmd+I and D (1.5×).
+
+![Deskbar: Number of Main Windows](2026-11-16/002808-deskbar-number-of-main-windows.png)
+
 ## 2026-11-15
 
 ### Deskbar: the layouts, grouped

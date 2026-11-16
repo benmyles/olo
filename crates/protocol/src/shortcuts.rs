@@ -298,6 +298,10 @@ pub enum Shortcut {
     /// a step of 4 points), as Hyprland's and i3's gap keys.
     MoreGap,
     LessGap,
+    /// One more or one fewer main window in Main and Stack on the active
+    /// display's workspace (dwm's and xmonad's nmaster keys).
+    MoreMains,
+    FewerMains,
     /// Hide the focused window (minimize it to Deskbar).
     Hide,
     /// Roll the focused window up to just its tab, or back down.
@@ -501,10 +505,18 @@ impl Tile {
     /// one); in a corner, the other half takes all but the last, which
     /// has the rest of the main window's column.
     pub fn main_and_stack_parts(self, stack: usize) -> Vec<(f32, f32, f32, f32)> {
+        self.main_and_stack_parts_with(1, stack)
+    }
+
+    /// [`Tile::main_and_stack_parts`] with `mains` main windows (1 or
+    /// more) sharing the main place: one above the other, or side by side
+    /// in a place across the top or bottom ([`Tile::mains_side_by_side`]),
+    /// each as big; theirs first, in order.
+    pub fn main_and_stack_parts_with(self, mains: usize, stack: usize) -> Vec<(f32, f32, f32, f32)> {
         let (x, y, w, h) = self.fraction();
         let column = |(cx, cy, cw, ch): (f32, f32, f32, f32), n: usize| (0..n).map(move |i| (cx, cy + ch * i as f32 / n as f32, cw, ch / n as f32));
         let row = |(cx, cy, cw, ch): (f32, f32, f32, f32), n: usize| (0..n).map(move |i| (cx + cw * i as f32 / n as f32, cy, cw / n as f32, ch));
-        let mut out = vec![(x, y, w, h)];
+        let mut out: Vec<(f32, f32, f32, f32)> = if self.mains_side_by_side() { row((x, y, w, h), mains.max(1)).collect() } else { column((x, y, w, h), mains.max(1)).collect() };
         match self {
             Tile::Left | Tile::LeftThird | Tile::LeftTwoThirds | Tile::Cell => out.extend(column((w, 0.0, 1.0 - w, 1.0), stack)),
             Tile::Right | Tile::RightThird | Tile::RightTwoThirds => out.extend(column((0.0, 0.0, x, 1.0), stack)),
@@ -526,6 +538,12 @@ impl Tile {
             }
         }
         out
+    }
+
+    /// Whether Main and Stack's main windows here sit side by side (a
+    /// place across the top or the bottom), not one above the other.
+    pub fn mains_side_by_side(self) -> bool {
+        matches!(self, Tile::Top | Tile::TopTwoThirds | Tile::Bottom | Tile::BottomTwoThirds)
     }
 
     /// Which group of the menus it is in (halves, quarters, thirds, two
@@ -755,6 +773,8 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::ToggleSplit, "toggle-split", WINDOWS, "Turn the tile's split", &["Ctrl+Alt+Cmd+S"], &["Ctrl+Alt+Cmd+S"], &["Ctrl+Alt+Cmd+S"]),
     s(Shortcut::MoreGap, "more-gap", ARRANGE, "More space between windows", &["Ctrl+Alt+Cmd+BracketRight"], &["Ctrl+Alt+Cmd+BracketRight"], &["Ctrl+Alt+Cmd+BracketRight"]),
     s(Shortcut::LessGap, "less-gap", ARRANGE, "Less space between windows", &["Ctrl+Alt+Cmd+BracketLeft"], &["Ctrl+Alt+Cmd+BracketLeft"], &["Ctrl+Alt+Cmd+BracketLeft"]),
+    s(Shortcut::MoreMains, "more-main-windows", ARRANGE, "More main windows", &["Ctrl+Alt+Cmd+I"], &["Ctrl+Alt+Cmd+I"], &["Ctrl+Alt+Cmd+I"]),
+    s(Shortcut::FewerMains, "fewer-main-windows", ARRANGE, "Fewer main windows", &["Ctrl+Alt+Cmd+D"], &["Ctrl+Alt+Cmd+D"], &["Ctrl+Alt+Cmd+D"]),
     s(Shortcut::Hide, "hide-window", WINDOWS, "Hide window", &["Cmd+M"], &[], &["Ctrl+Alt+M"]),
     s(Shortcut::HideApp, "hide-app", WINDOWS, "Hide the application", &["Cmd+H"], &[], &["Ctrl+Alt+H"]),
     s(Shortcut::RollUp, "roll-up", WINDOWS, "Roll up or down", &["Ctrl+Cmd+M"], &["Alt+Cmd+M"], &["Ctrl+Alt+R"]),
@@ -1115,6 +1135,18 @@ pub struct TilingSettings {
     /// are chosen: a copy sent back with the rest is ignored, as
     /// `modes`.
     pub main_places: Vec<MainPlaceChoice>,
+    /// How many main windows Main and Stack has on every workspace (and
+    /// display) that hasn't a number of its own (Preferences ▸ Windows):
+    /// they share the main place, one above the other (side by side in a
+    /// place across the top or bottom), as dwm's and xmonad's nmaster.
+    /// 1 to [`MAX_MAINS`].
+    pub main_count: u32,
+    /// The workspaces (and displays of them) with another number of main
+    /// windows (Deskbar's tray ▸ Number of Main Windows, ⌃⌥⌘I / ⌃⌥⌘D,
+    /// `Request::SetMainCount`; see [`TilingSettings::main_count_of`]).
+    /// app_server keeps it as they are chosen: a copy sent back with the
+    /// rest is ignored, as `modes`.
+    pub main_counts: Vec<MainCountChoice>,
     /// The workspaces (and displays of them) whose mode isn't the
     /// default (see [`TilingSettings::mode`]). app_server keeps it as
     /// modes are chosen (`Request::SetWindowingMode`): a copy sent back
@@ -1143,6 +1175,8 @@ impl Default for TilingSettings {
             version: TILING_VERSION,
             main_place: Tile::LeftTwoThirds,
             main_places: Vec::new(),
+            main_count: 1,
+            main_counts: Vec::new(),
             modes: Vec::new(),
             auto: Vec::new(),
         }
@@ -1157,6 +1191,18 @@ pub struct MainPlaceChoice {
     pub display: String,
     pub place: Tile,
 }
+
+/// How many main windows Main and Stack has on a display's (`display`,
+/// its `display_key`) workspace (counting from 0).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MainCountChoice {
+    pub workspace: u32,
+    pub display: String,
+    pub count: u32,
+}
+
+/// The most main windows Main and Stack has (more is a grid's work).
+pub const MAX_MAINS: u32 = 4;
 
 /// Auto-tiling's layout on a display's (`display`, its `display_key`)
 /// workspace (counting from 0).
@@ -1260,6 +1306,24 @@ impl TilingSettings {
         self.main_places.retain(|m| !(m.workspace == workspace && m.display == display));
         if place != self.main_place {
             self.main_places.push(MainPlaceChoice { workspace, display: display.to_owned(), place });
+        }
+    }
+
+    /// How many main windows Main and Stack has on `display`'s workspace
+    /// `workspace`: its own number if it was given one, else the default;
+    /// 1 to [`MAX_MAINS`].
+    pub fn main_count_of(&self, workspace: u32, display: &str) -> u32 {
+        self.main_counts.iter().find(|m| m.workspace == workspace && m.display == display).map_or(self.main_count, |m| m.count).clamp(1, MAX_MAINS)
+    }
+
+    /// Choose how many main windows `display`'s workspace `workspace`
+    /// has (kept within 1 to [`MAX_MAINS`]); only a number that isn't the
+    /// default is kept.
+    pub fn set_main_count(&mut self, workspace: u32, display: &str, count: u32) {
+        let count = count.clamp(1, MAX_MAINS);
+        self.main_counts.retain(|m| !(m.workspace == workspace && m.display == display));
+        if count != self.main_count.clamp(1, MAX_MAINS) {
+            self.main_counts.push(MainCountChoice { workspace, display: display.to_owned(), count });
         }
     }
 

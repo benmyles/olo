@@ -6994,7 +6994,17 @@ tiles into (`Tile::CHOOSABLE`), chosen for each display's workspace
 (Deskbar's Window Arrangement ▸ Main Window,
 `{"type":"set_main_place","place":"Left"}`, kept in
 `TilingSettings::main_places` as modes are) and by default
-(`TilingSettings::main_place`, Preferences ▸ Windows ▸ Main window).
+(`TilingSettings::main_place`, Preferences ▸ Windows ▸ Main window). Its
+main place holds one main window or several (dwm's and xmonad's
+nmaster: `TilingSettings::main_count`, Preferences ▸ Windows ▸ Number
+of main windows, up to `MAX_MAINS`, 4; each display's workspace its own
+from Deskbar's tray ▸ Number of Main Windows, More and Fewer Main
+Windows ⌃⌥⌘I and ⌃⌥⌘D, `{"type":"set_main_count","count":2}`, kept in
+`main_counts`; `WindowingModeInfo::main_count`), each as big, one above
+the other, or side by side in a place across the top or bottom
+(`Tile::mains_side_by_side`, `main_and_stack_parts_with`). One more
+takes the first of the stack; one fewer gives the last back to it, the
+order kept; a new window, or one made main, is the first of them.
 The defaults (Ben, 2026-11-15: "the main window gets the left 2/3 and
 the stack is the right 1/3"): Main and Stack, its main window in the
 left two thirds; settings written before them (`TilingSettings::version`

@@ -18,7 +18,7 @@ use olo_kit::{
     style::{self, c},
     theme,
 };
-use olo_protocol::{OutputInfo, Settings, Tile, TilingLayout, WindowingMode};
+use olo_protocol::{MAX_MAINS, OutputInfo, Settings, Tile, TilingLayout, WindowingMode};
 
 use crate::form::Ui;
 
@@ -63,6 +63,11 @@ pub fn ui(ui: &mut Ui, outputs: &[OutputInfo]) {
             let places: Vec<(Tile, &str)> = Tile::CHOOSABLE.iter().map(|t| (*t, t.title())).collect();
             ui.enabled_if(s.tiling.layout == TilingLayout::MainAndStack, |ui| {
                 ui.choose("main-place", &places, &s.tiling.main_place, |f| f.label("Main window:"), |s, t| s.tiling.main_place = t);
+                // How many share its place (dwm's nmaster), on a workspace
+                // without its own number (Deskbar's tray ▸ Number of Main Windows).
+                let counts: Vec<SharedString> = (1..=MAX_MAINS).map(|n| SharedString::from(n.to_string())).collect();
+                let i = (s.tiling.main_count.clamp(1, MAX_MAINS) - 1) as usize;
+                ui.menu("main-count", counts, i, |f| f.label("Number of main windows:"), |s, i| s.tiling.main_count = i as u32 + 1);
             });
         });
         // The apps whose windows always float over the tiles (a window's
@@ -154,7 +159,12 @@ fn miniature(g: &mut Painter, well: Bounds<Pixels>, p: &Palette, s: &Settings, (
         let gap = if s.tiling.gap > 0 { s.tiling.gap.min(200) as f32 + MIN_GAP / k } else { 0.0 };
         let (lo, hi) = ((gap / 2.0).floor(), gap - (gap / 2.0).floor());
         let parts = match s.tiling.layout {
-            TilingLayout::MainAndStack => s.tiling.main_place.main_and_stack_parts(2),
+            // (Three windows: as many main windows as there are, up to all
+            // three, the rest stacked.)
+            TilingLayout::MainAndStack => {
+                let mains = (s.tiling.main_count.clamp(1, MAX_MAINS) as usize).min(3);
+                s.tiling.main_place.main_and_stack_parts_with(mains, 3 - mains)
+            }
             TilingLayout::Halves | TilingLayout::Spiral => vec![(0.0, 0.0, 0.5, 1.0), (0.5, 0.0, 0.5, 0.5), (0.5, 0.5, 0.5, 0.5)],
             TilingLayout::Columns => (0..3).map(|i| (i as f32 / 3.0, 0.0, 1.0 / 3.0, 1.0)).collect(),
             TilingLayout::Rows => (0..3).map(|i| (0.0, i as f32 / 3.0, 1.0, 1.0 / 3.0)).collect(),

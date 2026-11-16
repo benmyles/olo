@@ -320,6 +320,7 @@ pub fn context() -> (Option<WindowInfo>, Vec<Item>) {
                 olo_protocol::Shortcut::EvenOutTiles => " tiling balance equalize equal even sizes",
                 olo_protocol::Shortcut::ToggleSplit => " tiling split direction vertical horizontal",
                 olo_protocol::Shortcut::MoreGap | olo_protocol::Shortcut::LessGap => " tiling gaps space margin",
+                olo_protocol::Shortcut::MoreMains | olo_protocol::Shortcut::FewerMains => " tiling main and stack master nmaster count increase decrease",
                 _ => "",
             }
         ));

@@ -542,6 +542,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     self.set_tiling_layout(next, Some(ws), Some(o));
                 }
             }
+            // How many main windows Main and Stack has on the active
+            // display's workspace.
+            S::MoreMains | S::FewerMains => {
+                if let Some(o) = self.active_output() {
+                    let ws = self.showing(&o);
+                    let now = self.settings.tiling.main_count_of(ws, &crate::desktop::display_key(&o));
+                    let count = if shortcut == S::MoreMains { now + 1 } else { now.saturating_sub(1) };
+                    self.set_main_count(count, Some(ws), Some(o));
+                }
+            }
             // Reshaping the arrangement (shell/reshape.rs).
             S::RotateTiles(cw) => {
                 self.reshape_tiles(None, crate::shell::autotile::Reshape::Rotate(cw));

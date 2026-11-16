@@ -889,6 +889,14 @@ impl Deskbar {
                 places = places.item(t.title(), format!("main-place:{i}")).checked(*t == now);
             }
             menu = menu.submenu(places);
+            // How many main windows share the place (dwm's nmaster; ⌃⌥⌘I
+            // and ⌃⌥⌘D).
+            let count = self.tiling.main_count_of(ws, &key);
+            let mut counts = Menu::new("Number of Main Windows");
+            for n in 1..=olo_protocol::MAX_MAINS {
+                counts = counts.item(n.to_string(), format!("main-count:{n}")).checked(n == count);
+            }
+            menu = menu.submenu(counts);
         }
         menu
     }
@@ -1308,6 +1316,13 @@ impl Deskbar {
                     let at = self.menu_workspace.unwrap_or_else(|| self.showing(output.as_deref()));
                     self.tiling.set_main_place(at, &key, place);
                     request(Request::SetMainPlace { place, workspace: self.menu_workspace, output });
+                }
+            }
+            Some(("main-count", n)) => {
+                if let Ok(count) = n.parse::<u32>() {
+                    let (output, ws, key) = self.menu_place();
+                    self.tiling.set_main_count(ws, &key, count);
+                    request(Request::SetMainCount { count, workspace: self.menu_workspace, output });
                 }
             }
             // (At once here too, so the menu shows it before the settings

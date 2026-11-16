@@ -4450,5 +4450,17 @@
   "title": "Deskbar: the layouts, grouped",
   "caption": "Deskbar's Auto-Tiling Layout menu with the new layouts: Main and Stack's three first, then Halves, Columns, Rows, Grid and Spiral (1.5\u00d7).",
   "image": "2026-11-15/233228-deskbar-the-layouts-grouped.png"
+ },
+ {
+  "time": "2026-11-16T00:28:08",
+  "title": "Deskbar: Number of Main Windows",
+  "caption": "Main and Stack can have several main windows sharing the main place (dwm's and xmonad's nmaster), chosen for each display's workspace from Deskbar's tray, or one more and one fewer with Ctrl+Alt+Cmd+I and D (1.5\u00d7).",
+  "image": "2026-11-16/002808-deskbar-number-of-main-windows.png"
+ },
+ {
+  "time": "2026-11-16T00:28:09",
+  "title": "Preferences: the number of main windows",
+  "caption": "Preferences \u25b8 Windows sets how many main windows a workspace starts with; the miniature shows two sharing the left two thirds (1.5\u00d7).",
+  "image": "2026-11-16/002809-preferences-the-number-of-main-windows.png"
  }
 ]

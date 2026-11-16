@@ -102,6 +102,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     workspace: ws,
                     layout: tiling.layout_of(ws, &crate::desktop::display_key(o)),
                     main_place: tiling.main_place_of(ws, &crate::desktop::display_key(o)),
+                    main_count: tiling.main_count_of(ws, &crate::desktop::display_key(o)),
                     main: self.main_window_of(&(ws, o.name())),
                     previous_main: self.previous_main_of(&(ws, o.name())),
                 }
