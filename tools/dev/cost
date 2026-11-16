@@ -13,6 +13,8 @@ menu's) frames in that time and their mean cost by phase: the app's
 
 For app_server's own frames ask it: `tsession ipc NAME '{"type":"timings"}'`
 twice, SECONDS apart (each display's looks, their total and slowest).
+Asking starts its 4 ms heartbeat for a minute: measure its idle before
+asking, or a minute after (this says so when it sees it).
 
 Use it before and after a change, on release builds, with the window
 doing what you changed (an agent's spinner, scrolling, idle), and put
@@ -132,6 +134,12 @@ def main():
     with open(f"/proc/{pid}/comm") as f:
         comm = f.read().strip()
     print(f"{comm} ({pid}) over {secs:g} s: {total['cpu']}% of a core, {total['wakeups']} wakeups/s")
+    # app_server's `timings` starts a 4 ms heartbeat for a minute (250
+    # wakeups a second): measured inside that minute, "idle" is the
+    # heartbeat's. (A tiling commit's idle numbers were, 2026-11-16: 374/s
+    # against 3/s with no one asking.)
+    if comm == "olo-app-server" and total["wakeups"] >= 200:
+        print("  note: app_server wakes 200+ times a second: if `timings` was asked in the last minute, this is its heartbeat; measure idle before asking, or a minute after")
     for r in rows:
         if r["cpu"] == 0 and r["wakeups"] < 1:
             continue
