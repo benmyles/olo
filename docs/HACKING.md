@@ -6942,6 +6942,25 @@ the tree kept as laid out so least sizes hold, and a press that moves
 nothing on screen records nothing for Undo. Agents run them as any
 shortcut (`{"type":"run_shortcut","id":"swap-left"}`).
 
+On all workspaces and in the scratchpad (BeOS's `B_ALL_WORKSPACES`;
+i3's and sway's sticky windows and scratchpad): Show on All Workspaces
+(⌃⌥⌘A, the window menu, `{"type":"run_shortcut","id":"all-workspaces",
+"window":N}`; `WindowMeta::all_workspaces`, `WindowInfo::all_workspaces`)
+keeps a window on every workspace of its display: a workspace switch
+doesn't park it (as picture in picture), its workspace is the one
+showing, it floats (`floats`; out of its tile as Float Window takes one
+out: its own frame, or two thirds of the room), and moving it to one
+workspace puts it on that one only. Move to the Scratchpad (⌃⌥⇧⌘-, the
+window menu's In the Scratchpad; `scratch`) floats a window and hides
+it; Show or Hide the Scratchpad (⌃⌥⌘-, `show_scratchpad`) hides the
+scratchpad window showing on the active display if it has the keyboard
+(else gives it the keyboard), or brings the next hidden one (round, in
+the order they were put away) over the active display's workspace,
+centred at its own size, two thirds of the room if it filled it (hidden,
+it hadn't drawn the size floating asked of it). Moved to the scratchpad
+again, it's taken out, staying where it is. Both are kept across a
+restart (`Placement`).
+
 Reshaping, as bspwm's rotate, flip and balance, i3's and Hyprland's
 toggled split and their gap keys (`shell/reshape.rs`, functions of the
 tree alone, `reshape_tiles`): Rotate the Tiles (⌃⌥⌘R, back with ⇧)

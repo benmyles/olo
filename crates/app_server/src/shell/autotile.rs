@@ -1561,7 +1561,8 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// Tiled by hand, it doesn't.
     pub fn floats(&self, w: &WindowElement) -> bool {
         let WindowSurface::Wayland(t) = w.0.underlying_surface();
-        if w.meta().pip.get() || t.parent().is_some() {
+        // (On all workspaces, as i3's sticky: a tile belongs to one.)
+        if w.meta().pip.get() || t.parent().is_some() || w.meta().all_workspaces.get() {
             return true;
         }
         if let Some(f) = Self::float_override(w) {
@@ -2579,7 +2580,7 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     /// `set_floating`, with whether `w` floated before (`was`): asked
     /// before an app's rule changed, which changes it too.
-    fn set_floating_from(&mut self, w: &WindowElement, floating: Option<bool>, was: bool) {
+    pub(crate) fn set_floating_from(&mut self, w: &WindowElement, floating: Option<bool>, was: bool) {
         for m in self.groups.mates(w).iter().chain(std::iter::once(w)) {
             Self::restore_float_override(m, floating);
             // (On purpose: what a restart saved isn't put back over it.

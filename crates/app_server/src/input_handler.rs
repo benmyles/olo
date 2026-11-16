@@ -552,6 +552,20 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     self.set_main_count(count, Some(ws), Some(o));
                 }
             }
+            S::AllWorkspaces => {
+                if let Some(w) = focused {
+                    let on = !w.meta().all_workspaces.get();
+                    self.set_all_workspaces(&w, on);
+                }
+            }
+            S::ToScratchpad => {
+                if let Some(w) = focused {
+                    self.toggle_scratch(&w);
+                }
+            }
+            S::Scratchpad => {
+                self.show_scratchpad();
+            }
             S::BiggerMain | S::SmallerMain => {
                 self.grow_main(shortcut == S::BiggerMain);
             }

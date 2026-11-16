@@ -611,7 +611,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     /// Where tiled and zoomed windows go on a display: its usable area
     /// inside the margins.
-    pub(super) fn tile_area(&self, output: &Output) -> Option<Rectangle<i32, Logical>> {
+    pub(crate) fn tile_area(&self, output: &Output) -> Option<Rectangle<i32, Logical>> {
         Some(inset(self.usable_area(output)?, self.settings.tiling.margin.min(400) as i32))
     }
 
@@ -979,7 +979,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// `MIN_TILE`. In a group, the group's: they share one frame, as big
     /// as the biggest least size among them (windows of different apps
     /// put together by hand).
-    pub(super) fn min_frame(&self, window: &WindowElement) -> Size<i32, Logical> {
+    pub(crate) fn min_frame(&self, window: &WindowElement) -> Size<i32, Logical> {
         let least = self.least_frame(window);
         Size::from((least.w.max(MIN_TILE), least.h.max(MIN_TILE)))
     }
@@ -1313,10 +1313,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     pub fn center_window(&mut self, window: &WindowElement) {
+        self.center_window_at(window, None);
+    }
+
+    /// [`Self::center_window`] at `size` (else its own frame's).
+    pub fn center_window_at(&mut self, window: &WindowElement, size: Option<Size<i32, Logical>>) {
         let (Some(area), Some(frame)) = (self.window_output(window).and_then(|o| self.tile_area(&o)), self.own_frame(window)) else {
             return;
         };
-        let size = Size::from((frame.size.w.min(area.size.w), frame.size.h.min(area.size.h)));
+        let frame = size.unwrap_or(frame.size);
+        let size = Size::from((frame.w.min(area.size.w), frame.h.min(area.size.h)));
         let loc = area.loc + Point::from(((area.size.w - size.w) / 2, (area.size.h - size.h) / 2));
         // Centering is the window's own place now.
         Self::set_tiled(window, None);

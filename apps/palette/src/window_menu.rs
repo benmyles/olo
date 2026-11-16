@@ -57,6 +57,9 @@ pub struct Facts {
     pub rolled: bool,
     /// Kept above the others (Always on Top).
     pub on_top: bool,
+    /// On every workspace of its display; in the scratchpad.
+    pub all_workspaces: bool,
+    pub scratch: bool,
     /// The windows it can be tiled with (Tile With): the others on its
     /// display's workspace, not minimized (auto-tiled: tiles only, not
     /// floating ones), each with its app's name and title.
@@ -181,6 +184,7 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             _ => None,
         };
         let (rolled, on_top, grouped, floating, floats_always, main) = (w.rolled, w.on_top, w.group.is_some(), w.floating, w.floats_always, w.main);
+        let (all_workspaces, scratch) = (w.all_workspaces, w.scratch);
         let pid = w.pid.map(|p| p as u32);
         let own = pid.zip(w.surface).and_then(|(pid, surface)| olo_kit::commands::menus_in(pid, surface)).map(|m| m.entries).unwrap_or_default();
         let find = |command: &str| own.iter().find(|e| e.command == command && e.path.len() == 1).map(|e| (e.label.clone(), e.keys.clone(), e.enabled));
@@ -199,6 +203,8 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             others,
             rolled,
             on_top,
+            all_workspaces,
+            scratch,
             beside,
             grouped,
             windows: app_windows,
@@ -382,6 +388,14 @@ pub fn build(f: &Facts) -> Menu {
         }
     }
     m = m.item("Always on Top", "on-top").checked(f.on_top);
+    // On every workspace (BeOS's All Workspaces, i3's sticky); in the
+    // scratchpad (i3's and sway's), shown again by its key.
+    let with = |m: Menu, id: &str| match keys(f, id) {
+        Some(k) => m.keys(k),
+        None => m,
+    };
+    m = with(m.item("Show on All Workspaces", "shortcut:all-workspaces").checked(f.all_workspaces), "all-workspaces");
+    m = with(m.item("In the Scratchpad", "shortcut:to-scratchpad").checked(f.scratch), "to-scratchpad");
     m = m.item("Send to Back", "send-to-back").separator();
     // The app's own Close and Quit, as its keys press them.
     let item = |m: Menu, label: String, command: &'static str, keys: Option<String>, enabled: bool| {
@@ -611,6 +625,8 @@ mod tests {
             displays: 2,
             rolled: false,
             on_top: false,
+            all_workspaces: false,
+            scratch: false,
             beside: vec![(9, "StyledEdit — Untitled 1".into())],
             grouped: true,
             windows: vec![(12, "Notes 2".into())],

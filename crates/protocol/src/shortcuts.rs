@@ -306,6 +306,14 @@ pub enum Shortcut {
     /// tile has the focus (dwm's and xmonad's Expand / Shrink).
     BiggerMain,
     SmallerMain,
+    /// The focused window on every workspace of its display, or back on
+    /// one (BeOS's `B_ALL_WORKSPACES`, i3's sticky).
+    AllWorkspaces,
+    /// The focused window into the scratchpad (hidden, floating), or out
+    /// of it; and the scratchpad's next window shown over the active
+    /// workspace, centred, or hidden again (i3's and sway's).
+    ToScratchpad,
+    Scratchpad,
     /// Hide the focused window (minimize it to Deskbar).
     Hide,
     /// Roll the focused window up to just its tab, or back down.
@@ -781,6 +789,9 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::FewerMains, "fewer-main-windows", ARRANGE, "Fewer main windows", &["Ctrl+Alt+Cmd+D"], &["Ctrl+Alt+Cmd+D"], &["Ctrl+Alt+Cmd+D"]),
     s(Shortcut::BiggerMain, "bigger-main", ARRANGE, "Make the main windows bigger", &["Ctrl+Alt+Cmd+Period"], &["Ctrl+Alt+Cmd+Period"], &["Ctrl+Alt+Cmd+Period"]),
     s(Shortcut::SmallerMain, "smaller-main", ARRANGE, "Make the main windows smaller", &["Ctrl+Alt+Cmd+Comma"], &["Ctrl+Alt+Cmd+Comma"], &["Ctrl+Alt+Cmd+Comma"]),
+    s(Shortcut::AllWorkspaces, "all-workspaces", WINDOWS, "Show on all workspaces", &["Ctrl+Alt+Cmd+A"], &["Ctrl+Alt+Cmd+A"], &["Ctrl+Alt+Cmd+A"]),
+    s(Shortcut::ToScratchpad, "to-scratchpad", WINDOWS, "Move to the scratchpad", &["Ctrl+Alt+Shift+Cmd+Minus"], &["Ctrl+Alt+Shift+Cmd+Minus"], &["Ctrl+Alt+Shift+Cmd+Minus"]),
+    s(Shortcut::Scratchpad, "scratchpad", ARRANGE, "Show or hide the scratchpad", &["Ctrl+Alt+Cmd+Minus"], &["Ctrl+Alt+Cmd+Minus"], &["Ctrl+Alt+Cmd+Minus"]),
     s(Shortcut::Hide, "hide-window", WINDOWS, "Hide window", &["Cmd+M"], &[], &["Ctrl+Alt+M"]),
     s(Shortcut::HideApp, "hide-app", WINDOWS, "Hide the application", &["Cmd+H"], &[], &["Ctrl+Alt+H"]),
     s(Shortcut::RollUp, "roll-up", WINDOWS, "Roll up or down", &["Ctrl+Cmd+M"], &["Alt+Cmd+M"], &["Ctrl+Alt+R"]),

@@ -4474,5 +4474,11 @@
   "title": "Preferences: where new windows go",
   "caption": "New windows go first (as the main window), after the active window, or last, in Main and Stack and the layouts built in order; Halves always halves the active tile (1\u00d7).",
   "image": "2026-11-16/011729-preferences-where-new-windows-go.png"
+ },
+ {
+  "time": "2026-11-16T01:53:20",
+  "title": "Window menu: All Workspaces and the scratchpad",
+  "caption": "A window can be shown on every workspace of its display (BeOS's All Workspaces, i3's sticky windows: it floats) or put in the scratchpad (i3's and sway's: hidden, floating, brought over the active workspace by Ctrl+Alt+Cmd+Minus and hidden again), from its window menu or by keys (1.5\u00d7).",
+  "image": "2026-11-16/015320-window-menu-all-workspaces-and-the-scratchpad.png"
  }
 ]

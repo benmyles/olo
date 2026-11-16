@@ -42,11 +42,12 @@ something nobody here has is in "Blocked", with what it waits for.
   split, gap keys; a layout made while a round is on its way no longer
   strands a move; several main windows (nmaster) with keys, Deskbar and
   Preferences; the main share from any tile by key; smart gaps; where
-  new windows go. Left: Monocle (one at a time, the others a
-  key away) and maybe scrolling columns as niri's; preselecting where the next window splits (bspwm's); gaps per workspace; sticky and scratchpad
-  windows; rules for apps by workspace; Preferences for each of those;
-  tile-qa with full-screen windows (groups and displays unplugged are
-  in).
+  new windows go; windows on all workspaces and the scratchpad. Monocle
+  is Focus mode (one at a time, the others a key away). Left: maybe
+  scrolling columns as niri's; preselecting where the next window
+  splits (bspwm's); gaps per workspace; rules for apps by workspace;
+  Preferences for each of those; tile-qa with full-screen windows
+  (groups and displays unplugged are in).
 
 - **The kits' costs, where they're above GPUI's** (from the move to the
   kits: "each within a frame's budget; to be brought down"). A whole

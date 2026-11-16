@@ -173,6 +173,12 @@ pub struct WindowMeta {
     /// Always on Top (its menu's, `Request::SetOnTop`): above the windows
     /// that aren't, under picture in picture.
     pub on_top: Cell<bool>,
+    /// On every workspace of its display (`all-workspaces`): not parked as
+    /// its display switches, its workspace the one showing; it floats.
+    pub all_workspaces: Cell<bool>,
+    /// In the scratchpad (`to-scratchpad`): floating, hidden until
+    /// `scratchpad` shows it over the active workspace.
+    pub scratch: Cell<bool>,
 }
 
 impl WindowMeta {
@@ -228,6 +234,8 @@ impl WindowElement {
             away: RefCell::new(None),
             closed_by_hand: Cell::new(false),
             pip: Cell::new(false),
+            all_workspaces: Cell::new(false),
+            scratch: Cell::new(false),
             on_top: Cell::new(false),
         });
         self.user_data().get::<WindowMeta>().unwrap()
@@ -643,6 +651,8 @@ impl<B: Backend + 'static> AnvilState<B> {
                     chosen: self.twitch.as_ref().is_some_and(|t| t.rows.get(t.row).and_then(|r| r.1.get(t.index)) == Some(&meta.id)),
                     rolled: w.rolled(),
                     on_top: meta.on_top.get(),
+                    all_workspaces: meta.all_workspaces.get(),
+                    scratch: meta.scratch.get(),
                     covered: meta.covered.get(),
                     zoomed: self.is_zoomed(&w),
                     zoomed_along: Self::zoomed_axis(&w).map(|a| match a {
@@ -917,6 +927,92 @@ impl<B: Backend + 'static> AnvilState<B> {
             Self::rearrange(window, j.own_arrangement);
         }
         window.meta().arrived.set(self.space.element_geometry(window));
+    }
+
+    /// `window` on every workspace of its display, or (`on` false) on
+    /// the one showing only (BeOS's `B_ALL_WORKSPACES`, i3's sticky): it
+    /// floats meanwhile, and its tile, if it had one, closes up.
+    pub fn set_all_workspaces(&mut self, window: &WindowElement, on: bool) {
+        if window.meta().all_workspaces.get() == on {
+            return;
+        }
+        let was = self.floats(window);
+        window.meta().all_workspaces.set(on);
+        // Out of its tile as Float Window takes one out: its own frame, or
+        // two thirds of the room in the middle.
+        self.set_floating_from(window, Self::float_override(window), was);
+        if on {
+            // (Out of the scratchpad: shown everywhere, it isn't hidden.)
+            window.meta().scratch.set(false);
+            if let Some(o) = self.window_output(window) {
+                window.meta().workspace.set(Some(self.showing(&o)));
+            }
+        }
+        info!(window = window.id(), on, "on all workspaces");
+        self.auto.changed();
+        self.auto_tick();
+        // (Its window info says so at the next tick.)
+        self.backend_data.wake(None);
+    }
+
+    /// `window` into the scratchpad: floating, hidden, until `scratchpad`
+    /// shows it; or, in it already, out of it, staying where it is
+    /// (i3's and sway's `move scratchpad`).
+    pub fn toggle_scratch(&mut self, window: &WindowElement) {
+        if window.meta().scratch.get() {
+            window.meta().scratch.set(false);
+            info!(window = window.id(), "out of the scratchpad");
+            // (Its window info says so at the next tick.)
+            self.backend_data.wake(None);
+            return;
+        }
+        window.meta().scratch.set(true);
+        window.meta().all_workspaces.set(false);
+        self.set_floating(window, Some(true));
+        info!(window = window.id(), "into the scratchpad");
+        self.minimize(window);
+    }
+
+    /// The scratchpad (`scratchpad`, i3's `scratchpad show`): a window of
+    /// it showing on the active display hides again if it has the
+    /// keyboard, else takes it; else the next one hidden (round, in the
+    /// order they were put away) comes over the active display's
+    /// workspace, centred, with the keyboard. Whether anything changed.
+    pub fn show_scratchpad(&mut self) -> bool {
+        let Some(o) = self.active_output() else { return false };
+        let shown = self.space.elements().rev().find(|w| w.meta().scratch.get() && self.window_output(w).as_ref() == Some(&o)).cloned();
+        if let Some(w) = shown {
+            if self.focused_window().as_ref() == Some(&w) {
+                self.minimize(&w);
+            } else {
+                self.focus_window(&w);
+            }
+            return true;
+        }
+        let next = self.parked.0.borrow().iter().find(|w| w.meta().scratch.get() && w.meta().minimized.get()).cloned();
+        let Some(w) = next else { return false };
+        // Here: the workspace this display shows, centred on it, at its own
+        // size, or two thirds of the room if it filled it (a tile put away:
+        // hidden, it hasn't drawn the size Float Window asked of it yet).
+        w.meta().workspace.set(Some(self.showing(&o)));
+        *w.meta().parked_on.borrow_mut() = Some(o.name());
+        self.unpark(&w);
+        if let Some(from) = self.window_output(&w)
+            && from != o
+        {
+            self.move_to_output(&w, &from, &o, false);
+        }
+        let size = match (self.tile_area(&o), self.space.element_geometry(&w)) {
+            (Some(area), Some(geo)) if geo.size.w * 10 >= area.size.w * 9 && geo.size.h * 10 >= area.size.h * 9 => {
+                let min = self.min_frame(&w);
+                Some(smithay::utils::Size::from(((area.size.w * 2 / 3).max(min.w), (area.size.h * 2 / 3).max(min.h))))
+            }
+            _ => None,
+        };
+        self.center_window_at(&w, size);
+        self.focus_window(&w);
+        info!(window = w.id(), output = o.name(), "the scratchpad shown");
+        true
     }
 
     pub fn minimize(&mut self, window: &WindowElement) {
@@ -1384,12 +1480,16 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.overview_interrupted();
         // Park everything on it, bottom-most first to keep stacking order
         // (not picture in picture: it is on each workspace).
-        let leaving: Vec<WindowElement> = self.space.elements().filter(|w| self.window_output(w).as_ref() == Some(output) && !w.meta().pip.get()).cloned().collect();
+        // (Nor a window on all workspaces: it stays, on the one coming.)
+        let leaving: Vec<WindowElement> = self.space.elements().filter(|w| self.window_output(w).as_ref() == Some(output) && !w.meta().pip.get() && !w.meta().all_workspaces.get()).cloned().collect();
         let had_focus = self.focused_window().is_none_or(|f| leaving.contains(&f));
         for w in &leaving {
             self.park(w);
         }
         self.showing.insert(display_key(output), index);
+        for w in self.space.elements().filter(|w| w.meta().all_workspaces.get() && self.window_output(w).as_ref() == Some(output)) {
+            w.meta().workspace.set(Some(index));
+        }
         let coming: Vec<WindowElement> =
             self.parked.0.borrow().iter().filter(|w| w.meta().workspace.get() == Some(index) && !w.meta().minimized.get() && self.display_of(w).as_ref() == Some(output)).cloned().collect();
         for w in &coming {
@@ -1442,6 +1542,8 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// Move `window` to workspace `index` of its display.
     pub fn move_to_workspace(&mut self, window: &WindowElement, index: u32) {
         let index = index.min(self.settings.workspace_count.max(1) - 1);
+        // Put on one workspace: on that one only.
+        window.meta().all_workspaces.set(false);
         let output = self.display_of(window);
         if output.as_ref().is_some_and(|o| index == self.showing(o)) {
             // One on another workspace comes here, to the front (a
@@ -2074,7 +2176,9 @@ impl<B: Backend + 'static> AnvilState<B> {
         keep_brightness(&mut settings, &self.settings);
         let scale_changed = settings.display != self.settings.display;
         let main_changed = settings.display.main != self.settings.display.main;
-        let space_changed = (settings.tiling.gap, settings.tiling.margin) != (self.settings.tiling.gap, self.settings.tiling.margin);
+        // (Smart gaps too: turned on, a tile alone there already lost its
+        // margins only when something else moved it; tile-qa, seed 62.)
+        let space_changed = (settings.tiling.gap, settings.tiling.margin, settings.tiling.smart_gaps) != (self.settings.tiling.gap, self.settings.tiling.margin, self.settings.tiling.smart_gaps);
         // A keymap takes milliseconds to build: only when they changed.
         let keyboard_changed = settings.keyboard != self.settings.keyboard;
         // The mice's speed and acceleration too: left out, the mouse speed
@@ -2100,7 +2204,11 @@ impl<B: Backend + 'static> AnvilState<B> {
         if olo_xdg::themes::set(&settings.appearance.icon_theme) {
             crate::twitcher::theme_changed();
         }
-        if settings.tiling.default_mode != self.settings.tiling.default_mode || settings.tiling.layout != self.settings.tiling.layout || settings.tiling.main_place != self.settings.tiling.main_place {
+        if settings.tiling.default_mode != self.settings.tiling.default_mode
+            || settings.tiling.layout != self.settings.tiling.layout
+            || settings.tiling.main_place != self.settings.tiling.main_place
+            || settings.tiling.main_count != self.settings.tiling.main_count
+        {
             self.auto.changed();
         }
         // Group Windows on again for an app: its windows taken out by hand

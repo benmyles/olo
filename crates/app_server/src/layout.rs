@@ -120,6 +120,11 @@ pub struct Placement {
     /// Always on Top.
     #[serde(default)]
     pub on_top: bool,
+    /// On all workspaces; in the scratchpad.
+    #[serde(default)]
+    pub all_workspaces: bool,
+    #[serde(default)]
+    pub scratch: bool,
     /// How far its tab is slid along its top (Fan Out, rolled windows
     /// after Tile All).
     #[serde(default)]
@@ -322,6 +327,8 @@ impl<B: Backend + 'static> AnvilState<B> {
             focused: focused.is_some() && w.wl_surface().as_deref() == focused,
             rolled: w.rolled(),
             on_top: meta.on_top.get(),
+            all_workspaces: meta.all_workspaces.get(),
+            scratch: meta.scratch.get(),
             tab_offset: w.decoration().tab_offset,
             grouping: meta.grouping.borrow().clone(),
             tab_order: meta.tab_order.get(),
@@ -662,6 +669,8 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         window.decoration().rolled = p.rolled;
         window.meta().on_top.set(p.on_top);
+        window.meta().all_workspaces.set(p.all_workspaces);
+        window.meta().scratch.set(p.scratch);
         window.decoration().tab_offset = p.tab_offset;
         // A window of an app started again is another window that only
         // has the same title ("Untitled 2"): its place, not a group it

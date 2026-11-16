@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-16
 
+### Window menu: All Workspaces and the scratchpad
+
+*01:53* — A window can be shown on every workspace of its display (BeOS's All Workspaces, i3's sticky windows: it floats) or put in the scratchpad (i3's and sway's: hidden, floating, brought over the active workspace by Ctrl+Alt+Cmd+Minus and hidden again), from its window menu or by keys (1.5×).
+
+![Window menu: All Workspaces and the scratchpad](2026-11-16/015320-window-menu-all-workspaces-and-the-scratchpad.png)
+
 ### Preferences: where new windows go
 
 *01:17* — New windows go first (as the main window), after the active window, or last, in Main and Stack and the layouts built in order; Halves always halves the active tile (1×).

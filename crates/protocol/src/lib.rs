@@ -1232,6 +1232,16 @@ pub struct WindowInfo {
     /// Kept above the others ([`Request::SetOnTop`]).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub on_top: bool,
+    /// On every workspace of its display, as BeOS's `B_ALL_WORKSPACES`
+    /// and i3's sticky windows (the `all-workspaces` shortcut): it floats,
+    /// and `workspace` is the one showing.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub all_workspaces: bool,
+    /// In the scratchpad, as i3's and sway's (`to-scratchpad`): it
+    /// floats, hidden (`minimized`) until `scratchpad` shows it over the
+    /// active workspace.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub scratch: bool,
     /// Behind the window Focus mode shows on its display
     /// ([`WindowingMode::Focus`]): not drawn until it is activated.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

@@ -52,7 +52,7 @@ APPS = [
     ["olo-deskcalc"],
     ["OLO_DOCTOR_HELPER=off", "olo-doctor"],
 ]
-SHORTCUTS = "bigger-main smaller-main more-main-windows fewer-main-windows rotate-tiles rotate-tiles-back flip-tiles-across flip-tiles-up-down even-out-tiles toggle-split more-gap less-gap make-main swap-main focus-left focus-down focus-up focus-right swap-left swap-down swap-up swap-right resize-left resize-right resize-up resize-down next-layout previous-layout tile-all smart-tile zoom-all cascade-all fan-out undo-arrangement redo-arrangement tile-left tile-right-third zoom restore float-window hide-window next-display next-tab".split()
+SHORTCUTS = "all-workspaces to-scratchpad scratchpad scratchpad bigger-main smaller-main more-main-windows fewer-main-windows rotate-tiles rotate-tiles-back flip-tiles-across flip-tiles-up-down even-out-tiles toggle-split more-gap less-gap make-main swap-main focus-left focus-down focus-up focus-right swap-left swap-down swap-up swap-right resize-left resize-right resize-up resize-down next-layout previous-layout tile-all smart-tile zoom-all cascade-all fan-out undo-arrangement redo-arrangement tile-left tile-right-third zoom restore float-window hide-window next-display next-tab".split()
 LAYOUTS = ["main_and_stack", "halves", "columns", "rows", "grid", "spiral"]
 PLACES = ["Left", "Right", "Top", "Bottom", "LeftTwoThirds", "CenterTwoThirds", "RightThird", "TopLeft", "BottomRight"]
 MODES = ["auto_tiling"] * 6 + ["standard", "focus"]
@@ -110,12 +110,16 @@ def check(what):
         SEEN["pairs"] += len(tiles) * (len(tiles) - 1) // 2
         if len(tiles) > 2:
             SEEN["layouts"].add(d["layout"])
-        # Smart gaps: a tile alone fills its display (no Deskbar in a
-        # tsession without --shell).
-        if SMART[0] and len(tiles) == 1 and tiles[0]["frame"] != {"x": ox, "y": oy, "width": ow, "height": oh} and all(isinstance(v, int) or float(v).is_integer() for v in (ox, oy, ow, oh)):
-            f = tiles[0]["frame"]
-            if (f["x"], f["y"], f["width"], f["height"]) != (int(ox), int(oy), int(ow), int(oh)):
-                problems.append(f"{tiles[0]['id']} {tiles[0]['title'][:12]} alone with smart gaps at {f}, not the display {outs[o]}")
+        # Smart gaps: a tile alone is its part of the whole display, no
+        # margin (no Deskbar in a tsession without --shell); Main and
+        # Stack's lone main window keeps its place, so its part. (Zoomed,
+        # it fills the tiling area, margins and all: not a tile laid out.)
+        if SMART[0] and len(tiles) == 1 and not tiles[0].get("zoomed") and tiles[0].get("part"):
+            f, p = tiles[0]["frame"], tiles[0]["part"]
+            want = (round(ox + p[0] * ow), round(oy + p[1] * oh), round(p[2] * ow), round(p[3] * oh))
+            got = (f["x"], f["y"], f["width"], f["height"])
+            if any(abs(a - b) > 2 for a, b in zip(got, want)) and f["width"] <= want[2] + 2:
+                problems.append(f"{tiles[0]['id']} {tiles[0]['title'][:12]} alone with smart gaps at {got}, not its part {p} of the display {outs[o]}: {want}")
         # The tiling area: the display less the margin (8).
         ax, ay, aw, ah = ox + 8, oy + 8, ow - 16, oh - 16
         def held(w):
