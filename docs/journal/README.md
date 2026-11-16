@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Weather: the time axis stays at the top
+
+*15:59* — Weather's chart has its time axis over the panels now (the days, then the hours), and once the chart reaches the top of its scroll view the axis stays there as the panels scroll under it, so the hour of what's under the pointer is always in sight; in Next 7 Days it pins once the hourly chart comes up, never over the day rows. The kit's ScrollView::sticky and Timeline::axis do it for any app. Review clean at 1x, 1.5x, 2x; dark too (light, 2x).
+
+![Weather: the time axis stays at the top](2026-11-15/155938-weather-the-time-axis-stays-at-the-top.png)
+
 ### Passwords: Apps Allowed
 
 *15:48* — File > Apps Allowed... lists the apps allowed an item for good (Approve Always): the app, the item and since when, each with Take Back (the app is asked again the next time). Kept in the vault. Checked at 1x, 1.5x and 2x, light and dark; app_server no longer gives a returning dialog its app's group size (this one came back the main window's size, wider than the screen) (light, 2x).

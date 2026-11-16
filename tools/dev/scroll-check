@@ -150,12 +150,21 @@ class Check:
 
 
 def analyse(kind, marks, start, speed, flick_lift=None, pixel=0.5):
-    # (when, offset, draw µs, lowest, highest): the first scroll view's
+    # (when, offset, draw µs, lowest, highest): the moved scroll view's
     # offset and how far it goes ([x, y, max x, max y] in a FrameMark;
     # an offset past either end is the content pulled past its edge).
     def bounds(sc):
         return (min(0.0, sc[3]), max(0.0, sc[3])) if len(sc) >= 4 else (-math.inf, math.inf)
-    ys = [(m["at_us"], m["scrolls"][0][1], m["us"], *bounds(m["scrolls"][0])) for m in marks]
+    # (The scroll view the input moved: a window may have several, a list
+    # of places beside a forecast, and the first needn't be the one under
+    # the pointer.)
+    which = 0
+    if marks:
+        n = min(len(m["scrolls"]) for m in marks)
+        spread = [max(m["scrolls"][k][1] for m in marks) - min(m["scrolls"][k][1] for m in marks) for k in range(n)]
+        if spread and max(spread) > 1e-3:
+            which = spread.index(max(spread))
+    ys = [(m["at_us"], m["scrolls"][which][1], m["us"], *bounds(m["scrolls"][which])) for m in marks]
     parts = {m["at_us"]: m for m in marks}
     moved = [i for i in range(1, len(ys)) if abs(ys[i][1] - ys[i - 1][1]) > 1e-3]
     r = {"kind": kind, "frames": len(ys)}

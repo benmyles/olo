@@ -296,6 +296,8 @@ const SPAN_ROWS: usize = 2;
 const SPAN_ROW: f32 = 16.0;
 /// The axis's two rows: the hours, the days.
 const AXIS: f32 = 34.0;
+/// How tall the axis is ([`Timeline::axis`]).
+pub const AXIS_HEIGHT: f32 = AXIS;
 /// Room each side for the scales' values.
 const GUTTER: f32 = 44.0;
 
@@ -321,6 +323,8 @@ pub struct Timeline {
     local: Rc<dyn Fn(f64) -> i64>,
     key: u64,
     on_hover: Option<Rc<dyn Fn(&Option<f64>, &mut WindowCx)>>,
+    /// The axis over the panels rather than under them.
+    axis_on_top: bool,
 }
 
 /// What the chart keeps between drawings: the pointer over it, and
@@ -363,7 +367,40 @@ impl Timeline {
             local: Rc::new(|t| t as i64),
             key,
             on_hover: None,
+            axis_on_top: false,
         }
+    }
+
+    /// The axis over the panels (the days, then the hours over the
+    /// plots), not under them: where it's read first, and where a scroll
+    /// view can keep a copy of it ([`Self::axis`]) as the panels scroll
+    /// under it (Ben, 2026-11-15: "the timeline should be at the top and
+    /// stay there as you scroll the data so that you always know when it
+    /// is").
+    pub fn axis_on_top(mut self, on: bool) -> Self {
+        self.axis_on_top = on;
+        self
+    }
+
+    /// The axis alone, as the chart draws it over its panels, the same
+    /// width as the chart at the same place across (its gutters): for a
+    /// scroll view to keep in sight (`ScrollView::sticky`), on the
+    /// document's ground, a line under it. [`AXIS_HEIGHT`] tall.
+    pub fn axis(&self) -> Element {
+        let (start, end, now, local) = (self.start, self.end, self.now, self.local.clone());
+        canvas(move |g, b| {
+            let p = theme::palette();
+            let rect = style::snap(g, b);
+            style::fill_rect(g, rect, style::c(p.document_background));
+            let plots = plots_of(rect);
+            paint_axis(g, rect.top(), plots, start, end, now, &*local, true, false);
+            style::hline_above(g, rect.left(), rect.right(), rect.bottom(), style::c(olo_theme::mix(p.document_text, p.document_background, 0.78)));
+        })
+        .paint_key(style::key((self.key, "axis")))
+        .w_full()
+        .h(px(AXIS))
+        .flex_shrink_0()
+        .into_element()
     }
 
     /// The present, marked with a line.
@@ -430,13 +467,13 @@ fn when(local: i64) -> String {
 impl IntoElement for Timeline {
     fn into_element(self) -> Element {
         let height = self.height();
-        let Timeline { id, start, end, step, panels, now, nights, spans, local, key, on_hover } = self;
+        let Timeline { id, start, end, step, panels, now, nights, spans, local, key, on_hover, axis_on_top } = self;
         let span = end - start;
         canvas(move |g, b| {
             let p = theme::palette();
             let s = g.scale_factor();
             let rect = style::snap(g, b);
-            let plots = Bounds { origin: point(rect.left() + px(GUTTER), rect.top()), size: size((rect.size.width - px(2.0 * GUTTER)).max(px(1.0)), rect.size.height) };
+            let plots = plots_of(rect);
             let hover = {
                 let state = g.node_state::<State>();
                 (state.plots, state.drawn_at, state.start, state.end) = (plots, b.origin, start, end);
@@ -454,7 +491,6 @@ impl IntoElement for Timeline {
             let night = style::c(olo_theme::mix(p.document_background, [0, 0, 0, 255], if p.is_dark() { 0.28 } else { 0.055 }));
             let small = style::ui_font(FontWeight::NORMAL);
             let bold = style::ui_font(FontWeight::BOLD);
-            let hours = (span / 3600.0).max(1.0);
             // The local midnights shown.
             let midnights: Vec<f64> = {
                 let first = local(start);
@@ -467,6 +503,10 @@ impl IntoElement for Timeline {
                 out
             };
             let mut y = rect.top();
+            if axis_on_top {
+                paint_axis(g, y, plots, start, end, now, &*local, true, true);
+                y += px(AXIS + GAP);
+            }
             // Each plot's area, for the shading, spans and the pointer's
             // line drawn over all of them.
             let mut areas: Vec<Bounds<Pixels>> = Vec::new();
@@ -703,33 +743,8 @@ impl IntoElement for Timeline {
                 }
                 y += px(panel.height + GAP);
             }
-            // The axis: hours, then the days at their midnights.
-            let every = [1u32, 2, 3, 6, 12].into_iter().find(|h| width / (hours as f32) * (*h as f32) >= 40.0).unwrap_or(24);
-            let hour_y = y + px(8.0);
-            let day_y = y + px(25.0);
-            let first_hour = (start / 3600.0).ceil() * 3600.0;
-            let mut t = first_hour;
-            while t <= end {
-                let (h, _, _, _) = parts(local(t));
-                if h % every == 0 {
-                    let x = snap_x(t);
-                    style::vline(g, x, y - px(GAP), y - px(GAP - 3.0), midnight_line);
-                    style::label(g, x, hour_y, style::Align::Center, format!("{h:02}"), style::SMALL_SIZE, small.clone(), dim);
-                }
-                t += 3600.0;
-            }
-            // Each day named over its own stretch (the first from the start).
-            let mut starts = vec![start];
-            starts.extend(midnights.iter().copied());
-            for (i, &d) in starts.iter().enumerate() {
-                let next = starts.get(i + 1).copied().unwrap_or(end);
-                let (_, _, wd, day) = parts(local(d + 1.0));
-                let name = if d == start && now.is_some_and(|n| (n - start).abs() < 3.0 * 3600.0) { "Today".to_owned() } else { format!("{} {day}", WEEKDAYS[wd]) };
-                let room = x_of(next) - x_of(d);
-                if f32::from(room) >= 34.0 {
-                    let named = style::label_fit(g, x_of(d) + px(4.0), day_y, style::Align::Left, name, style::SMALL_SIZE, bold.clone(), text, room - px(6.0));
-                    crate::agent::record(g, agent::Node::label(format!("{} {day}", WEEKDAYS[wd]), named));
-                }
+            if !axis_on_top {
+                paint_axis(g, y, plots, start, end, now, &*local, false, true);
             }
             // The spans and the present over every plot.
             let accent = style::c(p.hues.yellow);
@@ -848,6 +863,74 @@ impl IntoElement for Timeline {
         .w_full()
         .h(px(height))
         .flex_shrink_0()
+    }
+}
+
+/// Where the plots are in the chart's `rect`: its width less a gutter
+/// each side (the scales' numbers).
+fn plots_of(rect: Bounds<Pixels>) -> Bounds<Pixels> {
+    Bounds { origin: point(rect.left() + px(GUTTER), rect.top()), size: size((rect.size.width - px(2.0 * GUTTER)).max(px(1.0)), rect.size.height) }
+}
+
+/// The axis at `top` (its [`AXIS`] rows) for the plots `plots`, from
+/// `start` to `end`: the hours, ticked toward the plots, and the days
+/// named over their stretches. Over the plots (`on_top`): the days, then
+/// the hours by the plots under them, ticked down; under them, the
+/// other way. `record`: its day names for agents (once: not the copy a
+/// scroll view keeps in sight).
+#[allow(clippy::too_many_arguments)]
+fn paint_axis(g: &mut Painter, top: Pixels, plots: Bounds<Pixels>, start: f64, end: f64, now: Option<f64>, local: &dyn Fn(f64) -> i64, on_top: bool, record: bool) {
+    let p = theme::palette();
+    let s = g.scale_factor();
+    let span = end - start;
+    let width = f32::from(plots.size.width);
+    let x_of = |t: f64| plots.left() + px(((t - start) / span) as f32 * width);
+    let snap_x = |t: f64| px((f32::from(x_of(t)) * s).round() / s);
+    let text = style::c(p.document_text);
+    let dim = style::disabled_text(&p);
+    let midnight_line = style::c(olo_theme::mix(p.document_text, p.document_background, 0.78));
+    let small = style::ui_font(FontWeight::NORMAL);
+    let bold = style::ui_font(FontWeight::BOLD);
+    let hours = (span / 3600.0).max(1.0);
+    let midnights: Vec<f64> = {
+        let first = local(start);
+        let mut m = first.div_euclid(86_400) * 86_400 + 86_400;
+        let mut out = Vec::new();
+        while (m - first) as f64 + start < end {
+            out.push(start + (m - first) as f64);
+            m += 86_400;
+        }
+        out
+    };
+    let every = [1u32, 2, 3, 6, 12].into_iter().find(|h| width / (hours as f32) * (*h as f32) >= 40.0).unwrap_or(24);
+    let (hour_y, day_y) = if on_top { (top + px(25.0), top + px(8.0)) } else { (top + px(8.0), top + px(25.0)) };
+    // The ticks, in the gap between the axis and the plots.
+    let (tick_a, tick_z) = if on_top { (top + px(AXIS), top + px(AXIS + 3.0)) } else { (top - px(GAP), top - px(GAP - 3.0)) };
+    let first_hour = (start / 3600.0).ceil() * 3600.0;
+    let mut t = first_hour;
+    while t <= end {
+        let (h, _, _, _) = parts(local(t));
+        if h % every == 0 {
+            let x = snap_x(t);
+            style::vline(g, x, tick_a, tick_z, midnight_line);
+            style::label(g, x, hour_y, style::Align::Center, format!("{h:02}"), style::SMALL_SIZE, small.clone(), dim);
+        }
+        t += 3600.0;
+    }
+    // Each day named over its own stretch (the first from the start).
+    let mut starts = vec![start];
+    starts.extend(midnights.iter().copied());
+    for (i, &d) in starts.iter().enumerate() {
+        let next = starts.get(i + 1).copied().unwrap_or(end);
+        let (_, _, wd, day) = parts(local(d + 1.0));
+        let name = if d == start && now.is_some_and(|n| (n - start).abs() < 3.0 * 3600.0) { "Today".to_owned() } else { format!("{} {day}", WEEKDAYS[wd]) };
+        let room = x_of(next) - x_of(d);
+        if f32::from(room) >= 34.0 {
+            let named = style::label_fit(g, x_of(d) + px(4.0), day_y, style::Align::Left, name, style::SMALL_SIZE, bold.clone(), text, room - px(6.0));
+            if record {
+                crate::agent::record(g, agent::Node::label(format!("{} {day}", WEEKDAYS[wd]), named));
+            }
+        }
     }
 }
 

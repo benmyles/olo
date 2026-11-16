@@ -413,6 +413,10 @@ pub struct ScrollView {
     /// Its content scrolls itself (`scrolls_itself`).
     own: bool,
     on_scroll: Option<std::rc::Rc<dyn Fn(&Point<Pixels>, &mut WindowCx)>>,
+    /// A header kept in sight once a thing it holds reaches the top
+    /// (`sticky`): that thing's place among its children, the header's
+    /// height, the header.
+    sticky: Option<(usize, f32, Element)>,
     children: SmallVec<[Element; 4]>,
 }
 
@@ -428,8 +432,23 @@ impl ScrollView {
             background: None,
             own: false,
             on_scroll: None,
+            sticky: None,
             children: SmallVec::new(),
         }
+    }
+
+    /// `header` kept at the top of what shows, over the content, once
+    /// the `item`th thing it holds (its children, in order) has scrolled
+    /// up to the top, as wide as the content (not over the bar): a
+    /// chart's time axis staying in sight as its panels scroll under it
+    /// (Weather's, `Timeline::axis`), a table's column names. `height` is
+    /// the header's. It comes and goes as scrolling crosses that thing's
+    /// top (the view holding this is told then, `invalidate_owner`), so
+    /// scrolling costs nothing more otherwise. The header draws its own
+    /// ground: what scrolls under it mustn't show through.
+    pub fn sticky(mut self, item: usize, height: f32, header: impl IntoElement) -> Self {
+        self.sticky = Some((item, height, header.into_element()));
+        self
     }
 
     /// Shows the vertical bar only while the content overflows: columns
@@ -508,7 +527,22 @@ impl IntoElement for ScrollView {
         let right = inset + if vbar { SCROLL_BAR } else { 0.0 };
         let bottom = inset + if hbar { SCROLL_BAR } else { 0.0 };
         let (border, focused, background) = (self.border, self.focused, self.background);
-        let mut content = div().absolute().left(px(inset)).top(px(inset)).right(px(right)).bottom(px(bottom));
+        // Where the sticky header's item starts in the content (as last
+        // laid out), and whether it has reached the top: the header shows
+        // from then, and the view holding this hears when that changes.
+        let stuck = self.sticky.as_ref().and_then(|(item, ..)| self.handle.bounds_for_item(*item)).map(|b| b.top());
+        let sticking = stuck.is_some_and(|top| -self.handle.offset().y > top);
+        // While it shows, what scrolls is cut below it, not just covered:
+        // nothing under it is drawn, and to the layout review it's
+        // scrolled out of sight. The scroller keeps its place and size
+        // (its offsets mean the same), in a cut of its own whose top moves.
+        let cut = match &self.sticky {
+            Some((_, height, _)) if sticking => *height,
+            _ => 0.0,
+        };
+        let has_sticky = self.sticky.is_some();
+        let mut content =
+            if has_sticky { div().absolute().left(px(0.0)).top(px(-cut)).right(px(0.0)).bottom(px(0.0)) } else { div().absolute().left(px(inset)).top(px(inset)).right(px(right)).bottom(px(bottom)) };
         // (A hidden bar's content scrolls all the same: clipped to the
         // view, and measured, so the bar comes when it overflows.)
         let vscroll = vbar || (self.vertical && self.auto_hide);
@@ -533,6 +567,15 @@ impl IntoElement for ScrollView {
         }
         if let Some(f) = self.on_scroll.clone() {
             content = content.on_scroll(move |at, cx| f(at, cx));
+        }
+        if let Some((item, ..)) = &self.sticky {
+            let (handle, item) = (self.handle.clone(), *item);
+            content = content.on_scroll(move |_, cx| {
+                let now = handle.bounds_for_item(item).is_some_and(|b| -handle.offset().y > b.top());
+                if now != sticking {
+                    cx.invalidate_owner();
+                }
+            });
         }
         let backdrop = canvas(move |g, b| {
             let p = theme::palette();
@@ -562,7 +605,14 @@ impl IntoElement for ScrollView {
         .paint_key(style::key(&(border, focused)))
         .absolute()
         .inset_0();
-        let mut root = div().relative().size_full().child(backdrop).child(content.children(self.children));
+        let content = content.children(self.children);
+        let content = if has_sticky { div().absolute().left(px(inset)).top(px(inset + cut)).right(px(right)).bottom(px(bottom)).overflow_hidden().child(content) } else { content };
+        let mut root = div().relative().size_full().child(backdrop).child(content);
+        if let Some((_, height, header)) = self.sticky
+            && sticking
+        {
+            root = root.child(div().absolute().top(px(inset)).left(px(inset)).right(px(right)).h(px(height)).child(header));
+        }
         // The bars, inside the frame.
         let corner = |other: bool| inset + if other { SCROLL_BAR } else { 0.0 };
         if vbar {

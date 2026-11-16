@@ -2673,7 +2673,14 @@ it.
   (shaded), `.spans(Span)` (an assistant's "dry and calm": yellow over
   every plot, named over the first, two rows of names so none runs
   into another), `.local(f)` (the place's clock, for the hours and day
-  names, which may be another time zone's than the computer's). The
+  names, which may be another time zone's than the computer's).
+  `.axis_on_top(true)` puts the axis over the panels (the days, then the
+  hours by the plots, ticked down), where it's read first; `.axis()` is
+  that axis alone, [`AXIS_HEIGHT`] tall, the same width and gutters as
+  the chart, on the document's ground with a line under it, for a
+  scroll view to keep in sight (`ScrollView::sticky`, Weather's: Ben,
+  2026-11-15: "the timeline should be at the top and stay there as you
+  scroll the data so that you always know when it is"). The
   pointer draws a line through every plot and a readout of every
   track's value then, kept inside what shows of the chart (its scroll
   view's, by `WindowCx::listener_shown`, exact, where the painter's
@@ -17918,7 +17925,11 @@ twelve hours, whichever is later), Next 3 Days and Next 7 Days (a row a
 day, its sky by day and by night, what it does, low and high on the
 week's span, two lines of detail: what falls, how likely and how much,
 cloud and its lowest base, visibility when it's poor; wind, UV once
-it's moderate, the sun's times, the moon), each over a `Timeline`
+it's moderate, the sun's times, the moon), each over a `Timeline`,
+its axis over the panels and kept at the top of the tab once the
+chart reaches it (`ScrollView::sticky`; in Next 7 Days only once the
+hourly chart comes up, never over the day rows), so what hour is
+under the pointer is always in sight
 (Temperature with feels like and dew point, freezing marked; Clouds,
 each hour shaded from its base up as solid as its cover with the
 ceiling darker over it, the clear air under it what's open to fly;

@@ -1440,6 +1440,14 @@ something nobody here has is in "Blocked", with what it waits for.
   from the console, or from Olo's login screen), then the whole path
   tried in `tools/dev/installer-check`'s VM with a minimal kickstart.
 
+- **Weather: a place's own name** (Ben, 2026-11-15: "in the weather app
+  i should be able to set custom names for places i've added"). A place
+  renamed as the person likes ("Home", "The drop zone"), from its
+  right-click and an Edit menu item, in the places list, the window's
+  title row and what the assistant and agents are told; the place it
+  stands for (its found name and region) still shown beside it, and kept
+  with the place across restarts.
+
 - **Weather: a Deskbar widget, customizable and beautiful** (Ben,
   2026-11-15: "the weather app should make available a deskbar widget
   that is customizable and can show useful stuff like 3/6/12 hour
@@ -1507,7 +1515,11 @@ something nobody here has is in "Blocked", with what it waits for.
   timeline should be at the top and stay there as you scroll the data
   so that you always know. when it is."). The time axis pinned above
   what scrolls (the charts and rows of data scroll under it), so the
-  hour or day of what's under the pointer is always in sight.
+  hour or day of what's under the pointer is always in sight. Done
+  (HACKING, Weather; the Book, "Scrolling"): the chart's axis over its
+  panels and kept at the top once the chart reaches it, its panels
+  scrolling under; in Next 7 Days only once the hourly chart comes up.
+  The kit's `ScrollView::sticky` and `Timeline::axis` for any app.
 
 - **The supervisor deprioritises background work, for real** (Ben,
   2026-11-15: "make it so that olo's supervisor can truly and properly

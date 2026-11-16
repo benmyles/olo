@@ -592,6 +592,17 @@ doing, and its content isn't drawn again to move.
   `.watch_scroll(&handle)` to draw again as it moves: a scroll bar's
   knob does). Don't read `offset()` in a `body` to decide what to
   show unless that element watches the scroller.
+- A header that stays in sight: `ScrollView::sticky(item, height,
+  header)` shows `header` at the top of what shows, as wide as the
+  content (not over the bar), once the `item`th child of the scroll
+  view has scrolled up to the top, and cuts what scrolls below it
+  (nothing under it is drawn). Its view is told only as scrolling
+  crosses that child's top (`ScrollHandle::bounds_for_item`), so
+  scrolling costs nothing more otherwise. Give the scroll view its
+  sections as children (`.children(..)`), the one the header belongs to
+  among them, and let that one draw the same header at its own top, so
+  the copy takes its place without a jump: Weather's chart and
+  `Timeline::axis`.
 - A view that must scroll itself (the editor lays out only the
   paragraphs that show; Terminal has its emulator's scrollback) takes
   the wheel (`on_scroll_wheel`), keeps an `Elastic` for its ends, and
@@ -796,7 +807,7 @@ vanished.
 | `BStatusBar` | `StatusBar::new(fraction).label(..).trailing(..)` | |
 | `BStringView` | `StringView::new(text)` | `.dim(true)`, `.wrap(true)`, `.cut(true)` |
 | `BBox` | `BBox::new("Title").child(..)` | `.action("Reset", ..)` |
-| `BScrollView`, `BScrollBar` | `ScrollView::new(&handle).child(..)` | `.horizontal(true)`, `.auto_hide(true)` |
+| `BScrollView`, `BScrollBar` | `ScrollView::new(&handle).child(..)` | `.horizontal(true)`, `.auto_hide(true)`, `.sticky(item, height, header)` |
 | `BListView`, `BColumnListView` | `ColumnListView::new(cx, id, &model, columns, rows, cell)` | virtual; sort, type-select, drag, context menus |
 | `BTabView` | `TabView::new(id, tabs, chosen).on_select(..).child(..)` | folder tabs, as `TabStrip`'s (document tabs: Terminal's, with groups led by labels in the look's `Palette::group_colors`) |
 | `BMenuBar`, `BMenu`, `BPopUpMenu` | `MenuBar::new(cx, menus)`, `Menu::new("File").item(label, command).key("s")`, `menu::context_menu` | commands arrive in `View::command`; titles that don't fit a narrow window go under a » at the bar's end |

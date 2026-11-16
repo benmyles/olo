@@ -219,8 +219,16 @@ fn main_area(w: &mut Weather, cx: &mut Cx<Weather>) -> Element {
     let next = next_hour(&f, &units, now);
     let tabs: Rc<[olo_kit::SharedString]> = Rc::from(vec!["Rest of Today".into(), "Next 3 Days".into(), "Next 7 Days".into()]);
     let tab = w.settings.tab.min(2);
-    let content = tab_content(w, &place, &f, tab, now);
-    let scroller = ScrollView::new(&w.scrolls[tab]).border(false).auto_hide(true).background(theme::palette().document_background).child(content);
+    let (sections, chart, axis) = tab_content(w, &place, &f, tab, now);
+    // The chart's time axis stays at the top once the chart reaches it,
+    // its panels scrolling under it (Ben, 2026-11-15: "the timeline should
+    // be at the top and stay there as you scroll the data so that you
+    // always know when it is").
+    let scroller = ScrollView::new(&w.scrolls[tab]).border(false).auto_hide(true).background(theme::palette().document_background).children(sections).sticky(
+        chart,
+        olo_kit::widgets::timeline::AXIS_HEIGHT,
+        div().w_full().pr(px(m::TIGHT)).child(axis),
+    );
     let tab_view = TabView::new("weather-range", tabs, tab).on_select(cx.listener(|v: &mut Weather, i: &usize, cx| v.set_tab(*i, cx))).child(div().size_full().child(scroller));
     div()
         .size_full()
@@ -578,21 +586,29 @@ pub fn span_when(local: impl Fn(f64) -> i64, now: i64, start: i64, end: i64) -> 
 }
 
 /// The range chosen: its chart (and for 7 days, a row a day over it).
-fn tab_content(w: &Weather, place: &Place, f: &Forecast, tab: usize, now: i64) -> Element {
+/// A tab's sections, in order (each a child of the scroll view), which of
+/// them is the chart, and the chart's axis to keep in sight.
+fn tab_content(w: &Weather, place: &Place, f: &Forecast, tab: usize, now: i64) -> (Vec<Element>, usize, Element) {
     let units = w.settings.units;
     let local = local_of(place, f);
     let (hour0, end) = tab_range(place, f, tab, now);
     let spans: Vec<Span> = w.spans.iter().map(|s| Span { start: s.start as f64, end: s.end as f64, name: s.label.clone().into() }).collect();
     let key = style::key((f.fetched, f.provider.as_str(), format!("{units:?}"), tab, w.spans.iter().map(|s| (s.start, s.end, s.label.clone())).collect::<Vec<_>>(), now / 600));
     let nights: Vec<(f64, f64)> = f.nights().into_iter().map(|(a, z)| (a as f64, z as f64)).collect();
-    let chart = Timeline::new(format!("weather-chart-{tab}"), hour0, end, 3600.0, panels(f, &units), key).now(now as f64).nights(nights).spans(spans).local(local.clone());
-    let mut col = div().w_full().flex().flex_col().pt(px(m::TIGHT)).pb(px(m::SPACING)).pr(px(m::TIGHT));
+    let chart = Timeline::new(format!("weather-chart-{tab}"), hour0, end, 3600.0, panels(f, &units), key).now(now as f64).nights(nights).spans(spans).local(local.clone()).axis_on_top(true);
+    let axis = chart.axis();
+    // (Each its own child of the scroll view, so it knows where the chart
+    // starts: its axis is kept in sight from there. The chart's own
+    // starts at its top, so the copy takes its place without a jump.)
+    let mut sections = vec![div().w_full().h(px(m::TIGHT)).into_element()];
     if tab == 2 {
-        col = col.child(daily(f, &units, now, local.clone()));
+        sections.push(div().w_full().pr(px(m::TIGHT)).child(daily(f, &units, now, local.clone())).into_element());
         let note = if f.daily.len() > 5 { "By the hour for the next 5 days (the provider’s reach):" } else { "By the hour:" };
-        col = col.child(div().px(px(m::WINDOW_INSET)).pt(px(m::SPACING)).pb(px(m::TIGHT)).child(StringView::new(note).dim(true)));
+        sections.push(div().w_full().px(px(m::WINDOW_INSET)).pt(px(m::SPACING)).pb(px(m::TIGHT)).child(StringView::new(note).dim(true)).into_element());
     }
-    col.child(chart).into_element()
+    let at = sections.len();
+    sections.push(div().w_full().pr(px(m::TIGHT)).pb(px(m::SPACING)).child(chart).into_element());
+    (sections, at, axis)
 }
 
 /// Every layer by the hour, as the chart's panels.
