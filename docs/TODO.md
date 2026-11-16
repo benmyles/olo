@@ -13,6 +13,10 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
+(Nothing.)
+
+## Not started (highest priority first)
+
 - **The kits' costs, where they're above GPUI's** (from the move to the
   kits: "each within a frame's budget; to be brought down"). A whole
   window drawn again each frame costs more than GPUI's one thread did
@@ -53,10 +57,6 @@ something nobody here has is in "Blocked", with what it waits for.
   frame, in making its 1,500 segments (`insert_segments`, 45% with the
   painter's) and copying them into the frame (`Scene::append`, 14%:
   the first idea above).
-
-## Not started (highest priority first)
-
-(Nothing.)
 
 ## Done, waiting for Ben to try or confirm
 
