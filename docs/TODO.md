@@ -1791,6 +1791,25 @@ something nobody here has is in "Blocked", with what it waits for.
   applications, once upgraded) and try a small update; adding a
   repository and the Fedora upgrade ask for the password (polkit).
   HACKING "OS Updates", the Olo Book.
+- **OS Updates: one package changing architecture sinks the whole
+  update** (Ben, 2026-11-15, a screenshot: "Update 517 packages",
+  "Nothing to do.", in red "Packages for argument
+  'python3-wcwidth.x86_64' available, but installed for a different
+  architecture.", the list empty, Install Now and Install When
+  Restarting off). The review asks dnf to upgrade each package by the
+  *new* build's `name.arch` (`dnf::Package::key`, `Op::Upgrade` in
+  `apps/updates/src/review.rs`); python3-wcwidth's installed build is
+  another architecture (noarch to x86_64, or back), dnf5 refuses that
+  argument, and one refused argument leaves the whole transaction
+  empty. To do: ask for each update as dnf names what's installed (the
+  installed package's `name.arch`, or the name alone for "all of
+  them", or no arguments at all), so a package moving between noarch
+  and an architecture upgrades as dnf's own `dnf upgrade` does; and
+  never let one argument dnf refuses empty a review of hundreds:
+  resolve without it and say which was left out and why, in the
+  review's words, not dnf's. A test against `dnf-fake` with a package
+  installed noarch and offered x86_64 (and the other way), and the
+  whole system's update with one such among many.
 - **Weather: a native app, every detail, with an assistant** (Ben,
   2026-11-14: "create an olo weather native app that has configurable
   data providers and comes with for now tomorrow.io as the provider.
