@@ -23,7 +23,7 @@ const EVERY: Duration = Duration::from_secs(10);
 /// Serve Deskbar's Kache widgets until it asks for none.
 pub fn serve() -> std::process::ExitCode {
     let dir = data::cache_dir();
-    let watched = if data::demo() { Vec::new() } else { vec![dir.join("events.jsonl"), dir.join("gc_stats.json"), dir.join("daemon.sock"), data::config_path()] };
+    let watched = if data::demo() { Vec::new() } else { vec![dir.join("events.jsonl"), dir.join("gc_stats.json"), data::socket_path(), data::config_path()] };
     let mut last: Option<Instant> = None;
     olo_kit::glance::serve("kache", watched, move |asked| {
         // (Too soon after the last: nothing written, looked at once it's time.)

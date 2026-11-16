@@ -11466,8 +11466,9 @@ profile: "The fans", above), `olo-doctor --scheduler [kernel|lavd]`
   systemd's D-Bus). Running, its last clean-up (`gc_stats.json`) held
   back more than its limit by builds' target folders (`bytes_held`; the
   limit its settings' `local_max_size`, else as kache sets it, 5% of the
-  store's disk from 5 to 100 GiB): "The build cache can't keep under
-  its limit", advice, Open Kache; no clean-up takes those while the
+  store's disk from 5 to 100 GiB; only from a clean-up that looked at
+  entries): "The build cache can't keep under its limit", advice, Open
+  Kache; no clean-up takes those while the
   folders are there (counting them toward the limit only evicts others
   harder). Else running, as fine.
 - **The login screen's entry** (/usr/share/wayland-sessions, or
@@ -18511,13 +18512,21 @@ service on or off, the day's hit rate):
 **Where it reads.** The daemon's socket (`~/.cache/kache/daemon.sock`,
 a line of JSON each way): `{"stats":{…, "event_hours": 0}}` for the
 store and what's in flight (with the day's events the daemon takes
-0.17 s an ask; without, 0.035 s), `{"gc_v2":{"mode":"automatic"}}` to
-clean up as kache's own CLI asks. The build log (`events.jsonl`, a line
+0.17 s an ask; without, 0.035 s), `{"gc_v2":{"mode":"automatic",
+"effective_max_age_hours":N}}` to clean up as kache's own CLI asks (N
+its settings' `gc_max_age_hours`, 0 none; without it the daemon refuses:
+"automatic GC request is missing effective_max_age_hours", 2026-11-15),
+its answer said ("309 entries removed, 19.7 GB freed; 4548 kept, still
+shared with builds' target folders"). The socket is in kache's runtime
+folder: its settings' `runtime_dir`, else the store's folder
+(`data::socket_path`). The build log (`events.jsonl`, a line
 a compile) read as it grows (`data::Live`: only what was added since
 the last look; read again when kache rotates it), and the rotated logs
 (`events.jsonl.archive/`, zstd, named by their last and first events'
 seconds) that reach into the day, read once and kept. The last clean-up
-(`gc_stats.json`). The pool from the kernel's list of locks
+(`gc_stats.json`; what it held back shown only from a clean-up that
+looked at entries: the sweep of locks after a restart looks at none, and
+its "0 bytes" isn't what's held). The pool from the kernel's list of locks
 (`/proc/locks`): each admitted compile holds a lease file under
 `scheduler/permits/` locked, a test its markers under
 `scheduler/tests/`; matched by inode (on btrfs the lock's device is the
@@ -18547,8 +18556,9 @@ seconds); none with nothing built.
 
 **Doctor** (see Olo Doctor, "The build cache"): kache's daemon not
 running, Start It (`olo-kache --start`, `--restart`, `--stop`: the
-service with no window, saying how it stands); its store held over its
-limit by builds' target folders, Open Kache.
+service with no window, saying how it stands; `--clean-up`, a clean-up,
+saying what it did); its store held over its limit by builds' target
+folders, Open Kache.
 
 **Agents.** Every action is a menu command (`refresh`, `restart`,
 `stop`, `start`, `clean-up`, `save-settings`, `revert-settings`,

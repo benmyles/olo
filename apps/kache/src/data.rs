@@ -45,6 +45,18 @@ pub fn cache_dir() -> PathBuf {
     set.unwrap_or_else(|| std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| home().join(".cache")).join("kache"))
 }
 
+/// kache's daemon's socket: in its runtime folder, its settings'
+/// `runtime_dir` (`~` its home), else its store's folder, as kache has it.
+pub fn socket_path() -> PathBuf {
+    let set = std::fs::read_to_string(config_path()).ok().and_then(|t| t.parse::<toml_edit::DocumentMut>().ok()).and_then(|d| d.get("cache")?.get("runtime_dir")?.as_str().map(str::to_owned));
+    let dir = match set {
+        Some(d) if d == "~" || d.starts_with("~/") => home().join(d.trim_start_matches('~').trim_start_matches('/')),
+        Some(d) if !d.is_empty() => PathBuf::from(d),
+        _ => cache_dir(),
+    };
+    dir.join("daemon.sock")
+}
+
 /// Now, in ms since 1970.
 pub fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
@@ -70,7 +82,9 @@ pub struct Cleanup {
     pub at_ms: u64,
     pub freed: u64,
     /// What it couldn't take: files builds' target folders still share.
-    pub held: u64,
+    /// None: it looked at no entries (a sweep of locks after a restart,
+    /// 2026-11-15: "0 bytes" held said of a store 600 GB over its limit).
+    pub held: Option<u64>,
     pub unreclaimable: u64,
 }
 
@@ -188,7 +202,7 @@ pub fn read() -> Snapshot {
     }
     let dir = cache_dir();
     let unit = olo_system::systemd::user_unit(UNIT).ok();
-    let daemon = ask_stats(&dir).ok();
+    let daemon = ask_stats(&socket_path()).ok();
     let cleanup = std::fs::read(dir.join("gc_stats.json")).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).map(|v| cleanup_of(&v));
     let now = now_ms();
     let since = now.saturating_sub(24 * 3_600_000);
@@ -244,9 +258,8 @@ impl Live {
 }
 
 /// A line of JSON to the daemon's socket, its line back.
-fn ask(dir: &std::path::Path, request: &Value, timeout: Duration) -> Result<Value, String> {
-    let socket = dir.join("daemon.sock");
-    let s = std::os::unix::net::UnixStream::connect(&socket).map_err(|e| format!("kache's daemon isn't answering ({e})"))?;
+fn ask(socket: &std::path::Path, request: &Value, timeout: Duration) -> Result<Value, String> {
+    let s = std::os::unix::net::UnixStream::connect(socket).map_err(|e| format!("kache's daemon isn't answering ({e})"))?;
     let _ = s.set_read_timeout(Some(timeout));
     let _ = s.set_write_timeout(Some(timeout));
     let mut w = &s;
@@ -260,12 +273,12 @@ fn ask(dir: &std::path::Path, request: &Value, timeout: Duration) -> Result<Valu
     Ok(v)
 }
 
-fn ask_stats(dir: &std::path::Path) -> Result<Daemon, String> {
+fn ask_stats(socket: &std::path::Path) -> Result<Daemon, String> {
     // (No hours of events: counting them costs the daemon 0.17 s an ask,
     // without them 0.035 s; the day's figures are counted here, from the
     // events read anyway.)
     let request = serde_json::json!({"stats": {"include_entries": false, "include_summaries": false, "sort_by": null, "event_hours": 0, "event_secs": 0, "client_epoch": 0}});
-    let v = ask(dir, &request, Duration::from_secs(5))?;
+    let v = ask(socket, &request, Duration::from_secs(5))?;
     Ok(daemon_of(&v["stats"]))
 }
 
@@ -286,7 +299,8 @@ pub fn daemon_of(s: &Value) -> Daemon {
 fn cleanup_of(v: &Value) -> Cleanup {
     let at_ms = v["last_run"].as_str().and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok()).map_or(0, |t| t.timestamp_millis().max(0) as u64);
     let n = |k: &str| v[k].as_u64().unwrap_or(0);
-    Cleanup { at_ms, freed: n("disk_bytes_reclaimed").max(n("bytes_freed")), held: n("bytes_held"), unreclaimable: n("entries_unreclaimable") }
+    let looked = n("entries_evicted") + n("entries_unreclaimable") + n("entries_pinned") + n("bytes_held") > 0;
+    Cleanup { at_ms, freed: n("disk_bytes_reclaimed").max(n("bytes_freed")), held: looked.then(|| n("bytes_held")), unreclaimable: n("entries_unreclaimable") }
 }
 
 /// The archived build events from `since` (ms since 1970) on: kache
@@ -417,9 +431,38 @@ pub fn clean_up() -> Result<String, String> {
     if demo() {
         return Ok("Cleaned up (made up).".into());
     }
-    // (As kache's own CLI asks: its automatic policy, the daemon's limit.)
-    ask(&cache_dir(), &serde_json::json!({"gc_v2": {"max_age_hours": null, "mode": "automatic"}}), Duration::from_secs(300))?;
-    Ok("Cleaned up.".into())
+    let v = ask(&socket_path(), &gc_request(&config_path()), Duration::from_secs(300))?;
+    Ok(cleaned_up(&v))
+}
+
+/// The clean-up kache's own CLI asks for: its automatic policy (the
+/// daemon's limit), with the age limit from its settings
+/// (`gc_max_age_hours`, 0: none), which the daemon needs said (2026-11-15:
+/// "invalid GC request: automatic GC request is missing
+/// effective_max_age_hours").
+pub fn gc_request(config: &std::path::Path) -> Value {
+    let hours: u64 = settings_at(config, "gc_max_age_hours").and_then(|v| v.parse().ok()).unwrap_or(0);
+    serde_json::json!({"gc_v2": {"max_age_hours": null, "mode": "automatic", "effective_max_age_hours": hours}})
+}
+
+/// What a clean-up did, from the daemon's answer (its passes: copies,
+/// age, size).
+pub fn cleaned_up(v: &Value) -> String {
+    let gc = &v["gc"];
+    let sum = |k: &str| ["duplicate", "age", "size"].iter().map(|p| gc[p][k].as_u64().unwrap_or(0)).sum::<u64>();
+    let evicted = v["evicted"].as_u64().unwrap_or_else(|| sum("entries_evicted"));
+    let freed = sum("disk_bytes_reclaimed").max(sum("bytes_freed"));
+    let held = sum("entries_unreclaimable");
+    let mut said = match evicted {
+        0 => "Cleaned up: nothing to remove".to_owned(),
+        1 => format!("Cleaned up: 1 entry removed, {} freed", bytes(freed)),
+        n => format!("Cleaned up: {n} entries removed, {} freed", bytes(freed)),
+    };
+    if held > 0 {
+        said.push_str(&format!("; {held} kept, still shared with builds' target folders"));
+    }
+    said.push('.');
+    said
 }
 
 /// Restart, start or stop the service (on a worker).
@@ -454,6 +497,7 @@ pub enum Kind {
 pub const SETTINGS: &[Setting] = &[
     Setting { key: "local_max_size", label: "Store limit:", about: "Before what's used least goes.", kind: Kind::Size, default: "5% of its disk, up to 100GiB" },
     Setting { key: "count_held_in_max_size", label: "", about: "Count what builds' target folders share toward the limit", kind: Kind::Switch, default: "false" },
+    Setting { key: "gc_max_age_hours", label: "Age limit:", about: "Hours unused before a clean-up takes an entry.", kind: Kind::Number, default: "none" },
     Setting { key: "auto_clean_idle_targets_days", label: "Idle targets:", about: "Days unused before a target folder is cleaned.", kind: Kind::Number, default: "never" },
     Setting { key: "auto_clean_orphaned_targets", label: "", about: "Clean target folders whose project is gone", kind: Kind::Switch, default: "true" },
     Setting { key: "scheduler_permits", label: "At once:", about: "Compiles and tests run together.", kind: Kind::Number, default: "one a processor" },
@@ -587,7 +631,7 @@ pub fn made_up(now: u64) -> Snapshot {
     let day = day_of(&events, now);
     let unit = UserUnit { loaded: true, active: "active".into(), sub: "running".into(), since_us: (now - 3 * 3_600_000) * 1000, pid: 4242, memory: Some(380_000_000) };
     let daemon = Daemon { version: "2.1.1".into(), size: 88_000_000_000, disk: 61_000_000_000, limit: 102_005_473_280, entries: 9_412, in_flight: vec!["olo-kit".into(), "app_server".into()] };
-    let cleanup = Cleanup { at_ms: now - 40 * 60_000, freed: 19_702_859_847, held: 41_000_000_000, unreclaimable: 512 };
+    let cleanup = Cleanup { at_ms: now - 40 * 60_000, freed: 19_702_859_847, held: Some(41_000_000_000), unreclaimable: 512 };
     let pool = Pool { size: 16, compiles: 5, tests: 4, waiting: 2 };
     Snapshot { unit: Some(unit), daemon: Some(daemon), cleanup: Some(cleanup), day, recent: events.into_iter().rev().take(RECENT).collect(), pool: Some(pool) }
 }
@@ -726,6 +770,30 @@ mod tests {
         drop(files);
         assert_eq!(pool(&dir, Some(16)).unwrap().compiles, 0, "a lease let go");
         assert!(pool(&dir.join("nowhere"), None).is_none());
+    }
+
+    /// The clean-up asked for as kache's CLI asks (its age limit said),
+    /// and what it did said; a record that looked at no entries holds
+    /// nothing known.
+    #[test]
+    fn a_clean_up() {
+        let dir = Scratch::new("gc");
+        let config = dir.0.join("config.toml");
+        assert_eq!(gc_request(&config)["gc_v2"]["effective_max_age_hours"], 0, "no settings: none");
+        std::fs::write(&config, "[cache]\ngc_max_age_hours = 336\n").unwrap();
+        let r = gc_request(&config);
+        assert_eq!((r["gc_v2"]["mode"].as_str(), r["gc_v2"]["effective_max_age_hours"].as_u64()), (Some("automatic"), Some(336)));
+        let answer = serde_json::json!({"ok": true, "evicted": 309, "gc": {"mode": "automatic",
+            "duplicate": {"entries_evicted": 0, "bytes_freed": 0},
+            "age": {"entries_evicted": 9, "bytes_freed": 702_859_847u64, "disk_bytes_reclaimed": 702_859_847u64},
+            "size": {"entries_evicted": 300, "bytes_freed": 19_000_000_000u64, "disk_bytes_reclaimed": 19_000_000_000u64, "entries_unreclaimable": 4548}}});
+        assert_eq!(cleaned_up(&answer), "Cleaned up: 309 entries removed, 19.7 GB freed; 4548 kept, still shared with builds' target folders.");
+        assert_eq!(cleaned_up(&serde_json::json!({"ok": true, "evicted": 0, "gc": {}})), "Cleaned up: nothing to remove.");
+        // The record after a restart (locks swept, no entries looked at).
+        let swept = serde_json::json!({"last_run": "2026-11-16T04:04:53.998076260+00:00", "entries_evicted": 0, "bytes_held": 0, "entries_unreclaimable": 0, "key_locks_removed": 1314});
+        assert_eq!(cleanup_of(&swept).held, None);
+        let sized = serde_json::json!({"last_run": "2026-11-16T02:45:11.437513609+00:00", "entries_evicted": 309, "bytes_held": 450_481_390_286u64, "entries_unreclaimable": 4548});
+        assert_eq!(cleanup_of(&sized).held, Some(450_481_390_286));
     }
 
     #[test]

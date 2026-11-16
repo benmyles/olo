@@ -947,9 +947,15 @@ fn kache(roots: &Roots, procs: &[Proc], r: &mut Report) {
         return;
     }
     let gc: serde_json::Value = read(&store.join("gc_stats.json")).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
-    let held = gc["bytes_held"].as_u64().unwrap_or(0);
+    let n = |k: &str| gc[k].as_u64().unwrap_or(0);
+    let held = n("bytes_held");
     let limit = kache_limit(roots, &store);
-    if held > limit {
+    // (A clean-up that looked at no entries, as the sweep of locks after a
+    // restart, says nothing of what's held.)
+    let looked = n("entries_evicted") + n("entries_unreclaimable") + n("entries_pinned") + held > 0;
+    if !looked {
+        r.fine.push(Fine { title: "The build cache is running".into(), detail: "kache's daemon is running.".into() });
+    } else if held > limit {
         let n = gc["entries_unreclaimable"].as_u64().unwrap_or(0);
         r.findings.push(Finding {
             id: "kache:over-limit".into(),
@@ -3534,7 +3540,12 @@ mod tests {
         // Held under it: fine.
         w("home/me/.cache/kache/gc_stats.json", r#"{"bytes_held": 1000}"#);
         let r = scan(&roots);
-        assert!(r.find("kache:over-limit").is_none() && r.fine.iter().any(|f| f.title == "The build cache is running"));
+        assert!(r.find("kache:over-limit").is_none() && r.fine.iter().any(|f| f.title == "The build cache is running" && f.detail.contains("under its 102 GB limit")));
+        // A clean-up that looked at no entries (locks swept after a
+        // restart): nothing said of the limit.
+        w("home/me/.cache/kache/gc_stats.json", r#"{"entries_evicted": 0, "bytes_held": 0, "entries_unreclaimable": 0, "key_locks_removed": 1314}"#);
+        let r = scan(&roots);
+        assert!(r.find("kache:over-limit").is_none() && r.fine.iter().any(|f| f.title == "The build cache is running" && !f.detail.contains("limit")));
         assert_eq!((size_of("95GiB"), size_of("1.5 TB"), size_of("12"), size_of("lots")), (Some(102_005_473_280), Some(1_500_000_000_000), Some(12), None));
     }
 

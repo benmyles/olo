@@ -24,7 +24,7 @@
 //! command); `olo-kache --print` says it all as JSON, with no window;
 //! `olo-kache --glance` serves its Deskbar widget (`glance.rs`);
 //! `--start`, `--restart` and `--stop` act on the service with no window
-//! (Doctor's fix).
+//! (Doctor's fix), and `--clean-up` cleans up the store.
 
 mod data;
 mod glance;
@@ -150,7 +150,7 @@ impl Kache {
         // five seconds, a heartbeat; the socket goes and comes as the
         // daemon stops and starts.)
         let dir = data::cache_dir();
-        let watched = if data::demo() { Vec::new() } else { vec![dir.join("events.jsonl"), dir.join("gc_stats.json"), dir.join("daemon.sock"), data::config_path()] };
+        let watched = if data::demo() { Vec::new() } else { vec![dir.join("events.jsonl"), dir.join("gc_stats.json"), data::socket_path(), data::config_path()] };
         let to = Mutex::new(cx.messenger());
         let watch = (!watched.is_empty())
             .then(|| {
@@ -395,11 +395,15 @@ impl Kache {
                 let mut facts: Vec<(olo_kit::SharedString, olo_kit::SharedString)> =
                     vec![("On disk".into(), data::bytes(d.disk).into()), ("Entries".into(), style::thousands(d.entries as usize).into())];
                 if let Some(c) = &snap.cleanup {
-                    // (What builds' target folders still share: no clean-up takes it.)
-                    facts.push(("Held by builds".into(), data::bytes(c.held).into()));
+                    // (What builds' target folders still share: no clean-up
+                    // takes it. Known only from a clean-up that looked.)
+                    if let Some(held) = c.held {
+                        facts.push(("Held by builds".into(), data::bytes(held).into()));
+                    }
                     if c.at_ms > 0 {
                         let when = olo_kit::ago::ago_ms(c.at_ms, olo_kit::ago::long);
-                        facts.push(("Last clean-up".into(), format!("{when}, {} freed", data::bytes(c.freed)).into()));
+                        let freed = if c.freed > 0 { format!("{} freed", data::bytes(c.freed)) } else { "nothing freed".to_owned() };
+                        facts.push(("Last clean-up".into(), format!("{when}, {freed}").into()));
                     }
                 }
                 let over = d.limit > 0 && d.size > d.limit;
@@ -719,7 +723,7 @@ fn print() -> std::process::ExitCode {
     let out = serde_json::json!({
         "service": s.unit.as_ref().map(|u| serde_json::json!({"running": u.running(), "state": u.active, "since_ms": u.since_us / 1000, "pid": u.pid, "memory": u.memory})),
         "daemon": s.daemon.as_ref().map(|d| serde_json::json!({"version": d.version, "store_bytes": d.size, "disk_bytes": d.disk, "limit_bytes": d.limit, "entries": d.entries, "in_flight": d.in_flight})),
-        "last_cleanup": s.cleanup.as_ref().map(|c| serde_json::json!({"at_ms": c.at_ms, "freed_bytes": c.freed, "held_bytes": c.held})),
+        "last_cleanup": s.cleanup.as_ref().map(|c| serde_json::json!({"at_ms": c.at_ms, "freed_bytes": c.freed, "held_bytes": c.held, "held_entries": c.unreclaimable})),
         "pool": s.pool.as_ref().map(|p| serde_json::json!({"slots": p.size, "compiles": p.compiles, "tests": p.tests, "waiting": p.waiting})),
         "last_24_hours": {"hits": s.day.hits, "misses": s.day.misses, "not_cacheable": s.day.others, "hit_rate": s.day.rate(), "saved_ms": s.day.saved_ms, "by_hour": s.day.hours,
             "projects": s.day.projects.iter().map(|t| serde_json::json!({"name": t.name, "hits": t.hits, "misses": t.misses, "not_cacheable": t.others})).collect::<Vec<_>>(),
@@ -738,6 +742,19 @@ fn main() -> std::process::ExitCode {
     }
     if args.first().is_some_and(|a| a == "--glance") {
         return glance::serve();
+    }
+    // A clean-up now, with no window (agents), saying what it did.
+    if args.first().is_some_and(|a| a == "--clean-up") {
+        return match data::clean_up() {
+            Ok(said) => {
+                println!("{said}");
+                std::process::ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("olo-kache: {e}");
+                std::process::ExitCode::FAILURE
+            }
+        };
     }
     // The service started, restarted or stopped, with no window (Doctor's
     // fix; agents).
