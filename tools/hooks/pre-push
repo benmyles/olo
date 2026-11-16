@@ -66,3 +66,9 @@ if ! env -u WAYLAND_DISPLAY -u OLO_SOCKET /usr/bin/python3 tools/dev/ui-lint "${
     echo "pre-push: the live layout lint found the above; fix it (or OLO_SKIP_UI_LINT=1, saying why)." >&2
     exit 1
 fi
+# (Changed while it built and looked: what it checked may not be what's
+# pushed. 2026-11-15: edits begun mid-push were half in its build.)
+if ! git diff --quiet HEAD --; then
+    echo "pre-push: the tree changed while it built and looked, so that isn't what's pushed. Push again once the changes are committed or set aside." >&2
+    exit 1
+fi

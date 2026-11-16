@@ -144,7 +144,7 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_kit::Proxy, wake: Option<String>,
             use olo_system::nvme_power::{Drive, PowerState};
             let state = |index: u8, max_watts: f32, operational: bool| PowerState { index, max_watts, operational };
             s.drives = vec![(
-                Drive { name: "nvme0".into(), model: "SKHynix_HFS002TFM9X179N".into(), serial: "SJ0001".into() },
+                Drive { name: "nvme0".into(), model: "SKHynix_HFS002TFM9X179N".into(), serial: "SJ0001".into(), size: 2_048_408_248_320 },
                 vec![state(0, 8.25, true), state(1, 6.3, true), state(2, 5.4, true), state(3, 0.05, false)],
             )];
         }
@@ -446,7 +446,8 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
         ui.add(head);
         // A row: its name, and a menu per column.
         let row = |ui: &mut Ui, id: &str, name: String, cells: Vec<(Vec<SharedString>, usize, Box<dyn Fn(&mut Tuning, usize)>)>| {
-            let mut r = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().w(px(LABEL_W)).flex_shrink_0().child(StringView::new(name.clone()).color(style::c(plain))));
+            // (A long name cut with "…": whole in its tip.)
+            let mut r = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().w(px(LABEL_W)).flex_shrink_0().child(StringView::new(name.clone()).cut(true).color(style::c(plain))));
             for (k, (options, chosen, set)) in cells.into_iter().enumerate() {
                 let shared = st.shared.clone();
                 let on = ui.on_view(move |_, &i: &usize, cx: &mut Cx<PanelView>| {
@@ -512,8 +513,10 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
                 .collect();
             row(ui, &e.gpu.pci, short_name(&e.gpu), cells);
         }
-        // Each NVMe drive: As It Is unless chosen; with the watts each
-        // choice allows once the follower has read them.
+        // Each NVMe drive by its own name (`nvme_power::titles`): As It Is
+        // unless chosen; with the watts each choice allows once the
+        // follower has read them.
+        let titles = olo_system::nvme_power::titles(&drives.iter().map(|(d, _)| d.clone()).collect::<Vec<_>>());
         for (k, (d, states)) in drives.iter().enumerate() {
             use olo_system::nvme_power::{NvmePreset, choice_name};
             // (A drive with one working state has nothing cooler.)
@@ -532,8 +535,7 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
                     (names(battery), chosen, set)
                 })
                 .collect();
-            let name = if drives.len() == 1 { "SSD".to_owned() } else { format!("SSD {}", k + 1) };
-            row(ui, &format!("nvme-{}", d.serial), name, cells);
+            row(ui, &format!("nvme-{}", d.serial), titles[k].clone(), cells);
         }
         ui.note("Saving Power slows the processors and turns turbo off, Balanced speeds them up for work (leaning to saving on battery), Fastest keeps them quick; Top speed caps them (Balanced's 75% leaves out their hottest quarter). A GPU's Cooler and Quieter caps its clocks (Custom: its own, on Graphics), an SSD's Cooler and Coolest the power it may draw. On battery, a row not As the Mode holds whatever the mode.");
         match (mode, follower) {
@@ -544,9 +546,9 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
                 let cpu = kept.plan.cpu_now(m, on_battery).name();
                 let top = kept.plan.cpu_top_now(m, on_battery);
                 let mut now: Vec<String> = gpus_now;
+                let titles = olo_system::nvme_power::titles(&drives.iter().map(|(d, _)| d.clone()).collect::<Vec<_>>());
                 for (k, (d, _)) in drives.iter().enumerate() {
-                    let name = if drives.len() == 1 { "the SSD".to_owned() } else { format!("SSD {}", k + 1) };
-                    now.push(format!("{name} {}", kept.plan.nvme_now(m, on_battery, &d.serial).name()));
+                    now.push(format!("the {} {}", titles[k], kept.plan.nvme_now(m, on_battery, &d.serial).name()));
                 }
                 ui.note(format!("Now {}{}: the processors {cpu} at up to {top}%, {}.", m.label(), if on_battery { ", on battery" } else { "" }, now.join(", ")));
             }

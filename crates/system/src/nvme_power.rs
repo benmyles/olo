@@ -25,13 +25,16 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 /// An NVMe drive (its controller), as /sys says it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Drive {
     /// "nvme0": its character device is /dev/nvme0.
     pub name: String,
     pub model: String,
     /// What it's known by in the plan (names can change between starts).
     pub serial: String,
+    /// What it holds, its namespaces together (bytes).
+    #[serde(default)]
+    pub size: u64,
 }
 
 impl Drive {
@@ -40,6 +43,40 @@ impl Drive {
     pub fn label(&self) -> String {
         self.model.replace('_', " ")
     }
+}
+
+/// Each drive's name for people, in order (Ben, 2026-11-15: "use their
+/// device name or something instead of generic SSD"): its model, with
+/// its size where another has that model too, and its device where even
+/// that's the same ("SKHynix HFS002TFM9X179N"; "Samsung SSD 990 PRO, 2
+/// TB"; "…, nvme1").
+pub fn titles(drives: &[Drive]) -> Vec<String> {
+    let label = |d: &Drive| {
+        let l = d.label();
+        if l.trim().is_empty() { d.name.clone() } else { l }
+    };
+    let sized = |d: &Drive| if d.size > 0 { format!("{}, {}", label(d), size_words(d.size)) } else { label(d) };
+    drives
+        .iter()
+        .map(|d| {
+            let alike = |f: &dyn Fn(&Drive) -> String| drives.iter().filter(|o| f(o) == f(d)).count() > 1;
+            if !alike(&label) {
+                label(d)
+            } else if !alike(&sized) {
+                sized(d)
+            } else {
+                format!("{}, {}", sized(d), d.name)
+            }
+        })
+        .collect()
+}
+
+/// A drive's size as its maker says it: "2 TB", "1.9 TB", "512 GB".
+pub fn size_words(bytes: u64) -> String {
+    let b = bytes as f64;
+    let (n, unit) = if b >= 1e12 { (b / 1e12, "TB") } else { (b / 1e9, "GB") };
+    let r = if n >= 10.0 { format!("{n:.0}") } else { format!("{n:.1}") };
+    format!("{} {unit}", r.trim_end_matches(".0"))
 }
 
 /// One of a drive's power states.
@@ -115,7 +152,18 @@ pub fn drives_under(class: &Path) -> Vec<Drive> {
             let p = e.path();
             // (Only controllers on PCIe: not fabrics' or a namespace's
             // generic node.)
-            (name.starts_with("nvme") && read(p.join("transport")) == "pcie").then(|| Drive { name, model: read(p.join("model")), serial: read(p.join("serial")) })
+            (name.starts_with("nvme") && read(p.join("transport")) == "pcie").then(|| {
+                // Its namespaces' sizes ("nvme0n1/size", in 512-byte sectors).
+                let size = std::fs::read_dir(&p)
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .filter(|n| n.file_name().to_string_lossy().strip_prefix(&name).is_some_and(|rest| rest.starts_with('n') && rest[1..].chars().all(|c| c.is_ascii_digit())))
+                    .filter_map(|n| read(n.path().join("size")).parse::<u64>().ok())
+                    .sum::<u64>()
+                    * 512;
+                Drive { model: read(p.join("model")), serial: read(p.join("serial")), size, name }
+            })
         })
         .collect();
     v.sort_by(|a, b| a.name.len().cmp(&b.name.len()).then(a.name.cmp(&b.name)));
@@ -281,10 +329,26 @@ mod tests {
             w(&format!("{n}/model"), &format!("{model}   \n"));
             w(&format!("{n}/serial"), &format!("S{n}\n"));
         }
+        // Its namespace's size (this ThinkPad's): 2 TB.
+        w("nvme0/nvme0n1/size", "4000797360\n");
         w("nvme-fabrics/transport", "");
         let d = drives_under(&root);
         assert_eq!(d.iter().map(|d| d.name.as_str()).collect::<Vec<_>>(), ["nvme0", "nvme1"]);
         assert_eq!((d[0].label(), d[0].serial.as_str()), ("SKHynix HFS002TFM9X179N".to_owned(), "Snvme0"));
+        assert_eq!((d[0].size, d[1].size), (4_000_797_360 * 512, 0));
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// Drives by their model; two alike told apart by size, then by
+    /// device.
+    #[test]
+    fn drives_are_named_apart() {
+        let d = |name: &str, model: &str, size: u64| Drive { name: name.into(), model: model.into(), serial: format!("S{name}"), size };
+        assert_eq!(titles(&[d("nvme0", "SKHynix_HFS002TFM9X179N", 2_048_408_248_320)]), ["SKHynix HFS002TFM9X179N"]);
+        let two = titles(&[d("nvme0", "Samsung SSD 990 PRO", 2_000_398_934_016), d("nvme1", "Samsung SSD 990 PRO", 1_000_204_886_016)]);
+        assert_eq!(two, ["Samsung SSD 990 PRO, 2 TB", "Samsung SSD 990 PRO, 1 TB"]);
+        let twins = titles(&[d("nvme0", "WD SN850X", 2_000_398_934_016), d("nvme1", "WD SN850X", 2_000_398_934_016), d("nvme2", "Other", 0)]);
+        assert_eq!(twins, ["WD SN850X, 2 TB, nvme0", "WD SN850X, 2 TB, nvme1", "Other"]);
+        assert_eq!((size_words(512_110_190_592), size_words(1_920_383_410_176), size_words(15_360_000_000_000)), ("512 GB".into(), "1.9 TB".into(), "15 TB".into()));
     }
 }

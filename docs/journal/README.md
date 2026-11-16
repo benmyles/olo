@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Power: each SSD by its own name
+
+*18:05* — Power Modes named its NVMe row "SSD" ("SSD 1", "SSD 2" with more), which said nothing of which drive is which. Each is named by its model now (here SKHynix HFS002TFM9X179N, cut with its whole name in the tip), with its size, then its device, added only where two would read alike; the summary line says it too. Each was already set on its own, by its serial (light, 2x).
+
+![Power: each SSD by its own name](2026-11-15/180522-power-each-ssd-by-its-own-name.png)
+
 ### Agent Screens: every screen's last use as it happens
 
 *18:00* — A screen's time in the sidebar moved on only when you clicked it: only the chosen screen's history was followed, the others' read only when screens came or went. Now every listed screen's history is followed (left: beta 20 min; middle: an agent acted on it, now, with no click), and every time said relative to now in Olo follows the clock by itself (right, a minute later: 2 min and 1 min). The kit's olo_kit::ago says it and the window draws again exactly when the words change, nothing in between (light, 2x).

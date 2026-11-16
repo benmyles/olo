@@ -8388,7 +8388,12 @@ configurable with reasonable defaults"), in three tabs:
   it spends most (its voltage climbs with it), so the cap takes away the
   hottest bursts and keeps most of the speed; Power Saver, without
   turbo, holds the ThinkPad's P-cores at 1.9 GHz of their 4.7. Then a
-  row for each NVMe drive (`olo_system::nvme_power`; Ben, 2026-11-13:
+  row for each NVMe drive, named by its model (`nvme_power::titles`:
+  "SKHynix HFS002TFM9X179N", its size then its device added only where
+  two would read alike, "Samsung SSD 990 PRO, 2 TB"; a long one cut, whole
+  in its tip; the summary line the same; Ben, 2026-11-15: "use their
+  device name or something instead of generic SSD"; each set on its own
+  by its serial; `Drive::size` from its namespaces) (`olo_system::nvme_power`; Ben, 2026-11-13:
   "add the ability to adjust/customize nvme power for each profile for
   when a user wants to get their nvme drive to run a bit cooler (but
   default should be whatever it is now / by default)"): As It Is (the

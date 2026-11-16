@@ -1549,7 +1549,10 @@ something nobody here has is in "Blocked", with what it waits for.
   for when it's back; the Graphics tab's GPU rows likewise if they're
   only numbered. Tried with two drives (a test home with fakes of
   `/sys/class/nvme`), and on this ThinkPad's one (SKHynix
-  HFS002TFM9X179N, 1.9 TB).
+  HFS002TFM9X179N, 1.9 TB). Names done
+  (HACKING, Power: `nvme_power::titles`, its size and device where two
+  are alike, the summary too). *Left:* SATA SSDs (their link power,
+  ALPM, through the follower) and the Graphics tab's rows if numbered.
 
 - **Kache: an Olo app for the build cache** (Ben, 2026-11-15: "an olo
   native kache frontend app that lets me monitor the status of kache,
