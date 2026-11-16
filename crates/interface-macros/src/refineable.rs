@@ -1,20 +1,10 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
-use syn::{
-    DeriveInput, Field, FieldsNamed, PredicateType, TraitBound, Type, TypeParamBound, WhereClause,
-    WherePredicate, parse_macro_input, parse_quote,
-};
+use syn::{DeriveInput, Field, FieldsNamed, PredicateType, TraitBound, Type, TypeParamBound, WhereClause, WherePredicate, parse_macro_input, parse_quote};
 
-#[proc_macro_derive(Refineable, attributes(refineable))]
-pub fn derive_refineable(input: TokenStream) -> TokenStream {
-    let DeriveInput {
-        ident,
-        data,
-        generics,
-        attrs,
-        ..
-    } = parse_macro_input!(input);
+pub(crate) fn derive_refineable(input: TokenStream) -> TokenStream {
+    let DeriveInput { ident, data, generics, attrs, .. } = parse_macro_input!(input);
 
     let refineable_attr = attrs.iter().find(|attr| attr.path().is_ident("refineable"));
 
@@ -40,10 +30,7 @@ pub fn derive_refineable(input: TokenStream) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     let fields = match data {
-        syn::Data::Struct(syn::DataStruct {
-            fields: syn::Fields::Named(FieldsNamed { named, .. }),
-            ..
-        }) => named.into_iter().collect::<Vec<Field>>(),
+        syn::Data::Struct(syn::DataStruct { fields: syn::Fields::Named(FieldsNamed { named, .. }), .. }) => named.into_iter().collect::<Vec<Field>>(),
         _ => panic!("This derive macro only supports structs with named fields"),
     };
 
@@ -56,7 +43,7 @@ pub fn derive_refineable(input: TokenStream) -> TokenStream {
         .map(|f| {
             if derives_serialize {
                 if is_refineable_field(f) {
-                    quote! { #[serde(default, skip_serializing_if = "::refineable::IsEmpty::is_empty")] }
+                    quote! { #[serde(default, skip_serializing_if = "crate::refineable::IsEmpty::is_empty")] }
                 } else {
                     quote! { #[serde(skip_serializing_if = "::std::option::Option::is_none")] }
                 }
@@ -76,12 +63,7 @@ pub fn derive_refineable(input: TokenStream) -> TokenStream {
                 colon_token: Default::default(),
                 bounds: {
                     let mut punctuated = syn::punctuated::Punctuated::new();
-                    punctuated.push_value(TypeParamBound::Trait(TraitBound {
-                        paren_token: None,
-                        modifier: syn::TraitBoundModifier::None,
-                        lifetimes: None,
-                        path: parse_quote!(Clone),
-                    }));
+                    punctuated.push_value(TypeParamBound::Trait(TraitBound { paren_token: None, modifier: syn::TraitBoundModifier::None, lifetimes: None, path: parse_quote!(Clone) }));
 
                     punctuated
                 },
@@ -95,10 +77,7 @@ pub fn derive_refineable(input: TokenStream) -> TokenStream {
             where_clause.predicates.extend(type_param_bounds);
             where_clause.clone()
         }
-        None => WhereClause {
-            where_token: Default::default(),
-            predicates: type_param_bounds.into_iter().collect(),
-        },
+        None => WhereClause { where_token: Default::default(), predicates: type_param_bounds.into_iter().collect() },
     };
 
     let refineable_refine_assignments: Vec<TokenStream2> = fields
@@ -456,7 +435,7 @@ pub fn derive_refineable(input: TokenStream) -> TokenStream {
             }
         }
 
-        impl #impl_generics ::refineable::IsEmpty for #refinement_ident #ty_generics
+        impl #impl_generics crate::refineable::IsEmpty for #refinement_ident #ty_generics
             #where_clause
         {
             fn is_empty(&self) -> bool {
@@ -504,9 +483,7 @@ pub fn derive_refineable(input: TokenStream) -> TokenStream {
 }
 
 fn is_refineable_field(f: &Field) -> bool {
-    f.attrs
-        .iter()
-        .any(|attr| attr.path().is_ident("refineable"))
+    f.attrs.iter().any(|attr| attr.path().is_ident("refineable"))
 }
 
 fn is_optional_field(f: &Field) -> bool {
@@ -529,11 +506,7 @@ fn get_wrapper_type(field: &Field, ty: &Type) -> syn::Type {
             panic!("Expected struct type for a refineable field");
         };
         let refinement_struct_name = format_ident!("{}Refinement", struct_name);
-        let generics = if let Type::Path(tp) = ty {
-            &tp.path.segments.last().unwrap().arguments
-        } else {
-            &syn::PathArguments::None
-        };
+        let generics = if let Type::Path(tp) = ty { &tp.path.segments.last().unwrap().arguments } else { &syn::PathArguments::None };
         parse_quote!(#refinement_struct_name #generics)
     } else if is_optional_field(field) {
         ty.clone()

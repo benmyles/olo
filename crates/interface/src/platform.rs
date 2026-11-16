@@ -13,7 +13,6 @@ use image::codecs::gif::GifDecoder;
 use image::{AnimationDecoder as _, Frame};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use schemars::JsonSchema;
-use seahash::SeaHasher;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::borrow::Cow;
@@ -244,9 +243,7 @@ pub(crate) struct RequestFrameOptions {
 }
 
 pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
-    fn bounds(&self) -> Bounds<Pixels>;
     fn is_maximized(&self) -> bool;
-    fn window_bounds(&self) -> WindowBounds;
     fn content_size(&self) -> Size<Pixels>;
     /// Olo: whether the size it opened at stands in for one the
     /// compositor hasn't given yet (a lock surface, a layer surface
@@ -257,11 +254,7 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     }
     fn resize(&mut self, size: Size<Pixels>);
     fn scale_factor(&self) -> f32;
-    fn appearance(&self) -> WindowAppearance;
     fn display(&self) -> Option<Rc<dyn PlatformDisplay>>;
-    fn mouse_position(&self) -> Point<Pixels>;
-    fn modifiers(&self) -> Modifiers;
-    fn capslock(&self) -> Capslock;
     fn activate(&self);
     /// Brings the window forward with an activation token another
     /// program gave (a notification clicked): unlike [`activate`](Self::activate),
@@ -269,10 +262,7 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn activate_with_token(&self, _token: &str) {
         self.activate()
     }
-    fn is_active(&self) -> bool;
-    fn is_hovered(&self) -> bool;
     fn set_title(&mut self, title: &str);
-    fn set_background_appearance(&self, background_appearance: WindowBackgroundAppearance);
     /// Olo: keeps the screen from dimming, locking or sleeping while the
     /// window shows (a playing video), until called with `false`.
     fn set_keep_awake(&self, _on: bool) {}
@@ -308,13 +298,7 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
             (b.released)(b.id)
         }
     }
-    fn minimize(&self);
-    fn zoom(&self);
     fn toggle_fullscreen(&self);
-    /// Olo: close as the compositor's close does (the window's
-    /// should-close hook asked first: its confirmations), on the event
-    /// loop's next turn, outside any update of the window.
-    fn request_close(&self) {}
     fn is_fullscreen(&self) -> bool;
     /// The callback draws a frame if anything changed, and says if it did.
     fn on_request_frame(&self, callback: Box<dyn FnMut(RequestFrameOptions) -> bool>);
@@ -323,10 +307,6 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn frame_waker(&self) -> Option<Rc<dyn Fn()>> {
         None
     }
-    /// Draws the window's next frame now, though the compositor hasn't
-    /// said the last is showing (it may never, for a window out of
-    /// sight): for a frame wanted for itself, as a layout review's (Olo).
-    fn draw_now(&self) {}
     /// How to draw text for the display the window is on (Olo).
     fn text_rendering(&self) -> crate::TextRendering {
         crate::TextRendering::default()
@@ -352,16 +332,9 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas>;
 
     // macOS specific methods
-    fn get_title(&self) -> String {
-        String::new()
-    }
 
     // Linux specific methods
-    fn inner_window_bounds(&self) -> WindowBounds {
-        self.window_bounds()
-    }
     fn start_window_move(&self) {}
-    fn start_window_resize(&self, _edge: ResizeEdge) {}
     /// Olo: drags `drag` out of the window, under the pointer (only while
     /// a button is held), to wherever it's dropped; `done` gets the
     /// action it was dropped as, or None.
@@ -371,15 +344,11 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn surface_id(&self) -> Option<u32> {
         None
     }
-    fn window_decorations(&self) -> Decorations {
-        Decorations::Server
-    }
     /// Olo: which sides the compositor holds (xdg's tiled states: in a
     /// tile, maximized or full screen), whoever draws the decorations.
     fn tiling(&self) -> Tiling {
         Tiling::default()
     }
-    fn set_app_id(&mut self, _app_id: &str) {}
     /// Olo: draw in `space` from the next frame, telling the compositor;
     /// whether it does (a compositor without colour management: sRGB).
     fn set_gamut(&mut self, _space: crate::Gamut) -> bool {
@@ -389,9 +358,6 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// (`crate::set_display_hdr`).
     fn on_hdr_display(&self) -> bool {
         false
-    }
-    fn map_window(&mut self) -> anyhow::Result<()> {
-        Ok(())
     }
     fn gpu_specs(&self) -> Option<GpuSpecs>;
 
@@ -977,17 +943,8 @@ pub(crate) struct WindowParams {
     /// The kind of window to create
     pub kind: WindowKind,
 
-    /// Whether the window should be movable by the user
-    pub is_movable: bool,
-
     /// Whether the window should be resizable by the user
     pub is_resizable: bool,
-
-    /// Whether the window should be minimized by the user
-    pub is_minimizable: bool,
-    pub focus: bool,
-    pub show: bool,
-    pub display_id: Option<DisplayId>,
 
     /// Olo: the window's tags (`WindowOptions::toplevel_tag`).
     pub toplevel_tag: Option<String>,
@@ -1794,11 +1751,6 @@ impl ClipboardString {
         T: for<'a> Deserialize<'a>,
     {
         self.metadata.as_ref().and_then(|m| serde_json::from_str(m).ok())
-    }
-    pub(crate) fn text_hash(text: &str) -> u64 {
-        let mut hasher = SeaHasher::new();
-        text.hash(&mut hasher);
-        hasher.finish()
     }
 }
 

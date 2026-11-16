@@ -1,7 +1,7 @@
 use crate::Globals;
 use crate::platform::linux::{DEFAULT_CURSOR_ICON_NAME, log_cursor_icon_warning};
+use crate::util::ResultExt;
 use anyhow::{Context as _, anyhow};
-use util::ResultExt;
 
 use wayland_client::Connection;
 use wayland_client::protocol::wl_surface::WlSurface;
@@ -54,19 +54,10 @@ impl Cursor {
         }
     }
 
-    pub fn set_theme(&mut self, theme_name: String) {
-        self.set_theme_internal(Some(theme_name));
-    }
-
     fn set_scaled_size(&mut self, scaled_size: u32) {
         self.scaled_size = scaled_size;
         let theme_name = self.loaded_theme.as_ref().and_then(|loaded_theme| loaded_theme.name.clone());
         self.set_theme_internal(theme_name);
-    }
-
-    pub fn set_size(&mut self, size: u32) {
-        self.size = size;
-        self.set_scaled_size(size);
     }
 
     pub fn set_icon(&mut self, wl_pointer: &WlPointer, serial_id: u32, mut cursor_icon_names: &[&str], scale: i32) {

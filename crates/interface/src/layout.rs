@@ -395,7 +395,7 @@ impl From<Size<Pixels>> for Size<AvailableSpace> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AvailableSpace, ParentElement as _, Styled as _, div, px};
+    use crate::{AvailableSpace, Styled as _, div, px};
 
     fn style(element: crate::Element) -> Style {
         let mut style = Style::default();

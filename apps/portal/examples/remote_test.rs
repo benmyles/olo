@@ -63,7 +63,6 @@ fn main() {
     let _: () = portal.call("NotifyKeyboardKeysym", &(&session, opts(&[]), 0x71i32, 0u32)).unwrap();
     let stream = UnixStream::from(std::os::fd::OwnedFd::from(fd));
     let context = ei::Context::new(stream).unwrap();
-    let mut serial = 0;
     let mut sequence = 0;
     let mut sent = (false, false);
     let start = std::time::Instant::now();
@@ -90,7 +89,6 @@ fn main() {
                     }
                     handshake.finish();
                 }
-                ei::Event::Handshake(_, ei::handshake::Event::Connection { serial: s, .. }) => serial = s,
                 ei::Event::Connection(_, ei::connection::Event::Ping { ping }) => ping.done(0),
                 ei::Event::Seat(seat, ei::seat::Event::Capability { mask, interface }) => {
                     println!("seat offers {interface}");
@@ -104,8 +102,7 @@ fn main() {
                 ei::Event::Device(device, ei::device::Event::Interface { object }) => {
                     devices.entry(device).or_default().insert(object.interface().to_owned(), object);
                 }
-                ei::Event::Device(device, ei::device::Event::Resumed { serial: s }) => {
-                    serial = s;
+                ei::Event::Device(device, ei::device::Event::Resumed { serial }) => {
                     let interfaces = devices.get(&device).cloned().unwrap_or_default();
                     if let Some(pointer) = interfaces.get("ei_pointer").and_then(|o| o.clone().downcast::<ei::Pointer>()) {
                         device.start_emulating(serial, sequence);

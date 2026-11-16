@@ -40,6 +40,8 @@ fn child() {
             std::thread::sleep(std::time::Duration::from_secs(30));
         }
         "overflow" => {
+            // (Overflows the stack on purpose: what the crash handler reports.)
+            #[allow(unconditional_recursion)]
             fn deeper(n: u64) -> u64 {
                 let a = std::hint::black_box([n as u8; 4096]);
                 deeper(n + 1) + u64::from(a[0])

@@ -1,4 +1,8 @@
-pub use derive_refineable::Refineable;
+//! Styles laid over styles: a `Refineable` type's refinement (its fields
+//! each optional) refines a base, and a `Cascade` of them merges in order.
+//! (Began as Zed's gpui_refineable, Apache-2.0: LICENSE-APACHE.)
+
+pub use olo_interface_macros::Refineable;
 
 /// A trait for types that can be refined with partial updates.
 ///

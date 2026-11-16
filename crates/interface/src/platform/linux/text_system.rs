@@ -15,8 +15,8 @@ use crate::{
     SubpixelLayout, TextRendering, point, px, size,
 };
 use anyhow::{Context as _, Result, anyhow};
-use collections::HashMap;
 use parking_lot::RwLock;
+use rustc_hash::FxHashMap;
 use skrifa::{
     FontRef, MetadataProvider,
     instance::{Location, Size as Ppem},
@@ -34,7 +34,6 @@ struct Source {
     data: Data,
     index: u32,
     family: String,
-    italic: bool,
     /// A static face's weight; a variable one's default.
     weight: f32,
     /// The `wght` axis's range, if it has one.
@@ -72,29 +71,29 @@ struct State {
     /// The system's, loaded the first time they're needed.
     system: Option<fontdb::Database>,
     sources: Vec<Source>,
-    source_ids: HashMap<(bool, fontdb::ID), usize>,
+    source_ids: FxHashMap<(bool, fontdb::ID), usize>,
     instances: Vec<Instance>,
-    instance_ids: HashMap<(usize, u32, Vec<(String, u32)>), FontId>,
-    font_ids: HashMap<(String, u32, bool, Vec<(String, u32)>), FontId>,
+    instance_ids: FxHashMap<(usize, u32, Vec<(String, u32)>), FontId>,
+    font_ids: FxHashMap<(String, u32, bool, Vec<(String, u32)>), FontId>,
     /// The face found for a character none of a chain has, if any.
-    last_resort: HashMap<char, Option<usize>>,
-    hinting: HashMap<(usize, u32), HintingInstance>,
+    last_resort: FxHashMap<char, Option<usize>>,
+    hinting: FxHashMap<(usize, u32), HintingInstance>,
     /// Glyphs drawn for their bounds, until their pixels are asked for;
     /// colour ones (emoji: slow to draw, ~60 µs) kept for every window
     /// after, up to `KEEP` bytes of them (`kept`).
-    drawn: HashMap<RenderGlyphParams, (Bounds<DevicePixels>, Vec<u8>)>,
+    drawn: FxHashMap<RenderGlyphParams, (Bounds<DevicePixels>, Vec<u8>)>,
     kept: usize,
     buffer: Option<harfrust::UnicodeBuffer>,
     /// Each face's shape plans, by the text's direction, script and
     /// language: harfrust's `shape` made one for every run it shaped, most
     /// of the time a row of a log took (a screen of new rows, 20–30 ms).
-    plans: HashMap<(usize, harfrust::Direction, harfrust::Script, Option<harfrust::Language>), harfrust::ShapePlan>,
+    plans: FxHashMap<(usize, harfrust::Direction, harfrust::Script, Option<harfrust::Language>), harfrust::ShapePlan>,
     /// Words of plain ASCII text as each face shaped them, in its units,
     /// by a hash of the face and the word (the word kept to check): a word
     /// is shaped once, as browsers do (harfrust takes ~220 ns a character
     /// on Noto Sans; a screen of log rows, mostly the same words, 7–12
     /// ms). Emptied when it grows past `WORDS`.
-    words: HashMap<u64, (Box<str>, Vec<WordGlyph>)>,
+    words: FxHashMap<u64, (Box<str>, Vec<WordGlyph>)>,
     /// Fills glyphs' outlines: one, kept, as every glyph is small.
     raster: ab_glyph_rasterizer::Rasterizer,
 }
@@ -136,17 +135,17 @@ impl OloTextSystem {
             own,
             system: None,
             sources: Vec::new(),
-            source_ids: HashMap::default(),
+            source_ids: FxHashMap::default(),
             instances: Vec::new(),
-            instance_ids: HashMap::default(),
-            font_ids: HashMap::default(),
-            last_resort: HashMap::default(),
-            hinting: HashMap::default(),
-            drawn: HashMap::default(),
+            instance_ids: FxHashMap::default(),
+            font_ids: FxHashMap::default(),
+            last_resort: FxHashMap::default(),
+            hinting: FxHashMap::default(),
+            drawn: FxHashMap::default(),
             kept: 0,
             buffer: Some(harfrust::UnicodeBuffer::new()),
-            plans: HashMap::default(),
-            words: HashMap::default(),
+            plans: FxHashMap::default(),
+            words: FxHashMap::default(),
             raster: ab_glyph_rasterizer::Rasterizer::new(0, 0),
         }))
     }
@@ -423,7 +422,6 @@ impl State {
         let db = if system { self.system.as_ref()? } else { &self.own };
         let info = db.face(id)?;
         let family = info.families.first()?.0.clone();
-        let italic = info.style != fontdb::Style::Normal;
         let weight = f32::from(info.weight.0);
         let data: Data = match &info.source {
             fontdb::Source::Binary(data) => data.clone(),
@@ -442,7 +440,7 @@ impl State {
         let color = font.colr().is_ok() || font.cbdt().is_ok() || font.sbix().is_ok() || font.ebdt().is_ok();
         let shaper = harfrust::ShaperData::new(&font);
         let source = self.sources.len();
-        self.sources.push(Source { data: data.clone(), index, family, italic, weight, wght, color, shaper });
+        self.sources.push(Source { data: data.clone(), index, family, weight, wght, color, shaper });
         self.source_ids.insert((system, id), source);
         Some(source)
     }
@@ -629,7 +627,7 @@ impl State {
                 let word = &part[start..i];
                 let key = {
                     use std::hash::{Hash, Hasher};
-                    let mut h = collections::FxHasher::default();
+                    let mut h = rustc_hash::FxHasher::default();
                     (face.0, word).hash(&mut h);
                     h.finish()
                 };

@@ -340,11 +340,6 @@ impl Display {
         let _ = self.ask(|_| crate::platform::unlock_session_on_display());
     }
 
-    /// Whether the display thread has ended.
-    pub(crate) fn is_gone(&self) -> bool {
-        self.gone.load(Ordering::Acquire)
-    }
-
     /// Opens a window: its surface made, its stage ready for what its
     /// looper commits. Waits for the display thread (a few milliseconds:
     /// the GPU's side of a window is made here).

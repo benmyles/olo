@@ -15,7 +15,7 @@ use std::{
 
 use olo_kit::card::{Card, Part, Row};
 use olo_protocol::{
-    deskbar::{Measure, Size, Widget},
+    deskbar::{Measure, Widget},
     glance::{self as g, Body, Glance, Request, Requests, Timeline},
 };
 
@@ -236,14 +236,4 @@ pub fn opens(w: &Widget) -> Option<(String, &'static str)> {
     let Measure::App { app, .. } = &w.measure else { return None };
     let p = g::provider(app)?;
     Some((format!("run:{}", p.program), p.name))
-}
-
-/// A beside-row cell's height for `w` (its icon and value, its title
-/// under): as the meters' by size.
-pub fn cell_height(size: Size) -> f32 {
-    match size {
-        Size::Small => 32.0,
-        Size::Medium => 40.0,
-        Size::Large => 52.0,
-    }
 }

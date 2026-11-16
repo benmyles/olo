@@ -1,4 +1,4 @@
-use crate::{DevicePixels, Pixels, Result, SharedString, Size, size};
+use crate::{DevicePixels, Result, SharedString, Size, size};
 use smallvec::SmallVec;
 
 use image::{Delay, Frame};
@@ -62,8 +62,6 @@ pub enum Gamut {
 pub struct RenderImage {
     /// The ID associated with this image
     pub id: ImageId,
-    /// The scale factor of this image on render.
-    pub(crate) scale_factor: f32,
     data: SmallVec<[Frame; 1]>,
     /// Olo: what its numbers are in (sRGB unless said).
     pub(crate) color_space: Gamut,
@@ -85,7 +83,7 @@ impl RenderImage {
     pub fn new(data: impl Into<SmallVec<[Frame; 1]>>) -> Self {
         static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
-        Self { id: ImageId(NEXT_ID.fetch_add(1, SeqCst)), scale_factor: 1.0, data: data.into(), color_space: Gamut::Srgb, deep: None }
+        Self { id: ImageId(NEXT_ID.fetch_add(1, SeqCst)), data: data.into(), color_space: Gamut::Srgb, deep: None }
     }
 
     /// Olo: a picture of `width` × `height` deeper than eight bits a
@@ -132,11 +130,6 @@ impl RenderImage {
         }
         let (width, height) = self.data[frame_index].buffer().dimensions();
         size(width.into(), height.into())
-    }
-
-    /// Get the size of this image, in pixels for display, adjusted for the scale factor.
-    pub(crate) fn render_size(&self, frame_index: usize) -> Size<Pixels> {
-        self.size(frame_index).map(|v| (v.0 as f32 / self.scale_factor).into())
     }
 
     /// Get the delay of this frame from the previous

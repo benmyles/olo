@@ -241,10 +241,7 @@ pub fn raw(place: &Place, t: i64) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        model::{Layer, Stat},
-        provider::Provider as _,
-    };
+    use crate::model::{Layer, Stat};
 
     #[test]
     fn the_demo_reads_as_a_whole_forecast() {

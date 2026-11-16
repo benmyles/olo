@@ -10,13 +10,13 @@
 
 use std::{any::Any, sync::Arc};
 
-use refineable::Refineable as _;
+use crate::refineable::Refineable as _;
 use slotmap::new_key_type;
 use smallvec::SmallVec;
 
 use crate::{
-    AvailableSpace, Bounds, ContentMask, ControlState, Element, ElementId, Overflow, Pixels, Point, SharedString, Size, Style, StyleRefinement, TextAlign, TextOverflow, TextRun, TextStyle,
-    TextStyleRefinement, WhiteSpace, WindowTextSystem, WrappedLine,
+    AvailableSpace, Bounds, ControlState, Element, ElementId, Overflow, Pixels, Point, SharedString, Size, Style, StyleRefinement, TextAlign, TextOverflow, TextRun, TextStyle, TextStyleRefinement,
+    WhiteSpace, WindowTextSystem, WrappedLine,
     element::{CanvasSpec, Interactivity, Kind},
     layout::LayoutId,
     painter::{Gfx, Notes, Painter},
@@ -1039,17 +1039,6 @@ pub(crate) fn text_index_at(laid: &TextLaid, position: Point<Pixels>) -> usize {
         }
     }
     line_start.saturating_sub(1)
-}
-
-/// A node as something outside the tree may know it (what a view's
-/// drawing is given of the view it belongs to).
-pub(crate) fn view_any(view: &dyn crate::view::AnyView) -> &dyn Any {
-    view.as_any()
-}
-
-/// (Clips are the padding box of what scrolls or hides its overflow.)
-pub(crate) fn clip_of(style: &Style, bounds: Bounds<Pixels>, rem_size: Pixels, scale_factor: f32) -> Option<ContentMask<Pixels>> {
-    style.overflow_mask(bounds, rem_size, scale_factor)
 }
 
 /// What a recording needs of the window to be made.

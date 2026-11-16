@@ -218,9 +218,11 @@ pub(crate) enum Motion {
     WithCommand,
 }
 
-/// How an element takes the pointer and the keyboard.
+/// How an element takes the pointer and the keyboard. (Reached through
+/// `InteractiveElement`, whose methods fill it; its fields are the kit's.)
+#[doc(hidden)]
 #[derive(Default)]
-pub(crate) struct Interactivity {
+pub struct Interactivity {
     pub(crate) mouse_down: SmallVec<[(Option<MouseButton>, Listener<MouseDownEvent>); 1]>,
     pub(crate) mouse_up: SmallVec<[(Option<MouseButton>, Listener<MouseUpEvent>); 1]>,
     /// A release anywhere but over it.

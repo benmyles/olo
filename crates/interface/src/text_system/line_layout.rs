@@ -1,11 +1,10 @@
 use crate::{FontId, GlyphId, Pixels, PlatformTextSystem, Point, SharedString, Size, point, px};
-use collections::FxHashMap;
 use parking_lot::{Mutex, RwLock, RwLockUpgradableReadGuard};
+use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 use std::{
     borrow::Borrow,
     hash::{Hash, Hasher},
-    ops::Range,
     sync::Arc,
 };
 
@@ -468,55 +467,9 @@ struct FrameCache {
     used_wrapped_lines: Vec<Arc<CacheKey>>,
 }
 
-#[derive(Clone, Default)]
-pub(crate) struct LineLayoutIndex {
-    lines_index: usize,
-    wrapped_lines_index: usize,
-}
-
-impl LineLayoutIndex {
-    /// Olo: where this index of lines laid out from `from` is, reused from
-    /// `to` (`LineLayoutCache::reuse_layouts`: one for one).
-    pub(crate) fn shifted(&self, from: &LineLayoutIndex, to: &LineLayoutIndex) -> LineLayoutIndex {
-        LineLayoutIndex { lines_index: self.lines_index - from.lines_index + to.lines_index, wrapped_lines_index: self.wrapped_lines_index - from.wrapped_lines_index + to.wrapped_lines_index }
-    }
-}
-
 impl LineLayoutCache {
     pub fn new(platform_text_system: Arc<dyn PlatformTextSystem>) -> Self {
         Self { previous_frame: Mutex::default(), current_frame: RwLock::default(), aged: Mutex::default(), platform_text_system }
-    }
-
-    pub fn layout_index(&self) -> LineLayoutIndex {
-        let frame = self.current_frame.read();
-        LineLayoutIndex { lines_index: frame.used_lines.len(), wrapped_lines_index: frame.used_wrapped_lines.len() }
-    }
-
-    pub fn reuse_layouts(&self, range: Range<LineLayoutIndex>) {
-        // (Olo: the current frame's lock first, then the previous one's,
-        // as everywhere else: the two orders together can deadlock.)
-        let mut current_frame = &mut *self.current_frame.write();
-        let mut previous_frame = &mut *self.previous_frame.lock();
-
-        for key in &previous_frame.used_lines[range.start.lines_index..range.end.lines_index] {
-            if let Some((key, line)) = previous_frame.lines.remove_entry(key) {
-                current_frame.lines.insert(key, line);
-            }
-            current_frame.used_lines.push(key.clone());
-        }
-
-        for key in &previous_frame.used_wrapped_lines[range.start.wrapped_lines_index..range.end.wrapped_lines_index] {
-            if let Some((key, line)) = previous_frame.wrapped_lines.remove_entry(key) {
-                current_frame.wrapped_lines.insert(key, line);
-            }
-            current_frame.used_wrapped_lines.push(key.clone());
-        }
-    }
-
-    pub fn truncate_layouts(&self, index: LineLayoutIndex) {
-        let mut current_frame = &mut *self.current_frame.write();
-        current_frame.used_lines.truncate(index.lines_index);
-        current_frame.used_wrapped_lines.truncate(index.wrapped_lines_index);
     }
 
     pub fn finish_frame(&self) {

@@ -15,8 +15,8 @@ use std::{
 use raw_window_handle as rwh;
 
 use crate::{
-    AtlasKey, AtlasTextureId, AtlasTextureKind, AtlasTile, Bounds, Capslock, DevicePixels, GpuSpecs, Modifiers, Pixels, PlatformAtlas, PlatformDisplay, PlatformInput, PlatformWindow, Point,
-    RequestFrameOptions, Scene, Size, TileId, WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowParams,
+    AtlasKey, AtlasTextureId, AtlasTextureKind, AtlasTile, Bounds, DevicePixels, GpuSpecs, Pixels, PlatformAtlas, PlatformDisplay, PlatformInput, PlatformWindow, Point, RequestFrameOptions, Scene,
+    Size, TileId, WindowParams,
 };
 
 #[derive(Default)]
@@ -72,16 +72,8 @@ impl rwh::HasDisplayHandle for HeadlessWindow {
 }
 
 impl PlatformWindow for HeadlessWindow {
-    fn bounds(&self) -> Bounds<Pixels> {
-        Bounds { origin: Point::default(), size: self.state.borrow().size }
-    }
-
     fn is_maximized(&self) -> bool {
         false
-    }
-
-    fn window_bounds(&self) -> WindowBounds {
-        WindowBounds::Windowed(self.bounds())
     }
 
     fn content_size(&self) -> Size<Pixels> {
@@ -99,45 +91,15 @@ impl PlatformWindow for HeadlessWindow {
         self.state.borrow().scale
     }
 
-    fn appearance(&self) -> WindowAppearance {
-        WindowAppearance::Light
-    }
-
     fn display(&self) -> Option<Rc<dyn PlatformDisplay>> {
         None
     }
 
-    fn mouse_position(&self) -> Point<Pixels> {
-        Point::default()
-    }
-
-    fn modifiers(&self) -> Modifiers {
-        Modifiers::default()
-    }
-
-    fn capslock(&self) -> Capslock {
-        Capslock::default()
-    }
-
     fn activate(&self) {}
-
-    fn is_active(&self) -> bool {
-        true
-    }
-
-    fn is_hovered(&self) -> bool {
-        false
-    }
 
     fn set_title(&mut self, title: &str) {
         self.state.borrow_mut().title = title.to_owned();
     }
-
-    fn set_background_appearance(&self, _: WindowBackgroundAppearance) {}
-
-    fn minimize(&self) {}
-
-    fn zoom(&self) {}
 
     fn toggle_fullscreen(&self) {}
 
@@ -173,10 +135,6 @@ impl PlatformWindow for HeadlessWindow {
 
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas> {
         self.atlas.clone()
-    }
-
-    fn get_title(&self) -> String {
-        self.state.borrow().title.clone()
     }
 
     fn gpu_specs(&self) -> Option<GpuSpecs> {

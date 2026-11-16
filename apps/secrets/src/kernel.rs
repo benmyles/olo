@@ -54,8 +54,10 @@ pub fn take_login_key() -> Option<Zeroizing<[u8; 32]>> {
     (n == 32).then_some(key)
 }
 
-/// Forget the key kept for the store at `store`.
-pub fn forget(store: &std::path::Path) {
+/// Forget the key kept for the store at `store` (the tests' own clearing
+/// up: nothing else lets a key go before the session ends).
+#[cfg(test)]
+fn forget(store: &std::path::Path) {
     if let Some(id) = description(store).and_then(|d| find(&d)) {
         // SAFETY: keyctl(KEYCTL_INVALIDATE) on a key we found.
         unsafe { libc::syscall(libc::SYS_keyctl, KEYCTL_INVALIDATE, id) };

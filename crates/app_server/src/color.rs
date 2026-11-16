@@ -491,7 +491,7 @@ mod tests {
             frame.render_texture_from_to(&tex, Rectangle::from_size((4.0, 1.0).into()), whole, &[whole], &[], Transform::Normal, 1.0, None, &[]).unwrap();
             // A solid sRGB red over the last pixel.
             frame.draw_solid(Rectangle::new((3, 0).into(), (1, 1).into()), &[Rectangle::from_size((1, 1).into())], Color32F::new(1.0, 0.0, 0.0, 1.0)).unwrap();
-            frame.finish().unwrap();
+            frame.finish().unwrap().wait().unwrap();
         }
         r.set_color_target(None);
         let b = read(&mut r, &mut target, Fourcc::Abgr16161616f);
@@ -515,7 +515,7 @@ mod tests {
             let mut frame = r.render(&mut fb, size, Transform::Normal).unwrap();
             frame.clear(Color32F::TRANSPARENT, &[whole]).unwrap();
             frame.render_texture_from_to(&tex, Rectangle::from_size((4.0, 1.0).into()), whole, &[whole], &[], Transform::Normal, 1.0, None, &[]).unwrap();
-            frame.finish().unwrap();
+            frame.finish().unwrap().wait().unwrap();
         }
         hdr.drawn(Some(&vec![whole]));
         let element = hdr.element();
@@ -526,7 +526,7 @@ mod tests {
             let mut fb = r.bind(&mut out).unwrap();
             let mut frame = r.render(&mut fb, size, Transform::Normal).unwrap();
             element.draw_gles(&mut frame, element.src(), whole, &[whole], &[]).unwrap();
-            frame.finish().unwrap();
+            frame.finish().unwrap().wait().unwrap();
         }
         r.set_color_target(None);
         let b = read(&mut r, &mut out, Fourcc::Abgr16161616f);
@@ -550,7 +550,7 @@ mod tests {
         use smithay::backend::{
             allocator::{Fourcc, gbm::GbmDevice},
             egl::{EGLContext, EGLDisplay},
-            renderer::{Bind, Color32F, Frame, ImportMem, Offscreen, Renderer},
+            renderer::{Bind, Frame, ImportMem, Offscreen, Renderer},
         };
         let Some(node) = crate::headless::render_node() else { return };
         let file = std::fs::OpenOptions::new().read(true).write(true).open(&node).unwrap();

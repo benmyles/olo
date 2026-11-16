@@ -1,5 +1,5 @@
 use crate::{FontId, FontRun, Pixels, PlatformTextSystem, SharedString, TextRun, px};
-use collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::{iter, sync::Arc};
 
 /// The line wrapper, used to wrap lines of text to a given width.
@@ -8,7 +8,7 @@ pub struct LineWrapper {
     pub(crate) font_id: FontId,
     pub(crate) font_size: Pixels,
     cached_ascii_char_widths: [Option<Pixels>; 128],
-    cached_other_char_widths: HashMap<char, Pixels>,
+    cached_other_char_widths: FxHashMap<char, Pixels>,
 }
 
 impl LineWrapper {
@@ -16,7 +16,7 @@ impl LineWrapper {
     pub const MAX_INDENT: u32 = 256;
 
     pub(crate) fn new(font_id: FontId, font_size: Pixels, text_system: Arc<dyn PlatformTextSystem>) -> Self {
-        Self { platform_text_system: text_system, font_id, font_size, cached_ascii_char_widths: [None; 128], cached_other_char_widths: HashMap::default() }
+        Self { platform_text_system: text_system, font_id, font_size, cached_ascii_char_widths: [None; 128], cached_other_char_widths: FxHashMap::default() }
     }
 
     /// Wrap a line of text to the given width with this wrapper's font and font size.

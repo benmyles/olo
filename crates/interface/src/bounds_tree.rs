@@ -9,7 +9,7 @@
 //! neighbours, and at a cell's only when that could raise its order.
 
 use crate::{Bounds, ScaledPixels};
-use collections::FxHashMap;
+use rustc_hash::FxHashMap;
 use std::fmt::Debug;
 
 /// A cell's side, in device pixels (a few lines of text across).

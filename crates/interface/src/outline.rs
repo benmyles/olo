@@ -12,11 +12,11 @@
 
 use std::{borrow::Cow, sync::Arc};
 
-use collections::FxHashMap;
 use lyon::{
     path::{LineCap, LineJoin, PathEvent},
     tessellation::{FillRule, StrokeOptions},
 };
+use rustc_hash::FxHashMap;
 use vello_cpu::{kurbo, peniko};
 
 use crate::{AtlasKey, AtlasTile, Bounds, DevicePixels, Pixels, PlatformAtlas, ScaledPixels, point, size};
@@ -43,11 +43,6 @@ impl PartialEq for PathOutline {
 /// Larger than this (in device pixels), a path is filled on the GPU:
 /// a mask for it would cost more to make than it saves.
 const MAX_AREA: u32 = 256 * 256;
-/// The masks a window keeps, in bytes; past it, those drawn longest ago
-/// go.
-const BUDGET: usize = 4 << 20;
-/// Kept at least this many frames after it was last drawn.
-const KEEP_FRAMES: u64 = 120;
 /// Outline coordinates are kept to this fraction of a device pixel.
 const STEPS: f32 = 64.0;
 
@@ -208,34 +203,5 @@ impl Outlines {
         });
         entry.0 = frame;
         Ok(tile)
-    }
-
-    /// A frame was drawn: masks not drawn for a while go, and those
-    /// drawn longest ago while there are more than the budget.
-    pub fn end_frame(&mut self, atlas: &dyn PlatformAtlas) {
-        let frame = self.frame;
-        self.frame += 1;
-        if self.used.is_empty() {
-            return;
-        }
-        let mut gone: Vec<OutlineKey> = self.used.iter().filter(|(_, (at, _))| at + KEEP_FRAMES < frame).map(|(k, _)| k.clone()).collect();
-        let mut bytes = self.bytes - gone.iter().map(|k| self.used[k].1).sum::<usize>();
-        if bytes > BUDGET {
-            let mut rest: Vec<_> = self.used.iter().filter(|(_, (at, _))| at + KEEP_FRAMES >= frame && *at < frame).map(|(k, (at, b))| (*at, *b, k.clone())).collect();
-            rest.sort_by_key(|(at, _, _)| *at);
-            for (_, b, k) in rest {
-                if bytes <= BUDGET {
-                    break;
-                }
-                bytes -= b;
-                gone.push(k);
-            }
-        }
-        for k in gone {
-            if let Some((_, b)) = self.used.remove(&k) {
-                self.bytes -= b;
-                atlas.remove(&AtlasKey::Outline(k));
-            }
-        }
     }
 }

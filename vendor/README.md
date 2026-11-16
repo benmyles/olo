@@ -150,27 +150,23 @@ some of Olo's code came from, kept for its licence.
 Olo's apps were once drawn with GPUI (Zed Industries' UI framework,
 GPUI 0.2.2 from crates.io, Apache-2.0), as Olo had changed it. They are
 on Olo's own kits now (`crates/interface`, `crates/kit`: docs/HACKING.md
-and the Olo Book), and GPUI and the kit built on it (`gpui/`,
-`crates/ui`) are gone. The lower half of the Interface Kit (its Wayland
-client, text system, scene and renderer) began as that code and carries
-its licence (`crates/interface/LICENSE-APACHE`). What it still uses of
-the crates GPUI was published with is here, each under the licence in
-its own folder, changed as Olo needs and never synced with upstream:
+and the Olo Book), and GPUI, the kit built on it and the helper crates
+it was published with are gone. Some of Olo's code began as that code
+and carries its licence:
 
-- **gpui_collections 0.2.2** (Apache-2.0): the hash maps and sets'
-  aliases.
-- **gpui-macros 0.2.2** (Apache-2.0): the `Styled` helpers (`.flex()`,
-  `.p_2()`, `.border_1()`…), generated as GPUI's are (`styles.rs`, as
-  published but for the name its generated code calls the crate by:
-  `crate::`, olo-interface being its one user, where upstream's says
-  `gpui::`). Its other macros (actions, `Render`, the app and window
-  contexts, test contexts, the inspector) were GPUI's own and are
-  removed, with their dependency on heck; its tests needed GPUI and
-  went with it.
-- **gpui_refineable 0.2.2** and **gpui_derive_refineable 0.2.2**
-  (Apache-2.0): a style laid over another (`Refineable`).
-- **gpui_util 0.2.2** (Apache-2.0): the few helpers GPUI used from
-  Zed's `util`.
+- the lower half of the Interface Kit (its Wayland client, text system,
+  scene and renderer): `crates/interface/LICENSE-APACHE`;
+- what Olo kept of the helper crates, folded into the kit on
+  2026-11-16: `crates/interface/src/refineable.rs` (a style laid over
+  another, from gpui_refineable), `arc_cow.rs` (`SharedString`'s, from
+  gpui_util), and `crates/interface-macros` (the `Styled` helpers'
+  generator, from gpui-macros, and `#[derive(Refineable)]`, from
+  gpui_derive_refineable: `crates/interface-macros/LICENSE-APACHE`).
+  The rest of them (the hash maps' aliases, Zed's `util` helpers) gave
+  way to `rustc_hash` and a `log_err` of the kit's own.
+
+# Blade
+
 - **blade-graphics 0.7.1** (MIT; Dzmitry Malyshau and the Blade
   contributors, https://github.com/kvark/blade): the GPU layer the
   Interface Kit draws with (Vulkan here). It replaces the crates.io

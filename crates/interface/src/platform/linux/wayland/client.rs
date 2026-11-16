@@ -3,21 +3,20 @@ use std::{
     cell::{RefCell, RefMut},
     hash::Hash,
     os::fd::{AsRawFd, BorrowedFd},
-    path::PathBuf,
     rc::{Rc, Weak},
     time::{Duration, Instant},
 };
 
+use crate::util::ResultExt;
 use ashpd::url::Url;
 use calloop::{
     EventLoop, LoopHandle,
     timer::{TimeoutAction, Timer},
 };
 use calloop_wayland_source::WaylandSource;
-use collections::HashMap;
 use filedescriptor::Pipe;
+use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
-use util::ResultExt;
 use wayland_backend::client::ObjectId;
 use wayland_backend::protocol::WEnum;
 use wayland_client::event_created_child;
@@ -37,8 +36,6 @@ use wayland_protocols::wp::fractional_scale::v1::client::{wp_fractional_scale_ma
 use wayland_protocols::wp::idle_inhibit::zv1::client::{zwp_idle_inhibit_manager_v1, zwp_idle_inhibitor_v1};
 use wayland_protocols::wp::linux_dmabuf::zv1::client::{zwp_linux_buffer_params_v1, zwp_linux_dmabuf_v1};
 use wayland_protocols::wp::pointer_gestures::zv1::client::{zwp_pointer_gesture_pinch_v1, zwp_pointer_gestures_v1};
-use wayland_protocols::wp::primary_selection::zv1::client::zwp_primary_selection_offer_v1::{self, ZwpPrimarySelectionOfferV1};
-use wayland_protocols::wp::primary_selection::zv1::client::{zwp_primary_selection_device_manager_v1, zwp_primary_selection_device_v1, zwp_primary_selection_source_v1};
 use wayland_protocols::wp::text_input::zv3::client::zwp_text_input_v3::{ContentHint, ContentPurpose};
 use wayland_protocols::wp::text_input::zv3::client::{zwp_text_input_manager_v3, zwp_text_input_v3};
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
@@ -68,7 +65,7 @@ use crate::{
 use crate::{
     SharedString,
     platform::linux::{
-        LinuxClient, get_xkb_compose_state, is_within_click_distance, open_uri_internal, read_fd, reveal_path_internal,
+        LinuxClient, get_xkb_compose_state, is_within_click_distance, read_fd,
         wayland::{
             clipboard::{Clipboard, DataOffer, FILE_LIST_MIME_TYPE, TEXT_MIME_TYPES},
             cursor::Cursor,
@@ -93,7 +90,6 @@ pub struct Globals {
     pub compositor: wl_compositor::WlCompositor,
     pub cursor_shape_manager: Option<wp_cursor_shape_manager_v1::WpCursorShapeManagerV1>,
     pub data_device_manager: Option<wl_data_device_manager::WlDataDeviceManager>,
-    pub primary_selection_manager: Option<zwp_primary_selection_device_manager_v1::ZwpPrimarySelectionDeviceManagerV1>,
     pub wm_base: xdg_wm_base::XdgWmBase,
     pub shm: wl_shm::WlShm,
     pub seat: wl_seat::WlSeat,
@@ -115,7 +111,6 @@ pub struct Globals {
     pub xdg_exporter: Option<zxdg_exporter_v2::ZxdgExporterV2>,
     /// Olo: surfaces of the desktop's own (Deskbar, notifications).
     pub layer_shell: Option<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
-    pub blur_manager: Option<org_kde_kwin_blur_manager::OrgKdeKwinBlurManager>,
     pub text_input_manager: Option<zwp_text_input_manager_v3::ZwpTextInputManagerV3>,
     /// Olo: keeping the screen awake while a window shows (a video).
     pub idle_inhibit_manager: Option<zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1>,
@@ -138,7 +133,6 @@ impl Globals {
             compositor: globals.bind(&qh, wl_surface::REQ_SET_BUFFER_SCALE_SINCE..=wl_surface::EVT_PREFERRED_BUFFER_SCALE_SINCE, ()).unwrap(),
             cursor_shape_manager: globals.bind(&qh, 1..=1, ()).ok(),
             data_device_manager: globals.bind(&qh, WL_DATA_DEVICE_MANAGER_VERSION..=WL_DATA_DEVICE_MANAGER_VERSION, ()).ok(),
-            primary_selection_manager: globals.bind(&qh, 1..=1, ()).ok(),
             shm: globals.bind(&qh, 1..=1, ()).unwrap(),
             seat,
             wm_base: globals.bind(&qh, 2..=5, ()).unwrap(),
@@ -151,7 +145,6 @@ impl Globals {
             xdg_importer: globals.bind(&qh, 1..=1, ()).ok(),
             xdg_exporter: globals.bind(&qh, 1..=1, ()).ok(),
             session_lock_manager: globals.bind(&qh, 1..=1, ()).ok(),
-            blur_manager: globals.bind(&qh, 1..=1, ()).ok(),
             text_input_manager: globals.bind(&qh, 1..=1, ()).ok(),
             idle_inhibit_manager: globals.bind(&qh, 1..=1, ()).ok(),
             pointer_gestures: globals.bind(&qh, 1..=3, ()).ok(),
@@ -304,7 +297,7 @@ pub(crate) struct WaylandClientState {
     gpu_context_ahead: Option<std::thread::JoinHandle<anyhow::Result<BladeContext>>>,
     /// Olo: the modifiers the compositor takes dmabufs of each format
     /// with (linux-dmabuf's events), for external pictures.
-    dmabuf_modifiers: HashMap<u32, Vec<u64>>,
+    dmabuf_modifiers: FxHashMap<u32, Vec<u64>>,
     wl_seat: wl_seat::WlSeat, // TODO: Multi seat support
     wl_pointer: Option<wl_pointer::WlPointer>,
     /// Olo: the pointer's pinches, and the last scale one said.
@@ -313,18 +306,17 @@ pub(crate) struct WaylandClientState {
     wl_keyboard: Option<wl_keyboard::WlKeyboard>,
     cursor_shape_device: Option<wp_cursor_shape_device_v1::WpCursorShapeDeviceV1>,
     data_device: Option<wl_data_device::WlDataDevice>,
-    primary_selection: Option<zwp_primary_selection_device_v1::ZwpPrimarySelectionDeviceV1>,
     text_input: Option<zwp_text_input_v3::ZwpTextInputV3>,
     pre_edit_text: Option<String>,
     ime_pre_edit: Option<String>,
     composing: bool,
     // Surface to Window mapping
-    windows: HashMap<ObjectId, WaylandWindowStatePtr>,
+    windows: FxHashMap<ObjectId, WaylandWindowStatePtr>,
     // Output to scale mapping
-    outputs: HashMap<ObjectId, Output>,
+    outputs: FxHashMap<ObjectId, Output>,
     /// Olo: the outputs themselves, for a layer surface to sit on one.
-    wl_outputs: HashMap<ObjectId, wl_output::WlOutput>,
-    in_progress_outputs: HashMap<ObjectId, InProgressOutput>,
+    wl_outputs: FxHashMap<ObjectId, wl_output::WlOutput>,
+    in_progress_outputs: FxHashMap<ObjectId, InProgressOutput>,
     keyboard_layout: LinuxKeyboardLayout,
     keymap_state: Option<xkb::State>,
     compose_state: Option<xkb::compose::State>,
@@ -359,16 +351,15 @@ pub(crate) struct WaylandClientState {
     clipboard: Clipboard,
     data_offers: Vec<DataOffer<WlDataOffer>>,
     /// Olo: what each drag's source allows (its offer's source_actions).
-    offer_actions: HashMap<ObjectId, DndAction>,
-    primary_data_offer: Option<DataOffer<ZwpPrimarySelectionOfferV1>>,
+    offer_actions: FxHashMap<ObjectId, DndAction>,
     cursor: Cursor,
     pending_activation: Option<PendingActivation>,
     /// Olo: tokens asked for with `Window::activation_token`, by request.
-    token_requests: HashMap<u64, Box<dyn FnOnce(Option<String>)>>,
+    token_requests: FxHashMap<u64, Box<dyn FnOnce(Option<String>)>>,
     next_token_request: u64,
     /// Olo: those waiting for a window's exported handle
     /// (`Window::export_handle`), by its surface.
-    export_requests: HashMap<ObjectId, Vec<Box<dyn FnOnce(Option<String>)>>>,
+    export_requests: FxHashMap<ObjectId, Vec<Box<dyn FnOnce(Option<String>)>>>,
     event_loop: Option<EventLoop<'static, WaylandClientStatePtr>>,
     common: LinuxCommon,
     /// Olo: the clipboard's source while what's on it is ours.
@@ -463,10 +454,6 @@ pub(crate) struct KeyRepeat {
 }
 
 pub(crate) enum PendingActivation {
-    /// URI to open in the web browser.
-    Uri(String),
-    /// Path to open in the file explorer.
-    Path(PathBuf),
     /// A window from ourselves to raise.
     Window(ObjectId),
 }
@@ -781,7 +768,7 @@ impl WaylandClient {
 
         let mut seat: Option<wl_seat::WlSeat> = None;
         #[allow(clippy::mutable_key_type)]
-        let mut in_progress_outputs = HashMap::default();
+        let mut in_progress_outputs = FxHashMap::default();
         let mut wl_outputs = Vec::new();
         globals.contents().with_list(|list| {
             for global in list {
@@ -828,8 +815,6 @@ impl WaylandClient {
 
         let data_device = globals.data_device_manager.as_ref().map(|data_device_manager| data_device_manager.get_data_device(&seat, &qh, ()));
 
-        let primary_selection = globals.primary_selection_manager.as_ref().map(|primary_selection_manager| primary_selection_manager.get_device(&seat, &qh, ()));
-
         let mut cursor = Cursor::new(&conn, &globals, 24);
 
         // (Olo: no desktop portal watched for the colour scheme and the
@@ -842,7 +827,7 @@ impl WaylandClient {
             globals,
             gpu_context: None,
             gpu_context_ahead: Some(BladeContext::ahead()),
-            dmabuf_modifiers: HashMap::default(),
+            dmabuf_modifiers: FxHashMap::default(),
             session_lock: None,
             connection: conn.clone(),
             wl_seat: seat,
@@ -852,15 +837,14 @@ impl WaylandClient {
             wl_keyboard: None,
             cursor_shape_device: None,
             data_device,
-            primary_selection,
             text_input: None,
             pre_edit_text: None,
             ime_pre_edit: None,
             composing: false,
-            outputs: HashMap::default(),
-            wl_outputs: HashMap::default(),
+            outputs: FxHashMap::default(),
+            wl_outputs: FxHashMap::default(),
             in_progress_outputs,
-            windows: HashMap::default(),
+            windows: FxHashMap::default(),
             common,
             keyboard_layout: LinuxKeyboardLayout::new(UNKNOWN_KEYBOARD_LAYOUT_NAME),
             keymap_state: None,
@@ -889,13 +873,12 @@ impl WaylandClient {
             cursor_style: None,
             clipboard: Clipboard::new(conn.clone(), handle.clone()),
             data_offers: Vec::new(),
-            offer_actions: HashMap::default(),
-            primary_data_offer: None,
+            offer_actions: FxHashMap::default(),
             cursor,
             pending_activation: None,
-            token_requests: HashMap::default(),
+            token_requests: FxHashMap::default(),
             next_token_request: 0,
-            export_requests: HashMap::default(),
+            export_requests: FxHashMap::default(),
             event_loop: Some(event_loop),
             selection_source: None,
             lingering: false,
@@ -930,10 +913,6 @@ impl WaylandClient {
 }
 
 impl LinuxClient for WaylandClient {
-    fn keyboard_layout(&self) -> Box<dyn PlatformKeyboardLayout> {
-        Box::new(self.0.borrow().keyboard_layout.clone())
-    }
-
     fn displays(&self) -> Vec<Rc<dyn PlatformDisplay>> {
         self.0.borrow().outputs.iter().map(|(id, output)| Rc::new(WaylandDisplay { id: id.clone(), name: output.name.clone(), bounds: output.bounds_in_points() }) as Rc<dyn PlatformDisplay>).collect()
     }
@@ -942,10 +921,6 @@ impl LinuxClient for WaylandClient {
         self.0.borrow().outputs.iter().find_map(|(object_id, output)| {
             (object_id.protocol_id() == id.0).then(|| Rc::new(WaylandDisplay { id: object_id.clone(), name: output.name.clone(), bounds: output.bounds_in_points() }) as Rc<dyn PlatformDisplay>)
         })
-    }
-
-    fn primary_display(&self) -> Option<Rc<dyn PlatformDisplay>> {
-        None
     }
 
     #[cfg(feature = "screen-capture")]
@@ -1082,36 +1057,6 @@ impl LinuxClient for WaylandClient {
         }
     }
 
-    fn open_uri(&self, uri: &str) {
-        let mut state = self.0.borrow_mut();
-        if let (Some(activation), Some(window)) = (state.globals.activation.clone(), state.mouse_focused_window.clone()) {
-            state.pending_activation = Some(PendingActivation::Uri(uri.to_string()));
-            let token = activation.get_activation_token(&state.globals.qh, ());
-            let serial = state.serial_tracker.get(SerialKind::MousePress);
-            token.set_serial(serial, &state.wl_seat);
-            token.set_surface(&window.surface());
-            token.commit();
-        } else {
-            let executor = state.common.background_executor.clone();
-            open_uri_internal(executor, uri, None);
-        }
-    }
-
-    fn reveal_path(&self, path: PathBuf) {
-        let mut state = self.0.borrow_mut();
-        if let (Some(activation), Some(window)) = (state.globals.activation.clone(), state.mouse_focused_window.clone()) {
-            state.pending_activation = Some(PendingActivation::Path(path));
-            let token = activation.get_activation_token(&state.globals.qh, ());
-            let serial = state.serial_tracker.get(SerialKind::MousePress);
-            token.set_serial(serial, &state.wl_seat);
-            token.set_surface(&window.surface());
-            token.commit();
-        } else {
-            let executor = state.common.background_executor.clone();
-            reveal_path_internal(executor, path, None);
-        }
-    }
-
     fn with_common<R>(&self, f: impl FnOnce(&mut LinuxCommon) -> R) -> R {
         f(&mut self.0.borrow_mut().common)
     }
@@ -1141,23 +1086,6 @@ impl LinuxClient for WaylandClient {
         // loop (Screenshot holding the clipboard) leaves nothing behind
         // on the screens.
         let _ = self.0.borrow().connection.flush();
-    }
-
-    fn write_to_primary(&self, item: crate::ClipboardItem) {
-        let mut state = self.0.borrow_mut();
-        let (Some(primary_selection_manager), Some(primary_selection)) = (state.globals.primary_selection_manager.clone(), state.primary_selection.clone()) else {
-            return;
-        };
-        if state.mouse_focused_window.is_some() || state.keyboard_focused_window.is_some() {
-            state.clipboard.set_primary(item);
-            let serial = state.serial_tracker.get(SerialKind::KeyPress);
-            let data_source = primary_selection_manager.create_source(&state.globals.qh, ());
-            for mime_type in TEXT_MIME_TYPES {
-                data_source.offer(mime_type.to_string());
-            }
-            data_source.offer(state.clipboard.self_mime());
-            primary_selection.set_selection(Some(&data_source), serial);
-        }
     }
 
     fn write_to_clipboard(&self, item: crate::ClipboardItem) {
@@ -1206,10 +1134,6 @@ impl LinuxClient for WaylandClient {
         state.lingering
     }
 
-    fn holds_clipboard(&self) -> bool {
-        self.0.borrow().selection_source.is_some()
-    }
-
     fn external_modifiers(&self, fourcc: u32) -> Vec<u64> {
         let state = self.0.borrow();
         let g = &state.globals;
@@ -1217,14 +1141,6 @@ impl LinuxClient for WaylandClient {
             return Vec::new();
         }
         state.dmabuf_modifiers.get(&fourcc).cloned().unwrap_or_default()
-    }
-
-    fn read_from_primary(&self) -> Option<crate::ClipboardItem> {
-        self.0.borrow_mut().clipboard.read_primary()
-    }
-
-    fn read_from_clipboard(&self) -> Option<crate::ClipboardItem> {
-        self.0.borrow_mut().clipboard.read()
     }
 
     fn own_clipboard(&self) -> Option<crate::ClipboardItem> {
@@ -1237,18 +1153,6 @@ impl LinuxClient for WaylandClient {
 
     fn receive_clipboard(&self, mime: &str) -> Option<crate::ClipboardReceipt> {
         self.0.borrow().clipboard.receive(mime)
-    }
-
-    fn active_window(&self) -> Option<WindowId> {
-        self.0.borrow_mut().keyboard_focused_window.as_ref().map(|window| window.handle())
-    }
-
-    fn window_stack(&self) -> Option<Vec<WindowId>> {
-        None
-    }
-
-    fn compositor_name(&self) -> &'static str {
-        "Wayland"
     }
 }
 
@@ -1322,7 +1226,6 @@ delegate_noop!(WaylandClientStatePtr: ignore wl_compositor::WlCompositor);
 delegate_noop!(WaylandClientStatePtr: ignore wp_cursor_shape_device_v1::WpCursorShapeDeviceV1);
 delegate_noop!(WaylandClientStatePtr: ignore wp_cursor_shape_manager_v1::WpCursorShapeManagerV1);
 delegate_noop!(WaylandClientStatePtr: ignore wl_data_device_manager::WlDataDeviceManager);
-delegate_noop!(WaylandClientStatePtr: ignore zwp_primary_selection_device_manager_v1::ZwpPrimarySelectionDeviceManagerV1);
 delegate_noop!(WaylandClientStatePtr: ignore wl_shm::WlShm);
 delegate_noop!(WaylandClientStatePtr: ignore wl_shm_pool::WlShmPool);
 delegate_noop!(WaylandClientStatePtr: ignore wl_buffer::WlBuffer);
@@ -1662,10 +1565,8 @@ impl Dispatch<xdg_activation_token_v1::XdgActivationTokenV1, ()> for WaylandClie
         let mut state = client.borrow_mut();
 
         if let xdg_activation_token_v1::Event::Done { token } = event {
-            let executor = state.common.background_executor.clone();
+            let _executor = state.common.background_executor.clone();
             match state.pending_activation.take() {
-                Some(PendingActivation::Uri(uri)) => open_uri_internal(executor, &uri, Some(token)),
-                Some(PendingActivation::Path(path)) => reveal_path_internal(executor, path, Some(token)),
                 Some(PendingActivation::Window(window)) => {
                     let Some(window) = get_window(&mut state, &window) else {
                         return;
@@ -2603,72 +2504,6 @@ impl Dispatch<wl_data_source::WlDataSource, ()> for WaylandClientStatePtr {
                         state.common.signal.stop();
                     }
                 }
-            }
-            _ => {}
-        }
-    }
-}
-
-impl Dispatch<zwp_primary_selection_device_v1::ZwpPrimarySelectionDeviceV1, ()> for WaylandClientStatePtr {
-    fn event(this: &mut Self, _: &zwp_primary_selection_device_v1::ZwpPrimarySelectionDeviceV1, event: zwp_primary_selection_device_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
-        let client = this.get_client();
-        let mut state = client.borrow_mut();
-
-        match event {
-            zwp_primary_selection_device_v1::Event::DataOffer { offer } => {
-                let old_offer = state.primary_data_offer.replace(DataOffer::new(offer));
-                if let Some(old_offer) = old_offer {
-                    old_offer.inner.destroy();
-                }
-            }
-            zwp_primary_selection_device_v1::Event::Selection { id: data_offer } => {
-                if data_offer.is_some() {
-                    let offer = state.primary_data_offer.clone();
-                    state.clipboard.set_primary_offer(offer);
-                } else {
-                    state.clipboard.set_primary_offer(None);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    event_created_child!(WaylandClientStatePtr, zwp_primary_selection_device_v1::ZwpPrimarySelectionDeviceV1, [
-        zwp_primary_selection_device_v1::EVT_DATA_OFFER_OPCODE => (zwp_primary_selection_offer_v1::ZwpPrimarySelectionOfferV1, ()),
-    ]);
-}
-
-impl Dispatch<zwp_primary_selection_offer_v1::ZwpPrimarySelectionOfferV1, ()> for WaylandClientStatePtr {
-    fn event(this: &mut Self, _data_offer: &zwp_primary_selection_offer_v1::ZwpPrimarySelectionOfferV1, event: zwp_primary_selection_offer_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
-        let client = this.get_client();
-        let mut state = client.borrow_mut();
-
-        if let zwp_primary_selection_offer_v1::Event::Offer { mime_type } = event
-            && let Some(offer) = state.primary_data_offer.as_mut()
-        {
-            offer.add_mime_type(mime_type);
-        }
-    }
-}
-
-impl Dispatch<zwp_primary_selection_source_v1::ZwpPrimarySelectionSourceV1, ()> for WaylandClientStatePtr {
-    fn event(
-        this: &mut Self,
-        selection_source: &zwp_primary_selection_source_v1::ZwpPrimarySelectionSourceV1,
-        event: zwp_primary_selection_source_v1::Event,
-        _: &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-        let client = this.get_client();
-        let mut state = client.borrow_mut();
-
-        match event {
-            zwp_primary_selection_source_v1::Event::Send { mime_type, fd } => {
-                state.clipboard.send_primary(mime_type, fd);
-            }
-            zwp_primary_selection_source_v1::Event::Cancelled => {
-                selection_source.destroy();
             }
             _ => {}
         }

@@ -1,6 +1,6 @@
 use crate::{Bounds, Capslock, Keystroke, Modifiers, Pixels, Point, point};
 use smallvec::SmallVec;
-use std::{any::Any, fmt::Debug, ops::Deref, path::PathBuf};
+use std::{fmt::Debug, ops::Deref, path::PathBuf};
 
 /// An event from a platform input source.
 pub trait InputEvent: 'static {
@@ -571,34 +571,4 @@ pub enum PlatformInput {
     FileDrop(FileDropEvent),
 }
 
-impl PlatformInput {
-    pub(crate) fn mouse_event(&self) -> Option<&dyn Any> {
-        match self {
-            PlatformInput::KeyDown { .. } => None,
-            PlatformInput::KeyUp { .. } => None,
-            PlatformInput::ModifiersChanged { .. } => None,
-            PlatformInput::MouseDown(event) => Some(event),
-            PlatformInput::MouseUp(event) => Some(event),
-            PlatformInput::MouseMove(event) => Some(event),
-            PlatformInput::MouseExited(event) => Some(event),
-            PlatformInput::ScrollWheel(event) => Some(event),
-            PlatformInput::Pinch(event) => Some(event),
-            PlatformInput::FileDrop(event) => Some(event),
-        }
-    }
-
-    pub(crate) fn keyboard_event(&self) -> Option<&dyn Any> {
-        match self {
-            PlatformInput::KeyDown(event) => Some(event),
-            PlatformInput::KeyUp(event) => Some(event),
-            PlatformInput::ModifiersChanged(event) => Some(event),
-            PlatformInput::MouseDown(_) => None,
-            PlatformInput::MouseUp(_) => None,
-            PlatformInput::MouseMove(_) => None,
-            PlatformInput::MouseExited(_) => None,
-            PlatformInput::ScrollWheel(_) => None,
-            PlatformInput::Pinch(_) => None,
-            PlatformInput::FileDrop(_) => None,
-        }
-    }
-}
+impl PlatformInput {}

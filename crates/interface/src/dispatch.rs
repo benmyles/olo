@@ -95,7 +95,7 @@ impl WindowCore {
         let by_state = inter.paints_by_state;
         if styled {
             let mut style = crate::Style::default();
-            use refineable::Refineable as _;
+            use crate::refineable::Refineable as _;
             style.refine(&node.refinement);
             if node.focused
                 && let Some(s) = &inter.focus_style

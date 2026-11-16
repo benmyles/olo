@@ -4168,47 +4168,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gpui-macros"
-version = "0.2.2"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "gpui_collections"
-version = "0.2.2"
-dependencies = [
- "indexmap 2.14.2",
- "rustc-hash 2.1.3",
-]
-
-[[package]]
-name = "gpui_derive_refineable"
-version = "0.2.2"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "gpui_refineable"
-version = "0.2.2"
-dependencies = [
- "gpui_derive_refineable",
-]
-
-[[package]]
-name = "gpui_util"
-version = "0.2.2"
-dependencies = [
- "anyhow",
- "log",
-]
-
-[[package]]
 name = "grammers-client"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7602,10 +7561,6 @@ dependencies = [
  "flume",
  "fontdb",
  "futures",
- "gpui-macros",
- "gpui_collections",
- "gpui_refineable",
- "gpui_util",
  "harfrust 0.12.0",
  "image",
  "itertools 0.14.0",
@@ -7616,6 +7571,7 @@ dependencies = [
  "naga",
  "olo-app",
  "olo-emoji",
+ "olo-interface-macros",
  "olo-protocol",
  "olo-sync",
  "olo-theme",
@@ -7628,8 +7584,8 @@ dependencies = [
  "rand 0.9.5",
  "raw-window-handle",
  "resvg",
+ "rustc-hash 2.1.3",
  "schemars 1.2.3",
- "seahash",
  "serde",
  "serde_json",
  "skrifa 0.44.0",
@@ -7645,7 +7601,6 @@ dependencies = [
  "usvg",
  "uuid",
  "vello_cpu 0.2.0",
- "waker-fn",
  "wayland-backend",
  "wayland-client",
  "wayland-cursor",
@@ -7653,6 +7608,15 @@ dependencies = [
  "wayland-protocols-plasma 0.2.0",
  "wayland-protocols-wlr",
  "xkbcommon 0.8.0",
+]
+
+[[package]]
+name = "olo-interface-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -10750,12 +10714,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
-name = "seahash"
-version = "4.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c107b6f4780854c8b126e228ea8869f4d7b71260f962fefb57b996b8959ba6b"
-
-[[package]]
 name = "sec1"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13822,12 +13780,6 @@ dependencies = [
  "memchr",
  "serde",
 ]
-
-[[package]]
-name = "waker-fn"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "317211a0dc0ceedd78fb2ca9a44aed3d7b9b26f81870d485c07122b4350673b7"
 
 [[package]]
 name = "walkdir"

@@ -35,7 +35,7 @@ impl From<Arc<Path>> for Resource {
 
 /// Use a quick, non-cryptographically secure hash function to get an identifier from data
 pub fn hash<T: Hash>(data: &T) -> u64 {
-    let mut hasher = collections::FxHasher::default();
+    let mut hasher = rustc_hash::FxHasher::default();
     data.hash(&mut hasher);
     hasher.finish()
 }

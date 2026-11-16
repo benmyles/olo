@@ -400,11 +400,6 @@ impl Picker {
         self.selected = self.selected.min(self.cells.len().saturating_sub(1));
     }
 
-    /// The first emoji of the grid proper (a suggestion first, if any).
-    fn first_cell(&self) -> usize {
-        0
-    }
-
     fn select(&mut self, i: usize) {
         self.selected = i.min(self.cells.len().saturating_sub(1));
     }

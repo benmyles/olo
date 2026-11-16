@@ -24,8 +24,7 @@ mod term;
 use std::collections::HashMap;
 
 use olo_kit::{
-    AppCx, Child, Cx, Element, IntoElement as _, LayerKeyboard, LayerShellLayer, ParentElement as _, Proxy, Styled as _, View, WindowHandle, WindowOptions, canvas, div, icons, metrics as m, px,
-    style, theme,
+    AppCx, Child, Cx, Element, LayerKeyboard, LayerShellLayer, ParentElement as _, Proxy, Styled as _, View, WindowHandle, WindowOptions, canvas, div, icons, metrics as m, px, style, theme,
     widgets::{BBox, Button, Column, ColumnListView, ListModel, StringView, heading, open_alert},
 };
 use olo_protocol::{Client, Event, EventKind, OutputInfo, Reply, Request};

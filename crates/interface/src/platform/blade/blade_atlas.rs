@@ -2,9 +2,9 @@ use crate::{AtlasKey, AtlasTextureId, AtlasTextureKind, AtlasTile, Bounds, Devic
 use anyhow::Result;
 use blade_graphics as gpu;
 use blade_util::{BufferBelt, BufferBeltDescriptor};
-use collections::FxHashMap;
 use etagere::BucketedAtlasAllocator;
 use parking_lot::Mutex;
+use rustc_hash::FxHashMap;
 use std::{borrow::Cow, ops, sync::Arc};
 
 pub(crate) struct BladeAtlas(Mutex<BladeAtlasState>);

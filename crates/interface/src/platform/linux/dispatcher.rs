@@ -1,3 +1,4 @@
+use crate::util::ResultExt;
 use crate::{PlatformDispatcher, TaskLabel};
 use async_task::Runnable;
 use calloop::{
@@ -13,7 +14,6 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use util::ResultExt;
 
 struct TimerAfter {
     duration: Duration,

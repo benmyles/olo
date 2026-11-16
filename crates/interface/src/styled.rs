@@ -10,15 +10,15 @@ pub trait Styled: Sized {
     /// Returns a reference to the style memory of this element.
     fn style(&mut self) -> &mut StyleRefinement;
 
-    gpui_macros::style_helpers!();
-    gpui_macros::visibility_style_methods!();
-    gpui_macros::margin_style_methods!();
-    gpui_macros::padding_style_methods!();
-    gpui_macros::position_style_methods!();
-    gpui_macros::overflow_style_methods!();
-    gpui_macros::cursor_style_methods!();
-    gpui_macros::border_style_methods!();
-    gpui_macros::box_shadow_style_methods!();
+    olo_interface_macros::style_helpers!();
+    olo_interface_macros::visibility_style_methods!();
+    olo_interface_macros::margin_style_methods!();
+    olo_interface_macros::padding_style_methods!();
+    olo_interface_macros::position_style_methods!();
+    olo_interface_macros::overflow_style_methods!();
+    olo_interface_macros::cursor_style_methods!();
+    olo_interface_macros::border_style_methods!();
+    olo_interface_macros::box_shadow_style_methods!();
 
     /// Sets the display type of the element to `block`.
     /// [Docs](https://tailwindcss.com/docs/display)

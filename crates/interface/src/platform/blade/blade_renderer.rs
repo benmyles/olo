@@ -875,22 +875,6 @@ impl BladeRenderer {
         self.drawn = gpu_size;
     }
 
-    pub fn update_transparency(&mut self, transparent: bool) {
-        if transparent != self.surface_config.transparent {
-            self.wait_for_gpu();
-            self.surface_config.transparent = transparent;
-            self.gpu.reconfigure_surface(&mut self.surface, self.surface_config);
-            self.images.clear();
-            self.pipelines = shared_pipelines(&self.gpu, &self.pipeline_cache, self.surface.info(), self.rendering_parameters.path_sample_count);
-            self.subpixel_sprites = None;
-        }
-    }
-
-    #[cfg_attr(any(target_os = "macos", feature = "wayland", target_os = "windows"), allow(dead_code))]
-    pub fn viewport_size(&self) -> gpu::Extent {
-        self.surface_config.size
-    }
-
     pub fn sprite_atlas(&self) -> &Arc<BladeAtlas> {
         &self.atlas
     }

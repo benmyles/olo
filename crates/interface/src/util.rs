@@ -1,6 +1,22 @@
-use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+/// A result whose error is logged, with where it happened in the
+/// message (the log keeps only the message), and let go.
+pub(crate) trait ResultExt<T> {
+    fn log_err(self) -> Option<T>;
+}
 
-pub use util::*;
+impl<T, E: std::fmt::Debug> ResultExt<T> for Result<T, E> {
+    #[track_caller]
+    fn log_err(self) -> Option<T> {
+        match self {
+            Ok(value) => Some(value),
+            Err(error) => {
+                let at = std::panic::Location::caller();
+                log::error!(target: "olo_interface", "{error:?} ({}:{})", at.file(), at.line());
+                None
+            }
+        }
+    }
+}
 
 /// A helper trait for building complex objects with imperative conditionals in a fluent style.
 pub trait FluentBuilder {
@@ -41,20 +57,5 @@ pub trait FluentBuilder {
         Self: Sized,
     {
         self.map(|this| if option.is_some() { this } else { then(this) })
-    }
-}
-
-/// Increment the given atomic counter if it is not zero.
-/// Return the new value of the counter.
-pub(crate) fn atomic_incr_if_not_zero(counter: &AtomicUsize) -> usize {
-    let mut loaded = counter.load(SeqCst);
-    loop {
-        if loaded == 0 {
-            return 0;
-        }
-        match counter.compare_exchange_weak(loaded, loaded + 1, SeqCst, SeqCst) {
-            Ok(x) => return x + 1,
-            Err(actual) => loaded = actual,
-        }
     }
 }

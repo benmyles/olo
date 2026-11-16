@@ -19,13 +19,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use collections::FxHashMap;
 use olo_app::{Latest, LooperHandle};
+use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 
 use crate::{
-    Bounds, Elastic, FrameRegion, FrameStats, GpuSpecs, ImeInput, Pixels, PlatformAtlas, PlatformInput, PlatformWindow, Point, RequestFrameOptions, ScaledPixels, Scene, ScrollWheelEvent, Size,
-    TextRendering, TouchPhase, WindowId, point, px, size,
+    Bounds, Elastic, FrameRegion, FrameStats, ImeInput, Pixels, PlatformAtlas, PlatformInput, PlatformWindow, Point, RequestFrameOptions, ScaledPixels, Scene, ScrollWheelEvent, Size, TextRendering,
+    TouchPhase, WindowId, point, px, size,
 };
 
 /// What a view drew, kept: its display list. Made on the window's
@@ -281,7 +281,6 @@ pub(crate) struct Opened {
     pub(crate) atlas: Arc<dyn PlatformAtlas>,
     pub(crate) text_rendering: TextRendering,
     pub(crate) surface_id: Option<u32>,
-    pub(crate) gpu: Option<GpuSpecs>,
     pub(crate) display: Option<Bounds<Pixels>>,
     pub(crate) pointer: Arc<PointerPlace>,
     /// Its `size` stands in for the compositor's, not yet given
@@ -456,7 +455,6 @@ impl Stage {
             atlas: window.sprite_atlas(),
             text_rendering: window.text_rendering(),
             surface_id: window.surface_id(),
-            gpu: window.gpu_specs(),
             display: window.display().map(|d| d.bounds()),
             awaits_size,
         };
@@ -955,16 +953,6 @@ impl Stage {
         // that stays so.)
         if !self.answering() {
             self.pace.holding.store(false, Ordering::SeqCst);
-        }
-        self.wake();
-    }
-
-    /// Asks for a frame (something of the stage's own changed).
-    pub(crate) fn redraw(&self) {
-        {
-            let mut showing = self.showing.borrow_mut();
-            showing.dirty = true;
-            showing.damage.clear();
         }
         self.wake();
     }

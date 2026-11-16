@@ -386,10 +386,6 @@ impl<V: View> ViewRef<V> {
         let (window, view) = (self.window, self.id);
         Messenger::new(cx.looper.handle(), move |looper, message| deliver_to_view::<V>(looper, window, view, |v, cx| v.message(message, cx)))
     }
-
-    pub(crate) fn id(&self) -> ViewId {
-        self.id
-    }
 }
 
 /// Has a view say what it shows again, from any thread
@@ -688,9 +684,5 @@ impl<'a, 'b, V: View> Cx<'a, 'b, V> {
             messenger.send(then(work()));
         })
         .detach();
-    }
-
-    pub(crate) fn id(&self) -> ViewId {
-        self.view
     }
 }

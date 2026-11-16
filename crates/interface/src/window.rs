@@ -16,8 +16,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use collections::FxHashMap;
 use olo_app::Looper;
+use rustc_hash::FxHashMap;
 use slotmap::SlotMap;
 
 use crate::{

@@ -1,20 +1,19 @@
-use std::{env, path::PathBuf, rc::Rc, sync::Arc};
+use std::{env, rc::Rc, sync::Arc};
 use std::{
     ffi::OsString,
     fs::File,
     io::Read as _,
-    os::fd::{AsFd, AsRawFd, FromRawFd},
+    os::fd::{AsRawFd, FromRawFd},
     time::Duration,
 };
 
 use async_task::Runnable;
 use calloop::{LoopSignal, channel::Channel};
-use util::ResultExt as _;
 use xkbcommon::xkb::{self, Keycode, Keysym, State};
 
 use crate::{
-    BackgroundExecutor, ClipboardItem, CursorStyle, DisplayId, ForegroundExecutor, LinuxDispatcher, Pixels, PlatformDisplay, PlatformKeyboardLayout, PlatformTextSystem, PlatformWindow, Point, Result,
-    WindowAppearance, WindowId, WindowParams, px,
+    BackgroundExecutor, ClipboardItem, CursorStyle, DisplayId, ForegroundExecutor, LinuxDispatcher, Pixels, PlatformDisplay, PlatformTextSystem, PlatformWindow, Point, Result, WindowAppearance,
+    WindowId, WindowParams, px,
 };
 
 pub(crate) const SCROLL_LINES: f32 = 3.0;
@@ -23,24 +22,15 @@ pub(crate) const SCROLL_LINES: f32 = 3.0;
 // Taken from https://github.com/GNOME/gtk/blob/main/gtk/gtksettings.c#L320
 pub(crate) const DOUBLE_CLICK_INTERVAL: Duration = Duration::from_millis(400);
 pub(crate) const DOUBLE_CLICK_DISTANCE: Pixels = px(5.0);
-pub(crate) const KEYRING_LABEL: &str = "zed-github-account";
-
-const FILE_PICKER_PORTAL_MISSING: &str = "Couldn't open file picker due to missing xdg-desktop-portal implementation.";
 
 pub trait LinuxClient {
-    fn compositor_name(&self) -> &'static str;
     fn with_common<R>(&self, f: impl FnOnce(&mut LinuxCommon) -> R) -> R;
-    fn keyboard_layout(&self) -> Box<dyn PlatformKeyboardLayout>;
     fn displays(&self) -> Vec<Rc<dyn PlatformDisplay>>;
     #[allow(unused)]
     fn display(&self, id: DisplayId) -> Option<Rc<dyn PlatformDisplay>>;
-    fn primary_display(&self) -> Option<Rc<dyn PlatformDisplay>>;
 
     fn open_window(&self, handle: WindowId, options: WindowParams) -> anyhow::Result<Box<dyn PlatformWindow>>;
     fn set_cursor_style(&self, style: CursorStyle);
-    fn open_uri(&self, uri: &str);
-    fn reveal_path(&self, path: PathBuf);
-    fn write_to_primary(&self, item: ClipboardItem);
     fn write_to_clipboard(&self, item: ClipboardItem);
     /// takes `item` off the clipboard if it's still ours.
     fn withdraw_clipboard(&self, _item: &ClipboardItem) {}
@@ -50,16 +40,10 @@ pub trait LinuxClient {
     fn linger_for_clipboard(&self) -> bool {
         false
     }
-    /// whether what's on the clipboard is ours.
-    fn holds_clipboard(&self) -> bool {
-        false
-    }
     /// as `Platform::external_modifiers`.
     fn external_modifiers(&self, _fourcc: u32) -> Vec<u64> {
         Vec::new()
     }
-    fn read_from_primary(&self) -> Option<ClipboardItem>;
-    fn read_from_clipboard(&self) -> Option<ClipboardItem>;
     /// what's on the clipboard if it's ours.
     fn own_clipboard(&self) -> Option<ClipboardItem> {
         None
@@ -72,14 +56,11 @@ pub trait LinuxClient {
     fn receive_clipboard(&self, _mime: &str) -> Option<crate::ClipboardReceipt> {
         None
     }
-    fn active_window(&self) -> Option<WindowId>;
-    fn window_stack(&self) -> Option<Vec<WindowId>>;
     fn run(&self);
 }
 
 #[derive(Default)]
 pub(crate) struct PlatformHandlers {
-    pub(crate) quit: Option<Box<dyn FnMut()>>,
     pub(crate) keyboard_layout_change: Option<Box<dyn FnMut()>>,
     /// a display came or went (`App::on_displays_changed`).
     pub(crate) displays_changed: Option<Box<dyn FnMut()>>,
@@ -94,7 +75,6 @@ pub(crate) struct LinuxCommon {
     pub(crate) foreground_executor: ForegroundExecutor,
     pub(crate) text_system: Arc<dyn PlatformTextSystem>,
     pub(crate) appearance: WindowAppearance,
-    pub(crate) auto_hide_scrollbars: bool,
     pub(crate) callbacks: PlatformHandlers,
     pub(crate) signal: LoopSignal,
     /// quit asked for. The event loop's `run` clears a stop sent
@@ -115,16 +95,8 @@ impl LinuxCommon {
 
         let background_executor = BackgroundExecutor::new(dispatcher.clone());
 
-        let common = LinuxCommon {
-            background_executor,
-            foreground_executor: ForegroundExecutor::new(dispatcher),
-            text_system,
-            appearance: WindowAppearance::Light,
-            auto_hide_scrollbars: false,
-            callbacks,
-            signal,
-            quitting: false,
-        };
+        let common =
+            LinuxCommon { background_executor, foreground_executor: ForegroundExecutor::new(dispatcher), text_system, appearance: WindowAppearance::Light, callbacks, signal, quitting: false };
 
         (common, main_receiver)
     }
@@ -182,35 +154,6 @@ pub(crate) fn util_floor() {
     if unsafe { libc::syscall(libc::SYS_sched_setattr, 0, &attr as *const SchedAttr, 0) } != 0 {
         log::info!("the windows' thread keeps the scheduler's choice of core: {}", std::io::Error::last_os_error());
     }
-}
-
-pub(super) fn open_uri_internal(executor: BackgroundExecutor, uri: &str, activation_token: Option<String>) {
-    if let Some(uri) = ashpd::url::Url::parse(uri).log_err() {
-        executor
-            .spawn(async move {
-                match ashpd::desktop::open_uri::OpenFileRequest::default().activation_token(activation_token.clone().map(ashpd::ActivationToken::from)).send_uri(&uri).await {
-                    Ok(_) => {}
-                    // (Through the portal only: Olo wraps no programs such
-                    // as xdg-open.)
-                    Err(e) => log::error!("Failed to open with dbus: {}", e),
-                }
-            })
-            .detach();
-    }
-}
-
-pub(super) fn reveal_path_internal(executor: BackgroundExecutor, path: PathBuf, activation_token: Option<String>) {
-    executor
-        .spawn(async move {
-            if let Some(dir) = File::open(path.clone()).log_err() {
-                match ashpd::desktop::open_uri::OpenDirectoryRequest::default().activation_token(activation_token.map(ashpd::ActivationToken::from)).send(&dir.as_fd()).await {
-                    Ok(_) => {}
-                    // (Through the portal only, as `open_uri_internal`.)
-                    Err(e) => log::error!("Failed to open with dbus: {}", e),
-                }
-            }
-        })
-        .detach();
 }
 
 #[allow(unused)]

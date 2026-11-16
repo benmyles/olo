@@ -1,3 +1,7 @@
+//! A string or slice that is either borrowed for good or shared (`Arc`):
+//! `SharedString`'s. (Began as Zed's gpui_util, Apache-2.0:
+//! LICENSE-APACHE.)
+
 use std::{
     borrow::Cow,
     cmp::Ordering,

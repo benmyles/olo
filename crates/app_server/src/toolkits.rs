@@ -114,7 +114,7 @@ pub fn publish(theme: String, colors: String, mode: ThemeMode) {
         let settings = toolkit::desktop_settings(&theme, &colors, mode, crate::icon_theme::THEME, crate::xcursor::SIZE);
         let paths: Vec<String> = settings.iter().map(|s| s.path()).collect();
         use olo_system::dconf::Setting::{Int, Str};
-        let keys: Vec<(&str, olo_system::dconf::Setting)> = settings
+        let keys: Vec<(&str, olo_system::dconf::Setting<'_>)> = settings
             .iter()
             .zip(&paths)
             .map(|(s, p)| {

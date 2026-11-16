@@ -1,16 +1,21 @@
-//! The `Styled` helpers' macros, as GPUI generates them (`.flex()`,
-//! `.p_2()`, `.border_1()`…): what's left of gpui-macros in Olo. Its
-//! others (actions, `Render`, the app and window contexts, test
-//! contexts, the inspector) were GPUI's own and went with it.
+//! The Interface Kit's macros (olo-interface alone uses them):
 //!
-//! Olo: used by olo-interface alone (`styled.rs`), so what they
-//! generate names its types by `crate::` (upstream: `gpui::`).
+//! - the `Styled` helpers (`.flex()`, `.p_2()`, `.border_1()`…),
+//!   generated into `styled.rs` (`styles`);
+//! - `#[derive(Refineable)]`: a style's refinement, a type of the same
+//!   fields each optional, laid over a base (`refineable`; the trait is
+//!   `olo_interface::refineable::Refineable`).
+//!
+//! What they generate names the kit's types by `crate::`, as only
+//! olo-interface uses them. (They began as Zed's gpui-macros and
+//! gpui_derive_refineable, Apache-2.0: LICENSE-APACHE. Olo's own now.)
 
+mod refineable;
 mod styles;
 
 use proc_macro::TokenStream;
 
-/// Used by gpui to generate the style helpers.
+/// The style helpers (`styled.rs`).
 #[proc_macro]
 #[doc(hidden)]
 pub fn style_helpers(input: TokenStream) -> TokenStream {
@@ -63,4 +68,11 @@ pub fn border_style_methods(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn box_shadow_style_methods(input: TokenStream) -> TokenStream {
     styles::box_shadow_style_methods(input)
+}
+
+/// `#[derive(Refineable)]`, with its `#[refineable(..)]` attributes:
+/// see `refineable`.
+#[proc_macro_derive(Refineable, attributes(refineable))]
+pub fn derive_refineable(input: TokenStream) -> TokenStream {
+    refineable::derive_refineable(input)
 }

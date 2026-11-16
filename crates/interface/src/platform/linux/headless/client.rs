@@ -1,12 +1,12 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::util::ResultExt;
 use calloop::{EventLoop, LoopHandle};
-use util::ResultExt;
 
 use crate::platform::linux::LinuxClient;
 use crate::platform::{LinuxCommon, PlatformWindow};
-use crate::{CursorStyle, DisplayId, LinuxKeyboardLayout, PlatformDisplay, PlatformKeyboardLayout, WindowId, WindowParams};
+use crate::{CursorStyle, DisplayId, PlatformDisplay, WindowId, WindowParams};
 
 pub struct HeadlessClientState {
     pub(crate) _loop_handle: LoopHandle<'static, HeadlessClient>,
@@ -57,16 +57,8 @@ impl LinuxClient for HeadlessClient {
         f(&mut self.0.borrow_mut().common)
     }
 
-    fn keyboard_layout(&self) -> Box<dyn PlatformKeyboardLayout> {
-        Box::new(LinuxKeyboardLayout::new("unknown".into()))
-    }
-
     fn displays(&self) -> Vec<Rc<dyn PlatformDisplay>> {
         vec![]
-    }
-
-    fn primary_display(&self) -> Option<Rc<dyn PlatformDisplay>> {
-        None
     }
 
     fn display(&self, _id: DisplayId) -> Option<Rc<dyn PlatformDisplay>> {
@@ -85,41 +77,15 @@ impl LinuxClient for HeadlessClient {
         rx
     }
 
-    fn active_window(&self) -> Option<WindowId> {
-        None
-    }
-
-    fn window_stack(&self) -> Option<Vec<WindowId>> {
-        None
-    }
-
     /// A window with no display (`HeadlessWindow`): laid out and drawn
     /// to nothing, for the layout lint's tests.
     fn open_window(&self, _handle: WindowId, params: WindowParams) -> anyhow::Result<Box<dyn PlatformWindow>> {
         Ok(Box::new(super::HeadlessWindow::new(params)))
     }
 
-    fn compositor_name(&self) -> &'static str {
-        "headless"
-    }
-
     fn set_cursor_style(&self, _style: CursorStyle) {}
 
-    fn open_uri(&self, _uri: &str) {}
-
-    fn reveal_path(&self, _path: std::path::PathBuf) {}
-
-    fn write_to_primary(&self, _item: crate::ClipboardItem) {}
-
     fn write_to_clipboard(&self, _item: crate::ClipboardItem) {}
-
-    fn read_from_primary(&self) -> Option<crate::ClipboardItem> {
-        None
-    }
-
-    fn read_from_clipboard(&self) -> Option<crate::ClipboardItem> {
-        None
-    }
 
     fn run(&self) {
         let mut event_loop = self.0.borrow_mut().event_loop.take().expect("App is already running");

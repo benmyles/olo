@@ -498,7 +498,7 @@ mod tests {
         }
         let execs = replies.clone();
         let seen = counted.clone();
-        serve_on(input.as_raw_fd(), Some(signal.as_raw_fd()), &mut Counting(&mut out, counted), &mut set, &mut || execs.borrow_mut().push(seen.get()), &mut "");
+        let _ = serve_on(input.as_raw_fd(), Some(signal.as_raw_fd()), &mut Counting(&mut out, counted), &mut set, &mut || execs.borrow_mut().push(seen.get()), &mut "");
         writer.join().unwrap();
         let got = String::from_utf8(out).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
         (got, replies.take())

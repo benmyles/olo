@@ -14,18 +14,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Bounds, DevicePixels, Hsla, Pixels, PlatformTextSystem, Point, Result, SharedString, Size, StrikethroughStyle, UnderlineStyle, px};
 use anyhow::{Context as _, anyhow};
-use collections::{FxHashMap, FxHashSet};
 use core::fmt;
 use derive_more::{Add, Deref, FromStr, Sub};
 use itertools::Itertools;
 use parking_lot::{Mutex, RwLock, RwLockUpgradableReadGuard};
+use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::{SmallVec, smallvec};
 use std::{
     borrow::Cow,
     cmp,
     fmt::{Debug, Display, Formatter},
     hash::{Hash, Hasher},
-    ops::{Deref, DerefMut, Range},
+    ops::{Deref, DerefMut},
     sync::Arc,
 };
 
@@ -561,25 +561,8 @@ impl WindowTextSystem {
         self.text_system.warm_text(font_id, font_size, scale_factor, texts);
     }
 
-    /// Olo: [`TextSystem::warm`].
-    pub(crate) fn warm(&self, font_id: FontId, font_size: Pixels, scale_factor: f32, rendering: TextRendering) {
-        self.text_system.warm(font_id, font_size, scale_factor, rendering);
-    }
-
     pub(crate) fn new(text_system: Arc<TextSystem>) -> Self {
         Self { line_layout_cache: LineLayoutCache::new(text_system.platform_text_system.clone()), text_system }
-    }
-
-    pub(crate) fn layout_index(&self) -> LineLayoutIndex {
-        self.line_layout_cache.layout_index()
-    }
-
-    pub(crate) fn reuse_layouts(&self, index: Range<LineLayoutIndex>) {
-        self.line_layout_cache.reuse_layouts(index)
-    }
-
-    pub(crate) fn truncate_layouts(&self, index: LineLayoutIndex) {
-        self.line_layout_cache.truncate_layouts(index)
     }
 
     /// Shape the given line, at the given font_size, for painting to the screen.
@@ -971,7 +954,7 @@ pub enum TextRendering {
     Subpixel(SubpixelLayout),
 }
 
-static DISPLAY_TEXT_RENDERING: std::sync::LazyLock<parking_lot::RwLock<collections::HashMap<String, TextRendering>>> = std::sync::LazyLock::new(Default::default);
+static DISPLAY_TEXT_RENDERING: std::sync::LazyLock<parking_lot::RwLock<rustc_hash::FxHashMap<String, TextRendering>>> = std::sync::LazyLock::new(Default::default);
 
 /// Olo: the person's choice of how text is drawn on the display named
 /// `name` (its connector, "DP-2"), from Preferences ▸ Display (`None`:

@@ -1,4 +1,4 @@
-use collections::HashMap;
+use rustc_hash::FxHashMap;
 
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub(crate) enum SerialKind {
@@ -23,12 +23,12 @@ impl SerialData {
 #[derive(Debug)]
 /// Helper for tracking of different serial kinds.
 pub(crate) struct SerialTracker {
-    serials: HashMap<SerialKind, SerialData>,
+    serials: FxHashMap<SerialKind, SerialData>,
 }
 
 impl SerialTracker {
     pub fn new() -> Self {
-        Self { serials: HashMap::default() }
+        Self { serials: FxHashMap::default() }
     }
 
     pub fn update(&mut self, kind: SerialKind, value: u32) {

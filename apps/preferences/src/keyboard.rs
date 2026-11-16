@@ -134,12 +134,6 @@ pub fn keyboards_tab(st: &mut State) {
     st.tab = 2;
 }
 
-/// The Power Button tab shown (the layout lint's).
-#[cfg(test)]
-pub fn power_button_tab(st: &mut State) {
-    st.tab = 3;
-}
-
 /// Size of a known keyboard's picture (points).
 const KEYBOARD_PICTURE: f32 = 64.0;
 

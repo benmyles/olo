@@ -423,7 +423,7 @@ fn paint_line_background(
 /// its layout and where it starts: its key in `LineLayout::painted`.
 fn line_stamp(line_height: Pixels, align: TextAlign, align_width: Option<Pixels>, decoration_runs: &[DecorationRun], wrap_boundaries: &[WrapBoundary]) -> u64 {
     use std::hash::{Hash, Hasher};
-    let mut h = collections::FxHasher::default();
+    let mut h = rustc_hash::FxHasher::default();
     line_height.0.to_bits().hash(&mut h);
     (align as u8).hash(&mut h);
     align_width.map(|w| w.0.to_bits()).hash(&mut h);
