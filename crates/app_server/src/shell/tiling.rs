@@ -917,8 +917,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// the one its edges were dragged to.
     pub fn retile(&mut self, window: &WindowElement, tile: Tile) {
         let Some(custom) = Self::custom_part(window) else { return self.tile_window(window, tile) };
-        let Some(area) = self.window_output(window).and_then(|o| self.tile_area(&o)) else { return };
-        let frame = self.given_way(window, part(area, custom, self.tile_gap()), area);
+        let Some((area, gap)) = self.tile_area_of(window) else { return };
+        let frame = self.given_way(window, part(area, custom, gap), area);
         self.set_frame(window, frame, true);
     }
 
@@ -927,9 +927,18 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// at the least.
     pub(super) fn tile_frame(&self, window: &WindowElement) -> Option<Rectangle<i32, Logical>> {
         let tile = Self::tiled(window)?;
-        let area = self.window_output(window).and_then(|o| self.tile_area(&o))?;
+        let (area, gap) = self.tile_area_of(window)?;
         let fraction = Self::custom_part(window).unwrap_or_else(|| tile.fraction());
-        Some(self.given_way(window, part(area, fraction, self.tile_gap()), area))
+        Some(self.given_way(window, part(area, fraction, gap), area))
+    }
+
+    /// The area a tiled window's part is of, and the gap: an auto-tiled
+    /// one's tree's (alone with smart gaps, the whole usable area and
+    /// none), else its display's tiling area. (Put back in its tile on
+    /// a display it came back to, it had the margins smart gaps doesn't:
+    /// tile-qa, two displays, seed 72.)
+    pub(crate) fn tile_area_of(&self, window: &WindowElement) -> Option<(Rectangle<i32, Logical>, i32)> {
+        self.auto_area_of(window).or_else(|| Some((self.window_output(window).and_then(|o| self.tile_area(&o))?, self.tile_gap())))
     }
 
     /// An edge drag of `window` (`sides`) is starting or going on: the
@@ -1312,6 +1321,20 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         pre.or_else(|| self.space.element_geometry(window))
     }
 
+    /// `window` out of full screen, as if its app asked (back where it
+    /// was, as big): before an arrangement of it (tiling, zooming,
+    /// centring it, the scratchpad), which a full-screen window would
+    /// otherwise keep over, its app drawing the display's size wherever
+    /// it was put.
+    pub fn leave_fullscreen(&mut self, window: &WindowElement) {
+        if !window.meta().fullscreen.get() && !super::autotile::fullscreen(window) {
+            return;
+        }
+        let WindowSurface::Wayland(t) = window.0.underlying_surface();
+        tracing::info!(window = window.id(), "out of full screen, to be arranged");
+        smithay::wayland::shell::xdg::XdgShellHandler::unfullscreen_request(self, t.clone());
+    }
+
     pub fn center_window(&mut self, window: &WindowElement) {
         self.center_window_at(window, None);
     }
@@ -1363,6 +1386,24 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     pub(crate) fn move_to_output(&mut self, window: &WindowElement, from: &Output, to: &Output, home: bool) {
         self.carry_to_output(window, from, to, home);
         window.meta().arrived.set(self.space.element_geometry(window));
+        // Full screen, it fills the display it's on now, at its size (off
+        // the one it left: the display it left drew it, over its own
+        // workspace, while it was in a tile's place on this one; tile-qa).
+        if window.meta().fullscreen.get()
+            && let WindowSurface::Wayland(t) = window.0.underlying_surface()
+        {
+            // (And where it goes back to, leaving full screen, at the same
+            // place on this display: it went back to the other.)
+            if let (Some(b), Some(src), Some(dst)) = (window.meta().before_fullscreen.get(), self.usable_area(from), self.usable_area(to)) {
+                window.meta().before_fullscreen.set(Some(same_place(b, src, dst)));
+            }
+            smithay::wayland::shell::xdg::XdgShellHandler::fullscreen_request(self, t.clone(), None);
+        }
+        // The tiles on both displays looked at again: back home in a tree
+        // that kept its place, as it left it, it came back with what it
+        // had then (its margins, smart gaps turned on meanwhile), and no
+        // change of tiles laid it out.
+        self.auto.changed();
     }
 
     fn carry_to_output(&mut self, window: &WindowElement, from: &Output, to: &Output, home: bool) {
@@ -1516,6 +1557,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// is less than StyledEdit's) gives way inwards, so it stays in the
     /// tiling area rather than hanging out past its edge.
     pub fn keep_in_tile_area(&mut self, window: &WindowElement) {
+        // (Full screen, it's held by its display, not a tile.)
+        if window.meta().fullscreen.get() {
+            return;
+        }
         // (Zoomed along one axis, it keeps its own place along the other.)
         let held = Self::tiled(window).is_some() || self.is_zoomed(window);
         if !held || self.tile_drag.as_ref().is_some_and(|t| t.window == *window) {
@@ -1530,7 +1575,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let (Some(loc), Some(geo)) = (self.space.element_location(window), self.space.element_geometry(window)) else { return };
         // (An auto-tiled window's own area: alone with smart gaps, the
         // whole usable area, not pushed in by the margin it hasn't.)
-        let Some(area) = self.auto_area_of(window).or_else(|| self.window_output(window).and_then(|o| self.tile_area(&o))) else { return };
+        let Some(area) = self.auto_area_of(window).map(|(a, _)| a).or_else(|| self.window_output(window).and_then(|o| self.tile_area(&o))) else { return };
         let inside = |pos: i32, len: i32, lo: i32, span: i32| if len <= span { pos.clamp(lo, lo + span - len) } else { lo };
         let x = inside(geo.loc.x, geo.size.w, area.loc.x, area.size.w);
         let y = inside(geo.loc.y, geo.size.h, area.loc.y, area.size.h);
@@ -1561,6 +1606,14 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// (from another workspace, from being hidden) and when displays
     /// change, and nothing should move then for no reason.
     pub fn refit(&mut self, window: &WindowElement) {
+        // Full screen, it fills its display at the display's size (kept so
+        // as the scale changes, `shell::mod`): its tile or own frame waits
+        // for it to leave full screen. (Put back in its tile as it came
+        // back to its workspace, a full-screen Viewer drew its tile's size
+        // over the whole display, black around it; tile-qa.)
+        if window.meta().fullscreen.get() {
+            return;
+        }
         // (Zoomed first: a tiled window can be zoomed, and stays so.)
         if self.is_zoomed(window) {
             if let Some(area) = self.zoom_area(window)
@@ -2132,9 +2185,37 @@ fn give_way(frame: Rectangle<i32, Logical>, least: Size<i32, Logical>, area: Rec
     Rectangle::new(Point::from((inside(frame.loc.x, size.w, area.loc.x, area.size.w), inside(frame.loc.y, size.h, area.loc.y, area.size.h))), size)
 }
 
+/// `r`, a frame in display area `src`, at the same place in `dst`, as
+/// big as fits: each edge's share of the room left over kept (the left
+/// third, the middle, against the right edge).
+pub fn same_place(r: Rectangle<i32, Logical>, src: Rectangle<i32, Logical>, dst: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
+    let size = Size::from((r.size.w.min(dst.size.w), r.size.h.min(dst.size.h)));
+    let rel = |v: i32, origin: i32, len: i32, dlen: i32, size: i32| {
+        let f = (v - origin) as f32 / (len - size).max(1) as f32;
+        (f.clamp(0.0, 1.0) * (dlen - size).max(0) as f32).round() as i32
+    };
+    let loc = dst.loc + Point::from((rel(r.loc.x, src.loc.x, src.size.w, dst.size.w, size.w), rel(r.loc.y, src.loc.y, src.size.h, dst.size.h, size.h)));
+    Rectangle::new(loc, size)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A frame carried to another display: the same place on it, as big
+    /// as fits.
+    #[test]
+    fn same_place_on_another_display() {
+        let r = |x, y, w, h| Rectangle::<i32, Logical>::new((x, y).into(), (w, h).into());
+        let (src, dst) = (r(0, 0, 2560, 1440), r(2560, 0, 1920, 1200));
+        // Top left stays top left; against the right edge stays there; the
+        // middle stays the middle.
+        assert_eq!(same_place(r(0, 0, 640, 400), src, dst), r(2560, 0, 640, 400));
+        assert_eq!(same_place(r(1920, 1040, 640, 400), src, dst), r(2560 + 1280, 800, 640, 400));
+        assert_eq!(same_place(r(960, 520, 640, 400), src, dst), r(2560 + 640, 400, 640, 400));
+        // Bigger than the room: as big as it.
+        assert_eq!(same_place(r(0, 0, 2560, 1440), src, dst), r(2560, 0, 1920, 1200));
+    }
 
     fn r(x: i32, y: i32, w: i32, h: i32) -> Rectangle<i32, Logical> {
         Rectangle::new((x, y).into(), (w, h).into())

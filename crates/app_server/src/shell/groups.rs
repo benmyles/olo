@@ -791,6 +791,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         // made it in (else it may still: it is being placed).
         let joining = before.joining.into_iter().filter(|w| w.alive() && !list.iter().any(|(_, g)| g.contains(w))).collect();
         let seen_on = seen.iter().map(|w| (w.clone(), self.group_display(w))).collect();
+        // Groups made or changed: auto-tiling looks again (a group is one
+        // tile, its front window's; a window put in one by hand had let go
+        // of its own tile and was neither tiled nor floating till
+        // something else moved the tiles; tile-qa, seed 75).
+        // (Compared in place, nothing made: this is each tick's.)
+        let same = list.len() == before.list.len() && list.iter().all(|(k, g)| before.list.iter().any(|(bk, bg)| bk == k && bg.len() == g.len() && g.iter().all(|w| bg.contains(w))));
+        if !same {
+            self.auto.changed();
+        }
         self.groups = Groups { seen, seen_on, list, away, known: all, numbers, joining, settling, leads: None };
         // One come to the front with something new to draw is told to
         // draw it now, not when its frame callback is next due (a
@@ -934,6 +943,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             self.groups.joining.push(w.clone());
         }
         self.dissolve_lone();
+        self.auto.changed();
         tracing::info!(id = w.id(), with = target.id(), "put in a group");
         true
     }
@@ -948,6 +958,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         self.hand_down(std::slice::from_ref(w));
         *w.meta().grouping.borrow_mut() = Grouping::Alone;
         self.dissolve_lone();
+        self.auto.changed();
         tracing::info!(id = w.id(), "taken out of its group");
         true
     }

@@ -653,6 +653,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     on_top: meta.on_top.get(),
                     all_workspaces: meta.all_workspaces.get(),
                     scratch: meta.scratch.get(),
+                    fullscreen: crate::shell::autotile::fullscreen(&w),
                     covered: meta.covered.get(),
                     zoomed: self.is_zoomed(&w),
                     zoomed_along: Self::zoomed_axis(&w).map(|a| match a {
@@ -705,7 +706,11 @@ impl<B: Backend + 'static> AnvilState<B> {
             let Some(at) = self.space.element_location(w) else { continue };
             info.stack = Some(stack as u32);
             let geo = smithay::desktop::space::SpaceElement::geometry(w);
-            info.frame = Some(frame(smithay::utils::Rectangle::new(at, geo.size)));
+            // (Full screen, it's drawn over its display, from its corner:
+            // where it is kept is where it goes back to. Told that place,
+            // an agent saw a window at (48, 40) the display's size.)
+            let shown = self.space.outputs().find(|o| crate::shell::shown_fullscreen(&self.space, o).as_ref() == Some(w)).and_then(|o| self.space.output_geometry(o));
+            info.frame = Some(frame(shown.unwrap_or_else(|| smithay::utils::Rectangle::new(at, geo.size))));
             let least = crate::shell::groups::least_frame(w);
             info.least = Some([least.w, least.h]);
             // (And one not drawn at all yet, a window just opened: on its
@@ -966,6 +971,9 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.backend_data.wake(None);
             return;
         }
+        // (Out of full screen first, as i3's: hidden and brought back over
+        // a workspace, it floats at its own size.)
+        self.leave_fullscreen(window);
         window.meta().scratch.set(true);
         window.meta().all_workspaces.set(false);
         self.set_floating(window, Some(true));

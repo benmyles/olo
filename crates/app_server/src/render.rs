@@ -27,7 +27,7 @@ use smithay::{
 use crate::drawing::FpsElement;
 use crate::{
     drawing::{CLEAR_COLOR_FULLSCREEN, PointerRenderElement},
-    shell::{FullscreenSurface, WindowElement, WindowRenderElement},
+    shell::{WindowElement, WindowRenderElement},
 };
 
 smithay::backend::renderer::element::render_elements! {
@@ -418,7 +418,7 @@ where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: Clone + Send + 'static,
 {
-    let fullscreen = output.user_data().get::<FullscreenSurface>().is_some_and(|f| f.get().is_some()) && !crate::rescue::active();
+    let fullscreen = crate::shell::shown_fullscreen(space, output).is_some();
     let warm = keep_warm(output, fullscreen).map(|e| OutputRenderElements::Custom(CustomRenderElements::Warm(e)));
     if warm_uploads() {
         crate::shell::deco::warm_tab_upload(renderer);
@@ -641,7 +641,7 @@ where
         return (elements, Color32F::new(r, g, b, a));
     }
     // (In Rescue a full-screen window is put away with the rest.)
-    if let Some(window) = output.user_data().get::<FullscreenSurface>().and_then(|f| f.get()).filter(|_| !crate::rescue::active()) {
+    if let Some(window) = crate::shell::shown_fullscreen(space, output) {
         let scale = output.current_scale().fractional_scale().into();
         let window_render_elements: Vec<WindowRenderElement<R>> = AsRenderElements::<R>::render_elements(&window, renderer, (0, 0).into(), scale, 1.0);
         // What's in front of it (a dialog, a new window), over it, as

@@ -223,7 +223,9 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         // location and configure size here, but the surface should be rendered fullscreen
         // independently from its buffer size
         let wl_surface = surface.wl_surface();
-        let window = self.space.elements().find(|window| window.wl_surface().map(|s| &*s == wl_surface).unwrap_or(false)).cloned();
+        // (Hidden too, on another workspace or in the scratchpad: its state
+        // is the app's either way, and kept apart they disagreed.)
+        let window = self.all_windows().into_iter().find(|window| window.wl_surface().map(|s| &*s == wl_surface).unwrap_or(false));
         // The display asked for, else the one the window is on (where most
         // of it is: Quick Look on the display it opened on), else the one
         // the person is at. Its size and the display it fills are the same
@@ -256,7 +258,7 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
             // (Its place and size kept the first time, not again from full
             // screen.)
             if !window.meta().fullscreen.get()
-                && let Some(at) = self.space.element_location(&window)
+                && let Some(at) = self.space.element_location(&window).or_else(|| self.parked.0.borrow().contains(&window).then(|| window.meta().saved_location.get()))
             {
                 window.meta().before_fullscreen.set(Some(smithay::utils::Rectangle::new(at, window.0.geometry().size)));
             }
@@ -269,6 +271,16 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
             });
             output.user_data().insert_if_missing(FullscreenSurface::default);
             output.user_data().get::<FullscreenSurface>().unwrap().set(window.clone());
+            // At its display's corner, where it's drawn (its place is kept
+            // in `before_fullscreen`): left where it was, at the display's
+            // size, most of it lay on the next display, which every "which
+            // display is it on" then answered, and it was pushed onto that
+            // one, off the display drawing it (tile-qa, seed 74).
+            if self.space.element_location(&window).is_some() {
+                self.space.relocate_element(&window, geometry.loc);
+            } else {
+                window.meta().saved_location.set(geometry.loc);
+            }
             trace!("Fullscreening: {:?}", window);
         }
 
@@ -283,7 +295,7 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
         // Back where it was and as big, as it went full screen.
-        let window = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(surface.wl_surface())).cloned();
+        let window = self.all_windows().into_iter().find(|w| w.wl_surface().as_deref() == Some(surface.wl_surface()));
         let before = window.as_ref().and_then(|w| w.meta().before_fullscreen.take());
         let ret = surface.with_pending_state(|state| {
             state.states.unset(xdg_toplevel::State::Fullscreen);
@@ -293,7 +305,12 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         if let Some(w) = &window {
             w.meta().fullscreen.set(false);
             if let Some(r) = before {
-                self.space.map_element(w.clone(), r.loc, false);
+                // (Hidden, where it comes back to; not shown now.)
+                if self.parked.0.borrow().contains(w) {
+                    w.meta().saved_location.set(r.loc);
+                } else {
+                    self.space.map_element(w.clone(), r.loc, false);
+                }
             }
         }
         if let Some(output) = ret {

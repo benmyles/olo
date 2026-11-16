@@ -6373,7 +6373,40 @@ switcher, `activate`). With nothing in front the loop stops at
 its first window (a display's gather, Setup full screen: 19.1 and 17.5
 µs a frame before, 18.8 and 16.9 after). When that display's size in points
 changes (a new scale, mode or rotation: `fixup_positions`), the window
-is told the new size, so it goes on filling it. With Preferences ▸ Appearance ▸ "Glow new
+is told the new size, so it goes on filling it. The display draws it and gives
+it the clicks only while it shows there (`shell::shown_fullscreen`: on
+the workspace showing, not in Rescue); parked on another workspace (a
+switch, a move), it stays the display's for when it's back, but that
+workspace shows as it is (a full-screen Viewer stayed over workspace 2
+after a switch to it). Coming back it isn't put back in its tile or own
+frame (`refit` leaves a full-screen window be: re-tiled as it came back,
+Viewer drew its tile's size over the whole display, black around it);
+leaving full screen does that. Moved to another display (Next Display,
+its display unplugged and back), it fills that one (`move_to_output`
+asks for it again as the app would, off the one it left: that one drew
+it over its own workspace while it sat in a tile's place on the new
+one), and the frame it goes back to moves with it (`same_place`). A display draws its full-screen window only while the window is on
+it. Arranging a full-screen window takes it out of full screen first,
+as if its app asked (`leave_fullscreen`: Tile, Zoom, Center, the
+scratchpad, as i3 does); Restore just takes it out (back where it was);
+Hide and Next Display keep it full screen. Going full screen, a window is put
+at its display's corner, where it's drawn (its place kept in
+`before_fullscreen`, for leaving): left where it was at the display's
+size, most of it lay on the next display, every "which display is it
+on" answered that one, and `keep_in_tile_area` pushed it there, off the
+display drawing it. That one leaves full-screen windows alone now too.
+The full-screen requests find a window hidden on another workspace or
+in the scratchpad as well (its state is its app's either way; kept to
+the windows showing, `WindowMeta::fullscreen` and the toplevel's state
+disagreed). A window put in a group by hand, or taken out, has the
+tiler look again (`put_in_group`, `take_out_of_group`, and
+`sync_groups` when groups change, compared in place each tick): it let
+go of its own tile and was neither tiled nor floating till something
+else moved the tiles (tile-qa, seed 75).
+Agents read it in `WindowInfo::fullscreen`,
+its `frame` the display's area then (where it's kept is where it goes
+back to). All three found by `tools/dev/tile-qa`, which takes Viewer
+full screen and back among the rest. With Preferences ▸ Appearance ▸ "Glow new
 windows for N seconds" (`Appearance::glow_new_windows`, off by default;
 `glow_seconds`, 5) a new one (not one coming back) also glows a moment:
 a soft halo in the look's `keyboard_navigation` blue, 12 points out from
@@ -6986,7 +7019,12 @@ edges, the first time it was tried), while it is on that tree's
 display only: just sent to another display, a window is still in the
 tree it left till the tiler looks again, and held to that tree's area
 its first commit there pulled it back across, over the tiles it left
-(tile-qa found it, two displays, seed 51).
+(tile-qa found it, two displays, seed 51). A tile put back in its place by
+`refit` (`retile`, `tile_frame`) is placed in the same area
+(`tile_area_of`), and a window arriving on a display has the tiler look
+at both again (`move_to_output`): back home in a tree that kept its
+place, it came back as it left, with margins smart gaps had since taken
+away, and no change of tiles laid it out (tile-qa, seed 72).
 
 Auto-tiling (`shell/autotile.rs`; its module doc is the design) is the
 Auto-Tiling mode; `{"type":"set_auto_tiling","on":true}` and
@@ -7114,7 +7152,11 @@ and arranging shortcut, two at once with no wait, layouts and places on
 either display, modes, workspaces, windows moved between them and
 between displays, minimizing, scale changes, windows grouped as tabs
 and taken out, a display unplugged and plugged in again, smart gaps and
-where new windows go changed) and after each: app_server answers; on each
+where new windows go changed, Viewer full screen and back: a full-screen
+window is drawn over its display from its corner while its place is
+kept, and `WindowInfo::frame` says the display's area then, `fullscreen`
+that it is; told its kept place, tile-qa saw a window the display's size
+8 points out past its edges) and after each: app_server answers; on each
 auto-tiled display every tiled window has a part, the parts lie in the
 area without overlapping, and windows overlap only where a least size
 holds one past its part; none is neither tiled nor floating. `--dense`

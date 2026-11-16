@@ -46,8 +46,7 @@ something nobody here has is in "Blocked", with what it waits for.
   is Focus mode (one at a time, the others a key away). Left: maybe
   scrolling columns as niri's; preselecting where the next window
   splits (bspwm's); gaps per workspace; rules for apps by workspace;
-  Preferences for each of those; tile-qa with full-screen windows
-  (groups and displays unplugged are in).
+  Preferences for each of those.
 
 - **The kits' costs, where they're above GPUI's** (from the move to the
   kits: "each within a frame's budget; to be brought down"). A whole

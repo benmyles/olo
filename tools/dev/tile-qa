@@ -7,7 +7,8 @@ every tiling and arranging shortcut, two at once with no wait, layouts
 and main places on either display, windowing modes, workspaces, windows
 moved between them, minimizing and bringing back, scale changes, windows
 grouped as tabs and taken out, a display unplugged and plugged in again
-(two displays, not --dense), smart gaps and where new windows go), and
+(two displays, not --dense), smart gaps and where new windows go, Viewer
+full screen and back), and
 after each the invariants: app_server answers; on every auto-tiled
 display, its tiled windows each have a part, the parts lie in the area
 and never overlap, the windows are on the display, and two overlap only
@@ -43,6 +44,11 @@ for f in ("n1.txt", "n2.txt"):
     path = os.path.join(HOME, f)
     if not os.path.exists(path):
         open(path, "w").write(f"{f}\n")
+# An image for Viewer, which goes full screen (F) and back.
+IMAGE = os.path.join(HOME, "tile-qa.png")
+if not os.path.exists(IMAGE):
+    from PIL import Image
+    Image.new("RGB", (640, 400), (40, 120, 200)).save(IMAGE)
 APPS = [
     ["olo-styled-edit", f"{HOME}/n1.txt"],
     ["olo-styled-edit", f"{HOME}/n2.txt"],
@@ -51,6 +57,7 @@ APPS = [
     ["olo-logs"],
     ["olo-deskcalc"],
     ["OLO_DOCTOR_HELPER=off", "olo-doctor"],
+    ["olo-viewer", IMAGE],
 ]
 SHORTCUTS = "all-workspaces to-scratchpad scratchpad scratchpad bigger-main smaller-main more-main-windows fewer-main-windows rotate-tiles rotate-tiles-back flip-tiles-across flip-tiles-up-down even-out-tiles toggle-split more-gap less-gap make-main swap-main focus-left focus-down focus-up focus-right swap-left swap-down swap-up swap-right resize-left resize-right resize-up resize-down next-layout previous-layout tile-all smart-tile zoom-all cascade-all fan-out undo-arrangement redo-arrangement tile-left tile-right-third zoom restore float-window hide-window next-display next-tab".split()
 LAYOUTS = ["main_and_stack", "halves", "columns", "rows", "grid", "spiral"]
@@ -110,11 +117,20 @@ def check(what):
         SEEN["pairs"] += len(tiles) * (len(tiles) - 1) // 2
         if len(tiles) > 2:
             SEEN["layouts"].add(d["layout"])
+        # A full-screen window: its display's whole area.
+        for w in ws:
+            if w.get("fullscreen") and w.get("output") == o and w.get("workspace", 0) == d["workspace"] and not w.get("minimized") and w.get("frame"):
+                f = w["frame"]
+                if (f["x"], f["y"], f["width"], f["height"]) != (round(ox), round(oy), round(ow), round(oh)):
+                    problems.append(f"{w['id']} {w['title'][:12]} full screen at {f}, not its display {outs[o]}")
         # Smart gaps: a tile alone is its part of the whole display, no
         # margin (no Deskbar in a tsession without --shell); Main and
         # Stack's lone main window keeps its place, so its part. (Zoomed,
         # it fills the tiling area, margins and all: not a tile laid out.)
-        if SMART[0] and len(tiles) == 1 and not tiles[0].get("zoomed") and tiles[0].get("part"):
+        # (Only a tile that has the whole area: one beside a place kept
+        # for a window away, holding its room, keeps its margins, as two
+        # tiles do; the places kept aren't in the window list.)
+        if SMART[0] and len(tiles) == 1 and not tiles[0].get("zoomed") and tiles[0].get("part") == [0.0, 0.0, 1.0, 1.0]:
             f, p = tiles[0]["frame"], tiles[0]["part"]
             want = (round(ox + p[0] * ow), round(oy + p[1] * oh), round(p[2] * ow), round(p[3] * oh))
             got = (f["x"], f["y"], f["width"], f["height"])
@@ -177,18 +193,27 @@ for step in range(steps):
     # Windows grouped as tabs and taken out again; a display unplugged and
     # plugged in again (two displays, not dense): its windows go to the
     # other and come back.
-    if extra < 0.05 and len(shown) >= 2:
+    viewers = [w for w in shown if "tile-qa.png" in w.get("title", "")]
+    if extra < 0.04 and viewers:
+        # Viewer full screen, or back: F, with it focused.
+        v = rng.choice(viewers)
+        op = f"full screen {v['id']} {'off' if v.get('fullscreen') else 'on'}"
+        ipc({"type": "activate", "id": v["id"]})
+        time.sleep(0.3)
+        ipc({"type": "press_keys", "keys": [33]})
+        r = None
+    elif extra < 0.09 and len(shown) >= 2:
         a, b = rng.sample(shown, 2)
         if a.get("output") == b.get("output"):
             op = f"group {a['id']} {a['title'][:10]} with {b['id']} {b['title'][:10]}"
             ipc({"type": "group_window", "id": a["id"], "with": b["id"]})
             r = None
-    elif extra < 0.08 and any(w.get("group") for w in ws):
+    elif extra < 0.12 and any(w.get("group") for w in ws):
         w = rng.choice([w for w in ws if w.get("group")])
         op = f"ungroup {w['id']} {w['title'][:10]}"
         ipc({"type": "ungroup_window", "id": w["id"]})
         r = None
-    elif extra < 0.10 and not args.dense and len(PLUGGED) == 2:
+    elif extra < 0.14 and not args.dense and len(PLUGGED) == 2:
         name_ = rng.choice(sorted(PLUGGED))
         on = not PLUGGED[name_]
         if on or sum(PLUGGED.values()) > 1:

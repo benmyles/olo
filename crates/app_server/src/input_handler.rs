@@ -1,6 +1,6 @@
 use std::{convert::TryInto, process::Command, sync::atomic::Ordering};
 
-use crate::{AnvilState, focus::PointerFocusTarget, shell::FullscreenSurface};
+use crate::{AnvilState, focus::PointerFocusTarget};
 
 #[cfg(feature = "udev")]
 use crate::udev::UdevData;
@@ -620,6 +620,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 if shortcut != S::Hide {
                     self.front_of_group(&w);
                 }
+                // Full screen: Restore leaves it (back where it was); the
+                // other arrangements leave it first. (Sent to another
+                // display, it fills that one; hidden, it stays so.)
+                if (w.meta().fullscreen.get() || crate::shell::autotile::fullscreen(&w)) && !matches!(shortcut, S::Hide | S::NextDisplay | S::PreviousDisplay) {
+                    self.leave_fullscreen(&w);
+                    if shortcut == S::Restore {
+                        return;
+                    }
+                }
                 match shortcut {
                     S::Tile(tile) => {
                         if !self.auto_tile_window(&w, tile) {
@@ -865,7 +874,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             if let Some(output) = output.as_ref() {
                 let output_geo = self.space.output_geometry(output).unwrap();
                 // (Not a window in front of it, which the windows below take.)
-                if let Some(window) = output.user_data().get::<FullscreenSurface>().and_then(|f| f.get()).filter(|_| !crate::rescue::active())
+                if let Some(window) = crate::shell::shown_fullscreen(&self.space, output)
                     && !self.in_front_of_fullscreen_under(output, &window, location)
                     && let Some((_, _)) = window.surface_under(location - output_geo.loc.to_f64(), WindowSurfaceType::ALL)
                 {
@@ -968,7 +977,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         }
         let mut under = None;
         // (In Rescue a full-screen window is put away with the rest.)
-        let fullscreen = output.user_data().get::<FullscreenSurface>().and_then(|f| f.get()).filter(|_| !crate::rescue::active());
+        let fullscreen = crate::shell::shown_fullscreen(&self.space, output);
         // A window in front of it (a dialog) takes the pointer over itself.
         let front = fullscreen.as_ref().and_then(|full| {
             crate::shell::in_front_of_fullscreen(&self.space, output, full).into_iter().find_map(|w| {

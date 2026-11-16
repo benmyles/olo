@@ -1521,7 +1521,7 @@ fn fit(r: Rectangle<i32, Logical>, min: smithay::utils::Size<i32, Logical>, area
     Rectangle::new(Point::from((x, y)), smithay::utils::Size::from((w, h)))
 }
 
-pub(super) fn fullscreen(w: &WindowElement) -> bool {
+pub(crate) fn fullscreen(w: &WindowElement) -> bool {
     let WindowSurface::Wayland(t) = w.0.underlying_surface();
     t.with_pending_state(|s| s.states.contains(xdg_toplevel::State::Fullscreen))
 }
@@ -2290,13 +2290,13 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// is still in the tree it left till the tiler looks again: held to
     /// that tree's area, its first commit there pulled it back across,
     /// where it stayed, over the tiles; tile-qa, seed 51.)
-    pub(super) fn auto_area_of(&self, w: &WindowElement) -> Option<Rectangle<i32, Logical>> {
+    pub(super) fn auto_area_of(&self, w: &WindowElement) -> Option<(Rectangle<i32, Logical>, i32)> {
         let key = self.tree_of(w)?;
         let output = self.space.outputs().find(|o| o.name() == key.1)?;
         if self.window_output(w).as_ref() != Some(output) {
             return None;
         }
-        self.auto_area(output, self.auto.trees.get(&key)?).map(|(a, _)| a)
+        self.auto_area(output, self.auto.trees.get(&key)?)
     }
 
     fn auto_apply_tiles(&mut self, output: &Output, tree: &Node, units: &[WindowElement]) {

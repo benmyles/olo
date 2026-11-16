@@ -101,6 +101,18 @@ impl FullscreenSurface {
     }
 }
 
+/// The window filling `output` full screen, while it shows there: on the
+/// workspace showing (parked on another, by a switch or a move, it's
+/// kept as the display's for when it's back, but not drawn over this
+/// one or given its clicks: a full-screen Viewer stayed over workspace 2
+/// after a switch to it; tile-qa), and not in Rescue.
+pub fn shown_fullscreen(space: &Space<WindowElement>, output: &Output) -> Option<WindowElement> {
+    let w = output.user_data().get::<FullscreenSurface>()?.get()?;
+    // (And on this display: put on another meanwhile, it isn't drawn
+    // filling this one.)
+    (space.element_location(&w).is_some() && !crate::rescue::active() && space.outputs_for_element(&w).contains(output)).then_some(w)
+}
+
 /// The windows in front of `full`, the window filling `output`, that
 /// show on it, the front one first. A new window comes up in front
 /// (`new_toplevel`), and a display filled by one window drew that one

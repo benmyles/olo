@@ -1242,6 +1242,11 @@ pub struct WindowInfo {
     /// active workspace.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub scratch: bool,
+    /// Full screen, as its app asked: its display's whole area, over the
+    /// rest (`frame` is that area; a tile or zoomed window keeps its tile
+    /// for when it isn't).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fullscreen: bool,
     /// Behind the window Focus mode shows on its display
     /// ([`WindowingMode::Focus`]): not drawn until it is activated.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
