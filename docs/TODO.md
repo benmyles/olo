@@ -109,6 +109,24 @@ something nobody here has is in "Blocked", with what it waits for.
   (for BBRv3: the connections using it, what they send, their
   retransmissions and round trips; for the graphics patch: buffers kept
   in memory).
+- **Viewer: a PDF's images at full quality, keys for everything, full
+  screen and a presentation mode** (Ben, 2026-11-16: "when viewing a pdf
+  in the viewer app that has high res images in it (e.g. see
+  /home/ben/Documents/ShiftUp-JackHenry-AI-v3.pdf ) it is showing as
+  lower quality with visible artifacts but if i use a different pdf
+  viewer the quality looks great. our viewer should show full quality.
+  also viewer should have kb shortcuts for everything, esp.
+  next/previous page, and also a full screen mode where it's full screen
+  and a presentation mode where it's still a window but with the toolbar
+  etc gone (appropriate for sharing that window in chrome or via airplay
+  etc)"). Find why that file's images come out worse (the scale they're
+  decoded or resampled at against the page's device pixels; a JPEG's
+  decode; a soft mask) and fix it at the root, compared pixel for pixel
+  with another viewer's rendering; every command of Viewer on a key
+  (next and previous page above all: Page Down/Up, Space, the arrows),
+  listed in its menus; Full Screen; and Presentation: the window as it
+  is, with the menu bar, toolbar and status line gone, so the window can
+  be shared as it is.
 - **A notification's click goes to its own window and tab** (Ben,
   2026-11-16: "when a notification appears in olo for a tab within a
   group of windows, e.g. i noticed it with terminal where i'll get a
