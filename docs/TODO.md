@@ -43,10 +43,10 @@ something nobody here has is in "Blocked", with what it waits for.
   strands a move; several main windows (nmaster) with keys, Deskbar and
   Preferences; the main share from any tile by key; smart gaps; where
   new windows go; windows on all workspaces and the scratchpad. Monocle
-  is Focus mode (one at a time, the others a key away). Left: maybe
-  scrolling columns as niri's; preselecting where the next window
-  splits (bspwm's); gaps per workspace. (Apps on workspaces of their
-  own are in.)
+  is Focus mode (one at a time, the others a key away). Apps on
+  workspaces of their own; focus, swap and rotate in order; preselecting
+  where the next window goes. Left: maybe scrolling columns as niri's;
+  gaps per workspace.
 
 - **The kits' costs, where they're above GPUI's** (from the move to the
   kits: "each within a frame's budget; to be brought down"). A whole

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-16
 
+### Auto-tiling: preselecting where the next window goes
+
+*05:15* — Ctrl+Shift+Cmd+J on a tile: the next window opens below it, the half it will take tinted in the keyboard-navigation colour till then (bspwm's preselection, i3's split before a window opens); the same keys again take it back (1.5×).
+
+![Auto-tiling: preselecting where the next window goes](2026-11-16/051509-auto-tiling-preselecting-where-the-next-window-g.png)
+
 ### Preferences: apps with their own workspace
 
 *04:36* — Preferences ▸ Windows lists the apps whose new windows open on a workspace of their own; unchecking one opens its windows where you are again (1.5×).

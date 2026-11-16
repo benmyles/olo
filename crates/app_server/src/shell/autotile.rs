@@ -512,6 +512,30 @@ pub fn parts_wrong(parts: &[(u64, Part)]) -> Option<String> {
     None
 }
 
+/// The preselection as drawn (`render`, which has no AnvilState): the
+/// window and the side, set with `AutoTiler::presel`.
+static PRESEL_SHOWN: std::sync::Mutex<Option<(u64, olo_protocol::Dir)>> = std::sync::Mutex::new(None);
+
+/// What `render` draws of the preselection.
+pub fn presel_shown() -> Option<(u64, olo_protocol::Dir)> {
+    *PRESEL_SHOWN.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+fn show_presel(p: Option<(u64, olo_protocol::Dir)>) {
+    *PRESEL_SHOWN.lock().unwrap_or_else(|e| e.into_inner()) = p;
+}
+
+/// The half of `frame` the next window takes, preselected `dir`.
+pub fn presel_half(frame: Rectangle<i32, Logical>, dir: olo_protocol::Dir) -> Rectangle<i32, Logical> {
+    let (hw, hh) = (frame.size.w / 2, frame.size.h / 2);
+    match dir {
+        olo_protocol::Dir::Left => Rectangle::new(frame.loc, (hw, frame.size.h).into()),
+        olo_protocol::Dir::Right => Rectangle::new((frame.loc.x + frame.size.w - hw, frame.loc.y).into(), (hw, frame.size.h).into()),
+        olo_protocol::Dir::Up => Rectangle::new(frame.loc, (frame.size.w, hh).into()),
+        olo_protocol::Dir::Down => Rectangle::new((frame.loc.x, frame.loc.y + frame.size.h - hh).into(), (frame.size.w, hh).into()),
+    }
+}
+
 /// A step in the auto-tiled windows' order (`in_order_step`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OrderStep {
@@ -527,6 +551,7 @@ pub enum OrderStep {
 pub enum NewAt {
     First,
     After(u64),
+    Before(u64),
     Last,
 }
 
@@ -535,6 +560,7 @@ fn put_new(order: &mut Vec<Node>, id: u64, at: NewAt) {
     let i = match at {
         NewAt::First => 0,
         NewAt::After(f) => order.iter().position(|n| *n == Node::Window(f)).map_or(order.len(), |i| i + 1),
+        NewAt::Before(f) => order.iter().position(|n| *n == Node::Window(f)).unwrap_or(0),
         NewAt::Last => order.len(),
     };
     order.insert(i, Node::Window(id));
@@ -1420,6 +1446,9 @@ pub struct AutoTiler {
     /// The layout each tree was last built in, and Main and Stack's main
     /// window's place: chosen anew, it's built in that one (Main and
     /// Stack's shape), once.
+    /// Where the next new window goes (`preselect`): beside this window,
+    /// that way. Shown on its tile (`render`) till used or taken back.
+    pub presel: Option<(u64, olo_protocol::Dir)>,
     built_as: HashMap<(u32, String), (olo_protocol::TilingLayout, Tile, u32)>,
     /// Main and Stack: each tree's main window, and the one before it
     /// (Swap with Previous Main).
@@ -1469,6 +1498,7 @@ impl Default for AutoTiler {
     fn default() -> Self {
         AutoTiler {
             trees: HashMap::new(),
+            presel: None,
             built_as: HashMap::new(),
             mains: HashMap::new(),
             laid: HashMap::new(),
@@ -2218,7 +2248,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// `w` into `tree`: back in its kept place, if it has one; else in
     /// room a tiling command left; else taking half of the tile that had
     /// the focus last (or the biggest), across its longer side.
-    fn auto_insert(&self, tree: &mut Option<Node>, w: &WindowElement, area: Rectangle<i32, Logical>, key: &(u32, String)) {
+    fn auto_insert(&mut self, tree: &mut Option<Node>, w: &WindowElement, area: Rectangle<i32, Logical>, key: &(u32, String)) {
         let id = w.id();
         let Some(t) = tree.as_mut() else {
             // (Main and Stack's main window keeps its place alone too.)
@@ -2244,6 +2274,35 @@ impl<B: Backend + 'static> AnvilState<B> {
         // Main and Stack: the new window is the main one, the one that was
         // first in the stack (the shape leaves its own room for the next
         // window, not a hole a tiling command left).
+        // Preselected (`preselect`): beside that tile, that way, whatever
+        // else would decide; then forgotten.
+        let presel = self.auto.presel.take().filter(|(p, _)| *p != id && t.contains(*p));
+        show_presel(None);
+        if let Some((p, dir)) = presel {
+            self.backend_data_wake_soon();
+            let before = matches!(dir, olo_protocol::Dir::Left | olo_protocol::Dir::Up);
+            let chosen = self.layout_of(key);
+            info!(window = id, beside = p, dir = dir.id(), "a new window where it was preselected");
+            if chosen == olo_protocol::TilingLayout::MainAndStack {
+                let (place, was) = self.main_places(key);
+                let m = self.auto.mains.get(key).copied().unwrap_or_default();
+                let at = if before { NewAt::Before(p) } else { NewAt::After(p) };
+                if let Some(built) = main_and_stack_again(t, place, was, self.main_count_of(key) as usize, Some((id, at)), None, m.now, m.before) {
+                    *t = built;
+                }
+                return;
+            }
+            if chosen.built() {
+                let mut order = in_order(chosen, Tile::Left, t);
+                put_new(&mut order, id, if before { NewAt::Before(p) } else { NewAt::After(p) });
+                let flat = evenly(Cut::Columns, order);
+                *t = built_again(chosen, &flat, area.size.w as f32 / area.size.h.max(1) as f32).unwrap_or(flat);
+                return;
+            }
+            let cut = if matches!(dir, olo_protocol::Dir::Left | olo_protocol::Dir::Right) { Cut::Columns } else { Cut::Rows };
+            t.split_leaf(p, Node::Window(id), cut, before);
+            return;
+        }
         // Where it goes in the order (`TilingSettings::new_windows`):
         // after the tile that had the focus last, if that's the choice.
         let at = match self.settings.tiling.new_windows {
@@ -3118,6 +3177,25 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
     }
 
+    /// Preselect (⌃⇧⌘ H J K L): the next new window on that side of
+    /// auto-tiled `w`'s tile; the same again, or for another window,
+    /// takes it back / moves it. Whether one is set now.
+    pub fn preselect(&mut self, w: &WindowElement, dir: olo_protocol::Dir) -> bool {
+        if self.floats(w) || self.tree_of(w).is_none() {
+            return false;
+        }
+        self.auto.presel = if self.auto.presel == Some((w.id(), dir)) { None } else { Some((w.id(), dir)) };
+        show_presel(self.auto.presel);
+        info!(window = w.id(), dir = dir.id(), on = self.auto.presel.is_some(), "preselected");
+        self.backend_data_wake_soon();
+        self.auto.presel.is_some()
+    }
+
+    /// The display looks again (a preselection shown or gone).
+    fn backend_data_wake_soon(&mut self) {
+        self.backend_data.wake(None);
+    }
+
     /// Toggle split (⌃⌥⌘S): the split auto-tiled `w` shares with its
     /// neighbour turned the other way. Whether there was one.
     pub fn toggle_split(&mut self, w: &WindowElement) -> bool {
@@ -3651,6 +3729,19 @@ mod tests {
         assert_eq!(windows_in_order(L::Spiral, place, &rotated_windows(&sp, &o, false)), [2, 3, 4, 1]);
         // One window: as it was.
         assert_eq!(rotated_windows(&w(5), &[5], true), w(5));
+    }
+
+    /// The half a preselection shows: that side of the frame, an odd
+    /// size's extra point to the half kept.
+    #[test]
+    fn preselected_halves() {
+        use olo_protocol::Dir;
+        let f = Rectangle::<i32, Logical>::new((10, 20).into(), (101, 51).into());
+        let r = |x, y, w, h| Rectangle::<i32, Logical>::new((x, y).into(), (w, h).into());
+        assert_eq!(presel_half(f, Dir::Left), r(10, 20, 50, 51));
+        assert_eq!(presel_half(f, Dir::Right), r(61, 20, 50, 51));
+        assert_eq!(presel_half(f, Dir::Up), r(10, 20, 101, 25));
+        assert_eq!(presel_half(f, Dir::Down), r(10, 46, 101, 25));
     }
 
     fn with_kept_spiral(t: &Node) -> Node {

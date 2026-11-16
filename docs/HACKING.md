@@ -6975,6 +6975,17 @@ the tree kept as laid out so least sizes hold, and a press that moves
 nothing on screen records nothing for Undo. Agents run them as any
 shortcut (`{"type":"run_shortcut","id":"swap-left"}`).
 
+Preselecting (bspwm's preselection, i3's `split h` / `split v` before
+the window opens; `preselect`, ⌃⇧⌘ H J K L): the next new window goes
+on that side of the focused tile, whatever would decide otherwise
+(Halves splits that tile there; Main and Stack and the built layouts
+put it just before or after that window in their order), and that half
+of the tile is tinted the keyboard-navigation colour, a third opaque,
+till then (`presel_half`, drawn just in front of the window by `render`,
+its commit moved on only as it changes). The same keys again take it
+back; on another tile, it moves there. A tile too small for the window
+beside it may still be rearranged by least sizes (`autofit`), as any.
+
 In the layout's order, as dwm, xmonad and Amethyst move (`in_order_step`,
 `windows_in_order`: Main and Stack's main windows then its stack, each
 layout's own): Focus the Next / Previous Tile (⌃⌥⌘N, ⌃⌥⌘P, round),

@@ -342,6 +342,7 @@ where
         // bright (the front ones), over the rest.
         let area = Rectangle::from_size(region.size.to_f64().to_physical(scale).to_i32_ceil());
         let mut dim = crate::spotlight::dim(&output.name(), area);
+        let presel = crate::shell::autotile::presel_shown();
         for w in space.elements().rev() {
             let (Some(bbox), Some(at)) = (space.element_bbox(w), space.element_location(w)) else { continue };
             // Behind the window Focus shows (`shell::modes`), or filling
@@ -351,6 +352,15 @@ where
             }
             if dim.as_ref().is_some_and(|(bright, _)| !bright.contains(&w.id())) {
                 out.push(window(WindowRenderElement::Decoration(dim.take().unwrap().1)));
+            }
+            // The half of its tile the next window takes (preselected): in
+            // front of it, tinted.
+            if let Some((_, dir)) = presel.filter(|(id, _)| *id == w.id())
+                && let Some(frame) = space.element_geometry(w)
+            {
+                let half = crate::shell::autotile::presel_half(frame, dir);
+                let at = Rectangle::new(half.loc - region.loc, half.size).to_f64().to_physical(scale).to_i32_round();
+                out.push(window(WindowRenderElement::Decoration(presel_element(&output.name(), at))));
             }
             let location = (at - SpaceElement::geometry(w).loc - region.loc).to_physical_precise_round(scale);
             let start = std::time::Instant::now();
@@ -1252,4 +1262,23 @@ mod mirror_tests {
         // The same shape: edge to edge.
         assert_eq!(fit((1280, 800).into(), (2560, 1600).into()), Fit { factor: 2.0, offset: (0, 0).into() });
     }
+}
+
+/// The preselection's tint over `area` (physical, on `output`): the
+/// keyboard-navigation colour, a third opaque, premultiplied; its commit
+/// moved on only as it changes, so the display draws it once.
+fn presel_element(output: &str, area: Rectangle<i32, Physical>) -> smithay::backend::renderer::element::solid::SolidColorRenderElement {
+    use std::{collections::HashMap, sync::Mutex};
+    static DRAWN: Mutex<Option<HashMap<String, (Id, smithay::backend::renderer::utils::CommitCounter, Rectangle<i32, Physical>, [f32; 4])>>> = Mutex::new(None);
+    let c = crate::theme::palette().keyboard_navigation;
+    let a = 0.33;
+    let color = [c[0] as f32 / 255.0 * a, c[1] as f32 / 255.0 * a, c[2] as f32 / 255.0 * a, a];
+    let mut drawn = DRAWN.lock().unwrap_or_else(|e| e.into_inner());
+    let (id, commit, last, last_color) = drawn.get_or_insert_with(HashMap::new).entry(output.to_owned()).or_insert_with(|| (Id::new(), Default::default(), area, color));
+    if *last != area || *last_color != color {
+        commit.increment();
+        *last = area;
+        *last_color = color;
+    }
+    smithay::backend::renderer::element::solid::SolidColorRenderElement::new(id.clone(), area, *commit, color, Kind::Unspecified)
 }

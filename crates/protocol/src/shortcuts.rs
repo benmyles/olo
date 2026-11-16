@@ -316,6 +316,10 @@ pub enum Shortcut {
     /// (xmonad's swapDown / swapUp); every window one place on, or back
     /// (Amethyst's rotate), the arrangement's shape kept.
     FocusInOrder(bool),
+    /// The next new window goes on that side of the focused tile
+    /// (bspwm's preselection, i3's `split h` / `split v` before it
+    /// opens), shown on the tile till then; again, not.
+    Preselect(Dir),
     SwapInOrder(bool),
     RotateWindows(bool),
     /// The focused window into the scratchpad (hidden, floating), or out
@@ -799,6 +803,10 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::BiggerMain, "bigger-main", ARRANGE, "Make the main windows bigger", &["Ctrl+Alt+Cmd+Period"], &["Ctrl+Alt+Cmd+Period"], &["Ctrl+Alt+Cmd+Period"]),
     s(Shortcut::SmallerMain, "smaller-main", ARRANGE, "Make the main windows smaller", &["Ctrl+Alt+Cmd+Comma"], &["Ctrl+Alt+Cmd+Comma"], &["Ctrl+Alt+Cmd+Comma"]),
     s(Shortcut::AllWorkspaces, "all-workspaces", WINDOWS, "Show on all workspaces", &["Ctrl+Alt+Cmd+A"], &["Ctrl+Alt+Cmd+A"], &["Ctrl+Alt+Cmd+A"]),
+    s(Shortcut::Preselect(Dir::Left), "preselect-left", WINDOWS, "Next window to the tile's left", &["Ctrl+Shift+Cmd+H"], &["Ctrl+Shift+Cmd+H"], &["Ctrl+Shift+Cmd+H"]),
+    s(Shortcut::Preselect(Dir::Down), "preselect-down", WINDOWS, "Next window below the tile", &["Ctrl+Shift+Cmd+J"], &["Ctrl+Shift+Cmd+J"], &["Ctrl+Shift+Cmd+J"]),
+    s(Shortcut::Preselect(Dir::Up), "preselect-up", WINDOWS, "Next window above the tile", &["Ctrl+Shift+Cmd+K"], &["Ctrl+Shift+Cmd+K"], &["Ctrl+Shift+Cmd+K"]),
+    s(Shortcut::Preselect(Dir::Right), "preselect-right", WINDOWS, "Next window to the tile's right", &["Ctrl+Shift+Cmd+L"], &["Ctrl+Shift+Cmd+L"], &["Ctrl+Shift+Cmd+L"]),
     s(Shortcut::FocusInOrder(true), "focus-next-tile", WINDOWS, "Focus the next tile", &["Ctrl+Alt+Cmd+N"], &["Ctrl+Alt+Cmd+N"], &["Ctrl+Alt+Cmd+N"]),
     s(Shortcut::FocusInOrder(false), "focus-previous-tile", WINDOWS, "Focus the previous tile", &["Ctrl+Alt+Cmd+P"], &["Ctrl+Alt+Cmd+P"], &["Ctrl+Alt+Cmd+P"]),
     s(Shortcut::SwapInOrder(true), "swap-next-tile", WINDOWS, "Swap with the next tile", &["Ctrl+Alt+Shift+Cmd+N"], &["Ctrl+Alt+Shift+Cmd+N"], &["Ctrl+Alt+Shift+Cmd+N"]),

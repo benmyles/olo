@@ -552,6 +552,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     self.set_main_count(count, Some(ws), Some(o));
                 }
             }
+            S::Preselect(dir) => {
+                if let Some(w) = focused {
+                    self.preselect(&w, dir);
+                }
+            }
             S::FocusInOrder(forward) => {
                 self.in_order_step(focused, crate::shell::autotile::OrderStep::Focus(forward));
             }
