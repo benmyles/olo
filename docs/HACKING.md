@@ -6918,6 +6918,23 @@ says which are covered, for agents, and `WindowInfo::stack` (in
 order, 0 the front: a window is in front on its display when none there
 has a smaller one.
 
+By direction, as tiling window managers move about
+(`shell/directional.rs`; Ben, 2026-11-15: "look to the other most
+popular tiling WMs to make sure we support all the stuff they do"):
+Focus (⌃⌥⌘ H J K L, `focus-left`…) gives the keyboard to the window
+beside the focused one that way, in any mode, from the frames on
+screen: past a display's edge, on to the next display that way
+(`directional::nearest`: past the window's edge, not merely with its
+middle further that way; overlapping across first, then the nearest
+edge, then the nearest middle). Swap (⌃⌥⇧⌘ H J K L) trades an
+auto-tiled window's tile with its neighbour's that way. Resize (⌃⌥⇧⌘
+arrows) moves the edge beside it that way a step (a twentieth of the
+display, at least 32 points: `RESIZE_STEP`): its own edge on that side,
+else, at the display's edge, its other one (`directional::resize_split`),
+the tree kept as laid out so least sizes hold, and a press that moves
+nothing on screen records nothing for Undo. Agents run them as any
+shortcut (`{"type":"run_shortcut","id":"swap-left"}`).
+
 Auto-tiling (`shell/autotile.rs`; its module doc is the design) is the
 Auto-Tiling mode; `{"type":"set_auto_tiling","on":true}` and
 `{"type":"auto_tiling"}` still work, as the mode. It has two layouts,

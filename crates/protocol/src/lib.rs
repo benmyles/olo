@@ -38,7 +38,7 @@ pub mod voice;
 pub use notifications::{AppNotifications, CardSize, HistoryView, NoteApp, NoteLook, NoteStyle, NotificationSettings, NotificationState};
 pub use sharing::SharingState;
 pub use shortcuts::{
-    AutoTiling, Chord, CommandKey, KeyboardProfile, LAYOUT_PRESETS, LayoutChoice, MainPlaceChoice, ModeChoice, Platform, Shortcut, ShortcutSettings, TILING_VERSION, Tile, TilingLayout,
+    AutoTiling, Chord, CommandKey, Dir, KeyboardProfile, LAYOUT_PRESETS, LayoutChoice, MainPlaceChoice, ModeChoice, Platform, Shortcut, ShortcutSettings, TILING_VERSION, Tile, TilingLayout,
     TilingSettings, WindowingMode,
 };
 

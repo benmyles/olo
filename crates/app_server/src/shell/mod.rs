@@ -39,6 +39,7 @@ use crate::{
 mod autofit;
 pub mod autotile;
 pub mod deco;
+pub mod directional;
 mod element;
 pub mod glow;
 mod grabs;

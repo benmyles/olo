@@ -465,6 +465,11 @@ impl Inset {
     }
 }
 
+/// A step of Resize by direction: a twentieth of the display along that
+/// way, at least `RESIZE_STEP_PX` points.
+pub const RESIZE_STEP: f32 = 0.05;
+pub const RESIZE_STEP_PX: f32 = 32.0;
+
 /// Each leaf that takes room (the windows, and the places that hold
 /// theirs) and its part of the area, from the top left. `min` is each
 /// window's least size in fractions of the area, a whole gap with it: a
@@ -2521,6 +2526,88 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// Choose where Main and Stack's main window goes on `output` (the
     /// active display unless given) on its workspace `workspace` (the one
     /// showing unless given): its tiles are built again so.
+    /// Focus by direction (⌃⌥⌘ H J K L, `directional`): the window beside
+    /// `from` (the focused one; else the active display's middle) that
+    /// way, among those on screen on every display, takes the keyboard
+    /// and comes to the front. Whether one did.
+    pub fn focus_toward(&mut self, from: Option<WindowElement>, dir: olo_protocol::Dir) -> bool {
+        let frame = |s: &Self, w: &WindowElement| s.space.element_geometry(w).map(|g| (g.loc.x as f32, g.loc.y as f32, g.size.w as f32, g.size.h as f32));
+        let outputs: Vec<Output> = self.space.outputs().cloned().collect();
+        let windows: Vec<WindowElement> = outputs.iter().flat_map(|o| self.windows_on(o)).collect();
+        let others: Vec<(u64, super::tiling::Part)> = windows.iter().filter_map(|w| Some((w.id(), frame(self, w)?))).collect();
+        let start = match from.as_ref().and_then(|w| frame(self, w)) {
+            Some(f) => f,
+            None => {
+                let Some(g) = self.active_output().and_then(|o| self.space.output_geometry(&o)) else { return false };
+                ((g.loc.x + g.size.w / 2) as f32, (g.loc.y + g.size.h / 2) as f32, 0.0, 0.0)
+            }
+        };
+        let Some(id) = super::directional::nearest(&others, start, dir) else { return false };
+        let Some(w) = windows.into_iter().find(|w| w.id() == id) else { return false };
+        info!(window = id, dir = dir.id(), "focused by direction");
+        self.focus_window(&w);
+        true
+    }
+
+    /// Swap by direction (⌃⌥⇧⌘ H J K L): auto-tiled `w` trades tiles with
+    /// the one beside it that way on its display. Whether it did.
+    pub fn swap_toward(&mut self, w: &WindowElement, dir: olo_protocol::Dir) -> bool {
+        if self.floats(w) {
+            return false;
+        }
+        let Some(key) = self.tree_of(w) else { return false };
+        let Some(tree) = self.auto.trees.get(&key) else { return false };
+        let parts: Vec<(u64, super::tiling::Part)> =
+            layout(tree, &|_| (0.0, 0.0), Inset::default()).into_iter().filter_map(|(n, p)| if let Node::Window(i) = n { Some((*i, p)) } else { None }).collect();
+        let Some(from) = parts.iter().find(|(i, _)| *i == w.id()).map(|(_, p)| *p) else { return false };
+        let Some(other) = super::directional::nearest(&parts, from, dir) else { return false };
+        let Some((key, mut tree)) = self.auto_take(w, "Swap Tiles") else { return false };
+        tree.swap(w.id(), other);
+        info!(window = w.id(), with = other, dir = dir.id(), "tiles swapped by direction");
+        self.auto_put(key, tree);
+        true
+    }
+
+    /// Resize by direction (⌃⌥⇧⌘ arrows): the edge beside auto-tiled `w`
+    /// that way moves that way a step (`RESIZE_STEP` of the display, at
+    /// least `RESIZE_STEP_PX`), its tree kept as laid out so least sizes
+    /// hold it. Whether an edge moved.
+    pub fn resize_toward(&mut self, w: &WindowElement, dir: olo_protocol::Dir) -> bool {
+        if self.floats(w) {
+            return false;
+        }
+        let Some(key) = self.tree_of(w) else { return false };
+        let Some(output) = self.space.outputs().find(|o| o.name() == key.1).cloned() else { return false };
+        let Some(area) = self.tile_area(&output) else { return false };
+        let Some(tree) = self.auto.trees.get(&key) else { return false };
+        let along = match dir {
+            olo_protocol::Dir::Left | olo_protocol::Dir::Right => area.size.w,
+            olo_protocol::Dir::Up | olo_protocol::Dir::Down => area.size.h,
+        }
+        .max(1) as f32;
+        let step = RESIZE_STEP.max(RESIZE_STEP_PX / along);
+        let windows = self.all_windows();
+        let mins = self.auto_mins(&windows, area);
+        let min = |id: u64| mins.get(&id).copied().unwrap_or((0.0, 0.0));
+        let inset = Inset::of(area, self.tile_gap());
+        let mut moved = tree.clone();
+        if !super::directional::resize_split(&mut moved, w.id(), dir, step) {
+            return false;
+        }
+        // As laid out: a ratio least sizes hold off isn't kept beyond them
+        // (the next press the other way moves at once), and a press that
+        // moves nothing on screen changes nothing (nor what Undo takes
+        // back).
+        let (now, was) = (as_laid_out(&moved, &min, inset), as_laid_out(tree, &min, inset));
+        if now == was {
+            return false;
+        }
+        let Some((key, _)) = self.auto_take(w, "Resize Tile") else { return false };
+        info!(window = w.id(), dir = dir.id(), "tile resized by direction");
+        self.auto_put(key, now);
+        true
+    }
+
     /// Auto-tiling's layout on one display's workspace (the active display
     /// and the workspace showing, unless given), remembered for it.
     pub fn set_tiling_layout(&mut self, layout: olo_protocol::TilingLayout, workspace: Option<u32>, output: Option<Output>) -> bool {

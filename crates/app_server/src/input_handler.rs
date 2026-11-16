@@ -531,6 +531,20 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 let output = focused.as_ref().and_then(|w| self.window_output(w));
                 self.swap_main(output);
             }
+            // By direction (shell/directional.rs).
+            S::Focus(dir) => {
+                self.focus_toward(focused, dir);
+            }
+            S::Swap(dir) => {
+                if let Some(w) = focused {
+                    self.swap_toward(&w, dir);
+                }
+            }
+            S::Resize(dir) => {
+                if let Some(w) = focused {
+                    self.resize_toward(&w, dir);
+                }
+            }
             S::Tile(_) | S::Zoom | S::ZoomVertical | S::ZoomHorizontal | S::Restore | S::RestoreOrHide | S::Center | S::Hide | S::NextDisplay | S::PreviousDisplay => {
                 let Some(w) = focused else { return };
                 // Windows' ⊞↓: a window arranged goes back to its own

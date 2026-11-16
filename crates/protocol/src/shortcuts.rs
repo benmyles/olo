@@ -218,6 +218,30 @@ impl FromStr for Chord {
     }
 }
 
+/// A direction on screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Dir {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+impl Dir {
+    pub const ALL: [Dir; 4] = [Dir::Left, Dir::Right, Dir::Up, Dir::Down];
+
+    /// Its name in shortcuts' ids and commands: "left".
+    pub fn id(self) -> &'static str {
+        match self {
+            Dir::Left => "left",
+            Dir::Right => "right",
+            Dir::Up => "up",
+            Dir::Down => "down",
+        }
+    }
+}
+
 /// What a shortcut does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Shortcut {
@@ -243,6 +267,17 @@ pub enum Shortcut {
     /// again, and this one goes back to the stack (a new window took
     /// the main place: put it back).
     SwapMain,
+    /// The window beside the focused one in a direction takes the
+    /// keyboard (and comes to the front): on its display, else the next
+    /// display that way (as i3, sway, bspwm and Hyprland do).
+    Focus(Dir),
+    /// Auto-tiling: the focused tile trades places with the one beside it
+    /// that way.
+    Swap(Dir),
+    /// Auto-tiling: the edge beside the focused tile that way moves that
+    /// way (its own edge on that side, else the one on the other side), a
+    /// step at a time, least sizes kept.
+    Resize(Dir),
     /// Hide the focused window (minimize it to Deskbar).
     Hide,
     /// Roll the focused window up to just its tab, or back down.
@@ -676,6 +711,20 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::Float, "float-window", WINDOWS, "Float over the tiles, or tile", &["Ctrl+Alt+Cmd+F"], &["Ctrl+Alt+Cmd+F"], &["Ctrl+Alt+Cmd+F"]),
     s(Shortcut::MakeMain, "make-main", WINDOWS, "Make it the main window", &["Ctrl+Alt+Cmd+M"], &["Ctrl+Alt+Cmd+M"], &["Ctrl+Alt+Cmd+M"]),
     s(Shortcut::SwapMain, "swap-main", WINDOWS, "Swap with the previous main window", &["Ctrl+Alt+Cmd+Backspace"], &["Ctrl+Alt+Cmd+Backspace"], &["Ctrl+Alt+Cmd+Backspace"]),
+    // By direction, as tiling window managers do it (vim's H J K L: i3,
+    // sway, bspwm, Hyprland, Amethyst), the same keys in every profile.
+    s(Shortcut::Focus(Dir::Left), "focus-left", WINDOWS, "Focus the window to the left", &["Ctrl+Alt+Cmd+H"], &["Ctrl+Alt+Cmd+H"], &["Ctrl+Alt+Cmd+H"]),
+    s(Shortcut::Focus(Dir::Down), "focus-down", WINDOWS, "Focus the window below", &["Ctrl+Alt+Cmd+J"], &["Ctrl+Alt+Cmd+J"], &["Ctrl+Alt+Cmd+J"]),
+    s(Shortcut::Focus(Dir::Up), "focus-up", WINDOWS, "Focus the window above", &["Ctrl+Alt+Cmd+K"], &["Ctrl+Alt+Cmd+K"], &["Ctrl+Alt+Cmd+K"]),
+    s(Shortcut::Focus(Dir::Right), "focus-right", WINDOWS, "Focus the window to the right", &["Ctrl+Alt+Cmd+L"], &["Ctrl+Alt+Cmd+L"], &["Ctrl+Alt+Cmd+L"]),
+    s(Shortcut::Swap(Dir::Left), "swap-left", WINDOWS, "Swap with the tile to the left", &["Ctrl+Alt+Shift+Cmd+H"], &["Ctrl+Alt+Shift+Cmd+H"], &["Ctrl+Alt+Shift+Cmd+H"]),
+    s(Shortcut::Swap(Dir::Down), "swap-down", WINDOWS, "Swap with the tile below", &["Ctrl+Alt+Shift+Cmd+J"], &["Ctrl+Alt+Shift+Cmd+J"], &["Ctrl+Alt+Shift+Cmd+J"]),
+    s(Shortcut::Swap(Dir::Up), "swap-up", WINDOWS, "Swap with the tile above", &["Ctrl+Alt+Shift+Cmd+K"], &["Ctrl+Alt+Shift+Cmd+K"], &["Ctrl+Alt+Shift+Cmd+K"]),
+    s(Shortcut::Swap(Dir::Right), "swap-right", WINDOWS, "Swap with the tile to the right", &["Ctrl+Alt+Shift+Cmd+L"], &["Ctrl+Alt+Shift+Cmd+L"], &["Ctrl+Alt+Shift+Cmd+L"]),
+    s(Shortcut::Resize(Dir::Left), "resize-left", WINDOWS, "Move the tile's edge left", &["Ctrl+Alt+Shift+Cmd+Left"], &["Ctrl+Alt+Shift+Cmd+Left"], &["Ctrl+Alt+Shift+Cmd+Left"]),
+    s(Shortcut::Resize(Dir::Right), "resize-right", WINDOWS, "Move the tile's edge right", &["Ctrl+Alt+Shift+Cmd+Right"], &["Ctrl+Alt+Shift+Cmd+Right"], &["Ctrl+Alt+Shift+Cmd+Right"]),
+    s(Shortcut::Resize(Dir::Up), "resize-up", WINDOWS, "Move the tile's edge up", &["Ctrl+Alt+Shift+Cmd+Up"], &["Ctrl+Alt+Shift+Cmd+Up"], &["Ctrl+Alt+Shift+Cmd+Up"]),
+    s(Shortcut::Resize(Dir::Down), "resize-down", WINDOWS, "Move the tile's edge down", &["Ctrl+Alt+Shift+Cmd+Down"], &["Ctrl+Alt+Shift+Cmd+Down"], &["Ctrl+Alt+Shift+Cmd+Down"]),
     s(Shortcut::Hide, "hide-window", WINDOWS, "Hide window", &["Cmd+M"], &[], &["Ctrl+Alt+M"]),
     s(Shortcut::HideApp, "hide-app", WINDOWS, "Hide the application", &["Cmd+H"], &[], &["Ctrl+Alt+H"]),
     s(Shortcut::RollUp, "roll-up", WINDOWS, "Roll up or down", &["Ctrl+Cmd+M"], &["Alt+Cmd+M"], &["Ctrl+Alt+R"]),
