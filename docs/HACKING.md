@@ -6963,7 +6963,11 @@ tile alone on its display has no margin and no gap: it fills the area
 beside Deskbar (`auto_area`), and `keep_in_tile_area` holds it to that
 area, not the one with margins (`auto_area_of`: it pushed the lone
 window back to the margin, 8 points out past the display's other
-edges, the first time it was tried).
+edges, the first time it was tried), while it is on that tree's
+display only: just sent to another display, a window is still in the
+tree it left till the tiler looks again, and held to that tree's area
+its first commit there pulled it back across, over the tiles it left
+(tile-qa found it, two displays, seed 51).
 
 Auto-tiling (`shell/autotile.rs`; its module doc is the design) is the
 Auto-Tiling mode; `{"type":"set_auto_tiling","on":true}` and
@@ -7088,8 +7092,10 @@ tree's order, fails it). `tools/dev/tile-qa NAME [--steps N] [--seed S]
 [--dense]` does it live on a tsession desktop: random operations as a
 person or an agent could do them (apps opening and closing, every tiling
 and arranging shortcut, two at once with no wait, layouts and places on
-either display, modes, workspaces, windows moved between them,
-minimizing, scale changes) and after each: app_server answers; on each
+either display, modes, workspaces, windows moved between them and
+between displays, minimizing, scale changes, windows grouped as tabs
+and taken out, a display unplugged and plugged in again, smart gaps and
+where new windows go changed) and after each: app_server answers; on each
 auto-tiled display every tiled window has a part, the parts lie in the
 area without overlapping, and windows overlap only where a least size
 holds one past its part; none is neither tiled nor floating. `--dense`

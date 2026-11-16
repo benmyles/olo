@@ -2285,10 +2285,16 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     /// The area auto-tiled `w`'s tile is in ([`Self::auto_area`]), if it
-    /// is one.
+    /// is one on the display `w` is on. (Just sent to another display, it
+    /// is still in the tree it left till the tiler looks again: held to
+    /// that tree's area, its first commit there pulled it back across,
+    /// where it stayed, over the tiles; tile-qa, seed 51.)
     pub(super) fn auto_area_of(&self, w: &WindowElement) -> Option<Rectangle<i32, Logical>> {
         let key = self.tree_of(w)?;
         let output = self.space.outputs().find(|o| o.name() == key.1)?;
+        if self.window_output(w).as_ref() != Some(output) {
+            return None;
+        }
         self.auto_area(output, self.auto.trees.get(&key)?).map(|(a, _)| a)
     }
 

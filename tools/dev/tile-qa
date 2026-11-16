@@ -5,7 +5,9 @@ changing between them all in unexpected ways"): random operations, as a
 person and an agent could do them in any order (apps opening and closing,
 every tiling and arranging shortcut, two at once with no wait, layouts
 and main places on either display, windowing modes, workspaces, windows
-moved between them, minimizing and bringing back, scale changes), and
+moved between them, minimizing and bringing back, scale changes, windows
+grouped as tabs and taken out, a display unplugged and plugged in again
+(two displays, not --dense), smart gaps and where new windows go), and
 after each the invariants: app_server answers; on every auto-tiled
 display, its tiled windows each have a part, the parts lie in the area
 and never overlap, the windows are on the display, and two overlap only
@@ -158,6 +160,8 @@ def settle():
 
 
 DENSE = args.dense
+# The displays a test session started with, and whether each is plugged in.
+PLUGGED = {o: True for o in outputs()}
 log = []
 pids = []
 fails = 0
@@ -165,11 +169,39 @@ for step in range(steps):
     ws = windows()
     shown = [w for w in ws if not w.get("minimized")]
     r = rng.random()
+    extra = rng.random()
+    # Windows grouped as tabs and taken out again; a display unplugged and
+    # plugged in again (two displays, not dense): its windows go to the
+    # other and come back.
+    if extra < 0.05 and len(shown) >= 2:
+        a, b = rng.sample(shown, 2)
+        if a.get("output") == b.get("output"):
+            op = f"group {a['id']} {a['title'][:10]} with {b['id']} {b['title'][:10]}"
+            ipc({"type": "group_window", "id": a["id"], "with": b["id"]})
+            r = None
+    elif extra < 0.08 and any(w.get("group") for w in ws):
+        w = rng.choice([w for w in ws if w.get("group")])
+        op = f"ungroup {w['id']} {w['title'][:10]}"
+        ipc({"type": "ungroup_window", "id": w["id"]})
+        r = None
+    elif extra < 0.10 and not args.dense and len(PLUGGED) == 2:
+        name_ = rng.choice(sorted(PLUGGED))
+        on = not PLUGGED[name_]
+        if on or sum(PLUGGED.values()) > 1:
+            op = f"{'plug in' if on else 'unplug'} {name_}"
+            ipc({"type": "plug_display", "name": name_, "plugged": on})
+            PLUGGED[name_] = on
+            time.sleep(1.5)
+            r = None
+    if r is None:
+        pass
     # Dense: windows stay on one workspace and display, auto-tiled, at 1×
     # (no workspace, move, mode, minimize or scale steps: shortcuts instead).
-    if DENSE and (0.72 <= r < 0.86 or 0.91 <= r < 0.97):
+    elif DENSE and (0.72 <= r < 0.86 or 0.91 <= r < 0.97):
         r = 0.3
-    if (r < 0.18 and len(ws) < 8) or not ws:
+    if r is None:
+        pass
+    elif (r < 0.18 and len(ws) < 8) or not ws:
         app = rng.choice(APPS)
         op = f"run {' '.join(app)}"
         with open(os.devnull, "w") as quiet:
