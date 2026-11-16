@@ -1500,6 +1500,37 @@ something nobody here has is in "Blocked", with what it waits for.
   `olo_kit::glance` (drawing, `serve`), Deskbar's `glances.rs`,
   Preferences' options; Weather's Now, Next Hours and Next Days.
 
+- **Kache: an Olo app for the build cache** (Ben, 2026-11-15: "an olo
+  native kache frontend app that lets me monitor the status of kache,
+  see stats/metrics/charts etc, configure/tweak settings, manage it like
+  restart or whatever, and anything else useful to know or do"). For
+  Ben's kache (our fork, `~/src/kache` branch `olo`; see FORK.md):
+  - Status: the daemon running or not (`kache.service`, the user
+    systemd unit, read over systemd's D-Bus), its version and since
+    when, the store's size against its limit, the scheduler now (the
+    pool's slots and test slots in use, jobs waiting and for how long,
+    admissions past the pool and why the last was or wasn't).
+  - Stats and charts, live: hit rate (today, the last 24 hours, by
+    project and crate), compiles and tests run, time saved, misses and
+    what caused them (a changed input, feature unification, a new
+    toolchain), the slowest crates, the store growing and evicting;
+    from kache's own records (its `events.jsonl` stream, followed as it's
+    written: no polling), charts in Activity Monitor's style.
+  - Settings: every `[cache]` key of `~/.config/kache/config.toml`
+    (ours too: `scheduler_permits`, `scheduler_test_slots`,
+    `scheduler_test_wait_secs`, `scheduler_dynamic`,
+    `scheduler_cpu_percent`, `scheduler_min_free_memory`), each
+    explained, written back keeping the file's comments, applied as kache
+    takes them (a restart when it must, said so).
+  - Manage: restart, stop, start (systemd over D-Bus, never
+    `systemctl`), clear or trim the store, a test that's holding slots
+    shown and ended, the log (the unit's journal, read natively).
+  - Native throughout: kache's daemon socket and files read in Rust
+    (its types from our fork as a dependency where that's cleaner),
+    never its CLI; agents read and drive it all (structured, on the
+    app's socket); a Deskbar widget of its own (`olo_protocol::glance`:
+    hit rate, slots in use), Doctor's checks of it linking here.
+
 - **The kit's watch wakes for every change in a watched path's
   folder** (found 2026-11-15, measuring Deskbar's widgets): `watch`
   follows each path's parent too (for the path coming, going or being
