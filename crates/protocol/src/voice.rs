@@ -7,7 +7,7 @@
 //! that records gets the processed voice. Device lists show the microphone
 //! it listens to in its place (`olo_system::audio`).
 
-use std::path::PathBuf;
+use std::{collections::BTreeMap, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -163,6 +163,78 @@ impl Settings {
     }
 }
 
+/// The level a voice is brought up to before it's processed, when its
+/// microphone is boosted by the suggested amount ([`suggested_boost`]):
+/// an active speech level of -26 dB of full scale (the mean power of the
+/// frames someone speaks in, `olo_voice::SpeechLevel`), the nominal level
+/// speech is stated at (ITU-T P.56), which leaves room for a raised voice
+/// before anything clips and lets "Even out the voice's level" work from
+/// a voice it can hear (Ben, 2026-11-16: "some inputs like airpods are
+/// not loud enough on microphone input").
+pub const AIM_DB: f32 = -26.0;
+
+/// A boost goes by steps of this many dB, up to [`BOOST_MAX_DB`].
+pub const BOOST_STEP_DB: f32 = 3.0;
+pub const BOOST_MAX_DB: f32 = 30.0;
+
+/// The boost that brings a voice measured at `speech_db` (the service's
+/// [`State::speech_db`]) to [`AIM_DB`]: to the nearest step, none for one
+/// loud enough already.
+pub fn suggested_boost(speech_db: f32) -> f32 {
+    ((AIM_DB - speech_db) / BOOST_STEP_DB).round().clamp(0.0, BOOST_MAX_DB / BOOST_STEP_DB) * BOOST_STEP_DB
+}
+
+/// A boost of `db` as a gain (1: none).
+pub fn gain(db: f32) -> f32 {
+    10f32.powf(db.max(0.0) / 20.0)
+}
+
+/// Each microphone's boost (dB, by its node name): one that's quiet
+/// (AirPods) brought up before it's processed, the others as they are.
+/// Kept apart from [`Settings`], which are the same for every microphone.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Boosts {
+    pub by_microphone: BTreeMap<String, f32>,
+}
+
+impl Boosts {
+    pub fn path() -> PathBuf {
+        match std::env::var_os("OLO_VOICE_DIR") {
+            Some(d) => PathBuf::from(d).join("voice-boost.json"),
+            None => olo_xdg::config_dir().join("voice-boost.json"),
+        }
+    }
+
+    pub fn load() -> Boosts {
+        std::fs::read_to_string(Self::path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    }
+
+    pub fn save(&self) -> std::io::Result<()> {
+        let path = Self::path();
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let tmp = path.with_extension("json.new");
+        std::fs::write(&tmp, serde_json::to_string_pretty(self).unwrap_or_default())?;
+        std::fs::rename(tmp, path)
+    }
+
+    /// `microphone`'s boost (dB; 0: none).
+    pub fn of(&self, microphone: &str) -> f32 {
+        self.by_microphone.get(microphone).copied().unwrap_or(0.0).clamp(0.0, BOOST_MAX_DB)
+    }
+
+    /// `microphone` boosted by `db` (0: not at all, and forgotten).
+    pub fn set(&mut self, microphone: &str, db: f32) {
+        if db <= 0.0 {
+            self.by_microphone.remove(microphone);
+        } else {
+            self.by_microphone.insert(microphone.to_owned(), db.min(BOOST_MAX_DB));
+        }
+    }
+}
+
 /// What the service is doing (its state file, followed by inotify).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -185,6 +257,15 @@ pub struct State {
     pub frame_us: u32,
     /// Frames the source had nothing for (should stay 0).
     pub dropouts: u64,
+    /// How loud a voice comes in from the microphone, before any boost
+    /// (its active speech level, dB of full scale, over the last seconds
+    /// of speech: `olo_voice::SpeechLevel`), once enough was heard; kept
+    /// until another microphone is chosen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speech_db: Option<f32>,
+    /// The microphone's boost now (dB; [`Boosts`]).
+    #[serde(default)]
+    pub boost_db: f32,
     /// Why it isn't running, if it isn't.
     pub error: Option<String>,
 }
@@ -207,5 +288,33 @@ impl State {
         let tmp = path.with_extension("json.part");
         std::fs::write(&tmp, serde_json::to_vec(self).map_err(std::io::Error::other)?)?;
         std::fs::rename(&tmp, &path)
+    }
+}
+
+#[cfg(test)]
+mod boost_tests {
+    use super::*;
+
+    /// A quiet voice is suggested the boost that brings it to the aim, by
+    /// whole steps; a loud one none; none beyond the most.
+    #[test]
+    fn the_boost_suggested() {
+        assert_eq!(suggested_boost(-41.0), 15.0);
+        assert_eq!(suggested_boost(-26.0), 0.0);
+        assert_eq!(suggested_boost(-12.0), 0.0);
+        assert_eq!(suggested_boost(-80.0), BOOST_MAX_DB);
+        assert_eq!(suggested_boost(-30.5), 6.0);
+    }
+
+    /// Each microphone's own, none unless set, 0 forgotten.
+    #[test]
+    fn boosts_are_each_microphones() {
+        let mut b = Boosts::default();
+        b.set("airpods_mic.AA", 15.0);
+        assert_eq!((b.of("airpods_mic.AA"), b.of("alsa_input.mic")), (15.0, 0.0));
+        b.set("airpods_mic.AA", 99.0);
+        assert_eq!(b.of("airpods_mic.AA"), BOOST_MAX_DB);
+        b.set("airpods_mic.AA", 0.0);
+        assert!(b.by_microphone.is_empty());
     }
 }

@@ -11,7 +11,12 @@
 //! different settings". Playing switches between the original and the
 //! chosen setting's sound at the same place ([`olo_system::recording`]),
 //! with a live spectrum of both (the kit's `Spectrum`); the one chosen
-//! can be made the setting at once.
+//! can be made the setting at once. How loud the voice came in is
+//! measured from the recording (`olo_voice::SpeechLevel`): one too quiet
+//! for the level Olo aims for is tried boosted too, by the amount that
+//! brings it there (`voice::suggested_boost`: "Boosted +9 dB
+//! (suggested)"), and a boost in use is tried without ("Not boosted") (Ben, 2026-11-16: "some inputs like airpods are not loud
+//! enough on microphone input").
 //!
 //! Recording, trying and playing run off the UI thread; the recording
 //! stays in memory and goes with the window. Echo cancellation isn't
@@ -38,29 +43,45 @@ pub const SECONDS: f32 = 6.0;
 /// The spectrum's bands.
 const BANDS: usize = 48;
 
-/// A setting tried: its name, the settings, and how it went once done.
+/// A setting tried: its name, the settings and the microphone's boost
+/// (dB), and how it went once done.
 pub struct Tried {
     pub name: String,
     pub settings: Settings,
+    pub boost_db: f32,
     pub trial: Option<Result<olo_voice::Trial, String>>,
 }
 
-/// The settings worth comparing, from those in use: those, then each
-/// other noise level, the level evened out or not, and the other mode.
-pub fn variants(now: Settings) -> Vec<(String, Settings)> {
+/// A setting worth comparing: its name, the settings, the boost (dB).
+pub type Variant = (String, Settings, f32);
+
+/// The settings worth comparing, from those in use (`now`, the
+/// microphone boosted by `boost_db`): those, then each other noise level,
+/// the level evened out or not, and the other mode; then the boost
+/// `suggested` for the voice recorded (none if it's loud enough), and
+/// none at all for a boosted one.
+pub fn variants(now: Settings, boost_db: f32, suggested: Option<f32>) -> Vec<Variant> {
     let now = Settings { enabled: true, ..now };
-    let mut out = vec![("As set now".to_owned(), now)];
+    let mut out = vec![("As set now".to_owned(), now, boost_db)];
     for n in voice::Noise::ALL.into_iter().filter(|n| *n != now.noise) {
-        out.push((format!("Background noise: {}", n.label()), Settings { noise: n, ..now }));
+        out.push((format!("Background noise: {}", n.label()), Settings { noise: n, ..now }, boost_db));
     }
     if now.noise != voice::Noise::Off {
         for model in voice::Model::ALL.into_iter().filter(|m| *m != now.model) {
-            out.push((format!("Noise model: {}", model.label()), Settings { model, ..now }));
+            out.push((format!("Noise model: {}", model.label()), Settings { model, ..now }, boost_db));
         }
     }
-    out.push((if now.normalize { "Level not evened out".into() } else { "Level evened out".into() }, Settings { normalize: !now.normalize, ..now }));
+    out.push((if now.normalize { "Level not evened out".into() } else { "Level evened out".into() }, Settings { normalize: !now.normalize, ..now }, boost_db));
     for mode in voice::Mode::ALL.into_iter().filter(|m| *m != now.mode) {
-        out.push((format!("Tuned for {}", mode.label().to_lowercase()), Settings { mode, ..now }));
+        out.push((format!("Tuned for {}", mode.label().to_lowercase()), Settings { mode, ..now }, boost_db));
+    }
+    if let Some(s) = suggested.filter(|s| *s != boost_db) {
+        // (Short enough for the list's first column: "Microphone boosted
+        // +15 dB (suggested)" was cut off there.)
+        out.push((if s > 0.0 { format!("Boosted {s:+.0} dB (suggested)") } else { "Not boosted (suggested)".into() }, now, s));
+    }
+    if boost_db > 0.0 && suggested != Some(0.0) {
+        out.push(("Not boosted".into(), now, 0.0));
     }
     out
 }
@@ -85,11 +106,16 @@ struct Shared {
     tried: Vec<Tried>,
     error: Option<String>,
     trying: bool,
+    /// How loud the voice recorded came in (dB of full scale), if there
+    /// was enough of it.
+    speech_db: Option<f32>,
 }
 
 pub struct TryWindow {
     settings: Settings,
     microphone: Option<String>,
+    /// The microphone's boost in use (dB).
+    boost_db: f32,
     shared: Arc<Mutex<Shared>>,
     started: Option<Instant>,
     /// The window is closing: everything stops.
@@ -153,7 +179,7 @@ impl Drop for TryWindow {
     }
 }
 
-/// Open it.
+/// Open it, to try `settings` on `microphone` (boosted by its boost).
 pub fn open(settings: Settings, microphone: Option<String>, _: &mut WindowCx) {
     let options = olo_kit::WindowOptions::new("Try Voice Processing", 760.0, 600.0);
     olo_kit::open_window(options, move |cx| TryWindow::new(settings, microphone, cx));
@@ -161,6 +187,7 @@ pub fn open(settings: Settings, microphone: Option<String>, _: &mut WindowCx) {
 
 impl TryWindow {
     fn new(settings: Settings, microphone: Option<String>, cx: &mut Cx<Self>) -> TryWindow {
+        let boost_db = microphone.as_deref().map_or(0.0, |m| voice::Boosts::load().of(m));
         let (shared, player): (Arc<Mutex<Shared>>, Arc<Mutex<Option<Player>>>) = Default::default();
         let list = ListModel::new(false);
         let live = {
@@ -168,7 +195,7 @@ impl TryWindow {
             cx.new_view(|_| LivePane { shared, player, list, started: None, processed: true, shown: (vec![-120.0; BANDS], vec![-120.0; BANDS]), was_playing: false })
         };
         cx.subscribe(&live, |w: &mut TryWindow, _: &PlayEnded, cx| w.changed(cx));
-        TryWindow { settings, microphone, shared, started: None, stop: Default::default(), enough: Default::default(), player, processed: true, list, live, news: cx.messenger() }
+        TryWindow { settings, microphone, boost_db, shared, started: None, stop: Default::default(), enough: Default::default(), player, processed: true, list, live, news: cx.messenger() }
     }
 
     /// Something shown changed: every part says what it shows again.
@@ -196,7 +223,8 @@ impl TryWindow {
         }
         self.started = Some(Instant::now());
         self.enough.store(false, Ordering::Relaxed);
-        let (shared, stop, cut, news, mic, settings) = (self.shared.clone(), self.stop.clone(), self.enough.clone(), self.news.clone(), self.microphone.clone(), self.settings);
+        let (shared, stop, cut, news, mic, settings, boost_db) =
+            (self.shared.clone(), self.stop.clone(), self.enough.clone(), self.news.clone(), self.microphone.clone(), self.settings, self.boost_db);
         std::thread::spawn(move || {
             match Recording::start(mic.as_deref()) {
                 Ok(r) => shared.lock().unwrap().recording = Some(r),
@@ -220,23 +248,31 @@ impl TryWindow {
                 return;
             }
             let original: Arc<[f32]> = got.into();
+            let mut heard = olo_voice::SpeechLevel::default();
+            for f in original.as_chunks::<{ olo_voice::FRAME }>().0 {
+                heard.add(f);
+            }
+            let speech_db = heard.speech_db();
+            // (A boost is the microphone's: none to suggest without one.)
+            let suggested = speech_db.map(voice::suggested_boost).filter(|_| mic.is_some());
             {
                 let mut s = shared.lock().unwrap();
                 s.original = Some(original.clone());
-                s.tried = variants(settings).into_iter().map(|(name, settings)| Tried { name, settings, trial: None }).collect();
+                s.speech_db = speech_db;
+                s.tried = variants(settings, boost_db, suggested).into_iter().map(|(name, settings, boost_db)| Tried { name, settings, boost_db, trial: None }).collect();
                 s.trying = true;
             }
             news.send(());
             // Each setting in turn, each shown as it's done, after a short
             // one untimed: the first chain in a process sets up what every
             // later one shares (a 27 ms first frame, the rest 0.4).
-            let _ = olo_voice::trial(settings, &original[..original.len().min(4800)]);
-            let todo: Vec<Settings> = shared.lock().unwrap().tried.iter().map(|t| t.settings).collect();
-            for (i, settings) in todo.into_iter().enumerate() {
+            let _ = olo_voice::trial(settings, 1.0, &original[..original.len().min(4800)]);
+            let todo: Vec<(Settings, f32)> = shared.lock().unwrap().tried.iter().map(|t| (t.settings, t.boost_db)).collect();
+            for (i, (settings, boost_db)) in todo.into_iter().enumerate() {
                 if stop.load(Ordering::Relaxed) {
                     break;
                 }
-                let t = olo_voice::trial(settings, &original);
+                let t = olo_voice::trial(settings, voice::gain(boost_db), &original);
                 if let Some(row) = shared.lock().unwrap().tried.get_mut(i) {
                     row.trial = Some(t);
                 }
@@ -320,15 +356,25 @@ impl TryWindow {
         self.changed(cx);
     }
 
-    /// Make the chosen setting the one in use.
+    /// Make the chosen setting the one in use (and its boost the
+    /// microphone's).
     fn use_chosen(&mut self, cx: &mut Cx<Self>) {
         let chosen = self.chosen();
-        let Some(settings) = self.shared.lock().unwrap().tried.get(chosen).map(|t| t.settings) else { return };
+        let Some((settings, boost_db)) = self.shared.lock().unwrap().tried.get(chosen).map(|t| (t.settings, t.boost_db)) else { return };
         let settings = Settings { enabled: true, echo_cancellation: self.settings.echo_cancellation, ..settings };
         if let Err(e) = settings.save() {
             self.shared.lock().unwrap().error = Some(format!("couldn't save the setting: {e}"));
         }
-        self.settings = settings;
+        if let Some(m) = &self.microphone
+            && boost_db != self.boost_db
+        {
+            let mut boosts = voice::Boosts::load();
+            boosts.set(m, boost_db);
+            if let Err(e) = boosts.save() {
+                self.shared.lock().unwrap().error = Some(format!("couldn't save the boost: {e}"));
+            }
+        }
+        (self.settings, self.boost_db) = (settings, boost_db);
         self.changed(cx);
     }
 }
@@ -458,11 +504,11 @@ impl TryWindow {
     /// The settings tried, the buttons and the note.
     fn controls(&mut self, cx: &mut Cx<Self>) -> Element {
         let phase = self.phase();
-        let (error, rows, tried) = {
+        let (error, rows, tried, speech_db) = {
             let s = self.shared.lock().unwrap();
             let rows: Vec<(String, Option<Result<olo_voice::Trial, String>>)> = s.tried.iter().map(|t| (t.name.clone(), t.trial.clone())).collect();
-            let tried: Vec<Settings> = s.tried.iter().map(|t| t.settings).collect();
-            (s.error.clone(), rows, tried)
+            let tried: Vec<(Settings, f32)> = s.tried.iter().map(|t| (t.settings, t.boost_db)).collect();
+            (s.error.clone(), rows, tried, s.speech_db)
         };
         let (processed, list_model, settings, playing) = (self.processed, self.list.clone(), self.settings, self.playing());
         let mut col = div().flex().flex_col().gap(px(m::SPACING)).size_full();
@@ -475,8 +521,8 @@ impl TryWindow {
             Column::new("Noise", 92.0).right(),
             Column::new("Level", 92.0).right(),
         ];
-        let in_use = settings;
-        let same = move |s: &Settings| Settings { echo_cancellation: in_use.echo_cancellation, enabled: true, ..*s } == Settings { enabled: true, ..in_use };
+        let (in_use, boost_in_use) = (settings, self.boost_db);
+        let same = move |(s, boost): &(Settings, f32)| Settings { echo_cancellation: in_use.echo_cancellation, enabled: true, ..*s } == Settings { enabled: true, ..in_use } && *boost == boost_in_use;
         let (rows2, tried2) = (rows.clone(), tried.clone());
         let list = ColumnListView::new(cx, "voice-tried", &list_model, columns, rows.len(), move |_: &Self, cell, g| {
             let (name, trial) = &rows2[cell.row];
@@ -488,7 +534,8 @@ impl TryWindow {
                 2 => cell.text(g, ok.map(|t| ms(t.frame_median)).unwrap_or_default()),
                 3 => cell.text(g, ok.map(|t| ms(t.frame_worst)).unwrap_or_default()),
                 4 => cell.text(g, ok.map(|t| db(t.measured.noise.change_db())).unwrap_or_default()),
-                5 => cell.text(g, ok.map(|t| db(t.measured.level.change_db())).unwrap_or_default()),
+                // (A boost's part of the change too.)
+                5 => cell.text(g, ok.map(|t| db(t.measured.level.change_db() + tried2.get(cell.row).map_or(0.0, |r| r.1 as f64))).unwrap_or_default()),
                 _ => {}
             }
         })
@@ -532,7 +579,13 @@ impl TryWindow {
             .child(div().flex_1())
             .child(Button::new("Use This Setting").enabled(chosen_done).on_click(act(cx, TryWindow::use_chosen)));
         col = col.child(row);
-        col.child(StringView::new(format!("Run by {}. Echo cancellation isn't tried: a recording has no speakers' sound beside it to take out.", olo_voice::accelerated_by())).dim(true).wrap(true))
+        let heard = match speech_db {
+            Some(at) => format!("Your voice came in at {at:.0} dB; voice processing aims for {:.0} dB. ", voice::AIM_DB),
+            None => String::new(),
+        };
+        col.child(
+            StringView::new(format!("{heard}Run by {}. Echo cancellation isn't tried: a recording has no speakers' sound beside it to take out.", olo_voice::accelerated_by())).dim(true).wrap(true),
+        )
     }
 }
 
@@ -549,6 +602,8 @@ impl TryWindow {
     /// column shows) and a voice-like spectrum.
     pub(crate) fn for_lint(phase: Phase, cx: &mut Cx<Self>) -> TryWindow {
         let mut w = TryWindow::new(Settings::default(), None, cx);
+        // (Boosted, and a voice heard that's quieter still: every row.)
+        w.boost_db = 6.0;
         let voice: Vec<f32> = (0..BANDS).map(|b| -30.0 - (b as f32 - 10.0).abs() * 1.2).collect();
         let shown = (voice.clone(), voice.iter().map(|v| v - 8.0).collect());
         w.live.update(cx, |l, _| l.shown = shown);
@@ -568,10 +623,11 @@ impl TryWindow {
             }
             Phase::Trying | Phase::Tried => {
                 s.original = Some(Arc::from(vec![0.0f32; 4800]));
-                s.tried = variants(Settings::default())
+                s.speech_db = Some(-41.0);
+                s.tried = variants(Settings::default(), 6.0, Some(voice::suggested_boost(-41.0)))
                     .into_iter()
                     .enumerate()
-                    .map(|(i, (name, settings))| Tried { name, settings, trial: (phase == Phase::Tried || i < 3).then(|| Ok(trial(settings))) })
+                    .map(|(i, (name, settings, boost_db))| Tried { name, settings, boost_db, trial: (phase == Phase::Tried || i < 3).then(|| Ok(trial(settings))) })
                     .collect();
                 s.trying = phase == Phase::Trying;
             }
@@ -590,17 +646,33 @@ mod tests {
     #[test]
     fn variants_try_each_choice_once() {
         let now = Settings::default();
-        let v = variants(now);
+        let v = variants(now, 0.0, None);
         assert_eq!(v[0].1, Settings { enabled: true, ..now });
         // Each other noise level, the other noise model, the level the
         // other way, the other mode.
         assert_eq!(v.len(), 1 + 3 + 1 + 1 + 1);
-        assert!(v.iter().any(|(name, s)| s.model == voice::Model::LowDelay && name.contains("Low Delay")), "{v:?}");
+        assert!(v.iter().any(|(name, s, _)| s.model == voice::Model::LowDelay && name.contains("Low Delay")), "{v:?}");
         // With noise off, no model to try.
-        let off = variants(Settings { noise: voice::Noise::Off, ..now });
-        assert!(off.iter().all(|(_, s)| s.model == now.model), "{off:?}");
+        let off = variants(Settings { noise: voice::Noise::Off, ..now }, 0.0, None);
+        assert!(off.iter().all(|(_, s, _)| s.model == now.model), "{off:?}");
         let mut seen = std::collections::HashSet::new();
-        assert!(v.iter().all(|(_, s)| seen.insert(format!("{s:?}"))), "{v:?}");
-        assert!(v.iter().all(|(name, _)| !name.is_empty()));
+        assert!(v.iter().all(|(_, s, b)| seen.insert(format!("{s:?} {b}"))), "{v:?}");
+        assert!(v.iter().all(|(name, _, _)| !name.is_empty()));
+    }
+
+    /// A quiet voice is tried boosted by what it lacks; a boosted one
+    /// without its boost; a loud enough one without anything more.
+    #[test]
+    fn variants_try_the_boost_suggested() {
+        let now = Settings::default();
+        let boosts = |v: Vec<Variant>| v.iter().map(|(name, _, b)| (name.clone(), *b)).filter(|(name, _)| name.to_lowercase().contains("boost")).collect::<Vec<_>>();
+        assert_eq!(boosts(variants(now, 0.0, Some(15.0))), [("Boosted +15 dB (suggested)".to_owned(), 15.0)]);
+        assert_eq!(boosts(variants(now, 6.0, Some(15.0))), [("Boosted +15 dB (suggested)".to_owned(), 15.0), ("Not boosted".to_owned(), 0.0)]);
+        assert_eq!(boosts(variants(now, 6.0, Some(0.0))), [("Not boosted (suggested)".to_owned(), 0.0)]);
+        assert!(boosts(variants(now, 0.0, Some(0.0))).is_empty());
+        assert!(boosts(variants(now, 15.0, Some(15.0)))[0].0 == "Not boosted");
+        // Every other row as boosted as now.
+        let v = variants(now, 6.0, None);
+        assert!(v[..v.len() - 1].iter().all(|(_, _, b)| *b == 6.0), "{v:?}");
     }
 }

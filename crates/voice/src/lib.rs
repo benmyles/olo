@@ -131,6 +131,82 @@ pub const SPECTRUM_WINDOW: usize = 2048;
 pub const SPECTRUM_LOW: f32 = 60.0;
 pub const SPECTRUM_HIGH: f32 = 16_000.0;
 
+/// How loud a voice comes in: a microphone's active speech level, in dB
+/// of full scale, so a quiet one can be boosted by what it lacks
+/// (`olo_protocol::voice::suggested_boost`). The mean power of the frames
+/// someone speaks in, over the last three seconds of speech, as speech
+/// levels are stated (ITU-T P.56, whose nominal level is -26 dB): a
+/// frame is speech when it's well above the microphone's noise floor
+/// (12 dB, and above -70 dB), and counts when it's within
+/// [`ACTIVE_BELOW_DB`] of the mean of those (the tails and breaths
+/// between words don't). None until two seconds of speech were heard.
+/// The floor follows the quiet down at once and rises a dB a second, so a
+/// long stretch of talk doesn't become the floor.
+///
+/// A microphone 20 dB quieter reads 20 dB lower. (The mean of the frames'
+/// levels in dB, the first measure, read 13: its fixed gate dropped the
+/// quiet one's soft frames, and the mean of what was left stood higher.
+/// Played into a private sound server, 2026-11-16.)
+#[derive(Debug, Clone)]
+pub struct SpeechLevel {
+    floor: Option<f32>,
+    /// The powers of the last speech frames (a ring).
+    recent: [f32; SPEECH_KEPT],
+    at: usize,
+    frames: u32,
+}
+
+/// Three seconds of speech frames kept, two heard before a level is said.
+const SPEECH_KEPT: usize = 300;
+const SPEECH_HEARD: u32 = 200;
+/// A speech frame counts toward the level when it's within this of the
+/// mean power of the speech frames kept (P.56's activity threshold is
+/// 15.9 dB under the level).
+pub const ACTIVE_BELOW_DB: f32 = 15.0;
+
+impl Default for SpeechLevel {
+    fn default() -> SpeechLevel {
+        SpeechLevel { floor: None, recent: [0.0; SPEECH_KEPT], at: 0, frames: 0 }
+    }
+}
+
+impl SpeechLevel {
+    /// One 10 ms frame (`FRAME` samples) as it came from the microphone.
+    pub fn add(&mut self, frame: &[f32]) {
+        let power = frame.iter().map(|x| x * x).sum::<f32>() / frame.len().max(1) as f32;
+        let db = 10.0 * power.max(1e-12).log10();
+        let floor = match self.floor {
+            Some(f) if db >= f => f + 0.01,
+            _ => db,
+        };
+        self.floor = Some(floor);
+        if db > -70.0 && db > floor + 12.0 {
+            self.recent[self.at] = power;
+            self.at = (self.at + 1) % SPEECH_KEPT;
+            self.frames = self.frames.saturating_add(1);
+        }
+    }
+
+    /// The voice's active speech level (dB of full scale), once two
+    /// seconds of speech were heard.
+    pub fn speech_db(&self) -> Option<f32> {
+        if self.frames < SPEECH_HEARD {
+            return None;
+        }
+        let kept = &self.recent[..(self.frames as usize).min(SPEECH_KEPT)];
+        let mean = kept.iter().sum::<f32>() / kept.len() as f32;
+        let gate = mean * 10f32.powf(-ACTIVE_BELOW_DB / 10.0);
+        let (sum, n) = kept.iter().filter(|p| **p >= gate).fold((0.0f32, 0u32), |(s, n), p| (s + p, n + 1));
+        Some(10.0 * (sum / n.max(1) as f32).max(1e-12).log10())
+    }
+}
+
+/// `frame` brought up by `gain` (a quiet microphone's boost), kept
+/// within full scale.
+pub fn boosted(frame: &[f32; FRAME], gain: f32) -> [f32; FRAME] {
+    frame.map(|x| (x * gain).clamp(-1.0, 1.0))
+}
+
 /// The level in each of `bands` bands from [`SPECTRUM_LOW`] to
 /// [`SPECTRUM_HIGH`], spaced evenly in log frequency (as hearing goes), of
 /// the last [`SPECTRUM_WINDOW`] samples of `x` (48 kHz; fewer: what there
@@ -191,9 +267,10 @@ pub struct Trial {
 }
 
 /// `input` (48 kHz mono) through the chain with `settings`, frame by
-/// frame as the live service does, timed. Echo cancellation is left off:
-/// a recording has no speakers' sound beside it to take out.
-pub fn trial(settings: Settings, input: &[f32]) -> Result<Trial, String> {
+/// frame as the live service does, timed, after a boost by `gain` (1:
+/// none). Echo cancellation is left off: a recording has no speakers'
+/// sound beside it to take out.
+pub fn trial(settings: Settings, gain: f32, input: &[f32]) -> Result<Trial, String> {
     let settings = Settings { enabled: true, echo_cancellation: false, ..settings };
     let mut voice = Voice::new(settings)?;
     voice.measure();
@@ -208,7 +285,11 @@ pub fn trial(settings: Settings, input: &[f32]) -> Result<Trial, String> {
         frame.fill(0.0);
         frame[..to - from].copy_from_slice(&input[from..to]);
         let t = Instant::now();
-        voice.capture(&frame, &mut processed);
+        if gain == 1.0 {
+            voice.capture(&frame, &mut processed);
+        } else {
+            voice.capture(&boosted(&frame, gain), &mut processed);
+        }
         times.push(t.elapsed());
         out.extend_from_slice(&processed);
     }
@@ -383,6 +464,94 @@ impl Spectral {
 mod tests {
     use super::*;
 
+    /// A voice at -40 dB over a room's hush at -65 is measured at -40,
+    /// once two seconds of it were heard; the hush alone is no voice.
+    #[test]
+    fn a_voice_is_measured_over_the_hush() {
+        let tone = |db: f32, k: usize| -> [f32; FRAME] {
+            let amp = 10f32.powf(db / 20.0) * std::f32::consts::SQRT_2;
+            std::array::from_fn(|i| amp * (2.0 * std::f32::consts::PI * 220.0 * (k * FRAME + i) as f32 / RATE as f32).sin())
+        };
+        let mut level = SpeechLevel::default();
+        for k in 0..300 {
+            level.add(&tone(-65.0, k));
+        }
+        assert_eq!(level.speech_db(), None, "the hush is no voice");
+        // Speech in bursts (half a second on, a quarter off), 4 s of it.
+        for k in 0..600 {
+            level.add(&tone(if k % 75 < 50 { -40.0 } else { -65.0 }, k));
+            if k == 150 {
+                assert_eq!(level.speech_db(), None, "not yet two seconds of it");
+            }
+        }
+        let got = level.speech_db().expect("measured");
+        assert!((got + 40.0).abs() < 0.5, "{got}");
+    }
+
+    /// A voice of loud and soft frames, with tails far under both: the
+    /// tails don't count, and the same voice 20 dB quieter reads 20 dB
+    /// lower (the first measure read 13).
+    #[test]
+    fn a_quieter_voice_reads_as_much_lower() {
+        let heard = |down: f32| {
+            let mut level = SpeechLevel::default();
+            for k in 0..600usize {
+                // Loud, soft, loud, a tail: -20, -30, -20, -55 dB.
+                let db = [-20.0f32, -30.0, -20.0, -55.0][k % 4] - down;
+                let amp = 10f32.powf(db / 20.0) * std::f32::consts::SQRT_2;
+                let frame: [f32; FRAME] = std::array::from_fn(|i| amp * (2.0 * std::f32::consts::PI * 220.0 * (k * FRAME + i) as f32 / RATE as f32).sin());
+                level.add(&frame);
+            }
+            level.speech_db().expect("measured")
+        };
+        let (as_it_is, quieter) = (heard(0.0), heard(20.0));
+        // The mean power of the loud and soft frames (two at -20 to one
+        // at -30), the tails left out: -21.6 dB.
+        assert!((as_it_is + 21.6).abs() < 0.3, "{as_it_is}");
+        assert!((as_it_is - quieter - 20.0).abs() < 0.1, "{as_it_is} and {quieter}");
+    }
+
+    /// What measuring and boosting a frame cost (`--ignored --nocapture`,
+    /// release): the sound thread does both for every 10 ms frame while
+    /// something records.
+    #[test]
+    #[ignore]
+    fn speech_level_cost() {
+        // (Three frames of a voice, one of the room's hush.)
+        let frames: Vec<[f32; FRAME]> =
+            (0..1000usize).map(|k| std::array::from_fn(|i| if k % 4 == 3 { 0.0005 } else { 0.05 } * (2.0 * std::f32::consts::PI * 220.0 * (k * FRAME + i) as f32 / RATE as f32).sin())).collect();
+        let mut level = SpeechLevel::default();
+        let t = Instant::now();
+        let mut said = 0.0f32;
+        for _ in 0..100 {
+            for f in &frames {
+                level.add(std::hint::black_box(f));
+                said += level.speech_db().unwrap_or(0.0);
+            }
+        }
+        let measure = t.elapsed().as_nanos() as f64 / 100_000.0;
+        let t = Instant::now();
+        let mut sum = 0.0f32;
+        for _ in 0..100 {
+            for f in &frames {
+                sum += boosted(std::hint::black_box(f), 7.94)[17];
+            }
+        }
+        let boost = t.elapsed().as_nanos() as f64 / 100_000.0;
+        eprintln!("a 10 ms frame: {measure:.0} ns measured and its level said, {boost:.0} ns boosted ({said} {sum})");
+    }
+
+    /// A boost brings a frame up by its gain (20 dB here), never past full
+    /// scale.
+    #[test]
+    fn a_boost_stays_within_full_scale() {
+        let mut f = [0.01f32; FRAME];
+        f[0] = 0.5;
+        let b = boosted(&f, 10f32.powf(20.0 / 20.0));
+        assert!((b[1] - 0.1).abs() < 1e-6);
+        assert_eq!(b[0], 1.0);
+    }
+
     /// A voice-like tone that comes and goes, in steady noise.
     fn sample(seconds: f32) -> Vec<f32> {
         let n = (RATE as f32 * seconds) as usize;
@@ -426,11 +595,11 @@ mod tests {
     #[test]
     fn a_trial_measures_each_stage() {
         let input = sample(3.0);
-        let off = trial(Settings { noise: Noise::Off, normalize: false, ..Settings::default() }, &input).unwrap();
+        let off = trial(Settings { noise: Noise::Off, normalize: false, ..Settings::default() }, 1.0, &input).unwrap();
         assert_eq!(off.out.len(), input.len());
         assert_eq!(off.latency, Duration::ZERO);
         assert!(off.out.iter().zip(&input).all(|(a, b)| (a - b).abs() < 1e-6), "nothing on: the sound as it was");
-        let strong = trial(Settings { noise: Noise::Strong, normalize: false, ..Settings::default() }, &input).unwrap();
+        let strong = trial(Settings { noise: Noise::Strong, normalize: false, ..Settings::default() }, 1.0, &input).unwrap();
         assert_eq!(strong.out.len(), input.len());
         assert_eq!(strong.latency, Duration::from_millis(30));
         assert!(strong.measured.noise.frames > 0 && strong.measured.noise.change_db() < 0.0, "{:?}", strong.measured.noise);

@@ -12,7 +12,7 @@ use std::process::ExitCode;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use olo_protocol::voice::{Mode, Model, NODE, Noise, Settings, State};
+use olo_protocol::voice::{Boosts, Mode, Model, NODE, Noise, Settings, State};
 use olo_system::audio::{self, Devices, Kind};
 
 fn main() -> ExitCode {
@@ -124,6 +124,9 @@ fn service() -> ExitCode {
     if let Err(e) = olo_system::priority::raise_self(olo_protocol::performance::AUDIO_NICE) {
         tracing::info!("voice: can't raise its priority: {e}");
     }
+    // (Its sound thread is realtime while anything records: no page of
+    // it waited for.)
+    olo_system::realtime::keep_in_memory("the voice service");
     let (tx, rx) = mpsc::channel();
     on_signals(tx.clone());
     std::thread::Builder::new()
@@ -133,16 +136,19 @@ fn service() -> ExitCode {
             move || audio::watch_devices_raw(move |d| _ = tx.send(Event::Devices(d)))
         })
         .expect("thread");
-    let _watch = olo_kit_base::watch::watch([Settings::path()], {
+    let _watch = olo_kit_base::watch::watch([Settings::path(), Boosts::path()], {
         let tx = std::sync::Mutex::new(tx.clone());
         move |_| _ = tx.lock().unwrap().send(Event::Settings)
     });
 
-    let mut settings = Settings::load();
+    let (mut settings, mut boosts) = (Settings::load(), Boosts::load());
     let mut devices: Option<Devices> = None;
     // The microphone chosen before a restart or an upgrade (the state file
-    // outlives its process).
-    let mut microphone: Option<String> = std::fs::read_to_string(State::path()).ok().and_then(|t| serde_json::from_str::<State>(&t).ok()).and_then(|s| s.microphone);
+    // outlives its process), and how loud a voice came in from it.
+    let before = std::fs::read_to_string(State::path()).ok().and_then(|t| serde_json::from_str::<State>(&t).ok()).unwrap_or_default();
+    let mut microphone = before.microphone;
+    // How loud a voice came in from each microphone heard (dB).
+    let mut heard: std::collections::BTreeMap<String, f32> = microphone.clone().zip(before.speech_db).into_iter().collect();
     let mut engine: Option<engine::Engine> = None;
     let mut config: Option<engine::Config> = None;
     let mut state = State { pid: std::process::id(), ..State::default() };
@@ -154,7 +160,7 @@ fn service() -> ExitCode {
         let event = if state.active { rx.recv_timeout(Duration::from_secs(2)).ok() } else { rx.recv().ok().or(Some(Event::Quit)) };
         match event {
             Some(Event::Devices(d)) => devices = d,
-            Some(Event::Settings) => settings = Settings::load(),
+            Some(Event::Settings) => (settings, boosts) = (Settings::load(), Boosts::load()),
             Some(Event::Engine) | None => {}
             Some(Event::Quit) => break,
         }
@@ -176,6 +182,7 @@ fn service() -> ExitCode {
         }
         state.microphone_label = microphone.as_ref().and_then(|m| d.inputs.iter().find(|i| &i.name == m)).map(|i| i.description.clone());
         state.microphone = microphone.clone();
+        state.boost_db = microphone.as_deref().map_or(0.0, |m| boosts.of(m));
 
         if settings.enabled && microphone.is_some() {
             let speakers = d.default_device(Kind::Output).filter(|o| !o.private).map(|o| o.name.clone());
@@ -184,6 +191,7 @@ fn service() -> ExitCode {
                 label: state.microphone_label.clone().unwrap_or_default(),
                 speakers: speakers.filter(|_| settings.echo_cancellation),
                 settings,
+                boost_db: state.boost_db,
             };
             match &engine {
                 None => {
@@ -230,9 +238,15 @@ fn service() -> ExitCode {
                 state.frame_us = ((now.1 - last_frames.1) / (now.0 - last_frames.0) / 1000) as u32;
             }
             last_frames = now;
+            if let Some(m) = &microphone
+                && let Some(db) = e.stats.speech_db(m)
+            {
+                heard.insert(m.clone(), db);
+            }
         } else {
             state.active = false;
         }
+        state.speech_db = microphone.as_ref().and_then(|m| heard.get(m)).copied();
         let _ = state.save();
     }
 

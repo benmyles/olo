@@ -30,20 +30,32 @@ enum Change {
     Volume(Kind, String, f32, usize),
     Mute(Kind, String, bool),
     Voice(voice::Settings),
+    /// A microphone's boost (its node name, dB).
+    Boost(String, f32),
     /// A Bluetooth device's card to a profile that plays (its sound was off).
     CardProfile(String, String),
 }
 
 struct Link {
     devices: Shared,
-    /// The voice service's state and settings, followed.
-    voice: Arc<Mutex<(voice::State, voice::Settings)>>,
+    /// The voice service's state, settings and microphones' boosts,
+    /// followed.
+    voice: Arc<Mutex<Voice>>,
     tx: Sender<Change>,
 }
 
+/// What the voice processing box shows: the service's state, the
+/// settings, each microphone's boost.
+type Voice = (voice::State, voice::Settings, voice::Boosts);
+
+fn load_voice() -> Voice {
+    (voice::State::load(), voice::Settings::load(), voice::Boosts::load())
+}
+
 /// Test data for the voice processing box: listening to a microphone
-/// named as long as they come, cancelling echo.
-fn test_voice() -> (voice::State, voice::Settings) {
+/// named as long as they come, cancelling echo, a quiet one (its boost
+/// suggested, the longest note).
+fn test_voice() -> Voice {
     let state = voice::State {
         pid: 1,
         running: true,
@@ -51,9 +63,10 @@ fn test_voice() -> (voice::State, voice::Settings) {
         microphone_label: Some("MacBook Pro Microphone (Built-in Audio Analog Stereo)".into()),
         echo_cancelling: true,
         latency_ms: 40,
+        speech_db: Some(-41.0),
         ..voice::State::default()
     };
-    (state, voice::Settings::default())
+    (state, voice::Settings::default(), voice::Boosts::default())
 }
 
 /// Test data: speakers, a headset and a microphone named as they come.
@@ -104,11 +117,11 @@ fn link(proxy: olo_kit::Proxy) -> &'static Link {
             *devices.lock().unwrap() = Some(Some(test_devices()));
             return Link { devices, voice: Arc::new(Mutex::new(test_voice())), tx: channel().0 };
         }
-        let voice = Arc::new(Mutex::new((voice::State::load(), voice::Settings::load())));
+        let voice = Arc::new(Mutex::new(load_voice()));
         let read = {
             let (voice, proxy) = (voice.clone(), proxy.clone());
             move |_: &[std::path::PathBuf]| {
-                let now = (voice::State::load(), voice::Settings::load());
+                let now = load_voice();
                 let mut v = voice.lock().unwrap();
                 if *v != now {
                     *v = now;
@@ -117,7 +130,7 @@ fn link(proxy: olo_kit::Proxy) -> &'static Link {
                 }
             }
         };
-        if let Some(w) = olo_kit::watch::watch([voice::State::path(), voice::Settings::path()], read) {
+        if let Some(w) = olo_kit::watch::watch([voice::State::path(), voice::Settings::path(), voice::Boosts::path()], read) {
             // The app's, for as long as it runs.
             std::mem::forget(w);
         }
@@ -163,6 +176,14 @@ fn apply(change: Change) {
         Change::Voice(settings) => {
             if let Err(e) = settings.save() {
                 tracing::warn!("sound: voice settings: {e}");
+            }
+            Ok(())
+        }
+        Change::Boost(microphone, db) => {
+            let mut boosts = voice::Boosts::load();
+            boosts.set(microphone, *db);
+            if let Err(e) = boosts.save() {
+                tracing::warn!("sound: microphone boost: {e}");
             }
             Ok(())
         }
@@ -227,8 +248,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
 /// Voice processing (the voice service): on or off, what for, how much
 /// noise to take out, echo and level; and what it's doing now.
 fn voice_section(ui: &mut Ui, st: &mut State, devices: &Devices) {
-    let (state, settings) = st.link.voice.lock().unwrap().clone();
+    let (state, settings, boosts) = st.link.voice.lock().unwrap().clone();
     let tx = st.link.tx.clone();
+    let boost_tx = tx.clone();
     let save = move |s: voice::Settings| _ = tx.send(Change::Voice(s));
     ui.bbox("Voice Processing", |ui| {
         let s2 = save.clone();
@@ -263,6 +285,29 @@ fn voice_section(ui: &mut Ui, st: &mut State, devices: &Devices) {
         );
         let s2 = save.clone();
         ui.add(CheckBox::new("Cancel echo from the speakers", settings.echo_cancellation).enabled(settings.enabled).on_toggle(move |on, _| s2(voice::Settings { echo_cancellation: *on, ..settings })));
+        // The microphone's boost (each its own), by steps, and the one
+        // its voice was measured to want, to take at once.
+        if let Some(mic) = state.microphone.clone() {
+            let boost = boosts.of(&mic);
+            let steps = (voice::BOOST_MAX_DB / voice::BOOST_STEP_DB) as usize;
+            let names: Vec<SharedString> = (0..=steps).map(|i| SharedString::from(boost_label(i as f32 * voice::BOOST_STEP_DB))).collect();
+            let at = ((boost / voice::BOOST_STEP_DB).round() as usize).min(steps);
+            let suggested = state.speech_db.map(voice::suggested_boost).filter(|s| *s != boost);
+            let (tx, mic2) = (boost_tx.clone(), mic.clone());
+            let mut row = div().flex().flex_row().items_center().gap(px(olo_kit::metrics::SPACING)).child(
+                MenuField::new("voice-boost", names, at)
+                    .label("Microphone boost:")
+                    .divider(130.0)
+                    .enabled(settings.enabled)
+                    .on_change(move |i, _| _ = tx.send(Change::Boost(mic2.clone(), *i as f32 * voice::BOOST_STEP_DB))),
+            );
+            if let Some(db) = suggested {
+                let tx = boost_tx.clone();
+                row = row.child(div().flex_1()).child(Button::new("Use Suggested").enabled(settings.enabled).on_click(move |_, _| _ = tx.send(Change::Boost(mic.clone(), db))));
+            }
+            ui.add(row);
+            ui.note(boost_note(state.speech_db, boost));
+        }
         let s2 = save.clone();
         // Trying it on your own voice (each setting, heard and measured) at
         // the last setting's right: alone at the box's foot it sat nearly
@@ -287,6 +332,30 @@ fn voice_section(ui: &mut Ui, st: &mut State, devices: &Devices) {
         );
         ui.note(voice_note(&state, &settings, devices));
     });
+}
+
+/// A boost, as its menu says it.
+fn boost_label(db: f32) -> String {
+    if db <= 0.0 { "None".into() } else { format!("+{db:.0} dB") }
+}
+
+/// How loud the microphone's voice comes in, and what its boost does
+/// with that, in a line.
+fn boost_note(speech_db: Option<f32>, boost: f32) -> String {
+    let Some(at) = speech_db else {
+        return "How loud this microphone is gets measured as you talk on a call, or with Try It.".into();
+    };
+    let suggested = voice::suggested_boost(at);
+    let aim = voice::AIM_DB;
+    if suggested == boost && boost == 0.0 {
+        format!("Your voice comes in at {at:.0} dB: loud enough as it is.")
+    } else if suggested == boost {
+        format!("Your voice comes in at {at:.0} dB, boosted to {:.0} dB.", at + boost)
+    } else if suggested == 0.0 {
+        format!("Your voice comes in at {at:.0} dB: loud enough without a boost.")
+    } else {
+        format!("Your voice comes in at {at:.0} dB: {} brings it to the {aim:.0} dB aimed for.", boost_label(suggested))
+    }
 }
 
 /// What the voice service is doing, in a line.
@@ -461,5 +530,22 @@ fn play_startup(chime: olo_protocol::StartupChime) {
     let notifications = std::path::PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)")).with_file_name("olo-notifications");
     if let Err(e) = std::process::Command::new(&notifications).arg("--startup-sound").arg(chime.id()).stdin(std::process::Stdio::null()).spawn() {
         tracing::warn!("{}: {e}", notifications.display());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The boost's note: what to do to measure, what the boost suggested
+    /// does, and nothing to do once it's right.
+    #[test]
+    fn the_boost_said() {
+        assert!(boost_note(None, 0.0).contains("measured as you talk"));
+        assert_eq!(boost_note(Some(-41.0), 0.0), "Your voice comes in at -41 dB: +15 dB brings it to the -26 dB aimed for.");
+        assert_eq!(boost_note(Some(-41.0), 15.0), "Your voice comes in at -41 dB, boosted to -26 dB.");
+        assert_eq!(boost_note(Some(-24.0), 0.0), "Your voice comes in at -24 dB: loud enough as it is.");
+        assert_eq!(boost_note(Some(-24.0), 9.0), "Your voice comes in at -24 dB: loud enough without a boost.");
+        assert_eq!((boost_label(0.0), boost_label(3.0)), ("None".to_owned(), "+3 dB".to_owned()));
     }
 }

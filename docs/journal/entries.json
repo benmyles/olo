@@ -4528,5 +4528,11 @@
   "title": "Olo Doctor keeps the desktop's memory in memory",
   "caption": "Three findings beside the one for windows' graphics memory (Ben, 2026-11-16, after a stall while typing): Keep the Core in Memory (app_server, Deskbar and the session lock their own memory; the sound server is never swapped), Keep Programs in Memory (swappiness 1) and, as a suggestion, swap as large as memory. Each sets itself up from its button.",
   "image": "2026-11-16/124525-olo-doctor-keeps-the-desktop-s-memory-in-memory.png"
+ },
+ {
+  "time": "2026-11-16T13:14:54",
+  "title": "Sound: a quiet microphone's boost, suggested from how loud the voice comes in",
+  "caption": "Preferences \u25b8 Sound \u25b8 Voice Processing has a boost for each microphone, in 3 dB steps. The voice service measures the voice's level as something records (its active speech level), the panel says it and what would bring it to the -26 dB aimed for, and Use Suggested sets that; Try It tries the suggested boost beside the other settings (Ben, 2026-11-16: some inputs like AirPods are not loud enough).",
+  "image": "2026-11-16/131454-sound-a-quiet-microphone-s-boost-suggested-from-.png"
  }
 ]

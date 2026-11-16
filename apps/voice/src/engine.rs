@@ -37,9 +37,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering::Relaxed};
 
-use olo_protocol::voice::{Mode, NODE, Settings};
+use olo_protocol::voice::{Mode, NODE, Settings, gain};
 use olo_sync::Mutex;
-use olo_voice::{FRAME, RATE, Voice};
+use olo_voice::{FRAME, RATE, SpeechLevel, Voice};
 use pipewire as pw;
 use pw::{properties::properties, spa};
 
@@ -55,6 +55,8 @@ pub struct Config {
     /// The speakers' node name, when echo is to be cancelled.
     pub speakers: Option<String>,
     pub settings: Settings,
+    /// The microphone's boost (dB; `olo_protocol::voice::Boosts`).
+    pub boost_db: f32,
 }
 
 impl Config {
@@ -116,6 +118,31 @@ pub struct Stats {
     pub latency_samples: AtomicU32,
     /// The graph's quantum, as the source last ran (samples; 0 not yet).
     pub quantum: AtomicU32,
+    /// How loud a voice comes in from the microphone, before the boost
+    /// (`SpeechLevel`), with which microphone it was: [`speech`]'s packing
+    /// (0 until one was heard). One word, so a level is never read with
+    /// another microphone's name.
+    pub speech: AtomicU64,
+}
+
+impl Stats {
+    /// The voice's level (dB of full scale) heard from `microphone`, if
+    /// one was.
+    pub fn speech_db(&self, microphone: &str) -> Option<f32> {
+        let packed = self.speech.load(Relaxed);
+        (packed != 0 && (packed >> 32) as u32 == tag(microphone)).then(|| f32::from_bits(packed as u32))
+    }
+}
+
+/// A microphone's name, shortened to a word (FNV-1a; never 0) for
+/// [`Stats::speech`].
+fn tag(microphone: &str) -> u32 {
+    microphone.bytes().fold(0x811c_9dc5u32, |h, b| (h ^ b as u32).wrapping_mul(0x0100_0193)) | 1
+}
+
+/// `db` heard from the microphone tagged `tag`, as [`Stats::speech`] keeps it.
+fn speech(tag: u32, db: f32) -> u64 {
+    (tag as u64) << 32 | db.to_bits() as u64
 }
 
 pub enum Message {
@@ -176,6 +203,11 @@ struct Processing {
     /// back for), and what it holds back for it (`misfit`).
     quantum: usize,
     hold: usize,
+    /// The microphone's boost, as a gain (1: none).
+    gain: f32,
+    /// How loud a voice comes in from it ([`Stats::speech`]), and its tag.
+    speech: SpeechLevel,
+    tag: u32,
 }
 
 impl Processing {
@@ -183,7 +215,18 @@ impl Processing {
         let mut settings = config.settings;
         settings.echo_cancellation &= config.speakers.is_some();
         let voice = Voice::new(settings)?;
-        Ok(Processing { voice, mic: Vec::with_capacity(4096), far: Vec::with_capacity(4096), out: VecDeque::with_capacity(16384), extra: config.buffering().2, quantum: 0, hold: 0 })
+        Ok(Processing {
+            voice,
+            mic: Vec::with_capacity(4096),
+            far: Vec::with_capacity(4096),
+            out: VecDeque::with_capacity(16384),
+            extra: config.buffering().2,
+            quantum: 0,
+            hold: 0,
+            gain: gain(config.boost_db),
+            speech: SpeechLevel::default(),
+            tag: tag(&config.microphone),
+        })
     }
 
     fn reset(&mut self) {
@@ -310,12 +353,24 @@ fn capture(
                     let mut out = [0f32; FRAME];
                     for f in p.mic[..whole].as_chunks::<FRAME>().0 {
                         let started = std::time::Instant::now();
-                        p.voice.capture(f, &mut out);
+                        // Measured as it comes; then brought up, if it's
+                        // a quiet one, before anything else.
+                        p.speech.add(f);
+                        if p.gain == 1.0 {
+                            p.voice.capture(f, &mut out);
+                        } else {
+                            p.voice.capture(&olo_voice::boosted(f, p.gain), &mut out);
+                        }
                         stats.frame_ns.fetch_add(started.elapsed().as_nanos() as u64, Relaxed);
                         stats.frames.fetch_add(1, Relaxed);
                         p.out.extend(out);
                     }
                     p.mic.drain(..whole);
+                    if whole > 0
+                        && let Some(db) = p.speech.speech_db()
+                    {
+                        stats.speech.store(speech(p.tag, db), Relaxed);
+                    }
                 }
             }
             // The source given this cycle's frames now (it takes the lock).
@@ -541,11 +596,25 @@ fn run(config: Config, rx: pw::channel::Receiver<Message>, stats: Arc<Stats>, ch
                 }
                 if cur.0.settings != config.settings || cur.0.speakers != config.speakers {
                     match Processing::new(&config) {
-                        Ok(p) => {
+                        Ok(mut p) => {
                             stats.latency_samples.store(p.latency(), Relaxed);
-                            *processing.lock().unwrap() = p;
+                            let mut old = processing.lock().unwrap();
+                            // (What was heard of the microphone stays its.)
+                            if old.tag == p.tag {
+                                p.speech = std::mem::take(&mut old.speech);
+                            }
+                            *old = p;
                         }
                         Err(e) => tracing::warn!("voice: {e}"),
+                    }
+                }
+                {
+                    let mut p = processing.lock().unwrap();
+                    p.gain = gain(config.boost_db);
+                    // Another microphone: heard afresh.
+                    if p.tag != tag(&config.microphone) {
+                        p.speech = SpeechLevel::default();
+                        p.tag = tag(&config.microphone);
                     }
                 }
                 // Drop the old captures before making the new.
@@ -588,7 +657,7 @@ mod tests {
     /// so it's never mistaken for it.
     #[test]
     fn named_after_its_microphone() {
-        let c = |label: &str| Config { microphone: "m".into(), label: label.into(), speakers: None, settings: Settings::default() };
+        let c = |label: &str| Config { microphone: "m".into(), label: label.into(), speakers: None, settings: Settings::default(), boost_db: 0.0 };
         assert_eq!(c("AirPods").description(), "Air\u{2060}Pods (Voice Processing)");
         assert_eq!(c("Ben’s AirPods Pro Microphone").description(), "Air\u{2060}Pods Pro Microphone (Voice Processing)");
         assert_eq!(c("MacBook Pro Microphone").description(), "MacBook Pro Microphone (Voice Processing)");

@@ -97,6 +97,8 @@ something nobody here has is in "Blocked", with what it waits for.
   what's on them). Each slide drawn as it looks (its shapes, text,
   pictures, theme), natively, in Quick Look and in Viewer.
 
+## Done, waiting for Ben to try or confirm
+
 - **Voice Processing: a quiet microphone brought up, and its device
   named as processed** (Ben, 2026-11-16: "some inputs like airpods are
   not loud enough on microphone input. add the ability in voice
@@ -104,27 +106,27 @@ something nobody here has is in "Blocked", with what it waits for.
   and have it suggest the ideal level. also in chrome it doesn't show me
   which airpods device has the processing it all jsut says "Airpods"
   like 3 times. it should show it as like "Airpods (Voice Processing)"
-  or something"). An optional boost of the processed input up to a
-  target level, with the ideal level suggested from what the microphone
-  gives (measured, not guessed); and the processed source's name, as
-  programs list it (Chrome's device menu), saying it's processed:
-  "AirPods (Voice Processing)", the raw one left as it is.
+  or something").
   *Its name, done 2026-11-16:* Chrome lists any device whose name has
-  "AirPods" in it as plain "AirPods" (its privacy measure: AirPods are
-  named after their owner), so Meet showed three; measured in Chrome
-  with a sound sandbox ("Beats…", "Galaxy Buds…", "air pods…" all shown
-  as written). Olo's two AirPods sources (the processed one and the
-  wideband microphone) are named by their model, from "AirPods" on, with
-  an invisible word joiner inside the word (`olo_system::audio::
-  listed_name`): Chrome then lists "AirPods Pro Microphone (Voice
-  Processing)" and "AirPods Pro Microphone" as written; BlueZ's call
-  microphone stays "AirPods". *Left:* the boost (an optional level to
-  bring a quiet microphone up to, the ideal suggested from what it
-  gives), measured on Ben's AirPods with him; and Ben to see the names
-  in Meet after upgrading (Chrome reads its devices again when it
-  starts).
-
-## Done, waiting for Ben to try or confirm
+  "AirPods" in it as plain "AirPods"; Olo's two AirPods sources are
+  named by their model with an invisible word joiner inside the word
+  (`olo_system::audio::listed_name`), so Chrome lists "AirPods Pro
+  Microphone (Voice Processing)" as written.
+  *The boost, done 2026-11-16* (HACKING, "The voice service"): each
+  microphone's own, 3 dB steps to 30, before the chain; the service
+  measures the voice's active speech level as something records, and
+  Preferences ▸ Sound says it, suggests what brings it to -26 dB and
+  sets it (Use Suggested); Try It tries the suggested boost beside the
+  other settings. Measured in a private sound server: speech 20 dB
+  quieter read 20.4 dB lower, 9 dB suggested, the source 8.9 dB up with
+  it.
+  *For Ben, after upgrading:* talk on a call (or Try It) with the
+  AirPods chosen, then Preferences ▸ Sound: the line under "Microphone
+  boost" says how loud they come in, and Use Suggested sets the boost.
+  Say whether the level then sounds right to the other side (the aim,
+  -26 dB, is the nominal speech level; it's one constant, `AIM_DB`).
+  Chrome reads its devices when it starts: restart it to see the names
+  in Meet.
 
 - **Never a stall: the compositor's loop held in the kernel** (Ben,
   2026-11-16: "i just had a responsiveness stall when i was typing and

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-16
 
+### Sound: a quiet microphone's boost, suggested from how loud the voice comes in
+
+*13:14* — Preferences ▸ Sound ▸ Voice Processing has a boost for each microphone, in 3 dB steps. The voice service measures the voice's level as something records (its active speech level), the panel says it and what would bring it to the -26 dB aimed for, and Use Suggested sets that; Try It tries the suggested boost beside the other settings (Ben, 2026-11-16: some inputs like AirPods are not loud enough).
+
+![Sound: a quiet microphone's boost, suggested from how loud the voice comes in](2026-11-16/131454-sound-a-quiet-microphone-s-boost-suggested-from-.png)
+
 ### Olo Doctor keeps the desktop's memory in memory
 
 *12:45* — Three findings beside the one for windows' graphics memory (Ben, 2026-11-16, after a stall while typing): Keep the Core in Memory (app_server, Deskbar and the session lock their own memory; the sound server is never swapped), Keep Programs in Memory (swappiness 1) and, as a suggestion, swap as large as memory. Each sets itself up from its button.

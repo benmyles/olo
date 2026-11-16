@@ -10,6 +10,7 @@ in it.
 
   tools/dev/voice-latency [--settings noise=off,…] [--seconds N] [--quantum N]
                           [--probe sync|async] [--signal speech|clicks] [--keep]
+                          [--level DB] [--boost DB]
 
 --settings: olo-voice --set pairs (default noise=off,echo=off,normalize=off:
 only the buffering). --quantum: the graph's quantum another client asks for
@@ -20,6 +21,12 @@ pw-record, which PipeWire schedules asynchronously, so it reads any
 source that isn't a device a cycle late, 10 ms at a call's quantum: not
 Olo's). --signal: speech (the default; clicks in silence are what the
 level stage boosts and limits, and a speech model takes for noise).
+--level: the speech played DB quieter than recorded (a quiet microphone:
+-20). --boost: the test microphone's boost (`voice-boost.json`, as
+Preferences sets it). With either, or always for speech, it also says the
+levels: the microphone's and the source's (RMS over the speech, dB of
+full scale), the gain between them, and what the service measured
+(`speech_db`, before any boost) and would suggest.
 Release builds (cargo build --release -p olo-voice-service). Nothing of
 the person's session is touched: every program runs with the private
 folders, and they're removed after (--keep keeps them, in
@@ -168,11 +175,14 @@ def probe_run(path):
     pw.pw_main_loop_run(loop)
 
 
-def speech(path, seconds):
+def speech(path, seconds, level_db=0.0):
     """A second of silence (while it's linked), then the voice crate's
-    test speech (16 kHz, made 48 kHz), as long as asked."""
+    test speech (16 kHz, made 48 kHz), as long as asked, `level_db`
+    quieter or louder than recorded."""
     raw = open(os.path.join(ROOT, "crates/voice/tests/data/slt.raw"), "rb").read()
     x = struct.unpack(f"<{len(raw) // 2}h", raw)
+    gain = 10 ** (level_db / 20)
+    x = tuple(max(-32768, min(32767, int(v * gain))) for v in x)
     up = []
     for a, b in zip(x, x[1:] + (0,)):
         up += [a, (2 * a + b) // 3, (a + 2 * b) // 3]
@@ -201,6 +211,15 @@ def best_lag(left, right, most=RATE // 10):
     return max(fine, key=lambda k: sum(a * b for a, b in zip(l[:n], r[k:k + n])))
 
 
+def level_db(x):
+    """RMS of `x` from where it first sounds, in dB of full scale."""
+    start = next((i for i, v in enumerate(x) if abs(v) > 0.0005), None)
+    if start is None:
+        return None
+    x = x[start:]
+    return round(10 * math.log10(max(sum(v * v for v in x) / len(x), 1e-12)), 1)
+
+
 def onsets(x, threshold=0.2, gap=RATE // 10):
     out, last = [], -gap
     for i, v in enumerate(x):
@@ -222,6 +241,8 @@ def main():
     keep = "--keep" in a
     sync = opt("--probe", "sync") == "sync"
     signal_kind = opt("--signal", "speech")
+    quieter = float(opt("--level", "0"))
+    boost = float(opt("--boost", "0"))
     shutil.rmtree(BASE, ignore_errors=True)
     for d in ("run", "conf/pipewire", "conf/wireplumber/wireplumber.conf.d", "state", "data", "home", "voice"):
         os.makedirs(f"{BASE}/{d}", exist_ok=True)
@@ -236,6 +257,9 @@ def main():
         time.sleep(1.5)
         voice = os.path.join(ROOT, "target/release/olo-voice")
         subprocess.run([voice, "--set", "enabled=on", *settings], env=env(), check=True, capture_output=True)
+        if boost:
+            # (As Preferences writes it: the microphone by its node's name.)
+            json.dump({"by_microphone": {"test-mic": boost}}, open(f"{BASE}/voice/voice-boost.json", "w"))
         if other == "loopback":
             procs.append(start("loopback", ["pw-loopback", "--capture-props", "{ target.object = test-mic node.latency = 480/48000 }", "--playback-props", "{ media.class = Audio/Source node.name = olo_voice_loopback node.latency = 480/48000 }"], "loopback.log"))
         else:
@@ -268,7 +292,7 @@ def main():
         if signal_kind == "clicks":
             clicks(wav, seconds)
         else:
-            speech(wav, seconds)
+            speech(wav, seconds, quieter)
         # (Linked by hand: WirePlumber links a player to a sink, not into
         # a virtual microphone.)
         play = start("play", ["pw-play", "-P", "{ node.name = olo-latency-clicks node.autoconnect = false }", wav], "play.log")
@@ -305,7 +329,18 @@ def main():
         state = json.loads(status).get("state", {}) if status.strip().startswith("{") else {}
         if signal_kind == "speech":
             lag = best_lag(left, right)
-            measured = {"added_ms": round(lag * 1000 / RATE, 2) if lag is not None else None}
+            mic_db, source_db = level_db(left), level_db(right)
+            heard = state.get("speech_db")
+            measured = {
+                "added_ms": round(lag * 1000 / RATE, 2) if lag is not None else None,
+                "microphone_db": mic_db,
+                "source_db": source_db,
+                "gain_db": round(source_db - mic_db, 1) if None not in (mic_db, source_db) else None,
+                "boost_db": state.get("boost_db"),
+                "service_heard_speech_db": round(heard, 1) if heard is not None else None,
+                # (`olo_protocol::voice::suggested_boost`: to -26 dB, by 3 dB steps, 30 at most.)
+                "would_suggest_db": max(0, min(10, round((-26 - heard) / 3))) * 3 if heard is not None else None,
+            }
         else:
             measured = {
                 "clicks": len(lo),

@@ -12846,6 +12846,37 @@ one are always told apart:
   noise, normalize), followed by inotify. **State** `olo-voice.json` in
   the runtime folder: the microphone, recording or idle, echo cancelling
   now, the delay it adds, a frame's processing time, dropouts.
+- **A quiet microphone's boost** (Ben, 2026-11-16: "some inputs like
+  airpods are not loud enough on microphone input. add the ability in
+  voice processing to optionally boost the input level to some target
+  level and have it suggest the ideal level"). Each microphone's own
+  (`olo_protocol::voice::Boosts`, `voice-boost.json` beside the
+  settings, by its node's name: AirPods' boost isn't the laptop
+  microphone's), in 3 dB steps up to 30, a gain on each frame before
+  the chain (`olo_voice::boosted`, kept within full scale): evening out
+  the level alone doesn't do it, as that stage raises its gain only
+  while it's sure it hears speech, which a quiet microphone is where
+  it's least sure. **Suggested from what's heard**: while something
+  records, the service measures the voice as it comes in, before any
+  boost (`olo_voice::SpeechLevel`: the active speech level, the mean
+  power of the frames someone speaks in over the last three seconds,
+  those within 15 dB of their mean, as ITU-T P.56 states speech levels;
+  a frame is speech when it's 12 dB over the microphone's own noise
+  floor), and says it in its state (`speech_db`, kept for each
+  microphone heard; `boost_db`). `suggested_boost` is what brings that
+  to -26 dB (`AIM_DB`, the level speech is nominally stated at), to the
+  nearest step. Preferences ▸ Sound ▸ Voice Processing: "Microphone
+  boost:" (None, +3 dB … +30 dB), **Use Suggested** when the measured
+  voice wants another, and the line under it ("Your voice comes in at
+  -34 dB: +9 dB brings it to the -26 dB aimed for."). Measured in a
+  private sound server (`tools/dev/voice-latency --level -20 --boost
+  9`, which says the levels too): speech played 20 dB quieter read
+  20.4 dB lower (-13.4 and -33.8 dB; a first measure, the mean of the
+  frames' levels in dB with a fixed gate, read 13 lower: the quiet
+  one's soft frames fell under the gate), 9 dB suggested, and the
+  source 8.9 dB over the microphone with it set, 9.3 with noise
+  suppression and levelling on; no delay added. A frame costs 0.9 µs to
+  measure and say, 0.08 to boost (`speech_level_cost`, ignored).
 - **Command line**: `olo-voice --status [--json]`, `olo-voice --set
   KEY=VALUE…` (`enabled`, `echo`, `normalize`: on/off; `mode`:
   calls/recording; `noise`: off/moderate/strong/full). Deskbar's menu
@@ -12887,7 +12918,13 @@ one are always told apart:
   the chosen setting's sound, switching at the same place (one stream,
   the take chosen by an atomic; 60 ms ahead at most, so a switch is
   heard at once), with a live spectrum of both (`olo_voice::spectrum`,
-  under 40 µs a call). "Use This Setting" saves it. Echo cancellation
+  under 40 µs a call). "Use This Setting" saves it. The recording's
+  own speech level is measured the same way (said under the list: "Your
+  voice came in at -35 dB; voice processing aims for -26 dB."), and
+  where it wants another boost than the microphone has, that's tried
+  too ("Boosted +9 dB (suggested)"; "Not boosted" for one that has a
+  boost), every row with the boost it would run with; using a row sets
+  its boost as well. Echo cancellation
   isn't tried: a recording has no speakers' sound beside it. Tested in
   a `tools/dev/pw-sandbox` (`recording::tests`, whose "talk" sink the
   "mic" source hears: two tones played, switched halfway, recorded
