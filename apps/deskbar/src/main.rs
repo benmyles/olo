@@ -860,12 +860,18 @@ impl Deskbar {
         let (_, ws, key) = self.menu_place();
         let layout = self.tiling.layout_of(ws, &key);
         let preset = self.tiling.preset_of(ws, &key);
+        // (Main and Stack's first, with its main window anywhere else
+        // after them; then the others.)
         let mut layouts = Menu::new("Auto-Tiling Layout");
-        for (i, (title, ..)) in olo_protocol::LAYOUT_PRESETS.iter().enumerate() {
+        let main_and_stack = |l: &olo_protocol::TilingLayout| *l == olo_protocol::TilingLayout::MainAndStack;
+        for (i, (title, ..)) in olo_protocol::LAYOUT_PRESETS.iter().enumerate().filter(|(_, (_, l, _))| main_and_stack(l)) {
             layouts = layouts.item(*title, format!("layout-preset:{i}")).checked(preset == Some(i));
         }
         let elsewhere = layout == olo_protocol::TilingLayout::MainAndStack && preset.is_none();
-        layouts = layouts.item("Main and Stack, Main Elsewhere", "layout:main_and_stack").checked(elsewhere);
+        layouts = layouts.item("Main and Stack, Main Elsewhere", "layout:main_and_stack").checked(elsewhere).separator();
+        for (i, (title, ..)) in olo_protocol::LAYOUT_PRESETS.iter().enumerate().filter(|(_, (_, l, _))| !main_and_stack(l)) {
+            layouts = layouts.item(*title, format!("layout-preset:{i}")).checked(preset == Some(i));
+        }
         menu = menu.submenu(layouts);
         // Where Main and Stack's main window goes on this workspace (Ben,
         // 2026-11-14: "an option to set the main window layout for a

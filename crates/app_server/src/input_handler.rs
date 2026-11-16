@@ -531,6 +531,17 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 let output = focused.as_ref().and_then(|w| self.window_output(w));
                 self.swap_main(output);
             }
+            // Auto-tiling's layouts round, on the active display's workspace.
+            S::NextLayout | S::PreviousLayout => {
+                if let Some(o) = self.active_output() {
+                    let ws = self.showing(&o);
+                    let now = self.settings.tiling.layout_of(ws, &crate::desktop::display_key(&o));
+                    let all = olo_protocol::TilingLayout::ALL;
+                    let i = all.iter().position(|l| *l == now).unwrap_or(0);
+                    let next = if shortcut == S::NextLayout { all[(i + 1) % all.len()] } else { all[(i + all.len() - 1) % all.len()] };
+                    self.set_tiling_layout(next, Some(ws), Some(o));
+                }
+            }
             // By direction (shell/directional.rs).
             S::Focus(dir) => {
                 self.focus_toward(focused, dir);

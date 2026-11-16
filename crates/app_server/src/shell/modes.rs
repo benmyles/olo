@@ -100,7 +100,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     output: o.name(),
                     mode: self.mode_of(o, ws),
                     workspace: ws,
-                    layout: tiling.layout,
+                    layout: tiling.layout_of(ws, &crate::desktop::display_key(o)),
                     main_place: tiling.main_place_of(ws, &crate::desktop::display_key(o)),
                     main: self.main_window_of(&(ws, o.name())),
                     previous_main: self.previous_main_of(&(ws, o.name())),

@@ -278,6 +278,11 @@ pub enum Shortcut {
     /// way (its own edge on that side, else the one on the other side), a
     /// step at a time, least sizes kept.
     Resize(Dir),
+    /// Auto-tiling's next / previous layout on the active display's
+    /// workspace (`TilingLayout::ALL`, round), as tiling window managers
+    /// cycle theirs.
+    NextLayout,
+    PreviousLayout,
     /// Hide the focused window (minimize it to Deskbar).
     Hide,
     /// Roll the focused window up to just its tab, or back down.
@@ -725,6 +730,8 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::Resize(Dir::Right), "resize-right", WINDOWS, "Move the tile's edge right", &["Ctrl+Alt+Shift+Cmd+Right"], &["Ctrl+Alt+Shift+Cmd+Right"], &["Ctrl+Alt+Shift+Cmd+Right"]),
     s(Shortcut::Resize(Dir::Up), "resize-up", WINDOWS, "Move the tile's edge up", &["Ctrl+Alt+Shift+Cmd+Up"], &["Ctrl+Alt+Shift+Cmd+Up"], &["Ctrl+Alt+Shift+Cmd+Up"]),
     s(Shortcut::Resize(Dir::Down), "resize-down", WINDOWS, "Move the tile's edge down", &["Ctrl+Alt+Shift+Cmd+Down"], &["Ctrl+Alt+Shift+Cmd+Down"], &["Ctrl+Alt+Shift+Cmd+Down"]),
+    s(Shortcut::NextLayout, "next-layout", ARRANGE, "Next auto-tiling layout", &["Ctrl+Alt+Cmd+Space"], &["Ctrl+Alt+Cmd+Space"], &["Ctrl+Alt+Cmd+Space"]),
+    s(Shortcut::PreviousLayout, "previous-layout", ARRANGE, "Previous auto-tiling layout", &["Ctrl+Alt+Shift+Cmd+Space"], &["Ctrl+Alt+Shift+Cmd+Space"], &["Ctrl+Alt+Shift+Cmd+Space"]),
     s(Shortcut::Hide, "hide-window", WINDOWS, "Hide window", &["Cmd+M"], &[], &["Ctrl+Alt+M"]),
     s(Shortcut::HideApp, "hide-app", WINDOWS, "Hide the application", &["Cmd+H"], &[], &["Ctrl+Alt+H"]),
     s(Shortcut::RollUp, "roll-up", WINDOWS, "Roll up or down", &["Ctrl+Cmd+M"], &["Alt+Cmd+M"], &["Ctrl+Alt+R"]),
@@ -961,6 +968,15 @@ pub enum TilingLayout {
     /// main window gets the left 2/3 and the stack is the right 1/3").
     #[default]
     MainAndStack,
+    /// Side by side, each as wide (Amethyst's Column).
+    Columns,
+    /// One above the other, each as tall (Amethyst's Row).
+    Rows,
+    /// Rows of about square cells (xmonad's Grid, awesome's fair).
+    Grid,
+    /// Each takes half of the room left, going round (awesome's and
+    /// bspwm's spiral).
+    Spiral,
 }
 
 /// The layouts offered by name (Deskbar's Auto-Tiling Layout menu,
@@ -968,20 +984,34 @@ pub enum TilingLayout {
 /// goes (Ben, 2026-11-15: "make one of the auto-tile layout options
 /// having the main window be the left half and then the stack be the
 /// right half"). Any other place is Main and Stack's Main Window menu.
-pub const LAYOUT_PRESETS: [(&str, TilingLayout, Option<Tile>); 3] = [
+pub const LAYOUT_PRESETS: [(&str, TilingLayout, Option<Tile>); 7] = [
     ("Main Two Thirds, Stack a Third", TilingLayout::MainAndStack, Some(Tile::LeftTwoThirds)),
     ("Main Half, Stack Half", TilingLayout::MainAndStack, Some(Tile::Left)),
     ("Halves", TilingLayout::Halves, None),
+    ("Columns", TilingLayout::Columns, None),
+    ("Rows", TilingLayout::Rows, None),
+    ("Grid", TilingLayout::Grid, None),
+    ("Spiral", TilingLayout::Spiral, None),
 ];
 
 impl TilingLayout {
-    pub const ALL: [TilingLayout; 2] = [TilingLayout::Halves, TilingLayout::MainAndStack];
+    pub const ALL: [TilingLayout; 6] = [TilingLayout::MainAndStack, TilingLayout::Halves, TilingLayout::Columns, TilingLayout::Rows, TilingLayout::Grid, TilingLayout::Spiral];
+
+    /// Whether it's built in its own shape from the tiles in order (as
+    /// the number of tiles changes), not grown a split at a time.
+    pub fn built(self) -> bool {
+        matches!(self, TilingLayout::Columns | TilingLayout::Rows | TilingLayout::Grid | TilingLayout::Spiral)
+    }
 
     /// Its name in menus.
     pub fn title(self) -> &'static str {
         match self {
             TilingLayout::Halves => "Halves",
             TilingLayout::MainAndStack => "Main and Stack",
+            TilingLayout::Columns => "Columns",
+            TilingLayout::Rows => "Rows",
+            TilingLayout::Grid => "Grid",
+            TilingLayout::Spiral => "Spiral",
         }
     }
 
@@ -990,6 +1020,10 @@ impl TilingLayout {
         match self {
             TilingLayout::Halves => "Each new window takes half of the one you were using.",
             TilingLayout::MainAndStack => "A new window is the main one, in its place; the others stack around it.",
+            TilingLayout::Columns => "Every window a column, each as wide.",
+            TilingLayout::Rows => "Every window a row, each as tall.",
+            TilingLayout::Grid => "The windows in rows of about square cells.",
+            TilingLayout::Spiral => "Each window takes half of the room left, round in a spiral.",
         }
     }
 
@@ -998,6 +1032,10 @@ impl TilingLayout {
         match self {
             TilingLayout::Halves => "halves",
             TilingLayout::MainAndStack => "main_and_stack",
+            TilingLayout::Columns => "columns",
+            TilingLayout::Rows => "rows",
+            TilingLayout::Grid => "grid",
+            TilingLayout::Spiral => "spiral",
         }
     }
 

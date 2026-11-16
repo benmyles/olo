@@ -1358,7 +1358,8 @@ pub struct WindowingModeInfo {
     /// The workspace it is about (the display's showing, unless asked).
     #[serde(default)]
     pub workspace: u32,
-    /// How auto-tiling lays its windows out (every display's), and, in
+    /// How auto-tiling lays its windows out on that workspace there
+    /// (`TilingSettings::layout_of`, `Request::SetTilingLayout`), and, in
     /// Main and Stack, where the main window goes there
     /// (`TilingSettings::main_place_of`, `Request::SetMainPlace`) and
     /// which window is it.

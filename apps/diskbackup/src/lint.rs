@@ -26,9 +26,13 @@ fn states() -> Vec<(&'static str, Settings, State)> {
     let folder = Settings { paths: vec!["~/Documents/Client Projects 2026/Deliverables and Drafts".into()], ..home.clone() };
     let drive = Settings { target: Target::GoogleDrive { account: "someone.with.a.long.name@example-company.com".into(), folder: "id".into() }, ..home.clone() };
     let base = State { pid: std::process::id(), snapshots: 412, size: Some(1_234_000_000_000), target: "a folder".into(), ..State::default() };
-    let check = Check { time: t - 3500, by_checksum: 1204, sampled: 8, bytes_read: 33_000_000, seconds: 4.2, ..Check::default() };
+    let check = Check { time: t - 4100, by_checksum: 1204, sampled: 8, bytes_read: 33_000_000, seconds: 4.2, ..Check::default() };
+    // (Times well inside the phrase they're said with: drawn a second or
+    // two after `t`, "in an hour" exactly would be "in 60 minutes" in one
+    // state's pass and "tomorrow at 00:33" in the next, and the lint
+    // flaked at 23:33. Each said the same however long the lint takes.)
     let last = Last {
-        time: t - 3600,
+        time: t - 4200,
         files: 312_004,
         bytes: 412_000_000_000,
         new_files: 1_651,
@@ -40,7 +44,7 @@ fn states() -> Vec<(&'static str, Settings, State)> {
         check: Some(check),
         ..Last::default()
     };
-    let backed_up = State { last: Some(last.clone()), last_ok: Some(t - 3600), next: Some(t + 3600), ..base.clone() };
+    let backed_up = State { last: Some(last.clone()), last_ok: Some(t - 4200), next: Some(t + 7800), ..base.clone() };
     let progress = |stage| Progress {
         started: t - 600,
         files: 165_100,
@@ -94,7 +98,7 @@ fn states() -> Vec<(&'static str, Settings, State)> {
         (
             "an unfinished backup left",
             drive,
-            State { unfinished: Some(Unfinished { time: t - 7200, files: 165_100, bytes: 230_000_000_000, new_bytes: 16_000_000_000, sent: 12_000_000_000, seconds: 3_600.0 }), ..backed_up },
+            State { unfinished: Some(Unfinished { time: t - 7800, files: 165_100, bytes: 230_000_000_000, new_bytes: 16_000_000_000, sent: 12_000_000_000, seconds: 3_600.0 }), ..backed_up },
         ),
     ]
 }

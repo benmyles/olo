@@ -4438,5 +4438,17 @@
   "title": "Kache: tests holding slots",
   "caption": "Status: the tests holding the pool's slots (read from the kernel's list of locks), each with End.",
   "image": "2026-11-15/214715-kache-tests-holding-slots.png"
+ },
+ {
+  "time": "2026-11-15T23:32:26",
+  "title": "Auto-tiling: Columns, Rows, Grid and Spiral",
+  "caption": "Four more auto-tiling layouts, as the best-known tiling window managers have them (Amethyst's Column and Row, xmonad's Grid, awesome's and bspwm's Spiral): Doctor, Logs, Disk Usage and Styled Edit on a 2560 \u00d7 1600 display, in Columns, Rows (Disk Usage keeps its least height), Grid and Spiral. Chosen per workspace from Deskbar's tray, or round them all with Ctrl+Alt+Cmd+Space; the windows keep their order from one layout to the next.",
+  "image": "2026-11-15/233226-auto-tiling-columns-rows-grid-and-spiral.png"
+ },
+ {
+  "time": "2026-11-15T23:32:28",
+  "title": "Deskbar: the layouts, grouped",
+  "caption": "Deskbar's Auto-Tiling Layout menu with the new layouts: Main and Stack's three first, then Halves, Columns, Rows, Grid and Spiral (1.5\u00d7).",
+  "image": "2026-11-15/233228-deskbar-the-layouts-grouped.png"
  }
 ]

@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-15
 
+### Deskbar: the layouts, grouped
+
+*23:32* — Deskbar's Auto-Tiling Layout menu with the new layouts: Main and Stack's three first, then Halves, Columns, Rows, Grid and Spiral (1.5×).
+
+![Deskbar: the layouts, grouped](2026-11-15/233228-deskbar-the-layouts-grouped.png)
+
+### Auto-tiling: Columns, Rows, Grid and Spiral
+
+*23:32* — Four more auto-tiling layouts, as the best-known tiling window managers have them (Amethyst's Column and Row, xmonad's Grid, awesome's and bspwm's Spiral): Doctor, Logs, Disk Usage and Styled Edit on a 2560 × 1600 display, in Columns, Rows (Disk Usage keeps its least height), Grid and Spiral. Chosen per workspace from Deskbar's tray, or round them all with Ctrl+Alt+Cmd+Space; the windows keep their order from one layout to the next.
+
+![Auto-tiling: Columns, Rows, Grid and Spiral](2026-11-15/233226-auto-tiling-columns-rows-grid-and-spiral.png)
+
 ### Kache: tests holding slots
 
 *21:47* — Status: the tests holding the pool's slots (read from the kernel's list of locks), each with End.

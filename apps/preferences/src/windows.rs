@@ -123,9 +123,10 @@ fn app_name(id: &str) -> String {
 }
 
 /// The main display to scale, Deskbar in its corner and three windows
-/// tiled as app_server would: in Halves, the left half and the right
-/// half's top and bottom; in Main and Stack, the main window in its
-/// place (in front) and two more in the rest.
+/// tiled as app_server would: in Halves (and Spiral, the same for three),
+/// the left half and the right half's top and bottom; in Main and Stack,
+/// the main window in its place (in front) and two more in the rest; in
+/// Columns and Rows, thirds; in Grid, two above and one below.
 fn miniature(g: &mut Painter, well: Bounds<Pixels>, p: &Palette, s: &Settings, (dw, dh): (f32, f32)) {
     style::fill_rect(g, well, c(p.document_background));
     style::sunken(g, well, p, false);
@@ -154,7 +155,11 @@ fn miniature(g: &mut Painter, well: Bounds<Pixels>, p: &Palette, s: &Settings, (
         let (lo, hi) = ((gap / 2.0).floor(), gap - (gap / 2.0).floor());
         let parts = match s.tiling.layout {
             TilingLayout::MainAndStack => s.tiling.main_place.main_and_stack_parts(2),
-            TilingLayout::Halves => vec![(0.0, 0.0, 0.5, 1.0), (0.5, 0.0, 0.5, 0.5), (0.5, 0.5, 0.5, 0.5)],
+            TilingLayout::Halves | TilingLayout::Spiral => vec![(0.0, 0.0, 0.5, 1.0), (0.5, 0.0, 0.5, 0.5), (0.5, 0.5, 0.5, 0.5)],
+            TilingLayout::Columns => (0..3).map(|i| (i as f32 / 3.0, 0.0, 1.0 / 3.0, 1.0)).collect(),
+            TilingLayout::Rows => (0..3).map(|i| (0.0, i as f32 / 3.0, 1.0, 1.0 / 3.0)).collect(),
+            // (Three on a wide display: two above, one the width below.)
+            TilingLayout::Grid => vec![(0.0, 0.0, 0.5, 0.5), (0.5, 0.0, 0.5, 0.5), (0.0, 0.5, 1.0, 0.5)],
         };
         let front = if s.tiling.layout == TilingLayout::MainAndStack { 0 } else { parts.len() - 1 };
         // (An edge inside the area gives up half the gap, each side.)

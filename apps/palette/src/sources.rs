@@ -315,6 +315,7 @@ pub fn context() -> (Option<WindowInfo>, Vec<Item>) {
                 olo_protocol::Shortcut::Focus(_) => " tiling direction move focus window vim",
                 olo_protocol::Shortcut::Swap(_) => " tiling direction move tile exchange",
                 olo_protocol::Shortcut::Resize(_) => " tiling direction grow shrink size edge split",
+                olo_protocol::Shortcut::NextLayout | olo_protocol::Shortcut::PreviousLayout => " tiling layout cycle columns rows grid spiral halves main stack",
                 _ => "",
             }
         ));

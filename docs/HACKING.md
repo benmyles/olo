@@ -6937,7 +6937,7 @@ shortcut (`{"type":"run_shortcut","id":"swap-left"}`).
 
 Auto-tiling (`shell/autotile.rs`; its module doc is the design) is the
 Auto-Tiling mode; `{"type":"set_auto_tiling","on":true}` and
-`{"type":"auto_tiling"}` still work, as the mode. It has two layouts,
+`{"type":"auto_tiling"}` still work, as the mode. It has six layouts,
 chosen for each display's workspace and kept for it (Ben, 2026-11-15:
 "remember it per-desktop-workspace": `TilingSettings::layouts`, kept as
 modes are; Deskbar's windowing mode menu ▸ Auto-Tiling Layout,
@@ -6945,10 +6945,28 @@ modes are; Deskbar's windowing mode menu ▸ Auto-Tiling Layout,
 starting with the default (`TilingSettings::layout`, Preferences ▸
 Windows): Halves, below, and Main and Stack, as dwm's (and its centred
 main): one main window in its place, the rest stacked in the rest, each
-as big. Deskbar's menu names them as people think of them
+as big; and, as the best-known tilers have them (Ben, 2026-11-15: "olo
+must be just as good as them"), Columns and Rows (Amethyst's), Grid
+(xmonad's: the square root of how many columns, rounded up, one more
+for each further width on a display over twice as wide as tall) and
+Spiral (awesome's and bspwm's: each takes half of the room left, going
+round). Those four are built in their shape from the tiles in order
+(`built_again`) as the layout is chosen and as the number of tiles with
+room changes; between those, as the person left them (edges dragged,
+tiles swapped). Halves chosen arranges the tiles as it would have made
+them, each the next one's half across its longer side (`dwindle`), and
+grows a split at a time from then on. Changing layout keeps the
+windows' order, as tilers keep a window list: the tiles in the order
+the last layout had them (`in_order`: Main and Stack's main window then
+its stack, Spiral's round from the outside in, the others' as their
+tree has them), so going round them all comes back to the same
+arrangement; and a tree not built as Main and Stack isn't read as one
+(two halves would keep their half each). Next Layout and Previous Layout
+(⌃⌥⌘Space, ⌃⌥⇧⌘Space; `next-layout`) go round them on the active
+display's workspace. Deskbar's menu names them as people think of them
 (`LAYOUT_PRESETS`: Main Two Thirds, Stack a Third; Main Half, Stack
-Half; Halves; and Main and Stack with its main window elsewhere,
-`preset_of` checking the one in use). The place is any part a window
+Half; Main and Stack with its main window elsewhere; then Halves,
+Columns, Rows, Grid, Spiral; `preset_of` checking the one in use). The place is any part a window
 tiles into (`Tile::CHOOSABLE`), chosen for each display's workspace
 (Deskbar's Window Arrangement ▸ Main Window,
 `{"type":"set_main_place","place":"Left"}`, kept in
@@ -6973,8 +6991,8 @@ parts are too small for their windows `autofit` arranges them otherwise
 (`AutoTiler::built_as`) and whenever the number of tiles with room
 changes (`tiles_with_room`: a window came, went or hid), from the shape
 as it was (`main_and_stack_of`: its main window, the stack's order and
-where its edges were dragged) or, a tree of another shape, in reading
-order (`main_and_stack_again`). A new window (not one going back into a
+where its edges were dragged) or, a tree of another shape or another
+layout's, in its order (`main_and_stack_again`). A new window (not one going back into a
 place kept for it) is the main one, the old main window first in the
 stack; a main window that closes or hides gives its place to the one
 before it (`AutoTiler::mains`: each tree's main window and the one
@@ -6986,8 +7004,8 @@ taking its place in the stack; Swap with Previous Main (⌃⌥⌘⌫,
 does it to the window it picks with Ctrl held (its letter, or Return),
 and keyboard hints to a window's letter typed with Ctrl held (a tap of
 Ctrl alone still puts them away, on its release). Agents read it in
-`WindowInfo::main` and `WindowingModeInfo` (`layout`, `main_place`,
-`main`, `previous_main`). Between those the tree is the person's
+`WindowInfo::main` and `WindowingModeInfo` (`layout`, that workspace's,
+`main_place`, `main`, `previous_main`). Between those the tree is the person's
 (edges dragged, tiles swapped, Tile All), kept as it is. Laying out, in either, sends every
 window changing size its size in one round (`auto_apply`: a collected
 round, as an edge drag's last, `rounds.rs`), so they land in the same
@@ -6999,7 +7017,33 @@ then Main and Stack chosen again rebuilt it (the leftmost main at 691
 points, the other two 388 tall each); Halves chosen kept the tree as it
 was; a window opening shrank the two beside it in one round, shown 2.6
 ms later; app_server idle the same in both layouts (1.7–1.8% of a core,
-60 wakeups a second, the apps' carets and clock). While it is on, each display of the workspace has a
+60 wakeups a second, the apps' carets and clock).
+
+Tested by trying to break it (Ben, 2026-11-15: "rock solid
+lints/tests/and your own adversarial live qa trying to break it"):
+`autotile::tests::tiling_survives_anything` runs 400 random sequences
+of 60 steps (windows coming into holes or splitting tiles, going,
+swapping, resized by direction, least sizes changing, every layout and
+main place chosen in any order, kept as laid out, refitted) and holds
+the tree to its invariants after each: every window once, the tiles
+covering the area exactly with no overlap and nothing NaN, a layout
+chosen keeping the windows' order (a mutation, Spiral read in its
+tree's order, fails it). `tools/dev/tile-qa NAME [--steps N] [--seed S]
+[--dense]` does it live on a tsession desktop: random operations as a
+person or an agent could do them (apps opening and closing, every tiling
+and arranging shortcut, two at once with no wait, layouts and places on
+either display, modes, workspaces, windows moved between them,
+minimizing, scale changes) and after each: app_server answers; on each
+auto-tiled display every tiled window has a part, the parts lie in the
+area without overlapping, and windows overlap only where a least size
+holds one past its part; none is neither tiled nor floating. `--dense`
+keeps it on one auto-tiled workspace for many tiles at once (an
+arranging command that turns it to Standard is followed by Auto-Tiling
+again: re-adopting any arrangement). Run it after changing the tiler:
+1,518 tile pairs in 250 dense steps came through every layout with
+three tiles or more, no problem.
+
+While it is on, each display of the workspace has a
 tree of splits (`autotile::Node`, in `AutoTiler::trees` by workspace and
 connector), and every window there is a leaf of it, a window group one
 leaf. A new window fills an empty place if there is one, else splits
