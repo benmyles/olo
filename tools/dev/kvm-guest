@@ -66,6 +66,8 @@ cd /
 bash /script "$@" > /dev/ttyS1
 status=$?
 echo "kvm-guest: the script ended $status" > /dev/console
+# (Said whole before the kernel says it's powering off on the same line.)
+sleep 0.2
 echo 1 > /proc/sys/kernel/sysrq
 echo o > /proc/sysrq-trigger
 sleep 30

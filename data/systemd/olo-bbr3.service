@@ -1,0 +1,30 @@
+# olo-bbr3: BBRv3 for TCP (apps/bbr3).
+# How fast TCP sends is its congestion control's to decide. BBRv3 keeps
+# the queues along the path short where Linux's default (CUBIC) fills
+# them; it isn't in Linux, so Olo carries it as a module for the kernel
+# as it comes (kernel/bbr3, tcp_bbr3: the congestion control "bbr3"). At
+# each start this builds the module for the running kernel where it
+# hasn't yet, loads it, and makes it what new TCP connections use.
+# Installed by Olo Doctor ("Use BBRv3"). To go back:
+#   sudo systemctl disable --now olo-bbr3.service
+[Unit]
+Description=Olo: BBRv3 for TCP (a congestion control module for the running kernel)
+After=local-fs.target systemd-modules-load.service systemd-sysctl.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/libexec/olo/olo-bbr3
+# (New connections get back what they had; the module goes once none runs it.)
+ExecStop=/usr/local/libexec/olo/olo-bbr3 --remove
+StateDirectory=olo-bbr3
+# (How it went, for Olo Doctor: there while it's in, and after a failure.)
+RuntimeDirectory=olo-bbr3
+RuntimeDirectoryPreserve=yes
+# (A new kernel's first start builds the module for it: a few seconds.)
+TimeoutStartSec=300
+NoNewPrivileges=yes
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

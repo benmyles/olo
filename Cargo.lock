@@ -7082,6 +7082,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-bbr3"
+version = "0.1.0"
+dependencies = [
+ "olo-crash",
+ "olo-kmod",
+ "olo-net",
+]
+
+[[package]]
 name = "olo-brush"
 version = "0.1.0"
 dependencies = [
@@ -7469,8 +7478,8 @@ dependencies = [
 name = "olo-gpu-memory"
 version = "0.1.0"
 dependencies = [
- "libc",
  "olo-crash",
+ "olo-kmod",
 ]
 
 [[package]]
@@ -7700,6 +7709,13 @@ dependencies = [
  "wayland-client",
  "wayland-protocols 0.32.13",
  "zbus",
+]
+
+[[package]]
+name = "olo-kmod"
+version = "0.1.0"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

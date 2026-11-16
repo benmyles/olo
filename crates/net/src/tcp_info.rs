@@ -319,6 +319,40 @@ pub fn bbr_info(socket: &impl AsRawFd) -> io::Result<Option<BbrInfo>> {
     Ok(BbrInfo::parse(&buf[..len]))
 }
 
+/// Which BBR this kernel's own "bbr" is, if it has one loaded: 1 (as
+/// mainline's has been), or the version it says (Google's BBRv3, in a
+/// kernel built with its patches, says 3). Told by what the kernel gives
+/// for a socket that would run it: BBRv1's `tcp_bbr_info` is 20 bytes;
+/// the patched kernel's is longer, with the version in it. None if
+/// there's no "bbr" to choose (not built in, and its module not loaded:
+/// only root's choosing it would load it, and this never does).
+pub fn kernels_bbr_version() -> Option<u8> {
+    let available = std::fs::read_to_string("/proc/sys/net/ipv4/tcp_available_congestion_control").ok()?;
+    if !available.split_whitespace().any(|n| n == "bbr") {
+        return None;
+    }
+    // SAFETY: socket(2); the descriptor is owned by the OwnedFd made of it.
+    let socket = unsafe {
+        use std::os::fd::FromRawFd as _;
+        let fd = libc::socket(libc::AF_INET, libc::SOCK_STREAM | libc::SOCK_CLOEXEC, 0);
+        if fd < 0 {
+            return None;
+        }
+        std::os::fd::OwnedFd::from_raw_fd(fd)
+    };
+    set_congestion_control(&socket, "bbr").ok()?;
+    let mut buf = [0u8; 128];
+    let len = getsockopt(&socket, TCP_CC_INFO, &mut buf).ok()?;
+    Some(bbr_version_of(&buf[..len]))
+}
+
+/// (`tcp_bbr_info` with Google's patches: BBRv1's five words, four more
+/// (the bandwidth's bounds), then a byte each for the mode, the phase,
+/// padding and the version.)
+fn bbr_version_of(info: &[u8]) -> u8 {
+    info.get(39).copied().filter(|&v| v > 1).unwrap_or(1)
+}
+
 fn getsockopt(socket: &impl AsRawFd, what: libc::c_int, buf: &mut [u8]) -> io::Result<usize> {
     let mut len = buf.len() as libc::socklen_t;
     // SAFETY: getsockopt(2) writes at most `len` bytes into `buf` and
@@ -397,5 +431,18 @@ mod tests {
         let phase = |pacing: u32, cwnd: u32| BbrInfo { bandwidth: 1, min_rtt_us: 1, pacing_gain: pacing as f32 / 256.0, cwnd_gain: cwnd as f32 / 256.0 }.phase();
         assert_eq!([phase(710, 512), phase(88, 512), phase(256, 256), phase(232, 512), phase(192, 512), phase(256, 512)], ["startup", "drain", "probe rtt", "probe down", "probe down", "cruise"]);
         assert_eq!(BbrInfo::parse(&b[..16]), None);
+    }
+
+    /// BBRv1's answer is its five words; a kernel with Google's patches
+    /// says more, its version among it.
+    #[test]
+    fn the_kernels_bbr_says_its_version() {
+        assert_eq!(bbr_version_of(&[0u8; 20]), 1);
+        let mut v3 = [0u8; 52];
+        v3[39] = 3;
+        assert_eq!(bbr_version_of(&v3), 3);
+        assert_eq!(bbr_version_of(&[]), 1);
+        // (Whatever this kernel has: no "bbr" loaded, or one that answers.)
+        assert!(kernels_bbr_version().is_none_or(|v| v >= 1));
     }
 }

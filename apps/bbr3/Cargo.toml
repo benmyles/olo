@@ -1,0 +1,15 @@
+[package]
+name = "olo-bbr3"
+description = "BBRv3 for TCP: builds Olo's congestion control module for the running kernel, loads it and makes it the system's (a root service)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "olo-bbr3"
+path = "src/main.rs"
+
+[dependencies]
+olo-crash.workspace = true
+olo-kmod.workspace = true
+olo-net.workspace = true

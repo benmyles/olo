@@ -4,14 +4,24 @@
 //! with netem); nothing of Olo runs it.
 //!
 //!   tcp-flow sink ADDR:PORT
+//!   tcp-flow source ADDR:PORT [--cc NAME] [--secs N]
+//!   tcp-flow recv ADDR:PORT [--flows N]
 //!   tcp-flow send ADDR:PORT --cc NAME[,NAME…] [--secs N] [--start S[,S…]]
-//!            [--every MS] [--rate MBIT] [--chunk BYTES] [--series] [--label TEXT]
+//!            [--every MS] [--rate MBIT] [--chunk BYTES] [--burst BYTES --gap MS]
+//!            [--nodelay] [--series] [--label TEXT]
 //!
-//! `sink` takes connections and reads each to its end. `send` makes one
+//! `sink` takes connections and reads each to its end. `source` takes
+//! connections and sends on each for `--secs` (5), with the congestion
+//! control it listens with (`--cc`, else the system's): the accepting
+//! side's flows. `recv` connects `--flows` times (1) and reads each to its
+//! end, then says what came. `send` makes one
 //! flow per NAME (its congestion control, set before it connects),
 //! started `--start` seconds in (0), each sending for `--secs` (10) as
 //! fast as TCP takes it, or at `--rate` megabits a second in `--chunk`
-//! byte writes (the program holding back: "application limited"). Every
+//! byte writes (the program holding back: "application limited"), or
+//! `--burst` bytes at a time with `--gap` ms of nothing between (each
+//! burst's tail has nothing behind it to tell of its loss);
+//! `--nodelay`: each write goes out as it is (`TCP_NODELAY`). Every
 //! `--every` ms (100) each flow's `TCP_INFO` is read. At the end, a line
 //! of JSON: per flow its throughput (acknowledged bytes over its time),
 //! retransmissions, the round-trip time's smallest, mean and 95th
@@ -31,6 +41,8 @@ fn main() {
     let opt = |flag: &str| args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1)).cloned();
     match args.first().map(String::as_str) {
         Some("sink") => sink(&args[1]),
+        Some("source") => source(&args[1], opt("--cc"), opt("--secs").map_or(5.0, |v| v.parse().expect("--secs"))),
+        Some("recv") => recv(&args[1], opt("--flows").map_or(1, |v| v.parse().expect("--flows"))),
         Some("send") => {
             let to: SocketAddr = args[1].to_socket_addrs().expect("ADDR:PORT").next().expect("an address");
             let ccs: Vec<String> = opt("--cc").expect("--cc NAME").split(',').map(str::to_owned).collect();
@@ -40,20 +52,29 @@ fn main() {
             let rate: Option<f64> = opt("--rate").map(|v| v.parse().expect("--rate Mbit/s"));
             let chunk: usize = opt("--chunk").map_or(65536, |v| v.parse().expect("--chunk bytes"));
             let series = args.iter().any(|a| a == "--series");
+            let shape = Shape {
+                rate,
+                chunk,
+                burst: opt("--burst").map(|v| v.parse().expect("--burst bytes")),
+                gap: Duration::from_millis(opt("--gap").map_or(200, |v| v.parse().expect("--gap ms"))),
+                nodelay: args.iter().any(|a| a == "--nodelay"),
+            };
             let began = Instant::now();
             let flows: Vec<_> = ccs
                 .into_iter()
                 .enumerate()
                 .map(|(i, cc)| {
                     let start = starts.get(i).copied().unwrap_or(0.0);
-                    std::thread::spawn(move || flow(to, &cc, began, start, secs, every, rate, chunk, series))
+                    std::thread::spawn(move || flow(to, &cc, began, start, secs, every, shape, series))
                 })
                 .collect();
             let flows: Vec<String> = flows.into_iter().map(|f| f.join().expect("a flow")).collect();
             println!("{{\"label\":\"{}\",\"flows\":[{}]}}", opt("--label").unwrap_or_default(), flows.join(","));
         }
         _ => {
-            eprintln!("tcp-flow sink ADDR:PORT | tcp-flow send ADDR:PORT --cc NAME[,NAME…] [--secs N] [--start S,…] [--every MS] [--rate MBIT] [--chunk BYTES] [--series] [--label TEXT]");
+            eprintln!(
+                "tcp-flow sink ADDR:PORT | tcp-flow send ADDR:PORT --cc NAME[,NAME…] [--secs N] [--start S,…] [--every MS] [--rate MBIT] [--chunk BYTES] [--burst BYTES --gap MS] [--nodelay] [--series] [--label TEXT]"
+            );
             std::process::exit(2);
         }
     }
@@ -68,6 +89,43 @@ fn sink(at: &str) {
             while stream.read(&mut buf).is_ok_and(|n| n > 0) {}
         });
     }
+}
+
+fn source(at: &str, cc: Option<String>, secs: f64) {
+    let listener = TcpListener::bind(at).expect("the address to listen at");
+    if let Some(cc) = cc {
+        tcp_info::set_congestion_control(&listener, &cc).expect("the congestion control");
+    }
+    for stream in listener.incoming().flatten() {
+        std::thread::spawn(move || {
+            let mut stream = stream;
+            let buf = vec![0x5au8; 65536];
+            let until = Instant::now() + Duration::from_secs_f64(secs);
+            while Instant::now() < until && stream.write(&buf).is_ok() {}
+        });
+    }
+}
+
+fn recv(to: &str, flows: usize) {
+    let to: SocketAddr = to.to_socket_addrs().expect("ADDR:PORT").next().expect("an address");
+    let flows: Vec<_> = (0..flows)
+        .map(|_| {
+            std::thread::spawn(move || {
+                let Ok(mut stream) = TcpStream::connect(to) else { return (0u64, 0.0) };
+                let (t0, mut got, mut buf) = (Instant::now(), 0u64, vec![0u8; 1 << 18]);
+                while let Ok(n) = stream.read(&mut buf) {
+                    if n == 0 {
+                        break;
+                    }
+                    got += n as u64;
+                }
+                (got, t0.elapsed().as_secs_f64())
+            })
+        })
+        .collect();
+    let got: Vec<String> =
+        flows.into_iter().map(|f| f.join().expect("a flow")).map(|(bytes, secs)| format!("{{\"bytes\":{bytes},\"mbps\":{:.3}}}", bytes as f64 * 8.0 / 1e6 / secs.max(1e-6))).collect();
+    println!("{{\"received\":[{}]}}", got.join(","));
 }
 
 /// A socket with its congestion control set before it connects, so the
@@ -116,8 +174,19 @@ struct Sample {
     bbr: Option<tcp_info::BbrInfo>,
 }
 
+/// How a flow's program writes.
+#[derive(Clone, Copy)]
+struct Shape {
+    rate: Option<f64>,
+    chunk: usize,
+    burst: Option<u64>,
+    gap: Duration,
+    nodelay: bool,
+}
+
 #[allow(clippy::too_many_arguments)]
-fn flow(to: SocketAddr, cc: &str, began: Instant, start: f64, secs: f64, every: Duration, rate: Option<f64>, chunk: usize, series: bool) -> String {
+fn flow(to: SocketAddr, cc: &str, began: Instant, start: f64, secs: f64, every: Duration, shape: Shape, series: bool) -> String {
+    let Shape { rate, chunk, burst, gap, nodelay } = shape;
     let wait = Duration::from_secs_f64(start).saturating_sub(began.elapsed());
     std::thread::sleep(wait);
     let mut stream = match connect(to, cc) {
@@ -138,9 +207,20 @@ fn flow(to: SocketAddr, cc: &str, began: Instant, start: f64, secs: f64, every: 
         }
         samples
     });
+    if nodelay {
+        let _ = stream.set_nodelay(true);
+    }
     let buf = vec![0x5au8; chunk];
     let mut sent = 0u64;
+    let mut in_burst = 0u64;
     while Instant::now() < until {
+        if let Some(burst) = burst
+            && in_burst >= burst
+        {
+            in_burst = 0;
+            std::thread::sleep(gap);
+            continue;
+        }
         if let Some(mbit) = rate {
             // (Held back to the rate: never ahead of what it allows by now.)
             let due = sent as f64 * 8.0 / (mbit * 1e6);
@@ -150,8 +230,12 @@ fn flow(to: SocketAddr, cc: &str, began: Instant, start: f64, secs: f64, every: 
                 continue;
             }
         }
-        match stream.write(&buf) {
-            Ok(n) => sent += n as u64,
+        let now = burst.map_or(chunk, |b| chunk.min((b - in_burst) as usize));
+        match stream.write(&buf[..now]) {
+            Ok(n) => {
+                sent += n as u64;
+                in_burst += n as u64;
+            }
             Err(_) => break,
         }
     }

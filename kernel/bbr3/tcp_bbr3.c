@@ -22,7 +22,9 @@
  * - The packets in flight and the packets lost so far when a packet was
  *   sent (the patches' tx.in_flight and tx.lost, recorded in each
  *   packet) are looked up in a log of snapshots (bbr3_olo.h), for a rate
- *   sample's packet (bbr3_sample()) and for a lost one.
+ *   sample's packet (bbr3_sample()) and for a lost one; a
+ *   retransmission's are noted as it goes, by a probe on
+ *   __tcp_retransmit_skb() (bbr3_rtx_exit()).
  * - A lost packet (the patches' skb_marked_lost() call) is told by a
  *   probe on tcp_mark_skb_lost(), the function that call sits in
  *   (bbr3_skb_marked_lost()).
@@ -115,7 +117,17 @@
 #include <linux/random.h>
 #include <linux/win_minmax.h>
 
+#include <linux/version.h>
+
 #include "bbr3_olo.h"
+
+/* Written for Linux 7.2's TCP: what a congestion control is called with
+ * and when (kernel/bbr3/README.md, "A new kernel"). An older kernel's
+ * differs.
+ */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(7, 2, 0)
+#error "Olo's tcp_bbr3 is written for Linux 7.2 and later"
+#endif
 
 #define BBR_VERSION		3
 
@@ -233,10 +245,23 @@ struct bbr_context {
  * it is allocated, with what the module remembers of its sending
  * (bbr3_olo.h), and the room holds the pointer. None before bbr3_init(),
  * after bbr3_release(), or if there was no memory for it.
+ *
+ * It says whose it is: a socket made as a copy of another has the
+ * other's room, pointer and all (TCP copies a listener for each
+ * connection it accepts, and a listener has no state; this is for
+ * whatever else might copy one), and a state that isn't this socket's is
+ * no state (bbr3_sk()). And it is freed only once nobody who found it
+ * without the socket's lock can still be reading it (bbr3_get_info(),
+ * bbr3_release()).
  */
 struct bbr3_sock {
 	struct bbr bbr;
 	struct bbr3_tx tx;
+	const struct sock *sk;
+	struct rcu_head rcu;
+#ifdef BBR3_SELFCHECK
+	u32 check_lost;		/* tp->lost as the module's probe has counted it */
+#endif
 };
 
 struct bbr3_priv {
@@ -245,15 +270,19 @@ struct bbr3_priv {
 
 static inline struct bbr3_sock *bbr3_sk(const struct sock *sk)
 {
-	return ((struct bbr3_priv *)inet_csk_ca(sk))->state;
+	struct bbr3_sock *state =
+		READ_ONCE(((struct bbr3_priv *)inet_csk_ca(sk))->state);
+
+	return likely(state) && likely(state->sk == sk) ? state : NULL;
 }
 
-/* BBR's own state. Everything of BBR's is called with it there: the
- * module's entry points (at the end of this file) see to that.
+/* BBR's own state. Everything of BBR's is called with it there, and this
+ * socket's: the module's entry points (at the end of this file) see to
+ * that, with bbr3_sk().
  */
 static inline struct bbr *bbr_ca(const struct sock *sk)
 {
-	return &bbr3_sk(sk)->bbr;
+	return &((struct bbr3_priv *)inet_csk_ca(sk))->state->bbr;
 }
 
 /* Window length of min_rtt filter (in sec): */
@@ -2297,13 +2326,30 @@ static void bbr_set_state(struct sock *sk, u8 new_state)
 
 static struct tcp_congestion_ops tcp_bbr3_cong_ops;
 
+/* What the self-checking build times (bbr3_selfcheck.h). */
+enum {
+	BBR3_T_ACK,		/* bbr3_cong_control(), all of it */
+	BBR3_T_MAIN,		/* of which BBR's own bbr_main() */
+	BBR3_T_ACK_BEGINS,	/* bbr3_in_ack_event() */
+	BBR3_T_BURST,		/* bbr3_min_tso_segs() */
+	BBR3_T_LOST,		/* a lost packet told */
+	BBR3_T_RTX,		/* a retransmission noted */
+	BBR3_T_COUNT,
+};
+
 #ifdef BBR3_SELFCHECK
 #include "bbr3_selfcheck.h"
 #else
 static inline void bbr3_check(const struct sock *sk, u32 end_seq, bool retrans,
 			      bool lost_skb, bool known,
 			      const struct bbr3_sent *sent) {}
+static inline void bbr3_check_began(const struct sock *sk) {}
+static inline void bbr3_check_lost(const struct sock *sk, u32 pcount) {}
+static inline void bbr3_check_tlp(void) {}
+static inline void bbr3_check_ended(const struct sock *sk) {}
 static inline bool bbr3_fail_alloc(void) { return false; }
+static inline u64 bbr3_timed(void) { return 0; }
+static inline void bbr3_time(int what, u64 since) {}
 static inline int bbr3_selfcheck_start(void) { return 0; }
 static inline void bbr3_selfcheck_stop(void) {}
 #endif
@@ -2311,10 +2357,13 @@ static inline void bbr3_selfcheck_stop(void) {}
 static struct bbr3_sock *bbr3_alloc(struct sock *sk)
 {
 	struct bbr3_priv *priv = inet_csk_ca(sk);
+	struct bbr3_sock *state = bbr3_fail_alloc() ? NULL :
+		kzalloc(sizeof(*state), GFP_ATOMIC | __GFP_NOWARN);
 
-	priv->state = bbr3_fail_alloc() ? NULL :
-		kzalloc(sizeof(*priv->state), GFP_ATOMIC | __GFP_NOWARN);
-	return priv->state;
+	if (state)
+		state->sk = sk;
+	WRITE_ONCE(priv->state, state);
+	return state;
 }
 
 static void bbr3_init(struct sock *sk)
@@ -2326,18 +2375,24 @@ static void bbr3_init(struct sock *sk)
 		return;
 	bbr_init(sk);
 	bbr3_tx_note(sk, &bbr3_sk(sk)->tx);
+	bbr3_check_began(sk);
 }
 
 static void bbr3_release(struct sock *sk)
 {
 	struct bbr3_priv *priv = inet_csk_ca(sk);
-	struct bbr3_sock *state = priv->state;
+	struct bbr3_sock *state = bbr3_sk(sk);
 
-	if (!state)
+	if (!state) {
+		/* (Another socket's, copied here: not ours to free.) */
+		WRITE_ONCE(priv->state, NULL);
 		return;
-	priv->state = NULL;
+	}
+	bbr3_check_ended(sk);
+	WRITE_ONCE(priv->state, NULL);
 	bbr3_tx_free(&state->tx);
-	kfree(state);
+	/* (bbr3_get_info() may be reading it on another processor.) */
+	kfree_rcu(state, rcu);
 }
 
 /* A connection whose state there was no memory for when it began: tried
@@ -2353,6 +2408,7 @@ static struct bbr3_sock *bbr3_without_state(struct sock *sk, u32 ack,
 	if (bbr3_alloc(sk)) {
 		bbr_init(sk);
 		bbr3_tx_note(sk, &bbr3_sk(sk)->tx);
+		bbr3_check_began(sk);
 		return bbr3_sk(sk);
 	}
 	if (inet_csk(sk)->icsk_ca_state <= TCP_CA_Disorder)
@@ -2400,11 +2456,10 @@ static void bbr3_sample(const struct sock *sk, const struct bbr3_tx *tx,
 	if (!k->prior_mstamp)
 		return;
 	/* The packet: the most recently sent of those this ACK took, ending
-	 * at last_end_seq, sent at first_tx_mstamp (tcp_rate_skb_delivered()).
+	 * at last_end_seq (tcp_rate_skb_delivered()).
 	 */
-	known = bbr3_tx_lookup(tx, k->last_end_seq, 1, tp->mss_cache,
-			       k->is_retrans, k->prior_delivered,
-			       (u32)tp->first_tx_mstamp, &sent);
+	known = bbr3_tx_lookup(tx, k->last_end_seq, tp->mss_cache,
+			       k->is_retrans, k->prior_delivered, &sent);
 	bbr3_check(sk, k->last_end_seq, k->is_retrans, false, known, &sent);
 	if (!known)
 		return;
@@ -2417,6 +2472,7 @@ static void bbr3_cong_control(struct sock *sk, u32 ack, int flag,
 			      const struct rate_sample *krs)
 {
 	struct bbr3_sock *state = bbr3_sk(sk);
+	u64 since = bbr3_timed(), main;
 	struct bbr_rate_sample rs;
 
 	if (unlikely(!state)) {
@@ -2425,13 +2481,16 @@ static void bbr3_cong_control(struct sock *sk, u32 ack, int flag,
 			return;
 	}
 	bbr3_sample(sk, &state->tx, ack, krs, &rs);
+	main = bbr3_timed();
 	bbr_main(sk, ack, flag, &rs);
+	bbr3_time(BBR3_T_MAIN, main);
 	/* How things stand after this ACK, for what's sent next; and the
 	 * snapshots nothing outstanding was sent from, let go.
 	 */
 	bbr3_tx_note(sk, &state->tx);
 	bbr3_tx_trim(sk, &state->tx);
 	state->tx.tlp_high_seq = 0;
+	bbr3_time(BBR3_T_ACK, since);
 }
 
 /* Called as each burst of sending begins (tcp_tso_segs(), from
@@ -2444,9 +2503,11 @@ static void bbr3_cong_control(struct sock *sk, u32 ack, int flag,
 static u32 bbr3_min_tso_segs(struct sock *sk)
 {
 	struct bbr3_sock *state = bbr3_sk(sk);
+	u64 since = bbr3_timed();
 
 	if (likely(state))
 		bbr3_tx_note(sk, &state->tx);
+	bbr3_time(BBR3_T_BURST, since);
 	return READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_min_tso_segs);
 }
 
@@ -2460,6 +2521,7 @@ static void bbr3_in_ack_event(struct sock *sk, u32 flags)
 {
 	struct bbr3_sock *state = bbr3_sk(sk);
 	const struct tcp_sock *tp = tcp_sk(sk);
+	u64 since = bbr3_timed();
 
 	tcp_rate_check_app_limited(sk);
 	if (unlikely(!state))
@@ -2467,6 +2529,7 @@ static void bbr3_in_ack_event(struct sock *sk, u32 flags)
 	state->tx.tlp_high_seq = tp->tlp_high_seq;
 	state->tx.tlp_retrans = tp->tlp_retrans;
 	state->tx.tlp_stamp = (u32)tp->tcp_mstamp;
+	bbr3_time(BBR3_T_ACK_BEGINS, since);
 }
 
 /* Google's CA_EVENT_TLP_RECOVERY: "a lost segment was repaired by TLP
@@ -2493,6 +2556,7 @@ static void bbr3_tlp_recovery(struct sock *sk, struct bbr3_tx *tx)
 	 */
 	snap = bbr3_tx_of_new(tx, seq);
 	tx->tlp_app_limited = snap ? snap->app_limited : !!tp->app_limited;
+	bbr3_check_tlp();
 	if (bbr_param(sk, loss_probe_recovery))
 		bbr_run_loss_probe_recovery(sk);
 }
@@ -2506,7 +2570,6 @@ static void bbr3_set_state(struct sock *sk, u8 new_state)
 	bbr_set_state(sk, new_state);
 	if (new_state == TCP_CA_CWR)
 		bbr3_tlp_recovery(sk, &state->tx);
-	/* (A timeout's retransmission follows with no other call first.) */
 	bbr3_tx_note(sk, &state->tx);
 }
 
@@ -2529,17 +2592,33 @@ static u32 bbr3_undo_cwnd(struct sock *sk)
 /* What `ss -i` and TCP_CC_INFO show: this kernel's tcp_bbr_info, the five
  * figures BBRv1 gives (Google's patch adds more to that structure; a
  * module can't).
+ *
+ * Asked without the socket's lock, so while the connection may be ending,
+ * or changing its congestion control, on another processor: the state is
+ * read under RCU, which bbr3_release() waits out before freeing it, and
+ * through this one pointer only (BBR's own helpers would look it up
+ * again).
  */
 static size_t bbr3_get_info(struct sock *sk, u32 ext, int *attr,
 			    union tcp_cc_info *info)
 {
-	if (!bbr3_sk(sk))
+	const struct bbr3_sock *state;
+	size_t size = 0;
+
+	if (!(ext & (1 << (INET_DIAG_BBRINFO - 1)) ||
+	      ext & (1 << (INET_DIAG_VEGASINFO - 1))))
 		return 0;
-	if (ext & (1 << (INET_DIAG_BBRINFO - 1)) ||
-	    ext & (1 << (INET_DIAG_VEGASINFO - 1))) {
-		struct bbr *bbr = bbr_ca(sk);
-		u64 bw = bbr_bw_bytes_per_sec(sk, bbr_bw(sk));
+	rcu_read_lock();
+	state = bbr3_sk(sk);
+	if (state) {
+		const struct bbr *bbr = &state->bbr;
 		struct tcp_bbr_info *bbr_info = &info->bbr;
+		/* bbr_bw(): the highest bandwidth seen, within the bound
+		 * loss last set.
+		 */
+		u64 bw = bbr_bw_bytes_per_sec(sk, min(max(bbr->bw_hi[0],
+							   bbr->bw_hi[1]),
+						       bbr->bw_lo));
 
 		memset(bbr_info, 0, sizeof(*bbr_info));
 		bbr_info->bbr_bw_lo		= (u32)bw;
@@ -2548,9 +2627,10 @@ static size_t bbr3_get_info(struct sock *sk, u32 ext, int *attr,
 		bbr_info->bbr_pacing_gain	= bbr->pacing_gain;
 		bbr_info->bbr_cwnd_gain		= bbr->cwnd_gain;
 		*attr = INET_DIAG_BBRINFO;
-		return sizeof(*bbr_info);
+		size = sizeof(*bbr_info);
 	}
-	return 0;
+	rcu_read_unlock();
+	return size;
 }
 
 /* Google's skb_marked_lost(): "Core TCP stack informs us that the given
@@ -2574,6 +2654,7 @@ static void bbr3_skb_marked_lost(struct sock *sk, const struct sk_buff *skb)
 
 	if (unlikely(!state))
 		return;
+	bbr3_check_lost(sk, pcount);
 	bbr = &state->bbr;
 	bbr_note_loss(sk);
 
@@ -2585,10 +2666,9 @@ static void bbr3_skb_marked_lost(struct sock *sk, const struct sk_buff *skb)
 	 * estimates what happened in the flight leading up to this lost skb,
 	 * then see if the loss rate went too high, and if so at which packet.
 	 */
-	known = bbr3_tx_lookup(&state->tx, scb->end_seq, pcount,
+	known = bbr3_tx_lookup(&state->tx, scb->end_seq,
 			       tcp_skb_mss(skb) ? : tp->mss_cache, retrans,
-			       scb->tx.delivered,
-			       (u32)tcp_skb_timestamp_us(skb), &sent);
+			       scb->tx.delivered, &sent);
 	bbr3_check(sk, scb->end_seq, retrans, true, known, &sent);
 	if (!known)
 		return;
@@ -2608,6 +2688,7 @@ static int bbr3_lost_entry(struct fprobe *fp, unsigned long entry_ip,
 	struct sock *sk = (struct sock *)ftrace_regs_get_argument(fregs, 0);
 	const struct sk_buff *skb =
 		(const struct sk_buff *)ftrace_regs_get_argument(fregs, 1);
+	u64 since;
 	u8 sacked;
 
 	if (inet_csk(sk)->icsk_ca_ops != &tcp_bbr3_cong_ops)
@@ -2620,12 +2701,79 @@ static int bbr3_lost_entry(struct fprobe *fp, unsigned long entry_ip,
 		return 0;
 	if ((sacked & TCPCB_LOST) && !(sacked & TCPCB_SACKED_RETRANS))
 		return 0;
+	since = bbr3_timed();
 	bbr3_skb_marked_lost(sk, skb);
+	bbr3_time(BBR3_T_LOST, since);
 	return 0;
 }
 
 static struct fprobe bbr3_lost_probe = {
 	.entry_handler	= bbr3_lost_entry,
+};
+
+/* The probes read their functions' arguments by position. If this kernel
+ * declares either function otherwise, the build stops here, and the
+ * module isn't made for it (Olo Doctor says so) rather than read the
+ * wrong thing.
+ */
+static_assert(__builtin_types_compatible_p(typeof(tcp_mark_skb_lost),
+					   void (struct sock *,
+						 struct sk_buff *)));
+static_assert(__builtin_types_compatible_p(typeof(__tcp_retransmit_skb),
+					   int (struct sock *,
+						struct sk_buff *, int)));
+
+/* Every retransmission, as it's sent: Google's kernel writes the packets
+ * in flight and tp->lost into the packet each time it goes (as
+ * __tcp_transmit_skb() ends, under __tcp_retransmit_skb() for these). A
+ * probe on __tcp_retransmit_skb() notes the same of each here: as it
+ * returns having sent, with the packet as it went (it may have been cut
+ * to the window, or joined with the next, on the way).
+ */
+struct bbr3_rtx_call {
+	struct sock *sk;
+	const struct sk_buff *skb;
+};
+
+static int bbr3_rtx_entry(struct fprobe *fp, unsigned long entry_ip,
+			  unsigned long ret_ip, struct ftrace_regs *fregs,
+			  void *entry_data)
+{
+	struct sock *sk = (struct sock *)ftrace_regs_get_argument(fregs, 0);
+	struct bbr3_rtx_call *call = entry_data;
+	struct bbr3_sock *state;
+
+	if (inet_csk(sk)->icsk_ca_ops != &tcp_bbr3_cong_ops)
+		return 1;	/* not ours: no call on return */
+	state = bbr3_sk(sk);
+	if (unlikely(!state))
+		return 1;
+	/* (What new data went before it is from the snapshot before.) */
+	bbr3_tx_note(sk, &state->tx);
+	call->sk = sk;
+	call->skb = (const struct sk_buff *)ftrace_regs_get_argument(fregs, 1);
+	return 0;
+}
+
+static void bbr3_rtx_exit(struct fprobe *fp, unsigned long entry_ip,
+			  unsigned long ret_ip, struct ftrace_regs *fregs,
+			  void *entry_data)
+{
+	const struct bbr3_rtx_call *call = entry_data;
+	struct bbr3_sock *state = bbr3_sk(call->sk);
+	u64 since = bbr3_timed();
+
+	if ((int)ftrace_regs_get_return_value(fregs) || unlikely(!state))
+		return;		/* not sent */
+	bbr3_tx_note_rtx(call->sk, &state->tx, TCP_SKB_CB(call->skb)->end_seq,
+			 tcp_skb_pcount(call->skb));
+	bbr3_time(BBR3_T_RTX, since);
+}
+
+static struct fprobe bbr3_rtx_probe = {
+	.entry_handler	= bbr3_rtx_entry,
+	.exit_handler	= bbr3_rtx_exit,
+	.entry_data_size = sizeof(struct bbr3_rtx_call),
 };
 
 static struct tcp_congestion_ops tcp_bbr3_cong_ops __read_mostly = {
@@ -2648,6 +2796,7 @@ static struct tcp_congestion_ops tcp_bbr3_cong_ops __read_mostly = {
 static int __init bbr_register(void)
 {
 	static const char *lost[] = { "tcp_mark_skb_lost" };
+	static const char *rtx[] = { "__tcp_retransmit_skb" };
 	int ret;
 
 	BUILD_BUG_ON(sizeof(struct bbr3_priv) > ICSK_CA_PRIV_SIZE);
@@ -2656,6 +2805,11 @@ static int __init bbr_register(void)
 	if (ret < 0) {
 		pr_err("tcp_bbr3: this kernel's tcp_mark_skb_lost can't be probed (%d): BBRv3 would not be told of lost packets\n", ret);
 		return ret;
+	}
+	ret = register_fprobe_syms(&bbr3_rtx_probe, rtx, ARRAY_SIZE(rtx));
+	if (ret < 0) {
+		pr_err("tcp_bbr3: this kernel's __tcp_retransmit_skb can't be probed (%d): BBRv3 would not know of retransmissions\n", ret);
+		goto unprobe_lost;
 	}
 	ret = bbr3_selfcheck_start();
 	if (ret < 0)
@@ -2667,6 +2821,8 @@ static int __init bbr_register(void)
 uncheck:
 	bbr3_selfcheck_stop();
 unprobe:
+	unregister_fprobe(&bbr3_rtx_probe);
+unprobe_lost:
 	unregister_fprobe(&bbr3_lost_probe);
 	return ret;
 }
@@ -2675,6 +2831,7 @@ static void __exit bbr_unregister(void)
 {
 	tcp_unregister_congestion_control(&tcp_bbr3_cong_ops);
 	bbr3_selfcheck_stop();
+	unregister_fprobe(&bbr3_rtx_probe);
 	unregister_fprobe(&bbr3_lost_probe);
 }
 

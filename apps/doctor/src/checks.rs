@@ -315,6 +315,10 @@ pub struct Roots {
     pub temp: TempFiles,
     /// The port Token Pool's gateway listens on (`token_pool`).
     pub pool_port: u16,
+    /// Which BBR this kernel's own "bbr" is, where it has one loaded
+    /// (`olo_net::tcp_info::kernels_bbr_version`: 1 as mainline's, 3 in a
+    /// kernel built with Google's patches).
+    pub kernels_bbr: Option<u8>,
 }
 
 /// Token Pool's gateway's port, unless `OLO_POOL_PORT` says another
@@ -421,6 +425,7 @@ impl Roots {
             package_services: Box::new(olo_system::packages::missing_services),
             temp: TempFiles::real(),
             pool_port: std::env::var("OLO_POOL_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(POOL_PORT),
+            kernels_bbr: olo_net::tcp_info::kernels_bbr_version(),
         }
     }
 }
@@ -677,6 +682,7 @@ pub fn scan(roots: &Roots) -> Report {
     memory_kept(roots, &procs, &mut r);
     swappiness(roots, &mut r);
     swap_size(roots, &gpus, &mut r);
+    tcp_bbr3(roots, &mut r);
     intel_video(roots, &gpus, &mut r);
     builtin_sound(roots, &gpus, &mut r);
     thunderbolt(roots, &mut r);
@@ -2690,6 +2696,154 @@ fn graphics_swap(roots: &Roots, pcis: &[Pci], r: &mut Report) {
     });
 }
 
+/// BBRv3 for TCP (kernel/bbr3, `tcp_bbr3`: the congestion control
+/// "bbr3"): the service that builds Olo's module for the running kernel,
+/// loads it and makes it what new connections use, at each start
+/// (apps/bbr3), its program beside ours and where root's copy and its
+/// unit go, where the kernel lists the module once it's loaded, and
+/// where the service says how it went.
+pub const BBR3_UNIT: &str = include_str!("../../../data/systemd/olo-bbr3.service");
+pub const BBR3_SERVICE: &str = "olo-bbr3.service";
+pub const BBR3_PROGRAM: &str = "olo-bbr3";
+const BBR3_PROGRAM_PATH: &str = "usr/local/libexec/olo/olo-bbr3";
+const BBR3_UNIT_PATH: &str = "etc/systemd/system/olo-bbr3.service";
+const BBR3_MODULE: &str = "sys/module/tcp_bbr3";
+const BBR3_SAID: &str = "run/olo-bbr3/status";
+const TCP_CONGESTION_PATH: &str = "proc/sys/net/ipv4/tcp_congestion_control";
+
+/// New connections use BBRv3: Olo's module's, loaded; or the kernel's
+/// own "bbr" where that is BBRv3.
+fn bbr3_in_use(roots: &Roots) -> bool {
+    let now = read(&roots.fs.join(TCP_CONGESTION_PATH));
+    match now.as_deref() {
+        Some("bbr3") => roots.fs.join(BBR3_MODULE).is_dir(),
+        Some("bbr") => roots.kernels_bbr.is_some_and(|v| v >= 3),
+        _ => false,
+    }
+}
+
+/// The steps that put Olo's BBRv3 service in place, from the `olo-bbr3`
+/// beside ours: only what isn't so already (its program and unit where
+/// they're missing or not this build's, enabled, and started (again, if
+/// either changed), with what the kernel's build needs installed first
+/// where it's missing; nothing to build where the kernel's own "bbr" is
+/// BBRv3, which the service then chooses).
+fn bbr3_steps(roots: &Roots) -> Vec<Step> {
+    let fs = &roots.fs;
+    let mut steps = Vec::new();
+    let release = read(&fs.join("proc/sys/kernel/osrelease")).unwrap_or_default();
+    let can_build =
+        roots.kernels_bbr.is_some_and(|v| v >= 3) || (fs.join("lib/modules").join(&release).join("build/Makefile").is_file() && fs.join("usr/bin/make").is_file() && fs.join("usr/bin/gcc").is_file());
+    if !can_build {
+        steps.push(Step::InstallPackages { names: KERNEL_BUILD_PACKAGES.iter().map(|n| (*n).to_owned()).collect() });
+    }
+    let (from, program, unit) = (roots.bin.join(BBR3_PROGRAM), PathBuf::from("/").join(BBR3_PROGRAM_PATH), PathBuf::from("/").join(BBR3_UNIT_PATH));
+    let mut changed = false;
+    if !same_contents(&from, &fs.join(BBR3_PROGRAM_PATH)) {
+        steps.push(Step::CopyFile { from, to: program.clone(), mode: 0o755 });
+        // (Its label as the folder's own says: a program systemd may run.)
+        steps.push(Step::SelinuxLabels { rules: Vec::new(), restore: vec![program] });
+        changed = true;
+    }
+    if std::fs::read_to_string(fs.join(BBR3_UNIT_PATH)).ok().as_deref() != Some(BBR3_UNIT) {
+        steps.push(Step::WriteFile { path: unit, content: BBR3_UNIT.into(), mode: 0o644 });
+        changed = true;
+    }
+    if changed {
+        steps.push(Step::Unit { name: BBR3_SERVICE.into(), action: UnitAction::Reload });
+    }
+    let state = (roots.units)(BBR3_SERVICE).ok();
+    if changed || !state.as_ref().is_some_and(|s| s.enabled) {
+        steps.push(Step::Unit { name: BBR3_SERVICE.into(), action: UnitAction::Enable });
+    }
+    if changed || !can_build || !bbr3_in_use(roots) || !state.as_ref().is_some_and(|s| s.active) {
+        steps.push(Step::Unit { name: BBR3_SERVICE.into(), action: UnitAction::Restart });
+    }
+    steps
+}
+
+/// BBRv3 as TCP's congestion control, offered (Ben, 2026-11-16: "i also
+/// want olo doctor to offer to set the tcp congestion control algo to
+/// BBRv3 if it's not. if BBRv3 is not shipped with fedora then vendor
+/// the kernel module/patches and adapt if needed and then have olo
+/// doctor take care of doing everything needed to switch to BBRv3").
+///
+/// How fast TCP sends is its congestion control's to decide. Linux's
+/// default, CUBIC, sends faster until a buffer along the way overflows;
+/// its "bbr" is BBRv1. BBRv3 isn't in Linux (Google's is a patched
+/// kernel), so Olo carries it as a module for the kernel as it comes
+/// (kernel/bbr3/README.md: what it took, how it was shown to be BBRv3,
+/// and the measurements quoted here: a 50 Mbit/s link with 40 ms of
+/// round trip and a queue of 170 packets, 12 s of sending). Where the
+/// kernel's own "bbr" is BBRv3 already, the service chooses that one.
+/// Where the kernel can't take Olo's module (Secure Boot loads only
+/// signed ones) nothing is offered: there's nothing here to do about
+/// it.
+fn tcp_bbr3(roots: &Roots, r: &mut Report) {
+    let fs = &roots.fs;
+    let Some(now) = read(&fs.join(TCP_CONGESTION_PATH)).filter(|n| !n.is_empty()) else { return };
+    let kernels = roots.kernels_bbr.is_some_and(|v| v >= 3);
+    // (Without the service's program beside ours, an Olo from before it
+    // or a build tree's, there's nothing to install it from.)
+    let ours = roots.bin.join(BBR3_PROGRAM).is_file();
+    let steps = if ours { bbr3_steps(roots) } else { Vec::new() };
+    let kept = fs.join(BBR3_UNIT_PATH).is_file() && (roots.units)(BBR3_SERVICE).is_ok_and(|s| s.enabled);
+    let in_use = bbr3_in_use(roots);
+    if in_use && steps.is_empty() && (ours || kept) {
+        r.fine.push(Fine {
+            title: "TCP sends with BBRv3".into(),
+            detail: if now == "bbr" {
+                "New connections use this kernel's own bbr, which is BBRv3.".into()
+            } else {
+                "New connections use bbr3: Olo's module (Google's BBRv3, made for the kernel as it comes), built for this kernel and loaded at every start.".into()
+            },
+        });
+        return;
+    }
+    if in_use {
+        r.findings.push(Finding {
+            id: "tcp-bbr3:service".into(),
+            severity: Severity::Advice,
+            title: "TCP sends with BBRv3 only until the next start".into(),
+            detail: format!(
+                "New connections use BBRv3 ({now}), but the service that sees to it at every start (and builds Olo's module for each new kernel) isn't installed, or isn't this build's. {}",
+                if ours { "The fix puts it in place." } else { "This Olo has no olo-bbr3 beside it to install it from." }
+            ),
+            fix: ours.then(|| Fix { label: "Keep It at Every Start".into(), root: true, steps }),
+        });
+        return;
+    }
+    let secure_boot = read_bytes(&fs.join(SECURE_BOOT_VAR)).is_some_and(|b| b.last() == Some(&1));
+    if !ours || (secure_boot && !kernels) {
+        return;
+    }
+    let does = match now.as_str() {
+        "cubic" => "CUBIC, Linux's default: it sends faster and faster until a buffer along the way overflows and a packet is dropped, so an upload keeps the slowest link's queue full, and everything else waits behind it".to_owned(),
+        "bbr" => "the kernel's bbr, which is BBRv1: it goes by a model of the path too, but loses many more packets where the path's buffers are small (0.9% of what it sent was sent again, against BBRv3's 0.03%, in the test below), and takes more than its share beside other connections".to_owned(),
+        other => other.to_owned(),
+    };
+    // How the service's last try went, where it has tried.
+    let failed = read(&fs.join(BBR3_SAID)).and_then(|s| s.strip_prefix("failed: ").map(str::to_owned));
+    let how = if kernels {
+        "This kernel has it as its own bbr; the fix has new connections use it, now and at every start.".to_owned()
+    } else {
+        format!(
+            "Linux doesn't have it, so the fix puts in Olo's module (tcp_bbr3: Google's BBRv3, made for the kernel as it comes) and a service that builds it for each new kernel at its first start (a few seconds), loads it at every start and has new connections use it{}.{}",
+            if steps.iter().any(|s| matches!(s, Step::InstallPackages { .. })) { "; what building it needs (the kernel's headers, the compiler, make) is installed first" } else { "" },
+            failed.map(|why| format!(" At its last try it couldn't: {why}.")).unwrap_or_default()
+        )
+    };
+    r.findings.push(Finding {
+        id: "tcp-bbr3".into(),
+        severity: Severity::Suggestion,
+        title: "TCP could send with BBRv3".into(),
+        detail: format!(
+            "New TCP connections here use {does}. BBRv3 (Google's) keeps a model of the path, its bandwidth and its round-trip time, and sends at that: on a test link of 50 Mbit/s with 40 ms of round trip it sent as fast as CUBIC with the round trip at 43 ms where CUBIC's was 68. It governs what this computer sends (uploads, calls, what it serves to others); what it receives is paced by whoever sends it. {how}"
+        ),
+        fix: Some(Fix { label: "Use BBRv3".into(), root: true, steps }),
+    });
+}
+
 /// Intel's full video driver (iHD with every codec), as RPM Fusion's
 /// nonfree repository names it, and where it and its kind put theirs
 /// (libva looks there before its own folder).
@@ -3821,6 +3975,7 @@ mod tests {
             package_services: Box::new(Vec::new),
             temp: TempFiles::default(),
             pool_port: POOL_PORT,
+            kernels_bbr: None,
         };
         (fs, roots)
     }
@@ -4349,6 +4504,7 @@ mod tests {
             package_services: Box::new(Vec::new),
             temp: TempFiles { config: fs.join("home/me/.config"), cache: fs.join("home/me/.cache/olo"), ..TempFiles::default() },
             pool_port: POOL_PORT,
+            kernels_bbr: None,
         };
         let look = || {
             let mut r = Report::default();
@@ -4432,6 +4588,7 @@ mod tests {
             package_services: Box::new(Vec::new),
             temp: TempFiles { config: fs.join("home/me/.config"), ..TempFiles::default() },
             pool_port: POOL_PORT,
+            kernels_bbr: None,
         };
         let look = || {
             let mut r = Report::default();
@@ -5193,6 +5350,102 @@ mod tests {
         assert!(r.fine.iter().any(|f| f.title == "Windows' graphics memory stays in memory"));
     }
 
+    /// TCP's congestion control: BBRv3 offered where it isn't (Olo's
+    /// module and its service, what building needs first where it's
+    /// missing); fine once in use and kept; kept at each start where it
+    /// was only loaded by hand; the kernel's own chosen where that is
+    /// BBRv3; nothing offered where the kernel can't take the module.
+    #[test]
+    fn tcp_is_offered_bbr3() {
+        let (fs, roots) = machine("bbr3");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        // (No TCP to ask about, or no service program beside ours: nothing.)
+        assert!(scan(&roots).find("tcp-bbr3").is_none());
+        w("proc/sys/net/ipv4/tcp_congestion_control", "cubic\n");
+        w("proc/sys/kernel/osrelease", "7.2.15-300.fc45.x86_64\n");
+        assert!(scan(&roots).find("tcp-bbr3").is_none());
+        std::fs::write(roots.bin.join("olo-bbr3"), "the service").unwrap();
+        let said = |roots: &Roots| scan(roots).find("tcp-bbr3").map(|f| f.fix.as_ref().unwrap().steps.iter().map(Step::describe).collect::<Vec<_>>());
+        let install = [
+            "Installing /usr/local/libexec/olo/olo-bbr3",
+            "Labelling /usr/local/libexec/olo/olo-bbr3 for SELinux",
+            "Writing /etc/systemd/system/olo-bbr3.service",
+            "Reloading systemd for olo-bbr3.service",
+            "Enabling olo-bbr3.service",
+            "Restarting olo-bbr3.service",
+        ];
+        // Nothing to build with: installed first.
+        let f = scan(&roots).find("tcp-bbr3").unwrap().clone();
+        assert_eq!((f.severity, f.fix.as_ref().unwrap().label.as_str(), f.fix.as_ref().unwrap().root), (Severity::Suggestion, "Use BBRv3", true));
+        assert!(f.detail.starts_with("New TCP connections here use CUBIC, Linux's default") && f.detail.ends_with("the compiler, make) is installed first."), "{}", f.detail);
+        assert_eq!(said(&roots).unwrap(), [&["Installing kernel-devel-matched, gcc, make"][..], &install[..]].concat());
+        // The kernel's headers, make and the compiler there: the service alone.
+        w("lib/modules/7.2.15-300.fc45.x86_64/build/Makefile", "");
+        w("usr/bin/make", "");
+        w("usr/bin/gcc", "");
+        assert_eq!(said(&roots).unwrap(), install);
+        assert!(scan(&roots).find("tcp-bbr3").unwrap().detail.ends_with("has new connections use it."));
+        // The kernel's BBRv1 in use: said for what it is.
+        w("proc/sys/net/ipv4/tcp_congestion_control", "bbr\n");
+        let roots = Roots { kernels_bbr: Some(1), ..roots };
+        assert!(scan(&roots).find("tcp-bbr3").unwrap().detail.starts_with("New TCP connections here use the kernel's bbr, which is BBRv1"));
+        // Its service tried and couldn't: why is said, and the fix stays.
+        w("run/olo-bbr3/status", "failed: the kernel's build failed: no rule\n");
+        let f = scan(&roots).find("tcp-bbr3").unwrap().clone();
+        assert!(f.detail.ends_with("At its last try it couldn't: the kernel's build failed: no rule.") && f.fix.is_some(), "{}", f.detail);
+        // In use, its service this build's, enabled and run: fine.
+        w("run/olo-bbr3/status", "bbr3\n");
+        w("proc/sys/net/ipv4/tcp_congestion_control", "bbr3\n");
+        std::fs::create_dir_all(fs.join("sys/module/tcp_bbr3")).unwrap();
+        w("usr/local/libexec/olo/olo-bbr3", "the service");
+        w("etc/systemd/system/olo-bbr3.service", BBR3_UNIT);
+        let kept = |name: &str| -> Result<UnitState, String> { if name == BBR3_SERVICE { Ok(UnitState { loaded: true, active: true, enabled: true, path: None }) } else { Err("none".into()) } };
+        let roots = Roots { units: Box::new(kept), ..roots };
+        let r = scan(&roots);
+        assert!(r.find("tcp-bbr3").is_none() && r.find("tcp-bbr3:service").is_none(), "{:?}", r.find("tcp-bbr3").or(r.find("tcp-bbr3:service")).map(|f| f.detail.clone()));
+        assert!(r.fine.iter().any(|f| f.title == "TCP sends with BBRv3" && f.detail.starts_with("New connections use bbr3: Olo's module")));
+        // An older build's program there: brought up to date.
+        w("usr/local/libexec/olo/olo-bbr3", "an older service");
+        let f = scan(&roots).find("tcp-bbr3:service").unwrap().clone();
+        assert_eq!((f.severity, f.fix.as_ref().unwrap().label.as_str()), (Severity::Advice, "Keep It at Every Start"));
+        assert_eq!(
+            f.fix.as_ref().unwrap().steps.iter().map(Step::describe).collect::<Vec<_>>(),
+            [
+                "Installing /usr/local/libexec/olo/olo-bbr3",
+                "Labelling /usr/local/libexec/olo/olo-bbr3 for SELinux",
+                "Reloading systemd for olo-bbr3.service",
+                "Enabling olo-bbr3.service",
+                "Restarting olo-bbr3.service"
+            ]
+        );
+        w("usr/local/libexec/olo/olo-bbr3", "the service");
+        // Named but its module not in the kernel (the name left in a
+        // namespace's settings, say): not in use.
+        std::fs::remove_dir_all(fs.join("sys/module/tcp_bbr3")).unwrap();
+        assert_eq!(said(&roots).unwrap(), ["Restarting olo-bbr3.service"]);
+        // A kernel whose own bbr is BBRv3: that one, nothing built.
+        w("proc/sys/net/ipv4/tcp_congestion_control", "cubic\n");
+        std::fs::remove_file(fs.join("usr/bin/gcc")).unwrap();
+        let roots = Roots { kernels_bbr: Some(3), ..roots };
+        let f = scan(&roots).find("tcp-bbr3").unwrap().clone();
+        assert!(f.detail.ends_with("This kernel has it as its own bbr; the fix has new connections use it, now and at every start."), "{}", f.detail);
+        assert_eq!(said(&roots).unwrap(), ["Restarting olo-bbr3.service"]);
+        w("proc/sys/net/ipv4/tcp_congestion_control", "bbr\n");
+        let r = scan(&roots);
+        assert!(r.find("tcp-bbr3").is_none() && r.fine.iter().any(|f| f.detail == "New connections use this kernel's own bbr, which is BBRv3."));
+        // Secure Boot, and no BBRv3 of the kernel's own: nothing to offer.
+        w("proc/sys/net/ipv4/tcp_congestion_control", "cubic\n");
+        let roots = Roots { kernels_bbr: None, ..roots };
+        assert!(scan(&roots).find("tcp-bbr3").is_some());
+        std::fs::create_dir_all(fs.join(SECURE_BOOT_VAR).parent().unwrap()).unwrap();
+        std::fs::write(fs.join(SECURE_BOOT_VAR), [6u8, 0, 0, 0, 1]).unwrap();
+        assert!(scan(&roots).find("tcp-bbr3").is_none());
+    }
+
     /// Intel's xe driver with swap on, where Olo's kernel patch can go in:
     /// its service installed (what building the patch needs first, where
     /// it's missing), swap left on; fine once it's in and kept; kept at
@@ -5569,6 +5822,7 @@ mod tests {
                     cache: PathBuf::new(),
                 },
                 pool_port: POOL_PORT,
+                kernels_bbr: None,
             };
             temp_files(&roots, &mut r);
             r
