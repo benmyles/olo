@@ -3,7 +3,9 @@
 Read [docs/HACKING.md](docs/HACKING.md) before changing anything. It is the
 source of truth for layout, the kit, look-and-feel rules and testing; the
 Olo Book ([docs/OLO-BOOK.md](docs/OLO-BOOK.md)) is how the kits work and
-how to build with them. These rules are universal and non-negotiable:
+how to build with them; [docs/AGENT-NOTES.md](docs/AGENT-NOTES.md) is
+what agents have learned about this computer and its tools. These rules
+are universal and non-negotiable:
 
 - **BeOS-inspired, not a BeOS replica.** For everything you design, first
   look at how BeOS did it (the Be Book, in
@@ -105,6 +107,12 @@ how to build with them. These rules are universal and non-negotiable:
   hundreds of MB), screenshots. Use a directory of your own under
   `/var/tmp` (copy builds with `cp --reflink=always`, free there) and
   remove it when you're done.
+- **Notes in the repository, not in a memory.** What you learn that the
+  code and the docs don't say (a pitfall, a fact about this computer, a
+  tool's quirk) goes in docs/AGENT-NOTES.md, in the same commit as the
+  work, and what's there is kept current (corrected or removed when it
+  stops being true). Never store memories in an agent's own memory
+  outside the repository.
 - **No forks or subagents.** Do all the work yourself, in this session:
   never spawn a fork, subagent or background agent for any part of a task.
 - **Root-cause every problem; never work around it.** Whenever something
