@@ -558,6 +558,8 @@ impl WindowCx<'_> {
                 }
             }
         }
+        // What it types, if it types (`typed_by`).
+        let typed = typed_by(&event.keystroke);
         // Then up from it.
         for id in path.iter().rev() {
             let listeners: SmallVec<[Listener<KeyDownEvent>; 1]> = self.core.nodes.get(*id).and_then(|n| n.inter.as_ref()).map(|i| i.key_down.clone()).unwrap_or_default();
@@ -574,6 +576,22 @@ impl WindowCx<'_> {
             if Some(*id) == self.core.focus && event.keystroke.key == "space" && !event.keystroke.modifiers.modified() && self.keyboard_click(*id, KeyboardButton::Space) {
                 return;
             }
+            // A key that types, come up to the text the keyboard is in
+            // (and not taken by it as a key, nor by anything in it): it
+            // is typed there. What's above the text never sees it as a
+            // key of its own, or a window whose view takes Space, F or P
+            // took them out of what was being typed in its find field
+            // (Quick Look closed at a space; Viewer went full screen at
+            // an f: Ben, 2026-11-16). What must have a key before the
+            // text does takes it on the way down (`capture_key_down`).
+            if typed.is_some() && self.core.nodes.get(*id).and_then(|n| n.inter.as_ref()).is_some_and(|i| !i.disabled && i.text_input.is_some()) {
+                break;
+            }
+        }
+        if let Some(typed) = typed
+            && self.to_text_input(&crate::TextInputEvent::Insert(typed))
+        {
+            return;
         }
         // Nothing with the keyboard took it: what answers for the whole
         // window may (a tab view's keys).
@@ -611,14 +629,6 @@ impl WindowCx<'_> {
                 self.keyboard_click(default, KeyboardButton::Enter);
                 return;
             }
-        }
-        // Nothing took it as a key: what it types goes into the text
-        // where the keyboard is.
-        if event.keystroke.modifiers.is_subset_of(&crate::Modifiers::shift())
-            && let Some(typed) = event.keystroke.key_char.clone()
-            && self.to_text_input(&crate::TextInputEvent::Insert(typed))
-        {
-            return;
         }
     }
 
@@ -779,5 +789,35 @@ impl WindowCx<'_> {
     #[allow(dead_code)]
     pub(crate) fn is_text(&self, id: NodeId) -> bool {
         matches!(self.core.nodes.get(id).map(|n| &n.kind), Some(NodeKind::Text(_)))
+    }
+}
+
+/// What pressing `k` types, if it types: its character, with no modifier
+/// but Shift held (⌘C types nothing; nor do Return, Tab, Escape, the
+/// arrows or Backspace, which have no character of their own).
+fn typed_by(k: &crate::Keystroke) -> Option<String> {
+    if !k.modifiers.is_subset_of(&crate::Modifiers::shift()) {
+        return None;
+    }
+    k.key_char.clone().filter(|c| !c.is_empty() && !c.chars().any(char::is_control))
+}
+
+#[cfg(test)]
+mod typed_tests {
+    use super::typed_by;
+    use crate::{Keystroke, Modifiers};
+
+    #[test]
+    fn a_key_types_its_character_unless_a_modifier_is_held() {
+        let key = |key: &str, typed: Option<&str>, modifiers: Modifiers| Keystroke { modifiers, key: key.into(), key_char: typed.map(str::to_owned) };
+        assert_eq!(typed_by(&key("f", Some("f"), Modifiers::none())).as_deref(), Some("f"));
+        assert_eq!(typed_by(&key("f", Some("F"), Modifiers::shift())).as_deref(), Some("F"));
+        assert_eq!(typed_by(&key("space", Some(" "), Modifiers::none())).as_deref(), Some(" "));
+        // A shortcut, and keys with no character of their own.
+        assert_eq!(typed_by(&key("c", Some("c"), Modifiers::command())), None);
+        assert_eq!(typed_by(&key("f", Some("f"), Modifiers::control())), None);
+        assert_eq!(typed_by(&key("enter", None, Modifiers::none())), None);
+        assert_eq!(typed_by(&key("tab", Some("\t"), Modifiers::none())), None);
+        assert_eq!(typed_by(&key("escape", None, Modifiers::none())), None);
     }
 }

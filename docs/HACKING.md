@@ -2413,8 +2413,28 @@ it.
   was (drawn as a label it sat a device pixel higher at 1.5×, and the
   review found its line cut by the field's top). ⌘↑ and ⌘↓ are left to
   the window's menu.
+- **A key that types is typed where the keyboard is, before anything
+  above that text sees it** (`olo_interface`'s key dispatch,
+  `typed_by`). A press goes down to what has the keyboard
+  (`capture_key_down`), then up from it (`on_key_down`); a text field
+  takes its own keys there (arrows, Return, ⌘C) and leaves the letters,
+  which used to go on up before being typed. So a view that took a plain
+  letter or Space for itself took it out of what was being typed in a
+  field inside it: Quick Look closed at a space in its find field, and
+  Viewer went full screen at an "f" and into Presentation at a "p" in a
+  PDF's. Now a key with a character and no modifier but Shift, come up
+  to a thing that takes text, is typed there and goes no further. What
+  must have a key before the text does takes it on the way down
+  (`capture_key_down`: the palette's, the emoji picker's, a search
+  field's own). No view needs to ask whether a field of its has the
+  keyboard before taking Space (the file panel's and Tracker's own
+  checks are now belt and braces).
 - `widgets::find_bar` (with `find_said`): Find's bar over what it
-  searches, a band as a tool bar is, the field's text under the menu
+  searches, a band as a tool bar is (painted with `style::fill_rect`, by
+  which the layout review knows a band along the window's edge; at
+  least `find_bar::MIN_WIDTH` wide to show whole: a window that may be
+  narrower, Quick Look, widens to it when Find opens; in less, what it
+  found gives way first), the field's text under the menu
   bar's first title, how many it found ("3 of 90", "Not found",
   "Looking… (12 of 38 pages)"), Previous, Next and Close; Escape
   closes. The view keeps the field and its matches, marks each (the
@@ -3111,7 +3131,14 @@ it.
   menu bar says its menus all the same (`menu::set_menus(cx, menus)`,
   as its view says what it shows): their keys work when nothing in the
   window took them (a text field's ⌘Z is its own), and agents and the
-  command palette find Undo and Redo among them. Tracker (files: undo.rs) and Preferences
+  command palette find Undo and Redo among them. (Any item's keys, as a
+  bar's: `set_menus` gives them their keys from the profile, and the
+  Frame chooses the item pressed, `menu::bar_shortcut`. Until 2026-11-16
+  only Undo and Redo worked so, and a bar-less window's ⌘C did nothing:
+  Tracker's Quick Look, Ben: "copy/paste doesn't work in quick look
+  viewer -- it should". Its Edit menu is said that way: Copy, which is
+  what's selected of a text and otherwise the file itself as Tracker's
+  Copy copies it, Select All, Find…, Find Again and Find Previous.) Tracker (files: undo.rs) and Preferences
   (settings: undo.rs) use it. An app that keeps its steps its own way
   names them alike with `undo::edit_items_named(menu, undo, redo)` (each
   the next step's name, None for none; `edit_items_as` with commands of

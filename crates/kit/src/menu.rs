@@ -1260,10 +1260,19 @@ fn title_rects(titles: &[(SharedString, f32)], b: Bounds<Pixels>) -> (Vec<Bounds
 }
 
 /// The window's menu bar's command for `k` (Frame takes the keys nothing
-/// else in the window did), and where to send it.
+/// else in the window did), and where to send it. A window with no bar:
+/// the command of the menus it offers without one ([`set_menus`]), which
+/// goes to its own view.
 pub(crate) fn bar_shortcut(cx: &mut WindowCx, k: &olo_interface::Keystroke) -> Option<(String, OnChoose)> {
     let bar = cx.window_state::<Bar>();
-    Some((find_shortcut(&bar.menus, k)?, bar.on_command.clone()))
+    if let Some(command) = find_shortcut(&bar.menus, k) {
+        return Some((command, bar.on_command.clone()));
+    }
+    if !bar.menus.is_empty() {
+        return None;
+    }
+    let command = find_shortcut(&cx.window_state::<Offered>().0, k)?;
+    Some((command, Rc::new(on_command)))
 }
 
 /// The command of the window's menu bar that keystroke `k` chooses, if
@@ -1289,9 +1298,14 @@ pub(crate) fn window_menus(cx: &mut WindowCx) -> Vec<Menu> {
 }
 
 /// The menus a window with no menu bar offers the command palette and
-/// agents (a calculator's context menu): said as its view says what it
-/// shows. Their commands go to the window's own view (`View::command`).
-pub fn set_menus(cx: &mut WindowCx, menus: Vec<Menu>) {
+/// agents (a calculator's context menu, Quick Look's Copy): said as its
+/// view says what it shows. Their commands go to the window's own view
+/// (`View::command`), and their items have their keys as a bar's do
+/// ([`resolve`]): pressed where nothing else in the window took them,
+/// they choose the item (a window with no bar had no keys at all: ⌘C did
+/// nothing in Tracker's Quick Look, Ben, 2026-11-16).
+pub fn set_menus(cx: &mut WindowCx, mut menus: Vec<Menu>) {
+    resolve(&mut menus, false);
     cx.window_state::<Offered>().0 = menus;
 }
 

@@ -269,8 +269,63 @@ impl View for QuickLook {
         to_hub(ToHub::LookClosed);
     }
 
+    /// Its menu's commands (it has no bar: their keys, the command
+    /// palette and agents choose them).
+    fn command(&mut self, command: &str, cx: &mut Cx<Self>) -> bool {
+        match command {
+            // What's selected of a text; with nothing selected (and for
+            // a picture, a film, anything else), the file itself, as
+            // Tracker's Copy copies it: pasted into a folder it's a copy,
+            // into an app that takes files it's the file.
+            "copy" => {
+                if self.preview.read(cx).has_text_selection(cx) {
+                    self.preview.read(cx).copy(cx);
+                } else {
+                    crate::copy_clip(olo_kit_base::clipboard::files(std::slice::from_ref(&self.entry.path), false));
+                }
+            }
+            "select-all" => self.preview.update(cx, |p, cx| p.select_all(cx)),
+            "find" => {
+                // (Its window is as wide as what it shows: wide enough
+                // for the find bar, while that's open.)
+                let had = cx.viewport_size();
+                if !cx.is_fullscreen() && f32::from(had.width) < olo_kit::widgets::find_bar::MIN_WIDTH {
+                    cx.resize_window(size(px(olo_kit::widgets::find_bar::MIN_WIDTH), had.height));
+                }
+                self.preview.update(cx, |p, cx| p.open_find(cx));
+            }
+            "find-again" => self.preview.update(cx, |p, cx| p.find_step(false, cx)),
+            "find-previous" => self.preview.update(cx, |p, cx| p.find_step(true, cx)),
+            _ => return false,
+        }
+        cx.invalidate();
+        true
+    }
+
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         self.focus.focus_if_none(cx);
+        // Edit's commands, with no bar to show them: their keys, the
+        // command palette and agents.
+        let (text, selected, finding) = {
+            let p = self.preview.read(cx);
+            (p.has_text(), p.has_text_selection(cx), p.finding(cx))
+        };
+        let mut edit = Menu::new("Edit").item(if selected { "Copy" } else { "Copy File" }, "copy").key("c");
+        if text {
+            edit = edit
+                .item("Select All", "select-all")
+                .key("a")
+                .separator()
+                .item("Find…", "find")
+                .key("f")
+                .item("Find Again", "find-again")
+                .key("g")
+                .enabled(finding)
+                .item("Find Previous", "find-previous")
+                .shift_key("g")
+                .enabled(finding);
+        }
+        olo_kit::menu::set_menus(cx, vec![edit]);
         // The screen stays awake while a video plays.
         let playing = self.preview.read(cx).playing_video();
         if playing != self.awake {

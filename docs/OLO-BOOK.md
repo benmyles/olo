@@ -1066,6 +1066,15 @@ Each of these is here because breaking it cost a bug or a slow frame.
 Found moving 42 apps onto the kits. Each is a rule above seen from the
 other side.
 
+- **A view took a plain key (F, P, Space) and so took it out of a text
+  field inside it.** The kit now types a key where the keyboard is
+  before anything above that text sees it, so this can't happen by
+  accident; to have a key before a field does, take it on the way down
+  (`capture_key_down`), and mean it.
+- **A window with no menu bar had no keys.** Say its menus anyway
+  (`menu::set_menus`), with keys on the items, and implement
+  `View::command`: the keys, the command palette and agents all choose
+  them.
 - **A drawing read state the view had since changed**, because it
   captured a copy when `body` ran and was kept. Use `cx.canvas` (handed
   the view as it's drawn) and a key.

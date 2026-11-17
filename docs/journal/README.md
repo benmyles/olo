@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-16
 
+### Quick Look copies, selects all and finds
+
+*22:09* — Tracker's Quick Look had no keys of its own beyond Space and the arrows: Copy did nothing. It now has Copy (what is selected of a text, else the file itself), Select All and Find, by key, in the command palette and for agents; and typing in its find field no longer loses the letters and the space the window takes for itself. (Here, a text with all of it selected.)
+
+![Quick Look copies, selects all and finds](2026-11-16/220910-quick-look-copies-selects-all-and-finds.png)
+
 ### The phone in Deskbar's tray
 
 *21:38* — While an iPhone is connected (or has messages unread, or a one-time code has just come) it is in Deskbar's tray: a phone, dim when it is out of reach, amber and red as its battery runs down, with a dot while messages are unread. Its menu says how it stands, copies the code that just came, and opens Preferences ▸ Phone. (A stand-in phone.)

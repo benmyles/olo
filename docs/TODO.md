@@ -184,6 +184,24 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Done, waiting for Ben to try or confirm
 
+- **Copy works in Quick Look** (Ben, 2026-11-16: "also fix this bug:
+  copy/paste doesn't work in quick look viewer -- it should"). *Done
+  2026-11-16.* Tracker's Quick Look has no menu bar, and a window
+  without one had no keys but Undo's: ⌘A and ⌘C did nothing. Fixed in
+  the kit for every such window (the menus it offers have their keys);
+  Quick Look now has Copy (what's selected of a text; with nothing
+  selected, and for a picture or anything else, the file itself, to
+  paste into a folder or an app), Select All, Find…, Find Again and Find
+  Previous, by key, in the command palette and for agents. Found with
+  it and fixed: typing in a find field lost any letter the window took
+  for itself (Quick Look closed at a space; Viewer, since this
+  morning's keys, went full screen at "f" and into Presentation at "p"
+  while typing in a PDF's Find): a key that types now goes to the text
+  first, everywhere. And the find bar no longer squeezes its field to
+  nothing in a narrow Quick Look (the window widens for it). (Paste has
+  nothing to do in a look, which shows a file and changes nothing; say
+  if you meant something by it.)
+
 - **The new brand, olo-desktop.com, Olo's own wallpapers, every
   wallpaper restored and lossless, and the README again** (Ben,
   2026-11-16: "update olo to follow the new branding in this image. use

@@ -8,7 +8,7 @@
 
 use std::rc::Rc;
 
-use olo_interface::{Child, Element, InteractiveElement as _, KeyDownEvent, ParentElement as _, Styled as _, WindowCx, canvas, div, fill, px};
+use olo_interface::{Child, Element, InteractiveElement as _, KeyDownEvent, ParentElement as _, Styled as _, WindowCx, canvas, div, px};
 use olo_kit_base::metrics as m;
 
 use super::{Button, StringView, TextControl, TextField};
@@ -27,6 +27,12 @@ pub fn find_said(query: &str, found: usize, current: Option<usize>, looking: Opt
     }
 }
 
+/// The least width the bar shows whole at: its field, what it found and
+/// its three buttons. A window that may be narrower (Tracker's Quick
+/// Look, as wide as what it shows) widens to it when Find opens; in
+/// less, what it found gives way first, then the field.
+pub const MIN_WIDTH: f32 = 640.0;
+
 /// The bar: `field` (the view's, its Return and ⇧Return its own to
 /// handle), `said` ([`find_said`]), Previous and Next (`step`, told
 /// whether it's back: `cx.msg_with(|back: &bool| ..)`) while anything's
@@ -38,7 +44,10 @@ pub fn find_bar(cx: &WindowCx, field: &Child<TextField>, said: String, found: bo
     // The tool bar's band: the panel's ground, a line under it.
     let ground = canvas(|g, b| {
         let p = theme::palette();
-        g.paint_quad(fill(b, style::c(p.panel_background)));
+        // (`style`'s fill, as the tool bar's: the layout review knows
+        // a band along the window's edge by it, and leaves the band's
+        // own insets to it.)
+        style::fill_rect(g, b, style::c(p.panel_background));
         style::hline_above(g, b.left(), b.right(), b.bottom(), style::shade(&p, p.panel_background, 1.3));
     })
     .paint_key(0)
@@ -64,7 +73,7 @@ pub fn find_bar(cx: &WindowCx, field: &Child<TextField>, said: String, found: bo
             }
         })
         .child(div().w(px(260.0)).child(TextControl::new(cx, field)))
-        .child(div().flex_1().child(StringView::new(said)))
+        .child(div().flex_1().min_w_0().child(StringView::new(said).cut(true)))
         .child(Button::new("Previous").enabled(found).on_click(move |_, cx| back(&true, cx)))
         .child(Button::new("Next").enabled(found).on_click(move |_, cx| next(&false, cx)))
         .child(Button::new("Close").on_click(move |_, cx| done(&(), cx)))
