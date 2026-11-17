@@ -13,24 +13,7 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-- **Viewer: a PDF's images at full quality, keys for everything, full
-  screen and a presentation mode** (Ben, 2026-11-16: "when viewing a pdf
-  in the viewer app that has high res images in it (e.g. see
-  /home/ben/Documents/ShiftUp-JackHenry-AI-v3.pdf ) it is showing as
-  lower quality with visible artifacts but if i use a different pdf
-  viewer the quality looks great. our viewer should show full quality.
-  also viewer should have kb shortcuts for everything, esp.
-  next/previous page, and also a full screen mode where it's full screen
-  and a presentation mode where it's still a window but with the toolbar
-  etc gone (appropriate for sharing that window in chrome or via airplay
-  etc)"). Find why that file's images come out worse (the scale they're
-  decoded or resampled at against the page's device pixels; a JPEG's
-  decode; a soft mask) and fix it at the root, compared pixel for pixel
-  with another viewer's rendering; every command of Viewer on a key
-  (next and previous page above all: Page Down/Up, Space, the arrows),
-  listed in its menus; Full Screen; and Presentation: the window as it
-  is, with the menu bar, toolbar and status line gone, so the window can
-  be shared as it is.
+(Nothing.)
 
 ## Not started (highest priority first)
 
@@ -124,6 +107,33 @@ something nobody here has is in "Blocked", with what it waits for.
   pictures, theme), natively, in Quick Look and in Viewer.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Viewer: a PDF's images at full quality, keys for everything, full
+  screen and a presentation mode** (Ben, 2026-11-16: "when viewing a pdf
+  in the viewer app that has high res images in it (e.g. see
+  /home/ben/Documents/ShiftUp-JackHenry-AI-v3.pdf ) it is showing as
+  lower quality with visible artifacts but if i use a different pdf
+  viewer the quality looks great. our viewer should show full quality.
+  also viewer should have kb shortcuts for everything, esp.
+  next/previous page, and also a full screen mode where it's full screen
+  and a presentation mode where it's still a window but with the toolbar
+  etc gone (appropriate for sharing that window in chrome or via airplay
+  etc)"). *Done 2026-11-16.* The quality: four faults, found by
+  comparing the window with the renderer's output and with an exact
+  resampling, pixel by pixel (the renderer dropped a column and a row of
+  a picture drawn smaller and was soft: hayro vendored and patched;
+  Viewer left a page stretched when its zoom moved a fraction of a
+  percent; the kit drew a tile a pixel wider at 1.5×; a page past the
+  size cap was drawn over part of its place). Now the window shows the
+  renderer's output with no pixel different at every scale, and that is
+  an exact Lanczos resampling. The keys: Page Down and Up, Home, End,
+  ⌘8 and ⌘9 for the fits, and the rest of the menus' commands. Full
+  Screen (F) and Presentation (P, ⇧⌘P): a page at a time on black, the
+  arrows, Space, the wheel and clicks turning pages; Presentation keeps
+  the window, with nothing in it but the page, in the page's own shape.
+  **For Ben**: open the PDF again after upgrading: it should be as
+  sharp as the other viewer's at fit and when zoomed, on both displays;
+  press P for Presentation and share that window.
 
 - **Kernel settings that are a win for a desktop, a Kernel tab, and all
   of it kept across kernel updates** (Ben, 2026-11-16: "research what

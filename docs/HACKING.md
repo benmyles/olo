@@ -11008,6 +11008,38 @@ offer).
   fields as `TextInput`, `CheckBox` (checked), `RadioButton` (its
   on-state as its value), `ComboBox` or `ListBox`; while one is typed in,
   as its editor.
+  **Keys for its pages, Full Screen and Presentation** (Ben,
+  2026-11-16: "viewer should have kb shortcuts for everything, esp.
+  next/previous page, and also a full screen mode where it's full screen
+  and a presentation mode where it's still a window but with the toolbar
+  etc gone (appropriate for sharing that window in chrome or via airplay
+  etc)"). Go ▸ Next Page, Previous Page, First Page and Last Page are
+  Page Down, Page Up, Home and End; View ▸ Fit Width ⌘8 and Fit Page ⌘9;
+  Full Screen ⌃⌘F (and F, as for a picture or a video) and Presentation
+  ⇧⌘P (and P, where P doesn't play a video); Export Flattened PDF, a
+  picture's Flip and Adjust Size and a video's Previous and Next Chapter
+  have keys too, all in `olo_protocol::app_keys` (so in the menus,
+  Preferences ▸ Shortcuts and the shortcuts sheet, each platform's own).
+  Full Screen and Presentation show a PDF **a page at a time**
+  (`PdfView::set_show`, `show_layout`): the current page fitted to the
+  whole view on black, with no scroller, tool bar, find bar or tools;
+  the page before and the one after laid just out of sight, so they're
+  rendered by the time they're turned to (a turn is one frame, 0.3 ms);
+  the fit and zoom as they were on the way back, on the page it was
+  showing. There the arrows, Space and Return (⇧ for back), Page Up and
+  Down, Backspace, Home and End turn the pages, as do a click (a right
+  click back) and the wheel: one page a notch or a sweep of two fingers,
+  the first movement turning it and nothing more for a quarter of a
+  second, since a notch arrives eased in over several frames. Escape
+  leaves. **Presentation** is the window still (its tab kept, so it can
+  be moved, tiled and shared as any window) with the menu bar and tool
+  bar out of sight (the menu bar is still there, zero points high, for
+  its keys and for agents), and a PDF's window takes its page's shape,
+  as large as fits in the window as it was, so what's shared has no
+  black bands; its size comes back on leaving. A picture and a video
+  have it too (their menu bar gone). What a window was showing (a PDF's
+  page, Presentation and the size to go back to) is kept across an
+  upgrade in place (`Shown`, in `SavedDoc`).
   **A page is shown a texture pixel to a device pixel, and a picture in
   it at full quality** (Ben, 2026-11-16: a PDF of 3840 × 2160 slides
   "is showing as lower quality with visible artifacts but if i use a

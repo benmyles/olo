@@ -203,6 +203,16 @@ struct Doc {
     /// The window is full screen (as last drawn): its menu bar hidden,
     /// a picture or a video all there is.
     fullscreen: bool,
+    /// Presentation: still a window, with nothing in it but what it
+    /// shows (no menu bar, no tool bar), for sharing the window as it is
+    /// (in a call, over AirPlay). A PDF is then a page at a time, as
+    /// full screen.
+    presenting: bool,
+    /// The window's size before Presentation took it to its page's shape.
+    before_presenting: Option<olo_kit::Size<Pixels>>,
+    /// The page a PDF opens on (the one it showed before an upgrade in
+    /// place), for the first file this window loads.
+    start_page: usize,
     /// What the window draws in (asked for as what it shows needs).
     gamut: Gamut,
     edit: Option<ImageEdit>,
@@ -230,6 +240,21 @@ struct Saved {
     /// Each file's playback speed (1 for one that plays nothing).
     #[serde(default)]
     speeds: Vec<f64>,
+    /// How each was being shown (a PDF's page, Presentation).
+    #[serde(default)]
+    shown: Vec<Shown>,
+}
+
+/// How a window was showing its file: a PDF's page, and Presentation
+/// (with the size its window had before, to go back to).
+#[derive(Serialize, Deserialize, Clone, Copy, Default)]
+struct Shown {
+    #[serde(default)]
+    page: usize,
+    #[serde(default)]
+    presenting: bool,
+    #[serde(default)]
+    before: Option<(f32, f32)>,
 }
 
 /// What one window keeps (`View::save_state`).
@@ -237,6 +262,8 @@ struct Saved {
 struct SavedDoc {
     file: PathBuf,
     speed: f64,
+    #[serde(default)]
+    shown: Shown,
 }
 
 fn is_pdf(path: &Path) -> bool {
@@ -296,6 +323,11 @@ impl Hub {
     /// `speed`: how fast it plays, kept over an upgrade), or its window
     /// brought forward.
     fn open_file(&mut self, path: PathBuf, edit: bool, speed: Option<f64>) {
+        self.open_file_as(path, edit, speed, Shown::default());
+    }
+
+    /// [`Self::open_file`], shown as it was (after an upgrade in place).
+    fn open_file_as(&mut self, path: PathBuf, edit: bool, speed: Option<f64>, shown: Shown) {
         self.docs.retain(|d| d.window.is_open());
         if let Some(doc) = self.docs.iter().find(|d| d.path == path) {
             olo_kit::raise(Some(&doc.window));
@@ -317,7 +349,7 @@ impl Hub {
         }
         self.next += 1;
         let (id, shared, opened) = (self.next, self.shared.clone(), path.clone());
-        let window = olo_kit::open_window(options, move |cx| Doc::new(id, shared, opened, edit, speed.unwrap_or(1.0), cx));
+        let window = olo_kit::open_window(options, move |cx| Doc::new(id, shared, opened, edit, speed.unwrap_or(1.0), shown, cx));
         self.docs.push(Open { id, path, window });
         self.follow_files();
     }
@@ -406,7 +438,7 @@ impl Hub {
 }
 
 impl Doc {
-    fn new(id: u64, shared: Arc<Shared>, path: PathBuf, edit: bool, speed: f64, cx: &mut Cx<Self>) -> Doc {
+    fn new(id: u64, shared: Arc<Shared>, path: PathBuf, edit: bool, speed: f64, shown: Shown, cx: &mut Cx<Self>) -> Doc {
         let busy_said = Arc::new(AtomicBool::new(false));
         {
             let mut busy = shared.busy.lock().unwrap_or_else(|e| e.into_inner());
@@ -425,6 +457,9 @@ impl Doc {
             after_save: After::Nothing,
             awake: false,
             fullscreen: false,
+            presenting: shown.presenting,
+            before_presenting: shown.before.map(|(w, h)| size(px(w), px(h))),
+            start_page: shown.page,
             gamut: Gamut::Srgb,
             edit: None,
             trimming: false,
@@ -459,7 +494,9 @@ impl Doc {
             let tx = pdfwork::start(path.clone(), move |ev| {
                 sending.send(DocMsg::Pdf(ev));
             });
-            let pdf = cx.new_view(|_| PdfView::new(tx));
+            // (The page it was on before an upgrade in place, once.)
+            let page = std::mem::take(&mut self.start_page);
+            let pdf = cx.new_view(|_| PdfView::new(tx).starting_at(page));
             // (The tool bar says its page and zoom.)
             cx.subscribe(&pdf, |_: &mut Doc, _: &pdfview::Changed, cx| cx.invalidate());
             self.content = Content::Pdf(pdf);
@@ -978,9 +1015,13 @@ impl Doc {
                     .key("0")
                     .separator()
                     .item("Fit Width", "fit-width")
-                    .checked(v.fit == Some(Fit::Width))
-                    .item("Fit Page", "fit-page")
-                    .checked(v.fit == Some(Fit::Page)),
+                    .checked(v.fit == Some(Fit::Width) && !v.show)
+                    .item("Fit Page", "zoom-fit")
+                    .checked(v.fit == Some(Fit::Page))
+                    .separator()
+                    .item(if self.fullscreen { "Exit Full Screen" } else { "Enter Full Screen" }, "fullscreen")
+                    .item("Presentation", "presentation")
+                    .checked(self.presenting),
             );
         }
         let full_screen = if self.fullscreen { "Exit Full Screen" } else { "Enter Full Screen" };
@@ -1002,7 +1043,8 @@ impl Doc {
                     .checked(image.fitted())
                     .separator()
                     .item(full_screen, "fullscreen")
-                    .keys("F"),
+                    .item("Presentation", "presentation")
+                    .checked(self.presenting),
             );
         }
         // A video: at most its own size, as big as fits or filling the
@@ -1048,7 +1090,8 @@ impl Doc {
                     .submenu(decode)
                     .separator()
                     .item(full_screen, "fullscreen")
-                    .keys("F"),
+                    .item("Presentation", "presentation")
+                    .checked(self.presenting),
             );
         }
         // A sound: its speed.
@@ -1251,7 +1294,36 @@ impl Doc {
             return;
         }
         if command == "fullscreen" {
+            // (Full screen is its own way of showing: Presentation, the
+            // windowed one, ends as it begins.)
+            self.presenting = false;
             cx.toggle_fullscreen();
+            cx.invalidate();
+            return;
+        }
+        if command == "presentation" {
+            self.presenting = !self.presenting;
+            if self.presenting && cx.is_fullscreen() {
+                cx.toggle_fullscreen();
+            }
+            // A PDF's window takes its page's shape, as large as fits in
+            // the window as it was: what's shared is the page and nothing
+            // round it (no black bands). And its size back after. (A
+            // window in a tile keeps its tile: the page is fitted in it.)
+            if let Content::Pdf(v) = &self.content {
+                let v = v.read(cx);
+                if self.presenting {
+                    let had = cx.viewport_size();
+                    if let Some(g) = v.geoms.get(v.current_page) {
+                        let (pw, ph) = g.size;
+                        let k = (f32::from(had.width) / pw.max(1.0)).min(f32::from(had.height) / ph.max(1.0));
+                        self.before_presenting = Some(had);
+                        cx.resize_window(size(px((pw * k).round()), px((ph * k).round())));
+                    }
+                } else if let Some(had) = self.before_presenting.take() {
+                    cx.resize_window(had);
+                }
+            }
             cx.invalidate();
             return;
         }
@@ -1295,7 +1367,7 @@ impl Doc {
             "zoom-out" => v.zoom_step(false, cx),
             "zoom-100" => v.set_zoom(1.0, None, cx),
             "fit-width" => v.set_fit(Fit::Width, cx),
-            "fit-page" => v.set_fit(Fit::Page, cx),
+            "fit-page" | "zoom-fit" => v.set_fit(Fit::Page, cx),
             "prev-page" => v.go_to_page(v.current_page.saturating_sub(1), cx),
             "next-page" => v.go_to_page(v.current_page + 1, cx),
             "first-page" => v.go_to_page(0, cx),
@@ -1470,12 +1542,21 @@ impl Doc {
             cx.stop_propagation();
             return;
         }
-        // A picture or a video: F full screen and back, Escape back.
-        if plain && matches!(&self.content, Content::Other(p) if p.read(cx).is_image() || p.read(cx).is_video()) {
+        // A picture, a video or a PDF: F full screen and back, P
+        // Presentation and back, Escape back from either.
+        if plain && matches!(&self.content, Content::Pdf(_)) || plain && matches!(&self.content, Content::Other(p) if p.read(cx).is_image() || p.read(cx).is_video()) {
             let full = cx.is_fullscreen();
-            if key == "f" || (key == "escape" && full) {
-                cx.toggle_fullscreen();
-                cx.invalidate();
+            // (P plays and pauses a video.)
+            let p_free = !matches!(&self.content, Content::Other(p) if p.read(cx).is_video());
+            let command = match key {
+                "f" => Some("fullscreen"),
+                "escape" if full => Some("fullscreen"),
+                "p" if p_free => Some("presentation"),
+                "escape" if self.presenting => Some("presentation"),
+                _ => None,
+            };
+            if let Some(command) = command {
+                self.run(command, cx);
                 cx.stop_propagation();
                 return;
             }
@@ -1501,10 +1582,26 @@ impl Doc {
                 }
                 cx.stop_propagation();
             }
+            // A PDF shown a page at a time (full screen, Presentation):
+            // every key a slide show takes turns its pages.
+            Content::Pdf(v) if v.read(cx).show && !(e.keystroke.modifiers.control || e.keystroke.modifiers.alt || e.keystroke.modifiers.platform) => {
+                let back = e.keystroke.modifiers.shift;
+                match key {
+                    "space" | "enter" if back => self.run("prev-page", cx),
+                    "right" | "down" | "pagedown" | "space" | "enter" => self.run("next-page", cx),
+                    "left" | "up" | "pageup" | "backspace" => self.run("prev-page", cx),
+                    "home" => self.run("first-page", cx),
+                    "end" => self.run("last-page", cx),
+                    _ => return,
+                }
+                cx.stop_propagation();
+            }
             Content::Pdf(_) if plain => {
                 match key {
                     "pageup" => self.run("prev-page", cx),
                     "pagedown" => self.run("next-page", cx),
+                    "home" => self.run("first-page", cx),
+                    "end" => self.run("last-page", cx),
                     "delete" | "backspace" => self.run("delete", cx),
                     _ => return,
                 }
@@ -1781,7 +1878,15 @@ impl View for Doc {
             Content::Other(p) => p.read(cx).chosen_rate(),
             _ => self.speed,
         };
-        serde_json::to_string(&SavedDoc { file: self.path.clone(), speed }).ok()
+        let shown = Shown {
+            page: match &self.content {
+                Content::Pdf(v) => v.read(cx).current_page,
+                _ => 0,
+            },
+            presenting: self.presenting,
+            before: self.before_presenting.map(|s| (f32::from(s.width), f32::from(s.height))),
+        };
+        serde_json::to_string(&SavedDoc { file: self.path.clone(), speed, shown }).ok()
     }
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
@@ -1789,6 +1894,13 @@ impl View for Doc {
         // it, and the arrows and Space never reach it).
         self.focus.focus_if_none(cx);
         self.fullscreen = cx.is_fullscreen();
+        // A PDF full screen or in Presentation is a page at a time.
+        let show = self.fullscreen || self.presenting;
+        if let Content::Pdf(v) = &self.content
+            && v.read(cx).show != show
+        {
+            v.update(cx, |v, cx| v.set_show(show, cx));
+        }
         self.busy_said.store(self.busy(cx), Ordering::Relaxed);
         // A playing video keeps the screen awake.
         let playing = matches!(&self.content, Content::Other(p) if p.read(cx).playing_video());
@@ -1861,9 +1973,10 @@ impl View for Doc {
                 area.into_any_element()
             }
             Content::Pdf(v) => {
-                let toolbar = self.toolbar(v, cx);
+                // (Its tool bar isn't part of a page shown by itself.)
+                let toolbar = (!show).then(|| self.toolbar(v, cx));
                 let pages: Element = if v.read(cx).loaded() { v.element() } else { div().size_full().bg(style::c(p.panel_background)).into_any_element() };
-                div().size_full().flex().flex_col().child(toolbar).child(div().flex_1().min_h_0().child(pages)).into_any_element()
+                div().size_full().flex().flex_col().children(toolbar).child(div().flex_1().min_h_0().child(pages)).into_any_element()
             }
         };
         div()
@@ -1880,9 +1993,9 @@ impl View for Doc {
                     to_hub(ToHub::Open(p.to_path_buf()));
                 }
             })
-            // (Full screen, the bar's still there for its keys, but none
-            // of it shows.)
-            .child(if self.fullscreen { div().h(px(0.0)).overflow_hidden().child(bar) } else { div().child(bar) })
+            // (Full screen and in Presentation, the bar's still there for
+            // its keys, but none of it shows.)
+            .child(if show { div().h(px(0.0)).overflow_hidden().child(bar) } else { div().child(bar) })
             .child(div().flex_1().min_h_0().child(body))
             .into_any_element()
     }
@@ -2066,7 +2179,7 @@ fn main() {
                 return Some("{}".into());
             }
             let docs: Vec<SavedDoc> = windows.iter().filter_map(|s| serde_json::from_str(s).ok()).collect();
-            serde_json::to_string(&Saved { files: docs.iter().map(|d| d.file.clone()).collect(), speeds: docs.iter().map(|d| d.speed).collect() }).ok()
+            serde_json::to_string(&Saved { files: docs.iter().map(|d| d.file.clone()).collect(), speeds: docs.iter().map(|d| d.speed).collect(), shown: docs.iter().map(|d| d.shown).collect() }).ok()
         });
         // Unsaved changes, or a save under way: the new version waits.
         let busy = shared.clone();
@@ -2075,7 +2188,7 @@ fn main() {
         match restored {
             Some(saved) if !saved.files.is_empty() => {
                 for (k, f) in saved.files.into_iter().enumerate() {
-                    hub.open_file(f, false, saved.speeds.get(k).copied());
+                    hub.open_file_as(f, false, saved.speeds.get(k).copied(), saved.shown.get(k).copied().unwrap_or_default());
                 }
             }
             _ => hub.handle_args(&args, None),

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-16
 
+### Viewer: Presentation, Full Screen and keys for a PDF's pages
+
+*20:23* — Presentation (View ▸ Presentation, ⇧⌘P or P) leaves the window with nothing in it but the page: no menu bar, no tool bar, no scroll bars, and the window takes the page's own shape, so it can be shared as it is in a call or over AirPlay. Full Screen (F) is the same on the whole screen. In both a PDF is a page at a time: the arrows, Space, Return, Page Up and Down, Home and End, a wheel's notch or a click turn the pages, Escape leaves. Next, Previous, First and Last Page, Fit Width and Fit Page have keys in the menus. (A made-up deck.)
+
+![Viewer: Presentation, Full Screen and keys for a PDF's pages](2026-11-16/202343-viewer-presentation-full-screen-and-keys-for-a-p.png)
+
 ### Viewer: a PDF's pictures at full quality
 
 *19:48* — A PDF page that is one large picture (slides exported at 3840 × 2160) was shown soft and with breaks: the renderer dropped a column and a row of a picture drawn smaller and filtered it softly; Viewer left a page stretched when its zoom moved by a fraction of a percent; the kit drew a tile a pixel wider than it is at 1.5×; and a page past the size cap was drawn over part of its place. Now what the window shows is the renderer's output pixel for pixel at every scale, and that is an exact Lanczos resampling of the picture. (A made-up slide, three times enlarged.)
