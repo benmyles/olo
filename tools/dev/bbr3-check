@@ -1,0 +1,424 @@
+#!/usr/bin/python3
+"""Olo's BBRv3 module (kernel/bbr3, tcp_bbr3) checked, in a KVM guest that
+runs this computer's own kernel: nothing of the running system is
+touched, and no root is needed (tools/dev/kvm-guest).
+
+  tools/dev/bbr3-check [--quick]            the self-check; exit status 1 if it fails
+  tools/dev/bbr3-check --timing             what the module's own work costs
+  tools/dev/bbr3-check --compare [--reference BZIMAGE] [--against cubic,bbr] [--reps N]
+
+The module makes, from what a congestion control is given, what Google's
+BBRv3 gets from patches to TCP: the packets in flight and the packets
+lost so far when each packet was sent, each lost packet, each loss a
+tail probe repaired. The self-check runs a build of it that also takes
+the true figures, with a probe where the patched kernel records them
+(kernel/bbr3/bbr3_selfcheck.h), over links made in the guest (three
+network namespaces: a sender, a router whose link on is the bottleneck
+(tbf for the rate, cutting TSO packets to the wire's size; netem for the
+queue and the loss), a receiver; the round trip's delay on the way
+back), and says for each link how every figure looked up compared with
+the true one, whether every loss TCP counted was told to the module, and
+whether the tail-probe recoveries it told are the kernel's own count. It
+fails unless all are the same, the module unloads at the end (nothing
+left holding it), and the kernel logged no warning. The links: plain, a
+shallow and a deep queue, random loss under and over BBR's 2%, slow,
+fast, a long round trip, the fq qdisc, two flows, beside CUBIC, the
+application holding back, bursts with gaps, small writes, a blackout (a
+timeout), the rate changing, tail losses, reordering; then the accepting
+side's flows, loopback, 1,200 short connections with every socket's
+figures being read meanwhile (`ss`), and connections that begin with no
+memory for their state.
+
+--timing: the same build with its checks off and its own work timed by
+the processor's cycle counter, per ACK, per burst sent, per loss.
+
+--compare: the module as installed (no checks), flow by flow beside
+other congestion controls on the same links, --reps (3) times each:
+--against's (the stock kernel's own: cubic, and bbr, which is BBRv1),
+and Google's real BBRv3 where --reference names a kernel built with its
+patches (kernel/bbr3/README.md, "The real one to compare with", has how
+to build one): each on its own guest.
+
+Needs: this kernel's headers, make and the compiler (as the module's
+service does), qemu-system-x86_64 with /dev/kvm, and tcp-flow
+(`cargo build --release -p olo-net --example tcp-flow`).
+"""
+
+import glob
+import json
+import os
+import re
+import shutil
+import statistics
+import subprocess
+import sys
+import tempfile
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+SOURCE = os.path.join(ROOT, "kernel/bbr3")
+FLOW = os.path.join(ROOT, "target/release/examples/tcp-flow")
+GUEST = ["/usr/bin/python3", os.path.join(ROOT, "tools/dev/kvm-guest")]
+MODULES = ["veth", "sch_netem", "sch_tbf", "sch_fq", "tcp_bbr"]
+
+LIB = r"""
+CHECK=/sys/module/tcp_bbr3/parameters/selfcheck
+# net_up RATE_MBIT RTT_MS QUEUE_PACKETS LOSS_PERCENT SENDER_QDISC
+net_up() {
+  local rate=$1 rtt=$2 queue=$3 loss=$4 qdisc=$5
+  for n in c r s; do ip netns add $n; ip -n $n link set lo up; done
+  ip link add c0 netns c type veth peer name r0 netns r
+  ip link add s0 netns s type veth peer name r1 netns r
+  ip -n c addr add 10.0.1.2/24 dev c0; ip -n r addr add 10.0.1.1/24 dev r0
+  ip -n s addr add 10.0.2.2/24 dev s0; ip -n r addr add 10.0.2.1/24 dev r1
+  for d in c:c0 r:r0 r:r1 s:s0; do ip -n ${d%%:*} link set ${d##*:} up; done
+  ip -n c route add default via 10.0.1.1; ip -n s route add default via 10.0.2.1
+  ip netns exec r sysctl -qw net.ipv4.ip_forward=1
+  ip netns exec r tc qdisc add dev r1 root handle 1: tbf rate ${rate}mbit burst 3100 limit 1000000
+  if [ "$loss" = 0 ]; then ip netns exec r tc qdisc add dev r1 parent 1:1 handle 10: netem limit $queue $NETEM
+  else ip netns exec r tc qdisc add dev r1 parent 1:1 handle 10: netem limit $queue loss ${loss}% $NETEM; fi
+  ip netns exec r tc qdisc add dev r0 root netem delay ${rtt}ms limit 1000000
+  [ "$qdisc" = none ] || ip netns exec c tc qdisc add dev c0 root $qdisc
+  ip netns exec s /bin/tcp-flow sink 10.0.2.2:5001 &
+  SINK=$!
+  sleep 0.2
+}
+net_down() {
+  kill $SINK 2>/dev/null; wait $SINK 2>/dev/null
+  for n in c r s; do ip netns del $n; done
+  sleep 0.1
+}
+ended() {
+  sleep 0.3
+  echo "D|$(ip netns exec r tc -s qdisc show dev r1 2>/dev/null | grep -A1 'qdisc netem' | grep -o 'dropped [0-9]*' | head -1 | cut -d' ' -f2)|$(ip netns exec c awk '/^TcpExt:/ { if (!h) { for (i=1;i<=NF;i++) n[i]=$i; h=1 } else { for (i=1;i<=NF;i++) if (n[i]=="TCPLossProbeRecovery") print $i } }' /proc/net/netstat 2>/dev/null)"
+  [ -e $CHECK ] && sed 's/^/C|/' $CHECK
+}
+event() {
+  local what=$1 queue=$2 loss=$3
+  case $what in
+    blackout) ip netns exec r tc qdisc change dev r1 parent 1:1 handle 10: netem limit $queue loss 100% ;;
+    restore) if [ "$loss" = 0 ]; then ip netns exec r tc qdisc change dev r1 parent 1:1 handle 10: netem limit $queue; else ip netns exec r tc qdisc change dev r1 parent 1:1 handle 10: netem limit $queue loss ${loss}%; fi ;;
+    rate=*) ip netns exec r tc qdisc change dev r1 root handle 1: tbf rate ${what#rate=}mbit burst 3100 limit 1000000 ;;
+  esac
+}
+# run NAME RATE RTT QUEUE LOSS QDISC EVENTS tcp-flow-send-args…
+run() {
+  local name=$1 rate=$2 rtt=$3 queue=$4 loss=$5 qdisc=$6 events=$7; shift 7
+  net_up $rate $rtt $queue $loss $qdisc
+  [ -e $CHECK ] && echo 0 > $CHECK
+  local pids=""
+  if [ "$events" != - ]; then
+    for e in $events; do ( sleep ${e%%:*}; event ${e#*:} $queue $loss ) & pids="$pids $!"; done
+  fi
+  echo "S|$name|$rate Mbit/s, $rtt ms, queue $queue, loss $loss%$([ $qdisc = none ] || echo ", $qdisc")"
+  ip netns exec c /bin/tcp-flow send 10.0.2.2:5001 "$@" --label "$name"
+  [ -n "$pids" ] && wait $pids
+  ended
+  net_down
+}
+"""
+
+# name, rate (Mbit/s), round trip (ms), queue (packets), loss (%), the sender's qdisc, events, tcp-flow's arguments
+LINKS = [
+    ("plain", 50, 40, 170, 0, "none", "-", "--cc {cc} --secs 12"),
+    ("shallow queue", 50, 40, 20, 0, "none", "-", "--cc {cc} --secs 12"),
+    ("deep queue", 50, 40, 1000, 0, "none", "-", "--cc {cc} --secs 12"),
+    ("loss 1%", 50, 40, 170, 1, "none", "-", "--cc {cc} --secs 12"),
+    ("loss 3%", 50, 40, 170, 3, "none", "-", "--cc {cc} --secs 12"),
+    ("slow", 2, 100, 20, 0, "none", "-", "--cc {cc} --secs 15"),
+    ("fast", 500, 10, 400, 0, "none", "-", "--cc {cc} --secs 8"),
+    ("long round trip", 20, 300, 500, 0, "none", "-", "--cc {cc} --secs 20"),
+    ("fq", 50, 40, 170, 0, "fq", "-", "--cc {cc} --secs 12"),
+    ("application-limited", 50, 40, 170, 1, "none", "-", "--cc {cc} --secs 10 --rate 10"),
+    ("rate change", 50, 40, 170, 0, "none", "4:rate=10 9:rate=50", "--cc {cc} --secs 14"),
+    ("beside cubic", 50, 40, 170, 0, "none", "-", "--cc {cc},cubic --secs 20"),
+    ("beside cubic, deep queue", 50, 40, 1000, 0, "none", "-", "--cc {cc},cubic --secs 20"),
+    ("beside cubic, shallow queue", 50, 40, 40, 0, "none", "-", "--cc {cc},cubic --secs 20"),
+    ("two flows", 50, 40, 170, 0, "none", "-", "--cc {cc},{cc} --start 0,5 --secs 25"),
+]
+# (The self-check's own, for what the comparison's links don't reach.)
+CHECKED_TOO = [
+    ("bursts", 50, 40, 170, 2, "none", "-", "--cc {cc} --secs 10 --burst 200000 --gap 300"),
+    ("small writes", 50, 40, 170, 1, "none", "-", "--cc {cc} --secs 8 --chunk 300 --nodelay --rate 5"),
+    ("blackout", 50, 40, 170, 0, "none", "3:blackout 4.5:restore", "--cc {cc} --secs 9"),
+    ("tail losses", 50, 40, 170, 20, "none", "-", "--cc {cc} --secs 45 --burst 4000 --gap 500"),
+]
+QUICK = {"plain", "shallow queue", "loss 3%", "fast", "beside cubic", "blackout"}
+
+SPECIAL = r"""
+NETEM="delay 4ms reorder 20%" run reordering 50 40 400 0 none - --cc bbr3 --secs 8
+NETEM=""
+# The accepting side's flows: the sender is a listener's child, with the system's congestion control.
+echo 0 > $CHECK
+net_up 50 40 170 0 none
+ip netns exec c sysctl -qw net.ipv4.tcp_congestion_control=bbr3
+ip netns exec c /bin/tcp-flow source 10.0.1.2:5002 --secs 4 &
+SRC=$!; sleep 0.2
+echo "S|accepted connections|three flows sent by a listener's children"
+ip netns exec s /bin/tcp-flow recv 10.0.1.2:5002 --flows 3 | sed 's/^/X|/'
+kill $SRC; wait $SRC 2>/dev/null
+ended; net_down
+# Loopback, as fast as it goes.
+echo 0 > $CHECK
+/bin/tcp-flow sink 127.0.0.1:5003 & LS=$!; sleep 0.2
+echo "S|loopback|as fast as it goes"
+/bin/tcp-flow send 127.0.0.1:5003 --cc bbr3 --secs 3 --label loopback
+kill $LS; wait $LS 2>/dev/null
+ended
+# Connections that come and go while every socket's figures are read, over and over.
+echo 0 > $CHECK
+net_up 200 2 170 1 none
+echo "S|short connections|1,200 of them, 200 Mbit/s, 2 ms, loss 1%, every socket's figures read meanwhile"
+( while :; do ip netns exec c ss -tin > /dev/null 2>&1; done ) & ASK=$!
+( while :; do ip netns exec c ss -tin > /dev/null 2>&1; done ) & ASK2=$!
+for ((i = 0; i < 400; i++)); do ip netns exec c /bin/tcp-flow send 10.0.2.2:5001 --cc bbr3,bbr3,bbr3 --secs 0.02 > /dev/null; done
+kill $ASK $ASK2; wait $ASK $ASK2 2>/dev/null
+ended; net_down
+# Every second connection begins with no memory for its state; then every one.
+echo 2 > /sys/module/tcp_bbr3/parameters/fail_alloc
+run "no memory at first" 50 40 170 1 none - --cc bbr3,bbr3,bbr3,bbr3 --secs 6
+echo 1 > /sys/module/tcp_bbr3/parameters/fail_alloc
+run "no memory ever" 50 40 170 1 none - --cc bbr3 --secs 6
+echo 0 > /sys/module/tcp_bbr3/parameters/fail_alloc
+"""
+
+END = r"""
+dmesg | grep -E "WARNING:|BUG:|Oops|Call Trace|general protection|tcp_bbr3:" | grep -v "loading out-of-tree\|module verification" | sed 's/^/K|/'
+sleep 1
+if [ -e /sys/module/tcp_bbr3 ]; then rmmod tcp_bbr3 && echo "R|unloaded" || echo "R|still in use"; fi
+exit 0
+"""
+
+
+def build(selfcheck):
+    """The module built from the repository's source, in a folder of its own."""
+    release = os.uname().release
+    headers = f"/lib/modules/{release}/build"
+    if not os.path.isfile(os.path.join(headers, "Makefile")):
+        sys.exit(f"bbr3-check: this kernel's headers aren't installed (the kernel-devel package for {release})")
+    work = tempfile.mkdtemp(prefix="olo-bbr3-check-", dir="/var/tmp")
+    for name in ("tcp_bbr3.c", "bbr3_olo.h", "bbr3_selfcheck.h", "Kbuild"):
+        shutil.copy(os.path.join(SOURCE, name), work)
+    made = subprocess.run(["make", "-C", headers, f"M={work}", "modules"] + (["BBR3_SELFCHECK=y"] if selfcheck else []), capture_output=True, text=True)
+    ko = os.path.join(work, "tcp_bbr3.ko")
+    if made.returncode != 0 or not os.path.isfile(ko):
+        shutil.rmtree(work, ignore_errors=True)
+        sys.exit("bbr3-check: the module didn't build:\n" + made.stderr[-3000:])
+    warnings = [l for l in made.stderr.splitlines() if "warning:" in l and "BTF" not in l]
+    return work, ko, warnings
+
+
+def guest(script, ko=None, kernel=None, timeout=1800):
+    """`script` run in a guest; its output, and the guest's exit status."""
+    with tempfile.NamedTemporaryFile("w", suffix=".sh", dir="/var/tmp", delete=False) as f:
+        f.write(script)
+    try:
+        cmd = GUEST + ["--quiet", "--timeout", str(timeout), "--bin", FLOW]
+        if kernel:
+            cmd += ["--kernel", kernel]
+        else:
+            for m in MODULES:
+                cmd += ["--module", m]
+        if ko:
+            cmd += ["--ko", ko]
+        ran = subprocess.run(cmd + [f.name], capture_output=True, text=True)
+        return ran.stdout, ran.returncode, ran.stderr
+    finally:
+        os.unlink(f.name)
+
+
+def links(which, cc):
+    return "".join(f'run "{name}" {rate} {rtt} {queue} {loss} {qdisc} "{events}" {flow.format(cc=cc)}\n' for name, rate, rtt, queue, loss, qdisc, events, flow in which)
+
+
+def parse(out):
+    """The guest's output as runs: {name, net, flows, extra, dropped, tlp, check, time}, and what else it said."""
+    runs, cur, kernel, module = [], None, [], None
+    for line in out.splitlines():
+        kind, _, rest = line.partition("|")
+        if kind == "S":
+            name, _, net = rest.partition("|")
+            cur = {"name": name, "net": net, "flows": [], "extra": None, "dropped": "", "tlp": "", "check": {}, "conns": None, "time": {}}
+            runs.append(cur)
+        elif line.startswith("{") and cur is not None:
+            cur["flows"] = json.loads(line)["flows"]
+        elif kind == "X" and cur is not None:
+            cur["extra"] = rest
+        elif kind == "D" and cur is not None:
+            cur["dropped"], _, cur["tlp"] = rest.partition("|")
+        elif kind == "C" and cur is not None:
+            m = re.match(r"(sample new|sample retransmitted|lost new|lost retransmitted): lookups (\d+) unknown (\d+) no_truth (\d+) in_flight exact (\d+) within1 (\d+) within3 (\d+) more (\d+) max (\d+) lost same (\d+) wrong (\d+) max (\d+)", rest)
+            if m:
+                cur["check"][m[1]] = dict(zip(("lookups", "unknown", "no_truth", "exact", "within1", "within3", "more", "max", "lost_same", "lost_wrong", "lost_max"), map(int, m.groups()[1:])))
+            m = re.match(r"connections (\d+) with_every_loss_told (\d+) lost_told (\d+) lost_true (\d+) tlp_recoveries_told (\d+)", rest)
+            if m:
+                cur["conns"] = dict(zip(("n", "all_told", "told", "true", "tlp"), map(int, m.groups())))
+            m = re.match(r"time (\w+): (\d+) calls, (\d+) ns each", rest)
+            if m:
+                cur["time"][m[1]] = (int(m[2]), int(m[3]))
+        elif kind == "K":
+            kernel.append(rest)
+        elif kind == "R":
+            module = rest
+    return runs, kernel, module
+
+
+def flow_line(f):
+    if "error" in f:
+        return f"   {f['cc']}: {f['error']}"
+    b = f.get("bbr")
+    return f"   {f['cc']:6} {f['mbps']:8.2f} Mbit/s  retransmitted {f['retrans_pct']:5.2f}% ({f['total_retrans']})  timeouts {f['total_rto']}  round trip mean {f['rtt_ms_mean']:.1f}, 95th percentile {f['rtt_ms_p95']:.1f}, least {f['min_rtt_ms']:.1f} ms" + (f"  model {b['bw_mbps']:.1f} Mbit/s, {b['phase']}" if b else "")
+
+
+def selfcheck(quick):
+    work, ko, warnings = build(True)
+    try:
+        which = [l for l in LINKS + CHECKED_TOO if not quick or l[0] in QUICK]
+        script = LIB + "insmod /ko/tcp_bbr3.ko || exit 1\n" + links(which, "bbr3") + ("" if quick else SPECIAL) + END
+        out, status, console = guest(script, ko)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    runs, kernel, module = parse(out)
+    wrong = [f"the build warned: {w}" for w in warnings]
+    if status != 0:
+        wrong.append(f"the guest ended {status}")
+        sys.stderr.write(console[-4000:])
+    compared = 0
+    for r in runs:
+        print(f"\n== {r['name']}: {r['net']}" + (f"; the bottleneck dropped {r['dropped']}" if r["dropped"] else ""))
+        if r["extra"]:
+            print("   " + r["extra"])
+        for f in r["flows"]:
+            print(flow_line(f))
+            if "error" in f:
+                wrong.append(f"{r['name']}: a flow failed: {f['error']}")
+        for what, c in r["check"].items():
+            if not c["lookups"]:
+                continue
+            n = c["lookups"] - c["unknown"] - c["no_truth"]
+            compared += n
+            print(f"   {what:21}: {c['lookups']:7} looked up, {c['unknown']} not known, {n} compared: in flight the same {c['exact']}, within 1 {c['within1']}, within 3 {c['within3']}, further {c['more']}; lost so far the same {c['lost_same']}, not {c['lost_wrong']}")
+            if c["exact"] != n or c["lost_same"] != n:
+                wrong.append(f"{r['name']}: {what}: {n - c['exact']} of {n} in-flight figures and {c['lost_wrong']} lost-so-far figures weren't the true ones (furthest {c['max']} and {c['lost_max']})")
+            # (Not known: only what was sent before a connection had its
+            # state, or a retransmission cut again since. A link where most
+            # isn't known is one where the log isn't working.)
+            if c["unknown"] * 20 > c["lookups"] and "no memory" not in r["name"]:
+                wrong.append(f"{r['name']}: {what}: {c['unknown']} of {c['lookups']} not known")
+        c = r["conns"]
+        if c:
+            print(f"   connections {c['n']}: every loss told in {c['all_told']} ({c['told']} told, TCP counted {c['true']}); tail-probe recoveries told {c['tlp']}" + (f", the kernel's count {r['tlp']}" if r["tlp"] else ""))
+            if c["all_told"] != c["n"] or c["told"] != c["true"]:
+                wrong.append(f"{r['name']}: {c['told']} losses told, TCP counted {c['true']}")
+            if r["tlp"] and int(r["tlp"]) != c["tlp"] and r["name"] not in ("accepted connections",):
+                wrong.append(f"{r['name']}: {c['tlp']} tail-probe recoveries told, the kernel counted {r['tlp']}")
+    for k in kernel:
+        print("kernel:", k)
+        wrong.append(f"the kernel logged: {k}")
+    if module != "unloaded":
+        wrong.append(f"the module didn't unload at the end ({module})")
+    expected = len(which) + (0 if quick else 6)
+    if len(runs) != expected:
+        wrong.append(f"{len(runs)} of {expected} links ran")
+    told = [r for r in runs if r["name"] == "tail losses"]
+    if told and (not told[0]["conns"] or told[0]["conns"]["tlp"] == 0):
+        wrong.append("tail losses: no tail-probe recovery happened to check (run it again)")
+    print(f"\n{compared} figures compared with the true ones over {len(runs)} links; the module {module}")
+    for w in wrong:
+        print("NOT SO:", w)
+    print("BBRv3's module is as it should be" if not wrong else f"{len(wrong)} wrong")
+    return 1 if wrong else 0
+
+
+def timing():
+    work, ko, _ = build(True)
+    try:
+        which = [l for l in LINKS if l[0] in ("plain", "loss 1%", "fast", "fq")]
+        loop = '/bin/tcp-flow sink 127.0.0.1:5003 & LS=$!; sleep 0.2\necho 0 > $CHECK\necho "S|loopback|as fast as it goes"\n/bin/tcp-flow send 127.0.0.1:5003 --cc bbr3 --secs 3 --label loopback\nkill $LS; wait $LS 2>/dev/null\nended\n'
+        out, status, console = guest(LIB + "insmod /ko/tcp_bbr3.ko timing=1 || exit 1\n" + links(which, "bbr3") + loop + END, ko)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    if status != 0:
+        sys.stderr.write(console[-4000:])
+    names = {"ack": "an ACK, all of it", "ack_bbr_main": "  of which BBR's own", "ack_begins": "an ACK begins", "burst": "a burst of sending begins", "lost": "a lost packet", "retransmission": "a retransmission"}
+    for r in parse(out)[0]:
+        print(f"\n== {r['name']}: {r['net']}")
+        for f in r["flows"]:
+            print(flow_line(f))
+            secs = f.get("secs", 1)
+        for key, label in names.items():
+            if key in r["time"]:
+                n, ns = r["time"][key]
+                print(f"   {label:26} {ns:5} ns, {n / secs:9.0f} a second")
+        t = r["time"]
+        if "ack" in t:
+            total = sum(n * ns for k, (n, ns) in t.items() if k != "ack_bbr_main")
+            print(f"   in all {total / secs / 1e6:.2f} ms of a second ({total / secs / 1e7:.3f}% of a core), {(total - t['ack_bbr_main'][0] * t['ack_bbr_main'][1]) / secs / 1e6:.2f} ms of it Olo's side")
+    return status
+
+
+def compare(reference, against, reps):
+    work, ko, _ = build(False)
+    out_dir = tempfile.mkdtemp(prefix="olo-bbr3-compare-", dir="/var/tmp")
+    try:
+        sets = [("bbr3 (Olo's module)", "bbr3", ko, None)]
+        if reference:
+            sets.append(("bbr (BBRv3, Google's kernel)", "bbr", None, reference))
+        sets += [(f"{cc} (this kernel's)", cc, None, None) for cc in against]
+        results = {label: {} for label, *_ in sets}
+        for rep in range(reps):
+            procs = []
+            for label, cc, module, kernel in sets:
+                script = LIB + ("insmod /ko/tcp_bbr3.ko || exit 1\n" if module else "") + links(LINKS, cc) + "exit 0\n"
+                path = os.path.join(out_dir, f"{cc}-{'ref' if kernel else 'stock'}-{rep}.sh")
+                open(path, "w").write(script)
+                cmd = GUEST + ["--quiet", "--timeout", "1800", "--bin", FLOW]
+                cmd += ["--kernel", kernel] if kernel else [a for m in MODULES for a in ("--module", m)]
+                cmd += ["--ko", module] if module else []
+                procs.append((label, subprocess.Popen(cmd + [path], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)))
+            for label, p in procs:
+                out = p.communicate()[0]
+                for r in parse(out)[0]:
+                    results[label].setdefault(r["name"], []).append(r["flows"])
+            print(f"run {rep + 1} of {reps} done", file=sys.stderr)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+        shutil.rmtree(out_dir, ignore_errors=True)
+
+    def cell(vals, fmt):
+        if not vals:
+            return "-"
+        return (fmt % statistics.mean(vals)) + (" ±" + (fmt % statistics.pstdev(vals)).strip() if len(vals) > 1 else "")
+
+    print(f"{'link':28} {'flow':30} | {'Mbit/s':>15} | {'retransmitted %':>15} | {'round trip, mean ms':>19} | {'95th percentile':>15}")
+    for name, rate, rtt, queue, loss, qdisc, events, flow in LINKS:
+        net = f"{rate} Mbit/s, {rtt} ms, queue {queue}" + (f", loss {loss}%" if loss else "")
+        print(f"\n{name}: {net}")
+        flows = max((len(r[0]) for label in results for r in [results[label].get(name, [[]])]), default=0)
+        for i in range(flows):
+            for label, cc, *_ in sets:
+                fl = [r[i] for r in results[label].get(name, []) if i < len(r) and "error" not in r[i]]
+                who = label if i == 0 or fl and fl[0]["cc"] == cc else f"  cubic beside {cc}"
+                print(f"{'':28} {who:30} | " + " | ".join([f"{cell([f['mbps'] for f in fl], '%.2f'):>15}", f"{cell([f['retrans_pct'] for f in fl], '%.2f'):>15}", f"{cell([f['rtt_ms_mean'] for f in fl], '%.1f'):>19}", f"{cell([f['rtt_ms_p95'] for f in fl], '%.1f'):>15}"]))
+    return 0
+
+
+def main():
+    args = sys.argv[1:]
+    if "-h" in args or "--help" in args:
+        print(__doc__)
+        return 0
+    if not os.path.isfile(FLOW):
+        sys.exit("bbr3-check: build tcp-flow first (cargo build --release -p olo-net --example tcp-flow)")
+    opt = lambda flag, default: args[args.index(flag) + 1] if flag in args else default
+    if "--timing" in args:
+        return timing()
+    if "--compare" in args:
+        reference = opt("--reference", None)
+        if reference and not os.path.isfile(reference):
+            sys.exit(f"bbr3-check: no kernel at {reference}")
+        return compare(reference, [c for c in opt("--against", "cubic,bbr").split(",") if c], int(opt("--reps", 3)))
+    return selfcheck("--quick" in args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

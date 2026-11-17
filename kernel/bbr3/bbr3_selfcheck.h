@@ -18,7 +18,6 @@
  * cycle counter, and `selfcheck` says each part's count and mean.
  */
 #include <linux/hash.h>
-#include <linux/kprobes.h>
 #include <asm/msr.h>
 #include <asm/tsc.h>
 
@@ -27,6 +26,11 @@ struct bbr3_truth {
 	u32 end_seq;
 	u32 in_flight;
 	u32 lost;
+	/* (To say what went wrong, where something does.) */
+	u32 delivered;
+	u32 stamp;
+	u32 sends;	/* how many times a packet ending here has gone */
+	u8 inner;	/* a part of a larger packet's */
 };
 
 #define BBR3_TRUTH_BITS 16
@@ -133,6 +137,21 @@ static void bbr3_check(const struct sock *sk, u32 end_seq, bool retrans,
 		else
 			t->lost_wrong++;
 		t->lost_max = max(t->lost_max, d);
+		if (sent->in_flight != truth.in_flight || sent->lost != truth.lost) {
+			const struct tcp_sock *tp = tcp_sk(sk);
+
+			pr_info_ratelimited("tcp_bbr3: selfcheck: %s %s end %u: looked up in_flight %u lost %u; true %u %u (sent at delivered %u stamp %u, %u sends, inner %u); now delivered %u lost %u out %u sacked %u lost_out %u retrans_out %u total_retrans %u segs_out %u first_tx %u una %u nxt %u ca %u\n",
+				lost_skb ? "lost" : "sample",
+				retrans ? "retransmitted" : "new", end_seq,
+				sent->in_flight, sent->lost, truth.in_flight,
+				truth.lost, truth.delivered, truth.stamp,
+				truth.sends, truth.inner, tp->delivered, tp->lost,
+				tp->packets_out, tp->sacked_out, tp->lost_out,
+				tp->retrans_out, tp->total_retrans,
+				tp->data_segs_out, (u32)tp->first_tx_mstamp,
+				tp->snd_una, tp->snd_nxt,
+				inet_csk(sk)->icsk_ca_state);
+		}
 	}
 	raw_spin_unlock_irqrestore(&bbr3_truth_lock, flags);
 }
@@ -178,36 +197,56 @@ struct bbr3_tx_call {
 	u32 seq, mss;
 };
 
-static int bbr3_tx_entry(struct kretprobe_instance *ri, struct pt_regs *regs)
+/* (An fprobe, as the module's own are: a kretprobe isn't run for a call
+ * that comes while another probe's handler is running on the processor,
+ * an ACK's retransmission in an interrupt during a send's, and a true
+ * figure went unrecorded once in some 100,000.)
+ */
+static int bbr3_tx_entry(struct fprobe *fp, unsigned long entry_ip,
+			 unsigned long ret_ip, struct ftrace_regs *fregs,
+			 void *entry_data)
 {
-	struct sock *sk = (struct sock *)regs_get_kernel_argument(regs, 0);
+	struct sock *sk = (struct sock *)ftrace_regs_get_argument(fregs, 0);
 	const struct sk_buff *skb =
-		(const struct sk_buff *)regs_get_kernel_argument(regs, 1);
-	struct bbr3_tx_call *call = (struct bbr3_tx_call *)ri->data;
+		(const struct sk_buff *)ftrace_regs_get_argument(fregs, 1);
+	struct bbr3_tx_call *call = entry_data;
 	const struct tcp_sock *tp = tcp_sk(sk);
 
 	if (inet_csk(sk)->icsk_ca_ops != &tcp_bbr3_cong_ops ||
 	    TCP_SKB_CB(skb)->end_seq == TCP_SKB_CB(skb)->seq ||
 	    READ_ONCE(bbr3_timing))
-		return 1;	/* not ours, or no data: no return probe */
+		return 1;	/* not ours, or no data: no call on return */
 	call->truth.sk = sk;
 	call->truth.end_seq = TCP_SKB_CB(skb)->end_seq;
 	call->truth.in_flight = tcp_packets_in_flight(tp) + tcp_skb_pcount(skb);
 	call->truth.lost = tp->lost;
+	call->truth.delivered = tp->delivered;
+	call->truth.stamp = (u32)(max(tp->tcp_wstamp_ns, tp->tcp_clock_cache) / NSEC_PER_USEC);
+	call->truth.inner = 0;
 	call->seq = TCP_SKB_CB(skb)->seq;
 	call->mss = tcp_skb_mss(skb);
 	return 0;
 }
 
-static int bbr3_tx_return(struct kretprobe_instance *ri, struct pt_regs *regs)
+static void bbr3_tx_return(struct fprobe *fp, unsigned long entry_ip,
+			   unsigned long ret_ip, struct ftrace_regs *fregs,
+			   void *entry_data)
 {
-	struct bbr3_tx_call *call = (struct bbr3_tx_call *)ri->data;
+	struct bbr3_tx_call *call = entry_data;
 	unsigned long flags;
 
-	if (regs_return_value(regs))
-		return 0;	/* not sent */
+	if ((int)ftrace_regs_get_return_value(fregs))
+		return;		/* not sent */
 	raw_spin_lock_irqsave(&bbr3_truth_lock, flags);
-	*bbr3_truth_slot(call->truth.sk, call->truth.end_seq) = call->truth;
+	{
+		struct bbr3_truth *slot = bbr3_truth_slot(call->truth.sk,
+							  call->truth.end_seq);
+
+		call->truth.sends = slot->sk == call->truth.sk &&
+			slot->end_seq == call->truth.end_seq ? slot->sends + 1 : 1;
+		*slot = call->truth;
+	}
+	call->truth.inner = 1;
 	/* And of each part it may be cut into later, at a segment's end:
 	 * Google's tcp_fragment() gives the first part the in-flight count
 	 * "as if 1st were sent by itself".
@@ -220,15 +259,12 @@ static int bbr3_tx_return(struct kretprobe_instance *ri, struct pt_regs *regs)
 			call->truth;
 	}
 	raw_spin_unlock_irqrestore(&bbr3_truth_lock, flags);
-	return 0;
 }
 
-static struct kretprobe bbr3_tx_probe = {
-	.kp.symbol_name	= "__tcp_transmit_skb",
+static struct fprobe bbr3_tx_probe = {
 	.entry_handler	= bbr3_tx_entry,
-	.handler	= bbr3_tx_return,
-	.data_size	= sizeof(struct bbr3_tx_call),
-	.maxactive	= 256,
+	.exit_handler	= bbr3_tx_return,
+	.entry_data_size = sizeof(struct bbr3_tx_call),
 };
 
 static int bbr3_selfcheck_show(char *buf, const struct kernel_param *kp)
@@ -257,8 +293,10 @@ static int bbr3_selfcheck_show(char *buf, const struct kernel_param *kp)
 		bbr3_conns, bbr3_conns_lost_same, bbr3_lost_told,
 		bbr3_lost_true, bbr3_tlp_told);
 	raw_spin_unlock_irqrestore(&bbr3_truth_lock, flags);
-	len += sysfs_emit_at(buf, len, "missed sends %d\n",
-			     bbr3_tx_probe.nmissed);
+	len += sysfs_emit_at(buf, len,
+			     "missed sends %lu lost %lu retransmissions %lu\n",
+			     bbr3_tx_probe.nmissed, bbr3_lost_probe.nmissed,
+			     bbr3_rtx_probe.nmissed);
 	for (i = 0; i < BBR3_T_COUNT; i++) {
 		static const char * const part[BBR3_T_COUNT] = {
 			"ack", "ack_bbr_main", "ack_begins", "burst", "lost",
@@ -298,7 +336,8 @@ module_param_cb(selfcheck, &bbr3_selfcheck_ops, NULL, 0644);
 
 static int bbr3_selfcheck_start(void)
 {
-	int ret = register_kretprobe(&bbr3_tx_probe);
+	static const char *tx[] = { "__tcp_transmit_skb" };
+	int ret = register_fprobe_syms(&bbr3_tx_probe, tx, ARRAY_SIZE(tx));
 
 	if (ret < 0)
 		pr_err("tcp_bbr3: self-check: __tcp_transmit_skb can't be probed (%d)\n", ret);
@@ -307,5 +346,5 @@ static int bbr3_selfcheck_start(void)
 
 static void bbr3_selfcheck_stop(void)
 {
-	unregister_kretprobe(&bbr3_tx_probe);
+	unregister_fprobe(&bbr3_tx_probe);
 }

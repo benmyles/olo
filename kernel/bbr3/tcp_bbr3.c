@@ -2325,6 +2325,7 @@ static void bbr_set_state(struct sock *sk, u8 new_state)
  */
 
 static struct tcp_congestion_ops tcp_bbr3_cong_ops;
+static struct fprobe bbr3_lost_probe, bbr3_rtx_probe;
 
 /* What the self-checking build times (bbr3_selfcheck.h). */
 enum {
@@ -2456,10 +2457,15 @@ static void bbr3_sample(const struct sock *sk, const struct bbr3_tx *tx,
 	if (!k->prior_mstamp)
 		return;
 	/* The packet: the most recently sent of those this ACK took, ending
-	 * at last_end_seq (tcp_rate_skb_delivered()).
+	 * at last_end_seq, stamped first_tx_mstamp
+	 * (tcp_rate_skb_delivered()); the FIN is on it if one was sent and
+	 * it ends where everything written does.
 	 */
-	known = bbr3_tx_lookup(tx, k->last_end_seq, tp->mss_cache,
-			       k->is_retrans, k->prior_delivered, &sent);
+	known = bbr3_tx_lookup(tx, k->last_end_seq,
+			       (sk->sk_shutdown & SEND_SHUTDOWN) &&
+			       k->last_end_seq == tp->write_seq,
+			       tp->mss_cache, k->is_retrans, k->prior_delivered,
+			       (u32)tp->first_tx_mstamp, &sent);
 	bbr3_check(sk, k->last_end_seq, k->is_retrans, false, known, &sent);
 	if (!known)
 		return;
@@ -2667,8 +2673,10 @@ static void bbr3_skb_marked_lost(struct sock *sk, const struct sk_buff *skb)
 	 * then see if the loss rate went too high, and if so at which packet.
 	 */
 	known = bbr3_tx_lookup(&state->tx, scb->end_seq,
+			       scb->tcp_flags & TCPHDR_FIN,
 			       tcp_skb_mss(skb) ? : tp->mss_cache, retrans,
-			       scb->tx.delivered, &sent);
+			       scb->tx.delivered,
+			       (u32)tcp_skb_timestamp_us(skb), &sent);
 	bbr3_check(sk, scb->end_seq, retrans, true, known, &sent);
 	if (!known)
 		return;
@@ -2766,7 +2774,8 @@ static void bbr3_rtx_exit(struct fprobe *fp, unsigned long entry_ip,
 	if ((int)ftrace_regs_get_return_value(fregs) || unlikely(!state))
 		return;		/* not sent */
 	bbr3_tx_note_rtx(call->sk, &state->tx, TCP_SKB_CB(call->skb)->end_seq,
-			 tcp_skb_pcount(call->skb));
+			 tcp_skb_pcount(call->skb),
+			 (u32)tcp_skb_timestamp_us(call->skb));
 	bbr3_time(BBR3_T_RTX, since);
 }
 

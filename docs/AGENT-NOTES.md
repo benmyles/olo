@@ -42,6 +42,32 @@ Each note: what to do, then why (what happened), then how to apply it.
 - **tsession's clicks and crops are logical; its shots are device
   pixels** (divide by the scale). Anything that talks over a bus needs a
   private bus.
+- **A kernel module is tried in a guest, never in the person's kernel.**
+  `tools/dev/kvm-guest SCRIPT` runs this computer's own kernel in QEMU
+  with KVM (`/dev/kvm` is everyone's here; no root), a root made of this
+  computer's programs: a start takes under a second. Its script's
+  standard output comes back clean (a serial port of its own); the
+  console's only on failure with `--quiet`. `ip netns add` needs
+  `/var/run` (it's there); `seq` isn't (use `for ((i…))`); a program
+  more is `--bin`. An argument can't hold a double quote.
+- **Probing the kernel from a module: what bit.** A kretprobe is skipped
+  for a call that arrives while another probe's handler runs on the same
+  processor (an interrupt's TCP work during a send's): the self-check's
+  first truth probe missed one transmission in about 100,000 and blamed
+  the module. An fprobe (ftrace's) isn't. An `int` a probed function
+  returns is in the low half of the register only: `(int)` it. A netem
+  or tbf qdisc on the *sender's* own interface changes what TCP does
+  (its own queue limits see the held packets): shape on a router
+  namespace, and let `tbf` cut TSO packets to the wire's size there.
+- **This kernel's TCP, for whoever touches kernel/bbr3.** `tcp_rate_gen`,
+  `tcp_rate_skb_sent` and `tcp_rate_skb_delivered` are inlined (no
+  symbol); `tcp_mark_skb_lost`, `__tcp_retransmit_skb` and
+  `__tcp_transmit_skb` are there. A FIN takes a sequence number and no
+  packet when it rides on data. A packet's timestamp is set even when
+  its sending then fails. `tcp_bbr_info` can't grow from a module (the
+  kernel copies a fixed union). The reference kernel with Google's
+  patches is five minutes to build (kernel/bbr3/README.md); its source
+  and build were in /var/tmp/claude-bbr/ref, which is scratch.
 - **What a test session's app was sent and what it holds.**
   `tsession run NAME WAYLAND_DEBUG=1 olo-APP` writes every Wayland
   message the app gets to `/var/tmp/olo-dev/NAME/olo-APP.log`

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-16
 
+### Olo Doctor offers BBRv3 for TCP
+
+*15:59* — A new suggestion, "TCP could send with BBRv3": Use BBRv3 puts in Olo's module (Google's BBRv3 made for the kernel as it comes) and the service that builds and loads it at every start. Its text says what the congestion control in use does and what was measured (45.8 Mbit/s to CUBIC's 47.1 on a 50 Mbit/s link, with the round trip at 43 ms where CUBIC's was 69).
+
+![Olo Doctor offers BBRv3 for TCP](2026-11-16/155949-olo-doctor-offers-bbrv3-for-tcp.png)
+
 ### Sound: a quiet microphone's boost, suggested from how loud the voice comes in
 
 *13:14* — Preferences ▸ Sound ▸ Voice Processing has a boost for each microphone, in 3 dB steps. The voice service measures the voice's level as something records (its active speech level), the panel says it and what would bring it to the -26 dB aimed for, and Use Suggested sets that; Try It tries the suggested boost beside the other settings (Ben, 2026-11-16: some inputs like AirPods are not loud enough).

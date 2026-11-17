@@ -54,12 +54,13 @@ struct bbr3_snap {
 	u32 lost;		/* tp->lost */
 	u32 in_flight:30,	/* tcp_packets_in_flight(); a retransmission's: with it */
 	    app_limited:1,	/* tp->app_limited was set: packets sent from here are */
-	    rtx:1;		/* one retransmission's own, the packet ending at: */
-	u32 rtx_end;
+	    rtx:1;		/* one retransmission's own: the packet ending at */
+	u32 rtx_end;		/* rtx_end, sent at rtx_stamp (its timestamp, */
+	u32 rtx_stamp;		/* tcp_skb_timestamp_us(), the low 32 bits) */
 };
 
 #define BBR3_LOG_MIN	16
-#define BBR3_LOG_MAX	2048	/* 40 KB: a flight of more bursts than this loses its oldest */
+#define BBR3_LOG_MAX	2048	/* 49 KB: a flight of more bursts than this loses its oldest */
 
 struct bbr3_tx {
 	struct bbr3_snap *log;	/* a ring, oldest first; none until one is needed */
@@ -138,16 +139,17 @@ static void bbr3_tx_note(const struct sock *sk, struct bbr3_tx *tx)
 	tx->now.app_limited = !!tp->app_limited;
 	tx->now.rtx = 0;
 	tx->now.rtx_end = 0;
+	tx->now.rtx_stamp = 0;
 	tx->have_now = 1;
 }
 
-/* A retransmission has just gone, of `pcount` segments ending at end_seq:
- * its own record, as Google's kernel writes in the packet (the packets in
- * flight with it, tp->lost; tp->delivered is what it now has as
- * tx.delivered).
+/* A retransmission has just gone, of `pcount` segments ending at end_seq,
+ * stamped `stamp`: its own record, as Google's kernel writes in the
+ * packet (the packets in flight with it, tp->lost; tp->delivered is what
+ * it now has as tx.delivered).
  */
 static void bbr3_tx_note_rtx(const struct sock *sk, struct bbr3_tx *tx,
-			     u32 end_seq, u32 pcount)
+			     u32 end_seq, u32 pcount, u32 stamp)
 {
 	const struct tcp_sock *tp = tcp_sk(sk);
 	struct bbr3_snap rtx = {
@@ -158,6 +160,7 @@ static void bbr3_tx_note_rtx(const struct sock *sk, struct bbr3_tx *tx,
 		.app_limited = !!tp->app_limited,
 		.rtx = 1,
 		.rtx_end = end_seq,
+		.rtx_stamp = stamp,
 	};
 
 	bbr3_log_push(tx, &rtx);
@@ -212,12 +215,15 @@ struct bbr3_sent {
 	bool app_limited;
 };
 
-/* A retransmitted packet's, by its end and the delivered count it went
- * at (tx.delivered): its own record, the last there is (of all at that
- * count: those sent between two ACKs).
+/* A retransmitted packet's, by its end, the delivered count it went at
+ * (tx.delivered) and its timestamp: its own record (of all at that
+ * count: those sent between two ACKs). The timestamp is what tells its
+ * last sending from one before at the same count (a probe, then a
+ * timeout, with no ACK between), should that last one not have been
+ * noted: then it isn't known, rather than taken for the one before.
  */
 static bool bbr3_tx_of_rtx(const struct bbr3_tx *tx, u32 end_seq,
-			   u32 delivered, struct bbr3_sent *sent)
+			   u32 delivered, u32 stamp, struct bbr3_sent *sent)
 {
 	u32 lo = 0, hi = tx->len;
 	const struct bbr3_snap *snap;
@@ -235,7 +241,8 @@ static bool bbr3_tx_of_rtx(const struct bbr3_tx *tx, u32 end_seq,
 		snap = bbr3_at(tx, --lo);
 		if (snap->delivered != delivered)
 			break;
-		if (snap->rtx && snap->rtx_end == end_seq) {
+		if (snap->rtx && snap->rtx_end == end_seq &&
+		    snap->rtx_stamp == stamp) {
 			sent->in_flight = snap->in_flight;
 			sent->lost = snap->lost;
 			sent->app_limited = snap->app_limited;
@@ -245,26 +252,36 @@ static bool bbr3_tx_of_rtx(const struct bbr3_tx *tx, u32 end_seq,
 	return false;
 }
 
-/* Of a packet ending at end_seq, sent at tx.delivered `delivered`, as new
- * data (segments of `mss` bytes) or as a retransmission. False if it
- * isn't known: sent before the module had the connection, older than the
- * log, or cut or joined since in a way that moved its end.
+/* Of a packet ending at end_seq (with the connection's FIN, if `fin`),
+ * sent at tx.delivered `delivered` and stamped `stamp`, as new data
+ * (segments of `mss` bytes) or as a retransmission. False if it isn't
+ * known: sent before the module had the connection, older than the log,
+ * or cut or joined since in a way that moved its end.
  */
-static bool bbr3_tx_lookup(const struct bbr3_tx *tx, u32 end_seq, u32 mss,
-			   bool retrans, u32 delivered, struct bbr3_sent *sent)
+static bool bbr3_tx_lookup(const struct bbr3_tx *tx, u32 end_seq, bool fin,
+			   u32 mss, bool retrans, u32 delivered, u32 stamp,
+			   struct bbr3_sent *sent)
 {
 	const struct bbr3_snap *snap;
+	u32 bytes;
 
 	if (retrans)
-		return bbr3_tx_of_rtx(tx, end_seq, delivered, sent);
+		return bbr3_tx_of_rtx(tx, end_seq, delivered, stamp, sent);
 	snap = bbr3_tx_of_new(tx, end_seq);
 	/* (Sent from it: then at its delivered count. If not, this isn't
 	 * its snapshot.)
 	 */
 	if (!snap || snap->delivered != delivered)
 		return false;
-	sent->in_flight = snap->in_flight +
-		DIV_ROUND_UP(end_seq - snap->snd_nxt, max(mss, 1U));
+	/* The packets from the snapshot to this one's end. A FIN takes a
+	 * sequence number and no packet where it rides on data (it is a
+	 * packet of its own only once everything before it was sent: then
+	 * it is all that's sent from its snapshot).
+	 */
+	bytes = end_seq - snap->snd_nxt;
+	if (fin && bytes > 1)
+		bytes--;
+	sent->in_flight = snap->in_flight + DIV_ROUND_UP(bytes, max(mss, 1U));
 	sent->lost = snap->lost;
 	sent->app_limited = snap->app_limited;
 	return true;

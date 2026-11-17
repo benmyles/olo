@@ -59,6 +59,7 @@ Ways in that keep the person's session out of it:
 | olo-doctor `releases::tests::installs_from_github` | network; two binaries into /var/tmp, removed | pass |
 | olo-voice `tests::speech_level_cost` | as is (release; pin it: `taskset -c 1`) | pass, 2026-11-16: a 10 ms frame 0.88 µs measured with its level said, 0.08 µs boosted |
 | olo-gpu-memory `tests::builds_for_this_kernel` | as is (needs kernel-devel for the running kernel, make and gcc; builds the live patch into /var/tmp, loads nothing) | pass, 2026-11-16: 1.9 s, a live patch of `ttm_backup_bytes_avail` for 7.2.15 |
+| olo-bbr3 `tests::builds_for_this_kernel` | as is (the same needs; builds `tcp_bbr3` into /var/tmp, loads nothing; what it does once loaded is `tools/dev/bbr3-check`'s, in a KVM guest) | pass, 2026-11-16: 1.7 s, `tcp_bbr3` version 3 for 7.2.15, without the self-check's probe |
 
 ## Media: olo-images, olo-preview, olo-video, olo-eld, olo-face
 

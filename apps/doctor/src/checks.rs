@@ -2774,7 +2774,8 @@ fn bbr3_steps(roots: &Roots) -> Vec<Step> {
 /// kernel), so Olo carries it as a module for the kernel as it comes
 /// (kernel/bbr3/README.md: what it took, how it was shown to be BBRv3,
 /// and the measurements quoted here: a 50 Mbit/s link with 40 ms of
-/// round trip and a queue of 170 packets, 12 s of sending). Where the
+/// round trip and a queue of 170 packets, 12 s of sending, in a KVM
+/// guest; `tools/dev/bbr3-check --compare` makes them again). Where the
 /// kernel's own "bbr" is BBRv3 already, the service chooses that one.
 /// Where the kernel can't take Olo's module (Secure Boot loads only
 /// signed ones) nothing is offered: there's nothing here to do about
@@ -2819,7 +2820,7 @@ fn tcp_bbr3(roots: &Roots, r: &mut Report) {
     }
     let does = match now.as_str() {
         "cubic" => "CUBIC, Linux's default: it sends faster and faster until a buffer along the way overflows and a packet is dropped, so an upload keeps the slowest link's queue full, and everything else waits behind it".to_owned(),
-        "bbr" => "the kernel's bbr, which is BBRv1: it goes by a model of the path too, but loses many more packets where the path's buffers are small (0.9% of what it sent was sent again, against BBRv3's 0.03%, in the test below), and takes more than its share beside other connections".to_owned(),
+        "bbr" => "the kernel's bbr, which is BBRv1: it goes by a model of the path too, but loses many more packets where the path's buffers are small (0.6% of what it sent was sent again, against BBRv3's 0.03%, in the test below), and takes more than its share beside other connections (40 of the 50 Mbit/s beside a CUBIC flow, where BBRv3 took 25)".to_owned(),
         other => other.to_owned(),
     };
     // How the service's last try went, where it has tried.
@@ -2838,7 +2839,7 @@ fn tcp_bbr3(roots: &Roots, r: &mut Report) {
         severity: Severity::Suggestion,
         title: "TCP could send with BBRv3".into(),
         detail: format!(
-            "New TCP connections here use {does}. BBRv3 (Google's) keeps a model of the path, its bandwidth and its round-trip time, and sends at that: on a test link of 50 Mbit/s with 40 ms of round trip it sent as fast as CUBIC with the round trip at 43 ms where CUBIC's was 68. It governs what this computer sends (uploads, calls, what it serves to others); what it receives is paced by whoever sends it. {how}"
+            "New TCP connections here use {does}. BBRv3 (Google's) keeps a model of the path, its bandwidth and its round-trip time, and sends at that: on a test link of 50 Mbit/s with 40 ms of round trip it sent 45.8 Mbit/s to CUBIC's 47.1, with the round trip at 43 ms where CUBIC's was 69. It governs what this computer sends (uploads, calls, what it serves to others); what it receives is paced by whoever sends it. {how}"
         ),
         fix: Some(Fix { label: "Use BBRv3".into(), root: true, steps }),
     });

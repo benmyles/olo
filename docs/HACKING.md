@@ -810,7 +810,8 @@ long after a way out comes back.
 | `crates/kit-base` | `olo-kit-base`: what the kit has that doesn't draw, re-exported by olo-kit under the same names: `instance` (one process per app), `settings`, `notify`, `files`, `places`, `watch`, `tracker`, `metrics` (the spacing system), `Proxy`, `search` (the query language, facets and suggestions), `masonry` (cards in columns), and `store` (an app's own files, written whole), `commands`, the socket agents and the command palette read apps through (its protocol, server and client), with `review`'s findings and `layout_review`'s checks, `list` (a list's selection and type-select), `spell` and `keys` (the keyboard profile's keys). Nothing in it draws. |
 | `crates/yuv` | `olo-yuv`: a video's picture as its decoder made it (`YuvFrame`: Y'CbCr 4:2:0 planes, or `YuvMemory`, the decoder's own memory) and the matrix that makes RGB of it. olo-interface draws it (`Painter::paint_yuv`) and re-exports it; what decodes (olo-images, olo-video, olo-vaapi) makes it. |
 | `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit: data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; the person's own choice first (`open::set_default`, kept in `~/.config/olo/default-apps.list` in mimeapps.list's form and copied into `olo-mimeapps.list` for other programs; `handler_cached` notices it changed, in any process), then Olo's apps, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`; Open With's few apps for a kind, `open::handlers_for`: as the person set them (`set_offered`, Preferences ▸ Default Apps ▸ Open With), else the one it opens in, Olo's own for it, then those whose entries claim it or a broader kind, by name, eight at most; worked out off the UI thread by `open::warm` (a folder's kinds, as Tracker lists it) and read by menus from `offer_cached`; `open::kind_of` names a kind by the file's name alone; `open::every_app` is every app whose command takes files (`DesktopEntry::takes_files`), Olo's first, and `Handler::icon` its icon; the person's own kinds of file are `mime::own_kinds` (`set_own_kinds`; `mime::type_for_extensions` keeps the type its extensions all share, else makes one of Olo's own, `application/x-olo-kind-EXT`, which `mime::from_name` gives first); desktop entries are kept until an applications folder changes, `desktop_entry::all_cached`; and the same for other programs: `open::for_others` gives the hidden `olo.viewer`, `olo.styled-edit` and `olo.tracker` desktop entries, each listing every type shared-mime-info knows that Olo opens with it, and an `olo-mimeapps.list` making them the defaults, which GIO, `gio open`/xdg-open and xdg-desktop-portal's OpenURI read before `mimeapps.list` while `XDG_CURRENT_DESKTOP` names Olo; olo-session writes them into `~/.local/share/applications` at start, makes that folder's `mimeinfo.cache` again when they change (`open::mime_cache`, as update-desktop-database would: GIO only finds an app for a type through it) and removes ones it wrote that are no longer wanted, `X-Olo-Written=true`; and, once Olo's Chrome is installed, `open::offer_browser` writes `~/.local/share/applications/olo-mimeapps.list` naming it for web pages and links, read after every `mimeapps.list` in the config directories so a browser the person chose wins, but ahead of the system's lists), `find_program`, `spawn_detached` (`spawn_detached_app` and `open::spawn_app` for a desktop entry's program, in a scope of its own: `scope`; Olo's own programs keep the launcher's stderr, the session's journal, so what Deskbar, Tracker or the palette starts logs like the rest; others' goes nowhere). |
-| `crates/net` | `olo-net`: the network changing under a program that talks over it (see "The network changing"): connections on a network that went cut at once, what's kept for the network (`PerNetwork`: an HTTP client) made again for the new one, requests tried again across a change (`across_changes`), waits for a network (`wait_online`), and with its `ureq` feature a download that goes on where it broke off (`http::Download`). |
+| `crates/net` | `olo-net`: the network changing under a program that talks over it (see "The network changing"): connections on a network that went cut at once, what's kept for the network (`PerNetwork`: an HTTP client) made again for the new one, requests tried again across a change (`across_changes`), waits for a network (`wait_online`), and with its `ureq` feature a download that goes on where it broke off (`http::Download`).; and one TCP connection as the kernel keeps it (`tcp_info`: `TCP_INFO`'s every figure, the congestion control read and set, BBR's model of the path, which BBR the kernel's own is). `examples/tcp-flow`: flows to measure a congestion control with (tools/dev/bbr3-check). |
+| `crates/kmod` | `olo-kmod`: one of Olo's kernel modules built for the running kernel and installed (see "BBRv3 for TCP"): what the services that load them share (apps/gpu-memory, apps/bbr3). |
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
 | `apps/airpods` | `olo-airpods`: AirPods, natively (see "AirPods"): the session's service and its command line. |
 | `apps/voice` | `olo-voice`: the voice service (see "The voice service"): every microphone through voice processing, and its command line. |
@@ -8519,6 +8520,104 @@ set a size ("Cannot change disksize for initialized device"). And
 Doctor's unit steps now fail where the unit stands failed after its
 start (`systemd::failed`), where before any start that systemd took
 was called done.
+
+## BBRv3 for TCP (kernel/bbr3, apps/bbr3, crates/kmod; Olo Doctor; tools/dev/bbr3-check, kvm-guest)
+
+How fast TCP sends is its congestion control's to decide. Linux's
+default, CUBIC, sends faster until a buffer along the way overflows: an
+upload keeps the slowest link's queue full, and everything else waits
+behind it. Its own `bbr` is BBRv1. BBRv3 (Google's) keeps the queue
+short, takes a fair share beside CUBIC and loses a twentieth of what
+BBRv1 does; it isn't in Linux, where Google's is a kernel with patches to
+TCP itself (Ben, 2026-11-16: "i also want olo doctor to offer to set the
+tcp congestion control algo to BBRv3 if it's not. if BBRv3 is not
+shipped with fedora then vendor the kernel module/patches and adapt if
+needed and then have olo doctor take care of doing everything needed to
+switch to BBRv3").
+
+**The module** (`kernel/bbr3`, `tcp_bbr3`, the congestion control
+`bbr3`; [kernel/bbr3/README.md](../kernel/bbr3/README.md) is its whole
+account: read it before changing it). Google's `tcp_bbr.c` kept
+untouched beside it (`upstream/`), and `tcp_bbr3.c` made of it for the
+kernel as it comes: the algorithm unchanged, and what it needs of
+Google's patches made in the module from what any congestion control is
+given. The packets in flight and lost when each packet was sent, which
+the patches record in the packet, are looked up in a log of snapshots
+taken wherever TCP calls the module before it sends (`bbr3_olo.h`);
+each retransmission and each lost packet is told by a probe (ftrace's
+fprobe) on the function that does it; its state, too big for the room a
+socket has, is allocated. Not a patched kernel: TCP is built into the
+kernel, so the patches mean rebuilding the whole kernel at every update,
+and running one that isn't Fedora's.
+
+It is shown, not assumed, in a KVM guest (below), by
+**`tools/dev/bbr3-check`**: a build that also takes the true figures
+where the patched kernel records them, and compares every one looked up
+(1.3 million over 25 links: all the same; every loss told; tail-probe
+recoveries the kernel's own count); `--compare` beside Google's real
+BBRv3 in a kernel built for the guest with its patches (15 links three
+times each: the same within the runs' spread), and beside this kernel's
+CUBIC and BBRv1; `--timing` for what it costs (333 ns an ACK at
+50 Mbit/s, 226 of them BBR's own; 0.10% of a core there, 0.36% at
+500 Mbit/s; nothing while a connection is idle). Run it after any
+change to the module, and on each new kernel series before the module
+is trusted with it (the README's "A new kernel" lists what it leans on;
+the build itself stops if the two probed functions are declared
+otherwise).
+
+**`olo-kmod`** (crates/kmod) is what Olo's kernel modules' services
+share: a module's source carried in its service's program, built for
+the running kernel with the kernel's own build system (`make` and the
+compiler: one of the few places Olo runs another program, there being
+no other way), in `/var/lib/STATE/KERNEL`, installed to
+`/lib/modules/KERNEL/extra/olo` (the one place SELinux lets a service
+load a module from), built again for another source or a kernel of the
+same name rebuilt, and removed with its kernel (`tidy`).
+`olo-gpu-memory` ("Windows' buffers stay in memory") is on it too.
+
+**`olo-bbr3`** (apps/bbr3; root, systemd's `olo-bbr3.service`, at every
+start) builds the module where it hasn't yet (a new kernel's first
+start: two seconds), loads it, and makes `bbr3` what new connections
+use (`net.ipv4.tcp_congestion_control`; what it was is kept in
+`/var/lib/olo-bbr3/was`). Connections there already keep theirs; a
+network namespace made later begins with the system's. Where the
+kernel's own `bbr` is BBRv3 already (a kernel built with Google's
+patches: told by what it answers for a socket,
+`olo_net::tcp_info::kernels_bbr_version`), that one is chosen and
+nothing is built. A module built from another source (Olo upgraded)
+while the old one is loaded is built at once and loaded from the next
+start: a module can't be changed under the connections that run it. It
+says how it went in `/run/olo-bbr3/status` ("bbr3", "bbr", or "failed: "
+and why); `--status` prints what there is as JSON (anyone); `--remove`
+(its service's stop) gives new connections back what they had and
+unloads the module once none runs it. Where it can't (no headers, a
+build that fails on a kernel whose TCP has changed, Secure Boot refusing
+an unsigned module), connections go on with what there was.
+
+**Olo Doctor** (`tcp_bbr3` in checks.rs): "TCP could send with BBRv3",
+a suggestion, whose fix, **Use BBRv3**, installs the service (root's
+copy of the program in /usr/local/libexec/olo, its unit, enabled and
+started; what building needs installed first where it's missing). Its
+text says what the congestion control in use does and what was measured.
+Fine once new connections use it and its service is this build's;
+"only until the next start" where it's in use without the service.
+Nothing is offered with Secure Boot on (unless the kernel has BBRv3
+itself). The default qdisc is left as it is: BBR paces by TCP's own
+timers where the qdisc doesn't (`fq`), which Wi-Fi's has none of
+anyway, and the measurements with and without `fq` don't differ.
+
+**A kernel to test with** (`tools/dev/kvm-guest`). Nothing of a kernel
+module is tried in the person's own kernel: a fault in one stops the
+whole computer. `kvm-guest SCRIPT` starts this computer's kernel (its
+image is in `/lib/modules/RELEASE`, so a module built for this kernel
+loads) in a KVM guest whose root is an initramfs made on the spot of
+this computer's programs (bash, ip, tc, ss and what's named, with the
+libraries they load) and the kernel modules named; runs the script as
+its root; and gives back its output and exit status. No root is needed
+(QEMU with `/dev/kvm`), nothing is installed, and it's gone when it
+ends; a start takes under a second. `--kernel` runs another kernel (the
+reference one with Google's patches). `olo_net`'s `tcp-flow` (crates/net
+examples) makes the flows and reads what the kernel says of each.
 
 ## Every frame on time (app_server frames.rs; Activity Monitor ▸ Displays)
 
