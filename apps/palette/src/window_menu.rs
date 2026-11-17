@@ -21,7 +21,7 @@ use olo_kit::{
     menu::{self, Menu, MenuPopup},
     point, px, tracker,
 };
-use olo_protocol::{Client, KeyboardProfile, Reply, Request, app_keys, shortcuts};
+use olo_protocol::{Client, KeyboardProfile, Pin, Reply, Request, Tile, app_keys, shortcuts};
 
 /// What `--window-menu` asked for.
 #[derive(Debug, Clone, PartialEq)]
@@ -36,6 +36,15 @@ impl Ask {
         let i = args.iter().position(|a| a == "--window-menu")?;
         let num = |n: usize| args.get(i + n).and_then(|a| a.parse::<f32>().ok());
         Some(Ask { window: args.get(i + 1)?.parse().ok()?, at: (num(2)?, num(3)?), output: args.get(i + 4).filter(|o| !o.starts_with("--")).cloned() })
+    }
+}
+
+/// The pin a menu command names (`app-pin:main`, `app-pin:part:N`, N
+/// counting `Tile::CHOOSABLE`; `app-pin:none`: none).
+fn pin_of(command: &str) -> Option<Pin> {
+    match command.strip_prefix("app-pin:")? {
+        "main" => Some(Pin::Main),
+        part => Tile::CHOOSABLE.get(part.strip_prefix("part:")?.parse::<usize>().ok()?).copied().map(Pin::Part),
     }
 }
 
@@ -90,6 +99,11 @@ pub struct Facts {
     pub app_floats: bool,
     /// The workspace its app's new windows open on, if it has one.
     pub app_workspace: Option<u32>,
+    /// Where its app's new windows always go (`TilingSettings::app_pins`),
+    /// and the part of its display this one is tiled into now, if it's
+    /// one with a name (`Tile::of_part`).
+    pub app_pin: Option<olo_protocol::Pin>,
+    pub place: Option<olo_protocol::Tile>,
     /// Shortcut keys changed from the defaults, to show the ones in use.
     pub keys: KeyboardProfile,
     /// The file or folder it shows, if its program says
@@ -138,10 +152,13 @@ pub fn learn(ask: Ask, proxy: Proxy) {
         let display = w.output.as_deref().and_then(|o| olo_protocol::display_number(&outputs, o));
         let others =
             outputs.iter().filter(|o| o.mirror_of.is_none() && Some(&o.name) != w.output.as_ref()).filter_map(|o| Some((o.name.clone(), olo_protocol::display_number(&outputs, &o.name)?))).collect();
-        let (keys, app_floats, app_workspace) = match c.request(&Request::GetSettings) {
-            Ok(Reply::Settings { settings }) => (settings.keyboard.profile, !w.app_id.is_empty() && settings.tiling.floating_apps.contains(&w.app_id), settings.tiling.app_workspace(&w.app_id)),
+        let (keys, app_floats, app_workspace, app_pin) = match c.request(&Request::GetSettings) {
+            Ok(Reply::Settings { settings }) => {
+                (settings.keyboard.profile, !w.app_id.is_empty() && settings.tiling.floating_apps.contains(&w.app_id), settings.tiling.app_workspace(&w.app_id), settings.tiling.app_pin(&w.app_id))
+            }
             _ => Default::default(),
         };
+        let place = w.part.filter(|_| w.tiled).and_then(olo_protocol::Tile::of_part);
         let info = match c.request(&Request::WindowingMode { workspace: Some(w.workspace) }) {
             Ok(Reply::WindowingMode { displays, .. }) => displays.into_iter().find(|d| Some(&d.output) == w.output.as_ref()),
             _ => None,
@@ -223,6 +240,8 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             main_pinned,
             app_floats,
             app_workspace,
+            app_pin,
+            place,
             keys,
             path,
             app,
@@ -363,13 +382,42 @@ pub fn build(f: &Facts) -> Menu {
     // able to swap it back with the previous window").
     if f.main_and_stack {
         m = shortcut(m, "make-main", "Make Main").enabled(!f.main);
-        // (Pinned: windows that open leave it its place. Ben,
-        // 2026-11-17: "ability to \"pin\" a tiled window as the main
-        // one so that it doesn't change when other windows open".)
-        m = shortcut(m, "pin-main", "Pin as Main").checked(f.main_pinned);
         m = shortcut(m, "swap-main", "Swap with Previous Main").enabled(f.previous_main);
     }
     m = m.separator().submenu(tile);
+    // Pin (Ben, 2026-11-17: "i often have some windows like telegram
+    // where i want it to always open in the top-left quarter, and phone
+    // in the top-right quarter (of whatever desktop-workspace they
+    // happen to be opened on) … right click the window title tab and
+    // choose Pin -> Always Main / Always [...] where Always [...] would
+    // be e.g. \"Always Top Left Quarter\" based on where that window
+    // currently is"). This window as the main one while it's here (Pin
+    // as Main: windows that open leave it its place), and its app's
+    // windows always, wherever they open: the main one, or in the part
+    // of the display this one is in now. An app's pin that is another
+    // place is listed too, checked, to take away.
+    let has_app = !f.app.app_id.is_empty();
+    let mut pin = Menu::new("Pin");
+    if f.main_and_stack {
+        pin = shortcut(pin, "pin-main", "Pin as Main").checked(f.main_pinned).separator();
+        let on = f.app_pin == Some(Pin::Main);
+        pin = pin.item(Pin::Main.title(), if on { "app-pin:none" } else { "app-pin:main" }).checked(on).enabled(has_app);
+    } else if f.app_pin == Some(Pin::Main) {
+        pin = pin.item(Pin::Main.title(), "app-pin:none").checked(true);
+    }
+    match f.place {
+        Some(tile) => {
+            let on = f.app_pin == Some(Pin::Part(tile));
+            let n = Tile::CHOOSABLE.iter().position(|t| *t == tile).unwrap_or(0);
+            pin = pin.item(Pin::Part(tile).title(), if on { "app-pin:none".to_owned() } else { format!("app-pin:part:{n}") }).checked(on).enabled(has_app);
+        }
+        // (Not in a part with a name: tiled into one first, Tile ▸.)
+        None => pin = pin.item("Always Where It Is", "app-pin:none").enabled(false),
+    }
+    if let Some(Pin::Part(other)) = f.app_pin.filter(|p| Some(*p) != f.place.map(Pin::Part)) {
+        pin = pin.item(Pin::Part(other).title(), "app-pin:none").checked(true);
+    }
+    m = m.submenu(pin);
     // Beside another window (not in Focus, which zooms them all; not a
     // window floating over auto-tiled ones).
     if !f.focus && !(f.auto && f.floating) && !f.beside.is_empty() {
@@ -549,6 +597,7 @@ pub fn perform(window: u64, app: &Owner, command: &str) {
             "unfloat" => Request::SetFloating { id: window, floating: Some(false), alone: false },
             "float-always" | "unfloat-always" if !app.app_id.is_empty() => Request::SetAppFloating { app_id: app.app_id.clone(), floating: command == "float-always" },
             c if c.starts_with("app-workspace:") && !app.app_id.is_empty() => Request::SetAppWorkspace { app_id: app.app_id.clone(), workspace: c["app-workspace:".len()..].parse().ok() },
+            c if c.starts_with("app-pin:") && !app.app_id.is_empty() => Request::SetAppPin { app_id: app.app_id.clone(), pin: pin_of(c), window: Some(window) },
             "ungroup" => Request::UngroupWindow { id: window },
             "close" => Request::Close { id: window },
             _ => return,
@@ -694,6 +743,8 @@ mod tests {
             main_pinned: false,
             app_floats: false,
             app_workspace: None,
+            app_pin: None,
+            place: None,
             keys: changed,
             path: None,
             display: Some(1),
@@ -732,6 +783,7 @@ mod tests {
                 || c.strip_prefix("window-to:").is_some_and(|id| id.parse::<u64>().is_ok())
                 || c.strip_prefix("group-to:").is_some_and(|id| id.parse::<u64>().is_ok())
                 || c.strip_prefix("app-workspace:").is_some_and(|n| n == "none" || n.parse::<u32>().is_ok())
+                || (c.starts_with("app-pin:") && (*c == "app-pin:none" || pin_of(c).is_some()))
                 || ["send-to-back", "on-top", "close", "close-others", "close-all", "hide-others", "hide-all", "quit-all", "ungroup", "float", "float-group", "unfloat", tracker::COMMAND]
                     .contains(&c.as_str());
             assert!(known, "{c}");
@@ -771,7 +823,7 @@ mod tests {
             let mut out = Vec::new();
             for i in &build(f).items {
                 if let menu::MenuItem::Action(a) = i
-                    && ["shortcut:make-main", "shortcut:swap-main", "shortcut:pin-main"].contains(&a.command.as_str())
+                    && ["shortcut:make-main", "shortcut:swap-main"].contains(&a.command.as_str())
                 {
                     out.push((a.label.to_string(), a.enabled, a.keys.is_some()));
                 }
@@ -780,14 +832,55 @@ mod tests {
         };
         assert!(mains(&facts).is_empty() && mains(&Facts { auto: true, ..facts.clone() }).is_empty());
         let tile = Facts { auto: true, main_and_stack: true, ..facts.clone() };
-        assert_eq!(mains(&tile), [("Make Main".into(), true, true), ("Pin as Main".into(), true, true), ("Swap with Previous Main".into(), false, true)]);
+        assert_eq!(mains(&tile), [("Make Main".into(), true, true), ("Swap with Previous Main".into(), false, true)]);
+        assert_eq!(mains(&Facts { main: true, previous_main: true, ..tile.clone() }), [("Make Main".into(), false, true), ("Swap with Previous Main".into(), true, true)]);
+        // Pin: its items as (label, command, checked, enabled).
+        let pins = |f: &Facts| {
+            build(f)
+                .items
+                .iter()
+                .find_map(|i| match i {
+                    menu::MenuItem::Submenu(m) if m.title == "Pin" => Some(
+                        m.items
+                            .iter()
+                            .filter_map(|i| match i {
+                                menu::MenuItem::Action(a) => Some((a.label.to_string(), a.command.to_string(), a.checked, a.enabled)),
+                                _ => None,
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
+                    _ => None,
+                })
+                .unwrap_or_default()
+        };
+        let it = |label: &str, command: &str, checked: bool, enabled: bool| (label.to_owned(), command.to_owned(), checked, enabled);
+        // A window in no part with a name: nothing to pin it to yet.
+        assert_eq!(pins(&facts), [it("Always Where It Is", "app-pin:none", false, false)]);
+        // In the top left quarter: always there, by where it is; chosen
+        // again, taken away.
+        let quarter = Facts { place: Some(Tile::TopLeft), ..facts.clone() };
+        assert_eq!(pins(&quarter), [it("Always Top Left Quarter", "app-pin:part:4", false, true)]);
+        assert_eq!(pin_of("app-pin:part:4"), Some(Pin::Part(Tile::TopLeft)));
+        assert_eq!(pins(&Facts { app_pin: Some(Pin::Part(Tile::TopLeft)), ..quarter.clone() }), [it("Always Top Left Quarter", "app-pin:none", true, true)]);
+        // Pinned elsewhere: where it is now offered, the pin there is
+        // listed and checked.
         assert_eq!(
-            mains(&Facts { main: true, previous_main: true, ..tile.clone() }),
-            [("Make Main".into(), false, true), ("Pin as Main".into(), true, true), ("Swap with Previous Main".into(), true, true)]
+            pins(&Facts { app_pin: Some(Pin::Part(Tile::Right)), ..quarter.clone() }),
+            [it("Always Top Left Quarter", "app-pin:part:4", false, true), it("Always Right Half", "app-pin:none", true, true)]
         );
-        // (Pin as Main is checked on the pinned main window.)
-        let checked = |f: &Facts| build(f).items.iter().any(|i| matches!(i, menu::MenuItem::Action(a) if a.command == "shortcut:pin-main" && a.checked));
-        assert!(checked(&Facts { main: true, main_pinned: true, ..tile.clone() }) && !checked(&tile));
+        // Main and Stack's tile: Pin as Main (this window, with its
+        // key), Always Main (its app's), and where it is.
+        let main_tile = Facts { place: Some(Tile::LeftTwoThirds), ..tile.clone() };
+        assert_eq!(
+            pins(&main_tile),
+            [it("Pin as Main", "shortcut:pin-main", false, true), it("Always Main", "app-pin:main", false, true), it("Always Left Two Thirds", "app-pin:part:11", false, true)]
+        );
+        assert_eq!((pin_of("app-pin:main"), pin_of("app-pin:none"), pin_of("app-pin:part:99")), (Some(Pin::Main), None, None));
+        let pinned = pins(&Facts { main: true, main_pinned: true, app_pin: Some(Pin::Main), ..main_tile.clone() });
+        assert_eq!(pinned[..2], [it("Pin as Main", "shortcut:pin-main", true, true), it("Always Main", "app-pin:none", true, true)]);
+        // (An app pinned as Main, its window where tiles aren't Main and
+        // Stack's: still there to take away.)
+        assert_eq!(pins(&Facts { app_pin: Some(Pin::Main), ..quarter.clone() })[0], it("Always Main", "app-pin:none", true, true));
         // Open in Tracker only for a window that shows a file or folder.
         assert!(!all.contains(&tracker::COMMAND.to_owned()));
         let mut doc = Vec::new();

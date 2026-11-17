@@ -34,18 +34,11 @@ something nobody here has is in "Blocked", with what it waits for.
   the code and keep looking for up to 60s until one arrives from
   phone/email and then offer to fill it.").
 
-- **A window tab's menu: Pin ▸ Always Main / Always [where it is]**
-  (Ben, 2026-11-17: "i often have some windows like telegram where i
-  want it to always open in the top-left quarter, and phone in the
-  top-right quarter (of whatever desktop-workspace they happen to be
-  opened on). there was another todo to support pinning what is the
-  main window when in tile-stack mode. let's generalize that so i can
-  right click the window title tab and choose Pin -> Always Main /
-  Always [...] where Always [...] would be e.g. "Always Top Left
-  Quarter" based on where that window currently is"). The pin is the
-  app's, remembered: its window opens there on whichever workspace and
-  display it opens on. Pinning the main window (done 2026-11-17, a
-  tile's own) becomes Pin ▸ Always Main.
+- **Passwords fills an authenticator's one-time code as it does one
+  that came by text** (Ben, 2026-11-17: "when a login asks for a one
+  time code from the authenticator app and the passwords item has it
+  then olo passwords ext should be smart enough to offer to auto fill
+  it like it does for when they come via sms").
 
 ## Done, waiting for Ben to try or confirm
 
@@ -5897,6 +5890,23 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**A window tab's menu: Pin ▸ Always Main / Always [where it is]**~~
+  (Ben, 2026-11-17: "i often have some windows like telegram where i
+  want it to always open in the top-left quarter, and phone in the
+  top-right quarter (of whatever desktop-workspace they happen to be
+  opened on) … choose Pin -> Always Main / Always [...]"; done the same
+  day). A window tab's menu has Pin ▸: Pin as Main (this window),
+  Always Main, and Always [the part the window is in now], e.g. Always
+  Top Left Quarter; chosen again, it's taken away. The pin is the
+  app's and is kept: its window goes there on whichever display and
+  workspace it opens, tiled or not, and where windows are auto-tiled
+  the pinned ones stay in the tile nearest their part as others come
+  and go (in a grid of four, Telegram top left and Phone top right
+  whichever opens first). **To set yours**: with Telegram in the top
+  left quarter, its tab's menu ▸ Pin ▸ Always Top Left Quarter; the
+  same for Phone, top right. (HACKING, "Pin ▸, an app's windows always
+  in one place".)
 
 - ~~**Colour schemes: Catppuccin and the ten most used editor
   schemes, for Terminal and for Themes**~~ (Ben, 2026-11-17; done the

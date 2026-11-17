@@ -643,6 +643,30 @@ impl<B: Backend + 'static> AnvilState<B> {
                 tracing::info!(app = app_id, ?workspace, "an app's own workspace");
                 Reply::Ok
             }
+            Request::SetAppPin { app_id, pin, window } => {
+                if app_id.is_empty() {
+                    return Some(Reply::Error { message: "no app".into() });
+                }
+                let was = self.settings.tiling.app_pin(&app_id);
+                self.settings.tiling.set_app_pin(&app_id, pin);
+                self.settings_changed();
+                tracing::info!(app = app_id, ?pin, "an app's pin");
+                // (Main: the window it was chosen on is pinned now, or
+                // let go.)
+                use olo_protocol::Pin;
+                if let Some(w) = window.and_then(|id| self.window_by_id(id)) {
+                    match (was, pin) {
+                        (_, Some(Pin::Main)) => {
+                            self.pin_main(&w, Some(true));
+                        }
+                        (Some(Pin::Main), _) => {
+                            self.pin_main(&w, Some(false));
+                        }
+                        _ => {}
+                    }
+                }
+                Reply::Ok
+            }
             Request::Workspaces => Reply::Workspaces { current: self.workspace(), count: self.settings.workspace_count, displays: self.display_workspaces() },
             Request::SwitchWorkspace { index, output: None } => {
                 self.switch_workspace(index);

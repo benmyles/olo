@@ -1064,6 +1064,27 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.move_to_workspace(&w, ws);
     }
 
+    /// A new window (not one coming back where it was) of an app whose
+    /// windows are pinned (`TilingSettings::app_pins`, the window menu's
+    /// Pin ▸): to its place, on the display and workspace it opened on.
+    /// A part of the display: tiled there now where windows aren't
+    /// auto-tiled; where they are, once it's a tile (`AutoTiler::pins`,
+    /// taken up by the next laying out), as is Main. Not a dialog or an
+    /// alert, which stay with their window.
+    pub fn place_by_app_pin(&mut self, surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) {
+        let Some(w) = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(surface)).cloned() else { return };
+        let Some(pin) = self.settings.tiling.app_pin(&w.app_id()) else { return };
+        if w.0.toplevel().is_some_and(|t| t.parent().is_some()) || crate::shell::groups::is_parentless_alert(&w) {
+            return;
+        }
+        let auto = self.display_of(&w).or_else(|| self.window_output(&w)).is_some_and(|o| self.auto_on(&o, self.workspace_of(&w)));
+        info!(window = w.id(), app = w.app_id(), ?pin, auto, "pinned by its app");
+        match pin {
+            olo_protocol::Pin::Part(tile) if !auto => self.tile_window(&w, tile),
+            _ => self.pin_when_tiled(&w, pin),
+        }
+    }
+
     pub fn minimize(&mut self, window: &WindowElement) {
         if self.space.element_location(window).is_none() {
             return;

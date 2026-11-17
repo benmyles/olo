@@ -7547,7 +7547,48 @@ on the pinned one lets it go and leaves it main. The OSD says which
 that window takes its tile back). Tried headless: pinned, windows
 opened (it stayed), another made main (let go, and the next window took
 the place), pinned again, the server restarted in place (still pinned,
-and the next window left it). The overview
+and the next window left it).
+**Pin ▸, an app's windows always in one place** (the window menu's Pin
+submenu; Ben, 2026-11-17: "i often have some windows like telegram
+where i want it to always open in the top-left quarter, and phone in
+the top-right quarter (of whatever desktop-workspace they happen to be
+opened on) … right click the window title tab and choose Pin -> Always
+Main / Always [...] where Always [...] would be e.g. \"Always Top Left
+Quarter\" based on where that window currently is"). Pin has Pin as
+Main (this window, as above, with its key), **Always Main** and
+**Always [the part this window is in now]** ("Always Top Left
+Quarter": `Tile::of_part` names its tile's part where it's one a
+person can choose, within a fiftieth; "Always Where It Is", dimmed,
+where it isn't: tile it first), each checked when it's the app's pin
+and taken away by choosing it again; a pin that is another part is
+listed too, checked. The pin is the app's (`TilingSettings::app_pins`,
+`Pin::Main` or `Pin::Part(Tile)`; `{"type":"set_app_pin","app_id":…,
+"pin":"main"}` or `{"part":"TopLeft"}`, none to take it away), kept
+with the settings, and holds on whichever display and workspace its
+window opens (`place_by_app_pin`, at a new window's first content, as
+an app's own workspace is):
+- Where windows aren't auto-tiled, the window is tiled into the part
+  (`tile_window`, as Tile ▸ does).
+- Where they are, once it's a tile (`AutoTiler::pins`, taken up by the
+  laying out that follows): Main is made the main window and pinned
+  (`pin_main`); a part is carved for it in Halves (`auto_tile_window`,
+  the rest tiled round it), and **in every layout the pinned windows
+  are kept in the tile nearest their part** whenever a tree's windows
+  change (`pins_kept`, `pin_trades`: trading tiles with what was there,
+  so a grid keeps its shape; the first pinned to a part has it; not a
+  step of its own for Undo). Tiles moved by hand stay until a window
+  comes or goes.
+- An app started again goes to its pin, not where its window was (a
+  new process: `restore_placement` leaves it to be placed); the same
+  process coming back (app_server restarted in place, the app
+  re-executed for an upgrade) is as it was.
+Tried headless (auto-tiled, a grid): Tracker pinned top right and the
+Viewer top left, opened in any order among two others, each in its
+quarter at every step; Tracker closed and opened 22 s on, top right
+again; a reload in place, as they were; and where windows aren't tiled,
+a pinned app opened tiled into its quarter. At rest with four tiles and
+two pins app_server took 0.0% of a core and woke 4 times a second, as
+without pins. The overview
 does it to the window it picks with Ctrl held (its letter, or Return),
 and keyboard hints to a window's letter typed with Ctrl held (a tap of
 Ctrl alone still puts them away, on its release). Agents read it in

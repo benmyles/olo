@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### A window tab's menu: Pin, an app's windows always in one place
+
+*10:35* — Pin has Always Main and Always [the part the window is in now], here Always Top Right Quarter for Tracker in a grid of four tiles. The pin is the app's: its window goes there on whichever display and workspace it opens, and stays in the nearest tile as others come and go.
+
+![A window tab's menu: Pin, an app's windows always in one place](2026-11-17/103542-a-window-tab-s-menu-pin-an-app-s-windows-always-.png)
+
 ### Themes: Catppuccin and the ten most installed editor colour schemes
 
 *10:09* — Preferences ▸ Themes ▸ Colors has thirteen schemes from elsewhere beside the theme's own and BeOS's, each light and dark and tuned for Olo; Terminal follows the one chosen, or keeps its own. Here Tokyo Night, at night.

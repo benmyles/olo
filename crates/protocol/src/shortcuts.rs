@@ -497,6 +497,16 @@ impl Tile {
         Tile::BottomTwoThirds,
     ];
 
+    /// The part a person can choose that `part` is (fractions of the
+    /// area: a window's tile, `WindowInfo::part`), if it is one: within
+    /// a fiftieth each way (gaps, and edges dragged a little).
+    pub fn of_part(part: [f32; 4]) -> Option<Tile> {
+        Tile::CHOOSABLE.into_iter().find(|t| {
+            let f = t.fraction();
+            [f.0, f.1, f.2, f.3].iter().zip(part).all(|(a, b)| (a - b).abs() <= 0.02)
+        })
+    }
+
     /// Its name in menus: "Left Half", "Center Two Thirds".
     pub fn title(self) -> &'static str {
         match self {
@@ -1163,6 +1173,11 @@ pub struct TilingSettings {
     /// workspace rules), on the display they open on. A window coming back
     /// where it was, or a dialog with its window, goes as before.
     pub app_workspaces: Vec<AppWorkspace>,
+    /// Apps whose new windows always go to one place, on whichever
+    /// display and workspace they open (the window menu's Pin ▸): Main
+    /// and Stack's main window, or a part of the display. A window coming
+    /// back where it was, or a dialog with its window, goes as before.
+    pub app_pins: Vec<AppPin>,
     /// The windowing mode of every workspace (and display) that hasn't
     /// one of its own (Preferences ▸ Windows).
     pub default_mode: WindowingMode,
@@ -1238,6 +1253,7 @@ impl Default for TilingSettings {
             ungrouped_apps: Vec::new(),
             floating_apps: Vec::new(),
             app_workspaces: Vec::new(),
+            app_pins: Vec::new(),
             default_mode: WindowingMode::Standard,
             layout: TilingLayout::MainAndStack,
             layouts: Vec::new(),
@@ -1261,6 +1277,36 @@ pub struct MainPlaceChoice {
     pub workspace: u32,
     pub display: String,
     pub place: Tile,
+}
+
+/// Where an app's windows always go as they open
+/// ([`TilingSettings::app_pins`]; the window menu's Pin ▸ Always Main,
+/// Always Top Left Quarter).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Pin {
+    /// Main and Stack's main window, pinned there (as `Request::PinMain`).
+    Main,
+    /// A part of the display: tiled there, the rest tiled round it where
+    /// windows are auto-tiled.
+    Part(Tile),
+}
+
+impl Pin {
+    /// Its item in the window menu's Pin.
+    pub fn title(self) -> String {
+        match self {
+            Pin::Main => "Always Main".to_owned(),
+            Pin::Part(tile) => format!("Always {}", tile.title()),
+        }
+    }
+}
+
+/// An app's pin ([`TilingSettings::app_pins`]).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AppPin {
+    pub app_id: String,
+    pub pin: Pin,
 }
 
 /// An app's own workspace ([`TilingSettings::app_workspaces`]), counting
@@ -1418,6 +1464,19 @@ impl TilingSettings {
         self.app_workspaces.iter().find(|a| a.app_id == app_id).map(|a| a.workspace)
     }
 
+    /// Where `app_id`'s new windows always go, if anywhere.
+    pub fn app_pin(&self, app_id: &str) -> Option<Pin> {
+        self.app_pins.iter().find(|a| a.app_id == app_id).map(|a| a.pin)
+    }
+
+    /// Pin `app_id`'s new windows, or (None) let them go as any app's.
+    pub fn set_app_pin(&mut self, app_id: &str, pin: Option<Pin>) {
+        self.app_pins.retain(|a| a.app_id != app_id);
+        if let Some(pin) = pin {
+            self.app_pins.push(AppPin { app_id: app_id.to_owned(), pin });
+        }
+    }
+
     /// Give `app_id` a workspace of its own, or (None) none.
     pub fn set_app_workspace(&mut self, app_id: &str, workspace: Option<u32>) {
         self.app_workspaces.retain(|a| a.app_id != app_id);
@@ -1464,6 +1523,33 @@ impl TilingSettings {
 mod tests {
     /// Each workspace's layout its own once chosen, else the default;
     /// the presets read back from the layout and place.
+    /// An app's pin: kept, changed, taken away; the part a window's
+    /// tile is, by its name; and how it's written.
+    #[test]
+    fn an_apps_pin() {
+        let mut t = TilingSettings::default();
+        assert_eq!(t.app_pin("olo.telegram"), None);
+        t.set_app_pin("olo.telegram", Some(Pin::Part(Tile::TopLeft)));
+        t.set_app_pin("olo.phone", Some(Pin::Main));
+        t.set_app_pin("olo.telegram", Some(Pin::Part(Tile::TopRight)));
+        assert_eq!((t.app_pin("olo.telegram"), t.app_pin("olo.phone"), t.app_pins.len()), (Some(Pin::Part(Tile::TopRight)), Some(Pin::Main), 2));
+        let json = serde_json::to_string(&t.app_pins).unwrap();
+        assert_eq!(json, r#"[{"app_id":"olo.phone","pin":"main"},{"app_id":"olo.telegram","pin":{"part":"TopRight"}}]"#);
+        assert_eq!(serde_json::from_str::<Vec<AppPin>>(&json).unwrap(), t.app_pins);
+        t.set_app_pin("olo.phone", None);
+        assert_eq!(t.app_pin("olo.phone"), None);
+        // (Settings from before there were pins have none.)
+        assert_eq!(serde_json::from_str::<TilingSettings>("{}").unwrap().app_pins, []);
+        assert_eq!((Pin::Main.title(), Pin::Part(Tile::TopLeft).title()), ("Always Main".to_owned(), "Always Top Left Quarter".to_owned()));
+        // A tile's part, gaps and all, is the part with that name; one
+        // dragged elsewhere is none.
+        assert_eq!(Tile::of_part([0.0, 0.0, 0.5, 0.5]), Some(Tile::TopLeft));
+        assert_eq!(Tile::of_part([0.505, 0.0, 0.495, 0.49]), Some(Tile::TopRight));
+        assert_eq!(Tile::of_part([0.0, 0.0, 0.66, 1.0]), Some(Tile::LeftTwoThirds));
+        assert_eq!(Tile::of_part([0.0, 0.0, 0.58, 1.0]), None);
+        assert_eq!(Tile::of_part([0.0, 0.0, 1.0, 1.0]), None);
+    }
+
     #[test]
     fn layouts_by_workspace() {
         let mut t = TilingSettings::default();

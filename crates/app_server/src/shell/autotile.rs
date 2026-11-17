@@ -1481,6 +1481,27 @@ struct Mains {
     pinned: Option<u64>,
 }
 
+/// The trades of tiles that put each pinned window (`wanted`: its id and
+/// the middle of the part it's pinned to, the first to be served first)
+/// in the tile nearest its part, among tiles whose middles are `at`
+/// (fractions of the area). One as near already stays; a tile a pinned
+/// window has taken isn't traded away again.
+pub fn pin_trades(mut at: HashMap<u64, (f32, f32)>, wanted: &[(u64, (f32, f32))]) -> Vec<(u64, u64)> {
+    let (mut taken, mut trades) = (Vec::new(), Vec::new());
+    for &(id, want) in wanted {
+        let far = |c: &(f32, f32)| (c.0 - want.0).powi(2) + (c.1 - want.1).powi(2);
+        let Some((&there, _)) = at.iter().filter(|(other, _)| !taken.contains(*other)).min_by(|a, b| far(a.1).total_cmp(&far(b.1)).then(a.0.cmp(b.0))) else { continue };
+        let (Some(&mine), Some(&theirs)) = (at.get(&id), at.get(&there)) else { continue };
+        if there != id && far(&theirs) + 1e-4 < far(&mine) {
+            trades.push((id, there));
+            at.insert(id, theirs);
+            at.insert(there, mine);
+        }
+        taken.push(id);
+    }
+    trades
+}
+
 /// Where a new window goes with the main window `main` pinned or not:
 /// the first place (the main window's) is the stack's first instead,
 /// and so is the place before the main window; any other as asked.
@@ -1515,6 +1536,14 @@ pub struct AutoTiler {
     /// Main and Stack: each tree's main window, and the one before it
     /// (Swap with Previous Main).
     mains: HashMap<(u32, String), Mains>,
+    /// New windows of pinned apps (`TilingSettings::app_pins`) not yet
+    /// tiles: each goes to its pin once it's in a tree, or is let be
+    /// after a moment (it floats, its display isn't auto-tiled).
+    pins: Vec<(u64, olo_protocol::Pin, Instant)>,
+    /// The windows each tree had when its pinned ones were last put in
+    /// their parts (`pins_kept`): done again when they change, not when
+    /// tiles are moved by hand.
+    pinned_for: HashMap<(u32, String), Vec<u64>>,
     /// Each tree as last laid out with all its windows there
     /// ([`as_laid_out`]): what a restart keeps, though windows are
     /// closing as it comes (an upgrade re-executes their apps).
@@ -1569,6 +1598,8 @@ impl Default for AutoTiler {
             presel: None,
             built_as: HashMap::new(),
             mains: HashMap::new(),
+            pins: Vec::new(),
+            pinned_for: HashMap::new(),
             laid: HashMap::new(),
             kept_for: HashMap::new(),
             awaiting: std::collections::HashSet::new(),
@@ -1958,6 +1989,110 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.auto_unconfine();
         self.keep_floating_above();
         self.auto_timer();
+        self.pins_due();
+    }
+
+    /// `w`, a new window of a pinned app, goes to `pin` once it's a tile.
+    pub fn pin_when_tiled(&mut self, w: &WindowElement, pin: olo_protocol::Pin) {
+        self.auto.pins.push((w.id(), pin, Instant::now()));
+        self.auto.dirty = true;
+        self.auto_tick();
+    }
+
+    /// The pinned apps' new windows that are tiles now, each to its pin:
+    /// Main and Stack's main window, pinned; or a part of the display,
+    /// which Halves gives it there and then (the rest tiled round it,
+    /// as the Tile command) and every layout keeps it nearest to as
+    /// windows come and go (`pins_kept`). One that is no tile after two
+    /// seconds is let be.
+    fn pins_due(&mut self) {
+        if !self.auto.pins.is_empty() {
+            // (Taken first: applying one lays the tiles out, which comes
+            // back here.)
+            let waiting = std::mem::take(&mut self.auto.pins);
+            let mut later = Vec::new();
+            for (id, pin, since) in waiting {
+                let Some(w) = self.window_by_id(id) else { continue };
+                let Some(key) = self.tree_of(&w) else {
+                    if since.elapsed() < Duration::from_secs(2) {
+                        later.push((id, pin, since));
+                    }
+                    continue;
+                };
+                match pin {
+                    olo_protocol::Pin::Part(tile) if self.layout_of(&key) == olo_protocol::TilingLayout::Halves => {
+                        self.auto_tile_window(&w, tile);
+                    }
+                    olo_protocol::Pin::Part(_) => {}
+                    olo_protocol::Pin::Main => {
+                        self.pin_main(&w, Some(true));
+                    }
+                }
+            }
+            self.auto.pins.extend(later);
+        }
+        self.pins_kept();
+    }
+
+    /// Each tree whose windows changed: its pinned apps' windows
+    /// (`Pin::Part`) each in the tile nearest its part, trading tiles
+    /// with whatever was there (the tree keeps its shape: a grid of four
+    /// has the one pinned top left in its top left cell, whichever order
+    /// they opened in). Two pinned to one part: the first has it. Not
+    /// done while the windows are the same ones, so tiles moved by hand
+    /// stay until a window comes or goes.
+    fn pins_kept(&mut self) {
+        if self.settings.tiling.app_pins.iter().all(|a| !matches!(a.pin, olo_protocol::Pin::Part(_))) {
+            self.auto.pinned_for.clear();
+            return;
+        }
+        let keys: Vec<(u32, String)> = self.auto.trees.keys().cloned().collect();
+        self.auto.pinned_for.retain(|k, _| keys.contains(k));
+        let mut traded = false;
+        for key in keys {
+            let Some(tree) = self.auto.trees.get(&key) else { continue };
+            let mut ids = tree.windows();
+            ids.sort_unstable();
+            if self.auto.pinned_for.get(&key) == Some(&ids) {
+                continue;
+            }
+            self.auto.pinned_for.insert(key.clone(), ids);
+            let centres = self.auto_centres(tree);
+            // (In the tree's own order: the first pinned to a part has it.)
+            let wanted: Vec<(u64, (f32, f32))> = tree
+                .windows()
+                .into_iter()
+                .filter_map(|id| {
+                    let w = self.window_by_id(id)?;
+                    match self.settings.tiling.app_pin(&w.app_id())? {
+                        olo_protocol::Pin::Part(tile) => {
+                            let f = tile.fraction();
+                            Some((id, (f.0 + f.2 / 2.0, f.1 + f.3 / 2.0)))
+                        }
+                        olo_protocol::Pin::Main => None,
+                    }
+                })
+                .collect();
+            if wanted.is_empty() {
+                continue;
+            }
+            let trades = pin_trades(centres, &wanted);
+            if trades.is_empty() {
+                continue;
+            }
+            // (Not a step of its own for Undo Window Arrangement: it
+            // goes with the window's coming or going.)
+            let Some(tree) = self.auto.trees.get_mut(&key) else { continue };
+            for (a, b) in &trades {
+                tree.swap(*a, *b);
+            }
+            info!(output = key.1, ?trades, "pinned windows to their parts");
+            traded = true;
+        }
+        if traded {
+            self.auto.dirty = true;
+            self.auto_tick();
+        }
     }
 
     /// Windows back from a restart, in the tiles kept for them: each
@@ -4603,6 +4738,20 @@ mod tests {
         let t = tiled_into(Some(Node::split(Cut::Columns, 0.5, w(2), w(3))), 1, Tile::Left, &c);
         assert!(near(parts(&t)[0].1, (0.0, 0.0, 0.5, 1.0)));
         assert!(near(parts(&t)[1].1, (0.5, 0.0, 0.25, 1.0)));
+        // Pinned windows (`pin_trades`): four in a grid, 3 pinned to the
+        // top left and 4 to the top right, wherever they opened.
+        let grid: HashMap<u64, (f32, f32)> = [(1, (0.25, 0.25)), (2, (0.75, 0.25)), (3, (0.25, 0.75)), (4, (0.75, 0.75))].into();
+        let (tl, tr) = ((0.25, 0.25), (0.75, 0.25));
+        assert_eq!(pin_trades(grid.clone(), &[(3, tl), (4, tr)]), [(3, 1), (4, 2)]);
+        // In place already: nothing moves; two pinned to one part: the
+        // first has it, the second the next nearest (it stays).
+        assert_eq!(pin_trades(grid.clone(), &[(1, tl), (2, tr)]), []);
+        assert_eq!(pin_trades(grid.clone(), &[(3, tl), (1, tl)]), [(3, 1)]);
+        // One pinned top right trades with what's there, then one pinned
+        // top left doesn't take it back out of its tile.
+        assert_eq!(pin_trades(grid.clone(), &[(1, tr), (2, tl)]), [(1, 2)]);
+        // Two tiles side by side: top right is the right one.
+        assert_eq!(pin_trades([(1, (0.25, 0.5)), (2, (0.75, 0.5))].into(), &[(1, tr)]), [(1, 2)]);
         // A quarter: the nearest other window takes the quarter under it.
         let centres = |i: u64| if i == 2 { (0.2, 0.8) } else { (0.8, 0.5) };
         let t = tiled_into(Some(Node::split(Cut::Columns, 0.5, w(2), w(3))), 1, Tile::TopLeft, &centres);

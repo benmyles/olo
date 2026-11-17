@@ -652,6 +652,16 @@ impl<B: Backend + 'static> AnvilState<B> {
         // Claimed at its first commit, or (its title came later) now.
         let claimed = meta.returning.borrow_mut().take();
         let Some(p) = claimed.or_else(|| self.take_placement(&window)) else { return true };
+        // An app started again whose windows are pinned (the window
+        // menu's Pin ▸): its pin is where it goes, on the display and
+        // workspace it opens on now, not where its window was
+        // (`place_by_app_pin`). The same process coming back (app_server
+        // restarted, the app re-executed for an upgrade) is as it was.
+        let started_again = p.pid > 0 && meta.owner.borrow().as_ref().is_some_and(|(pid, _)| *pid != p.pid);
+        if started_again && self.settings.tiling.app_pin(&window.app_id()).is_some() {
+            info!(window = window.id(), app_id = window.app_id(), "started again and pinned: to its pin, not where it was");
+            return true;
+        }
         // Its display not found yet (just after a restart: DRM finds them
         // after the clients are back): it waits out of sight, its place
         // kept, rather than be fitted onto another (`displays_changed`).

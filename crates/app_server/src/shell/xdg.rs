@@ -822,6 +822,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             self.place_alert(surface);
             self.place_under_pointer(surface);
             self.place_on_app_workspace(surface);
+            self.place_by_app_pin(surface);
             // New (not one coming back as it was): it glows a moment, if asked.
             let a = &self.settings.appearance;
             if a.glow_new_windows

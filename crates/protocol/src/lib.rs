@@ -39,8 +39,8 @@ pub mod voice;
 pub use notifications::{AppNotifications, CardSize, HistoryView, NoteApp, NoteLook, NoteStyle, NotificationSettings, NotificationState};
 pub use sharing::SharingState;
 pub use shortcuts::{
-    AppWorkspace, AutoTiling, Chord, CommandKey, Dir, KeyboardProfile, LAYOUT_PRESETS, LayoutChoice, MAX_MAINS, MainCountChoice, MainPlaceChoice, ModeChoice, NewWindows, Platform, Shortcut,
-    ShortcutSettings, TILING_VERSION, Tile, TilingLayout, TilingSettings, WindowingMode,
+    AppPin, AppWorkspace, AutoTiling, Chord, CommandKey, Dir, KeyboardProfile, LAYOUT_PRESETS, LayoutChoice, MAX_MAINS, MainCountChoice, MainPlaceChoice, ModeChoice, NewWindows, Pin, Platform,
+    Shortcut, ShortcutSettings, TILING_VERSION, Tile, TilingLayout, TilingSettings, WindowingMode,
 };
 
 pub const SOCKET_ENV: &str = "OLO_SOCKET";
@@ -574,6 +574,19 @@ pub enum Request {
         app_id: String,
         #[serde(default)]
         workspace: Option<u32>,
+    },
+    /// App `app_id`'s new windows always go to one place from now on, on
+    /// whichever display and workspace they open (the window menu's Pin
+    /// ▸ Always Main, Always Top Left Quarter); or (None) as any app's:
+    /// kept in `TilingSettings::app_pins`. With `window` (the one it was
+    /// chosen on), `Pin::Main` pins that one now, as `PinMain`, and
+    /// taking `Pin::Main` away lets it go. Answered `Reply::Ok`.
+    SetAppPin {
+        app_id: String,
+        #[serde(default)]
+        pin: Option<Pin>,
+        #[serde(default)]
+        window: Option<WindowId>,
     },
     /// Inject input as if from a device (for automated UI tests).
     Synthetic {
