@@ -4540,5 +4540,11 @@
   "title": "Olo Doctor offers BBRv3 for TCP",
   "caption": "A new suggestion, \"TCP could send with BBRv3\": Use BBRv3 puts in Olo's module (Google's BBRv3 made for the kernel as it comes) and the service that builds and loads it at every start. Its text says what the congestion control in use does and what was measured (45.8 Mbit/s to CUBIC's 47.1 on a 50 Mbit/s link, with the round trip at 43 ms where CUBIC's was 69).",
   "image": "2026-11-16/155949-olo-doctor-offers-bbrv3-for-tcp.png"
+ },
+ {
+  "time": "2026-11-16T16:24:57",
+  "title": "Network Speed Test",
+  "caption": "A new app: what the connection carries each way, and everything that can be measured or read of it. Four cards (Download, Upload, Latency, Connection), each a figure, a graph and its facts, live as the test runs: the round trip idle and while the line is busy and what the busy line adds, what TCP sent again (this computer's kernel's count going up, the server's coming down), the congestion control and BBR's model of the path, what arrived out of order, how long the name, TCP and TLS took, the link. (Made-up results here.)",
+  "image": "2026-11-16/162457-network-speed-test.png"
  }
 ]

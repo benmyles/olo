@@ -140,3 +140,4 @@ wrap-lines|a small square white paper card lying on the desk with three charcoal
 deskbar|a slim upright panel of light grey metal standing on the desk like a tall narrow plaque, a short row of tiny coloured status lights near its top and a small green rising line graph glowing on its face
 weather|a chunky puffy white cloud with a glossy golden yellow sun and its chunky rays behind its upper left, and one glossy Be blue raindrop falling beneath it at the lower right
 kache|a sturdy tan wooden crate with Be blue metal corner brackets, its lid open and full of small shiny silver gears
+speed-test|a chunky silver stopwatch with a white dial, a single red hand and a crown button on top, with the plug of a Be blue network cable, its tip clear with gold contacts, lying in front of it at the lower right

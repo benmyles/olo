@@ -17,18 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **A Network Speed Test app** (Ben, 2026-11-16: "also with the BBRv3
-  work add a new olo native Network Speed Test app that show not just
-  total up/down but also all the advaned metrics/data about the
-  connection that we are able to get"): native, on the kits; beside
-  download and upload, everything that can be measured or read of the
-  connection (latency and its spread, loaded and idle; jitter; loss; the
-  path's MTU; the kernel's own figures for the test's sockets,
-  `olo_net::tcp_info`, there since the BBRv3 work: the congestion control
-  in use and BBR's model of the path, its window, pacing rate, delivery
-  rate, retransmissions, round-trip time and its variance; the link's
-  own: Wi-Fi's rate, signal and band, or the wired speed), live as the
-  test runs, and readable by agents.
 - **Other kernel patches that are a win for a desktop, and a Kernel tab
   for them** (Ben, 2026-11-16: "after you finish the bbr3 work, research
   what other linux kernel patches are recommended for high performance,
@@ -116,6 +104,25 @@ something nobody here has is in "Blocked", with what it waits for.
   pictures, theme), natively, in Quick Look and in Viewer.
 
 ## Done, waiting for Ben to try or confirm
+
+- **A Network Speed Test app** (Ben, 2026-11-16: "also with the BBRv3
+  work add a new olo native Network Speed Test app that show not just
+  total up/down but also all the advaned metrics/data about the
+  connection that we are able to get"). *Done 2026-11-16* (HACKING,
+  "Network Speed Test"): Network Speed Test, among the apps. Download
+  and upload over four connections each for eight seconds against
+  Cloudflare's servers, with, live as it runs: the round trip idle and
+  while the line is busy and what the busy line adds; what was sent
+  again (the kernel's count going up, the server's own coming down) and
+  what arrived out of order; the congestion control in use, its window
+  and BBR's model of the path; how long the name, TCP and TLS took; the
+  segment size; the link (Wi-Fi's band, rate and signal, or the cable's
+  rate). `olo-speedtest --print` gives all of it as JSON. Tried on this
+  line from a test screen: 677 Mbit/s down, 648 up, a round trip of
+  9.6 ms idle and 86 ms while uploading with CUBIC (77 ms added: the
+  queue BBRv3 is there to keep short). *For Ben, after upgrading:* open
+  it from Deskbar's apps and press Start Test; try it before and after
+  Doctor's "Use BBRv3" and compare "Added by a busy line".
 
 - **Olo Doctor offers BBRv3 for TCP** (Ben, 2026-11-16: "i also want olo
   doctor to offer to set the tcp congestion control algo to BBRv3 if

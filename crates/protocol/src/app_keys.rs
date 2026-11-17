@@ -52,6 +52,7 @@ const NOTIFICATIONS: Option<&str> = Some("olo.notifications");
 const PALETTE: Option<&str> = Some("olo.palette");
 const TELEGRAM: Option<&str> = Some("olo.telegram");
 const DOCTOR: Option<&str> = Some("olo.doctor");
+const SPEEDTEST: Option<&str> = Some("olo.speedtest");
 /// Chrome's keys (its own, not Olo's: what Chrome takes on Linux is
 /// [`CHROME_NATIVE`]), kept in a profile under its app id, and used for
 /// every Chromium browser ([`CHROMIUM_APPS`]).
@@ -74,6 +75,7 @@ pub const APPS: &[(&str, &str)] = &[
     ("olo.palette", "Command Palette"),
     ("olo.telegram", "Telegram"),
     ("olo.doctor", "Olo Doctor"),
+    ("olo.speedtest", "Network Speed Test"),
     // (Slack is Chrome too, olo-slack: these are its keys as well.)
     ("google-chrome", "Chrome and Slack"),
 ];
@@ -259,6 +261,8 @@ pub const APP_KEYS: &[AppKey] = &[
     k("doctor.check", DOCTOR, "check", "Check Again", &["Cmd+R"], &["F5"], &["Alt+R"]),
     k("doctor.fix-all", DOCTOR, "fix-all", "Fix and apply what's checked", &["Shift+Cmd+F"], &["Ctrl+Shift+F"], &["Shift+Alt+F"]),
     k("doctor.choose-all", DOCTOR, "choose-all", "Check everything", &["Cmd+A"], &["Ctrl+A"], &["Alt+A"]),
+    k("speedtest.start", SPEEDTEST, "start", "Start Test", &["Cmd+R"], &["F5"], &["Alt+R"]),
+    k("speedtest.stop", SPEEDTEST, "stop", "Stop", &["Cmd+Period"], &["Ctrl+Period"], &["Alt+Period"]),
     k("pool.refresh", Some("olo.pool"), "refresh", "Read Quota Now", &["Cmd+R"], &["F5"], &["Alt+R"]),
     k("screen.control", Some("olo.screen"), "control", "Take or give back control", &["Cmd+K"], &["Ctrl+K"], &["Alt+K"]),
     k("screen.export", Some("olo.screen"), "export", "Export Video", &["Cmd+E"], &["Ctrl+E"], &["Alt+E"]),

@@ -19273,6 +19273,88 @@ runs it against the fake on the session's bus (`@session-bus`).
 details from a worker), 1.4 ms on average, the slowest 3.7 ms.
 Reviewed at 1×, 1.25×, 1.5×, 1.75× and 2×, light and dark.
 
+## Network Speed Test (apps/speedtest; olo_net::tcp_info)
+
+What the connection carries each way, and everything that can be
+measured or read of it as it does (Ben, 2026-11-16: "a new olo native
+Network Speed Test app that show not just total up/down but also all the
+advaned metrics/data about the connection that we are able to get").
+Speed tests elsewhere give two numbers and a ping; this one's point is
+the rest: what happens to everything else while the line is busy, and
+what TCP did on the way.
+
+**The test** (engine.rs), against Cloudflare's speed test endpoints
+(`speed.cloudflare.com`: `GET /__down?bytes=N`, `POST /__up`; the nearest
+of its data centres answers, and says which and where it takes this
+computer to be), over connections made by hand (http.rs: TCP, TLS with
+the system's certificates, the least HTTP/1.1 the requests need), so
+each socket is the test's own to ask the kernel about. Never through a
+proxy. In order: the name looked up and one connection opened, each
+step timed; the round trip with the line idle (20 requests with no
+body, each less the time the server says it spent, `Server-Timing`:
+Cloudflare's take 20 to 40 ms of their own, and what's left is within a
+few milliseconds of TCP's own least round trip, which is shown beside
+it); then down and up, four connections each for eight seconds, each
+asking for (sending) piece after piece sized to take a few seconds, a
+different time each (a piece's end is a round trip with nothing moving:
+with four ending together the rate dipped every two seconds), while a
+fifth connection goes on measuring the round trip, five times a second.
+Ten times a second the bytes moved are counted: down as they're read;
+up as the kernel says the server has acknowledged them
+(`tcpi_bytes_acked`), since what's written to a socket has only reached
+its buffer (counted as written, loopback "uploaded" 242 Gbit/s). The
+rate is the mean once going (the first fifth left out), with the best
+second.
+
+**What's read of the connection.** This computer's kernel's figures for
+each socket (`olo_net::tcp_info`, `TCP_INFO` and `TCP_CC_INFO`, natively,
+what `ss -ti` shows): sending, the congestion control and its window,
+TCP's round trip, what was sent again and by timeout, how much of the
+time the server's window held it, BBR's model of the path where a BBR
+sends (the bandwidth it estimates and what it's doing: `bbr3`, "BBRv3
+for TCP"); receiving, what arrived out of order. And the server's side
+of each connection's TCP, which it says with every answer
+(`Server-Timing`'s `cfL4`: its round trip, window and delivery rate,
+what it sent again and took for lost): going down the server is the
+sender, so those are the download's retransmissions. From both: how
+much later a round trip is while the line is busy than idle (what a
+queue on the way adds), and round trips a minute under load (as Apple's
+networkQuality grades responsiveness). The link is NetworkManager's
+(`olo_system::network`: Wi-Fi's name, band, rate and signal, or the
+cable's rate; and whether it's metered: then the app asks before moving
+gigabytes).
+
+**The window** (view.rs): Start Test and how far it is, then four cards
+on the dashboard's gutter (the kit's `dashboard::Card`, as Activity
+Monitor's): Download, Upload, Latency, Connection, each a figure, a
+graph (but Connection) and its facts. Everything is live as the test
+runs (the engine's `Update`s, each a message; a way that's over is shown
+whole while the other runs), Stop cuts every connection at once and
+keeps what was measured, and the last test is there when the window
+opens again (`state_dir()/speedtest.json`; `save_state` across an
+upgrade). A card's facts are the same rows whatever is known, each a few
+words, so nothing moves or is cut short as they fill in. Copy puts all
+of it on the clipboard as text. Agents read every card (a heading with
+its figure, each fact a label and value, each graph's latest), and
+`start`, `stop` and `copy` are commands. At rest it draws nothing and
+wakes for nothing; while testing, 1.1% of a core and 66 wakeups a second
+(`tools/dev/cost`, a 680 Mbit/s line).
+
+- `olo-speedtest --print`: a test with no window, its results as JSON
+  (every figure, the rate's series, the link), for agents and scripts.
+  It moves as much data as the line carries in sixteen seconds.
+- `OLO_SPEEDTEST_DEMO=1`: made-up results, nothing connected to (the
+  layout lint's, and pictures'). `olo-speedtest --serve PORT
+  [BYTES-A-SECOND]` is a speed test server of Olo's own on this
+  computer, and `OLO_SPEEDTEST_SERVER=127.0.0.1:PORT` has the test run
+  against it: for working on the app without moving gigabytes over the
+  person's line.
+- Tests: the engine against that server (a whole test's phases, rates
+  and figures; stopped part way; what can't be done, said), the
+  connections, the words, and the window's lint in every state it shows
+  (lint.rs: not tested, each phase part way, finished with every figure
+  as long as it gets, failed).
+
 ## Kache (apps/kache)
 
 The build cache, watched and run from Olo (Ben, 2026-11-15: "an olo

@@ -8248,6 +8248,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-speedtest"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "olo-crash",
+ "olo-kit",
+ "olo-kit-base",
+ "olo-net",
+ "olo-system",
+ "olo-xdg",
+ "rustls",
+ "rustls-platform-verifier",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "olo-styled-edit"
 version = "0.1.0"
 dependencies = [

@@ -42,6 +42,15 @@ Each note: what to do, then why (what happened), then how to apply it.
 - **tsession's clicks and crops are logical; its shots are device
   pixels** (divide by the scale). Anything that talks over a bus needs a
   private bus.
+- **The Speed Test without the person's line.** `olo-speedtest --print`
+  opens no window, but it is a real test: 16 seconds of everything the
+  line carries, each way (over a gigabyte here). To work on the app, run
+  `target/release/olo-speedtest --serve 5055 3000000 &` (a server on
+  this computer, 3 MB/s a connection; kill it by its PID after) and
+  start the app with `OLO_SPEEDTEST_SERVER=127.0.0.1:5055`, or with
+  `OLO_SPEEDTEST_DEMO=1` for made-up results. This shell has an
+  `HTTPS_PROXY`; the test never uses one, and `curl` needs `--noproxy
+  '*'` to measure anything.
 - **A kernel module is tried in a guest, never in the person's kernel.**
   `tools/dev/kvm-guest SCRIPT` runs this computer's own kernel in QEMU
   with KVM (`/dev/kvm` is everyone's here; no root), a root made of this

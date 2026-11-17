@@ -68,6 +68,56 @@ pub fn wifi() -> Result<Option<Wifi>> {
     Ok(None)
 }
 
+/// The radio side of the Wi-Fi link in use: the rate it's sending at now
+/// (megabits a second, as the adapter says: it moves with the signal)
+/// and the channel's frequency (MHz: 2.4, 5 or 6 GHz's band). None
+/// without a Wi-Fi adapter, or while it's joined to nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Radio {
+    pub rate_mbps: u32,
+    pub frequency_mhz: u32,
+}
+
+impl Radio {
+    /// "2.4 GHz", "5 GHz", "6 GHz".
+    pub fn band(&self) -> &'static str {
+        match self.frequency_mhz {
+            0..=3000 => "2.4 GHz",
+            3001..=5925 => "5 GHz",
+            _ => "6 GHz",
+        }
+    }
+}
+
+/// [`Radio`] of the first Wi-Fi adapter that's joined to a network.
+pub fn wifi_radio() -> Result<Option<Radio>> {
+    let conn = conn()?;
+    for dev in devices_paths()? {
+        let kind: u32 = bus::property(conn, DEST, dev.as_str(), DEVICE, "DeviceType")?;
+        if kind != TYPE_WIFI {
+            continue;
+        }
+        let ap: OwnedObjectPath = bus::property(conn, DEST, dev.as_str(), WIRELESS, "ActiveAccessPoint")?;
+        if ap.as_str() == "/" {
+            continue;
+        }
+        // (Kilobits a second.)
+        let rate: u32 = bus::property(conn, DEST, dev.as_str(), WIRELESS, "Bitrate")?;
+        let frequency_mhz: u32 = bus::property(conn, DEST, ap.as_str(), AP, "Frequency")?;
+        return Ok(Some(Radio { rate_mbps: rate / 1000, frequency_mhz }));
+    }
+    Ok(None)
+}
+
+/// Whether the connection in use is one that's paid for by the byte (a
+/// phone's, as NetworkManager knows or guesses): what moves gigabytes
+/// asks first.
+pub fn metered() -> Result<bool> {
+    // NM_METERED_YES and NM_METERED_GUESS_YES.
+    let m: u32 = bus::property(conn()?, DEST, NM_PATH, NM, "Metered")?;
+    Ok(m == 1 || m == 3)
+}
+
 /// The links Deskbar's tray shows (Ben, 2026-11-05: "when ethernet is
 /// connected it should also show an ethernet icon ... if both are
 /// connected at once the one that is the default route/link should be
