@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### Focus: no zoom box on a window's tab
+
+*04:17* — In Focus every window is zoomed already, so its tab has no zoom box: the tab is narrower and the title has its room. (Above: Standard; below: Focus.)
+
+![Focus: no zoom box on a window's tab](2026-11-17/041705-focus-no-zoom-box-on-a-window-s-tab.png)
+
 ### Preferences ▸ Terminal: Choose… for the worktrees' folder
 
 *04:06* — The folder New Worktree… makes worktrees in can be chosen in a folder panel, with Choose… beside the field.

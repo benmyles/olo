@@ -31,11 +31,6 @@ something nobody here has is in "Blocked", with what it waits for.
   in preview in macos"). Viewer and Quick Look recognise the text in a
   picture (natively, in process, off the UI thread), and it is selected
   with the pointer and copied as text is in a document.
-- **No zoom button on window tabs in focus mode** (Ben, 2026-11-17:
-  "when in focus mode hide the zoom button on window tabs since it
-  wouldn't do anything as we are already always zoomed"). In focus mode
-  every window is zoomed already, so app_server's decorator leaves the
-  zoom button off its tabs (and the tab's title has its room).
 - **Proton VPN, natively** (Ben, 2026-11-17: "build an olo native
   proton vpn app"). An Olo app for Proton VPN: signing in, the countries
   and servers, connect and disconnect, what it's connected to and how
@@ -5978,6 +5973,13 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**No zoom button on window tabs in focus mode**~~ (Ben,
+  2026-11-17: "when in focus mode hide the zoom button on window tabs
+  since it wouldn't do anything as we are already always zoomed"; done
+  2026-11-17). A window Focus keeps zoomed has no zoom box on its tab:
+  the tab is narrower by the box and the title has its room; a floating
+  window keeps its box, and it's back on leaving Focus.
 
 - ~~**Preferences ▸ Terminal: a button to choose the worktrees'
   folder**~~ (Ben, 2026-11-17: "the worktrees location should also have

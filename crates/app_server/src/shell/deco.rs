@@ -68,6 +68,11 @@ pub struct Decoration {
     pub last_press: Option<(Instant, Point<f64, Logical>, Part)>,
     /// Rolled up: only the tab shows (and takes the pointer).
     pub rolled: bool,
+    /// Its tab has no zoom box: Focus keeps it zoomed (`focus_tick`),
+    /// so the box would do nothing (Ben, 2026-11-17: "when in focus mode
+    /// hide the zoom button on window tabs since it wouldn't do anything
+    /// as we are already always zoomed"). The title has its room.
+    pub zoomless: bool,
     /// Behind another window of its group: only the tab shows, as when
     /// rolled up (`groups::mark_behind`).
     pub behind: bool,
@@ -169,6 +174,8 @@ struct TabKey {
     target: bool,
     /// Closed along its bottom too: rolled up, with no frame under it.
     closed: bool,
+    /// It has a zoom box (`Decoration::zoomless`).
+    zoom: bool,
 }
 
 pub const DOUBLE_CLICK: Duration = Duration::from_millis(400);
@@ -315,6 +322,7 @@ impl Default for Decoration {
             pointer: Point::default(),
             last_press: None,
             rolled: false,
+            zoomless: false,
             behind: false,
             fronted: false,
             tab_width: None,
@@ -339,6 +347,15 @@ impl Default for Decoration {
 pub struct TabLayout {
     pub x: i32,
     pub width: i32,
+    /// It has a zoom box at its right (not in Focus: `Decoration::zoomless`).
+    pub zoom: bool,
+}
+
+/// What a tab holds beside its title: the close box and its gap at the
+/// left, and at the right the zoom box and its gap, or, with no zoom
+/// box, the tab's own edge as far from the title.
+fn beside_title(zoom: bool) -> i32 {
+    (BOX_INSET + BOX_SIZE + TITLE_GAP) + if zoom { BOX_INSET + BOX_SIZE + TITLE_GAP } else { BOX_INSET + TITLE_GAP }
 }
 
 impl TabLayout {
@@ -351,9 +368,10 @@ impl TabLayout {
     pub fn zoom_rect(&self) -> Rectangle<i32, Logical> {
         Rectangle::new((self.x + self.width - BOX_INSET - BOX_SIZE, (TAB_HEIGHT - BOX_SIZE) / 2).into(), (BOX_SIZE, BOX_SIZE).into())
     }
-    /// Room for the title between the boxes.
+    /// Room for the title between the boxes (to the tab's edge, with no
+    /// zoom box).
     pub fn title_space(&self) -> i32 {
-        self.width - 2 * (BOX_INSET + BOX_SIZE + TITLE_GAP)
+        self.width - beside_title(self.zoom)
     }
 }
 
@@ -391,7 +409,7 @@ impl Decoration {
 
     /// How wide a tab wants to be for `title`, with room for it all.
     pub fn wanted_tab_width(&mut self, title: &str) -> i32 {
-        (2 * (BOX_INSET + BOX_SIZE + TITLE_GAP) + self.title_width(title)).max(MIN_TAB_WIDTH)
+        (beside_title(!self.zoomless) + self.title_width(title)).max(MIN_TAB_WIDTH)
     }
 
     pub fn tab_layout(&mut self, title: &str, content: Size<i32, Logical>) -> TabLayout {
@@ -402,11 +420,11 @@ impl Decoration {
         };
         // Docked: its place among another frame's tabs, wherever that is.
         if self.docked {
-            return TabLayout { x: self.tab_offset.max(0), width: wanted.max(1) };
+            return TabLayout { x: self.tab_offset.max(0), width: wanted.max(1), zoom: !self.zoomless };
         }
         let width = wanted.min(frame_w).max(1);
         let x = self.tab_offset.clamp(0, (frame_w - width).max(0));
-        TabLayout { x, width }
+        TabLayout { x, width, zoom: !self.zoomless }
     }
 
     /// Where the tab's title is (element-local), if the tab cuts it short
@@ -436,7 +454,7 @@ impl Decoration {
             if contains(grow(tab.close_rect())) {
                 return Part::Close;
             }
-            if contains(grow(tab.zoom_rect())) {
+            if tab.zoom && contains(grow(tab.zoom_rect())) {
                 return Part::Zoom;
             }
             return Part::Tab;
@@ -543,8 +561,18 @@ impl Decoration {
 
         // Tab: rendered to a pixmap at the exact device size it covers.
         let phys = (tx(tab.x + tab.width) - tx(tab.x), frame_top);
-        let key =
-            TabKey { title: cut(title).into_owned(), focused: self.focused, hover: self.hover, pressed: self.pressed, width: tab.width, phys, generation, target: self.target, closed: self.rolled };
+        let key = TabKey {
+            title: cut(title).into_owned(),
+            focused: self.focused,
+            hover: self.hover,
+            pressed: self.pressed,
+            width: tab.width,
+            phys,
+            generation,
+            target: self.target,
+            closed: self.rolled,
+            zoom: tab.zoom,
+        };
         warm_tabs(renderer, phys.1);
         // A look drawn before, or done by the worker, is shown at once; a
         // new one is asked of the worker (the first is drawn here: there
@@ -757,13 +785,17 @@ fn draw_tab(palette: &Palette, key: &TabKey, tab: &TabLayout, s: f64) -> Pixmap 
     let (from, to) = box_colors(Part::Close);
     blended_box(&mut pixmap, inset, top, size, hair, from, to, box_outline);
 
-    // Zoom box: a small square overlapping a larger one behind it.
-    let (zx, zy, zs) = (w - inset - size, top, size);
-    let (from, to) = box_colors(Part::Zoom);
-    let big = (zs as f64 * 0.69).round() as i32;
-    let small = (zs as f64 * 0.54).round() as i32;
-    blended_box(&mut pixmap, zx + zs - big, zy + zs - big, big, hair, from, to, box_outline);
-    blended_box(&mut pixmap, zx, zy, small, hair, from, to, box_outline);
+    // Zoom box: a small square overlapping a larger one behind it. (None
+    // in Focus, where every window is zoomed already: the title has its
+    // room.)
+    if tab.zoom {
+        let (zx, zy, zs) = (w - inset - size, top, size);
+        let (from, to) = box_colors(Part::Zoom);
+        let big = (zs as f64 * 0.69).round() as i32;
+        let small = (zs as f64 * 0.54).round() as i32;
+        blended_box(&mut pixmap, zx + zs - big, zy + zs - big, big, hair, from, to, box_outline);
+        blended_box(&mut pixmap, zx, zy, small, hair, from, to, box_outline);
+    }
 
     // Title.
     let space = tab.title_space();
@@ -797,6 +829,30 @@ impl WindowElement {
 mod title_tests {
     use super::*;
 
+    /// In Focus a tab has no zoom box: the title has its room, the tab
+    /// is the narrower for it, and where the box was is the tab's.
+    #[test]
+    fn a_tab_without_its_zoom_box() {
+        let mut d = Decoration::default();
+        d.enabled = true;
+        let content: Size<i32, Logical> = (800, 600).into();
+        let with = d.tab_layout("Network", content);
+        let at_zoom: Point<f64, Logical> = (f64::from(with.zoom_rect().loc.x + 2), 4.0).into();
+        assert!(with.zoom);
+        assert_eq!(d.hit("Network", content, at_zoom), Part::Zoom);
+        d.zoomless = true;
+        let without = d.tab_layout("Network", content);
+        assert!(!without.zoom);
+        assert_eq!(with.width - without.width, BOX_SIZE, "narrower by the box");
+        assert_eq!(without.title_space(), with.title_space(), "the title's room the same in a tab made for it");
+        // (A tab of a set width: the box's room is the title's.)
+        d.tab_width = Some(with.width);
+        let set = d.tab_layout("Network", content);
+        assert_eq!(set.title_space() - with.title_space(), BOX_SIZE);
+        assert_eq!(d.hit("Network", content, at_zoom), Part::Tab, "no zoom box to press");
+        assert_eq!(d.hit("Network", content, (f64::from(set.close_rect().loc.x + 2), 4.0).into()), Part::Close);
+    }
+
     #[test]
     fn long_titles_are_cut() {
         set_title_chars(5);
@@ -816,7 +872,7 @@ mod title_tests {
             let mut d = Decoration::default();
             let tab = d.tab_layout("Network", (800, 600).into());
             let phys = ((tab.width as f64 * s).round() as i32, (TAB_HEIGHT as f64 * s).round() as i32);
-            let key = |closed| TabKey { title: "Network".into(), focused: true, hover: Part::None, pressed: Part::None, width: tab.width, phys, generation: 0, target: false, closed };
+            let key = |closed| TabKey { title: "Network".into(), focused: true, hover: Part::None, pressed: Part::None, width: tab.width, phys, generation: 0, target: false, closed, zoom: tab.zoom };
             let (hair, bevel) = lines(s);
             let at = |p: &Pixmap, x: i32, y: i32| {
                 let c = p.pixel(x as u32, y as u32).expect("in the tab");
@@ -862,6 +918,7 @@ mod title_tests {
                     generation: 0,
                     target: false,
                     closed: false,
+                    zoom: tab.zoom,
                 };
                 let t = std::time::Instant::now();
                 let _ = draw_tab(&palette, &key, &tab, s);

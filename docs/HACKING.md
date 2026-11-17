@@ -7145,7 +7145,13 @@ at). The arranging commands (tiling, Tile All, Cascade, Fan Out, Smart
 Tile) leave Focus for Standard first (`arranging`), saying so.
 
 Focus shows one window at a time on its display, zoomed: the front one
-of those that would be tiles (not floating, placed, not rolled up). Activating another (Deskbar, ⌘Tab,
+of those that would be tiles (not floating, placed, not rolled up). Its tab has no zoom box there (`Decoration::zoomless`, set by
+`focus_tick` on the windows Focus keeps zoomed and cleared as it's
+left; Ben, 2026-11-17: "when in focus mode hide the zoom button on
+window tabs since it wouldn't do anything as we are already always
+zoomed"): the tab is the narrower by the box, the title has its room,
+and where the box was is tab. A floating window's tab keeps its box.
+Activating another (Deskbar, ⌘Tab,
 Twitcher, the overview, a click on a tab) raises it, so it is the one
 that shows. Every one of them is zoomed (`zoom_window`, so leaving Focus
 puts each back where it was; `focus_tick`), a new one opens zoomed

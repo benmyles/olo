@@ -4738,5 +4738,11 @@
   "title": "Preferences \u25b8 Terminal: Choose\u2026 for the worktrees' folder",
   "caption": "The folder New Worktree\u2026 makes worktrees in can be chosen in a folder panel, with Choose\u2026 beside the field.",
   "image": "2026-11-17/040658-preferences-terminal-choose-for-the-worktrees-fo.png"
+ },
+ {
+  "time": "2026-11-17T04:17:05",
+  "title": "Focus: no zoom box on a window's tab",
+  "caption": "In Focus every window is zoomed already, so its tab has no zoom box: the tab is narrower and the title has its room. (Above: Standard; below: Focus.)",
+  "image": "2026-11-17/041705-focus-no-zoom-box-on-a-window-s-tab.png"
  }
 ]

@@ -137,6 +137,8 @@ impl<B: Backend + 'static> AnvilState<B> {
             m.focus_on.set(None);
             m.focus_display.set(None);
             m.covered.set(false);
+            // (Its zoom box back.)
+            w.decoration().zoomless = false;
             if m.focus_zoomed.replace(false) {
                 for o in std::iter::once(w.clone()).chain(self.groups.mates(w)) {
                     if !zoomed.contains(&o) && windows.contains(&o) {
@@ -176,6 +178,11 @@ impl<B: Backend + 'static> AnvilState<B> {
             let m = w.meta();
             m.focus_on.set(unit.map(|i| i as u32));
             m.focus_display.set(display.map(|i| i as u32));
+            // (One Focus keeps zoomed has no zoom box on its tab: it
+            // would do nothing.)
+            if w.decoration().zoomless != unit.is_some() {
+                w.decoration().zoomless = unit.is_some();
+            }
             if held {
                 continue;
             }
