@@ -1802,6 +1802,17 @@ starting with it; a space continues a name but starts nothing, so Space
 is Quick Look only while no name is being typed). An empty list says
 why (`empty_text("No lines match.")`).
 
+A submenu keeps the keyboard however it opened: one opened by the
+pointer resting on its item asks for its grab with the serial its menu
+did (no new press), and Smithay's replaced pointer grab then ended the
+keyboard's grab and gave the keyboard to the window under the menus,
+so Escape went to a terminal's shell and no menu closed (2026-11-17;
+`PopupPointerGrab::unset` now only once the popups have gone,
+smithay/README.md). `tools/dev/menu-keys-check` does it headless:
+Terminal's tab menu, Add to Group's submenu opened by the pointer,
+Escape twice, each closing one menu, the shell (a `cat`) getting
+neither.
+
 Menus are real `xdg_popup`s drawn by the kit. A submenu with nothing
 enabled in it is drawn disabled and doesn't open, as a BMenu disabled
 whole; its shortcuts and agents' `invoke` do nothing. Split very long

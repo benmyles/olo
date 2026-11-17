@@ -78,3 +78,10 @@ What Olo changed, so far (see "Every frame on time" in
   what would repeat is kept where every key reaches a client
   (`KeyboardTarget for WlSurface`). app_server's `key_repeat.rs` is the
   timer (HACKING, "Key repeat").
+- A popup's pointer grab, replaced, ends the keyboard's grab only once
+  the popups have gone (`PopupPointerGrab::unset`). Upstream ends it
+  whenever the keyboard's grab has the replaced grab's serial, which a
+  nested popup opened without a press has (a submenu opened by the
+  pointer resting on its item asks with its menu's serial): the
+  keyboard went back to the window under the menus, and keys to it
+  (HACKING, "Menus"; `tools/dev/menu-keys-check`).

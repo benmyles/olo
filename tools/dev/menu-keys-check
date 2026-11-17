@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""A submenu opened by the pointer keeps the keyboard.
+
+  menu-keys-check [TERMINAL]
+
+(TERMINAL: the program whose tab menu is tried, target/release/olo-terminal
+if not said.)
+
+Starts a headless session of its own ("menukeys", HOME a folder of its own
+under /var/tmp) with Terminal in it, and does what a person does:
+
+  right-clicks the tab (its menu opens);
+  rests the pointer on Add to Group (its submenu opens beside it);
+  presses Escape: the submenu closes, the menu stays;
+  presses Escape again: the menu closes;
+  and the Escapes went to the menus, not to the shell under them.
+
+A submenu opened by the pointer resting on its item asks for its grab
+with the serial its menu did (there was no new press). The popup pointer
+grab it replaced then took the keyboard's grab away (it had that serial
+too) and gave the keyboard to the window: keys went to the window under
+the menus, Escape to a terminal's shell, and no menu took them
+(2026-11-17, found as an agent's `olo-screen key Escape` left a menu
+open; smithay's `PopupPointerGrab::unset`). A submenu opened with the
+Right key was never touched: that's a press, with a serial of its own.
+"""
+import json, os, shutil, socket, subprocess, sys, time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+TS = [sys.executable, os.path.join(ROOT, "tools/dev/tsession")]
+N = "menukeys"
+SCRATCH = f"/var/tmp/olo-menu-keys-{os.getpid()}"
+HOME = os.path.join(SCRATCH, "home")
+BIN = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "target/release/olo-terminal")
+ESCAPE, ENTER = "1", "28"
+
+
+def ts(*a):
+    return subprocess.run(TS + list(a), capture_output=True, text=True, env=dict(os.environ, TSESSION_PROFILE="release"))
+
+
+def ipc(r):
+    return json.loads(ts("ipc", N, json.dumps(r)).stdout or "{}")
+
+
+def window():
+    return next(iter(ipc({"type": "list_windows"}).get("windows", [])), None)
+
+
+def trees(pid):
+    """What the program says its windows show (its own socket; a popup
+    is a window of its own there, its nodes placed within it)."""
+    runtime = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    s = socket.socket(socket.AF_UNIX)
+    s.settimeout(5)
+    try:
+        s.connect(os.path.join(runtime, f"olo-menus-{pid}.sock"))
+        s.sendall(b'{"tree": true}\n')
+        buf = b""
+        while not buf.endswith(b"\n"):
+            got = s.recv(1 << 20)
+            if not got:
+                break
+            buf += got
+        return json.loads(buf)
+    except (OSError, json.JSONDecodeError):
+        return []
+    finally:
+        s.close()
+
+
+def popups(n, within=3.0):
+    """The window's popups once there are `n` of them (None if never)."""
+    end = time.time() + within
+    while time.time() < end:
+        w = window()
+        if w is not None and len(w.get("popups") or []) == n:
+            return w.get("popups") or []
+        time.sleep(0.15)
+    return None
+
+
+def main():
+    if not os.path.exists(BIN):
+        sys.exit("build first: cargo build --release -p olo-terminal")
+    os.makedirs(HOME, exist_ok=True)
+    failures = []
+    pid = None
+
+    def check(ok, what):
+        print(("  ok  " if ok else "  FAIL ") + what)
+        if not ok:
+            failures.append(what)
+
+    try:
+        print(ts("start", N, "1280x800", "--home", HOME).stdout.strip())
+        # (Its shell: cat, whose every byte is kept, so an Escape that
+        # reached it shows.)
+        got = os.path.join(SCRATCH, "typed")
+        ts("run", N, BIN, "-w", HOME, "-e", "sh", "-c", f"exec cat > {got}")
+        w = None
+        for _ in range(40):
+            time.sleep(0.25)
+            w = window()
+            if w:
+                break
+        check(w is not None, "Terminal's window is up")
+        if w is None:
+            return
+        pid = w["pid"]
+        time.sleep(1.5)
+        w = window()
+        tab = next((n for t in trees(pid) if t.get("title") == w["title"] for n in t["nodes"] if n["role"] == "Tab"), None)
+        check(tab is not None, "its tab is in its tree")
+        if tab is None:
+            return
+        c = w["content"]
+        ts("click", N, str(int(c["x"] + tab["x"] + 30)), str(int(c["y"] + tab["y"] + tab["height"] / 2)), "right")
+        menu = popups(1)
+        check(menu is not None, "a right-click on the tab opens its menu")
+        if not menu:
+            return
+        item = next((n for t in trees(pid) if (t["width"], t["height"]) == (menu[0]["width"], menu[0]["height"]) for n in t["nodes"] if n["role"] == "MenuItem" and n.get("name") == "Add to Group"), None)
+        check(item is not None, "the menu has Add to Group")
+        if item is None:
+            return
+        ts("move", N, str(int(menu[0]["x"] + item["x"] + item["width"] / 2)), str(int(menu[0]["y"] + item["y"] + item["height"] / 2)))
+        check(popups(2) is not None, "the pointer resting on it opens its submenu")
+        ts("key", N, ESCAPE)
+        check(popups(1, 2.0) is not None, "Escape closes the submenu, the menu stays")
+        ts("key", N, ESCAPE)
+        check(popups(0, 2.0) is not None, "Escape again closes the menu")
+        # What the shell got: a line typed now, and no Escape before it.
+        time.sleep(0.5)
+        ts("type", N, "after")
+        ts("key", N, ENTER)
+        typed = b""
+        for _ in range(20):
+            time.sleep(0.2)
+            try:
+                typed = open(got, "rb").read()
+            except OSError:
+                typed = b""
+            if typed.endswith(b"after\n"):
+                break
+        check(typed == b"after\n", f"the Escapes went to the menus, not the shell (it got {typed!r})")
+    finally:
+        if pid:
+            try:
+                os.kill(pid, 15)
+            except OSError:
+                pass
+        ts("stop", N)
+        shutil.rmtree(SCRATCH, ignore_errors=True)
+    if failures:
+        sys.exit(f"{len(failures)} failed")
+    print("all as it should be")
+
+
+if __name__ == "__main__":
+    main()

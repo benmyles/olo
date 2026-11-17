@@ -702,6 +702,18 @@ where
     }
 
     fn unset(&mut self, data: &mut D) {
+        // Olo: only once the popups have gone. A nested popup's grab (a
+        // submenu's) replaces this one while the menus are still up, and
+        // a submenu opened by the pointer resting on its item asks with
+        // the serial its menu did (there was no new press): the
+        // keyboard's grab, just made the submenu's, has that serial too,
+        // so this took it away and gave the keyboard to the window under
+        // the menus. Keys then went to the window (Escape to a
+        // terminal's shell) and no menu took them. The keyboard's grab
+        // ends itself when the popups do (`PopupKeyboardGrab::input`).
+        if !self.popup_grab.has_ended() {
+            return;
+        }
         let serial = SERIAL_COUNTER.next_serial();
         self.popup_grab.unset_keyboard_grab(data, serial);
     }
