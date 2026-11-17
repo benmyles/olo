@@ -59,6 +59,26 @@ something nobody here has is in "Blocked", with what it waits for.
   listed in its menus; Full Screen; and Presentation: the window as it
   is, with the menu bar, toolbar and status line gone, so the window can
   be shared as it is.
+- **Blueferry: a phone's messages and one-time codes in Olo** (Ben,
+  2026-11-16: "integrate https://github.com/erikwb/blueferry into olo so
+  that doctor suggests installing the backend and handles doing it and
+  then write olo native frontend prefs/deskbar/app integration including
+  capturing OTPs from SMS messages and extend the olo chrome extension to
+  offer to fill them in the browser when they arrive like how macos does
+  it (this should try to use smart heuristics to figure out what browser
+  session needs the otp e.g. have the olo extension look at what's on the
+  page and whether's there's a form field waiting for a code. this is
+  important b/c it could be from a user chrome tab or one on an agent
+  screen in which case it should go to the agent's tab not the user)").
+  Read Blueferry first (what its backend is, how it's installed and what
+  it speaks); then: Olo Doctor suggests the backend and installs it; a
+  native front end of Olo's (a Preferences panel, Deskbar, what an app
+  needs); a one-time code arriving by SMS is recognised and offered where
+  it's wanted, as macOS does: Olo's Chrome extension looks at each page
+  for a field waiting for a code, and the code is offered in the tab that
+  is, which may be the person's or one on an Agent Screen (then it goes
+  to the agent's tab, never the person's, and is logged in the agent's
+  history).
 - **A notification's click goes to its own window and tab** (Ben,
   2026-11-16: "when a notification appears in olo for a tab within a
   group of windows, e.g. i noticed it with terminal where i'll get a
