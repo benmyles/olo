@@ -2763,7 +2763,16 @@ it.
   a band, the arrows, Page Up and Down, Home and End (⇧ grows), ⌘A,
   and typing a name (`type_select`) select (`on_select`); a press on a
   selected row keeps the selection until the release (for dragging);
-  double click or Return opens (`on_open`); a right click keeps or
+  double click or Return opens (`on_open`; **a double click opens at
+  its release, where it wasn't dragged**: the second press of two quick
+  ones that moves is a drag or a band, as any press is. It opened at
+  the press, in the list and in Tracker's icon and column views and
+  the Desktop, so a file clicked and dragged at once, within a double
+  click's time, opened or did nothing and never dragged; Ben,
+  2026-11-17, "it always works if i drag by icon but only sometimes if
+  i drag by the name". Anything that opens on a double click and can
+  be dragged does it so: the press is kept, `opens`, and the release
+  opens); a right click keeps or
   makes the selection and calls `on_context` with where; `on_press`
   sees a left press first, with the row and where, and takes it by
   answering true (a tree's disclosure triangle, drawn by the cell: the

@@ -193,6 +193,9 @@ struct Press {
     on_label: bool,
     mods: Modifiers,
     dragging: bool,
+    /// The second press of a double click: it opens at its release,
+    /// unless dragged.
+    opens: bool,
 }
 
 pub fn mods(m: &Modifiers) -> Mods {
@@ -871,15 +874,15 @@ impl FolderWin {
         let hit = self.icon_hit(pos);
         let on_label = hit.and_then(|i| self.icon_layout(i)).is_some_and(|l| l.highlight().contains(&pos));
         let m = mods(&e.modifiers);
-        if e.button == MouseButton::Left && e.click_count >= 2 {
-            if let Some(i) = hit
-                && let Some(entry) = self.entries.get(i).cloned()
-            {
-                self.pending_edit = None;
-                self.press = None;
-                self.open(&entry);
-            }
-            return;
+        // (A double click opens at its release, where it wasn't dragged:
+        // a press that moves is a drag, the second of two quick ones too.
+        // It opened at the press, so a name clicked and then dragged at
+        // once opened its file, or did nothing, and never dragged: Ben,
+        // 2026-11-17, "it always works if i drag by icon but only
+        // sometimes if i drag by the name".)
+        let opens = e.button == MouseButton::Left && e.click_count >= 2 && hit.is_some();
+        if opens {
+            self.pending_edit = None;
         }
         let was_selected = hit.is_some_and(|i| self.list.selected.contains(&i));
         match hit {
@@ -911,7 +914,7 @@ impl FolderWin {
             // The icon's picture ready by the time a drag starts.
             let _ = olo_kit::icons::bitmap(items::icon_of(e), 0);
         }
-        self.press = Some(Press { at: pos, button: e.button, item: hit, was_selected, on_label, mods: e.modifiers, dragging: false });
+        self.press = Some(Press { at: pos, button: e.button, item: hit, was_selected, on_label, mods: e.modifiers, dragging: false, opens });
         cx.invalidate();
     }
 
@@ -992,6 +995,16 @@ impl FolderWin {
         let Some(press) = self.press.take() else { return };
         self.band = None;
         if press.dragging {
+            cx.invalidate();
+            return;
+        }
+        if press.opens {
+            self.pending_edit = None;
+            if (e.position - press.at).magnitude() < DRAG_SLOP as f64
+                && let Some(entry) = press.item.and_then(|i| self.entries.get(i)).cloned()
+            {
+                self.open(&entry);
+            }
             cx.invalidate();
             return;
         }

@@ -99,6 +99,9 @@ struct Press {
     ctrl: bool,
     shift: bool,
     dragging: bool,
+    /// The second press of a double click: it opens at its release,
+    /// unless dragged.
+    opens: bool,
 }
 
 /// Icons placed by hand, by [`place_key`], as the top-left of each one's
@@ -571,13 +574,10 @@ impl Desktop {
         let pos = e.position;
         let hit = self.hit(pos);
         let (ctrl, shift) = (e.modifiers.control || e.modifiers.platform, e.modifiers.shift);
-        if e.button == MouseButton::Left && e.click_count >= 2 {
-            if let Some(entry) = hit.and_then(|i| self.item(i)).map(|it| it.entry.clone()) {
-                self.open(&entry);
-            }
-            self.press = None;
-            return;
-        }
+        // (A double click opens at its release, where it wasn't
+        // dragged: a press that moves is a drag, the second of two quick
+        // ones too. See `FolderWin::icon_press`.)
+        let opens = e.button == MouseButton::Left && e.click_count >= 2 && hit.is_some();
         let was_selected = hit.is_some_and(|i| self.selected.contains(&i));
         match hit {
             // Kept for the menu, or a drag, if it's one of them; ⌘ or ⇧
@@ -605,7 +605,7 @@ impl Desktop {
             let _ = olo_kit::icons::bitmap(it.icon, 0);
         }
         let _ = mods;
-        self.press = Some(Press { at: pos, button: e.button, item: hit, was_selected, ctrl, shift, dragging: false });
+        self.press = Some(Press { at: pos, button: e.button, item: hit, was_selected, ctrl, shift, dragging: false, opens });
         cx.invalidate();
     }
 
@@ -660,6 +660,15 @@ impl Desktop {
         let Some(press) = self.press.take() else { return };
         self.band = None;
         if press.dragging {
+            cx.invalidate();
+            return;
+        }
+        if press.opens {
+            if (e.position - press.at).magnitude() < DRAG_SLOP as f64
+                && let Some(entry) = press.item.and_then(|i| self.item(i)).map(|it| it.entry.clone())
+            {
+                self.open(&entry);
+            }
             cx.invalidate();
             return;
         }

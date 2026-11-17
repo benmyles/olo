@@ -34,11 +34,10 @@ something nobody here has is in "Blocked", with what it waits for.
   the code and keep looking for up to 60s until one arrives from
   phone/email and then offer to fill it.").
 
-- **Tracker: dragging a file by its name only sometimes works** (Ben,
-  2026-11-17: "previously i reported a bug where sometimes dragging a
-  file from tracker via the name instead of the icon doesn't work. i
-  thought it was fixed but it still happens. it always works if i drag
-  by icon but only sometimes if i drag by the name").
+- **Tracker's list view takes no drops** (found 2026-11-17, trying
+  drags: a file dragged onto a folder's row there, or into the window
+  from another, isn't taken; `FolderWin::drop_over` answers none for
+  `ViewMode::List`). The icon and column views take both.
 
 - **Viewer: Find Again and Find Previous don't work; what apps have
   in common belongs in the kit** (Ben, 2026-11-17: "in viewer find
@@ -47,6 +46,14 @@ something nobody here has is in "Blocked", with what it waits for.
   the kit or some common library so that if it works in one place it
   will work everywhere and work consistently. not just for find but
   everything that is common across apps").
+
+- **Tracker: Open With isn't there for every file an app opens** (Ben,
+  2026-11-17: "the open with in tracker doesn't seem to consistently
+  work. it doesn't appear for this file in ~/Downloads" (a `.docx` with
+  a long name: spaces, dots, parentheses) "this is another scenario
+  where things should be consistent -- an app should register the
+  extensions it supports (e.g. here StyledEdit supports it) and appear
+  in the Open With menu").
 
 ## Done, waiting for Ben to try or confirm
 
@@ -5898,6 +5905,21 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Tracker: dragging a file by its name only sometimes works**~~
+  (Ben, 2026-11-17: "it always works if i drag by icon but only
+  sometimes if i drag by the name"; done the same day). Found: a file
+  clicked and then dragged at once (within a double click's time, 0.08
+  to 0.35 s tried) wasn't dragged: the drag's press counted as the
+  second of a double click, which opened the file at the press (or, for
+  a folder in the column view, did nothing). A click on the name to
+  select and then a drag is just that. Now a double click opens at its
+  release, and a press that moves drags, in the icon, list and column
+  views and on the Desktop (and in every list of the kit's). Everything
+  else tried dragged every time, before and after: every point over a
+  name and its edges, selected or not, a quick flick, a slow drag, held
+  first, renaming armed. **If it still happens**, what was pressed
+  just before and where it was dropped would find it.
 
 - ~~**Agent Screens: Screens ▸ New Screen brings back an old one**~~
   (Ben, 2026-11-17: "it seems to bring back an old archived/deleted

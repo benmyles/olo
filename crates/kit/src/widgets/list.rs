@@ -68,8 +68,10 @@ enum Drag {
     /// as it scrolls, and in the window), on which row, the selection a
     /// band would start from, whether it has become one and where the
     /// pointer is; `defer`: a press on a selected row leaves the
-    /// selection (to drag it) and takes the row alone at the release.
-    Press { from: Point<Pixels>, at: Point<Pixels>, row: Option<usize>, base: SelectionBand, band: bool, now: Point<Pixels>, defer: bool },
+    /// selection (to drag it) and takes the row alone at the release;
+    /// `open`: the second press of a double click, which opens the row
+    /// at its release unless it was dragged.
+    Press { from: Point<Pixels>, at: Point<Pixels>, row: Option<usize>, base: SelectionBand, band: bool, now: Point<Pixels>, defer: bool, open: bool },
     /// A column's title held (by its own index, wherever it shows): it
     /// sorts at the release over it, or, dragged sideways (`moved`), it
     /// moves the column.
@@ -947,13 +949,15 @@ fn rows_pressed(model: &ListModel, h: &Handlers, e: &MouseDownEvent, cx: &mut Wi
     let mods = Mods { command: e.modifiers.control || e.modifiers.platform, shift: e.modifiers.shift };
     let row = model.row_at(e.position, body);
     match e.button {
-        MouseButton::Left if e.click_count >= 2 => {
-            if let (Some(r), Some(f)) = (row, &h.open) {
-                f(&r, cx);
-            }
-        }
         MouseButton::Left => {
-            if let (Some(r), Some(f)) = (row, &h.press)
+            // The second press of a double click opens its row at the
+            // release, where it wasn't dragged: a press that moves is a
+            // drag (or a band), the second of two quick ones too. It
+            // opened at the press, so a row clicked and then dragged at
+            // once opened and never dragged.
+            let open = e.click_count >= 2 && row.is_some();
+            if !open
+                && let (Some(r), Some(f)) = (row, &h.press)
                 && f(&(r, e.position), cx) == Some(true)
             {
                 cx.invalidate_owner();
@@ -974,7 +978,7 @@ fn rows_pressed(model: &ListModel, h: &Handlers, e: &MouseDownEvent, cx: &mut Wi
                     }
                     _ => {}
                 }
-                m.drag = Some(Drag::Press { from, at: e.position, row, base, band: false, now: e.position, defer });
+                m.drag = Some(Drag::Press { from, at: e.position, row, base, band: false, now: e.position, defer, open });
                 m.state.selected != before
             };
             if changed {
@@ -1076,8 +1080,21 @@ fn rows_released(model: &ListModel, h: &Handlers, e: &MouseUpEvent, cx: &mut Win
     if e.button != MouseButton::Left {
         return;
     }
-    let Some(Drag::Press { row, band, defer, .. }) = model.0.borrow().drag.clone() else { return };
+    let Some(Drag::Press { row, band, defer, open, at, .. }) = model.0.borrow().drag.clone() else { return };
     model.0.borrow_mut().drag = None;
+    // A double click let go where it was pressed: its row opens.
+    if open {
+        let d = e.position - at;
+        if let (Some(r), false, Some(f)) = (row, band, &h.open)
+            && f32::from(d.x).hypot(f32::from(d.y)) <= 3.0
+        {
+            f(&r, cx);
+        }
+        if band {
+            cx.repaint();
+        }
+        return;
+    }
     // A press on a selected row, not dragged: it alone.
     if let (Some(r), false, true) = (row, band, defer) {
         let changed = {

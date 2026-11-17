@@ -81,6 +81,9 @@ struct ColPress {
     button: MouseButton,
     mods: Modifiers,
     dragging: bool,
+    /// The second press of a double click: it opens at its release,
+    /// unless dragged.
+    opens: bool,
 }
 
 impl FolderWin {
@@ -336,19 +339,19 @@ impl FolderWin {
         self.col_scroll(k);
         let Some(g) = self.col_geo(k) else { return };
         let row = g.row_at(e.position);
-        if e.button == MouseButton::Left && e.click_count >= 2 {
-            if let Some(entry) = row.and_then(|r| self.column(k).1.get(r)).filter(|e| !e.is_dir).cloned() {
-                self.open(&entry);
-            }
-            self.cols.press = None;
-            return;
-        }
+        // (A double click opens at its release, where it wasn't dragged:
+        // a press that moves is a drag, the second of two quick ones too.
+        // It opened at the press, so a name clicked and then dragged at
+        // once opened its file, or did nothing, and never dragged: Ben,
+        // 2026-11-17, "it always works if i drag by icon but only
+        // sometimes if i drag by the name".)
+        let opens = e.button == MouseButton::Left && e.click_count >= 2 && row.is_some();
         if e.button == MouseButton::Left && row.is_none() {
             // A selection band, from below the items: ⇧ adds, ⌘ flips.
             let base = self.column(k).2.band(mods(&e.modifiers));
             self.cols.band = Some((k, e.position.y - g.top, base, e.position));
         }
-        self.cols.press = Some(ColPress { col: k, row, at: e.position, button: e.button, mods: e.modifiers, dragging: false });
+        self.cols.press = Some(ColPress { col: k, row, at: e.position, button: e.button, mods: e.modifiers, dragging: false, opens });
         cx.invalidate();
     }
 
@@ -444,6 +447,13 @@ impl FolderWin {
             return;
         }
         let (col, moved) = (press.col, (e.position - press.at).magnitude() >= DRAG_SLOP as f64);
+        if press.opens {
+            if !moved && let Some(entry) = press.row.and_then(|r| self.column(col).1.get(r)).filter(|e| !e.is_dir).cloned() {
+                self.open(&entry);
+            }
+            cx.invalidate();
+            return;
+        }
         match (press.button, press.row) {
             (MouseButton::Left, _) if moved => {}
             (MouseButton::Left, Some(row)) if press.mods.control || press.mods.platform || press.mods.shift => {
