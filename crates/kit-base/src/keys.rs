@@ -167,6 +167,27 @@ pub fn shortcut(command: &str) -> Option<Shortcut> {
     known(command, false)?.keys.map(|(s, _)| s)
 }
 
+/// The shortcut the profile's entry `id` ("tracker.go-to") has, as an app
+/// presses it, whichever app this is: for a part of the kit that takes
+/// another app's keys (the file panels' Go to File or Folder is
+/// Tracker's). None if it has none.
+pub fn shortcut_of(id: &str) -> Option<Shortcut> {
+    static CACHE: Mutex<Option<(u64, HashMap<String, Option<Shortcut>>)>> = Mutex::new(None);
+    let generation = GENERATION.load(Ordering::Relaxed);
+    let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    if cache.as_ref().is_none_or(|(g, _)| *g != generation) {
+        *cache = Some((generation, HashMap::new()));
+    }
+    let (_, map) = cache.as_mut()?;
+    if let Some(known) = map.get(id) {
+        return *known;
+    }
+    let p = profile();
+    let known = shortcuts::entry(id).map(|e| e.keys(&p)).unwrap_or_default().iter().find_map(|c| app_side(c, p.command_key, false));
+    map.insert(id.to_owned(), known);
+    known
+}
+
 /// App `app`'s own shortcuts in the profile (as a terminal-style window
 /// gets them, if `raw`): for an app that sends every other key on
 /// (Terminal, to its shell).
@@ -189,6 +210,15 @@ pub fn unlisted(command: &str, s: &Shortcut) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An entry's keys by its id, as an app presses them: Tracker's Go to
+    /// File or Folder is ⇧ and the command key with G, whichever app asks.
+    #[test]
+    fn an_entrys_keys_by_its_id() {
+        assert_eq!(shortcut_of("tracker.go-to"), Some(Shortcut { key: 34, shift: true, command: true, alt: false }));
+        assert_eq!(shortcut_of("tracker.go-to"), shortcut_of("tracker.go-to"));
+        assert_eq!(shortcut_of("no.such-entry"), None);
+    }
 
     #[test]
     fn keys_as_apps_see_them() {

@@ -17,12 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Go to File or Folder in the file panel** (Ben, 2026-11-16, with a
-  picture of an Open File panel on Pictures: "i should be able to use
-  the go to file/folder shortcut in a picker like this"). In the kit's
-  Open and Save panels (`file_panel`; the portal's too), Tracker's Go to
-  Folder shortcut opens the same field: a path typed (with completion)
-  takes the panel to that folder, or chooses that file.
 - **A window tab's menu: Hide ▸ and Close ▸, each with Others and All**
   (Ben, 2026-11-16: "we need a Close All option when right clicking a
   window tab (we have Close and Close Others already)"; then: "we need
@@ -5940,6 +5934,16 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Go to File or Folder in the file panel**~~ (Ben, 2026-11-16: "i
+  should be able to use the go to file/folder shortcut in a picker like
+  this"; done 2026-11-17). Every Open, Save and folder panel (the
+  portal's too: it is the kit's) opens Tracker's Go to File or Folder
+  by the same keys, or by a `/` or `~` typed in its list: a path typed
+  with completion takes the panel to that folder, or to that file's
+  folder with the file selected (Save: its name taken). The window is
+  the kit's now (`olo_kit::go_to`), and its keys are in the keyboard
+  profile (`tracker.go-to`). (HACKING, "File panels".)
 
 - ~~**Smart tiling with a model, removed**~~ (Ben, 2026-11-16: "remove
   the smart tiling with a model feature completely -- it never worked

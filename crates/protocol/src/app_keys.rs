@@ -157,6 +157,7 @@ pub const APP_KEYS: &[AppKey] = &[
     // In the window, as Logs' Back (and Finder's and Explorer's).
     k("tracker.back", TRACKER, "back", "Back", &["Cmd+BracketLeft"], &["Alt+Left"], &["Alt+BracketLeft"]),
     k("tracker.forward", TRACKER, "forward", "Forward", &["Cmd+BracketRight"], &["Alt+Right"], &["Alt+BracketRight"]),
+    k("tracker.go-to", TRACKER, "go-to", "Go to File or Folder", &["Shift+Cmd+G"], &["Ctrl+Shift+G"], &["Alt+Shift+G"]),
     k("tracker.info", TRACKER, "info", "Get Info", &["Cmd+I"], &["Alt+Return"], &["Alt+I"]),
     k("tracker.quick-look", TRACKER, "quick-look", "Quick Look", &["Cmd+Y"], &["Ctrl+Space"], &["Alt+Y"]),
     k("tracker.rename", TRACKER, "rename", "Edit Name", &["Cmd+E"], &["F2"], &["Alt+E"]),

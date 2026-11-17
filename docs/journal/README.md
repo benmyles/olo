@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### File panels: Go to File or Folder
+
+*06:29* — Every Open, Save and folder panel opens Tracker's Go to File or Folder by its keys (⇧⌘G), or by a / or ~ typed in the list. Left: a path typed with Tab completing; right: the panel there, the file selected.
+
+![File panels: Go to File or Folder](2026-11-17/062945-file-panels-go-to-file-or-folder.png)
+
 ### Smart tiling with a model, removed
 
 *06:16* — Smart Tile is gone: its program, shortcut, Deskbar item and its box in Preferences ▸ AI (the panel now: Models, Ask, Weather; Emoji, Agent Screens, Claude Code).

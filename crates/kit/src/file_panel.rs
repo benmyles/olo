@@ -19,6 +19,12 @@
 //! panel for the file before or after (`step -1`/`step 1` on its stdout),
 //! and the panel, its selection moved there, tells it what to show (the
 //! path on its stdin), as it does when its selection moves by itself.
+//!
+//! Go to File or Folder is here as in Tracker, by the same keys (⇧⌘G
+//! unless changed; and `/` or `~` typed in the list starts a path with
+//! it): [`crate::go_to`]'s window, a path typed with completion. A
+//! folder's is where the panel goes; a file's, its folder with the file
+//! selected (Save: its name in the name's field).
 
 use std::{
     path::{Path, PathBuf},
@@ -247,6 +253,8 @@ pub enum PanelMsg {
     Replace(bool),
     Cancel,
     Ok,
+    /// Go to File or Folder went to this path.
+    GoTo(PathBuf),
 }
 
 pub struct PanelView {
@@ -274,6 +282,10 @@ pub struct PanelView {
     over: Option<String>,
     /// What the menu that's up is for: the kind and the files.
     menu_for: Option<(Option<String>, Vec<PathBuf>)>,
+    /// Go to File or Folder, while it's up.
+    go_to: Option<olo_interface::WindowHandle<crate::go_to::GoTo<crate::go_to::Plain>>>,
+    /// A file gone to: selected once its folder is listed.
+    select: Option<String>,
     on_done: Option<OnDone>,
 }
 
@@ -356,6 +368,8 @@ impl PanelView {
             looking_at: None,
             over: None,
             menu_for: None,
+            go_to: None,
+            select: None,
             on_done: Some(on_done),
         };
         v.go(dir, false, cx);
@@ -435,6 +449,50 @@ impl PanelView {
         }
         self.list_again(cx);
         cx.invalidate();
+    }
+
+    /// Go to File or Folder (with `typed` in its field already: a `/` or
+    /// `~` typed in the list): the one up brought forward, else opened
+    /// over the panel, for paths from the folder shown.
+    fn open_go_to(&mut self, typed: &str, cx: &mut Cx<Self>) {
+        if crate::raise(self.go_to.as_ref()) {
+            return;
+        }
+        let went = cx.messenger();
+        self.go_to = Some(crate::go_to::open::<crate::go_to::Plain>(self.panel.dir.clone(), typed, move |path| {
+            went.send(PanelMsg::GoTo(path));
+        }));
+    }
+
+    /// Where Go to File or Folder went: a folder shown; a file's folder
+    /// shown with the file selected (if this panel lists it), or, to
+    /// save, its name taken.
+    fn went_to(&mut self, path: PathBuf, cx: &mut Cx<Self>) {
+        // (As the person sees it: a link to a folder is a folder.)
+        if path.is_dir() {
+            return self.go(path, true, cx);
+        }
+        let (Some(dir), Some(name)) = (path.parent().map(Path::to_owned), path.file_name().map(|n| n.to_string_lossy().into_owned())) else { return };
+        match (&self.name, self.panel.mode) {
+            (Some(field), Mode::Save) => field.update(cx, |f, cx| {
+                f.set_text(name, cx);
+                f.caret_to_end(cx);
+            }),
+            _ => self.select = Some(name),
+        }
+        self.go(dir, true, cx);
+    }
+
+    /// The file gone to, selected and in view, once its folder is listed
+    /// (one this panel doesn't list, of another type or hidden, isn't
+    /// there to select).
+    fn select_gone_to(&mut self, cx: &mut Cx<Self>) {
+        let Some(name) = self.select.take() else { return };
+        let Some(row) = self.items.iter().position(|it| it.name == name) else { return };
+        self.list.state_mut().select(row);
+        self.list.reveal(cx, row);
+        self.list.focus(cx);
+        self.look_follows();
     }
 
     /// Lists the folder shown (again), on a worker.
@@ -611,6 +669,9 @@ impl PanelView {
     fn finish(&mut self, result: PanelResult, cx: &mut Cx<Self>) {
         let Some(f) = self.on_done.take() else { return };
         self.put_look_away();
+        if let Some(w) = self.go_to.take() {
+            w.close();
+        }
         f(Answer { result, filter: self.filter(), choices: self.panel.choices.clone(), dir: self.panel.dir.clone() });
         cx.close_window();
     }
@@ -737,15 +798,18 @@ impl View for PanelView {
                         self.all = items;
                         self.error = None;
                         self.refilter(cx);
+                        self.select_gone_to(cx);
                     }
                     Err(e) => {
                         self.all.clear();
                         self.items = Rc::default();
                         self.error = Some(e);
+                        self.select = None;
                     }
                 }
                 cx.invalidate();
             }
+            PanelMsg::GoTo(path) => self.went_to(path, cx),
             PanelMsg::LookStep(by) => self.look_step(by, cx),
             PanelMsg::Exported(handle) => self.over = handle,
             PanelMsg::Sorted => self.refilter(cx),
@@ -794,6 +858,9 @@ impl View for PanelView {
     /// Answered Cancelled if the window goes before an answer.
     fn window_closing(&mut self, _: &mut Cx<Self>) {
         self.put_look_away();
+        if let Some(w) = self.go_to.take() {
+            w.close();
+        }
         if let Some(f) = self.on_done.take() {
             f(Answer { result: PanelResult::Cancelled, filter: self.filter(), choices: self.panel.choices.clone(), dir: self.panel.dir.clone() });
         }
@@ -940,25 +1007,49 @@ impl View for PanelView {
         panel = panel.child(row);
 
         // Keys: Escape cancels (or the question), Space looks.
-        div().size_full().child(panel).on_key_down(cx.listener(|v: &mut Self, e: &KeyDownEvent, cx| match e.keystroke.key.as_str() {
-            "escape" if !e.keystroke.modifiers.modified() => {
-                if v.confirm.take().is_some() {
-                    cx.invalidate();
-                } else {
-                    v.finish(PanelResult::Cancelled, cx);
+        div()
+            .size_full()
+            .child(panel)
+            // Go to File or Folder: its keys, wherever the keyboard is in
+            // the panel; and a path begun in the list, `/` or `~` (not in
+            // the middle of a name typed to select it; in Save's field a
+            // `/`, which no name has).
+            .capture_key_down(cx.listener(|v: &mut Self, e: &KeyDownEvent, cx| {
+                if v.confirm.is_some() {
+                    return;
                 }
-                cx.stop_propagation();
-            }
-            "space" if !e.keystroke.modifiers.modified() => {
-                // (Not while typing a name, in the list or in Save's field.)
+                let k = &e.keystroke;
                 let in_field = v.name.as_ref().is_some_and(|f| f.is_focused(cx));
-                if !in_field && !v.list.typing() {
-                    v.toggle_look(cx);
+                let begun = match k.key.as_str() {
+                    _ if crate::keys::pressed(&crate::go_to::shortcut(), k) => Some(""),
+                    "/" if !k.modifiers.modified() && (in_field || !v.list.typing()) => Some("/"),
+                    "~" if !k.modifiers.control && !k.modifiers.alt && !k.modifiers.platform && !in_field && !v.list.typing() => Some("~"),
+                    _ => None,
+                };
+                if let Some(typed) = begun {
+                    v.open_go_to(typed, cx);
                     cx.stop_propagation();
                 }
-            }
-            _ => {}
-        }))
+            }))
+            .on_key_down(cx.listener(|v: &mut Self, e: &KeyDownEvent, cx| match e.keystroke.key.as_str() {
+                "escape" if !e.keystroke.modifiers.modified() => {
+                    if v.confirm.take().is_some() {
+                        cx.invalidate();
+                    } else {
+                        v.finish(PanelResult::Cancelled, cx);
+                    }
+                    cx.stop_propagation();
+                }
+                "space" if !e.keystroke.modifiers.modified() => {
+                    // (Not while typing a name, in the list or in Save's field.)
+                    let in_field = v.name.as_ref().is_some_and(|f| f.is_focused(cx));
+                    if !in_field && !v.list.typing() {
+                        v.toggle_look(cx);
+                        cx.stop_propagation();
+                    }
+                }
+                _ => {}
+            }))
     }
 }
 

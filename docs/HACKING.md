@@ -1860,6 +1860,29 @@ Show in Tracker (`olo_kit_base::tracker::open`). A
 filter is a glob, ignoring case, or a MIME type, a kind of one counting
 (`olo_xdg::mime::is_a`); which filters each file fits is worked out
 with the listing, off the UI thread, so switching is instant.
+Go to File or Folder is in every panel as in Tracker (Ben, 2026-11-16:
+"i should be able to use the go to file/folder shortcut in a picker
+like this"): the same keys (`go_to::shortcut()`: the profile's
+`tracker.go-to`, read whichever app this is with
+`olo_kit_base::keys::shortcut_of`; ⇧⌘G unless changed), wherever the
+keyboard is in the panel, and a `/` or `~` typed in the list (not in
+the middle of a name typed to select it; in Save's field a `/`, which
+no name has) opens it with that typed already. It is `olo_kit::go_to`'s
+window (`go_to::open::<Names>(base, typed, on_go)`, a dialog over the
+window it's asked in, on a looper of its own): a path typed or pasted
+(one in the clipboard is there, selected), the names it could go on to
+listed under it, each folder read once off the looper, Tab completing
+and ↑↓ choosing. Whose names they are is the opener's (`go_to::Names`:
+how a folder is listed and a row drawn): `go_to::Plain` for the panels
+(a folder's icon or the kind's), Tracker's its own. Go hands the path
+back (`PanelMsg::GoTo`, by the panel's messenger): a folder's is where
+the panel goes; a file's, its folder with the file selected and in
+view once listed (`select_gone_to`; one the panel doesn't list, of
+another type, isn't there to select), or, to save, its name put in the
+name's field. The window closes with the panel. Tried headless in
+StyledEdit's Open and Save As: `~/Doc`⇥`Rep`⇥`su`⇥ and Return showed
+Reports with summer.txt selected and Open lit; `/` and `~` in the list
+opened it so; in Save As a file's path put its name in the field.
 `olo_xdg::mime::from_name` finds a name's type from shared-mime-info's
 globs, indexed by suffix (most are `*.ext`), the few other patterns
 made into characters once, so a big folder is a few lookups a file
@@ -16662,7 +16685,11 @@ deferred so the Tracker can update the window back):
   Open button (its secondary click). Its commands go through
   `Tracker::open_with`, which opens Other…'s window itself (to keep it
   in its windows' list) and hands the rest to `open_with::run`.
-- `goto.rs`: Go ▸ Go to File or Folder… (⇧⌘G, Finder's Go to Folder),
+- `goto.rs`: Go ▸ Go to File or Folder… (⇧⌘G, Finder's Go to Folder;
+  `tracker.go-to` in the keyboard profile, so Preferences ▸ Keyboard
+  lists and changes it): the kit's window (`olo_kit::go_to`, shared
+  with the file panels, "File panels" above) with Tracker's own names
+  in its list (`goto::Names`: its icons, marks and a link's slant),
   a dialog over the folder's window: the field holds a path copied
   (absolute, `~/…` as written, a `file://` URI's:
   `olo_kit_base::files::written_path`, which takes quotes and a

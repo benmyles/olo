@@ -744,7 +744,10 @@ desktop, notifications), `.no_panel()`.
   `widgets::open_alert(cx, title, icon, message, buttons, on_choose)`.
   Files: `file_panel::show(title, FilePanel::open(dir).types(..),
   |answer| ..)`. All come back as a call to your handler (make it
-  with `cx.msg_with`).
+  with `cx.msg_with`). Every panel has Tracker's Go to File or Folder
+  (⇧⌘G, or a `/` typed in its list: `olo_kit::go_to`), which a window
+  of yours that shows folders can open too
+  (`go_to::open::<go_to::Plain>(base, "", |path| ..)`).
 - A window the app must outlive (an error about a file that wouldn't
   open) is opened *before* the one it's about is closed, or the app
   ends between them.

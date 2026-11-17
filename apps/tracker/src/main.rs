@@ -690,9 +690,7 @@ impl Hub {
             olo_kit::raise(Some(w));
             return;
         }
-        // (A dialog: over the folder's window, never a tab in its group.)
-        let options = WindowOptions::new("Go to File or Folder", goto::WIDTH, goto::HEIGHT).min_size(360.0, 200.0).dialog().child();
-        self.go_to = Some(olo_kit::open_window(options, move |cx| goto::GoToWin::new(base, cx)));
+        self.go_to = Some(goto::open(base));
     }
 
     fn reload_all(&mut self) {
