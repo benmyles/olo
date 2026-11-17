@@ -169,6 +169,9 @@ something nobody here has is in "Blocked", with what it waits for.
   in preview in macos"). Viewer and Quick Look recognise the text in a
   picture (natively, in process, off the UI thread), and it is selected
   with the pointer and copied as text is in a document.
+- **Olo Classic's default wallpaper is the dunes** (Ben, 2026-11-16:
+  "make the default wallpaper for the olo classic theme the dunes
+  one").
 - **The website covers Terminal's work with agents** (Ben, 2026-11-16:
   "update the website to cover all the agent integration features in olo
   terminal"). olo-desktop.com's Agents part: what Terminal does for
