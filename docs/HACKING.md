@@ -6631,7 +6631,18 @@ a one-pixel strip of the falloff stretched down each side and along the
 bottom, and the bottom corners round; made again only when the width,
 the tab, the look or the scale changes, and let go once it has faded
 (`WindowMeta::glow_strength`). Undecorated windows glow round their
-geometry. Agents read `glowing` in `list_windows`.
+geometry. Agents read `glowing` in `list_windows`. The band across the
+top is in parts (`band_parts`): painted pixel by pixel only where the
+halo changes across, from the reach before the tab to the reach after
+it and past the frame's two ends; over the rest of the frame's top it
+is the same column after column, so one column is painted and
+stretched, as the sides' strips are. Painted whole it was the window's
+width by the tab's height and the reach, and making it for a window
+filling a 5K display took 7.7 ms of app_server's loop as the window
+opened (its log: "slow window elements: … glow 10.9 ms"); in parts,
+1.1 ms (`what_making_one_costs`, the best of 7; 1.7 ms in the log for
+such a window, with its textures). `the_band_in_parts_is_the_band`
+checks every flat part against the band painted whole.
 
 ## Workspaces, one set per display (app_server desktop.rs)
 

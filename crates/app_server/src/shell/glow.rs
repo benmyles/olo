@@ -7,8 +7,15 @@
 //! taking in the tab, where the halo is the distance to the frame and tab
 //! together (so it follows the tab up and round it); down the sides and
 //! along the bottom a one-pixel strip of its falloff stretched along the
-//! edge; and the bottom corners round. Made again only when the window's
-//! width, tab, look or scale changes; nothing once it has faded.
+//! edge; and the bottom corners round. The band itself is in parts
+//! (`band_parts`): painted pixel by pixel only where it changes across
+//! (round the tab, and past the frame's ends), and where it doesn't (over
+//! the frame's top away from the tab, most of a wide window) a strip one
+//! pixel wide stretched across, as the sides' are. (Painted whole, a
+//! window filling a 5K display took 7.7 ms of app_server's loop as it
+//! opened: its log's "slow window elements: … glow 10.9 ms".) Made
+//! again only when the window's width, tab, look or scale changes;
+//! nothing once it has faded.
 
 use std::time::Duration;
 
@@ -74,10 +81,12 @@ struct Key {
 struct Pieces {
     key: Key,
     /// The band across the top: from `reach` left of the shape to `reach`
-    /// right of it, from `reach` over its top down to the frame's top.
-    band: MemoryRenderBuffer,
-    band_size: (i32, i32),
-    band_x: i32,
+    /// right of it, from `reach` over its top down to the frame's top,
+    /// in parts side by side: each one's left (from the frame's), its
+    /// width, and its picture, as wide as the part or one pixel wide to
+    /// be stretched across it.
+    band: Vec<(i32, i32, MemoryRenderBuffer, i32)>,
+    band_height: i32,
     /// The left and right sides' strip (`reach` × 1), the bottom's
     /// (1 × `reach`), and the bottom corners (`reach` × `reach`).
     left: MemoryRenderBuffer,
@@ -116,6 +125,47 @@ fn distance(x: f32, y: f32, (l, t, r, b): (f32, f32, f32, f32)) -> f32 {
     (dx * dx + dy * dy).sqrt()
 }
 
+/// The band across a window's top, from `left` to `right` (device
+/// pixels from the frame's left), in parts: each one's left, its width,
+/// and whether the halo is the same all across it (flat). It changes
+/// across only within `reach` of something that ends: past the frame's
+/// two ends, and from `reach` before the tab to `reach` after it; over
+/// the frame's top anywhere else it is the falloff up from the frame,
+/// column after column.
+fn band_parts(left: i32, right: i32, width: i32, tab: Option<(i32, i32, i32)>, reach: i32) -> Vec<(i32, i32, bool)> {
+    // Where it changes across, in order, joined where they meet.
+    let mut busy: Vec<(i32, i32)> = vec![(left, 0)];
+    if let Some((l, r, _)) = tab {
+        busy.push((l - reach, r + reach));
+    }
+    busy.push((width, right));
+    busy.sort();
+    let mut joined: Vec<(i32, i32)> = Vec::new();
+    for (a, b) in busy {
+        let (a, b) = (a.max(left), b.min(right));
+        if b <= a {
+            continue;
+        }
+        match joined.last_mut() {
+            Some(last) if a <= last.1 => last.1 = last.1.max(b),
+            _ => joined.push((a, b)),
+        }
+    }
+    let mut parts = Vec::new();
+    let mut at = left;
+    for (a, b) in joined {
+        if a > at {
+            parts.push((at, a - at, true));
+        }
+        parts.push((a, b - a, false));
+        at = b;
+    }
+    if right > at {
+        parts.push((at, right - at, true));
+    }
+    parts
+}
+
 impl Pieces {
     fn make(key: Key, peak: f32) -> Pieces {
         let (r, c) = (key.reach, key.color);
@@ -127,16 +177,22 @@ impl Pieces {
         let left = key.tab.map_or(0, |t| t.0.min(0)) - r;
         let right = key.tab.map_or(key.width, |t| t.1.max(key.width)) + r;
         // (Band pixels from its own top left: the frame's top at its foot.)
-        let (bw, bh) = (right - left, top + r);
-        let band = paint(bw, bh, c, peak, |x, y| {
-            let (px, py) = (x + left as f32, y - bh as f32);
-            let d = tab.map_or(f32::MAX, |t| distance(px, py, t)).min(distance(px, py, frame));
-            glow(d)
-        });
+        let bh = top + r;
+        let at = |px: f32, y: f32| {
+            let py = y - bh as f32;
+            glow(tab.map_or(f32::MAX, |t| distance(px, py, t)).min(distance(px, py, frame)))
+        };
+        let band = band_parts(left, right, key.width, key.tab, r)
+            .into_iter()
+            .map(|(x, w, flat)| {
+                // (Flat: every column as its first.)
+                let src = if flat { 1 } else { w };
+                (x, w, paint(src, bh, c, peak, |px, y| at(px + x as f32, y)), src)
+            })
+            .collect();
         Pieces {
             band,
-            band_size: (bw, bh),
-            band_x: left,
+            band_height: bh,
             left: paint(r, 1, c, peak, |x, _| glow(reach - x)),
             right: paint(r, 1, c, peak, |x, _| glow(x)),
             bottom: paint(1, r, c, peak, |_, y| glow(y)),
@@ -167,16 +223,15 @@ impl Glow {
         let r = p.key.reach;
         let (l, t, w, h) = (frame.loc.x, frame.loc.y, frame.size.w, frame.size.h);
         let rect = |x: i32, y: i32, w: i32, h: i32| Rectangle::<i32, Physical>::new((x, y).into(), (w, h).into());
+        let band = p.band.iter().map(|(x, bw, buffer, src)| (rect(l + x, t - p.band_height, *bw, p.band_height), buffer, (*src, p.band_height)));
         let pieces = [
-            (rect(l + p.band_x, t - p.band_size.1, p.band_size.0, p.band_size.1), &p.band, p.band_size),
             (rect(l - r, t, r, h), &p.left, (r, 1)),
             (rect(l + w, t, r, h), &p.right, (r, 1)),
             (rect(l, t + h, w, r), &p.bottom, (1, r)),
             (rect(l - r, t + h, r, r), &p.bottom_left, (r, r)),
             (rect(l + w, t + h, r, r), &p.bottom_right, (r, r)),
         ];
-        pieces
-            .into_iter()
+        band.chain(pieces)
             .filter(|(rect, _, _)| rect.size.w > 0 && rect.size.h > 0)
             .filter_map(|(rect, buffer, src)| crate::render::exact(renderer, rect, buffer, src, Some(strength), Kind::Unspecified))
             .collect()
@@ -199,6 +254,75 @@ mod tests {
         let short = Duration::from_millis(500);
         assert_eq!(strength(Duration::ZERO, short), 1.0);
         assert!(strength(Duration::from_millis(250), short) < 1.0);
+    }
+
+    /// What making a window's glow costs (printed; `--nocapture`): a
+    /// window filling a 5K display at 2.5×, its tab at the left.
+    #[test]
+    fn what_making_one_costs() {
+        let key = Key { reach: 30, color: [0x33, 0x66, 0xcc], peak: PEAK_LIGHT.to_bits(), width: 4640, tab: Some((0, 520, 53)) };
+        let mut best = Duration::MAX;
+        for _ in 0..7 {
+            let t = std::time::Instant::now();
+            std::hint::black_box(Pieces::make(key.clone(), PEAK_LIGHT));
+            best = best.min(t.elapsed());
+        }
+        println!("a 4640-pixel-wide window's glow made in {:.2} ms (the best of 7)", best.as_secs_f64() * 1e3);
+    }
+
+    /// The band's parts: side by side from end to end, painted pixel by
+    /// pixel only round the tab and past the frame's ends; and every
+    /// column of a flat part is what painting the band whole gives there.
+    #[test]
+    fn the_band_in_parts_is_the_band() {
+        let whole = |left: i32, right: i32, width: i32, tab: Option<(i32, i32, i32)>, reach: i32| -> Vec<Vec<u32>> {
+            let (r, bh) = (reach as f32, tab.map_or(0, |t| t.2) + reach);
+            let frame = (0.0, 0.0, width as f32, f32::MAX);
+            let t = tab.map(|(l, rr, h)| (l as f32, -(h as f32), rr as f32, 0.0));
+            (left..right)
+                .map(|x| {
+                    (0..bh)
+                        .map(|y| {
+                            let (px, py) = (x as f32 + 0.5, y as f32 + 0.5 - bh as f32);
+                            falloff(t.map_or(f32::MAX, |t| distance(px, py, t)).min(distance(px, py, frame)) / r).to_bits()
+                        })
+                        .collect()
+                })
+                .collect()
+        };
+        for (width, tab, reach) in [
+            (4640, Some((0, 520, 53)), 30),
+            (800, Some((300, 420, 21)), 12),
+            (400, Some((-20, 90, 21)), 12),
+            (300, Some((250, 340, 21)), 12),
+            (60, Some((0, 60, 21)), 12),
+            (500, None, 18),
+            (10, Some((0, 8, 21)), 12),
+        ] {
+            let left = tab.map_or(0, |t: (i32, i32, i32)| t.0.min(0)) - reach;
+            let right = tab.map_or(width, |t| t.1.max(width)) + reach;
+            let parts = band_parts(left, right, width, tab, reach);
+            // End to end, in order, none empty.
+            let mut at = left;
+            for (x, w, _) in &parts {
+                assert_eq!((*x, *w > 0), (at, true), "{width} {tab:?}: {parts:?}");
+                at += w;
+            }
+            assert_eq!(at, right, "{width} {tab:?}: {parts:?}");
+            // A flat part's columns are all its first, in the band whole.
+            let band = whole(left, right, width, tab, reach);
+            for (x, w, flat) in &parts {
+                if *flat {
+                    let first = &band[(x - left) as usize];
+                    assert!((0..*w).all(|i| &band[(x - left + i) as usize] == first), "{width} {tab:?}: the part at {x} isn't flat");
+                }
+            }
+        }
+        // A wide window: all but the tab's part and the ends is flat.
+        let parts = band_parts(-30, 4670, 4640, Some((0, 520, 53)), 30);
+        assert_eq!(parts, [(-30, 580, false), (550, 4090, true), (4640, 30, false)]);
+        // No tab: the two ends, and one strip between.
+        assert_eq!(band_parts(-18, 518, 500, None, 18), [(-18, 18, false), (0, 500, true), (500, 18, false)]);
     }
 
     #[test]

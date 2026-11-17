@@ -17,10 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **A new window's glow takes 6 to 11 ms to draw** (app_server's log,
-  2026-11-16: "slow window elements: … glow 10.9 ms", each time a
-  window opens): over a frame at 120 Hz. Found while reading the log
-  for the stalls; not looked into.
 - **Quick Look of a PowerPoint shows only its slides' numbers** (Ben,
   2026-11-16: "pptx doesn't render properly in the viewer, when i hit
   space on /home/ben/Documents/ShiftUp-JackHenry-AI-Architecture.pptx
@@ -5878,6 +5874,14 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**A new window's glow takes 6 to 11 ms to draw**~~ (app_server's
+  log, 2026-11-16; done 2026-11-17). It was the halo's band across the
+  window's top, painted pixel by pixel at the window's whole width.
+  Now only the parts round the tab and past the frame's ends are; the
+  rest is one column stretched. A window filling the 5K display: 7.7 ms
+  before, 1.1 ms now (1.7 ms in app_server's log). (HACKING, "New
+  windows".)
 
 - ~~**An idle window keeps its whole swapchain**~~ (found 2026-11-16;
   done 2026-11-17). A window still for 30 s that isn't the one you're
