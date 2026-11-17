@@ -135,6 +135,7 @@ pub fn test_state() -> PhoneState {
         profiles: true,
         changes: 0,
         since: 0,
+        music: None,
     }
 }
 

@@ -13954,6 +13954,29 @@ command line, for people and agents: `olo-phone` (`--status [--json]`),
 `--find-code`, `--settings`, `--set SETTING VALUE`; with nothing asked,
 or `--open WHO`, it is Phone, the app.
 
+**Its music** (`olo_system::phone::music`; found 2026-11-17 on Ben's
+iPhone). A connected phone is a player and the computer its remote
+control (AVRCP), which BlueZ already keeps as a `MediaPlayer1` under the
+phone's device (`MediaControl1.Player` says which: `…/avrcp/player0`),
+with its `Status`, its `Track` (Title, Artist, Album) and `Play`,
+`Pause`, `Next`, `Previous`. The service publishes what's playing
+(`PhoneState::music`: title, artist, album, playing or not; a song's
+name, unlike a message's, may be in the state) and takes
+`Request::Music` (play, pause, toggle, next, previous; not from an
+agent's screen). It follows BlueZ's signals: `Profiles::watch` now says
+what kind of change came, `Change::Link` (devices, pairing, BlueZ
+itself: the phone is tried) or `Change::Detail` (the battery, the
+track, playing or not: read again, and no try made, so a new song
+doesn't set off connecting), and never the position, which moves all
+the while. `olo-phone --music [play|pause|toggle|next|previous]`;
+Deskbar's phone menu has the track with Play or Pause, Next and
+Previous; Phone has it under the list, with a Music menu
+(`music:toggle|next|previous`). The stand-in has a player (`--tell
+music playing|paused|none TITLE ARTIST`, `--tell pressed`: what its
+remote control was pressed). Seen on the real phone, reading only: the
+player's properties and methods are those. Not pressed on the real
+phone.
+
 **Phone, the app** (window.rs; Ben: "did you already build an app for
 working with the messages, contacts etc? if not we need that too", and
 "make sure the messages/contacts/etc app is really nicely styled, the

@@ -92,6 +92,9 @@ enum Ev {
     Opened(Opened),
     /// BlueZ said something of its devices.
     Devices,
+    /// BlueZ said the phone's battery or what it's playing changed
+    /// (nothing about reaching it: no try is made for it).
+    Detail,
     /// The session (the one numbered so) says something.
     Session(u64, FromSession),
     Settings,
@@ -208,8 +211,10 @@ struct Service {
     /// What the conversations and contacts came to when last published
     /// (`PhoneState::changes` counts its changes).
     digest: u64,
-    /// The phone in use.
+    /// The phone in use, and its music's player with BlueZ while it
+    /// has one.
     phone: Option<link::Phone>,
+    music_player: Option<String>,
     /// The session open or being opened: its number, and its thread's ear
     /// once the channel has come.
     generation: u64,
@@ -398,6 +403,7 @@ pub fn run() -> ! {
         let_go: false,
         digest: 0,
         phone: None,
+        music_player: None,
         generation: 0,
         opening: false,
         session: None,
@@ -459,6 +465,15 @@ impl Service {
                 self.tries = 0;
                 self.devices();
             }
+            Ev::Detail => {
+                if let (Some(profiles), Some(phone)) = (self.profiles.clone(), self.phone.as_mut())
+                    && let Ok(phones) = profiles.phones()
+                    && let Some(now) = phones.iter().find(|p| p.path == phone.path)
+                {
+                    phone.battery = now.battery;
+                }
+                self.details();
+            }
             Ev::Session(generation, said) if generation == self.generation => self.from_session(said),
             // (An earlier session's: old news; but an answer owed is given.)
             Ev::Session(_, FromSession::Sent { answer: Some(answer), .. }) => {
@@ -511,8 +526,11 @@ impl Service {
                 })
                 .and_then(|p| {
                     let to = self.tx.clone();
-                    p.watch(move || {
-                        let _ = to.send(Ev::Devices);
+                    p.watch(move |change| {
+                        let _ = to.send(match change {
+                            link::Change::Link => Ev::Devices,
+                            link::Change::Detail => Ev::Detail,
+                        });
                     })?;
                     self.profiles = Some(Arc::new(p));
                     Ok(true)
@@ -590,6 +608,7 @@ impl Service {
             (self.state.conversations, self.state.unread, self.state.contacts, self.state.code_at) = (0, 0, false, None);
         }
         self.phone = phone;
+        self.details();
         let st = &mut self.state;
         match &self.phone {
             None => {
@@ -622,6 +641,16 @@ impl Service {
                 }
             }
         }
+    }
+
+    /// The phone's battery and what it's playing (BlueZ's own remote
+    /// control of its player), while it's connected.
+    fn details(&mut self) {
+        let phone = self.phone.as_ref().filter(|p| p.connected);
+        let music = phone.zip(self.profiles.as_ref()).and_then(|(p, profiles)| profiles.music(&p.path));
+        self.state.battery = phone.and_then(|p| p.battery);
+        self.music_player = music.as_ref().map(|m| m.player.clone());
+        self.state.music = music.map(|m| olo_protocol::phone::Music { playing: m.playing, title: m.title, artist: m.artist, album: m.album });
     }
 
     /// Ask BlueZ for a channel to the phone's messages (on a thread: it
@@ -1066,6 +1095,27 @@ impl Service {
                     self.open();
                 }
                 Reply { ok: true, state: Some(self.state.clone()), ..Default::default() }
+            }
+            Request::Music { action } => {
+                use olo_protocol::phone::MusicAction;
+                use olo_system::phone::music::Action;
+                let playing = self.state.music.as_ref().is_some_and(|m| m.playing);
+                let action = match action {
+                    MusicAction::Play => Action::Play,
+                    MusicAction::Pause => Action::Pause,
+                    MusicAction::Toggle if playing => Action::Pause,
+                    MusicAction::Toggle => Action::Play,
+                    MusicAction::Next => Action::Next,
+                    MusicAction::Previous => Action::Previous,
+                };
+                // (What it then plays comes as BlueZ says so.)
+                match (self.profiles.as_ref(), self.music_player.as_deref()) {
+                    (Some(profiles), Some(player)) => match profiles.music_act(player, action) {
+                        Ok(()) => Reply { ok: true, ..Default::default() },
+                        Err(e) => no(&format!("the phone didn't take it: {e}")),
+                    },
+                    _ => no("the phone isn't playing anything"),
+                }
             }
             Request::Browser { .. } => Reply::default(),
         };

@@ -22,9 +22,16 @@ something nobody here has is in "Blocked", with what it waits for.
   codes. Not yet: its other apps' notifications (Apple's Notification
   Center Service over low energy, which the advertisement already asks
   for, would bring them, and groups' names), calls (the hands-free
-  profile: the computer already says it's a hands-free device), its
-  music's controls, and conversations kept across a restart of the
-  service.
+  profile: the computer already says it's a hands-free device), and
+  conversations kept across a restart of the service. Its music's
+  controls are done (2026-11-17: Deskbar's menu, Phone, `olo-phone
+  --music`; for Ben to try with the real phone, where only reading was
+  checked). Found reading the real phone on 2026-11-17: it's connected
+  over classic Bluetooth only (bonded for low energy, not connected:
+  notifications need that link, and an iPhone says its exact model
+  only over it); the sound server has a telephony service
+  (`org.pipewire.Telephony`) and this computer offers the hands-free
+  service, but the phone hasn't connected its side (no modem there).
 - **A paired phone's own picture** (Ben, 2026-11-16: "generate theme
   styled icons for the top 10 most popular android and iphone models and
   show the closest matching icon for a paired phone based on what it

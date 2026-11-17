@@ -70,9 +70,32 @@ fn against_the_standin() {
         let phone = &phones[0];
         assert_eq!((phone.kind, phone.connected, phone.contacts), (if android { Kind::Other } else { Kind::IPhone }, true, true));
         assert_eq!(phone.name, if android { "Pixel 11" } else { "Mira’s iPhone" });
+        // What it plays: nothing until it has a player; then the track,
+        // and this computer its remote control.
+        assert_eq!(profiles.music(&phone.path), None);
+        tell(&address, &["music", "playing", "So What", "Miles Davis"]);
+        let playing = |want: bool| {
+            let start = std::time::Instant::now();
+            loop {
+                match profiles.music(&phone.path) {
+                    Some(m) if m.playing == want => return m,
+                    _ => assert!(start.elapsed() < Duration::from_secs(5), "its music never came to playing: {want}"),
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        };
+        let m = playing(true);
+        assert_eq!((m.title.as_str(), m.artist.as_str(), m.album.as_str()), ("So What", "Miles Davis", ""));
+        profiles.music_act(&m.player, olo_system::phone::music::Action::Pause).unwrap();
+        playing(false);
+        profiles.music_act(&m.player, olo_system::phone::music::Action::Next).unwrap();
+        assert_eq!(tell(&address, &["pressed"]).split_whitespace().collect::<Vec<_>>(), ["pause", "next"]);
+        tell(&address, &["music", "none"]);
+        assert_eq!(profiles.music(&phone.path), None);
+
         let (changes, changed) = mpsc::channel();
         profiles
-            .watch(move || {
+            .watch(move |_| {
                 let _ = changes.send(());
             })
             .unwrap();

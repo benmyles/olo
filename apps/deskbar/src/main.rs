@@ -2081,8 +2081,25 @@ fn phone_menu(phone: &olo_protocol::phone::PhoneState) -> Menu {
     if !phone.link.connected() {
         m = m.item("Try the Phone Again", "phone:reconnect");
     }
+    // What it's playing, and its remote control (`olo-phone --music`).
+    if let Some(music) = &phone.music {
+        let mut line = music.line();
+        if line.chars().count() > PHONE_TRACK {
+            line = line.chars().take(PHONE_TRACK - 1).chain(['\u{2026}']).collect();
+        }
+        m = m
+            .separator()
+            .item(line, "")
+            .enabled(false)
+            .item(if music.playing { "Pause" } else { "Play" }, "phone:music toggle")
+            .item("Next", "phone:music next")
+            .item("Previous", "phone:music previous");
+    }
     m.separator().item("Phone Settings…", "pref:phone")
 }
+
+/// How much of what the phone plays its menu shows.
+const PHONE_TRACK: usize = 48;
 
 /// AirPods' tray menu: their levels, noise control, Conversation
 /// Awareness, and the way to their settings and the sound's.

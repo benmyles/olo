@@ -42,6 +42,9 @@ const USAGE: &str = "usage: olo-phone [COMMAND]
   --mark-read WHO
   --contacts [QUERY] [--json] the phone's contacts
   --reconnect                 try the phone again now
+  --music [play|pause|toggle|next|previous]
+                              what the phone is playing; or play, pause
+                              or skip it
   --code                      the latest one-time code, while it's good
   --copy-code                 the same, put on the clipboard
   --find-code                 what code a message has (read from standard
@@ -132,6 +135,22 @@ fn main() -> ExitCode {
             Err(e) => fail(&e),
         },
         "--reconnect" => done(ask(&Request::Reconnect)),
+        // What it's playing (said); or its remote control pressed.
+        "--music" if arg(1).is_empty() => match phone::ask(&Request::Status, Duration::from_secs(5)).map(|r| r.state.unwrap_or_default().music) {
+            Ok(Some(m)) => {
+                out!("{}: {}", if m.playing { "playing" } else { "paused" }, m.line());
+                ExitCode::SUCCESS
+            }
+            Ok(None) => {
+                out!("nothing");
+                ExitCode::SUCCESS
+            }
+            Err(e) => fail(&e.to_string()),
+        },
+        "--music" => match phone::MusicAction::parse(&arg(1)) {
+            Some(action) => done(ask(&Request::Music { action })),
+            None => fail("--music takes play, pause, toggle, next or previous"),
+        },
         "--code" => match ask(&Request::Code) {
             Ok(r) => {
                 out!("{}", r.code.unwrap_or_default());
@@ -324,6 +343,9 @@ fn status(json: bool) -> ExitCode {
     }
     if state.link.connected() {
         out!("  {} conversations, {} unread{}", state.conversations, state.unread, if state.contacts { "" } else { "; its contacts haven't come" });
+    }
+    if let Some(m) = &state.music {
+        out!("  {}: {}", if m.playing { "playing" } else { "paused" }, m.line());
     }
     ExitCode::SUCCESS
 }

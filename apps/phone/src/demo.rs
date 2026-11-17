@@ -99,6 +99,7 @@ pub fn sample(now: i64, many: usize) -> (PhoneState, Vec<Conversation>, Vec<Pers
         link: Link::Ready,
         contacts: true,
         battery: Some(81),
+        music: Some(olo_protocol::phone::Music { playing: true, title: "So What".into(), artist: "Miles Davis".into(), album: "Kind of Blue".into() }),
         conversations: threads.len() as u32,
         unread,
         profiles: true,

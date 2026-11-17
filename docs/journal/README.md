@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### Phone: what the phone is playing, with Play, Next and Previous
+
+*02:50* — Phone shows what the phone is playing under the list, with Previous, Pause or Play and Next; Deskbar's phone menu has them too, and olo-phone --music. The phone stays the player: Olo is its remote control. (Sample data.)
+
+![Phone: what the phone is playing, with Play, Next and Previous](2026-11-17/025023-phone-what-the-phone-is-playing-with-play-next-a.png)
+
 ### The start-up sound: a quarter of full volume, silent when muted
 
 *02:33* — Olo's start-up sound plays at a quarter of the output's full volume whatever your volume is, and not at all while the sound is muted, as a session starts and as the computer does. Preferences ▸ Sound says so under it; Play goes by it too.

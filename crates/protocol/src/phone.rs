@@ -79,6 +79,54 @@ impl Link {
     }
 }
 
+/// What the phone is playing (its own player, which this computer is a
+/// remote control of).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Music {
+    pub playing: bool,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+}
+
+impl Music {
+    /// "So What — Miles Davis" (the title alone, with no artist).
+    pub fn line(&self) -> String {
+        if self.artist.is_empty() { self.title.clone() } else { format!("{} \u{2014} {}", self.title, self.artist) }
+    }
+}
+
+/// What a remote control does to the phone's music.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MusicAction {
+    Play,
+    Pause,
+    /// Play if it's paused, pause if it's playing.
+    Toggle,
+    Next,
+    Previous,
+}
+
+impl MusicAction {
+    pub const ALL: [MusicAction; 5] = [MusicAction::Play, MusicAction::Pause, MusicAction::Toggle, MusicAction::Next, MusicAction::Previous];
+
+    pub fn id(self) -> &'static str {
+        match self {
+            MusicAction::Play => "play",
+            MusicAction::Pause => "pause",
+            MusicAction::Toggle => "toggle",
+            MusicAction::Next => "next",
+            MusicAction::Previous => "previous",
+        }
+    }
+
+    pub fn parse(id: &str) -> Option<MusicAction> {
+        Self::ALL.into_iter().find(|a| a.id() == id)
+    }
+}
+
 /// What the service knows. No sender, number, text or code is here: who
 /// reads this file learns that a message came, never what it said.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -116,6 +164,9 @@ pub struct PhoneState {
     /// Since when (Unix seconds) the link has stood as it does: a phone
     /// connected whose messages have long not come is Olo Doctor's to say.
     pub since: u64,
+    /// What the phone is playing or last played, while it's connected
+    /// and has said (none: nothing, or no phone).
+    pub music: Option<Music>,
 }
 
 impl PhoneState {
@@ -291,6 +342,8 @@ pub enum Request {
     MarkRead { key: String },
     /// Try the phone again now.
     Reconnect,
+    /// Play, pause or skip the phone's music.
+    Music { action: MusicAction },
     /// A browser's extension host, staying connected: from here on the
     /// connection carries [`ToBrowser`] one way and [`FromBrowser`] the
     /// other, a JSON line each.
@@ -464,7 +517,14 @@ mod tests {
         assert!(s.paired() && !PhoneState::default().paired());
         let text = serde_json::to_string(&s).unwrap();
         let keys: Vec<String> = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&text).unwrap().keys().cloned().collect();
-        assert_eq!(keys, ["pid", "name", "kind", "path", "link", "contacts", "battery", "conversations", "unread", "codes", "code_at", "trouble", "profiles", "changes", "since"]);
+        assert_eq!(keys, ["pid", "name", "kind", "path", "link", "contacts", "battery", "conversations", "unread", "codes", "code_at", "trouble", "profiles", "changes", "since", "music"]);
+        // (What it's playing is there, when it plays: a song's name
+        // isn't a message's.)
+        let playing = Music { playing: true, title: "So What".into(), artist: "Miles Davis".into(), album: "Kind of Blue".into() };
+        assert_eq!(playing.line(), "So What \u{2014} Miles Davis");
+        assert_eq!(Music { title: "A Podcast".into(), ..Default::default() }.line(), "A Podcast");
+        assert_eq!(serde_json::to_string(&Request::Music { action: MusicAction::Next }).unwrap(), r#"{"do":"music","action":"next"}"#);
+        assert_eq!(MusicAction::parse("toggle"), Some(MusicAction::Toggle));
         assert_eq!(serde_json::to_string(&Request::Send { to: "+15550100142".into(), text: "hi".into() }).unwrap(), r#"{"do":"send","to":"+15550100142","text":"hi"}"#);
     }
 }

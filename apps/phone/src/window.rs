@@ -610,6 +610,14 @@ impl Phone {
                 .separator()
                 .item("Try the Phone Again", "reconnect")
                 .enabled(paired && !self.demo),
+            Menu::new("Music")
+                .item(if self.state.music.as_ref().is_some_and(|m| m.playing) { "Pause" } else { "Play" }, "music:toggle")
+                .key("p")
+                .enabled(self.state.music.is_some())
+                .item("Next", "music:next")
+                .enabled(self.state.music.is_some())
+                .item("Previous", "music:previous")
+                .enabled(self.state.music.is_some()),
         ]
     }
 }
@@ -620,6 +628,9 @@ impl View for Phone {
     fn message(&mut self, message: Msg, cx: &mut Cx<Self>) {
         match message {
             Msg::State(state) => {
+                if state.music != self.state.music {
+                    cx.invalidate();
+                }
                 let changed = self.seen_changes != Some(state.changes) || state.link != self.state.link || state.contacts != self.state.contacts || state.pid != self.state.pid;
                 self.state = state;
                 if changed {
@@ -706,6 +717,21 @@ impl View for Phone {
             }
             "reconnect" => {
                 cx.work(|| drop(phone::ask(&Request::Reconnect, ASK)), |()| Msg::Told);
+            }
+            // The phone's music: play or pause, the next, the one before.
+            c if c.starts_with("music:") => {
+                let Some(action) = phone::MusicAction::parse(&c[6..]) else { return false };
+                if self.state.music.is_none() {
+                    return false;
+                }
+                if self.demo {
+                    // (Nothing to play: shown as it would be.)
+                    if let (Some(m), phone::MusicAction::Toggle) = (&mut self.state.music, action) {
+                        m.playing = !m.playing;
+                    }
+                } else {
+                    cx.work(move || drop(phone::ask(&Request::Music { action }, ASK)), |()| Msg::Told);
+                }
             }
             "send" => self.send_typed(cx),
             "close" | "quit" => olo_kit::quit(),
@@ -875,7 +901,37 @@ impl Phone {
             Tab::Contacts => (self.people_scroll.clone(), self.people_rows(cx)),
         };
         let list = ScrollView::new(&handle).border(false).auto_hide(true).background(p.list_background).on_scroll(cx.listener(|_: &mut Phone, _, cx| cx.invalidate())).child(content);
-        div().size_full().flex().flex_col().bg(c(p.panel_background)).child(top).child(div().flex_1().min_h_0().child(list)).into_element()
+        let mut column = div().size_full().flex().flex_col().bg(c(p.panel_background)).child(top).child(div().flex_1().min_h_0().child(list));
+        if let Some(playing) = self.playing(cx) {
+            column = column.child(playing);
+        }
+        column.into_element()
+    }
+
+    /// Under the list while the phone plays or has played something:
+    /// what, and its remote control (the phone is the player; BlueZ's
+    /// own remote control of it, through the service).
+    fn playing(&mut self, cx: &mut Cx<Self>) -> Option<Element> {
+        let music = self.state.music.clone()?;
+        let p = theme::palette();
+        let press = |id: &'static str, label: &'static str, command: &'static str, cx: &mut Cx<Self>| {
+            Button::new(label).id(id).small().on_click(cx.listener(move |v: &mut Phone, _: &ClickEvent, cx| {
+                v.command(command, cx);
+            }))
+        };
+        let buttons = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(m::TIGHT))
+            .child(press("music-previous", "Previous", "music:previous", cx))
+            .child(press("music-toggle", if music.playing { "Pause" } else { "Play" }, "music:toggle", cx))
+            .child(press("music-next", "Next", "music:next", cx));
+        let mut words = div().flex().flex_col().min_w_0().child(StringView::new(music.title.clone()).cut(true).bold(true));
+        if !music.artist.is_empty() {
+            words = words.child(StringView::new(music.artist.clone()).cut(true).dim(true).small(true));
+        }
+        Some(div().flex().flex_col().gap(px(m::TIGHT)).p(px(m::SPACING)).border_t_1().border_color(c(p.shadow).opacity(0.55)).child(words).child(buttons).into_element())
     }
 
     fn thread_rows(&mut self, cx: &mut Cx<Self>) -> Element {

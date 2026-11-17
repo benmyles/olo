@@ -33,6 +33,8 @@ const NAME: &str = "org.bluez";
 const ADAPTER: &str = "/org/bluez/hci0";
 const DEVICE: &str = "/org/bluez/hci0/dev_02_00_00_00_F0_01";
 const STANDIN: &str = "org.olo.PhoneStandin";
+/// The phone's music player, where BlueZ puts a connected phone's.
+const PLAYER: &str = "/org/bluez/hci0/dev_02_00_00_00_F0_01/avrcp/player0";
 
 #[derive(Debug, zbus::DBusError)]
 #[zbus(prefix = "org.bluez.Error")]
@@ -62,6 +64,16 @@ enum Job {
     /// The phone closes every channel it has open, and stays connected
     /// (its owner turned a switch off; it had enough).
     HangUp,
+    /// What the phone plays changed: said, as BlueZ says it.
+    Music,
+}
+
+/// What the stand-in phone plays.
+#[derive(Clone, Default)]
+struct Playing {
+    playing: bool,
+    title: String,
+    artist: String,
 }
 
 struct World {
@@ -88,6 +100,10 @@ struct World {
     /// broadcast: an iPhone shows its switches for the computer only
     /// while one is.
     soliciting: bool,
+    /// What it's playing (`--tell music`; none: it has no player), and
+    /// what its remote control was pressed (`--tell pressed`).
+    music: Option<Playing>,
+    pressed: Vec<String>,
     jobs: mpsc::Sender<Job>,
 }
 
@@ -314,10 +330,122 @@ impl Device {
 }
 
 /// What a test tells the stand-in to play.
+/// The phone as a player this computer is the remote control of, as
+/// BlueZ shows a connected phone's (AVRCP).
+struct Control(Shared);
+
+#[zbus::interface(name = "org.bluez.MediaControl1")]
+impl Control {
+    #[zbus(property)]
+    fn connected(&self) -> bool {
+        let w = self.0.lock().expect("world");
+        w.connected && w.music.is_some()
+    }
+
+    #[zbus(property)]
+    fn player(&self) -> zbus::fdo::Result<OwnedObjectPath> {
+        let w = self.0.lock().expect("world");
+        if !w.connected || w.music.is_none() {
+            return Err(zbus::fdo::Error::UnknownProperty("no player".into()));
+        }
+        Ok(zvariant::ObjectPath::try_from(PLAYER).expect("a path").into())
+    }
+}
+
+struct Player(Shared);
+
+impl Player {
+    /// A press of the remote control: kept, and done as a phone does it.
+    fn press(&self, what: &str) {
+        let mut w = self.0.lock().expect("world");
+        w.pressed.push(what.to_owned());
+        if let Some(m) = &mut w.music {
+            match what {
+                "play" => m.playing = true,
+                "pause" => m.playing = false,
+                "next" => m.title = format!("After {}", m.title),
+                _ => m.title = format!("Before {}", m.title),
+            }
+        }
+        let _ = w.jobs.send(Job::Music);
+    }
+}
+
+#[zbus::interface(name = "org.bluez.MediaPlayer1")]
+impl Player {
+    #[zbus(property)]
+    fn status(&self) -> String {
+        match &self.0.lock().expect("world").music {
+            Some(m) if m.playing => "playing".into(),
+            Some(_) => "paused".into(),
+            None => "stopped".into(),
+        }
+    }
+
+    #[zbus(property)]
+    fn track(&self) -> HashMap<String, OwnedValue> {
+        track(self.0.lock().expect("world").music.as_ref())
+    }
+
+    /// (Moves all the while on a real phone: never what's followed.)
+    #[zbus(property)]
+    fn position(&self) -> u32 {
+        41_000
+    }
+
+    fn play(&self) {
+        self.press("play");
+    }
+
+    fn pause(&self) {
+        self.press("pause");
+    }
+
+    fn next(&self) {
+        self.press("next");
+    }
+
+    fn previous(&self) {
+        self.press("previous");
+    }
+}
+
+/// A track as BlueZ gives it.
+fn track(music: Option<&Playing>) -> HashMap<String, OwnedValue> {
+    let mut t = HashMap::new();
+    if let Some(m) = music {
+        let text = |s: &str| OwnedValue::try_from(Value::from(s)).expect("a string");
+        t.insert("Title".to_owned(), text(&m.title));
+        if !m.artist.is_empty() {
+            t.insert("Artist".to_owned(), text(&m.artist));
+        }
+        t.insert("Duration".to_owned(), OwnedValue::from(545_000u32));
+    }
+    t
+}
+
 struct Told(Shared);
 
 #[zbus::interface(name = "org.olo.PhoneStandin")]
 impl Told {
+    /// What the phone plays: `status` playing or paused, or none (it has
+    /// no player).
+    fn music(&self, status: &str, title: &str, artist: &str) -> Result<(), Error> {
+        let mut w = self.0.lock().expect("world");
+        w.music = match status {
+            "playing" | "paused" => Some(Playing { playing: status == "playing", title: title.to_owned(), artist: artist.to_owned() }),
+            "none" => None,
+            _ => return Err(Error::InvalidArguments(format!("music is playing, paused or none, not {status}"))),
+        };
+        let _ = w.jobs.send(Job::Music);
+        Ok(())
+    }
+
+    /// What its remote control was pressed, in order.
+    fn pressed(&self) -> Vec<String> {
+        self.0.lock().expect("world").pressed.clone()
+    }
+
     fn receive(&self, name: &str, from: &str, text: &str) -> String {
         let w = self.0.lock().expect("world");
         let handle = w.phone.receive(name, from, text, &now());
@@ -386,7 +514,9 @@ fn now() -> String {
 const USAGE: &str = "usage: phone-standin [--address ADDRESS] [--android] [--unpaired]
        phone-standin [--address ADDRESS] --tell receive NAME ADDRESS TEXT…
        phone-standin [--address ADDRESS] --tell set messages|contacts|connected|paired|stale yes|no
-       phone-standin [--address ADDRESS] --tell hang-up | soliciting | pairings | sent";
+       phone-standin [--address ADDRESS] --tell hang-up | soliciting | pairings | sent
+       phone-standin [--address ADDRESS] --tell music playing|paused|none [TITLE [ARTIST]]
+       phone-standin [--address ADDRESS] --tell pressed";
 
 fn main() {
     olo_crash::install();
@@ -421,6 +551,8 @@ fn main() {
         discovering: false,
         agent: None,
         soliciting: false,
+        music: None,
+        pressed: Vec::new(),
         pairings: 0,
         pce_record: None,
         stale: false,
@@ -434,6 +566,8 @@ fn main() {
         .and_then(|b| b.serve_at(ADAPTER, Adapter(world.clone())))
         .and_then(|b| b.serve_at(ADAPTER, Adverts(world.clone())))
         .and_then(|b| b.serve_at(DEVICE, Device(world.clone())))
+        .and_then(|b| b.serve_at(DEVICE, Control(world.clone())))
+        .and_then(|b| b.serve_at(PLAYER, Player(world.clone())))
         .and_then(|b| b.name(NAME))
         .and_then(|b| b.build());
     let conn = match built {
@@ -538,6 +672,22 @@ fn main() {
                     channel.close();
                 }
             }
+            Job::Music => {
+                let music = world.lock().expect("world").music.clone();
+                let none: Vec<&str> = Vec::new();
+                let mut control: HashMap<&str, Value> = HashMap::new();
+                control.insert("Connected", music.is_some().into());
+                let _ = conn.emit_signal(None::<&str>, DEVICE, "org.freedesktop.DBus.Properties", "PropertiesChanged", &("org.bluez.MediaControl1", control, &none));
+                let mut player: HashMap<&str, Value> = HashMap::new();
+                let status = match &music {
+                    Some(m) if m.playing => "playing",
+                    Some(_) => "paused",
+                    None => "stopped",
+                };
+                player.insert("Status", status.into());
+                player.insert("Track", Value::from(track(music.as_ref())));
+                let _ = conn.emit_signal(None::<&str>, PLAYER, "org.freedesktop.DBus.Properties", "PropertiesChanged", &("org.bluez.MediaPlayer1", player, &none));
+            }
             Job::Changed => {
                 let w = world.lock().expect("world");
                 let mut changed: HashMap<&str, Value> = HashMap::new();
@@ -603,6 +753,11 @@ fn told(address: &str, words: &[String]) -> i32 {
             }
         },
         ["hang-up"] => call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "HangUp", &())),
+        ["music", status, words @ ..] => {
+            let (title, artist) = (words.first().copied().unwrap_or_default(), words.get(1).copied().unwrap_or_default());
+            call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Music", &(*status, title, artist)))
+        }
+        ["pressed"] => call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Pressed", &())),
         ["sent"] => call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Sent", &())),
         _ => {
             eprintln!("{USAGE}");

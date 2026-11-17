@@ -26,7 +26,7 @@ use std::{
 use zbus::blocking::Connection;
 use zvariant::{OwnedObjectPath, OwnedValue, Value};
 
-use super::{map, pbap};
+use super::{map, music, pbap};
 use crate::Result;
 
 const DEST: &str = "org.bluez";
@@ -231,6 +231,17 @@ pub struct Opened {
     /// The phone's object path with BlueZ.
     pub phone: String,
     pub stream: Stream,
+}
+
+/// What [`Profiles::watch`] says changed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Change {
+    /// Which devices there are, paired, connected, what they offer, or
+    /// BlueZ itself: a phone may be reachable now.
+    Link,
+    /// A phone's battery or what it's playing: nothing about reaching
+    /// it.
+    Detail,
 }
 
 /// What kind of phone it is, by its maker.
@@ -479,6 +490,16 @@ impl Profiles {
         let _ = self.conn.call_method(Some(DEST), phone, Some(DEVICE), "DisconnectProfile", &(channel.uuid(),));
     }
 
+    /// What `phone` is playing ([`music::music`]).
+    pub fn music(&self, phone: &str) -> Option<music::Music> {
+        music::music(&self.conn, phone)
+    }
+
+    /// Have the phone's `player` play, pause or skip.
+    pub fn music_act(&self, player: &str, action: music::Action) -> Result<()> {
+        music::act(&self.conn, player, action)
+    }
+
     /// The phones paired with this computer: what's paired and offers
     /// its messages.
     pub fn phones(&self) -> Result<Vec<Phone>> {
@@ -510,8 +531,12 @@ impl Profiles {
     /// Call `changed` (on a thread of its own) whenever a device comes,
     /// goes, connects, disconnects, pairs or says what it offers, and
     /// when BlueZ itself goes or comes (started again: see
-    /// [`Profiles::ensure`]). Nothing is polled.
-    pub fn watch(&self, changed: impl Fn() + Send + 'static) -> Result<()> {
+    /// [`Profiles::ensure`]): [`Change::Link`]; and whenever a phone's
+    /// battery or what it's playing changes (the track, playing or not:
+    /// never the position, which moves all the while):
+    /// [`Change::Detail`], which says nothing of whether the phone can
+    /// be reached. Nothing is polled.
+    pub fn watch(&self, changed: impl Fn(Change) + Send + 'static) -> Result<()> {
         use zbus::{MatchRule, message::Type};
         const TOLD: &[&str] = &["Connected", "Paired", "UUIDs", "Alias", "ServicesResolved", "Modalias"];
         let conn = bus()?;
@@ -527,16 +552,22 @@ impl Profiles {
                     continue;
                 }
                 let tell = match m.header().member().map(|m| m.as_str().to_owned()).as_deref() {
-                    Some("InterfacesAdded" | "InterfacesRemoved") => true,
-                    Some("NameOwnerChanged") => m.body().deserialize::<(String, String, String)>().is_ok_and(|(name, _, _)| name == DEST),
-                    Some("PropertiesChanged") => m
-                        .body()
-                        .deserialize::<(String, HashMap<String, OwnedValue>, Vec<String>)>()
-                        .is_ok_and(|(iface, props, gone)| iface == DEVICE && props.keys().chain(gone.iter()).any(|k| TOLD.contains(&k.as_str()))),
-                    _ => false,
+                    Some("InterfacesAdded" | "InterfacesRemoved") => Some(Change::Link),
+                    Some("NameOwnerChanged") => m.body().deserialize::<(String, String, String)>().is_ok_and(|(name, _, _)| name == DEST).then_some(Change::Link),
+                    Some("PropertiesChanged") => m.body().deserialize::<(String, HashMap<String, OwnedValue>, Vec<String>)>().ok().and_then(|(iface, props, gone)| {
+                        let (told, change): (&[&str], Change) = match iface.as_str() {
+                            DEVICE => (TOLD, Change::Link),
+                            music::PLAYER => (&["Status", "Track"], Change::Detail),
+                            "org.bluez.MediaControl1" => (&["Player", "Connected"], Change::Detail),
+                            "org.bluez.Battery1" => (&["Percentage"], Change::Detail),
+                            _ => return None,
+                        };
+                        props.keys().chain(gone.iter()).any(|k| told.contains(&k.as_str())).then_some(change)
+                    }),
+                    _ => None,
                 };
-                if tell {
-                    changed();
+                if let Some(change) = tell {
+                    changed(change);
                 }
             }
         })?;

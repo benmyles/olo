@@ -3,10 +3,13 @@
 //! the channels it opens for a profile); over it, OBEX ([`obex`]), the
 //! Message Access Profile ([`map`]: the messages there are, each as it
 //! comes, one sent) and the Phone Book Access Profile ([`pbap`]: names
-//! for numbers). Written from the Bluetooth specifications.
+//! for numbers), and what it's playing ([`music`]: BlueZ's own remote
+//! control of the phone's player). Written from the Bluetooth
+//! specifications.
 
 pub mod link;
 pub mod map;
+pub mod music;
 pub mod obex;
 pub mod pbap;
 pub mod standin;
