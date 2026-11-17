@@ -114,6 +114,35 @@ Each note: what to do, then why (what happened), then how to apply it.
   puts the file in the guest (`/ko/NAME.ko`): the script loads it.
   The older kernel still installed here (7.2.11) has no headers left
   (`kernel-devel-matched` keeps the newest's).
+- **The phone without a phone** (see HACKING, "The phone"): a private
+  bus (`target/release/olo-bus unix:path=/var/tmp/ME/bus.sock --ready`),
+  `blueferry-fake --address ADDRESS` on it, then `olo-phone --service`
+  with `DBUS_SESSION_BUS_ADDRESS` and `OLO_PHONE_BUS` both that address
+  (its notifications go to whatever bus is its session's: the person's,
+  if you leave theirs), `OLO_PHONE_DIR`, `OLO_PHONE_SETTINGS` and
+  `XDG_STATE_HOME` in scratch (an agent screen's history is written
+  under the state folder), and `env -u OLO_SCREEN` if your shell has
+  one. Chrome for it: `cp -a --reflink=always
+  ~/.local/share/olo/chrome/VERSION` into a scratch
+  `XDG_DATA_HOME/olo/chrome/`, a `current` link and a fresh `.checked`
+  beside it; `tsession run NAME HOME=… XDG_DATA_HOME=… OLO_PHONE_DIR=…
+  target/release/olo-chrome --user-data-dir=… --no-first-run URL`, the
+  page served from 127.0.0.1. A second Chrome with `OLO_SCREEN=agent`
+  in its environment (and a profile and HOME of its own) is "on an
+  agent's screen" to the service. `blueferry-fake --address ADDRESS
+  --tell receive "" 22395 "Your Acme Bank verification code is 482913."`
+  makes a code come.
+- **The commit hook's layout lint runs over the working tree**, not
+  what's staged: committing one thing while another's panel is half
+  done fails on that panel (a new Preferences panel needs the settings
+  index made again first: `OLO_WRITE_SETTINGS=1 cargo test -p
+  olo-preferences --features olo-kit/lint ui_lint_settings_index`).
+- **`tools/iconsheet.py` has no `--help`**: its first argument is the
+  sheet to write (`iconsheet.py /var/tmp/ME/sheet.png NAME
+  data/icons/src/candidates/NAME-*.png NEIGHBOUR…`). A theme's
+  candidates are in `data/themes/ID/src/candidates/`; they look small
+  beside shipped icons only until `mkicons.py --theme ID NAME` trims
+  them.
 - **Is a window showing the pixels it was given?** Render what it
   should show yourself and compare with a `tsession shot`, with PIL
   (`/usr/bin/python3 -I`): `ImageChops.difference` and its mean and

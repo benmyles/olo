@@ -11,6 +11,7 @@ pub mod audio;
 pub mod auth;
 pub mod backlight;
 pub mod battery;
+pub mod blueferry;
 pub mod bluetooth;
 pub mod bolt;
 pub mod cores;

@@ -4612,5 +4612,23 @@
   "title": "Speed Test floats at its own size, and is called Speed Test",
   "caption": "Network Speed Test is now Speed Test, and its window is the size of what it shows and no other: it floats over tiled windows and is never a tile or a tab. Tiled, it was stretched to a window its four cards filled a corner of, its menu bar stopping where they did. (Here with auto-tiling on: StyledEdit's window has the tile, Speed Test floats over it.)",
   "image": "2026-11-16/212003-speed-test-floats-at-its-own-size-and-is-called-.png"
+ },
+ {
+  "time": "2026-11-16T21:36:20",
+  "title": "A code texted to the phone, offered in the tab waiting for it",
+  "caption": "With BlueFerry's backend installed (Olo Doctor offers it) and an iPhone paired, a one-time code that arrives by text message is found as it comes and offered under the field of the browser tab that is waiting for it: Fill code, who it is from. A click takes it, or Down then Return. Olo's phone service asks every browser which tabs are waiting and chooses among them; a tab on an Agent Screen gets it put in at once when it surely is that tab's, and the person is told. (A made-up bank and code, a stand-in phone.)",
+  "image": "2026-11-16/213620-a-code-texted-to-the-phone-offered-in-the-tab-wa.png"
+ },
+ {
+  "time": "2026-11-16T21:37:03",
+  "title": "Preferences \u25b8 Phone",
+  "caption": "The new Phone panel: how the iPhone stands (its battery, which of its services are up, how many conversations and unread), what is told of (each message in a notification of Olo's own that can be answered in place, everything the phone notifies of, or nothing), and where one-time codes go: offered in the browser tab waiting for one, and in an agent's tab put in at once, asked about first, or never. Without the backend it leads to Olo Doctor, which installs BlueFerry; without a phone, to pairing. (A stand-in phone.)",
+  "image": "2026-11-16/213703-preferences-phone.png"
+ },
+ {
+  "time": "2026-11-16T21:38:43",
+  "title": "The phone in Deskbar's tray",
+  "caption": "While an iPhone is connected (or has messages unread, or a one-time code has just come) it is in Deskbar's tray: a phone, dim when it is out of reach, amber and red as its battery runs down, with a dot while messages are unread. Its menu says how it stands, copies the code that just came, and opens Preferences \u25b8 Phone. (A stand-in phone.)",
+  "image": "2026-11-16/213843-the-phone-in-deskbar-s-tray.png"
  }
 ]

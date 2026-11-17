@@ -70,6 +70,41 @@ fn latest_tag(agent: &ureq::Agent, repo: &str) -> Result<String, String> {
     v.get("tag_name").and_then(|t| t.as_str()).map(str::to_owned).ok_or_else(|| format!("{repo} has no release"))
 }
 
+/// Which of a release's assets is the package for this system: the one
+/// named `starts`…`ends` for the first of `ends` that any is (a
+/// distribution's package for this version of it, else for the one
+/// before: "….fc45.noarch.rpm", "….fc44.noarch.rpm").
+pub fn package_asset<'a>(assets: &'a [String], starts: &str, ends: &[String]) -> Option<&'a str> {
+    ends.iter().find_map(|end| assets.iter().find(|a| a.starts_with(starts) && a.ends_with(end.as_str()))).map(String::as_str)
+}
+
+/// A package from a project's latest GitHub release: the asset named
+/// `starts`…`ends` ([`package_asset`]), downloaded and checked against
+/// the SHA-256 the release's `sums` file gives for it. Returns the
+/// release's tag, the asset's name and its bytes.
+pub fn package(repo: &str, starts: &str, ends: &[String], sums: &str, progress: &mut dyn FnMut(u64, u64)) -> Result<(String, String, Vec<u8>), String> {
+    let agent = agent();
+    let text = fetch(&agent, &format!("https://api.github.com/repos/{repo}/releases/latest"), "application/vnd.github+json", 4 << 20, &mut |_, _| {})?;
+    let v: serde_json::Value = serde_json::from_slice(&text).map_err(|_| "GitHub's answer couldn't be read".to_string())?;
+    let tag = v.get("tag_name").and_then(|t| t.as_str()).ok_or_else(|| format!("{repo} has no release"))?.to_owned();
+    let names: Vec<String> = v.get("assets").and_then(|a| a.as_array()).map(|a| a.iter().filter_map(|x| x.get("name").and_then(|n| n.as_str()).map(str::to_owned)).collect()).unwrap_or_default();
+    let asset = package_asset(&names, starts, ends)
+        .ok_or_else(|| format!("{repo}'s release {tag} has no package for this system ({starts}…{})", ends.first().map(String::as_str).unwrap_or_default()))?
+        .to_owned();
+    if asset.contains('/') {
+        return Err(format!("{repo}'s release names a package oddly"));
+    }
+    let base = format!("https://github.com/{repo}/releases/download/{tag}");
+    let listed = fetch(&agent, &format!("{base}/{sums}"), "application/octet-stream", 1 << 20, &mut |_, _| {})?;
+    let want = hash_of(&String::from_utf8_lossy(&listed), &asset).filter(|_| String::from_utf8_lossy(&listed).lines().count() > 1).ok_or_else(|| format!("{sums} says nothing of {asset}"))?;
+    let bytes = fetch(&agent, &format!("{base}/{asset}"), "application/octet-stream", 256 << 20, progress)?;
+    let got: String = sha2::Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
+    if got != want {
+        return Err(format!("{asset} isn't what its maker published (its SHA-256 doesn't match)"));
+    }
+    Ok((tag, asset, bytes))
+}
+
 /// `asset`'s SHA-256 in a sums file: its line, or the file's only hash.
 pub fn hash_of(sums: &str, asset: &str) -> Option<String> {
     let lines: Vec<&str> = sums.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
@@ -157,6 +192,39 @@ mod tests {
         assert_eq!(hash_of("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210\n", "x").as_deref(), Some("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"));
         assert_eq!(hash_of(list, "missing"), None);
         assert_eq!(hash_of("nothex  x\n", "x"), None);
+    }
+
+    #[test]
+    fn the_package_for_this_system_of_a_releases_assets() {
+        let assets: Vec<String> = [
+            "blueferry-backend-0.9.1-1.fc43.noarch.rpm",
+            "blueferry-backend-0.9.1-1.fc43.src.rpm",
+            "blueferry-backend-0.9.1-1.fc45.noarch.rpm",
+            "blueferry-gtk-0.9.1-1.fc45.noarch.rpm",
+            "blueferry-backend_0.9.1-1_all.deb",
+        ]
+        .map(String::from)
+        .to_vec();
+        let ends = |versions: &[u32]| versions.iter().map(|v| format!(".fc{v}.noarch.rpm")).collect::<Vec<_>>();
+        assert_eq!(package_asset(&assets, "blueferry-backend-", &ends(&[45, 44, 43])), Some("blueferry-backend-0.9.1-1.fc45.noarch.rpm"));
+        // Fedora 44 takes 43's (there is none of its own); 42 has none.
+        assert_eq!(package_asset(&assets, "blueferry-backend-", &ends(&[44, 43])), Some("blueferry-backend-0.9.1-1.fc43.noarch.rpm"));
+        assert_eq!(package_asset(&assets, "blueferry-backend-", &ends(&[42])), None);
+    }
+
+    /// The real thing, from GitHub (`--ignored`): BlueFerry's backend
+    /// package for Fedora 45, downloaded and checked against its
+    /// release's SHA256SUMS. Nothing is installed.
+    #[test]
+    #[ignore]
+    fn a_package_from_github() {
+        let ends = vec![".fc45.noarch.rpm".to_owned()];
+        let mut last = (0, 0);
+        let (tag, name, bytes) = package("erikwb/blueferry", "blueferry-backend-", &ends, "SHA256SUMS", &mut |got, of| last = (got, of)).unwrap();
+        assert!(tag.starts_with('v'), "{tag}");
+        assert!(name.starts_with("blueferry-backend-") && name.ends_with(".fc45.noarch.rpm"), "{name}");
+        assert!(bytes.len() > 1_000_000 && bytes.starts_with(&[0xed, 0xab, 0xee, 0xdb]), "an RPM");
+        assert!(last.0 as usize == bytes.len(), "{last:?}");
     }
 
     #[test]

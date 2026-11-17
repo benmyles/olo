@@ -141,3 +141,4 @@ deskbar|a slim upright panel of light grey metal standing on the desk like a tal
 weather|a chunky puffy white cloud with a glossy golden yellow sun and its chunky rays behind its upper left, and one glossy Be blue raindrop falling beneath it at the lower right
 kache|a sturdy tan wooden crate with Be blue metal corner brackets, its lid open and full of small shiny silver gears
 speed-test|a chunky silver stopwatch with a white dial, a single red hand and a crown button on top, with the plug of a Be blue network cable, its tip clear with gold contacts, lying in front of it at the lower right
+phone|a chunky graphite-grey smartphone standing upright on the desk, leaning back a little, seen in three-quarter view from slightly above, its glossy Be blue screen showing one plump white speech balloon, a thin silver rim round its edge

@@ -814,6 +814,7 @@ long after a way out comes back.
 | `crates/kmod` | `olo-kmod`: one of Olo's kernel modules built for the running kernel and installed (see "BBRv3 for TCP"): what the services that load them share (apps/gpu-memory, apps/bbr3). |
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
 | `apps/airpods` | `olo-airpods`: AirPods, natively (see "AirPods"): the session's service and its command line. |
+| `apps/phone` | `olo-phone`: an iPhone's messages and one-time codes through BlueFerry's backend (see "The phone"): the session's service, which gives codes to the browser tab waiting for them, and its command line. |
 | `apps/voice` | `olo-voice`: the voice service (see "The voice service"): every microphone through voice processing, and its command line. |
 | `apps/installer` | `olo-installer`: the Installer (first called Olo Setup), a stock Fedora Workstation made Olo in one full-screen program (see "The Installer"). |
 | `apps/dconf` | `olo-dconf`: Olo's dconf service (`ca.desrt.dconf`), GSettings programs' settings written into dconf's own database in place of GNOME's dconf-service (see "Other toolkits' programs"). |
@@ -12643,6 +12644,9 @@ build tree, which mustn't be installed again).
   opens) saw a tab `cd`'d into a worktree as still in its first folder.
   olo-brush's `prompt` hook (vendor/brush-interactive's, called as each
   prompt shows) moves the process there, as other shells move on `cd`.
+- **The phone's backend** (checks.rs, `phone`, with the checks since
+  it looks at the system: see "The phone"): BlueFerry, from its makers'
+  latest release, through PackageKit.
 - **Programs worth having** (`TOOLS`, `tool_list`): just, uv, mise and
   worktrunk (`wt`), each suggested while it's on no folder of PATH nor
   in ~/.local/bin or ~/.cargo/bin (where installers put them, which a
@@ -13460,6 +13464,187 @@ it to the service and to what reads it (Preferences, Deskbar: start the
 session with it in the environment). `olo-fakesound` with
 `FAKESOUND_AIRPODS=AA:BB:CC:DD:EE:FF` adds their output (AAC, music
 quality, the default) and card, for Sound.
+
+## The phone (apps/phone, olo_system::blueferry, olo_protocol::phone; Preferences ▸ Phone)
+
+An iPhone's messages and its one-time codes, on this computer (Ben,
+2026-11-16: "integrate https://github.com/erikwb/blueferry into olo so
+that doctor suggests installing the backend and handles doing it and
+then write olo native frontend prefs/deskbar/app integration including
+capturing OTPs from SMS messages and extend the olo chrome extension to
+offer to fill them in the browser when they arrive like how macos does
+it … it could be from a user chrome tab or one on an agent screen in
+which case it should go to the agent's tab not the user").
+
+**The backend is BlueFerry's** (github.com/erikwb/blueferry, GPL, Python;
+0.9.1 when this was written): MAP for messages, PBAP for contacts and
+ANCS for notifications over Bluetooth, with no cloud or account, behind
+a D-Bus API on the session bus (`io.weirdware.BlueFerry`, its
+`Messages1` and `Events1`: commands and snapshots, most JSON in a
+string; signals that say only that something changed). Nothing of it is
+in Olo, which only talks to it, written from its published contract
+(`data/io.weirdware.BlueFerry.xml`, `docs/en/developer/dbus-api.md`):
+`olo_system::blueferry` (`Client`: `status`, `threads`, `send`, `reply`,
+`mark_read`, `find_contacts`, `set_notification_policy`, `reconnect`,
+`watch`). It reads leniently, as BlueFerry's own clients do (a key of
+another type or missing is unset, unknown keys pass), checks the API's
+generation (`olo_protocol::phone::API`, 2; another is said plainly:
+"update them"), and never starts the backend by asking whether it runs.
+A reply to a group carries the members it was shown with
+(`Thread::group_token`: the roster warning's id, then each distinct
+address in order, a line each), as the backend demands. **Everything
+native doesn't reach to this**: Ben asked for this backend; its makers
+test it on real phones and controllers, and Olo's part is its own front
+end. Pairing, which the D-Bus API doesn't have (it is 3,000 lines of
+quirks in BlueFerry's clients), is the backend's own wizard run in
+Olo's Terminal (`blueferry pair-setup`) until Olo has a sheet for it
+(TODO).
+
+**Olo Doctor installs it** (checks.rs, `phone`): on a Fedora it has a
+package for (43 and up) with a Bluetooth controller, "Your iPhone's
+messages and codes on this computer" is suggested; its fix is
+`Step::InstallReleasePackage`: the latest GitHub release's asset named
+`blueferry-backend-…​.fcN.noarch.rpm` for this Fedora, else the one
+before's (`releases::package_asset`), downloaded, checked against the
+release's `SHA256SUMS`, and installed through PackageKit with what it
+needs from Fedora (python3-cryptography, -phonenumbers, -typer,
+bluez-obexd: all in Fedora 45, checked). The package starts Bluetooth
+again as it goes in and brings a drop-in of its own (`bluetoothd -E -P
+hfp`: the experimental interfaces it needs, and BlueZ's own hands-free
+plugin left out, which experimental loads from 5.87 and which would make
+the computer the phone's hands-free set). Olo's own drop-in for AirPods
+(`/etc/systemd/system/bluetooth.service.d/olo.conf`) comes after it by
+name and is the one that counts, so with the backend here Olo's says
+both (`bluetooth_drop_in(program, true)`: `--experimental -P hfp`): the
+install's steps write it first when it's there (so Bluetooth starts
+once), AirPods' own fix writes it so when the backend's drop-in exists,
+and a backend installed with Bluetooth started otherwise is a finding of
+its own ("Bluetooth isn't started as the phone needs").
+
+**`olo-phone --service`** (service.rs; a real session's, `REAL_SHELL`)
+follows the backend by its signals (asleep on the bus otherwise: 0
+wakeups a second at rest), publishes `$XDG_RUNTIME_DIR/olo-phone.json`
+(`PhoneState`: the backend, the link, which of the phone's services are
+up, its battery, how many conversations and unread, a count of codes;
+**never a sender, a number, a text or a code**), and answers on
+`olo-phone.sock` (0600). It tells of each message as it comes in a
+notification of Olo's own, in the Message style, answered in place
+(`Note::reply`; sent on a thread, a failure said) with Mark as Read and,
+for one with a code, Copy Code; so the backend's own popups are kept
+off, or, for "Everything on the Phone", set to all with Olo's off
+(`Notify::backend_policy`: Olo owns that setting of the backend's and
+puts it back if another client changes it). A message "has just come"
+when it is new to the service, incoming, unread and no older than five
+minutes by its own time (`when`: with its zone, or as local time when
+the phone left it out); at the start what is already there is told of
+by nothing, only a code still good taken up. Settings are
+`~/.config/olo/phone.json` (`PhoneSettings`, followed by inotify).
+
+**One-time codes** (codes.rs). `find` is a heuristic of Olo's own (not
+BlueFerry's, which copies to the clipboard and tells no client): a
+number of four to eight digits ("123-456", "123 456" and "G-123456" are
+123456; right after "code", letters and digits too) is a code only when
+a word for one is said with it, in the same sentence: strong words
+("verification code", "OTP", "Bestätigungscode", "验证码", …) by
+themselves; "code", "PIN", "password" only in a sentence about signing
+in or right beside the number ("code: 4829", "482913 is your code").
+Never amounts, dates, times, decimals, phone numbers, order and tracking
+numbers, or codes people and shops tell each other ("my code", door,
+Wi-Fi, promo). A last line `@site #code` binds the code to that site.
+`service` reads who it says it's from ("Your Acme Bank verification
+code…", "[Acme] …", "… for Acme"). Tested on 30 messages that are codes
+and 18 that aren't; `olo-phone --find-code` reads a message from
+standard input and says what it finds, for trying a provider's wording.
+A code is kept in memory only, for five minutes (`CODE_LIFE`), wiped
+(zeroize) when it's used or too old; nothing a message says is logged
+or written.
+
+**Which tab it's for** (as macOS offers a code from Messages, but
+choosing the tab). Every browser's extension host stays connected to
+the service's socket (`Request::Browser`; apps/chrome/src/codes.rs). When
+a code comes, the service asks them all which tabs are waiting
+(`ToBrowser::Any`, which says nothing of the code); each extension asks
+every tab's frames (`chrome.scripting.executeScript`, content.js's
+`codeWaiting`: a field for a one-time code, shown and empty) and answers
+with what it knows of each (`Waiting`: host, title, whether the field
+has the focus, its tab shows and its window is in front, whether the
+field declares itself `one-time-code`, how many digits it takes, whether
+the page says the code was sent by text or comes from an authenticator
+app, how long ago the field was first seen). After every browser has
+answered, or 700 ms, `codes::choose` takes the best (`score`: bound to
+its site +100 and to no other; the service the message names in the
+tab's host or title +40; focus +25, text +20, showing +15, front +10,
+declared +10, fresh +15; a field of another length, or a page that asks
+for an authenticator's code and isn't the service's own, is out; of two
+as good, the one whose field came up last) and **only that browser is
+given the code** (`ToBrowser::Code`). A code field that comes up, or
+takes the focus, after the code came says so itself
+(`FromBrowser::Waiting { id: None }`) and gets one still good. In the
+person's own browser it is **offered**: "Fill code 482913 / From Acme
+Bank, by text message" under the field, in a closed shadow root (the
+page can't read it; built with `textContent`, since a sender's words
+are a stranger's), taken with a click, or ↓ then Return in the field;
+Escape, or typing a code oneself, sends it away. Filled, it is spent:
+gone from every other tab it showed in.
+
+**A tab on an agent's screen** is known by its Chrome's environment
+(`OLO_SCREEN`, read by the service from the connecting process, not
+taken on its word). By Preferences ▸ Phone's "In an agent's tab": **Fill
+It In** (the default: Ben's "it should go to the agent's tab not the
+user"): put in at once when the code is surely that tab's (`sure`: bound
+to its site; or of the service the message names; or a field no older
+than ten minutes on a page that says a text was sent), the person told
+in a notification ("Code given to Agent Screen “agent”": who from, at
+which site), and it goes in that screen's history (`kind: "code"`,
+among Keys and Typing: who from, the host and the page's title, never
+the code); when it isn't sure the person is asked; **Ask Me First**
+(a notification on their screen, Give Code or Not Now); **Never**
+(agents' tabs aren't candidates). The doubt it guards: a page on an
+agent's screen that merely has a code field must not be handed the code
+of a sign-in the person began elsewhere. `olo-phone --code` (the latest
+code, for Deskbar's Copy) is refused to a program on an agent's screen.
+
+**Where it shows.** Preferences ▸ Phone (phone.rs): the backend missing
+(Olo Doctor…), stopped (Start It), of another generation, no phone
+paired (Pair an iPhone…: the wizard in Terminal), else how it stands
+(what the phone must allow, its battery, which services are up, how
+many conversations and unread; Try Again, Pair Again…), what is told of
+(Messages, Everything on the Phone, Nothing; Show what a message says),
+and One-Time Codes (find them; offer in the browser; in an agent's tab;
+copy one no tab is waiting for). Deskbar's tray (`status::draw_phone`: a
+slab with its screen, dim out of reach, amber at 20% and red at 10%, a
+blue dot while messages are unread), shown while the phone is
+connected, has unread messages or a code still good; its menu says how
+it stands, copies the code that just came, tries the phone again, and
+opens the panel. The command line, for people and agents: `olo-phone`
+(`--status [--json]`), `--conversations`, `--read KEY`, `--send TO
+TEXT…`, `--reply KEY TEXT…`, `--mark-read KEY`, `--reconnect`,
+`--code`, `--copy-code`, `--find-code`, `--settings`, `--set SETTING
+VALUE`. (A program on an agent's screen is on that screen's own bus,
+where there is no backend: the conversations are the person's.)
+
+**Tests never touch Bluetooth, a phone or anyone's messages.**
+`blueferry-fake` (olo-system's, beside `dnf-fake`) takes the backend's
+name on a bus and plays an iPhone at 81% with five conversations between
+made-up people; `--tell receive NAME ADDRESS TEXT…` has a message
+arrive, `--tell set link|battery|paired|storage VALUE` changes how it
+stands. `OLO_PHONE_BUS=ADDRESS` points Olo at that bus,
+`OLO_PHONE_DIR=DIR` keeps the service's state and socket in DIR (give
+it to the service and to what reads it: Preferences, Deskbar, Chrome),
+`OLO_PHONE_SETTINGS=FILE` its settings; the service's own
+`DBUS_SESSION_BUS_ADDRESS` must be the private bus too, or its
+notifications go to the person's. `crates/system/tests/blueferry_fake.rs`
+and `apps/phone/tests/service.rs` run end to end with
+`OLO_TEST_BUS=unix:path=…` (an `olo-bus` of the test's): the client
+against the stand-in; then the service with stand-in browsers, one of
+them on an agent's screen (processes of their own, since a screen is
+known by a process's environment). The extension was tried in a copy of
+Chrome in a scratch `XDG_DATA_HOME` (as "Google Chrome" says) on a page
+served from 127.0.0.1: offered and taken by click and by keys; with a
+second Chrome started with `OLO_SCREEN=agent`, the bank's code put in
+its tab while the person's tab, on an authenticator's page, was left
+alone; a code that came before any tab waited, offered when the page
+opened.
 
 ## The supervisor (apps/supervisor, Preferences ▸ Performance)
 
@@ -16501,6 +16686,13 @@ in a millisecond and says nothing on the terminal, where a second Chrome
 printed "Opening in existing browser session." and its zygote's
 "Failed sending zygote boot message: Broken pipe" as it went. No Chrome
 running, or no answer: Chrome is started as before.
+
+**A code texted to the phone** is offered in the tab waiting for it
+(see "The phone"): `src/codes.rs` keeps the host connected to the phone
+service, `background.js`'s `codeTabs` asks every tab's frames, and
+`content.js` says whether a frame's code field is waiting (`codeWaiting`)
+and shows the offer under it (`showOffer`), or puts the code in on an
+agent's screen.
 
 **Passwords in Chrome** (`extension/`, `src/extension.rs`, `src/host.rs`).
 Each start (before exec) packs `apps/chrome/extension` (built into the

@@ -8,8 +8,8 @@ use olo_kit::{
 use olo_protocol::Settings;
 
 use crate::{
-    PanelView, about, ai, airplay, airpods, appearance, backup, bluetooth, datetime, default_apps, deskbar, display, form::Ui, integrations, keyboard, network, notifications, performance, power,
-    prefs, screensaver, security, sound, terminal, themes, touchpad, tracker, windows, workspaces,
+    PanelView, about, ai, airplay, airpods, appearance, backup, bluetooth, datetime, default_apps, deskbar, display, form::Ui, integrations, keyboard, network, notifications, performance, phone,
+    power, prefs, screensaver, security, sound, terminal, themes, touchpad, tracker, windows, workspaces,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,6 +35,7 @@ pub enum Panel {
     Network,
     Notifications,
     Performance,
+    Phone,
     Power,
     ScreenSaver,
     Security,
@@ -65,6 +66,7 @@ impl Panel {
         Panel::Network,
         Panel::Notifications,
         Panel::Performance,
+        Panel::Phone,
         Panel::Power,
         Panel::ScreenSaver,
         Panel::Security,
@@ -92,6 +94,7 @@ impl Panel {
             "touchid" | "fingerprint" | "touch-id" | "fingerprints" | "face" | "face-unlock" | "security-keys" | "yubikey" | "sign-in" => Some(Panel::Security),
             "bt" => Some(Panel::Bluetooth),
             "airpods" | "airpod" | "headphones" => Some(Panel::AirPods),
+            "iphone" | "messages" | "sms" | "codes" | "one-time-codes" | "blueferry" => Some(Panel::Phone),
             "air-play" | "mirroring" | "screen-mirroring" | "apple-tv" | "tv" => Some(Panel::AirPlay),
             "wifi" | "wi-fi" | "networks" => Some(Panel::Network),
             "notification" | "dnd" | "do-not-disturb" => Some(Panel::Notifications),
@@ -125,6 +128,7 @@ impl Panel {
             Panel::Network => "network",
             Panel::Notifications => "notifications",
             Panel::Performance => "performance",
+            Panel::Phone => "phone",
             Panel::Power => "power",
             Panel::ScreenSaver => "screensaver",
             Panel::Security => "security",
@@ -157,6 +161,7 @@ impl Panel {
             Panel::Network => "Network",
             Panel::Notifications => "Notifications",
             Panel::Performance => "Performance",
+            Panel::Phone => "Phone",
             Panel::Power => "Power",
             Panel::ScreenSaver => "Screen Saver",
             Panel::Security => "Security",
@@ -191,6 +196,7 @@ impl Panel {
             Panel::Network => "network-prefs",
             Panel::Notifications => "notifications",
             Panel::Performance => "performance",
+            Panel::Phone => "phone",
             Panel::Power => "power",
             Panel::ScreenSaver => "screensaver",
             Panel::Security => "security",
@@ -234,6 +240,9 @@ impl Panel {
             Panel::Notifications => (440, 700),
             // Its Watchdog tab's thresholds two by two, each a pair of sliders.
             Panel::Performance => (900, 560),
+            // How the phone stands, then what's told of beside where
+            // codes go.
+            Panel::Phone => (820, 420),
             // Three tabs: the power modes and what each sets (a grid of
             // the processors and each GPU), the GPUs side by side, and the
             // battery with when idle beside it.
@@ -273,6 +282,7 @@ impl Panel {
                 | Panel::Bluetooth
                 | Panel::Notifications
                 | Panel::Performance
+                | Panel::Phone
                 | Panel::Backup
                 | Panel::Integrations
                 | Panel::DefaultApps
@@ -292,6 +302,7 @@ impl Panel {
                 | Panel::Bluetooth
                 | Panel::Notifications
                 | Panel::Performance
+                | Panel::Phone
                 | Panel::Backup
                 | Panel::Integrations
                 | Panel::DefaultApps
@@ -355,6 +366,7 @@ impl Panel {
             | Panel::Bluetooth
             | Panel::Notifications
             | Panel::Performance
+            | Panel::Phone
             | Panel::Integrations
             | Panel::DefaultApps => {}
         }
@@ -374,6 +386,7 @@ pub enum State {
     Network(Box<network::State>),
     Notifications(Box<notifications::State>),
     Performance(Box<performance::State>),
+    Phone(phone::State),
     Backup(Box<backup::State>),
     Bluetooth(Box<bluetooth::State>),
     AirPods(Box<airpods::State>),
@@ -399,6 +412,7 @@ impl State {
             Panel::Network => State::Network(Box::new(network::State::new(cx))),
             Panel::Notifications => State::Notifications(Box::new(notifications::State::new(cx))),
             Panel::Performance => State::Performance(Box::new(performance::State::new(cx))),
+            Panel::Phone => State::Phone(phone::State::new()),
             Panel::Backup => State::Backup(Box::new(backup::State::new(cx))),
             Panel::Bluetooth => State::Bluetooth(Box::new(bluetooth::State::new(cx))),
             Panel::AirPods => State::AirPods(Box::new(airpods::State::new(cx))),
@@ -466,6 +480,7 @@ pub fn render(v: &mut PanelView, cx: &mut Cx<PanelView>) -> Element {
             (Panel::Network, State::Network(st)) => network::ui(&mut ui, st),
             (Panel::Notifications, State::Notifications(st)) => notifications::ui(&mut ui, st),
             (Panel::Performance, State::Performance(st)) => performance::ui(&mut ui, st),
+            (Panel::Phone, State::Phone(st)) => phone::ui(&mut ui, st),
             (Panel::Backup, State::Backup(st)) => backup::ui(&mut ui, st),
             (Panel::Bluetooth, State::Bluetooth(st)) => bluetooth::ui(&mut ui, st),
             (Panel::AirPods, State::AirPods(st)) => airpods::ui(&mut ui, st),

@@ -1,0 +1,29 @@
+[package]
+name = "olo-phone"
+description = "The phone: an iPhone's messages and one-time codes, through BlueFerry's backend, for Deskbar, Preferences, browsers and agents"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "olo-phone"
+path = "src/main.rs"
+
+[dependencies]
+olo-crash.workspace = true
+olo-sync.workspace = true
+olo-system.workspace = true
+olo-protocol.workspace = true
+olo-kit-base.workspace = true
+olo-xdg.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+libc = "0.2"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+zeroize = "1"
+
+[dev-dependencies]
+# The end-to-end test asks the stand-in backend what it was told.
+zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }

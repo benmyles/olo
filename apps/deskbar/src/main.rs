@@ -1285,6 +1285,9 @@ impl Deskbar {
                 let address = self.status.airpods.as_ref().map(|a| a.address.clone()).unwrap_or_default();
                 spawn(&format!("olo-airpods --address {address} --{what}"));
             }
+            // The phone: its own command line (`olo-phone --copy-code`,
+            // `--reconnect`).
+            Some(("phone", what)) => spawn(&format!("olo-phone --{what}")),
             // The supervisor on or off: its settings, which it follows
             // (shown at once; written off the UI thread).
             Some(("perf", "toggle")) => {
@@ -2065,6 +2068,20 @@ fn voice_items(m: Menu, v: &olo_protocol::voice::Settings) -> Menu {
     m.submenu(sub)
 }
 
+/// The phone's tray menu: how it stands, a one-time code that has just
+/// come (copied), trying it again while it's out of reach, and the way
+/// to its settings.
+fn phone_menu(phone: &olo_protocol::phone::PhoneState) -> Menu {
+    let mut m = Menu::new("Phone").item(format!("iPhone: {}", phone.words()), "").enabled(false).separator();
+    if phone.code_at.is_some() {
+        m = m.item("Copy the Code That Just Came", "phone:copy-code");
+    }
+    if !phone.link.connected() {
+        m = m.item("Try the Phone Again", "phone:reconnect");
+    }
+    m.separator().item("Phone Settings…", "pref:phone")
+}
+
 /// AirPods' tray menu: their levels, noise control, Conversation
 /// Awareness, and the way to their settings and the sound's.
 fn airpods_menu(pods: &olo_protocol::airpods::AirPods) -> Menu {
@@ -2705,6 +2722,7 @@ impl Deskbar {
                 !st.sharing.is_empty(),
                 !st.airplay.is_empty(),
                 st.airpods.is_some(),
+                st.phone.is_some(),
                 !st.agent_screens.is_empty(),
                 st.supervisor.is_some(),
                 // (Olo Doctor's bag, while it has found something.)
@@ -3031,6 +3049,19 @@ impl Deskbar {
                 if matches!(button(e), MouseButton::Left | MouseButton::Right) {
                     let mm = m.clone();
                     open_menu(cx, &v, "tray:airpods", r, airpods_menu(&pods), move |cmd, cx| run(&mm, cmd, cx));
+                }
+            }));
+        }
+        // The phone, connected (or with messages unread, or a code just
+        // come): how it stands, Phone, and its settings.
+        if let Some(phone) = st.phone.clone() {
+            let drawn = phone.clone();
+            let (r, h) = tray_item(&mut d, "phone", format!("iPhone: {}", phone.words()), Box::new(move |g, r| status::draw_phone(g, r, &theme::palette(), &drawn)));
+            let (m, v) = (model.clone(), view.clone());
+            d.hits.push(h.on_any_button(move |e, cx| {
+                if matches!(button(e), MouseButton::Left | MouseButton::Right) {
+                    let mm = m.clone();
+                    open_menu(cx, &v, "tray:phone", r, phone_menu(&phone), move |cmd, cx| run(&mm, cmd, cx));
                 }
             }));
         }

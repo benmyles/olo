@@ -33,9 +33,44 @@ something nobody here has is in "Blocked", with what it waits for.
   is, which may be the person's or one on an Agent Screen (then it goes
   to the agent's tab, never the person's, and is logged in the agent's
   history).
+  *Under way, 2026-11-16* (HACKING, "The phone"). **Done so far**: Olo
+  Doctor suggests BlueFerry's backend and installs it (its makers'
+  release, checked, through PackageKit; Bluetooth started as it needs);
+  `olo-phone --service` follows it, tells of messages in notifications
+  answered in place, and finds one-time codes; Olo's Chrome extension
+  offers a code under the field of the tab waiting for it, the service
+  choosing among every browser's tabs, an agent's tab getting it put in
+  (the person told, the screen's history noting it) by Preferences ▸
+  Phone's setting; the panel; Deskbar's tray; `olo-phone`'s command
+  line. All of it against a stand-in backend: **no real phone has been
+  paired with it yet** (Ben's is his to pair). **Still to do**: Phone,
+  the app (the conversations, reading and answering them, a new
+  message), which the notifications and Deskbar then open.
+  **For Ben**: after upgrading, Olo Doctor shows "Your iPhone's messages
+  and codes on this computer": Install It (Bluetooth starts again
+  once), then Preferences ▸ Phone ▸ Pair an iPhone… (BlueFerry's wizard,
+  in Terminal). Say what the real thing does that the stand-in didn't.
+  **To decide**: a code that is surely an agent's tab's is put in there
+  without asking (you are told); "Ask Me First" is the other setting.
 
 ## Not started (highest priority first)
 
+- **Pairing an iPhone in a sheet of Olo's own** (found 2026-11-16,
+  with the phone work). Preferences ▸ Phone pairs by running BlueFerry's
+  own wizard in Terminal (`blueferry pair-setup`): pairing isn't in its
+  D-Bus API, and its clients' 3,000 lines of it (controller quirks, the
+  code shown on both, the phone's switches) couldn't be tried without a
+  phone. With one at hand: a sheet in the panel over the backend's
+  `pairing-*-json` helpers (as its Quickshell client uses them), or
+  BlueZ spoken to directly.
+- **The phone's other notifications, calls and music, Olo's way** (found
+  2026-11-16). "Everything on the Phone" leaves the phone's other apps'
+  notifications to BlueFerry's own popups; its newer API lists them
+  (`ListNotifications`, after 0.9.1), so Olo could show them as its own.
+  Its calls (`Calls1`), call history, media control and the phone as a
+  sound source aren't in Olo yet. And a newer BlueFerry release isn't
+  offered: Olo Doctor installs the latest when asked, and says nothing
+  of a later one.
 - **Terminal remembers a tab's own "keep going" message** (Ben,
   2026-11-16: "when a custom "keep going" message has been set on a tab
   in terminal then terminal should remember that across upgrades and

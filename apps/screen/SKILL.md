@@ -141,6 +141,15 @@ own tab strip, toolbar and right-click menus aren't: use `key` (`Cmd+L`
 for the address bar, `Cmd+T`, `Cmd+W`), or `look` and click by
 position, for those.
 
+**A code texted to the person's phone.** When a sign-in says it has sent
+a code by text message, stay on the page that asks for it and wait
+(read the field again with `olo-screen tree agent` every few seconds:
+its value fills in). Where the person has their phone set up with Olo,
+the code is put in the field by itself, or they are asked on their own
+screen whether your tab may have it; either way it is noted in your
+screen's history. Don't go looking for the code another way. If nothing
+has come after a couple of minutes, ask the person.
+
 ## Passwords on your screen
 
 A screen has only the passwords the person chose to share with agent

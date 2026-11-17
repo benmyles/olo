@@ -19,6 +19,10 @@
 //! `tree` socket, for Chrome's process): `{tree: n}` goes to the
 //! extension, which answers `{tree: n, windows}` (background.js, tree.js).
 //!
+//! One-time codes texted to the person's phone reach the tab waiting for
+//! one through it (codes.rs): `{code: …}` to the extension, `{code_waiting}`
+//! and `{code_outcome}` from it.
+//!
 //! In olo-slack's Chrome, `{slack: …}` joins Slack to Olo (slack.rs), and
 //! the socket also has Slack's commands for the palette.
 
@@ -82,6 +86,7 @@ pub fn run() {
     if let Some(s) = &slack {
         s.hello();
     }
+    let codes = crate::codes::Codes::follow(out.clone());
     let max_in = if slack.is_some() { MAX_IN_SLACK } else { MAX_IN };
     // (Made when Chrome first tells of a download.)
     let mut downloads: Option<Downloads> = None;
@@ -111,6 +116,12 @@ pub fn run() {
             if let Some(tx) = trees.lock().unwrap_or_else(|e| e.into_inner()).remove(&n) {
                 let _ = tx.send(windows);
             }
+            continue;
+        }
+        // One-time codes from the phone (codes.rs).
+        if let Ok(m) = &message
+            && codes.from_extension(m)
+        {
             continue;
         }
         // olo-slack's Chrome's Slack (slack.rs).

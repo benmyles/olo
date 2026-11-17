@@ -90,7 +90,9 @@ const FRAMES_EVERY: Duration = Duration::from_secs(1);
 /// name, and the commands in it.
 pub const KINDS: [(&str, &str, &[&str]); 6] = [
     ("pointer", "Pointer", &["click", "move", "down", "up", "drag", "scroll", "wheel", "scroll-to"]),
-    ("keys", "Keys and Typing", &["key", "type", "set"]),
+    // ("code": a one-time code from the person's phone, put in the tab
+    // waiting for it by the phone service, olo-phone.)
+    ("keys", "Keys and Typing", &["key", "type", "set", "code"]),
     ("choices", "Menus and Choices", &["invoke", "select"]),
     ("windows", "Windows", &["focus", "close", "minimize", "zoom", "resize", "place"]),
     ("programs", "Programs", &["run"]),

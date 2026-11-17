@@ -41,6 +41,11 @@ function connect() {
       fromSlackHost(m.slack);
       return;
     }
+    // Olo's phone service, about a one-time code.
+    if (m.code) {
+      fromPhone(m.code);
+      return;
+    }
     const w = waiting.get(m.id);
     if (!w) return;
     waiting.delete(m.id);
@@ -486,6 +491,90 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 });
 
+// ---- One-time codes texted to the phone ----
+//
+// Olo's phone service (olo-phone) finds a code in a text message as it
+// comes and asks every browser, through its host, which tabs are waiting
+// for one ({code: {any}}): each frame says for itself (content.js's
+// codeWaiting), and this adds what Chrome knows of the tab. The service
+// chooses among all the browsers' tabs (the person's and each agent
+// screen's) and gives the code to one ({code: {id, tab, frame, code,
+// from, fill}}): offered under the field, or put in at once on an
+// agent's screen. A code field that comes up later says so itself
+// ({code_waiting: {id: null}}): a code may have come before it.
+
+// Where each code is being offered: id → [{tabId, frameId}].
+const codeOffers = new Map();
+// The host each waiting frame was at: `tab:frame` → host. A code goes
+// only to a frame still there.
+const codeHosts = new Map();
+
+// The tabs (or `only` this one) with a field waiting for a code.
+async function codeTabs(only) {
+  const tabs = only ? [only] : await chrome.tabs.query({ discarded: false }).catch(() => []);
+  const windows = await chrome.windows.getAll().catch(() => []);
+  const front = new Set(windows.filter((w) => w.focused).map((w) => w.id));
+  const out = [];
+  await Promise.all(
+    tabs
+      .filter((t) => web(t.url))
+      .map(async (t) => {
+        const asked = chrome.scripting
+          .executeScript({ target: { tabId: t.id, allFrames: true }, func: () => (window.__oloCodeWaiting ? window.__oloCodeWaiting() : null) })
+          .catch(() => []);
+        // (A tab that doesn't answer isn't waited for: the service
+        // decides within the second.)
+        const frames = await Promise.race([asked, new Promise((done) => setTimeout(() => done([]), 450))]);
+        for (const f of frames || []) {
+          const w = f.result;
+          if (!w) continue;
+          codeHosts.set(`${t.id}:${f.frameId}`, w.host);
+          out.push({
+            tab: t.id,
+            frame: f.frameId,
+            host: w.host,
+            title: t.title || "",
+            focused: !!w.focused && !!t.active,
+            active: !!t.active,
+            front: front.has(t.windowId),
+            declared: !!w.declared,
+            digits: w.digits ?? null,
+            by_text: !!w.by_text,
+            by_app: !!w.by_app,
+            age: w.age || 0,
+          });
+        }
+      }),
+  );
+  return out;
+}
+
+function fromPhone(c) {
+  if (c.any !== undefined) {
+    codeTabs().then((tabs) => port?.postMessage({ code_waiting: { id: c.any, tabs } }));
+  } else if (c.gone !== undefined) {
+    for (const o of codeOffers.get(c.gone) || []) send(o.tabId, o.frameId, { type: "code-gone", id: c.gone });
+    codeOffers.delete(c.gone);
+  } else if (c.code) {
+    const said = (outcome) => port?.postMessage({ code_outcome: { id: c.id, outcome } });
+    chrome.tabs.sendMessage(c.tab, { type: "code-offer", id: c.id, code: c.code, from: c.from, fill: !!c.fill, host: codeHosts.get(`${c.tab}:${c.frame}`) }, { frameId: c.frame }).then(
+      (r) => {
+        const outcome = r?.outcome || "gone";
+        if (outcome === "shown") codeOffers.set(c.id, [...(codeOffers.get(c.id) || []), { tabId: c.tab, frameId: c.frame }]);
+        said(outcome);
+      },
+      () => said("gone"),
+    );
+  }
+}
+
+// A code field came up or took the focus in this tab: said to the phone
+// service, which may have a code that came before it.
+function codeField(tab) {
+  if (!port) connect();
+  codeTabs(tab).then((tabs) => tabs.length && port?.postMessage({ code_waiting: { id: null, tabs } }));
+}
+
 // ---- Messages from pages and the popup ----
 
 chrome.runtime.onMessage.addListener((m, sender, reply) => {
@@ -502,6 +591,12 @@ chrome.runtime.onMessage.addListener((m, sender, reply) => {
     giveUp(`${sender.tab.id}:${sender.frameId}:${m.rid}`);
   } else if (m.type === "passkey-gone" && fromPage) {
     giveUp(`${sender.tab.id}:${sender.frameId}:`);
+  } else if (m.type === "code-field" && fromPage && web(sender.url)) {
+    codeField(sender.tab);
+  } else if (m.type === "code-outcome" && fromPage) {
+    // The person took the offer (or sent it away).
+    if (m.outcome === "filled") codeOffers.delete(m.id);
+    port?.postMessage({ code_outcome: { id: m.id, outcome: String(m.outcome || "") } });
   } else if (m.type === "focus" && fromPage) {
     buildMenu(sender.url, sender.tab.id, sender.frameId, !!m.card);
   } else if (m.type === "page" && fromPage && web(sender.url)) {

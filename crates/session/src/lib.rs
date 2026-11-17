@@ -61,7 +61,9 @@ const SHELL: &[&[&str]] = &[&["olo-deskbar"], &["olo-tracker", "--desktop"]];
 /// the computer's one loopback port; the supervisor (Preferences ▸
 /// Performance) looks after the person's own processes; Olo Doctor tells
 /// of problems at login and of the Wi-Fi healer's resets; the AirPods
-/// service talks to the computer's own Bluetooth; olo-secrets answers
+/// service talks to the computer's own Bluetooth; the phone service
+/// follows the phone's backend on the person's own bus, and gives their
+/// one-time codes to the browsers; olo-secrets answers
 /// for the login keyring (nothing of GNOME's); Terminal's tab
 /// title service for coding agents listens on another loopback port;
 /// DiskBackup backs up this computer's disk (only the logged-in session's).
@@ -73,6 +75,9 @@ const REAL_SHELL: &[&[&str]] = &[
     &["olo-supervisor"],
     &["olo-doctor", "--watch"],
     &["olo-airpods", "--service"],
+    // The phone (BlueFerry's backend, when it's installed): asleep on
+    // the bus until the backend says something.
+    &["olo-phone", "--service"],
     &["olo-voice", "--service"],
     // DiskBackup's service: asleep until a backup is due (nothing at all
     // until it's set up).

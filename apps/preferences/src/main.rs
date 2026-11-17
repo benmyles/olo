@@ -38,6 +38,7 @@ mod notifications;
 mod palm_trainer;
 mod panel;
 mod performance;
+mod phone;
 mod power;
 mod screensaver;
 mod security;

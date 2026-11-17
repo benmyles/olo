@@ -87,6 +87,10 @@ pub struct Status {
     pub supervisor: Option<Supervisor>,
     /// AirPods connected (olo-airpods' state).
     pub airpods: Option<olo_protocol::airpods::AirPods>,
+    /// The phone (olo-phone's state), while there's something of it to
+    /// show: it's connected, has messages unread, or a one-time code has
+    /// just come.
+    pub phone: Option<olo_protocol::phone::PhoneState>,
     /// Voice processing's settings (olo-voice's), for the speaker's menu.
     pub voice: olo_protocol::voice::Settings,
     /// The power modes (the power profiles daemon's), for the battery's
@@ -328,6 +332,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     use olo_protocol::performance::{PerformanceSettings, SupervisorState};
     let (perf, supervising) = (PerformanceSettings::path(), SupervisorState::path());
     let pods = olo_protocol::airpods::AirPodsState::path();
+    let phone = olo_protocol::phone::PhoneState::path();
     let voice = olo_protocol::voice::Settings::path();
     let doctor = olo_protocol::doctor::DoctorFound::path();
     let (backup_state, backup_settings) = (olo_protocol::diskbackup::State::path(), olo_protocol::diskbackup::Settings::path());
@@ -339,6 +344,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     let read = {
         let (notes, screens, upgrades, sharing, shared) = (notes.clone(), screens.clone(), upgrades.clone(), sharing.clone(), shared.clone());
         let (perf, supervising, pods, voice, doctor) = (perf.clone(), supervising.clone(), pods.clone(), voice.clone(), doctor.clone());
+        let phone = phone.clone();
         let (recording, display, airplay, paired) = (recording.clone(), display.clone(), airplay.clone(), paired.clone());
         let (backup_state, backup_settings) = (backup_state.clone(), backup_settings.clone());
         move |changed: &[PathBuf]| {
@@ -350,6 +356,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
             let (state, n, up) = ((all || changed.contains(&notes)).then(NotificationState::load), (all || screens_changed).then(agent_screens), (all || changed.contains(&upgrades)).then(upgrade));
             let shares = (all || changed.contains(&sharing)).then(|| olo_protocol::SharingState::load().shares);
             let airpods = (all || changed.contains(&pods)).then(|| olo_protocol::airpods::AirPodsState::load().connected().cloned());
+            let the_phone = (all || changed.contains(&phone)).then(|| Some(olo_protocol::phone::PhoneState::load()).filter(phone_shown));
             let voice_settings = (all || changed.contains(&voice)).then(olo_protocol::voice::Settings::load);
             let found = (all || changed.contains(&doctor)).then(olo_protocol::doctor::DoctorFound::load);
             let recorded = (all || changed.contains(&recording)).then(|| olo_protocol::recording::going_on(&display));
@@ -374,6 +381,9 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
                 }
                 if let Some(a) = airpods {
                     s.airpods = a;
+                }
+                if let Some(p) = the_phone {
+                    s.phone = p;
                 }
                 if let Some(v) = voice_settings {
                     s.voice = v;
@@ -404,7 +414,9 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     let read = Arc::new(read);
     let on_change = read.clone();
     if let Some(w) =
-        olo_kit::watch::watch([notes, screens, upgrades, sharing, perf, supervising, pods, voice, doctor, recording, backup_state, backup_settings, airplay, paired], move |changed| on_change(changed))
+        olo_kit::watch::watch([notes, screens, upgrades, sharing, perf, supervising, pods, phone, voice, doctor, recording, backup_state, backup_settings, airplay, paired], move |changed| {
+            on_change(changed)
+        })
     {
         // Deskbar's for as long as it runs.
         std::mem::forget(w);
@@ -1077,6 +1089,36 @@ pub fn draw_airpods(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, lowest: Opt
         let s = style::snap(g, rect(stem_x, t + 4.0, stem, 11.0));
         round_rect(g, s, stem / 2.0, color);
         disc(g, (head_x, t + 4.0), 3.0, color);
+    }
+}
+
+/// Whether the phone has something to show in the tray: connected, or
+/// messages unread, or a one-time code still good.
+pub fn phone_shown(p: &olo_protocol::phone::PhoneState) -> bool {
+    p.backend == olo_protocol::phone::Backend::Running && (p.link.connected() || p.unread > 0 || p.code_at.is_some())
+}
+
+/// A phone: a tall rounded slab with its screen, dim while it's out of
+/// reach, amber when its battery is low and red when it's nearly empty;
+/// a dot at its top right while messages are unread.
+pub fn draw_phone(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, phone: &olo_protocol::phone::PhoneState) {
+    let color = match phone.battery {
+        _ if !phone.link.connected() => dim(p),
+        Some(b) if b <= 10 => c(p.failure),
+        Some(b) if b <= 20 => c(p.warning),
+        _ => ink(p),
+    };
+    let (l, t) = left_top(r);
+    // 10 points across and 16 tall, on whole points; its screen the
+    // tray's own colour, a point in from the sides and two from the ends.
+    let body = style::snap(g, rect(l + 5.0, t + 2.0, 10.0, 16.0));
+    round_rect(g, body, 2.0, color);
+    let screen = style::snap(g, rect(l + 6.0, t + 4.0, 8.0, 11.0));
+    g.paint_quad(olo_kit::fill(screen, c(p.panel_background)));
+    if phone.unread > 0 {
+        // (Ringed in the tray's colour, so it reads against the slab.)
+        disc(g, (l + 15.0, t + 4.0), 4.0, c(p.panel_background));
+        disc(g, (l + 15.0, t + 4.0), 3.0, c(p.keyboard_navigation));
     }
 }
 

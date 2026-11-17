@@ -131,6 +131,19 @@ pub enum Step {
         name: String,
         urls: Vec<String>,
     },
+    /// Install a package from a project's latest GitHub release (one the
+    /// system's repositories don't carry: BlueFerry's backend): the
+    /// asset named `starts`…the first of `ends` there is, downloaded,
+    /// checked against the SHA-256 the release's `sums` file gives, and
+    /// installed through PackageKit with what it needs from the system's
+    /// repositories (`crate::releases::package`).
+    InstallReleasePackage {
+        name: String,
+        repo: String,
+        starts: String,
+        ends: Vec<String>,
+        sums: String,
+    },
     /// Copy a folder's files into another (made if need be), each over
     /// its old self (through a sibling renamed into place), `mode` each
     /// (Olo Setup: Olo's data where its login screen reads it).
@@ -300,6 +313,7 @@ impl Step {
             Step::UpdatePackages { names } => format!("Updating {}", short_list(names)),
             Step::InstallRelease { name, release, .. } => format!("Installing {name} from github.com/{}", release.repo),
             Step::InstallRepository { name, .. } => format!("Adding the {name} repository"),
+            Step::InstallReleasePackage { name, repo, .. } => format!("Installing {name} from github.com/{repo}"),
             Step::CopyTree { to, .. } => format!("Installing {}", to.display()),
             Step::MakeDir { path, .. } => format!("Making {}", path.display()),
             Step::MakeSystemUsers { config } => format!("Making the users {} names", config.display()),
@@ -331,7 +345,7 @@ impl Step {
         };
         // (A system with no PackageKit yet, a minimal Fedora: put in place
         // first, so a package step works there too.)
-        if matches!(self, Step::InstallPackages { .. } | Step::UpdatePackages { .. } | Step::InstallRepository { .. } | Step::InstallPackageServices)
+        if matches!(self, Step::InstallPackages { .. } | Step::UpdatePackages { .. } | Step::InstallRepository { .. } | Step::InstallReleasePackage { .. } | Step::InstallPackageServices)
             && !olo_system::packages::missing_services().is_empty()
         {
             olo_system::packages::bootstrap(&mut said).map_err(|e| format!("{}: {e}", Step::InstallPackageServices.describe()))?;
@@ -358,6 +372,22 @@ impl Step {
                 let file = dir.join(name);
                 std::fs::write(&file, &bytes).map_err(|e| fail(e.to_string()))?;
                 let done = olo_system::packages::install_file(&file, &mut said).and_then(|_| olo_system::packages::refresh(&mut said));
+                let _ = std::fs::remove_dir_all(&dir);
+                done.map_err(|e| fail(e.to_string()))
+            }
+            Step::InstallReleasePackage { repo, starts, ends, sums, .. } => {
+                let fail = |e: String| format!("{}: {e}", self.describe());
+                said(olo_system::packages::Progress::Status("Downloading"));
+                let (_, name, bytes) = crate::releases::package(repo, starts, ends, sums, &mut |_, _| {}).map_err(fail)?;
+                if !is_rpm(&bytes) {
+                    return Err(fail(format!("{name} isn't a package")));
+                }
+                // (Where PackageKit, as root, reads it; gone after.)
+                let dir = std::env::temp_dir().join(format!("olo-doctor-{}", std::process::id()));
+                std::fs::create_dir_all(&dir).map_err(|e| fail(e.to_string()))?;
+                let file = dir.join(&name);
+                std::fs::write(&file, &bytes).map_err(|e| fail(e.to_string()))?;
+                let done = olo_system::packages::install_file(&file, &mut said);
                 let _ = std::fs::remove_dir_all(&dir);
                 done.map_err(|e| fail(e.to_string()))
             }
@@ -440,7 +470,12 @@ impl Step {
             Step::RemoveKernelArgument { key, root } => remove_kernel_argument(root, key).map_err(failed),
             Step::TryShell { path } => try_shell(path),
             Step::SetLoginShell { user, shell } => set_login_shell(user, shell).map_err(|e| format!("{}: {e}", self.describe())),
-            Step::InstallPackages { .. } | Step::UpdatePackages { .. } | Step::InstallRelease { .. } | Step::InstallRepository { .. } | Step::InstallPackageServices => self.run_with(&mut |_| {}),
+            Step::InstallPackages { .. }
+            | Step::UpdatePackages { .. }
+            | Step::InstallRelease { .. }
+            | Step::InstallRepository { .. }
+            | Step::InstallReleasePackage { .. }
+            | Step::InstallPackageServices => self.run_with(&mut |_| {}),
             Step::CopyTree { from, to, mode } => copy_tree(from, to, *mode).map_err(failed),
             Step::MakeDir { path, mode, owner } => make_dir(path, *mode, owner.as_deref()).map_err(failed),
             Step::SelinuxLabels { rules, restore } => selinux_labels(rules, restore).map_err(|e| format!("{}: {e}", self.describe())),

@@ -5,8 +5,10 @@
 // login's usernames the page shows (an account chooser, "signed in as"),
 // fills what Passwords gives as typing does, carries a sign-in split over
 // steps on to its password and one-time code fields as they come, reports
-// a login sent with a form (to offer saving it), and keeps which iframe
-// the frame is (for tree.js).
+// a login sent with a form (to offer saving it), says whether a field
+// here is waiting for a one-time code and offers one texted to the
+// person's phone under it (or puts it in, on an agent's screen), and
+// keeps which iframe the frame is (for tree.js).
 
 (() => {
   if (window.__oloPasswords) return;
@@ -176,6 +178,188 @@
     return did;
   }
 
+  // ---- One-time codes from the phone ----
+  //
+  // Olo's phone service finds the code in a text message and asks every
+  // browser which tabs are waiting for one; the tab it chooses is given
+  // it (background.js). The page never sees the code until it's put in:
+  // the offer lives in a closed shadow root.
+
+  // When this frame's code field was first seen (how long it has waited).
+  let otpSeenAt = 0;
+  let otpToldAt = 0;
+  function noteOtp() {
+    if (!otpSeenAt) otpSeenAt = Date.now();
+    // (The extension asks the phone service whether a code has come
+    // that this field is for; once in a while is enough.)
+    if (Date.now() - otpToldAt > 2000) {
+      otpToldAt = Date.now();
+      tell({ type: "code-field" });
+    }
+  }
+
+  // The boxes a code split over one-digit fields goes in, from `field`.
+  function otpGroup(field) {
+    return field.maxLength === 1 ? all("input").filter((e) => e.maxLength === 1 && e.form === field.form) : [];
+  }
+
+  // What is said round `e`: its form's text, else the nearest block's
+  // that says enough to tell.
+  function around(e) {
+    let n = e.form || e.parentElement;
+    for (let i = 0; n && i < 5; i++, n = n.parentElement) {
+      const t = (n.innerText || "").trim();
+      if (t.length >= 40 || n === document.body) return t.slice(0, 2000).toLowerCase();
+    }
+    return ((document.body && document.body.innerText) || "").slice(0, 2000).toLowerCase();
+  }
+
+  // This frame's field waiting for a one-time code, if it has one (shown
+  // and empty), and what the page says of where the code comes from.
+  function codeWaiting() {
+    const field = otpField();
+    if (!field) return null;
+    const group = otpGroup(field);
+    if (field.value || group.some((e) => e.value)) return null;
+    if (!otpSeenAt) otpSeenAt = Date.now();
+    const a = active();
+    const said = around(field);
+    const pattern = (field.getAttribute("pattern") || "").match(/\{(\d+)\}/);
+    return {
+      host: location.hostname,
+      focused: document.hasFocus() && (a === field || group.includes(a)),
+      declared: /one-time-code/.test(field.getAttribute("autocomplete") || ""),
+      digits: group.length >= 4 ? group.length : pattern ? parseInt(pattern[1], 10) : null,
+      by_text:
+        /\bsms\b|text message|texted|by text|via text|(phone|mobile) number ending|ending in \d{2,4}|sent to \+?[\d*•x()\s-]{6,}|sent (you )?(a|an|the|your)? ?(\d.digit |verification |security |one.time )?(code|pin|passcode) to (your )?(phone|mobile|number|device|\+|\(|\*|•|x{2,})/.test(
+          said,
+        ),
+      by_app: /authenticator|authentication app|authy\b|\btotp\b|code generator|security key/.test(said),
+      age: Math.round((Date.now() - otpSeenAt) / 1000),
+    };
+  }
+  // (For the extension's survey of every tab: scripting.executeScript
+  // runs in this same isolated world.)
+  window.__oloCodeWaiting = codeWaiting;
+
+  // The offer showing under the code field, if one is.
+  let offer = null;
+
+  function dropOffer(outcome) {
+    if (!offer) return;
+    const o = offer;
+    offer = null;
+    o.stop();
+    if (outcome) tell({ type: "code-outcome", id: o.id, outcome });
+  }
+
+  function takeOffer() {
+    if (!offer) return;
+    const { field, code } = offer;
+    if (field.isConnected && usable(field)) {
+      // (Dropped first: putting it in is typing, which dismisses it.)
+      const id = offer.id;
+      dropOffer();
+      setOtp(field, code);
+      tell({ type: "code-outcome", id, outcome: "filled" });
+    } else dropOffer("gone");
+  }
+
+  // "Fill code 482913 / From Acme Bank's text message", under `field`:
+  // a click takes it, or ↓ then Enter in the field; Escape, or typing a
+  // code oneself, sends it away.
+  function showOffer(m, field) {
+    dropOffer();
+    const el = document.createElement("olo-code-offer");
+    const root = el.attachShadow({ mode: "closed" });
+    const style = document.createElement("style");
+    style.textContent = `
+      :host { all: initial; position: fixed; z-index: 2147483647; color-scheme: light dark; }
+      button { all: unset; box-sizing: border-box; display: block; cursor: default; min-width: 190px; max-width: 320px;
+        font: 13px/1.35 system-ui, sans-serif; color: CanvasText; background: Canvas;
+        border: 1px solid color-mix(in srgb, CanvasText 32%, Canvas); border-radius: 6px; padding: 7px 12px;
+        box-shadow: 0 4px 14px rgb(0 0 0 / .24); }
+      button:hover, button.on { background: Highlight; color: HighlightText; }
+      .what { font-weight: 600; white-space: nowrap; }
+      .from { font-size: 12px; opacity: .72; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }`;
+    const button = document.createElement("button");
+    button.type = "button";
+    const what = document.createElement("div");
+    what.className = "what";
+    what.textContent = `Fill code ${m.code}`;
+    const from = document.createElement("div");
+    from.className = "from";
+    from.textContent = m.from ? `From ${m.from}, by text message` : "From a text message";
+    button.setAttribute("aria-label", `Fill code ${m.code}${m.from ? ` from ${m.from}` : ""}`);
+    button.append(what, from);
+    root.append(style, button);
+    const place = () => {
+      const r = field.getBoundingClientRect();
+      const h = el.getBoundingClientRect().height || 48;
+      const below = r.bottom + 4 + h <= innerHeight || r.top - 4 - h < 0;
+      el.style.left = `${Math.max(4, Math.min(r.left, innerWidth - 200))}px`;
+      el.style.top = `${below ? r.bottom + 4 : r.top - 4 - h}px`;
+    };
+    // (A press that doesn't take the field's focus; the click takes it.)
+    button.addEventListener("mousedown", (e) => e.preventDefault());
+    button.addEventListener("click", takeOffer);
+    const keys = (e) => {
+      if (e.key === "Escape") dropOffer("dismissed");
+      else if (e.key === "ArrowDown" && !button.classList.contains("on")) {
+        button.classList.add("on");
+        e.preventDefault();
+      } else if (e.key === "ArrowUp") button.classList.remove("on");
+      else if (e.key === "Enter" && button.classList.contains("on")) {
+        e.preventDefault();
+        e.stopPropagation();
+        takeOffer();
+      }
+    };
+    const typed = () => dropOffer("dismissed");
+    const group = [field, ...otpGroup(field)];
+    for (const f of group) {
+      f.addEventListener("keydown", keys, true);
+      f.addEventListener("input", typed);
+    }
+    addEventListener("scroll", place, { capture: true, passive: true });
+    addEventListener("resize", place, { passive: true });
+    // (As long as a code is good; the service says sooner if it goes.)
+    const timer = setTimeout(() => dropOffer(), 5 * 60 * 1000);
+    offer = {
+      id: m.id,
+      field,
+      code: m.code,
+      stop() {
+        clearTimeout(timer);
+        el.remove();
+        for (const f of group) {
+          f.removeEventListener("keydown", keys, true);
+          f.removeEventListener("input", typed);
+        }
+        removeEventListener("scroll", place, { capture: true });
+        removeEventListener("resize", place);
+      },
+    };
+    document.documentElement.append(el);
+    place();
+  }
+
+  // A code the phone service chose this frame for: put in at once
+  // (`fill`: an agent's screen), else offered under the field. Only
+  // while the frame is still at the host that said it was waiting, and
+  // still is. Says what came of it.
+  function codeOffer(m) {
+    if (m.host && m.host !== location.hostname) return { outcome: "gone" };
+    const field = otpField();
+    if (!field || !codeWaiting()) return { outcome: "gone" };
+    if (m.fill) {
+      setOtp(field, m.code);
+      return { outcome: "filled" };
+    }
+    showOffer(m, field);
+    return { outcome: "shown" };
+  }
+
   // ---- Credit cards ----
 
   // What a field of a card form takes: its autocomplete token (cc-number,
@@ -301,6 +485,10 @@
       reply(nextStep(m));
     } else if (m.type === "watch") {
       watch();
+    } else if (m.type === "code-offer") {
+      reply(codeOffer(m));
+    } else if (m.type === "code-gone") {
+      if (offer && offer.id === m.id) dropOffer();
     }
   });
 
@@ -330,6 +518,7 @@
     const check = () => {
       const now = !!(passwordField() || otpField());
       if (now && !seenBefore) tell({ type: "step" });
+      if (now && otpField()) noteOtp();
       seenBefore = now;
     };
     let timer = 0;
@@ -357,6 +546,8 @@
     lastAt = Date.now();
     // (A card form's field: the menu offers Passwords' cards.)
     tell({ type: "focus", card: !!cardKind(t) });
+    // A field for a one-time code: one texted to the phone may be for it.
+    if (e.type === "focusin" && isOtp(t) && !t.value) noteOtp();
   };
   document.addEventListener("focusin", focused, true);
   document.addEventListener("pointerover", focused, true);
@@ -371,6 +562,8 @@
         if (passwordField() || otpField()) tell({ type: "step" });
       }
     });
+    // A page that opens on its code field.
+    if (codeWaiting()) noteOtp();
   }
 
   // A login sent: the username and password of a form with a filled

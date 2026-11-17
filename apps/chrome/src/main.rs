@@ -6,6 +6,7 @@
 //! already running on the profile, the link is handed to it directly
 //! (singleton.rs), with no second Chrome started.
 
+mod codes;
 mod downloads;
 mod extension;
 mod host;
