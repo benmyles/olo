@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### Passwords: a page's one-time code QR
+
+*07:27* — A page setting up two-step sign-in shows a QR code; Passwords' Chrome extension notices it, Passwords reads it and asks whether to add it to the site's login (here: replace the one it has).
+
+![Passwords: a page's one-time code QR](2026-11-17/072709-passwords-a-page-s-one-time-code-qr.png)
+
 ### A window tab's menu: Hide ▸ and Close ▸
 
 *06:38* — A tab of a window group has Hide ▸ (Hide, Hide Others, Hide All) and Close ▸ (Close, Close Others, Close All), acting on the group's windows.

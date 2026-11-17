@@ -77,6 +77,28 @@ function host(message, sent) {
 
 const ask = (request, start = false) => host({ request, start });
 
+// A page looks to be showing a one-time code's set-up QR code (content.js
+// saw a picture like one, with words about it): a picture of the tab goes
+// to Passwords, which reads it and, if it holds such a code that the
+// site's login hasn't, asks whether to keep it there. Only the tab in
+// front (a picture is of what shows), no oftener than every five seconds
+// a tab, and Passwords isn't started for it. Locked, nothing is asked:
+// the page is looked at again next time.
+const otpLooked = new Map();
+async function otpShown(tab) {
+  if (!tab?.active || !web(tab.url)) return;
+  if (Date.now() - (otpLooked.get(tab.id) || 0) < 5000) return;
+  otpLooked.set(tab.id, Date.now());
+  let shot;
+  try {
+    shot = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg", quality: 92 });
+  } catch {
+    return;
+  }
+  const r = await ask({ type: "otp_scan", url: tab.url, title: tab.title || "", image: shot.slice(shot.indexOf(",") + 1) }).catch(() => null);
+  if (r?.type === "locked" || r?.type === "not_set_up") chrome.tabs.sendMessage(tab.id, { type: "qr-again" }).catch(() => {});
+}
+
 function web(url) {
   return /^https?:\/\//.test(url || "");
 }
@@ -440,6 +462,7 @@ async function nextStep(tabId, frameId, url) {
 }
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  otpLooked.delete(tabId);
   steps.delete(tabId);
   dropWaiting(tabId);
 });
@@ -593,6 +616,8 @@ chrome.runtime.onMessage.addListener((m, sender, reply) => {
     giveUp(`${sender.tab.id}:${sender.frameId}:`);
   } else if (m.type === "code-field" && fromPage && web(sender.url)) {
     codeField(sender.tab);
+  } else if (m.type === "qr-shown" && fromPage && web(sender.url)) {
+    otpShown(sender.tab);
   } else if (m.type === "code-outcome" && fromPage) {
     // The person took the offer (or sent it away).
     if (m.outcome === "filled") codeOffers.delete(m.id);

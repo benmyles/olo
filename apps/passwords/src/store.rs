@@ -62,6 +62,24 @@ pub enum Job {
         candidates: Vec<(String, String)>,
         vault: String,
     },
+    /// A page's picture that may show a one-time code's set-up QR code
+    /// (`Request::OtpScan`): read here, off the app's looper; `candidates`
+    /// are the logins kept for the page's site. None shown: answered
+    /// `NoCode`; one of them has that very code: `Known`; else
+    /// [`Reply::OtpFound`], for the person to be asked.
+    OtpRead {
+        incoming: Box<Incoming>,
+        candidates: Vec<(String, String)>,
+    },
+    /// The person agreed: the code (`uri`) kept in login `item`, in place
+    /// of one it has, or (None) in a new login in `vault`. Answered
+    /// `Saved`.
+    OtpSave {
+        incoming: Box<Incoming>,
+        item: Option<(String, String)>,
+        vault: String,
+        uri: String,
+    },
     /// Answer `op` (an allowed session's question).
     Cli {
         incoming: Box<Incoming>,
@@ -142,7 +160,25 @@ pub enum SyncState {
     },
 }
 
+/// A login a one-time code read from a page could go in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OtpLogin {
+    pub vault: String,
+    pub id: String,
+    pub title: String,
+    pub username: String,
+    /// It has a one-time code already (another one).
+    pub has: bool,
+}
+
 pub enum Reply {
+    /// A page shows a one-time code's set-up QR code (`uri`, read from
+    /// its picture) that none of the site's `logins` has: to ask about.
+    OtpFound {
+        incoming: Box<Incoming>,
+        uri: String,
+        logins: Vec<OtpLogin>,
+    },
     Connected,
     Failed(String),
     /// The vaults, and which account each synced one is in.
@@ -681,6 +717,17 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
                 }
                 incoming.reply(response);
             }
+            Job::OtpRead { incoming, candidates } => match otp_read(v, &incoming.request, &candidates) {
+                Ok((uri, logins)) => reply(Reply::OtpFound { incoming, uri, logins }),
+                Err(response) => incoming.reply(response),
+            },
+            Job::OtpSave { incoming, item, vault, uri } => {
+                let response = otp_save(v, &incoming.request, item.as_ref(), &vault, &uri, &reply);
+                if matches!(response, Response::Saved { .. }) {
+                    reply(Reply::Index(index(v)));
+                }
+                incoming.reply(response);
+            }
             Job::Cli { incoming } => {
                 let response = match &incoming.request {
                     Request::Cli { query } => crate::cli::answer(&v.data, query),
@@ -753,6 +800,70 @@ fn login_fields(item: &Item) -> (Option<&ItemField>, Option<&ItemField>) {
     let user = item.field("username").or_else(|| item.fields.iter().find(|f| matches!(f.field_type, ItemFieldType::Text | ItemFieldType::Email) && f.section_id.is_none()));
     let password = item.field("password").or_else(|| item.fields.iter().find(|f| f.field_type == ItemFieldType::Concealed && f.section_id.as_deref() != Some(passkey::SECTION)));
     (user, password)
+}
+
+/// The one-time code's set-up URI a page's picture shows, and the
+/// site's logins it could go in; or the answer when there's nothing to
+/// ask: no code shown, or a login has that very one already.
+fn otp_read(c: &mut Vault, request: &Request, candidates: &[(String, String)]) -> Result<(String, Vec<OtpLogin>), Response> {
+    let Request::OtpScan { image, .. } = request else { return Err(Response::Error { message: "unexpected".into() }) };
+    let file = base64::engine::general_purpose::STANDARD.decode(image.trim()).map_err(|_| Response::Error { message: "The page’s picture was malformed.".into() })?;
+    let uri = crate::qr::otpauth_in(&file).ok_or(Response::NoCode)?;
+    let new = onepassword::totp::Totp::parse(&uri).map_err(|_| Response::NoCode)?;
+    let mut logins = Vec::new();
+    for (vault, id) in candidates {
+        let Ok(item) = c.get(vault, id) else { continue };
+        if item.category != ItemCategory::Login {
+            continue;
+        }
+        let codes: Vec<onepassword::totp::Totp> =
+            item.fields.iter().filter(|f| f.field_type == ItemFieldType::Totp && !f.value.is_empty()).filter_map(|f| onepassword::totp::Totp::parse(&f.value).ok()).collect();
+        if codes.iter().any(|t| t.secret == new.secret) {
+            return Err(Response::Known);
+        }
+        let has = item.fields.iter().any(|f| f.field_type == ItemFieldType::Totp && !f.value.is_empty());
+        logins.push(OtpLogin { vault: vault.clone(), id: id.clone(), title: item.title.clone(), username: login_fields(&item).0.map(|f| f.value.clone()).unwrap_or_default(), has });
+    }
+    Ok((uri, logins))
+}
+
+/// A one-time code's set-up URI kept: in login `item` (its one-time code
+/// field's value, the first if it has several; a new field if none), or
+/// in a new login for the page's site.
+fn otp_save(c: &mut Vault, request: &Request, item: Option<&(String, String)>, vault: &str, uri: &str, reply: &impl Fn(Reply)) -> Response {
+    let Request::OtpScan { url, title, .. } = request else { return Response::Error { message: "unexpected".into() } };
+    let Ok(code) = onepassword::totp::Totp::parse(uri) else { return Response::NoCode };
+    let field = || ItemField::new("otp", "one-time password", ItemFieldType::Totp, uri);
+    let saved = match item {
+        Some((vault, id)) => {
+            let mut item = match c.get(vault, id) {
+                Ok(i) => i,
+                Err(e) => return error(&e),
+            };
+            match item.fields.iter_mut().find(|f| f.field_type == ItemFieldType::Totp) {
+                Some(f) => f.value = uri.to_owned(),
+                None => item.fields.push(field()),
+            }
+            c.put(&item).map(|i| (i, false))
+        }
+        None => {
+            let named = code.issuer.clone().filter(|i| !i.trim().is_empty()).or_else(|| Some(title.trim().to_owned()).filter(|t| !t.is_empty()));
+            let host = url::Url::parse(url).ok().and_then(|u| u.host_str().map(str::to_owned)).unwrap_or_else(|| url.clone());
+            let mut params = ItemCreateParams::new(ItemCategory::Login, vault, named.unwrap_or(host));
+            params.fields = vec![ItemField::new("username", "username", ItemFieldType::Text, code.account.clone().unwrap_or_default()), field()];
+            let site = url::Url::parse(url).map(|u| u.origin().ascii_serialization()).unwrap_or_else(|_| url.clone());
+            params.websites = vec![Website { url: site, label: "website".into(), autofill_behavior: AutofillBehavior::AnywhereOnWebsite }];
+            c.create(&params).map(|i| (i, true))
+        }
+    };
+    match saved {
+        Ok((item, created)) => {
+            let title = item.title.clone();
+            reply(Reply::Saved { item: Box::new(item), created, tag: None });
+            Response::Saved { title, updated: !created }
+        }
+        Err(e) => error(&e),
+    }
 }
 
 fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], vault: &str, reply: &impl Fn(Reply)) -> Response {
@@ -1009,6 +1120,8 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
                 user_handle: stored.user_handle.clone(),
             }
         }
+        // (Its own jobs: `OtpRead`, `OtpSave`.)
+        Request::OtpScan { .. } => Response::Error { message: "unexpected".into() },
         // What's shared with agent screens (the app checked who asks).
         Request::Shares => shares(c),
         Request::SetShares { everywhere, screen } => {
@@ -1101,6 +1214,65 @@ mod tests {
         let r = super::keychain(&mut v, &Request::Secrets { title: "DiskBackup Key".into() }, &ids, &vault, &|_| {});
         let Response::Secrets { values } = &r else { panic!("not secrets") };
         assert_eq!(values, &["abc123"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A one-time code a page shows to be set up: read from its picture
+    /// with the site's logins it could go in; added to a login, put in
+    /// place of the one it has, or kept in a new login; one a login has
+    /// already is known, and a picture with none says so.
+    #[test]
+    fn a_pages_one_time_code_is_kept() {
+        use base64::Engine as _;
+        // (On disk: /tmp is memory here.)
+        let dir = std::path::Path::new("/var/tmp").join(format!("olo-store-otp-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut v = Vault::open_at(dir.join("passwords.vault"), Some(&dir.join("key"))).unwrap();
+        let vault = v.data.vaults[0].id.clone();
+        let mut p = ItemCreateParams::new(ItemCategory::Login, vault.clone(), "Example");
+        p.fields = vec![ItemField::new("username", "username", ItemFieldType::Text, "ann@example.com"), ItemField::new("password", "password", ItemFieldType::Concealed, "hunter2")];
+        p.websites = vec![Website { url: "https://example.com".into(), label: "website".into(), autofill_behavior: AutofillBehavior::AnywhereOnWebsite }];
+        let login = v.create(&p).unwrap();
+        let ids = vec![(vault.clone(), login.id.clone())];
+        let b64 = |file: Vec<u8>| base64::engine::general_purpose::STANDARD.encode(file);
+        let scan =
+            |uri: &str| Request::OtpScan { url: "https://example.com/settings/security".into(), title: "Security".into(), image: b64(crate::qr::tests::page_with(uri, 4, (300, 200), (1200, 800))) };
+        let first = crate::qr::tests::URI;
+        // Shown, and the login has none: found, to ask about.
+        let (uri, logins) = super::otp_read(&mut v, &scan(first), &ids).unwrap();
+        assert_eq!(uri, first);
+        assert_eq!(logins, [super::OtpLogin { vault: vault.clone(), id: login.id.clone(), title: "Example".into(), username: "ann@example.com".into(), has: false }]);
+        // Agreed: added to the login, whose password stays.
+        let saved = super::otp_save(&mut v, &scan(first), Some(&ids[0]), &vault, &uri, &|_| {});
+        assert!(matches!(&saved, Response::Saved { title, updated: true } if title == "Example"), "{saved:?}");
+        let item = v.get(&vault, &login.id).unwrap();
+        let codes: Vec<&str> = item.fields.iter().filter(|f| f.field_type == ItemFieldType::Totp).map(|f| f.value.as_str()).collect();
+        assert_eq!(codes, [first]);
+        assert_eq!(item.field("password").map(|f| f.value.as_str()), Some("hunter2"));
+        // Shown again: the login has that very one.
+        assert!(matches!(super::otp_read(&mut v, &scan(first), &ids).unwrap_err(), Response::Known));
+        // Another (set up again at the site): the login has one; in its place.
+        let second = "otpauth://totp/Example:ann@example.com?secret=GEZDGNBVGY3TQOJQ&issuer=Example";
+        let (uri, logins) = super::otp_read(&mut v, &scan(second), &ids).unwrap();
+        assert!(logins[0].has);
+        super::otp_save(&mut v, &scan(second), Some(&ids[0]), &vault, &uri, &|_| {});
+        let item = v.get(&vault, &login.id).unwrap();
+        assert_eq!(item.fields.iter().filter(|f| f.field_type == ItemFieldType::Totp).map(|f| f.value.as_str()).collect::<Vec<_>>(), [second]);
+        // No login for the site: a new one, named and with the account as the code says.
+        let other = "otpauth://totp/Shop:bob@shop.test?secret=JBSWY3DPEHPK3PXP&issuer=Shop";
+        let at_shop = Request::OtpScan { url: "https://shop.test/2fa".into(), title: "Two-factor".into(), image: b64(crate::qr::tests::page_with(other, 4, (20, 20), (500, 500))) };
+        let (uri, logins) = super::otp_read(&mut v, &at_shop, &[]).unwrap();
+        assert!(logins.is_empty());
+        assert!(matches!(&super::otp_save(&mut v, &at_shop, None, &vault, &uri, &|_| {}), Response::Saved { title, updated: false } if title == "Shop"));
+        let shop = v.items(&vault).into_iter().find(|i| i.title == "Shop").unwrap();
+        let shop = v.get(&vault, &shop.id).unwrap();
+        assert_eq!((shop.field("username").map(|f| f.value.as_str()), shop.websites[0].url.as_str()), (Some("bob@shop.test"), "https://shop.test"));
+        // A picture with no such code, and one that isn't a picture.
+        let none = Request::OtpScan { url: "https://example.com".into(), title: String::new(), image: b64(crate::qr::tests::page_with("https://example.com", 4, (20, 20), (300, 300))) };
+        assert!(matches!(super::otp_read(&mut v, &none, &ids).unwrap_err(), Response::NoCode));
+        let bad = Request::OtpScan { url: "https://example.com".into(), title: String::new(), image: "!!".into() };
+        assert!(matches!(super::otp_read(&mut v, &bad, &ids).unwrap_err(), Response::Error { .. }));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

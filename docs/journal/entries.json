@@ -4792,5 +4792,11 @@
   "title": "A window tab's menu: Hide \u25b8 and Close \u25b8",
   "caption": "A tab of a window group has Hide \u25b8 (Hide, Hide Others, Hide All) and Close \u25b8 (Close, Close Others, Close All), acting on the group's windows.",
   "image": "2026-11-17/063843-a-window-tab-s-menu-hide-and-close.png"
+ },
+ {
+  "time": "2026-11-17T07:27:09",
+  "title": "Passwords: a page's one-time code QR",
+  "caption": "A page setting up two-step sign-in shows a QR code; Passwords' Chrome extension notices it, Passwords reads it and asks whether to add it to the site's login (here: replace the one it has).",
+  "image": "2026-11-17/072709-passwords-a-page-s-one-time-code-qr.png"
  }
 ]

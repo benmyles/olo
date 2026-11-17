@@ -17665,6 +17665,59 @@ page that checks what a site would: the client data, the
 authenticator data's site hash and flags, the attestation, and the
 signature with WebCrypto.
 
+**A one-time code a page shows to set up** (Ben, 2026-11-16: "olo
+passwords and its chrome extension should be able to scan/detect a qr
+code shown on a page for mfa setup and offer to add/update the mfa one
+time code stuff in the associated passwords item"; `content.js`'s
+`qrShown`, `background.js`'s `otpShown`, the keychain's `OtpScan`,
+Passwords' `qr.rs`, `store::otp_read`/`otp_save`, `OtpAsk`). A site
+setting up two-step sign-in shows a QR code to scan with a phone, an
+`otpauth://totp/…` URI; Passwords takes it for the site's login
+instead.
+- The content script looks for one where a page shows it: as the page
+  has loaded, and 0.9 s after a click or Return (set-up steps open on
+  those); it never watches the page. What looks like one: an `img`,
+  `canvas` or `svg` in view, square (within an eighth), 90 to 600
+  points a side, with words about it in what it's in (a few levels up:
+  authenticator, two-factor, 2FA, one-time, QR code, scan the…) or in
+  its own `alt`. Each picture is looked at once.
+- The worker then takes a picture of the tab
+  (`chrome.tabs.captureVisibleTab`, a JPEG; only the tab in front, no
+  oftener than every five seconds a tab) and sends it to Passwords
+  (`{type: "otp_scan", url, title, image}`, which the host passes on;
+  Passwords isn't started for it).
+- Passwords reads it natively, on the store's thread (`qr::otpauth_in`:
+  the `image` crate and `rqrr`, every QR code in the picture, the first
+  that is a time-based `otpauth://` URI with a secret; nothing of the
+  picture is kept). None: `NoCode`. A login for the site has that very
+  secret: `Known`, nothing asked. Locked, or on an agent's screen
+  (read only): `Locked`, an error; nothing shown, and the extension
+  looks at the same picture again another time (`qr-again`).
+- Else it asks, in an alert in front (`OtpAsk`): "Add the one-time code
+  this page shows to your login “Title” (user)?", or "Replace the
+  one-time code of your login …" when it has another; the login is the
+  one whose username the code names (its account), else the site's
+  only one (`qr::joins`), else chosen among them with radio buttons;
+  with no login for the site, "Save a login for HOST with the one-time
+  code this page shows?" (titled by the code's issuer, its account the
+  username). Return adds, Escape doesn't; the page going closes it.
+  Added, it's the login's One-Time Password field (the URI whole, so
+  its digits, period and algorithm are kept), the first one's value
+  replaced if it has several.
+- Tested: codes read from pictures as PNG and JPEG, big and small, and
+  not other QR codes or `hotp`; which login a code goes with; the
+  store's part on a store of its own (found, added, known, replaced, a
+  new login). Tried headless end to end: a test Passwords (set up to
+  keep only on this computer, a login saved for the site), this
+  build's `olo-chrome` in a scratch home with a copy of Chrome's
+  install (so it packs and lists this build's extension; end that
+  Chrome by its program's path, `readlink /proc/PID/exe`, as a start
+  with one running only hands it the page), and a localhost page that
+  shows a QR code when its button is clicked: the question came 2 s
+  after the click, Replace put the code in the login, and the page
+  loaded again asked nothing. `qr_fixture` (ignored) writes a code's
+  picture for such a page.
+
 **Downloads** (`background.js`'s Downloads, `downloads.rs`). The
 extension (with the `downloads` permission: Chrome only asks again for
 a permission an extension it installed itself gains, never for one in

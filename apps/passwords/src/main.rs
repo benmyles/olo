@@ -20,6 +20,7 @@ mod edit;
 mod generator;
 mod lock;
 mod passkey;
+mod qr;
 mod store;
 mod sync;
 mod undo;
@@ -1057,7 +1058,7 @@ impl Passwords {
         {
             return incoming.reply(Response::Passkeys { passkeys: Vec::new() });
         }
-        let waits = !matches!(incoming.request, Request::Logins { .. } | Request::Cards { .. } | Request::Check { .. } | Request::Search { .. } | Request::Passkeys { .. });
+        let waits = !matches!(incoming.request, Request::OtpScan { .. } | Request::Logins { .. } | Request::Cards { .. } | Request::Check { .. } | Request::Search { .. } | Request::Passkeys { .. });
         if self.lock.locked {
             if !waits {
                 return incoming.reply(Response::Locked);
@@ -1195,6 +1196,23 @@ impl Passwords {
                     .collect();
                 return self.store.send(Job::Keychain { incoming: Box::new(incoming), candidates, vault: String::new() });
             }
+            // A page's picture that may show a one-time code to set up:
+            // read by the store's thread (a tab's worth of pixels), with
+            // the site's logins it could go in; the question follows
+            // (`Reply::OtpFound`), if it shows one no login has.
+            Request::OtpScan { url, .. } => {
+                if on_screen() {
+                    return incoming.reply(Response::Error { message: SHARED_ONLY.into() });
+                }
+                let url = url.clone();
+                let candidates = self
+                    .items
+                    .iter()
+                    .filter(|i| i.state == ItemState::Active && i.category == ItemCategory::Login && i.websites.iter().any(|w| store::fits(w, &url)))
+                    .map(|i| (i.vault_id.clone(), i.id.clone()))
+                    .collect();
+                return self.store.send(Job::OtpRead { incoming: Box::new(incoming), candidates });
+            }
             Request::Logins { url } | Request::Fill { url, .. } | Request::Check { url, .. } | Request::Save { url, .. } => {
                 let url = url.clone();
                 Box::new(move |w| store::fits(w, &url))
@@ -1289,6 +1307,41 @@ impl Passwords {
             .collect();
         found.sort_by_cached_key(|p| (p.user_name.to_lowercase(), p.title.to_lowercase()));
         found
+    }
+
+    /// A page shows a one-time code to set up (its QR code, read from the
+    /// page's picture) that no login for the site has: asked, in an alert
+    /// in front, whether to keep it, and in which login when the code
+    /// doesn't say (`qr::joins`): added, in place of the one a login has,
+    /// or in a new login when there's none for the site.
+    fn ask_otp(&mut self, incoming: Box<Incoming>, uri: String, logins: Vec<store::OtpLogin>) {
+        let Request::OtpScan { url, .. } = &incoming.request else { return };
+        let host = url::Url::parse(url).ok().and_then(|u| u.host_str().map(str::to_owned)).unwrap_or_else(|| "this site".into());
+        let account = Totp::parse(&uri).ok().and_then(|t| t.account.clone());
+        let named = |l: &store::OtpLogin| if l.username.is_empty() { format!("“{}”", l.title) } else { format!("“{}” ({})", l.title, l.username) };
+        let known: Vec<(String, bool)> = logins.iter().map(|l| (l.username.clone(), l.has)).collect();
+        let (message, done, choices) = match (qr::joins(account.as_deref(), &known), logins.as_slice()) {
+            (_, []) => (format!("Save a login for {host} with the one-time code this page shows?"), "Save Login", Vec::new()),
+            (Some(i), _) if logins[i].has => (format!("Replace the one-time code of your login {} with the one this page shows?", named(&logins[i])), "Replace", vec![logins[i].clone()]),
+            (Some(i), _) => (format!("Add the one-time code this page shows to your login {}?", named(&logins[i])), "Add", vec![logins[i].clone()]),
+            (None, _) => (format!("This page shows a one-time code for {host}. Add it to which login?"), "Add", logins.clone()),
+        };
+        OtpAsk::open(incoming, message, done, choices, uri);
+    }
+
+    /// The person answered the one-time code's alert: `chosen` of
+    /// `choices` (none: a new login), or not (closed, Cancel, or the page
+    /// went).
+    fn answer_otp(&mut self, incoming: Box<Incoming>, choices: Vec<store::OtpLogin>, chosen: usize, uri: String, add: bool) {
+        if !add {
+            return incoming.reply(Response::Declined);
+        }
+        let item = choices.get(chosen).map(|l| (l.vault.clone(), l.id.clone()));
+        let vault = self.new_item_vault().unwrap_or_default();
+        if item.is_none() && vault.is_empty() {
+            return incoming.reply(Response::Error { message: "There’s no vault to save in.".into() });
+        }
+        self.store.send(Job::OtpSave { incoming, item, vault, uri });
     }
 
     /// Ask the person about a page's passkey, in an alert in front: to
@@ -1997,6 +2050,7 @@ impl Passwords {
             self.invalidate();
         }
         match reply {
+            Reply::OtpFound { incoming, uri, logins } => self.ask_otp(incoming, uri, logins),
             Reply::Index(index) => self.index = index,
             Reply::Allowed(list) => self.allowed = list,
             Reply::Connected => {
@@ -2619,6 +2673,96 @@ impl View for PasskeyAsk {
                 };
                 cx.stop_propagation();
                 p.answer(Some(choice));
+                cx.close_window();
+            }))
+            .child(col.child(div().flex_1()).child(row))
+            .into_any_element()
+    }
+}
+
+/// The question of a one-time code a page shows to set up: keep it (in
+/// which login, if the code doesn't say), or not. The page going closes
+/// it.
+struct OtpAsk {
+    incoming: Option<Box<Incoming>>,
+    message: SharedString,
+    done: &'static str,
+    /// The logins to choose from (one: that one; none: a new login).
+    choices: Vec<store::OtpLogin>,
+    chosen: usize,
+    uri: String,
+    focus: FocusHandle,
+}
+
+impl OtpAsk {
+    fn open(incoming: Box<Incoming>, message: String, done: &'static str, choices: Vec<store::OtpLogin>, uri: String) {
+        let buttons = ["Cancel", done];
+        let width = alert::alert_width(&buttons);
+        let several = choices.len() > 1;
+        let radios = if several { m::SPACING + choices.len() as f32 * (m::CONTROL_HEIGHT + m::TIGHT) } else { 0.0 };
+        let height = alert::alert_height(&message, width) + radios;
+        olo_kit::open_window(WindowOptions::alert("Passwords", width, height), move |cx| {
+            cx.activate_window();
+            let focus = FocusHandle::new();
+            focus.focus(cx);
+            // (The page may go: looked for twice a second while asking.)
+            cx.every(Duration::from_millis(500), || ());
+            OtpAsk { incoming: Some(incoming), message: message.into(), done, choices, chosen: 0, uri, focus }
+        });
+    }
+
+    fn answer(&mut self, add: bool) {
+        let Some(incoming) = self.incoming.take() else { return };
+        app().answer_otp(incoming, std::mem::take(&mut self.choices), self.chosen, std::mem::take(&mut self.uri), add);
+    }
+}
+
+impl View for OtpAsk {
+    type Message = ();
+
+    fn message(&mut self, _: (), cx: &mut Cx<Self>) {
+        if self.incoming.as_ref().is_some_and(|i| i.gone()) {
+            self.answer(false);
+            cx.close_window();
+        }
+    }
+
+    fn window_closing(&mut self, _: &mut Cx<Self>) {
+        self.answer(false);
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let mut col = AlertFrame::new("key").child(paragraph(self.message.clone()));
+        if self.choices.len() > 1 {
+            let mut radios = div().mt(px(m::SPACING)).flex().flex_col().gap(px(m::TIGHT));
+            for (i, l) in self.choices.iter().enumerate() {
+                let who = if l.username.is_empty() { l.title.clone() } else { format!("{} ({})", l.title, l.username) };
+                let label = if l.has { format!("{who}, in place of its code") } else { who };
+                radios = radios.child(RadioButton::new(label, i == self.chosen).id(format!("otp-{i}")).on_select(cx.listener(move |p: &mut OtpAsk, _: &(), cx| {
+                    p.chosen = i;
+                    cx.invalidate();
+                })));
+            }
+            col = col.child(radios);
+        }
+        let mut row = button_row();
+        for (i, label) in ["Cancel", self.done].into_iter().enumerate() {
+            row = row.child(Button::new(label).default(i == 1).on_click(cx.listener(move |p: &mut OtpAsk, _: &ClickEvent, cx| {
+                p.answer(i == 1);
+                cx.close_window();
+            })));
+        }
+        div()
+            .size_full()
+            .track_focus(&self.focus)
+            .on_key_down(cx.listener(|p: &mut OtpAsk, e: &KeyDownEvent, cx| {
+                let add = match e.keystroke.key.as_str() {
+                    "escape" => false,
+                    "enter" => true,
+                    _ => return,
+                };
+                cx.stop_propagation();
+                p.answer(add);
                 cx.close_window();
             }))
             .child(col.child(div().flex_1()).child(row))

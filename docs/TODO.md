@@ -17,6 +17,13 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Chrome's updater can't unpack the newest package** (found
+  2026-11-17, in a test's log: "olo-chrome: couldn't update Chrome: The
+  package's contents are in a form Olo can't unpack", `install.rs`'s
+  cpio reader, from the daily `--olo-update` with Chrome 157 installed).
+  Find what the newer rpm's payload is (a cpio form other than "newc"?)
+  and read it, so Chrome goes on updating.
+
 - **MGLRU's thrash protection at 250 ms: enough runs to say** (found
   2026-11-16, kernel/TUNING.md). At the kernel's advised 1000 ms it
   ended a program that fitted in memory in 3 runs of 9, so it isn't
@@ -25,13 +32,6 @@ something nobody here has is in "Blocked", with what it waits for.
   250 ms twenty times and more with the program that fits, and the case
   between (950 MB), on a quiet computer; offered (Doctor, the Kernel
   tab) only if it never ends one for nothing.
-- **Passwords reads a page's MFA QR code** (Ben, 2026-11-16: "olo
-  passwords and its chrome extension should be able to scan/detect a qr
-  code shown on a page for mfa setup and offer to add/update the mfa
-  one time code stuff in the associated passwords item"). The extension
-  finds a QR code on the page that holds a one-time-code secret
-  (`otpauth://`), decoded natively, and Passwords offers to add it to
-  the item for that site, or to replace the one it has.
 - **An idle window keeps its whole swapchain** (found 2026-11-16,
   answering Ben's "doesn't 6gb of memory seem really high for olo app
   server too?"): a full-size window on his 5K display (4640 × 2840
@@ -5901,6 +5901,19 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Passwords reads a page's MFA QR code**~~ (Ben, 2026-11-16:
+  "olo passwords and its chrome extension should be able to scan/detect
+  a qr code shown on a page for mfa setup and offer to add/update the
+  mfa one time code stuff in the associated passwords item"; done
+  2026-11-17). When a page shows a one-time code's set-up QR code, the
+  extension sends a picture of the tab to Passwords, which reads the
+  code natively and asks whether to add it to the site's login (or
+  replace the one it has, or save a new login); nothing is asked for a
+  code the login already has, while locked, or for other QR codes.
+  Tried end to end in Chrome with a test Passwords and a local page.
+  The extension is version 1.11.0: Chrome takes it at its next start.
+  (HACKING, "A one-time code a page shows to set up".)
 
 - ~~**A shared passkey needs no tap on an Agent Screen**~~ (Ben,
   2026-11-16: "they should NOT require a tap / user approval to use the

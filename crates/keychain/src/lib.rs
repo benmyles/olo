@@ -60,6 +60,15 @@ pub enum Request {
     /// item) was picked already, in Chrome's context menu.
     /// `client_data_hash` is the SHA-256 of the page's client data.
     PasskeySign { url: String, rp_id: String, allow: Vec<String>, chosen: Option<(String, String)>, client_data_hash: String },
+    /// A picture of the page at `url` (a PNG or JPEG file, base64) that
+    /// may show a QR code for setting up one-time codes (an `otpauth://`
+    /// URI, as sites show to be scanned with a phone): read by Passwords
+    /// and, once the person agrees, kept in the login for the site (added,
+    /// or in place of the one it has); with no login for the site, a new
+    /// one, titled `title` or as the code says. Answered `Saved`; `Known`
+    /// if the login has that very code; `NoCode` if the picture shows
+    /// none; `Declined`. Doesn't wait: `Locked` while locked.
+    OtpScan { url: String, title: String, image: String },
     /// Items whose title, website or tags hold every word of `query`
     /// (the command palette). Only while unlocked; doesn't wait.
     Search { query: String },
@@ -237,6 +246,7 @@ impl Request {
             | Request::SetShares { .. }
             | Request::KeepSecret { .. }
             | Request::Secrets { .. }
+            | Request::OtpScan { .. }
             | Request::Reference { .. } => Duration::from_secs(300),
         }
     }
@@ -337,6 +347,8 @@ pub enum Response {
         updated: bool,
     },
     Unlocked,
+    /// For `OtpScan`: the picture shows no one-time code's QR code.
+    NoCode,
     /// Passwords is locked (for `Logins` and `Check`, which don't wait).
     Locked,
     /// Passwords has no 1Password account set up yet.

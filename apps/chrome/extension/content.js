@@ -585,13 +585,55 @@
     reported = key;
     tell({ type: "submitted", username, password: pass.value });
   }
+  // A one-time code's set-up QR code, shown to be scanned with a phone:
+  // Passwords can take it for the site's login instead. Looked for where
+  // a page shows one: as it has loaded, and a moment after a click or
+  // Return (set-up steps open on those), never by watching the page.
+  // What looks like one is a square picture of a QR code's size, in
+  // view, with words about it nearby; the worker then takes a picture of
+  // the tab and Passwords reads it. Each picture is looked at once.
+  const MFA = /authenticator|two[-\s]?(factor|step)|2[-\s]?fa\b|\bmfa\b|\btotp\b|one[-\s]?time|verification (app|code)|qr[-\s]?code|scan (the|this|a|with|using)/i;
+  let qrSeen = new WeakSet();
+  let qrTimer = 0;
+  function qrShown() {
+    for (const e of document.querySelectorAll("img, canvas, svg")) {
+      if (qrSeen.has(e)) continue;
+      const r = e.getBoundingClientRect();
+      if (r.width < 90 || r.width > 600 || Math.abs(r.width - r.height) > r.width * 0.12) continue;
+      if (r.bottom <= 0 || r.right <= 0 || r.top >= innerHeight || r.left >= innerWidth) continue;
+      // (The words of what it's in: its section, form or dialog, a few
+      // levels up; not the whole page's.)
+      let near = e.parentElement;
+      let words = "";
+      for (let up = 0; near && up < 6 && words.length < 60; up++, near = near.parentElement) words = (near.innerText || "").slice(0, 4000);
+      if (!MFA.test(words) && !MFA.test(e.getAttribute("alt") || "") && !MFA.test(e.getAttribute("aria-label") || "")) continue;
+      qrSeen.add(e);
+      return true;
+    }
+    return false;
+  }
+  function lookForQr(after) {
+    if (qrTimer) return;
+    qrTimer = setTimeout(() => {
+      qrTimer = 0;
+      if (document.visibilityState === "visible" && qrShown()) tell({ type: "qr-shown" });
+    }, after);
+  }
+  chrome.runtime.onMessage.addListener((m) => {
+    // (Passwords was locked: the same picture may be looked at again.)
+    if (m.type === "qr-again") qrSeen = new WeakSet();
+  });
+  lookForQr(600);
+
   document.addEventListener("submit", () => report(), true);
   document.addEventListener("click", (e) => {
     const t = e.composedPath ? e.composedPath()[0] : e.target;
     const b = t.closest && t.closest("button,input[type=submit],input[type=image],[role=button]");
     if (b) report();
+    lookForQr(900);
   }, true);
   document.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && e.target instanceof HTMLInputElement) report();
+    if (e.key === "Enter") lookForQr(900);
   }, true);
 })();

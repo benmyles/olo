@@ -212,6 +212,7 @@ fn allowed(r: &Request) -> bool {
             | Request::FillCard { .. }
             | Request::Check { .. }
             | Request::Save { .. }
+            | Request::OtpScan { .. }
             | Request::Unlock
             | Request::Show { .. }
             | Request::Passkeys { .. }
