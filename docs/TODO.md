@@ -55,6 +55,16 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Everything Olo Doctor does can be undone** (Ben, 2026-11-16: "one
+  more thing we need: everything in olo doctor that it does must be
+  reversible, e.g. for any fix/suggestion applied i should be able to
+  undo/restore to the previous behavior"). Today only some suggestions
+  have an undo (brush, worktrunk's place, the kernel's settings); a fix
+  (a rule written, a drop-in, a package installed, a unit stopped, a
+  kernel argument) has none. Every fix and suggestion applied keeps what
+  it replaced (the file as it was, the unit's state, the setting's
+  value) and is listed with a button that puts it back, the phone's
+  backend and the other installs among them (removed again).
 - **Pairing an iPhone in a sheet of Olo's own** (found 2026-11-16,
   with the phone work). Preferences ▸ Phone pairs by running BlueFerry's
   own wizard in Terminal (`blueferry pair-setup`): pairing isn't in its
