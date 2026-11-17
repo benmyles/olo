@@ -7401,12 +7401,30 @@ before). Make Main (`Shortcut::MakeMain`, ⌃⌥⌘M on every profile; the
 window menu, Deskbar's arrangement menu, the palette,
 `{"type":"make_main","id":N}`) makes a tile the main one, the old one
 taking its place in the stack; Swap with Previous Main (⌃⌥⌘⌫,
-`{"type":"swap_main"}`) makes the one before main again. The overview
+`{"type":"swap_main"}`) makes the one before main again. **Pin as
+Main** (`Shortcut::PinMain`, ⌃⌥⇧⌘M; the window menu, checked on the
+pinned one; Deskbar's arrangement menu; `{"type":"pin_main","id":N}`,
+`"on"` true or false, else the one or the other; Ben, 2026-11-17:
+"ability to \"pin\" a tiled window as the main one so that it doesn't
+change when other windows open") makes a tile the main one, if it
+isn't, and keeps it so: a window that opens takes the stack's first
+place instead of its (`new_beside_pinned`: the main window's place,
+and the place before it, become the one after it). Making another
+window main by hand lets it go (Make Main, Swap with Previous Main,
+tiles swapped: `Mains::pinned` is dropped whenever the main window is
+no longer the pinned one, so one that closes lets go too); Pin as Main
+on the pinned one lets it go and leaves it main. The OSD says which
+(`Indicator::Pinned`). It's kept across a restart in place
+(`SavedTree::pinned`: the pinned window's saved place; pinned again as
+that window takes its tile back). Tried headless: pinned, windows
+opened (it stayed), another made main (let go, and the next window took
+the place), pinned again, the server restarted in place (still pinned,
+and the next window left it). The overview
 does it to the window it picks with Ctrl held (its letter, or Return),
 and keyboard hints to a window's letter typed with Ctrl held (a tap of
 Ctrl alone still puts them away, on its release). Agents read it in
-`WindowInfo::main` and `WindowingModeInfo` (`layout`, that workspace's,
-`main_place`, `main`, `previous_main`). Between those the tree is the person's
+`WindowInfo::main` and `main_pinned`, and `WindowingModeInfo` (`layout`,
+that workspace's, `main_place`, `main`, `previous_main`, `main_pinned`). Between those the tree is the person's
 (edges dragged, tiles swapped, Tile All), kept as it is. Laying out, in either, sends every
 window changing size its size in one round (`auto_apply`: a collected
 round, as an edge drag's last, `rounds.rs`), so they land in the same

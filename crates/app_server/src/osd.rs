@@ -53,6 +53,8 @@ pub enum Indicator {
     },
     /// A windowing mode chosen (⌃⌥⌘T, ⌃⌥⌘O).
     Mode(olo_protocol::WindowingMode),
+    /// Main and Stack's main window pinned (⌃⌥⇧⌘M), or let go.
+    Pinned(bool),
     /// Do Not Disturb on or off (a Magic Keyboard's key).
     DoNotDisturb {
         on: bool,
@@ -102,6 +104,8 @@ impl Indicator {
             Indicator::Caffeinated { on: true, .. } => "Caffeinated",
             Indicator::Caffeinated { on: false, .. } => "Sleep allowed",
             Indicator::Mode(m) => m.title(),
+            Indicator::Pinned(true) => "Main window pinned",
+            Indicator::Pinned(false) => "Main window let go",
             Indicator::DoNotDisturb { on: true } => "Do Not Disturb on",
             Indicator::DoNotDisturb { on: false } => "Do Not Disturb off",
         }
@@ -111,7 +115,7 @@ impl Indicator {
         match self {
             Indicator::Brightness(l) | Indicator::KeyboardBacklight(l) => Some(*l),
             Indicator::Volume { level, muted } => Some(if *muted { 0.0 } else { *level }),
-            Indicator::Caffeinated { .. } | Indicator::Mode(_) | Indicator::Microphone { .. } | Indicator::Airplane { .. } | Indicator::DoNotDisturb { .. } => None,
+            Indicator::Caffeinated { .. } | Indicator::Mode(_) | Indicator::Pinned(_) | Indicator::Microphone { .. } | Indicator::Airplane { .. } | Indicator::DoNotDisturb { .. } => None,
         }
     }
 }
@@ -165,6 +169,8 @@ fn draw(ind: &Indicator, s: f64) -> Pixmap {
             let detail = match ind {
                 Indicator::Caffeinated { detail, .. } => Some(detail.as_str()),
                 Indicator::Mode(m) => Some(m.detail()),
+                Indicator::Pinned(true) => Some("It keeps its place"),
+                Indicator::Pinned(false) => Some("A new window takes it"),
                 _ => None,
             };
             if let Some(detail) = detail {
@@ -416,6 +422,34 @@ fn draw_icon(pm: &mut Pixmap, ind: &Indicator, (x, y, size): (f32, f32, f32), rg
                 }
             }
         }
+        Indicator::Pinned(on) => {
+            // Main and Stack: the main tile and two of the stack beside
+            // it. Let go, the main tile is filled; pinned, it's drawn
+            // round a pin (its head, and its point under it).
+            for (tx, ty, tw, th, filled) in [(3.0, 5.0, 15.0, 22.0, !*on), (20.0, 5.0, 9.0, 10.0, false), (20.0, 17.0, 9.0, 10.0, false)] {
+                let (a, b) = at(tx, ty);
+                if let Some(r) = tiny_skia::Rect::from_xywh(a, b, tw * k, th * k) {
+                    if filled {
+                        pm.fill_rect(r, &paint, id, None);
+                    } else {
+                        pm.stroke_path(&PathBuilder::from_rect(r), &paint, &stroke(1.6), id, None);
+                    }
+                }
+            }
+            if *on {
+                let (cx, cy) = at(10.5, 12.5);
+                if let Some(head) = PathBuilder::from_circle(cx, cy, 3.4 * k) {
+                    pm.fill_path(&head, &paint, tiny_skia::FillRule::Winding, id, None);
+                }
+                let mut pb = PathBuilder::new();
+                let ((a, b), (c, d)) = (at(10.5, 15.0), at(10.5, 22.5));
+                pb.move_to(a, b);
+                pb.line_to(c, d);
+                if let Some(point) = pb.finish() {
+                    pm.stroke_path(&point, &paint, &stroke(1.8), id, None);
+                }
+            }
+        }
         Indicator::Caffeinated { on, .. } => {
             // A cup with a handle; steam while on.
             let mut pb = PathBuilder::new();
@@ -526,6 +560,8 @@ mod tests {
             Indicator::Mode(olo_protocol::WindowingMode::Standard),
             Indicator::Mode(olo_protocol::WindowingMode::AutoTiling),
             Indicator::Mode(olo_protocol::WindowingMode::Focus),
+            Indicator::Pinned(true),
+            Indicator::Pinned(false),
             Indicator::DoNotDisturb { on: true },
             Indicator::DoNotDisturb { on: false },
         ];

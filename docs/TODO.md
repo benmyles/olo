@@ -17,20 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Proton VPN, natively** (Ben, 2026-11-17: "build an olo native
-  proton vpn app"). An Olo app for Proton VPN: signing in, the countries
-  and servers, connect and disconnect, what it's connected to and how
-  it's doing, in Deskbar's tray too; speaking Proton's API and
-  WireGuard itself, in Rust, in process (nothing of Proton's own client
-  wrapped), through NetworkManager as Olo's other connections are.
-- **A tiled window pinned as the main one** (Ben, 2026-11-17: "ability
-  to \"pin\" a tiled window as the main one so that it doesn't change
-  when other windows open. manually changing the main window with the
-  shortcut/command should unpin and make the new window main"). In a
-  tiled workspace the main window can be pinned (a command, its key, the
-  window's menu): windows that open then take the other places and
-  leave it. Making another window main by hand (the shortcut, the
-  command) unpins, and that window is the main one.
 - **Tracker's icon view shows pictures and videos as themselves** (Ben,
   2026-11-17: "in tracker's icon view the icons should show preview
   thumb of images/videos"). A picture's icon is the picture, small; a
@@ -5648,6 +5634,19 @@ need Ben".)
 
 ## Blocked
 
+- **Proton VPN, natively** (Ben, 2026-11-17: "build an olo native
+  proton vpn app"). An Olo app for Proton VPN: signing in, the countries
+  and servers, connect and disconnect, what it's connected to and how
+  it's doing, in Deskbar's tray too; speaking Proton's API and
+  WireGuard itself, in Rust, in process (nothing of Proton's own client
+  wrapped), through NetworkManager as Olo's other connections are.
+  **Blocked on** a Proton account to build against: signing in (SRP,
+  often a CAPTCHA and a second factor), the servers' list and the
+  WireGuard certificate are Proton's own API, undocumented but for
+  their open clients, and none of it can be tried without an account
+  signed in (never Ben's own from here). Unblocked by Ben signing in
+  once on an Agent Screen made for it (the session then kept in Olo's
+  keyring), or a test account's name and password.
 - **Groups' names for the phone's text messages** (what's left of "the
   phone's other notifications, calls and music"). A message to a group
   comes by the Message Access Profile with its sender alone, so it
@@ -5959,6 +5958,18 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**A tiled window pinned as the main one**~~ (Ben, 2026-11-17:
+  "ability to \"pin\" a tiled window as the main one so that it doesn't
+  change when other windows open. manually changing the main window
+  with the shortcut/command should unpin and make the new window
+  main"; done 2026-11-17). Pin as Main (⌃⌥⇧⌘M, the window menu,
+  Deskbar's arrangement menu, the palette, `pin_main` over IPC) makes
+  the tile main and keeps it: windows that open take the stack's first
+  place. Make Main, Swap with Previous Main or swapping tiles lets it
+  go and the other is main; Pin as Main again lets it go where it is.
+  (HACKING, auto-tiling's Main and Stack.) Kept across a restart of
+  app_server in place (an upgrade).
 
 - ~~**Text in a picture can be selected and copied**~~ (Ben,
   2026-11-16: "the quick look and viewer should support, when viewing

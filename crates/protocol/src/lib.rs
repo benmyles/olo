@@ -498,6 +498,19 @@ pub enum Request {
     MakeMain {
         id: WindowId,
     },
+    /// Main and Stack: window `id` is its display's main window (as
+    /// `MakeMain`) and pinned there: a window that opens takes a place
+    /// in the stack and leaves it (the window menu's Pin as Main,
+    /// ⌃⌥⇧⌘M). `on` false lets it go (it stays main until another
+    /// takes its place); without `on`, the one or the other. Making
+    /// another window main by hand (`MakeMain`, `SwapMain`, tiles
+    /// swapped) lets it go too. Answered `Reply::Ok`, or an error where
+    /// its tiles aren't Main and Stack's.
+    PinMain {
+        id: WindowId,
+        #[serde(default)]
+        on: Option<bool>,
+    },
     /// Main and Stack: the main window before the one that is now is the
     /// main window again on one display (`output`; else the active
     /// display) on the workspace showing, as Swap with Previous Main
@@ -1313,6 +1326,10 @@ pub struct WindowInfo {
     /// Stack ([`TilingLayout::MainAndStack`], `Request::MakeMain`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub main: bool,
+    /// The main window, pinned: windows that open leave it its place
+    /// (`Request::PinMain`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub main_pinned: bool,
     /// The display it is on (its connector), or was on while hidden or
     /// on another workspace.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1414,6 +1431,9 @@ pub struct WindowingModeInfo {
     /// Previous Main (`Request::SwapMain`) makes main again.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub previous_main: Option<WindowId>,
+    /// The main window is pinned (`Request::PinMain`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub main_pinned: bool,
 }
 
 fn one() -> u32 {

@@ -311,7 +311,7 @@ pub fn context() -> (Option<WindowInfo>, Vec<Item>) {
             info.group,
             match info.action {
                 olo_protocol::Shortcut::Hide => " minimize minimise",
-                olo_protocol::Shortcut::MakeMain | olo_protocol::Shortcut::SwapMain => " main and stack master tiling",
+                olo_protocol::Shortcut::MakeMain | olo_protocol::Shortcut::SwapMain | olo_protocol::Shortcut::PinMain => " main and stack master tiling",
                 olo_protocol::Shortcut::Focus(_) => " tiling direction move focus window vim",
                 olo_protocol::Shortcut::Swap(_) => " tiling direction move tile exchange",
                 olo_protocol::Shortcut::Resize(_) => " tiling direction grow shrink size edge split",

@@ -527,6 +527,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 let Some(w) = focused else { return };
                 self.make_main(&w);
             }
+            S::PinMain => {
+                let Some(w) = focused else { return };
+                self.pin_main(&w, None);
+            }
             S::SwapMain => {
                 let output = focused.as_ref().and_then(|w| self.window_output(w));
                 self.swap_main(output);

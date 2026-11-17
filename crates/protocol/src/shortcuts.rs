@@ -263,6 +263,10 @@ pub enum Shortcut {
     /// Main and Stack: the focused window is the main one, in the main
     /// window's place; the one that was takes its place in the stack.
     MakeMain,
+    /// Main and Stack: the focused window is the main one and stays so
+    /// as windows open (they take the stack's places), until another is
+    /// made main by hand; on the pinned one, it's let go again.
+    PinMain,
     /// Main and Stack: the main window before this one is the main one
     /// again, and this one goes back to the stack (a new window took
     /// the main place: put it back).
@@ -776,6 +780,7 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::Center, "center", WINDOWS, "Center", &["Ctrl+Alt+C"], &["Alt+Cmd+C"], &["Ctrl+Cmd+C"]),
     s(Shortcut::Float, "float-window", WINDOWS, "Float over the tiles, or tile", &["Ctrl+Alt+Cmd+F"], &["Ctrl+Alt+Cmd+F"], &["Ctrl+Alt+Cmd+F"]),
     s(Shortcut::MakeMain, "make-main", WINDOWS, "Make it the main window", &["Ctrl+Alt+Cmd+M"], &["Ctrl+Alt+Cmd+M"], &["Ctrl+Alt+Cmd+M"]),
+    s(Shortcut::PinMain, "pin-main", WINDOWS, "Pin it as the main window, or let it go", &["Ctrl+Alt+Shift+Cmd+M"], &["Ctrl+Alt+Shift+Cmd+M"], &["Ctrl+Alt+Shift+Cmd+M"]),
     s(Shortcut::SwapMain, "swap-main", WINDOWS, "Swap with the previous main window", &["Ctrl+Alt+Cmd+Backspace"], &["Ctrl+Alt+Cmd+Backspace"], &["Ctrl+Alt+Cmd+Backspace"]),
     // By direction, as tiling window managers do it (vim's H J K L: i3,
     // sway, bspwm, Hyprland, Amethyst), the same keys in every profile.

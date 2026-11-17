@@ -511,7 +511,11 @@ impl<B: Backend + 'static> AnvilState<B> {
         let trees: Vec<crate::shell::autotile::SavedTree> = self
             .auto_trees_as_laid_out()
             .into_iter()
-            .map(|((workspace, output), t)| crate::shell::autotile::SavedTree { workspace, output, tree: crate::shell::autotile::SavedNode::of(&t, &slots, &like) })
+            .map(|((workspace, output), t)| {
+                // (Its main window pinned: by that window's saved place.)
+                let pinned = self.pinned_main_of(&(workspace, output.clone())).and_then(|id| slots(id).first().copied());
+                crate::shell::autotile::SavedTree { workspace, output, tree: crate::shell::autotile::SavedNode::of(&t, &slots, &like), pinned }
+            })
             .collect();
         if let Some(tp) = trees_path() {
             match serde_json::to_string(&trees) {

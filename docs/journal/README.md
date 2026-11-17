@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### Tiling: the main window can be pinned
+
+*05:07* — Pin as Main (⌃⌥⇧⌘M, a window's menu, Deskbar) keeps a tile the main one of Main and Stack: windows that open take the stack's places. Making another main by hand lets it go.
+
+![Tiling: the main window can be pinned](2026-11-17/050715-tiling-the-main-window-can-be-pinned.png)
+
 ### Viewer and Quick Look: the text in a picture, selected and copied
 
 *04:52* — A picture's text is read where it's shown: drag over it to select, ⌘C copies it, ⌘A selects it all. (Above: a word dragged over; below: Select All.)

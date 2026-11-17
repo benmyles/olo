@@ -39,8 +39,8 @@ pub const TILES: [&str; 16] = [
     "tile-top-two-thirds",
     "tile-bottom-two-thirds",
 ];
-const WINDOW_EXTRA: [&str; 13] =
-    ["zoom", "zoom-vertical", "zoom-horizontal", "restore", "center", "hide-window", "roll-up", "next-tab", "previous-tab", "next-display", "previous-display", "make-main", "swap-main"];
+const WINDOW_EXTRA: [&str; 14] =
+    ["zoom", "zoom-vertical", "zoom-horizontal", "restore", "center", "hide-window", "roll-up", "next-tab", "previous-tab", "next-display", "previous-display", "make-main", "swap-main", "pin-main"];
 const ARRANGE_CMDS: [&str; 9] = ["tile-all", "zoom-all", "cascade-all", "fan-out", "cascade-others", "fan-out-others", "undo-arrangement", "redo-arrangement", "show-desktop"];
 const WORKSPACE_CMDS: [&str; 10] = [
     "next-workspace",

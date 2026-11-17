@@ -824,7 +824,8 @@ impl Deskbar {
         // before back.
         let (_, ws, key) = self.menu_place();
         if mode == WindowingMode::AutoTiling && self.tiling.layout_of(ws, &key) == olo_protocol::TilingLayout::MainAndStack {
-            menu = menu.separator().item("Make Main", "arrange:make-main").enabled(focused).item("Swap with Previous Main", "arrange:swap-main");
+            menu =
+                menu.separator().item("Make Main", "arrange:make-main").enabled(focused).item("Pin as Main", "arrange:pin-main").enabled(focused).item("Swap with Previous Main", "arrange:swap-main");
         }
         menu.separator()
             .item("Tile All", "arrange:tile-all")

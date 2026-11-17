@@ -83,6 +83,8 @@ pub struct Facts {
     pub main_and_stack: bool,
     pub main: bool,
     pub previous_main: bool,
+    /// It's the main window, pinned (Pin as Main is checked).
+    pub main_pinned: bool,
     /// Its app's windows float always (Float Window ▸ Always:
     /// `TilingSettings::floating_apps`).
     pub app_floats: bool,
@@ -186,6 +188,7 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             _ => None,
         };
         let (rolled, on_top, grouped, floating, floats_always, main) = (w.rolled, w.on_top, w.group.is_some(), w.floating, w.floats_always, w.main);
+        let main_pinned = w.main_pinned;
         let (all_workspaces, scratch) = (w.all_workspaces, w.scratch);
         let pid = w.pid.map(|p| p as u32);
         let own = pid.zip(w.surface).and_then(|(pid, surface)| olo_kit::commands::menus_in(pid, surface)).map(|m| m.entries).unwrap_or_default();
@@ -217,6 +220,7 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             main_and_stack,
             main,
             previous_main,
+            main_pinned,
             app_floats,
             app_workspace,
             keys,
@@ -354,6 +358,10 @@ pub fn build(f: &Facts) -> Menu {
     // able to swap it back with the previous window").
     if f.main_and_stack {
         m = shortcut(m, "make-main", "Make Main").enabled(!f.main);
+        // (Pinned: windows that open leave it its place. Ben,
+        // 2026-11-17: "ability to \"pin\" a tiled window as the main
+        // one so that it doesn't change when other windows open".)
+        m = shortcut(m, "pin-main", "Pin as Main").checked(f.main_pinned);
         m = shortcut(m, "swap-main", "Swap with Previous Main").enabled(f.previous_main);
     }
     m = m.separator().submenu(tile);
@@ -648,6 +656,7 @@ mod tests {
             main_and_stack: false,
             main: false,
             previous_main: false,
+            main_pinned: false,
             app_floats: false,
             app_workspace: None,
             keys: changed,
@@ -723,7 +732,7 @@ mod tests {
             let mut out = Vec::new();
             for i in &build(f).items {
                 if let menu::MenuItem::Action(a) = i
-                    && ["shortcut:make-main", "shortcut:swap-main"].contains(&a.command.as_str())
+                    && ["shortcut:make-main", "shortcut:swap-main", "shortcut:pin-main"].contains(&a.command.as_str())
                 {
                     out.push((a.label.to_string(), a.enabled, a.keys.is_some()));
                 }
@@ -732,8 +741,14 @@ mod tests {
         };
         assert!(mains(&facts).is_empty() && mains(&Facts { auto: true, ..facts.clone() }).is_empty());
         let tile = Facts { auto: true, main_and_stack: true, ..facts.clone() };
-        assert_eq!(mains(&tile), [("Make Main".into(), true, true), ("Swap with Previous Main".into(), false, true)]);
-        assert_eq!(mains(&Facts { main: true, previous_main: true, ..tile.clone() }), [("Make Main".into(), false, true), ("Swap with Previous Main".into(), true, true)]);
+        assert_eq!(mains(&tile), [("Make Main".into(), true, true), ("Pin as Main".into(), true, true), ("Swap with Previous Main".into(), false, true)]);
+        assert_eq!(
+            mains(&Facts { main: true, previous_main: true, ..tile.clone() }),
+            [("Make Main".into(), false, true), ("Pin as Main".into(), true, true), ("Swap with Previous Main".into(), true, true)]
+        );
+        // (Pin as Main is checked on the pinned main window.)
+        let checked = |f: &Facts| build(f).items.iter().any(|i| matches!(i, menu::MenuItem::Action(a) if a.command == "shortcut:pin-main" && a.checked));
+        assert!(checked(&Facts { main: true, main_pinned: true, ..tile.clone() }) && !checked(&tile));
         // Open in Tracker only for a window that shows a file or folder.
         assert!(!all.contains(&tracker::COMMAND.to_owned()));
         let mut doc = Vec::new();

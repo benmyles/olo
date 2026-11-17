@@ -302,6 +302,9 @@ pub struct SavedTree {
     pub workspace: u32,
     pub output: String,
     pub tree: SavedNode,
+    /// Its main window pinned (`pin_main`): that window's saved place.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pinned: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1472,6 +1475,21 @@ enum Undo {
 struct Mains {
     now: Option<u64>,
     before: Option<u64>,
+    /// The window pinned as the main one (`pin_main`): while it's the
+    /// main window, a new window takes a place in the stack. Let go
+    /// when another window becomes main (by hand, or it closed).
+    pinned: Option<u64>,
+}
+
+/// Where a new window goes with the main window `main` pinned or not:
+/// the first place (the main window's) is the stack's first instead,
+/// and so is the place before the main window; any other as asked.
+pub fn new_beside_pinned(at: NewAt, main: Option<u64>, pinned: Option<u64>) -> NewAt {
+    match (at, main.filter(|m| pinned == Some(*m))) {
+        (NewAt::First, Some(m)) => NewAt::After(m),
+        (NewAt::Before(b), Some(m)) if b == m => NewAt::After(m),
+        (at, _) => at,
+    }
 }
 
 /// app_server's auto-tiling: a tree per workspace and display (by
@@ -1536,6 +1554,9 @@ pub struct AutoTiler {
     /// their workspaces: back as they were when it's plugged in again
     /// (`leave`, `come_back`), its windows into their own tiles.
     away: HashMap<String, Vec<(u32, Node)>>,
+    /// The main windows pinned before an in-place restart, by their
+    /// saved places, until each is back in its tile (`auto_returned`).
+    pins_kept: HashMap<(u32, String), u64>,
 }
 
 impl Default for AutoTiler {
@@ -1562,6 +1583,7 @@ impl Default for AutoTiler {
             glance: Default::default(),
             looked: None,
             away: HashMap::new(),
+            pins_kept: HashMap::new(),
         }
     }
 }
@@ -1574,6 +1596,9 @@ impl AutoTiler {
         for t in saved {
             let node = t.tree.node(until);
             info!(output = t.output, workspace = t.workspace, tree = %node, "tiles kept from before the restart");
+            if let Some(slot) = t.pinned {
+                self.pins_kept.insert((t.workspace, t.output.clone()), slot);
+            }
             self.trees.insert((t.workspace, t.output), node);
         }
     }
@@ -1950,10 +1975,16 @@ impl<B: Backend + 'static> AnvilState<B> {
             return;
         }
         let mut changed = false;
-        for t in self.auto.trees.values_mut() {
+        for (key, t) in self.auto.trees.iter_mut() {
             for &(slot, id) in &back {
                 if t.contains(id) {
                     continue;
+                }
+                // (The main window pinned before the restart: pinned
+                // again as it takes its place back.)
+                if self.auto.pins_kept.get(key) == Some(&slot) && t.any_leaf(&|n| matches!(n, Node::Kept(Kept { who: Who::Returning(s), .. }) if s.contains(&slot))) {
+                    self.auto.pins_kept.remove(key);
+                    self.auto.mains.entry(key.clone()).or_default().pinned = Some(id);
                 }
                 let mut slots = None;
                 t.each_leaf(&mut |n| {
@@ -2208,6 +2239,12 @@ impl<B: Backend + 'static> AnvilState<B> {
         {
             let now = if let Some(Node::Window(id)) = m.first() { Some(*id) } else { None };
             let rec = self.auto.mains.entry(key.clone()).or_default();
+            // (Pinned, and another is the main window now: made so by
+            // hand, or the pinned one went. Let go.)
+            if rec.pinned.is_some() && rec.pinned != now {
+                info!(output = key.1, was = ?rec.pinned, "the main window is no longer pinned");
+                rec.pinned = None;
+            }
             if rec.now != now {
                 if rec.now.is_some_and(|o| t.contains(o)) {
                     rec.before = rec.now;
@@ -2339,7 +2376,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             if chosen == olo_protocol::TilingLayout::MainAndStack {
                 let (place, was) = self.main_places(key);
                 let m = self.auto.mains.get(key).copied().unwrap_or_default();
-                let at = if before { NewAt::Before(p) } else { NewAt::After(p) };
+                let at = new_beside_pinned(if before { NewAt::Before(p) } else { NewAt::After(p) }, m.now, m.pinned);
                 if let Some(built) = main_and_stack_again(t, place, was, self.main_count_of(key) as usize, Some((id, at)), None, m.now, m.before) {
                     *t = built;
                 }
@@ -2379,6 +2416,9 @@ impl<B: Backend + 'static> AnvilState<B> {
         if chosen == olo_protocol::TilingLayout::MainAndStack {
             let (place, was) = self.main_places(key);
             let m = self.auto.mains.get(key).copied().unwrap_or_default();
+            // (The main window pinned: the new one takes the stack's
+            // first place, not its.)
+            let at = new_beside_pinned(at, m.now, m.pinned);
             if let Some(built) = main_and_stack_again(t, place, was, self.main_count_of(key) as usize, Some((id, at)), None, m.now, m.before) {
                 *t = built;
             }
@@ -2734,7 +2774,16 @@ impl<B: Backend + 'static> AnvilState<B> {
         if !tree.replace(&mine, Node::Window(id)) {
             return;
         }
-        self.auto.kept_for.insert(id, slots.unwrap_or_else(|| vec![slot]));
+        let slots = slots.unwrap_or_else(|| vec![slot]);
+        // (The main window pinned before the restart: pinned again as
+        // it takes its place back.)
+        let key = (ws, output.name());
+        if self.auto.pins_kept.get(&key).is_some_and(|kept| slots.contains(kept)) {
+            self.auto.pins_kept.remove(&key);
+            self.auto.mains.entry(key).or_default().pinned = Some(id);
+            info!(window = id, "pinned as the main window, as before the restart");
+        }
+        self.auto.kept_for.insert(id, slots);
         // On its display, so it is one of its tiles.
         let at = self.saved_location(&p);
         self.space.relocate_element(w, at);
@@ -3065,6 +3114,41 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.auto.mains.get(key)?.before.filter(|id| tree.contains(*id))
     }
 
+    /// The window pinned as tree `key`'s main one, while it is.
+    pub fn pinned_main_of(&self, key: &(u32, String)) -> Option<u64> {
+        let main = self.main_window_of(key)?;
+        self.auto.mains.get(key)?.pinned.filter(|p| *p == main)
+    }
+
+    /// Every pinned main window, of every tree (the IPC's window list).
+    pub fn pinned_mains(&self) -> Vec<u64> {
+        self.auto.trees.keys().filter_map(|k| self.pinned_main_of(k)).collect()
+    }
+
+    /// Pin as Main (⌃⌥⇧⌘M, the window menu, `Request::PinMain`): `w` is
+    /// its tiles' main window (made so, if it isn't) and stays so as
+    /// windows open; `on` false lets it go, none the one or the other.
+    /// False where its tiles aren't Main and Stack's.
+    pub fn pin_main(&mut self, w: &WindowElement, on: Option<bool>) -> bool {
+        let Some(key) = self.tree_of(w).filter(|k| self.layout_of(k) == olo_protocol::TilingLayout::MainAndStack) else { return false };
+        let pinned = self.pinned_main_of(&key) == Some(w.id());
+        let on = on.unwrap_or(!pinned);
+        if !on {
+            if pinned {
+                self.auto.mains.entry(key).or_default().pinned = None;
+                info!(window = w.id(), "the main window let go");
+                self.show_indicator(crate::osd::Indicator::Pinned(false));
+            }
+            return true;
+        }
+        // (Pinned first: made main next, it's the pinned one that is.)
+        self.auto.mains.entry(key).or_default().pinned = Some(w.id());
+        let made = self.make_main(w);
+        info!(window = w.id(), "pinned as the main window");
+        self.show_indicator(crate::osd::Indicator::Pinned(true));
+        made
+    }
+
     /// Whether `w` is its tiles' main window (Main and Stack).
     pub fn is_main(&self, w: &WindowElement) -> bool {
         self.tree_of(w).and_then(|k| self.main_window_of(&k)) == Some(w.id())
@@ -3101,6 +3185,12 @@ impl<B: Backend + 'static> AnvilState<B> {
             return self.tree_of(w).is_some();
         }
         let Some((key, tree, place)) = self.main_take(w, "Make Main") else { return false };
+        // (Another made main by hand: one pinned before is let go.)
+        if let Some(m) = self.auto.mains.get_mut(&key)
+            && m.pinned.is_some_and(|p| p != w.id())
+        {
+            m.pinned = None;
+        }
         let m = self.auto.mains.get(&key).copied().unwrap_or_default();
         let built = main_and_stack_again(&tree, place, Some(place), self.main_count_of(&key) as usize, None, Some(w.id()), m.now, m.before).unwrap_or(tree);
         info!(window = w.id(), "made the main window");
@@ -3719,6 +3809,22 @@ impl<B: Backend + 'static> AnvilState<B> {
 
 #[cfg(test)]
 mod tests {
+    /// A new window with the main one pinned: the stack's first place
+    /// for the main window's (and for the place before it), any other
+    /// as asked; unpinned, or another the main one now, as asked.
+    #[test]
+    fn a_new_window_beside_a_pinned_main() {
+        use super::{NewAt, new_beside_pinned};
+        assert_eq!(new_beside_pinned(NewAt::First, Some(7), Some(7)), NewAt::After(7));
+        assert_eq!(new_beside_pinned(NewAt::Before(7), Some(7), Some(7)), NewAt::After(7));
+        assert_eq!(new_beside_pinned(NewAt::Before(9), Some(7), Some(7)), NewAt::Before(9));
+        assert_eq!(new_beside_pinned(NewAt::After(9), Some(7), Some(7)), NewAt::After(9));
+        assert_eq!(new_beside_pinned(NewAt::Last, Some(7), Some(7)), NewAt::Last);
+        assert_eq!(new_beside_pinned(NewAt::First, Some(7), None), NewAt::First, "not pinned");
+        assert_eq!(new_beside_pinned(NewAt::First, Some(8), Some(7)), NewAt::First, "another is main now");
+        assert_eq!(new_beside_pinned(NewAt::First, None, Some(7)), NewAt::First);
+    }
+
     use super::*;
 
     /// Tiles side by side share an edge exactly, however deep each is in

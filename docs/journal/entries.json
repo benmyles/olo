@@ -4756,5 +4756,11 @@
   "title": "Viewer and Quick Look: the text in a picture, selected and copied",
   "caption": "A picture's text is read where it's shown: drag over it to select, \u2318C copies it, \u2318A selects it all. (Above: a word dragged over; below: Select All.)",
   "image": "2026-11-17/045250-viewer-and-quick-look-the-text-in-a-picture-sele.png"
+ },
+ {
+  "time": "2026-11-17T05:07:15",
+  "title": "Tiling: the main window can be pinned",
+  "caption": "Pin as Main (\u2303\u2325\u21e7\u2318M, a window's menu, Deskbar) keeps a tile the main one of Main and Stack: windows that open take the stack's places. Making another main by hand lets it go.",
+  "image": "2026-11-17/050715-tiling-the-main-window-can-be-pinned.png"
  }
 ]
