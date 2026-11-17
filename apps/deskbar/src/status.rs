@@ -1109,16 +1109,19 @@ pub fn draw_phone(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, phone: &olo_p
         _ => ink(p),
     };
     let (l, t) = left_top(r);
-    // 10 points across and 16 tall, on whole points; its screen the
-    // tray's own colour, a point in from the sides and two from the ends.
-    let body = style::snap(g, rect(l + 5.0, t + 2.0, 10.0, 16.0));
+    // 8 points across and 14 tall in the middle of its 16-point cell, on
+    // whole points, as tall as the gauge beside it and no taller (it was
+    // 10 by 16, two points below its cell and to its right: Ben, "the
+    // tray phone icon dimensions are too high"); its screen the tray's
+    // own colour, a point in from the sides and two from the ends.
+    let body = style::snap(g, rect(l + 4.0, t + 1.0, 8.0, 14.0));
     round_rect(g, body, 2.0, color);
-    let screen = style::snap(g, rect(l + 6.0, t + 4.0, 8.0, 11.0));
+    let screen = style::snap(g, rect(l + 5.0, t + 3.0, 6.0, 9.0));
     g.paint_quad(olo_kit::fill(screen, c(p.panel_background)));
     if phone.unread > 0 {
         // (Ringed in the tray's colour, so it reads against the slab.)
-        disc(g, (l + 15.0, t + 4.0), 4.0, c(p.panel_background));
-        disc(g, (l + 15.0, t + 4.0), 3.0, c(p.keyboard_navigation));
+        disc(g, (l + 12.0, t + 3.0), 4.0, c(p.panel_background));
+        disc(g, (l + 12.0, t + 3.0), 3.0, c(p.keyboard_navigation));
     }
 }
 

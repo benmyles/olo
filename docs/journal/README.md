@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### Deskbar: the phone's tray glyph, the size of the others
+
+*01:40* — The phone in Deskbar's tray was taller than its cell and off to the right; it's 8 by 14 points in the middle of it now, level with its neighbours. A dot while messages are unread.
+
+![Deskbar: the phone's tray glyph, the size of the others](2026-11-17/014049-deskbar-the-phone-s-tray-glyph-the-size-of-the-o.png)
+
+### Viewer: a long video's times have their room
+
+*01:40* — A video over an hour has longer times (2:22:06 of 2:45:18, here at 2×), and the bar started under the time played. The bar now sits between the two times, each given the room of its widest.
+
+![Viewer: a long video's times have their room](2026-11-17/014048-viewer-a-long-video-s-times-have-their-room.png)
+
 ### Phone: the contacts
 
 *01:33* — The phone's contacts, with a search over them; one number is written to at a click, several show the contact's card. A number typed in the search can be written to with no contact.

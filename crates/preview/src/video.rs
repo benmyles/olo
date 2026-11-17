@@ -1726,6 +1726,30 @@ mod tests {
         println!("seek to 1.95 s of 4K H.264 (59 pictures decoded): {:.0} ms (median of 5; {:.0}–{:.0})", ms[2], ms[0], ms[4]);
     }
 
+    /// A small video hours long, to try the player with (its times'
+    /// room, seeking far in): 120 pictures, each shown for a 120th of
+    /// the length. `OLO_LONG_VIDEO=/var/tmp/me/long.mp4 cargo test
+    /// --release -p olo-preview makes_a_long_video -- --ignored`
+    /// (`OLO_LONG_VIDEO_SECONDS`: how long; 2:45:18 if not said).
+    #[test]
+    #[ignore]
+    fn makes_a_long_video() {
+        use olo_video::{H264, Mp4, Order};
+        let Some(path) = std::env::var_os("OLO_LONG_VIDEO").map(std::path::PathBuf::from) else { return };
+        let secs: u64 = std::env::var("OLO_LONG_VIDEO_SECONDS").ok().and_then(|s| s.parse().ok()).unwrap_or(9918);
+        let (w, h, n) = (320u32, 200u32, 120u64);
+        let mut enc = H264::new(w, h, 30).unwrap();
+        let mut mp4 = Mp4::create(&path, w, h, 1000).unwrap();
+        for i in 0..n {
+            // A bar that crosses once over the whole length.
+            let px: Vec<u8> = (0..w * h).flat_map(|p| if u64::from(p % w) * n / u64::from(w) == i { [255, 255, 255, 255] } else { [40, (p / w % 200) as u8, 120, 255] }).collect();
+            let (bits, key) = enc.encode(&px, w as usize * 4, Order::Bgra).unwrap();
+            mp4.add(&bits, key, (secs * 1000 / n) as u32).unwrap();
+        }
+        mp4.finish().unwrap();
+        println!("{}: {secs} s", path.display());
+    }
+
     /// A still stretch of a screen recording is one picture, seconds
     /// long: a seek into it shows it (not the next one), and one past the
     /// last picture's start shows the last.

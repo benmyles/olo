@@ -4684,5 +4684,17 @@
   "title": "Phone: the contacts",
   "caption": "The phone's contacts, with a search over them; one number is written to at a click, several show the contact's card. A number typed in the search can be written to with no contact.",
   "image": "2026-11-17/013308-phone-the-contacts.png"
+ },
+ {
+  "time": "2026-11-17T01:40:48",
+  "title": "Viewer: a long video's times have their room",
+  "caption": "A video over an hour has longer times (2:22:06 of 2:45:18, here at 2\u00d7), and the bar started under the time played. The bar now sits between the two times, each given the room of its widest.",
+  "image": "2026-11-17/014048-viewer-a-long-video-s-times-have-their-room.png"
+ },
+ {
+  "time": "2026-11-17T01:40:49",
+  "title": "Deskbar: the phone's tray glyph, the size of the others",
+  "caption": "The phone in Deskbar's tray was taller than its cell and off to the right; it's 8 by 14 points in the middle of it now, level with its neighbours. A dot while messages are unread.",
+  "image": "2026-11-17/014049-deskbar-the-phone-s-tray-glyph-the-size-of-the-o.png"
  }
 ]

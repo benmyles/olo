@@ -1427,6 +1427,18 @@ struct TransportAt {
 /// The speed button's width: room for the longest, "0.25×".
 const SPEED_W: f32 = 44.0;
 
+/// The room the transport's two times take, the gaps beside them
+/// included: the time played after the button, and the time left before
+/// the speed. By the widest each gets (the whole length, in a face
+/// whose digits are one width), and never less than a short one's.
+fn time_room(duration: f64, width: impl Fn(String) -> f32) -> (f32, f32) {
+    const GAP: f32 = 8.0;
+    let whole = media::format_duration(duration);
+    let played = (GAP + width(whole.clone()) + GAP).ceil().max(52.0);
+    let left = (width(format!("-{whole}")) + GAP).ceil().max(52.0);
+    (played, left)
+}
+
 /// Play/pause, elapsed time, a seek bar and the time left, centred on
 /// `y` between `x` and `right`.
 #[allow(clippy::too_many_arguments)]
@@ -1474,8 +1486,13 @@ fn paint_transport(g: &mut Painter, x: Pixels, right: Pixels, y: Pixels, t: &dyn
     let dur = duration.unwrap_or_else(|| t.duration()).max(0.001);
     let font = style::mono_font(FontWeight::NORMAL);
     style::label(g, br.right() + px(8.0), y, Align::Left, media::format_duration(pos), 11.0, font.clone(), dim);
-    style::label(g, right, y, Align::Right, format!("-{}", media::format_duration((dur - pos).max(0.0))), 11.0, font, dim);
-    let bar = style::snap(g, Bounds::from_corners(point(br.right() + px(52.0), y - px(3.0)), point(right - px(52.0), y + px(3.0))));
+    style::label(g, right, y, Align::Right, format!("-{}", media::format_duration((dur - pos).max(0.0))), 11.0, font.clone(), dim);
+    // The bar between the two times, each given the room of its widest:
+    // the whole length's digits (the time left has a minus too), so the
+    // bar keeps its place as they count. (At a fixed 52 points an hour's
+    // "2:21:59" ran under the bar's start: Ben's 2:45:18 video.)
+    let (played, left) = time_room(dur, |text| f32::from(style::text_width(text, 11.0, font.clone())));
+    let bar = style::snap(g, Bounds::from_corners(point(br.right() + px(played), y - px(3.0)), point(right - px(left), y + px(3.0))));
     style::sunken(g, Bounds::from_corners(bar.origin - point(px(1.0), px(1.0)), bar.bottom_right() + point(px(1.0), px(1.0))), &p, false);
     g.paint_quad(olo_kit::fill(bar, style::c(p.document_background)));
     let frac = (pos / dur).clamp(0.0, 1.0) as f32;
@@ -1835,5 +1852,27 @@ impl PreviewView {
             placed = paint_transport(g, x, right, ty, player, md.duration, false, None, &md.chapters);
         }
         placed
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The transport's times have the room of their widest: a short
+    /// video's as before, an hour's more (in a face 6.6 points a digit).
+    #[test]
+    fn the_times_have_room_for_hours() {
+        let width = |text: String| text.chars().count() as f32 * 6.6;
+        // 4:05 of a 12:34 video: as it was.
+        assert_eq!(time_room(754.0, width), (52.0, 52.0));
+        // 2:45:18 (Ben's): "2:45:18" is 46.2 points and "-2:45:18" 52.8,
+        // each with its gaps: the bar starts after the one and ends
+        // before the other.
+        let (played, left) = time_room(9918.0, width);
+        assert!(played >= 8.0 + 46.2 + 8.0 && left >= 52.8 + 8.0, "{played} {left}");
+        // Ten hours and more.
+        let (played, left) = time_room(40_000.0, width);
+        assert!(played >= 8.0 + 8.0 * 6.6 + 8.0 && left > played - 8.0, "{played} {left}");
     }
 }

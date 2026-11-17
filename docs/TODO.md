@@ -116,15 +116,6 @@ something nobody here has is in "Blocked", with what it waits for.
   measured on the bench. The service is its own program now
   (`olo-phoned`). Still to do: the website; the phones' own icons;
   whatever Ben's iPhone shows that the stand-in didn't.
-- **Bug: Viewer's video timeline with a long video** (Ben, 2026-11-17,
-  with a picture of a 2:45:18 video at 2×: "the video player viewer
-  seems buggy either in long videos or at >1x ... the timeline has just
-  gone nuts"). In the picture the time played, "2:21:59", is cut short
-  by the timeline's bar, which starts over its last digit: the room
-  kept for it fits minutes and seconds, not hours. Look at the rest
-  with a video over an hour and at 2× (the bar's place, the time left,
-  seeking by the bar, the playhead as it plays): the time's room by
-  its widest (the whole length's digits), the bar after it.
 - **Everything Olo Doctor does can be undone** (Ben, 2026-11-16: "one
   more thing we need: everything in olo doctor that it does must be
   reversible, e.g. for any fix/suggestion applied i should be able to
@@ -196,6 +187,14 @@ something nobody here has is in "Blocked", with what it waits for.
   it's doing, in Deskbar's tray too; speaking Proton's API and
   WireGuard itself, in Rust, in process (nothing of Proton's own client
   wrapped), through NetworkManager as Olo's other connections are.
+- **A tiled window pinned as the main one** (Ben, 2026-11-17: "ability
+  to \"pin\" a tiled window as the main one so that it doesn't change
+  when other windows open. manually changing the main window with the
+  shortcut/command should unpin and make the new window main"). In a
+  tiled workspace the main window can be pinned (a command, its key, the
+  window's menu): windows that open then take the other places and
+  leave it. Making another window main by hand (the shortcut, the
+  command) unpins, and that window is the main one.
 - **The website covers Terminal's work with agents** (Ben, 2026-11-16:
   "update the website to cover all the agent integration features in olo
   terminal"). olo-desktop.com's Agents part: what Terminal does for
@@ -6066,6 +6065,18 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Bug: Viewer's video timeline with a long video; the phone's tray
+  glyph too tall**~~ (Ben, 2026-11-17: "the timeline has just gone
+  nuts", with a 2:45:18 video at 2×; "the tray phone icon dimensions
+  are too high"; done 2026-11-17). The bar kept a fixed 52 points for
+  each time, which an hour's "2:21:59" doesn't fit: each has the room
+  of its widest now (`time_room`, tested; seen at 2:22 of 2:45:18 at 2×
+  speed, at 1×, 1.5× and 2×; a long video to try with is made by an
+  ignored test, `makes_a_long_video`). The glyph is 8 by 14 points in
+  the middle of its cell (it was 10 by 16, below it and to its right).
+  Nothing else was found wrong with long videos or at 2× in what was
+  tried (playing, seeking by the bar); say if you see more.
 
 - ~~**The website: one zoom, an HDR ring, the hardware skill's command**~~
   (Ben, 2026-11-17; done 2026-11-17: 2285a4d8d, 177b4165e, 201833c6b).
