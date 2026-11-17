@@ -466,8 +466,11 @@ dialog.zoomed::backdrop {
 
 dialog.zoomed img {
   display: block;
-  width: auto;
+  /* As large as the window holds it at its shape, from the start (the
+     smaller copy shown while the larger loads is drawn at that size too). */
+  width: min(calc(100vw - 32px), calc((100vh - 32px) * var(--ratio, 1.6)));
   height: auto;
+  aspect-ratio: var(--ratio, auto);
   max-width: calc(100vw - 32px);
   max-height: calc(100vh - 32px);
   border-radius: var(--radius-small);

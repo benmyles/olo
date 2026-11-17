@@ -37,6 +37,13 @@ if (typeof HTMLDialogElement === "function") {
     const img = picture.querySelector("img");
     img.loading = "eager";
     img.removeAttribute("fetchpriority");
+    // Its size from its shape (the width and height it's written with),
+    // not from whichever copy shows first: the page's smaller one is
+    // shown while the larger loads, and the picture grew when it came
+    // (Ben: "it first zooms a little then a second later zooms even
+    // more").
+    const w = Number(img.getAttribute("width")), h = Number(img.getAttribute("height"));
+    if (w > 0 && h > 0) img.style.setProperty("--ratio", String(w / h));
     const button = document.createElement("button");
     button.type = "button";
     button.className = "zoomed-close";
