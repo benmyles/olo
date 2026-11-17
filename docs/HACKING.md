@@ -6037,7 +6037,8 @@ lint at a time).
   Collection: (the current wallpaper's to begin with), its pictures in a
   scroll view in a growing box (`BBox::grow`), the window 760 × 720 as
   designed. Each theme names its picture (`Theme::wallpaper`: Classic
-  Blueberry Oxygen, Platinum Quantum Foam; see "Theme wallpapers" in
+  Olo's own Dunes (Ben, 2026-11-16; it was Blueberry Oxygen), Platinum
+  Quantum Foam; see "Theme wallpapers" in
   [ICONS.md](ICONS.md)); choosing a theme in Themes sets `wallpaper` to it
   too, so an agent switching looks over IPC sets both
   `appearance.icon_theme` and `wallpaper` (`themes::wallpaper(id)`).

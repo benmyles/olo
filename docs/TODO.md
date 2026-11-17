@@ -31,9 +31,6 @@ something nobody here has is in "Blocked", with what it waits for.
   in preview in macos"). Viewer and Quick Look recognise the text in a
   picture (natively, in process, off the UI thread), and it is selected
   with the pointer and copied as text is in a document.
-- **Olo Classic's default wallpaper is the dunes** (Ben, 2026-11-16:
-  "make the default wallpaper for the olo classic theme the dunes
-  one").
 - **No zoom button on window tabs in focus mode** (Ben, 2026-11-17:
   "when in focus mode hide the zoom button on window tabs since it
   wouldn't do anything as we are already always zoomed"). In focus mode
@@ -5986,6 +5983,15 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Olo Classic's default wallpaper is the dunes**~~ (Ben,
+  2026-11-16: "make the default wallpaper for the olo classic theme the
+  dunes one"; done 2026-11-17). Classic's own wallpaper
+  (`Theme::wallpaper`) and what a new install starts with are Olo's
+  Dunes, light and dark (it was Mac OS 9's Blueberry Oxygen, still in
+  the pack). **For Ben**: your own wallpaper setting is as you left it;
+  choosing Classic again in Preferences ▸ Themes (or Dunes in
+  Wallpaper) puts the dunes on.
 
 - ~~**The start-up sound: silent when muted, and at one volume**~~
   (Ben, 2026-11-16: "should not play if the sound is muted, and if not

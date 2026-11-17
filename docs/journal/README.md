@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### Classic's wallpaper is the Dunes
+
+*03:54* — A new install, and the Classic theme when chosen, start with Olo's own Dunes, by day and by night. (It was Mac OS 9's Blueberry Oxygen, still in the pack.)
+
+![Classic's wallpaper is the Dunes](2026-11-17/035405-classic-s-wallpaper-is-the-dunes.png)
+
 ### Phone: a call answered on the computer
 
 *03:37* — Answer on a ringing call's notification takes the call on the computer: Olo connects the phone hands-free for that call, answers it, shows it with Hang Up, and lets the phone go after. Phone's contacts have Call. (A stand-in phone, in a test.)

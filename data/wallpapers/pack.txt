@@ -1,8 +1,8 @@
 # The wallpaper pack: name|label|collection. Each has 4k/NAME.png (16:9)
 # and ultrawide/NAME.png (21:9); NAME-dark.png beside it, when there is
-# one, is shown in dark mode. thumbs/ holds the previews. The first is the
-# default for a new install: the default theme's (Classic: Blueberry
-# Oxygen); each theme names its own (`Theme::wallpaper`). The retro
+# one, is shown in dark mode. thumbs/ holds the previews. A new install
+# starts with the default theme's (Classic: Olo's Dunes, among Olo's own
+# below); each theme names its own (`Theme::wallpaper`). The retro
 # systems' own desktop pictures, made 4K with tools/upscalewallpaper.py
 # (docs/ICONS.md, "Theme wallpapers"), then Olo's.
 blueberry-oxygen|Blueberry Oxygen|Mac OS 9

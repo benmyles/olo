@@ -115,8 +115,10 @@ pub const THEMES: &[Theme] = &[
         name: "Classic",
         about: "After BeOS: glossy, bright and friendly.",
         colors_about: "Glossy sky grey by day and ocean blue by night.",
-        // (Mac OS 9's, the nearest to Be's blue.)
-        wallpaper: "blueberry-oxygen",
+        // (Olo's own dunes: Ben, 2026-11-16, "make the default
+        // wallpaper for the olo classic theme the dunes one". It was
+        // Mac OS 9's Blueberry Oxygen, the nearest to Be's blue.)
+        wallpaper: "olo-dunes",
         light: Seeds {
             panel: hex(0xdbe3ee),
             ink: hex(0x131a26),

@@ -121,11 +121,12 @@ mod tests {
 
     #[test]
     fn every_theme_has_its_wallpaper() {
-        // In the pack, light and dark, at each shape; the default theme's
-        // is the pack's first, so a new install starts with it.
+        // In the pack, light and dark, at each shape; a new install
+        // starts with the default theme's (Classic's: the dunes; the
+        // settings start with it too: Preferences' themes test).
         let dir = repo_data().join("wallpapers");
         let pack = crate::wallpapers::parse(&std::fs::read_to_string(dir.join("pack.txt")).unwrap(), &dir);
-        assert_eq!(pack[0].setting(), wallpaper(DEFAULT));
+        assert_eq!(wallpaper(DEFAULT), "pack:olo-dunes");
         assert_eq!(crate::wallpapers::default_setting(), wallpaper(DEFAULT));
         for t in THEMES {
             let w = pack.iter().find(|w| w.setting() == wallpaper(t.id)).unwrap_or_else(|| panic!("{} has no wallpaper", t.id));

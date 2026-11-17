@@ -2644,8 +2644,8 @@ impl Default for Settings {
             // BeOS R5's default desktop blue, then a few Haiku-ish alternates.
             workspace_colors: vec![[51, 102, 152], [0, 128, 128], [102, 51, 153], [96, 96, 96]],
             // A new install starts with the default theme's own wallpaper
-            // (`olo_xdg::themes::wallpaper`), the pack's first.
-            wallpaper: Some("pack:blueberry-oxygen".into()),
+            // (`olo_xdg::themes::wallpaper`: Classic's, the dunes).
+            wallpaper: Some("pack:olo-dunes".into()),
             focus_follows_mouse: false,
             touchpad: TouchpadSettings::default(),
             keyboard: KeyboardSettings::default(),
