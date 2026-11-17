@@ -1016,6 +1016,10 @@ fn main() -> std::process::ExitCode {
         };
         return std::process::ExitCode::from(startup::play_now(chime) as u8);
     }
+    // How the start-up sound would play now, said (nothing played).
+    if args.first().map(String::as_str) == Some("--startup-level") {
+        return std::process::ExitCode::from(startup::say_level() as u8);
+    }
     // Anything else is a command for the running service.
     if !args.is_empty() {
         return cli::run(address.as_deref(), &args);

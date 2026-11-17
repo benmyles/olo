@@ -15,8 +15,20 @@
 //! `FAKESOUND_AIRPODS=AA:BB:CC:DD:EE:FF` adds a pair of AirPods as
 //! PipeWire shows them (a Bluetooth output playing AAC at music quality,
 //! the default, and their card with its profiles), for Preferences ▸
-//! Sound and the AirPods service. Subscriptions are taken (no events
-//! come: nothing changes).
+//! Sound and the AirPods service.
+//!
+//! The speaker's volume is full, or `FAKESOUND_VOLUME=44` (percent, on
+//! the volume's own scale); `FAKESOUND_MUTED=1` mutes it,
+//! `FAKESOUND_HARDWARE=1` says its volume is the card's own, and
+//! `FAKESOUND_VOLUME_THEN=20@1500` changes it to 20% a second and a
+//! half after a client connects (a subscribed client is told, as a
+//! server tells it). Each playback stream's own volume is kept (as it
+//! was made, and as set since), and its line says what comes out of the
+//! speaker: the samples' loudness times the stream's and the speaker's
+//! volumes ("out"), and "clipped" where a stream louder than its samples
+//! have room for goes to a card whose volume is its own. Subscriptions
+//! are taken (no other events come: nothing else changes). A client
+//! can set the speaker's volume (said, and kept from then on).
 //!
 //! ```text
 //! olo-fakesound /tmp/fake.sock &
@@ -53,12 +65,62 @@ struct Stream {
     record: Option<u64>,
     /// Its tone's pitch.
     hz: f64,
+    /// A playback stream's own volume (1.0 as it is).
+    level: f64,
+    /// This second's loudest sample.
+    peak: f64,
+}
+
+/// The speaker's volume as a client set it, if one has.
+static SET: Mutex<Option<f64>> = Mutex::new(None);
+
+/// A volume's level (1.0 full).
+fn level_of(v: &protocol::ChannelVolume) -> f64 {
+    let ch = v.channels();
+    if ch.is_empty() { 1.0 } else { ch.iter().map(|v| f64::from(v.as_u32())).sum::<f64>() / ch.len() as f64 / f64::from(protocol::Volume::NORM.as_u32()) }
+}
+
+/// The speaker's volume `since` a client connected (`FAKESOUND_VOLUME`,
+/// `FAKESOUND_VOLUME_THEN`), 1.0 full.
+fn speaker_level(since: Instant) -> f64 {
+    // (Set by a client: that, from then on.)
+    if let Some(set) = *SET.lock().unwrap() {
+        return set;
+    }
+    let percent = |v: &str| v.trim().parse::<f64>().ok().map(|p| p / 100.0);
+    if let Some((to, after)) = std::env::var("FAKESOUND_VOLUME_THEN").ok().as_deref().and_then(|t| t.split_once('@'))
+        && let (Some(to), Ok(after)) = (percent(to), after.trim().parse::<u64>())
+        && since.elapsed() >= Duration::from_millis(after)
+    {
+        return to;
+    }
+    std::env::var("FAKESOUND_VOLUME").ok().as_deref().and_then(percent).unwrap_or(1.0)
+}
+
+fn set(name: &str) -> bool {
+    std::env::var(name).is_ok_and(|v| !v.is_empty() && v != "0")
+}
+
+/// The speaker, as a server describes it.
+fn speaker(since: Instant) -> protocol::SinkInfo {
+    let raw = (speaker_level(since) * f64::from(protocol::Volume::NORM.as_u32())).round() as u32;
+    let mut cvolume = protocol::ChannelVolume::empty();
+    for _ in 0..2 {
+        cvolume.push(protocol::Volume::from_u32_clamped(raw));
+    }
+    let flags = if set("FAKESOUND_HARDWARE") { protocol::SinkFlags::HW_VOLUME_CTRL } else { protocol::SinkFlags::empty() };
+    protocol::SinkInfo { index: 0, name: c"fake".into(), description: Some(c"Fake Speakers".into()), cvolume, muted: set("FAKESOUND_MUTED"), flags, ..Default::default() }
 }
 
 struct Client {
     writer: UnixStream,
     version: u16,
     streams: HashMap<u32, Stream>,
+    /// When it connected, whether it asked to be told of changes, and
+    /// the speaker's volume as it last was.
+    since: Instant,
+    subscribed: bool,
+    speaker: f64,
 }
 
 fn main() {
@@ -81,7 +143,14 @@ fn main() {
 }
 
 fn serve(id: u32, sock: UnixStream, next_channel: &Mutex<u32>) -> Result<(), String> {
-    let client = Arc::new(Mutex::new(Client { writer: sock.try_clone().map_err(|e| e.to_string())?, version: 13, streams: HashMap::new() }));
+    let client = Arc::new(Mutex::new(Client {
+        writer: sock.try_clone().map_err(|e| e.to_string())?,
+        version: 13,
+        streams: HashMap::new(),
+        since: Instant::now(),
+        subscribed: false,
+        speaker: speaker_level(Instant::now()),
+    }));
     {
         let client = Arc::downgrade(&client);
         std::thread::spawn(move || {
@@ -141,7 +210,15 @@ fn command(id: u32, c: &mut Client, seq: u32, cmd: Command, next_channel: &Mutex
                 *n
             };
             let corked = p.flags.start_corked;
-            eprintln!("fakesound: stream {channel}: {:?} {} Hz × {}, corked {corked}", p.sample_spec.format, p.sample_spec.sample_rate, p.sample_spec.channels);
+            let level = p.cvolume.as_ref().map_or(1.0, level_of);
+            eprintln!(
+                "fakesound: stream {channel}: {:?} {} Hz × {}, corked {corked}, at {:.1}% of the speaker's {:.1}%",
+                p.sample_spec.format,
+                p.sample_spec.sample_rate,
+                p.sample_spec.channels,
+                level * 100.0,
+                speaker_level(c.since) * 100.0
+            );
             c.streams.insert(
                 channel,
                 Stream {
@@ -157,6 +234,8 @@ fn command(id: u32, c: &mut Client, seq: u32, cmd: Command, next_channel: &Mutex
                     reported: Instant::now(),
                     record: None,
                     hz: 0.0,
+                    level,
+                    peak: 0.0,
                 },
             );
             let reply = protocol::CreatePlaybackStreamReply {
@@ -226,6 +305,8 @@ fn command(id: u32, c: &mut Client, seq: u32, cmd: Command, next_channel: &Mutex
                     reported: Instant::now(),
                     record: Some(0),
                     hz: if monitor { 660.0 } else { 440.0 },
+                    level: 1.0,
+                    peak: 0.0,
                 },
             );
             let reply = protocol::CreateRecordStreamReply {
@@ -245,7 +326,24 @@ fn command(id: u32, c: &mut Client, seq: u32, cmd: Command, next_channel: &Mutex
             }
             protocol::write_ack_message(&mut c.writer, seq)
         }
-        Command::Subscribe(_) => protocol::write_ack_message(&mut c.writer, seq),
+        Command::Subscribe(_) => {
+            c.subscribed = true;
+            protocol::write_ack_message(&mut c.writer, seq)
+        }
+        Command::GetSinkInfo(_) => protocol::write_reply_message(&mut c.writer, seq, &speaker(c.since), v),
+        Command::SetSinkVolume(p) => {
+            let to = level_of(&p.volume);
+            eprintln!("fakesound: the speaker's volume set to {:.1}% (it was {:.1}%)", to * 100.0, speaker_level(c.since) * 100.0);
+            *SET.lock().unwrap() = Some(to);
+            protocol::write_ack_message(&mut c.writer, seq)
+        }
+        Command::SetSinkInputVolume(p) => {
+            if let Some(s) = c.streams.get_mut(&p.index) {
+                s.level = level_of(&p.volume);
+                eprintln!("fakesound: stream {}: now at {:.1}% of the speaker's {:.1}%", p.index, s.level * 100.0, speaker_level(c.since) * 100.0);
+            }
+            protocol::write_ack_message(&mut c.writer, seq)
+        }
         Command::GetCardInfoList => {
             let cards: Vec<protocol::CardInfo> = airpods()
                 .map(|(addr, name, _)| {
@@ -280,8 +378,7 @@ fn command(id: u32, c: &mut Client, seq: u32, cmd: Command, next_channel: &Mutex
             protocol::write_reply_message(&mut c.writer, seq, &reply, v)
         }
         Command::GetSinkInfoList => {
-            let sink = protocol::SinkInfo { index: 0, name: c"fake".into(), description: Some(c"Fake Speakers".into()), cvolume: protocol::ChannelVolume::norm(2), ..Default::default() };
-            let mut sinks = vec![sink];
+            let mut sinks = vec![speaker(c.since)];
             if let Some((addr, name, desc)) = airpods() {
                 let mut props = protocol::Props::new();
                 props.set_bytes(c"api.bluez5.address", format!("{addr}\0"));
@@ -336,6 +433,16 @@ fn mic_sound() -> Option<&'static [f32]> {
 fn tick(c: &mut Client) {
     let v = c.version;
     let mut out = Vec::new();
+    // The speaker's volume changed: said, to one who asked to be told.
+    let speaker = speaker_level(c.since);
+    let hardware = set("FAKESOUND_HARDWARE");
+    if speaker != c.speaker {
+        c.speaker = speaker;
+        eprintln!("fakesound: the speaker's volume is now {:.1}%", speaker * 100.0);
+        if c.subscribed {
+            out.push(Out::Changed);
+        }
+    }
     for (&ch, s) in c.streams.iter_mut() {
         let frame = s.spec.format.bytes_per_sample() * s.spec.channels as usize;
         let per_tick = (s.spec.sample_rate as usize * frame) as u128 * TICK.as_millis() / 1000;
@@ -372,6 +479,7 @@ fn tick(c: &mut Client) {
                     let x = i16::from_le_bytes(*p) as f64;
                     s.heard.1 += x * x;
                     s.heard.2 += 1;
+                    s.peak = s.peak.max(x.abs());
                 }
             }
             s.buffer.drain(..n);
@@ -391,14 +499,25 @@ fn tick(c: &mut Client) {
         }
         if s.reported.elapsed() >= Duration::from_secs(1) {
             let rms = if s.heard.2 > 0 { (s.heard.1 / s.heard.2 as f64).sqrt() } else { 0.0 };
-            eprintln!("fakesound: stream {ch}: {} bytes, rms {rms:.0}{}", s.heard.0, if s.corked { ", corked" } else { "" });
+            // What comes out of the speaker (muted: nothing), and whether
+            // the stream's own loudness clipped on the way to a card
+            // that turns it down itself.
+            let muted = set("FAKESOUND_MUTED");
+            let came = if muted { 0.0 } else { rms * (s.level * speaker).powi(3) };
+            let clipped = hardware && s.peak * s.level.powi(3) > 32767.5;
+            eprintln!("fakesound: stream {ch}: {} bytes, rms {rms:.0}, out {came:.1}{}{}", s.heard.0, if clipped { ", clipped" } else { "" }, if s.corked { ", corked" } else { "" });
             s.heard = (0, 0.0, 0);
+            s.peak = 0.0;
             s.reported = Instant::now();
         }
     }
     for o in out {
         let _ = match o {
             Out::Ack(seq) => protocol::write_ack_message(&mut c.writer, seq),
+            Out::Changed => {
+                let event = protocol::SubscriptionEvent { event_facility: protocol::SubscriptionEventFacility::Sink, event_type: protocol::SubscriptionEventType::Changed, index: Some(0) };
+                protocol::write_command_message(&mut c.writer, u32::MAX, &Command::SubscribeEvent(event), v)
+            }
             Out::Block(channel, block) => protocol::write_memblock(&mut c.writer, channel, &block, 0),
             Out::Request(channel, length) => protocol::write_command_message(&mut c.writer, u32::MAX, &Command::Request(protocol::Request { channel, length }), v),
         };
@@ -407,6 +526,7 @@ fn tick(c: &mut Client) {
 
 enum Out {
     Ack(u32),
+    Changed,
     Request(u32, u32),
     Block(u32, Vec<u8>),
 }

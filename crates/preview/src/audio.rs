@@ -45,7 +45,34 @@ pub struct State {
     pub started: AtomicBool,
 }
 
+/// The output a sound will play to, as the sound server says: its
+/// volume (1.0 full, on the volume's own scale: what a slider shows),
+/// whether it's muted, and whether that volume is the card's own (a
+/// mixer control, headphones' own: turned down after the sound has left
+/// the sound server as whole numbers, so a stream made louder than its
+/// samples' room clips on the way).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Output {
+    pub level: f32,
+    pub muted: bool,
+    pub hardware: bool,
+}
+
+/// How loud a sound's own stream plays, the output being as it is (1.0
+/// as recorded; none: not at all): asked as it starts and again whenever
+/// the output changes while it plays, so a sound of a set loudness (the
+/// start-up chime) comes out as loud whatever the person's volume is,
+/// which is left as it is.
+pub type Loudness = Arc<dyn Fn(Output) -> Option<f32> + Send + Sync>;
+
+/// How long an output is waited for (the first sound of a session can
+/// come before the sound server has its cards), and how often it's
+/// asked after meanwhile.
+const OUTPUT_WITHIN: std::time::Duration = std::time::Duration::from_secs(5);
+const OUTPUT_ASKED: std::time::Duration = std::time::Duration::from_millis(250);
+
 enum Ev {
+    Output(Output),
     Play,
     Pause,
     Seek(f64),
@@ -67,15 +94,26 @@ impl Player {
         Player::start_with(input, true)
     }
 
+    /// Start playing `input` at once, its own stream as loud as
+    /// `loudness` says for the output it plays to (not at all if it says
+    /// none: finished at once, nothing sent).
+    pub fn start_at(input: &Input, loudness: Loudness) -> Player {
+        Player::start_as(input, true, Some(loudness))
+    }
+
     /// Start `input`, playing or paused at the beginning.
     pub fn start_with(input: &Input, playing: bool) -> Player {
+        Player::start_as(input, playing, None)
+    }
+
+    fn start_as(input: &Input, playing: bool, loudness: Option<Loudness>) -> Player {
         let (tx, rx) = mpsc::channel();
         let state = Arc::new(State { volume: AtomicU32::new(1000), rate: AtomicU32::new(1000), ..Default::default() });
         let (input, st, tx2) = (input.clone(), state.clone(), tx.clone());
         std::thread::Builder::new()
             .name("audio".into())
             .spawn(move || {
-                if let Err(e) = run(&input, playing, &st, tx2, rx) {
+                if let Err(e) = run(&input, playing, loudness, &st, tx2, rx) {
                     tracing::warn!("audio {}: {e}", input.name);
                     *st.error.lock().unwrap() = Some(e);
                 }
@@ -251,6 +289,114 @@ const SEQ_CREATE: u32 = 10;
 const SEQ_TIMING: u32 = 20;
 const SEQ_DRAIN: u32 = 30;
 const SEQ_OTHER: u32 = 40;
+const SEQ_OUTPUT: u32 = 50;
+
+/// A level (1.0 as it is; above, louder) as every channel's volume.
+fn stream_volume(level: f32, channels: u8) -> protocol::ChannelVolume {
+    let norm = protocol::Volume::NORM.as_u32() as f64;
+    let raw = (f64::from(level.max(0.0)) * norm).round().min(f64::from(u32::MAX / 2)) as u32;
+    let mut volume = protocol::ChannelVolume::empty();
+    for _ in 0..channels.max(1) {
+        volume.push(protocol::Volume::from_u32_clamped(raw));
+    }
+    volume
+}
+
+/// What the sound server says of an output.
+fn output_of(s: &protocol::SinkInfo) -> Output {
+    let ch = s.cvolume.channels();
+    let level = if ch.is_empty() { 0.0 } else { ch.iter().map(|v| v.as_u32() as f32).sum::<f32>() / ch.len() as f32 / protocol::Volume::NORM.as_u32() as f32 };
+    Output { level, muted: s.muted, hardware: s.flags.contains(protocol::SinkFlags::HW_VOLUME_CTRL) }
+}
+
+/// A connection for asking after the output and setting its volume.
+struct Asker {
+    sock: UnixStream,
+    reader: BufReader<UnixStream>,
+    version: u16,
+    _closer: Closer,
+}
+
+impl Asker {
+    fn connect() -> Result<Asker, String> {
+        let (sock, version) = connect()?;
+        let clone = |s: &UnixStream| s.try_clone().map_err(|e| e.to_string());
+        Ok(Asker { reader: BufReader::new(clone(&sock)?), _closer: Closer(clone(&sock)?), sock, version })
+    }
+
+    /// The output named `name` (the one sounds play to, with none), a
+    /// session's first waited for (`within`).
+    fn sink(&mut self, name: Option<&CString>, within: std::time::Duration) -> Result<protocol::SinkInfo, String> {
+        let asked = std::time::Instant::now();
+        loop {
+            let q = protocol::GetSinkInfo { index: None, name: Some(name.cloned().unwrap_or_else(|| protocol::DEFAULT_SINK.to_owned())) };
+            protocol::write_command_message(&mut self.sock, SEQ_OUTPUT, &protocol::Command::GetSinkInfo(q), self.version).map_err(|e| e.to_string())?;
+            match protocol::read_reply_message::<protocol::SinkInfo>(&mut self.reader, self.version) {
+                Ok((_, sink)) => return Ok(sink),
+                Err(protocol::ProtocolError::ServerError(_)) if asked.elapsed() < within => std::thread::sleep(OUTPUT_ASKED),
+                Err(e) => return Err(format!("No output to play to: {e}")),
+            }
+        }
+    }
+
+    fn set_volume(&mut self, name: &CString, volume: protocol::ChannelVolume) -> Result<(), String> {
+        let set = protocol::SetDeviceVolumeParams { device_index: None, device_name: Some(name.clone()), volume };
+        protocol::write_command_message(&mut self.sock, SEQ_OTHER, &protocol::Command::SetSinkVolume(set), self.version).map_err(|e| e.to_string())?;
+        protocol::read_ack_message(&mut self.reader).map(|_| ()).map_err(|e| e.to_string())
+    }
+}
+
+/// The output sounds play to now, asked of the sound server (nothing
+/// played, nothing changed); a session's first waited for a little.
+pub fn output() -> Result<Output, String> {
+    Asker::connect()?.sink(None, OUTPUT_WITHIN).map(|s| output_of(&s))
+}
+
+/// An output's volume lent to a sound: set to `level` now, and put back
+/// as it was (each channel's own) when this is dropped, unless it was
+/// changed meanwhile (the person's own change stays). For a sound of a
+/// set loudness on an output whose volume is the card's own and too low
+/// for the sound's stream to make up cleanly (`Output::hardware`); any
+/// other output's volume needn't be touched.
+pub struct Lent {
+    name: CString,
+    was: protocol::ChannelVolume,
+    set: protocol::ChannelVolume,
+}
+
+/// The volume of the output sounds play to now, lent at `level`.
+pub fn lend_output(level: f32) -> Result<Lent, String> {
+    let mut a = Asker::connect()?;
+    let sink = a.sink(None, OUTPUT_WITHIN)?;
+    let set = stream_volume(level, sink.cvolume.channels().len() as u8);
+    a.set_volume(&sink.name, set)?;
+    tracing::info!(output = ?sink.name, was = output_of(&sink).level, level, "the output's volume lent to a sound");
+    Ok(Lent { name: sink.name, was: sink.cvolume, set })
+}
+
+impl Drop for Lent {
+    fn drop(&mut self) {
+        let back = || -> Result<bool, String> {
+            let mut a = Asker::connect()?;
+            let now = a.sink(Some(&self.name), std::time::Duration::ZERO)?;
+            let same = |x: &protocol::ChannelVolume, y: &protocol::ChannelVolume| x.channels().iter().map(|v| v.as_u32()).eq(y.channels().iter().map(|v| v.as_u32()));
+            if !same(&now.cvolume, &self.set) {
+                return Ok(false);
+            }
+            a.set_volume(&self.name, self.was).map(|()| true)
+        };
+        match back() {
+            Ok(true) => tracing::info!(output = ?self.name, "the output's volume put back"),
+            Ok(false) => tracing::info!(output = ?self.name, "the output's volume was changed meanwhile: left as it is"),
+            Err(e) => tracing::warn!(output = ?self.name, "the output's volume couldn't be put back: {e}"),
+        }
+    }
+}
+
+fn ask_output(sock: &mut UnixStream, version: u16) -> Result<(), String> {
+    let q = protocol::GetSinkInfo { index: None, name: Some(protocol::DEFAULT_SINK.to_owned()) };
+    protocol::write_command_message(sock, SEQ_OUTPUT, &protocol::Command::GetSinkInfo(q), version).map_err(|e| e.to_string())
+}
 
 /// How this process appears in the sound server's list of what's
 /// playing: a name and an icon name, set once as the app starts.
@@ -306,7 +452,7 @@ impl Drop for Closer {
     }
 }
 
-fn run(input: &Input, playing: bool, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc::Receiver<Ev>) -> Result<(), String> {
+fn run(input: &Input, playing: bool, loudness: Option<Loudness>, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc::Receiver<Ev>) -> Result<(), String> {
     let (mut src, rate, duration) = Source::open(input)?;
     st.duration_ms.store((duration * 1000.0) as u64, Ordering::Relaxed);
     let (mut sock, version) = connect()?;
@@ -314,11 +460,37 @@ fn run(input: &Input, playing: bool, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc:
     // clone of the socket and would otherwise keep it (and itself) alive.
     let _closer = Closer(sock.try_clone().map_err(|e| e.to_string())?);
     let err = |e: protocol::ProtocolError| e.to_string();
+    let mut reader = BufReader::new(sock.try_clone().map_err(|e| e.to_string())?);
+    // A sound of a set loudness: how loud its stream is, for the output
+    // as it is now (waited for a little: a session's first sound can
+    // come before the sound server has its cards), and told of the
+    // output's changes from here on.
+    let mut level = 1.0;
+    if let Some(loudness) = &loudness {
+        let asked = std::time::Instant::now();
+        let output = loop {
+            ask_output(&mut sock, version)?;
+            match protocol::read_reply_message::<protocol::SinkInfo>(&mut reader, version) {
+                Ok((_, sink)) => break output_of(&sink),
+                Err(protocol::ProtocolError::ServerError(_)) if asked.elapsed() < OUTPUT_WITHIN => std::thread::sleep(OUTPUT_ASKED),
+                Err(e) => return Err(format!("No output to play to: {e}")),
+            }
+        };
+        let Some(at) = loudness(output) else {
+            tracing::info!(?output, "a sound of a set loudness: not played");
+            st.finished.store(true, Ordering::Relaxed);
+            return Ok(());
+        };
+        tracing::info!(?output, stream = at, "a sound of a set loudness");
+        level = at;
+        protocol::write_command_message(&mut sock, SEQ_OTHER, &protocol::Command::Subscribe(protocol::SubscriptionMask::SINK | protocol::SubscriptionMask::SERVER), version).map_err(err)?;
+        protocol::read_ack_message(&mut reader).map_err(err)?;
+    }
     let bps = rate as u64 * src.channels as u64 * 2;
     let params = protocol::PlaybackStreamParams {
         sample_spec: protocol::SampleSpec { format: protocol::SampleFormat::S16Le, channels: src.channels as u8, sample_rate: rate },
         channel_map: if src.channels == 1 { protocol::ChannelMap::mono() } else { protocol::ChannelMap::stereo() },
-        cvolume: Some(protocol::ChannelVolume::norm(src.channels as u8)),
+        cvolume: Some(stream_volume(level, src.channels as u8)),
         sink_name: Some(protocol::DEFAULT_SINK.to_owned()),
         // A short buffer, so pause and seek answer quickly.
         buffer_attr: protocol::stream::BufferAttr { max_length: u32::MAX, target_length: (bps / 5) as u32, pre_buffering: u32::MAX, minimum_request_length: u32::MAX, fragment_size: u32::MAX },
@@ -326,9 +498,20 @@ fn run(input: &Input, playing: bool, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc:
         ..Default::default()
     };
     protocol::write_command_message(&mut sock, SEQ_CREATE, &protocol::Command::CreatePlaybackStream(params), version).map_err(err)?;
-    let mut reader = BufReader::new(sock.try_clone().map_err(|e| e.to_string())?);
-    let (_, info) = protocol::read_reply_message::<protocol::CreatePlaybackStreamReply>(&mut reader, version).map_err(err)?;
+    // (An output's change can come before the answer: passed over, and
+    // asked after once the stream is there.)
+    let info = loop {
+        match protocol::read_command_message(&mut reader, version).map_err(err)? {
+            (seq, protocol::Command::Reply) if seq == SEQ_CREATE => break protocol::TagStructReader::new(&mut reader, version).read::<protocol::CreatePlaybackStreamReply>().map_err(err)?,
+            (seq, protocol::Command::Error(e)) if seq == SEQ_CREATE => return Err(protocol::ProtocolError::ServerError(e).to_string()),
+            _ => {}
+        }
+    };
     let channel = info.channel;
+    let (stream, channels) = (info.stream_index, src.channels as u8);
+    if loudness.is_some() {
+        ask_output(&mut sock, version)?;
+    }
     // Opened (the file read and probed, at its nice): from here this
     // thread only decodes what the server asks for, a fifth of a second
     // ahead, and under load at its nice it missed that.
@@ -348,6 +531,17 @@ fn run(input: &Input, playing: bool, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc:
                             match ts.read::<protocol::PlaybackLatency>() {
                                 Ok(t) => {
                                     if tx.send(Ev::Timing(t)).is_err() {
+                                        return;
+                                    }
+                                }
+                                Err(_) => break,
+                            }
+                        }
+                        Ok((seq, protocol::Command::Reply)) if seq == SEQ_OUTPUT => {
+                            let mut ts = protocol::TagStructReader::new(&mut reader, version);
+                            match ts.read::<protocol::SinkInfo>() {
+                                Ok(s) => {
+                                    if tx.send(Ev::Output(output_of(&s))).is_err() {
                                         return;
                                     }
                                 }
@@ -429,6 +623,21 @@ fn run(input: &Input, playing: bool, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc:
     for ev in rx {
         match ev {
             Ev::Stop | Ev::Gone => break,
+            // The output changed under a sound of a set loudness (its
+            // volume, or which one it is): its stream follows, so it
+            // comes out as loud. (Muted meanwhile: the output's own
+            // mute silences it.)
+            Ev::Server(_, cmd) if loudness.is_some() && matches!(*cmd, protocol::Command::SubscribeEvent(_)) => ask_output(&mut sock, version)?,
+            Ev::Output(output) => {
+                if let Some(at) = loudness.as_ref().and_then(|l| l(output))
+                    && (at - level).abs() > 0.0005
+                {
+                    level = at;
+                    tracing::info!(?output, stream = at, "a sound of a set loudness: the output changed");
+                    let volume = protocol::SetStreamVolumeParams { index: stream, volume: stream_volume(at, channels) };
+                    protocol::write_command_message(&mut sock, SEQ_OTHER, &protocol::Command::SetSinkInputVolume(volume), version).map_err(err)?;
+                }
+            }
             Ev::Play => {
                 cork(&mut sock, false)?;
                 st.playing.store(true, Ordering::Relaxed);

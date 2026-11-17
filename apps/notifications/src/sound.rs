@@ -63,6 +63,24 @@ pub fn play_to_end(path: &Path) {
     std::thread::sleep(Duration::from_millis(200));
 }
 
+/// Play `path` once on this thread, its stream as loud as `loudness`
+/// says for the output it plays to (the start-up chime: a set loudness,
+/// whatever the person's volume; not at all if it says none). Returns
+/// when it's done (or after ten seconds).
+pub fn play_to_end_at(path: &Path, loudness: olo_preview::audio::Loudness) {
+    let input = olo_preview::input::Input::file(path);
+    let player = olo_preview::audio::Player::start_at(&input, loudness);
+    let start = Instant::now();
+    while !player.state.finished.load(Ordering::Relaxed) && player.state.error.lock().unwrap().is_none() && start.elapsed() < Duration::from_secs(10) {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    if let Some(e) = player.state.error.lock().unwrap().as_ref() {
+        tracing::warn!("the start-up sound: {e}");
+    }
+    // Let the server drain what it has before the stream goes.
+    std::thread::sleep(Duration::from_millis(200));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

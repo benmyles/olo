@@ -3672,9 +3672,36 @@ again, its pitch easing down a little through it, as a voice's), 3.8 s;
 or a swell, a D♭ major ninth chord coming in low to high, each note a
 sine with a little of its octave and twelfth, 3.2 s. Either spread in
 stereo with a light Schroeder room, at −6 dBFS, written to the cache as
-a WAV and played as Notifications' sounds are. Preferences ▸ Sound's
+a WAV. **It plays at a quarter of the output's full volume whatever the
+person's volume is, and not at all while the sound is muted** (Ben,
+2026-11-16: "should not play if the sound is muted, and if not muted it
+should play at the same volume regardless of what the user volume is set
+at, and that should be 25% of the max volume"; `olo_chime::level`). The
+person's volume is left as it is: the chime's own stream is made as
+much louder or softer as their volume is below or above a quarter
+(`level::stream_level`; the sound server multiplies the two, a level's
+gain being its cube, so a quarter is −36 dB), by olo-preview's player
+started with a loudness (`audio::Player::start_at`: it asks after the
+output sounds play to, waits up to 5 s for a session's first, sets its
+stream's volume as it makes it, and follows the output's changes while
+it plays, by subscription, so turning the volume meanwhile doesn't
+change how loud the chime is). An output whose volume is the card's
+own (`audio::Output::hardware`, the sound server's `HW_VOLUME_CTRL`: a
+USB display's, an HDA laptop's, Bluetooth headphones') is turned down
+after the sound has left the server as whole numbers, so a stream made
+louder than its samples have room for (6 dB, `level::HEADROOM`) would
+clip: such an output set below about a fifth has its volume lent to
+the chime instead (`level::lend`, `audio::lend_output`: set to a
+quarter while it plays, then put back channel by channel, unless it
+was changed meanwhile, which is the person's and stays). An output at
+nothing is as muted. `olo-notifications --startup-level` says how it
+would play now without playing (the output's volume, whose it is, the
+stream's level); `crates/preview/tests/loudness.rs` plays to
+`olo-fakesound` at several volumes, muted, changing and lent.
+Preferences ▸ Sound's
 Play beside the choice runs `olo-notifications --startup-sound
-olo|swell` (beside Preferences), which plays one and exits;
+olo|swell` (beside Preferences), which plays one so and exits (the
+panel says the rule under it);
 `olo_says_o_l_o` checks the "l" moves the chord's energy from the
 "o"'s second formant (700–950 Hz) to its own (1050–1300 Hz) and back
 (`OLO_STARTUP_WAV=FILE cargo test -p olo-notifications startup_wav`
@@ -4495,6 +4522,16 @@ mark), sandboxed (home read-only, no network). `olo-chime --boot`:
   20 s at most;
 * plays nothing if anyone on the computer turned the start-up sound
   off; else the chime of whoever changed their settings last;
+* plays nothing if the speakers are muted (after marking, below): as
+  the person who used the sound last left them, read from their sound
+  server's kept state, since none runs yet (`state::muted`:
+  `~/.local/state/wireplumber/default-routes`, the line of this card's
+  speakers' route, the card named as WirePlumber names it from udev's
+  `ID_ID` or `ID_PATH`; of several people's, the file changed last), or
+  switched off on the card itself. On a card whose speakers have no
+  volume of their own (the ThinkPad P1's SoundWire one: its use cases
+  name no mixer control for them, the sound server applies the volume)
+  that file is the only place a mute is, and the card plays at full;
 * marks `/run/olo/chime-played` (`olo_protocol::CHIME_PLAYED`), whatever
   comes of it, so the session's Notifications stays quiet that boot;
 * through alsa-lib, loaded as it runs (`libasound.so.2`: no headers to
@@ -4502,14 +4539,31 @@ mark), sandboxed (home read-only, no network). `olo-chime --boot`:
   sets the card's UCM verb (HiFi) and enables its Speaker device as
   WirePlumber would (on the ThinkPad P1's SoundWire card the speakers'
   path is set only then), plays the chime to that device's PCM through
-  its plug (`_ucm0001.plughw:…`), at the volume the speakers were last
-  set to (silent while muted), and switches them off again, verb
+  its plug (`_ucm0001.plughw:…`), and switches them off again, verb
   Inactive: the card as PipeWire finds it. A card without UCM: its
-  speakers' PCM, `plughw:N,D`.
+  speakers' PCM, `plughw:N,D`;
+* at a quarter of the speakers' full volume, whatever the person's is
+  (as the session's, above; it had played at the card's own volume,
+  which on a card like the P1's is full): the samples themselves are
+  made softer (`level::card_gain`, `level::scaled`: 32-bit, so 36 dB
+  down keeps the chime's 16 bits; 16 where a PCM takes no more), by
+  less where the card's own mixer is already turned down
+  (`speakers_volume`: the controls its use cases name for the speakers,
+  `PlaybackMixerElem` and `PlaybackMasterElem`, or Master, Speaker and
+  PCM on a card without use cases, read through alsa-lib's mixer, each
+  so many decibels below its loudest), and louder than they are by no
+  more than their room (6 dB: a card's own volume set below about a
+  fifth plays the chime softer than a quarter). The mixer is read,
+  never set.
 
-`olo-chime --which` says which card and speakers it would play to (and
-the card's use cases) without opening the card; `olo-chime --pcm NAME
-[olo|swell]` plays it to one PCM now (`null` in its tests: the card
+`olo-chime --which` says which card and speakers it would play to (the
+card's use cases, the speakers' own volume if the card has one, the
+card's name as the sound server has it, whether the speakers are muted
+and how loud the chime would play), reading only; `olo-chime --control
+hw:N NAME` says one playback control of a card as it is now (checked
+against `amixer`'s reading of a USB display's PCM: 47.0 dB down, off);
+`olo-chime --pcm NAME [olo|swell]` plays it to one PCM now, as loud as
+on a card with no volume of its own (`null` in its tests: the card
 PipeWire holds is busy). Try it for real only by restarting the
 computer: the firmware's own logo still comes first, before Linux.
 
@@ -4685,7 +4739,15 @@ PulseAudio protocol, plays nothing, and logs each stream once a second
 or with `FAKESOUND_MIC=FILE` (16-bit mono at 48 kHz) that file from each
 recording's start: speech for a voice message (olo-voice's
 `tests/data/*.raw`, 16 kHz, brought up), never the person's own
-microphone.
+microphone. Its speaker's volume is full, or `FAKESOUND_VOLUME=44`
+(percent), muted with `FAKESOUND_MUTED=1`, the card's own with
+`FAKESOUND_HARDWARE=1`, changed a while after a client connects with
+`FAKESOUND_VOLUME_THEN=20@1500` (a subscribed client is told), and a
+client can set it; each stream's line says its own volume and what
+comes out of the speaker ("out": the samples' loudness times both
+volumes; "clipped" where a stream louder than its samples' room goes
+to a card with its own volume). That is how a sound of a set loudness
+(the start-up chime) is tested.
 
 The headless server renders on the GPU's render node and announces it
 in dmabuf feedback, so GL clients (Chrome) get hardware GL

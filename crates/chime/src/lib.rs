@@ -19,6 +19,7 @@
 //! (`wav`).
 
 pub mod cards;
+pub mod level;
 
 pub use olo_protocol::StartupChime;
 

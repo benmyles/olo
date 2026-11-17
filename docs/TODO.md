@@ -25,15 +25,6 @@ something nobody here has is in "Blocked", with what it waits for.
   profile: the computer already says it's a hands-free device), its
   music's controls, and conversations kept across a restart of the
   service.
-- **The start-up sound: silent when muted, and at one volume** (Ben,
-  2026-11-16: "the olo startup sound should not play if the sound is
-  muted, and if not muted it should play at the same volume regardless
-  of what the user volume is set at, and that should be 25% of the max
-  volume"). The chime (olo-chime, the root service at start, and the
-  session's own) reads whether the output is muted, and plays nothing if
-  it is; otherwise it plays at a quarter of the output's full volume,
-  whatever the person's volume is set to, and leaves that setting as it
-  found it.
 - **A paired phone's own picture** (Ben, 2026-11-16: "generate theme
   styled icons for the top 10 most popular android and iphone models and
   show the closest matching icon for a paired phone based on what it
@@ -5960,6 +5951,22 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**The start-up sound: silent when muted, and at one volume**~~
+  (Ben, 2026-11-16: "should not play if the sound is muted, and if not
+  muted it should play at the same volume regardless of what the user
+  volume is set at, and that should be 25% of the max volume"; done
+  2026-11-17). Both chimes (the session's, and olo-chime as the
+  computer starts) play at a quarter of full volume and not at all
+  muted; your volume isn't changed (HACKING, "Olo's start-up sound"
+  and "The start-up chime as the computer starts"). One exception,
+  which is your Studio Display: its volume is the display's own, so
+  set below about a fifth it is set to a quarter while the chime plays
+  and put back after. **For Ben**: tested against a stand-in sound
+  server and by reading your cards, never played on your speakers or
+  at a real start: listen at the next restart. The chime as the
+  computer starts needs Olo Doctor's Update It (its copy in
+  /usr/local/libexec is the old one until then).
 
 - ~~**Terminal remembers a tab's own "keep going" message**~~ (Ben,
   2026-11-16: "terminal should remember that across upgrades and

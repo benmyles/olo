@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### The start-up sound: a quarter of full volume, silent when muted
+
+*02:33* — Olo's start-up sound plays at a quarter of the output's full volume whatever your volume is, and not at all while the sound is muted, as a session starts and as the computer does. Preferences ▸ Sound says so under it; Play goes by it too.
+
+![The start-up sound: a quarter of full volume, silent when muted](2026-11-17/023346-the-start-up-sound-a-quarter-of-full-volume-sile.png)
+
 ### Olo Doctor: everything it does can be undone
 
 *01:59* — What Doctor fixed is listed under Fixed with when, what undoing does, and Undo: the file as it was, the service as it stood, the packages it added removed. What can't be put back (an update) is said. (Made-up entries, in a test.)

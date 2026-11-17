@@ -387,6 +387,16 @@ Each note: what to do, then why (what happened), then how to apply it.
   never reclaimed (`memory.min`), which is where PipeWire and
   WirePlumber run; Olo's own programs are in the login's
   `session-N.scope`, which has none: they lock their own memory.
+- **Two kinds of volume here**: the Studio Display's (USB, Ben's usual
+  output) is the card's own (its `PCM` control; the sound server says
+  `HW_VOLUME_CTRL`), the built-in speakers' is the sound server's (the
+  SoundWire card's use cases name no control for them, so the card
+  plays at full and a mute is only in WirePlumber's state). Anything
+  that plays at a set loudness has to handle both
+  (`olo_chime::level`); read which with `olo-notifications
+  --startup-level` and `olo-chime --which` (both only read). Never
+  play a sound or set a volume on the real server to test: point
+  `PULSE_SERVER` at `olo-fakesound` (HACKING, "To test sound").
 - **olo-fans is running**: a root service keeping the fans on the cool
   profile. It needs `thinkpad_acpi fan_control=Y`, kept in
   `/etc/modprobe.d` since 2026-11-12.

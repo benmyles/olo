@@ -19,20 +19,32 @@
 //!   (Preferences ▸ Sound: each person's Olo settings, readable by root
 //!   at boot); else the chime the one who changed their settings last
 //!   chose (`choice`);
+//! - plays nothing if the speakers are muted: as the person who used
+//!   the sound last left them (their sound server's kept state,
+//!   `state::muted`: on a card whose speakers have no volume of their
+//!   own, the only place a mute is), or switched off on the card itself
+//!   (`speakers_volume`);
 //! - switches the card's speakers on as WirePlumber would (its use-case
 //!   manager, UCM: the "HiFi" verb, the "Speaker" device: on a laptop like
 //!   the ThinkPad P1 the speakers' path is set only then), plays the chime
-//!   (`olo_chime::render`) to the speakers' PCM at the volume the
-//!   speakers were last set to (the card's own, as ALSA put it back;
-//!   silent when they were muted), and switches the speakers off again,
-//!   leaving the card as it found it for PipeWire.
+//!   (`olo_chime::render`) to the speakers' PCM at a quarter of their
+//!   full volume whatever the person's volume is (`olo_chime::level`:
+//!   the samples themselves made softer, by less where the card's own
+//!   mixer is already turned down; the mixer is read, never set), and
+//!   switches the speakers off again, leaving the card as it found it
+//!   for PipeWire. (It played at the card's own volume: full, on a card
+//!   whose volume is the sound server's.)
 //!
-//! `olo-chime --pcm NAME [olo|swell]` plays it to ALSA PCM NAME now (a
-//! test's `null`; the card PipeWire holds is busy). `olo-chime --which`
-//! says which card and speakers it would play to, as /proc says, without
-//! opening the card.
+//! `olo-chime --pcm NAME [olo|swell]` plays it so to ALSA PCM NAME now
+//! (a test's `null`; the card PipeWire holds is busy). `olo-chime
+//! --which` says which card and speakers it would play to, how far the
+//! card's own volume is turned down, whether the speakers are muted and
+//! how loud it would play, reading only (the card isn't opened to
+//! play, nothing on it is set). `olo-chime --control hw:1 Master` says
+//! one playback control of a card as it is now, read the same way.
 
 mod alsa;
+mod state;
 
 use std::{
     path::Path,
@@ -60,7 +72,8 @@ fn main() -> ExitCode {
                 },
                 None => StartupChime::default(),
             };
-            match alsa::Alsa::load().and_then(|a| a.pcm(pcm)?.play(&olo_chime::render(chime))) {
+            let samples = olo_chime::level::scaled(&olo_chime::render(chime), olo_chime::level::card_gain(0.0));
+            match alsa::Alsa::load().and_then(|a| a.pcm(pcm)?.play(&samples)) {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(e) => {
                     eprintln!("olo-chime: {e}");
@@ -73,7 +86,8 @@ fn main() -> ExitCode {
                 println!("card {} ({}): {}", c.index, c.id, c.speakers().map_or("no playback but HDMI".into(), |(d, id)| format!("device {d}, {id}")));
                 // What its use cases say, read only (no verb set: nothing
                 // on the card changes).
-                if let Ok(a) = alsa::Alsa::load()
+                let a = alsa::Alsa::load();
+                if let Ok(a) = &a
                     && let Ok(ucm) = a.ucm(&format!("hw:{}", c.index))
                 {
                     for verb in ucm.list("_verbs") {
@@ -84,6 +98,28 @@ fn main() -> ExitCode {
                         }
                     }
                 }
+                // How loud it would play, and whether at all.
+                let own = a.as_ref().map(|a| speakers_volume(a, &c)).unwrap_or_default();
+                match own.controls.as_slice() {
+                    [] => println!("the speakers' volume: the sound server's (the card has none of its own for them)"),
+                    controls => {
+                        let each: Vec<String> = controls
+                            .iter()
+                            .map(|(name, k)| format!("{name} {}{}", k.db.map_or("no volume".into(), |d| format!("{:.1} dB down", -d)), if k.on == Some(false) { ", off" } else { "" }))
+                            .collect();
+                        println!("the speakers' volume: the card's own, {:.1} dB below its loudest ({})", -own.db, each.join("; "));
+                    }
+                }
+                let root = Path::new("/");
+                println!("as the sound server names it: {}", state::card_name(root, c.index).unwrap_or_else(|| "unknown".into()));
+                if own.off {
+                    println!("the speakers are switched off on the card: the chime isn't played");
+                } else if state::muted(root, c.index) {
+                    println!("the speakers were left muted: the chime isn't played");
+                } else {
+                    let gain = olo_chime::level::card_gain(own.db);
+                    println!("the chime plays {:.1} dB below its own loudness: a quarter of the speakers' full volume", -olo_chime::level::db(gain));
+                }
                 ExitCode::SUCCESS
             }
             None => {
@@ -91,12 +127,40 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        // A card's playback control as it is now, read (`--control hw:1
+        // Master`): what `--which` goes by, for any card.
+        Some("--control") => {
+            let (Some(card), Some(named)) = (args.get(1), args.get(2)) else { return usage() };
+            let (name, index) = control_name(named);
+            match alsa::Alsa::load().and_then(|a| Ok(a.mixer(card)?.playback(&name, index))) {
+                Ok(Some(c)) => {
+                    let volume = c.db.map_or("no volume".into(), |d| format!("{:.1} dB below its loudest", -d));
+                    println!(
+                        "{name}: {volume}{}",
+                        match c.on {
+                            Some(true) => ", on",
+                            Some(false) => ", off",
+                            None => "",
+                        }
+                    );
+                    ExitCode::SUCCESS
+                }
+                Ok(None) => {
+                    println!("{card} has no playback control named {name}");
+                    ExitCode::FAILURE
+                }
+                Err(e) => {
+                    eprintln!("olo-chime: {e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
         _ => usage(),
     }
 }
 
 fn usage() -> ExitCode {
-    eprintln!("usage: olo-chime --boot | --pcm NAME [olo|swell] | --which");
+    eprintln!("usage: olo-chime --boot | --pcm NAME [olo|swell] | --which | --control CARD NAME");
     ExitCode::from(2)
 }
 
@@ -120,10 +184,26 @@ fn boot() -> ExitCode {
         let _ = std::fs::create_dir_all(dir);
     }
     let _ = std::fs::write(mark, b"");
-    let samples = olo_chime::render(chime);
-    match alsa::Alsa::load().and_then(|a| play_on(&a, &card, &samples)) {
+    let a = match alsa::Alsa::load() {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("olo-chime: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    // Muted (as the person left the speakers, or on the card itself):
+    // nothing is played.
+    let own = speakers_volume(&a, &card);
+    if own.off || state::muted(Path::new("/"), card.index) {
+        eprintln!("olo-chime: the speakers are muted: not played");
+        return ExitCode::SUCCESS;
+    }
+    // A quarter of the speakers' full volume, whatever the person's is.
+    let gain = olo_chime::level::card_gain(own.db);
+    let samples = olo_chime::level::scaled(&olo_chime::render(chime), gain);
+    match play_on(&a, &card, &samples) {
         Ok(pcm) => {
-            eprintln!("olo-chime: played on card {} ({}), {pcm}", card.index, card.id);
+            eprintln!("olo-chime: played on card {} ({}), {pcm}, {:.1} dB below its own loudness (the card's own volume {:.1} dB down)", card.index, card.id, -olo_chime::level::db(gain), -own.db);
             ExitCode::SUCCESS
         }
         Err(e) => {
@@ -133,10 +213,66 @@ fn boot() -> ExitCode {
     }
 }
 
+/// The speakers' own volume on a card, read.
+#[derive(Debug, Default)]
+struct Own {
+    /// How far below its loudest, decibels (0: at its loudest, or the
+    /// card has no volume for them).
+    db: f32,
+    /// Switched off on the card.
+    off: bool,
+    /// The controls it is made of, as each is.
+    controls: Vec<(String, alsa::Control)>,
+}
+
+/// `card`'s speakers' own volume, as its mixer is now (read, never
+/// set): the controls its use cases name for the speakers (the one the
+/// sound server sets their volume by, and its master), or, on a card
+/// without use cases, those a sound server makes the speakers' volume
+/// of (Master, Speaker, PCM). None of them: the card has no volume for
+/// its speakers (the sound server's is the only one).
+fn speakers_volume(a: &alsa::Alsa, card: &Card) -> Own {
+    let hw = format!("hw:{}", card.index);
+    let mut names: Vec<String> = Vec::new();
+    match a.ucm(&hw) {
+        Ok(ucm) => {
+            let verbs = ucm.list("_verbs");
+            if let Some(verb) = verbs.iter().find(|v| *v == "HiFi").or(verbs.first()) {
+                names.extend(["PlaybackMixerElem", "PlaybackMasterElem"].iter().filter_map(|what| ucm.get(&format!("{what}/Speaker/{verb}"))).filter(|n| !n.is_empty()));
+            }
+        }
+        Err(_) => names.extend(["Master", "Speaker", "PCM"].map(String::from)),
+    }
+    names.dedup();
+    if names.is_empty() {
+        return Own::default();
+    }
+    let Ok(mixer) = a.mixer(&hw) else { return Own::default() };
+    let controls: Vec<(String, alsa::Control)> = names
+        .into_iter()
+        .filter_map(|n| {
+            let (name, index) = control_name(&n);
+            Some((n.clone(), mixer.playback(&name, index)?))
+        })
+        .collect();
+    Own { db: controls.iter().filter_map(|(_, c)| c.db).sum(), off: controls.iter().any(|(_, c)| c.on == Some(false)), controls }
+}
+
+/// A control as use cases name it: `Speaker`, `Master,1`, `'Speaker
+/// Digital',0`.
+fn control_name(named: &str) -> (String, u32) {
+    let named = named.trim();
+    let (name, index) = match named.rsplit_once(',') {
+        Some((name, index)) if index.trim().parse::<u32>().is_ok() => (name, index.trim().parse().unwrap_or(0)),
+        _ => (named, 0),
+    };
+    (name.trim().trim_matches(|c| c == '\'' || c == '"').to_owned(), index)
+}
+
 /// The chime played to `card`'s speakers: through its use cases where it
 /// has them (switched on, played, switched off again), else to its
 /// speakers' (or first analog) PCM as its mixer is. The PCM played to.
-fn play_on(a: &alsa::Alsa, card: &Card, samples: &[i16]) -> Result<String, String> {
+fn play_on(a: &alsa::Alsa, card: &Card, samples: &[i32]) -> Result<String, String> {
     if let Ok(ucm) = a.ucm(&format!("hw:{}", card.index)) {
         let verbs = ucm.list("_verbs");
         if let Some(verb) = verbs.iter().find(|v| *v == "HiFi").or(verbs.first()) {
@@ -227,15 +363,9 @@ fn wait_for_card() -> Option<Card> {
 /// their home's (`~/.config/olo/app_server.json`), the people being the
 /// accounts from 1000 up in /etc/passwd.
 fn choice(root: &Path) -> Option<StartupChime> {
-    let passwd = std::fs::read_to_string(root.join("etc/passwd")).unwrap_or_default();
     let mut latest: Option<(std::time::SystemTime, StartupChime)> = None;
-    for line in passwd.lines() {
-        let f: Vec<&str> = line.split(':').collect();
-        let (Some(uid), Some(home)) = (f.get(2).and_then(|u| u.parse::<u32>().ok()), f.get(5)) else { continue };
-        if !(1000..60000).contains(&uid) {
-            continue;
-        }
-        let path = root.join(home.trim_start_matches('/')).join(".config/olo/app_server.json");
+    for home in state::homes(root) {
+        let path = home.join(".config/olo/app_server.json");
         let Some(settings) = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<olo_protocol::Settings>(&t).ok()) else { continue };
         if !settings.startup_sound {
             return None;
@@ -283,6 +413,14 @@ mod tests {
     }
 
     #[test]
+    fn controls_as_use_cases_name_them() {
+        assert_eq!(control_name("Speaker"), ("Speaker".into(), 0));
+        assert_eq!(control_name("Master,1"), ("Master".into(), 1));
+        assert_eq!(control_name("'Speaker Digital',0"), ("Speaker Digital".into(), 0));
+        assert_eq!(control_name("Front, Rear"), ("Front, Rear".into(), 0));
+    }
+
+    #[test]
     fn hw_is_played_through_plug() {
         assert_eq!(plug("hw:sofsoundwire,2"), "plughw:sofsoundwire,2");
         assert_eq!(plug("_ucm0001.hw:sofsoundwire,2"), "_ucm0001.plughw:sofsoundwire,2");
@@ -295,7 +433,8 @@ mod tests {
     fn plays_through_alsa_lib() {
         let a = alsa::Alsa::load().expect("alsa-lib");
         let start = Instant::now();
-        a.pcm("null").expect("null PCM").play(&olo_chime::render(StartupChime::Olo)).expect("played");
+        let samples = olo_chime::level::scaled(&olo_chime::render(StartupChime::Olo), olo_chime::level::card_gain(0.0));
+        a.pcm("null").expect("null PCM").play(&samples).expect("played");
         // (The null PCM takes it as fast as it's written.)
         assert!(start.elapsed() < Duration::from_secs(3));
         assert!(a.pcm("hw:99,0").is_err(), "no such card");

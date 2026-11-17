@@ -239,6 +239,10 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                     ui.button("Play", move |_, _| play_startup(chime));
                 });
             });
+            // (Ben, 2026-11-16: not when muted, and "at the same volume
+            // regardless of what the user volume is set at": said, since
+            // Play goes by it too.)
+            ui.note("It plays at a quarter of full volume, whatever yours is set to, and not while the sound is muted.");
         });
     });
     let right = ui.collect(|ui| voice_section(ui, st, &devices));

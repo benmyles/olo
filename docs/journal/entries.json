@@ -4702,5 +4702,11 @@
   "title": "Olo Doctor: everything it does can be undone",
   "caption": "What Doctor fixed is listed under Fixed with when, what undoing does, and Undo: the file as it was, the service as it stood, the packages it added removed. What can't be put back (an update) is said. (Made-up entries, in a test.)",
   "image": "2026-11-17/015940-olo-doctor-everything-it-does-can-be-undone.png"
+ },
+ {
+  "time": "2026-11-17T02:33:46",
+  "title": "The start-up sound: a quarter of full volume, silent when muted",
+  "caption": "Olo's start-up sound plays at a quarter of the output's full volume whatever your volume is, and not at all while the sound is muted, as a session starts and as the computer does. Preferences \u25b8 Sound says so under it; Play goes by it too.",
+  "image": "2026-11-17/023346-the-start-up-sound-a-quarter-of-full-volume-sile.png"
  }
 ]
