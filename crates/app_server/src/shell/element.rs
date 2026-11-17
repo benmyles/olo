@@ -384,6 +384,10 @@ impl SpaceElement for WindowElement {
 
     fn set_activate(&self, activated: bool) {
         self.decoration().focused = activated;
+        // Looked at: its red dot fades, where its app said it would.
+        if activated && self.meta().unread.get().is_some_and(|u| u.clear_on_focus) {
+            self.meta().unread_fade();
+        }
         SpaceElement::set_activate(&self.0, activated);
     }
     fn output_enter(&self, output: &Output, overlap: Rectangle<i32, Logical>) {
@@ -503,7 +507,16 @@ impl WindowElement {
             let title = self.title();
             let content = self.content_size();
             let start = std::time::Instant::now();
-            let (tabs, frame) = self.decoration().render_elements(renderer, &title, content, location, scale, alpha);
+            // (Its red dot: room on the tab while it's there, drawn over it
+            // as strong as it is, `deco::dot_elements`.)
+            let dot = self.meta().unread_strength();
+            self.decoration().dot = dot > 0.0;
+            let (mut tabs, frame) = self.decoration().render_elements(renderer, &title, content, location, scale, alpha);
+            if dot > 0.0 {
+                // (Over the tab: elements go topmost first.)
+                let dots = self.decoration().dot_elements(renderer, &title, content, location, scale, alpha * dot);
+                tabs.splice(0..0, dots);
+            }
             if self.tab_only() {
                 return tabs.into_iter().map(WindowRenderElement::Tab).map(C::from).collect();
             }

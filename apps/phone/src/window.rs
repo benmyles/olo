@@ -333,6 +333,9 @@ pub struct Phone {
     archived: std::collections::HashMap<String, i64>,
     /// The list shows the archive.
     in_archive: bool,
+    /// How many were unread when last loaded (its tab's red dot when more
+    /// come).
+    unread_was: usize,
     /// Conversations chosen together (⌘-click, ⇧-click, Select All), by
     /// key, and the one a ⇧-click goes from.
     chosen: Vec<String>,
@@ -436,6 +439,7 @@ impl Phone {
             shaping: false,
             archived: if demo.is_some() { Default::default() } else { load_archived() },
             in_archive: saved.in_archive,
+            unread_was: usize::MAX,
             chosen: Vec::new(),
             chosen_from: None,
             _watch: None,
@@ -796,6 +800,13 @@ impl View for Phone {
                 }
                 self.contacts = contacts;
                 self.data += 1;
+                // More unread while the window isn't in front: its tab's
+                // red dot, until it's looked at (as Deskbar's is the app's).
+                let unread: usize = self.threads.iter().map(Conversation::unread).sum();
+                if unread > self.unread_was && !cx.is_window_active() && !self.demo {
+                    olo_kit::unread::mark(cx, true, true);
+                }
+                self.unread_was = unread;
                 self.mark_read(cx);
             }
             Msg::Reacted(key, index, emoji) => {

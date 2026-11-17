@@ -52,17 +52,6 @@ something nobody here has is in "Blocked", with what it waits for.
   i'd rather). right now it just opens in whatever window and it's
   really annoying").
 
-- **The red dot on the window's tab, and on the tab inside it, that has
-  what's unread** (Ben, 2026-11-17: "when there's a red dot badge for an
-  app in the deskbar, that app's title window bar (the yellow tab) for
-  the specific window that has the alertable item should get a red dot
-  too (i'm not sure if it should be on the left or right, try both and
-  see what looks best) and if it's an app that supports tabs the
-  specific tab that has the alertable item should also get a red dot.
-  and they should all automatically go away with a nice fade out
-  animation over about 5s after activating the target tab (or window if
-  it's not a tabbed app)").
-
 - **Themes: one list (Classic, Platinum, BeOS and every scheme), each
   perfect, with icons of its own, Customize…, and a wallpaper of its
   own** (Ben, 2026-11-17: "the split between themes and colors doesn't
@@ -85,6 +74,12 @@ something nobody here has is in "Blocked", with what it waits for.
   so much attention to detail on this it's not even funny: every single
   pixel, hue, etc needs to be just absolutely perfect and stunningly
   beautiful").
+
+- **Agent Screens: Take Screenshot…, at the time shown, at a size
+  chosen** (Ben, 2026-11-17: "agent screens needs a "Take
+  Screenshot..." button that takes a screenshot at the current time
+  point and saves it and the user should be able to choose the size
+  like they can for the video").
 
 - **Last, once everything above that isn't blocked is done: the website,
   the README and the docs refreshed, and a new GitHub release** (Ben,
@@ -5943,6 +5938,19 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**The red dot on the window's tab, and on the tab inside it, that
+  has what's unread**~~ (Ben, 2026-11-17; done the same day). The
+  window's yellow tab gets a red dot after its title (both sides tried:
+  on the right it reads as Deskbar's does, after the name; on the left
+  it looked like a document's unsaved mark, and the title moved as the
+  dot came and went). Activating the window (or, in Terminal, looking
+  at the tab that wanted you) fades it over five seconds; Terminal's
+  own tab has the same dot and fades with it. Telegram, Phone, Slack,
+  OS Updates and Olo Doctor mark their windows as something new comes
+  in while you're elsewhere. Looked at in a test session at 1× to 2×
+  (whole pixels, centred with the boxes) and the fade taken in
+  pictures (whole, half, gone). **Needs the new app_server.**
 
 - ~~**Telegram and Phone: react to a message from its right-click
   menu**~~ (Ben, 2026-11-17; done the same day). Telegram's message

@@ -350,6 +350,13 @@ impl Cx {
         self.with_window(id, move |_, cx| olo_kit::agent::set_path(cx, path));
     }
 
+    /// Window `id`'s tab: something unread in one of its tabs (its red
+    /// dot), or no longer (it fades). Terminal says when, by its tabs
+    /// (`Tab::look_at`).
+    pub fn mark_unread(&mut self, id: WindowId, unread: bool) {
+        self.with_window(id, move |_, cx| olo_kit::unread::mark(cx, unread, false));
+    }
+
     /// Does `f` with window `id`'s view, on its looper, after this.
     pub fn with_window(&mut self, id: WindowId, f: impl FnOnce(&mut Shell, &mut ShellCx) + Send + 'static) {
         self.tell(id, ShellMsg::Do(Box::new(f)));
@@ -1145,7 +1152,14 @@ impl Terminal {
                 t.tab().report_focus(focused);
             }
             if focused {
-                t.tab_mut().attention = false;
+                t.tab_mut().look_at();
+            }
+            // Its window's red dot: while a tab of it wants attention; let
+            // go (fading, with the tab's) once none does.
+            let wants = t.tabs.iter().any(|tab| tab.attention);
+            if t.unread_said != wants {
+                t.unread_said = wants;
+                olo_kit::unread::mark(cx, wants, false);
             }
         }
         self.say_waiting();
@@ -1208,6 +1222,7 @@ impl Terminal {
                     badge: pr.map(repos::pr_badge),
                     group: tab.group,
                     faded: tab.hidden_tiled.then(|| "hidden when tiled".into()),
+                    unread: tab.dot(),
                 }
             })
             .collect();

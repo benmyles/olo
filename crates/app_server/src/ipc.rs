@@ -429,6 +429,12 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
                 Reply::Ok
             }
+            Request::SetWindowUnread { pid, surface, app_id, unread, clear_on_focus } => {
+                if self.set_window_unread(pid, surface, app_id.as_deref(), unread, clear_on_focus) == 0 && unread {
+                    // (Nothing of that program or app on screen: nothing to mark.)
+                }
+                Reply::Ok
+            }
             Request::SetOnTop { id, on } => match self.window_by_id(id) {
                 Some(w) => {
                     self.set_on_top(&w, on);

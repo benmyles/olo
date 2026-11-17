@@ -701,6 +701,11 @@ impl Tg {
         }
         let unread = self.store.total_unread();
         if unread != self.badge {
+            // More unread while the window isn't in front: its tab's red
+            // dot, until it's looked at (as Deskbar's is the app's).
+            if unread > self.badge && !self.focused {
+                olo_kit::unread::mark(cx, true, true);
+            }
             self.badge = unread;
             self.notes.badge(unread);
         }

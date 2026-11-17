@@ -218,6 +218,8 @@ impl View for Strip {
             icon: Some(icon.clone()),
             group,
             faded: faded.then(|| "hidden when tiled".into()),
+            // (One with something unread: its red dot after the title.)
+            unread: (label == "ben@aurora:~/web").then_some(None),
             ..Default::default()
         };
         let tabs = vec![tab("ben@aurora:~/src/olo", Some(0), false), tab("ben@aurora:~/notes", Some(0), true), tab("ben@aurora:~/web", Some(1), false), tab("ben@aurora:~", None, false)];

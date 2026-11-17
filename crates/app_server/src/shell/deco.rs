@@ -117,9 +117,28 @@ pub struct Decoration {
     frame_ids: Vec<Id>,
     frame_commit: CommitCounter,
     frame_key: Option<(bool, u64, bool)>,
+    /// Its window has something unread (`WindowMeta::unread`): room on
+    /// the tab for the red dot, drawn over it (`dot_elements`).
+    pub dot: bool,
+    /// The red dot as drawn (its device size and colour).
+    dot_look: Option<((i32, [u8; 4]), MemoryRenderBuffer)>,
 }
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+
+/// The red dot on a window's tab (`Decoration::dot`): its size, and its
+/// gap from the title.
+const DOT: i32 = 7;
+const DOT_GAP: i32 = 5;
+
+/// The red dot is after the title, by the zoom box, as Deskbar's is
+/// after the app's name; not before it, by the close box (both tried,
+/// 2026-11-17): there it read as a document's unsaved mark, and the
+/// title moved over as the dot came and went, where after it the tab
+/// only grows.
+fn dot_left() -> bool {
+    false
+}
 
 /// Tabs drawn off the frame: a tab's text is shaped and its glyphs drawn
 /// by cosmic-text, which took 4-13 ms now and then (its first use of a
@@ -176,6 +195,8 @@ struct TabKey {
     closed: bool,
     /// It has a zoom box (`Decoration::zoomless`).
     zoom: bool,
+    /// It has room for the red dot (`Decoration::dot`).
+    dot: bool,
 }
 
 pub const DOUBLE_CLICK: Duration = Duration::from_millis(400);
@@ -338,6 +359,8 @@ impl Default for Decoration {
             frame_ids: (0..16).map(|_| Id::new()).collect(),
             frame_commit: CommitCounter::default(),
             frame_key: None,
+            dot: false,
+            dot_look: None,
         }
     }
 }
@@ -349,13 +372,16 @@ pub struct TabLayout {
     pub width: i32,
     /// It has a zoom box at its right (not in Focus: `Decoration::zoomless`).
     pub zoom: bool,
+    /// It has the red dot beside its title (`Decoration::dot`).
+    pub dot: bool,
 }
 
 /// What a tab holds beside its title: the close box and its gap at the
 /// left, and at the right the zoom box and its gap, or, with no zoom
-/// box, the tab's own edge as far from the title.
-fn beside_title(zoom: bool) -> i32 {
-    (BOX_INSET + BOX_SIZE + TITLE_GAP) + if zoom { BOX_INSET + BOX_SIZE + TITLE_GAP } else { BOX_INSET + TITLE_GAP }
+/// box, the tab's own edge as far from the title; and the red dot and its
+/// gap, with one.
+fn beside_title(zoom: bool, dot: bool) -> i32 {
+    (BOX_INSET + BOX_SIZE + TITLE_GAP) + if zoom { BOX_INSET + BOX_SIZE + TITLE_GAP } else { BOX_INSET + TITLE_GAP } + if dot { DOT + DOT_GAP } else { 0 }
 }
 
 impl TabLayout {
@@ -369,9 +395,22 @@ impl TabLayout {
         Rectangle::new((self.x + self.width - BOX_INSET - BOX_SIZE, (TAB_HEIGHT - BOX_SIZE) / 2).into(), (BOX_SIZE, BOX_SIZE).into())
     }
     /// Room for the title between the boxes (to the tab's edge, with no
-    /// zoom box).
+    /// zoom box), and the red dot's beside it.
     pub fn title_space(&self) -> i32 {
-        self.width - beside_title(self.zoom)
+        self.width - beside_title(self.zoom, self.dot)
+    }
+
+    /// Where the title starts, from the tab's left (past the red dot,
+    /// where it's on the left).
+    pub fn title_x(&self) -> i32 {
+        BOX_INSET + BOX_SIZE + TITLE_GAP + if self.dot && dot_left() { DOT + DOT_GAP } else { 0 }
+    }
+
+    /// Where the red dot is (element-local), with one: by the close box
+    /// before the title, or by the zoom box after it.
+    pub fn dot_rect(&self) -> Rectangle<i32, Logical> {
+        let x = if dot_left() { self.x + BOX_INSET + BOX_SIZE + TITLE_GAP } else { self.x + self.width - if self.zoom { BOX_INSET + BOX_SIZE + TITLE_GAP } else { BOX_INSET + TITLE_GAP } - DOT };
+        Rectangle::new((x, (TAB_HEIGHT - DOT) / 2).into(), (DOT, DOT).into())
     }
 }
 
@@ -409,7 +448,7 @@ impl Decoration {
 
     /// How wide a tab wants to be for `title`, with room for it all.
     pub fn wanted_tab_width(&mut self, title: &str) -> i32 {
-        (beside_title(!self.zoomless) + self.title_width(title)).max(MIN_TAB_WIDTH)
+        (beside_title(!self.zoomless, self.dot) + self.title_width(title)).max(MIN_TAB_WIDTH)
     }
 
     pub fn tab_layout(&mut self, title: &str, content: Size<i32, Logical>) -> TabLayout {
@@ -420,11 +459,11 @@ impl Decoration {
         };
         // Docked: its place among another frame's tabs, wherever that is.
         if self.docked {
-            return TabLayout { x: self.tab_offset.max(0), width: wanted.max(1), zoom: !self.zoomless };
+            return TabLayout { x: self.tab_offset.max(0), width: wanted.max(1), zoom: !self.zoomless, dot: self.dot };
         }
         let width = wanted.min(frame_w).max(1);
         let x = self.tab_offset.clamp(0, (frame_w - width).max(0));
-        TabLayout { x, width, zoom: !self.zoomless }
+        TabLayout { x, width, zoom: !self.zoomless, dot: self.dot }
     }
 
     /// Where the tab's title is (element-local), if the tab cuts it short
@@ -434,7 +473,7 @@ impl Decoration {
         let tab = self.tab_layout(title, content);
         let space = tab.title_space();
         let cut_short = cut(title).len() != title.len() || self.title_width(title) > space;
-        (cut_short && space > 4).then(|| Rectangle::new((tab.x + BOX_INSET + BOX_SIZE + TITLE_GAP, 0).into(), (space, TAB_HEIGHT).into()))
+        (cut_short && space > 4).then(|| Rectangle::new((tab.x + tab.title_x(), 0).into(), (space, TAB_HEIGHT).into()))
     }
 
     /// Classify an element-local point.
@@ -572,6 +611,7 @@ impl Decoration {
             target: self.target,
             closed: self.rolled,
             zoom: tab.zoom,
+            dot: tab.dot,
         };
         warm_tabs(renderer, phys.1);
         // A look drawn before, or done by the worker, is shown at once; a
@@ -677,6 +717,71 @@ impl Decoration {
         }
         (tabs, frame)
     }
+}
+
+impl Decoration {
+    /// The red dot on the tab (`dot`), `alpha` as strong (fading): a
+    /// circle in the look's unread red drawn once for its device size, one
+    /// texture pixel to a device pixel, over the tab where `dot_rect` says.
+    pub fn dot_elements<R>(
+        &mut self,
+        renderer: &mut R,
+        title: &str,
+        content: Size<i32, Logical>,
+        location: Point<i32, Physical>,
+        scale: Scale<f64>,
+        alpha: f32,
+    ) -> Vec<Exact<MemoryRenderBufferRenderElement<R>>>
+    where
+        R: Renderer + ImportMem,
+        R::TextureId: Send + Clone + 'static,
+    {
+        let tab = self.tab_layout(title, content);
+        if !tab.dot || alpha <= 0.0 || tab.title_space() < 0 {
+            return Vec::new();
+        }
+        let s = scale.x;
+        let r = tab.dot_rect();
+        // On device pixels: its left and top rounded, its size the dot's
+        // rounded (even, so it's centred on the boxes' middle at every
+        // scale).
+        let d = ((DOT as f64 * s).round() as i32).max(2);
+        let centre_y = (TAB_HEIGHT as f64 * s / 2.0).round() as i32;
+        let x = (r.loc.x as f64 * s).round() as i32;
+        let at = location + Point::<i32, Physical>::from((x, centre_y - d / 2));
+        let color = theme::palette().unread;
+        let key = (d, color);
+        if self.dot_look.as_ref().is_none_or(|(k, _)| *k != key) {
+            self.dot_look = Some((key, dot_buffer(d, color)));
+        }
+        let Some((_, buffer)) = &self.dot_look else { return Vec::new() };
+        crate::render::exact(renderer, Rectangle::new(at, (d, d).into()), buffer, (d, d), Some(alpha), Kind::Unspecified).into_iter().collect()
+    }
+}
+
+/// A disc `d` device pixels across in `color` (premultiplied `Abgr8888`),
+/// its edge antialiased by coverage.
+fn dot_buffer(d: i32, color: Rgba) -> MemoryRenderBuffer {
+    let mut data = Vec::with_capacity((d * d * 4) as usize);
+    let (c, radius) = (d as f32 / 2.0, d as f32 / 2.0);
+    for y in 0..d {
+        for x in 0..d {
+            // Coverage, 4 × 4 samples a pixel.
+            let mut n = 0;
+            for sy in 0..4 {
+                for sx in 0..4 {
+                    let (px, py) = (x as f32 + (sx as f32 + 0.5) / 4.0 - c, y as f32 + (sy as f32 + 0.5) / 4.0 - c);
+                    if px * px + py * py <= radius * radius {
+                        n += 1;
+                    }
+                }
+            }
+            let a = n as f32 / 16.0 * color[3] as f32 / 255.0;
+            data.extend_from_slice(&[(color[0] as f32 * a).round() as u8, (color[1] as f32 * a).round() as u8, (color[2] as f32 * a).round() as u8, (255.0 * a).round() as u8]);
+        }
+    }
+    let size: Size<i32, Buffer> = (d, d).into();
+    MemoryRenderBuffer::from_slice(&data, Fourcc::Abgr8888, size, 1, Transform::Normal, None)
 }
 
 fn sk(c: Rgba) -> Color {
@@ -802,7 +907,7 @@ fn draw_tab(palette: &Palette, key: &TabKey, tab: &TabLayout, s: f64) -> Pixmap 
     if space > 4 {
         let title = text::ellipsize(&key.title, fonts::TAB_SIZE, true, space as f32);
         let size = fonts::TAB_SIZE * s as f32;
-        let tx = px(BOX_INSET + BOX_SIZE + TITLE_GAP) as f32;
+        let tx = px(tab.title_x()) as f32;
         // Level with the boxes.
         let ty = text::top_for_centre(top as f32 + px(BOX_SIZE) as f32 / 2.0, size, true);
         text::draw(&mut pixmap, &title, tx, ty, size, true, text_color);
@@ -872,7 +977,19 @@ mod title_tests {
             let mut d = Decoration::default();
             let tab = d.tab_layout("Network", (800, 600).into());
             let phys = ((tab.width as f64 * s).round() as i32, (TAB_HEIGHT as f64 * s).round() as i32);
-            let key = |closed| TabKey { title: "Network".into(), focused: true, hover: Part::None, pressed: Part::None, width: tab.width, phys, generation: 0, target: false, closed, zoom: tab.zoom };
+            let key = |closed| TabKey {
+                title: "Network".into(),
+                focused: true,
+                hover: Part::None,
+                pressed: Part::None,
+                width: tab.width,
+                phys,
+                generation: 0,
+                target: false,
+                closed,
+                zoom: tab.zoom,
+                dot: false,
+            };
             let (hair, bevel) = lines(s);
             let at = |p: &Pixmap, x: i32, y: i32| {
                 let c = p.pixel(x as u32, y as u32).expect("in the tab");
@@ -919,6 +1036,7 @@ mod title_tests {
                     target: false,
                     closed: false,
                     zoom: tab.zoom,
+                    dot: false,
                 };
                 let t = std::time::Instant::now();
                 let _ = draw_tab(&palette, &key, &tab, s);

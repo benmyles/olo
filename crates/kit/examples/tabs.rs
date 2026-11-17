@@ -33,7 +33,13 @@ impl Tabs {
             style::fill_rect(g, b, style::c(p.document_background));
             style::frame_rect(g, b, style::c(p.panel_text));
         });
-        let tabs = self.titles.iter().map(|(t, group)| StripTab { label: (*t).into(), icon: Some(icon.clone()), group: *group, ..Default::default() }).collect();
+        // (The second with something unread: its red dot.)
+        let tabs = self
+            .titles
+            .iter()
+            .enumerate()
+            .map(|(i, (t, group))| StripTab { label: (*t).into(), icon: Some(icon.clone()), group: *group, unread: (i == 1).then_some(None), ..Default::default() })
+            .collect();
         let groups = vec![StripGroup { name: "olo".into(), color: style::c(p.group_color(0).fill) }, StripGroup { name: "shiftup".into(), color: style::c(p.group_color(5).fill) }];
         let (fill, ink) = (style::c(p.terminal.background), style::c(p.terminal.foreground));
         TabStrip::new(id.to_owned(), tabs, self.active).groups(groups).content(fill, ink).on_action(cx.msg_with(|a: &StripAction| Msg::Act(*a)))

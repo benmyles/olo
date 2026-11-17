@@ -452,6 +452,11 @@ impl View for OsUpdates {
                             self.fresh_at = Some(now);
                         }
                         self.error = None;
+                        // More to install than before: the window's tab's
+                        // red dot, until it's looked at.
+                        if loaded.updates.updates.len() > self.updates.updates.len() && !self.updates.updates.is_empty() {
+                            olo_kit::unread::mark_program(true, true);
+                        }
                         self.updates = Rc::new(loaded.updates);
                         self.notes.badge(self.updates.updates.len() as u32);
                         self.repos = Rc::new(loaded.repos);

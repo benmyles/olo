@@ -64,6 +64,35 @@ pub struct StripTab {
     /// [`STRIP_FADED`]), the rest as any tab's; agents read the reason
     /// in its name ("hidden when tiled").
     pub faded: Option<SharedString>,
+    /// Something unread in it, as the window's tab and Deskbar's red dot
+    /// say (`crate::unread`): a red dot after its title; `Some(Some(t))`,
+    /// looked at since `t`, fading out over [`STRIP_DOT_FADE`].
+    pub unread: Option<Option<std::time::Instant>>,
+}
+
+/// How long a tab's red dot takes to fade once the tab is looked at (as
+/// a window tab's does: app_server's `UNREAD_FADE`).
+pub const STRIP_DOT_FADE: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// A tab's red dot's size, and its gap from the title.
+const STRIP_DOT: f32 = 7.0;
+const STRIP_DOT_GAP: f32 = 5.0;
+
+/// How strong a tab's red dot is now (`StripTab::unread`): whole while
+/// unread, easing out over [`STRIP_DOT_FADE`] once looked at; 0 after.
+pub fn dot_strength(unread: Option<Option<std::time::Instant>>) -> f32 {
+    match unread {
+        None => 0.0,
+        Some(None) => 1.0,
+        Some(Some(since)) => {
+            let t = since.elapsed().as_secs_f32() / STRIP_DOT_FADE.as_secs_f32();
+            if t >= 1.0 {
+                return 0.0;
+            }
+            let left = 1.0 - t;
+            left * left * (3.0 - 2.0 * left)
+        }
+    }
 }
 
 /// A group of a [`TabStrip`]'s tabs: the name on its chip, and its colour.
@@ -688,7 +717,19 @@ fn tab_face(g: &mut Painter, tab: &StripTab, selected: bool, (pointed, on_close)
         g.paint_segment(k.origin, k.bottom_right(), w, true, color);
         g.paint_segment(point(k.right(), k.top()), point(k.left(), k.bottom()), w, true, color);
     }
-    let end = close.left() - px(m::TIGHT);
+    let mut end = close.left() - px(m::TIGHT);
+    // Its red dot, after the title (the title cut short for it), fading
+    // once looked at: drawn again each frame while it does.
+    let dot = dot_strength(tab.unread);
+    if dot > 0.0 {
+        let at = style::snap_centred(g, point(end - px(STRIP_DOT / 2.0), cy), STRIP_DOT, STRIP_DOT);
+        let red = style::c(theme::palette().unread).opacity(dot);
+        g.paint_quad(olo_interface::fill(at, red).corner_radii(at.size.width / 2.0));
+        end -= px(STRIP_DOT + STRIP_DOT_GAP);
+        if dot < 1.0 {
+            g.paint_again_within(0.0);
+        }
+    }
     if let Some(paint) = badge.filter(|_| !pointed) {
         let b = style::snap_centred(g, close.center(), STRIP_BADGE, STRIP_BADGE);
         paint(g, b);

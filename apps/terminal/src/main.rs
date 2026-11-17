@@ -280,6 +280,9 @@ pub(crate) struct Tab {
     agent_title_until: Option<Instant>,
     /// Its agent stopped (done, or asking) while no one was looking.
     attention: bool,
+    /// When it was looked at after it wanted attention: its tab's red dot
+    /// fades from then (`strip::STRIP_DOT_FADE`).
+    attention_seen: Option<Instant>,
     /// The git repository its folder is in (repos.rs).
     repo: Option<git::Repo>,
     /// The group it's in (into its window's `groups`).
@@ -403,6 +406,24 @@ fn epoch_secs() -> u64 {
 }
 
 impl Tab {
+    /// Looked at: what it wanted attention for is seen, its red dot
+    /// fading from now.
+    fn look_at(&mut self) {
+        if self.attention {
+            self.attention = false;
+            self.attention_seen = Some(Instant::now());
+        }
+    }
+
+    /// Its red dot for the strip (`StripTab::unread`): while it wants
+    /// attention, and fading for a while after it's looked at.
+    pub(crate) fn dot(&self) -> Option<Option<Instant>> {
+        if self.attention {
+            return Some(None);
+        }
+        self.attention_seen.filter(|t| t.elapsed() < olo_kit::widgets::strip::STRIP_DOT_FADE).map(Some)
+    }
+
     fn new(session: Session) -> Tab {
         Tab {
             session,
@@ -415,6 +436,7 @@ impl Tab {
             agent_title: None,
             agent_title_until: None,
             attention: false,
+            attention_seen: None,
             repo: None,
             group: None,
             own_grouping: false,
@@ -502,6 +524,9 @@ pub(crate) struct TermWin {
     /// Each row's panes' shares of its width, as dragged, by the row's
     /// key; even if not (or if the row has a pane more or fewer since).
     tile_widths: std::collections::BTreeMap<String, Vec<f32>>,
+    /// Whether its tab's red dot was last said to be on (a tab of it
+    /// wanting attention): said again only when that changes.
+    pub(crate) unread_said: bool,
 }
 
 impl TermWin {
@@ -522,6 +547,7 @@ impl TermWin {
             tile_groups: Vec::new(),
             tile_heights: Default::default(),
             tile_widths: Default::default(),
+            unread_said: false,
         };
         t.tidy();
         t
@@ -701,7 +727,7 @@ impl TermWin {
         }
         self.active = i;
         self.tabs[i].rang = false;
-        self.tabs[i].attention = false;
+        self.tabs[i].look_at();
         if self.focused {
             self.tabs[i].report_focus(true);
         }
@@ -2199,6 +2225,13 @@ impl Terminal {
             return;
         };
         tab.attention = true;
+        tab.attention_seen = None;
+        // Its window's tab gets the red dot too, until this tab is looked
+        // at (`Tab::look_at`; said in the window's body).
+        if !t.unread_said {
+            t.unread_said = true;
+            cx.mark_unread(win, true);
+        }
         self.say_waiting();
         let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
         let tab = &mut t.tabs[i];

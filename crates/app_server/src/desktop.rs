@@ -152,6 +152,9 @@ pub struct WindowMeta {
     /// Glowing as a new window (Preferences ▸ Appearance): since when,
     /// for how long (`shell::glow`).
     pub glow: Cell<Option<(std::time::Instant, std::time::Duration)>>,
+    /// Something unread in it, as its app says (`Request::SetWindowUnread`):
+    /// the red dot on its tab, and since when it's been fading.
+    pub unread: Cell<Option<Unread>>,
     /// Its glow's pieces, as drawn for its size and look.
     pub glow_pieces: RefCell<crate::shell::glow::Glow>,
     /// Moved, sized or sent elsewhere on purpose (by hand, a shortcut, an
@@ -195,7 +198,43 @@ pub struct WindowMeta {
 /// where it was after an upgrade.)
 pub const CLOSED_BY_HAND_WITHIN: std::time::Duration = std::time::Duration::from_secs(10);
 
+/// A window's red dot (`WindowMeta::unread`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Unread {
+    /// Fading out since (read: the app said so, or the window was
+    /// activated).
+    pub fading: Option<std::time::Instant>,
+    /// It fades once the window is activated.
+    pub clear_on_focus: bool,
+}
+
+/// How long a red dot takes to fade out (Ben, 2026-11-17: "a nice fade
+/// out animation over about 5s").
+pub const UNREAD_FADE: std::time::Duration = std::time::Duration::from_secs(5);
+
 impl WindowMeta {
+    /// How strong its red dot is now: 1 while unread, easing to 0 over
+    /// [`UNREAD_FADE`] once read (and let go then); 0 with none.
+    pub fn unread_strength(&self) -> f32 {
+        let Some(u) = self.unread.get() else { return 0.0 };
+        let Some(since) = u.fading else { return 1.0 };
+        let t = since.elapsed().as_secs_f32() / UNREAD_FADE.as_secs_f32();
+        if t >= 1.0 {
+            self.unread.set(None);
+            return 0.0;
+        }
+        // (Eased out: quick to start going, slow to vanish.)
+        let left = 1.0 - t;
+        left * left * (3.0 - 2.0 * left)
+    }
+
+    /// Its red dot fading from now, if it has one not fading already.
+    pub fn unread_fade(&self) {
+        if let Some(u) = self.unread.get().filter(|u| u.fading.is_none()) {
+            self.unread.set(Some(Unread { fading: Some(std::time::Instant::now()), ..u }));
+        }
+    }
+
     /// Olo asked it to close a moment ago ([`CLOSED_BY_HAND_WITHIN`]).
     pub fn closed_by_hand(&self) -> bool {
         self.close_asked.get().is_some_and(|at| at.elapsed() < CLOSED_BY_HAND_WITHIN)
@@ -248,6 +287,7 @@ impl WindowElement {
             before_fullscreen: Cell::new(None),
             focus_zoomed: Cell::new(false),
             glow: Cell::new(None),
+            unread: Cell::new(None),
             glow_pieces: Default::default(),
             moved_on_purpose: Cell::new(false),
             away: RefCell::new(None),
@@ -648,6 +688,37 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.all_windows().into_iter().find(|w| w.id() == id)
     }
 
+    /// `Request::SetWindowUnread`: the windows named given their red dot,
+    /// or set fading. How many.
+    pub fn set_window_unread(&mut self, pid: Option<u32>, surface: Option<u32>, app_id: Option<&str>, unread: bool, clear_on_focus: bool) -> usize {
+        let windows: Vec<WindowElement> = self
+            .all_windows()
+            .into_iter()
+            .filter(|w| {
+                let client = w.wl_surface().and_then(|s| self.display_handle.get_client(s.id()).ok());
+                let program = client.as_ref().and_then(|c| crate::state::client_pid(c, &self.display_handle)).map(|p| p as u32);
+                match (pid, surface, app_id) {
+                    (Some(p), Some(s), _) => program == Some(p) && w.wl_surface().is_some_and(|ws| ws.id().protocol_id() == s),
+                    (Some(p), None, _) => program == Some(p),
+                    (None, _, Some(a)) => w.app_id() == a,
+                    _ => false,
+                }
+            })
+            .collect();
+        for w in &windows {
+            let meta = w.meta();
+            if unread {
+                meta.unread.set(Some(Unread { fading: None, clear_on_focus }));
+            } else {
+                meta.unread_fade();
+            }
+        }
+        if !windows.is_empty() {
+            self.backend_data.wake(None);
+        }
+        windows.len()
+    }
+
     pub fn window_infos(&self) -> Vec<WindowInfo> {
         let focused = self.seat.get_keyboard().and_then(|k| k.current_focus()).and_then(|f| f.wl_surface().map(|s| s.into_owned()));
         let mains = self.main_windows();
@@ -708,6 +779,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     settling: false,
                     stack: None,
                     glowing: w.meta().glow_strength() > 0.0,
+                    unread: w.meta().unread.get().is_some_and(|u| u.fading.is_none()),
                     surface: w.wl_surface().map(|s| s.id().protocol_id()),
                 }
             })
@@ -1961,6 +2033,8 @@ impl<B: Backend + 'static> AnvilState<B> {
             // drawn on only while one waits for a frame.)
             || ((crate::showing::gliding() || crate::zoom::moving() || crate::showing::caption_fading()) && self.captures.pending())
             || self.space.elements().any(|w| (0.0..1.0).contains(&w.meta().glow_strength()) && w.meta().glow.get().is_some())
+            // (A red dot fading: drawn on until it's gone.)
+            || self.space.elements().any(|w| w.meta().unread.get().is_some_and(|u| u.fading.is_some()) && w.meta().unread_strength() > 0.0)
     }
 
     /// Apply the configured scale and rotation to an output.

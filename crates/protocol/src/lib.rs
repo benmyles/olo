@@ -112,6 +112,25 @@ pub enum Request {
     SendToBack {
         id: WindowId,
     },
+    /// Something unread in a window (`unread`), as Deskbar's red dot is
+    /// for its app: a red dot on its tab; or no longer, the dot fading
+    /// out over five seconds. `clear_on_focus`: it fades once the window
+    /// is activated, by itself (an app with one place for what's unread:
+    /// Telegram, Phone, Slack); without it the app says when (one with
+    /// tabs: once the tab is looked at). The windows: the one of program
+    /// `pid` whose surface is `surface` (as [`WindowInfo::surface`]),
+    /// else all of `pid`'s, else all of `app_id`'s.
+    SetWindowUnread {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pid: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        surface: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        app_id: Option<String>,
+        unread: bool,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        clear_on_focus: bool,
+    },
     /// Keep a window above the others on its workspace (`on`: or not;
     /// left out, the other way), as its menu's Always on Top.
     SetOnTop {
@@ -1398,6 +1417,10 @@ pub struct WindowInfo {
     /// Glowing as a new window (Preferences ▸ Appearance).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub glowing: bool,
+    /// Something unread in it, its tab's red dot showing
+    /// ([`Request::SetWindowUnread`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unread: bool,
     /// Its surface as its program knows it (the `wl_surface`'s object id
     /// on the program's own connection), for a program to tell which of
     /// its windows this is: Olo's kit knows so which of an app's windows

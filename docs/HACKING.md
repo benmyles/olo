@@ -6624,6 +6624,39 @@ finished in a tab not looked at since, `Tab::attention`,
 **Olo Doctor** (critical findings and problems, from its background
 look). The others have nothing that is unread.
 
+**The red dot on the window, and on the tab inside it** (Ben,
+2026-11-17: "that app's title window bar (the yellow tab) for the
+specific window that has the alertable item should get a red dot too
+... and if it's an app that supports tabs the specific tab that has
+the alertable item should also get a red dot. and they should all
+automatically go away with a nice fade out animation over about 5s
+after activating the target tab (or window if it's not a tabbed
+app)"). A window's tab: `Request::SetWindowUnread` (by program and
+surface, a program's windows, or an app's), app_server's
+`WindowMeta::unread`; the tab grows to hold a red dot after its title,
+by the zoom box (`deco::dot_rect`; before the title, by the close box,
+was tried too: it read as a document's unsaved mark, and the title
+moved as the dot came and went), in the look's `Palette::unread`; the
+dot is an element of its own drawn over the tab (`dot_elements`: a disc
+made once for its device size, one texture pixel to a device pixel),
+so it fades without the tab drawn again: once read it eases out over
+`UNREAD_FADE` (5 s; app_server keeps drawing only while one fades,
+`keeps_awake`), then the tab shrinks back. `clear_on_focus`: app_server
+fades it as the window is activated (`set_activate`); without it the
+app says when. `WindowInfo::unread` tells agents. Apps say it with
+`olo_kit::unread` (`mark(cx, …)` its window, `mark_program`, `mark_app`
+for another app's, sent off the looper): Telegram and Phone as more
+comes in while their window isn't in front, Slack's host for its
+window, OS Updates and Olo Doctor for theirs, each `clear_on_focus`.
+**A tab inside a window**: the kit's tab strip draws a tab's
+`StripTab::unread` as a red dot after its title (the title cut short
+for it), `Some(Some(since))` fading over `STRIP_DOT_FADE` once looked
+at (drawn again each frame only then, `dot_strength`). Terminal: a tab
+whose agent wants the person has it (`Tab::dot`), and its window's tab
+too; looked at (`Tab::look_at`), the tab's dot fades, and once no tab
+of the window wants attention its window's is let go (`unread_said`),
+the two fading together.
+
 An app with notifications unread has its blue dot at its row's right
 end (`NOTE_DOT`, 7 points, on device pixels: `style::snap_centred`),
 its name shortened to keep clear of the dots. Notes are matched to the row by

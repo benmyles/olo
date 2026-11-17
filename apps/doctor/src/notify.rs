@@ -125,6 +125,11 @@ fn look(notes: &Notifier, suggestions: bool) -> bool {
     notes.badge(report.findings.iter().filter(|f| matches!(f.severity, Severity::Critical | Severity::Problem)).count() as u32);
     let mut told = read_told();
     let (new, remember) = news(&report.findings, &told);
+    // Something new wrong: Olo Doctor's window's tab gets the red dot, if
+    // it's open, until it's looked at.
+    if !new.is_empty() {
+        olo_kit::unread::mark_app("olo.doctor", true, true);
+    }
     told.ids = remember.ids;
     write_told(&told);
     if suggestions {

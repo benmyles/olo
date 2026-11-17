@@ -31,6 +31,7 @@ mod lock;
 pub mod menu;
 pub mod open_with;
 pub mod para;
+pub mod unread;
 
 /// An emoji the person picks, for an app (a reaction): Olo's emoji
 /// picker shown over everything for it (`olo-emoji-picker --pick`), its

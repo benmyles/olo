@@ -163,6 +163,13 @@ impl Slack {
         if let Some(n) = m.get("badge") {
             let count = n.as_u64().unwrap_or(0).min(u32::MAX as u64) as u32;
             if self.badge != Some(count) {
+                // More unread: Slack's window's tab gets the red dot,
+                // until it's activated (app_server lets it go then; as
+                // Deskbar's is the app's). Not for what was unread as it
+                // started.
+                if self.badge.is_some_and(|was| count > was) {
+                    olo_kit::unread::mark_app(APP_ID, true, true);
+                }
                 self.badge = Some(count);
                 self.notes.badge(count);
             }
