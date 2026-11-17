@@ -13,114 +13,10 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-- **Blueferry: a phone's messages and one-time codes in Olo** (Ben,
-  2026-11-16: "integrate https://github.com/erikwb/blueferry into olo so
-  that doctor suggests installing the backend and handles doing it and
-  then write olo native frontend prefs/deskbar/app integration including
-  capturing OTPs from SMS messages and extend the olo chrome extension to
-  offer to fill them in the browser when they arrive like how macos does
-  it (this should try to use smart heuristics to figure out what browser
-  session needs the otp e.g. have the olo extension look at what's on the
-  page and whether's there's a form field waiting for a code. this is
-  important b/c it could be from a user chrome tab or one on an agent
-  screen in which case it should go to the agent's tab not the user)").
-  Read Blueferry first (what its backend is, how it's installed and what
-  it speaks); then: Olo Doctor suggests the backend and installs it; a
-  native front end of Olo's (a Preferences panel, Deskbar, what an app
-  needs); a one-time code arriving by SMS is recognised and offered where
-  it's wanted, as macOS does: Olo's Chrome extension looks at each page
-  for a field waiting for a code, and the code is offered in the tab that
-  is, which may be the person's or one on an Agent Screen (then it goes
-  to the agent's tab, never the person's, and is logged in the agent's
-  history).
-  *Under way, 2026-11-16* (HACKING, "The phone"). **Done so far**: Olo
-  Doctor suggests BlueFerry's backend and installs it (its makers'
-  release, checked, through PackageKit; Bluetooth started as it needs);
-  `olo-phone --service` follows it, tells of messages in notifications
-  answered in place, and finds one-time codes; Olo's Chrome extension
-  offers a code under the field of the tab waiting for it, the service
-  choosing among every browser's tabs, an agent's tab getting it put in
-  (the person told, the screen's history noting it) by Preferences ▸
-  Phone's setting; the panel; Deskbar's tray; `olo-phone`'s command
-  line. All of it against a stand-in backend: **no real phone has been
-  paired with it yet** (Ben's is his to pair). **Still to do**: Phone,
-  the app (the conversations, reading and answering them, a new
-  message), which the notifications and Deskbar then open.
-  **Setting it up made one place** (Ben, 2026-11-16, having installed
-  the backend from Olo Doctor: "how do i setup my iphone? we should make
-  that easy/obvious. is there an app or preferences somewhere?"):
-  Preferences ▸ Phone is now the steps, each done from there (Install,
-  Pair, the phone's switches); Doctor follows the install with "Pair
-  your iPhone"; a phone's row in Bluetooth leads there; a backend just
-  installed is started at once.
-  **For Ben**: BlueFerry is installed here already (your Install It, at
-  10:06 PM) and not yet started. After upgrading: Preferences ▸ Phone
-  shows the steps: Start It, then Pair… (BlueFerry's wizard, in
-  Terminal: keep the iPhone unlocked on Settings ▸ Bluetooth), then the
-  switches on the phone. Say what the real thing does that the stand-in
-  didn't.
-  **To decide**: a code that is surely an agent's tab's is put in there
-  without asking (you are told); "Ask Me First" is the other setting.
+(Nothing: see the first of "Not started".)
 
 ## Not started (highest priority first)
 
-- **The phone, natively: no BlueFerry** (Ben, 2026-11-16, the evening
-  the BlueFerry integration landed and its backend wouldn't start: "i
-  don't love this blueferry dependency it's going to be too flaky. get
-  rid of blueferry and build everything we need in rust ourselves and
-  make the pairing/setup process much nicer and intuitive and visually
-  well designed"). Olo speaks to the iPhone itself, in Rust, in process,
-  as it does to AirPods: pairing and the link through BlueZ; OBEX, the
-  Message Access Profile (messages in, out and as they arrive: an MNS
-  server of Olo's own) and the Phone Book Access Profile (names for
-  numbers) over RFCOMM; ANCS over LE if it earns its keep (group names).
-  `olo-phone --service` keeps its notifications, its code finding and
-  the browsers' side as they are, on the new backend
-  (`olo_system::blueferry` goes; `blueferry-fake` becomes a stand-in
-  phone that speaks the profiles). Pairing is a sheet of Olo's own in
-  Preferences ▸ Phone, designed: find the phone, the code large on both,
-  the phone's switches shown as they are on the phone, each step seen to
-  happen. Olo Doctor no longer installs BlueFerry and offers to remove
-  it where it did. What a real iPhone does is tried with Ben's, by Ben.
-  Then the website says so (Ben: "when you're done update the website to
-  highlight the native phone pairing support"). **Android too** (Ben:
-  "and also include support for android too in addition to iphone"): the
-  same profiles, so the same client; its own habits (a listing without
-  the whole text, a real sent folder, MMS, asking on the phone as it
-  pairs, none of an iPhone's conditions) in the stand-in, the setup's
-  steps and the tests.
-  **And Phone, the app** (Ben: "did you already build an app for working
-  with the messages, contacts etc? if not we need that too"): the
-  conversations, reading and answering them, a new message, the
-  contacts; what a notification and Deskbar's tray open. Styled with
-  care (Ben: "make sure the messages/contacts/etc app is really nicely
-  styled, the weather and telegram apps are good examples of well styled
-  apps. don't just make it super plain and clunky"): Telegram's
-  conversation list and bubbles, people's initials in colour, Weather's
-  attention to spacing and type.
-  *Under way.* Done (2026-11-16; HACKING, "The phone"): OBEX, MAP and
-  PBAP in Rust; the link through BlueZ's profiles; the service on it
-  (conversations, sending, contacts, codes, reconnecting); BlueFerry
-  gone from Olo, and Olo Doctor offering to remove it where it's
-  installed; Preferences ▸ Phone connecting a phone in three steps;
-  Android's habits in the stand-in; all tested end to end against a
-  stand-in BlueZ and phone. **Not yet tried with a real phone.**
-  **For Ben**: Upgrade; Olo Doctor shows "BlueFerry is installed, and
-  Olo no longer uses it" (Remove BlueFerry); then Preferences ▸ Phone
-  ▸ Pair, with the iPhone unlocked on Settings ▸ Bluetooth. Tell me what
-  it does at each step: the notes say what an iPhone may want besides
-  (the computer's class as hands-free; an advertisement while its
-  switches are waited for), which I'll add from what yours shows.
-  **Phone, the app, is made** (2026-11-17; HACKING, "The phone"):
-  conversations and contacts in a window, balloons as Telegram's,
-  measured on the bench. The service is its own program now
-  (`olo-phoned`). The website has it (2026-11-17: "Your phone,
-  natively", with a picture, and Phone among the apps; **for Ben**:
-  `tools/deploy-website.sh`). **It works with Ben's iPhone**
-  (2026-11-17, 01:34: messages open, 355 contacts, 7 conversations;
-  HACKING has the sequence). Still to do: the phones' own icons (its
-  own item below); an Android phone, untried (BlueZ would connect it
-  over L2CAP: see HACKING).
 - **Everything Olo Doctor does can be undone** (Ben, 2026-11-16: "one
   more thing we need: everything in olo doctor that it does must be
   reversible, e.g. for any fix/suggestion applied i should be able to
@@ -131,22 +27,14 @@ something nobody here has is in "Blocked", with what it waits for.
   it replaced (the file as it was, the unit's state, the setting's
   value) and is listed with a button that puts it back, the phone's
   backend and the other installs among them (removed again).
-- **Pairing an iPhone in a sheet of Olo's own** (found 2026-11-16,
-  with the phone work). Preferences ▸ Phone pairs by running BlueFerry's
-  own wizard in Terminal (`blueferry pair-setup`): pairing isn't in its
-  D-Bus API, and its clients' 3,000 lines of it (controller quirks, the
-  code shown on both, the phone's switches) couldn't be tried without a
-  phone. With one at hand: a sheet in the panel over the backend's
-  `pairing-*-json` helpers (as its Quickshell client uses them), or
-  BlueZ spoken to directly.
-- **The phone's other notifications, calls and music, Olo's way** (found
-  2026-11-16). "Everything on the Phone" leaves the phone's other apps'
-  notifications to BlueFerry's own popups; its newer API lists them
-  (`ListNotifications`, after 0.9.1), so Olo could show them as its own.
-  Its calls (`Calls1`), call history, media control and the phone as a
-  sound source aren't in Olo yet. And a newer BlueFerry release isn't
-  offered: Olo Doctor installs the latest when asked, and says nothing
-  of a later one.
+- **The phone's other notifications, calls and music** (found
+  2026-11-16; natively since). Olo has a phone's messages, contacts and
+  codes. Not yet: its other apps' notifications (Apple's Notification
+  Center Service over low energy, which the advertisement already asks
+  for, would bring them, and groups' names), calls (the hands-free
+  profile: the computer already says it's a hands-free device), its
+  music's controls, and conversations kept across a restart of the
+  service.
 - **Terminal remembers a tab's own "keep going" message** (Ben,
   2026-11-16: "when a custom "keep going" message has been set on a tab
   in terminal then terminal should remember that across upgrades and
@@ -5782,6 +5670,14 @@ need Ben".)
 
 ## Blocked
 
+- **An Android phone with Olo** (needs an Android phone at this
+  computer). The same profiles as an iPhone's, and the stand-in has an
+  Android's habits, but none has been paired. BlueZ connects an
+  Android's messages over L2CAP where the phone offers it, in basic
+  mode where OBEX over L2CAP means ERTM (HACKING, "The phone"): if that
+  fails or misbehaves, Olo opens the RFCOMM channel itself (the phone's
+  record has one), with its own SDP query for the channel.
+
 Each waits for what its entry's "Left" says: Ben at the machine (a
 password, a touch, a camera, a reboot he agrees to), hardware nobody
 here has plugged in, an account to sign in with, or data from more
@@ -6070,6 +5966,32 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**The phone, natively: an iPhone's or an Android phone's messages,
+  contacts and one-time codes, and Phone, the app**~~ (Ben, 2026-11-16
+  and 17; done 2026-11-17: 457cf6227, d0878dabd, 57ce75d94, d04bd6313,
+  782d8ab42, 90124af83, 59915d838, 0bff5ae4f, 7319e02c2, 97e8c6772).
+  It began as a front end to BlueFerry ("integrate
+  https://github.com/erikwb/blueferry into olo ..."), which wouldn't
+  start that evening: "get rid of blueferry and build everything we
+  need in rust ourselves and make the pairing/setup process much nicer
+  and intuitive and visually well designed"; "include support for
+  android too"; "did you already build an app for working with the
+  messages, contacts etc? if not we need that too"; "olo needs to
+  supervise/monitor it and make it bulletproof". Olo speaks OBEX, MAP
+  and PBAP itself over channels BlueZ opens; Preferences ▸ Phone pairs
+  in three steps; `olo-phoned` keeps the link (every wait with an end,
+  a hang-up seen, its loop watched), tells of messages, and gives
+  one-time codes to the browser tab waiting (an agent's by the
+  setting); Phone is the conversations and contacts in a window; Olo
+  Doctor removes BlueFerry, has the computer present itself as an
+  iPhone expects, and says when the link isn't right; the website has
+  it. **It works with Ben's iPhone** (messages, 355 contacts). HACKING,
+  "The phone". **Left**: an Android phone is untried (see Blocked); the
+  phones' own icons and the phone's other notifications, calls and
+  music are items of their own. **To decide** (Ben): a code that is
+  surely an agent's tab's is put in there without asking (you are
+  told); "Ask Me First" is the other setting.
 
 - ~~**Bug: Viewer's video timeline with a long video; the phone's tray
   glyph too tall**~~ (Ben, 2026-11-17: "the timeline has just gone
