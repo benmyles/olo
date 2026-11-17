@@ -125,6 +125,12 @@ something nobody here has is in "Blocked", with what it waits for.
   it is; otherwise it plays at a quarter of the output's full volume,
   whatever the person's volume is set to, and leaves that setting as it
   found it.
+- **Go to File or Folder in the file panel** (Ben, 2026-11-16, with a
+  picture of an Open File panel on Pictures: "i should be able to use
+  the go to file/folder shortcut in a picker like this"). In the kit's
+  Open and Save panels (`file_panel`; the portal's too), Tracker's Go to
+  Folder shortcut opens the same field: a path typed (with completion)
+  takes the panel to that folder, or chooses that file.
 - **A window tab's menu: Hide ▸ and Close ▸, each with Others and All**
   (Ben, 2026-11-16: "we need a Close All option when right clicking a
   window tab (we have Close and Close Others already)"; then: "we need
