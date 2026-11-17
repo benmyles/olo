@@ -88,6 +88,13 @@ something nobody here has is in "Blocked", with what it waits for.
   window's menu): windows that open then take the other places and
   leave it. Making another window main by hand (the shortcut, the
   command) unpins, and that window is the main one.
+- **Tracker's icon view shows pictures and videos as themselves** (Ben,
+  2026-11-17: "in tracker's icon view the icons should show preview
+  thumb of images/videos"). A picture's icon is the picture, small; a
+  video's a frame of it: made off the UI thread as they scroll into
+  view, kept (a cache keyed by the file, its size and its date, and the
+  scale), never resampled when drawn, the kind's own icon until it's
+  ready.
 - **The website covers Terminal's work with agents** (Ben, 2026-11-16:
   "update the website to cover all the agent integration features in olo
   terminal"). olo-desktop.com's Agents part: what Terminal does for
