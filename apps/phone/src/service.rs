@@ -38,7 +38,7 @@ use std::{
     collections::{HashMap, HashSet},
     io::{BufRead, BufReader, Write},
     os::unix::net::{UnixListener, UnixStream},
-    sync::mpsc,
+    sync::{Arc, mpsc},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -67,6 +67,13 @@ const JUST: i64 = 5 * 60;
 const INBOX: u16 = 60;
 /// How often a phone that hasn't allowed this computer is tried.
 const ALLOW_EVERY: Duration = Duration::from_secs(10);
+/// How long the phone's owner is waited for so (and, an iPhone,
+/// advertised to: `link::Profiles::solicit`) from when the phone first
+/// refused or Try Again was last pressed; after it, every five minutes
+/// and with no advertisement, so a phone never allowed costs next to
+/// nothing.
+const ALLOW_FOR: Duration = Duration::from_secs(15 * 60);
+const ALLOW_LATER: Duration = Duration::from_secs(300);
 /// How long after a try a phone out of reach is tried again, try by try.
 const AWAY: [u64; 5] = [15, 30, 60, 120, 300];
 
@@ -168,8 +175,19 @@ enum About {
 struct Service {
     /// Olo's profiles with BlueZ (None: not registered, `state.trouble`
     /// says why).
-    profiles: Option<Profiles>,
+    profiles: Option<Arc<Profiles>>,
     profiles_at: Option<Instant>,
+    /// Olo's advertisement to an iPhone whose switches are waited for,
+    /// while it's broadcast; whether it couldn't be (said once); and
+    /// since when its owner has been waited for.
+    solicit: Option<link::Solicit>,
+    solicit_failed: bool,
+    allow_since: Option<Instant>,
+    /// Why the last channel couldn't be had (logged when it changes).
+    said_why: String,
+    /// What the conversations and contacts came to when last published
+    /// (`PhoneState::changes` counts its changes).
+    digest: u64,
     /// The phone in use.
     phone: Option<link::Phone>,
     /// The session open or being opened: its number, and its thread's ear
@@ -304,6 +322,11 @@ pub fn run() -> ! {
     let mut s = Service {
         profiles: None,
         profiles_at: None,
+        solicit: None,
+        solicit_failed: false,
+        allow_since: None,
+        said_why: String::new(),
+        digest: 0,
         phone: None,
         generation: 0,
         opening: false,
@@ -394,40 +417,69 @@ impl Service {
         }
     }
 
-    /// Olo's profiles, registered with BlueZ (tried again in a minute
-    /// where it can't be: no BlueZ, or another program has them).
+    /// Olo's profiles, registered with the BlueZ running now: registered
+    /// at first, and again with a BlueZ started since (it forgets them
+    /// and says nothing: an update, Olo Doctor changing how it's started,
+    /// a crash). Looked at whenever BlueZ says anything, before every
+    /// try, and again in a minute where it can't be done (no BlueZ, or
+    /// another program has them). `PhoneState::profiles` says how it
+    /// stands, for Olo Doctor.
     fn register(&mut self) {
         self.profiles_at = None;
-        if self.profiles.is_some() {
-            return;
-        }
-        let to = self.tx.clone();
-        let registered = Profiles::register(move |opened| {
-            let _ = to.send(Ev::Opened(opened));
-        })
-        .and_then(|p| {
-            let to = self.tx.clone();
-            p.watch(move || {
-                let _ = to.send(Ev::Devices);
-            })?;
-            Ok(p)
-        });
-        match registered {
-            Ok(p) => {
-                self.profiles = Some(p);
-                self.state.trouble.clear();
+        let done = match &self.profiles {
+            Some(p) => p.ensure(),
+            None => {
+                let to = self.tx.clone();
+                Profiles::register(move |opened| {
+                    let _ = to.send(Ev::Opened(opened));
+                })
+                .and_then(|p| {
+                    let to = self.tx.clone();
+                    p.watch(move || {
+                        let _ = to.send(Ev::Devices);
+                    })?;
+                    self.profiles = Some(Arc::new(p));
+                    Ok(true)
+                })
+            }
+        };
+        match done {
+            Ok(again) => {
+                if again || !self.state.profiles {
+                    tracing::info!("phone: Olo's profiles (messages, contacts, its notification server) are registered with BlueZ");
+                    // (Every channel there was went with the BlueZ that
+                    // had them.)
+                    self.end_session();
+                    (self.solicit, self.solicit_failed) = (None, false);
+                    (self.tries, self.retry_at) = (0, None);
+                    self.state.trouble.clear();
+                    if self.state.link == Link::Taken {
+                        self.state.link = Link::Away;
+                    }
+                }
+                self.state.profiles = true;
             }
             Err(e) => {
                 let taken = e.to_string().contains("AlreadyExists");
-                if taken {
-                    self.state.link = Link::Taken;
-                }
-                self.state.trouble = if taken {
-                    "Another program has the phone’s message profiles (BlueFerry’s or GNOME’s obexd). Olo Doctor removes BlueFerry.".into()
+                let trouble = if taken {
+                    "Another program has the phone’s message profiles (BlueFerry’s or GNOME’s obexd). Olo Doctor removes BlueFerry.".to_owned()
                 } else {
-                    "Bluetooth isn’t answering.".into()
+                    "Bluetooth isn’t answering.".to_owned()
                 };
-                tracing::info!("phone: can't register with BlueZ: {e}");
+                if self.state.profiles || self.state.trouble != trouble {
+                    tracing::info!("phone: can't register with BlueZ: {e}");
+                }
+                self.end_session();
+                self.solicit = None;
+                self.state.profiles = false;
+                self.state.trouble = trouble;
+                self.state.link = if taken {
+                    Link::Taken
+                } else if self.phone.is_some() {
+                    Link::Away
+                } else {
+                    self.state.link
+                };
                 self.profiles_at = Some(Instant::now() + Duration::from_secs(60));
             }
         }
@@ -436,11 +488,24 @@ impl Service {
     /// The phones there are now: the one in use, and a session opened to
     /// it if there's none.
     fn devices(&mut self) {
-        let Some(profiles) = &self.profiles else { return };
-        let phones = profiles.phones().unwrap_or_default();
+        self.register();
+        // (With no BlueZ to ask, what's known stands: it's asked again
+        // when BlueZ is back.)
+        let Some(profiles) = self.profiles.clone().filter(|_| self.state.profiles) else { return };
+        let Ok(phones) = profiles.phones() else { return };
         // (The one in use while it's still paired; else one in reach;
         // else the first.)
         let phone = self.phone.as_ref().and_then(|had| phones.iter().find(|p| p.path == had.path)).or_else(|| phones.iter().find(|p| p.connected)).or(phones.first()).cloned();
+        if phone.as_ref().map(|p| (&p.path, p.kind, p.connected)) != self.phone.as_ref().map(|p| (&p.path, p.kind, p.connected)) {
+            match &phone {
+                Some(p) => {
+                    tracing::info!("phone: {} ({}), {}", p.name, if p.kind == link::Kind::IPhone { "an iPhone" } else { "not an iPhone" }, if p.connected { "connected" } else { "not connected" })
+                }
+                None => tracing::info!("phone: none paired that offers its messages"),
+            }
+            // (Its owner is waited for afresh each time it comes.)
+            self.allow_since = None;
+        }
         if phone.as_ref().map(|p| &p.path) != self.phone.as_ref().map(|p| &p.path) {
             // Another phone, or none: what the last one had is let go.
             self.end_session();
@@ -484,18 +549,23 @@ impl Service {
     }
 
     /// Ask BlueZ for a channel to the phone's messages (on a thread: it
-    /// waits while the phone is looked for); the channel comes as
-    /// `Ev::Opened`, a failure as the session's `NoChannel`.
+    /// waits while the phone is looked for, half a minute with a real
+    /// one); the channel comes as `Ev::Opened`, a failure as the
+    /// session's `NoChannel`.
     fn open(&mut self) {
-        let (Some(profiles), Some(phone)) = (&self.profiles, &self.phone) else { return };
+        self.register();
+        let (Some(profiles), Some(phone)) = (self.profiles.clone().filter(|_| self.state.profiles), &self.phone) else { return };
         self.generation += 1;
         (self.opening, self.retry_at) = (true, None);
         if self.state.link != Link::Allow {
             self.state.link = if phone.connected { Link::Connecting } else { Link::Away };
         }
-        if let Err(e) = profiles.open(&phone.path, Channel::Messages) {
-            let _ = self.tx.send(Ev::Session(self.generation, FromSession::NoChannel(e.to_string())));
-        }
+        let (tx, generation, path) = (self.tx.clone(), self.generation, phone.path.clone());
+        let _ = std::thread::Builder::new().name("phone-open".into()).spawn(move || {
+            if let Err(e) = profiles.open(&path, Channel::Messages) {
+                let _ = tx.send(Ev::Session(generation, FromSession::NoChannel(e.to_string())));
+            }
+        });
     }
 
     /// A channel BlueZ opened.
@@ -537,6 +607,41 @@ impl Service {
         }
     }
 
+    /// Olo's advertisement to an iPhone, broadcast while its switches for
+    /// this computer are waited for (its messages refused; or its
+    /// contacts, for the first minutes after its messages opened) and
+    /// for no longer than `ALLOW_FOR`: an iPhone offers the switches only
+    /// while it's asked so (`link::Profiles::solicit`).
+    fn solicit(&mut self) {
+        let waited = self.allow_since.is_some_and(|since| since.elapsed() < ALLOW_FOR);
+        let wanting = match self.state.link {
+            Link::Allow => true,
+            Link::Ready => !self.state.contacts,
+            _ => false,
+        };
+        let phone = self.phone.as_ref().filter(|p| p.kind == link::Kind::IPhone && p.connected && self.state.profiles && wanting && waited);
+        let Some(phone) = phone else {
+            if self.solicit.take().is_some() {
+                tracing::info!("phone: no longer advertising for the iPhone's switches");
+            }
+            return;
+        };
+        if self.solicit.is_some() || self.solicit_failed {
+            return;
+        }
+        let Some(profiles) = &self.profiles else { return };
+        match profiles.solicit(&phone.path) {
+            Ok(s) => {
+                tracing::info!("phone: advertising to the iPhone for its switches (Show Notifications, Sync Contacts)");
+                self.solicit = Some(s);
+            }
+            Err(e) => {
+                tracing::info!("phone: can't advertise for the iPhone's switches: {e}");
+                self.solicit_failed = true;
+            }
+        }
+    }
+
     fn end_session(&mut self) {
         if let Some(cmds) = self.session.take() {
             let _ = cmds.send(Cmd::Close);
@@ -554,17 +659,34 @@ impl Service {
                 let wait = AWAY[self.tries.min(AWAY.len() - 1)];
                 self.tries += 1;
                 self.retry_at = Some(Instant::now() + Duration::from_secs(wait));
-                tracing::debug!("phone: not in reach ({why}): again in {wait} s");
+                // Why, said plainly when the phone is there and still
+                // can't be spoken to (out of reach needs no more words).
+                let connected = self.phone.as_ref().is_some_and(|p| p.connected);
+                if self.said_why != why {
+                    tracing::info!("phone: no channel to its messages, the phone {} ({why})", if connected { "connected" } else { "not connected" });
+                    self.said_why = why.clone();
+                }
+                self.state.trouble =
+                    if connected { format!("Bluetooth couldn’t open the phone’s messages ({}).", why.rsplit(": ").next().unwrap_or(&why).trim_end_matches('.')) } else { String::new() };
             }
             FromSession::NotAllowed => {
                 (self.opening, self.session) = (false, None);
+                if self.state.link != Link::Allow {
+                    tracing::info!("phone: it refuses its messages until its owner allows this computer (its switches for it)");
+                }
                 self.state.link = Link::Allow;
-                self.retry_at = Some(Instant::now() + ALLOW_EVERY);
+                self.state.trouble.clear();
+                self.said_why.clear();
+                let since = *self.allow_since.get_or_insert_with(Instant::now);
+                self.retry_at = Some(Instant::now() + if since.elapsed() < ALLOW_FOR { ALLOW_EVERY } else { ALLOW_LATER });
             }
             FromSession::Up(listed) => {
                 (self.tries, self.retry_at) = (0, None);
+                tracing::info!("phone: its messages are open ({} in its inbox)", listed.len());
                 self.state.link = Link::Ready;
                 self.state.trouble.clear();
+                self.said_why.clear();
+                self.allow_since.get_or_insert_with(Instant::now);
                 let now_s = now() as i64;
                 let mut fresh = Vec::new();
                 // (Oldest first, as conversations keep them.)
@@ -608,6 +730,9 @@ impl Service {
                 self.came(ti, mi);
             }
             FromSession::Contacts(contacts) => {
+                if !self.state.contacts {
+                    tracing::info!("phone: its contacts came ({})", contacts.len());
+                }
                 self.contacts = contacts;
                 self.state.contacts = true;
                 self.contacts_at = None;
@@ -652,13 +777,16 @@ impl Service {
     /// minutes.
     fn ask_contacts(&mut self) {
         self.contacts_at = None;
-        let (Some(profiles), Some(phone)) = (&self.profiles, &self.phone) else { return };
+        let (Some(profiles), Some(phone)) = (self.profiles.clone(), &self.phone) else { return };
         if !phone.contacts || self.state.link != Link::Ready {
             return;
         }
-        if let Err(e) = profiles.open(&phone.path, Channel::Contacts) {
-            tracing::debug!("phone: its contacts: {e}");
-        }
+        let path = phone.path.clone();
+        let _ = std::thread::Builder::new().name("phone-open".into()).spawn(move || {
+            if let Err(e) = profiles.open(&path, Channel::Contacts) {
+                tracing::debug!("phone: its contacts: {e}");
+            }
+        });
         if !self.state.contacts {
             self.contacts_tries += 1;
             self.contacts_at = Some(Instant::now() + Duration::from_secs(if self.contacts_tries <= 20 { 15 } else { 300 }));
@@ -810,6 +938,10 @@ impl Service {
             }
             Request::Reconnect => {
                 self.tries = 0;
+                // (Asked for: its owner is waited for afresh, and what
+                // couldn't be done is tried again.)
+                (self.allow_since, self.solicit_failed) = (None, false);
+                self.devices();
                 if !self.state.contacts {
                     self.contacts_tries = 0;
                     self.ask_contacts();
@@ -1063,6 +1195,25 @@ impl Service {
     }
 
     fn publish(&mut self) {
+        self.solicit();
+        // (A count of what changed in the conversations and the
+        // contacts, for a window that shows them to ask again by.)
+        let digest = {
+            use std::hash::{Hash as _, Hasher as _};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            self.contacts.len().hash(&mut h);
+            for t in &self.threads {
+                (&t.key, &t.name, t.messages.len()).hash(&mut h);
+                for m in &t.messages {
+                    (&m.handle, m.read, m.at).hash(&mut h);
+                }
+            }
+            h.finish()
+        };
+        if digest != self.digest {
+            self.digest = digest;
+            self.state.changes += 1;
+        }
         if self.published.as_ref() != Some(&self.state) {
             if let Err(e) = self.state.save() {
                 tracing::warn!("phone: can't write {}: {e}", PhoneState::path().display());

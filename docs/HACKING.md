@@ -13541,8 +13541,16 @@ specifications):
   with a patience of 30 s); `Profiles::open` asks for one
   (`Device1.ConnectProfile`); `phones` lists what's paired and offers
   its messages (an iPhone by Apple's vendor id in its Modalias; its
-  battery when BlueZ has it); `watch` tells when that changes. No root,
-  no obexd.
+  battery when BlueZ has it); `watch` tells when that changes, and when
+  BlueZ itself goes or comes. **A BlueZ started again has forgotten
+  every profile and says nothing of it** (an update; Olo Doctor
+  changing how it's started; a crash): `ensure` registers them again
+  with the BlueZ running now (known by its name on the bus), and the
+  service calls it whenever BlueZ says anything and before every try.
+  (Found on Ben's computer, 2026-11-16: Doctor's removal of BlueFerry
+  restarted Bluetooth, and the phone stayed "isn't in reach" while
+  connected, Try Again doing nothing, until the service was started
+  again.) `solicit` advertises to an iPhone (below). No root, no obexd.
 
 **What phones do** (kept true in `standin`, the stand-in phone):
 
@@ -13559,12 +13567,26 @@ specifications):
   first opens, whether this computer may see messages and contacts. Its
   listing has only a message's first words (so a message that comes is
   always fetched whole), and what was sent is in its sent folder.
+- **An iPhone shows its switches for a computer only while the
+  computer advertises for them** (BlueFerry's notes, iOS 26: asking for
+  its messages alone, refused, never brings them; Ben, 2026-11-16: "i
+  never get these options"). So while an iPhone that's connected
+  refuses its messages, or hasn't given its contacts in the first
+  minutes, the service broadcasts a low-energy advertisement soliciting
+  Apple's Notification Center Service (`Profiles::solicit`:
+  `LEAdvertisingManager1`, `SolicitUUIDs` ANCS, discoverable for three
+  minutes, a manufacturer id that claims to be nobody's), for fifteen
+  minutes from when the phone first refused or Try Again was pressed
+  (`ALLOW_FOR`), and never while pairing (two records for one computer
+  on the phone, the notes say). After the fifteen minutes it asks every
+  five, with no advertisement. The stand-in iPhone refuses to have its
+  switches turned on while nothing is advertised.
 - **Not yet tried with a real phone of either kind** (2026-11-16): all
   of this is tested against stand-ins. What BlueFerry found an iPhone
-  to want besides, and Olo doesn't do yet, to try with Ben's: the
-  computer's Class of Device as hands-free (major 4, minor 8), and an
-  LE advertisement soliciting ANCS while the switches are waited for
-  (on iOS 26 they appeared only while it was broadcast); and pairing by
+  to want besides, and Olo doesn't do yet, to try if Ben's still shows
+  no switches: the computer's Class of Device as hands-free (major 4,
+  minor 8; `Class` in /etc/bluetooth/main.conf, a Doctor fix, though it
+  would show the computer as a headset to everything); and pairing by
   `Device1.Connect` on the unpaired phone rather than `Pair`, which on
   some controllers is what gives one bond for both transports. Groups'
   names (ANCS), and a store of conversations that outlives the service,
@@ -13574,7 +13596,11 @@ specifications):
 With a phone paired, it asks BlueZ for a channel to its messages and
 opens a session on it, on a thread of its own (`session`: it waits on
 the phone, the service's loop never does). Refused: `Link::Allow`, and
-tried again every ten seconds (`ALLOW_EVERY`). Open: `Link::Ready`; the
+tried again every ten seconds (`ALLOW_EVERY`; an iPhone advertised to
+meanwhile, above). A channel BlueZ can't open while the phone is
+connected says why, as BlueZ does, in the panel (`trouble`) and the log
+(`ConnectProfile` waits on the phone, up to half a minute, so it's
+asked from a thread). Open: `Link::Ready`; the
 phone is asked to tell of messages, the newest 60 of its inbox are read
 (what's there is history; an unread one that came within five minutes
 is fetched whole and told of, as one that comes), and its contacts are
@@ -13588,6 +13614,11 @@ isn't connected, or the channel can't be had) is tried when BlueZ says
 anything of it and otherwise after 15 s, 30 s, 1, 2 and then every 5
 minutes (`AWAY`); a session whose link drops is tried again after 2 s,
 once. Another phone, or none: what the last had is let go.
+**Olo Doctor watches it** (`phone_link`): with a phone paired, the
+service not running (the session leaves one stopped that ended again
+and again) or its profiles not registered (`PhoneState::profiles`:
+another program has them; Bluetooth not answering) is a problem it
+says, with why; all well, it says so among what's fine.
 Conversations are kept in memory only: **nothing a message says is
 logged or written to disk**. It publishes
 `$XDG_RUNTIME_DIR/olo-phone.json` (`PhoneState`: the phone's name and

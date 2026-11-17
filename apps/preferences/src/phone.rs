@@ -132,6 +132,8 @@ pub fn test_state() -> PhoneState {
         codes: 0,
         code_at: None,
         trouble: String::new(),
+        profiles: true,
+        changes: 0,
     }
 }
 
@@ -395,7 +397,7 @@ fn connect(ui: &mut Ui, st: &mut State, state: &PhoneState, error: Option<String
             let ready = state.link == PhoneLink::Ready;
             let (first, rows) = match state.kind {
                 Kind::IPhone => (
-                    format!("On “{}”: Settings ▸ Bluetooth ▸ tap ⓘ beside this computer, and turn these on. They can take a minute to appear there.", state.name),
+                    format!("On “{}”: Settings ▸ Bluetooth ▸ tap ⓘ beside this computer, and turn these on. They can take a minute or two to appear there; leaving that page and opening it again shows them sooner. (If this computer is listed twice, look in both.)", state.name),
                     vec![("Show Notifications", ready), ("Sync Contacts", state.contacts)],
                 ),
                 Kind::Android => (
@@ -408,6 +410,9 @@ fn connect(ui: &mut Ui, st: &mut State, state: &PhoneState, error: Option<String
             ui.add(div().w_full().flex().flex_row().justify_center().child(switches(rows)));
             ui.space(m::SPACING * 0.5);
             let waiting = match state.link {
+                // (There, and still not spoken to: why, as Bluetooth
+                // says it.)
+                PhoneLink::Away if !state.trouble.is_empty() => state.trouble.clone(),
                 PhoneLink::Away => format!("“{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?", state.name),
                 PhoneLink::Taken => state.trouble.clone(),
                 PhoneLink::Ready => "Messages are coming. Contacts follow once Sync Contacts is on.".to_owned(),
@@ -431,7 +436,7 @@ fn connect(ui: &mut Ui, st: &mut State, state: &PhoneState, error: Option<String
     if let Some(e) = bt_error.or(error) {
         ui.label(e);
     }
-    if !state.trouble.is_empty() && state.link != PhoneLink::Taken {
+    if !state.trouble.is_empty() && !matches!(state.link, PhoneLink::Taken | PhoneLink::Away) {
         ui.note(state.trouble.clone());
     }
 }

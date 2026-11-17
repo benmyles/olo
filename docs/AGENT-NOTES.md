@@ -136,6 +136,12 @@ Each note: what to do, then why (what happened), then how to apply it.
   page served from 127.0.0.1. A second Chrome with `OLO_SCREEN=agent`
   in its environment (and a profile and HOME of its own) is "on an
   agent's screen" to the service.
+- **The layout lint lays out a panel only as its test state shows
+  it.** Preferences ▸ Bluetooth went out with its last button cut off
+  (a phone chosen shows four buttons) because the lint only ever saw it
+  with nothing chosen. A panel whose controls change with what's chosen
+  starts, under `cfg!(test)`, at its fullest: the most buttons, the
+  longest words (Bluetooth's chooses its test phone).
 - **Never call a blocking zbus method from inside a zbus interface
   method on the same connection**: the thread that would read the
   answer is the one waiting (the pairing agent did, and every question

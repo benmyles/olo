@@ -111,13 +111,17 @@ fn messages_and_a_code_to_the_tab_waiting_for_it() {
         assert!(out.status.success(), "{words:?}");
         String::from_utf8_lossy(&out.stdout).into_owned()
     };
-    let _standin = Ended(Command::new(&standin).args(["--address", &address]).spawn().unwrap());
-    wait_for("the stand-in never took its name", || {
-        zbus::blocking::connection::Builder::address(address.as_str())
-            .and_then(|b| b.build())
-            .and_then(|c| zbus::blocking::fdo::DBusProxy::new(&c).and_then(|d| Ok(d.name_has_owner("org.bluez".try_into().unwrap())?)))
-            .unwrap_or(false)
-    });
+    let there = || {
+        wait_for("the stand-in never took its name", || {
+            zbus::blocking::connection::Builder::address(address.as_str())
+                .and_then(|b| b.build())
+                .and_then(|c| zbus::blocking::fdo::DBusProxy::new(&c).and_then(|d| Ok(d.name_has_owner("org.bluez".try_into().unwrap())?)))
+                .unwrap_or(false)
+        })
+    };
+    #[allow(unused_assignments)]
+    let mut bluez = Some(Ended(Command::new(&standin).args(["--address", &address]).spawn().unwrap()));
+    there();
     // The phone's own switch is off as the service starts.
     tell(&["set", "messages", "no"]);
     let _service = Ended(
@@ -148,6 +152,11 @@ fn messages_and_a_code_to_the_tab_waiting_for_it() {
     // phone: found within its ten seconds, the inbox read, the contacts.
     wait_for("the service never said the phone must allow it", || published()["link"] == "allow");
     assert_eq!((published()["name"].as_str(), published()["kind"].as_str()), (Some("Mira’s iPhone"), Some("i-phone")));
+    assert_eq!(published()["profiles"], true);
+    // An iPhone has the switch to turn on only while the computer
+    // advertises for it (the stand-in refuses otherwise): the service
+    // does, while it waits.
+    wait_for("the service never advertised for the iPhone's switches", || tell(&["soliciting"]).trim() == "yes");
     tell(&["set", "messages", "yes"]);
     let start = Instant::now();
     while published()["link"] != "ready" || published()["contacts"] != true {
@@ -230,9 +239,27 @@ fn messages_and_a_code_to_the_tab_waiting_for_it() {
         std::thread::sleep(Duration::from_millis(50));
     }
     assert_eq!(published()["conversations"].as_u64(), Some(4), "what it had is kept");
+    // Its contacts came: nothing is advertised any more.
+    wait_for("the service went on advertising with nothing to wait for", || tell(&["soliciting"]).trim() == "no");
+    // BlueZ is started again (an update; Olo Doctor changing how it's
+    // started): it has forgotten Olo's profiles and says nothing of it.
+    // The service registers them with the new one and has the phone's
+    // messages open again, by itself.
+    drop(bluez.take());
+    wait_for("the state never said BlueZ had gone", || published()["profiles"] == false);
+    bluez = Some(Ended(Command::new(&standin).args(["--address", &address]).spawn().unwrap()));
+    there();
+    let start = Instant::now();
+    while published()["link"] != "ready" || published()["profiles"] != true {
+        assert!(start.elapsed() < Duration::from_secs(25), "the service never came back to a BlueZ started again: {}", published());
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let n = olo_phone(&["--conversations"], None).1.lines().count();
+    assert!(n >= 4, "what it had is kept through it: {n} lines");
     // Unpaired: no phone, and nothing of it kept.
     tell(&["set", "paired", "no"]);
     wait_for("the state never said no phone is paired", || published()["link"] == "not-paired" && published()["conversations"] == 0);
     drop(_service);
+    drop(bluez);
     let _ = std::fs::remove_dir_all(&dir);
 }

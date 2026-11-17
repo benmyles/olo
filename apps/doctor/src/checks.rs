@@ -298,6 +298,8 @@ pub struct Roots {
     pub units: Box<dyn Fn(&str) -> Result<UnitState, String> + Send + Sync>,
     /// AirPods are paired here (the AirPods service's state).
     pub airpods: bool,
+    /// A phone is paired here (BlueZ's: one whose class is a phone's).
+    pub phone: bool,
     /// Bluetooth controllers that don't answer (BlueZ's adapter powered
     /// and its power off, or the other way round), by name ("hci0").
     pub bluetooth_stuck: Vec<String>,
@@ -410,6 +412,7 @@ impl Roots {
         let scope = scope_of(&std::fs::read_to_string("/proc/self/cgroup").unwrap_or_default());
         // AirPods paired, as BlueZ says (the service needn't be running).
         let airpods = olo_system::bluetooth::status().map(|s| s.devices.iter().any(|d| d.paired && d.modalias.as_deref().is_some_and(olo_system::airpods::is_airpods))).unwrap_or(false);
+        let phone = olo_system::bluetooth::status().map(|s| s.devices.iter().any(|d| d.paired && d.icon == "phone")).unwrap_or(false);
         let bluetooth_stuck =
             olo_system::bluetooth::status().ok().and_then(|s| s.adapter).filter(|a| a.not_answering()).map(|a| a.path.rsplit('/').next().unwrap_or_default().to_owned()).into_iter().collect();
         Roots {
@@ -419,6 +422,7 @@ impl Roots {
             scope,
             units: Box::new(crate::fix::unit_state),
             airpods,
+            phone,
             bluetooth_stuck,
             packages: Box::new(real_packages),
             updates: Box::new(real_updates),
@@ -672,6 +676,7 @@ pub fn scan(roots: &Roots) -> Report {
     voice_realtime(roots, &procs, realtime_leave, &mut r);
     airpods_listening(roots, &procs, &mut r);
     phone(roots, &mut r);
+    phone_link(roots, &mut r);
     util_clamp(roots, &mut r);
     kept_core(roots, &mut r);
     session_weight(roots, &mut r);
@@ -2060,6 +2065,48 @@ fn phone(roots: &Roots, r: &mut Report) {
         title: "BlueFerry is installed, and Olo no longer uses it".into(),
         detail: "Olo now speaks to your phone itself (Preferences ▸ Phone). BlueFerry’s backend would hold the phone’s messages and contacts where Olo’s own can’t reach them. The fix removes BlueFerry and what was installed only for it, and starts Bluetooth as it was before (what’s connected comes back by itself). What BlueFerry kept (its history in ~/.local/state/blueferry and its settings in ~/.config/blueferry) is left for you to keep or delete.".into(),
         fix: Some(Fix { label: "Remove BlueFerry".into(), root: true, steps }),
+    });
+}
+
+/// A phone paired: its messages, contacts and codes reach Olo only
+/// through the phone service (`olo-phone --service`, which the session
+/// starts) and the profiles it registers with BlueZ. It registers them
+/// again by itself with a BlueZ started since (an update, a fix here);
+/// what it can't, it says in its state (`PhoneState::profiles`,
+/// `trouble`), and this says it where the person will see it. A service
+/// that isn't running (the session leaves one stopped that ended again
+/// and again) is said too.
+fn phone_link(roots: &Roots, r: &mut Report) {
+    if !roots.phone {
+        return;
+    }
+    let state: Option<olo_protocol::phone::PhoneState> = read(&roots.temp.runtime.join("olo-phone.json")).and_then(|t| serde_json::from_str(&t).ok());
+    let running = state.as_ref().is_some_and(|s| s.pid > 0 && roots.fs.join(format!("proc/{}", s.pid)).exists());
+    let Some(state) = state.filter(|_| running) else {
+        r.findings.push(Finding {
+            id: "phone-service".into(),
+            severity: Severity::Problem,
+            title: "The phone service isn’t running".into(),
+            detail: "A phone is paired, but Olo’s phone service, which its messages, contacts and one-time codes come through, isn’t running: it ended again and again, and the session left it stopped. Logging out and in starts it again; Log Viewer (olo-phone) says why it ended.".into(),
+            fix: None,
+        });
+        return;
+    };
+    if !state.profiles {
+        let trouble = if state.trouble.is_empty() { "Bluetooth isn’t answering.".to_owned() } else { state.trouble.clone() };
+        r.findings.push(Finding {
+            id: "phone-profiles".into(),
+            severity: Severity::Problem,
+            title: "The phone’s messages can’t reach Olo".into(),
+            detail: format!("Olo’s phone service couldn’t register its profiles (the phone’s messages, its contacts, and the server it tells of new messages) with Bluetooth: {trouble} It tries again every minute, and as soon as Bluetooth starts again."),
+            fix: None,
+        });
+        return;
+    }
+    let name = if state.name.is_empty() { "The phone".to_owned() } else { format!("“{}”", state.name) };
+    r.fine.push(Fine {
+        title: "The phone’s messages can reach Olo".into(),
+        detail: format!("Olo’s phone service is running, its profiles registered with Bluetooth. {name}: {}.", state.link.words().trim_end_matches('.')),
     });
 }
 
@@ -4121,6 +4168,7 @@ mod tests {
             scope: Some("session-2.scope".into()),
             units,
             airpods: true,
+            phone: false,
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
@@ -4650,6 +4698,7 @@ mod tests {
             scope: None,
             units: Box::new(|_| Err("none".into())),
             airpods: false,
+            phone: false,
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
@@ -4734,6 +4783,7 @@ mod tests {
             scope: None,
             units: Box::new(|_| Err("none".into())),
             airpods: false,
+            phone: false,
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
@@ -5227,6 +5277,43 @@ mod tests {
             "{steps:?}"
         );
         assert_eq!(steps[2..], [Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Reload }, Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Restart }]);
+        let _ = std::fs::remove_dir_all(&fs);
+    }
+
+    /// A phone paired: the phone service running with its profiles
+    /// registered is fine; not running, or its profiles not registered
+    /// (another program has them; Bluetooth not answering), a problem.
+    #[test]
+    fn a_paired_phone_needs_the_service_and_its_profiles() {
+        let (fs, mut roots) = machine("phone-link");
+        roots.temp.runtime = fs.join("run/user/1000");
+        std::fs::create_dir_all(&roots.temp.runtime).unwrap();
+        let found = |roots: &Roots| scan(roots).findings.into_iter().filter(|f| f.id.starts_with("phone-")).map(|f| f.id).collect::<Vec<_>>();
+        let state = |pid: u32, profiles: bool| {
+            let s = olo_protocol::phone::PhoneState {
+                pid,
+                name: "Mira’s iPhone".into(),
+                profiles,
+                trouble: if profiles { String::new() } else { "Another program has the phone’s message profiles.".into() },
+                ..Default::default()
+            };
+            std::fs::write(roots.temp.runtime.join("olo-phone.json"), serde_json::to_string(&s).unwrap()).unwrap();
+        };
+        assert!(found(&roots).is_empty(), "no phone paired: nothing said");
+        roots.phone = true;
+        assert_eq!(found(&roots), ["phone-service"], "no state: not running");
+        // (A process that's there: this test's own; one that isn't.)
+        std::fs::create_dir_all(fs.join("proc/4242")).unwrap();
+        state(4243, true);
+        assert_eq!(found(&roots), ["phone-service"], "its process gone");
+        state(4242, false);
+        let f = scan(&roots).findings.into_iter().find(|f| f.id == "phone-profiles").unwrap();
+        assert_eq!(f.severity, Severity::Problem);
+        assert!(f.detail.contains("Another program has the phone’s message profiles."), "{}", f.detail);
+        state(4242, true);
+        let report = scan(&roots);
+        assert!(report.findings.iter().all(|f| !f.id.starts_with("phone-")));
+        assert!(report.fine.iter().any(|f| f.title == "The phone’s messages can reach Olo"));
         let _ = std::fs::remove_dir_all(&fs);
     }
 
@@ -6094,6 +6181,7 @@ mod tests {
                 scope: None,
                 units: Box::new(|_| Err("none".into())),
                 airpods: false,
+                phone: false,
                 bluetooth_stuck: Vec::new(),
                 packages: Box::new(|_| None),
                 updates: Box::new(|| None),

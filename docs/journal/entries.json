@@ -4660,5 +4660,11 @@
   "title": "Connecting a phone: its own switches",
   "caption": "The third step: the phone's own switches for this computer, drawn as the phone shows them (an iPhone's Show Notifications and Sync Contacts; an Android's Text messages and Contacts). Each turns green as the phone turns it on; the page follows by itself.",
   "image": "2026-11-16/232538-connecting-a-phone-its-own-switches.png"
+ },
+ {
+  "time": "2026-11-17T00:00:55",
+  "title": "Bluetooth: room for a phone's buttons",
+  "caption": "A phone chosen in Preferences \u25b8 Bluetooth has four buttons, and the last was cut off (Ben's screenshot); the panel is wider, its columns too, and the layout lint now sees it with a phone chosen, so it can't happen again. The phone's button is now \"Phone Settings\u2026\".",
+  "image": "2026-11-17/000055-bluetooth-room-for-a-phone-s-buttons.png"
  }
 ]

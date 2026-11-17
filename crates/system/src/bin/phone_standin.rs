@@ -49,6 +49,9 @@ enum Job {
     Changed,
     /// Pair: the agent is asked whether the code matches; yes pairs.
     Pair,
+    /// An advertisement was registered (who, their object): read what
+    /// it solicits.
+    Advert(String, String),
 }
 
 struct World {
@@ -61,6 +64,10 @@ struct World {
     discovering: bool,
     /// The pairing agent registered: (who, their object).
     agent: Option<(String, String)>,
+    /// An advertisement soliciting Apple's notification service is
+    /// broadcast: an iPhone shows its switches for the computer only
+    /// while one is.
+    soliciting: bool,
     jobs: mpsc::Sender<Job>,
 }
 
@@ -83,6 +90,22 @@ impl Manager {
 
     fn unregister_profile(&self, profile: OwnedObjectPath) {
         self.0.lock().expect("world").profiles.retain(|_, (_, path)| path != profile.as_str());
+    }
+}
+
+struct Adverts(Shared);
+
+#[zbus::interface(name = "org.bluez.LEAdvertisingManager1")]
+impl Adverts {
+    fn register_advertisement(&self, advert: OwnedObjectPath, _options: HashMap<String, OwnedValue>, #[zbus(header)] header: zbus::message::Header<'_>) {
+        let who = header.sender().map(|s| s.to_string()).unwrap_or_default();
+        // (Read once this has answered: asking from in here would wait
+        // on the thread that hears the answer.)
+        let _ = self.0.lock().expect("world").jobs.send(Job::Advert(who, advert.as_str().to_owned()));
+    }
+
+    fn unregister_advertisement(&self, _advert: OwnedObjectPath) {
+        self.0.lock().expect("world").soliciting = false;
     }
 }
 
@@ -237,6 +260,12 @@ impl Told {
     fn set(&self, key: &str, value: &str) -> Result<(), Error> {
         let on = value == "yes";
         let mut w = self.0.lock().expect("world");
+        // An iPhone's switches for a computer are there to turn on only
+        // while the computer advertises for them (BlueFerry's notes, iOS
+        // 26); an Android phone asks as it pairs.
+        if on && !w.android && !w.soliciting && matches!(key, "messages" | "contacts") {
+            return Err(Error::NotAvailable("an iPhone shows this switch only while the computer advertises for it, and it isn't".into()));
+        }
         match key {
             "messages" => w.phone.0.lock().expect("phone").messages_allowed = on,
             "contacts" => w.phone.0.lock().expect("phone").contacts_allowed = on,
@@ -246,6 +275,12 @@ impl Told {
         }
         let _ = w.jobs.send(Job::Changed);
         Ok(())
+    }
+
+    /// Whether an advertisement soliciting Apple's notification service
+    /// is registered.
+    fn soliciting(&self) -> bool {
+        self.0.lock().expect("world").soliciting
     }
 
     fn sent(&self) -> Vec<String> {
@@ -297,13 +332,15 @@ fn main() {
     let (tx, jobs) = mpsc::channel::<Job>();
     let phone = Phone::sample();
     phone.0.lock().expect("phone").android = android;
-    let world: Shared = Arc::new(Mutex::new(World { phone: phone.clone(), profiles: HashMap::new(), paired: !unpaired, connected: !unpaired, android, discovering: false, agent: None, jobs: tx }));
+    let world: Shared =
+        Arc::new(Mutex::new(World { phone: phone.clone(), profiles: HashMap::new(), paired: !unpaired, connected: !unpaired, android, discovering: false, agent: None, soliciting: false, jobs: tx }));
     let built = zbus::blocking::connection::Builder::address(address.as_str())
         .and_then(|b| b.serve_at("/", zbus::fdo::ObjectManager))
         .and_then(|b| b.serve_at("/org/bluez", Manager(world.clone())))
         .and_then(|b| b.serve_at("/org/bluez", Told(world.clone())))
         .and_then(|b| b.serve_at("/org/bluez", Agents(world.clone())))
         .and_then(|b| b.serve_at(ADAPTER, Adapter(world.clone())))
+        .and_then(|b| b.serve_at(ADAPTER, Adverts(world.clone())))
         .and_then(|b| b.serve_at(DEVICE, Device(world.clone())))
         .and_then(|b| b.name(NAME))
         .and_then(|b| b.build());
@@ -361,6 +398,15 @@ fn main() {
                     let _ = w.jobs.send(Job::Changed);
                 }
             }
+            Job::Advert(who, path) => {
+                let solicits = conn
+                    .call_method(Some(who.as_str()), path.as_str(), Some("org.freedesktop.DBus.Properties"), "GetAll", &("org.bluez.LEAdvertisement1",))
+                    .ok()
+                    .and_then(|m| m.body().deserialize::<HashMap<String, OwnedValue>>().ok())
+                    .and_then(|all| all.get("SolicitUUIDs").and_then(|v| <Vec<String>>::try_from(v.try_clone().ok()?).ok()))
+                    .unwrap_or_default();
+                world.lock().expect("world").soliciting = solicits.iter().any(|u| u.eq_ignore_ascii_case("7905f431-b5ce-4e99-a40f-4b1e122d00d0"));
+            }
             Job::Changed => {
                 let w = world.lock().expect("world");
                 let mut changed: HashMap<&str, Value> = HashMap::new();
@@ -405,6 +451,16 @@ fn told(address: &str, words: &[String]) -> i32 {
     match words.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
         ["receive", name, from, text @ ..] if !text.is_empty() => call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Receive", &(*name, *from, text.join(" ").as_str()))),
         ["set", key, value] => call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Set", &(*key, *value))),
+        ["soliciting"] => match conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Soliciting", &()).and_then(|m| m.body().deserialize::<bool>()) {
+            Ok(on) => {
+                println!("{}", if on { "yes" } else { "no" });
+                0
+            }
+            Err(e) => {
+                eprintln!("phone-standin: {e}");
+                1
+            }
+        },
         ["sent"] => call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Sent", &())),
         _ => {
             eprintln!("{USAGE}");

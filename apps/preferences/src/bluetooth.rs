@@ -49,6 +49,8 @@ pub(crate) struct Link {
 }
 
 /// Test data: this computer's adapter, two paired devices and one nearby.
+const TEST_PHONE: &str = "Mira’s iPhone 17 Pro Max";
+
 fn test_status() -> Status {
     let device = |name: &str, icon: &str, paired, connected, battery| bt::Device {
         path: format!("/org/bluez/hci0/{name}"),
@@ -74,6 +76,9 @@ fn test_status() -> Status {
             discovering: true,
         }),
         devices: vec![
+            // (A phone, connected: the row of buttons at its widest,
+            // chosen as the panel opens so the lint lays it out.)
+            device(TEST_PHONE, "phone", true, true, Some(80)),
             device("Sony WH-1000XM5 Wireless Noise Canceling Headphones", "audio-headset", true, true, Some(80)),
             device("Logitech MX Master 3S for Mac", "input-mouse", true, false, Some(45)),
             device("Keychron Q1 Pro QMK/VIA Wireless Custom Mechanical Keyboard", "input-keyboard", false, false, None),
@@ -221,7 +226,11 @@ impl State {
                 }
             }
         });
-        State { list: ListModel::new(false), selected: None, searched: false, typed, link }
+        // (Tests: the phone chosen, whose buttons are the most there
+        // are. The panel went out with its last button cut off because
+        // the lint only ever saw it with nothing chosen.)
+        let selected = cfg!(test).then(|| format!("/org/bluez/hci0/{TEST_PHONE}"));
+        State { list: ListModel::new(false), selected, searched: false, typed, link }
     }
 }
 
@@ -299,7 +308,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             l.select(i);
         }
     }
-    let columns = vec![Column::new("Device", 200.0), Column::new("Type", 110.0), Column::new("Status", 90.0)];
+    let columns = vec![Column::new("Device", 230.0), Column::new("Type", 120.0), Column::new("Status", 140.0)];
     let (cells, doing2) = (devs.clone(), doing.clone());
     let paths: Vec<String> = devs.iter().map(|d| d.path.clone()).collect();
     let model = st.list.clone();
@@ -387,7 +396,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             // A phone: its messages and codes are the Phone panel's
             // (another pairing than this one: its own steps).
             if d.icon == "phone" {
-                row = row.child(Button::new("Messages and Codes…").on_click(move |_, _cx| {
+                row = row.child(Button::new("Phone Settings…").on_click(move |_, _cx| {
                     crate::prefs().open("phone");
                 }));
             }

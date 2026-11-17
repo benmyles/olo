@@ -3,6 +3,14 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-17
+
+### Bluetooth: room for a phone's buttons
+
+*00:00* — A phone chosen in Preferences ▸ Bluetooth has four buttons, and the last was cut off (Ben's screenshot); the panel is wider, its columns too, and the layout lint now sees it with a phone chosen, so it can't happen again. The phone's button is now "Phone Settings…".
+
+![Bluetooth: room for a phone's buttons](2026-11-17/000055-bluetooth-room-for-a-phone-s-buttons.png)
+
 ## 2026-11-16
 
 ### Connecting a phone: its own switches

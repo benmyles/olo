@@ -81,6 +81,14 @@ fn against_the_standin() {
         tell(&address, &["set", "messages", "no"]);
         profiles.open(&phone.path, Channel::Messages).unwrap();
         assert!(matches!(Mas::open(next(Channel::Messages).stream), Err(obex::Error::Refused(obex::code::FORBIDDEN))));
+        // (An iPhone has the switch to turn on only while the computer
+        // advertises for it.)
+        let _asking = (!android).then(|| profiles.solicit(&phone.path).unwrap());
+        let start = std::time::Instant::now();
+        while !android && tell(&address, &["soliciting"]).trim() != "yes" {
+            assert!(start.elapsed() < Duration::from_secs(5), "the stand-in never heard the advertisement");
+            std::thread::sleep(Duration::from_millis(20));
+        }
         tell(&address, &["set", "messages", "yes"]);
         profiles.open(&phone.path, Channel::Messages).unwrap();
         let mut mas = Mas::open(next(Channel::Messages).stream).unwrap();

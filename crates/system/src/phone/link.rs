@@ -32,6 +32,16 @@ use crate::Result;
 const DEST: &str = "org.bluez";
 const DEVICE: &str = "org.bluez.Device1";
 const MANAGER: &str = "org.bluez.ProfileManager1";
+const ADVERTS: &str = "org.bluez.LEAdvertisingManager1";
+/// Where Olo's advertisement soliciting an iPhone is served.
+const ADVERT: &str = "/org/olo/phone/solicit";
+/// Apple's Notification Center Service, which an advertisement solicits:
+/// an iPhone shows its switches for a computer (Show Notifications, Sync
+/// Contacts) only while the computer asks for it so.
+const ANCS: &str = "7905f431-b5ce-4e99-a40f-4b1e122d00d0";
+/// A service every iPhone lists (Apple's own), known before its
+/// Modalias is.
+const APPLE: &str = "00000000-deca-fade-deca-deafdecacafe";
 
 /// The channel the Notification Server listens on (RFCOMM; any free one).
 const MNS_CHANNEL: u16 = 19;
@@ -152,8 +162,9 @@ pub struct Phone {
 }
 
 /// Apple's Bluetooth vendor id, in a Modalias ("bluetooth:v004Cp…").
-pub fn kind_of(modalias: &str) -> Kind {
-    if modalias.to_ascii_lowercase().starts_with("bluetooth:v004c") { Kind::IPhone } else { Kind::Other }
+pub fn kind_of(modalias: &str, uuids: &[String]) -> Kind {
+    let apple = modalias.to_ascii_lowercase().starts_with("bluetooth:v004c") || uuids.iter().any(|u| u.eq_ignore_ascii_case(APPLE));
+    if apple { Kind::IPhone } else { Kind::Other }
 }
 
 fn bus() -> Result<Connection> {
@@ -203,6 +214,99 @@ fn mns_record() -> String {
 /// Olo's profiles, registered with BlueZ for as long as this is kept.
 pub struct Profiles {
     conn: Connection,
+    /// The BlueZ they were last registered with (its name on the bus):
+    /// a BlueZ started again has forgotten them ([`Profiles::ensure`]).
+    with: std::sync::Mutex<String>,
+}
+
+/// Olo's advertisement to an iPhone ([`Profiles::solicit`]).
+struct Advert {
+    name: String,
+}
+
+#[zbus::interface(name = "org.bluez.LEAdvertisement1")]
+impl Advert {
+    fn release(&self) {}
+
+    #[zbus(property, name = "Type")]
+    fn kind(&self) -> String {
+        "peripheral".into()
+    }
+
+    #[zbus(property, name = "SolicitUUIDs")]
+    fn solicits(&self) -> Vec<String> {
+        vec![ANCS.into()]
+    }
+
+    /// (The company id kept for tests, 0xFFFF, and "Olo": it claims to be
+    /// nobody's product. With the flags and the solicited service it
+    /// fits a legacy advertisement's 31 bytes.)
+    #[zbus(property)]
+    fn manufacturer_data(&self) -> HashMap<u16, OwnedValue> {
+        OwnedValue::try_from(Value::from(b"Olo".to_vec())).map(|v| HashMap::from([(0xFFFF, v)])).unwrap_or_default()
+    }
+
+    #[zbus(property)]
+    fn discoverable(&self) -> bool {
+        true
+    }
+
+    #[zbus(property)]
+    fn discoverable_timeout(&self) -> u16 {
+        180
+    }
+
+    #[zbus(property)]
+    fn local_name(&self) -> String {
+        self.name.clone()
+    }
+}
+
+/// The advertisement, broadcast for as long as this is kept.
+pub struct Solicit {
+    conn: Connection,
+    adapter: String,
+}
+
+impl Drop for Solicit {
+    fn drop(&mut self) {
+        if let Ok(path) = zvariant::ObjectPath::try_from(ADVERT) {
+            let _ = self.conn.call_method(Some(DEST), self.adapter.as_str(), Some(ADVERTS), "UnregisterAdvertisement", &(path,));
+        }
+        let _ = self.conn.object_server().remove::<Advert, _>(ADVERT);
+    }
+}
+
+/// Tell BlueZ of the three profiles (their objects are served already).
+fn announce(conn: &Connection) -> Result<()> {
+    for channel in Channel::ALL {
+        let mut options: HashMap<&str, Value> = HashMap::new();
+        options.insert("RequireAuthentication", true.into());
+        options.insert("RequireAuthorization", false.into());
+        options.insert("AutoConnect", false.into());
+        let record = mns_record();
+        match channel {
+            Channel::Notifications => {
+                options.insert("Name", "Olo Messages".into());
+                options.insert("Role", "server".into());
+                options.insert("Channel", MNS_CHANNEL.into());
+                options.insert("ServiceRecord", record.as_str().into());
+            }
+            Channel::Messages | Channel::Contacts => {
+                options.insert("Name", if channel == Channel::Messages { "Olo Messages" } else { "Olo Contacts" }.into());
+                options.insert("Role", "client".into());
+            }
+        }
+        let path = zvariant::ObjectPath::try_from(channel.path())?;
+        conn.call_method(Some(DEST), "/org/bluez", Some(MANAGER), "RegisterProfile", &(path, channel.uuid(), options))?;
+    }
+    Ok(())
+}
+
+/// BlueZ's own name on the bus now (another after it's started again).
+fn bluez(conn: &Connection) -> Result<String> {
+    let dbus = zbus::blocking::fdo::DBusProxy::new(conn)?;
+    Ok(dbus.get_name_owner(zbus::names::BusName::try_from(DEST)?)?.to_string())
 }
 
 impl Profiles {
@@ -214,27 +318,50 @@ impl Profiles {
         let opened: Arc<dyn Fn(Opened) + Send + Sync> = Arc::new(opened);
         for channel in Channel::ALL {
             conn.object_server().at(channel.path(), Profile { channel, opened: opened.clone() })?;
-            let mut options: HashMap<&str, Value> = HashMap::new();
-            options.insert("RequireAuthentication", true.into());
-            options.insert("RequireAuthorization", false.into());
-            options.insert("AutoConnect", false.into());
-            let record = mns_record();
-            match channel {
-                Channel::Notifications => {
-                    options.insert("Name", "Olo Messages".into());
-                    options.insert("Role", "server".into());
-                    options.insert("Channel", MNS_CHANNEL.into());
-                    options.insert("ServiceRecord", record.as_str().into());
-                }
-                Channel::Messages | Channel::Contacts => {
-                    options.insert("Name", if channel == Channel::Messages { "Olo Messages" } else { "Olo Contacts" }.into());
-                    options.insert("Role", "client".into());
-                }
-            }
-            let path = zvariant::ObjectPath::try_from(channel.path())?;
-            conn.call_method(Some(DEST), "/org/bluez", Some(MANAGER), "RegisterProfile", &(path, channel.uuid(), options))?;
         }
-        Ok(Profiles { conn })
+        announce(&conn)?;
+        let with = std::sync::Mutex::new(bluez(&conn)?);
+        Ok(Profiles { conn, with })
+    }
+
+    /// See that the BlueZ running now has them: one started again since
+    /// (an update, a setting changed, a crash) has forgotten every
+    /// profile, and says nothing of it. True: they were registered
+    /// again (every channel that was open is gone). An error: BlueZ
+    /// isn't there, or won't take them.
+    pub fn ensure(&self) -> Result<bool> {
+        let now = bluez(&self.conn)?;
+        let mut with = self.with.lock().unwrap_or_else(|e| e.into_inner());
+        if *with == now {
+            return Ok(false);
+        }
+        announce(&self.conn)?;
+        *with = now;
+        Ok(true)
+    }
+
+    /// Advertise to `phone` (an iPhone, paired and connected) that this
+    /// computer would like its notifications: what has an iPhone show its
+    /// switches for this computer, Show Notifications and Sync Contacts
+    /// (BlueFerry's notes: on iOS 26 they appeared only while this was
+    /// broadcast, never for asking for its messages alone). A low-energy
+    /// advertisement of the adapter's, which BlueZ makes discoverable
+    /// for three minutes; nothing is connected to. Kept for as long as
+    /// what's returned is.
+    pub fn solicit(&self, phone: &str) -> Result<Solicit> {
+        let adapter = phone.rsplit_once('/').map_or("/org/bluez/hci0", |(a, _)| a).to_owned();
+        let name = self
+            .conn
+            .call_method(Some(DEST), adapter.as_str(), Some("org.freedesktop.DBus.Properties"), "Get", &("org.bluez.Adapter1", "Alias"))
+            .ok()
+            .and_then(|m| m.body().deserialize::<OwnedValue>().ok())
+            .and_then(|v| String::try_from(v).ok())
+            .unwrap_or_else(|| "Olo".into());
+        let _ = self.conn.object_server().remove::<Advert, _>(ADVERT);
+        self.conn.object_server().at(ADVERT, Advert { name })?;
+        let options: HashMap<&str, Value> = HashMap::new();
+        self.conn.call_method(Some(DEST), adapter.as_str(), Some(ADVERTS), "RegisterAdvertisement", &(zvariant::ObjectPath::try_from(ADVERT)?, options))?;
+        Ok(Solicit { conn: self.conn.clone(), adapter })
     }
 
     /// Ask BlueZ for a channel to `phone`'s messages or contacts: it
@@ -261,7 +388,7 @@ impl Profiles {
                     path: path.as_str().to_owned(),
                     name: Some(text("Alias")).filter(|n| !n.is_empty()).unwrap_or_else(|| text("Name")),
                     address: text("Address"),
-                    kind: kind_of(&text("Modalias")),
+                    kind: kind_of(&text("Modalias"), &uuids),
                     connected: flag("Connected"),
                     contacts: offers(pbap::PSE_UUID),
                     battery: interfaces.get("org.bluez.Battery1").and_then(|b| b.get("Percentage")).and_then(|v| u8::try_from(v).ok()),
@@ -273,16 +400,18 @@ impl Profiles {
     }
 
     /// Call `changed` (on a thread of its own) whenever a device comes,
-    /// goes, connects, disconnects, pairs or says what it offers. Nothing
-    /// is polled.
+    /// goes, connects, disconnects, pairs or says what it offers, and
+    /// when BlueZ itself goes or comes (started again: see
+    /// [`Profiles::ensure`]). Nothing is polled.
     pub fn watch(&self, changed: impl Fn() + Send + 'static) -> Result<()> {
         use zbus::{MatchRule, message::Type};
-        const TOLD: &[&str] = &["Connected", "Paired", "UUIDs", "Alias", "ServicesResolved"];
+        const TOLD: &[&str] = &["Connected", "Paired", "UUIDs", "Alias", "ServicesResolved", "Modalias"];
         let conn = bus()?;
         let dbus = zbus::blocking::fdo::DBusProxy::new(&conn)?;
         let messages = zbus::blocking::MessageIterator::from(&conn);
         dbus.add_match_rule(MatchRule::builder().msg_type(Type::Signal).sender(DEST)?.interface("org.freedesktop.DBus.ObjectManager")?.build())?;
         dbus.add_match_rule(MatchRule::builder().msg_type(Type::Signal).sender(DEST)?.interface("org.freedesktop.DBus.Properties")?.member("PropertiesChanged")?.build())?;
+        dbus.add_match_rule(MatchRule::builder().msg_type(Type::Signal).sender("org.freedesktop.DBus")?.interface("org.freedesktop.DBus")?.member("NameOwnerChanged")?.arg(0, DEST)?.build())?;
         std::thread::Builder::new().name("phone-bluez".into()).spawn(move || {
             let _keep = (conn, dbus);
             for m in messages.flatten() {
@@ -291,6 +420,7 @@ impl Profiles {
                 }
                 let tell = match m.header().member().map(|m| m.as_str().to_owned()).as_deref() {
                     Some("InterfacesAdded" | "InterfacesRemoved") => true,
+                    Some("NameOwnerChanged") => m.body().deserialize::<(String, String, String)>().is_ok_and(|(name, _, _)| name == DEST),
                     Some("PropertiesChanged") => m
                         .body()
                         .deserialize::<(String, HashMap<String, OwnedValue>, Vec<String>)>()
@@ -322,9 +452,12 @@ mod tests {
 
     #[test]
     fn what_kind_of_phone_and_what_the_record_says() {
-        assert_eq!(kind_of("bluetooth:v004Cp7A1Ad1A40"), Kind::IPhone);
-        assert_eq!(kind_of("bluetooth:v00E0p1200d1436"), Kind::Other);
-        assert_eq!(kind_of(""), Kind::Other);
+        assert_eq!(kind_of("bluetooth:v004Cp7A1Ad1A40", &[]), Kind::IPhone);
+        assert_eq!(kind_of("bluetooth:v00E0p1200d1436", &[]), Kind::Other);
+        assert_eq!(kind_of("", &[]), Kind::Other);
+        // (Before its Modalias is read: Apple's own service among what
+        // it offers.)
+        assert_eq!(kind_of("", &["00000000-DECA-FADE-DECA-DEAFDECACAFE".into()]), Kind::IPhone);
         // The record: the Notification Server's class, RFCOMM on its
         // channel, OBEX, and the profile at 1.2.
         let r = mns_record();
