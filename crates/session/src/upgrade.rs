@@ -24,8 +24,9 @@ const SETTLE: Duration = Duration::from_secs(3);
 /// Programs Olo no longer has, which an upgrade takes away from the
 /// install directory (a build tree may still hold their last build:
 /// cargo leaves what it no longer makes). Olo Suggestions, folded into
-/// Olo Doctor (2026-11-14). tools/install-session.sh has the same list.
-pub const RETIRED: &[&str] = &["olo-suggestions"];
+/// Olo Doctor (2026-11-14); Smart Tiling, removed (2026-11-17).
+/// tools/install-session.sh has the same list.
+pub const RETIRED: &[&str] = &["olo-suggestions", "olo-smart-tile"];
 
 /// What Deskbar reads.
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]

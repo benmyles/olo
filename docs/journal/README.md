@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### Smart tiling with a model, removed
+
+*06:16* — Smart Tile is gone: its program, shortcut, Deskbar item and its box in Preferences ▸ AI (the panel now: Models, Ask, Weather; Emoji, Agent Screens, Claude Code).
+
+![Smart tiling with a model, removed](2026-11-17/061612-smart-tiling-with-a-model-removed.png)
+
 ### Website: Terminal and coding agents
 
 *06:08* — Five new rows in the website's Agents part (tab titles and groups, Keep It Going, Auto Approve, worktrees, Preferences), each with a picture from tools/dev/readme-shots terminal-agents. Also fixed on the way: --help opens no window, a hover-opened submenu keeps the keyboard, open menus are in olo-screen's tree, a window comes back to its own place.

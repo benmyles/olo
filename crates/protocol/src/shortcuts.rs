@@ -352,9 +352,6 @@ pub enum Shortcut {
     AutoTile,
     /// Focus mode on or off (`WindowingMode::Focus`), as `AutoTile`.
     FocusMode,
-    /// Every window on the active display, arranged by a model for what
-    /// each shows (Smart Tiling, Preferences ▸ AI).
-    SmartTile,
     /// Every window on the active display, stacked diagonally.
     CascadeAll,
     /// Every window on the active display stacked at the top left with
@@ -447,7 +444,7 @@ pub enum Tile {
     CenterTwoThirds,
     TopTwoThirds,
     BottomTwoThirds,
-    /// A cell an arranging command (Tile All, Tile App, Smart Tiling)
+    /// A cell an arranging command (Tile All, Tile App, `Arrange`)
     /// chose: where it is is the window's part (`TilePart`), so its edges
     /// drag its neighbours like any tile's. Alone, the whole area.
     Cell,
@@ -836,7 +833,6 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::TileAll, "tile-all", ARRANGE, "Tile all windows on the display", &["Ctrl+Cmd+Return"], &["Alt+Cmd+Return"], &["Ctrl+Cmd+Return"]),
     s(Shortcut::AutoTile, "auto-tiling", ARRANGE, "Auto-tiling on or off", &["Ctrl+Alt+Cmd+T"], &["Alt+Cmd+T"], &["Ctrl+Alt+Cmd+T"]),
     s(Shortcut::FocusMode, "focus-mode", ARRANGE, "Focus mode on or off", &["Ctrl+Alt+Cmd+O"], &["Alt+Cmd+O"], &["Ctrl+Alt+Cmd+O"]),
-    s(Shortcut::SmartTile, "smart-tile", ARRANGE, "Smart tile all windows on the display", &["Ctrl+Shift+Cmd+Return"], &["Alt+Shift+Cmd+Return"], &["Ctrl+Shift+Cmd+Return"]),
     s(Shortcut::ZoomAll, "zoom-all", ARRANGE, "Zoom or unzoom all windows on the display", &["Ctrl+Alt+Cmd+Return"], &["Ctrl+Alt+Cmd+Return"], &["Ctrl+Alt+Cmd+Return"]),
     s(Shortcut::CascadeAll, "cascade-all", ARRANGE, "Cascade all windows on the display", &["Ctrl+Cmd+Backslash"], &["Alt+Cmd+Backslash"], &["Ctrl+Cmd+Backslash"]),
     s(Shortcut::FanOut, "fan-out", ARRANGE, "Fan out all windows, tabs side by side", &["Ctrl+Cmd+Slash"], &["Alt+Cmd+Slash"], &["Ctrl+Cmd+Slash"]),

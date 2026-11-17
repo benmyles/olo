@@ -133,7 +133,7 @@ offers to open a pull request.
   on every control in every window.
 - **Workspaces** for each display, an overview of all of them, and
   tiling: arrange windows from the keyboard, auto-tiling, focus mode,
-  window groups with tabs, and Smart Tiling by a model.
+  and window groups with tabs.
 - **Two themes**, Classic (after BeOS) and Platinum (after Mac OS 9),
   each drawing every icon, window and control in its own style; light,
   dark and night modes; fractional scaling, HDR and wide-gamut colour,

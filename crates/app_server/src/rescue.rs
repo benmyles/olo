@@ -184,7 +184,6 @@ pub fn in_rescue(action: Action) -> Option<Action> {
             | S::Hide
             | S::HideApp
             | S::RestoreOrHide
-            | S::SmartTile
             | S::ScreenshotRegion
             | S::ScreenshotWindow
             | S::ScreenshotApp => return None,

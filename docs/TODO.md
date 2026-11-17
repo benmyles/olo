@@ -17,11 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Smart tiling with a model, removed** (Ben, 2026-11-16: "remove the
-  smart tiling with a model feature completely -- it never worked well
-  and is, frankly, silly"). `apps/smart-tile`, its shortcut, its part of
-  Preferences ▸ AI and of app_server, its docs and tests: all of it
-  gone (what else uses `crates/ai` stays).
 - **Go to File or Folder in the file panel** (Ben, 2026-11-16, with a
   picture of an Open File panel on Pictures: "i should be able to use
   the go to file/folder shortcut in a picker like this"). In the kit's
@@ -5945,6 +5940,16 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Smart tiling with a model, removed**~~ (Ben, 2026-11-16: "remove
+  the smart tiling with a model feature completely -- it never worked
+  well and is, frankly, silly"; done 2026-11-17). `apps/smart-tile`,
+  its shortcut (⌃⇧⌘↩ is free), Deskbar's Smart Tile, its box in
+  Preferences ▸ AI and its setting, its start in app_server and its
+  docs are gone; an upgrade takes the installed `olo-smart-tile` away
+  (`RETIRED`). `Arrangement` and `Arrange` stay: app_server's IPC for
+  any arranger (an agent, a script), which the window-manager fuzzer
+  exercises.
 
 - ~~**The website covers Terminal's work with agents**~~ (Ben,
   2026-11-16: "update the website to cover all the agent integration

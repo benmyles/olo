@@ -354,19 +354,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         // Arranging leaves Focus mode (which zooms every window) first.
         if matches!(
             shortcut,
-            S::Tile(_)
-                | S::ZoomVertical
-                | S::ZoomHorizontal
-                | S::Restore
-                | S::RestoreOrHide
-                | S::Center
-                | S::TileAll
-                | S::SmartTile
-                | S::ZoomAll
-                | S::CascadeAll
-                | S::FanOut
-                | S::CascadeOthers
-                | S::FanOutOthers
+            S::Tile(_) | S::ZoomVertical | S::ZoomHorizontal | S::Restore | S::RestoreOrHide | S::Center | S::TileAll | S::ZoomAll | S::CascadeAll | S::FanOut | S::CascadeOthers | S::FanOutOthers
         ) {
             self.arranging(focused.as_ref().and_then(|w| self.window_output(w)));
         }
@@ -453,9 +441,6 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 let now = self.set_windowing_mode(to, None, Some(o));
                 self.show_indicator(crate::osd::Indicator::Mode(now));
             }
-            // Slow (a model looks at the screen): its own process, which
-            // shows progress and sends Arrange when it has an answer.
-            S::SmartTile => self.spawn_program("olo-smart-tile", &[]),
             S::ZoomAll => self.zoom_all(),
             // Arrangements that aren't tiles: auto-tiling off there first.
             S::CascadeAll | S::FanOut | S::CascadeOthers | S::FanOutOthers => {

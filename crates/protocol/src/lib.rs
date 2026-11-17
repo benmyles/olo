@@ -422,7 +422,7 @@ pub enum Request {
         app_id: String,
     },
     /// The active display's tiling area and the windows on it (front
-    /// first, with frames), for an arranger such as Smart Tiling.
+    /// first, with frames), for an arranger (an agent, a script).
     Arrangement,
     /// Put windows of the active display in parts of its tiling area,
     /// tiled there (dragging an edge resizes the neighbours) and undoable
@@ -1745,8 +1745,6 @@ pub struct AiSettings {
     /// order); off: straight to Anthropic with the saved API key. None is
     /// offered now: OpenAI's always go through the pool.
     pub use_pool: bool,
-    /// Smart Tiling: the model arranges the windows on the screen.
-    pub smart_tiling: AiFeature,
     /// The emoji picker's ⌘↩: five emoji for a description.
     pub emoji: AiFeature,
     /// The command palette's /ask: an answer, and code to copy.
@@ -1791,7 +1789,6 @@ impl Default for AiSettings {
     fn default() -> Self {
         AiSettings {
             use_pool: true,
-            smart_tiling: AiFeature { enabled: true, model: AI_MODELS[0].0.into(), effort: "medium".into() },
             // Asked while the person waits: quick.
             emoji: AiFeature { enabled: true, model: AI_MODELS[0].0.into(), effort: "low".into() },
             // Asked while the person waits too (Ben, 2026-11-07: "defaulting
@@ -1818,7 +1815,7 @@ pub struct AiFeature {
 
 impl Default for AiFeature {
     fn default() -> Self {
-        AiSettings::default().smart_tiling
+        AiFeature { enabled: true, model: AI_MODELS[0].0.into(), effort: "medium".into() }
     }
 }
 

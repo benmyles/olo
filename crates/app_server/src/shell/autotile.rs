@@ -3596,7 +3596,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         true
     }
 
-    /// Smart Tiling, Tile App and the like put windows where they chose
+    /// Tile App, `Arrange` and the like put windows where they chose
     /// on an auto-tiled display: the tree made again from where they are.
     pub fn auto_readopt(&mut self, output: &Output) {
         let key = (self.showing(&output), output.name());
@@ -3610,7 +3610,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.auto.dirty = true;
     }
 
-    /// After an arranger (Smart Tiling, Tile App) put the active
+    /// After an arranger (Tile App, `Arrange`) put the active
     /// display's windows where it chose: if that display is auto-tiled,
     /// its tree from there.
     pub fn readopt_active(&mut self) {

@@ -66,7 +66,7 @@ as_user mkdir -p "$PREFIX/bin" "$PREFIX/share/olo"
 # Programs Olo no longer has (crates/session/src/upgrade.rs's RETIRED:
 # the build tree may still hold their last build): not installed, and
 # taken away.
-RETIRED="olo-suggestions"
+RETIRED="olo-suggestions olo-smart-tile"
 for name in $RETIRED; do
     as_user rm -f "$PREFIX/bin/$name"
 done

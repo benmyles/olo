@@ -458,7 +458,7 @@ mod tests {
 
     #[test]
     fn astra_by_default_and_for_models_no_longer_offered() {
-        let f = AiSettings::default().smart_tiling;
+        let f = AiFeature::default();
         assert_eq!((f.model_id(), f.model_name(), f.effort.as_str()), ("gpt-6-astra", "Astra 6", "medium"));
         let old = AiFeature { model: "claude-opus-5-5".into(), ..f.clone() };
         assert_eq!(old.model_id(), "gpt-6-astra");

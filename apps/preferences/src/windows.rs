@@ -3,7 +3,7 @@
 //! lays windows out (`TilingSettings::layout`), and the space Olo
 //! leaves around the windows it arranges (`Settings::tiling`): a margin at
 //! the display's edges and a gap between windows, kept by tiling, zooming,
-//! Tile All, Smart Tile, cascading and fanning out. app_server fits tiled
+//! Tile All, cascading and fanning out. app_server fits tiled
 //! and zoomed windows to it as it changes, so the sliders move them live;
 //! the miniature shows the main display with three windows tiled. And
 //! the apps whose windows always float over the tiles
@@ -132,7 +132,7 @@ pub fn ui(ui: &mut Ui, outputs: &[OutputInfo]) {
         let display = main.map(crate::display::logical).map_or((1280.0, 800.0), |(w, h)| (w as f32, h as f32));
         let s = s.clone();
         ui.add(canvas(move |g, b| miniature(g, b, &theme::palette(), &s, display)).w_full().h(px(MINIATURE_H)).flex_shrink_0());
-        ui.note("Tiling, zooming, Tile All, Smart Tile, cascading and fanning out all leave this space.");
+        ui.note("Tiling, zooming, Tile All, cascading and fanning out all leave this space.");
     });
     ui.add_columns(left, right);
 }

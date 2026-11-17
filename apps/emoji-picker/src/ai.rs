@@ -1,6 +1,6 @@
 //! ⌘↩: five emoji for a description ("pat on the back for going above
 //! and beyond"), from the model chosen for Emoji in Preferences ▸ AI,
-//! reached as Smart Tiling reaches its (crates/ai). Asked on a thread of
+//! reached through crates/ai. Asked on a thread of
 //! its own; the picker keeps working meanwhile.
 
 use olo_protocol::{Client, Reply, Request};

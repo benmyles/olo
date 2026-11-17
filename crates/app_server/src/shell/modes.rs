@@ -21,7 +21,7 @@
 //! Focus puts each back where it was) and a new one opens zoomed
 //! (`focus_claim`). Moved or sized by hand, a window zooms again when let
 //! go, on the display it was let go on. The arranging commands (tiling,
-//! Tile All, Cascade, Fan Out, Smart Tile) leave Focus for Standard.
+//! Tile All, Cascade, Fan Out) leave Focus for Standard.
 
 use olo_protocol::WindowingMode;
 use smithay::{

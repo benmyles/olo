@@ -1980,7 +1980,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     /// The active display, the area tiling uses on it, and its windows,
-    /// front first: what an arranger (Smart Tiling) works with.
+    /// front first: what an arranger (`Request::Arrange`) works with.
     pub fn arrangement(&self) -> Option<(Output, Rectangle<i32, Logical>, Vec<WindowElement>)> {
         let output = self.active_output()?;
         let area = self.tile_area(&output)?;

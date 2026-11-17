@@ -15,9 +15,6 @@ pub struct Setting {
 }
 
 pub const PREFERENCE_SETTINGS: &[Setting] = &[
-    Setting { panel: "ai", tab: "", group: "Smart Tiling", name: "Arrange windows with a model", role: "CheckBox" },
-    Setting { panel: "ai", tab: "", group: "Smart Tiling", name: "Model", role: "ComboBox" },
-    Setting { panel: "ai", tab: "", group: "Smart Tiling", name: "Thinking", role: "ComboBox" },
     Setting { panel: "ai", tab: "", group: "Ask", name: "Answer questions in the command palette", role: "CheckBox" },
     Setting { panel: "ai", tab: "", group: "Ask", name: "Model", role: "ComboBox" },
     Setting { panel: "ai", tab: "", group: "Ask", name: "Thinking", role: "ComboBox" },

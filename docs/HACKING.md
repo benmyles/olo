@@ -6295,7 +6295,7 @@ them all when it's off.
 
 The Olo menu also has the desktop-wide commands app_server's shortcuts
 do: Window Arrangement (the windowing modes, `mode:` and its id; Tile
-All, Smart Tile, Zoom All, Cascade All, Fan Out, Cascade / Fan Out
+All, Zoom All, Cascade All, Fan Out, Cascade / Fan Out
 Others, Undo), Workspaces (go to one, Move Window
 To, Workspaces preferences) and Show or Hide All Windows. Each is
 `arrange:` and a shortcut id, sent as `Request::RunShortcut` naming the
@@ -6984,7 +6984,7 @@ physical modifiers (only it can tell ⌘ from Ctrl) and answers with
 Tiling (`shell/tiling.rs`) works on the display's usable area (no
 Deskbar or panels) less `Settings::tiling.margin` (`tile_area`), with
 `tiling.gap` between windows (`part`: each inner edge gives up half).
-Every arrangement keeps to it: tiling, Tile All and Smart Tile, zooming
+Every arrangement keeps to it: tiling, Tile All, zooming
 (`zoom_area`) and zooming along one axis, Center, Cascade and Fan Out.
 When the margin or gap changes (Preferences ▸ Windows),
 `tiling_space_changed` refits every tiled and zoomed window in place
@@ -7170,8 +7170,7 @@ Settings from before modes kept auto-tiling's ons and offs
 Each change shows its OSD (`osd::Indicator::Mode`: the mode's icon, name
 and `WindowingMode::detail`; `OLO_OSD_SHEET=/var/tmp/osd.png cargo test
 -p app_server osd_sheet` draws every indicator at every scale to look
-at). The arranging commands (tiling, Tile All, Cascade, Fan Out, Smart
-Tile) leave Focus for Standard first (`arranging`), saying so.
+at). The arranging commands (tiling, Tile All, Cascade, Fan Out) leave Focus for Standard first (`arranging`), saying so.
 
 Focus shows one window at a time on its display, zoomed: the front one
 of those that would be tiles (not floating, placed, not rolled up). Its tab has no zoom box there (`Decoration::zoomless`, set by
@@ -7874,7 +7873,10 @@ pixels) and its windows on this workspace, front first, with frames;
 `Arrange { windows: [Placement { id, x, y, w, h }] }` puts the listed
 ones in those fractions of the area (`arrange`), as Tile All does its
 cells: undoable, and tiled as `Tile::Cell` so their edges move together.
-Smart Tiling (see "AI features") is the first user.
+It is for an arranger outside app_server (an agent, a script; the
+window-manager fuzzer does it): Smart Tiling, a model that looked at
+the screen and arranged it, was its first user and is gone (Ben,
+2026-11-16: "it never worked well and is, frankly, silly").
 
 ## Keyboard hints (app_server hints.rs, Preferences ▸ Keyboard)
 
@@ -7932,7 +7934,7 @@ Agents read the letters showing with `{"type":"hints"}` (label, global
 rectangle, name, role: AccessKit's, `Window` or `Group`) and type them
 as keys.
 
-## AI features (crates/ai, apps/smart-tile, Preferences ▸ AI)
+## AI features (crates/ai, Preferences ▸ AI)
 
 Preferences ▸ AI (`olo-preferences ai`) holds `Settings::ai`
 (`AiSettings`). Its Claude Code box is the model (`CLAUDE_MODELS`: Opus
@@ -7944,11 +7946,10 @@ the claude code model selectable in the ai prefs, default to opus 5.5 on
 medium"). Each feature is an `AiFeature { enabled, model, effort }`,
 the model one of `AI_MODELS` and the effort one of `AI_EFFORTS`; the
 panel's `feature()` draws its switch and choosers, so the next feature
-is a struct field and a BBox: Smart Tiling, Ask, Weather (its
+is a struct field and a BBox: Ask, Weather (its
 assistant, Astra 6 at Medium by default: "Weather (apps/weather)"), and
 Emoji (the emoji picker's ⌘↩, low effort by default: it's asked while
-the person waits); Weather's sits in the left column with Smart Tiling
-and Ask, so neither column runs past the window. `AI_MODELS` is OpenAI's current Codex
+the person waits); Weather's sits in the left column with Ask. `AI_MODELS` is OpenAI's current Codex
 models (Astra 6, the default; Sol 6.1, Terra 6.1, Luna 6), reached
 through the Token Pool's gateway (`http://127.0.0.1:{OLO_POOL_PORT or
 17891}/codex`) and its Codex accounts. A model no longer listed (a
@@ -7979,23 +7980,6 @@ as xhigh, `text.format` json_schema strict, streamed, not stored);
 `openai_answer` reads the stream's text deltas or the completed
 response. `OLO_AI_BASE_URL` sends every call to a fake server instead:
 **tests never call a real model**.
-
-Smart Tiling (`olo-smart-tile`, Smart Tile ⌃⇧⌘↩, default Astra 6 at
-medium; a failure is logged to the journal as well as shown) is a process app_server starts, so nothing waits on
-the model. It asks for the `Arrangement`, takes a PNG of that display
-(before its notification is in it; at most 1568 px on the long side),
-gathers what each kit app's windows show from their widget trees
-(`commands::tree`, one thread per app, cut to 60 lines), and asks for a
-rectangle per window in percent of the tiling area plus a one-sentence
-summary. A progress notification ticks the seconds and has Cancel; the
-answer is checked (known ids, once each, positive sizes; `arrange`
-clamps to the area) and applied with `Arrange`; the last note says what
-it did and offers Undo for a minute. One window just fills the area;
-with the feature off it says so and offers Preferences. Test it with a
-fake model:
-`$T run NAME OLO_AI_BASE_URL=http://127.0.0.1:PORT olo-smart-tile`
-(the fake answers `POST /v1/messages` with `{"stop_reason": "end_turn",
-"content": [{"type": "text", "text": "{\"windows\": […], \"summary\": …}"}]}`).
 
 ## Power (crates/app_server/src/power.rs)
 
@@ -16310,7 +16294,7 @@ picked lately more again. Picked emoji are counted in
 ⌘↩ (Ctrl+Enter on a PC: the command key reaches apps as Ctrl) asks the
 model chosen in Preferences ▸ AI ▸ Emoji (`AiSettings::emoji`: on,
 Astra 6, low effort) for five emoji for what's typed (`ai::suggest`,
-crates/ai as Smart Tiling uses it, on a thread): the status line says
+crates/ai, on a thread): the status line says
 "Asking Astra 6… N s" (ticking only while asked), then they show first,
 "Suggested for “…”", each with its reason; Unicode's emoji only, each
 once (`ai::read`); a new search or Escape drops a question still out.

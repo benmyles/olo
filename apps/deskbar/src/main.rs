@@ -829,7 +829,6 @@ impl Deskbar {
         }
         menu.separator()
             .item("Tile All", "arrange:tile-all")
-            .item("Smart Tile", "arrange:smart-tile")
             .item("Zoom All", "arrange:zoom-all")
             .item("Cascade All", "arrange:cascade-all")
             .item("Fan Out", "arrange:fan-out")

@@ -4774,5 +4774,11 @@
   "title": "Website: Terminal and coding agents",
   "caption": "Five new rows in the website's Agents part (tab titles and groups, Keep It Going, Auto Approve, worktrees, Preferences), each with a picture from tools/dev/readme-shots terminal-agents. Also fixed on the way: --help opens no window, a hover-opened submenu keeps the keyboard, open menus are in olo-screen's tree, a window comes back to its own place.",
   "image": "2026-11-17/060800-website-terminal-and-coding-agents.png"
+ },
+ {
+  "time": "2026-11-17T06:16:12",
+  "title": "Smart tiling with a model, removed",
+  "caption": "Smart Tile is gone: its program, shortcut, Deskbar item and its box in Preferences \u25b8 AI (the panel now: Models, Ask, Weather; Emoji, Agent Screens, Claude Code).",
+  "image": "2026-11-17/061612-smart-tiling-with-a-model-removed.png"
  }
 ]

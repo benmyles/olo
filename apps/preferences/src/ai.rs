@@ -1,5 +1,5 @@
 //! AI: Olo's AI features, each on or off, with its model (OpenAI's,
-//! through the Token Pool's Codex accounts) and effort: Smart Tiling,
+//! through the Token Pool's Codex accounts) and effort:
 //! the command palette's /ask, the emoji picker's suggestions and
 //! Weather's assistant; and
 //! the model and effort Olo starts Claude Code with for a task.
@@ -11,22 +11,11 @@ use crate::form::Ui;
 
 pub fn ui(ui: &mut Ui) {
     let s = ui.s.clone();
-    // (Two columns: the models, tiling, /ask and Weather; emoji, agent
+    // (Two columns: the models, /ask and Weather; emoji, agent
     // screens and Claude Code.)
     let left = ui.collect(|ui| {
         ui.bbox("Models", |ui| {
             ui.note("AI features use OpenAI’s models through the Token Pool’s Codex accounts, spent in its order.");
-        });
-        let keys = shortcuts::by_id("smart-tile").map(|i| shortcuts::keys_for(i, &s.keyboard.profile)).unwrap_or_default();
-        let how = match keys.first() {
-            Some(k) => {
-                format!("{} looks at the screen and what each window shows, and tiles them: what you’re working on bigger, what you glance at to the side.", k.label(s.keyboard.profile.platform))
-            }
-            None => "Smart Tile (in the command palette) looks at the screen and what each window shows, and tiles them.".into(),
-        };
-        ui.bbox("Smart Tiling", |ui| {
-            feature(ui, "smart-tiling", &s.ai.smart_tiling, "Arrange windows with a model", |s| &mut s.ai.smart_tiling);
-            ui.note(how);
         });
         ui.bbox("Ask", |ui| {
             feature(ui, "ask", &s.ai.ask, "Answer questions in the command palette", |s| &mut s.ai.ask);
