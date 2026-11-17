@@ -13644,8 +13644,16 @@ specifications):
   here gave an iPhone a Classic bond only on an Intel controller (the
   notes). Where the controller ends the connection first, `Pair`; a
   code said to differ isn't tried again.
-- **Not yet confirmed with a real phone** (2026-11-17): Sync Contacts
-  and pairing from the phone's side are tested against stand-ins only.
+- **With a real iPhone** (Ben's, iOS, 2026-11-17, an Intel controller,
+  BlueZ 5.87; the service's log): connected; BlueZ busy with it, asked
+  again in 3 s; a channel to its messages open (a stream: RFCOMM) and
+  refused; the advertisement begun; twenty seconds on, its owner having
+  allowed it, its messages open (10 in its inbox), and three seconds
+  later its contacts (355); the advertisement ended. Paired from the
+  phone's side it has one bond for both radios (BlueZ's `Bearer.BREDR1`
+  and `Bearer.LE1`). An Android phone has not been tried: BlueZ would
+  connect its messages over L2CAP (packets), in basic mode where OBEX
+  over L2CAP means ERTM, which may want Olo to open the channel itself.
   Groups' names (ANCS), and a store of conversations that outlives the
   service, are also to come.
 

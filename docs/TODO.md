@@ -116,8 +116,11 @@ something nobody here has is in "Blocked", with what it waits for.
   measured on the bench. The service is its own program now
   (`olo-phoned`). The website has it (2026-11-17: "Your phone,
   natively", with a picture, and Phone among the apps; **for Ben**:
-  `tools/deploy-website.sh`). Still to do: the phones' own icons;
-  whatever Ben's iPhone shows that the stand-in didn't.
+  `tools/deploy-website.sh`). **It works with Ben's iPhone**
+  (2026-11-17, 01:34: messages open, 355 contacts, 7 conversations;
+  HACKING has the sequence). Still to do: the phones' own icons (its
+  own item below); an Android phone, untried (BlueZ would connect it
+  over L2CAP: see HACKING).
 - **Everything Olo Doctor does can be undone** (Ben, 2026-11-16: "one
   more thing we need: everything in olo doctor that it does must be
   reversible, e.g. for any fix/suggestion applied i should be able to
