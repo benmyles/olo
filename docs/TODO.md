@@ -6048,6 +6048,20 @@ people.
 
 ## Done (most recently finished first)
 
+- ~~**The website: one zoom, an HDR ring, the hardware skill's command**~~
+  (Ben, 2026-11-17; done 2026-11-17: 2285a4d8d, 177b4165e, 201833c6b).
+  "when i click a screenshot it first zooms a little then a second later
+  zooms even more": the enlarged picture is sized by its shape from the
+  start (measured in Chrome at 2x: 2,338 then 2,918 px wide before,
+  2,918 at once after). "make the large o ring logo on the website hdr
+  enabled": the builder makes a PQ copy (812 nits at its brightest) that
+  HDR screens are offered. "set the model to opus 5.5 in that command on
+  xhigh effort and mention that those are highly recommended": the
+  install page's and README's `claude --model claude-opus-5-5 --effort
+  xhigh`. **Left for Ben**: run `tools/deploy-website.sh` (not deployed
+  from here); look at the ring on your HDR screen (too bright or not
+  enough: `HDR_HEADROOM`, `HDR_FROM` in website/src/main.rs).
+
 - ~~**The kits' costs, in absolute terms**~~ (Ben, 2026-11-16: "GPUI
   should be gone we don't care about it anymore just make sure we are
   performant in absolute terms", then: "the general perf seems great
