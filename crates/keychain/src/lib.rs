@@ -169,6 +169,23 @@ pub mod shared {
         std::env::var("OLO_SCREEN").ok().filter(|s| !s.is_empty())
     }
 
+    /// Writes in screen `screen`'s history (what Agent Screens shows of
+    /// it, `olo-screen history`) something done there that wasn't an
+    /// action of `olo-screen`'s: a passkey used without asking. One line
+    /// of its `actions.jsonl`, as olo-screen writes its own (when, a kind,
+    /// its arguments); quietly nothing if it can't be written.
+    pub fn log(screen: &str, kind: &str, args: &[String]) {
+        use std::io::Write as _;
+        let dir = screens_dir().join(screen);
+        let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+        let line = serde_json::json!({"at": at, "ms": 0, "kind": kind, "args": args});
+        if std::fs::create_dir_all(&dir).is_ok()
+            && let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("actions.jsonl"))
+        {
+            let _ = writeln!(f, "{line}");
+        }
+    }
+
     /// Whether process `pid` runs on an agent screen.
     pub fn on_a_screen(pid: i32) -> bool {
         std::fs::read(format!("/proc/{pid}/environ")).map_or(true, |env| env.split(|b| *b == 0).any(|kv| kv.starts_with(b"OLO_SCREEN=") && kv.len() > b"OLO_SCREEN=".len()))

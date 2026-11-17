@@ -25,14 +25,6 @@ something nobody here has is in "Blocked", with what it waits for.
   250 ms twenty times and more with the program that fits, and the case
   between (950 MB), on a quiet computer; offered (Doctor, the Kernel
   tab) only if it never ends one for nothing.
-- **A shared passkey needs no tap on an Agent Screen** (Ben,
-  2026-11-16: "if i have shared passwords that have passkeys to olo
-  agent screens then they should NOT require a tap / user approval to
-  use the passkey, it should be approved automatically but logged in
-  the agent history"). A passkey of an entry shared with an agent's
-  screen is used there without asking the person; each use is written
-  in that screen's history (which site, which entry, when). One not
-  shared with the screen is as it is now.
 - **Passwords reads a page's MFA QR code** (Ben, 2026-11-16: "olo
   passwords and its chrome extension should be able to scan/detect a qr
   code shown on a page for mfa setup and offer to add/update the mfa
@@ -5909,6 +5901,16 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**A shared passkey needs no tap on an Agent Screen**~~ (Ben,
+  2026-11-16: "they should NOT require a tap / user approval to use the
+  passkey, it should be approved automatically but logged in the agent
+  history"; done 2026-11-17). On an agent's screen, the passkey shared
+  with it for a site signs a page in without a question, and each use
+  is a line in the screen's history (the site, the entry, when). With
+  several shared for one site the agent chooses on its own screen; one
+  not shared isn't there. Your own Passwords asks as before. (HACKING,
+  "Passwords for agent screens".)
 
 - ~~**A notification's click goes to its own window and tab**~~ (Ben,
   2026-11-16: "it doesn't (but should) take me to the specific window

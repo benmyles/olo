@@ -457,6 +457,15 @@ mod tests {
         std::fs::create_dir_all(dir("not-a-screen")).unwrap();
         assert!(!names().contains(&"not-a-screen".to_owned()));
         let _ = std::fs::remove_dir_all(&state);
+        // What another program writes of a screen (Passwords: a passkey
+        // used there without asking) reads as an action of its own, said
+        // as one.
+        olo_keychain::shared::log(name, "passkey", &["example.com".into(), "Example (ann)".into()]);
+        let (got, _) = r.more(name);
+        assert_eq!(got.len(), 1);
+        assert_eq!((got[0].kind.as_str(), got[0].args.as_slice()), ("passkey", &["example.com".to_owned(), "Example (ann)".to_owned()][..]));
+        assert!(got[0].line().contains("passkey example.com \"Example (ann)\""), "{}", got[0].line());
+        assert!(got[0].mentions("example.com") && got[0].at > 1_700_000_000_000);
     }
 
     #[test]

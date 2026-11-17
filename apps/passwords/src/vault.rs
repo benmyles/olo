@@ -1096,6 +1096,27 @@ mod tests {
         v.create(&note).unwrap();
     }
 
+    /// A store with a login that has a passkey for example.com, to try a
+    /// page's passkey request with (`OLO_FIXTURE_VAULT`, its key in
+    /// `OLO_FIXTURE_KEY`; with `OLO_FIXTURE_PASSKEYS=2`, two logins with
+    /// one each). `cargo test --release -p olo-passwords passkey_fixture
+    /// -- --ignored`.
+    #[test]
+    #[ignore]
+    fn passkey_fixture() {
+        let (Some(file), Some(key)) = (std::env::var_os("OLO_FIXTURE_VAULT"), std::env::var_os("OLO_FIXTURE_KEY")) else { return };
+        let mut v = Vault::open_at(PathBuf::from(file), Some(Path::new(&key))).unwrap();
+        let several = std::env::var("OLO_FIXTURE_PASSKEYS").is_ok_and(|n| n == "2");
+        for user in ["ann", "bob"].iter().take(if several { 2 } else { 1 }) {
+            let mut p = ItemCreateParams::new(ItemCategory::Login, v.data.vaults[0].id.clone(), "Example");
+            p.fields = vec![ItemField::new("username", "username", ItemFieldType::Text, *user)];
+            p.fields.extend(crate::passkey::New::generate().fields("example.com", &format!("handle-{user}"), user));
+            p.sections = vec![crate::passkey::section()];
+            p.websites = vec![onepassword::Website { url: "https://example.com".into(), label: "website".into(), autofill_behavior: onepassword::AutofillBehavior::AnywhereOnWebsite }];
+            v.create(&p).unwrap();
+        }
+    }
+
     /// A store with an SSH key in it, to try the SSH agent with
     /// (`OLO_FIXTURE_VAULT`, its key in `OLO_FIXTURE_KEY`): an Ed25519 key
     /// made from a fixed seed; its public key printed. `cargo test --release

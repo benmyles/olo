@@ -17439,7 +17439,24 @@ setup, no syncing, read only (no New Item or Edit; the store refuses
 changes), the person's settings left alone, `op` answered without asking
 (what's there was given to the screen's agents), and the copy followed:
 shared more or less, it opens again (`SharedChanged`). Its status line
-says "N items shared with this screen". To try it: `cargo test -p
+says "N items shared with this screen". A passkey shared with the
+screen is used there without asking (Ben, 2026-11-16: "they should NOT
+require a tap / user approval to use the passkey, it should be approved
+automatically but logged in the agent history"): a page's sign-in
+request for a site with one passkey here is signed at once
+(`unasked`), where the person's own Passwords asks in an alert; with
+several for the site, which is the agent's to say, in the question on
+its own screen. Each use is written in the screen's history
+(`olo_keychain::shared::log`, from the store as it signs, so however it
+was chosen): a line of `screens/NAME/actions.jsonl` as `olo-screen`'s
+own, `passkey example.com "Title (user)"`, which Agent Screens' History
+and `olo-screen history` show. A passkey not shared with the screen
+isn't there to use: the page gets Chrome's own way. Making one is
+refused as any change (the copy is read only). Tried headless
+(Passwords started as on a screen, a fixture store, `olo-keychain-ask`
+asking as Chrome's extension does): one passkey, an assertion at once
+and the line in the history; two, the question; the build before, the
+question for one. To try it: `cargo test -p
 olo-passwords fixture -- --ignored` writes a store with a few items
 (`OLO_FIXTURE_VAULT`, `OLO_FIXTURE_KEY`).
 

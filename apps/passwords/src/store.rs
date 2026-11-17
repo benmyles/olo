@@ -994,6 +994,14 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
                 return Response::Error { message: format!("The passkey in “{}” is damaged.", item.title) };
             };
             let auth_data = passkey::auth_data(rp_id, 0);
+            // On an agent's screen nobody was asked (what's shared with a
+            // screen is its agents' to use): each use is written in the
+            // screen's history instead, the site and the entry.
+            if let Some(screen) = olo_keychain::shared::this_screen() {
+                let who = if stored.user_name.is_empty() { item.title.clone() } else { format!("{} ({})", item.title, stored.user_name) };
+                tracing::info!(screen, rp_id, item = item.title, "a passkey shared with this screen was used");
+                olo_keychain::shared::log(&screen, "passkey", &[rp_id.clone(), who]);
+            }
             Response::Assertion {
                 credential_id: stored.credential_id.clone(),
                 signature: B64.encode(passkey::sign(&key, &auth_data, &hash)),

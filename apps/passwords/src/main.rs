@@ -104,6 +104,16 @@ pub(crate) fn on_screen() -> bool {
     olo_keychain::shared::this_screen().is_some()
 }
 
+/// The passkey a page is signed in with without anyone asked: on an
+/// agent's screen, the one shared with it for the site (vault, item).
+/// None on the person's own display, or with several to choose from.
+fn unasked(on_screen: bool, found: &[olo_keychain::Passkey]) -> Option<(String, String)> {
+    match found {
+        [one] if on_screen => Some((one.vault.clone(), one.id.clone())),
+        _ => None,
+    }
+}
+
 /// What a screen's Passwords says of a change it can't make.
 const SHARED_ONLY: &str = "Shared with this screen: change it in your own Passwords.";
 
@@ -1205,6 +1215,18 @@ impl Passwords {
                 // Picked in Chrome's menu already: signed with at once.
                 if let Some(c) = chosen.clone().filter(|(v, id)| found.iter().any(|p| &p.vault == v && &p.id == id)) {
                     return self.store.send(Job::Keychain { incoming: Box::new(incoming), candidates: vec![c], vault: String::new() });
+                }
+                // On an agent's screen, what's here was given to the
+                // screen's agents (the person chose it, in Agent Screens),
+                // a passkey with it: the one for the site is used without
+                // asking, and the store writes the use in the screen's
+                // history (Ben, 2026-11-16: "they should NOT require a tap
+                // / user approval to use the passkey, it should be
+                // approved automatically but logged in the agent
+                // history"). Several for the site: which is the agent's
+                // to say, in the question on its own screen.
+                if let Some(only) = unasked(on_screen(), &found) {
+                    return self.store.send(Job::Keychain { incoming: Box::new(incoming), candidates: vec![only], vault: String::new() });
                 }
                 let rp = rp_id.clone();
                 let label = |p: &olo_keychain::Passkey| if p.user_name.is_empty() { p.title.clone() } else { p.user_name.clone() };
@@ -2855,4 +2877,24 @@ fn main() {
             .ok()
         });
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::unasked;
+
+    /// A passkey is used without anyone asked only on an agent's screen
+    /// (what's there was shared with it), and only when it's the one for
+    /// the site: several are the agent's to choose from, and on the
+    /// person's own display each is asked for.
+    #[test]
+    fn a_shared_passkey_needs_no_asking_on_a_screen() {
+        let p = |id: &str, user: &str| olo_keychain::Passkey { vault: "v".into(), id: id.into(), title: "Example".into(), user_name: user.into(), credential_id: format!("c-{id}") };
+        let one = [p("1", "ann")];
+        let two = [p("1", "ann"), p("2", "bob")];
+        assert_eq!(unasked(true, &one), Some(("v".to_owned(), "1".to_owned())));
+        assert_eq!(unasked(false, &one), None);
+        assert_eq!(unasked(true, &two), None);
+        assert_eq!(unasked(true, &[]), None);
+    }
 }
