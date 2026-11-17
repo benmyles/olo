@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### Viewer and Quick Look: the text in a picture, selected and copied
+
+*04:52* — A picture's text is read where it's shown: drag over it to select, ⌘C copies it, ⌘A selects it all. (Above: a word dragged over; below: Select All.)
+
+![Viewer and Quick Look: the text in a picture, selected and copied](2026-11-17/045250-viewer-and-quick-look-the-text-in-a-picture-sele.png)
+
 ### A paired phone's own picture: twenty phones, in both icon themes
 
 *04:23* — The ten commonest iPhones and the ten commonest Android phones, each from behind (its colour, its cameras), in Classic and Platinum. The paired phone shows as the nearest to what it says it is, in Preferences ▸ Phone, Deskbar's phone menu and Phone.

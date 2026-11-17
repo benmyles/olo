@@ -451,6 +451,25 @@ fn sync_brand(from: &Path, to: &Path) -> std::io::Result<usize> {
     Ok(sync_pngs(&src, to)? + sizes)
 }
 
+/// Copy the build tree's models that read the text in pictures
+/// (`data/ocr`: the two models, their licence and what they are) into
+/// `to` where new or newer; how many files.
+fn sync_ocr(from: &Path, to: &Path) -> std::io::Result<usize> {
+    let Some(src) = from.ancestors().skip(1).take(4).map(|d| d.join("data/ocr")).find(|d| d.is_dir()) else {
+        return Ok(0);
+    };
+    let mut n = 0;
+    std::fs::create_dir_all(to)?;
+    for e in std::fs::read_dir(&src)?.flatten() {
+        let (path, dest) = (e.path(), to.join(e.file_name()));
+        if path.is_file() && is_newer(&path, &dest) {
+            std::fs::copy(&path, &dest)?;
+            n += 1;
+        }
+    }
+    Ok(n)
+}
+
 /// Copy the build tree's fonts (`data/fonts`: the faces and their
 /// licence) into `to` where new or newer; how many files.
 fn sync_fonts(from: &Path, to: &Path) -> std::io::Result<usize> {
@@ -523,6 +542,11 @@ pub fn sync_data(from: &Path, to: &Path) {
         Ok(0) => {}
         Ok(n) => crate::log(format!("installed {n} new or changed fonts")),
         Err(e) => crate::log(format!("could not install the fonts: {e}")),
+    }
+    match sync_ocr(from, &prefix.join("share/olo/ocr")) {
+        Ok(0) => {}
+        Ok(n) => crate::log(format!("installed {n} new or changed files of the models that read text in pictures")),
+        Err(e) => crate::log(format!("could not install the models that read text in pictures: {e}")),
     }
     match sync_themes(from, &prefix.join("share/olo/themes")) {
         Ok(0) => {}

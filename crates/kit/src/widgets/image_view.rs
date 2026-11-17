@@ -25,6 +25,7 @@ use olo_interface::{
 };
 use olo_kit_base::metrics as m;
 
+use super::picture_text::{self, Place, TextLine};
 use crate::{agent, style, theme};
 
 /// A picture's pixels for an [`ImageView`]: RGBA, premultiplied, row by
@@ -40,6 +41,10 @@ pub trait Rgba: Send + Sync + 'static {
         Gamut::Srgb
     }
 }
+
+/// How far outside a line's box (in its heights) a press still starts
+/// selecting its text.
+const TEXT_SLACK: f32 = 0.15;
 
 pub const MIN_ZOOM: f32 = 0.05;
 pub const MAX_ZOOM: f32 = 16.0;
@@ -85,6 +90,14 @@ pub struct ImageView {
     zoomable: bool,
     /// Pan and zoom by dragging are paused (a tool over it takes them).
     still: bool,
+    /// The text read in the picture (`set_text`: lines in the pixels of
+    /// a picture `text_of` in size), what of it is selected (from where
+    /// the pointer went down to where it is), and whether the pointer
+    /// is selecting now.
+    text: Vec<TextLine>,
+    text_of: Size<f32>,
+    selected: Option<(Place, Place)>,
+    selecting: bool,
     /// Points per picture pixel; None fits it to the view.
     zoom: Option<f32>,
     /// The picture point at the view's middle (its own pixels), kept
@@ -111,6 +124,9 @@ pub struct ImageView {
     drag: Option<Point<Pixels>>,
     dragging_out: bool,
     on_drag_out: Option<Rc<dyn Fn(&mut WindowCx)>>,
+    /// Called when its text comes, or some of it becomes selected or
+    /// none (a menu's Copy says so).
+    on_text_change: Option<Rc<dyn Fn(&mut WindowCx)>>,
     /// What agents read it as.
     name: SharedString,
 }
@@ -124,6 +140,10 @@ pub fn image_view<V: View>(cx: &mut Cx<V>, zoomable: bool) -> Child<ImageView> {
         generation: 0,
         zoomable,
         still: false,
+        text: Vec::new(),
+        text_of: size(1.0, 1.0),
+        selected: None,
+        selecting: false,
         zoom: None,
         center: Cell::new(point(0.0, 0.0)),
         fit: Cell::new(1.0),
@@ -140,6 +160,7 @@ pub fn image_view<V: View>(cx: &mut Cx<V>, zoomable: bool) -> Child<ImageView> {
         drag: None,
         dragging_out: false,
         on_drag_out: None,
+        on_text_change: None,
         name: "Picture".into(),
     })
 }
@@ -163,6 +184,7 @@ impl ImageView {
         self.picture = Some(picture);
         self.generation += 1;
         self.forget();
+        self.forget_text();
         cx.invalidate();
     }
 
@@ -171,7 +193,85 @@ impl ImageView {
         self.picture = None;
         self.generation += 1;
         self.forget();
+        self.forget_text();
         cx.invalidate();
+    }
+
+    /// Which picture is shown, counted: what's made for one (its text
+    /// read on a worker) is for that one alone.
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// The text read in the picture shown (olo-ocr's, by whoever shows
+    /// it), in the pixels of a picture `of` in size (the one that was
+    /// read: the picture as decoded). It can then be selected with the
+    /// pointer as text is (a drag over it, a double click a word, a
+    /// triple click a line), and is what agents read of the picture.
+    pub fn set_text(&mut self, lines: Vec<TextLine>, of: [f32; 2], cx: &mut Cx<Self>) {
+        self.text = lines;
+        self.text_of = size(of[0].max(1.0), of[1].max(1.0));
+        (self.selected, self.selecting) = (None, false);
+        self.text_changed(cx);
+        cx.invalidate();
+    }
+
+    fn forget_text(&mut self) {
+        self.text.clear();
+        (self.selected, self.selecting) = (None, false);
+    }
+
+    /// Called when its text comes, and when some of it becomes selected
+    /// or none is: what says so elsewhere (a menu's Copy) is drawn again.
+    pub fn on_text_change(&mut self, f: impl Fn(&mut WindowCx) + 'static) {
+        self.on_text_change = Some(Rc::new(f));
+    }
+
+    fn text_changed(&self, cx: &mut Cx<Self>) {
+        if let Some(f) = self.on_text_change.clone() {
+            f(cx);
+        }
+    }
+
+    /// Whether the picture has text that was read.
+    pub fn has_text(&self) -> bool {
+        !self.text.is_empty()
+    }
+
+    /// Whether some of its text is selected.
+    pub fn has_text_selection(&self) -> bool {
+        self.selected.is_some_and(|(a, b)| a != b)
+    }
+
+    /// The text selected, as it's copied (a line's end a new line).
+    pub fn selected_text(&self) -> String {
+        self.selected.map(|(a, b)| picture_text::text_between(&self.text, a, b)).unwrap_or_default()
+    }
+
+    /// All of the picture's text.
+    pub fn all_text(&self) -> String {
+        picture_text::all(&self.text).map(|(a, b)| picture_text::text_between(&self.text, a, b)).unwrap_or_default()
+    }
+
+    /// Select all of its text.
+    pub fn select_all_text(&mut self, cx: &mut Cx<Self>) {
+        self.selected = picture_text::all(&self.text);
+        self.text_changed(cx);
+        cx.invalidate();
+    }
+
+    /// A point of the view as a point of the picture the text was read
+    /// from (where it was last drawn).
+    fn text_point(&self, p: Point<Pixels>) -> Option<[f32; 2]> {
+        let shown = self.shown.get()?;
+        let (w, h) = (f32::from(shown.size.width), f32::from(shown.size.height));
+        (w > 0.0 && h > 0.0).then(|| [f32::from(p.x - shown.origin.x) / w * self.text_of.width, f32::from(p.y - shown.origin.y) / h * self.text_of.height])
+    }
+
+    /// A box of the text's picture as it's drawn in the view.
+    fn text_box(&self, [x, y, w, h]: [f32; 4], shown: Bounds<Pixels>) -> Bounds<Pixels> {
+        let (kx, ky) = (f32::from(shown.size.width) / self.text_of.width, f32::from(shown.size.height) / self.text_of.height);
+        Bounds::new(point(shown.origin.x + px(x * kx), shown.origin.y + px(y * ky)), size(px(w * kx), px(h * ky)))
     }
 
     /// What agents read it as ("Picture" until said).
@@ -307,6 +407,30 @@ impl ImageView {
         if self.picture.is_none() || !self.shown.get().is_some_and(|s| s.contains(&e.position)) {
             return;
         }
+        // On its text: selected as text is (a word at the second click, a
+        // line at the third), not panned or dragged out.
+        if !self.still
+            && let Some(at) = self.text_point(e.position)
+            && picture_text::line_at(&self.text, at, TEXT_SLACK).is_some()
+            && let Some(place) = picture_text::place_at(&self.text, at)
+        {
+            self.selected = Some(match e.click_count {
+                2 => picture_text::word_at(&self.text, place),
+                n if n >= 3 => ((place.0, 0), (place.0, self.text[place.0].chars.len())),
+                _ => (place, place),
+            });
+            self.selecting = e.click_count == 1;
+            self.drag = None;
+            self.text_changed(cx);
+            cx.stop_propagation();
+            cx.invalidate();
+            return;
+        }
+        // (Anywhere else: what was selected no longer is.)
+        if self.selected.take().is_some() {
+            self.text_changed(cx);
+            cx.invalidate();
+        }
         if self.zoomable && !self.still && e.click_count == 2 {
             if (self.zoom.is_some_and(|z| (z - 1.0).abs() < 1e-3)) || (self.fit.get() >= 1.0 && self.zoom.is_some()) {
                 self.zoom = None;
@@ -322,6 +446,24 @@ impl ImageView {
     }
 
     fn moved(&mut self, e: &MouseMoveEvent, cx: &mut Cx<Self>) {
+        if self.selecting {
+            if e.pressed_button != Some(MouseButton::Left) {
+                self.selecting = false;
+            } else if let (Some((anchor, head)), Some(at)) = (self.selected, self.text_point(e.position))
+                && let Some(place) = picture_text::place_at(&self.text, at)
+                && place != head
+            {
+                // (Something selected where nothing was, or nothing
+                // where something was: said.)
+                let said = (anchor == head) != (anchor == place);
+                self.selected = Some((anchor, place));
+                if said {
+                    self.text_changed(cx);
+                }
+                cx.invalidate();
+            }
+            return;
+        }
         let Some(from) = self.drag else { return };
         if e.pressed_button != Some(MouseButton::Left) {
             self.drag = None;
@@ -381,6 +523,25 @@ impl ImageView {
     }
 
     fn paint(&self, g: &mut Painter, b: Bounds<Pixels>) {
+        self.paint_picture(g, b);
+        // Its text: what's selected, over the picture; and all of it for
+        // an agent to read.
+        let Some(shown) = self.shown.get().filter(|_| !self.text.is_empty()) else { return };
+        let visible = shown.intersect(&b);
+        agent::record(g, agent::Node { role: "Text", name: Some(self.all_text().into()), bounds: visible, enabled: true, ..Default::default() });
+        if let Some((from, to)) = self.selected.filter(|(a, b)| a != b) {
+            let p = theme::palette();
+            // (Over the picture, not behind its text: see-through.)
+            let wash = style::c(p.control_highlight).opacity(0.4);
+            g.with_content_mask(Some(ContentMask { bounds: b }), |g| {
+                for r in picture_text::boxes_between(&self.text, from, to) {
+                    g.paint_quad(fill(self.text_box(r, shown), wash));
+                }
+            });
+        }
+    }
+
+    fn paint_picture(&self, g: &mut Painter, b: Bounds<Pixels>) {
         let p = theme::palette();
         g.paint_quad(fill(b, style::c(p.panel_background)));
         self.view.set(b);
@@ -596,11 +757,26 @@ impl View for ImageView {
         } else {
             CursorStyle::Arrow
         };
+        // Over each line of its text, the text's pointer (where the lines
+        // were last drawn: one frame behind a zoom, as a cursor may be).
+        let mut over_text = Vec::new();
+        if !self.still
+            && let (Some(shown), view) = (self.shown.get(), self.view.get())
+        {
+            for line in &self.text {
+                let r = self.text_box(line.rect(), shown).intersect(&view);
+                if !r.is_empty() {
+                    over_text.push(div().absolute().left(r.origin.x - view.origin.x).top(r.origin.y - view.origin.y).w(r.size.width).h(r.size.height).cursor(CursorStyle::IBeam));
+                }
+            }
+        }
         div()
             .id("image-view")
             .size_full()
+            .relative()
             .cursor(cursor)
             .child(cx.canvas(|v: &ImageView, g, b| v.paint(g, b)).size_full())
+            .children(over_text)
             .on_scroll_wheel(cx.listener(|v: &mut Self, e: &ScrollWheelEvent, cx| v.wheel(e, cx)))
             .on_pinch(cx.listener(|v: &mut Self, e: &PinchEvent, cx| v.pinch(e, cx)))
             .on_mouse_down(MouseButton::Left, cx.listener(|v: &mut Self, e: &MouseDownEvent, cx| v.press(e, cx)))
@@ -610,6 +786,7 @@ impl View for ImageView {
             .on_mouse_up(
                 MouseButton::Left,
                 cx.listener(|v: &mut Self, _: &MouseUpEvent, cx| {
+                    v.selecting = false;
                     if v.drag.take().is_some() {
                         cx.invalidate();
                     }

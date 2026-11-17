@@ -17,12 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Text in a picture can be selected and copied** (Ben, 2026-11-16:
-  "the quick look and viewer should support, when viewing an image with
-  text in it, selecting and copying that text -- much like how it works
-  in preview in macos"). Viewer and Quick Look recognise the text in a
-  picture (natively, in process, off the UI thread), and it is selected
-  with the pointer and copied as text is in a document.
 - **Proton VPN, natively** (Ben, 2026-11-17: "build an olo native
   proton vpn app"). An Olo app for Proton VPN: signing in, the countries
   and servers, connect and disconnect, what it's connected to and how
@@ -5965,6 +5959,19 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Text in a picture can be selected and copied**~~ (Ben,
+  2026-11-16: "the quick look and viewer should support, when viewing
+  an image with text in it, selecting and copying that text -- much
+  like how it works in preview in macos"; done 2026-11-17). A picture
+  shown in the Viewer or Quick Look has its text read (in process, on a
+  worker); drag over it to select, ⌘C copies, ⌘A selects it all, and
+  agents read it in the window's tree (HACKING, Viewer, "The text in a
+  picture"). **For Ben**: it reads Latin letters, digits and
+  punctuation (the recogniser's models, shipped in `data/ocr` under CC
+  BY-SA 4.0); the first upgrade installs them. A program that has read
+  a picture stays 10 to 25 MB bigger (measured; the models themselves
+  are let go after ten seconds).
 
 - ~~**A paired phone's own picture**~~ (Ben, 2026-11-16: "generate
   theme styled icons for the top 10 most popular android and iphone

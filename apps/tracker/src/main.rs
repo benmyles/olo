@@ -1219,6 +1219,9 @@ fn main() {
         }
         return;
     }
+    // (Before any other thread: the few that read the text in pictures,
+    // for Quick Look.)
+    olo_preview::kit::at_start();
     olo_preview::audio::set_identity("Tracker", "olo-tracker");
     olo_kit::run(APP_ID, move |app| {
         instance::listen(APP_ID, olo_kit::proxy());

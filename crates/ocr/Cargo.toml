@@ -1,0 +1,19 @@
+[package]
+name = "olo-ocr"
+description = "The text in a picture, read in process: where each line and word is, and what it says (Viewer's and Quick Look's selecting and copying)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+olo-xdg.workspace = true
+# The recogniser (Robert Knight's: a detection and a recognition model,
+# run by his RTen), and its models from data/ocr.
+ocrs = "0.14"
+rten = "0.28"
+tracing.workspace = true
+libc = "0.2"
+
+[dev-dependencies]
+png = "0.18"
+libc = "0.2"

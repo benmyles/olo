@@ -982,7 +982,15 @@ impl Doc {
             );
         }
         if picture {
-            menus.push(olo_kit::undo::edit_items_named(Menu::new("Edit"), editor.and_then(|e| e.undo_name()), editor.and_then(|e| e.redo_name())));
+            let mut edit = olo_kit::undo::edit_items_named(Menu::new("Edit"), editor.and_then(|e| e.undo_name()), editor.and_then(|e| e.redo_name()));
+            // The text in the picture, once it's read: copied and selected
+            // as a document's.
+            if let Content::Other(prev) = &self.content
+                && prev.read(cx).has_picture_text(cx)
+            {
+                edit = edit.separator().item("Copy", "copy").key("c").enabled(prev.read(cx).has_text_selection(cx)).item("Select All", "select-all").key("a");
+            }
+            menus.push(edit);
         }
         if let Some(v) = pdf {
             menus.push(
@@ -1279,8 +1287,8 @@ impl Doc {
         // A text or a formatted document: its text copied, all of it
         // selected, found.
         if let Content::Other(prev) = &self.content
-            && prev.read(cx).has_text()
-            && matches!(command, "copy" | "select-all" | "find" | "find-again" | "find-previous")
+            && ((prev.read(cx).has_text() && matches!(command, "copy" | "select-all" | "find" | "find-again" | "find-previous"))
+                || (prev.read(cx).has_picture_text(cx) && matches!(command, "copy" | "select-all")))
         {
             prev.update(cx, |p, cx| match command {
                 "copy" => p.copy(cx),
@@ -2141,6 +2149,8 @@ fn main() {
     olo_crash::install();
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
+    // (Before any other thread: the few that read the text in pictures.)
+    olo_preview::kit::at_start();
     let args: Vec<String> = std::env::args().skip(1).collect();
     // (A look is its own process, which the panel that asked for it can
     // put away.)

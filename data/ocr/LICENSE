@@ -1,0 +1,13 @@
+The files text-detection.onnx and text-recognition.onnx in this folder are
+the pre-trained models of the Ocrs OCR engine, by Robert Knight
+(https://github.com/robertknight/ocrs-models,
+https://huggingface.co/robertknight/ocrs), shipped unchanged.
+
+They are licensed under the Creative Commons Attribution-ShareAlike 4.0
+International License (CC BY-SA 4.0). To view a copy of this license, visit
+https://creativecommons.org/licenses/by-sa/4.0/ or see its legal code at
+https://creativecommons.org/licenses/by-sa/4.0/legalcode
+
+You are free to share and adapt them for any purpose, provided you give
+appropriate credit, provide a link to the license, indicate if changes were
+made, and distribute your contributions under the same license.

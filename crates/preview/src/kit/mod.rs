@@ -74,6 +74,11 @@ pub enum PreviewEvent {
     /// What it shows arrived, or it failed: the window may want another
     /// size (see [`PreviewView::ideal_size`]).
     Shown,
+    /// The text in its picture was read, or some of it became selected
+    /// or none ([`PreviewView::has_picture_text`],
+    /// [`PreviewView::has_text_selection`]): a menu saying so is drawn
+    /// again.
+    Text,
     /// What it shows changed gamut ([`PreviewView::gamut`]): a wide
     /// video's first picture came (or it stopped showing one).
     Gamut,
@@ -101,6 +106,44 @@ pub enum Msg {
     Poster(u64, Option<Arc<RenderImage>>),
     /// The cover or poster made for a device size.
     Art((u32, u32), Option<Arc<RenderImage>>),
+    /// The picture shown has been there a moment: read its text (the
+    /// picture's number in its view).
+    ReadText(u64),
+    /// Its text, read: the picture's number, the lines, and the size of
+    /// the picture they were read from.
+    Text(u64, Vec<olo_kit::widgets::TextLine>, [f32; 2]),
+    /// Nothing has been read for a while: the recogniser's models go
+    /// (the reading counted so, if none came since).
+    TextIdle(u64),
+}
+
+/// Call once as a program that shows previews starts, before it has
+/// other threads (`olo_ocr::init`: the threads that read the text in
+/// pictures, few, made where that's safe).
+pub fn at_start() {
+    olo_ocr::init();
+}
+
+/// How long a picture has been shown before its text is read (stepping
+/// through pictures reads none of those passed), and how long after the
+/// last reading the recogniser's models are let go.
+const READ_TEXT_AFTER: Duration = Duration::from_millis(350);
+const TEXT_IDLE: Duration = Duration::from_secs(10);
+
+/// How many readings this process has asked for (the last one's idle
+/// timer lets the models go).
+static READINGS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// A picture's pixels as the recogniser takes them: red, green and blue
+/// over white (text on a see-through ground is dark on white, as it's
+/// shown on a page).
+fn over_white(premultiplied: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(premultiplied.len() / 4 * 3);
+    for p in premultiplied.as_chunks::<4>().0 {
+        let under = 255 - p[3];
+        out.extend_from_slice(&[p[0].saturating_add(under), p[1].saturating_add(under), p[2].saturating_add(under)]);
+    }
+    out
 }
 
 /// A preview of a file, as Quick Look and the Viewer show one.
@@ -202,6 +245,13 @@ impl PreviewView {
     /// and pan, as the Viewer's; else fitted, as Quick Look's).
     pub fn new(item: Item, generation: u64, zoomable: bool, cx: &mut Cx<Self>) -> PreviewView {
         let image = image_view(cx, zoomable);
+        // (Its text read, or selected: said on, for menus.)
+        let me = cx.view_ref();
+        image.update(cx, move |v, _| {
+            v.on_text_change(move |cx| {
+                me.update(cx, |_: &mut PreviewView, cx| cx.emit(PreviewEvent::Text));
+            })
+        });
         let mut v = PreviewView {
             item,
             generation,
@@ -344,6 +394,7 @@ impl PreviewView {
                         v.set_name(note);
                         v.set_picture(picture, full, cx);
                     });
+                    self.read_text_soon(cx);
                 }
                 self.body = Some(b);
                 self.failed = None;
@@ -546,6 +597,7 @@ impl PreviewView {
         self.image.update(cx, |v, cx| v.set_picture(picture, full, cx));
         self.body = Some(Body::Image { image, full, note });
         self.failed = None;
+        self.read_text_soon(cx);
         cx.invalidate();
     }
 
@@ -826,6 +878,42 @@ impl View for PreviewView {
                     cx.invalidate();
                 }
             }
+            // The picture has been shown a moment: its text is read on a
+            // worker, once (a picture passed by isn't read).
+            Msg::ReadText(picture) => {
+                let Some(Body::Image { image, .. }) = &self.body else { return };
+                if self.image.read(cx).generation() != picture || image.size[0] < 16 || image.size[1] < 16 {
+                    return;
+                }
+                let image = image.clone();
+                let reading = READINGS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                cx.work(
+                    move || {
+                        let [w, h] = image.size;
+                        let lines = olo_ocr::read(&over_white(&image.rgba), w as u32, h as u32).unwrap_or_else(|e| {
+                            tracing::warn!("reading the text in a picture: {e}");
+                            Vec::new()
+                        });
+                        let lines = lines.into_iter().map(|l| olo_kit::widgets::TextLine { chars: l.chars.into_iter().map(|c| (c.ch, c.rect)).collect() }).collect();
+                        (lines, [w as f32, h as f32])
+                    },
+                    move |(lines, of)| Msg::Text(picture, lines, of),
+                );
+                cx.after(TEXT_IDLE, Msg::TextIdle(reading));
+                return;
+            }
+            Msg::Text(picture, lines, of) => {
+                if !lines.is_empty() && self.image.read(cx).generation() == picture {
+                    self.image.update(cx, |v, cx| v.set_text(lines, of, cx));
+                }
+                return;
+            }
+            Msg::TextIdle(reading) => {
+                if READINGS.load(std::sync::atomic::Ordering::Relaxed) == reading {
+                    olo_ocr::let_go();
+                }
+                return;
+            }
             Msg::Poster(generation, made) => {
                 if generation == self.generation && self.frame.is_none() {
                     self.frame = made;
@@ -884,14 +972,29 @@ impl View for PreviewView {
 impl PreviewView {
     // ---- the text's selection ----------------------------------------------
 
+    /// Read the text in the picture shown, once it has been there a
+    /// moment (where the recogniser's models are installed).
+    fn read_text_soon(&mut self, cx: &mut Cx<Self>) {
+        if olo_ocr::available() {
+            cx.after(READ_TEXT_AFTER, Msg::ReadText(self.image.read(cx).generation()));
+        }
+    }
+
     /// It shows text that can be selected (a text, a formatted document).
     pub fn has_text(&self) -> bool {
         matches!(self.body, Some(Body::Text(_) | Body::Rich { .. }))
     }
 
+    /// It shows a picture with text in it that was read (selected with
+    /// the pointer and copied as a document's is).
+    pub fn has_picture_text(&self, cx: &WindowCx) -> bool {
+        matches!(self.body, Some(Body::Image { .. })) && self.image.read(cx).has_text()
+    }
+
     pub fn has_text_selection(&self, cx: &WindowCx) -> bool {
         match &self.body {
             Some(Body::Rich { .. }) => self.rich.read(cx).has_selection(),
+            Some(Body::Image { .. }) => self.image.read(cx).has_text_selection(),
             _ => self.text_sel.is_some_and(|(a, b)| a != b),
         }
     }
@@ -900,6 +1003,9 @@ impl PreviewView {
     pub fn selected_text(&self, cx: &WindowCx) -> String {
         if matches!(self.body, Some(Body::Rich { .. })) {
             return self.rich.read(cx).selected_text();
+        }
+        if matches!(self.body, Some(Body::Image { .. })) {
+            return self.image.read(cx).selected_text();
         }
         let (Some(lines), Some(sel)) = (&self.text, self.text_sel) else { return String::new() };
         let (a, b) = if sel.0 <= sel.1 { sel } else { (sel.1, sel.0) };
@@ -926,6 +1032,10 @@ impl PreviewView {
     pub fn select_all(&mut self, cx: &mut Cx<Self>) {
         if matches!(self.body, Some(Body::Rich { .. })) {
             self.rich.update(cx, |r, cx| r.select_all(cx));
+            return;
+        }
+        if matches!(self.body, Some(Body::Image { .. })) {
+            self.image.update(cx, |v, cx| v.select_all_text(cx));
             return;
         }
         let Some(lines) = &self.text else { return };
