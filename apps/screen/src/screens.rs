@@ -151,6 +151,21 @@ fn is_session_of(cmdline: &[u8], environ: &[u8], name: &str) -> bool {
     session && environ.split(|b| *b == 0).any(|v| v == wanted.as_bytes())
 }
 
+/// Whether a session with this environment is one of the screens listed
+/// in `here` (this olo-screen's runtime folder): it was started under
+/// that folder (`XDG_RUNTIME_DIR`, which a screen's session takes from
+/// the olo-screen that starts it and keeps). One started under another
+/// folder is listed there, and nothing here can call it a stray: a tool
+/// that keeps its screens in a runtime folder of its own
+/// (tools/dev/readme-shots) saw every other running screen as one, and
+/// each `start` and `stop` it made ended them all, another agent's
+/// screen in the middle of its work among them (2026-11-16).
+fn listed_in(environ: &[u8], here: &Path) -> bool {
+    let theirs = environ.split(|b| *b == 0).find_map(|v| v.strip_prefix(b"XDG_RUNTIME_DIR=")).map(|d| PathBuf::from(String::from_utf8_lossy(d).into_owned())).unwrap_or_else(std::env::temp_dir);
+    let real = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_owned());
+    real(&theirs) == real(here)
+}
+
 /// The screen a process is the session of, if it's a screen's session
 /// (`OLO_SCREEN`'s name).
 fn screen_of(pid: i32) -> Option<String> {
@@ -185,9 +200,11 @@ fn parent(pid: i32) -> Option<i32> {
 /// that ended while starting a screen. Those of screen `name` whatever
 /// their age; others once two minutes old, so a screen another agent is
 /// starting now isn't one. Never a session inside a screen's (a test
-/// session run there inherits its `OLO_SCREEN`).
+/// session run there inherits its `OLO_SCREEN`), and never one started
+/// under another runtime folder (`listed_in`: it is listed there).
 fn strays(name: Option<&str>) -> Vec<(i32, String)> {
     let listed: Vec<i32> = list().iter().map(|s| s.pid).collect();
+    let here = runtime_dir();
     let in_a_screen = |pid: i32| {
         let mut p = parent(pid);
         for _ in 0..64 {
@@ -210,6 +227,9 @@ fn strays(name: Option<&str>) -> Vec<(i32, String)> {
             continue;
         }
         let Some(screen) = screen_of(pid) else { continue };
+        if !std::fs::read(format!("/proc/{pid}/environ")).is_ok_and(|e| listed_in(&e, &here)) {
+            continue;
+        }
         let old = age(pid).is_some_and(|a| a > Duration::from_secs(120));
         if (Some(screen.as_str()) == name || old) && !in_a_screen(pid) {
             out.push((pid, screen));
@@ -895,6 +915,19 @@ mod tests {
         assert!(!is_session_of(b"/home/me/.local/bin/olo-session\0", env, "claude"));
         assert!(!is_session_of(b"/home/me/.local/bin/olo-session\0", b"HOME=/home/me\0", "claude-browser"));
         assert!(!is_session_of(b"/usr/bin/bash\0", env, "claude-browser"));
+    }
+
+    #[test]
+    fn a_session_under_another_runtime_folder_is_not_a_stray() {
+        // (A stray is judged among the screens listed here: one started
+        // under another folder is listed there.)
+        let here = Path::new("/run/user/1000");
+        assert!(listed_in(b"HOME=/home/me\0XDG_RUNTIME_DIR=/run/user/1000\0OLO_SCREEN=agent\0", here));
+        assert!(listed_in(b"XDG_RUNTIME_DIR=/run/user/1000/\0OLO_SCREEN=agent\0", here) || !here.exists());
+        assert!(!listed_in(b"HOME=/var/tmp/shots/home\0XDG_RUNTIME_DIR=/var/tmp/shots/run\0OLO_SCREEN=readme\0", here));
+        assert!(!listed_in(b"XDG_RUNTIME_DIR=/run/user/1000\0OLO_SCREEN=qa\0", Path::new("/var/tmp/shots/run")));
+        // No folder said: the one olo-screen itself falls back to.
+        assert!(listed_in(b"OLO_SCREEN=agent\0", &std::env::temp_dir()));
     }
 
     /// When a process started, past a name with spaces and parentheses.
