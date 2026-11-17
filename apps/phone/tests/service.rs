@@ -165,7 +165,18 @@ fn messages_and_a_code_to_the_tab_waiting_for_it() {
     let s = published();
     assert_eq!((s["conversations"].as_u64(), s["unread"].as_u64(), s["codes"].as_u64()), (Some(2), Some(0), Some(0)));
     let (ok, said, _) = olo_phone(&["--conversations"], None);
+    // (She is in the phone's book twice, a card from each account: one
+    // person all the same.)
     assert!(ok && said.contains("Mira Kovač") && said.contains("Are you still coming on Saturday?"), "a contact's name on her conversation: {said}");
+    // A long message from before: the listing has only its first 128
+    // bytes; it's asked for whole, and shows whole.
+    let long = olo_system::phone::standin::Phone::LONG;
+    wait_for("the long message never came whole", || olo_phone(&["--read", "Mira Kovač"], None).1.contains("Tell me by Thursday?"));
+    let (_, read, _) = olo_phone(&["--read", "Mira Kovač", "--json"], None);
+    let read: Value = serde_json::from_str(&read).unwrap();
+    assert_eq!(read["messages"].as_array().map(Vec::len), Some(2));
+    assert_eq!(read["messages"][0]["text"].as_str(), Some(long));
+    assert_eq!(read["messages"][0]["read"], true, "asking for it whole doesn't change whether it was read");
 
     // The person's tab has the focus, on some forum; the tab on the
     // agent's screen is the bank's, its field just come up. The bank's
@@ -259,7 +270,16 @@ fn messages_and_a_code_to_the_tab_waiting_for_it() {
         std::thread::sleep(Duration::from_millis(50));
     }
     assert_eq!(olo_phone(&["--send", "Mira Kovač", "and again"], None).0, true);
-    // Its contacts came: nothing is advertised any more.
+    // Its contacts came, and its other notifications aren't allowed
+    // yet: the service advertises on, for those (an iPhone connects over
+    // low energy to a computer advertising for them). Allowed on the
+    // phone, they come, and nothing is advertised any more. (This step
+    // waited for "no" with them still to come, from before there were
+    // any: it failed since they were added, unseen, as the test runs
+    // only with OLO_TEST_BUS. Found 2026-11-17.)
+    assert_eq!((tell(&["soliciting"]).trim(), published()["others"].as_bool()), ("yes", Some(false)));
+    tell(&["set", "notifications", "yes"]);
+    wait_for("its other notifications never came", || published()["others"] == true);
     wait_for("the service went on advertising with nothing to wait for", || tell(&["soliciting"]).trim() == "no");
     // BlueZ is started again (an update; Olo Doctor changing how it's
     // started): it has forgotten Olo's profiles and says nothing of it.

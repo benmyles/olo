@@ -120,6 +120,9 @@ enum Ev {
 enum Cmd {
     /// Fetch the message with this handle (it has just come).
     Fetch(String),
+    /// Fetch the text of the message with this handle whole (what there
+    /// is of it is its listing's, which may be only its beginning).
+    Whole(String),
     Send {
         to: String,
         text: String,
@@ -140,6 +143,8 @@ enum FromSession {
     Up(Vec<Listed>),
     /// A message that came: as its listing has it, and whole.
     Came(Listed, BMessage),
+    /// A message's text whole (`None`: the phone wouldn't give it).
+    Whole(String, Option<String>),
     Contacts(Vec<pbap::Contact>),
     Sent {
         to: String,
@@ -300,6 +305,8 @@ struct Service {
     threads: Vec<Conversation>,
     /// The messages seen (their handles): one not among them is new.
     seen: HashSet<String>,
+    /// The messages whose text is known whole (`kept::Kept::whole`).
+    whole: HashSet<String>,
     codes: Vec<Pending>,
     next_code: u64,
     browsers: HashMap<u64, Browser>,
@@ -339,6 +346,15 @@ pub fn when(at: &str) -> Option<i64> {
 
 /// Whether a message sent at `at` has just come (`now` in Unix seconds).
 /// One that doesn't say when counts: it is new to us.
+/// Whether a listing's text for a message may be only its beginning:
+/// none at all, or as long as phones give. An iPhone gives a message's
+/// first 128 bytes whatever is asked for (Ben's, 2026-11-17: "call us
+/// using Contac"; cut where a character ends, so up to three fewer); an
+/// Android, the 255 asked for.
+fn may_be_cut(subject: &str) -> bool {
+    subject.is_empty() || subject.len() >= 125
+}
+
 fn just_came(at: &str, now: i64) -> bool {
     when(at).is_none_or(|t| (now - t) <= JUST && (t - now) <= 60)
 }
@@ -379,6 +395,19 @@ fn session(stream: Stream, cmds: mpsc::Receiver<Cmd>, said: impl Fn(FromSession)
                 said(FromSession::Came(row, whole));
                 Ok(())
             })(),
+            Cmd::Whole(handle) => match mas.message(&handle) {
+                Ok(whole) => {
+                    said(FromSession::Whole(handle, Some(whole.text)));
+                    Ok(())
+                }
+                // (The phone no longer has it, or won't give it: what
+                // there is of it stays.)
+                Err(obex::Error::Refused(_)) => {
+                    said(FromSession::Whole(handle, None));
+                    Ok(())
+                }
+                Err(e) => Err(e),
+            },
             Cmd::Send { to, text, note, answer } => {
                 let done = match BMessage::outgoing(&[to.as_str()], &text) {
                     None => Err("That isn't a telephone number or an address.".to_owned()),
@@ -492,6 +521,7 @@ pub fn run() -> ! {
         contacts: Vec::new(),
         threads: Vec::new(),
         seen: HashSet::new(),
+        whole: HashSet::new(),
         codes: Vec::new(),
         next_code: 0,
         browsers: HashMap::new(),
@@ -702,7 +732,7 @@ impl Service {
         if phone.as_ref().map(|p| &p.path) != self.phone.as_ref().map(|p| &p.path) {
             // Another phone, or none: what the last one had is let go.
             self.end_session();
-            (self.threads, self.contacts, self.seen) = (Vec::new(), Vec::new(), HashSet::new());
+            (self.threads, self.contacts, self.seen, self.whole) = (Vec::new(), Vec::new(), HashSet::new(), HashSet::new());
             self.codes.clear();
             (self.state.conversations, self.state.unread, self.state.contacts, self.state.code_at) = (0, 0, false, None);
             self.keep_at = None;
@@ -714,7 +744,12 @@ impl Service {
                         tracing::info!("phone: {} conversations and {} contacts kept from before", kept.threads.len(), kept.contacts.len());
                         self.threads = kept.threads;
                         self.seen = kept.seen.into_iter().collect();
+                        self.whole = kept.whole.into_iter().collect();
                         self.contacts = kept.contacts.into_iter().map(|c| pbap::Contact { name: c.name, phones: c.phones, emails: c.emails }).collect();
+                        // (Named as the contacts are read now: what was
+                        // kept may be from before a number in two cards
+                        // had a name.)
+                        self.name_threads();
                         self.count();
                     }
                 }
@@ -874,7 +909,6 @@ impl Service {
                         continue;
                     }
                     let who = pbap::name_of(&self.contacts, &shown.number)
-                        .map(str::to_owned)
                         .or_else(|| Some(shown.name.clone()).filter(|n| !n.is_empty()))
                         .or_else(|| Some(shown.number.clone()).filter(|n| !n.is_empty()))
                         .unwrap_or_else(|| "Unknown caller".into());
@@ -1082,10 +1116,13 @@ impl Service {
         let Some(phone) = &self.phone else { return };
         let mut seen: Vec<String> = self.seen.iter().cloned().collect();
         seen.sort();
+        let mut whole: Vec<String> = self.whole.iter().filter(|h| self.seen.contains(*h)).cloned().collect();
+        whole.sort();
         let kept = crate::kept::Kept {
             phone: phone.address.clone(),
             threads: self.threads.clone(),
             seen,
+            whole,
             contacts: self.contacts.iter().map(|c| Person { name: c.name.clone(), phones: c.phones.clone(), emails: c.emails.clone() }).collect(),
         };
         if let Err(e) = crate::kept::save(&kept) {
@@ -1286,9 +1323,17 @@ impl Service {
                 self.allow_since.get_or_insert_with(Instant::now);
                 let now_s = now() as i64;
                 let mut fresh = Vec::new();
+                // What a listing has of a message may be only its
+                // beginning: those are asked for whole, once each (the
+                // ones kept from before too, the newest first).
+                let mut cut = Vec::new();
                 // (Oldest first, as conversations keep them.)
                 for row in listed.into_iter().rev() {
+                    let may_be_cut = may_be_cut(&row.subject) && !self.whole.contains(&row.handle);
                     if self.seen.contains(&row.handle) {
+                        if may_be_cut {
+                            cut.push(row.handle);
+                        }
                         continue;
                     }
                     // One that has just come (while the service wasn't
@@ -1298,11 +1343,17 @@ impl Service {
                         fresh.push(row.handle);
                     } else {
                         self.keep(&row, row.subject.clone());
+                        if may_be_cut {
+                            cut.push(row.handle);
+                        }
                     }
                 }
                 if let Some(cmds) = &self.session {
                     for handle in fresh {
                         let _ = cmds.send(Cmd::Fetch(handle));
+                    }
+                    for handle in cut.into_iter().rev() {
+                        let _ = cmds.send(Cmd::Whole(handle));
                     }
                 }
                 // Its contacts (names for numbers): asked for now, and
@@ -1321,10 +1372,26 @@ impl Service {
                     read: false,
                     ..row
                 };
-                let text = if whole.text.is_empty() { row.subject.clone() } else { whole.text };
+                let text = if whole.text.is_empty() {
+                    row.subject.clone()
+                } else {
+                    self.whole.insert(row.handle.clone());
+                    whole.text
+                };
                 let (ti, mi) = self.keep(&row, text);
                 self.count();
                 self.came(ti, mi);
+            }
+            // A message's text, whole: in place of its beginning (asked
+            // for once, whatever came of it).
+            FromSession::Whole(handle, text) => {
+                if let Some(text) = text.filter(|t| !t.is_empty())
+                    && let Some(m) = self.threads.iter_mut().flat_map(|t| &mut t.messages).find(|m| m.handle == handle)
+                    && m.text != text
+                {
+                    m.text = text;
+                }
+                self.whole.insert(handle);
             }
             FromSession::Contacts(contacts) => {
                 if !self.state.contacts {
@@ -1333,11 +1400,7 @@ impl Service {
                 self.contacts = contacts;
                 self.state.contacts = true;
                 self.contacts_at = None;
-                for t in &mut self.threads {
-                    if let Some(name) = pbap::name_of(&self.contacts, &t.address) {
-                        t.name = name.to_owned();
-                    }
-                }
+                self.name_threads();
             }
             FromSession::Sent { to, text, done, note, answer } => {
                 if done.is_ok() {
@@ -1395,6 +1458,15 @@ impl Service {
         }
     }
 
+    /// Each conversation named by the contacts there are now.
+    fn name_threads(&mut self) {
+        for t in &mut self.threads {
+            if let Some(name) = pbap::name_of(&self.contacts, &t.address) {
+                t.name = name;
+            }
+        }
+    }
+
     /// The conversation with `address` (made if there's none), named by
     /// the contacts, else as `named`, else by the address itself.
     fn thread_for(&mut self, address: &str, named: &str) -> usize {
@@ -1402,7 +1474,7 @@ impl Service {
         if let Some(i) = self.threads.iter().position(|t| t.key == key) {
             return i;
         }
-        let name = pbap::name_of(&self.contacts, address).map(str::to_owned).or_else(|| Some(named.trim().to_owned()).filter(|n| !n.is_empty())).unwrap_or_else(|| address.to_owned());
+        let name = pbap::name_of(&self.contacts, address).or_else(|| Some(named.trim().to_owned()).filter(|n| !n.is_empty())).unwrap_or_else(|| address.to_owned());
         self.threads.push(Conversation { key, name, address: address.to_owned(), messages: Vec::new() });
         self.threads.len() - 1
     }
@@ -1909,7 +1981,7 @@ impl Service {
             for t in &self.threads {
                 (&t.key, &t.name, t.messages.len()).hash(&mut h);
                 for m in &t.messages {
-                    (&m.handle, m.read, m.at).hash(&mut h);
+                    (&m.handle, m.read, m.at, m.text.len()).hash(&mut h);
                 }
             }
             h.finish()
@@ -2106,5 +2178,8 @@ mod tests {
         assert!(!just_came("20260812T095400Z", now), "older than five minutes");
         assert!(!just_came("20260812T100200Z", now), "from the future");
         assert!(just_came("", now), "one that doesn't say when is new to us");
+        // A listing's text that may be only a message's beginning.
+        assert!(may_be_cut("") && may_be_cut(&"a".repeat(128)) && may_be_cut(&"é".repeat(63)) && may_be_cut(&"a".repeat(255)));
+        assert!(!may_be_cut("Are you still coming on Saturday?") && !may_be_cut(&"a".repeat(124)));
     }
 }

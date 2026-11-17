@@ -13903,8 +13903,16 @@ specifications):
 - `pbap`: the phone's contacts in one pull (`contacts`: names, numbers
   and addresses only, by the filter; the owner's own card, entry 0,
   passed over), vCards 2.1 and 3.0 read (`parse`), and whose a number is
-  however it's written (`key`: its last ten digits; `name_of`: nobody's,
-  when two contacts share it).
+  however it's written (`key`: its last ten digits; `name_of`). **A
+  phone's book has the same person more than once** (a card from each
+  account it syncs; of Ben's 428 numbers, 68 were in several cards, 63
+  of them under one name), so cards with one name (its letters and
+  digits, any case) are one person; two or three people who share a
+  number are all said ("Dad or Home"), and a number in more cards than
+  that (a caller-blocking app's lists: four cards of 146 to 231 numbers
+  each) is nobody's. Until 2026-11-17 a number in two cards was nobody's,
+  and such a conversation showed as its number (Ben: "it is just showing
+  numbers not contact names").
 - `link`: **the link is BlueZ's**. Olo registers three profiles
   (`ProfileManager1.RegisterProfile`): the client's side of the phone's
   messages and of its contacts, and the Notification Server, with its
@@ -13931,8 +13939,10 @@ specifications):
   turns on Show Notifications for this computer (Settings ▸ Bluetooth ▸
   ⓘ), and its contacts until Sync Contacts; turning them on says
   nothing, so they're asked for again (below). An SMS and an iMessage
-  both come as `SMS_GSM`; a listing's `subject` is the whole text; its
-  sent folder is empty (what's sent from here is kept here); it often
+  both come as `SMS_GSM`; a listing's `subject` is the text's first
+  128 bytes whatever length is asked for (taken for the whole text until
+  2026-11-17: Ben's long messages ended mid-word, "call us using
+  Contac"); its sent folder is empty (what's sent from here is kept here); it often
   gives a time with no zone (taken as this computer's). A message is
   sent with an empty originator, the recipient's `TEL` or `EMAIL`, and
   `TYPE:SMS_GSM` whichever way the phone then sends it.
@@ -14033,7 +14043,15 @@ minutes until they come (`ask_contacts`). A message that comes
 (`FromSession::Came`: its listing's row for when, itself whole for its
 text) goes in its conversation (`thread_for`: one for each number or
 address, named by the contacts, else as the phone names the sender,
-else the number). A phone out of reach (`Link::Away`: BlueZ says it
+else the number). **A message read from a listing whose text may be
+only its beginning** (`may_be_cut`: none, or 125 bytes and more: an
+iPhone's 128 cut where a character ends, an Android's 255) **is asked
+for whole**, once (`Cmd::Whole`; the ones kept from before too, the
+newest first), and its text put in place of the beginning
+(`FromSession::Whole`); which messages are known whole is kept with
+them (`Kept::whole`), so none is asked for twice. Asking doesn't change
+whether a message was read. The conversations kept from a run before
+are named again by the contacts as the service starts (`name_threads`). A phone out of reach (`Link::Away`: BlueZ says it
 isn't connected, or the channel can't be had) is tried when BlueZ says
 anything of it and otherwise after 15 s, 30 s, 1, 2 and then every 5
 minutes (`AWAY`); a session whose link drops is tried again after 2 s,

@@ -119,7 +119,12 @@ fn against_the_standin() {
         profiles.open(&phone.path, Channel::Messages).unwrap();
         let mut mas = Mas::open(next(Channel::Messages).stream).unwrap();
         let listed = mas.listing("inbox", 20).unwrap();
-        assert_eq!(listed.len(), 2);
+        assert_eq!(listed.len(), 3);
+        // (The oldest is long: a listing has its beginning, an iPhone's
+        // 128 bytes of it; asked for, it comes whole.)
+        let long = olo_system::phone::standin::Phone::LONG;
+        assert!(listed[2].subject.len() < long.len() && long.starts_with(&listed[2].subject), "{}", listed[2].subject);
+        assert_eq!(mas.message(&listed[2].handle).unwrap().text, long);
         mas.notify(true).unwrap();
 
         // A message comes: the phone opens a channel to Olo's own
@@ -145,7 +150,7 @@ fn against_the_standin() {
         // Its contacts.
         profiles.open(&phone.path, Channel::Contacts).unwrap();
         let contacts = pbap::contacts(next(Channel::Contacts).stream).unwrap();
-        assert_eq!(pbap::name_of(&contacts, "+1 (555) 010-0142"), Some("Mira Kovač"));
+        assert_eq!(pbap::name_of(&contacts, "+1 (555) 010-0142"), Some("Mira Kovač".to_owned()));
 
         // An iPhone's other notifications: there once its owner allows
         // them (it then connects over low energy to the computer

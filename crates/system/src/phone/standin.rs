@@ -49,6 +49,11 @@ pub struct State {
     next: u64,
 }
 
+/// How much of a message an iPhone's listing has, in bytes, whatever
+/// length is asked for (Ben's iPhone, 2026-11-17: four messages of
+/// twelve were exactly 128 bytes, ending mid-word).
+pub const IPHONE_SUBJECT: usize = 128;
+
 /// The stand-in: cheap to clone, each clone the same phone.
 #[derive(Clone, Default)]
 pub struct Phone(pub Arc<Mutex<State>>);
@@ -63,9 +68,12 @@ impl Phone {
             s.contacts = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:My Number\r\nTEL:+15550100\r\nEND:VCARD\r\n\
                 BEGIN:VCARD\r\nVERSION:3.0\r\nN:Kovač;Mira\r\nFN:Mira Kovač\r\nTEL;TYPE=CELL:+1 555 010 0142\r\nEND:VCARD\r\n\
                 BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Tomas Lind\r\nTEL:+15550100117\r\nEMAIL:tomas@example.org\r\nEND:VCARD\r\n\
-                BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Dad\r\nTEL:(555) 010-0108\r\nEND:VCARD\r\n"
+                BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Dad\r\nTEL:(555) 010-0108\r\nEND:VCARD\r\n\
+                BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Mira Kovač\r\nTEL;TYPE=WORK:(555) 010-0142\r\nEND:VCARD\r\n"
                 .to_owned();
         }
+        // (A long one, from before: more than an iPhone's listing has of it.)
+        p.receive("Mira Kovač", "+15550100142", Self::LONG, "20261113T184000");
         p.receive("Mira Kovač", "+15550100142", "Are you still coming on Saturday?", "20261114T101500");
         p.receive("", "+15550100190", "Your parcel arrives tomorrow between 10:00 and 12:00.", "20261115T083000");
         for m in &mut p.0.lock().unwrap().inbox {
@@ -73,6 +81,10 @@ impl Phone {
         }
         p
     }
+
+    /// The sample's long message.
+    pub const LONG: &'static str =
+        "We’re thinking of the lake house for Saturday: the forecast says sun until four, Tomas brings the boat, and there’s room for two more if you want to bring anyone. Tell me by Thursday?";
 
     /// A message arrives; its handle. (Told to a client with [`tell`].)
     pub fn receive(&self, from_name: &str, from: &str, text: &str, datetime: &str) -> String {
@@ -132,10 +144,20 @@ impl Phone {
                         Some("x-bt/map-msg-listing") if path == ["telecom", "msg"] => {
                             let most = params.get_two(map::tag::MAX_LIST_COUNT).unwrap_or(1024) as usize;
                             // (An iPhone's sent folder is empty, and
-                            // its listing has the whole text; an
-                            // Android's has a message's first words.)
+                            // its listing has the text, its first 128
+                            // bytes: `IPHONE_SUBJECT`; an Android's has
+                            // a message's first words.)
                             let android = s.android;
-                            let subject = |text: &str| if android { text.chars().take(24).collect::<String>() } else { text.to_owned() };
+                            let subject = |text: &str| {
+                                if android {
+                                    return text.chars().take(24).collect::<String>();
+                                }
+                                let mut end = text.len().min(IPHONE_SUBJECT);
+                                while !text.is_char_boundary(end) {
+                                    end -= 1;
+                                }
+                                text[..end].to_owned()
+                            };
                             let rows: String = if name.eq_ignore_ascii_case("sent") && android {
                                 s.sent
                                     .iter()
@@ -299,8 +321,12 @@ mod tests {
         let (link, served) = session(&phone);
         let mut mas = Mas::open(link).unwrap();
         let listed = mas.listing("inbox", 20).unwrap();
-        assert_eq!(listed.iter().map(|m| (m.sender_name.as_str(), m.read)).collect::<Vec<_>>(), [("", true), ("Mira Kovač", true)], "the newest first");
+        assert_eq!(listed.iter().map(|m| (m.sender_name.as_str(), m.read)).collect::<Vec<_>>(), [("", true), ("Mira Kovač", true), ("Mira Kovač", true)], "the newest first");
         assert_eq!(listed[0].subject, "Your parcel arrives tomorrow between 10:00 and 12:00.");
+        // A long message: the listing has its first 128 bytes, cut
+        // where a character ends; asked for whole, all of it.
+        assert!(Phone::LONG.len() > 150 && listed[2].subject.len() <= IPHONE_SUBJECT && listed[2].subject.len() > IPHONE_SUBJECT - 4 && Phone::LONG.starts_with(&listed[2].subject));
+        assert_eq!(mas.message(&listed[2].handle).unwrap().text, Phone::LONG);
         assert_eq!(mas.listing("sent", 20).unwrap(), []);
         assert!(!phone.notifying());
         mas.notify(true).unwrap();
@@ -337,8 +363,8 @@ mod tests {
         let served = std::thread::spawn(move || p.serve_contacts(theirs));
         let contacts = pbap::contacts(ours).unwrap();
         served.join().unwrap().unwrap();
-        assert_eq!(contacts.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["Mira Kovač", "Tomas Lind", "Dad"]);
-        assert_eq!(pbap::name_of(&contacts, "+15550100142"), Some("Mira Kovač"));
+        assert_eq!(contacts.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["Mira Kovač", "Tomas Lind", "Dad", "Mira Kovač"]);
+        assert_eq!(pbap::name_of(&contacts, "+15550100142").as_deref(), Some("Mira Kovač"), "her two cards are one person");
         assert_eq!(pbap::name_of(&contacts, "22395"), None);
         phone.0.lock().unwrap().contacts_allowed = false;
         let (ours, theirs) = UnixStream::pair().unwrap();

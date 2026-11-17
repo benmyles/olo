@@ -17,14 +17,18 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Phone: conversations show numbers, not names** (Ben, 2026-11-17:
-  "in the phone app it is just showing numbers not contact names … it
-  seems to have synced some contacts but not all?"). In his pictures a
-  conversation headed by a number with its country code got its name a
-  little later, one headed by a ten-digit number without one kept the
-  number, and short codes are numbers (as they should be). Also seen in
-  the same pictures: two messages end mid-word ("…call us using
-  Contac", "How's the n"), cut off.
+- **A window tab's menu: Pin ▸ Always Main / Always [where it is]**
+  (Ben, 2026-11-17: "i often have some windows like telegram where i
+  want it to always open in the top-left quarter, and phone in the
+  top-right quarter (of whatever desktop-workspace they happen to be
+  opened on). there was another todo to support pinning what is the
+  main window when in tile-stack mode. let's generalize that so i can
+  right click the window title tab and choose Pin -> Always Main /
+  Always [...] where Always [...] would be e.g. "Always Top Left
+  Quarter" based on where that window currently is"). The pin is the
+  app's, remembered: its window opens there on whichever workspace and
+  display it opens on. Pinning the main window (done 2026-11-17, a
+  tile's own) becomes Pin ▸ Always Main.
 
 ## Done, waiting for Ben to try or confirm
 
@@ -5876,6 +5880,32 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Phone: conversations show numbers, not names; long messages cut
+  off**~~ (Ben, 2026-11-17: "in the phone app it is just showing
+  numbers not contact names … it seems to have synced some contacts but
+  not all?"; done the same day). All the contacts had come (356). A
+  number that sat in more than one card was taken for nobody's, and a
+  phone's book has the same person once for each account it syncs: now
+  cards with one name are one person, and two or three people who share
+  a number are all said ("Dad or Home"). The conversation in his
+  picture is that: three cards, three names, so it reads "A, B or C"
+  (short codes stay numbers; the names come a moment after the window
+  opens only the first time, they're kept after). And the messages that
+  ended mid-word: an iPhone's inbox listing has a message's first 128
+  bytes, which was taken for all of it; such a message is now asked for
+  whole, once, the ones already kept too. Tested against the stand-in
+  phone (which cuts its listing as an iPhone does now); with Ben's own
+  data only counted, never read. **To see** after the upgrade: the
+  conversation has names, and the cut messages are whole within a
+  moment of the phone connecting. (HACKING, "The phone".)
+
+- ~~**The phone service's own test failed, unseen**~~ (found
+  2026-11-17). Its step "nothing is advertised any more" was from
+  before the phone's other notifications, for which the service goes
+  on advertising; the test runs only with a test bus, so nothing ran
+  it. Brought up to date (the notifications allowed, then nothing
+  advertised), and the notes say to run the five bus tests by name.
 
 - ~~**The release was 4.7 GB, more than GitHub takes, and lacked what
   reads text and faces**~~ (found 2026-11-17, making the release; done

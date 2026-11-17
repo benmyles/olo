@@ -150,13 +150,29 @@ pub fn key(who: &str) -> String {
     digits[digits.len().saturating_sub(10)..].to_owned()
 }
 
-/// Whose number or address `who` is, among `contacts`: the one contact
-/// it belongs to (belonging to two, it's nobody's for sure).
-pub fn name_of<'a>(contacts: &'a [Contact], who: &str) -> Option<&'a str> {
+/// Whose number or address `who` is, among `contacts`. A phone's book
+/// has the same person more than once (a card from each account it
+/// syncs: of Ben's 428 numbers, 68 were in several ordinary cards, 63 of
+/// them under one name), so cards with one name are one person: before
+/// 2026-11-17 a number in two cards was "nobody's for sure", and those
+/// conversations showed as numbers. Two or three people with the number
+/// (a household's, an office's) are all said, "Dad or Home"; more than
+/// that (a caller-blocking app's lists, hundreds of numbers a card and
+/// each in every card) name nobody.
+pub fn name_of(contacts: &[Contact], who: &str) -> Option<String> {
+    // (A name as it's compared: its letters and digits, any case.)
+    let same = |name: &str| name.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect::<String>();
     let k = key(who);
-    let mut found = contacts.iter().filter(|c| c.phones.iter().chain(&c.emails).any(|a| key(a) == k));
-    match (found.next(), found.next()) {
-        (Some(c), None) => Some(c.name.as_str()),
+    let mut names: Vec<&str> = Vec::new();
+    for c in contacts.iter().filter(|c| c.phones.iter().chain(&c.emails).any(|a| key(a) == k)) {
+        if !names.iter().any(|n| same(n) == same(&c.name)) {
+            names.push(c.name.as_str());
+        }
+    }
+    match names.as_slice() {
+        [one] => Some((*one).to_owned()),
+        [a, b] => Some(format!("{a} or {b}")),
+        [a, b, c] => Some(format!("{a}, {b} or {c}")),
         _ => None,
     }
 }
@@ -182,14 +198,24 @@ mod tests {
         assert_eq!(c[2].name, "Tomas Lind, Jr.");
         assert_eq!(parse(b"nothing"), []);
         // Whose a number is, written any way; an address, any case.
-        assert_eq!(name_of(&c, "+15550143"), Some("Mira Kovač"));
+        assert_eq!(name_of(&c, "+15550143").as_deref(), Some("Mira Kovač"));
         assert_eq!(name_of(&c, "(555) 014-3"), None, "seven digits of ten aren't the number");
-        assert_eq!(name_of(&c, "555-0163"), Some("Inés Duárte"));
-        assert_eq!(name_of(&c, "MIRA@example.org"), Some("Mira Kovač"));
+        assert_eq!(name_of(&c, "555-0163").as_deref(), Some("Inés Duárte"));
+        assert_eq!(name_of(&c, "MIRA@example.org").as_deref(), Some("Mira Kovač"));
         assert_eq!(name_of(&c, "22395"), None);
         assert_eq!((key("+1 555 010 0142"), key("5550100142"), key("22395")), ("5550100142".into(), "5550100142".into(), "22395".into()));
-        // (A number two contacts share is nobody's for sure.)
-        let shared = [Contact { name: "Home".into(), phones: vec!["+1 555 010 0100".into()], emails: vec![] }, Contact { name: "Dad".into(), phones: vec!["(555) 010-0100".into()], emails: vec![] }];
+        // The same person's card twice (one from each account the phone
+        // syncs, the number written each its own way): that person.
+        let card = |name: &str, phone: &str| Contact { name: name.into(), phones: vec![phone.into()], emails: vec![] };
+        let twice = [card("Mira Kovač", "+1 555 010 0142"), card("Tomas Lind", "5550100117"), card("mira  kovač", "(555) 010-0142")];
+        assert_eq!(name_of(&twice, "5550100142").as_deref(), Some("Mira Kovač"));
+        // A number two or three people share: all of them said.
+        let mut shared = vec![card("Home", "+1 555 010 0100"), card("Dad", "(555) 010-0100")];
+        assert_eq!(name_of(&shared, "5550100100").as_deref(), Some("Home or Dad"));
+        shared.push(card("Mum", "555 010 0100"));
+        assert_eq!(name_of(&shared, "5550100100").as_deref(), Some("Home, Dad or Mum"));
+        // More than that (lists of numbers, each in every list): nobody.
+        shared.push(card("Blocked 4", "555 010 0100"));
         assert_eq!(name_of(&shared, "5550100100"), None);
     }
 }

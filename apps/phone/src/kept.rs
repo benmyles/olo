@@ -24,6 +24,9 @@ pub struct Kept {
     pub threads: Vec<Conversation>,
     /// The handles of the messages seen (one not among them is new).
     pub seen: Vec<String>,
+    /// Those whose text is known whole (asked of the phone itself, not
+    /// taken from a listing, which has only a message's beginning).
+    pub whole: Vec<String>,
     pub contacts: Vec<Person>,
 }
 
@@ -91,6 +94,7 @@ mod tests {
                 ],
             }],
             seen: vec!["20".into()],
+            whole: vec!["20".into()],
             contacts: vec![Person { name: "Mira Kovač".into(), phones: vec!["+1 (415) 555-0134".into()], emails: Vec::new() }],
         };
         save(&kept).unwrap();

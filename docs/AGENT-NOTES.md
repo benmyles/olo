@@ -176,7 +176,14 @@ Each note: what to do, then why (what happened), then how to apply it.
 - **`cargo test` with `OLO_TEST_BUS` set runs every bus test at once**
   on that one bus (dnf-fake's failed once so, among the phone's): give
   the variable to the test you mean (`--test NAME`), not to a whole
-  crate's run.
+  crate's run. **Without it those five tests pass by doing nothing**
+  (`cargo test --workspace` and the hooks never run them): after
+  changing the phone, the network portal, disks or updates, run its
+  own (`OLO_TEST_BUS=unix:path=… cargo test --release -p olo-phone
+  --test service`; `-p olo-system --test phone_standin`, `nm_portal`,
+  `udisks_fake`, `dnf_fake`) against an `olo-bus` of your own. The
+  phone service's had failed since the day its step went stale
+  (2026-11-17), unseen.
 - **The commit hook's layout lint runs over the working tree**, not
   what's staged: committing one thing while another's panel is half
   done fails on that panel (a new Preferences panel needs the settings
