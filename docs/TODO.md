@@ -17,14 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **MGLRU's thrash protection at 250 ms: enough runs to say** (found
-  2026-11-16, kernel/TUNING.md). At the kernel's advised 1000 ms it
-  ended a program that fitted in memory in 3 runs of 9, so it isn't
-  offered. At 250 ms it ended none in 4 and still cut the worst stall
-  from 554 ms to about 140: run `tools/dev/kernel-check thrashing` at
-  250 ms twenty times and more with the program that fits, and the case
-  between (950 MB), on a quiet computer; offered (Doctor, the Kernel
-  tab) only if it never ends one for nothing.
 - **An idle window keeps its whole swapchain** (found 2026-11-16,
   answering Ben's "doesn't 6gb of memory seem really high for olo app
   server too?"): a full-size window on his 5K display (4640 × 2840
@@ -5894,6 +5886,14 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**MGLRU's thrash protection at 250 ms: enough runs to say**~~
+  (found 2026-11-16; done 2026-11-17). It can be said: at 250 ms the
+  case between (950 MB, which fits) was ended in 2 runs of 2, after 70
+  and 68 s, as at 1000 ms; the program that fits got it all (7 of 7).
+  A setting that ends a program for nothing isn't offered: left at 0.
+  `tools/dev/kernel-check thrashing --ttl MS` runs any setting so.
+  (kernel/TUNING.md.)
 
 - ~~**Chrome's updater can't unpack the newest package**~~ (found and
   done 2026-11-17). Google builds Chrome's rpm with rpm 6 since

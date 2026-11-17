@@ -35,7 +35,7 @@ kernels recommended for a responsive desktop. What they change:
 | --- | --- | --- |
 | A preemptible kernel, chosen at start (`PREEMPT_DYNAMIC`) | Built in; starts **lazy** | **A setting: full** (below) |
 | A 1000 Hz tick | `HZ=1000` | Nothing to do |
-| The multi-generational LRU (MGLRU), on | On (`0x0007`); its thrash protection off (`min_ttl_ms` 0) | Measured, left alone (below) |
+| The multi-generational LRU (MGLRU), on | On (`0x0007`); its thrash protection off (`min_ttl_ms` 0) | Measured at 1000 and 250 ms, left alone (below) |
 | le9 (the working set kept under pressure) | Not there; a patch to the core of memory management | Can't be had; MGLRU's `min_ttl_ms` is mainline's way to the same end |
 | BBRv3 | BBRv1 as `tcp_bbr` | Olo's module, `tcp_bbr3` ([bbr3/README.md](bbr3/README.md)) |
 | Another CPU scheduler (BORE, BMQ/PDS, …) | `sched_ext`: a scheduler loads over the kernel's | Preferences ▸ Performance ▸ Scheduler (`scx_lavd`) |
@@ -243,11 +243,25 @@ nothing was thrashing. A program ended for nothing one time in three is
 someone's work lost; never ending it costs the other program rounds of
 55 to 270 ms for a minute in the worst case that still fits. Left at 0.
 
-A smaller N may be the way: at 250 ms the program that fits got it all
-in 4 runs of 4, and where it didn't fit the worst round was 135 to
-152 ms (554 without, 41 at 1000). Four runs don't show it never ends a
-program for nothing, and the case between wasn't run: not offered until
-it has been run enough to say (docs/TODO.md).
+A smaller N isn't the way either. At 250 ms (`tools/dev/kernel-check
+thrashing --ttl 250`, 2026-11-17) the program that fits got it all in 7
+runs of 7, and where the program doesn't fit the worst round was 37 ms
+(542 without, 41 at 1000). But the case between, 950 MB, which fits
+with the other's file pushed out and gets it all at 0 (2 runs of 2),
+**was ended in 2 runs of 2**, after 70 s and after 68 s: someone's
+program ended for nothing, as at 1000. One run is enough to say it
+does: the twenty asked for were stopped there. Not offered; left at 0.
+
+| The first takes | `min_ttl_ms` | it | a round through the file: 99 in 100 within | worst |
+| --- | ---: | --- | ---: | ---: |
+| 1,400 MB (more than there is) | 0 | was ended after 92 s | 89.8 ms | 541.9 ms |
+| | 250 | was ended after 72 s | 10.0 ms | 36.8 ms |
+| 950 MB (it fits, with the other's file pushed out) | 250 | **was ended after 70 s, and after 68 s** | 2.4 ms, 1.7 ms | 33.9 ms, 34.3 ms |
+| 700 MB (it fits) | 250 | got it all (3 runs of 3; 7 of 7 with the earlier 4) | 2.2, 0.3, 0.4 ms | 34.8, 105.9, 39.1 ms |
+
+(The computer was in use while these ran, its load between 5 and 12:
+the guests' times may be longer than on a quiet one; whether a program
+was ended isn't a time.)
 
 Olo has other answers to memory running out, none of which ends
 anything unasked: swap in compressed memory as large as memory, the
