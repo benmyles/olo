@@ -114,7 +114,9 @@ something nobody here has is in "Blocked", with what it waits for.
   **Phone, the app, is made** (2026-11-17; HACKING, "The phone"):
   conversations and contacts in a window, balloons as Telegram's,
   measured on the bench. The service is its own program now
-  (`olo-phoned`). Still to do: the website; the phones' own icons;
+  (`olo-phoned`). The website has it (2026-11-17: "Your phone,
+  natively", with a picture, and Phone among the apps; **for Ben**:
+  `tools/deploy-website.sh`). Still to do: the phones' own icons;
   whatever Ben's iPhone shows that the stand-in didn't.
 - **Everything Olo Doctor does can be undone** (Ben, 2026-11-16: "one
   more thing we need: everything in olo doctor that it does must be
