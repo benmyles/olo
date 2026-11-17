@@ -17622,7 +17622,17 @@ it is with Cancel, then an alert with Open in Tracker
 (`Replay::start_export`). What it exports (`Replay::export_part`): the
 rows chosen when there are several (⇧ or ⌘ in the list), else what the
 list shows when a search or filter leaves some out, else all; the file
-says a part ("NAME (12 actions).mp4"). The sidebar (the
+says a part ("NAME (12 actions).mp4"). **Take Screenshot…** (beside it,
+and Screen ▸, ⇧⌘E; Ben, 2026-11-17: "a "Take Screenshot..." button
+that takes a screenshot at the current time point and saves it and the
+user should be able to choose the size like they can for the video"):
+the screen as it was at the time shown (the playhead, `Replay::now`),
+"NAME at 1.42.png" in ~/Pictures by the same Save panel and Size
+(Actual Size, 2×, 3× as far as fits, each pixel that many times over,
+the last chosen again), decoded from its keyframe and written on a
+worker (`save_shot`: through a `.png.part` renamed once whole), then
+the same alert. The header leaves the screen's name out where a narrow
+window leaves it no room (it drew an "…" over the buttons at 2×). The sidebar (the
 kit's `Sidebar`) has every screen running and every one stopped, under
 Running and Stopped, by last use (`viewer::rows`,
 read on a worker; every listed one's as it acts: its history's folder

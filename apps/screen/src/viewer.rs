@@ -102,6 +102,8 @@ pub enum Msg {
     /// Where the history's video goes (the file panel's answer).
     /// Export to this file, each pixel this many times over.
     ExportTo(PathBuf, usize),
+    /// A picture of the screen at the time shown saved (or why not).
+    Shot(Result<PathBuf, String>),
 }
 
 /// The chosen screen's tabs.
@@ -551,6 +553,37 @@ pub struct Viewer {
 
 /// The size an export was last made at (each pixel this many times over).
 static LAST_ZOOM: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
+/// And a screenshot.
+static LAST_SHOT_ZOOM: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
+
+/// The screen's picture at `at` (from `segments`), each pixel `zoom` ×
+/// `zoom`, written to `path` as a PNG (through a file beside it, renamed
+/// once whole).
+fn save_shot(segments: &[crate::record::Segment], at: u64, zoom: usize, path: &std::path::Path) -> Result<(), String> {
+    let (_, frame) = crate::record::frame_at(segments, at).ok_or("no picture was kept from then")?;
+    let z = zoom.max(1);
+    let (w, h) = (frame.width * z, frame.height * z);
+    let mut rgba = Vec::with_capacity(w * h * 4);
+    for y in 0..frame.height {
+        let row = &frame.rgba[y * frame.width * 4..(y + 1) * frame.width * 4];
+        let mut wide = Vec::with_capacity(w * 4);
+        for px in row.chunks_exact(4) {
+            for _ in 0..z {
+                wide.extend_from_slice(px);
+            }
+        }
+        for _ in 0..z {
+            rgba.extend_from_slice(&wide);
+        }
+    }
+    let part = path.with_extension("png.part");
+    let file = std::fs::File::create(&part).map_err(|e| format!("{}: {e}", part.display()))?;
+    let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), w as u32, h as u32);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    encoder.write_header().and_then(|mut wr| wr.write_image_data(&rgba)).map_err(|e| e.to_string())?;
+    std::fs::rename(&part, path).map_err(|e| format!("{}: {e}", path.display()))
+}
 
 impl Viewer {
     pub fn new(show: Option<String>, cx: &mut Cx<Viewer>) -> Viewer {
@@ -875,6 +908,55 @@ impl Viewer {
         });
     }
 
+    /// Take Screenshot…: the screen as it was at the time shown, saved
+    /// as a PNG where the person says, at a size chosen as a video's is
+    /// (each pixel two or three times over: a small screen easier to
+    /// read), the last chosen again (Ben, 2026-11-17: "agent screens
+    /// needs a "Take Screenshot..." button that takes a screenshot at the
+    /// current time point and saves it and the user should be able to
+    /// choose the size like they can for the video").
+    fn ask_screenshot(&mut self, cx: &mut Cx<Self>) {
+        if !self.can_shoot(cx) {
+            return;
+        }
+        let Some(replay) = self.replay.as_ref() else { return };
+        let (name, (at, segments), time, size) = {
+            let r = replay.read(cx);
+            (r.name.clone(), r.now(), r.time_shown(), r.screen_size())
+        };
+        let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+        let dir = [home.join("Pictures"), home.clone()].into_iter().find(|d| d.is_dir()).unwrap_or(home);
+        let file = format!("{name} at {}.png", time.replace(':', "."));
+        let (w, h) = size.unwrap_or((0, 0));
+        let options: Vec<(String, String)> =
+            crate::export::zooms(w, h).into_iter().map(|z| (z.to_string(), if z == 1 { format!("Actual Size ({w} × {h})") } else { format!("{z}× ({} × {})", w * z, h * z) })).collect();
+        let last = LAST_SHOT_ZOOM.load(std::sync::atomic::Ordering::Relaxed).to_string();
+        let value = options.iter().find(|o| o.0 == last).map_or_else(|| "1".to_owned(), |o| o.0.clone());
+        let mut panel = file_panel::FilePanel::save(dir, file).types(&["png"]);
+        if options.len() > 1 {
+            panel = panel.choices(vec![file_panel::Choice { id: "zoom".into(), label: "Size:".into(), options, value }]);
+        }
+        let proxy = self.proxy.clone();
+        file_panel::show("Take Screenshot", panel, move |a| {
+            let file_panel::PanelResult::Chosen(path) = a.result else { return };
+            let zoom = a.choices.iter().find(|c| c.id == "zoom").and_then(|c| c.value.parse().ok()).unwrap_or(1usize);
+            LAST_SHOT_ZOOM.store(zoom, std::sync::atomic::Ordering::Relaxed);
+            // (Decoded from its keyframe and written on a worker: a 5K
+            // screen's picture is tens of megabytes.)
+            let _ = std::thread::Builder::new().name("screenshot".into()).spawn(move || {
+                proxy.send(Msg::Shot(save_shot(&segments, at, zoom, &path).map(|()| path)));
+            });
+        });
+    }
+
+    /// Whether there's a picture to take: a history with frames.
+    fn can_shoot(&self, cx: &WindowCx) -> bool {
+        self.replay.as_ref().is_some_and(|r| {
+            let r = r.read(cx);
+            r.loaded() && r.screen_size().is_some()
+        })
+    }
+
     /// An export ended: where the video is, or why not.
     fn exported(&mut self, result: &Result<PathBuf, String>, cx: &mut Cx<Self>) {
         match result {
@@ -965,6 +1047,18 @@ impl Viewer {
                 }
             }
             Msg::Spaces(spaces) => self.spaces = spaces,
+            Msg::Shot(Ok(path)) => {
+                let message = format!("The screenshot “{}” is saved.", path.file_name().and_then(|n| n.to_str()).unwrap_or(""));
+                let me = cx.view_ref();
+                open_alert(cx, "Take Screenshot", "screenshot", &message, &[olo_kit::tracker::LABEL, "OK"], move |choice, cx| {
+                    if *choice == Some(0)
+                        && let Err(e) = olo_kit::tracker::open(&path)
+                    {
+                        me.update(cx, move |v, cx| v.alert(&format!("Tracker couldn’t show it: {e}"), cx));
+                    }
+                });
+            }
+            Msg::Shot(Err(e)) => self.alert(&format!("The screenshot couldn’t be made: {e}"), cx),
             Msg::ExportTo(path, zoom) => {
                 let proxy = self.proxy.clone();
                 if let Some(r) = &self.replay {
@@ -1035,7 +1129,17 @@ impl Viewer {
             Menu::new("Screen").app_items(&["airplay", "terminal"]).item("New Screen", "new").key("n").enabled(!self.busy).item("Passwords for Every Screen…", "shares-everywhere").separator(),
         );
         vec![
-            screen.item("Clear History…", "clear").enabled(chosen && !running).separator().item("Export Video…", "export").key("e").enabled(self.can_export(cx)).close_quit(),
+            screen
+                .item("Clear History…", "clear")
+                .enabled(chosen && !running)
+                .separator()
+                .item("Export Video…", "export")
+                .key("e")
+                .enabled(self.can_export(cx))
+                .item("Take Screenshot…", "screenshot")
+                .shift_key("e")
+                .enabled(self.can_shoot(cx))
+                .close_quit(),
             Menu::new("Edit")
                 .item("Select All Screens", "select-all")
                 .enabled(!self.rows.is_empty())
@@ -1155,6 +1259,7 @@ impl Viewer {
             }
             "clear" => self.ask_clear(cx),
             "export" => self.ask_export(cx),
+            "screenshot" => self.ask_screenshot(cx),
             "tab-live" if self.screen().is_some() => self.set_tab(Tab::Live, cx),
             "tab-history" => self.set_tab(Tab::History, cx),
             "tab-stats" => self.set_tab(Tab::Stats, cx),
@@ -1542,6 +1647,11 @@ impl Viewer {
             icons::paint(g, icon, "agent-screens");
             let x = icon.right() + px(m::SPACING);
             let w = (r.right() - x).max(px(0.0));
+            // (No room for even a few letters, in a window made narrow:
+            // none, rather than an "…" over the buttons beside it.)
+            if w < px(24.0) {
+                return;
+            }
             // (Its field over it while it's renamed.)
             if !renaming_now {
                 let t = style::label_fit(g, x, r.top() + px(11.0), style::Align::Left, title.clone(), 15.0, style::ui_font(FontWeight::BOLD), c(p.panel_text), w);
@@ -1617,7 +1727,8 @@ impl Viewer {
             Some(done) => Button::new("Export Video…").min_width(96.0).working(Some(done)),
             None => Button::new("Export Video…").min_width(96.0).enabled(self.can_export(cx)).on_click(cx.listener(|v: &mut Viewer, _, cx| v.ask_export(cx))),
         };
-        let row = div().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(HEADER_H)).flex_shrink_0().child(face).child(export).child(first);
+        let shot = Button::new("Take Screenshot…").min_width(96.0).enabled(self.can_shoot(cx)).on_click(cx.listener(|v: &mut Viewer, _, cx| v.ask_screenshot(cx)));
+        let row = div().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(HEADER_H)).flex_shrink_0().child(face).child(export).child(shot).child(first);
         // Stopped: started again as it was (one shown, `start_chosen`
         // takes the others chosen with it too).
         if running {

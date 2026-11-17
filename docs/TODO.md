@@ -75,12 +75,6 @@ something nobody here has is in "Blocked", with what it waits for.
   pixel, hue, etc needs to be just absolutely perfect and stunningly
   beautiful").
 
-- **Agent Screens: Take Screenshot…, at the time shown, at a size
-  chosen** (Ben, 2026-11-17: "agent screens needs a "Take
-  Screenshot..." button that takes a screenshot at the current time
-  point and saves it and the user should be able to choose the size
-  like they can for the video").
-
 - **Last, once everything above that isn't blocked is done: the website,
   the README and the docs refreshed, and a new GitHub release** (Ben,
   2026-11-17: "when all the other todos that aren't blocked are
@@ -5938,6 +5932,14 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Agent Screens: Take Screenshot…, at the time shown, at a size
+  chosen**~~ (Ben, 2026-11-17; done the same day). Beside Export
+  Video… (and Screen ▸ Take Screenshot…, ⇧⌘E): the screen as it was at
+  the time the history shows, saved as a PNG where you say (~/Pictures
+  first), at Actual Size, 2× or 3× as the video's Size offers. Tried in
+  a test session: Actual Size (1280 × 900) and 2× (2560 × 1800, each
+  pixel twice over), the window reviewed at 1×, 1.5× and 2×.
 
 - ~~**The red dot on the window's tab, and on the tab inside it, that
   has what's unread**~~ (Ben, 2026-11-17; done the same day). The

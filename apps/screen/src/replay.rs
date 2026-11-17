@@ -467,6 +467,18 @@ impl Replay {
         record::last_size(&self.segments)
     }
 
+    /// Where it's at (the time shown), and its frames: for a picture of
+    /// it then (Take Screenshot…).
+    pub fn now(&self) -> (u64, Arc<Vec<record::Segment>>) {
+        (self.playhead, self.segments.clone())
+    }
+
+    /// The time shown, as the scrubber says it ("1:42").
+    pub fn time_shown(&self) -> String {
+        let (start, _) = self.range();
+        duration(self.playhead.saturating_sub(start))
+    }
+
     /// Make the history (or the part `export_part` says) a video at
     /// `path`, each pixel `zoom` × `zoom`, on a worker.
     pub fn start_export(&mut self, path: PathBuf, zoom: usize, proxy: Proxy, cx: &mut Cx<Self>) {
