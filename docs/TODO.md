@@ -17,23 +17,22 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Colour schemes: Catppuccin and the ten most used editor schemes,
-  for Terminal and for Themes ▸ Custom Colors** (Ben, 2026-11-17: "in
-  the terminal app bake in support for all the https://catppuccin.com/
-  color schemes and also go find the top 10 color schemes for
-  vscode/cursor and bake in support for those too. and actually let's
-  unify them so that all these are also available under themes ->
-  custom colors and when choosing a custom color scheme it should
-  automatically set the terminal to follow that too unless the user has
-  explicitly chosen a non-default color scheme for the terminal (we
-  want to support the terminal being set independently as well b/c some
-  users have strong preferences for terminal colors). also make sure
-  that every color scheme has a light and dark variant and that
-  everything is visually QA'd with screenshots to check that the colors
-  work well with both of olo's themes. customize/tweak the colors if
-  needed to fit: you don't have to make them _exactly_ the same as what
-  they are officially. just add a note that they have been optimized
-  for olo or something. make sure every single one is beautiful.").
+- **One-time codes from mail too: Gmail and Fastmail accounts in
+  Integrations, and what's watched for codes chosen in Security ▸
+  Passwords** (Ben, 2026-11-17: "add to prefs -> integrations support
+  for connecting any number of gmail (free or workspace gmail) accounts
+  as well as fastmail accounts. then, under prefs -> security ->
+  passwords move the phone prefs one-time codes stuff into prefs ->
+  security -> passwords and change it up a bit so that you can choose
+  what to monitor for one-time passwords, so it should support
+  monitoring specific phone devices that have been setup as well as
+  specific email accounts that have been setup in integrations. then,
+  for the email one-time password monitoring make it triggered by the
+  olo password extension -- the extension should see that the user is
+  on a page waiting for a one time password, so it should check the
+  configured email accounts to see if a new message has arrived with
+  the code and keep looking for up to 60s until one arrives from
+  phone/email and then offer to fill it.").
 
 - **A window tab's menu: Pin ▸ Always Main / Always [where it is]**
   (Ben, 2026-11-17: "i often have some windows like telegram where i
@@ -5898,6 +5897,23 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Colour schemes: Catppuccin and the ten most used editor
+  schemes, for Terminal and for Themes**~~ (Ben, 2026-11-17; done the
+  same day). Preferences ▸ Themes ▸ Colors has, beside the theme's own
+  and BeOS's: Catppuccin Mocha, Macchiato and Frappé (each with Latte
+  by day), and the ten most installed colour themes in the editors'
+  marketplace as counted that day: GitHub, One Dark Pro, Dracula, Ayu,
+  Monokai, Winter is Coming, Night Owl, Tokyo Night, Palenight and
+  SynthWave '84. Each has a light and a dark (its makers' where there
+  are both; Olo's own for Monokai, Palenight and SynthWave), tuned for
+  Olo: what wouldn't read was moved until it does, and the line under
+  the grid says so. Terminal follows the set chosen ("As in Themes"),
+  and colours chosen in Terminal's own menu (the same schemes, for
+  light and for dark) stay whatever Themes has. Looked at one by one,
+  light and dark, in Classic (all fifteen) and in Platinum (three),
+  with `tools/dev/scheme-shots`. (HACKING, "Colour schemes from
+  elsewhere".)
 
 - ~~**The phone "just works": hardened against a flaky link**~~ (Ben,
   2026-11-17: "harden it as much as possible so that olo aggressively

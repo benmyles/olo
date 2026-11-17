@@ -260,7 +260,7 @@ impl Panel {
             // Coding Agents beside Git Worktrees and Command Suggestions.
             Panel::Terminal => (900, 600),
             // The themes, the chosen one's colour sets beside them.
-            Panel::Themes => (800, 600),
+            Panel::Themes => (824, 600),
             // Tall enough for Touch with both of its notes (a pad with no
             // pressure and the Apple driver's click thresholds).
             Panel::Touchpad => (784, 600),

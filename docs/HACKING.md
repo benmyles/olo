@@ -6269,9 +6269,47 @@ lint at a time).
   radio button with its name and the `olo` mark as it draws it (the
   wordmark is the brand's, the same in both), a line about it, and a
   row of seven of its icons. Anywhere on a card chooses it, and its
-  wallpaper (`choose`). Under them, the chosen theme's colour sets side
-  by side (its own and BeOS's: a preview of each in light and dark).
-  The previews are on grids of their own (`review::own_grid`). The
+  wallpaper (`choose`). Under them, Colors: the colour sets five across
+  (`colors`: the chosen theme's own, BeOS's, and the schemes from
+  elsewhere), each a swatch of its light palette and its dark one (its
+  panel, tab, document, a chosen row and six of its hues: `swatch`)
+  over a radio button with its name, and a line about the chosen one
+  under them. The previews are on grids of their own
+  (`review::own_grid`). The panel is as tall as the smallest screen
+  takes with the fifteen: the theme previews are 0.46 of their width,
+  their small window fitted to whole rows of its list.
+  **Colour schemes from elsewhere** (`olo_theme::schemes`; Ben,
+  2026-11-17: "bake in support for all the catppuccin color schemes
+  and also go find the top 10 color schemes for vscode/cursor … all
+  these are also available under themes"). Catppuccin's three dark
+  flavours (each with Latte by day), and the ten colour themes most
+  installed in the editors' marketplace as counted that day (its
+  public query, by installs; icon themes, language packs and the
+  withdrawn Material Theme left out): GitHub (20.7 million), One Dark
+  Pro (12.9), Dracula (11.2), Ayu (4.2), Monokai (4.2), Winter is
+  Coming (3.8), Night Owl (3.6), Tokyo Night (3.0), Palenight (2.7)
+  and SynthWave '84 (2.6). Each is a pair, light and dark: its makers'
+  where they publish both (GitHub's, One Light, Dracula's Alucard,
+  Ayu's, Winter is Coming's, Light Owl, Tokyo Night Light), else Olo's
+  from the same hues (Monokai on warm paper, Palenight on Material's
+  Lighter, SynthWave's "Dawn"). A scheme is a `Variant` a mode: its
+  grounds, ink, grey, accent, tab colour, eight hues and a terminal's
+  blacks and whites; `Scheme::seeds` makes a look's seeds of it and
+  `looks::build` the palette, as for a theme's own, and
+  `Scheme::terminal` its sixteen terminal colours. **Tuned for Olo**:
+  whatever wouldn't read is moved until it does (`readable`: text 7 to
+  1 on panels and in a terminal, fills' text 4.5, a terminal's colours
+  3 to 1 on its ground), Winter is Coming's dark ground is a shade
+  bluer than Night Owl's (their makers' are the same), and the theme
+  crate's tests hold every scheme to what every look is held to
+  (`text_reads_everywhere`, `terminals_read`). A scheme is the same in
+  either theme (the theme is its icons, wordmark and wallpaper).
+  `ColorSet::Scheme` is one; `ColorSet::all()` lists them for
+  Preferences and for agents (`Request::Looks`). Looked at one by one
+  in both themes, light and dark, with `tools/dev/scheme-shots OUT`:
+  one headless session with Tracker, Terminal (its sixteen colours, a
+  listing, a diff) and Preferences ▸ Themes open, pictured in every
+  set (`--only ID,…`, `--theme`, `--scale`). The
   choice is `Appearance::icon_theme` (an id; unknown ones, the eight
   themes there were before Classic and Platinum among them, draw the
   default, `classic`), so agents set it with `SetSettings` like any
@@ -15556,12 +15594,18 @@ has no code for them.)
 
 **Colours** (`src/colors.rs`, View ▸ Colors). Match Appearance,
 Always Light or Always Dark picks which of two schemes shows; Light
-Colors and Dark Colors each offer the look's own (the theme's, `Classic
-Light`, `Platinum Dark`, …) and BeOS's (`olo_theme::looks::terminals`),
-the look's by default (its ink on its document colour, Olo's ANSI
-colours kept readable on it, the cursor in its focus colour); the
-choices are `Settings::light_colors` / `dark_colors` (ids,
-`looks::terminal`; one that's gone, Catppuccin's, is the look's own).
+Colors and Dark Colors each have "As in Themes" (the look's own: the
+theme's, or the colour scheme chosen in Preferences ▸ Themes, followed
+as it changes; the default) and then every scheme to choose here: the
+theme's (`Classic Light`, `Platinum Dark`, …), BeOS's and the schemes'
+(`Catppuccin Latte`, `Dracula`, `GitHub Dark`, `One Light`, …:
+`olo_theme::looks::terminals`). **One chosen here stays** through a
+change of theme or colour set (Ben: "we want to support the terminal
+being set independently as well b/c some users have strong preferences
+for terminal colors"; a new look used to put both back to its own).
+The choices are `Settings::light_colors` / `dark_colors` (ids,
+`looks::terminal`; none: as in Themes; one that's gone is the look's
+own).
 
 Text is kept legible whatever background a program had in mind
 (`colors::legible`, as iTerm's minimum contrast): a cell's text is at

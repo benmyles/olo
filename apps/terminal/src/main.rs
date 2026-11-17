@@ -991,18 +991,16 @@ impl Terminal {
         chosen.as_deref().and_then(looks::terminal).unwrap_or_else(|| looks::palette(&self.look.theme, &self.look.colors, mode).terminal)
     }
 
-    /// Follow the desktop's look: when it is a new one (another theme or
-    /// colour set; not just light or dark), its colours replace any
-    /// chosen here.
+    /// Follow the desktop's look: Terminal's colours are the look's own
+    /// (the theme's, or the colour scheme chosen in Preferences ▸
+    /// Themes) wherever none was chosen here. Colours chosen here stay
+    /// through a change of look (Ben, 2026-11-17: "we want to support
+    /// the terminal being set independently as well b/c some users have
+    /// strong preferences for terminal colors"; a new look used to put
+    /// both back to its own).
     fn follow(&mut self, palette: &Arc<Palette>) {
         let look = (palette.theme.clone(), palette.colors.clone());
         if self.settings.look.as_ref() != Some(&look) {
-            // The first look seen (as on the first run of this version)
-            // keeps what was chosen before.
-            if self.settings.look.is_some() {
-                self.settings.light_colors = None;
-                self.settings.dark_colors = None;
-            }
             self.settings.look = Some(look);
             self.settings.save();
         }
@@ -2546,16 +2544,19 @@ impl Terminal {
         for s in TEXT_SIZES {
             text = text.item(format!("{s}"), format!("size-{s}")).checked(self.settings.text_size == s);
         }
-        // The look's own colours and BeOS's for each mode
-        // (and the one chosen, if it is none of those).
+        // For each mode: the look's own (whatever Preferences ▸ Themes
+        // has, followed as it changes), or one chosen here, which stays:
+        // the theme's, BeOS's, and the schemes'.
         let pick = |title: &str, mode: ThemeMode| {
-            let chosen = self.colors_for(mode);
-            let mut offered = looks::terminals(&self.look.theme, mode);
-            if !offered.contains(&chosen) {
-                offered.push(chosen.clone());
+            let own = looks::palette(&self.look.theme, &self.look.colors, mode).terminal;
+            let chosen = match mode {
+                ThemeMode::Light => self.settings.light_colors.as_deref(),
+                ThemeMode::Dark => self.settings.dark_colors.as_deref(),
             }
+            .filter(|id| looks::terminal(id).is_some());
             let slot = if mode == ThemeMode::Dark { "dark" } else { "light" };
-            offered.iter().fold(Menu::new(title.to_owned()), |m, t| m.item(&t.name, format!("colors-{slot}:{}", t.id)).checked(t.id == chosen.id))
+            let menu = Menu::new(title.to_owned()).item(format!("As in Themes ({})", own.name), format!("colors-{slot}:")).checked(chosen.is_none()).separator();
+            looks::terminals(&self.look.theme, mode).iter().fold(menu, |m, t| m.item(&t.name, format!("colors-{slot}:{}", t.id)).checked(chosen == Some(t.id.as_str())))
         };
         let scheme = Menu::new("Colors")
             .item("Match Appearance", "scheme-auto")
@@ -2872,9 +2873,10 @@ impl Terminal {
                 cx.redraw_all();
             }
             c if let Some((slot, id)) = c.strip_prefix("colors-").and_then(|c| c.split_once(':'))
-                && looks::terminal(id).is_some() =>
+                && (id.is_empty() || looks::terminal(id).is_some()) =>
             {
-                let id = Some(id.to_owned());
+                // (None: as in Themes, followed.)
+                let id = Some(id.to_owned()).filter(|id| !id.is_empty());
                 if slot == "dark" {
                     self.settings.dark_colors = id;
                 } else {

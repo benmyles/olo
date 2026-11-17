@@ -11,6 +11,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod looks;
+pub mod schemes;
 pub mod toolkit;
 
 pub type Rgba = [u8; 4];

@@ -16,7 +16,10 @@
 //! Each look carries its terminal's colours (`Palette::terminal`), and
 //! [`terminals`] lists what Terminal offers alongside them.
 
-use crate::{ANSI_DARK, ANSI_LIGHT, BLACK, HUES_DARK, HUES_LIGHT, Hues, Palette, Rgba, Terminal, ThemeMode, WHITE, hex, mix, readable};
+use crate::{
+    ANSI_DARK, ANSI_LIGHT, BLACK, HUES_DARK, HUES_LIGHT, Hues, Palette, Rgba, Terminal, ThemeMode, WHITE, hex, mix, readable,
+    schemes::{SCHEMES, Scheme},
+};
 
 /// A theme: its id (its directory under `themes/`, and what the setting
 /// holds), its name, a line about it, and its own colours.
@@ -203,29 +206,41 @@ pub fn resolve(id: &str) -> &'static Theme {
 }
 
 /// A theme's colour sets (`Appearance::colors` holds the id).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ColorSet {
     /// The theme's own.
     #[default]
     Theme,
     Beos,
+    /// A scheme from elsewhere, tuned for Olo ([`crate::schemes`]).
+    Scheme(&'static Scheme),
+}
+
+impl std::hash::Hash for ColorSet {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id().hash(state);
+    }
 }
 
 impl ColorSet {
-    pub const ALL: [ColorSet; 2] = [ColorSet::Theme, ColorSet::Beos];
+    /// Every set, in the order Preferences shows them: the theme's own,
+    /// BeOS's, then the schemes.
+    pub fn all() -> Vec<ColorSet> {
+        [ColorSet::Theme, ColorSet::Beos].into_iter().chain(SCHEMES.iter().map(ColorSet::Scheme)).collect()
+    }
 
     /// What the setting holds.
     pub fn id(self) -> &'static str {
         match self {
             ColorSet::Theme => "theme",
             ColorSet::Beos => "beos",
+            ColorSet::Scheme(s) => s.id,
         }
     }
 
-    /// The set `id` names; unknown ids (Catppuccin's, which went) are the
-    /// theme's own.
+    /// The set `id` names; unknown ids are the theme's own.
     pub fn resolve(id: &str) -> ColorSet {
-        ColorSet::ALL.into_iter().find(|c| c.id() == id).unwrap_or_default()
+        ColorSet::all().into_iter().find(|c| c.id() == id).unwrap_or_default()
     }
 
     /// Its name in `theme`: the theme's for its own.
@@ -233,6 +248,7 @@ impl ColorSet {
         match self {
             ColorSet::Theme => theme.name,
             ColorSet::Beos => "BeOS",
+            ColorSet::Scheme(s) => s.name,
         }
     }
 
@@ -241,6 +257,7 @@ impl ColorSet {
         match self {
             ColorSet::Theme => theme.colors_about.to_owned(),
             ColorSet::Beos => "BeOS R5's grey panels and yellow tab, and a dark version.".to_owned(),
+            ColorSet::Scheme(s) => s.about.to_owned(),
         }
     }
 }
@@ -256,6 +273,7 @@ pub fn palette(theme: &str, colors: &str, mode: ThemeMode) -> Palette {
         (ColorSet::Theme, ThemeMode::Dark) => build(&t.dark, ThemeMode::Dark, own_terminal(t, ThemeMode::Dark)),
         (ColorSet::Beos, ThemeMode::Light) => Palette::light(),
         (ColorSet::Beos, ThemeMode::Dark) => Palette::dark(),
+        (ColorSet::Scheme(s), mode) => build(&s.seeds(mode), mode, s.terminal(mode)),
     };
     (p.theme, p.colors) = (t.id.into(), set.id().into());
     p
@@ -436,15 +454,27 @@ pub fn build(s: &Seeds, mode: ThemeMode, terminal: Terminal) -> Palette {
 }
 
 /// The terminal colours Terminal offers in `mode` while theme `theme` is
-/// on: the theme's own and BeOS's.
+/// on: the theme's own, BeOS's, and each scheme's (one that several
+/// share, Catppuccin's Latte, once).
 pub fn terminals(theme: &str, mode: ThemeMode) -> Vec<Terminal> {
     let t = resolve(theme);
-    vec![own_terminal(t, mode), palette(t.id, ColorSet::Beos.id(), mode).terminal]
+    let mut all = vec![own_terminal(t, mode), palette(t.id, ColorSet::Beos.id(), mode).terminal];
+    for s in SCHEMES {
+        let terminal = s.terminal(mode);
+        if !all.iter().any(|t| t.id == terminal.id) {
+            all.push(terminal);
+        }
+    }
+    all
 }
 
 /// The terminal colours `id` names (either theme's own, `<theme>-light`
-/// or `-dark`; `beos-light`, `beos-dark`).
+/// or `-dark`; `beos-light`, `beos-dark`; a scheme's, `dracula-dark`,
+/// `catppuccin-latte`).
 pub fn terminal(id: &str) -> Option<Terminal> {
+    if let Some(found) = SCHEMES.iter().flat_map(|s| [s.terminal(ThemeMode::Light), s.terminal(ThemeMode::Dark)]).find(|t| t.id == id) {
+        return Some(found);
+    }
     let (theme, mode) = id.rsplit_once('-')?;
     let mode = match mode {
         "light" => ThemeMode::Light,
@@ -463,7 +493,7 @@ mod tests {
     use crate::{Hue, contrast};
 
     fn every() -> impl Iterator<Item = (String, Palette)> {
-        THEMES.iter().flat_map(|t| ColorSet::ALL.into_iter().flat_map(move |c| [ThemeMode::Light, ThemeMode::Dark].map(|m| (format!("{} {} {m:?}", t.id, c.id()), palette(t.id, c.id(), m)))))
+        THEMES.iter().flat_map(|t| ColorSet::all().into_iter().flat_map(move |c| [ThemeMode::Light, ThemeMode::Dark].map(|m| (format!("{} {} {m:?}", t.id, c.id()), palette(t.id, c.id(), m)))))
     }
 
     #[test]
@@ -474,7 +504,7 @@ mod tests {
         assert!(get(DEFAULT).is_some() && get(CLASSIC).is_some());
         assert_eq!(resolve("no-such-theme").id, DEFAULT);
         assert_eq!(ColorSet::resolve("nope"), ColorSet::Theme);
-        for c in ColorSet::ALL {
+        for c in ColorSet::all() {
             assert_eq!(ColorSet::resolve(c.id()), c);
         }
     }
@@ -506,13 +536,17 @@ mod tests {
             assert_eq!(p.mode == ThemeMode::Dark, crate::luminance(p.panel_background) < 0.18, "{a}");
             for (b, q) in &all[..i] {
                 assert_ne!(p, q, "{a} is {b}");
-                if !(a.contains(" beos ") && b.contains(" beos ")) {
+                // (BeOS's and a scheme's are the same in either theme;
+                // Catppuccin's three share Latte by day.)
+                let set = |look: &str| look.split(' ').nth(1).unwrap_or_default().to_owned();
+                let latte = |look: &str| look.contains(" catppuccin-") && look.ends_with("Light");
+                if set(a) != set(b) && !(latte(a) && latte(b)) {
                     assert_ne!(colors_of(p), colors_of(q), "{a} is {b}");
                 }
             }
         }
-        // The themes that went, and Catppuccin's colours, are the
-        // default's own now.
+        // The themes that went, and the one Catppuccin set there was
+        // then, are the default's own now.
         assert_eq!(palette("bebox", "catppuccin", ThemeMode::Dark), palette(DEFAULT, "theme", ThemeMode::Dark));
         assert_eq!(DEFAULT, CLASSIC);
     }
@@ -572,8 +606,25 @@ mod tests {
     #[test]
     fn terminal_choices() {
         let names = |m| terminals("platinum", m).into_iter().map(|t| t.id).collect::<Vec<_>>();
-        assert_eq!(names(ThemeMode::Light), ["platinum-light", "beos-light"]);
-        assert_eq!(names(ThemeMode::Dark), ["platinum-dark", "beos-dark"]);
+        // The theme's own, BeOS's, then the schemes' (Catppuccin's Latte
+        // once, though three flavours have it by day).
+        let (light, dark) = (names(ThemeMode::Light), names(ThemeMode::Dark));
+        assert_eq!(light[..4], ["platinum-light", "beos-light", "catppuccin-latte", "github-light"]);
+        assert_eq!(dark[..5], ["platinum-dark", "beos-dark", "catppuccin-mocha-dark", "catppuccin-macchiato-dark", "catppuccin-frappe-dark"]);
+        assert_eq!((light.len(), dark.len()), (2 + SCHEMES.len() - 2, 2 + SCHEMES.len()));
+        // Each is found again by its id, and named as its makers name it.
+        for t in terminals("classic", ThemeMode::Light).into_iter().chain(terminals("classic", ThemeMode::Dark)) {
+            assert_eq!(terminal(&t.id), Some(t.clone()), "{}", t.id);
+        }
+        let named = |id: &str| terminal(id).map(|t| t.name);
+        assert_eq!(named("catppuccin-latte").as_deref(), Some("Catppuccin Latte"));
+        assert_eq!(named("catppuccin-frappe-dark").as_deref(), Some("Catppuccin Frappé"));
+        assert_eq!(named("dracula-light").as_deref(), Some("Dracula Alucard"));
+        assert_eq!(named("github-dark").as_deref(), Some("GitHub Dark"));
+        assert_eq!(named("one-dark-light").as_deref(), Some("One Light"));
+        assert_eq!(named("night-owl-light").as_deref(), Some("Light Owl"));
+        assert_eq!(named("tokyo-night-dark").as_deref(), Some("Tokyo Night"));
+        assert_eq!(named("winter-is-coming-dark").as_deref(), Some("Winter is Coming Dark Blue"));
         // The look's own terminal is among its mode's choices.
         for (look, p) in every() {
             let theme = look.split(' ').next().unwrap();

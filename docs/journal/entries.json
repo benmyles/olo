@@ -4804,5 +4804,11 @@
   "title": "Viewer and Quick Look: a PowerPoint's slides, drawn",
   "caption": "A presentation showed as a list of Slide 1 to Slide 4 headings. Now each slide is drawn as it looks (its shapes, text, pictures, tables, its master's and theme's), natively, one under another, for the pixels it covers. (A deck made for the tests.)",
   "image": "2026-11-17/083734-viewer-and-quick-look-a-powerpoint-s-slides-draw.png"
+ },
+ {
+  "time": "2026-11-17T10:09:31",
+  "title": "Themes: Catppuccin and the ten most installed editor colour schemes",
+  "caption": "Preferences \u25b8 Themes \u25b8 Colors has thirteen schemes from elsewhere beside the theme's own and BeOS's, each light and dark and tuned for Olo; Terminal follows the one chosen, or keeps its own. Here Tokyo Night, at night.",
+  "image": "2026-11-17/100931-themes-catppuccin-and-the-ten-most-installed-edi.png"
  }
 ]

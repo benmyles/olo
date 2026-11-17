@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### Themes: Catppuccin and the ten most installed editor colour schemes
+
+*10:09* — Preferences ▸ Themes ▸ Colors has thirteen schemes from elsewhere beside the theme's own and BeOS's, each light and dark and tuned for Olo; Terminal follows the one chosen, or keeps its own. Here Tokyo Night, at night.
+
+![Themes: Catppuccin and the ten most installed editor colour schemes](2026-11-17/100931-themes-catppuccin-and-the-ten-most-installed-edi.png)
+
 ### Viewer and Quick Look: a PowerPoint's slides, drawn
 
 *08:37* — A presentation showed as a list of Slide 1 to Slide 4 headings. Now each slide is drawn as it looks (its shapes, text, pictures, tables, its master's and theme's), natively, one under another, for the pixels it covers. (A deck made for the tests.)

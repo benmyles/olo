@@ -2435,7 +2435,7 @@ impl LookInfo {
                 id: t.id.into(),
                 name: t.name.into(),
                 about: t.about.into(),
-                colors: looks::ColorSet::ALL
+                colors: looks::ColorSet::all()
                     .into_iter()
                     .map(|c| ColorSetInfo {
                         id: c.id().into(),
