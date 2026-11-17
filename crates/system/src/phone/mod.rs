@@ -5,6 +5,7 @@
 //! comes, one sent) and the Phone Book Access Profile ([`pbap`]: names
 //! for numbers). Written from the Bluetooth specifications.
 
+pub mod link;
 pub mod map;
 pub mod obex;
 pub mod pbap;

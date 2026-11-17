@@ -42,6 +42,10 @@ pub struct State {
     pub notifying: bool,
     /// What was sent through it: (recipients, text).
     pub sent: Vec<(Vec<String>, String)>,
+    /// An Android's habits rather than an iPhone's: a listing's subject
+    /// is only a message's first words, and what was sent is in its sent
+    /// folder.
+    pub android: bool,
     next: u64,
 }
 
@@ -127,8 +131,27 @@ impl Phone {
                     match headers.kind().as_deref() {
                         Some("x-bt/map-msg-listing") if path == ["telecom", "msg"] => {
                             let most = params.get_two(map::tag::MAX_LIST_COUNT).unwrap_or(1024) as usize;
-                            // (The sent folder is empty, as an iPhone's.)
-                            let rows: String = if name.eq_ignore_ascii_case("inbox") {
+                            // (An iPhone's sent folder is empty, and
+                            // its listing has the whole text; an
+                            // Android's has a message's first words.)
+                            let android = s.android;
+                            let subject = |text: &str| if android { text.chars().take(24).collect::<String>() } else { text.to_owned() };
+                            let rows: String = if name.eq_ignore_ascii_case("sent") && android {
+                                s.sent
+                                    .iter()
+                                    .rev()
+                                    .take(most)
+                                    .enumerate()
+                                    .map(|(i, (to, text))| {
+                                        format!(
+                                            "<msg handle=\"{:08X}\" subject=\"{}\" datetime=\"20261116T120000\" recipient_addressing=\"{}\" type=\"SMS_GSM\" read=\"yes\" sent=\"yes\"/>\n",
+                                            0x3000_0000 + i,
+                                            xml(&subject(text)),
+                                            xml(&to.join(";"))
+                                        )
+                                    })
+                                    .collect()
+                            } else if name.eq_ignore_ascii_case("inbox") {
                                 s.inbox
                                     .iter()
                                     .rev()
@@ -137,7 +160,7 @@ impl Phone {
                                         format!(
                                             "<msg handle=\"{}\" subject=\"{}\" datetime=\"{}\" sender_name=\"{}\" sender_addressing=\"{}\" type=\"SMS_GSM\" size=\"{}\" read=\"{}\" sent=\"no\"/>\n",
                                             m.handle,
-                                            xml(&m.text),
+                                            xml(&subject(&m.text)),
                                             m.datetime,
                                             xml(&m.from_name),
                                             xml(&m.from),

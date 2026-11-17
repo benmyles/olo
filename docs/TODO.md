@@ -89,6 +89,10 @@ something nobody here has is in "Blocked", with what it waits for.
   the whole text, a real sent folder, MMS, asking on the phone as it
   pairs, none of an iPhone's conditions) in the stand-in, the setup's
   steps and the tests.
+  **And Phone, the app** (Ben: "did you already build an app for working
+  with the messages, contacts etc? if not we need that too"): the
+  conversations, reading and answering them, a new message, the
+  contacts; what a notification and Deskbar's tray open.
   *Under way.* Done: OBEX, MAP and PBAP in Rust (`olo_system::phone`),
   tested end to end against a stand-in iPhone that speaks them. Next:
   the link (BlueZ's profiles and channels, what an iPhone needs of the
