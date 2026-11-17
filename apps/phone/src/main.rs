@@ -378,5 +378,8 @@ fn status(json: bool) -> ExitCode {
     if !state.model.is_empty() {
         out!("  it says it is {}", state.model);
     }
+    if state.paired() {
+        out!("  its picture: {}", state.picture());
+    }
     ExitCode::SUCCESS
 }

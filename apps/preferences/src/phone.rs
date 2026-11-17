@@ -351,9 +351,12 @@ fn connect(ui: &mut Ui, st: &mut State, state: &PhoneState, error: Option<String
                         .default(true)
                         .on_click(move |_, _| bluetooth::act(blue, path.clone(), "Pairing…", "Pairing didn’t finish. Try again, with the phone unlocked on its Bluetooth settings.", bt::pair_phone)),
                 };
-                let icon = canvas(|g, b: Bounds<Pixels>| {
+                // (The nearest picture to what it's named: a phone not
+                // yet paired says no more of itself.)
+                let its = olo_protocol::phone::picture(Kind::Android, "", &d.name);
+                let icon = canvas(move |g, b: Bounds<Pixels>| {
                     let at = style::snap_centred(g, b.center(), 16.0, 16.0);
-                    icons::paint(g, at, "phone");
+                    icons::paint(g, at, its);
                 })
                 .w(px(16.0))
                 .h(px(m::CONTROL_HEIGHT))
@@ -512,7 +515,18 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         }));
         ui.add(buttons);
     });
-    let inside = div().flex().flex_col().gap(px(m::SPACING)).py(px(m::SPACING * 0.5)).children(status);
+    // (Its own picture beside what's said of it: the nearest of the
+    // phones drawn to what it says it is.)
+    let its = state.picture();
+    let picture = canvas(move |g, b: Bounds<Pixels>| {
+        let at = style::snap_centred(g, b.center(), 48.0, 48.0);
+        icons::paint(g, at, its);
+    })
+    .w(px(48.0))
+    .h(px(48.0))
+    .flex_shrink_0();
+    let said = div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(status);
+    let inside = div().flex().flex_row().items_start().gap(px(m::SPACING)).py(px(m::SPACING * 0.5)).child(picture).child(said);
     ui.add(BBox::new(if state.kind == Kind::IPhone { "iPhone" } else { "Phone" }).child(inside));
     ui.space(m::SPACING * 0.5);
 

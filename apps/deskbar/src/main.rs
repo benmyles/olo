@@ -2074,7 +2074,8 @@ fn voice_items(m: Menu, v: &olo_protocol::voice::Settings) -> Menu {
 /// come (copied), trying it again while it's out of reach, and the way
 /// to its settings.
 fn phone_menu(phone: &olo_protocol::phone::PhoneState) -> Menu {
-    let mut m = Menu::new("Phone").item(format!("{}: {}", phone.name, phone.words()), "").enabled(false).separator().item("Open Phone", "phone:open");
+    // (Its own picture by its name: `olo_protocol::phone::picture`.)
+    let mut m = Menu::new("Phone").item(format!("{}: {}", phone.name, phone.words()), "").icon(phone.picture()).enabled(false).separator().item("Open Phone", "phone:open");
     if phone.code_at.is_some() {
         m = m.item("Copy the Code That Just Came", "phone:copy-code");
     }

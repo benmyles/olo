@@ -109,6 +109,21 @@ mod tests {
         }
     }
 
+    /// The phones' pictures (`data/icons/phones.txt`, outside the
+    /// manifest) are drawn for every theme too, at every size.
+    #[test]
+    fn every_theme_has_the_phones_pictures() {
+        let data = repo_data();
+        let list = std::fs::read_to_string(data.join("icons/phones.txt")).unwrap();
+        let names: Vec<&str> = list.lines().filter(|l| !l.starts_with('#') && !l.is_empty()).filter_map(|l| l.split('|').next()).collect();
+        assert_eq!(names.len(), 20);
+        for t in THEMES {
+            let icons = if t.id == CLASSIC { data.join("icons") } else { data.join("themes").join(t.id).join("icons") };
+            let missing: Vec<String> = crate::OWN_SIZES.iter().flat_map(|px| names.iter().map(move |n| format!("{px}/{n}"))).filter(|p| !icons.join(format!("{p}.png")).is_file()).collect();
+            assert!(missing.is_empty(), "{} lacks {missing:?}", t.id);
+        }
+    }
+
     #[test]
     fn setting_a_theme_draws_in_it() {
         // Each in turn, whichever came before (see `index`).

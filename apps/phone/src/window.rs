@@ -1121,7 +1121,9 @@ impl Phone {
         }
         let content = match self.shown.clone() {
             Shown::Person(name) => self.card(&name, cx),
-            Shown::Nothing => div().size_full().child(EmptyState::new("No conversation chosen").icon("phone").detail("Choose a conversation from the list, or start one with New.")).into_element(),
+            Shown::Nothing => {
+                div().size_full().child(EmptyState::new("No conversation chosen").icon(self.state.picture()).detail("Choose a conversation from the list, or start one with New.")).into_element()
+            }
             Shown::Thread(_) | Shown::New(_) => self.talk(width, cx),
         };
         // How the phone stands, while it isn't simply connected.

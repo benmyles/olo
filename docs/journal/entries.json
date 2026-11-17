@@ -4744,5 +4744,11 @@
   "title": "Focus: no zoom box on a window's tab",
   "caption": "In Focus every window is zoomed already, so its tab has no zoom box: the tab is narrower and the title has its room. (Above: Standard; below: Focus.)",
   "image": "2026-11-17/041705-focus-no-zoom-box-on-a-window-s-tab.png"
+ },
+ {
+  "time": "2026-11-17T04:23:07",
+  "title": "A paired phone's own picture: twenty phones, in both icon themes",
+  "caption": "The ten commonest iPhones and the ten commonest Android phones, each from behind (its colour, its cameras), in Classic and Platinum. The paired phone shows as the nearest to what it says it is, in Preferences \u25b8 Phone, Deskbar's phone menu and Phone.",
+  "image": "2026-11-17/042307-a-paired-phone-s-own-picture-twenty-phones-in-bo.png"
  }
 ]

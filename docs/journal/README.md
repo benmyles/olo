@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### A paired phone's own picture: twenty phones, in both icon themes
+
+*04:23* — The ten commonest iPhones and the ten commonest Android phones, each from behind (its colour, its cameras), in Classic and Platinum. The paired phone shows as the nearest to what it says it is, in Preferences ▸ Phone, Deskbar's phone menu and Phone.
+
+![A paired phone's own picture: twenty phones, in both icon themes](2026-11-17/042307-a-paired-phone-s-own-picture-twenty-phones-in-bo.png)
+
 ### Focus: no zoom box on a window's tab
 
 *04:17* — In Focus every window is zoomed already, so its tab has no zoom box: the tab is narrower and the title has its room. (Above: Standard; below: Focus.)

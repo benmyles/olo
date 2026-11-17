@@ -14084,6 +14084,28 @@ declined; a phone hands-free by itself (one notification, its Answer
 pressed, left connected). **Not tried with a real phone**, and no
 call's sound was heard: that part is PipeWire's.
 
+**Its own picture** (`olo_protocol::phone::picture`,
+`data/icons/phones.txt`; Ben, 2026-11-16: "generate theme styled icons
+for the top 10 most popular android and iphone models and show the
+closest matching icon for a paired phone based on what it is"). Twenty
+pictures in both icon themes (docs/ICONS.md): the ten commonest iPhones
+(17, 17 Pro, 17 Pro Max, Air, 17e, 16, 16 Pro, 16 Pro Max, 16e, 15) and
+Android phones (Galaxy S26 Ultra, S26, S25 Ultra, A56, A17, A07, Pixel
+10, Pixel 10 Pro, Redmi A5, Redmi Note 14; Counterpoint's best-sellers
+of 2026 and their makers' lines), each seen from behind. Which is
+nearest: an iPhone by its model number ("iPhone18,1": the 17 Pro; a
+Plus as its plain one, a 15 Pro or 14 Pro as the 16 Pro, older ones as
+the 15), which it says only over low energy (`PhoneState::model`, read
+when its other notifications' link is up); one that hasn't said, or a
+newer one than any drawn, is the commonest (the 17). An iPhone's
+Bluetooth product id doesn't say: no table of them is public. Any
+other phone by its Bluetooth name, its model's until its
+owner changes it ("Galaxy S24 Ultra": the nearest Ultra; "SM-A566B":
+Samsung's own number; "Pixel 9 Pro XL"; "Redmi Note 13"); `phone` for
+one that matches none. Shown in Preferences ▸ Phone (beside the phone's
+state, and in the list of phones found, by their names), Deskbar's
+phone menu, Phone's empty pane, and `olo-phone --status` names it.
+
 **Kept between runs** (`apps/phone/src/kept.rs`). The service keeps the
 phone's conversations, the handles of the messages it has seen and its
 contacts in one file, `~/.local/state/olo/phone/kept.json` (the

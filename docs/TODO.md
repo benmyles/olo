@@ -17,14 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **A paired phone's own picture** (Ben, 2026-11-16: "generate theme
-  styled icons for the top 10 most popular android and iphone models and
-  show the closest matching icon for a paired phone based on what it
-  is"). Icons in both looks (docs/ICONS.md) for the ten commonest
-  iPhones and ten commonest Android phones; the paired phone's nearest
-  (by what it says of itself: its Bluetooth name, its Modalias' product,
-  its PnP id) shown in Preferences ▸ Phone, Bluetooth's list, Deskbar's
-  menu and Phone; `phone` for one that matches none.
 - **Text in a picture can be selected and copied** (Ben, 2026-11-16:
   "the quick look and viewer should support, when viewing an image with
   text in it, selecting and copying that text -- much like how it works
@@ -5973,6 +5965,19 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**A paired phone's own picture**~~ (Ben, 2026-11-16: "generate
+  theme styled icons for the top 10 most popular android and iphone
+  models and show the closest matching icon for a paired phone based on
+  what it is"; done 2026-11-17). Twenty pictures in both icon themes
+  (the ten commonest iPhones and Android phones of 2026, each seen from
+  behind), and the nearest to what the phone says it is shown in
+  Preferences ▸ Phone, Deskbar's phone menu and Phone (HACKING, "Its
+  own picture"; docs/ICONS.md). Bluetooth's list has no icons, so none
+  there. **For Ben**: an iPhone says its model only over the low-energy
+  link (the one its other notifications use): until that link has come
+  with yours, it shows as the commonest iPhone (the 17), then as what
+  it is.
 
 - ~~**No zoom button on window tabs in focus mode**~~ (Ben,
   2026-11-17: "when in focus mode hide the zoom button on window tabs

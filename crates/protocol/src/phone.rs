@@ -127,6 +127,102 @@ impl MusicAction {
     }
 }
 
+/// The paired phone's own picture: the nearest of the phones drawn
+/// (`data/icons/phones.txt`: the ten commonest iPhones and the ten
+/// commonest Android phones) to what the phone says it is, as an icon's
+/// name; `phone` for one that matches none (Ben, 2026-11-16: "show the
+/// closest matching icon for a paired phone based on what it is").
+///
+/// An iPhone says its model only over low energy (`model`: its Device
+/// Information's "iPhone17,3"; its Bluetooth name is its owner's), so
+/// one that hasn't said is the commonest iPhone. Any other phone is
+/// told by its Bluetooth name, which is its model's until its owner
+/// changes it ("Galaxy S26 Ultra", "Pixel 10 Pro", "SM-A566B").
+pub fn picture(kind: Kind, model: &str, name: &str) -> &'static str {
+    if kind == Kind::IPhone || model.starts_with("iPhone") || name.to_lowercase().contains("iphone") {
+        let numbers = model.strip_prefix("iPhone").and_then(|m| m.split_once(',')).and_then(|(major, minor)| Some((major.parse::<u32>().ok()?, minor.parse::<u32>().ok()?)));
+        return match numbers {
+            Some((18, 1)) => "phone-iphone-17-pro",
+            Some((18, 2)) => "phone-iphone-17-pro-max",
+            Some((18, 4)) => "phone-iphone-air",
+            Some((18, 5)) => "phone-iphone-17e",
+            Some((17, 1)) => "phone-iphone-16-pro",
+            Some((17, 2)) => "phone-iphone-16-pro-max",
+            Some((17, 5)) => "phone-iphone-16e",
+            Some((17, _)) => "phone-iphone-16",
+            // (The 15 Pro and Pro Max, and the 14's: the same three
+            // lenses in a square as the 16 Pro's.)
+            Some((16, 2) | (15, 3)) => "phone-iphone-16-pro-max",
+            Some((16, _) | (15, 2)) => "phone-iphone-16-pro",
+            // (Older: two lenses set diagonally, as the 15's.)
+            Some((major, _)) if major <= 15 => "phone-iphone-15",
+            // (The 17, one newer than any drawn, and one that hasn't
+            // said: the commonest.)
+            _ => "phone-iphone-17",
+        };
+    }
+    let name = name.to_lowercase();
+    let has = |word: &str| name.contains(word);
+    // Samsung's own model numbers ("SM-S948B": S, the line; 9x8, an
+    // Ultra; the second digit of an A is its tier).
+    if let Some(code) = name.split(|c: char| !c.is_ascii_alphanumeric() && c != '-').find_map(|w| w.strip_prefix("sm-")) {
+        let c: Vec<char> = code.chars().collect();
+        return match (c.first(), c.get(1), c.get(2), c.get(3)) {
+            (Some('s'), Some('9'), Some('4'), Some('8')) => "phone-galaxy-s26-ultra",
+            (Some('s'), Some('9'), _, Some('8')) => "phone-galaxy-s25-ultra",
+            (Some('s'), ..) => "phone-galaxy-s26",
+            (Some('a'), Some('0'), ..) => "phone-galaxy-a07",
+            (Some('a'), Some('3' | '5' | '7'), ..) => "phone-galaxy-a56",
+            (Some('a'), ..) => "phone-galaxy-a17",
+            _ => "phone",
+        };
+    }
+    // A Galaxy by its name: the line's letter and number.
+    let galaxy = |line: char| -> Option<u32> {
+        name.split(|c: char| !c.is_ascii_alphanumeric()).find_map(|w| {
+            let digits = w.strip_prefix(line)?;
+            (!digits.is_empty() && digits.len() <= 2 && digits.chars().all(|c| c.is_ascii_digit())).then(|| digits.parse().ok()).flatten()
+        })
+    };
+    if let Some(s) = galaxy('s').filter(|_| has("galaxy") || has("ultra") || !has("phone")) {
+        return match (has("ultra"), s) {
+            (true, 26..) => "phone-galaxy-s26-ultra",
+            (true, _) => "phone-galaxy-s25-ultra",
+            _ => "phone-galaxy-s26",
+        };
+    }
+    if let Some(a) = galaxy('a').filter(|_| has("galaxy")) {
+        return match a {
+            0..=9 => "phone-galaxy-a07",
+            30..=79 => "phone-galaxy-a56",
+            _ => "phone-galaxy-a17",
+        };
+    }
+    if has("galaxy note") {
+        return "phone-galaxy-s25-ultra";
+    }
+    if has("galaxy") {
+        return "phone-galaxy-s26";
+    }
+    if has("pixel") {
+        return if has("pro") || has("fold") { "phone-pixel-10-pro" } else { "phone-pixel-10" };
+    }
+    if has("redmi note") || has("poco") || has("xiaomi") {
+        return "phone-redmi-note-14";
+    }
+    if has("redmi") {
+        return "phone-redmi-a5";
+    }
+    "phone"
+}
+
+impl PhoneState {
+    /// Its own picture ([`picture`]).
+    pub fn picture(&self) -> &'static str {
+        picture(self.kind, &self.model, &self.name)
+    }
+}
+
 /// How a call taken on this computer stands (never who it's with).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -559,6 +655,61 @@ mod tests {
         let w: FromBrowser = serde_json::from_str(r#"{"say":"waiting","id":null,"tabs":[{"tab":4,"host":"example.com","focused":true}]}"#).unwrap();
         let FromBrowser::Waiting { id: None, tabs } = w else { panic!() };
         assert!(tabs[0].focused && !tabs[0].declared && tabs[0].digits.is_none());
+    }
+
+    /// The nearest picture to what a phone says it is.
+    #[test]
+    fn a_phones_own_picture() {
+        let iphone = |model: &str| picture(Kind::IPhone, model, "Mira’s iPhone");
+        assert_eq!(iphone("iPhone18,3"), "phone-iphone-17");
+        assert_eq!(iphone("iPhone18,1"), "phone-iphone-17-pro");
+        assert_eq!(iphone("iPhone18,2"), "phone-iphone-17-pro-max");
+        assert_eq!(iphone("iPhone18,4"), "phone-iphone-air");
+        assert_eq!(iphone("iPhone18,5"), "phone-iphone-17e");
+        assert_eq!(iphone("iPhone17,3"), "phone-iphone-16");
+        assert_eq!(iphone("iPhone17,4"), "phone-iphone-16", "the 16 Plus: as the 16");
+        assert_eq!(iphone("iPhone17,1"), "phone-iphone-16-pro");
+        assert_eq!(iphone("iPhone17,2"), "phone-iphone-16-pro-max");
+        assert_eq!(iphone("iPhone17,5"), "phone-iphone-16e");
+        assert_eq!(iphone("iPhone16,1"), "phone-iphone-16-pro", "the 15 Pro: the nearest");
+        assert_eq!(iphone("iPhone16,2"), "phone-iphone-16-pro-max");
+        assert_eq!(iphone("iPhone15,4"), "phone-iphone-15");
+        assert_eq!(iphone("iPhone14,5"), "phone-iphone-15", "an older one");
+        assert_eq!(iphone("iPhone19,3"), "phone-iphone-17", "a newer one than any drawn");
+        assert_eq!(iphone(""), "phone-iphone-17", "one that hasn't said");
+        assert_eq!(picture(Kind::Android, "iPhone17,3", "Phone"), "phone-iphone-16", "said, whatever it was taken for");
+        let other = |name: &str| picture(Kind::Android, "", name);
+        assert_eq!(other("Galaxy S26 Ultra"), "phone-galaxy-s26-ultra");
+        assert_eq!(other("Jun’s Galaxy S24 Ultra"), "phone-galaxy-s25-ultra");
+        assert_eq!(other("Galaxy S26+"), "phone-galaxy-s26");
+        assert_eq!(other("Galaxy S23"), "phone-galaxy-s26");
+        assert_eq!(other("Galaxy A56 5G"), "phone-galaxy-a56");
+        assert_eq!(other("Galaxy A17"), "phone-galaxy-a17");
+        assert_eq!(other("Galaxy A07"), "phone-galaxy-a07");
+        assert_eq!(other("Galaxy Z Flip7"), "phone-galaxy-s26");
+        assert_eq!(other("SM-S948B"), "phone-galaxy-s26-ultra");
+        assert_eq!(other("SM-S938U1"), "phone-galaxy-s25-ultra");
+        assert_eq!(other("Ada's SM-A566B"), "phone-galaxy-a56");
+        assert_eq!(other("SM-A075F"), "phone-galaxy-a07");
+        assert_eq!(other("Pixel 10"), "phone-pixel-10");
+        assert_eq!(other("Pixel 9 Pro XL"), "phone-pixel-10-pro");
+        assert_eq!(other("Redmi A5"), "phone-redmi-a5");
+        assert_eq!(other("Redmi Note 14 Pro"), "phone-redmi-note-14");
+        assert_eq!(other("POCO X7"), "phone-redmi-note-14");
+        assert_eq!(other("Mira’s iPhone"), "phone-iphone-17", "an iPhone by its name, where nothing else is known");
+        assert_eq!(other("Nothing Phone (3)"), "phone");
+        assert_eq!(other("moto g power"), "phone");
+        assert_eq!(other(""), "phone");
+        // (Every picture named is one drawn.)
+        let drawn = include_str!("../../../data/icons/phones.txt");
+        for name in ["iPhone18,1", "iPhone18,2", "iPhone18,3", "iPhone18,4", "iPhone18,5", "iPhone17,1", "iPhone17,2", "iPhone17,3", "iPhone17,5", "iPhone15,4"]
+            .map(iphone)
+            .into_iter()
+            .chain(["Galaxy S26 Ultra", "Galaxy S25 Ultra", "Galaxy S26", "Galaxy A56", "Galaxy A17", "Galaxy A07", "Pixel 10", "Pixel 10 Pro", "Redmi A5", "Redmi Note 14"].map(other))
+        {
+            assert!(drawn.lines().any(|l| l.split('|').next() == Some(name)), "{name} isn't drawn");
+        }
+        assert_eq!(drawn.lines().filter(|l| !l.starts_with('#') && !l.is_empty()).count(), 20);
     }
 
     #[test]

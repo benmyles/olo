@@ -183,6 +183,18 @@ Rules:
   are a language of their own. Check them at 16 px (the places list)
   and 48 px (the forecast) next to each other: one sun, one cloud, the
   same drops, so they read as a set.
+* **A paired phone's own picture** is one of twenty
+  (`data/icons/phones.txt`: the ten commonest iPhones and the ten
+  commonest Android phones of 2026, `phone-iphone-17-pro`,
+  `phone-galaxy-s26-ultra`, `phone-pixel-10`, …), the nearest to what
+  the phone says it is (`olo_protocol::phone::picture`; `phone` for one
+  that matches none). Each is the phone seen from behind, where one
+  differs from another (its colour, its cameras), with no maker's mark.
+  Pictures like the skies, outside the manifest, but drawn for both
+  themes (`genicon.py NAME "subject"` and again with `--theme
+  platinum`; `mkicons.py [--theme platinum] NAME`). Check them at 16 px
+  (Preferences ▸ Phone's list) and 48 px (its panel) in a row: the
+  same pose, the same size, told apart by colour and cameras.
 * The theme sets were first drawn one image per icon (about 500), not as
   two candidates each, and then reviewed on a contact sheet per theme.
   Redraw any icon that drifts with `--variants 2` as usual.
