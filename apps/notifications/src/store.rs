@@ -83,6 +83,10 @@ pub struct Entry {
     pub look: NoteLook,
     /// A website's: the browser it came through.
     pub via: Option<String>,
+    /// What shows the thing it's about, once it's no longer open at its
+    /// app: arguments for the app's own program (`x-olo-show`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub show: Vec<String>,
     /// Its picture, kept small in `pictures/` (a PNG; it may take a moment
     /// to appear).
     pub picture: Option<String>,
@@ -113,6 +117,7 @@ impl Entry {
             shown: false,
             look: n.look.clone(),
             via: n.via.clone(),
+            show: n.show.clone(),
             picture: None,
             pinned: false,
             snoozed_until: None,
@@ -148,6 +153,7 @@ impl Entry {
             time: std::time::SystemTime::now(),
             look: self.look.clone(),
             via: self.via.clone(),
+            show: self.show.clone(),
         }
     }
 }

@@ -184,6 +184,15 @@ pub mod hint {
     pub const SOURCE: &str = "x-olo-source";
     /// Haiku's notification types: information, important, error, progress.
     pub const TYPE: &str = "x-olo-type";
+    /// What shows the thing it is about, whenever it's clicked: arguments
+    /// (`as`) for the sending app's own program, one of Olo's (its
+    /// `desktop-entry`), which the notifications centre starts with them
+    /// when the notification is clicked and is no longer open at its app
+    /// (it closed it as things moved on, or either of them started again
+    /// since): Terminal's `--show-shell ID` brings up the window and the
+    /// tab an agent's note was about. Open still, its `default` action is
+    /// run as ever.
+    pub const SHOW: &str = "x-olo-show";
 }
 
 /// How a notification is laid out.

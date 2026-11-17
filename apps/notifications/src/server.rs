@@ -91,6 +91,9 @@ pub struct Note {
     pub look: NoteLook,
     /// A website's: the browser it came through (`app_name` is the site).
     pub via: Option<String>,
+    /// What shows the thing it's about (`x-olo-show`): arguments for its
+    /// app's own program, for a click once it's no longer open there.
+    pub show: Vec<String>,
 }
 
 /// What the bus asks of the UI.
@@ -355,6 +358,7 @@ pub fn note(id: u32, replaces: bool, app_name: String, app_icon: String, summary
         time: std::time::SystemTime::now(),
         look,
         via: None,
+        show: hint(olo_protocol::notifications::hint::SHOW).and_then(|v| Vec::<String>::try_from(v.try_clone().ok()?).ok()).unwrap_or_default(),
     };
     // A website's, through a browser: the site's own.
     crate::web::adopt(&mut note);
@@ -532,6 +536,24 @@ mod tests {
         hints.insert("transient".to_owned(), OwnedValue::from(true));
         let n = note(2, false, "Chat".into(), "".into(), "Ann".into(), "".into(), vec![], &hints, -1);
         assert!(n.sound.is_none() && n.transient);
+        // What shows the thing a note is about (`x-olo-show`): kept with
+        // it, through the history's file too; none unless said.
+        assert!(n.show.is_empty());
+        hints.insert("x-olo-show".to_owned(), OwnedValue::try_from(zbus::zvariant::Value::from(vec!["--show-shell".to_owned(), "17".to_owned()])).unwrap());
+        hints.insert("desktop-entry".to_owned(), s("olo-terminal"));
+        let n = note(5, false, "Terminal".into(), "".into(), "Claude Code needs your answer".into(), "".into(), vec!["default".into(), "Show".into()], &hints, -1);
+        assert_eq!(n.show, ["--show-shell", "17"]);
+        let kept: crate::store::Entry = serde_json::from_str(&serde_json::to_string(&crate::store::Entry::from_note(&n, true)).unwrap()).unwrap();
+        assert_eq!((kept.show.as_slice(), kept.desktop_entry.as_deref()), (&["--show-shell".to_owned(), "17".to_owned()][..], Some("olo-terminal")));
+        // Only Olo's own programs are ever started for it, by their
+        // desktop entry; anything else's click brings its app forward.
+        assert_eq!(crate::own_program(Some("olo-terminal")), Some("olo-terminal"));
+        assert_eq!(crate::own_program(Some("olo-terminal.desktop")), Some("olo-terminal"));
+        assert_eq!(crate::own_program(Some("org.gnome.Calendar")), None);
+        assert_eq!(crate::own_program(Some("../../bin/sh")), None);
+        assert_eq!(crate::own_program(None), None);
+        assert!(!crate::show_what(Some("org.gnome.Calendar"), &["--version".to_owned()]));
+        assert!(!crate::show_what(Some("olo-terminal"), &[]));
     }
 
     #[test]

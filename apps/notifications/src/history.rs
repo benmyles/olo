@@ -1649,7 +1649,15 @@ impl Notifications {
             self.invoke(window, e.id, key);
         } else {
             self.set_read(e.id, true);
-            raise_app(e.desktop_entry.as_deref(), &e.app);
+            // No longer open at its app (the app closed it as things
+            // moved on, or one of the two started again since): what it's
+            // about all the same, if it said how to show that; else its
+            // app. (An agent's note clicked after the agent had gone on
+            // brought Terminal forward as it was last left, not the
+            // window and tab the note was about.)
+            if key != "default" || !crate::show_what(e.desktop_entry.as_deref(), &e.show) {
+                raise_app(e.desktop_entry.as_deref(), &e.app);
+            }
         }
     }
 

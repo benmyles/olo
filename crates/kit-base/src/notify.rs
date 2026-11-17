@@ -77,6 +77,8 @@ pub struct Note {
     pub silent: bool,
     /// How it looks, beyond its kind.
     pub look: NoteLook,
+    /// What shows the thing it's about ([`Note::shows`]).
+    pub shows: Vec<String>,
 }
 
 impl Note {
@@ -101,6 +103,18 @@ impl Note {
 
     pub fn kind(mut self, kind: NoteKind) -> Note {
         self.kind = kind;
+        self
+    }
+
+    /// What shows the thing this note is about, for as long as the note
+    /// is in the history: arguments for this app's own program, which
+    /// the notifications centre starts with them when the note is
+    /// clicked after it closed (as things moved on, or after either
+    /// program started again), where it could otherwise only bring the
+    /// app forward. Open still, its `default` action is run as ever:
+    /// give both, doing the same.
+    pub fn shows(mut self, args: impl IntoIterator<Item = impl Into<String>>) -> Note {
+        self.shows = args.into_iter().map(Into::into).collect();
         self
     }
 
@@ -279,6 +293,9 @@ fn args(note: &Note, entry: &str) -> (String, Vec<String>, HashMap<&'static str,
     if look.size != CardSize::Auto {
         hints.insert(hint::SIZE, Value::from(look.size.name()));
     }
+    if !note.shows.is_empty() {
+        hints.insert(hint::SHOW, Value::from(note.shows.clone()));
+    }
     let mut actions: Vec<String> = note.actions.iter().flat_map(|(k, l)| [k.clone(), l.clone()]).collect();
     if let Some(placeholder) = &note.reply {
         actions.extend(["inline-reply".to_owned(), "Reply".to_owned()]);
@@ -411,5 +428,10 @@ mod tests {
         let (_, actions, hints, _) = args(&chat, "olo-telegram");
         assert_eq!(actions, ["default", "Show", "inline-reply", "Reply"]);
         assert_eq!(hints["x-kde-reply-placeholder-text"], zbus::zvariant::Value::from("Reply to Ann"));
+        // What shows the thing it's about: only when said.
+        assert!(!hints.contains_key(hint::SHOW));
+        let agent = Note::new("Claude Code needs your answer").action("default", "Show").shows(["--show-shell", "17"]);
+        let (_, _, hints, _) = args(&agent, "olo-terminal");
+        assert_eq!(hints[hint::SHOW], zbus::zvariant::Value::from(vec!["--show-shell".to_owned(), "17".to_owned()]));
     }
 }

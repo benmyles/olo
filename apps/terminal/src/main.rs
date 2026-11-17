@@ -1100,7 +1100,32 @@ impl Terminal {
         WindowOptions::new("Terminal", w, h).min_size(200, 120)
     }
 
+    /// The window and the tab `shell` is in, brought forward (a
+    /// notification about it clicked): false if it has gone.
+    fn show_shell(&mut self, cx: &mut Cx, shell: u64, token: Option<String>) -> bool {
+        let Some((win, i)) = self.find_shell(shell) else { return false };
+        if let Some(Win::Term(t)) = self.windows.get_mut(&win) {
+            t.select(i);
+        }
+        cx.activate_with(win, token);
+        cx.redraw(win);
+        true
+    }
+
     fn handle_launch(&mut self, cx: &mut Cx, launch: Launch) {
+        // A notification about a tab, clicked once it was no longer open
+        // here: that window and tab (its shell gone: Terminal, as it is).
+        if launch.args.first().map(String::as_str) == Some(SHOW_SHELL) {
+            let shown = launch.args.get(1).and_then(|s| s.parse().ok()).is_some_and(|shell| self.show_shell(cx, shell, None));
+            if !shown {
+                match self.front.or_else(|| self.windows.iter().find(|(_, w)| matches!(w, Win::Term(_))).map(|(id, _)| *id)) {
+                    Some(win) => cx.activate(win),
+                    // (Started for it, with nothing to come back to.)
+                    None => self.open(cx, launch.cwd, None),
+                }
+            }
+            return;
+        }
         // A coding agent's tab title (agent_title.rs), not a window.
         if launch.args.first().map(String::as_str) == Some(agent_title::SET_FLAG) {
             if let Some(pid) = launch.args.get(1).and_then(|p| p.parse().ok()) {
@@ -2141,7 +2166,11 @@ impl Terminal {
             Some(p) => format!("{body} Auto Approve answers Yes in {} s.", p.due.saturating_duration_since(Instant::now()).as_secs_f32().ceil()),
             None => body,
         };
-        let note = Note::new(summary).body(body).kind(kind).action("default", "Show");
+        // (Shown by a click whenever: while the note is open, its action;
+        // closed since, as the agent went on, or after Terminal or the
+        // notifications centre started again, the centre starts
+        // `olo-terminal --show-shell ID`, which this Terminal takes.)
+        let note = Note::new(summary).body(body).kind(kind).action("default", "Show").shows([SHOW_SHELL.to_owned(), shell.to_string()]);
         let id = self.notifier.show(self.notes.get(&shell).copied(), note);
         self.notes.insert(shell, id);
     }
@@ -2948,13 +2977,8 @@ impl Terminal {
             Ok(event) => {
                 if let NoteEvent::Action { id, token, .. } = *event
                     && let Some((&shell, _)) = self.notes.iter().find(|(_, n)| **n == id)
-                    && let Some((win, i)) = self.find_shell(shell)
                 {
-                    if let Some(Win::Term(t)) = self.windows.get_mut(&win) {
-                        t.select(i);
-                    }
-                    cx.activate_with(win, token);
-                    cx.redraw(win);
+                    self.show_shell(cx, shell, token);
                 }
                 return;
             }
@@ -3291,6 +3315,10 @@ impl Terminal {
     }
 }
 
+/// `--show-shell ID`: bring forward the window and the tab that shell is
+/// in (what a notification about a tab says shows it).
+const SHOW_SHELL: &str = "--show-shell";
+
 const USAGE: &str = "usage: olo-terminal [--tab] [-w DIR] [-e COMMAND [ARG…]]
   (nothing)                  a new window (in the Terminal that runs)
   --tab                      a new tab in the window in front instead
@@ -3298,6 +3326,7 @@ const USAGE: &str = "usage: olo-terminal [--tab] [-w DIR] [-e COMMAND [ARG…]]
                              its shell starts in DIR
   -e, -- COMMAND [ARG…]      run COMMAND in it instead of a shell
   --tab-title TITLE          title the tab this is run in (a coding agent's)
+  --show-shell ID            bring forward the window and tab of that shell
   --help                     this";
 
 /// Whether a launch's arguments ask for help (true), are a launch's own
@@ -3308,7 +3337,7 @@ fn launch_check(args: &[String]) -> Result<bool, String> {
         match a.as_str() {
             "-h" | "--help" => return Ok(true),
             "--tab" => {}
-            "-w" | "--working-directory" => {
+            "-w" | "--working-directory" | SHOW_SHELL => {
                 args.next();
             }
             // (The command and its own arguments: anything.)
@@ -3597,6 +3626,7 @@ mod drop_tests {
         assert_eq!(check(&["--", "top", "-d", "1"]), Ok(false));
         assert_eq!(check(&["--help"]), Ok(true));
         assert_eq!(check(&["--tab", "-h"]), Ok(true));
+        assert_eq!(check(&["--show-shell", "17"]), Ok(false));
         assert_eq!(check(&["--version"]), Err("--version".into()));
         assert_eq!(check(&["--tab", "--frob"]), Err("--frob".into()));
     }

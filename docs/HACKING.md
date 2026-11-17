@@ -14963,7 +14963,15 @@ the Tabs menu say it ("Claude Code: needs your answer"), and when an
 agent the person isn't looking at starts asking, or finishes, Terminal
 posts a notification (important for a question) whose Show brings that
 tab and window forward. The badge and the notification go once the tab
-is seen.
+is seen. The notification says how to show its tab whenever it's
+clicked (`Note::shows(["--show-shell", ID])`, "Notifications"): Terminal
+closes it as the agent goes on, and the centre forgets which notes are
+open when it starts again (every upgrade), after which a click could
+only bring Terminal forward as it was last left, not the window (of
+its group) and the tab the note was about (Ben, 2026-11-16). The
+centre then starts `olo-terminal --show-shell ID`, handed to the
+Terminal that runs (`handle_launch`, `show_shell`: the tab selected,
+its window brought forward; the shell gone, Terminal's front window).
 
 **Coding agents' context** (`src/agent_context.rs`; Preferences ▸
 Terminal ▸ Coding Agents, off by default). A Claude Code or Codex in a
@@ -15798,6 +15806,27 @@ as `a(ss)` or `a{ss}`, `x-olo-image`, `x-olo-style`, `x-olo-size`,
 `x-olo-source` for where in the app it came from, `x-olo-type`), so any
 program can send them (`notify-send -h string:x-olo-accent:#e5534b …`)
 and other services ignore them.
+
+A note about one thing among several (a tab, a conversation) says how
+to show it for as long as it's in the history: `.shows(args)`, the
+`x-olo-show` hint (`as`): arguments for the app's own program. While
+the note is open at its app, a click runs its `default` action as
+ever; once it isn't (the app closed it as things moved on, or the app
+or the centre started again: an entry read back from the history's
+file is never open), the centre starts the app's program with those
+arguments (`show_what`, from `open_entry`: a click in the history, or
+`Invoke` from Deskbar's list and `olo-notifications --invoke`), which
+hands them to the copy that runs. Only for Olo's own programs, found
+by the note's `desktop-entry` among `OUR_APPS` (`own_program`; any
+other's click brings its app forward, `raise_app`, as a note that says
+nothing does), and only as arguments, never a shell's words. Give both
+the action and `shows`, doing the same. Terminal's agent notes are the
+first (`--show-shell ID`). Tried headless with two Terminal windows in
+a group and an agent's stand-in asking in the second one's second tab,
+the first window in front: the note clicked after the agent had been
+answered, and after the centre was ended and started again, each
+brought the second window forward with that tab selected (before:
+nothing moved).
 
 `olo-notifications` serves `org.freedesktop.Notifications` (spec 1.2)
 on the session bus, so `notify-send`, browsers, chat and mail clients and

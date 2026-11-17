@@ -184,6 +184,7 @@ pub fn note(number: u32, replaces: bool, app_id: &str, gtk_id: &str, n: &HashMap
         time: SystemTime::now(),
         look: Default::default(),
         via: None,
+        show: Vec::new(),
     };
     (note, Origin { app_id: app_id.to_owned(), gtk_id: gtk_id.to_owned(), default, buttons })
 }

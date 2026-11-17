@@ -614,8 +614,12 @@ impl Notifications {
     fn control(&mut self, c: Control) {
         match c {
             Control::Invoke(id, key) => {
-                if self.history.get_mut(id).is_some() || self.cards.iter().any(|c| c.note.id == id) {
-                    // From a program, not a click: no token to hand on.
+                // From a program, not a click: no token to hand on. One
+                // in the history as a click on it there (open at its app
+                // or not); one only on screen, its action.
+                if let Some(i) = self.history.entries.iter().position(|e| e.id == id) {
+                    self.open_entry(None, i, Some(key));
+                } else if self.cards.iter().any(|c| c.note.id == id) {
                     self.invoke(None, id, key);
                 }
             }
@@ -810,6 +814,31 @@ static ICONS_MADE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::
 
 pub fn icons_made() -> u64 {
     ICONS_MADE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// The program a notification's own app is, if it's one of Olo's: by its
+/// desktop entry ("olo-terminal", "olo-terminal.desktop").
+pub fn own_program(desktop_entry: Option<&str>) -> Option<&'static str> {
+    let entry = desktop_entry?.trim_end_matches(".desktop");
+    olo_xdg::apps::OUR_APPS.iter().map(|(bin, ..)| *bin).find(|bin| *bin == entry)
+}
+
+/// Shows what a notification is about (`x-olo-show`): its app's own
+/// program started with those arguments, which hands them to the copy
+/// that runs. Only for Olo's own programs (anything else could have the
+/// centre run what it liked), and only arguments: never a shell's words.
+/// False if it didn't say how, or isn't ours.
+pub fn show_what(desktop_entry: Option<&str>, show: &[String]) -> bool {
+    let Some(program) = own_program(desktop_entry).filter(|_| !show.is_empty()) else { return false };
+    let program = olo_xdg::find_program(program).map_or_else(|| program.into(), std::path::PathBuf::into_os_string);
+    let argv: Vec<std::ffi::OsString> = std::iter::once(program).chain(show.iter().map(Into::into)).collect();
+    match olo_xdg::open::spawn(&argv) {
+        Ok(()) => true,
+        Err(e) => {
+            tracing::warn!("notifications: can't show what a note is about ({argv:?}): {e}");
+            false
+        }
+    }
 }
 
 /// Bring forward a window of the app with this desktop entry or name (a
