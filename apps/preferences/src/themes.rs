@@ -2,8 +2,8 @@
 //! tabs and frames, every app, GTK and Chrome too). The two themes,
 //! Classic and Platinum, side by side, each a card drawn in that theme: a
 //! preview (its wallpaper as the mode is now, a window in its own colours
-//! on it, a few of its icons on the desk), its name and wordmark, a line
-//! about it and a row of its icons. Choosing one (anywhere on its card)
+//! on it, a few of its icons on the desk), its name and the Olo mark as
+//! it draws it, a line about it and a row of its icons. Choosing one (anywhere on its card)
 //! sets `Appearance::icon_theme`, which every app follows at once, and
 //! the wallpaper to the theme's own (`themes::wallpaper`), which
 //! Backgrounds can change after.
@@ -16,7 +16,7 @@
 use std::sync::Arc;
 
 use olo_kit::{
-    Bounds, Corners, Hsla, InteractiveElement as _, MouseButton, Painter, ParentElement as _, Pixels, RenderImage, SharedString, Styled as _, brand, canvas, div, icons, metrics as m,
+    Bounds, Corners, Hsla, InteractiveElement as _, MouseButton, Painter, ParentElement as _, Pixels, RenderImage, SharedString, Styled as _, canvas, div, icons, metrics as m,
     palette::{
         Palette, ThemeMode,
         looks::{self, ColorSet},
@@ -39,9 +39,9 @@ const PREVIEW_ASPECT: f32 = 9.0 / 16.0;
 /// The icons under each theme, and their size.
 const SAMPLES: &[&str] = &["folder", "text", "application", "terminal", "mail", "disk", "trash-full"];
 const ICON: f32 = 32.0;
-/// The wordmark beside a theme's name: this tall, in a slot this wide.
-const WORD: f32 = 20.0;
-const WORD_SLOT: f32 = 56.0;
+/// The Olo mark beside a theme's name, as the theme draws it (the
+/// wordmark is the brand's lettering, the same in every theme).
+const MARK: f32 = 24.0;
 /// A colour set's preview: a small window in each mode, side by side.
 const SET_PREVIEW_H: f32 = 58.0;
 
@@ -81,15 +81,15 @@ pub fn ui(ui: &mut Ui) {
         .absolute()
         .inset_0();
         let word = canvas(move |g, b| {
-            let full = brand::wordmark_width_in(id, WORD, dark).unwrap_or(WORD_SLOT);
-            let w = full.min(WORD_SLOT);
-            let h = WORD * w / full.max(1.0);
-            // (At the slot's right, on its middle.)
-            let at = Bounds { origin: point(b.right() - px(w), b.center().y - px(h / 2.0)), size: size(px(w), px(h)) };
-            brand::wordmark_centred_in(g, at, dark, id);
+            // On the name's own line (its capitals' middle, where the
+            // radio button, as tall as this, sets its label on a device
+            // pixel): centred in its own rect, each snapped apart, the
+            // two sat a device pixel off level at 1.25×.
+            let middle = style::baseline_at(g, b.center().y, style::PLAIN_SIZE) - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
+            icons::paint_in(g, style::snap_centred(g, point(b.center().x, middle), MARK, MARK), id, "olo");
         })
-        .w(px(WORD_SLOT))
-        .h(px(WORD))
+        .w(px(MARK))
+        .h(px(MARK))
         .flex_shrink_0();
         let mut about = StringView::new(t.about).dim(true);
         if on {
@@ -125,7 +125,7 @@ pub fn ui(ui: &mut Ui) {
                     div()
                         .flex()
                         .flex_col()
-                        .child(div().flex().flex_row().items_center().justify_between().child(RadioButton::new(t.name, on).on_select(pick)).child(word))
+                        .child(div().flex().flex_row().items_center().justify_between().child(RadioButton::new(t.name, on).height(MARK).on_select(pick)).child(word))
                         .child(div().pl(px(text_w)).child(about)),
                 )
                 .child(div().pt(px(m::TIGHT)).child(samples))

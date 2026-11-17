@@ -3,12 +3,13 @@
 
     genicon.py NAME "subject" [--variants N] [--no-ref] [--theme ID] [--out DIR]
 
-See docs/ICONS.md for the style guide. Always uses gpt-image-2.5-sunburst
+See docs/ICONS.md for the style guide. Always uses gpt-image-2.6-sunburst
 at quality "high" (the maximum); this is a project requirement and not
 configurable. The canonical icons in data/icons/reference/ are sent as
 style references (images/edits endpoint) so every icon matches the set;
 --no-ref falls back to text-only generation (only for bootstrapping a new
-reference set).
+reference set); --ref PATH attaches a picture more, first (the Olo mark is
+drawn against the brand sheet's, docs/BRAND.md).
 
 With --variants N, writes N candidates to data/icons/src/candidates/
 NAME-1.png … for review with tools/iconsheet.py; promote the chosen one
@@ -25,7 +26,7 @@ Reads OPENAI_API_KEY from the environment or ~ben/.env. Never print it.
 """
 import argparse, base64, glob, json, os, re, sys, time, urllib.error, urllib.request, uuid
 
-MODEL = "gpt-image-2.5-sunburst"
+MODEL = "gpt-image-2.6-sunburst"
 QUALITY = "high"
 SIZE = "1024x1024"
 
@@ -110,6 +111,7 @@ def main():
     ap.add_argument("--no-ref", action="store_true")
     ap.add_argument("--theme", help="draw for data/themes/THEME (its style and references)")
     ap.add_argument("--out")
+    ap.add_argument("--ref", action="append", default=[], help="attach this picture as a reference too (the brand sheet's mark)")
     a = ap.parse_args()
 
     root, style, reference, subject = ROOT, STYLE, REFERENCE, a.subject
@@ -131,6 +133,7 @@ def main():
                     subject = s
     refs = [] if a.no_ref else sorted(glob.glob(os.path.join(root, "reference", "*.png")))
     refs = [r for r in refs if os.path.basename(r)[:-4] != a.name]  # never reference itself
+    refs = a.ref + refs  # one given by name first: it is what the subject points at
     prompt = style + (reference if refs else "") + "Subject: " + subject
     images = generate(prompt, refs, a.variants)
 

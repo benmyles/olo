@@ -31,6 +31,18 @@ Each note: what to do, then why (what happened), then how to apply it.
 - **`olo-screen stop` leaves processes behind.** After stopping a
   screen, end what had that screen's `OLO_SCREEN` by PID. A screen's
   Terminal once overwrote Ben's `windows.json`.
+- **An `olo-screen` older than 2026-11-16's, given an
+  `XDG_RUNTIME_DIR` of its own, ends every other Agent Screen on the
+  computer.** Its `start` and `stop` end "strays", the screen sessions
+  its own folder doesn't list, once two minutes old: under a private
+  folder that was everyone's (another agent's screen, in the middle of
+  its work, each time tools/dev/readme-shots ran). Fixed in
+  apps/screen (`listed_in`: a session started under another runtime
+  folder is never a stray), and readme-shots runs the tree's own
+  build; never run the *installed* `olo-screen` with another
+  `XDG_RUNTIME_DIR` until an upgrade carries the fix. If a screen you
+  didn't stop is "stopped", this is why: look at `olo-screen history
+  NAME --last 3` for when it was last used.
 - **Agent Screens have no sound** (`PULSE_SERVER` points at a socket
   that isn't there), on purpose: an agent never hears or uses Ben's
   microphone. To test what a program does with sound devices, start a
@@ -172,6 +184,27 @@ Each note: what to do, then why (what happened), then how to apply it.
   message into a hundred "test binaries"; write the list to a file, one
   item a line, and read that.
 
+- **An Agent Screen's `--size` is in points**, its pictures device
+  pixels: `olo-screen start NAME --size 1920x1080 --scale 2` is a 4K
+  screen (3840 × 2160 asked at 2× gave 7680 × 4320 shots). app_server's
+  IPC (settings, `place`, `overview`, `list_windows`) is on the screen's
+  `OLO_SOCKET` (`olo-screen env NAME`), a line of JSON each way:
+  tools/dev/readme-shots drives a screen with both.
+- **A test binary can be seven folders under the repository**
+  (`target/debug/build/CRATE/HASH/out/`, as kache lays them out), and
+  `olo_xdg::data_dirs` found the tree's `data/` only four up (now
+  seven): tests that read data read the *installed* copy instead, so
+  the veil's passed on files that had gone from the tree. A test that
+  must read the tree's data regardless: `OLO_DATA=$PWD/data`.
+- **The system Python has PIL and nothing else** (no numpy, fontTools
+  or torch). A venv for a one-off: `uv venv /var/tmp/NAME` and `uv pip
+  install --python /var/tmp/NAME/bin/python …`; the GPU's is
+  `/var/tmp/olo-sr` (torch, spandrel, numpy, pillow:
+  tools/finishwallpaper.py's header). A later `uv pip install` of
+  something that depends on torch can replace the torch you installed
+  (spandrel's moved 2.11+cu128 to 2.15+cu132): look at `torch.__version__`
+  after.
+
 ## Measuring
 
 - **Count instructions unscaled: `perf stat --no-scale`.** This
@@ -220,6 +253,20 @@ Each note: what to do, then why (what happened), then how to apply it.
   (`mlockall` without `MCL_ONFAULT`): 40 MB become 260 to 310 for each
   of its three processes. Try a sound setting in `tools/dev/pw-sandbox`
   first (its config folder takes drop-ins before `start`).
+- **The NVIDIA GPU's float32 ceiling is 11.2 TFLOP/s** (an RTX PRO
+  2000, held to 60 W: about 1,700 of its 3,090 MHz). A network that
+  runs at that with the GPU at 100% is already as fast as it goes in
+  float32, whatever the code (FBCNN: 45 TFLOP for a 4K picture, 4.2 s);
+  half precision doubled it. `nvidia-smi` isn't installed: `uv pip
+  install nvidia-ml-py` and `pynvml` give the utilisation, watts, clock
+  and limit. What made a GPU job slow here was the processor's work
+  between its steps (a third of each picture's time) and running the
+  network where its result was thrown away: count a model's FLOPs (a
+  forward hook on its convolutions) and the card's rate before
+  rewriting anything.
+- **Lossless WebP's slowest setting buys nothing**: method 6 at quality
+  100 took 22.8 s for a 4K picture and method 4 at 75 took 2.9 s, to
+  the same 3.67 MB.
 - **Check which scheduler runs before measuring.** scx_lavd (sched_ext)
   ran from 2026-11-10 to 2026-11-15 02:30 and is disabled since (the
   kernel's EEVDF): look at `/sys/kernel/sched_ext/state`.

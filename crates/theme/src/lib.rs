@@ -694,6 +694,15 @@ pub mod fonts {
     /// Olo's faces for symbols Noto Sans doesn't have (arrows, ⌘ ⌥ ⇧ ⌃,
     /// ▸ and ✓), in the order they are tried.
     pub const SYMBOLS: &[&str] = &["Noto Sans Symbols", "Noto Sans Symbols 2", "Noto Sans Math"];
+    /// Sora, shipped with Olo too: the brand's face (docs/BRAND.md), a
+    /// geometric sans. Olo's name where it stands as the brand (the
+    /// wordmark's own lettering, a title screen); never a control's or a
+    /// document's text, which is [`UI`]'s.
+    pub const BRAND: &str = "Sora";
+    /// The brand's weights: ExtraBold for "Olo", SemiBold for "DESKTOP"
+    /// (tracked wide, a third of the type's size).
+    pub const BRAND_WEIGHT: u16 = 800;
+    pub const BRAND_SUB_WEIGHT: u16 = 600;
     /// Points; BeOS's be_plain_font was 10pt.
     pub const PLAIN_SIZE: f32 = 12.0;
     pub const TAB_SIZE: f32 = 12.0;

@@ -48,7 +48,7 @@ installer|a cardboard box with a downward green arrow going into it
 system|a server tower in dark grey with blue status lights
 software-update|a circular green arrow wrapped around a small box
 printer|a compact desktop printer with a sheet of paper coming out the top
-olo|the Olo mark, from the brand kit (~/olo-logos kit/candidates/desktop-icon-2): a single chunky glossy lowercase o in bright Be blue, slanted forward, with thick golden-yellow sides and a soft highlight
+olo|the Olo mark, exactly as in the first attached image (the brand sheet's), its shape and pose copied closely: one chunky glossy ring, a fat torus standing up and leaning back, its face turned toward the upper left so its outline is an ellipse running steeply from the lower left to the upper right at about forty-five degrees; its face a rich glossy Olo blue (#0D6EFD) with a soft highlight along its upper left, its thick side, showing as a deep golden crescent along the lower right, and the wall of its hole a warm Olo yellow (#FFC700), the hole an ellipse set up and to the left of centre, a crisp dark outline
 screensaver|a small charcoal-grey CRT monitor turned slightly to the right in three-quarter view, its dark screen showing bright colourful crossing string-art lines
 warning|a thick triangular warning tile in BeOS tab yellow with a bold black exclamation mark on its face, standing upright on the desk
 stop|a thick octagonal stop-sign plaque in alert red with a white rim and a bold white exclamation mark, standing upright on the desk

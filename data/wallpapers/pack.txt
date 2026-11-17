@@ -522,6 +522,12 @@ cde-sprinkles|Sprinkles|CDE|tile:64
 cde-toronto|Toronto|CDE|tile:213
 cde-water-drops|Water Drops|CDE|tile:158
 cde-wooly|Wooly|CDE|tile:64
+olo-orbit|Orbit|Olo
+olo-halo|Halo|Olo
+olo-ribbons|Ribbons|Olo
+olo-shapes|Shapes|Olo
+olo-glass|Glass|Olo
+olo-dunes|Dunes|Olo
 dusk-gradient|Dusk|Olo
 boing|Boing|Olo
 be-blue|Be Blue|Olo

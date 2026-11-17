@@ -382,6 +382,13 @@ pub fn ui_font(weight: FontWeight) -> Font {
     Font { family: UI_FONT.into(), weight, ..olo_interface::font(UI_FONT) }
 }
 
+/// A font of Olo's brand face, Sora (`olo_theme::fonts::BRAND`): for
+/// Olo's name where it stands as the brand, never for UI text.
+pub fn brand_font(weight: FontWeight) -> Font {
+    let family = olo_theme::fonts::BRAND;
+    Font { family: family.into(), weight, ..olo_interface::font(family) }
+}
+
 /// A font of Olo's monospaced face.
 pub fn mono_font(weight: FontWeight) -> Font {
     Font { family: MONO_FONT.into(), weight, ..olo_interface::font(MONO_FONT) }

@@ -5,6 +5,42 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-16
 
+### Every wallpaper restored: bands, blotches and JPEG's blocks gone
+
+*21:10* — Contrast stretched to show it: the image model's 8-bit bands and mottling in Halo's dark sky, and JPEG's blocks in a gradient of AmigaOS's Simplify, before and after tools/restorewallpaper.py. All 559 pictures and tiles of the pack, restored only where they are smooth, and kept as lossless WebP.
+
+![Every wallpaper restored: bands, blotches and JPEG's blocks gone](2026-11-16/211013-every-wallpaper-restored-bands-blotches-and-jpeg.png)
+
+### Olo's own wallpapers: Orbit, Halo, Ribbons, Shapes, Glass, Dunes
+
+*21:10* — Six abstract 4K pictures in Olo blue and Olo yellow, drawn by the image model from words alone; under them the dark versions of Orbit, Shapes, Glass and Dunes.
+
+![Olo's own wallpapers: Orbit, Halo, Ribbons, Shapes, Glass, Dunes](2026-11-16/211012-olo-s-own-wallpapers-orbit-halo-ribbons-shapes-g.png)
+
+### The upgrade's veil and the start-up screen with the logo
+
+*21:10* — The horizontal logo on dark (the mark, a rule, Olo DESKTOP) where the old wordmark was, pre-scaled for each scale and drawn pixel for pixel; the boot splash is the same picture (Olo Doctor offers to draw an installed one again).
+
+![The upgrade's veil and the start-up screen with the logo](2026-11-16/211011-the-upgrade-s-veil-and-the-start-up-screen-with-.png)
+
+### Deskbar's tile at 1, 1.25, 1.5, 1.75 and 2×, light and dark
+
+*21:10* — The Olo mark alone, 24 points, centred on whole pixels at every scale (magnified).
+
+![Deskbar's tile at 1, 1.25, 1.5, 1.75 and 2×, light and dark](2026-11-16/211010-deskbar-s-tile-at-1-1-25-1-5-1-75-and-2-light-an.png)
+
+### The brand in Olo: About, Deskbar's tile and Themes
+
+*21:10* — About shows the mark and Olo in Sora; Deskbar's tile is the mark alone (beside the wordmark it read as O Olo); Preferences ▸ Themes shows each theme's own mark beside its name (Platinum's drawn again too), the wordmark being the same in every theme now.
+
+![The brand in Olo: About, Deskbar's tile and Themes](2026-11-16/211009-the-brand-in-olo-about-deskbar-s-tile-and-themes.png)
+
+### The new brand: the mark, and the wordmark set in Sora
+
+*21:08* — Olo's brand sheet followed (docs/BRAND.md): the mark drawn again by the icon model against the sheet's, and the wordmark set from Sora by tools/mkbrand.py (Olo in ExtraBold with its l a plain bar, DESKTOP in SemiBold tracked 320), never drawn. The horizontal and stacked logos, the wordmark and Olo alone, for light and for dark.
+
+![The new brand: the mark, and the wordmark set in Sora](2026-11-16/210854-the-new-brand-the-mark-and-the-wordmark-set-in-s.png)
+
 ### Olo Doctor suggests two kernel settings
 
 *18:27* — Full preemption ("Preempt at Once") and a limit on what waits in memory for a removable disk ("Limit Removable Disks"), each with what was measured for it on this kernel in a KVM guest. They are the two of everything the desktop kernels are known for that gained something here with nothing given up; the rest is in Fedora's kernel already, can't be had without replacing it, or was measured and left alone (kernel/TUNING.md).
@@ -915,7 +951,7 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ### Olo Setup: Olo Is Installed
 
-*08:41* — Olo 2026.11.08-66af29d4 installed, with its dedication. Retaken, as above.
+*08:41* — Olo 2026.11.08-66af29d4 installed. Retaken, as above.
 
 ![Olo Setup: Olo Is Installed](2026-11-08/084126-olo-setup-olo-is-installed.png)
 

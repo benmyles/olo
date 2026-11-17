@@ -107,7 +107,7 @@ as_user cp -r data/icons data/brand data/fonts "$PREFIX/share/olo/"
 for theme in data/themes/*/; do
     theme=${theme%/}
     as_user mkdir -p "$PREFIX/share/olo/themes/${theme##*/}"
-    as_user cp -r --reflink=auto "$theme/icons" "$theme/brand" "$PREFIX/share/olo/themes/${theme##*/}/"
+    as_user cp -r --reflink=auto "$theme/icons" "$PREFIX/share/olo/themes/${theme##*/}/"
 done
 # The wallpaper pack (a reflink copy where the file system can).
 as_user cp -r --reflink=auto data/wallpapers "$PREFIX/share/olo/"

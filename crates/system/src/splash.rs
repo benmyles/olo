@@ -26,8 +26,9 @@ pub const PLUGIN_PACKAGE: &str = "plymouth-plugin-two-step";
 /// The stamp's name in the theme.
 pub const STAMP: &str = "olo-made.json";
 /// The drawing's version: one more each time plymouth.rs draws the
-/// theme differently, so an installed one is seen to be old.
-pub const FORMAT: u32 = 1;
+/// theme differently, so an installed one is seen to be old. (2: the
+/// brand's logo, the mark and "Olo DESKTOP", where the old wordmark was.)
+pub const FORMAT: u32 = 2;
 
 /// What a theme was made with.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -143,9 +144,11 @@ mod tests {
         write(&root, "etc/plymouth/plymouthd.conf", OLO_CONF);
         write(&root, "usr/share/plymouth/themes/olo/olo.plymouth", "");
         assert_eq!(installed(&root, 2.0, "6.1"), Installed::Old(None), "from before the stamp");
-        write(&root, "usr/share/plymouth/themes/olo/olo-made.json", r#"{"format":1,"scale":1.5}"#);
-        assert_eq!(installed(&root, 2.0, "6.1"), Installed::Old(Some(Made { format: 1, scale: 1.5 })), "made at another scale");
-        write(&root, "usr/share/plymouth/themes/olo/olo-made.json", r#"{"format":1,"scale":2.0}"#);
+        write(&root, "usr/share/plymouth/themes/olo/olo-made.json", &format!(r#"{{"format":{FORMAT},"scale":1.5}}"#));
+        assert_eq!(installed(&root, 2.0, "6.1"), Installed::Old(Some(Made { format: FORMAT, scale: 1.5 })), "made at another scale");
+        write(&root, "usr/share/plymouth/themes/olo/olo-made.json", &format!(r#"{{"format":{},"scale":2.0}}"#, FORMAT - 1));
+        assert_eq!(installed(&root, 2.0, "6.1"), Installed::Old(Some(Made { format: FORMAT - 1, scale: 2.0 })), "drawn by an older version (the wordmark from before the brand's logo)");
+        write(&root, "usr/share/plymouth/themes/olo/olo-made.json", &format!(r#"{{"format":{FORMAT},"scale":2.0}}"#));
         write(&root, "boot/initramfs-6.1.img", "");
         // (The image older than the theme: as a file's time set back.)
         let past = std::time::SystemTime::now() - std::time::Duration::from_secs(60);

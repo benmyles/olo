@@ -41,7 +41,7 @@ one the entry names by path.
 
 ## Requirements
 
-* **Model: `gpt-image-2.5-sunburst`, quality `high` (the maximum), 1024²,
+* **Model: `gpt-image-2.6-sunburst`, quality `high` (the maximum), 1024²,
   transparent background.** `tools/genicon.py` hard-codes these. Don't
   generate icons any other way. Don't hand-draw, use another model, or
   lower the quality to save time.
@@ -137,7 +137,7 @@ python3 tools/iconsheet.py docs/img/icon-reference.png \
 
 ## Themes
 
-The whole set, the `olo` mark and the wordmark come in two looks, chosen
+The whole set, the `olo` mark included, comes in two looks, chosen
 in Preferences ▸ Themes (`Appearance::icon_theme`; new users get
 Classic). Every app follows the choice at once.
 
@@ -162,12 +162,12 @@ A theme lives in `data/themes/<id>/`:
 | `reference/` | Its reference icons, 512 px: folder, application, disk, terminal and home. |
 | `src/` | Raw 1024² renders and their sidecars (gitignored). |
 | `icons/<px>/<name>.png` | The shipped sizes, laid out as in `data/icons`. |
-| `brand/olo-wordmark.png` | Its wordmark, one picture for light and dark (an `olo-wordmark-on-dark.png` beside it is used on dark when present). |
 
 Rules:
 
 * **A theme draws every icon in the manifest**, `olo` and `themes`
-  included, at every size, plus its wordmark. `cargo test -p olo-xdg`
+  included, at every size, and no wordmark of its own (the wordmark is
+  the brand's lettering, the same in every theme: [BRAND.md](BRAND.md)). `cargo test -p olo-xdg`
   checks this (`themes::tests::every_theme_is_complete`). At run time a
   missing icon falls back to the Classic one, but never ship a theme with
   gaps.
@@ -207,22 +207,13 @@ python3 tools/mkicons.py --theme platinum NAME
 python3 tools/iconsheet.py /var/tmp/sheets/platinum.png --theme platinum
 ```
 
-### Theme wordmarks
+### The wordmark
 
-Each theme's wordmark is Olo's o, l, o (the o's Be blue, the l BeOS tab
-yellow) made in its material. `tools/genwordmark.py` draws it with the
-icons' model at quality "high", 1536×1024, with the Classic wordmark
-attached for its letters and colours and the theme's reference icons for
-its look; `NOTES` holds a theme's line on how it makes letters, where its
-icon style alone would give the Classic gloss. Candidates
-go to `data/themes/<id>/src/wordmark/`; `--promote` trims one and writes
-it 768 px wide to `brand/olo-wordmark.png`. Look at each on light and dark
-panels before promoting.
-
-```sh
-python3 tools/genwordmark.py platinum --variants 2
-python3 tools/genwordmark.py platinum --promote data/themes/platinum/src/wordmark/olo-wordmark-3.png
-```
+Themes had wordmarks of their own (Olo's o, l, o in each theme's
+material, drawn by the model) until November 2026. The wordmark is now
+the brand's, "Olo" set in Sora by `tools/mkbrand.py`, the same in every
+theme: see [BRAND.md](BRAND.md). The Olo mark is still a theme's own, as
+its `olo` icon.
 
 ### Theme wallpapers and the retro collection
 
@@ -274,8 +265,9 @@ first (`finishwallpaper.py tile IN OUT 0.9`): 4x-UltraSharp sharpened
 the dither into a cross-hatch, and 0.9 merges it and keeps the texture.
 Each theme names its default (`Theme::wallpaper`): Classic Blueberry
 Oxygen (the nearest to Be's blue), Platinum Quantum Foam; those two have
-a dark version and an ultrawide crop, as PNG; the rest are 4K JPEGs
-(quality 95, no chroma subsampling) cropped to the screen as shown.
+a dark version and an ultrawide crop; the rest are 4K only, cropped to
+the screen as shown. Every picture and tile is lossless WebP (see
+"Restored, and lossless" below).
 Choosing a theme in Preferences ▸ Themes switches to its picture
 (`olo_xdg::themes::wallpaper`). A setting naming a picture that went
 shows its theme's (`pack:platinum`, the old name) or the default's.
@@ -326,17 +318,113 @@ Which route a picture takes depends on what it is:
   is cropped to 16:9 and finished from its native width
   (`finishwallpaper.py photo|picture IN OUT WIDTH`).
 
-Then `--promote NAME` (`--jpeg` for a collection's picture, `--tile` for
-a tile: `tiles/NAME.png` and a tiled thumbnail), a line in `pack.txt`
+Then `restorewallpaper.py restore` (below), `--promote NAME` (`--jpeg` for a
+collection's picture, 4K only; `--tile` for a tile: `tiles/NAME.webp` and
+a tiled thumbnail), a line in `pack.txt`
 (`name|label|collection`, `|tile:N` for a tile N points wide), and the HDR
 maps: `cargo run --release -p olo-images --bin wallpaper-hdr` makes
-`NAME.gain.png` beside each picture in `4k/` and `ultrawide/` (PNG or
-JPEG; not the tiles) that's newer than its map (`olo_images::gain`;
+`NAME.gain.png` beside each picture in `4k/` and `ultrawide/` (WebP, PNG
+or JPEG; not the tiles) that's newer than its map (`olo_images::gain`;
 `--preview DIR` tints what shines). `cargo test -p olo-xdg` checks every
 theme has its wallpaper, light and dark, at each shape. Candidates and
 their `.json` sidecars (model, prompt, source) go to
 `data/wallpapers/src/` (gitignored). The API key is read from
 `OPENAI_API_KEY` or `~ben/.env`; never print, log or commit it.
+
+### Olo's own abstract collection
+
+Six pictures in the "Olo" collection are plays on the brand (Ben,
+2026-11-16: "new olo high-res 4k backgrounds that are abstract (no
+words) with cool plays on the olo colors"): Orbit (glossy rings in
+space), Halo (an eclipse's arc), Ribbons (two silk ribbons), Shapes (a
+Bauhaus print of circles and rings), Glass (frosted rings refracting
+blue and gold) and Dunes (layered waves under a gold horizon). Orbit,
+Shapes, Glass and Dunes have dark versions; Halo and Ribbons are dark
+already. Each was drawn at 4K by the model from words alone
+(`genwallpaper.py olo-NAME --variants 2`: `BRAND` and `OLO_SCENES` hold
+the palette and each scene; `--dark-from` the dark version), the best of
+two restored (`restorewallpaper.py`, below) and promoted with `--promote`
+(`--dark` for the dark one).
+
+### Restored, and lossless
+
+Every picture in the pack has been restored, and is kept lossless (Ben,
+2026-11-16: "i can still see like color banding and stuff"; "fix and
+restore any visual issues you find in all of the wallpapers with
+whatever approaches work best"; "zero visual artifacts"). What was
+wrong, measured by `restorewallpaper.py check` on each picture's smooth
+areas (where flaws show; `flaws()` says how):
+
+- **The image model's own flaws.** It draws 8 bits a channel with no
+  dither, so a slow gradient is a staircase of flat bands (Halo's dark
+  sky: 9 levels of red across 1,800 pixels), and its decoder leaves a
+  faint cross-hatch and colour blotches a level or two deep, seen as
+  mottling in dark gradients. Every redrawn picture had both.
+- **JPEG's.** The retro collections were kept as JPEG at quality 95
+  (4:4:4): its 8×8 blocks showed in their gradients (the step across a
+  block's edge 1.8 to 3.2 times the step inside one), and it rang on
+  the smooth ground beside sharp edges.
+
+`tools/restorewallpaper.py` takes each out, in one pass on the GPU:
+
+1. **Where the picture is smooth** (`smooth_mask`: luma's spread in a
+   7×7 window under 1.5 levels restored, over 3.5 kept as it is,
+   feathered between), and only there: a photograph's grain and a
+   stone's sparkle are the picture's, not flaws, and stay to the pixel.
+2. A JPEG: **FBCNN** (blind JPEG restoration, its colour model; spandrel
+   loads it from `data/wallpapers/src/models/fbcnn_color.pth`, from the
+   authors' v1.0 release) on the smooth ground within 12 pixels of a
+   sharp edge (`edge_zone`), where JPEG rings, its result **held to
+   what the file says the original was** (`project`: each 8×8 block's
+   DCT coefficients within the interval the file's quantised value
+   stands for, by its own tables), so it can take out ringing and never
+   invent or lose what the file holds (unheld, it took a tenth of a
+   granite photograph's sparkle). Only there, because that is all it
+   changes: beside edges it leaves a quarter less ringing than the
+   polish alone (luma's fine noise 0.30 → 0.24 levels, colour's 0.42 →
+   0.29); everywhere else the two measured the same (0.005 against
+   0.004). The network is 45 TFLOP for a 4K picture, 4.2 s of this
+   laptop's GPU flat out (11.2 TFLOP/s at its 60 W limit: its float32
+   ceiling), so it runs on the 256-pixel tiles that hold such ground (59
+   of a 4K picture's 135 at the median of the pack's 206 JPEGs; none of
+   a plain gradient's), not on the picture.
+3. **The polish** (`polished`): He's guided filter, five passes from 2
+   to 100 pixels (`POLISH`), smoothing only windows that vary less than
+   the noise (an edge or a texture keeps its pixels), no pixel moved
+   more than 4 levels: JPEG's blocks, the model's cross-hatch and
+   blotches out, and its bands back into the ramps they stand for.
+4. A **dither** (`dither`): each pixel rounded up or down by chance in
+   proportion to its fraction, the same chance for its three channels,
+   so a ramp between two levels is a mix of them and not a step, and a
+   pixel that is a whole level (all that wasn't changed) stays exactly
+   as it was.
+
+A tile is worked on as a mosaic of itself wide enough that its middle
+sees only its own repeats, and the middle taken, so it still repeats
+without a seam; one of 256 colours or fewer is pixel art (its pixels
+are the design) and kept exactly. The result is saved as **lossless
+WebP** (`genwallpaper.save_picture`; the pixels exactly, checked by
+reading it back; a quarter smaller than PNG; libwebp's method 4, the
+same size as its slowest in an eighth of the time). Decoding costs more
+than PNG's (app_server's `wallpaper_cost`, a 4K picture for a 3200 ×
+2000 screen on one core: PNG 100 ms, WebP 181 ms, JPEG 89 ms), once, on
+its wallpaper thread, when a picture is chosen.
+
+```sh
+# The GPU's Python (torch, spandrel: finishwallpaper.py's header has the venv)
+/var/tmp/olo-sr/bin/python tools/restorewallpaper.py check data/wallpapers/4k/*.webp
+/var/tmp/olo-sr/bin/python tools/restorewallpaper.py restore IN OUT.webp [--tile]
+/var/tmp/olo-sr/bin/python tools/restorewallpaper.py pack     # every PNG or JPEG still in the pack
+```
+
+`pack` keeps the GPU busy and nothing else waiting: pictures are decoded
+a few ahead on threads, each is restored without leaving the GPU (0.5 s
+for one with no JPEG edges, 3.8 s at the median of the JPEGs, 7 s where
+every tile has them), and the WebP encoding (3 s of a core for a 4K
+picture) runs on every core behind it: the pack's 559 pictures took 870
+s, 864 of them the GPU's. A new picture is restored before it is
+promoted. The pack is 1.6 GB (it was 0.85 GB as PNG and JPEG): lossless
+photographs are three times their JPEGs.
 
 ## Using icons in code
 
@@ -345,7 +433,8 @@ manifest; freedesktop icon names and absolute paths also work. The kit
 picks the smallest pre-scaled size that covers the rect in device pixels,
 in the current theme (`olo_xdg::themes::current()`); to show another
 theme, as Preferences does, use `icons::paint_in(window, bounds, theme,
-name)` and `brand::wordmark_centred_in`. Use these sizes: 16 for lists, menus and
+name)` (the wordmark, `brand::wordmark_centred`, is the same in every
+theme). Use these sizes: 16 for lists, menus and
 the Deskbar; 32 for Tracker mini icons and dialogs; 48 to 64 for the
 Tracker icon view and desktop; 128 for About boxes. Don't tint, recolour
 or scale icons up beyond 256 px.

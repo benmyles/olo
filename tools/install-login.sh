@@ -95,7 +95,7 @@ as_root cp -r data/icons data/brand data/fonts data/wallpapers "$SHARE/"
 for theme in data/themes/*/; do
     theme=${theme%/}
     as_root mkdir -p "$SHARE/themes/${theme##*/}"
-    as_root cp -r "$theme/icons" "$theme/brand" "$SHARE/themes/${theme##*/}/"
+    as_root cp -r "$theme/icons" "$SHARE/themes/${theme##*/}/"
 done
 # The login password unlocks Olo's keyring (olo-login's PAM service names it).
 as_root install -D -m 755 target/release/libpam_olo_keyring.so /usr/lib64/security/pam_olo_keyring.so

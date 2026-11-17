@@ -62,6 +62,8 @@ use olo_xdg::{
 /// Logical width of the vertical Deskbar.
 const WIDTH: f32 = olo_kit::metrics::DESKBAR_WIDTH;
 const TILE_H: f32 = 30.0;
+/// The Olo mark's side in the tile (a size the set has at 1× and 2×).
+const TILE_MARK: f32 = 24.0;
 /// How long a gone application keeps its place in the order.
 const GONE_KEEP: Duration = Duration::from_secs(20);
 const ROW_H: f32 = 24.0;
@@ -2652,10 +2654,14 @@ impl Deskbar {
             let p = theme::palette();
             style::vgradient(g, tile, style::tint(p.panel_background, if hot { 0.75 } else { 0.85 }), shade(&p, p.panel_background, 1.04));
             section_bevel(g, tile, &p);
-            // The wordmark alone, centred (beside the mark it read as "o olo").
-            let word = rect(0.0, f32::from(tile.center().y) - 9.0, WIDTH, 18.0);
-            if let olo_kit::brand::Drawn::Missing = olo_kit::brand::wordmark_centred(g, word, status::dark(&p)) {
-                style::label(g, tile.center().x, tile.center().y, Align::Center, "Olo", 14.0, style::ui_font(FontWeight::BOLD), c(p.panel_text));
+            // The Olo mark alone, centred (Ben, 2026-11-16: "just have the
+            // O logo not the word Olo it looks silly having O Olo like
+            // with two Os"; with the old lettering it read as "o olo").
+            let scale = g.scale_factor();
+            let left = (((WIDTH - TILE_MARK) / 2.0) * scale).round() / scale;
+            let top = ((f32::from(tile.center().y) - TILE_MARK / 2.0) * scale).round() / scale;
+            if !icons::paint(g, rect(left, top, TILE_MARK, TILE_MARK), "olo") {
+                style::label(g, tile.center().x, tile.center().y, Align::Center, "Olo", 14.0, style::brand_font(FontWeight::EXTRA_BOLD), c(p.panel_text));
             }
             agent::record(g, agent::Node { role: "Button", name: Some("Olo".into()), bounds: tile, enabled: true, clickable: true, ..Default::default() });
         });

@@ -7,16 +7,16 @@ themes").
     upscalewallpaper.py SRC NAME            draw data/wallpapers/src/NAME.png from SRC
     upscalewallpaper.py SRC NAME --dark     the same picture for dark mode (NAME-dark.png)
     upscalewallpaper.py --promote NAME [--dark] [--crop-y PX]
-    upscalewallpaper.py --promote NAME --jpeg       a retro collection's: 4k/NAME.jpg, no ultrawide
+    upscalewallpaper.py --promote NAME --jpeg       a retro collection's: 4k/NAME.webp, no ultrawide
     upscalewallpaper.py SRC NAME --tile             a desktop pattern's tile, made larger and seamless
-    upscalewallpaper.py --promote NAME --tile       tiles/NAME.png and its tiled thumbnail
+    upscalewallpaper.py --promote NAME --tile       tiles/NAME.webp and its tiled thumbnail
 
 The original (4:3, 1024x768 for most of Mac OS 9's) goes to the edits
 endpoint with a prompt to make exactly that picture again at 3840x2160,
 widened to 16:9 by continuing its background, adding nothing. --dark
 redraws a 4K one for dark mode. Each candidate has a .json sidecar (the
 model, the prompt, its source). --promote makes the pack's files from
-one, as genwallpaper.py's does: 4k/NAME.png, the 3840x1648 ultrawide band
+one, as genwallpaper.py's does: 4k/NAME.webp, the 3840x1648 ultrawide band
 (from --crop-y, default the middle) and the 320x180 thumbnail. Then give
 it its HDR map (`cargo run --release -p olo-images --bin wallpaper-hdr`)
 and a line in pack.txt.
@@ -180,29 +180,28 @@ def draw_tile(src, name):
 
 
 def promote_jpeg(name, dark=False):
-    """A retro collection's picture: 4k/NAME.jpg (quality 95, no chroma
-    subsampling: about a quarter of the PNG) and its thumbnail; no
-    ultrawide version (the 4K one is cropped to the screen)."""
+    """A retro collection's picture: 4k/NAME.webp (lossless) and its
+    thumbnail; no ultrawide version (the 4K one is cropped to the
+    screen). (Named for the JPEG it was until November 2026.)"""
     from PIL import Image
     stem = name + ("-dark" if dark else "")
     img = Image.open(os.path.join(SRC, stem + ".png")).convert("RGB")
     if img.size != genwallpaper.SIZE:
         sys.exit(f"{stem}: {img.size}, not {genwallpaper.SIZE}")
-    path = os.path.join(genwallpaper.WALLPAPERS, "4k", stem + ".jpg")
-    img.save(path, quality=95, subsampling=0, optimize=True)
+    path = genwallpaper.save_picture(img, "4k", stem)
     img.resize(genwallpaper.THUMB, Image.LANCZOS).save(os.path.join(genwallpaper.WALLPAPERS, "thumbs", stem + ".png"), optimize=True)
     print(path)
 
 
 def promote_tile(name):
-    """tiles/NAME.png and its preview in thumbs/ (the pattern repeated at
+    """tiles/NAME.webp and its preview in thumbs/ (the pattern repeated at
     a quarter of its points: as a 1280-point screen shrunk to 320)."""
     from PIL import Image
     src = Image.open(os.path.join(SRC, name + ".png")).convert("RGB")
     meta = json.load(open(os.path.join(SRC, name + ".json")))
     w, h = meta["tile"]
     os.makedirs(os.path.join(genwallpaper.WALLPAPERS, "tiles"), exist_ok=True)
-    src.save(os.path.join(genwallpaper.WALLPAPERS, "tiles", name + ".png"), optimize=True)
+    genwallpaper.save_picture(src, "tiles", name)
     pw = max(8, round(w * 0.25 * 2))
     ph = max(8, round(pw * src.height / src.width))
     small = src.resize((pw, ph), Image.LANCZOS)
@@ -254,7 +253,7 @@ def main():
     ap.add_argument("name", nargs="?")
     ap.add_argument("--dark", action="store_true")
     ap.add_argument("--tile", action="store_true", help="SRC is a desktop pattern's tile")
-    ap.add_argument("--jpeg", action="store_true", help="with --promote: a retro collection's picture, as a 4K JPEG")
+    ap.add_argument("--jpeg", action="store_true", help="with --promote: a retro collection's picture, 4K only (lossless WebP)")
     ap.add_argument("--promote", metavar="NAME")
     ap.add_argument("--crop-y", type=int)
     a = ap.parse_args()

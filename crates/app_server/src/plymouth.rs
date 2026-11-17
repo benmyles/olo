@@ -1,5 +1,5 @@
 //! Olo's boot splash: a Plymouth theme of the start-up screen's picture
-//! (`veil.rs`: the wordmark on dark, the row of icons lit one by one, the
+//! (`veil.rs`: the logo on dark, the row of icons lit one by one, the
 //! line under them), shown from the moment the computer starts until the
 //! login screen takes its place (`olo-login`, which hands over from
 //! Plymouth as GDM does). `olo-app-server --plymouth-theme DIR [--scale
@@ -23,10 +23,10 @@
 //!   (frames − 1)⌋ and the fraction only nears 1, so the last frame is the
 //!   finished one and four lit is the fourth frame too), saying "Starting
 //!   Olo…";
-//! - `watermark.png`: the wordmark alone, all that's shown while the
+//! - `watermark.png`: the logo alone, all that's shown while the
 //!   computer shuts down or restarts and over which the field is asked;
 //!   the same size as the frames, both opaque on the start-up screen's
-//!   dark (a frame drawn over it changes no pixel of the wordmark) and
+//!   dark (a frame drawn over it changes no pixel of the logo) and
 //!   padded below so the icon row is in their middle, where the field goes;
 //! - `lock.png` and `entry.png`: the kit's text well as it is focused
 //!   (`style::sunken`, the login screen's field's 328 points wide), cut in
@@ -123,7 +123,7 @@ pub fn boot_scale() -> f64 {
 
 /// The theme at `scale`, written into `dir`.
 pub fn write(dir: &Path, scale: f64) -> Result<Made, String> {
-    let theme = Theme::make(scale).ok_or("Olo's wordmark or icons weren't found (data/brand, data/icons)")?;
+    let theme = Theme::make(scale).ok_or("Olo's logo or icons weren't found (data/brand, data/icons)")?;
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let mut files = Vec::new();
     let mut save = |name: &str, pm: &Pixmap| -> Result<(), String> {
@@ -168,7 +168,7 @@ struct Theme {
 
 impl Theme {
     fn make(scale: f64) -> Option<Theme> {
-        let mark = veil::drawn_as(Why::Starting, scale, 0, Some(LINE), Parts::Wordmark)?;
+        let mark = veil::drawn_as(Why::Starting, scale, 0, Some(LINE), Parts::Logo)?;
         let (width, height) = (mark.pixmap.width(), mark.pixmap.height());
         // Padded so the row's middle is the picture's (twice it is the
         // row's top twice and an icon's side).
@@ -261,7 +261,7 @@ fn settings(scale: f64) -> String {
     let mut out = format!(
         "[Plymouth Theme]
 Name=Olo
-Description=Olo's start-up screen: its wordmark on dark and its icons lit one by one as the computer starts (made at {scale}× by olo-app-server --plymouth-theme)
+Description=Olo's start-up screen: its logo on dark and its icons lit one by one as the computer starts (made at {scale}× by olo-app-server --plymouth-theme)
 ModuleName=two-step
 
 [two-step]
@@ -336,7 +336,7 @@ mod tests {
             let t = Theme::make(s).unwrap();
             let (w, h) = (t.watermark.width(), t.watermark.height());
             // Every frame the watermark's size, opaque, and the same as it
-            // wherever the wordmark is (drawn over it, it changes nothing).
+            // wherever the logo is (drawn over it, it changes nothing).
             for f in &t.frames {
                 assert_eq!((f.width(), f.height()), (w, h), "at {s}×");
                 assert!(f.pixels().iter().all(|p| p.alpha() == 255), "at {s}×");

@@ -1,8 +1,10 @@
-//! Olo's brand: the wordmark (`data/brand`, or the current theme's
-//! `data/themes/<id>/brand`), drawn crisp at the size asked for, in its
-//! light or dark version by the palette: the
-//! source decoded once, off the UI thread, and trimmed to what it draws;
-//! each size averaged down from it once, a texel to a device pixel.
+//! Olo's brand: the wordmark (`data/brand`: "Olo" in the brand's
+//! lettering, Sora ExtraBold, made by tools/mkbrand.py; docs/BRAND.md),
+//! drawn crisp at the size asked for, in its light or dark version by the
+//! palette. It is the same in every theme (a theme draws the `olo` mark
+//! in its own medium; the lettering is the brand's). The source is
+//! decoded once, off the UI thread, and trimmed to what it draws; each
+//! size averaged down from it once, a texel to a device pixel.
 
 use olo_sync::Mutex;
 use std::{
@@ -23,11 +25,10 @@ enum Slot {
 
 #[derive(Default)]
 struct Cache {
-    sources: HashMap<(&'static str, bool), Slot>,
-    /// Pictures by theme, background and device height, and the theme
-    /// they were last asked for in (when that changes, the others go).
-    current: &'static str,
-    images: HashMap<(&'static str, bool, u32), Arc<RenderImage>>,
+    /// By background (dark or not).
+    sources: HashMap<bool, Slot>,
+    /// Pictures by background and device height.
+    images: HashMap<(bool, u32), Arc<RenderImage>>,
 }
 
 fn cache() -> &'static Mutex<Cache> {
@@ -35,28 +36,29 @@ fn cache() -> &'static Mutex<Cache> {
     CACHE.get_or_init(Default::default)
 }
 
-/// Theme `theme`'s wordmark, if it's loaded (asked for if not).
-fn source(theme: &'static str, dark: bool) -> Option<Result<Source, ()>> {
+/// The wordmark for a light or `dark` background, if it's loaded (asked
+/// for if not).
+fn source(dark: bool) -> Option<Result<Source, ()>> {
     let mut c = cache().lock().unwrap();
-    match c.sources.get(&(theme, dark)) {
+    match c.sources.get(&dark) {
         Some(Slot::Ready(s)) => return Some(Ok(s.clone())),
         Some(Slot::Missing) => return Some(Err(())),
         Some(Slot::Loading) => return None,
         None => {}
     }
-    c.sources.insert((theme, dark), Slot::Loading);
+    c.sources.insert(dark, Slot::Loading);
     drop(c);
     std::thread::spawn(move || {
-        let slot = load(theme, dark).map_or(Slot::Missing, |s| Slot::Ready(Arc::new(s)));
-        cache().lock().unwrap().sources.insert((theme, dark), slot);
+        let slot = load(dark).map_or(Slot::Missing, |s| Slot::Ready(Arc::new(s)));
+        cache().lock().unwrap().sources.insert(dark, slot);
         crate::icons::wake();
     });
     None
 }
 
-/// Decodes theme `theme`'s wordmark and trims it to what it draws.
-fn load(theme: &'static str, dark: bool) -> Option<(Vec<u8>, usize, usize)> {
-    let img = olo_xdg::decode_png(&olo_xdg::themes::wordmark_file(theme, dark)?)?;
+/// Decodes the wordmark and trims it to what it draws.
+fn load(dark: bool) -> Option<(Vec<u8>, usize, usize)> {
+    let img = olo_xdg::decode_png(&olo_xdg::themes::wordmark_file(dark)?)?;
     let (w, h) = (img.width as usize, img.height as usize);
     let px = &img.rgba;
     let alpha = |x: usize, y: usize| px[(y * w + x) * 4 + 3] > 8;
@@ -72,13 +74,7 @@ fn load(theme: &'static str, dark: bool) -> Option<(Vec<u8>, usize, usize)> {
 /// version (they needn't be one shape); None while it loads or if there
 /// is none.
 pub fn wordmark_width(height: f32, dark: bool) -> Option<f32> {
-    wordmark_width_in(olo_xdg::themes::current().id, height, dark)
-}
-
-/// [`wordmark_width`] for theme `theme` (its id).
-pub fn wordmark_width_in(theme: &str, height: f32, dark: bool) -> Option<f32> {
-    let theme = olo_xdg::themes::resolve(theme).id;
-    source(theme, dark)?.ok().map(|s| height * s.1 as f32 / s.2 as f32)
+    source(dark)?.ok().map(|s| height * s.1 as f32 / s.2 as f32)
 }
 
 /// What drawing the wordmark did.
@@ -94,13 +90,7 @@ pub enum Drawn {
 /// Draws the wordmark `b.size.height` tall, centred in `b` once its
 /// width is whole device pixels, its top on a device pixel.
 pub fn wordmark_centred(g: &mut Painter, b: Bounds<Pixels>, dark: bool) -> Drawn {
-    wordmark_centred_in(g, b, dark, olo_xdg::themes::current().id)
-}
-
-/// [`wordmark_centred`] in theme `theme` (its id): Preferences ▸ Themes
-/// shows each theme's.
-pub fn wordmark_centred_in(g: &mut Painter, b: Bounds<Pixels>, dark: bool, theme: &str) -> Drawn {
-    wordmark_in(g, b, dark, theme, true)
+    wordmark_in(g, b, dark, true)
 }
 
 /// [`wordmark_centred`], but at `b`'s left (on the pixel text there
@@ -108,12 +98,11 @@ pub fn wordmark_centred_in(g: &mut Painter, b: Bounds<Pixels>, dark: bool, theme
 /// where it does (About's version: centred, at 1.25× it started a pixel
 /// left of the line under it).
 pub fn wordmark_left(g: &mut Painter, b: Bounds<Pixels>, dark: bool) -> Drawn {
-    wordmark_in(g, b, dark, olo_xdg::themes::current().id, false)
+    wordmark_in(g, b, dark, false)
 }
 
-fn wordmark_in(g: &mut Painter, b: Bounds<Pixels>, dark: bool, theme: &str, centred: bool) -> Drawn {
-    let theme = olo_xdg::themes::resolve(theme).id;
-    let src = match source(theme, dark) {
+fn wordmark_in(g: &mut Painter, b: Bounds<Pixels>, dark: bool, centred: bool) -> Drawn {
+    let src = match source(dark) {
         None => {
             // (What's painted now isn't what will show: not kept.)
             g.paint_unfinished();
@@ -125,15 +114,7 @@ fn wordmark_in(g: &mut Painter, b: Bounds<Pixels>, dark: bool, theme: &str, cent
     let scale = g.scale_factor();
     let th = (f32::from(b.size.height) * scale).round().max(1.0) as u32;
     let tw = ((th as f32) * src.1 as f32 / src.2 as f32).round().max(1.0) as u32;
-    let image = {
-        let mut c = cache().lock().unwrap();
-        let current = olo_xdg::themes::current().id;
-        if c.current != current {
-            c.current = current;
-            c.images.retain(|k, _| k.0 == current);
-        }
-        c.images.entry((theme, dark, th)).or_insert_with(|| picture(&src, tw, th)).clone()
-    };
+    let image = cache().lock().unwrap().images.entry((dark, th)).or_insert_with(|| picture(&src, tw, th)).clone();
     let (w, h) = (tw as f32 / scale, th as f32 / scale);
     let c = b.center();
     let left = if centred { ((f32::from(c.x) * scale - tw as f32 / 2.0).round()) / scale } else { (f32::from(b.left()) * scale).round() / scale };

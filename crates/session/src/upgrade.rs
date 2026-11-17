@@ -440,13 +440,15 @@ fn sync_pngs(src: &Path, to: &Path) -> std::io::Result<usize> {
     Ok(n)
 }
 
-/// Copy the build tree's brand pictures (`data/brand`: the wordmark) into
+/// Copy the build tree's brand pictures (`data/brand`: the wordmark, and
+/// in `sizes/` the logo pre-scaled for the veil and the boot splash) into
 /// `to` where new or newer; how many.
 fn sync_brand(from: &Path, to: &Path) -> std::io::Result<usize> {
     let Some(src) = from.ancestors().skip(1).take(4).map(|d| d.join("data/brand")).find(|d| d.is_dir()) else {
         return Ok(0);
     };
-    sync_pngs(&src, to)
+    let sizes = if src.join("sizes").is_dir() { sync_pngs(&src.join("sizes"), &to.join("sizes"))? } else { 0 };
+    Ok(sync_pngs(&src, to)? + sizes)
 }
 
 /// Copy the build tree's fonts (`data/fonts`: the faces and their
@@ -468,10 +470,12 @@ fn sync_fonts(from: &Path, to: &Path) -> std::io::Result<usize> {
     Ok(n)
 }
 
-/// Copy the build tree's themes (`data/themes/<id>`: each one's sizes and
-/// wordmark, not its sources or references) into `to` where new or
-/// newer, and take away the ones it no longer has (the themes there were
-/// before Classic and Platinum); how many changed.
+/// Copy the build tree's themes (`data/themes/<id>`: each one's sizes,
+/// not its sources or references) into `to` where new or newer, and take
+/// away the ones it no longer has (the themes there were before Classic
+/// and Platinum) and a theme's own wordmark (`brand/`: the wordmark is the
+/// brand's since November 2026, the same in every theme); how many
+/// changed.
 fn sync_themes(from: &Path, to: &Path) -> std::io::Result<usize> {
     let Some(src) = from.ancestors().skip(1).take(4).map(|d| d.join("data/themes")).find(|d| d.is_dir()) else {
         return Ok(0);
@@ -482,8 +486,9 @@ fn sync_themes(from: &Path, to: &Path) -> std::io::Result<usize> {
         if theme.join("icons").is_dir() {
             n += sync_sizes(&theme.join("icons"), &dest.join("icons"))?;
         }
-        if theme.join("brand").is_dir() {
-            n += sync_pngs(&theme.join("brand"), &dest.join("brand"))?;
+        if dest.join("brand").is_dir() {
+            std::fs::remove_dir_all(dest.join("brand"))?;
+            n += 1;
         }
     }
     for e in std::fs::read_dir(to).into_iter().flatten().flatten() {
@@ -556,7 +561,7 @@ fn sync_pam_module(from: &Path, to: &Path) -> std::io::Result<bool> {
 
 /// Copy the build tree's wallpaper pack (`data/wallpapers`: the manifest,
 /// both shapes and the previews) into `to` where new or newer, by clone
-/// where the file system can (the pack is ~90 MB), and take away the
+/// where the file system can (the pack is 1.6 GB, lossless), and take away the
 /// pictures it no longer has; how many files changed.
 fn sync_wallpapers(from: &Path, to: &Path) -> std::io::Result<usize> {
     let Some(src) = from.ancestors().skip(1).take(4).map(|d| d.join("data/wallpapers")).find(|d| d.join("pack.txt").is_file()) else {
@@ -569,7 +574,9 @@ fn sync_wallpapers(from: &Path, to: &Path) -> std::io::Result<usize> {
         std::fs::create_dir_all(&to_dir)?;
         for e in entries.flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
-            if e.path().is_file() && (name.ends_with(".png") || name.ends_with(".jpg") || name == "pack.txt") && is_newer(&e.path(), &to_dir.join(&name)) {
+            // (The pictures in any of the pack's formats, their gain maps and previews.)
+            let wanted = olo_xdg::wallpapers::is_picture(&name) || name.ends_with(".png") || name == "pack.txt";
+            if e.path().is_file() && wanted && is_newer(&e.path(), &to_dir.join(&name)) {
                 install(&e.path(), &to_dir, &name)?;
                 std::fs::set_permissions(to_dir.join(&name), std::fs::Permissions::from_mode(0o644))?;
                 n += 1;
@@ -577,7 +584,8 @@ fn sync_wallpapers(from: &Path, to: &Path) -> std::io::Result<usize> {
         }
         for e in std::fs::read_dir(&to_dir)?.flatten() {
             let name = e.file_name();
-            let picture = name.to_string_lossy().ends_with(".png") || name.to_string_lossy().ends_with(".jpg");
+            // (A picture converted to WebP leaves its PNG or JPEG here: gone.)
+            let picture = olo_xdg::wallpapers::is_picture(&name.to_string_lossy()) || name.to_string_lossy().ends_with(".png");
             if e.path().is_file() && picture && !from_dir.join(&name).is_file() {
                 std::fs::remove_file(e.path())?;
                 n += 1;
@@ -804,11 +812,10 @@ mod tests {
         let build = base.join("repo/target/release");
         let theme = base.join("repo/data/themes/platinum");
         std::fs::create_dir_all(&build).unwrap();
-        for dir in ["icons/16", "brand", "src", "reference"] {
+        for dir in ["icons/16", "src", "reference"] {
             std::fs::create_dir_all(theme.join(dir)).unwrap();
         }
         std::fs::write(theme.join("icons/16/lock.png"), "png").unwrap();
-        std::fs::write(theme.join("brand/olo-wordmark.png"), "png").unwrap();
         std::fs::write(theme.join("src/lock.png"), "raw").unwrap();
         std::fs::write(theme.join("reference/lock.png"), "ref").unwrap();
         std::fs::write(theme.join("style.txt"), "clay").unwrap();
@@ -816,9 +823,12 @@ mod tests {
         // A theme there was once, installed before.
         std::fs::create_dir_all(to.join("soft-be/icons/16")).unwrap();
         std::fs::write(to.join("soft-be/icons/16/lock.png"), "png").unwrap();
+        // The theme's own wordmark, from before the brand's was everyone's.
+        std::fs::create_dir_all(to.join("platinum/brand")).unwrap();
+        std::fs::write(to.join("platinum/brand/olo-wordmark.png"), "png").unwrap();
         assert_eq!(sync_themes(&build, &to).unwrap(), 3);
         let ours = to.join("platinum");
-        assert!(ours.join("icons/16/lock.png").is_file() && ours.join("brand/olo-wordmark.png").is_file());
+        assert!(ours.join("icons/16/lock.png").is_file() && !ours.join("brand").exists());
         assert!(!ours.join("src").exists() && !ours.join("reference").exists() && !ours.join("style.txt").exists());
         assert!(!to.join("soft-be").exists(), "a theme that went stayed");
         assert_eq!(sync_themes(&build, &to).unwrap(), 0);
@@ -846,6 +856,11 @@ mod tests {
         assert!(to.join("4k/classic.png").is_file() && to.join("pack.txt").is_file() && !to.join("4k/bebox.png").exists());
         assert!(to.join("4k/blueberry-union.jpg").is_file() && to.join("tiles/weave.png").is_file());
         assert_eq!(sync_wallpapers(&build, &to).unwrap(), 0);
+        // Converted to WebP: the WebP comes, the JPEG goes.
+        std::fs::remove_file(pack.join("4k/blueberry-union.jpg")).unwrap();
+        std::fs::write(pack.join("4k/blueberry-union.webp"), "webp").unwrap();
+        assert_eq!(sync_wallpapers(&build, &to).unwrap(), 2);
+        assert!(to.join("4k/blueberry-union.webp").is_file() && !to.join("4k/blueberry-union.jpg").exists());
         let _ = std::fs::remove_dir_all(&base);
     }
 

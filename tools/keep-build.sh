@@ -100,7 +100,7 @@ cp -r --reflink=auto "$TREE/data/icons" "$TREE/data/brand" "$TREE/data/fonts" "$
 for theme in "$TREE"/data/themes/*/; do
     theme=${theme%/}
     mkdir -p "$P/share/olo/themes/${theme##*/}"
-    cp -r --reflink=auto "$theme/icons" "$theme/brand" "$P/share/olo/themes/${theme##*/}/"
+    cp -r --reflink=auto "$theme/icons" "$P/share/olo/themes/${theme##*/}/"
 done
 [ -d "$TREE/data/wallpapers" ] && cp -r --reflink=auto "$TREE/data/wallpapers" "$P/share/olo/"
 # (No build-dir: nothing for its session to watch, so it's never upgraded.)

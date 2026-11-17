@@ -1,8 +1,8 @@
-//! Themes: whole looks for Olo's icons and wordmark, chosen in
-//! Preferences ▸ Themes (`Appearance::icon_theme`). A theme lives in
-//! `<data>/themes/<id>/` (`icons/<px>/<name>.png` like `<data>/icons`,
-//! and `brand/olo-wordmark.png`) and overlays the classic set in
-//! `<data>/icons` and `<data>/brand`, which fills in anything it lacks.
+//! Themes: whole looks for Olo's icons, chosen in Preferences ▸ Themes
+//! (`Appearance::icon_theme`). A theme lives in `<data>/themes/<id>/`
+//! (`icons/<px>/<name>.png` like `<data>/icons`) and overlays the classic
+//! set in `<data>/icons`, which fills in anything it lacks. The wordmark
+//! is the brand's, the same in every theme ([`wordmark_file`]).
 //!
 //! Each process draws in one theme at a time, [`current`]: the kit and
 //! app_server [`set`] it from the settings and drop what they drew in the
@@ -71,14 +71,13 @@ pub(crate) fn icon_dirs(id: &str) -> impl Iterator<Item = PathBuf> {
     overlays(id).map(|d| d.join("icons")).chain(crate::data_dirs().iter().map(|d| d.join("icons")))
 }
 
-/// Theme `id`'s wordmark for a light or a `dark` background. A theme
-/// can have one file for both (`brand/olo-wordmark.png`) or a separate
-/// `olo-wordmark-on-dark.png`.
-pub fn wordmark_file(id: &str, dark: bool) -> Option<PathBuf> {
-    let (light, on_dark) = ("brand/olo-wordmark.png", "brand/olo-wordmark-on-dark.png");
-    let theirs = overlays(id).flat_map(|d| if dark { vec![d.join(on_dark), d.join(light)] } else { vec![d.join(light)] });
-    let base = crate::data_dirs().iter().map(|d| d.join(if dark { on_dark } else { light }));
-    theirs.chain(base).find(|p| p.is_file())
+/// Olo's wordmark for a light or a `dark` background
+/// (`brand/olo-wordmark.png`, `brand/olo-wordmark-on-dark.png`): the
+/// brand's lettering, the same in every theme. (Themes once had their
+/// own, in `themes/<id>/brand`; one left installed there is never read.)
+pub fn wordmark_file(dark: bool) -> Option<PathBuf> {
+    let name = if dark { "brand/olo-wordmark-on-dark.png" } else { "brand/olo-wordmark.png" };
+    crate::data_dirs().iter().map(|d| d.join(name)).find(|p| p.is_file())
 }
 
 #[cfg(test)]
@@ -96,8 +95,9 @@ mod tests {
 
     #[test]
     fn every_theme_is_complete() {
-        // Each theme draws every icon in the manifest at every size, and
-        // its own wordmark: none falls back to the classic set.
+        // Each theme draws every icon in the manifest at every size: none
+        // falls back to the classic set. (The wordmark is the brand's, the
+        // same in every theme: none has its own.)
         let data = repo_data();
         let names = manifest();
         for t in THEMES.iter().filter(|t| t.id != CLASSIC) {
@@ -105,8 +105,7 @@ mod tests {
             let missing: Vec<String> =
                 crate::OWN_SIZES.iter().flat_map(|px| names.iter().map(move |n| format!("{px}/{n}"))).filter(|p| !dir.join("icons").join(format!("{p}.png")).is_file()).collect();
             assert!(missing.is_empty(), "{} lacks {missing:?}", t.id);
-            let img = crate::decode_png(&dir.join("brand/olo-wordmark.png")).unwrap_or_else(|| panic!("{}'s wordmark", t.id));
-            assert!(img.width > img.height && img.height >= 128);
+            assert!(!dir.join("brand").exists(), "{} has a wordmark of its own", t.id);
         }
     }
 
@@ -131,11 +130,41 @@ mod tests {
         for t in THEMES {
             let w = pack.iter().find(|w| w.setting() == wallpaper(t.id)).unwrap_or_else(|| panic!("{} has no wallpaper", t.id));
             assert!(w.dark, "{} has no dark wallpaper", t.id);
-            for (shape, size) in [("4k", (3840, 2160)), ("ultrawide", (3840, 1648)), ("thumbs", (320, 180))] {
-                for name in [t.wallpaper.to_owned(), format!("{}-dark", t.wallpaper)] {
-                    let img = crate::decode_png(&dir.join(shape).join(format!("{name}.png"))).unwrap_or_else(|| panic!("{shape}/{name}"));
-                    assert_eq!((img.width, img.height), size, "{shape}/{name}");
+            for name in [t.wallpaper.to_owned(), format!("{}-dark", t.wallpaper)] {
+                // The pictures lossless WebP, their previews PNG.
+                for (shape, size) in [("4k", (3840, 2160)), ("ultrawide", (3840, 1648))] {
+                    assert_eq!(webp_size(&dir.join(shape).join(format!("{name}.webp"))), Some(size), "{shape}/{name}");
                 }
+                let img = crate::decode_png(&dir.join("thumbs").join(format!("{name}.png"))).unwrap_or_else(|| panic!("thumbs/{name}"));
+                assert_eq!((img.width, img.height), (320, 180), "thumbs/{name}");
+            }
+        }
+    }
+
+    /// A lossless WebP's size, from its header (`VP8L`: 14 bits each,
+    /// less one).
+    fn webp_size(p: &Path) -> Option<(u32, u32)> {
+        let b = std::fs::read(p).ok()?;
+        if b.len() < 25 || &b[..4] != b"RIFF" || &b[8..16] != b"WEBPVP8L" || b[20] != 0x2f {
+            return None;
+        }
+        let v = u32::from_le_bytes([b[21], b[22], b[23], b[24]]);
+        Some(((v & 0x3fff) + 1, ((v >> 14) & 0x3fff) + 1))
+    }
+
+    #[test]
+    fn the_pack_is_lossless_webp() {
+        // Every picture and tile the pack lists (restored, and kept
+        // without loss: tools/restorewallpaper.py), none left as the PNG
+        // or JPEG it was.
+        let dir = repo_data().join("wallpapers");
+        let pack = crate::wallpapers::parse(&std::fs::read_to_string(dir.join("pack.txt")).unwrap(), &dir);
+        assert!(pack.len() > 500);
+        for w in &pack {
+            let sub = if w.tile.is_some() { "tiles" } else { "4k" };
+            assert!(webp_size(&dir.join(sub).join(format!("{}.webp", w.name))).is_some(), "{sub}/{}", w.name);
+            for old in ["png", "jpg"] {
+                assert!(!dir.join(sub).join(format!("{}.{old}", w.name)).exists(), "{sub}/{}.{old} is still there", w.name);
             }
         }
     }

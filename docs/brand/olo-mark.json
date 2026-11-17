@@ -1,0 +1,20 @@
+{
+ "model": "gpt-image-2.6-sunburst",
+ "quality": "high",
+ "size": "1024x1024",
+ "theme": null,
+ "subject": "the Olo mark, exactly as in the first attached image (the brand sheet's), its shape and pose copied closely: one chunky glossy ring, a fat torus standing up and leaning back, its face turned toward the upper left so its outline is an ellipse running steeply from the lower left to the upper right at about forty-five degrees; its face a rich glossy Olo blue (#0D6EFD) with a soft highlight along its upper left, its thick side, showing as a deep golden crescent along the lower right, and the wall of its hole a warm Olo yellow (#FFC700), the hole an ellipse set up and to the left of centre, a crisp dark outline",
+ "prompt": "A desktop application icon in the classic BeOS style, refined for a modern high-resolution display. The object is drawn in a three-quarter isometric view from slightly above, as if sitting on a desk, with a crisp, confident dark outline around the silhouette, bold saturated colours, clean flat-shaded faces with a soft gradient on each face, a single light source from the top left, and a subtle soft contact shadow beneath it. Friendly, tactile, slightly chunky proportions; no text, no letters, no watermark. Centred with generous transparent padding, completely transparent background, nothing else in the frame. The attached images are reference icons from the same icon set. Match their style exactly: the same viewing angle, outline weight, shading, saturation, lighting direction, level of detail and padding. Do not copy their subjects or include them in the image; draw only the new subject. Subject: the Olo mark, exactly as in the first attached image (the brand sheet's), its shape and pose copied closely: one chunky glossy ring, a fat torus standing up and leaning back, its face turned toward the upper left so its outline is an ellipse running steeply from the lower left to the upper right at about forty-five degrees; its face a rich glossy Olo blue (#0D6EFD) with a soft highlight along its upper left, its thick side, showing as a deep golden crescent along the lower right, and the wall of its hole a warm Olo yellow (#FFC700), the hole an ellipse set up and to the left of centre, a crisp dark outline",
+ "references": [
+  "docs/brand/sheet-mark.png",
+  "application.png",
+  "archive.png",
+  "calculator.png",
+  "disk.png",
+  "folder.png",
+  "home.png",
+  "installer.png",
+  "terminal.png"
+ ],
+ "created": "2026-11-16T19:21:23"
+}

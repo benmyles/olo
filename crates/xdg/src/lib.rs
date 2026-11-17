@@ -41,9 +41,13 @@ pub fn data_dirs() -> &'static [PathBuf] {
         if let Some(d) = std::env::var_os("OLO_DATA") {
             v.push(PathBuf::from(d));
         }
-        // Development: target/<profile>/<bin> → <repo>/data.
+        // Development: target/<profile>/<bin> → <repo>/data; a test's
+        // binary can be deeper (target/debug/build/<crate>/<hash>/out/,
+        // as kache lays them out): looking only four up, tests read the
+        // installed data instead, stale or missing (the veil's tests
+        // passed on the old logo's installed files).
         if let Ok(exe) = std::env::current_exe() {
-            for up in exe.ancestors().skip(1).take(4) {
+            for up in exe.ancestors().skip(1).take(7) {
                 let d = up.join("data");
                 if d.join("icons").is_dir() {
                     v.push(d);

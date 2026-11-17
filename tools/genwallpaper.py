@@ -4,7 +4,8 @@
     genwallpaper.py THEME [--variants N]          draw candidates
     genwallpaper.py THEME --scene TEXT            try another scene (SCENES keeps the chosen one)
     genwallpaper.py THEME --dark-from SRC.png     the same picture for dark mode
-    genwallpaper.py THEME --promote SRC.png [--dark] [--crop-y PX]
+    genwallpaper.py THEME --promote SRC.png [--dark] [--crop-y PX] [--collection]
+    genwallpaper.py olo-orbit …                   Olo's own abstract pictures, likewise
 
 Each theme (Classic, and Platinum in data/themes) has a wallpaper of its own in the
 pack, named after it (see "Themes" in docs/ICONS.md). It is drawn by the
@@ -12,15 +13,18 @@ same model at quality "high" and full 4K (3840x2160): a quiet picture
 that's a nod to the system the theme is after (BeOS, Mac OS 9), never
 its logo or a word (Ben, 2026-11-14: "not too in your face, subtle beos
 (for classic) and macos9 (for platinum) throwbacks/nostalgia"). --refs
-attaches the theme's reference icons and wordmark as style references
+attaches the theme's reference icons and its Olo mark as style references
 (for a scene made of the theme's own objects; the quiet scenes are
 drawn from words alone). Candidates go to data/wallpapers/src/THEME-N.png,
 each with a .json sidecar; --dark-from redraws a chosen one for dark mode
 (THEME-dark-N.png).
 
---promote makes the pack's files from a chosen candidate: 4k/THEME.png,
-ultrawide/THEME.png (the 3840x1648 band, from --crop-y, default the
-middle) and thumbs/THEME.png (320x180); with --dark, THEME-dark.png.
+--promote makes the pack's files from a chosen candidate: 4k/THEME.webp,
+ultrawide/THEME.webp (the 3840x1648 band, from --crop-y, default the
+middle; none with --collection) and thumbs/THEME.png (320x180); with
+--dark, THEME-dark. The pictures are lossless WebP. Restore a model's
+picture first (`restorewallpaper.py restore`: its decoder's texture and
+8-bit bands out; docs/ICONS.md, "Restored, and lossless").
 
 Reads OPENAI_API_KEY from the environment or ~ben/.env. Never print it.
 """
@@ -49,6 +53,63 @@ COMMON = (
     "Light from the upper left. No text, no letters or letter-like shapes, no numbers, no logos, no "
     "watermark, no user interface, no people, no animals. "
 )
+
+# Olo's own abstract pictures (the "Olo" collection), plays on the brand's
+# colours and its ring (docs/BRAND.md): no words, no logo (Ben,
+# 2026-11-16: "new olo high-res 4k backgrounds that are abstract (no
+# words) with cool plays on the olo colors"). Named for the picture
+# (`genwallpaper.py olo-orbit`), promoted with --jpeg.
+BRAND = (
+    "The palette is Olo's: Olo blue (#0D6EFD), a clear, saturated azure; Olo yellow (#FFC700), a warm golden "
+    "yellow; Olo charcoal (#0B0D14), a blue-black; desktop grey (#6B7280); and soft cool whites (#F3F6FB). "
+    "Abstract: no recognisable objects, and nothing that reads as a logo, a letter or a word. "
+)
+OLO_SCENES = {
+    "olo-orbit": (
+        "Scene: a few large, smooth, glossy rings, each a fat torus with a rich blue top face and thick "
+        "golden-yellow sides, floating at different depths in a bright, airy pale blue-white space that "
+        "brightens toward the upper left. The nearest ring is very large and runs off the lower-left edge, "
+        "softly focused; two smaller rings float further back toward the upper middle, softer still, one "
+        "turned edge-on so only a blue and gold ellipse shows. Gentle, soft reflections and faint coloured "
+        "bounce light on the pale ground, very soft contact-free shadows. A premium, calm studio-render "
+        "finish with shallow depth of field; the right third open pale space."
+    ),
+    "olo-ribbons": (
+        "Scene: two broad, smooth, silky ribbons of colour flowing across a deep charcoal-navy ground "
+        "(#0B0D14 at the edges, a faint #14204A glow behind the middle) in long, slow curves, one a deep "
+        "luminous Olo blue, the other a warm golden yellow, rising from the lower left, twisting once softly "
+        "around each other and thinning out toward the upper right, their folds catching soft light from the "
+        "upper left. Smooth, satin sheen; no sparkles, no particles. Dark, rich and calm."
+    ),
+    "olo-halo": (
+        "Scene: one immense, soft ring of light seen at a slight angle, so large that only its sweeping "
+        "lower-left arc crosses the picture, from the bottom edge up through the left third and out of the "
+        "top edge. Its body glows a deep Olo blue and its inner rim burns a thin warm golden yellow, like the "
+        "edge of an eclipse, the light falling off gently into a smooth night-blue to charcoal ground. A "
+        "faint, wide atmospheric haze of blue around the arc; the rest of the frame calm, dark and empty."
+    ),
+    "olo-shapes": (
+        "Scene: a modern, flat, geometric composition, as if cut from fine matte paper: large overlapping "
+        "circles, rings, half circles and quarter arcs in Olo blue, Olo yellow, charcoal and desktop grey, "
+        "gathered toward the lower left and the bottom edge, some cropped by the frame, on an off-white "
+        "ground (#F3F6FB) with an extremely fine paper texture and soft, subtle shadows where the shapes "
+        "overlap. Balanced, playful and calm in the manner of a Bauhaus print; the upper right two thirds "
+        "mostly open off-white."
+    ),
+    "olo-glass": (
+        "Scene: thick, rounded rings and discs of frosted glass standing in soft light, their edges "
+        "refracting the colours behind them into smooth bands of Olo blue and golden yellow, on a pale "
+        "cool-grey to white ground. Blurred and dreamy, as if seen through a lens at very shallow depth of "
+        "field: soft caustics, glowing rims, no hard detail. The coloured light gathered on the left and "
+        "lower middle, fading into airy white toward the right."
+    ),
+    "olo-dunes": (
+        "Scene: smooth, rolling dunes of colour, a landscape of soft layered waves reduced to pure gradient "
+        "forms, the near waves a deep Olo blue, rising and lightening through brighter azure to a warm "
+        "golden-yellow glow along a low horizon about a third up, under a pale, clean blue-white sky. Soft "
+        "light from the upper left, gentle shading on every curve, no texture, no sun disc; serene and wide."
+    ),
+}
 
 # Each theme's scene: a quiet nod to the system it's after.
 SCENES = {
@@ -92,13 +153,21 @@ DARK_EXTRA = {
 }
 
 
+SCENES.update({name: BRAND + scene for name, scene in OLO_SCENES.items()})
+DARK_EXTRA.update({
+    "olo-orbit": "A deep navy-charcoal space; the rings' blue still rich and their gold softly lit, not glowing. ",
+    "olo-shapes": "A charcoal ground (#0B0D14 to #151A26); the shapes' blue and yellow deepened a little, the charcoal "
+    "shapes now a lifted slate grey so they still read, the paper texture kept. ",
+    "olo-glass": "Smoked glass on a deep charcoal-navy ground; the refracted blue and gold glowing softly. ",
+    "olo-dunes": "A night: the dunes deep navy to blue, the horizon's glow a low ember of gold under a dark blue sky. ",
+})
+
+
 def refs(theme):
-    """The theme's reference icons and its wordmark."""
-    if theme == "classic":
-        icons, brand = os.path.join(DATA, "icons", "reference"), os.path.join(DATA, "brand")
-    else:
-        icons, brand = os.path.join(DATA, "themes", theme, "reference"), os.path.join(DATA, "themes", theme, "brand")
-    return [os.path.join(icons, n + ".png") for n in SAMPLES] + [os.path.join(brand, "olo-wordmark.png")]
+    """The theme's reference icons and its Olo mark."""
+    icons = os.path.join(DATA, "icons") if theme == "classic" else os.path.join(DATA, "themes", theme)
+    mark = os.path.join(icons, "256", "olo.png") if theme == "classic" else os.path.join(icons, "icons", "256", "olo.png")
+    return [os.path.join(icons, "reference", n + ".png") for n in SAMPLES] + [mark]
 
 
 def generate(prompt, images, n):
@@ -143,7 +212,21 @@ def draw(theme, variants, dark_from, scene=None, with_refs=False):
         print(path)
 
 
-def promote(theme, src, dark, crop_y):
+def save_picture(img, shape, stem):
+    """`img` as the pack keeps a picture: lossless WebP (the pixels a PNG
+    would hold, a quarter smaller; Ben, 2026-11-16: "zero visual
+    artifacts"), `shape`/STEM.webp, any PNG or JPEG of it from before
+    taken away. Its path."""
+    path = os.path.join(WALLPAPERS, shape, stem + ".webp")
+    # (Method 4: the same size as the slowest setting, an eighth of the time.)
+    img.save(path, lossless=True, quality=75, method=4, exact=True)
+    for old in (".png", ".jpg"):
+        if os.path.exists(os.path.join(WALLPAPERS, shape, stem + old)):
+            os.remove(os.path.join(WALLPAPERS, shape, stem + old))
+    return path
+
+
+def promote(theme, src, dark, crop_y, collection=False):
     from PIL import Image
     img = Image.open(src).convert("RGB")
     if img.size != SIZE:
@@ -152,10 +235,16 @@ def promote(theme, src, dark, crop_y):
     y = (SIZE[1] - ULTRAWIDE_H) // 2 if crop_y is None else crop_y
     if not 0 <= y <= SIZE[1] - ULTRAWIDE_H:
         sys.exit(f"--crop-y runs off the picture (0 to {SIZE[1] - ULTRAWIDE_H})")
-    for shape, im in [("4k", img), ("ultrawide", img.crop((0, y, SIZE[0], y + ULTRAWIDE_H))),
-                      ("thumbs", img.resize(THUMB, Image.LANCZOS))]:
-        path = os.path.join(WALLPAPERS, shape, name + ".png")
-        im.save(path, optimize=True)
+    shapes = [("4k", img), ("thumbs", img.resize(THUMB, Image.LANCZOS))]
+    if not collection:
+        # (A collection's picture has none: its 4K one is cropped to the screen.)
+        shapes.append(("ultrawide", img.crop((0, y, SIZE[0], y + ULTRAWIDE_H))))
+    for shape, im in shapes:
+        if shape == "thumbs":
+            path = os.path.join(WALLPAPERS, shape, name + ".png")
+            im.save(path, optimize=True)
+        else:
+            path = save_picture(im, shape, name)
         print(path)
 
 
@@ -167,13 +256,14 @@ def main():
     ap.add_argument("--variants", type=int, default=1)
     ap.add_argument("--dark-from", help="redraw this candidate for dark mode")
     ap.add_argument("--scene", help="draw this scene instead of the theme's")
-    ap.add_argument("--refs", action="store_true", help="attach the theme's reference icons and wordmark")
+    ap.add_argument("--refs", action="store_true", help="attach the theme's reference icons and its Olo mark")
     ap.add_argument("--promote", metavar="SRC", help="make the pack's files from this candidate")
     ap.add_argument("--dark", action="store_true", help="with --promote: it is the dark-mode version")
     ap.add_argument("--crop-y", type=int, help="with --promote: the ultrawide band's top")
+    ap.add_argument("--collection", "--jpeg", action="store_true", help="with --promote: a collection's picture (4K only, no ultrawide version)")
     a = ap.parse_args()
     if a.promote:
-        promote(a.theme, a.promote, a.dark, a.crop_y)
+        promote(a.theme, a.promote, a.dark, a.crop_y, a.collection)
     else:
         draw(a.theme, a.variants, a.dark_from, a.scene, a.refs)
 

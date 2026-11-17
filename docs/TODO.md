@@ -126,6 +126,48 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Done, waiting for Ben to try or confirm
 
+- **The new brand, olo-desktop.com, Olo's own wallpapers, every
+  wallpaper restored and lossless, and the README again** (Ben,
+  2026-11-16: "update olo to follow the new branding in this image. use
+  sunburst 2.6 to generate whatever assets you need … then, also add a
+  top-level website dir and create a beautiful website for olo that
+  will be at olo-desktop.com … compile to a static site"; "also generate
+  some new olo high-res 4k backgrounds that are abstract (no words)";
+  "make sure the sora typeface is bundled with olo too"; "a full rewrite
+  of the repo README.md … new screenshots via olo agent screens (use a
+  high res screen to get 4k screenshots)"; "i can still see like color
+  banding … fix and restore any visual issues you find in all of the
+  wallpapers with whatever approaches work best"; "make them all webp";
+  "in the deskbar let's just have the O logo"). *Done 2026-11-16.*
+  **The brand** (docs/BRAND.md, the sheet in docs/brand): the mark
+  drawn again by gpt-image-2.6-sunburst against the sheet's (the `olo`
+  icon at every size, the Installer's, About's); the wordmark set from
+  Sora by `tools/mkbrand.py`, never drawn ("Olo" ExtraBold with its l a
+  plain bar, "DESKTOP" SemiBold tracked 320), the same in every theme
+  (the themes' own lettering and `genwordmark.py` went); the horizontal
+  logo on the upgrade's veil, the start-up screen and the boot splash;
+  Deskbar's tile the mark alone; Sora shipped in data/fonts
+  (`style::brand_font`). **The website** (`website/`): a static site
+  built by its own small Rust program in 2.6 s (`cargo run --release`
+  there → `website/dist`: home, install, brand, 404; a sitemap, a CNAME),
+  its pictures the repository's own (docs/img, data/icons,
+  data/wallpapers) as lossless WebP at each width, light and dark by the
+  system, no framework or tracker. **Wallpapers**: six abstract ones
+  in Olo's colours (Orbit, Halo, Ribbons, Shapes, Glass, Dunes; four
+  with dark versions), and every picture and tile of the pack restored
+  (`tools/restorewallpaper.py`: the image model's bands and cross-hatch,
+  JPEG's blocks and ringing, only where a picture is smooth) and kept
+  as lossless WebP, which Olo now reads (`wallpapers::FORMATS`; an
+  upgrade takes the old PNGs and JPEGs away). **The README**, rewritten,
+  its pictures taken again in 4K on an Agent Screen
+  (`tools/dev/readme-shots`). **For Ben**: look at the site
+  (`cd website && cargo run --release -- serve`, then
+  http://localhost:8000) and host `website/dist` at olo-desktop.com;
+  after the upgrade, look at Deskbar's tile, About, the upgrade's veil
+  and Backgrounds ▸ Olo. Where Olo's boot splash is installed, Olo
+  Doctor says it was drawn by an older version and offers Update It
+  (`splash::FORMAT` went to 2): that draws it with the logo.
+
 - **Kernel settings that are a win for a desktop, a Kernel tab, and all
   of it kept across kernel updates** (Ben, 2026-11-16: "research what
   other linux kernel patches are recommended for high performance,
@@ -3604,9 +3646,7 @@ need Ben".)
   (i just made the olo repo public!) and run it and they get a full
   screen gui app that \"olo-fies\" their fedora. the installer should
   have windows 95 setup.exe vibes but windows 95 crossed with beos,
-  because... well olo is a beos successor in spirit. also the installer
-  should have a note somewhere that it is a work of love dedicated to the
-  late english lab samwise. do a thorough test of the installer and the
+  because... well olo is a beos successor in spirit. … do a thorough test of the installer and the
   whole download-install-use process in a vm/qemu or somerhing"). One
   program downloaded from the public repository's releases, run on a
   stock Fedora 45 Workstation (GNOME, as it comes), full screen: a Setup
@@ -3619,20 +3659,14 @@ need Ben".)
   the repository with its progress shown), the session at the login
   screen, and offers Olo's own login screen and boot splash; it can be
   stopped and run again (each step checks what's done), and says what to
-  do when something fails. Its About (and a line on its last page):
-  that Olo is a work of love, dedicated to the late Samwise, an English
-  Labrador (Ben, 2026-11-07: "it should say dedicated to sir samwise, the
-  bestest english labrador that ever walked the earth or something nice
-  like that": it says "Olo is a work of love, dedicated to Sir Samwise,
-  the bestest English Labrador that ever walked the earth."). Tested whole in a VM (QEMU with KVM: a fresh Fedora 45
+  do when something fails. Its About says what Olo is. Tested whole in a VM (QEMU with KVM: a fresh Fedora 45
   Workstation install, the installer downloaded and run, a reboot into
   Olo, Olo used: its apps opened, a file opened, Preferences changed),
   screenshots of every step kept, at the VM's screen's scale and 2×.
   Done (HACKING, "Olo Setup"; 73c3343c, 7dca7303): `olo-installer`,
   full screen, Windows 95's Setup in BeOS's look (the blue backdrop and
   big serif title; each page a BeOS window: Welcome, Licence Agreement,
-  Choose What to Install, Installing, Olo Is Installed; About), and the
-  dedication on the last page and in About. It installs what Olo needs
+  Choose What to Install, Installing, Olo Is Installed; About). It installs what Olo needs
   through PackageKit, Olo's release (downloaded, its SHA-256 checked,
   unpacked into the home folder), Olo on the login screen's menu, and if
   chosen Olo's login screen, boot splash and RPM Fusion; it asks for the

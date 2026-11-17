@@ -4,7 +4,7 @@
 //!   wallpaper-hdr [DIR] [--preview OUT]
 //!
 //! DIR is the pack (`data/wallpapers` unless given): every picture in its
-//! `4k/` and `ultrawide/` (PNG or JPEG; not the tiles) gets
+//! `4k/` and `ultrawide/` (WebP, PNG or JPEG; not the tiles) gets
 //! `NAME.gain.png` beside it, made again only
 //! where the picture is newer. `--preview OUT` also writes, for each, the
 //! picture with what shines tinted (red at the most), to look at.
@@ -19,7 +19,7 @@ fn pictures(dir: &Path) -> Vec<PathBuf> {
         for e in entries.flatten() {
             let p = e.path();
             let name = p.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-            if (name.ends_with(".png") || name.ends_with(".jpg")) && !name.ends_with(".gain.png") {
+            if [".webp", ".png", ".jpg"].iter().any(|x| name.ends_with(x)) && !name.ends_with(".gain.png") {
                 out.push(p);
             }
         }

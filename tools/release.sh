@@ -46,7 +46,7 @@ cp -r data/icons data/brand data/fonts data/wallpapers "$STAGE/olo/share/olo/"
 for theme in data/themes/*/; do
     theme=${theme%/}
     mkdir -p "$STAGE/olo/share/olo/themes/${theme##*/}"
-    cp -r "$theme/icons" "$theme/brand" "$STAGE/olo/share/olo/themes/${theme##*/}/"
+    cp -r "$theme/icons" "$STAGE/olo/share/olo/themes/${theme##*/}/"
 done
 for d in session udev pam systemd sysusers tmpfiles; do
     cp -r "data/$d" "$STAGE/olo/system/"

@@ -1,13 +1,30 @@
 //! The wallpaper pack (data/wallpapers): pictures in a 16:9 (4K) and a
 //! 21:9 (ultrawide) version, some with a dark-mode version, and tiles
-//! (`tiles/NAME.png`: a desktop pattern, repeated across the screen at
+//! (`tiles/NAME.webp`: a desktop pattern, repeated across the screen at
 //! its size in points, `Wallpaper::tile`). The setting names one as
 //! `pack:NAME`; anything else is a file of the person's own.
+//!
+//! The pack's pictures are lossless WebP (the pixels as a PNG would have
+//! them, a quarter smaller); PNG and JPEG are read too (an install from
+//! before November 2026, and a pack picture yet to be converted).
 
 use std::path::{Path, PathBuf};
 
 /// The setting's prefix for a picture from the pack.
 pub const PACK: &str = "pack:";
+
+/// The formats a pack picture can be in, the one looked for first first.
+pub const FORMATS: [&str; 3] = ["webp", "png", "jpg"];
+
+/// Whether a file's name is one of the pack's pictures (not a gain map).
+pub fn is_picture(name: &str) -> bool {
+    !name.ends_with(".gain.png") && FORMATS.iter().any(|x| name.strip_suffix(x).is_some_and(|n| n.ends_with('.')))
+}
+
+/// `dir/NAME` in the first of the pack's formats that's there.
+fn find(dir: &Path, name: &str) -> Option<PathBuf> {
+    FORMATS.iter().map(|x| dir.join(format!("{name}.{x}"))).find(|p| p.is_file())
+}
 
 /// One of the pack's pictures.
 #[derive(Debug, Clone, PartialEq)]
@@ -21,7 +38,7 @@ pub struct Wallpaper {
     pub dark: bool,
     /// A tile (a desktop pattern): repeated across the screen, this many
     /// points on a side (as it was on its system's screen); its file is
-    /// `tiles/NAME.png`, drawn larger than that so it's sharp at any scale.
+    /// `tiles/NAME.webp`, drawn larger than that so it's sharp at any scale.
     pub tile: Option<f32>,
 }
 
@@ -52,7 +69,7 @@ pub(crate) fn parse(text: &str, dir: &Path) -> Vec<Wallpaper> {
             let (name, label) = (parts.next()?, parts.next()?);
             let collection = parts.next().filter(|c| !c.is_empty()).unwrap_or("Olo");
             let tile = parts.find_map(|p| p.strip_prefix("tile:")).and_then(|n| n.parse::<f32>().ok()).filter(|n| *n > 0.0);
-            let dark = ["png", "jpg"].iter().any(|x| dir.join("4k").join(format!("{name}-dark.{x}")).is_file());
+            let dark = find(&dir.join("4k"), &format!("{name}-dark")).is_some();
             Some(Wallpaper { name: name.to_owned(), label: label.to_owned(), collection: collection.to_owned(), dark, tile })
         })
         .collect()
@@ -95,7 +112,7 @@ pub fn moved(setting: &str) -> Option<String> {
 
 fn moved_in(dir: &Path, setting: &str) -> Option<String> {
     let name = setting.trim().strip_prefix(PACK)?;
-    let here = |n: &str| ["4k/{n}.png", "4k/{n}.jpg", "tiles/{n}.png"].iter().any(|f| dir.join(f.replace("{n}", n)).is_file());
+    let here = |n: &str| find(&dir.join("4k"), n).or_else(|| find(&dir.join("tiles"), n)).is_some();
     if here(name) {
         return None;
     }
@@ -111,14 +128,13 @@ fn moved_in(dir: &Path, setting: &str) -> Option<String> {
 /// [`resolve`] for a pack setting, the pack in `dir`.
 fn resolve_in(dir: &Path, setting: &str, size: (u32, u32), dark: bool) -> Option<PathBuf> {
     let name = setting.strip_prefix(PACK)?;
-    let tile = dir.join("tiles").join(format!("{name}.png"));
-    if tile.is_file() {
+    if let Some(tile) = find(&dir.join("tiles"), name) {
         return Some(tile);
     }
     let shape = if size.0 as f64 >= size.1.max(1) as f64 * ULTRAWIDE { "ultrawide" } else { "4k" };
-    // (A PNG or, for the retro collections, a JPEG; one with no ultrawide
-    // version is its 4K one, cropped to the screen as it's shown.)
-    let in_dir = |sub: &str, n: &str| ["png", "jpg"].into_iter().map(|x| dir.join(sub).join(format!("{n}.{x}"))).find(|p| p.is_file());
+    // (In any of the pack's formats; one with no ultrawide version is its
+    // 4K one, cropped to the screen as it's shown.)
+    let in_dir = |sub: &str, n: &str| find(&dir.join(sub), n);
     let file = |n: &str| in_dir(shape, n).or_else(|| in_dir("4k", n));
     let pick = |name: &str| dark.then(|| file(&format!("{name}-dark"))).flatten().or_else(|| file(name));
     pick(name).or_else(|| pick(crate::themes::resolve(name).wallpaper))
@@ -172,6 +188,19 @@ mod tests {
         std::fs::write(dir.join("4k/boing.jpg"), "jpg").unwrap();
         assert_eq!(resolve_in(&dir, "pack:boing", (300, 100), false), Some(dir.join("4k/boing.jpg")));
         assert_eq!(moved_in(&dir, "pack:boing"), None);
+        // WebP (the pack's own now), before a PNG or JPEG of the same
+        // name; a WebP tile and dark version too.
+        std::fs::write(dir.join("4k/boing.webp"), "webp").unwrap();
+        assert_eq!(resolve_in(&dir, "pack:boing", (300, 100), false), Some(dir.join("4k/boing.webp")));
+        std::fs::write(dir.join("tiles/knit.webp"), "webp").unwrap();
+        assert_eq!(resolve_in(&dir, "pack:knit", (300, 100), false), Some(dir.join("tiles/knit.webp")));
+        assert_eq!(moved_in(&dir, "pack:knit"), None);
+        std::fs::write(dir.join("4k/glass.webp"), "webp").unwrap();
+        std::fs::write(dir.join("4k/glass-dark.webp"), "webp").unwrap();
+        assert!(parse("glass|Glass\n", &dir)[0].dark);
+        assert_eq!(resolve_in(&dir, "pack:glass", (100, 100), true), Some(dir.join("4k/glass-dark.webp")));
+        assert!(is_picture("glass.webp") && is_picture("glass.png") && is_picture("boing.jpg"));
+        assert!(!is_picture("glass.gain.png") && !is_picture("pack.txt") && !is_picture("xwebp"));
         assert_eq!(pack[0].setting(), "pack:dusk");
         assert_eq!(resolve("/x/mine.jpg", (100, 100), true), Some(PathBuf::from("/x/mine.jpg")));
         assert_eq!(resolve("  ", (100, 100), true), None);

@@ -5,13 +5,14 @@
 //! Deskbar show: `Why::Starting`, the session telling its first
 //! app_server, `OLO_STARTING`). Displays modeset and windows return
 //! one by one as their programs reconnect; the veil shows that as an
-//! homage to BeOS's boot screen: Olo's wordmark on dark, and under it a
-//! row of icons, dim until their part is done, lit one by one (the
-//! upgrade; the displays; windows coming back; all of them), with a line
-//! saying what's going on. Drawn with Olo's sunburst-made art: the
-//! wordmark pre-scaled to each scale's width (`data/brand/sizes`) and the
-//! icon set's sizes, each pixel for pixel (one texture pixel to a device
-//! pixel), so it's sharp at every scale.
+//! homage to BeOS's boot screen: Olo's logo on dark (the mark, a rule and
+//! the wordmark, docs/BRAND.md), and under it a row of icons, dim until
+//! their part is done, lit one by one (the upgrade; the displays; windows
+//! coming back; all of them), with a line saying what's going on. Drawn
+//! from pictures made offline: the logo pre-scaled to each scale's width
+//! (`data/brand/sizes`, tools/mkbrand.py) and the icon set's sizes, each
+//! pixel for pixel (one texture pixel to a device pixel), so it's sharp at
+//! every scale.
 //!
 //! It starts only after a restart with windows to bring back
 //! (`layout::load` found places saved moments ago), and ends when as many
@@ -49,7 +50,7 @@ const FADE: Duration = Duration::from_millis(400);
 /// It shows at least this long before it fades, so it's seen rather
 /// than flashed (windows can be back in a third of a second).
 const LEAST: Duration = Duration::from_millis(900);
-/// The background: Olo's dark, as the wordmark-on-dark is made for.
+/// The background: Olo's dark, as the logo-on-dark is made for.
 pub(crate) const BACKGROUND: [f32; 4] = [0.118, 0.118, 0.133, 1.0];
 /// The line's colour.
 const LINE: [u8; 4] = [0xd8, 0xd8, 0xdc, 0xff];
@@ -68,9 +69,9 @@ fn stages(why: Why) -> ([&'static str; 4], [&'static str; 4]) {
         Why::Starting => (["system", "display", "desktop", "application"], ["Starting Olo", "Setting up the displays", "Opening the desktop", "Welcome"]),
     }
 }
-/// The picture's parts, in points: the wordmark's width, an icon's side
+/// The picture's parts, in points: the logo's width, an icon's side
 /// and the gap between icons, the line's size.
-const WORDMARK: u32 = 256;
+const LOGO: u32 = 256;
 const ICON: u32 = 64;
 const GAP: u32 = 24;
 const TEXT: f32 = 15.0;
@@ -257,23 +258,23 @@ fn picture(why: Why, scale: f64, stage: usize) -> Option<(MemoryRenderBuffer, (i
     let pm = drawn(why, scale, stage)?;
     let (width, height) = (pm.width() as i32, pm.height() as i32);
     let size: Size<i32, Buffer> = (width, height).into();
-    // (Not opaque: the background shows round the wordmark and icons.)
+    // (Not opaque: the background shows round the logo and icons.)
     let buffer = MemoryRenderBuffer::from_slice(pm.data(), Fourcc::Abgr8888, size, 1, Transform::Normal, None);
     Some((buffer, (width, height)))
 }
 
-/// The picture at `scale` with `stage` stages done: the wordmark, the
+/// The picture at `scale` with `stage` stages done: the logo, the
 /// icons (dim till lit), the line under them; whole device pixels.
 fn drawn(why: Why, scale: f64, stage: usize) -> Option<Pixmap> {
     drawn_as(why, scale, stage, None, Parts::All).map(|d| d.pixmap)
 }
 
 /// What of the picture is drawn: all of it, or (the boot splash's, shown
-/// on its own as the computer shuts down, `plymouth.rs`) the wordmark.
+/// on its own as the computer shuts down, `plymouth.rs`) the logo.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Parts {
     All,
-    Wordmark,
+    Logo,
 }
 
 /// The picture drawn, and where its row of icons is in it (device
@@ -289,8 +290,8 @@ pub(crate) struct Drawn {
 pub(crate) fn drawn_as(why: Why, scale: f64, stage: usize, line: Option<&str>, parts: Parts) -> Option<Drawn> {
     let (icon_names, says) = stages(why);
     let px = |pt: u32| (pt as f64 * scale).round() as u32;
-    let wordmark_w = fitting(&[256, 320, 384, 448, 512], px(WORDMARK));
-    let wordmark = load(data(&format!("brand/sizes/olo-wordmark-on-dark-{wordmark_w}.png"))?)?;
+    let logo_w = fitting(&[256, 320, 384, 448, 512], px(LOGO));
+    let logo = load(data(&format!("brand/sizes/olo-logo-on-dark-{logo_w}.png"))?)?;
     let icon_slot = px(ICON);
     let icon_px = fitting(&[16, 24, 32, 48, 64, 96, 128, 256], icon_slot);
     let icons: Vec<Pixmap> = icon_names.iter().filter_map(|n| load(data(&format!("icons/{icon_px}/{n}.png"))?)).collect();
@@ -298,16 +299,16 @@ pub(crate) fn drawn_as(why: Why, scale: f64, stage: usize, line: Option<&str>, p
     let row_w = icon_slot * icon_names.len() as u32 + gap * (icon_names.len() as u32 - 1);
     let text_size = (TEXT as f64 * scale) as f32;
     let line_h = (text_size * 1.6).ceil() as u32;
-    let width = row_w.max(wordmark.width()).max(px(360));
-    let height = wordmark.height() + px(28) + icon_slot + px(20) + line_h;
+    let width = row_w.max(logo.width()).max(px(360));
+    let height = logo.height() + px(28) + icon_slot + px(20) + line_h;
     let mut pm = Pixmap::new(width, height)?;
     let paint = |opacity: f32| PixmapPaint { opacity, quality: tiny_skia::FilterQuality::Nearest, ..Default::default() };
     // (Integer places: drawn pixel for pixel.)
-    let x = ((width - wordmark.width()) / 2) as i32;
-    pm.draw_pixmap(x, 0, wordmark.as_ref(), &paint(1.0), tiny_skia::Transform::identity(), None);
-    let top = wordmark.height() + px(28);
+    let x = ((width - logo.width()) / 2) as i32;
+    pm.draw_pixmap(x, 0, logo.as_ref(), &paint(1.0), tiny_skia::Transform::identity(), None);
+    let top = logo.height() + px(28);
     let drawn = |pixmap| Some(Drawn { pixmap, row_top: top, icon_slot });
-    if parts == Parts::Wordmark {
+    if parts == Parts::Logo {
         return drawn(pm);
     }
     let left = (width - row_w) / 2;

@@ -834,9 +834,11 @@ long after a way out comes back.
 | `apps/<name>` | One crate per application, binary named `olo-<name>`. Picked up by the workspace glob. |
 | `vendor/` | Patched copies of dependencies (`[patch.crates-io]`), libraries owned outright (Blade, codecs' and drivers' bindings), each explained in `vendor/README.md`. |
 | `data/icons` | Icon set, pre-scaled to device sizes (`data/icons/<px>/<name>.png`). |
-| `data/themes` | The other looks of the icons and wordmark (`data/themes/<id>/icons/<px>/<name>.png`, `brand/`), chosen in Preferences ▸ Themes; see "Themes" in [ICONS.md](ICONS.md). |
+| `data/themes` | The other looks of the icons (`data/themes/<id>/icons/<px>/<name>.png`), chosen in Preferences ▸ Themes; see "Themes" in [ICONS.md](ICONS.md). |
+| `data/brand` | Olo's wordmark ("Olo" in Sora, light and on dark) and, in `sizes/`, the horizontal logo pre-scaled for the veil and boot splash; made by `tools/mkbrand.py` from the mark (`docs/brand/olo-mark.png`) and the font. See [BRAND.md](BRAND.md). |
+| `website/` | olo-desktop.com, a static site: its own small Rust builder (`cargo run --release` there; not in the workspace) puts `pages/` in `templates/layout.html` and writes `website/dist`, its pictures taken from `docs/img`, `data/icons` and `data/wallpapers`. See `website/README.md`. |
 | `data/session` | `olo.desktop` for the login screen (installed by `tools/install-session.sh`). |
-| `tools/` | `install-session.sh` (release build → `~/.local`, session entry → `/usr/share/wayland-sessions`, an atomic system's `/usr/local/share/wayland-sessions`), `dev/tsession` (headless UI testing), `genicon.py`/`genicons.sh`/`mkicons.py`/`iconsheet.py` (icons, see [ICONS.md](ICONS.md)). |
+| `tools/` | `install-session.sh` (release build → `~/.local`, session entry → `/usr/share/wayland-sessions`, an atomic system's `/usr/local/share/wayland-sessions`), `dev/tsession` (headless UI testing), `genicon.py`/`genicons.sh`/`mkicons.py`/`iconsheet.py` (icons, see [ICONS.md](ICONS.md)), `mkbrand.py` (the brand's pictures, see [BRAND.md](BRAND.md)), `dev/readme-shots` (the README's and website's 4K screenshots, on an Agent Screen). |
 
 Build: `cargo build -p olo-<app>` (plus `cargo build --bin olo-app-server` once, for headless testing; as root set `CARGO_HOME=/home/ben/.cargo` to share the registry) (repo is owned by `ben`; when running as
 root use `sudo -u ben bash -lc 'cd … && cargo build …'` in the main checkout).
@@ -2225,7 +2227,10 @@ a quotation or a bulleted, numbered or task list, by their marks.
    app_server (`text.rs`) both use them ahead of the system's, so Olo
    looks the same on any system. `olo_theme::fonts` lists the faces in
    the order they are tried (`UI`, `MONO`, `SYMBOLS`; the system's DejaVu
-   Sans, CJK and emoji after). `style::CAP_HEIGHT` is Noto Sans's;
+   Sans, CJK and emoji after). Sora is shipped there too, the brand's
+   face (`olo_theme::fonts::BRAND`, `style::brand_font(weight)`): for
+   Olo's name where it stands as the brand, never for UI text
+   ([BRAND.md](BRAND.md)). `style::CAP_HEIGHT` is Noto Sans's;
    app_server centres its own text (tab titles, Twitcher, hint badges)
    with `text::top_for_centre`, from the face's own metrics. Keys as on a
    Mac menu ("⇧⌘←"): `style::key_combo(g, right_center, keys,
@@ -2294,13 +2299,14 @@ a quotation or a bulleted, numbered or task list, by their marks.
    128 (About boxes). An icon is drawn at its texture's own size, a
    texture pixel to a device pixel, centred in the rect; a size Olo has no
    bitmap for (20 at 1.25×) is averaged down from the next one up when it
-   loads. Icons and the wordmark are drawn in the theme chosen in
+   loads. Icons are drawn in the theme chosen in
    Preferences ▸ Themes, and redrawn when it changes; never keep an
    icon's texture yourself. Olo's wordmark is
-   `brand::wordmark_centred(window, bounds, dark)` (from `data/brand` or
-   the theme's `brand/`, shrunk crisply to the height asked for);
-   Deskbar's tile shows it alone, centred (beside the `olo` mark it read
-   as "o olo"). Picture files' thumbnails: `pictures::thumbnail(cx, path,
+   `brand::wordmark_centred(window, bounds, dark)` ("Olo" in Sora, from
+   `data/brand`, the same in every theme, shrunk crisply to the height
+   asked for; `wordmark_left` puts it at the rect's left); Deskbar's
+   tile shows the `olo` mark alone, centred (beside the wordmark it read
+   as "O Olo", two Os; [BRAND.md](BRAND.md)). Picture files' thumbnails: `pictures::thumbnail(cx, path,
    px)` decodes off-thread and returns `None` until ready (every window
    draws again when it is), never upscaled or blurred. Need a new icon?
    Follow **[ICONS.md](ICONS.md)**: the style guide, subject template and
@@ -3246,7 +3252,7 @@ it.
   `.absolute().inset_0()`: an absolute element without insets sits
   where the flow would put it, after what it was meant to cover.
 - `brand::wordmark_centred(g, bounds, dark)`: the wordmark (the
-  theme's, light or dark), decoded and trimmed once on a thread,
+  brand's, light or dark; the same in every theme), decoded and trimmed once on a thread,
   averaged down to each height once, a texel to a device pixel;
   `Drawn::Loading` keeps its place, `Missing` asks for the name instead.
 - `style::lit_ground`/`lit_edges`: a group current as a whole
@@ -3353,9 +3359,8 @@ it.
   `pictures::thumbnail(cx, path, px)`: a picture file no bigger than `px`
   device pixels, decoded on a thread of its own and kept by path, mtime
   and size; None until it's ready, then every window is drawn again (so
-  a view just asks again). `icons::paint_in(window, b, theme, name)` and
-  `brand::wordmark_centred_in(window, b, dark, theme)` draw in a theme
-  other than the current one (Preferences ▸ Themes). `StringView::small`
+  a view just asks again). `icons::paint_in(window, b, theme, name)` draws
+  in a theme other than the current one (Preferences ▸ Themes). `StringView::small`
   sets it in the small size.
 - `widgets::ThumbnailPicker::new(id, thumbnails, selected)` (pictures
   to pick one from, wrapping in `width`, labelled under each, the chosen
@@ -3580,7 +3585,7 @@ as they are for the next. Rescue modesets as ever.
 
 While a restarted app_server brings the windows back, every display shows
 the **upgrade's veil** (app_server's `veil.rs`), an homage to BeOS's boot
-screen: Olo's wordmark on dark and a row of icons from the set, dim until
+screen: Olo's logo on dark (the mark and the wordmark, [BRAND.md](BRAND.md)) and a row of icons from the set, dim until
 their part is done and lit in turn (the upgrade, the displays, windows
 coming back, all of them), with a line saying which. It starts only
 after a restart with windows to bring back (`layout::load` found places
@@ -3589,8 +3594,9 @@ skip it), shows at least 0.9 s (so it's seen, not flashed: windows can be
 back in a third of a second), lifts once as many windows are back as
 were saved (or after 6 s) and fades over 0.4 s. A solid background and,
 centred, a picture drawn once per display, scale and stage with
-tiny-skia: the wordmark pre-scaled offline to each scale's width
-(`data/brand/sizes`, 256 points: 256 to 512 pixels) and the icons at 64
+tiny-skia: the logo pre-scaled offline to each scale's width
+(`data/brand/sizes/olo-logo-on-dark-W.png`, `tools/mkbrand.py`, 256
+points: 256 to 512 pixels) and the icons at 64
 points from the set's sizes, both pixel for pixel (between-scales take
 the next size down, centred: never resampled); a frame only as a stage
 is reached and through the fade. `OLO_VEIL_SHEET=/var/tmp/veil.png cargo
@@ -4385,9 +4391,9 @@ from logging in):
 
 **The boot splash** (app_server `plymouth.rs`): `olo-app-server
 --plymouth-theme DIR [--scale S]` makes a theme for Plymouth's two-step
-plugin from the start-up screen's own drawing (`veil.rs`): the wordmark
+plugin from the start-up screen's own drawing (`veil.rs`): the logo
 on Olo's dark, its four icons lit one by one as the boot goes, "Starting
-Olo…" under them; the wordmark alone as the computer shuts down; a
+Olo…" under them; the logo alone as the computer shuts down; a
 disk's passphrase asked in the kit's focused text well (the login
 screen's field) in the icon row's place, the kit's bullets in it. Two-step
 stretches its pictures for device scale 2, so the theme is made at the
@@ -5913,7 +5919,10 @@ lint at a time).
   Git LFS; `olo_xdg::wallpapers`) lists its pictures in `pack.txt`
   (`name|label|collection`; the first is a new install's default), each
   in `4k/` (16:9) and `ultrawide/` (21:9), some with a `-dark` version,
-  and previews in `thumbs/`. Its collections (Mac OS 9, then the other
+  and previews in `thumbs/`; every picture and tile lossless WebP,
+  restored (`tools/restorewallpaper.py`; "Restored, and lossless" in
+  [ICONS.md](ICONS.md)), PNG and JPEG read too (`wallpapers::FORMATS`:
+  an install from before, whose old files an upgrade takes away). Its collections (Mac OS 9, then the other
   retro systems' and Olo's) are many, so one shows at a time, picked in
   Collection: (the current wallpaper's to begin with), its pictures in a
   scroll view in a growing box (`BBox::grow`), the window 760 × 720 as
@@ -5922,14 +5931,14 @@ lint at a time).
   [ICONS.md](ICONS.md)); choosing a theme in Themes sets `wallpaper` to it
   too, so an agent switching looks over IPC sets both
   `appearance.icon_theme` and `wallpaper` (`themes::wallpaper(id)`).
-  A pack entry can be a tile (`|tile:N`: a desktop pattern, `tiles/NAME.png`,
+  A pack entry can be a tile (`|tile:N`: a desktop pattern, `tiles/NAME.webp`,
   `Wallpaper::tile`): app_server makes it N points wide at the
   display's scale and as tall as its picture says (a tile needn't be
   square: Windows 3.1's Honey is 28 × 46, CDE's skies 8 × 1024; made
   square, `load`'s cover-crop kept only a strip's middle), once, and
   repeats it across the display from its top left into the one picture
   it shows (`load_tile`), so the scale
-  changing redraws it (`Asked::scale`). A picture may be a JPEG and have
+  changing redraws it (`Asked::scale`). A collection's picture has
   no ultrawide version (`resolve` takes the 4K one, cropped).
   app_server keeps settings naming what's gone current as it loads them
   and as they're set (`keep_looks_current`: a theme there was once is
@@ -6086,11 +6095,12 @@ lint at a time).
   drawn at twice its size on a 2× screen.
 * Themes (`themes.rs`): the two themes of `olo_xdg::themes::THEMES`,
   Classic and Platinum, as two cards side by side, each drawn in its
-  theme (`icons::paint_in`, `brand::wordmark_centred_in`): a preview
+  theme (`icons::paint_in`): a preview
   (its wallpaper as the mode is now, made at the preview's device width
   on a worker, `pictures::thumbnail_soon`; a small window in its own
   colours with a few of its icons; three of its icons on the desk), a
-  radio button with its name and its wordmark, a line about it, and a
+  radio button with its name and the `olo` mark as it draws it (the
+  wordmark is the brand's, the same in both), a line about it, and a
   row of seven of its icons. Anywhere on a card chooses it, and its
   wallpaper (`choose`). Under them, the chosen theme's colour sets side
   by side (its own and BeOS's: a preview of each in light and dark).
@@ -6102,8 +6112,8 @@ lint at a time).
   Every process draws in one theme, `olo_xdg::themes::current()`: the
   kit sets it from the settings before the first frame
   (`theme_watch::initial_palette`) and on every `SettingsChanged`
-  (`Kit::set_icon_theme`, which redraws every window; the icon and
-  wordmark caches are keyed by theme and drop the old one's), and
+  (`Kit::set_icon_theme`, which redraws every window; the icon caches
+  are keyed by theme and drop the old one's), and
   app_server sets it on load and in `set_settings`, where Twitcher looks
   its apps' icons up again (`twitcher::theme_changed`). Outside Olo,
   `OLO_ICON_THEME=id` picks one. `find_icon` looks in the theme's
@@ -12810,9 +12820,8 @@ does and that the password is asked for once (why this computer can't
 have Olo, in red, if it can't: `plan::unsuitable`, not Fedora 44 or
 newer, an atomic Fedora, root, under 6 GB free; Begin is dimmed), then
 the stages and their notes as they come, a failure in red with what to
-do, and at the end "Installation completed", how to get to Olo, and
-"Olo is a work of love, dedicated to Sir Samwise, the bestest English
-Labrador that ever walked the earth." in Ben's words. Under it
+do, and at the end "Installation completed" and how to get to Olo.
+Under it
 "Install from:" and "Onto:" as pop-ups, as BeOS's chose a CD and a
 volume: here there is one of each (Olo's newest release, or
 `--bundle`'s archive; this computer's Fedora, for this person), so they
@@ -12840,7 +12849,7 @@ click of its own. The whole of it, More Options open and at work, fits
 1280 × 800. About comes in front, alone on the desktop until OK (one
 surface has no windows to stack: a window drawn over another reads, to
 the layout review and to an agent, as its parts among the other's),
-with what Olo is and the dedication. None of Olo is installed when it
+with what Olo is. None of Olo is installed when it
 starts, so it carries what the kit draws with (build.rs: Olo's fonts,
 its icons at every size, the wordmark), unpacks it into the runtime
 folder and points the kit there (`OLO_DATA`).
@@ -15862,7 +15871,12 @@ whole process group if it hasn't ended 5 s after being asked (and keeps
 the entry while it runs), and `start` and `stop` end any screen's
 session nothing lists (`strays`: of that name whatever its age, others
 once two minutes old so one being started isn't; never a session
-inside a screen's). The rest is the screen's own app_server
+inside a screen's, and never one started under another runtime folder,
+`listed_in`: its screen is listed there. An olo-screen given a runtime
+folder of its own, as tools/dev/readme-shots gives its screens, saw
+every other running screen as a stray and ended them all at each start
+and stop, another agent's in the middle of its work, 2026-11-16). The
+rest is the screen's own app_server
 IPC (`Client::connect_to`): `run` (a program with the screen's
 `WAYLAND_DISPLAY`, `OLO_SOCKET` and `OLO_SCREEN`), `look` (a PNG,
 `--window ID` for one), `windows` (`Reply::Windows`, whose `WindowInfo`s

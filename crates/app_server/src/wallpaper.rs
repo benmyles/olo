@@ -448,14 +448,19 @@ mod tests {
 
     /// What an HDR wallpaper costs against SDR, at the ThinkPad's
     /// 3200 × 2000: `cargo test --release -p app_server wallpaper_cost --
-    /// --ignored --nocapture`.
+    /// --ignored --nocapture` (`OLO_WALLPAPER_COST=A,B`: those pictures
+    /// instead, to compare formats: a WebP against a PNG of it).
     #[test]
     #[ignore]
     fn wallpaper_cost() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/wallpapers/4k");
-        let path = dir.join("blueberry-oxygen-dark.png");
+        let paths: Vec<PathBuf> = std::env::var("OLO_WALLPAPER_COST").map_or_else(
+            |_| vec![olo_xdg::wallpapers::resolve("pack:blueberry-oxygen", (3200, 2000), true).unwrap_or(dir.join("blueberry-oxygen-dark.png"))],
+            |v| v.split(',').map(PathBuf::from).collect(),
+        );
         let size = (3200, 2000);
-        for gain in [None, olo_images::gain::find(&path)] {
+        // (Each in SDR, and in HDR where it has a gain map.)
+        for (path, gain) in paths.iter().flat_map(|p| [Some((p.clone(), None)), olo_images::gain::find(p).map(|g| (p.clone(), Some(g)))]).flatten() {
             let key = Key { path: path.clone(), size, gain: gain.clone(), tile: None };
             let mut times = Vec::new();
             let mut bytes = 0;
@@ -469,7 +474,7 @@ mod tests {
                 };
             }
             times.sort_by(f64::total_cmp);
-            println!("{}: {:.0} ms (median of 5; {:.0}–{:.0}), {} MB", if gain.is_some() { "HDR" } else { "SDR" }, times[2], times[0], times[4], bytes >> 20);
+            println!("{} {}: {:.0} ms (median of 5; {:.0}–{:.0}), {} MB", path.display(), if gain.is_some() { "HDR" } else { "SDR" }, times[2], times[0], times[4], bytes >> 20);
         }
     }
 
