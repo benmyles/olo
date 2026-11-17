@@ -79,6 +79,14 @@ something nobody here has is in "Blocked", with what it waits for.
   is, which may be the person's or one on an Agent Screen (then it goes
   to the agent's tab, never the person's, and is logged in the agent's
   history).
+- **Terminal remembers a tab's own "keep going" message** (Ben,
+  2026-11-16: "when a custom "keep going" message has been set on a tab
+  in terminal then terminal should remember that across upgrades and
+  restarts if the same tab is reopened"). A tab's custom keep-going
+  message is kept with the tab's state (what `save_state` keeps across an
+  upgrade in place, and what a restart restores a reopened tab from), and
+  comes back with the tab: the same tab reopened has its message, a new
+  tab the default.
 - **A notification's click goes to its own window and tab** (Ben,
   2026-11-16: "when a notification appears in olo for a tab within a
   group of windows, e.g. i noticed it with terminal where i'll get a
