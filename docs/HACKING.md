@@ -814,7 +814,7 @@ long after a way out comes back.
 | `crates/kmod` | `olo-kmod`: one of Olo's kernel modules built for the running kernel and installed (see "BBRv3 for TCP"): what the services that load them share (apps/gpu-memory, apps/bbr3). |
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
 | `apps/airpods` | `olo-airpods`: AirPods, natively (see "AirPods"): the session's service and its command line. |
-| `apps/phone` | `olo-phone`: an iPhone's or an Android phone's messages, contacts and one-time codes, spoken to by Olo itself over Bluetooth (see "The phone"): the session's service, which gives codes to the browser tab waiting for them, and its command line. |
+| `apps/phone` | Phone (`olo-phone`): an iPhone's or an Android phone's messages, contacts and one-time codes, spoken to by Olo itself over Bluetooth (see "The phone"): the app (conversations and contacts in a window) and its command line; and `olo-phoned`, the session's service, which gives codes to the browser tab waiting for them. |
 | `apps/voice` | `olo-voice`: the voice service (see "The voice service"): every microphone through voice processing, and its command line. |
 | `apps/installer` | `olo-installer`: the Installer (first called Olo Setup), a stock Fedora Workstation made Olo in one full-screen program (see "The Installer"). |
 | `apps/dconf` | `olo-dconf`: Olo's dconf service (`ca.desrt.dconf`), GSettings programs' settings written into dconf's own database in place of GNOME's dconf-service (see "Other toolkits' programs"). |
@@ -13649,7 +13649,13 @@ specifications):
   Groups' names (ANCS), and a store of conversations that outlives the
   service, are also to come.
 
-**`olo-phone --service`** (service.rs; a real session's, `REAL_SHELL`).
+**`olo-phoned`** is the service (service.rs, in the crate's library;
+a real session's, `REAL_SHELL`): a program of its own, with nothing of
+a window in it. It was `olo-phone --service` until Phone had a window:
+the kit linked beside it cost it 3.5 MB at rest (8.7 to 12.2 MB,
+measured; 9.3 MB as its own program). An `olo-phone --service` still
+running from a version before starts again so across an upgrade, and
+the session then ends it (`retire_dropped`) and starts `olo-phoned`.
 With a phone paired, it asks BlueZ for a channel to its messages and
 opens a session on it, on a thread of its own (`session`: it waits on
 the phone, the service's loop never does). Refused: `Link::Allow`, and
@@ -13713,7 +13719,7 @@ What his phone showed, and what's kept true since:
   iPhone's), and it's registered again with a BlueZ started since
   (the bus's word of its new owner).
 - **It says what it does**: each change of how the phone stands is a
-  line in the log (`olo-logs --print --program olo-phone`): the profiles
+  line in the log (`olo-logs --print --program olo-phoned`): the profiles
   registered, the phone and whether it's connected, a channel open and
   of which kind, refused, its messages open, its contacts come, why a
   channel couldn't be had or a session ended; `PhoneState::trouble` the
@@ -13841,8 +13847,64 @@ code that just came, tries the phone again, and opens the panel. The
 command line, for people and agents: `olo-phone` (`--status [--json]`),
 `--conversations`, `--read WHO`, `--send TO TEXT…`, `--mark-read WHO`,
 `--contacts [QUERY]`, `--reconnect`, `--code`, `--copy-code`,
-`--find-code`, `--settings`, `--set SETTING VALUE`. Phone, the app (the
-conversations and the contacts in a window), is still to come.
+`--find-code`, `--settings`, `--set SETTING VALUE`; with nothing asked,
+or `--open WHO`, it is Phone, the app.
+
+**Phone, the app** (window.rs; Ben: "did you already build an app for
+working with the messages, contacts etc? if not we need that too", and
+"make sure the messages/contacts/etc app is really nicely styled, the
+weather and telegram apps are good examples"). As Telegram's: a list
+down the left, sized and put away by its divider (the kit's
+`SidePane`), of the conversations (who, their latest words, when, how
+many unread) or the contacts, with a search over both; beside it the
+conversation as balloons (ours on the right in a tint of the keyboard's
+blue, theirs on the card colour, a run of one side's joined, a heading
+for each day, the time at each balloon's foot), a one-time code with
+Copy under it, a balloon's own menu to copy its words; under it the
+field to write in, as tall as its lines (six at most), and Send. A
+contact with one number is written to at a click; with several, their
+card has each. A number or an address typed in the search can be
+written to with no contact. People are their initials on a colour of
+their own (`olo_kit::person`; a head and shoulders for a bare number).
+With no phone connected it says what to do (Connect a Phone…:
+Preferences ▸ Phone); a phone refusing or out of reach is a line over
+the conversation, with Try Again. A message's notification, clicked,
+opens it at that conversation (`--open`); Deskbar's phone menu has
+Open Phone.
+
+It holds nothing of its own: it asks the service on its socket, off
+the UI thread (`cx.work`), whenever the published state says something
+changed (`PhoneState::changes`; the file followed with inotify, never
+polled), and sends through it. Agents drive it by command (`open:KEY`
+or a name, `to:ADDRESS`, `send:TEXT`, `tab:contacts`, `new-message`,
+`mark-read`) and read it as its tree: each row is a button named by who
+it is (its value their latest words), each balloon a list item ("Mira
+Kovač: Here now"), the header a heading. `OLO_PHONE_DEMO=1` is made-up
+people and no service (`=2000`: that many conversations and contacts,
+and 600 messages in the one open: the benchmark's); the layout lint
+(lint.rs: five states) and the live lint and bench use it.
+
+*Fast, measured* (`tools/dev/bench --apps phone`, release, 120 Hz, the
+2,000-conversation demo, at 1×, 1.5× and 2×): at rest 0 frames; the
+pointer over it 0.5–0.7 ms a frame; the list scrolled 0.5 ms (p99 0.8,
+worst 1.1); the conversation scrolled 0.2 ms (worst 0.9); typing 1.1 ms
+(worst 2.0); the window resized live 0.8–1.0 ms (worst 4.0); every
+frame within the 8.3 ms budget. What that took:
+- The lists and the balloons are each one drawing that paints only what
+  shows, found from where the scroller is scrolled to (`in_view`), not
+  from the drawing's clip, which isn't narrowed to the scroller: by the
+  clip every row of 2,000 was painted each frame (5.7 ms a frame).
+- The conversation is laid out only when it, the width, the look, the
+  clock or the day changes (`lay`, `LaidFor`), and wrapping its text is
+  never all done in one frame: what shows is wrapped at once, the rest
+  2.5 ms a frame from what shows outwards (`shape_more`, on
+  `on_next_frame`: asked for with a zero timer, the slices ran back to
+  back inside one frame), a message not yet wrapped taking the size it
+  had, or a guess by its length, and what shows held where it is as the
+  ones above it settle. Wrapped all at once, a resize with 600 messages
+  took 46 ms in one frame. The wrap width moves in steps of 16 points,
+  and not at all once the pane is wide enough for the widest balloon.
+- What the search finds is kept until the words or the data change.
 
 **Tests never touch Bluetooth, a phone or anyone's messages.**
 `phone-standin` (olo-system's, beside `dnf-fake`) is a stand-in BlueZ

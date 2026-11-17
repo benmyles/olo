@@ -117,7 +117,7 @@ Each note: what to do, then why (what happened), then how to apply it.
 - **The phone without a phone** (see HACKING, "The phone"): a private
   bus (`target/release/olo-bus unix:path=/var/tmp/ME/bus.sock --ready`),
   `phone-standin --address ADDRESS [--unpaired] [--android]` on it (a
-  stand-in BlueZ with a stand-in phone), then `olo-phone --service` with
+  stand-in BlueZ with a stand-in phone), then `olo-phoned` with
   `DBUS_SESSION_BUS_ADDRESS` and `OLO_PHONE_BLUEZ` both that address
   (its notifications go to whatever bus is its session's: the person's,
   if you leave theirs), `OLO_PHONE_DIR`, `OLO_PHONE_SETTINGS` and
@@ -142,6 +142,11 @@ Each note: what to do, then why (what happened), then how to apply it.
   with nothing chosen. A panel whose controls change with what's chosen
   starts, under `cfg!(test)`, at its fullest: the most buttons, the
   longest words (Bluetooth's chooses its test phone).
+- **A service in a program that also has a window pays for the
+  window's kit**: linked beside `olo-phone --service`, it cost 3.5 MB
+  at rest for nothing it used. A service that runs all session is a
+  program of its own (`olo-phoned`, `olo-termd`): a second `[[bin]]` in
+  the crate that doesn't use the kit doesn't link it.
 - **A stand-in must hand over what the real thing does, not what's
   convenient.** The stand-in BlueZ passed ordinary blocking sockets;
   BlueZ's are non-blocking (and packet sockets when it connects over

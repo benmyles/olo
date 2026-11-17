@@ -1,4 +1,4 @@
-//! `olo-phone --service`: the session's phone service. It speaks to the
+//! `olo-phoned`: the session's phone service. It speaks to the
 //! phone itself (`olo_system::phone`: Olo's profiles registered with
 //! BlueZ, the Message Access and Phone Book Access profiles over the
 //! channels BlueZ opens), keeps the conversations, publishes how the
@@ -1263,8 +1263,18 @@ impl Service {
     /// What the person did with a notification of ours.
     fn note(&mut self, e: NoteEvent) {
         match e {
-            NoteEvent::Action { id, key, .. } => match (self.about(id).cloned(), key.as_str()) {
+            NoteEvent::Action { id, key, token } => match (self.about(id).cloned(), key.as_str()) {
                 (Some(About::Message(thread, _)), "read") => self.mark_read(&thread),
+                // Clicked: Phone, at its conversation (in front, by the
+                // click's own leave to be).
+                (Some(About::Message(thread, _)), "default") => {
+                    // (Phone is the program beside this one.)
+                    let me = std::env::current_exe().map(|p| p.with_file_name("olo-phone").to_string_lossy().into_owned()).unwrap_or_else(|_| "olo-phone".into());
+                    let env: Vec<(&str, &str)> = token.as_deref().map(|t| ("XDG_ACTIVATION_TOKEN", t)).into_iter().collect();
+                    if let Err(e) = olo_xdg::spawn_detached_app_with(&format!("'{}' --open '{}'", me.replace('\'', "'\\''"), thread.replace('\'', "'\\''")), "olo.phone", &env) {
+                        tracing::warn!("phone: opening Phone: {e}");
+                    }
+                }
                 (Some(About::Message(_, Some(code))), "copy") => {
                     if let Some(c) = self.codes.iter().find(|c| c.id == code) {
                         copy(c.code.code.clone());

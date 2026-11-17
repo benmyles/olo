@@ -5,6 +5,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### Phone: the contacts
+
+*01:33* — The phone's contacts, with a search over them; one number is written to at a click, several show the contact's card. A number typed in the search can be written to with no contact.
+
+![Phone: the contacts](2026-11-17/013308-phone-the-contacts.png)
+
+### Phone: a one-time code, in the dark look
+
+*01:33* — A message with a one-time code has Copy under it. Dark, as every Olo app.
+
+![Phone: a one-time code, in the dark look](2026-11-17/013307-phone-a-one-time-code-in-the-dark-look.png)
+
+### Phone, the app
+
+*01:33* — The phone's conversations in a window, as Telegram's: who, their latest words and how many unread down the left; the conversation as balloons (ours in a tint of the keyboard's blue, runs joined, a heading for each day), and the field to write in. It asks the phone service for everything and holds nothing itself. (Made-up people: the demo.)
+
+![Phone, the app](2026-11-17/013306-phone-the-app.png)
+
 ### Bluetooth: room for a phone's buttons
 
 *00:00* — A phone chosen in Preferences ▸ Bluetooth has four buttons, and the last was cut off (Ben's screenshot); the panel is wider, its columns too, and the layout lint now sees it with a phone chosen, so it can't happen again. The phone's button is now "Phone Settings…".

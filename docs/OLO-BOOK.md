@@ -1087,6 +1087,17 @@ other side.
 - **Work on `on_next_frame` that stopped**, because a window that
   isn't shown (on another workspace, minimized, a tab behind another)
   gets no frames. Timers.
+- **A list in a scroller painted every row each frame**, because it
+  took what shows from the drawing's clip (`content_mask`), which isn't
+  narrowed to the scroller: 2,000 rows, 5.7 ms a frame (Phone). What
+  shows is where the scroller is scrolled to and how tall it is
+  (`ScrollHandle::offset`, `bounds`): Telegram's list, Phone's
+  `in_view`.
+- **Work meant to be spread over frames ran inside one**, because each
+  slice asked for the next with a timer of no time (`after_do(ZERO)`),
+  which runs before the frame is drawn: five slices of 2.5 ms, a 10 ms
+  frame. A slice a frame is `on_next_frame` (and it needs nothing done
+  while the window isn't shown).
 - **A parent showing a child's title that never updated**: the
   parent's `body` doesn't run with the child's. The child emits.
 - **`ViewRef::update` taken for immediate**: it runs later.

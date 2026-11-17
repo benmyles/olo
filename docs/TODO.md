@@ -111,7 +111,20 @@ something nobody here has is in "Blocked", with what it waits for.
   it does at each step: the notes say what an iPhone may want besides
   (the computer's class as hands-free; an advertisement while its
   switches are waited for), which I'll add from what yours shows.
-  Still to do: Phone the app; the website; the phones' own icons.
+  **Phone, the app, is made** (2026-11-17; HACKING, "The phone"):
+  conversations and contacts in a window, balloons as Telegram's,
+  measured on the bench. The service is its own program now
+  (`olo-phoned`). Still to do: the website; the phones' own icons;
+  whatever Ben's iPhone shows that the stand-in didn't.
+- **Bug: Viewer's video timeline with a long video** (Ben, 2026-11-17,
+  with a picture of a 2:45:18 video at 2×: "the video player viewer
+  seems buggy either in long videos or at >1x ... the timeline has just
+  gone nuts"). In the picture the time played, "2:21:59", is cut short
+  by the timeline's bar, which starts over its last digit: the room
+  kept for it fits minutes and seconds, not hours. Look at the rest
+  with a video over an hour and at 2× (the bar's place, the time left,
+  seeking by the bar, the playhead as it plays): the time's room by
+  its widest (the whole length's digits), the bar after it.
 - **Everything Olo Doctor does can be undone** (Ben, 2026-11-16: "one
   more thing we need: everything in olo doctor that it does must be
   reversible, e.g. for any fix/suggestion applied i should be able to
@@ -177,6 +190,12 @@ something nobody here has is in "Blocked", with what it waits for.
   wouldn't do anything as we are already always zoomed"). In focus mode
   every window is zoomed already, so app_server's decorator leaves the
   zoom button off its tabs (and the tab's title has its room).
+- **Proton VPN, natively** (Ben, 2026-11-17: "build an olo native
+  proton vpn app"). An Olo app for Proton VPN: signing in, the countries
+  and servers, connect and disconnect, what it's connected to and how
+  it's doing, in Deskbar's tray too; speaking Proton's API and
+  WireGuard itself, in Rust, in process (nothing of Proton's own client
+  wrapped), through NetworkManager as Olo's other connections are.
 - **The website covers Terminal's work with agents** (Ben, 2026-11-16:
   "update the website to cover all the agent integration features in olo
   terminal"). olo-desktop.com's Agents part: what Terminal does for

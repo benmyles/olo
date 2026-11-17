@@ -140,6 +140,8 @@ APPS = [
     App("preferences", ["olo-preferences"], look_only=True, rows=True),
     App("passwords", ["olo-passwords"], env=[f"OLO_1PASSWORD_SOCKET={SCRATCH}/no-such-1p.sock"]),
     App("screenshot", ["olo-screenshot"]),
+    # Made-up people: 2,000 conversations and contacts, 600 messages in the one open.
+    App("phone", ["olo-phone"], env=["OLO_PHONE_DEMO=2000"], type_text="benchmark 123"),
     # A pretend account with thousands of chats (no network, no keyring).
     App("telegram", ["olo-telegram"], env=["OLO_TELEGRAM_DEMO=3000", f"OLO_TELEGRAM_CACHE={SCRATCH}/telegram-cache", f"OLO_TELEGRAM_SECRETS={SCRATCH}/telegram-secrets"], settle=3.0),
 ]

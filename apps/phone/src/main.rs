@@ -1,12 +1,20 @@
 //! olo-phone: the phone (an iPhone's or an Android phone's messages,
 //! contacts and one-time codes, spoken to by Olo itself over Bluetooth).
-//! `--service` is the session's service (see service.rs); the rest is the
-//! command line, for people and agents alike, which asks the service on
-//! its socket: how the phone stands, the conversations, sending, and
-//! Olo's settings for it.
+//! With nothing asked it is Phone, the app (window.rs: the conversations
+//! and the contacts; `--open WHO` at a conversation); the rest is the
+//! command line, for people and agents alike, which asks the session's
+//! phone service on its socket: how the phone stands, the conversations,
+//! sending, and Olo's settings for it. The service is a program of its
+//! own, `olo-phoned` (service.rs, in this crate's library): it has
+//! nothing of a window in it, and the window's kit linked beside it cost
+//! it 3.5 MB at rest (8.7 to 12.2 MB, measured).
 
-mod codes;
-mod service;
+mod demo;
+#[cfg(test)]
+mod lint;
+mod window;
+
+use olo_phone::codes;
 
 /// A line on standard output; a reader gone (`| head`) isn't an error.
 macro_rules! out {
@@ -21,6 +29,9 @@ use std::{process::ExitCode, time::Duration};
 use olo_protocol::phone::{self, AgentCodes, Conversation, Notify, PhoneSettings, PhoneState, Reply, Request};
 
 const USAGE: &str = "usage: olo-phone [COMMAND]
+  (nothing)                   Phone, the app: the conversations and the
+                              contacts in a window
+  --open WHO                  the app, at a conversation (its key or name)
   --status [--json]           the phone: paired, connected, its battery,
                               how many conversations and unread messages
   --conversations [--json]    the conversations, the latest first
@@ -40,7 +51,7 @@ const USAGE: &str = "usage: olo-phone [COMMAND]
                               show-text, codes, codes-in-browser,
                               copy-codes: on|off
                               agent-screens: give|ask|never
-  --service                   run the service (the session starts it)";
+  (the session's service is olo-phoned)";
 
 fn main() -> ExitCode {
     olo_crash::install();
@@ -51,16 +62,20 @@ fn main() -> ExitCode {
         println!("{USAGE}");
         return ExitCode::SUCCESS;
     }
+    // (As the service was started before it had a program of its own:
+    // one still running from then starts again so across an upgrade, for
+    // the moment until the session ends it and starts olo-phoned.)
     if args.first().is_some_and(|a| a == "--service") {
-        upgrade_on_signal();
-        service::run();
+        olo_phone::upgrade_on_signal();
+        olo_phone::service::run();
     }
     let json = args.iter().any(|a| a == "--json");
     args.retain(|a| a != "--json");
     let arg = |i: usize| args.get(i).cloned().unwrap_or_default();
     let rest = |i: usize| args.get(i..).map(|a| a.join(" ")).unwrap_or_default();
     match arg(0).as_str() {
-        "" | "--status" => status(json),
+        "" | "--open" => app(&args),
+        "--status" => status(json),
         "--conversations" => conversations(|all| {
             if json {
                 out!("{}", serde_json::to_string_pretty(&all).unwrap_or_default());
@@ -261,6 +276,34 @@ fn clock(at: i64) -> String {
     chrono::Local.timestamp_opt(at, 0).single().map_or_else(String::new, |t| t.format("%Y-%m-%d %H:%M").to_string())
 }
 
+/// Phone, the app: its window (one process: asked for again, the one
+/// running comes forward, at the conversation asked for).
+fn app(args: &[String]) -> ExitCode {
+    use olo_kit::instance::{self, Launch};
+    if instance::forward(window::APP_ID, args) {
+        return ExitCode::SUCCESS;
+    }
+    let first = args.to_vec();
+    olo_kit::run(window::APP_ID, move |app| {
+        let window = olo_kit::open_window(window::options(), window::Phone::new);
+        instance::listen(window::APP_ID, olo_kit::proxy());
+        let tell = |window: &olo_kit::WindowHandle<window::Phone>, args: Vec<String>| {
+            window.update(move |v, cx| olo_kit::View::message(v, window::Msg::Launch(args), cx));
+        };
+        if first.iter().any(|a| a == "--open") {
+            tell(&window, first.clone());
+        }
+        let to = window.clone();
+        olo_kit::message_handler(app, move |message, _| {
+            if let Ok(launch) = message.downcast::<Launch>() {
+                olo_kit::raise(Some(&to));
+                tell(&to, launch.args.clone());
+            }
+        });
+    });
+    ExitCode::SUCCESS
+}
+
 fn status(json: bool) -> ExitCode {
     let state = match phone::ask(&Request::Status, Duration::from_secs(5)) {
         Ok(r) => r.state.unwrap_or_default(),
@@ -283,47 +326,4 @@ fn status(json: bool) -> ExitCode {
         out!("  {} conversations, {} unread{}", state.conversations, state.unread, if state.contacts { "" } else { "; its contacts haven't come" });
     }
     ExitCode::SUCCESS
-}
-
-/// After an upgrade olo-session sends SIGURG to the programs it replaced:
-/// the service starts again as the new version (the browsers' hosts
-/// connect again; a code waiting is let go).
-fn upgrade_on_signal() {
-    static FD: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
-    extern "C" fn on_signal(_: libc::c_int) {
-        let fd = FD.load(std::sync::atomic::Ordering::Relaxed);
-        if fd >= 0 {
-            // SAFETY: write(2) is async-signal-safe.
-            unsafe { libc::write(fd, [1u8].as_ptr().cast(), 1) };
-        }
-    }
-    let mut fds = [0; 2];
-    // SAFETY: a pipe and a signal handler that only writes to it.
-    unsafe {
-        if libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) != 0 {
-            return;
-        }
-        FD.store(fds[1], std::sync::atomic::Ordering::Relaxed);
-        libc::signal(libc::SIGURG, on_signal as *const () as libc::sighandler_t);
-    }
-    let read = fds[0];
-    std::thread::Builder::new()
-        .name("upgrade".into())
-        .spawn(move || {
-            loop {
-                let mut b = [0u8; 1];
-                // SAFETY: reading one byte into our buffer.
-                if unsafe { libc::read(read, b.as_mut_ptr().cast(), 1) } != 1 {
-                    return;
-                }
-                let exe = std::fs::read_link("/proc/self/exe").unwrap_or_default();
-                let Some(path) = exe.to_str().and_then(|p| p.strip_suffix(" (deleted)")) else { continue };
-                tracing::info!("phone: upgraded: starting again as the new version");
-                let _ = std::fs::remove_file(PhoneState::socket());
-                use std::os::unix::process::CommandExt;
-                let e = std::process::Command::new(path).args(std::env::args_os().skip(1)).exec();
-                tracing::warn!("phone: couldn't start the new version: {e}");
-            }
-        })
-        .expect("thread");
 }

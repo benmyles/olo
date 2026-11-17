@@ -1,4 +1,4 @@
-//! `olo-phone --service` end to end: against `phone-standin` (olo-system's
+//! `olo-phoned` (the phone service) end to end: against `phone-standin` (olo-system's
 //! stand-in BlueZ with a stand-in phone behind it, found beside olo-phone
 //! in the build's folder) and stand-in browsers that say which tabs wait
 //! for a code. Needs a bus to meet on: run with `OLO_TEST_BUS=unix:path=…`
@@ -125,8 +125,7 @@ fn messages_and_a_code_to_the_tab_waiting_for_it() {
     // The phone's own switch is off as the service starts.
     tell(&["set", "messages", "no"]);
     let _service = Ended(
-        Command::new(&phone)
-            .arg("--service")
+        Command::new(env!("CARGO_BIN_EXE_olo-phoned"))
             .env("DBUS_SESSION_BUS_ADDRESS", &address)
             .env("OLO_PHONE_BLUEZ", &address)
             .env("OLO_PHONE_DIR", &run)

@@ -1287,6 +1287,8 @@ impl Deskbar {
             }
             // The phone: its own command line (`olo-phone --copy-code`,
             // `--reconnect`).
+            // (And Phone, the app: `olo-phone` with nothing asked.)
+            Some(("phone", "open")) => spawn("olo-phone"),
             Some(("phone", what)) => spawn(&format!("olo-phone --{what}")),
             // The supervisor on or off: its settings, which it follows
             // (shown at once; written off the UI thread).
@@ -2072,7 +2074,7 @@ fn voice_items(m: Menu, v: &olo_protocol::voice::Settings) -> Menu {
 /// come (copied), trying it again while it's out of reach, and the way
 /// to its settings.
 fn phone_menu(phone: &olo_protocol::phone::PhoneState) -> Menu {
-    let mut m = Menu::new("Phone").item(format!("{}: {}", phone.name, phone.words()), "").enabled(false).separator();
+    let mut m = Menu::new("Phone").item(format!("{}: {}", phone.name, phone.words()), "").enabled(false).separator().item("Open Phone", "phone:open");
     if phone.code_at.is_some() {
         m = m.item("Copy the Code That Just Came", "phone:copy-code");
     }

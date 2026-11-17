@@ -61,6 +61,8 @@ def apps(home):
         # (Made-up results: nothing is connected to.)
         ("Speed Test", ["olo-speedtest"], {"OLO_SPEEDTEST_DEMO": "1"}, False),
         ("Logs", ["olo-logs"], {}, False),
+        # (Made-up people and messages: no phone, no service.)
+        ("Phone", ["olo-phone"], {"OLO_PHONE_DEMO": "1"}, False),
         ("Passwords", ["olo-passwords"], {"OLO_PASSWORDS_KEYFILE": os.path.join(home, ".pw-key")}, False),
         ("StyledEdit", ["olo-styled-edit", os.path.join(home, "README.md")], {}, False),
         ("Telegram", ["olo-telegram"], {"OLO_TELEGRAM_DEMO": "4", "OLO_TELEGRAM_CACHE": tg + "/cache", "OLO_TELEGRAM_SECRETS": tg + "/secrets"}, False),
