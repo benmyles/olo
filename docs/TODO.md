@@ -60,6 +60,28 @@ something nobody here has is in "Blocked", with what it waits for.
   multi-select the threads from the messages list and bulk archive /
   unarchive").
 
+- **Opening in an app with several windows asks which window** (Ben,
+  2026-11-17: "when something is opening with the default app, e.g. a
+  url opening in chrome, and that app has > 1 windows open and the url
+  would normally open as a tab in that app, then i want olo to show me a
+  dialog where i can choose which window to open it in -- each window
+  should have a live thumbnail in it to pick from (as well as the window
+  title or some subpart of it) and it should also have a kb shortcut for
+  each one so i can just hit a letter to choose if i want (or click it if
+  i'd rather). right now it just opens in whatever window and it's
+  really annoying").
+
+- **The red dot on the window's tab, and on the tab inside it, that has
+  what's unread** (Ben, 2026-11-17: "when there's a red dot badge for an
+  app in the deskbar, that app's title window bar (the yellow tab) for
+  the specific window that has the alertable item should get a red dot
+  too (i'm not sure if it should be on the left or right, try both and
+  see what looks best) and if it's an app that supports tabs the
+  specific tab that has the alertable item should also get a red dot.
+  and they should all automatically go away with a nice fade out
+  animation over about 5s after activating the target tab (or window if
+  it's not a tabbed app)").
+
 - **Last, once everything above that isn't blocked is done: the website,
   the README and the docs refreshed, and a new GitHub release** (Ben,
   2026-11-17: "when all the other todos that aren't blocked are
