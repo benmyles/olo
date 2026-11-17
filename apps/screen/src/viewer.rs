@@ -726,7 +726,8 @@ impl Viewer {
         }
         self.busy = true;
         let proxy = self.proxy.clone();
-        std::thread::spawn(move || proxy.send(Msg::Started(screens::start(&screens::free_name(), &screens::Options::default()))));
+        // (A new one: never a stopped or archived screen's name.)
+        std::thread::spawn(move || proxy.send(Msg::Started(screens::start(&screens::new_name(), &screens::Options::default()))));
         cx.invalidate();
     }
 

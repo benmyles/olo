@@ -413,9 +413,38 @@ pub fn get(name: &str) -> Result<Screen, String> {
     list().into_iter().find(|s| s.name == name).ok_or_else(|| format!("there's no screen {name:?} (olo-screen list)"))
 }
 
-/// The first free "agent", "agent-2", ….
+/// The first of "agent", "agent-2", … that no running screen has: what
+/// `olo-screen start` with no name starts (a stopped screen of that name
+/// starts again, as it was: an agent gets its "agent" back).
 pub fn free_name() -> String {
     let taken: Vec<String> = list().into_iter().map(|s| s.name).collect();
+    first_free(&taken)
+}
+
+/// A name for a screen that is new: the first of "agent", "agent-2", …
+/// that no screen there is has, running, stopped or archived, and that
+/// nothing is kept under (Agent Screens' New Screen: with `free_name` it
+/// started the stopped or archived "agent" again, its history and its
+/// Chrome profile with it. Ben, 2026-11-17: "it seems to bring back an
+/// old archived/deleted screen instead of creating an actual new
+/// screen").
+pub fn new_name() -> String {
+    new_name_among(all().into_iter().map(|(n, _)| n).collect(), &olo_xdg::state_dir().join("screens"))
+}
+
+/// [`new_name`], with the screens there are and where screens keep
+/// their things.
+fn new_name_among(mut taken: Vec<String>, kept: &std::path::Path) -> String {
+    // (A folder left with neither history nor settings in it: its
+    // recordings or its browser's profile would be the new screen's.)
+    if let Ok(kept) = std::fs::read_dir(kept) {
+        taken.extend(kept.flatten().filter(|e| e.path().is_dir()).filter_map(|e| e.file_name().into_string().ok()));
+    }
+    first_free(&taken)
+}
+
+/// The first of "agent", "agent-2", … not among `taken`.
+fn first_free(taken: &[String]) -> String {
     (1..).map(|n| if n == 1 { "agent".to_owned() } else { format!("agent-{n}") }).find(|n| !taken.contains(n)).unwrap_or_default()
 }
 
@@ -905,6 +934,31 @@ mod tests {
     /// A screen's session is known by the `OLO_SCREEN` it was started
     /// with, not its command line, which an upgrade's re-execution left
     /// bare (every screen then looked ended and was forgotten).
+    /// A new screen's name is one no screen has: not a stopped or
+    /// archived one's, though a running one alone leaves "agent" free
+    /// for `olo-screen start`.
+    #[test]
+    fn a_new_screens_name() {
+        let named = |names: &[&str]| first_free(&names.iter().map(|n| (*n).to_owned()).collect::<Vec<_>>());
+        assert_eq!(named(&[]), "agent");
+        assert_eq!(named(&["agent"]), "agent-2");
+        assert_eq!(named(&["agent", "agent-2", "qa", "agent-4"]), "agent-3");
+        assert_eq!(named(&["agent-2"]), "agent");
+        // What's kept counts: a stopped screen's folder, an archived
+        // one's, and one with only a browser's profile left in it.
+        let dir = std::path::Path::new("/var/tmp").join(format!("olo-screen-names-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for (name, file) in [("agent", "screen.json"), ("agent-2", "archived"), ("agent-3", "chrome/Default/Preferences")] {
+            let path = dir.join(name).join(file);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, b"{}").unwrap();
+        }
+        assert_eq!(new_name_among(Vec::new(), &dir), "agent-4");
+        assert_eq!(new_name_among(vec!["agent-4".to_owned()], &dir), "agent-5");
+        assert_eq!(new_name_among(Vec::new(), &dir.join("none")), "agent");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     #[test]
     fn a_screens_session_is_known_by_its_environment() {
         let env = b"HOME=/home/me\0OLO_SCREEN=claude-browser\0WAYLAND_DISPLAY=\0";

@@ -34,11 +34,6 @@ something nobody here has is in "Blocked", with what it waits for.
   the code and keep looking for up to 60s until one arrives from
   phone/email and then offer to fill it.").
 
-- **Agent Screens: Screens ▸ New Screen brings back an old one** (Ben,
-  2026-11-17: "when i go screens -> new screen in agent screens app it
-  seems to bring back an old archived/deleted screen instead of
-  creating an actual new screen").
-
 - **Tracker: dragging a file by its name only sometimes works** (Ben,
   2026-11-17: "previously i reported a bug where sometimes dragging a
   file from tracker via the name instead of the icon doesn't work. i
@@ -5903,6 +5898,15 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Agent Screens: Screens ▸ New Screen brings back an old one**~~
+  (Ben, 2026-11-17: "it seems to bring back an old archived/deleted
+  screen instead of creating an actual new screen"; done the same day).
+  It named the new screen by the first of "agent", "agent-2", … that no
+  running screen had, so with a stopped or archived "agent" it started
+  that one again, history, Chrome profile and all. Now the name is one
+  nothing has and nothing is kept under. (`olo-screen start` with no
+  name still gives an agent its stopped "agent" back, as it says.)
 
 - ~~**Deskbar: the fading blue dot without its number; a red dot for
   what's unread in the app itself**~~ (Ben, 2026-11-17; done the same

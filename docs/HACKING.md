@@ -17524,7 +17524,7 @@ their evdev codes on a US keyboard, the agent's, from the keys the kit
 names; Ctrl, Shift and Alt pressed and let go as each key event says, a
 held key repeated by the screen, Tab and ⌃Tab to the screen too, ⌘K
 still stopping), with a ring in the keyboard-navigation colour round
-the picture, until Stop Controlling (everything held let go). New Screen starts one; Stop
+the picture, until Stop Controlling (everything held let go). New Screen starts one that is new: its name is the first of "agent", "agent-2", … that no screen there is has, running, stopped or archived, and that nothing is kept under (`screens::new_name`; with `free_name`, which looks only at the running ones and is what `olo-screen start` with no name uses so that an agent gets its stopped "agent" back, New Screen started a stopped or archived screen again, its history and Chrome profile with it); Stop
 Screen… ends one after asking. A viewer running on an agent screen
 leaves that screen out of its list. While any screen runs (other than
 the one a Deskbar is on), Deskbar's tray shows a monitor with a pointer,
