@@ -13,6 +13,10 @@ use super::obex::{self, Client, Params};
 /// The Phone Book Server's OBEX target, and its service class.
 pub const PSE: [u8; 16] = [0x79, 0x61, 0x35, 0xf0, 0xf0, 0xc5, 0x11, 0xd8, 0x09, 0x66, 0x08, 0x00, 0x20, 0x0c, 0x9a, 0x66];
 pub const PSE_UUID: &str = "0000112f-0000-1000-8000-00805f9b34fb";
+/// The client's side (this computer): what a phone looks for in a
+/// computer's service records to offer it its contacts (an iPhone's Sync
+/// Contacts switch).
+pub const PCE_UUID: &str = "0000112e-0000-1000-8000-00805f9b34fb";
 
 pub const PHONEBOOK: &str = "x-bt/phonebook";
 

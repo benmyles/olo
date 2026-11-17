@@ -38,6 +38,7 @@ enum Error {
     NotAvailable(String),
     AlreadyExists(String),
     InvalidArguments(String),
+    AuthenticationRejected(String),
 }
 
 enum Job {
@@ -48,7 +49,9 @@ enum Job {
     /// Say that the device's properties changed.
     Changed,
     /// Pair: the agent is asked whether the code matches; yes pairs.
-    Pair,
+    /// Told how it went, when someone waits (a `Connect` to the phone
+    /// unpaired, which it pairs from its side).
+    Pair(Option<async_channel::Sender<bool>>),
     /// An advertisement was registered (who, their object): read what
     /// it solicits.
     Advert(String, String),
@@ -64,6 +67,12 @@ struct World {
     discovering: bool,
     /// The pairing agent registered: (who, their object).
     agent: Option<(String, String)>,
+    /// How many times it has paired (one pairing, one entry on the
+    /// phone: `--tell pairings`).
+    pairings: u32,
+    /// The profile whose phone-book client record is published (an
+    /// iPhone offers Sync Contacts only to a computer that has one).
+    pce_record: Option<String>,
     /// An advertisement soliciting Apple's notification service is
     /// broadcast: an iPhone shows its switches for the computer only
     /// while one is.
@@ -77,19 +86,31 @@ struct Manager(Shared);
 
 #[zbus::interface(name = "org.bluez.ProfileManager1")]
 impl Manager {
-    fn register_profile(&self, profile: OwnedObjectPath, uuid: String, _options: HashMap<String, OwnedValue>, #[zbus(header)] header: zbus::message::Header<'_>) -> Result<(), Error> {
+    /// As BlueZ: kept by the phone's service it connects to (the phone
+    /// book's client connects to its server); the client's service record
+    /// published unless it's registered as a client only.
+    fn register_profile(&self, profile: OwnedObjectPath, uuid: String, options: HashMap<String, OwnedValue>, #[zbus(header)] header: zbus::message::Header<'_>) -> Result<(), Error> {
         let who = header.sender().map(|s| s.to_string()).unwrap_or_default();
         let mut w = self.0.lock().expect("world");
         let uuid = uuid.to_ascii_lowercase();
-        if w.profiles.contains_key(&uuid) {
+        let remote = if uuid == pbap::PCE_UUID { pbap::PSE_UUID.to_owned() } else { uuid.clone() };
+        if w.profiles.contains_key(&remote) {
             return Err(Error::AlreadyExists("UUID already registered".into()));
         }
-        w.profiles.insert(uuid, (who, profile.as_str().to_owned()));
+        let role = options.get("Role").and_then(|v| <&str>::try_from(v).ok().map(str::to_owned));
+        if uuid == pbap::PCE_UUID && role.as_deref() != Some("client") {
+            w.pce_record = Some(profile.as_str().to_owned());
+        }
+        w.profiles.insert(remote, (who, profile.as_str().to_owned()));
         Ok(())
     }
 
     fn unregister_profile(&self, profile: OwnedObjectPath) {
-        self.0.lock().expect("world").profiles.retain(|_, (_, path)| path != profile.as_str());
+        let mut w = self.0.lock().expect("world");
+        w.profiles.retain(|_, (_, path)| path != profile.as_str());
+        if w.pce_record.as_deref() == Some(profile.as_str()) {
+            w.pce_record = None;
+        }
     }
 }
 
@@ -225,17 +246,34 @@ impl Device {
         if w.agent.is_none() {
             return Err(Error::NotAvailable("no agent".into()));
         }
-        let _ = w.jobs.send(Job::Pair);
+        let _ = w.jobs.send(Job::Pair(None));
         Ok(())
     }
 
     fn cancel_pairing(&self) {}
 
-    fn connect(&self) -> Result<(), Error> {
-        let mut w = self.0.lock().expect("world");
-        w.connected = true;
-        let _ = w.jobs.send(Job::Changed);
-        Ok(())
+    /// Connected to unpaired, a phone refuses without security and
+    /// starts pairing itself (the agent asked to confirm the code): the
+    /// connection is answered once that's done, as BlueZ's is.
+    async fn connect(&self) -> Result<(), Error> {
+        let waited = {
+            let mut w = self.0.lock().expect("world");
+            if w.paired {
+                w.connected = true;
+                let _ = w.jobs.send(Job::Changed);
+                return Ok(());
+            }
+            if w.agent.is_none() {
+                return Err(Error::NotAvailable("no agent".into()));
+            }
+            let (tx, rx) = async_channel::bounded(1);
+            let _ = w.jobs.send(Job::Pair(Some(tx)));
+            rx
+        };
+        match waited.recv().await {
+            Ok(true) => Ok(()),
+            _ => Err(Error::AuthenticationRejected("the code was said not to match".into())),
+        }
     }
 
     fn disconnect(&self) {
@@ -266,6 +304,9 @@ impl Told {
         if on && !w.android && !w.soliciting && matches!(key, "messages" | "contacts") {
             return Err(Error::NotAvailable("an iPhone shows this switch only while the computer advertises for it, and it isn't".into()));
         }
+        if on && !w.android && key == "contacts" && w.pce_record.is_none() {
+            return Err(Error::NotAvailable("an iPhone shows Sync Contacts only to a computer with a phone book client's service record, and this one has none".into()));
+        }
         match key {
             "messages" => w.phone.0.lock().expect("phone").messages_allowed = on,
             "contacts" => w.phone.0.lock().expect("phone").contacts_allowed = on,
@@ -281,6 +322,10 @@ impl Told {
     /// is registered.
     fn soliciting(&self) -> bool {
         self.0.lock().expect("world").soliciting
+    }
+
+    fn pairings(&self) -> u32 {
+        self.0.lock().expect("world").pairings
     }
 
     fn sent(&self) -> Vec<String> {
@@ -332,8 +377,19 @@ fn main() {
     let (tx, jobs) = mpsc::channel::<Job>();
     let phone = Phone::sample();
     phone.0.lock().expect("phone").android = android;
-    let world: Shared =
-        Arc::new(Mutex::new(World { phone: phone.clone(), profiles: HashMap::new(), paired: !unpaired, connected: !unpaired, android, discovering: false, agent: None, soliciting: false, jobs: tx }));
+    let world: Shared = Arc::new(Mutex::new(World {
+        phone: phone.clone(),
+        profiles: HashMap::new(),
+        paired: !unpaired,
+        connected: !unpaired,
+        android,
+        discovering: false,
+        agent: None,
+        soliciting: false,
+        pairings: 0,
+        pce_record: None,
+        jobs: tx,
+    }));
     let built = zbus::blocking::connection::Builder::address(address.as_str())
         .and_then(|b| b.serve_at("/", zbus::fdo::ObjectManager))
         .and_then(|b| b.serve_at("/org/bluez", Manager(world.clone())))
@@ -388,14 +444,18 @@ fn main() {
             }
             // The code on both: the agent is asked; its yes pairs the
             // phone and brings it in reach.
-            Job::Pair => {
+            Job::Pair(told) => {
                 let Some((who, path)) = world.lock().expect("world").agent.clone() else { continue };
                 let device = zvariant::ObjectPath::try_from(DEVICE).expect("a path");
                 let asked = conn.call_method(Some(who.as_str()), path.as_str(), Some("org.bluez.Agent1"), "RequestConfirmation", &(device, 482_913u32));
                 if asked.is_ok() {
                     let mut w = world.lock().expect("world");
                     (w.paired, w.connected) = (true, true);
+                    w.pairings += 1;
                     let _ = w.jobs.send(Job::Changed);
+                }
+                if let Some(told) = told {
+                    let _ = told.send_blocking(asked.is_ok());
                 }
             }
             Job::Advert(who, path) => {
@@ -454,6 +514,16 @@ fn told(address: &str, words: &[String]) -> i32 {
         ["soliciting"] => match conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Soliciting", &()).and_then(|m| m.body().deserialize::<bool>()) {
             Ok(on) => {
                 println!("{}", if on { "yes" } else { "no" });
+                0
+            }
+            Err(e) => {
+                eprintln!("phone-standin: {e}");
+                1
+            }
+        },
+        ["pairings"] => match conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Pairings", &()).and_then(|m| m.body().deserialize::<u32>()) {
+            Ok(n) => {
+                println!("{n}");
                 0
             }
             Err(e) => {

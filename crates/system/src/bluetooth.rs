@@ -167,6 +167,28 @@ pub fn pair(device: &str) -> Result<()> {
     bus::set_property(c, DEST, device, DEVICE, "Trusted", true)
 }
 
+/// Pair with a phone the way that gives it one bond for both its radios
+/// (Classic and low energy) and one entry for this computer on it:
+/// connect to it unpaired, and the phone, refusing to be connected to
+/// without security, starts the pairing itself; leading the link, it
+/// then derives the low-energy keys too. A `Pair` from here gave an
+/// iPhone a Classic bond only on an Intel controller, and two entries
+/// for the computer (BlueFerry's notes, which found this way the one
+/// that works on Intel's and MediaTek's). Where the controller ends the
+/// connection before pairing finishes, `Pair` as [`pair`] does; a code
+/// said to differ, or pairing cancelled, isn't tried again. The code is
+/// asked through the agent either way. Blocks until done.
+pub fn pair_phone(device: &str) -> Result<()> {
+    let c = bus::system()?;
+    let connected = bus::call::<_, ()>(c, DEST, device, DEVICE, "Connect", &());
+    let paired = bus::property::<bool>(c, DEST, device, DEVICE, "Paired").unwrap_or(false);
+    match connected {
+        Err(e) if !paired && ["AuthenticationRejected", "AuthenticationCanceled", "Canceled"].iter().any(|n| e.to_string().contains(n)) => Err(e),
+        _ if !paired => pair(device),
+        _ => bus::set_property(c, DEST, device, DEVICE, "Trusted", true),
+    }
+}
+
 pub fn connect(device: &str) -> Result<()> {
     bus::call::<_, ()>(bus::system()?, DEST, device, DEVICE, "Connect", &())
 }

@@ -172,6 +172,11 @@ something nobody here has is in "Blocked", with what it waits for.
 - **Olo Classic's default wallpaper is the dunes** (Ben, 2026-11-16:
   "make the default wallpaper for the olo classic theme the dunes
   one").
+- **No zoom button on window tabs in focus mode** (Ben, 2026-11-17:
+  "when in focus mode hide the zoom button on window tabs since it
+  wouldn't do anything as we are already always zoomed"). In focus mode
+  every window is zoomed already, so app_server's decorator leaves the
+  zoom button off its tabs (and the tab's title has its room).
 - **The website covers Terminal's work with agents** (Ben, 2026-11-16:
   "update the website to cover all the agent integration features in olo
   terminal"). olo-desktop.com's Agents part: what Terminal does for

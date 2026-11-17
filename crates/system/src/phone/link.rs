@@ -60,11 +60,27 @@ pub enum Channel {
 impl Channel {
     const ALL: [Channel; 3] = [Channel::Messages, Channel::Contacts, Channel::Notifications];
 
+    /// The phone's service a channel is to (what `ConnectProfile` is
+    /// asked for).
     pub fn uuid(self) -> &'static str {
         match self {
             Channel::Messages => map::MAS_UUID,
             Channel::Contacts => pbap::PSE_UUID,
             Channel::Notifications => map::MNS_UUID,
+        }
+    }
+
+    /// What it's registered with BlueZ as. The contacts: as the phone
+    /// book's client (BlueZ then knows the phone's service to connect to
+    /// from its own table, and publishes the client's service record: a
+    /// phone offers its contacts to a computer that has one; an iPhone's
+    /// Sync Contacts switch appears only then). Registered under the
+    /// phone's own service, as a client, it published none (Ben,
+    /// 2026-11-17: Show Notifications appeared, "but no sync contacts").
+    fn registered_as(self) -> &'static str {
+        match self {
+            Channel::Contacts => pbap::PCE_UUID,
+            other => other.uuid(),
         }
     }
 
@@ -292,13 +308,18 @@ fn announce(conn: &Connection) -> Result<()> {
                 options.insert("Channel", MNS_CHANNEL.into());
                 options.insert("ServiceRecord", record.as_str().into());
             }
-            Channel::Messages | Channel::Contacts => {
-                options.insert("Name", if channel == Channel::Messages { "Olo Messages" } else { "Olo Contacts" }.into());
+            Channel::Messages => {
+                options.insert("Name", "Olo Messages".into());
                 options.insert("Role", "client".into());
+            }
+            // (No role: a client that also has its service record, which
+            // listens on nothing.)
+            Channel::Contacts => {
+                options.insert("Name", "Olo Contacts".into());
             }
         }
         let path = zvariant::ObjectPath::try_from(channel.path())?;
-        conn.call_method(Some(DEST), "/org/bluez", Some(MANAGER), "RegisterProfile", &(path, channel.uuid(), options))?;
+        conn.call_method(Some(DEST), "/org/bluez", Some(MANAGER), "RegisterProfile", &(path, channel.registered_as(), options))?;
     }
     Ok(())
 }

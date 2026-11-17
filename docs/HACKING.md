@@ -13601,16 +13601,39 @@ specifications):
   on the phone, the notes say). After the fifteen minutes it asks every
   five, with no advertisement. The stand-in iPhone refuses to have its
   switches turned on while nothing is advertised.
-- **Not yet tried with a real phone of either kind** (2026-11-16): all
-  of this is tested against stand-ins. What BlueFerry found an iPhone
-  to want besides, and Olo doesn't do yet, to try if Ben's still shows
-  no switches: the computer's Class of Device as hands-free (major 4,
-  minor 8; `Class` in /etc/bluetooth/main.conf, a Doctor fix, though it
-  would show the computer as a headset to everything); and pairing by
-  `Device1.Connect` on the unpaired phone rather than `Pair`, which on
-  some controllers is what gives one bond for both transports. Groups'
-  names (ANCS), and a store of conversations that outlives the service,
-  are also to come.
+  (Ben's, 2026-11-17: with it, Show Notifications appeared.)
+- **Sync Contacts appears only for a computer that says it's a phone
+  book client**: one with the Phone Book Access *client's* service
+  record (0x112e). The contacts profile was registered under the
+  phone's own service (0x112f) as a client, for which BlueZ publishes
+  no record, and Ben's iPhone showed Show Notifications "but no sync
+  contacts". It's registered as the client now (`registered_as`), with
+  no role: BlueZ publishes the client's record from its own table
+  (`get_pce_record`, version 1.2), listens on nothing, and connects it
+  to the phone's 0x112f still. The stand-in iPhone refuses Sync
+  Contacts to a computer without that record.
+- **The computer says it's a hands-free device** (Ben, 2026-11-17:
+  "have it identify as blueferry suggests"): Class of Device major 4
+  (Audio/Video), minor 2 (Hands-Free, the byte 0x08), as BlueFerry's
+  notes found an iPhone wants. Olo Doctor offers it with an iPhone
+  paired (`phone_class`: `Class = 0x000408` in /etc/bluetooth/main.conf,
+  Bluetooth started again), which bluetoothd applies itself at every
+  start: nothing has to put it back. (Not Car Audio, the other class an
+  iPhone gives a car's features to: it can turn on the iPhone's Driving
+  Focus.) What the computer said as they paired is what counts, so a
+  phone paired before may need pairing again.
+- **A phone is paired from its side** (`bluetooth::pair_phone`, the
+  Phone panel's Pair): `Device1.Connect` on it unpaired; the phone,
+  refusing to be connected to without security, starts pairing, and
+  leading the link it derives the low-energy keys as well: one bond for
+  both radios, one entry for this computer on the phone. A `Pair` from
+  here gave an iPhone a Classic bond only on an Intel controller (the
+  notes). Where the controller ends the connection first, `Pair`; a
+  code said to differ isn't tried again.
+- **Not yet confirmed with a real phone** (2026-11-17): Sync Contacts
+  and pairing from the phone's side are tested against stand-ins only.
+  Groups' names (ANCS), and a store of conversations that outlives the
+  service, are also to come.
 
 **`olo-phone --service`** (service.rs; a real session's, `REAL_SHELL`).
 With a phone paired, it asks BlueZ for a channel to its messages and

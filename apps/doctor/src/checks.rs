@@ -300,6 +300,8 @@ pub struct Roots {
     pub airpods: bool,
     /// A phone is paired here (BlueZ's: one whose class is a phone's).
     pub phone: bool,
+    /// An iPhone among them (Apple's vendor id).
+    pub iphone: bool,
     /// Bluetooth controllers that don't answer (BlueZ's adapter powered
     /// and its power off, or the other way round), by name ("hci0").
     pub bluetooth_stuck: Vec<String>,
@@ -412,7 +414,10 @@ impl Roots {
         let scope = scope_of(&std::fs::read_to_string("/proc/self/cgroup").unwrap_or_default());
         // AirPods paired, as BlueZ says (the service needn't be running).
         let airpods = olo_system::bluetooth::status().map(|s| s.devices.iter().any(|d| d.paired && d.modalias.as_deref().is_some_and(olo_system::airpods::is_airpods))).unwrap_or(false);
-        let phone = olo_system::bluetooth::status().map(|s| s.devices.iter().any(|d| d.paired && d.icon == "phone")).unwrap_or(false);
+        let phones: Vec<bool> = olo_system::bluetooth::status()
+            .map(|s| s.devices.iter().filter(|d| d.paired && d.icon == "phone").map(|d| d.modalias.as_deref().is_some_and(|m| m.to_ascii_lowercase().starts_with("bluetooth:v004c"))).collect())
+            .unwrap_or_default();
+        let (phone, iphone) = (!phones.is_empty(), phones.contains(&true));
         let bluetooth_stuck =
             olo_system::bluetooth::status().ok().and_then(|s| s.adapter).filter(|a| a.not_answering()).map(|a| a.path.rsplit('/').next().unwrap_or_default().to_owned()).into_iter().collect();
         Roots {
@@ -423,6 +428,7 @@ impl Roots {
             units: Box::new(crate::fix::unit_state),
             airpods,
             phone,
+            iphone,
             bluetooth_stuck,
             packages: Box::new(real_packages),
             updates: Box::new(real_updates),
@@ -677,6 +683,7 @@ pub fn scan(roots: &Roots) -> Report {
     airpods_listening(roots, &procs, &mut r);
     phone(roots, &mut r);
     phone_link(roots, &mut r);
+    phone_class(roots, &mut r);
     util_clamp(roots, &mut r);
     kept_core(roots, &mut r);
     session_weight(roots, &mut r);
@@ -2107,6 +2114,107 @@ fn phone_link(roots: &Roots, r: &mut Report) {
     r.fine.push(Fine {
         title: "The phone’s messages can reach Olo".into(),
         detail: format!("Olo’s phone service is running, its profiles registered with Bluetooth. {name}: {}.", state.link.words().trim_end_matches('.')),
+    });
+}
+
+/// BlueZ's settings file.
+const BLUEZ_CONF: &str = "etc/bluetooth/main.conf";
+/// The class this computer presents for an iPhone: Audio/Video (major
+/// 4), Hands-Free (minor 2, the byte 0x08); BlueZ adds the service bits.
+const HANDS_FREE: u32 = 0x000408;
+
+/// The `Class` set in BlueZ's settings ([General]; commented out: none).
+fn bluez_class(conf: &str) -> Option<u32> {
+    let mut general = false;
+    for line in conf.lines().map(str::trim) {
+        if line.starts_with('[') {
+            general = line == "[General]";
+        } else if general
+            && let Some((k, v)) = line.split_once('=')
+            && k.trim() == "Class"
+        {
+            let v = v.trim();
+            return u32::from_str_radix(v.trim_start_matches("0x").trim_start_matches("0X"), 16).ok();
+        }
+    }
+    None
+}
+
+/// BlueZ's settings with `Class` set to `class` in [General]: the line
+/// there replaced, else put after its commented example, else first in
+/// the section (a section made if there's none). The rest as it was.
+fn with_bluez_class(conf: &str, class: u32) -> String {
+    let line = format!("Class = 0x{class:06x}");
+    let mut out: Vec<String> = Vec::new();
+    let (mut general, mut done, mut seen_general) = (false, false, false);
+    for l in conf.lines() {
+        let t = l.trim();
+        if t.starts_with('[') {
+            if general && !done {
+                out.push(line.clone());
+                done = true;
+            }
+            general = t == "[General]";
+            seen_general |= general;
+            out.push(l.to_owned());
+            continue;
+        }
+        if general && !done && t.split_once('=').is_some_and(|(k, _)| k.trim() == "Class") {
+            out.push(line.clone());
+            done = true;
+            continue;
+        }
+        out.push(l.to_owned());
+        if general && !done && t.trim_start_matches('#').split_once('=').is_some_and(|(k, _)| k.trim() == "Class") {
+            out.push(line.clone());
+            done = true;
+        }
+    }
+    if general && !done {
+        out.push(line.clone());
+        done = true;
+    }
+    if !seen_general && !done {
+        out.insert(0, "[General]".into());
+        out.insert(1, line);
+    }
+    let mut text = out.join("\n");
+    text.push('\n');
+    text
+}
+
+/// An iPhone paired: it offers its messages and contacts to a computer
+/// (the switches under it in its Bluetooth settings) by what the
+/// computer said it was when they paired, and BlueFerry's notes found
+/// them offered to one that says it's a hands-free device (Ben,
+/// 2026-11-17: "have it identify as blueferry suggests"). BlueZ says so
+/// at every start from its own settings (`Class`), so nothing has to put
+/// it back. The fix writes it there and starts Bluetooth again.
+fn phone_class(roots: &Roots, r: &mut Report) {
+    if !roots.iphone {
+        return;
+    }
+    // (Whole: written back with only the class changed.)
+    let conf = std::fs::read_to_string(roots.fs.join(BLUEZ_CONF)).unwrap_or_default();
+    let class = bluez_class(&conf);
+    // (Only the major and minor classes count: BlueZ takes no more.)
+    if class.is_some_and(|c| c & 0x1ffc == HANDS_FREE & 0x1ffc) {
+        r.fine.push(Fine { title: "Bluetooth presents this computer as an iPhone expects".into(), detail: "As a hands-free device: the iPhone offers its messages and contacts to it.".into() });
+        return;
+    }
+    r.findings.push(Finding {
+        id: "phone-class".into(),
+        severity: Severity::Problem,
+        title: "Bluetooth doesn’t present this computer as an iPhone expects".into(),
+        detail: "An iPhone offers its messages and contacts to a computer (Show Notifications and Sync Contacts, under it in the iPhone’s Bluetooth settings) by what the computer says it is, and it offers them to one that says it’s a hands-free device. The fix has Bluetooth say so from now on (Class in /etc/bluetooth/main.conf) and starts it again. If the switches still don’t appear, it’s what the computer said as they paired that counts: forget this computer on the iPhone and pair again (Preferences ▸ Phone). The iPhone may then also offer this computer for calls’ sound.".into(),
+        fix: Some(Fix {
+            label: "Present as Hands-Free".into(),
+            root: true,
+            steps: vec![
+                Step::WriteFile { path: format!("/{BLUEZ_CONF}").into(), content: with_bluez_class(&conf, HANDS_FREE), mode: 0o644 },
+                Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Restart },
+            ],
+        }),
     });
 }
 
@@ -4169,6 +4277,7 @@ mod tests {
             units,
             airpods: true,
             phone: false,
+            iphone: false,
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
@@ -4699,6 +4808,7 @@ mod tests {
             units: Box::new(|_| Err("none".into())),
             airpods: false,
             phone: false,
+            iphone: false,
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
@@ -4784,6 +4894,7 @@ mod tests {
             units: Box::new(|_| Err("none".into())),
             airpods: false,
             phone: false,
+            iphone: false,
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
@@ -5314,6 +5425,36 @@ mod tests {
         let report = scan(&roots);
         assert!(report.findings.iter().all(|f| !f.id.starts_with("phone-")));
         assert!(report.fine.iter().any(|f| f.title == "The phone’s messages can reach Olo"));
+        let _ = std::fs::remove_dir_all(&fs);
+    }
+
+    /// An iPhone paired: BlueZ set to present the computer as hands-free,
+    /// its settings otherwise as they were.
+    #[test]
+    fn an_iphone_wants_a_hands_free_computer() {
+        let (fs, mut roots) = machine("phone-class");
+        let found = |roots: &Roots| scan(roots).findings.into_iter().find(|f| f.id == "phone-class");
+        assert!(found(&roots).is_none(), "no iPhone: nothing said");
+        roots.iphone = true;
+        let conf = "[General]\n# Default device class.\n#Class = 0x000100\n#DiscoverableTimeout = 0\n\n[BR]\n#PageScanType = \n";
+        let path = fs.join(BLUEZ_CONF);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, conf).unwrap();
+        let f = found(&roots).expect("said");
+        let fix = f.fix.unwrap();
+        assert!(fix.root);
+        let Step::WriteFile { content, .. } = &fix.steps[0] else { panic!("{:?}", fix.steps) };
+        assert_eq!(content, "[General]\n# Default device class.\n#Class = 0x000100\nClass = 0x000408\n#DiscoverableTimeout = 0\n\n[BR]\n#PageScanType = \n");
+        assert_eq!(fix.steps[1], Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Restart });
+        // Done: fine (whatever service bits it has with it).
+        std::fs::write(&path, content).unwrap();
+        assert!(found(&roots).is_none());
+        // Another class set: replaced, in place; none at all: a section.
+        assert_eq!(with_bluez_class("[General]\nName = x\nClass = 0x00010c\n[LE]\n", HANDS_FREE), "[General]\nName = x\nClass = 0x000408\n[LE]\n");
+        assert_eq!(with_bluez_class("[General]\nName = x\n[LE]\nClass = 1\n", HANDS_FREE), "[General]\nName = x\nClass = 0x000408\n[LE]\nClass = 1\n");
+        assert_eq!(with_bluez_class("", HANDS_FREE), "[General]\nClass = 0x000408\n");
+        assert_eq!(bluez_class("[General]\nClass = 0x240408\n"), Some(0x240408));
+        assert_eq!(bluez_class("[LE]\nClass = 0x000408\n"), None);
         let _ = std::fs::remove_dir_all(&fs);
     }
 
@@ -6182,6 +6323,7 @@ mod tests {
                 units: Box::new(|_| Err("none".into())),
                 airpods: false,
                 phone: false,
+                iphone: false,
                 bluetooth_stuck: Vec::new(),
                 packages: Box::new(|_| None),
                 updates: Box::new(|| None),

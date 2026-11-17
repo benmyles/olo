@@ -325,7 +325,7 @@ fn connect(ui: &mut Ui, st: &mut State, state: &PhoneState, error: Option<String
                         .on_click(move |_, _| bluetooth::act(blue, path.clone(), "Connecting…", "The phone didn’t connect. Is it unlocked, with Bluetooth on?", bt::connect)),
                     None => Button::new("Pair")
                         .default(true)
-                        .on_click(move |_, _| bluetooth::act(blue, path.clone(), "Pairing…", "Pairing didn’t finish. Try again, with the phone unlocked on its Bluetooth settings.", bt::pair)),
+                        .on_click(move |_, _| bluetooth::act(blue, path.clone(), "Pairing…", "Pairing didn’t finish. Try again, with the phone unlocked on its Bluetooth settings.", bt::pair_phone)),
                 };
                 let icon = canvas(|g, b: Bounds<Pixels>| {
                     let at = style::snap_centred(g, b.center(), 16.0, 16.0);
