@@ -39,9 +39,12 @@ use crate::{
 
 const WIDTH: f32 = 760.0;
 
-/// The window: as tall as what it shows.
+/// The window: as wide and as tall as what it shows, and no larger: it
+/// floats over tiled windows and is never a tile or a tab, where it was
+/// stretched to a size its four cards don't fill (Ben, 2026-11-16: "should
+/// be floating with max size so it doesn't look broken").
 pub fn options() -> WindowOptions {
-    WindowOptions::new("Network Speed Test", WIDTH, 700.0).fits_content()
+    WindowOptions { fixed: true, ..WindowOptions::new("Speed Test", WIDTH, 700.0).fits_content().floating() }
 }
 /// A card's graph.
 const GRAPH: f32 = 64.0;
@@ -233,7 +236,7 @@ impl Speed {
         let chosen = cx.msg_with(|choice: &Option<usize>| if *choice == Some(1) { Msg::Begin } else { Msg::Never });
         open_alert(
             cx,
-            "Network Speed Test",
+            "Speed Test",
             "warning",
             "This connection is metered: what moves over it may be paid for by the amount. The test moves as much data as the line carries in sixteen seconds, each way’s rate for eight (2 GB on a line of a gigabit a second, 20 MB on one of ten megabits).",
             &["Cancel", "Test Anyway"],
@@ -325,7 +328,7 @@ impl Speed {
 
     /// The results as text, for the clipboard: every card, as it reads.
     pub fn as_text(&self) -> String {
-        let mut out = String::from("Network Speed Test\n");
+        let mut out = String::from("Speed Test\n");
         for (title, figure, caption, facts) in self.cards() {
             out += &format!("\n{title}: {figure}\n");
             if !caption.is_empty() {
@@ -659,7 +662,9 @@ impl View for Speed {
         let board = div().flex().flex_col().gap(px(dashboard::GAP)).p(px(dashboard::GAP)).bg(style::c(dashboard::gutter(&p))).child(row()).child(row());
         let note = "Against Cloudflare’s speed test servers: four connections each way, eight seconds each.";
         let content = div().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).child(top).child(board).child(StringView::new(note).dim(true));
-        div().w(px(WIDTH)).flex().flex_col().child(MenuBar::new(cx, menus)).child(content)
+        // (As wide as its window, which is `WIDTH`: a window given
+        // another width has its bar and cards across all of it.)
+        div().w_full().flex().flex_col().child(MenuBar::new(cx, menus)).child(content)
     }
 }
 

@@ -1566,8 +1566,107 @@ mod tests {
         doc.save(std::env::var("OUT").unwrap()).unwrap();
     }
 
+    /// A page that is one picture, `w` × `h` pixels of grey on a page of
+    /// as many points (a slide exported as a picture is this, in colour).
+    fn picture_page(w: u32, h: u32, grey: Vec<u8>) -> Vec<u8> {
+        let mut doc = Document::with_version("1.7");
+        let (pages_id, page_id) = (doc.new_object_id(), doc.new_object_id());
+        let mut image = Dictionary::new();
+        image.set("Type", "XObject");
+        image.set("Subtype", "Image");
+        image.set("Width", w as i64);
+        image.set("Height", h as i64);
+        image.set("ColorSpace", "DeviceGray");
+        image.set("BitsPerComponent", 8);
+        let image = doc.add_object(Stream::new(image, grey));
+        let content = doc.add_object(Stream::new(Dictionary::new(), format!("q {w} 0 0 {h} 0 0 cm /Im0 Do Q").into_bytes()));
+        let mut xobjects = Dictionary::new();
+        xobjects.set("Im0", image);
+        let mut res = Dictionary::new();
+        res.set("XObject", xobjects);
+        let mut page = Dictionary::new();
+        page.set("Type", "Page");
+        page.set("Parent", pages_id);
+        page.set("MediaBox", vec![0.into(), 0.into(), (w as i64).into(), (h as i64).into()]);
+        page.set("Contents", content);
+        page.set("Resources", res);
+        doc.objects.insert(page_id, Object::Dictionary(page));
+        let mut pages = Dictionary::new();
+        pages.set("Type", "Pages");
+        pages.set("Kids", vec![Object::Reference(page_id)]);
+        pages.set("Count", 1);
+        doc.objects.insert(pages_id, Object::Dictionary(pages));
+        let mut cat = Dictionary::new();
+        cat.set("Type", "Catalog");
+        cat.set("Pages", pages_id);
+        let cat = doc.add_object(cat);
+        doc.trailer.set("Root", cat);
+        let mut out = Vec::new();
+        doc.save_to(&mut out).unwrap();
+        out
+    }
+
+    /// A picture shown smaller than it is keeps every part of itself in
+    /// its place, whatever fraction of a pixel its size ends on, and
+    /// keeps its fine detail (Ben, 2026-11-16: a PDF of 3840 × 2160
+    /// slides "is showing as lower quality with visible artifacts"). The
+    /// renderer as published resized it to its size rounded up and
+    /// squeezed that the rest of the way with nearest-pixel sampling: a
+    /// column and a row of the picture went missing somewhere across it,
+    /// and what was left was softer than other viewers make it
+    /// (vendor/hayro, `exact.rs`). The picture here is a zigzag of greys
+    /// across (up 64 pixels, down 64: four levels a pixel), so a column
+    /// out of place is seven levels wrong from there on.
+    #[test]
+    fn a_picture_shown_smaller_keeps_every_column_and_its_detail() {
+        use hayro::{PixmapSettings, RenderCache, RenderSettings, hayro_interpret::InterpreterSettings, vello_cpu::color::palette::css::WHITE};
+        let (w, h) = (3840u32, 24u32);
+        let zigzag = |x: f64| {
+            let t = x.rem_euclid(128.0);
+            (if t < 64.0 { t } else { 128.0 - t }) * 3.9
+        };
+        let row: Vec<u8> = (0..w).map(|x| zigzag(x as f64 + 0.5).round() as u8).collect();
+        let bytes = picture_page(w, h, (0..h).flat_map(|_| row.clone()).collect());
+        let pdf = hayro::hayro_syntax::Pdf::new(bytes).unwrap();
+        let pages = pdf.pages();
+        // (0.45000002 is 0.3 × 1.5 as Viewer works it out: a zoom of 30%
+        // on a 1.5× display, 1728.00007 pixels across.)
+        for k in [0.573f32, 0.450_000_02, 0.51875, 0.6, 0.3, 0.123] {
+            let pix = hayro::render(&pages[0], &RenderCache::new(), &InterpreterSettings::default(), &RenderSettings::default(), &PixmapSettings { x_scale: k, y_scale: k, bg_color: WHITE });
+            let (pw, data) = (pix.width() as usize, pix.data_as_u8_slice());
+            let middle = pix.height() as usize / 2;
+            let mut worst: (f64, usize) = (0.0, 0);
+            for x in 4..pw - 4 {
+                // The device pixel's centre, in the picture; not within
+                // a few pixels of a turn of the zigzag, which any filter
+                // rounds off.
+                let at = (x as f64 + 0.5) / k as f64;
+                let turn = (at.rem_euclid(64.0)).min(64.0 - at.rem_euclid(64.0));
+                if turn < 4.0 / k as f64 {
+                    continue;
+                }
+                let off = (data[(middle * pw + x) * 4] as f64 - zigzag(at)).abs();
+                if off > worst.0 {
+                    worst = (off, x);
+                }
+            }
+            assert!(worst.0 <= 2.5, "at {k}: device pixel {} is {:.1} levels from the picture there", worst.1, worst.0);
+        }
+        // Fine detail: black and white stripes three pixels wide, at 0.6,
+        // still swing nearly the whole range.
+        let row: Vec<u8> = (0..w).map(|x| if (x / 3) % 2 == 0 { 0 } else { 255 }).collect();
+        let bytes = picture_page(w, h, (0..h).flat_map(|_| row.clone()).collect());
+        let pdf = hayro::hayro_syntax::Pdf::new(bytes).unwrap();
+        let pix = hayro::render(&pdf.pages()[0], &RenderCache::new(), &InterpreterSettings::default(), &RenderSettings::default(), &PixmapSettings { x_scale: 0.6, y_scale: 0.6, bg_color: WHITE });
+        let (pw, data) = (pix.width() as usize, pix.data_as_u8_slice());
+        let line = &data[(pix.height() as usize / 2) * pw * 4..][..pw * 4];
+        let (low, high) = line.chunks_exact(4).skip(20).take(pw - 40).fold((255u8, 0u8), |(l, h), p| (l.min(p[0]), h.max(p[0])));
+        assert!(low <= 25 && high >= 230, "{low}..{high}");
+    }
+
     /// Render page 1 of $PDF to $OUT with hayro alone (what other viewers
-    /// see of the saved appearances).
+    /// see of the saved appearances), at $SCALE pixels a point (2 unless
+    /// said).
     #[test]
     #[ignore]
     fn render_png() {
@@ -1575,7 +1674,20 @@ mod tests {
         let bytes = std::fs::read(std::env::var("PDF").unwrap()).unwrap();
         let pdf = hayro::hayro_syntax::Pdf::new(bytes).unwrap();
         let pages = pdf.pages();
-        let pix = hayro::render(&pages[0], &RenderCache::new(), &InterpreterSettings::default(), &RenderSettings::default(), &PixmapSettings { x_scale: 2.0, y_scale: 2.0, bg_color: WHITE });
+        let k: f32 = std::env::var("SCALE").ok().and_then(|s| s.parse().ok()).unwrap_or(2.0);
+        // (How long the rendering alone takes, the quickest of five:
+        // `--nocapture` shows it.)
+        let render = || hayro::render(&pages[0], &RenderCache::new(), &InterpreterSettings::default(), &RenderSettings::default(), &PixmapSettings { x_scale: k, y_scale: k, bg_color: WHITE });
+        let quickest = (0..5)
+            .map(|_| {
+                let began = std::time::Instant::now();
+                std::hint::black_box(render());
+                began.elapsed()
+            })
+            .min()
+            .unwrap();
+        println!("rendered at {k} in {:.1} ms", quickest.as_secs_f64() * 1e3);
+        let pix = render();
         image::save_buffer(std::env::var("OUT").unwrap(), pix.data_as_u8_slice(), pix.width() as u32, pix.height() as u32, image::ColorType::Rgba8).unwrap();
     }
 

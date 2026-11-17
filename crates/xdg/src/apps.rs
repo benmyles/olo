@@ -24,7 +24,7 @@ pub const OUR_APPS: &[(&str, &str, &str)] = &[
     ("olo-doctor", "Olo Doctor", "doctor"),
     ("olo-updates", "OS Updates", "software-update"),
     ("olo-weather", "Weather", "weather"),
-    ("olo-speedtest", "Network Speed Test", "speed-test"),
+    ("olo-speedtest", "Speed Test", "speed-test"),
     ("olo-kache", "Kache", "kache"),
 ];
 

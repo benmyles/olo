@@ -114,6 +114,30 @@ Each note: what to do, then why (what happened), then how to apply it.
   puts the file in the guest (`/ko/NAME.ko`): the script loads it.
   The older kernel still installed here (7.2.11) has no headers left
   (`kernel-devel-matched` keeps the newest's).
+- **Is a window showing the pixels it was given?** Render what it
+  should show yourself and compare with a `tsession shot`, with PIL
+  (`/usr/bin/python3 -I`): `ImageChops.difference` and its mean and
+  max; and where they differ, strip by strip, which shift (−1, 0, +1)
+  fits each strip best. A stretch shows as an error growing across a
+  tile and then a clean one-pixel shift; a dropped column as a step
+  part of the way across; a stale render as no scale fitting at all.
+  An exact reference for a picture drawn smaller is
+  `src.resize((W, H), Image.LANCZOS, box=(0, 0, W / k, H / k))`. The
+  page's place comes from the app's own tree (`{"tree": true}` on
+  `olo-menus-PID.sock`: only the PID you started; the session's
+  runtime folder is the person's own, with every app's socket in it)
+  plus the window's content origin (`tsession ipc NAME
+  '{"type":"list_windows"}'`). A fit zoom that isn't clamped isn't a
+  round number: work it out from the tree, or search for it. Viewer at
+  1×, 1.5× and 2× showed three different faults this way (2026-11-16).
+- **A deadline in seconds on the wall isn't one on a busy computer.**
+  `tools/dev/ui-lint` runs at idle priority; with other work going (a
+  load of 38 on 15 processors: a build, another agent's tests) its apps
+  hardly ran in the 20 s they had, and a push was refused for "Kache:
+  no window came up". Its waits now leave out the time the app and its
+  window server were ready with no processor to run on
+  (`/proc/PID/schedstat`'s second number, `kept_waiting`). Do the same
+  for any wait on something that runs at low priority.
 - **Two files written one after the other can have the same time.** A
   file's time comes from the kernel's coarse clock, a tick (1 ms) wide:
   a test that writes two files and expects the second to be newer fails

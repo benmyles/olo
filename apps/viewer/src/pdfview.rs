@@ -125,6 +125,24 @@ pub struct PdfView {
     pages: HashMap<usize, PageImg>,
     /// Scale last asked of the worker, per page.
     asked: HashMap<usize, f32>,
+    /// The page to open on (the one it was showing before an upgrade in
+    /// place), until the document has been read.
+    start: Option<usize>,
+    /// Shown a page at a time, each fitted to the whole view on black,
+    /// with nothing else in it (Full Screen and Presentation: `set_show`),
+    /// and the fit and zoom to go back to after.
+    pub show: bool,
+    before_show: Option<(Option<Fit>, f32)>,
+    /// The view's size while shown so (there is no scroller to say it),
+    /// how far the wheel has turned towards the next page, and when it
+    /// last turned one.
+    shown: Size<f32>,
+    turned: f32,
+    turned_at: Option<std::time::Instant>,
+    /// The scale the pages near the view are due an exact render for,
+    /// once the zoom has stood still, and the timer that's out for it
+    /// (`sharpen_soon`).
+    sharpen: Option<(f32, olo_kit::TimerId)>,
     pub zoom: f32,
     pub fit: Option<Fit>,
     pub tool: Tool,
@@ -238,6 +256,13 @@ impl PdfView {
             editable: false,
             pages: HashMap::new(),
             asked: HashMap::new(),
+            start: None,
+            show: false,
+            before_show: None,
+            shown: size(0.0, 0.0),
+            turned: 0.0,
+            turned_at: None,
+            sharpen: None,
             zoom: 1.0,
             fit: Some(Fit::Width),
             tool: Tool::Select,
@@ -498,6 +523,11 @@ impl PdfView {
         let opened = match ev {
             Event::Opened { geoms, model, editable } => {
                 self.geoms = geoms;
+                // (The page it was on before an upgrade in place.)
+                if let Some(page) = self.start.take().filter(|p| *p > 0 && !self.geoms.is_empty()) {
+                    let page = page.min(self.geoms.len() - 1);
+                    (self.current_page, self.goto) = (page, Some(page));
+                }
                 self.saved = model.clone();
                 self.model = model;
                 self.editable = editable;
@@ -843,6 +873,38 @@ impl PdfView {
         self.set_zoom(z, None, cx);
     }
 
+    /// Opens on `page` once the document has been read.
+    pub fn starting_at(mut self, page: usize) -> Self {
+        self.start = Some(page);
+        self
+    }
+
+    /// A page at a time, each fitted to the whole view on black, with no
+    /// scroll bars, tools or find bar (Full Screen, and Presentation:
+    /// Ben, 2026-11-16: "a full screen mode where it's full screen and a
+    /// presentation mode where it's still a window but with the toolbar
+    /// etc gone (appropriate for sharing that window in chrome or via
+    /// airplay etc)"); or back as it was, on the page it was showing.
+    pub fn set_show(&mut self, on: bool, cx: &mut Cx<Self>) {
+        if on == self.show {
+            return;
+        }
+        self.end_editing(cx);
+        self.show = on;
+        self.turned = 0.0;
+        if on {
+            self.before_show = Some((self.fit, self.zoom));
+            self.fit = Some(Fit::Page);
+            self.find = None;
+        } else {
+            if let Some((fit, zoom)) = self.before_show.take() {
+                (self.fit, self.zoom) = (fit, zoom);
+            }
+            self.goto = Some(self.current_page);
+        }
+        cx.invalidate();
+    }
+
     pub fn go_to_page(&mut self, page: usize, cx: &mut Cx<Self>) {
         if !self.geoms.is_empty() {
             self.goto = Some(page.min(self.geoms.len() - 1));
@@ -852,6 +914,9 @@ impl PdfView {
 
     /// Page rects in content coordinates at the current zoom.
     fn layout(&self) -> Vec<Rect> {
+        if self.show {
+            return show_layout(&self.geoms, self.zoom, self.view, self.current_page);
+        }
         let widest = self.geoms.iter().map(|g| g.size.0).fold(0.0, f32::max) * self.zoom;
         let content_w = (widest + 2.0 * GAP).max(self.view.width);
         let mut y = GAP;
@@ -1096,6 +1161,33 @@ impl PdfView {
     }
 
     fn wheel(&mut self, e: &ScrollWheelEvent, cx: &mut Cx<Self>) {
+        if self.show {
+            // A page at a time: a notch of the wheel, or a sweep of two
+            // fingers, is the next page or the one before, and one only.
+            // A notch comes eased in over several frames (48 points in
+            // all from a mouse, less from others), so it isn't counted
+            // out: the first of it turns the page, and nothing more
+            // does for a quarter of a second.
+            cx.stop_propagation();
+            if self.turned_at.is_some_and(|at| at.elapsed() < std::time::Duration::from_millis(250)) {
+                return;
+            }
+            if matches!(e.touch_phase, olo_kit::TouchPhase::Ended) {
+                self.turned = 0.0;
+                return;
+            }
+            self.turned += match e.delta {
+                ScrollDelta::Pixels(p) => f32::from(p.y),
+                ScrollDelta::Lines(l) => l.y * 40.0,
+            };
+            if self.turned.abs() >= 8.0 {
+                let back = self.turned > 0.0;
+                (self.turned, self.turned_at) = (0.0, Some(std::time::Instant::now()));
+                let to = if back { self.current_page.saturating_sub(1) } else { self.current_page + 1 };
+                self.go_to_page(to, cx);
+            }
+            return;
+        }
         if !(e.modifiers.control || e.modifiers.platform) {
             return;
         }
@@ -1224,6 +1316,10 @@ impl PdfView {
     /// Where it's scrolled to and how much shows, as the scroller has
     /// them now.
     fn look(&mut self) {
+        if self.show {
+            (self.view, self.offset) = (self.shown, point(0.0, 0.0));
+            return;
+        }
         let view = self.scroll.bounds();
         self.view = size(f32::from(view.size.width), f32::from(view.size.height));
         let off = self.scroll.offset();
@@ -1234,12 +1330,74 @@ impl PdfView {
     /// pages near the view asked of the worker at this zoom and scale,
     /// those far from it let go. Whether what its window says of it
     /// changed.
+    /// How long the zoom stands still before pages rendered for a zoom
+    /// close to it are rendered again for exactly it.
+    const SHARPEN_AFTER: std::time::Duration = std::time::Duration::from_millis(150);
+
+    /// The pages near the view whose picture isn't for exactly `want`
+    /// (pixels a point), nor asked for at it, where a render at it would
+    /// look any different (not past the size cap).
+    fn inexact(&self, want: f32) -> Vec<usize> {
+        let near = Rect { x0: self.offset.x, y0: self.offset.y - self.view.height, x1: self.offset.x + self.view.width, y1: self.offset.y + 2.0 * self.view.height };
+        self.layout()
+            .iter()
+            .enumerate()
+            .filter(|(_, pr)| pr.intersects(&near))
+            .filter(|(i, _)| {
+                let max_scale = crate::pdfwork::MAX_PX / self.geoms[*i].size.0.max(self.geoms[*i].size.1).max(1.0);
+                wants_exact(self.pages.get(i).map(|p| p.scale), self.asked.get(i).copied(), want, max_scale)
+            })
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// A page rendered for a zoom within 2% of the one it's shown at is
+    /// stretched to fit. That is what a pinch, or a window being sized,
+    /// wants while it moves (a render at every step would never be in
+    /// time), and not what's wanted once it stops: a stretched page is
+    /// soft, with bands across it where the two grids drift apart, and
+    /// one whose zoom moved by a fraction of a percent was left so for
+    /// good (a window fitting its width as it opens: a third of a percent
+    /// on a 1.5× display, where the fit isn't a round number; Ben,
+    /// 2026-11-16: "it is showing as lower quality with visible
+    /// artifacts"). Once the zoom has stood still for a moment, the pages
+    /// near the view that aren't for exactly it are asked for again, and
+    /// drawn a pixel to a pixel when they come.
+    fn sharpen_soon(&mut self, cx: &mut Cx<Self>) {
+        let want = self.zoom * cx.scale_factor();
+        if self.sharpen.is_some_and(|(due, _)| due == want) {
+            return;
+        }
+        // (The zoom moved on: the timer out for where it was is no use.)
+        if let Some((_, timer)) = self.sharpen.take() {
+            cx.cancel(timer);
+        }
+        if self.inexact(want).is_empty() {
+            return;
+        }
+        let timer = cx.after_do(Self::SHARPEN_AFTER, move |v: &mut Self, cx| {
+            v.sharpen = None;
+            if v.zoom * cx.scale_factor() != want {
+                return;
+            }
+            for i in v.inexact(want) {
+                let _ = v.tx.send(Request::Render { page: i, scale: want });
+                v.asked.insert(i, want);
+            }
+        });
+        self.sharpen = Some((want, timer));
+    }
+
     fn settle(&mut self, s: f32) -> bool {
         self.look();
         let layout = self.layout();
-        // The page in the middle of the view is the current one.
+        // The page in the middle of the view is the current one. (Shown
+        // a page at a time, the page turned to is: the view places it,
+        // not the other way about, and its size may not be known yet.)
         let mid = self.offset.y + self.view.height / 2.0;
-        if let Some(i) = layout.iter().position(|r| r.y1 + GAP > mid) {
+        if !self.show
+            && let Some(i) = layout.iter().position(|r| r.y1 + GAP > mid)
+        {
             self.current_page = i;
         }
         let near = Rect { x0: self.offset.x, y0: self.offset.y - self.view.height, x1: self.offset.x + self.view.width, y1: self.offset.y + 2.0 * self.view.height };
@@ -1345,8 +1503,12 @@ impl PdfView {
         let seen = g.visible_bounds();
         let visible = Rect { x0: f32::from(seen.left() - o.x), y0: f32::from(seen.top() - o.y), x1: f32::from(seen.right() - o.x), y1: f32::from(seen.bottom() - o.y) };
         let layout = self.layout();
-        self.cursors(&layout, visible, o, g);
-        g.paint_quad(olo_kit::fill(visible.on(o), style::shade(&p, p.panel_background, 1.18)));
+        if self.show {
+            g.paint_quad(olo_kit::fill(visible.on(o), olo_kit::black()));
+        } else {
+            self.cursors(&layout, visible, o, g);
+            g.paint_quad(olo_kit::fill(visible.on(o), style::shade(&p, p.panel_background, 1.18)));
+        }
         let want = self.zoom * s;
         let mut budget = UPLOAD_BUDGET;
         let mut more = false;
@@ -1355,8 +1517,11 @@ impl PdfView {
                 continue;
             }
             let pb = pr.on(o);
-            // Shadow, then the page (white until it's rendered).
-            g.paint_quad(olo_kit::fill(Bounds::new(pb.origin + point(px(0.0), px(0.0)), pb.size + size(px(2.0), px(2.0))), style::shade(&p, p.panel_background, 1.45)));
+            // Shadow (not on black), then the page (white until it's
+            // rendered).
+            if !self.show {
+                g.paint_quad(olo_kit::fill(Bounds::new(pb.origin + point(px(0.0), px(0.0)), pb.size + size(px(2.0), px(2.0))), style::shade(&p, p.panel_background, 1.45)));
+            }
             g.paint_quad(olo_kit::fill(pb, olo_kit::white()));
             agent::record(g, agent::Node { role: "Page", name: Some(format!("Page {}", i + 1).into()), bounds: pb, enabled: true, ..Default::default() });
             let Some(img) = self.pages.get(&i) else { continue };
@@ -1513,6 +1678,44 @@ impl View for PdfView {
         self.active = cx.is_window_active();
         self.look();
         // Fit modes follow the window size.
+        if self.show {
+            // The page turned to, and it fitted to the whole view.
+            if let Some(page) = self.goto.take() {
+                self.current_page = page;
+            }
+            let (pw, ph) = self.geoms.get(self.current_page).map_or((612.0, 792.0), |g| g.size);
+            if self.view.width > 0.0 {
+                self.zoom = (self.view.width / pw).min(self.view.height / ph).clamp(MIN_ZOOM, MAX_ZOOM);
+            }
+            if self.settle(cx.scale_factor()) {
+                cx.emit(Changed);
+            }
+            self.sharpen_soon(cx);
+            let sized = cx.listener(|v: &mut PdfView, b: &Bounds<Pixels>, cx| {
+                let now = size(f32::from(b.size.width), f32::from(b.size.height));
+                if now != v.shown {
+                    v.shown = now;
+                    cx.invalidate();
+                }
+            });
+            // A click is the next page, a right click the one before.
+            let turn = |by: isize| {
+                cx.listener(move |v: &mut PdfView, _: &MouseDownEvent, cx| {
+                    let to = if by < 0 { v.current_page.saturating_sub(1) } else { v.current_page + 1 };
+                    v.go_to_page(to, cx);
+                })
+            };
+            return div()
+                .id("pdf-show")
+                .size_full()
+                .bg(olo_kit::black())
+                .on_bounds_changed(sized)
+                .child(cx.canvas(|v: &PdfView, g, b| v.paint(g, b)).size_full())
+                .on_mouse_down(MouseButton::Left, turn(1))
+                .on_mouse_down(MouseButton::Right, turn(-1))
+                .on_scroll_wheel(cx.listener(|v: &mut PdfView, e: &ScrollWheelEvent, cx| v.wheel(e, cx)))
+                .into_any_element();
+        }
         if self.view.width > 0.0 {
             let inner_w = self.view.width - 2.0 * GAP - 4.0;
             let inner_h = self.view.height - 2.0 * GAP - 4.0;
@@ -1553,6 +1756,7 @@ impl View for PdfView {
         if self.settle(cx.scale_factor()) {
             cx.emit(Changed);
         }
+        self.sharpen_soon(cx);
         let pages = cx.canvas(|v: &PdfView, g, b| v.paint(g, b)).size_full();
         let mut body = div()
             .id("pdf-pages")
@@ -1658,6 +1862,9 @@ impl View for PdfView {
                 if v.settle(cx.scale_factor()) {
                     cx.emit(Changed);
                 }
+                // (A page scrolled in may be one rendered for a zoom
+                // close to this one.)
+                v.sharpen_soon(cx);
             }))
             .child(body);
         let bar = self.find.as_ref().map(|f| self.find_bar(f, cx));
@@ -1875,9 +2082,85 @@ fn draw_selection(g: &mut Painter, p: &olo_kit::palette::Palette, r: Bounds<Pixe
     }
 }
 
+/// The pages' places when one is shown at a time (`PdfView::set_show`):
+/// page `now` in the middle of a view of `view`; the one before just
+/// above the view and the one after just below, out of sight but near,
+/// so they're rendered by the time they're turned to; the rest far off
+/// (and so let go).
+fn show_layout(geoms: &[PageGeom], zoom: f32, view: Size<f32>, now: usize) -> Vec<Rect> {
+    geoms
+        .iter()
+        .enumerate()
+        .map(|(i, g)| {
+            let (w, h) = ((g.size.0 * zoom).round(), (g.size.1 * zoom).round());
+            let x = ((view.width - w) / 2.0).round();
+            let y = match i {
+                i if i == now => ((view.height - h) / 2.0).round(),
+                i if i + 1 == now => -h - 1.0,
+                i if i == now + 1 => view.height + 1.0,
+                i if i < now => -1.0e6,
+                _ => 1.0e6,
+            };
+            Rect { x0: x, y0: y, x1: x + w, y1: y + h }
+        })
+        .collect()
+}
+
+/// Whether a page wants a render for exactly `want` (pixels a point):
+/// its picture (`have`: the scale it was rendered at, the size cap
+/// counted) isn't for it, none is asked for at it (`asked`), and one
+/// would look different (a picture already at the size cap, `max_scale`,
+/// with more wanted, wouldn't).
+fn wants_exact(have: Option<f32>, asked: Option<f32>, want: f32, max_scale: f32) -> bool {
+    let exact = |s: Option<f32>| s.is_some_and(|s| (s / want - 1.0).abs() < 1e-4);
+    let capped = have.is_some_and(|h| h >= max_scale * 0.99) && want > max_scale;
+    !exact(have) && !exact(asked) && !capped
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Shown a page at a time: the current page is in the middle of the
+    /// view and the only one in sight; its neighbours are within a
+    /// view's height of it (rendered ahead), the others far.
+    #[test]
+    fn a_page_shown_by_itself_is_alone_in_the_middle() {
+        let page = |w: f32, h: f32| PageGeom { size: (w, h), transform: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0] };
+        let geoms = [page(1920.0, 1080.0), page(1920.0, 1080.0), page(1080.0, 1920.0), page(1920.0, 1080.0), page(1920.0, 1080.0)];
+        let view = size(1280.0, 800.0);
+        let now = 2;
+        // (Fitted to the view: the tall page by its height.)
+        let zoom = (view.width / geoms[now].size.0).min(view.height / geoms[now].size.1);
+        let l = super::show_layout(&geoms, zoom, view, now);
+        let seen = Rect { x0: 0.0, y0: 0.0, x1: view.width, y1: view.height };
+        let near = Rect { x0: 0.0, y0: -view.height, x1: view.width, y1: 2.0 * view.height };
+        assert_eq!((l[now].x0, l[now].y0, l[now].w(), l[now].h()), (415.0, 0.0, 450.0, 800.0));
+        assert_eq!((0..5).filter(|i| l[*i].intersects(&seen)).collect::<Vec<_>>(), [now]);
+        assert_eq!((0..5).filter(|i| l[*i].intersects(&near)).collect::<Vec<_>>(), [1, 2, 3]);
+        // The first page: nothing before it.
+        let l = super::show_layout(&geoms, 0.5, view, 0);
+        assert_eq!((0..5).filter(|i| l[*i].intersects(&near)).collect::<Vec<_>>(), [0, 1]);
+    }
+
+    /// A page is rendered again for exactly the zoom it's shown at once
+    /// that stands still: one rendered for a zoom a third of a percent
+    /// off (shown stretched, and left so before), one never rendered;
+    /// not one that is for it, or asked for at it, or already at the
+    /// size cap with more wanted.
+    #[test]
+    fn a_page_is_rendered_again_for_exactly_its_zoom() {
+        let want = 0.518_92;
+        assert!(super::wants_exact(Some(0.517_2), Some(0.517_2), want, 1.5625));
+        assert!(super::wants_exact(None, None, want, 1.5625));
+        assert!(!super::wants_exact(Some(want), Some(0.517_2), want, 1.5625));
+        assert!(!super::wants_exact(Some(0.517_2), Some(want), want, 1.5625));
+        // Past the cap (a 3840-point page at 200% on a 2× display wants
+        // 4 pixels a point; 6000 pixels is 1.5625): the capped picture
+        // is all there is to have.
+        assert!(!super::wants_exact(Some(1.5625), Some(4.0), 4.0, 1.5625));
+        assert!(super::wants_exact(Some(1.2), Some(1.2), 4.0, 1.5625));
+    }
 
     #[test]
     fn affine_round_trip() {

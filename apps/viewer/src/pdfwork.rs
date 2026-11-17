@@ -42,7 +42,8 @@ pub struct Tile {
 }
 
 pub enum Request {
-    /// Render page `page` at `scale` pixels per point.
+    /// Render page `page` at `scale` pixels per point (or as near as the
+    /// size cap lets: `Event::Page` says which).
     Render { page: usize, scale: f32 },
     /// Write the document with `model` to `to`. `flatten` burns everything
     /// in; otherwise, when `to` becomes the window's file (`adopt`), the
@@ -206,7 +207,11 @@ pub fn start(path: PathBuf, send: impl Fn(Event) + Send + 'static) -> mpsc::Send
                         let pix = hayro::render(p, &cache, &settings, &RenderSettings::default(), &PixmapSettings { x_scale: k, y_scale: k, bg_color: WHITE });
                         let (pw, ph) = (pix.width() as u32, pix.height() as u32);
                         let tiles = tiles(pix.data_as_u8_slice(), pw, ph);
-                        send(Event::Page { page, scale, size: (pw, ph), tiles });
+                        // (The scale it was rendered at: what was asked,
+                        // or the size cap's. Told as the one asked, a
+                        // capped picture was drawn as if it were for the
+                        // zoom: unstretched, over part of its page.)
+                        send(Event::Page { page, scale: k, size: (pw, ph), tiles });
                         // Its text next, once (before pages only Find wants).
                         if !read_text.contains(&page) {
                             want_text.retain(|p| *p != page);

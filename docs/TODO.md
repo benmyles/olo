@@ -13,28 +13,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-(Nothing.)
-
-## Not started (highest priority first)
-
-- **Viewer: a PDF's images at full quality, keys for everything, full
-  screen and a presentation mode** (Ben, 2026-11-16: "when viewing a pdf
-  in the viewer app that has high res images in it (e.g. see
-  /home/ben/Documents/ShiftUp-JackHenry-AI-v3.pdf ) it is showing as
-  lower quality with visible artifacts but if i use a different pdf
-  viewer the quality looks great. our viewer should show full quality.
-  also viewer should have kb shortcuts for everything, esp.
-  next/previous page, and also a full screen mode where it's full screen
-  and a presentation mode where it's still a window but with the toolbar
-  etc gone (appropriate for sharing that window in chrome or via airplay
-  etc)"). Find why that file's images come out worse (the scale they're
-  decoded or resampled at against the page's device pixels; a JPEG's
-  decode; a soft mask) and fix it at the root, compared pixel for pixel
-  with another viewer's rendering; every command of Viewer on a key
-  (next and previous page above all: Page Down/Up, Space, the arrows),
-  listed in its menus; Full Screen; and Presentation: the window as it
-  is, with the menu bar, toolbar and status line gone, so the window can
-  be shared as it is.
 - **Blueferry: a phone's messages and one-time codes in Olo** (Ben,
   2026-11-16: "integrate https://github.com/erikwb/blueferry into olo so
   that doctor suggests installing the backend and handles doing it and
@@ -55,6 +33,9 @@ something nobody here has is in "Blocked", with what it waits for.
   is, which may be the person's or one on an Agent Screen (then it goes
   to the agent's tab, never the person's, and is logged in the agent's
   history).
+
+## Not started (highest priority first)
+
 - **Terminal remembers a tab's own "keep going" message** (Ben,
   2026-11-16: "when a custom "keep going" message has been set on a tab
   in terminal then terminal should remember that across upgrades and
@@ -168,6 +149,44 @@ something nobody here has is in "Blocked", with what it waits for.
   Doctor says it was drawn by an older version and offers Update It
   (`splash::FORMAT` went to 2): that draws it with the logo.
 
+- **Speed Test floats at its own size, and is called "Speed Test"** (Ben,
+  2026-11-16, with a picture of it tiled, its cards in a corner of a
+  window four times their size: "network speed test app should be
+  floating with max size so it doesn't look broken. and also just rename
+  the app to "Speed Test""). *Done 2026-11-16.* Its window is the size of
+  what it shows and no other, and floats over tiled windows (never a
+  tile or a tab); its view is as wide as its window whatever that is.
+  Named "Speed Test" in its window, its alert, what it copies, Deskbar,
+  the app list and the shortcuts. **For Ben**: after upgrading, open it
+  with windows tiled: it floats at its own size.
+
+- **Viewer: a PDF's images at full quality, keys for everything, full
+  screen and a presentation mode** (Ben, 2026-11-16: "when viewing a pdf
+  in the viewer app that has high res images in it (e.g. see
+  /home/ben/Documents/ShiftUp-JackHenry-AI-v3.pdf ) it is showing as
+  lower quality with visible artifacts but if i use a different pdf
+  viewer the quality looks great. our viewer should show full quality.
+  also viewer should have kb shortcuts for everything, esp.
+  next/previous page, and also a full screen mode where it's full screen
+  and a presentation mode where it's still a window but with the toolbar
+  etc gone (appropriate for sharing that window in chrome or via airplay
+  etc)"). *Done 2026-11-16.* The quality: four faults, found by
+  comparing the window with the renderer's output and with an exact
+  resampling, pixel by pixel (the renderer dropped a column and a row of
+  a picture drawn smaller and was soft: hayro vendored and patched;
+  Viewer left a page stretched when its zoom moved a fraction of a
+  percent; the kit drew a tile a pixel wider at 1.5×; a page past the
+  size cap was drawn over part of its place). Now the window shows the
+  renderer's output with no pixel different at every scale, and that is
+  an exact Lanczos resampling. The keys: Page Down and Up, Home, End,
+  ⌘8 and ⌘9 for the fits, and the rest of the menus' commands. Full
+  Screen (F) and Presentation (P, ⇧⌘P): a page at a time on black, the
+  arrows, Space, the wheel and clicks turning pages; Presentation keeps
+  the window, with nothing in it but the page, in the page's own shape.
+  **For Ben**: open the PDF again after upgrading: it should be as
+  sharp as the other viewer's at fit and when zoomed, on both displays;
+  press P for Presentation and share that window.
+
 - **Kernel settings that are a win for a desktop, a Kernel tab, and all
   of it kept across kernel updates** (Ben, 2026-11-16: "research what
   other linux kernel patches are recommended for high performance,
@@ -209,7 +228,7 @@ something nobody here has is in "Blocked", with what it waits for.
   work add a new olo native Network Speed Test app that show not just
   total up/down but also all the advaned metrics/data about the
   connection that we are able to get"). *Done 2026-11-16* (HACKING,
-  "Network Speed Test"): Network Speed Test, among the apps. Download
+  "Speed Test"): Speed Test (so renamed), among the apps. Download
   and upload over four connections each for eight seconds against
   Cloudflare's servers, with, live as it runs: the round trip idle and
   while the line is busy and what the busy line adds; what was sent

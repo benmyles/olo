@@ -8111,6 +8111,17 @@ Chrome, GTK 4.16 text), and how Olo does it:
   - *At 1.25× and 1.75×* two points are 2.5 and 3.5 pixels. Edges are
     still crisp there (each is rounded), but spacing may differ by a
     pixel.
+- **A picture made for the device is drawn at its own size whatever the
+  float noise of its bounds** (`sprite_bounds`, interface painter.rs).
+  A picture's bounds reach the painter as logical pixels and are
+  multiplied by the scale; its corner is floored and its size ceiled,
+  as a picture covering part of a pixel must be. But 968 / 1.5 × 1.5 is
+  968.00006, and ceiled as it came a 968-pixel tile was drawn 969 wide,
+  every texel blended with the next (Viewer's PDF pages at 1.5×: soft
+  across the second tile, a seam where the tiles met). A bound within a
+  hundredth of a whole device pixel is now that pixel, before the floor
+  and the ceil; its test tries every size to 4096 at 1.25×, 1.5× and
+  1.75×.
 - **Text** is drawn by the Interface Kit at the device size, each line's
   baseline on a whole pixel, as each display's text rendering says
   (Preferences ▸ Display): at most hinted vertically
@@ -11007,6 +11018,64 @@ offer).
   fields as `TextInput`, `CheckBox` (checked), `RadioButton` (its
   on-state as its value), `ComboBox` or `ListBox`; while one is typed in,
   as its editor.
+  **Keys for its pages, Full Screen and Presentation** (Ben,
+  2026-11-16: "viewer should have kb shortcuts for everything, esp.
+  next/previous page, and also a full screen mode where it's full screen
+  and a presentation mode where it's still a window but with the toolbar
+  etc gone (appropriate for sharing that window in chrome or via airplay
+  etc)"). Go ▸ Next Page, Previous Page, First Page and Last Page are
+  Page Down, Page Up, Home and End; View ▸ Fit Width ⌘8 and Fit Page ⌘9;
+  Full Screen ⌃⌘F (and F, as for a picture or a video) and Presentation
+  ⇧⌘P (and P, where P doesn't play a video); Export Flattened PDF, a
+  picture's Flip and Adjust Size and a video's Previous and Next Chapter
+  have keys too, all in `olo_protocol::app_keys` (so in the menus,
+  Preferences ▸ Shortcuts and the shortcuts sheet, each platform's own).
+  Full Screen and Presentation show a PDF **a page at a time**
+  (`PdfView::set_show`, `show_layout`): the current page fitted to the
+  whole view on black, with no scroller, tool bar, find bar or tools;
+  the page before and the one after laid just out of sight, so they're
+  rendered by the time they're turned to (a turn is one frame, 0.3 ms);
+  the fit and zoom as they were on the way back, on the page it was
+  showing. There the arrows, Space and Return (⇧ for back), Page Up and
+  Down, Backspace, Home and End turn the pages, as do a click (a right
+  click back) and the wheel: one page a notch or a sweep of two fingers,
+  the first movement turning it and nothing more for a quarter of a
+  second, since a notch arrives eased in over several frames. Escape
+  leaves. **Presentation** is the window still (its tab kept, so it can
+  be moved, tiled and shared as any window) with the menu bar and tool
+  bar out of sight (the menu bar is still there, zero points high, for
+  its keys and for agents), and a PDF's window takes its page's shape,
+  as large as fits in the window as it was, so what's shared has no
+  black bands; its size comes back on leaving. A picture and a video
+  have it too (their menu bar gone). What a window was showing (a PDF's
+  page, Presentation and the size to go back to) is kept across an
+  upgrade in place (`Shown`, in `SavedDoc`).
+  **A page is shown a texture pixel to a device pixel, and a picture in
+  it at full quality** (Ben, 2026-11-16: a PDF of 3840 × 2160 slides
+  "is showing as lower quality with visible artifacts but if i use a
+  different pdf viewer the quality looks great"). Four things were in
+  the way, each found by comparing what the window shows, pixel by
+  pixel, with the renderer's own output and with an exact Lanczos
+  resampling of the page's picture (the ignored `render_png` test
+  renders a page at `$SCALE`; the page is found in a `tsession shot` by
+  its place in the app's tree): (1) the renderer dropped a column and a
+  row of a picture drawn smaller, and filtered it softly (vendor/hayro,
+  vendor/README.md: an exact Lanczos resampling now; Viewer's
+  `a_picture_shown_smaller_keeps_every_column_and_its_detail`); (2) a
+  page rendered for a zoom within 2% of the one it's shown at was
+  stretched to fit and left so (a window fitting its width as it opens,
+  on a 1.5× display): once the zoom has stood still for 150 ms the
+  pages near the view that aren't for exactly it are asked for again
+  (`sharpen_soon`, `wants_exact`), the 2% staying as what a pinch or a
+  resize uses while it moves; (3) the kit drew a tile whose size was a
+  whole pixel but for float noise a pixel wider, blended (see
+  "Fractional scaling", `sprite_bounds`); (4) a render capped at the
+  size limit (`MAX_PX`) said it was for the scale asked, and was drawn
+  unstretched over part of its page at the first zoom step past the cap
+  (the worker now says the scale it rendered at). After: at 1×, 1.25×,
+  1.5×, 1.75× and 2×, fresh and across live scale changes, what the
+  window shows is the renderer's output with no pixel different, and
+  that is within 57.5 dB of the exact resampling.
   Its text (`pdftext.rs`): read natively on the worker, once a page,
   after the page is first rendered (renders first; Select All and Find
   ask for the rest, `Request::AllText`, read a page at a time between
@@ -19436,12 +19505,13 @@ runs it against the fake on the session's bus (`@session-bus`).
 details from a worker), 1.4 ms on average, the slowest 3.7 ms.
 Reviewed at 1×, 1.25×, 1.5×, 1.75× and 2×, light and dark.
 
-## Network Speed Test (apps/speedtest; olo_net::tcp_info)
+## Speed Test (apps/speedtest; olo_net::tcp_info)
 
 What the connection carries each way, and everything that can be
 measured or read of it as it does (Ben, 2026-11-16: "a new olo native
 Network Speed Test app that show not just total up/down but also all the
-advaned metrics/data about the connection that we are able to get").
+advaned metrics/data about the connection that we are able to get";
+and the same day: "just rename the app to "Speed Test"").
 Speed tests elsewhere give two numbers and a ping; this one's point is
 the rest: what happens to everything else while the line is busy, and
 what TCP did on the way.
@@ -19487,7 +19557,14 @@ networkQuality grades responsiveness). The link is NetworkManager's
 cable's rate; and whether it's metered: then the app asks before moving
 gigabytes).
 
-**The window** (view.rs): Start Test and how far it is, then four cards
+**The window** (view.rs) is the size of what it shows and no other
+(`fixed`, `fits_content`), and floats: never a tile or a tab. It was an
+ordinary window at first, and tiled or zoomed it was stretched to a size
+its four cards didn't fill, its menu bar stopping where they did (Ben,
+2026-11-16: "should be floating with max size so it doesn't look
+broken"). Its view is as wide as its window all the same, so a width it
+is given by anything else has the bar and the cards across all of it.
+Start Test and how far it is, then four cards
 on the dashboard's gutter (the kit's `dashboard::Card`, as Activity
 Monitor's): Download, Upload, Latency, Connection, each a figure, a
 graph (but Connection) and its facts. Everything is live as the test

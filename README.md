@@ -151,7 +151,7 @@ performance, security, backups, AI and more.
 | **Activity Monitor** | Processes, CPU, memory, disks, network, GPU, displays and sensors, live |
 | **Passwords** | Logins, passkeys and secure notes, encrypted, synced with 1Password if you like; the SSH agent and `op` |
 | **Weather** | Every detail of the forecast for your places, and an assistant given all of it |
-| **Network Speed Test** | What the connection carries each way, and everything that can be read of it as it runs |
+| **Speed Test** | What the connection carries each way, and everything that can be read of it as it runs |
 | **Screenshot** | Pictures and recordings of the screen, a window or an area |
 | **DriveSetup** and **DiskUsage** | Disks, partitions and encryption; where the space went |
 | **DiskBackup** | Continuous, encrypted, versioned backups of the disk to the cloud |
@@ -183,11 +183,11 @@ performance, security, backups, AI and more.
   </tr>
   <tr>
     <td width="50%"><img src="docs/img/olo-weather.png" alt="Weather"></td>
-    <td width="50%"><img src="docs/img/olo-doctor.png" alt="Olo Doctor and the Network Speed Test"></td>
+    <td width="50%"><img src="docs/img/olo-doctor.png" alt="Olo Doctor and the Speed Test"></td>
   </tr>
   <tr>
     <td align="center">Weather</td>
-    <td align="center">Olo Doctor and the Network Speed Test</td>
+    <td align="center">Olo Doctor and the Speed Test</td>
   </tr>
 </table>
 
