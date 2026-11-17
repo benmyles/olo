@@ -25,14 +25,6 @@ something nobody here has is in "Blocked", with what it waits for.
   profile: the computer already says it's a hands-free device), its
   music's controls, and conversations kept across a restart of the
   service.
-- **Terminal remembers a tab's own "keep going" message** (Ben,
-  2026-11-16: "when a custom "keep going" message has been set on a tab
-  in terminal then terminal should remember that across upgrades and
-  restarts if the same tab is reopened"). A tab's custom keep-going
-  message is kept with the tab's state (what `save_state` keeps across an
-  upgrade in place, and what a restart restores a reopened tab from), and
-  comes back with the tab: the same tab reopened has its message, a new
-  tab the default.
 - **The start-up sound: silent when muted, and at one volume** (Ben,
   2026-11-16: "the olo startup sound should not play if the sound is
   muted, and if not muted it should play at the same volume regardless
@@ -5968,6 +5960,16 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Terminal remembers a tab's own "keep going" message**~~ (Ben,
+  2026-11-16: "terminal should remember that across upgrades and
+  restarts if the same tab is reopened"; done 2026-11-17). It was kept,
+  and came back after an upgrade; after a restart the reopened tab has a
+  new shell, and what was kept was looked up by the old shell's id
+  alone, so the message was lost. Found by the tab's place too now
+  (HACKING, Keep It Going). Whether Keep It Going is *on* isn't brought
+  back after a restart (the agent it kept going has gone with the
+  shell); after an upgrade it is, as before.
 
 - ~~**Bug: Activity Monitor's sidebar rows with no value until
   clicked**~~ (Ben, 2026-11-17: "several of the side menu items like

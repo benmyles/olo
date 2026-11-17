@@ -14785,7 +14785,12 @@ default button, Keep It Going, keeps the message and turns Keep It
 Going on (`Tab::keep_going_own`, over `keep_going_says`; the tab's
 name says it). Kept with the window (`SavedWindow::keep_going_own`),
 whether Keep It Going is on or not, and with a tab moved to an agent
-screen. Tried headless with the real Claude Code 2.1.322 and Codex
+screen. It comes back with the tab after an upgrade in place (the same
+shell) and after a restart, where the tab reopened has a new shell in
+the old one's place: what was kept of a tab is found by its shell's id,
+or, that being new, by the tab's place among those opened
+(`kept_index`; by the id alone a restart lost it: Ben, 2026-11-16). A
+new tab has the default. Tried headless with the real Claude Code 2.1.322 and Codex
 0.167, each in a sandbox HOME against a stand-in model server on
 loopback (Anthropic's Messages API and OpenAI's Responses API,
 streamed): each got its own message ("Carry on with the plan, thanks",

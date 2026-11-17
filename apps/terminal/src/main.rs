@@ -927,6 +927,15 @@ struct SavedWindow {
     auto_approve: Vec<Option<u64>>,
 }
 
+/// Which of a window's kept tabs (`ids`: their shells then) the `k`th
+/// tab opened for it is, its shell now `shell`: the one with that shell;
+/// or, the shell being a new one in a gone one's place, the one it was
+/// opened for (`kept_as`: each opened tab's place among the kept), when
+/// all that were asked for opened (`opened` of them).
+fn kept_index(ids: &[u64], kept_as: &[usize], opened: usize, k: usize, shell: u64) -> Option<usize> {
+    ids.iter().position(|&s| s == shell).or_else(|| (opened == kept_as.len()).then(|| kept_as.get(k).copied()).flatten())
+}
+
 impl SavedWindow {
     /// Its groups (the window's one, from before).
     fn all_groups(&self) -> Vec<Group> {
@@ -1158,6 +1167,9 @@ impl Terminal {
             let shown = ids.get(w.active).copied();
             let (mut starts, mut active, mut grid) = (Vec::new(), 0, None);
             let mut grouping = Vec::new();
+            // Which of the window's kept tabs each one opened is (a tab
+            // whose shell had gone has a new shell, and a new id).
+            let mut kept_as: Vec<usize> = Vec::new();
             for (i, &id) in ids.iter().enumerate() {
                 let start = match free.iter().find(|s| s.id == id && !used.contains(&id)) {
                     Some(s) => {
@@ -1174,6 +1186,7 @@ impl Terminal {
                     active = starts.len();
                 }
                 starts.push(start);
+                kept_as.push(i);
                 let (group, own) = w.tab_group(i);
                 grouping.push((group, own, w.hidden_tiled.get(i).copied().unwrap_or(false)));
             }
@@ -1198,10 +1211,15 @@ impl Terminal {
             for (shell, said) in keep {
                 self.set_keep_going(cx, shell, Some(said));
             }
-            // Each tab's own message, on or off.
+            // Each tab's own message, on or off: the tab's, whether its
+            // shell is the one it had or a new one in its place (after a
+            // restart: found by its place among the tabs opened, since
+            // its shell's id is new. By the id alone, a tab reopened
+            // after a restart had lost its message: Ben, 2026-11-16).
             if let Some(Win::Term(t)) = self.windows.get_mut(&id) {
-                for tab in &mut t.tabs {
-                    if let Some(i) = ids.iter().position(|&s| s == tab.session.id) {
+                let opened = t.tabs.len();
+                for (k, tab) in t.tabs.iter_mut().enumerate() {
+                    if let Some(i) = kept_index(&ids, &kept_as, opened, k, tab.session.id) {
                         tab.keep_going_own = w.keep_going_own.get(i).cloned().flatten();
                     }
                 }
@@ -3519,6 +3537,25 @@ mod tile_group_tests {
 
 #[cfg(test)]
 mod drop_tests {
+    /// A tab's kept settings find it again: by its shell where that's
+    /// the one it had, by its place where the shell is a new one (after
+    /// a restart), and not at all if fewer opened than were kept (which
+    /// is which isn't known then).
+    #[test]
+    fn a_reopened_tab_is_found_by_its_shell_or_its_place() {
+        let ids = [11, 12, 13];
+        // An upgrade: the same shells.
+        assert_eq!(super::kept_index(&ids, &[0, 1, 2], 3, 1, 12), Some(1));
+        // A restart: new shells (31, 32, 33), in the kept tabs' order.
+        assert_eq!(super::kept_index(&ids, &[0, 1, 2], 3, 2, 33), Some(2));
+        // The middle tab's shell was someone else's (not opened here):
+        // the two opened are the first and the third.
+        assert_eq!(super::kept_index(&ids, &[0, 2], 2, 1, 33), Some(2));
+        // One of them didn't open: by its shell or not at all.
+        assert_eq!(super::kept_index(&ids, &[0, 1, 2], 2, 1, 33), None);
+        assert_eq!(super::kept_index(&ids, &[0, 1, 2], 2, 1, 13), Some(2));
+    }
+
     #[test]
     fn shell_quote() {
         assert_eq!(super::shell_quote("/tmp/a.png"), "/tmp/a.png");
