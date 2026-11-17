@@ -76,7 +76,10 @@ Answer briefly and directly, in plain sentences: no Markdown headings, lists or 
 at most two short paragraphs. When commands or code would help, give up to four snippets, the most useful first: \
 each a short title (what it does, a few words), its language (bash, python, rust, …) and the code alone, ready to paste \
 (no prompt, no output, comments only where they help). Give none when none would help. \
-Prefer what a fresh Fedora has; say when something needs installing (with its dnf command as a snippet).";
+Prefer what a fresh Fedora has; say when something needs installing (with its dnf command as a snippet). \
+A question may end with where it was asked from (a terminal's shell, working directory, what is running there, \
+what is selected): answer for that place, with commands in that shell's own syntax and paths that work from \
+that directory, and take \"this\", \"here\" and \"that error\" to mean it.";
 
 /// The shape of the answer: the prose, and up to four snippets.
 pub fn schema() -> Value {
@@ -122,17 +125,36 @@ pub fn read(answer: &Value) -> (String, Vec<Snippet>) {
     (prose, snippets)
 }
 
-/// What the question carries of this computer: the system and the shell.
-fn context() -> String {
+/// What the window the palette was opened over says of itself
+/// (`olo_kit_base::commands::about`: Terminal's shell, folder, what's
+/// running and what's selected), for a question asked from it.
+fn asked_from(front: Option<(u32, u32)>) -> Option<String> {
+    let (pid, surface) = front?;
+    olo_kit_base::commands::about(pid, surface).filter(|a| !a.trim().is_empty())
+}
+
+/// What the question carries of this computer: the system and the
+/// person's shell (`with_shell`: not when it was asked from a terminal, which
+/// says its own, the one the answer is for).
+fn context(with_shell: bool) -> String {
     let os =
         std::fs::read_to_string("/etc/os-release").ok().and_then(|t| t.lines().find_map(|l| l.strip_prefix("PRETTY_NAME=").map(|v| v.trim_matches('"').to_owned()))).unwrap_or_else(|| "Linux".into());
     let shell = std::env::var("SHELL").ok().and_then(|s| std::path::Path::new(&s).file_name().map(|n| n.to_string_lossy().into_owned())).unwrap_or_else(|| "bash".into());
-    format!("(Asked on {os}, the shell {shell}, the desktop Olo on Wayland.)")
+    if with_shell { format!("(Asked on {os}, the shell {shell}, the desktop Olo on Wayland.)") } else { format!("(Asked on {os}, the desktop Olo on Wayland.)") }
+}
+
+/// The question as it's sent: itself, then the computer (`context`),
+/// then where it was asked from, if that window says.
+fn question_text(question: &str, context: &str, from: Option<&str>) -> String {
+    match from {
+        Some(from) => format!("{question}\n\n{context}\n\n{from}"),
+        None => format!("{question}\n\n{context}"),
+    }
 }
 
 /// Ask `question` (after `history`) on a worker, telling the palette as it
 /// comes; stops once `cancel` is set.
-pub fn ask(n: u64, question: String, history: Vec<olo_ai::Turn>, cancel: Arc<AtomicBool>, proxy: olo_kit::Proxy) {
+pub fn ask(n: u64, question: String, history: Vec<olo_ai::Turn>, front: Option<(u32, u32)>, cancel: Arc<AtomicBool>, proxy: olo_kit::Proxy) {
     let _ = std::thread::Builder::new().name("palette-ask".into()).spawn(move || {
         let done = |r: Result<(String, Vec<Snippet>, String), String>| proxy.send(Asked::Done(n, r));
         let settings = match Client::connect().map_err(|e| e.to_string()).and_then(|mut c| c.request(&Request::GetSettings).map_err(|e| e.to_string())) {
@@ -145,7 +167,10 @@ pub fn ask(n: u64, question: String, history: Vec<olo_ai::Turn>, cancel: Arc<Ato
             return done(Err("Asking is off in Preferences ▸ AI.".into()));
         }
         proxy.send(Asked::Model(n, feature.model_name().to_owned()));
-        let content = vec![olo_ai::text_block(format!("{question}\n\n{}", context()))];
+        // (Where it was asked from, as that window is now: a follow-up
+        // after a `cd` goes with the new folder.)
+        let from = asked_from(front);
+        let content = vec![olo_ai::text_block(question_text(&question, &context(!from.as_ref().is_some_and(|a| a.contains("\nShell: "))), from.as_deref()))];
         let ask = olo_ai::Ask { system: SYSTEM.into(), content, schema: schema(), max_tokens: 8000, history };
         // The prose as it comes, each time there's more of it.
         let mut told = String::new();
@@ -173,6 +198,18 @@ pub fn ask(n: u64, question: String, history: Vec<olo_ai::Turn>, cancel: Arc<Ato
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A question asked from a terminal carries what the terminal says,
+    /// after the computer; from anywhere else, the computer alone.
+    #[test]
+    fn a_question_says_where_it_was_asked() {
+        let from = "Asked from Olo's Terminal: …\nShell: fish\nWorking directory: /home/a/src";
+        assert_eq!(question_text("how do i undo a commit", "(Asked on Fedora.)", Some(from)), format!("how do i undo a commit\n\n(Asked on Fedora.)\n\n{from}"));
+        assert_eq!(question_text("what's the time", "(Asked on Fedora.)", None), "what's the time\n\n(Asked on Fedora.)");
+        // (The person's login shell isn't said beside the terminal's own.)
+        assert!(context(true).contains("the shell ") && !context(false).contains("the shell "));
+        assert!(SYSTEM.contains("where it was asked from"));
+    }
 
     /// An answer read: its prose, at most four snippets, empty ones left
     /// out, tabs as spaces, blank lines around the code gone.

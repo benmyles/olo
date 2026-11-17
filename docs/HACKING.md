@@ -1179,7 +1179,20 @@ the Book: a worker with progress, a child view, a drawing, a menu.)
   (`serve_trees` can't tell its surfaces apart and answers it with all
   of them.) `{"path":ID}` (`commands::path(pid, surface)`) answers with
   the file or folder that surface's window shows (`agent::set_path`), or
-  null. **Record any text you paint yourself** that an agent should be
+  null. `{"about":ID}` (`commands::about(pid, surface)`) answers with
+  **what the window says of itself for an assistant asked a question
+  from it**: a few plain lines of what the person is in the middle of
+  there, as things are when asked (`agent::about_from(cx, |cx| ..)`,
+  said once for a window: `agent::has_about`), or null. The palette's
+  /ask sends it with a question asked with that window in front.
+  Terminal says so (`Terminal::about`, `about_text`: that it's a
+  terminal, the showing tab's shell, working directory, what's running
+  there when it isn't the prompt, and what's selected, up to 4000
+  characters; **never what's merely on screen**, which may hold what
+  the person wouldn't think to be sending: only what a question asked
+  from the window would be expected to carry). An app whose windows
+  have something an answer should fit (a document's kind, a folder)
+  says it the same way. **Record any text you paint yourself** that an agent should be
   able to read or click (`style::label` does), and give a painted thing
   that takes clicks a role and name (`Node { role: "Button", name,
   clickable: true, … }`), so agents and keyboard hints can pick it.
@@ -16533,7 +16546,16 @@ put it away.
   (`AiSettings::ask`, Astra 6 on low by default: "defaulting to astra on
   low") on a worker (`ask.rs`), for JSON (`ask::schema`: the prose and
   up to four snippets, each a title, its language and the code), the
-  question carrying the system and the shell. The answer shows in the
+  question carrying the system and the shell, **and where it was asked
+  from**: what the window the palette was opened over says of itself
+  (`commands::about`, asked on the worker each time, so a follow-up
+  after a `cd` goes with the new folder; Terminal's shell, working
+  directory, what's running and what's selected: Ben, 2026-11-17,
+  "include in the prompt context that it was launched from the terminal
+  and provide the shell type, cwd, and any other useful details"; the
+  person's login shell isn't said beside a terminal's own;
+  `ask::question_text`, and `SYSTEM` says to answer for that place).
+  The answer shows in the
   panel (`answer.rs`, as tall as it is up to most of the screen,
   scrolled past that by the wheel or the arrows): the prose as it comes
   (`olo_ai::ask_streaming`, the Responses API's text deltas, read from
@@ -16542,10 +16564,12 @@ put it away.
   many more, coloured as the editor colours its language (olo-syntax,
   on the worker before the answer comes: `ask::colour`, each line's
   stretches painted in the theme's `Palette::syntax`). Keys
-  (`answer_key`; Return comes as the field's, which has it before any
-  listener: `copy_answer`): a number shows that snippet whole and again
-  goes back, Return copies it (none shown: the only one, else the
-  answer's words) and puts the palette away, ⌘C copies and stays
+  (`answer_key`, which has every key before the field does: the
+  window's `capture_key_down`): a number shows that snippet whole and
+  again goes back, Return copies it (none shown: the only one, else the
+  answer's words) and puts the palette away (`copy_answer(true)`; it
+  copied and stayed, the field's own "Return closes" never reached:
+  Ben, 2026-11-17), ⌘C copies and stays
   ("Copied" in the foot), Escape goes back a step (the
   answer, then the palette to type something else; while it comes, it
   stops it: the reply let go of where it is), Space asks a follow-up

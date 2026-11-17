@@ -24,6 +24,9 @@ struct Shown {
     layer: Option<String>,
     /// The file or folder the window shows.
     path: Option<PathBuf>,
+    /// What it says of itself for an assistant, asked for when wanted
+    /// ([`about_from`]).
+    about: Option<std::rc::Rc<dyn Fn(&mut WindowCx) -> Option<String>>>,
 }
 
 /// Says a part of a drawing is something (a key of a drawn keypad), for
@@ -43,6 +46,24 @@ pub(crate) fn set_layer(cx: &mut WindowCx, namespace: &str) {
 /// its tab's menu (Open in Tracker).
 pub fn set_path(cx: &mut WindowCx, path: Option<PathBuf>) {
     cx.window_state::<Shown>().path = path;
+}
+
+/// What the window says of itself for an assistant asked a question
+/// from it (the palette's /ask with this window in front:
+/// `{"about":ID}`, `olo_kit_base::commands::about`): `about` is asked each
+/// time, and answers a few plain lines of what the person is in the
+/// middle of here, as things are then (Terminal: the shell, its folder,
+/// what's running, what's selected), or None. Said once for a window
+/// ([`has_about`]), not at every body. Only what the person would expect
+/// a question asked from this window to carry: never what's merely on
+/// screen.
+pub fn about_from(cx: &mut WindowCx, about: impl Fn(&mut WindowCx) -> Option<String> + 'static) {
+    cx.window_state::<Shown>().about = Some(std::rc::Rc::new(about));
+}
+
+/// Whether the window says anything of itself ([`about_from`]).
+pub fn has_about(cx: &mut WindowCx) -> bool {
+    cx.window_state::<Shown>().about.is_some()
 }
 
 /// The window's tree, as agents read it.
@@ -172,6 +193,15 @@ fn answer(query: Query) {
             let dark = crate::theme::palette().mode != olo_theme::ThemeMode::Light;
             let _ =
                 reply.send(olo_interface::ask_windows(Duration::from_millis(3000), move |cx| (!cx.window_state::<crate::review::NotReviewed>().0).then(|| crate::review::review_window(cx, dark).0)));
+        }
+        Query::About(surface, reply) => {
+            let found = olo_interface::ask_windows(WAIT, move |cx| {
+                (cx.surface_id() == Some(surface)).then(|| {
+                    let about = cx.window_state::<Shown>().about.clone();
+                    about.and_then(|f| f(cx))
+                })
+            });
+            let _ = reply.send(found.into_iter().flatten().next());
         }
         Query::Path(surface, reply) => {
             let found = olo_interface::ask_windows(WAIT, move |cx| (cx.surface_id() == Some(surface)).then(|| cx.window_state::<Shown>().path.clone())).into_iter().next().flatten();

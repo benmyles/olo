@@ -46,18 +46,6 @@ something nobody here has is in "Blocked", with what it waits for.
   confusing/unintuitive agent ux and fix what we can to make it easier
   for agents to use with fewer mistakes and higher efficiency").
 
-- **The palette's `/ask` knows it was asked from the Terminal** (Ben,
-  2026-11-17: "the command pallete `/ask` should have tight integration
-  with the olo terminal -- if the user launches command pallete from
-  the terminal then include in the prompt context that it was launched
-  from the terminal and provide the shell type, cwd, and any other
-  useful details so that `/ask` can provide the best possible answer").
-
-- **The palette's `/ask`: Return copies the answer's snippet and the
-  palette goes away** (Ben, 2026-11-17: "in the `/ask` command pallete
-  if the user hits enter to copy the response snippet then the command
-  pallete should also go away/close").
-
 - **The file panel remembers, per app, where it was and how it was
   sorted** (Ben, 2026-11-17: "when the file picker is shown for an app
   it should remember the last location and sort column/order etc that
@@ -5921,6 +5909,24 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**The palette's `/ask` knows it was asked from the Terminal; Return
+  copies the snippet and the palette goes**~~ (Ben, 2026-11-17: "if the
+  user launches command pallete from the terminal then include in the
+  prompt context that it was launched from the terminal and provide the
+  shell type, cwd, and any other useful details", and "if the user hits
+  enter to copy the response snippet then the command pallete should
+  also go away/close"; done the same day). A window can now say what a
+  question asked from it should carry (`agent::about_from`, the
+  `{"about":ID}` question, for any app), and Terminal does: the showing
+  tab's shell, working directory, what's running there, and what's
+  selected. The model is told to answer for that place. **Not sent:
+  what's merely on the terminal's screen** (it may hold what you
+  wouldn't think to be sending); select the lines a question is about
+  and they go with it. If you'd rather the last screenful always went,
+  say so. Return: it copied and the palette stayed (its key handler ran
+  before the field's "copy and close"); now it copies and goes, ⌘C
+  copies and stays. Tried end to end against a stand-in for the model.
 
 - ~~**Viewer: Find Again and Find Previous don't work; what apps have
   in common belongs in the kit**~~ (Ben, 2026-11-17: "in viewer find

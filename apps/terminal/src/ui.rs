@@ -589,6 +589,12 @@ impl View for Shell {
             h.surface = surface;
             h.here = surface.and_then(olo_kit::workspaces::here_surface).unwrap_or(true);
         }
+        // What a question asked from this window carries (the palette's
+        // /ask): said once, asked for when wanted.
+        if !olo_kit::agent::has_about(cx) {
+            let id = self.id;
+            olo_kit::agent::about_from(cx, move |_| TERMINAL.get()?.try_lock().ok()?.about(id));
+        }
         let mut t = terminal();
         t.render(self, cx)
     }

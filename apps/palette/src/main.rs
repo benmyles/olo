@@ -810,7 +810,9 @@ impl Palette {
         self.stop_asking();
         let n = ASKS.fetch_add(1, Ordering::Relaxed) + 1;
         let cancel = Arc::new(AtomicBool::new(false));
-        ask::ask(n, question.clone(), history.clone(), cancel.clone(), olo_kit::proxy());
+        // (The window it was opened over, to say where it was asked.)
+        let front = self.front.as_ref().and_then(|w| Some((w.pid? as u32, w.surface?)));
+        ask::ask(n, question.clone(), history.clone(), front, cancel.clone(), olo_kit::proxy());
         self.answer = Some(answer::Answering::new(n, question.clone(), history, cancel));
         self.show_question(cx);
         cx.invalidate();
@@ -937,7 +939,11 @@ impl Palette {
                 });
                 self.query_text.clear();
             }
-            _ if copy => return self.copy_answer(false, cx) || true,
+            // Return copies and the palette goes; ⌘C copies and it stays.
+            // (This runs before the field has the key, so its own
+            // "Return copies and closes" never came: Return copied, and
+            // the palette stayed. Ben, 2026-11-17.)
+            _ if copy => return self.copy_answer(k.key == "enter", cx) || true,
             "up" => a.scroll = (a.scroll - 3.0 * line).max(0.0),
             "down" => a.scroll += 3.0 * line,
             "pageup" => a.scroll = (a.scroll - 240.0).max(0.0),

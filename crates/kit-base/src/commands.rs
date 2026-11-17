@@ -258,6 +258,7 @@ pub enum Ask {
     Frames(bool),
     Review(bool),
     Path(u32),
+    About(u32),
     LoseGpu(bool),
     WindowOver(WindowAt),
     WindowDropped(WindowAt),
@@ -310,6 +311,8 @@ pub enum Query {
     Review(mpsc::Sender<Vec<WindowReview>>),
     /// The path of the window with the surface with this protocol id.
     Path(u32, mpsc::Sender<Option<PathBuf>>),
+    /// What that window says of itself for an assistant ([`about`]).
+    About(u32, mpsc::Sender<Option<String>>),
     /// Mark the GPU device lost (debug builds; a test of losing it).
     LoseGpu(mpsc::Sender<bool>),
     WindowOver(WindowAt),
@@ -449,6 +452,11 @@ pub fn listen(to: impl Fn(Query) + Send + 'static) -> Option<Listening> {
                         to(Query::Path(surface, tx));
                         serde_json::to_string(&serde_json::json!({ "path": rx.recv_timeout(WAIT).ok().flatten() }))
                     }
+                    Ok(Ask::About(surface)) => {
+                        let (tx, rx) = mpsc::channel();
+                        to(Query::About(surface, tx));
+                        serde_json::to_string(&serde_json::json!({ "about": rx.recv_timeout(WAIT).ok().flatten() }))
+                    }
                     Ok(Ask::WindowOver(at)) => {
                         to(Query::WindowOver(at));
                         serde_json::to_string(&serde_json::json!({ "ok": true }))
@@ -529,6 +537,7 @@ pub fn serve(pid: u32, served: Served) -> std::io::Result<()> {
                 Ok(Ask::Review(_)) => serde_json::to_string(&Vec::<WindowReview>::new()),
                 Ok(Ask::Move(_)) => serde_json::to_string(&crate::moving::Moved::failed(crate::moving::NOT_KIT)),
                 Ok(Ask::Path(_)) => serde_json::to_string(&serde_json::json!({ "path": null })),
+                Ok(Ask::About(_)) => serde_json::to_string(&serde_json::json!({ "about": null })),
                 Ok(Ask::Tree(_) | Ask::Hints(_)) => serde_json::to_string(&(served.trees)()),
                 Err(_) => continue,
             };
@@ -616,6 +625,18 @@ pub fn tree(pid: u32) -> Option<Vec<WindowTree>> {
 pub fn path(pid: u32, surface: u32) -> Option<PathBuf> {
     let answer: serde_json::Value = serde_json::from_str(&ask(pid, &Ask::Path(surface))?).ok()?;
     answer["path"].as_str().map(PathBuf::from)
+}
+
+/// What the window with surface `surface` of the kit app with process id
+/// `pid` says of itself for an assistant asked a question from it
+/// (`{"about":ID}`; `olo_kit::agent::about_from`): a few plain lines, what
+/// the person is in the middle of there (Terminal: the shell, its folder,
+/// what's running, what's selected). None where it says nothing. The
+/// palette's /ask sends it with a question asked with that window in
+/// front. Blocks briefly: call it off the UI thread.
+pub fn about(pid: u32, surface: u32) -> Option<String> {
+    let answer: serde_json::Value = serde_json::from_str(&ask(pid, &Ask::About(surface))?).ok()?;
+    answer["about"].as_str().map(str::to_owned)
 }
 
 /// Ask the kit app with process id `pid` to move ([`crate::moving::ask`]).

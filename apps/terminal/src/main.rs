@@ -100,6 +100,44 @@ fn retitle(cx: &mut Cx, win: WindowId, t: &mut TermWin) {
     }
 }
 
+/// The most of a selection a question asked from a tab carries.
+const ABOUT_SELECTION: usize = 4000;
+
+impl Terminal {
+    /// What a question asked from window `win` carries (the palette's
+    /// /ask; `olo_kit::agent::about_from`): that it's a terminal, the
+    /// showing tab's shell and folder, what's running in it, and what's
+    /// selected there, if anything (what's merely on screen stays here:
+    /// it may hold what the person wouldn't think to be sending).
+    pub(crate) fn about(&self, win: WindowId) -> Option<String> {
+        let Some(Win::Term(t)) = self.windows.get(&win) else { return None };
+        let tab = t.tab();
+        let shared = &tab.session.shared;
+        let comm = |pid: libc::pid_t| std::fs::read_to_string(format!("/proc/{pid}/comm")).ok().map(|s| s.trim().to_owned()).filter(|s| !s.is_empty());
+        let selected = tab.session.term.lock().selection_to_string().filter(|s| !s.trim().is_empty());
+        Some(about_text(shared.shell().and_then(comm).as_deref(), tab_folder(tab).as_deref(), tab.session.foreground().as_deref(), selected.as_deref()))
+    }
+}
+
+/// [`Terminal::about`]'s words.
+fn about_text(shell: Option<&str>, folder: Option<&std::path::Path>, running: Option<&str>, selected: Option<&str>) -> String {
+    let mut lines = vec!["Asked from Olo's Terminal: a command in the answer will be run in this tab, so write it for this shell and folder.".to_owned()];
+    if let Some(shell) = shell {
+        lines.push(format!("Shell: {shell}"));
+    }
+    if let Some(folder) = folder {
+        lines.push(format!("Working directory: {}", folder.display()));
+    }
+    if let Some(running) = running {
+        lines.push(format!("Running in the tab now (not the shell's prompt): {running}"));
+    }
+    if let Some(selected) = selected {
+        let cut = selected.char_indices().nth(ABOUT_SELECTION).map_or(selected, |(at, _)| &selected[..at]);
+        lines.push(format!("Selected in the terminal{}:\n{cut}", if cut.len() < selected.len() { " (its start)" } else { "" }));
+    }
+    lines.join("\n")
+}
+
 /// The folder a tab works in: its foreground program's, else its shell's.
 fn tab_folder(tab: &Tab) -> Option<PathBuf> {
     let shared = &tab.session.shared;
@@ -3688,10 +3726,28 @@ mod drop_tests {
 
 #[cfg(test)]
 mod settings_tests {
-    use super::{SchemeChoice, Settings};
+    use super::{ABOUT_SELECTION, SchemeChoice, Settings, about_text};
 
     fn colors(s: &Settings) -> (Option<&str>, Option<&str>) {
         (s.light_colors.as_deref(), s.dark_colors.as_deref())
+    }
+
+    /// What a question asked from a tab carries: the shell, the folder,
+    /// what runs there, what's selected (cut to its start when long);
+    /// nothing it doesn't know.
+    #[test]
+    fn what_a_tab_says_of_itself() {
+        let all = about_text(Some("fish"), Some(std::path::Path::new("/home/a/src")), Some("cargo"), Some("error[E0308]: mismatched types"));
+        assert!(all.starts_with("Asked from Olo's Terminal"), "{all}");
+        assert!(
+            all.contains("\nShell: fish\nWorking directory: /home/a/src\nRunning in the tab now (not the shell's prompt): cargo\nSelected in the terminal:\nerror[E0308]: mismatched types"),
+            "{all}"
+        );
+        let bare = about_text(None, None, None, None);
+        assert_eq!(bare.lines().count(), 1, "{bare}");
+        let long = "é".repeat(ABOUT_SELECTION + 10);
+        let cut = about_text(None, None, None, Some(&long));
+        assert!(cut.contains("Selected in the terminal (its start):\n") && cut.ends_with(&"é".repeat(ABOUT_SELECTION)) && !cut.ends_with(&"é".repeat(ABOUT_SELECTION + 1)), "{}", cut.len());
     }
 
     #[test]
