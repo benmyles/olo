@@ -1,5 +1,7 @@
-//! Times as the chat list and conversations show them, in the person's
-//! time zone and the Deskbar clock's 12- or 24-hour style.
+//! Times as a list of conversations and a conversation show them, in
+//! the person's time zone and the Deskbar clock's 12- or 24-hour style
+//! (`settings::watch`: `clock.twenty_four_hour`). (Telegram's, moved
+//! here when Phone wanted the same.)
 
 use chrono::{DateTime, Datelike, Local, TimeZone};
 

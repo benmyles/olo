@@ -22,6 +22,8 @@ olo-xdg.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
+# Times as conversations show them (`when`).
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 fast_image_resize = "5"
 image = { version = "0.25", default-features = false }

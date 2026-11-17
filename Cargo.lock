@@ -7670,6 +7670,7 @@ dependencies = [
 name = "olo-kit"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "fast_image_resize",
  "image",
  "libc",

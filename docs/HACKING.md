@@ -1615,6 +1615,26 @@ text whole: in a window's tree a node named by what shows of it
 ("Quarterly rep…") has its whole name, and a cut text no node names is
 a `Label` of its own (`agent::whole_name`, when the tree is asked for).
 
+### Text laid out by hand, people's pictures, conversation times (`olo_kit::para`, `person`, `when`)
+
+For a drawing that lays its own text out (a conversation's balloons, a
+list's painted rows): `para::line` shapes one line, cut short with "…"
+past a width (and noted, as `cut` asks); `para::Para` wraps text to a
+width paragraph by paragraph, as wide as its widest line, and finds
+which byte is under a point (`index_at`) and where a range of it is
+(`rects_of`, for a selection; `rows_of`). Shape when what's shown
+changes, keep it, paint it each frame: shaping is the cost.
+`person::picture` is someone's photograph, or their initials on a
+colour of their own, round; `person::nobody` a head and shoulders for
+someone with no name known (a number); `person::color(id, dark)` the
+colour (seven, bright for fills, with an ink to write their name in);
+`person::id_of(words)` an id from a number or an address, the same
+every time. `when::short` is a list row's time (today's a time, this
+week's a day, then a date), `when::day` a conversation's day heading
+("Today", "Yesterday", "Monday", "October 12"), `when::time` in the
+Deskbar clock's 12- or 24-hour style. (Telegram's, moved to the kit
+when Phone wanted the same.)
+
 ### Showing a control (`olo_kit::spotlight`)
 
 `spotlight::show(handle, tab, group, name, cx)` says "here" about one

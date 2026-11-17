@@ -29,6 +29,8 @@ pub mod lint;
 mod lock;
 pub mod menu;
 pub mod open_with;
+pub mod para;
+pub mod person;
 pub mod pictures;
 pub mod review;
 pub mod search;
@@ -39,6 +41,7 @@ pub mod theme;
 pub mod tip;
 pub mod undo;
 mod upgrade;
+pub mod when;
 pub mod widgets;
 
 pub use app::{

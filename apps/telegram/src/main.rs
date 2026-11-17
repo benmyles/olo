@@ -12,7 +12,7 @@ mod pics;
 mod stickers;
 mod store;
 mod voice;
-mod when;
+use olo_kit::when;
 
 use std::{
     cell::Cell,
