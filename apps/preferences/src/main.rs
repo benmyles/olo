@@ -301,7 +301,9 @@ impl Prefs {
         let tab = tab
             .or_else(|| matches!(last, Some("gpus" | "gpu" | "graphics" | "nvidia")).then(|| "Graphics".to_owned()))
             // (Security's Passwords tab by its old names.)
-            .or_else(|| matches!(last, Some("passwords" | "privacy")).then(|| "Passwords".to_owned()));
+            .or_else(|| matches!(last, Some("passwords" | "privacy")).then(|| "Passwords".to_owned()))
+            // (Performance's Kernel tab by name.)
+            .or_else(|| matches!(last, Some("kernel" | "kernel-tuning")).then(|| "Kernel".to_owned()));
         // (Told once its view is made: its window's looper takes what
         // it's sent in turn.)
         if let Some(window) = last.and_then(Panel::from_arg).and_then(|panel| self.window_of(panel))

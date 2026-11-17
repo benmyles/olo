@@ -199,6 +199,21 @@ a new Fedora kernel within two months):
 If the build fails, or a probe can't be put in, `olo-bbr3` says why and
 connections go on with the congestion control there was.
 
+**The kernel an update brings is checked before it comes.**
+`tools/dev/kernel-next` asks Fedora's repositories for the newest
+kernel, unpacks its packages in scratch (nothing installed) and runs,
+in a guest on that kernel, this module's self-check
+(`tools/dev/bbr3-check --on RELEASE --root DIR` is that part alone)
+beside everything else of Olo's that touches the kernel. The series the
+full self-check has passed on are listed in [CHECKED](CHECKED): 7.2
+(7.2.15, where it was made) and 7.3 (7.3.3-300.fc45, Fedora's update of
+2026-11: built from this source unchanged, 1,265,738 figures the same as
+the true ones over the 25 links, the module unloaded, 2026-11-16). At a
+new kernel's first start `olo-bbr3` builds the module for it whatever
+its series; where that series isn't in the list yet, Olo Doctor's "TCP
+sends with BBRv3" and Preferences ▸ Performance ▸ Kernel say so, until
+it has been run there and added.
+
 ## The real one to compare with
 
 A kernel with Google's patches, for the guest only (five minutes;

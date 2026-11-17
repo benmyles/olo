@@ -1,0 +1,34 @@
+# Olo: what may wait in memory to be written to a removable disk is
+# limited to 16 MB, so a copy's progress is true and ejecting is quick.
+#
+# The kernel lets written data wait in memory up to a share of all memory
+# (vm.dirty_ratio: gigabytes on a computer of today), whatever the disk
+# it's for. A USB stick takes a few megabytes a second: a copy to it
+# "finishes" at once, and the stick is then written for minutes while
+# Eject waits, or is pulled out with the files not on it. With a limit of
+# its own (strict_limit: held to even while the whole is under the
+# kernel's limit) the program writing goes at the disk's own pace, and
+# what it has written is on the disk a moment later. kernel/README.md has
+# what was measured.
+#
+# Which disks: those whose media comes out (a stick, a card reader), any
+# disk on USB, and SD cards. Not a disk on a USB link of 10 Gbit/s or
+# faster (its speed in Mbit/s has five digits or more): the limit costs
+# a disk that takes 400 MB a second nothing, busy computer or not, and
+# one that takes 1 GB a second a fifth to two fifths while the computer
+# is busy (measured), and such a disk is written in seconds anyway. A
+# filesystem that keeps its own account of what waits (btrfs), and one
+# on an encrypted volume (the mapping is a disk of its own to the
+# kernel), are as before.
+ACTION=="remove", GOTO="olo_slow_disks_end"
+SUBSYSTEM!="block", GOTO="olo_slow_disks_end"
+ENV{DEVTYPE}!="disk", GOTO="olo_slow_disks_end"
+TEST!="bdi/strict_limit", GOTO="olo_slow_disks_end"
+SUBSYSTEMS=="usb", ATTRS{speed}=="[1-9][0-9][0-9][0-9][0-9]*", GOTO="olo_slow_disks_end"
+ATTR{removable}=="1", GOTO="olo_slow_disks_limit"
+SUBSYSTEMS=="usb", GOTO="olo_slow_disks_limit"
+KERNEL=="mmcblk[0-9]*", ATTRS{type}=="SD", GOTO="olo_slow_disks_limit"
+GOTO="olo_slow_disks_end"
+LABEL="olo_slow_disks_limit"
+ATTR{bdi/strict_limit}="1", ATTR{bdi/max_bytes}="16777216"
+LABEL="olo_slow_disks_end"

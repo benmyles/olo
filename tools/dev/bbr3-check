@@ -3,7 +3,8 @@
 runs this computer's own kernel: nothing of the running system is
 touched, and no root is needed (tools/dev/kvm-guest).
 
-  tools/dev/bbr3-check [--quick]            the self-check; exit status 1 if it fails
+  tools/dev/bbr3-check [--quick] [--on RELEASE --root DIR]
+                                            the self-check; exit status 1 if it fails
   tools/dev/bbr3-check --timing             what the module's own work costs
   tools/dev/bbr3-check --compare [--reference BZIMAGE] [--against cubic,bbr] [--reps N]
 
@@ -39,6 +40,16 @@ and Google's real BBRv3 where --reference names a kernel built with its
 patches (kernel/bbr3/README.md, "The real one to compare with", has how
 to build one): each on its own guest.
 
+--on RELEASE --root DIR: on another kernel than the running one, before
+it's installed (the next update's: does the module build for it, and is
+it still right there?). DIR is a tree that kernel's packages were
+unpacked into (kernel-core, kernel-modules-core, kernel-modules,
+kernel-modules-extra and kernel-devel: `dnf5 download`, then `rpm2cpio |
+cpio -idm` for each, then `depmod -b DIR RELEASE`): its image and
+modules are DIR/lib/modules/RELEASE, its headers
+DIR/usr/src/kernels/RELEASE. It applies to the self-check and --timing.
+kernel/README.md, "A new kernel".
+
 Needs: this kernel's headers, make and the compiler (as the module's
 service does), qemu-system-x86_64 with /dev/kvm, and tcp-flow
 (`cargo build --release -p olo-net --example tcp-flow`).
@@ -59,6 +70,9 @@ SOURCE = os.path.join(ROOT, "kernel/bbr3")
 FLOW = os.path.join(ROOT, "target/release/examples/tcp-flow")
 GUEST = ["/usr/bin/python3", os.path.join(ROOT, "tools/dev/kvm-guest")]
 MODULES = ["veth", "sch_netem", "sch_tbf", "sch_fq", "tcp_bbr"]
+# Another kernel to check on (--on, --root): its release, and the tree
+# its packages were unpacked into.
+ON = None
 
 LIB = r"""
 CHECK=/sys/module/tcp_bbr3/parameters/selfcheck
@@ -193,6 +207,8 @@ def build(selfcheck):
     """The module built from the repository's source, in a folder of its own."""
     release = os.uname().release
     headers = f"/lib/modules/{release}/build"
+    if ON:
+        release, headers = ON[0], os.path.join(ON[1], "usr/src/kernels", ON[0])
     if not os.path.isfile(os.path.join(headers, "Makefile")):
         sys.exit(f"bbr3-check: this kernel's headers aren't installed (the kernel-devel package for {release})")
     work = tempfile.mkdtemp(prefix="olo-bbr3-check-", dir="/var/tmp")
@@ -216,6 +232,9 @@ def guest(script, ko=None, kernel=None, timeout=1800):
         if kernel:
             cmd += ["--kernel", kernel]
         else:
+            if ON:
+                there = os.path.join(ON[1], "lib/modules", ON[0])
+                cmd += ["--kernel", os.path.join(there, "vmlinuz"), "--modules-dir", there]
             for m in MODULES:
                 cmd += ["--module", m]
         if ko:
@@ -410,6 +429,12 @@ def main():
     if not os.path.isfile(FLOW):
         sys.exit("bbr3-check: build tcp-flow first (cargo build --release -p olo-net --example tcp-flow)")
     opt = lambda flag, default: args[args.index(flag) + 1] if flag in args else default
+    if "--on" in args:
+        global ON
+        ON = (opt("--on", ""), os.path.abspath(opt("--root", "/")))
+        if not os.path.isfile(os.path.join(ON[1], "lib/modules", ON[0], "vmlinuz")):
+            sys.exit(f"bbr3-check: no kernel {ON[0]} under {ON[1]} (--on RELEASE --root DIR)")
+        print(f"On {ON[0]} (the running kernel is {os.uname().release})\n")
     if "--timing" in args:
         return timing()
     if "--compare" in args:

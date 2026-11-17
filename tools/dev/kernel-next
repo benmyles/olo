@@ -1,0 +1,277 @@
+#!/usr/bin/python3
+"""The kernel an update will bring, checked before it's installed: does
+everything Olo has in or about the kernel still work on it? (Ben,
+2026-11-16: "make sure all these kernel tunings/mods will continue to
+work properly after doing os updates that update the kernel".)
+
+  tools/dev/kernel-next [--testing] [--quick] [--keep]
+  tools/dev/kernel-next --release RELEASE [--root DIR] [--quick] [--keep]
+
+It asks Fedora's repositories for the newest kernel (--testing: those
+in updates-testing too; --release: that one), and where that isn't the
+running one it downloads its packages (kernel-core, kernel-modules-core,
+kernel-modules, kernel-modules-extra, kernel-devel: 230 MB) and unpacks
+them under /var/tmp/olo-kernel-next/RELEASE. Nothing is installed, no
+root is needed, and the running system isn't touched: the kernel runs
+only in a KVM guest (tools/dev/kvm-guest). --root DIR takes a tree
+unpacked before. The tree is removed at the end unless --keep.
+
+On that kernel it then checks, and says for each:
+
+  the settings   started with preempt=full it is on full; the running
+                 switch takes "full" and "lazy", and a thread woken
+                 across processors under load runs sooner on full; a
+                 disk takes its own limit (bdi/strict_limit,
+                 bdi/max_bytes) and gives it back; udev, with Olo's rule,
+                 limits a USB stick and leaves the guest's own disk
+                 alone.
+  BBRv3          the module builds against its headers and passes its
+                 self-check there (tools/dev/bbr3-check --on; --quick:
+                 six links, else all).
+  the live patch olo_gpu_memory builds against its headers (it doesn't
+                 where that kernel's ttm_backup_bytes_avail is gone or
+                 of another shape), loads with the graphics memory
+                 manager, takes the function over, and comes out again.
+  the services   olo-bbr3's and olo-gpu-memory's own build for a kernel
+                 that isn't the running one (their ignored tests, with
+                 OLO_NEXT_KERNEL).
+
+Exit status 1 if any failed. A series BBRv3 passes on is added to
+kernel/bbr3/CHECKED by hand, with the run's date in the commit.
+
+Needs: dnf5, rpm2cpio and cpio, depmod, this computer's make and
+compiler, qemu-system-x86_64 with /dev/kvm, and the two programs the
+guest runs: `cargo build --release -p olo-system --example kbench` and
+`cargo build --release -p olo-net --example tcp-flow`.
+"""
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+GUEST = ["/usr/bin/python3", os.path.join(ROOT, "tools/dev/kvm-guest")]
+KBENCH = os.path.join(ROOT, "target/release/examples/kbench")
+PACKAGES = ["kernel-core", "kernel-modules-core", "kernel-modules", "kernel-modules-extra", "kernel-devel"]
+SCRATCH = "/var/tmp/olo-kernel-next"
+
+SETTINGS = r"""
+echo "started|$(cat /sys/kernel/debug/sched/preempt)"
+relay() { /bin/kbench spin --secs 5 --threads 4 --nice 19 > /dev/null & S=$!; sleep 1; echo "$1|$(/bin/kbench relay --secs 3)"; wait $S; }
+printf lazy > /sys/kernel/debug/sched/preempt; echo "switched-lazy|$(cat /sys/kernel/debug/sched/preempt)"; relay lazy
+printf full > /sys/kernel/debug/sched/preempt; echo "switched-full|$(cat /sys/kernel/debug/sched/preempt)"; relay full
+B=/sys/block/vda/bdi
+printf 1 > $B/strict_limit; printf 16777216 > $B/max_bytes; echo "limited|$(cat $B/strict_limit) $(cat $B/max_bytes)"
+printf 0 > $B/strict_limit; printf 100 > $B/max_ratio; echo "unlimited|$(cat $B/strict_limit) $(cat $B/max_ratio)"
+mkdir -p /etc/udev/rules.d /run/udev
+for ((i = 0; i < 100; i++)); do [ -e /sys/block/sda ] && break; sleep 0.1; done
+/bin/systemd-udevd --daemon 2>/dev/null; sleep 0.5
+udevadm trigger --action=add --subsystem-match=block; udevadm settle --timeout=20
+echo "rule|stick $(cat /sys/block/sda/bdi/strict_limit) $(cat /sys/block/sda/bdi/max_bytes) disk $(cat /sys/block/vda/bdi/strict_limit)"
+"""
+
+PATCH = r"""
+insmod /ko/olo_gpu_memory.ko; echo "insmod|$?"
+P=/sys/kernel/livepatch/olo_gpu_memory
+for ((i = 0; i < 50; i++)); do [ "$(cat $P/transition 2>/dev/null)" = 0 ] && break; sleep 0.1; done
+echo "patched|$(cat $P/enabled) $(cat $P/transition) $(cat $P/ttm/patched) $(ls $P/ttm | grep -c ttm_backup_bytes_avail)"
+echo 0 > $P/enabled
+for ((i = 0; i < 50; i++)); do [ -d $P ] || break; sleep 0.1; done
+rmmod olo_gpu_memory; echo "out|$([ -d $P ] && echo no || echo yes) $([ -d /sys/module/olo_gpu_memory ] && echo loaded || echo unloaded)"
+echo "warnings|$(dmesg | grep -c 'WARNING:\|BUG:\|Oops')"
+"""
+
+
+def run(cmd, timeout=3600, **kw):
+    """`cmd` run to its end, its output kept; given up on after
+    `timeout` seconds (said, with what it was)."""
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
+    except subprocess.TimeoutExpired:
+        sys.exit(f"kernel-next: gave up after {timeout} s waiting for: {' '.join(cmd[:6])}")
+
+
+def newest(testing):
+    cmd = ["dnf5", "repoquery", "--quiet", "--available", "--latest-limit=1", "--queryformat", "%{version}-%{release}.%{arch}\n", "kernel-core"]
+    if testing:
+        cmd.insert(2, "--enablerepo=updates-testing")
+    out = run(cmd, cwd="/var/tmp")
+    found = [l.strip() for l in out.stdout.splitlines() if l.strip()]
+    if out.returncode != 0 or not found:
+        sys.exit("kernel-next: Fedora's repositories couldn't be asked:\n" + out.stderr[-1500:])
+    # (One line a repository: the highest.)
+    key = lambda r: [int(p) if p.isdigit() else p for p in r.replace("-", ".").split(".")]
+    return max(found, key=lambda r: [(0, p) if isinstance(p, int) else (1, p) for p in key(r)])
+
+
+def fetch(release, testing):
+    """That kernel's packages, unpacked under SCRATCH/RELEASE; the tree."""
+    base = os.path.join(SCRATCH, release)
+    rpms, tree = os.path.join(base, "rpms"), os.path.join(base, "root")
+    os.makedirs(rpms, exist_ok=True)
+    version = release.rsplit(".", 1)[0]
+    print(f"Downloading {release}'s packages into {base} (nothing is installed)…", flush=True)
+    cmd = ["dnf5", "download", "--quiet", "--destdir", rpms] + [f"{p}-{version}" for p in PACKAGES]
+    if testing:
+        cmd.insert(2, "--enablerepo=updates-testing")
+    got = run(cmd, cwd="/var/tmp")
+    have = [f for f in os.listdir(rpms) if f.endswith(".rpm")]
+    if got.returncode != 0 or len(have) < len(PACKAGES):
+        sys.exit("kernel-next: the download failed:\n" + (got.stderr or got.stdout)[-1500:])
+    shutil.rmtree(tree, ignore_errors=True)
+    os.makedirs(tree)
+    for rpm in sorted(have):
+        # (A package's files, as an archive, unpacked in the tree: its
+        # own folder, nothing of it run. Our end of the pipe between the
+        # two is closed once both have it: cpio stops reading at the
+        # archive's end, and rpm2cpio, with more to write, ends only when
+        # nobody holds the reading end. Held here, it waited for ever.)
+        packed = subprocess.Popen(["rpm2cpio", os.path.join(rpms, rpm)], stdout=subprocess.PIPE)
+        unpack = subprocess.Popen(["cpio", "-idm", "--quiet"], stdin=packed.stdout, cwd=tree, stderr=subprocess.DEVNULL)
+        packed.stdout.close()
+        try:
+            unpack.wait(timeout=600)
+            packed.wait(timeout=60)
+        except subprocess.TimeoutExpired:
+            unpack.kill()
+            packed.kill()
+            sys.exit(f"kernel-next: unpacking {rpm} didn't end in ten minutes")
+        if unpack.returncode != 0:
+            sys.exit(f"kernel-next: {rpm} didn't unpack (cpio ended {unpack.returncode})")
+    made = run(["/usr/sbin/depmod", "-b", tree, release], timeout=300)
+    if made.returncode != 0:
+        sys.exit("kernel-next: depmod failed:\n" + made.stderr[-800:])
+    return tree
+
+
+def guest(script, release, tree, args=(), **opts):
+    there = os.path.join(tree, "lib/modules", release)
+    with tempfile.TemporaryDirectory(prefix="olo-kernel-next-", dir="/var/tmp") as work:
+        path = os.path.join(work, "script")
+        with open(path, "w") as f:
+            f.write(script)
+        cmd = GUEST + ["--quiet", "--kernel", os.path.join(there, "vmlinuz"), "--modules-dir", there, "--timeout", "300"]
+        for key, values in opts.items():
+            for v in values:
+                cmd += ["--" + key.replace("_", "-"), v]
+        out = run(cmd + [path, *args])
+    rows = {}
+    for line in out.stdout.splitlines():
+        name, _, rest = line.partition("|")
+        if rest:
+            rows[name] = rest
+    return rows
+
+
+def settings(release, tree):
+    rule = os.path.join(ROOT, "data/udev/61-olo-slow-disks.rules")
+    rows = guest(
+        SETTINGS, release, tree, bin=[KBENCH, "/usr/lib/systemd/systemd-udevd", "udevadm"], module=["usb_storage"], disk=["1G"], usb_disk=["1G"], append=["preempt=full"],
+        file=[f"{rule}:/etc/udev/rules.d/61-olo-slow-disks.rules"],
+    )  # fmt: skip
+    ok = True
+
+    def say(good, text):
+        nonlocal ok
+        ok &= bool(good)
+        print(f"  {'ok ' if good else 'NOT'} {text}")
+
+    say("(full)" in rows.get("started", ""), f"started with preempt=full it is on full: {rows.get('started', 'no answer').strip()}")
+    say("(lazy)" in rows.get("switched-lazy", "") and "(full)" in rows.get("switched-full", ""), "the running switch takes lazy and full")
+    try:
+        lazy, full = (json.loads(rows[m])["us_p99"] for m in ("lazy", "full"))
+        say(full * 10 < lazy, f"woken across processors under load, 99 in 100 run within {full:.0f} µs on full ({lazy:.0f} on lazy)")
+    except (KeyError, ValueError):
+        say(False, "the wake measurement gave nothing")
+    limited = rows.get("limited", "").split()
+    say(len(limited) == 2 and limited[0] == "1" and 16_000_000 < int(limited[1]) <= 16_777_216, f"a disk takes its own limit: strict_limit {' max_bytes '.join(limited) or 'no answer'}")
+    say(rows.get("unlimited", "").split() == ["0", "100"], "and gives it back")
+    rule = rows.get("rule", "").split()
+    say(len(rule) == 5 and rule[1] == "1" and rule[4] == "0", f"udev with Olo's rule limits a USB stick and leaves the other disk alone: {' '.join(rule) or 'no answer'}")
+    return ok
+
+
+def bbr3(release, tree, quick):
+    cmd = [os.path.join(ROOT, "tools/dev/bbr3-check"), "--on", release, "--root", tree] + (["--quick"] if quick else [])
+    out = run(cmd)
+    last = [l for l in out.stdout.splitlines() if l.strip()][-2:]
+    good = out.returncode == 0
+    print(f"  {'ok ' if good else 'NOT'} BBRv3 builds for it and passes its self-check: {' | '.join(l.strip() for l in last) if last else out.stderr[-400:]}")
+    return good
+
+
+def patch(release, tree):
+    work = tempfile.mkdtemp(prefix="olo-kernel-next-patch-", dir="/var/tmp")
+    try:
+        for name in ("olo_gpu_memory.c", "Kbuild"):
+            shutil.copy(os.path.join(ROOT, "kernel/gpu-memory", name), work)
+        made = run(["make", "-C", os.path.join(tree, "usr/src/kernels", release), f"M={work}", "modules"])
+        ko = os.path.join(work, "olo_gpu_memory.ko")
+        if made.returncode != 0 or not os.path.isfile(ko):
+            why = [l for l in made.stderr.splitlines() if "error" in l][:2]
+            print(f"  NOT the live patch builds for it: {' | '.join(why) or made.stderr[-300:]}")
+            return False
+        rows = guest(PATCH, release, tree, module=["ttm"], ko=[ko])
+        good = rows.get("insmod") == "0" and rows.get("patched") == "1 0 1 1" and rows.get("out") == "yes unloaded" and rows.get("warnings") == "0"
+        print(f"  {'ok ' if good else 'NOT'} the live patch builds for it, loads, takes ttm_backup_bytes_avail over and comes out again: {rows}")
+        return good
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def services(release, tree):
+    headers = os.path.join(tree, "usr/src/kernels", release)
+    out = run(
+        ["cargo", "test", "-p", "olo-bbr3", "-p", "olo-gpu-memory", "--", "--ignored", "builds_for_the_kernel_an_update_brings"],
+        cwd=ROOT,
+        env={**os.environ, "OLO_NEXT_KERNEL": f"{release}={headers}"},
+    )
+    passed = out.stdout.count("builds_for_the_kernel_an_update_brings ... ok")
+    good = out.returncode == 0 and passed == 2
+    print(f"  {'ok ' if good else 'NOT'} olo-bbr3 and olo-gpu-memory build for it themselves ({passed} of 2)")
+    if not good:
+        print((out.stdout + out.stderr)[-1200:])
+    return good
+
+
+def main():
+    # (Said as it goes, into a file or a pipe too: it runs for minutes.)
+    sys.stdout.reconfigure(line_buffering=True)
+    args = sys.argv[1:]
+    if any(a in ("-h", "--help") for a in args):
+        print(__doc__)
+        return 0
+    opt = lambda flag: args[args.index(flag) + 1] if flag in args else None
+    testing, quick, keep = "--testing" in args, "--quick" in args, "--keep" in args
+    running = os.uname().release
+    release = opt("--release") or newest(testing)
+    tree = opt("--root")
+    if release == running and not opt("--release"):
+        print(f"The newest kernel Fedora has is the running one ({running}): nothing to check.")
+        return 0
+    for needed in (KBENCH, os.path.join(ROOT, "target/release/examples/tcp-flow")):
+        if not os.path.isfile(needed):
+            sys.exit(f"kernel-next: no {needed}: cargo build --release -p olo-system --example kbench; cargo build --release -p olo-net --example tcp-flow")
+    ours = tree is None
+    if ours:
+        tree = fetch(release, testing)
+    if not os.path.isfile(os.path.join(tree, "lib/modules", release, "vmlinuz")):
+        sys.exit(f"kernel-next: no kernel {release} under {tree}")
+    print(f"\nKernel {release} (the running one is {running}), in a guest:\n", flush=True)
+    results = [settings(release, tree), bbr3(release, tree, quick), patch(release, tree), services(release, tree)]
+    if ours and not keep:
+        shutil.rmtree(os.path.join(SCRATCH, release), ignore_errors=True)
+        try:
+            os.rmdir(SCRATCH)
+        except OSError:
+            pass
+    good = all(results)
+    print(f"\n{'Everything of Olo in the kernel works on ' + release if good else 'Something does not work on ' + release + ': see above'}.")
+    return 0 if good else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

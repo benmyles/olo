@@ -346,6 +346,58 @@ mod tests {
         assert_eq!(remove(places, &mut kernel), Ok(true));
     }
 
+    /// An update brings a new kernel (Ben, 2026-11-16: "make sure all
+    /// these kernel tunings/mods will continue to work properly after
+    /// doing os updates that update the kernel"): at its first start the
+    /// module is built for it and loaded, as at the very first. The old
+    /// kernel's build is kept while that kernel is (it can still be
+    /// started) and goes with it. A kernel that came without its headers
+    /// is said, with TCP left as it comes (Olo Doctor's fix installs the
+    /// package that brings them with every kernel).
+    #[test]
+    fn built_for_the_kernel_an_update_brings_at_its_first_start() {
+        const NEXT: &str = "7.3.3-300.fc45.x86_64";
+        let tree = Tree::new("update");
+        let places = &tree.0;
+        tree.headers(K);
+        let mut kernel = Fake::new(&tree);
+        assert_eq!(ensure(places, K, &mut kernel, None), Ok(Done::BuiltAndLoaded));
+        // The update: the new kernel and its headers beside the old one.
+        // Then the computer restarted (nothing loaded, TCP as it comes).
+        tree.headers(NEXT);
+        let restart = |places: &Places| {
+            let _ = std::fs::remove_dir_all(places.loaded(&MODULE));
+            std::fs::write(default_file(places), "cubic\n").unwrap();
+        };
+        restart(places);
+        assert!(!olo_kmod::built(places, &MODULE, NEXT));
+        assert_eq!(ensure(places, NEXT, &mut kernel, None), Ok(Done::BuiltAndLoaded));
+        assert_eq!((kernel.built, kernel.loaded, default(places).as_deref()), (2, 2, Some("bbr3")));
+        assert!(places.module(&MODULE, K).is_file() && places.module(&MODULE, NEXT).is_file());
+        // The old kernel started once more: its own build, as it was.
+        restart(places);
+        assert_eq!(ensure(places, K, &mut kernel, None), Ok(Done::Loaded));
+        assert_eq!((kernel.built, default(places).as_deref()), (2, Some("bbr3")));
+        // The old kernel removed (a later update): its build goes at the
+        // next start, the new one's stays.
+        std::fs::remove_file(places.kernels().join(K).join("vmlinuz")).unwrap();
+        restart(places);
+        assert_eq!(ensure(places, NEXT, &mut kernel, None), Ok(Done::Loaded));
+        assert!(!places.module(&MODULE, K).exists() && !places.work(&MODULE, K).exists() && places.module(&MODULE, NEXT).is_file());
+        // A kernel without its headers: why is said, nothing is chosen.
+        const BARE: &str = "7.4.0-100.fc45.x86_64";
+        std::fs::create_dir_all(places.kernels().join(BARE)).unwrap();
+        std::fs::write(places.kernels().join(BARE).join("vmlinuz"), "").unwrap();
+        restart(places);
+        let went = ensure(places, BARE, &mut kernel, None);
+        assert_eq!(went, Err(format!("this kernel's headers aren't installed (the kernel-devel package for {BARE})")));
+        say(places, &went);
+        assert_eq!(
+            (default(places).as_deref(), read(&places.said(&MODULE)).as_deref().map(str::trim)),
+            (Some("cubic"), Some(format!("failed: this kernel's headers aren't installed (the kernel-devel package for {BARE})").as_str()))
+        );
+    }
+
     /// A build from another source (Olo upgraded) is made again: loaded
     /// at once where the old one isn't in, from the next start where it
     /// is. One the kernel refuses (the same name, rebuilt) is built again
@@ -445,5 +497,26 @@ mod tests {
         // (Not the self-checking build: no probe on every packet sent.)
         assert!(!has("__tcp_transmit_skb"));
         assert!(olo_kmod::built(&tree.0, &MODULE, &release));
+    }
+
+    /// The real build for another kernel than the running one: the one
+    /// an update brings, before it's installed (`--ignored`, with
+    /// `OLO_NEXT_KERNEL=RELEASE=HEADERS`: that kernel's kernel-devel
+    /// unpacked somewhere, as tools/dev/bbr3-check's `--on` has it).
+    /// Whether the module is right there is that tool's to say, in a
+    /// guest that runs the kernel.
+    #[test]
+    #[ignore]
+    fn builds_for_the_kernel_an_update_brings() {
+        let next = std::env::var("OLO_NEXT_KERNEL").expect("OLO_NEXT_KERNEL=RELEASE=HEADERS");
+        let (release, headers) = next.split_once('=').expect("RELEASE=HEADERS");
+        assert_ne!(release, olo_kmod::release(), "another kernel than the running one");
+        let tree = Tree::new("next-build");
+        std::fs::create_dir_all(tree.0.kernels().join(release)).unwrap();
+        std::os::unix::fs::symlink(std::fs::canonicalize(headers).unwrap(), tree.0.headers(release)).unwrap();
+        olo_kmod::build(&tree.0, &MODULE, release, &mut Running).unwrap();
+        let module = std::fs::read(tree.0.module(&MODULE, release)).unwrap();
+        let has = |what: &str| module.windows(what.len()).any(|w| w == what.as_bytes());
+        assert!(has(&format!("vermagic={release} ")) && has("bbr3") && has("version=3"));
     }
 }

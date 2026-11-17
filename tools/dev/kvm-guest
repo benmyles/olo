@@ -23,7 +23,8 @@ how it ended: a panic, shown).
 
   --kernel IMAGE       another kernel (a bzImage); with it, --modules-dir
   --modules-dir DIR    where that kernel's modules are (a `lib/modules/R`)
-  --module NAME        a kernel module to have loaded, by name (repeat)
+  --module NAME        a kernel module to have loaded, by name (repeat);
+                       "NAME PARAM=VALUE …" loads it with parameters
   --ko FILE[:PARAMS]   a module file to have in /ko (not loaded: the
                        script does, `insmod /ko/NAME.ko`) (repeat)
   --bin PATH           a program more for /bin (repeat); always there:
@@ -31,6 +32,14 @@ how it ended: a panic, shown).
                        head, tail, sort, wc, date, dmesg, sysctl, insmod,
                        rmmod, lsmod, ip, tc, ss, ethtool, taskset, ping
   --file SRC:DEST      a file more, at DEST in the guest (repeat)
+  --disk SIZE[,OPT…]   a disk for the guest (/dev/vda, vdb, … in order;
+                       repeat): an empty file of SIZE (as "2G") made
+                       under /var/tmp and removed after. OPTs are QEMU's
+                       for the drive: throttling.bps-write=10485760 makes
+                       a slow one (10 MB/s, a USB stick's)
+  --usb-disk SIZE      a disk on USB for the guest (a stick: /dev/sda, …;
+                       repeat), on an xHCI controller; the guest needs
+                       --module usb_storage
   --cpus N  --mem MB   4 and 2048
   --timeout SECONDS    300
   --append 'ARGS'      more for the kernel's command line
@@ -60,7 +69,7 @@ mount -t tmpfs run /run
 mount -t debugfs debug /sys/kernel/debug 2>/dev/null
 ip link set lo up
 while read -r m; do
-  insmod "$m" || echo "kvm-guest: $m didn't load" >&2
+  insmod $m || echo "kvm-guest: $m didn't load" >&2
 done < /modules/order
 cd /
 bash /script "$@" > /dev/ttyS1
@@ -148,6 +157,7 @@ def module_files(names, modules_dir):
     base = os.path.dirname(os.path.dirname(os.path.dirname(modules_dir.rstrip("/")))) or "/"
     files, seen = [], set()
     for name in names:
+        name, _, params = name.partition(" ")
         out = subprocess.run(["/usr/sbin/modprobe", "-d", base, "-S", release, "--show-depends", name], capture_output=True, text=True)
         if out.returncode != 0:
             sys.exit(f"kvm-guest: no module {name} for {release}: {out.stderr.strip()}")
@@ -164,7 +174,8 @@ def module_files(names, modules_dir):
                 data, guest = subprocess.run(["zstd", "-dc", parts[1]], capture_output=True).stdout, guest[:-4]
             elif guest.endswith(".gz"):
                 data, guest = gzip.decompress(data), guest[:-3]
-            files.append((guest, data))
+            # (The module asked for is the last of its own lines: its parameters are its.)
+            files.append((guest, data, params if os.path.basename(parts[1]).split(".")[0].replace("-", "_") == name.replace("-", "_") else ""))
     return files
 
 
@@ -195,7 +206,7 @@ def main():
     release = os.uname().release
     kernel = one("--kernel", f"/lib/modules/{release}/vmlinuz")
     modules_dir = one("--modules-dir", f"/lib/modules/{release}")
-    modules, kos, bins, files = many("--module"), many("--ko"), many("--bin"), many("--file")
+    modules, kos, bins, files, disks, sticks = many("--module"), many("--ko"), many("--bin"), many("--file"), many("--disk"), many("--usb-disk")
     cpus, mem, timeout = int(one("--cpus", 4)), int(one("--mem", 2048)), int(one("--timeout", 300))
     append, keep, quiet = one("--append", ""), has("--keep"), has("--quiet")
     if args and args[0] == "-c":
@@ -231,9 +242,9 @@ def main():
     for lib in sorted(libs):
         cpio.file("lib64/" + os.path.basename(lib), open(os.path.realpath(lib), "rb").read(), 0o755)
     order = []
-    for guest, data in module_files(modules, modules_dir):
+    for guest, data, params in module_files(modules, modules_dir):
         cpio.file("modules/" + guest, data)
-        order.append("/modules/" + guest)
+        order.append(("/modules/" + guest + " " + params).strip())
     cpio.file("modules/order", ("\n".join(order) + "\n").encode() if order else b"")
     for ko in kos:
         cpio.file("ko/" + os.path.basename(ko), open(ko, "rb").read())
@@ -247,6 +258,22 @@ def main():
         with gzip.open(initrd, "wb", compresslevel=1) as f:
             f.write(cpio.done())
         open(out, "w").close()
+        drives = []
+        units = {"K": 1 << 10, "M": 1 << 20, "G": 1 << 30}
+
+        def image(name, size):
+            path = os.path.join(work, name)
+            with open(path, "wb") as f:
+                f.truncate(int(float(size[:-1]) * units[size[-1].upper()]) if size[-1].upper() in units else int(size))
+            return path
+
+        for i, disk in enumerate(disks):
+            size, _, opts = disk.partition(",")
+            drives += ["-drive", f"file={image(f'disk{i}.img', size)},format=raw,if=none,id=d{i},cache=none,aio=native" + ("," + opts if opts else ""), "-device", f"virtio-blk-pci,drive=d{i}"]
+        if sticks:
+            drives += ["-device", "qemu-xhci,id=xhci"]
+        for i, size in enumerate(sticks):
+            drives += ["-drive", f"file={image(f'stick{i}.img', size)},format=raw,if=none,id=u{i}", "-device", f"usb-storage,bus=xhci.0,drive=u{i},removable=on"]
         # (The kernel's own quoting: double quotes around what has spaces.)
         if any('"' in a for a in script_args):
             sys.exit('kvm-guest: an ARG can\'t hold a double quote (the kernel\'s command line has no way to say one)')
@@ -257,7 +284,7 @@ def main():
             "-kernel", kernel, "-initrd", initrd,
             "-append", f"console=ttyS0 panic=-1 loglevel=4 rdinit=/init {append} -- {quoted}".strip(),
             "-serial", "stdio", "-serial", f"file:{out}",
-        ]  # fmt: skip
+        ] + drives  # fmt: skip
         try:
             ran = subprocess.run(qemu, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout)
             console, timed_out = ran.stdout.decode(errors="replace"), False

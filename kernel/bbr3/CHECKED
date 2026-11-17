@@ -1,0 +1,6 @@
+# The kernel series tcp_bbr3 has passed its full self-check on
+# (tools/dev/bbr3-check, in a guest running that kernel), one a line.
+# For a new series: tools/dev/kernel-next (the kernel an update will
+# bring, before it's installed), then its line here.
+7.2
+7.3

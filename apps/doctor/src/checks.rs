@@ -683,6 +683,7 @@ pub fn scan(roots: &Roots) -> Report {
     swappiness(roots, &mut r);
     swap_size(roots, &gpus, &mut r);
     tcp_bbr3(roots, &mut r);
+    kernel_settings(roots, &mut r);
     intel_video(roots, &gpus, &mut r);
     builtin_sound(roots, &gpus, &mut r);
     thunderbolt(roots, &mut r);
@@ -2559,7 +2560,7 @@ fn swap_off_steps(roots: &Roots, areas: &[(String, u64)]) -> Vec<Step> {
 /// started (again, if either changed: it takes an older patch out and
 /// builds this one), with what the kernel's build needs installed first
 /// where it's missing).
-fn graphics_memory_steps(roots: &Roots) -> Vec<Step> {
+pub(crate) fn graphics_memory_steps(roots: &Roots) -> Vec<Step> {
     let fs = &roots.fs;
     let mut steps = Vec::new();
     let release = read(&fs.join("proc/sys/kernel/osrelease")).map(|r| r.trim().to_owned()).unwrap_or_default();
@@ -2728,7 +2729,7 @@ fn bbr3_in_use(roots: &Roots) -> bool {
 /// either changed), with what the kernel's build needs installed first
 /// where it's missing; nothing to build where the kernel's own "bbr" is
 /// BBRv3, which the service then chooses).
-fn bbr3_steps(roots: &Roots) -> Vec<Step> {
+pub(crate) fn bbr3_steps(roots: &Roots) -> Vec<Step> {
     let fs = &roots.fs;
     let mut steps = Vec::new();
     let release = read(&fs.join("proc/sys/kernel/osrelease")).unwrap_or_default();
@@ -2796,7 +2797,17 @@ fn tcp_bbr3(roots: &Roots, r: &mut Report) {
             detail: if now == "bbr" {
                 "New connections use this kernel's own bbr, which is BBRv3.".into()
             } else {
-                "New connections use bbr3: Olo's module (Google's BBRv3, made for the kernel as it comes), built for this kernel and loaded at every start.".into()
+                // (Built for whatever kernel an update brings: said where
+                // that kernel's series is one it hasn't been checked on.)
+                let series = olo_system::kernel_tuning::series(&read(&fs.join("proc/sys/kernel/osrelease")).unwrap_or_default());
+                format!(
+                    "New connections use bbr3: Olo's module (Google's BBRv3, made for the kernel as it comes), built for this kernel and loaded at every start.{}",
+                    if series.is_empty() || olo_system::kernel_tuning::bbr3_checked_on(&series) {
+                        String::new()
+                    } else {
+                        format!(" It was built for this kernel as for any, but hasn't yet passed its self-check on this kernel's series ({series}): an Olo update brings that.")
+                    }
+                )
             },
         });
         return;
@@ -2843,6 +2854,104 @@ fn tcp_bbr3(roots: &Roots, r: &mut Report) {
         ),
         fix: Some(Fix { label: "Use BBRv3".into(), root: true, steps }),
     });
+}
+
+/// The kernel's settings Olo suggests for a computer someone sits at
+/// (`olo_system::kernel_tuning`, apps/doctor/src/kernel.rs; Ben,
+/// 2026-11-16: "research what other linux kernel patches are recommended
+/// for high performance, responsive desktop operating systems and if you
+/// find any that are win-win over the fedora 45 kernel and would be a
+/// win for olo users then also integrate them into olo like bbr3 so that
+/// olo doctor can offer them"). What the desktop kernels patch in is
+/// nearly all in Fedora's kernel already, or can't be had without
+/// replacing it; what was left to gain, and measured to be a gain with
+/// nothing given up for it, is two settings: full preemption, and a
+/// limit on what waits in memory for a removable disk (kernel/TUNING.md
+/// has each one's measurements, made in a KVM guest on this kernel by
+/// tools/dev/kernel-check, and what was measured and left alone: the
+/// multi-generational LRU's thrash protection among it, which ended a
+/// program that fitted in three runs of nine). Each is offered where the
+/// kernel has it and nobody
+/// chose otherwise; set, it's said to be fine. Preferences ▸ Performance
+/// ▸ Kernel shows and switches the same.
+fn kernel_settings(roots: &Roots, r: &mut Report) {
+    use olo_system::kernel_tuning::{self as tuning, Setting};
+    let places = crate::kernel::places(&roots.fs);
+    let size = |bytes: u64| if bytes >= 1 << 30 { format!("{:.1} GB", bytes as f64 / (1u64 << 30) as f64) } else { format!("{:.0} MB", bytes as f64 / (1u64 << 20) as f64) };
+
+    // Preemption.
+    if let Some(p) = tuning::preemption(&places) {
+        let steps = crate::kernel::steps(Setting::Preemption, true, &places);
+        if p.on() {
+            r.fine.push(Fine { title: "The kernel switches to a woken program at once".into(), detail: "Full preemption, now and at every start.".into() });
+        } else if steps.is_empty() {
+            // (Kept for the next start, and this kernel can't be switched
+            // while it runs: nothing to do but restart.)
+            r.fine.push(Fine {
+                title: "The kernel switches to a woken program at once from the next restart".into(),
+                detail: format!("Full preemption is set for every start; the running kernel is on {} until then (it's locked down, so it can't be switched while it runs).", p.now()),
+            });
+        } else if p.lost {
+            // Kept for every start, and this start was made without it.
+            r.findings.push(Finding {
+                id: "kernel:preemption".into(),
+                severity: Severity::Advice,
+                title: "The kernel was started without full preemption".into(),
+                detail: format!(
+                    "Full preemption is kept for every start, but this start's boot entry doesn't have preempt=full (an entry made some other way than from the kept command line, as a new kernel's can be), so the kernel is on {}. The fix puts it in every boot entry again{}.",
+                    p.now(),
+                    if p.live { ", and switches the running kernel now" } else { ", from the next restart" }
+                ),
+                fix: Some(Fix { label: "Preempt at Once".into(), root: true, steps }),
+            });
+        } else if !p.chosen_otherwise() && !scheduled_by_another(&roots.fs) {
+            r.findings.push(Finding {
+                id: "kernel:preemption".into(),
+                severity: Severity::Suggestion,
+                title: "A program woken while the processors are busy waits for the kernel's tick".into(),
+                detail: format!(
+                    "Linux here preempts lazily ({}): a program woken while every processor is busy (a build, an export) isn't switched to until the kernel's next tick, up to a millisecond later, at each step of what it does for you. Told to preempt fully, the kernel switches at once: with every processor computing at low priority, 99 in 100 wakes ran within 4 µs where they took 950, and the work itself got as much done (within 1% computing, writing and passing messages). Olo's window server is realtime and runs at once either way; this is for the programs it shows. The fix starts the kernel with preempt=full from the next restart{}.",
+                    p.now(),
+                    if p.live { ", and switches the running kernel now" } else { " (the running kernel is locked down, so it can't be switched until then)" }
+                ),
+                fix: Some(Fix { label: "Preempt at Once".into(), root: true, steps }),
+            });
+        }
+    }
+
+    // Removable disks.
+    let s = tuning::slow_disks(&places);
+    if s.can {
+        if s.on() {
+            r.fine.push(Fine {
+                title: "Removable disks' writes are limited".into(),
+                detail: format!("{} may wait in memory for each: those here now, and each as it's plugged in.", size(tuning::SLOW_DISK_BYTES)),
+            });
+        } else {
+            r.findings.push(Finding {
+                id: "kernel:slow-disks".into(),
+                severity: Severity::Suggestion,
+                title: "A removable disk's writes pile up in memory".into(),
+                detail: format!(
+                    "{} written to a USB stick or a card may wait in memory here, as for any disk: a copy seems done at once, and the disk is then written for minutes while Eject waits, or is pulled out with the files not on it. With {} at most waiting for each removable disk, a copy goes at the disk's own pace and what it wrote is on the disk a moment later: of 600 MB copied to a stick that takes 10 MB a second, 280 MB were still in memory when the copy ended and 28 s went by before it could be taken out; limited, 14 MB and 1.5 s. The whole took as long either way. The fix {}installs a rule that limits each as it's plugged in.",
+                    if s.may_wait > 0 { format!("Up to {}", size(s.may_wait)) } else { "Gigabytes".to_owned() },
+                    size(tuning::SLOW_DISK_BYTES),
+                    if s.disks.is_empty() { "" } else { "limits those here now and " }
+                ),
+                fix: Some(Fix { label: "Limit Removable Disks".into(), root: true, steps: crate::kernel::steps(Setting::SlowDisks, true, &places) }),
+            });
+        }
+    }
+}
+
+/// A scheduler loaded over the kernel's own is scheduling, or LAVD is
+/// chosen to: it asks the kernel to switch at once whenever it means to,
+/// so the kernel's preemption setting changes nothing there (measured
+/// with LAVD in the guest: the same wakes lazy and full; kernel/TUNING.md)
+/// and isn't suggested.
+fn scheduled_by_another(fs: &Path) -> bool {
+    use olo_system::scheduler;
+    scheduler::look(&scheduler::Places::under(fs)).is_some_and(|s| s.loaded.is_some() || s.chosen == scheduler::Choice::Lavd)
 }
 
 /// Intel's full video driver (iHD with every codec), as RPM Fusion's
@@ -3361,7 +3470,7 @@ fn panel_hdr(roots: &Roots, r: &mut Report) {
         detail: format!(
             "This display can show HDR, up to {peak:.0} cd/m², through its own HDR interface, which Linux's Intel driver uses only when started with {arg}. The fix starts it so from the next restart (every boot entry and new kernels too). The driver then sets the display's brightness through that interface as well, in nits; if brightness stops working, remove {arg} from /etc/kernel/cmdline and the entries in /boot/loader/entries."
         ),
-        fix: Some(Fix { label: "Turn On HDR at Start".into(), root: true, steps: vec![Step::AddKernelArgument { arg }] }),
+        fix: Some(Fix { label: "Turn On HDR at Start".into(), root: true, steps: vec![Step::AddKernelArgument { arg, root: "/".into() }] }),
     });
 }
 
@@ -4618,6 +4727,11 @@ mod tests {
         let past = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
         std::fs::File::options().write(true).open(fs.join("home/me/.local/bin/olo-chime")).unwrap().set_modified(past).unwrap();
         w("usr/local/libexec/olo/olo-chime", "the chime");
+        // (Its time said too, between the program's and now: two files
+        // written within one tick of the kernel's clock have the same
+        // time, and the newer program below was then not newer, once in
+        // a great many runs.)
+        std::fs::File::options().write(true).open(fs.join("usr/local/libexec/olo/olo-chime")).unwrap().set_modified(past + std::time::Duration::from_secs(30)).unwrap();
         w("etc/systemd/system/olo-chime.service", CHIME_UNIT);
         w("etc/systemd/system/sound.target.wants/olo-chime.service", CHIME_UNIT);
         let r = look();
@@ -5247,7 +5361,7 @@ mod tests {
         assert!(f.detail.contains("1600 cd/m²"), "{}", f.detail);
         let fix = f.fix.as_ref().unwrap();
         assert!(fix.root);
-        assert_eq!(fix.steps, vec![Step::AddKernelArgument { arg: "xe.enable_dpcd_backlight=3".into() }]);
+        assert_eq!(fix.steps, vec![Step::AddKernelArgument { arg: "xe.enable_dpcd_backlight=3".into(), root: "/".into() }]);
         // Started so: fine.
         w("proc/cmdline", b"root=UUID=1 ro xe.enable_dpcd_backlight=3\n");
         let mut r = Report::default();
@@ -5357,6 +5471,96 @@ mod tests {
     /// was only loaded by hand; the kernel's own chosen where that is
     /// BBRv3; nothing offered where the kernel can't take the module.
     #[test]
+    fn the_kernels_settings_are_offered_and_set() {
+        use olo_system::kernel_tuning as tuning;
+        let (fs, roots) = machine("kernel");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        let ids = |roots: &Roots| scan(roots).findings.iter().filter(|f| f.id.starts_with("kernel:")).map(|f| f.id.clone()).collect::<Vec<_>>();
+        // A kernel that says nothing of any of it: nothing offered.
+        assert!(ids(&roots).is_empty());
+        // Fedora's, as it comes, with a stick plugged in.
+        w("proc/sys/kernel/osrelease", "7.2.15-300.fc45.x86_64\n");
+        w("lib/modules/7.2.15-300.fc45.x86_64/config", "CONFIG_PREEMPT_LAZY=y\nCONFIG_PREEMPT_DYNAMIC=y\n");
+        w("proc/cmdline", "BOOT_IMAGE=(hd0,gpt2)/vmlinuz ro rhgb quiet\n");
+        w("etc/kernel/cmdline", "root=UUID=1 ro rhgb quiet\n");
+        w("sys/kernel/debug/sched/preempt", "none voluntary full (lazy)\n");
+        w("proc/vmstat", "nr_dirty 100\nnr_writeback 0\nnr_dirty_threshold 3748981\noom_kill 0\n");
+        for (name, removable) in [("nvme0n1", "0"), ("sdb", "1")] {
+            w(&format!("sys/block/{name}/removable"), removable);
+            w(&format!("sys/block/{name}/size"), "60000");
+            w(&format!("sys/block/{name}/bdi/strict_limit"), "0\n");
+            w(&format!("sys/block/{name}/bdi/max_bytes"), "15355826176\n");
+            w(&format!("sys/block/{name}/bdi/max_ratio"), "100\n");
+        }
+        assert_eq!(ids(&roots), ["kernel:preemption", "kernel:slow-disks"]);
+        let r = scan(&roots);
+        for (id, label) in [("kernel:preemption", "Preempt at Once"), ("kernel:slow-disks", "Limit Removable Disks")] {
+            let f = r.find(id).unwrap();
+            assert_eq!((f.severity, f.fix.as_ref().unwrap().label.as_str(), f.fix.as_ref().unwrap().root), (Severity::Suggestion, label, true), "{id}");
+        }
+        assert!(r.find("kernel:preemption").unwrap().detail.ends_with("from the next restart, and switches the running kernel now."));
+        assert!(r.find("kernel:slow-disks").unwrap().detail.starts_with("Up to 14.3 GB written to a USB stick"), "{}", r.find("kernel:slow-disks").unwrap().detail);
+        assert!(r.find("kernel:slow-disks").unwrap().detail.ends_with("The fix limits those here now and installs a rule that limits each as it's plugged in."));
+        // Each fix, run (the tree is ours to write), leaves it fine.
+        for id in ["kernel:preemption", "kernel:slow-disks"] {
+            for done in crate::helper::run_steps(&scan(&roots).find(id).unwrap().fix.as_ref().unwrap().steps) {
+                done.unwrap();
+            }
+            assert!(scan(&roots).find(id).is_none(), "{id} is offered still");
+        }
+        let fine: Vec<String> = scan(&roots).fine.iter().map(|f| f.title.clone()).collect();
+        for title in ["The kernel switches to a woken program at once", "Removable disks' writes are limited"] {
+            assert!(fine.iter().any(|t| t == title), "{title}: {fine:?}");
+        }
+        assert_eq!(std::fs::read_to_string(fs.join("etc/kernel/cmdline")).unwrap(), "root=UUID=1 ro rhgb quiet preempt=full\n");
+        assert_eq!(std::fs::read_to_string(fs.join("etc/udev/rules.d/61-olo-slow-disks.rules")).unwrap(), tuning::SLOW_DISK_RULE);
+        // A kernel an update brought, started from an entry without the
+        // argument though it's kept: said, and the fix puts it back.
+        std::fs::remove_file(fs.join("run/olo-kernel/preemption")).unwrap();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        w("proc/stat", &format!("btime {}\n", now + 3600));
+        let f = scan(&roots).find("kernel:preemption").unwrap().clone();
+        assert_eq!((f.severity, f.title.as_str()), (Severity::Advice, "The kernel was started without full preemption"));
+        assert!(matches!(f.fix.unwrap().steps.as_slice(), [Step::AddKernelArgument { .. }, Step::WriteSysfs { .. }, Step::WriteFile { .. }]));
+        w("proc/stat", "btime 1\n");
+        w("run/olo-kernel/preemption", "full\n");
+        // With LAVD scheduling the setting changes nothing: not offered.
+        std::fs::remove_file(fs.join("run/olo-kernel/preemption")).unwrap();
+        w("etc/kernel/cmdline", "root=UUID=1 ro rhgb quiet\n");
+        assert!(scan(&roots).find("kernel:preemption").is_some());
+        w("sys/kernel/sched_ext/state", "enabled\n");
+        w("sys/kernel/sched_ext/root/ops", "lavd_1.1.4_x86_64_unknown_linux_gnu\n");
+        assert!(scan(&roots).find("kernel:preemption").is_none());
+        w("sys/kernel/sched_ext/state", "disabled\n");
+        w("run/olo-kernel/preemption", "full\n");
+        // Someone's own choice of preemption is theirs: not offered.
+        std::fs::remove_file(fs.join("run/olo-kernel/preemption")).unwrap();
+        w("etc/kernel/cmdline", "root=UUID=1 ro preempt=none\n");
+        assert!(scan(&roots).find("kernel:preemption").is_none());
+        // Locked down with the argument kept: fine, from the next restart.
+        w("etc/kernel/cmdline", "root=UUID=1 ro preempt=full\n");
+        w("sys/kernel/security/lockdown", "none [integrity] confidentiality\n");
+        let r = scan(&roots);
+        assert!(r.find("kernel:preemption").is_none());
+        assert!(r.fine.iter().any(|f| f.title == "The kernel switches to a woken program at once from the next restart"));
+        // With no removable disk here the fix is the rule alone, and says so.
+        std::fs::rename(fs.join("sys/block/sdb"), fs.join("sys/block-sdb-away")).unwrap();
+        std::fs::remove_file(fs.join("etc/udev/rules.d/61-olo-slow-disks.rules")).unwrap();
+        let f = scan(&roots).find("kernel:slow-disks").unwrap().clone();
+        assert!(f.detail.ends_with("The whole took as long either way. The fix installs a rule that limits each as it's plugged in."), "{}", f.detail);
+        assert_eq!(f.fix.unwrap().steps.len(), 1);
+        std::fs::rename(fs.join("sys/block-sdb-away"), fs.join("sys/block/sdb")).unwrap();
+        w("etc/udev/rules.d/61-olo-slow-disks.rules", tuning::SLOW_DISK_RULE);
+        // A stick plugged in before the rule's time (not limited): offered again, for it.
+        w("sys/block/sdb/bdi/strict_limit", "0\n");
+        assert_eq!(scan(&roots).find("kernel:slow-disks").unwrap().fix.as_ref().unwrap().steps.len(), 2);
+    }
+
+    #[test]
     fn tcp_is_offered_bbr3() {
         let (fs, roots) = machine("bbr3");
         let w = |p: &str, c: &str| {
@@ -5408,7 +5612,15 @@ mod tests {
         let roots = Roots { units: Box::new(kept), ..roots };
         let r = scan(&roots);
         assert!(r.find("tcp-bbr3").is_none() && r.find("tcp-bbr3:service").is_none(), "{:?}", r.find("tcp-bbr3").or(r.find("tcp-bbr3:service")).map(|f| f.detail.clone()));
-        assert!(r.fine.iter().any(|f| f.title == "TCP sends with BBRv3" && f.detail.starts_with("New connections use bbr3: Olo's module")));
+        assert!(r.fine.iter().any(|f| f.title == "TCP sends with BBRv3" && f.detail.ends_with("built for this kernel and loaded at every start.")));
+        // A kernel an update brought, of a series the module hasn't been
+        // checked on: built and in use all the same, and said.
+        w("proc/sys/kernel/osrelease", "7.9.1-200.fc46.x86_64\n");
+        w("lib/modules/7.9.1-200.fc46.x86_64/build/Makefile", "");
+        assert!(
+            scan(&roots).fine.iter().any(|f| f.title == "TCP sends with BBRv3" && f.detail.ends_with("hasn't yet passed its self-check on this kernel's series (7.9): an Olo update brings that."))
+        );
+        w("proc/sys/kernel/osrelease", "7.2.15-300.fc45.x86_64\n");
         // An older build's program there: brought up to date.
         w("usr/local/libexec/olo/olo-bbr3", "an older service");
         let f = scan(&roots).find("tcp-bbr3:service").unwrap().clone();

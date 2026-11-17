@@ -17,30 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Other kernel patches that are a win for a desktop, and a Kernel tab
-  for them** (Ben, 2026-11-16: "after you finish the bbr3 work, research
-  what other linux kernel patches are recommended for high performance,
-  responsive desktop operating systems and if you find any that are
-  win-win over the fedora 45 kernel and would be a win for olo users then
-  also integrate them into olo like bbr3 so that olo doctor can offer
-  them. let's also have a new tab in the performance prefs for kernel
-  tuning where this stuff can live and be configured and show any
-  stats/details/data in there about the running patches too"). Research
-  first (what XanMod, CachyOS, Liquorix, Zen and Clear Linux carry over
-  mainline, and what each is shown to do: scheduling, memory reclaim
-  (MGLRU's settings, le9's working-set protection), preemption and the
-  timer rate, I/O, networking), keeping only what is a win with nothing
-  given up against Fedora 45's kernel, measured here and not taken on
-  report; each carried as BBRv3 is (a module or a live patch built for
-  the running kernel by a service of Olo's on `olo-kmod`, never a
-  replaced kernel; settings where a setting is all it takes), offered by
-  Olo Doctor. And Preferences ▸ Performance gets a **Kernel** tab: each
-  of Olo's kernel pieces (BBRv3, the graphics-memory patch, the ones
-  found) with what it is, whether it's in the running kernel, switching
-  it on and off (through its service, as root), and its own live figures
-  (for BBRv3: the connections using it, what they send, their
-  retransmissions and round trips; for the graphics patch: buffers kept
-  in memory).
 - **Viewer: a PDF's images at full quality, keys for everything, full
   screen and a presentation mode** (Ben, 2026-11-16: "when viewing a pdf
   in the viewer app that has high res images in it (e.g. see
@@ -96,6 +72,14 @@ something nobody here has is in "Blocked", with what it waits for.
   it is; otherwise it plays at a quarter of the output's full volume,
   whatever the person's volume is set to, and leaves that setting as it
   found it.
+- **MGLRU's thrash protection at 250 ms: enough runs to say** (found
+  2026-11-16, kernel/TUNING.md). At the kernel's advised 1000 ms it
+  ended a program that fitted in memory in 3 runs of 9, so it isn't
+  offered. At 250 ms it ended none in 4 and still cut the worst stall
+  from 554 ms to about 140: run `tools/dev/kernel-check thrashing` at
+  250 ms twenty times and more with the program that fits, and the case
+  between (950 MB), on a quiet computer; offered (Doctor, the Kernel
+  tab) only if it never ends one for nothing.
 - **A notification's click goes to its own window and tab** (Ben,
   2026-11-16: "when a notification appears in olo for a tab within a
   group of windows, e.g. i noticed it with terminal where i'll get a
@@ -141,6 +125,43 @@ something nobody here has is in "Blocked", with what it waits for.
   pictures, theme), natively, in Quick Look and in Viewer.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Kernel settings that are a win for a desktop, a Kernel tab, and all
+  of it kept across kernel updates** (Ben, 2026-11-16: "research what
+  other linux kernel patches are recommended for high performance,
+  responsive desktop operating systems and if you find any that are
+  win-win over the fedora 45 kernel and would be a win for olo users then
+  also integrate them into olo like bbr3 so that olo doctor can offer
+  them. let's also have a new tab in the performance prefs for kernel
+  tuning where this stuff can live and be configured and show any
+  stats/details/data in there about the running patches too"; and "make
+  sure all these kernel tunings/mods will continue to work properly
+  after doing os updates that update the kernel"). *Done 2026-11-16.*
+  kernel/TUNING.md is the account. Nearly all the desktop kernels carry
+  is in Fedora 45's already or can't be had without replacing the
+  kernel; measured here (KVM guest, `tools/dev/kernel-check`), two
+  settings gain with nothing given up, and Olo Doctor offers them:
+  **full preemption** (a program woken while the processors are busy: 99
+  in 100 within 4 µs where 950; the work itself unchanged) and **a limit
+  on what waits in memory for a removable disk** (600 MB to a 10 MB/s
+  stick: 14 MB unwritten at the copy's end where 280, on the disk 1.5 s
+  later where 28 s). Measured and left alone: MGLRU's thrash protection
+  (it ended a program that fitted in 3 runs of 9), dm-crypt without its
+  work queues (a trade), split-lock mitigation, the watermark.
+  Preferences ▸ Performance ▸ **Kernel** shows and switches those two
+  and Olo's own pieces (BBRv3, the graphics-memory patch), each with its
+  figures; `olo-doctor --kernel` is the same for agents. Kernel updates:
+  the start argument goes into what a new kernel's entry is made from,
+  and Doctor repairs an entry without it; both modules are built again
+  at a new kernel's first start, and were built and run on Fedora's
+  next kernel (7.3.3) in the guest, BBRv3's full self-check included;
+  `tools/dev/kernel-next` does that for whichever kernel comes next.
+  **For Ben**: after the upgrade, Olo Doctor shows "A program woken
+  while the processors are busy waits for the kernel's tick" (Preempt at
+  Once) and "A removable disk's writes pile up in memory" (Limit
+  Removable Disks); the tab is Preferences ▸ Performance ▸ Kernel. Run
+  `tools/dev/kernel-next` when Fedora has a new kernel series (a series
+  BBRv3 passes on goes into kernel/bbr3/CHECKED).
 
 - **A Network Speed Test app** (Ben, 2026-11-16: "also with the BBRv3
   work add a new olo native Network Speed Test app that show not just

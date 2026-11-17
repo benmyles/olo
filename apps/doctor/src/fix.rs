@@ -86,8 +86,17 @@ pub enum Step {
     /// each boot entry (/boot/loader/entries, the rescue one left as it
     /// is), /etc/kernel/cmdline (what new kernels' entries get) and GRUB's
     /// defaults, as grubby does; a value for the same key replaced.
+    /// `root` is the file system's ("/"; a test's tree otherwise).
     AddKernelArgument {
         arg: String,
+        root: PathBuf,
+    },
+    /// Start the kernel without `key` ("preempt": the argument of that
+    /// name, whatever its value) from the next boot: taken out of every
+    /// place `AddKernelArgument` puts one.
+    RemoveKernelArgument {
+        key: String,
+        root: PathBuf,
     },
     /// Run a shell once (`-c 'exit 0'`): it starts, before it's anyone's
     /// login shell.
@@ -282,7 +291,8 @@ impl Step {
                 format!("Starting Bluetooth's hardware ({}) and its driver again", device.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default())
             }
             Step::AddShell { path } => format!("Listing {} in /etc/shells", path.display()),
-            Step::AddKernelArgument { arg } => format!("Starting the kernel with {arg}"),
+            Step::AddKernelArgument { arg, .. } => format!("Starting the kernel with {arg}"),
+            Step::RemoveKernelArgument { key, .. } => format!("Starting the kernel without {key}"),
             Step::TryShell { path } => format!("Trying {}", path.display()),
             Step::SetLoginShell { user, shell } => format!("Making {} {user}'s login shell", shell.display()),
             Step::InstallPackages { names } => format!("Installing {}", short_list(names)),
@@ -426,7 +436,8 @@ impl Step {
                 remake_zram_swap(Path::new("/"), device, std::time::Duration::from_secs(10), &start).map_err(|e| format!("{}: {e}", self.describe()))
             }
             Step::AddShell { path } => add_shell(path).map_err(failed),
-            Step::AddKernelArgument { arg } => add_kernel_argument(Path::new("/"), arg).map_err(failed),
+            Step::AddKernelArgument { arg, root } => add_kernel_argument(root, arg).map_err(failed),
+            Step::RemoveKernelArgument { key, root } => remove_kernel_argument(root, key).map_err(failed),
             Step::TryShell { path } => try_shell(path),
             Step::SetLoginShell { user, shell } => set_login_shell(user, shell).map_err(|e| format!("{}: {e}", self.describe())),
             Step::InstallPackages { .. } | Step::UpdatePackages { .. } | Step::InstallRelease { .. } | Step::InstallRepository { .. } | Step::InstallPackageServices => self.run_with(&mut |_| {}),
@@ -872,6 +883,18 @@ fn add_shell(path: &Path) -> std::io::Result<()> {
 /// `arg` ("key=value") in every place the kernel's command line is kept
 /// under `root` (see `Step::AddKernelArgument`).
 fn add_kernel_argument(root: &Path, arg: &str) -> std::io::Result<()> {
+    edit_kernel_arguments(root, &|line| with_argument(line, arg))
+}
+
+/// `key`'s argument out of every place the kernel's command line is kept
+/// under `root` (see `Step::RemoveKernelArgument`).
+fn remove_kernel_argument(root: &Path, key: &str) -> std::io::Result<()> {
+    edit_kernel_arguments(root, &|line| without_argument(line, key))
+}
+
+/// Every place the kernel's command line is kept under `root`, each as
+/// `edit` makes it.
+fn edit_kernel_arguments(root: &Path, edit: &dyn Fn(&str) -> String) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt as _;
     let mode = |p: &Path| std::fs::metadata(p).map(|m| m.permissions().mode() & 0o7777).unwrap_or(0o644);
     let entries = root.join("boot/loader/entries");
@@ -883,7 +906,7 @@ fn add_kernel_argument(root: &Path, arg: &str) -> std::io::Result<()> {
         let new: Vec<String> = text
             .lines()
             .map(|l| match l.strip_prefix("options ") {
-                Some(o) => format!("options {}", with_argument(o, arg)),
+                Some(o) => format!("options {}", edit(o)),
                 None => l.to_owned(),
             })
             .collect();
@@ -892,25 +915,41 @@ fn add_kernel_argument(root: &Path, arg: &str) -> std::io::Result<()> {
             write_file(&f, &new, mode(&f))?;
         }
     }
-    let cmdline = root.join("etc/kernel/cmdline");
-    if let Ok(text) = std::fs::read_to_string(&cmdline) {
-        let new = format!("{}\n", with_argument(text.trim(), arg));
-        if new != text {
-            write_file(&cmdline, &new, mode(&cmdline))?;
-        }
-    }
-    let grub = root.join("etc/default/grub");
+    // GRUB's defaults, then /etc/kernel/cmdline, in that order: Fedora's
+    // kernel-install (20-grub.install) makes a new kernel's entry from
+    // /etc/kernel/cmdline, unless that file is older than GRUB's
+    // defaults, in which case it has grub2-mkconfig write it again from
+    // them first. Both get the change, and the command line is left no
+    // older than the defaults (unless it was before: someone's own edit
+    // of the defaults, still to be taken up), so what a kernel update's
+    // entry is made from is the file as written here.
+    let (cmdline, grub) = (root.join("etc/kernel/cmdline"), root.join("etc/default/grub"));
+    let written = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    let older = |a: &Path, b: &Path| matches!((written(a), written(b)), (Some(a), Some(b)) if a < b);
+    let was_older = older(&cmdline, &grub);
     if let Ok(text) = std::fs::read_to_string(&grub) {
         let new: Vec<String> = text
             .lines()
             .map(|l| match l.strip_prefix("GRUB_CMDLINE_LINUX=\"").and_then(|v| v.strip_suffix('"')) {
-                Some(v) => format!("GRUB_CMDLINE_LINUX=\"{}\"", with_argument(v, arg)),
+                Some(v) => format!("GRUB_CMDLINE_LINUX=\"{}\"", edit(v)),
                 None => l.to_owned(),
             })
             .collect();
         let new = new.join("\n") + if text.ends_with('\n') { "\n" } else { "" };
         if new != text {
             write_file(&grub, &new, mode(&grub))?;
+        }
+    }
+    if let Ok(text) = std::fs::read_to_string(&cmdline) {
+        let new = format!("{}\n", edit(text.trim()));
+        if new != text {
+            write_file(&cmdline, &new, mode(&cmdline))?;
+        }
+        if !was_older
+            && older(&cmdline, &grub)
+            && let Some(at) = written(&grub)
+        {
+            std::fs::File::options().write(true).open(&cmdline)?.set_modified(at)?;
         }
     }
     Ok(())
@@ -935,6 +974,11 @@ fn with_argument(line: &str, arg: &str) -> String {
         out.push(arg);
     }
     out.join(" ")
+}
+
+/// A command line without `key`'s argument (bare, or with any value).
+fn without_argument(line: &str, key: &str) -> String {
+    line.split_whitespace().filter(|t| t.split('=').next() != Some(key)).collect::<Vec<_>>().join(" ")
 }
 
 /// `path` listed in the shells file `shells`.
@@ -1108,6 +1152,31 @@ mod tests {
         assert_eq!(r("boot/loader/entries/x-0-rescue.conf"), "title Rescue\noptions root=UUID=1 ro\n");
         assert_eq!(r("etc/kernel/cmdline"), "root=UUID=1 ro rhgb quiet xe.enable_dpcd_backlight=3\n");
         assert_eq!(r("etc/default/grub"), "GRUB_TIMEOUT=5\nGRUB_CMDLINE_LINUX=\"rhgb quiet xe.enable_dpcd_backlight=3\"\n");
+        // A kernel an update brings gets its entry from /etc/kernel/cmdline
+        // unless that is older than GRUB's defaults: it isn't.
+        let written = |p: &str| std::fs::metadata(root.join(p)).unwrap().modified().unwrap();
+        assert!(written("etc/kernel/cmdline") >= written("etc/default/grub"));
+        // (Only the defaults lacking it, the command line already right:
+        // still not left older.)
+        w("etc/default/grub", "GRUB_TIMEOUT=5\nGRUB_CMDLINE_LINUX=\"rhgb quiet\"\n");
+        let past = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
+        std::fs::File::options().write(true).open(root.join("etc/kernel/cmdline")).unwrap().set_modified(past).unwrap();
+        std::fs::File::options().write(true).open(root.join("etc/default/grub")).unwrap().set_modified(past).unwrap();
+        add_kernel_argument(&root, "xe.enable_dpcd_backlight=3").unwrap();
+        assert_eq!(r("etc/default/grub"), "GRUB_TIMEOUT=5\nGRUB_CMDLINE_LINUX=\"rhgb quiet xe.enable_dpcd_backlight=3\"\n");
+        assert!(written("etc/kernel/cmdline") >= written("etc/default/grub"));
+        // Someone's own edit of the defaults, not yet taken up (the
+        // command line older than them), is left to be: still older.
+        std::fs::File::options().write(true).open(root.join("etc/kernel/cmdline")).unwrap().set_modified(past).unwrap();
+        add_kernel_argument(&root, "quiet").unwrap();
+        assert!(written("etc/kernel/cmdline") < written("etc/default/grub"));
+        // And out again, everywhere it was put; what's beside it stays.
+        remove_kernel_argument(&root, "xe.enable_dpcd_backlight").unwrap();
+        remove_kernel_argument(&root, "xe.enable_dpcd_backlight").unwrap();
+        assert_eq!(r("boot/loader/entries/x-7.2.15.conf"), "title Fedora\noptions root=UUID=1 ro rhgb quiet $tuned_params\ngrub_users $grub_users\n");
+        assert_eq!(r("boot/loader/entries/x-0-rescue.conf"), "title Rescue\noptions root=UUID=1 ro\n");
+        assert_eq!(r("etc/kernel/cmdline"), "root=UUID=1 ro rhgb quiet\n");
+        assert_eq!(r("etc/default/grub"), "GRUB_TIMEOUT=5\nGRUB_CMDLINE_LINUX=\"rhgb quiet\"\n");
         let _ = std::fs::remove_dir_all(&root);
     }
     use super::*;

@@ -296,6 +296,51 @@ mod tests {
         assert_eq!(status(&tree.0, K), format!("{{\"kernel\":\"{K}\",\"patched\":true,\"built\":true,\"headers\":true,\"live_patching\":true,\"swap\":false}}"));
     }
 
+    /// An update brings a new kernel (Ben, 2026-11-16: "make sure all
+    /// these kernel tunings/mods will continue to work properly after
+    /// doing os updates that update the kernel"): at its first start the
+    /// patch is built for it and loaded, as at the very first. The old
+    /// kernel's build is kept while that kernel is and goes with it. A
+    /// kernel that came without its headers is said, the kernel left as
+    /// it comes.
+    #[test]
+    fn built_for_the_kernel_an_update_brings_at_its_first_start() {
+        const NEXT: &str = "7.3.3-300.fc45.x86_64";
+        let tree = Tree::new("update");
+        let places = &tree.0;
+        tree.headers(K);
+        let mut kernel = Fake { places: places.clone(), built: 0, loaded: 0, refuses: 0 };
+        assert_eq!(ensure(places, K, &mut kernel, SOON), Ok(Done::BuiltAndLoaded));
+        // The update: the new kernel and its headers beside the old one.
+        // Then the computer restarted (nothing patched).
+        tree.headers(NEXT);
+        let restart = |places: &Places| {
+            let _ = std::fs::remove_dir_all(patch(places));
+        };
+        restart(places);
+        assert!(!built(places, NEXT));
+        assert_eq!(ensure(places, NEXT, &mut kernel, SOON), Ok(Done::BuiltAndLoaded));
+        assert_eq!((kernel.built, kernel.loaded), (2, 2));
+        assert!(patched(places) && places.module(&MODULE, K).is_file() && places.module(&MODULE, NEXT).is_file());
+        // The old kernel started once more: its own build, as it was.
+        restart(places);
+        assert_eq!(ensure(places, K, &mut kernel, SOON), Ok(Done::Loaded));
+        assert_eq!(kernel.built, 2);
+        // The old kernel removed (a later update): its build goes at the
+        // next start, the new one's stays.
+        std::fs::remove_file(places.kernels().join(K).join("vmlinuz")).unwrap();
+        restart(places);
+        assert_eq!(ensure(places, NEXT, &mut kernel, SOON), Ok(Done::Loaded));
+        assert!(!places.module(&MODULE, K).exists() && !places.work(&MODULE, K).exists() && places.module(&MODULE, NEXT).is_file());
+        // A kernel without its headers: why is said, nothing is patched.
+        const BARE: &str = "7.4.0-100.fc45.x86_64";
+        std::fs::create_dir_all(places.kernels().join(BARE)).unwrap();
+        std::fs::write(places.kernels().join(BARE).join("vmlinuz"), "").unwrap();
+        restart(places);
+        assert_eq!(ensure(places, BARE, &mut kernel, SOON), Err(format!("this kernel's headers aren't installed (the kernel-devel package for {BARE})")));
+        assert!(!patched(places));
+    }
+
     /// A build from another source (Olo upgraded) is made again; so is
     /// one the kernel refuses (the same name, rebuilt), once.
     #[test]
@@ -410,5 +455,26 @@ mod tests {
         let has = |what: &str| module.windows(what.len()).any(|w| w == what.as_bytes());
         assert!(has("livepatch=Y") && has(&format!("vermagic={release} ")) && has("ttm_backup_bytes_avail"));
         assert!(built(&tree.0, &release));
+    }
+
+    /// The real build for another kernel than the running one: the one
+    /// an update brings, before it's installed (`--ignored`, with
+    /// `OLO_NEXT_KERNEL=RELEASE=HEADERS`: that kernel's kernel-devel
+    /// unpacked somewhere). It doesn't build if that kernel's
+    /// `ttm_backup_bytes_avail` is gone or of another shape (the
+    /// patch's own `static_assert`).
+    #[test]
+    #[ignore]
+    fn builds_for_the_kernel_an_update_brings() {
+        let next = std::env::var("OLO_NEXT_KERNEL").expect("OLO_NEXT_KERNEL=RELEASE=HEADERS");
+        let (release, headers) = next.split_once('=').expect("RELEASE=HEADERS");
+        assert_ne!(release, olo_kmod::release(), "another kernel than the running one");
+        let tree = Tree::new("next-build");
+        std::fs::create_dir_all(tree.0.kernels().join(release)).unwrap();
+        std::os::unix::fs::symlink(std::fs::canonicalize(headers).unwrap(), tree.0.headers(release)).unwrap();
+        olo_kmod::build(&tree.0, &MODULE, release, &mut Running).unwrap();
+        let module = std::fs::read(tree.0.module(&MODULE, release)).unwrap();
+        let has = |what: &str| module.windows(what.len()).any(|w| w == what.as_bytes());
+        assert!(has("livepatch=Y") && has(&format!("vermagic={release} ")) && has("ttm_backup_bytes_avail"));
     }
 }

@@ -1,0 +1,262 @@
+#!/usr/bin/python3
+"""The kernel's settings Olo suggests (`olo_system::kernel_tuning`; Olo
+Doctor's kernel:* suggestions; Preferences ▸ Performance ▸ Kernel), and
+the ones it looked at and left alone, measured: each with the setting
+off and on, in a KVM guest that runs this computer's own kernel. Nothing
+of the running system is touched, and no root is needed
+(tools/dev/kvm-guest). kernel/TUNING.md has what these said when the
+settings were chosen.
+
+  tools/dev/kernel-check preemption [--reps N]
+      a thread woken by another while every processor computes (lazy
+      against full), and what full costs: computing, pipe chatter,
+      16 threads writing one file. N (3) guests each way, in turn; the
+      middle of them.
+  tools/dev/kernel-check thrashing [--reps N]
+      left alone: MGLRU's thrash protection. A program takes memory
+      (more than there is: it's ended either way; then what fits only
+      by pushing the other's file out; then what fits) while another
+      keeps using 250 MB of a file it has mapped and 150 MB of its own,
+      with min_ttl_ms 0 and 1000; swap in compressed memory as large as
+      memory, and vm.swappiness 1, as Olo has them. The case that fits
+      N (3) times with the protection: it ends that program in some.
+  tools/dev/kernel-check slow-disks
+      600 MB copied to a disk that takes 10 MB a second, with and
+      without the limit: what's still in memory when the copy ends, and
+      how long until it's all on the disk; then what a limit of 16, 32
+      or 64 MB costs disks of 400 MB/s, 1 GB/s and this computer's own
+      speed, with the computer quiet and with every processor busy (it
+      makes them so itself, for a quarter of a minute at a time).
+  tools/dev/kernel-check left-alone
+      what was measured and left as the kernel comes: dm-crypt without
+      its work queues (a ramdisk, and a disk), and the room kept free
+      for memory asked for while the cache is full
+      (vm.watermark_scale_factor).
+  tools/dev/kernel-check
+      all of them.
+
+Needs qemu-system-x86_64 with /dev/kvm, and kbench
+(`cargo build --release -p olo-system --example kbench`).
+"""
+
+import json
+import os
+import statistics
+import subprocess
+import sys
+import tempfile
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+KBENCH = os.path.join(ROOT, "target/release/examples/kbench")
+GUEST = ["/usr/bin/python3", os.path.join(ROOT, "tools/dev/kvm-guest")]
+
+
+def guest(script, args=(), bins=(), modules=(), disks=(), mem=2048, append="", timeout=600):
+    """Runs `script` (the guest's shell) and gives its lines of
+    "name|…|{json}" as (name, …, dict)."""
+    with tempfile.TemporaryDirectory(prefix="olo-kernel-check-", dir="/var/tmp") as work:
+        path = os.path.join(work, "script")
+        with open(path, "w") as f:
+            f.write(script)
+        cmd = GUEST + ["--quiet", "--mem", str(mem), "--timeout", str(timeout), "--bin", KBENCH]
+        for b in bins:
+            cmd += ["--bin", b]
+        for m in modules:
+            cmd += ["--module", m]
+        for d in disks:
+            cmd += ["--disk", d]
+        if append:
+            cmd += ["--append", append]
+        out = subprocess.run(cmd + [path, *args], capture_output=True, text=True)
+    rows = []
+    for line in out.stdout.splitlines():
+        fields = line.split("|")
+        try:
+            rows.append((*fields[:-1], json.loads(fields[-1])))
+        except ValueError:
+            if len(fields) > 1:
+                rows.append(tuple(fields))
+    if out.returncode != 0 and not rows:
+        sys.exit(f"kernel-check: the guest ended {out.returncode}\n{out.stdout[-2000:]}{out.stderr[-2000:]}")
+    return rows
+
+
+PREEMPTION = r"""
+/bin/kbench spin --secs 8 --threads 4 --nice 19 > /tmp/s & S=$!
+sleep 1; echo "wake-low|$(/bin/kbench relay --secs 6)"; wait $S
+/bin/kbench spin --secs 8 --threads 4 > /tmp/s & S=$!
+sleep 1; echo "wake-same|$(/bin/kbench relay --secs 6)"; wait $S
+echo "compute|$(/bin/kbench spin --secs 4 --threads 4)"
+echo "chat4|$(/bin/kbench chat --secs 4 --groups 4)"
+echo "chat1|$(/bin/kbench chat --secs 4 --groups 1)"
+dd if=/dev/zero of=/tmp/f bs=1M count=256 2>/dev/null
+echo "write16|$(/bin/kbench io /tmp/f --secs 4 --bs 4096 --threads 16 --buffered --write)"
+"""
+
+
+def preemption(reps):
+    print(f"Preemption: lazy (as Fedora's kernel starts) against full; {reps} guests each, 4 processors; the middle of them\n")
+    got = {"lazy": {}, "full": {}}
+    for _ in range(reps):
+        for mode in got:
+            for name, d in guest(PREEMPTION, bins=["dd"], append=f"preempt={mode}"):
+                got[mode].setdefault(name, []).append(d)
+    med = statistics.median
+    print("  a thread woken by another that goes on working, microseconds until it runs:")
+    for name, what in [("wake-low", "4 threads computing at nice 19"), ("wake-same", "4 threads computing, same priority")]:
+        for mode in got:
+            r = got[mode][name]
+            print(f"    {what:36} {mode:5} middle {med([x['us_p50'] for x in r]):5.0f}   99 in 100 {med([x['us_p99'] for x in r]):5.0f}   999 in 1000 {med([x['us_p999'] for x in r]):5.0f}   worst {med([x['us_max'] for x in r]):5.0f}")
+    print("\n  what the work itself gets done, full against lazy:")
+    for name, key, what in [("compute", "rounds_per_sec", "4 threads computing"), ("chat4", "messages_per_sec", "pipes, 16 writers and 16 readers"), ("chat1", "messages_per_sec", "pipes, 4 writers and 4 readers"), ("write16", "ops_per_sec", "16 threads writing one file")]:
+        lazy, full = (med([x[key] for x in got[m][name]]) for m in ("lazy", "full"))
+        print(f"    {what:36} lazy {lazy:12,.0f}   full {full:12,.0f} a second   {full / lazy:.3f}×")
+    print()
+
+
+THRASHING = r"""
+mkfs.ext4 -q -F /dev/vda; mkdir -p /d; mount /dev/vda /d
+dd if=/dev/urandom of=/d/file bs=1M count=320 2>/dev/null; sync; echo 3 > /proc/sys/vm/drop_caches
+echo $(( $(awk '/MemTotal/ {print $2}' /proc/meminfo) * 1024 )) > /sys/block/zram0/disksize
+mkswap /dev/zram0 > /dev/null; swapon -p 100 /dev/zram0
+echo 1 > /proc/sys/vm/swappiness
+echo $1 > /sys/kernel/mm/lru_gen/min_ttl_ms
+/bin/kbench touch /d/file --mb 250 --secs 150 > /tmp/t & T=$!
+/bin/kbench touch --own --mb 150 --secs 150 > /tmp/o & O=$!
+sleep 10
+t0=$(date +%s.%N)
+/bin/kbench hog --mb $2 --rate 12 --hold 20 --random 2048 > /tmp/h 2>/dev/null; hs=$?
+echo "hog|{\"ended\":$hs,\"secs\":$(echo "$(date +%s.%N) $t0" | awk '{printf "%.1f", $1-$2}'),\"faults\":$(awk '/^pgmajfault / {print $2}' /proc/vmstat),\"stalled_us\":$(sed -n 's/^full.*total=//p' /proc/pressure/memory)}"
+wait $T; echo "files|$(cat /tmp/t)"
+wait $O; echo "own|$(cat /tmp/o)"
+"""
+
+
+def thrashing(reps):
+    print("MGLRU's thrash protection (left alone): 1 GB of memory, swap in compressed memory as large, vm.swappiness 1;")
+    print("a program takes memory at 12 MB a second while another reads through 250 MB of a file and 150 MB of its own, ten times a second\n")
+
+    def run(ttl, mb):
+        rows = {r[0]: r[-1] for r in guest(THRASHING, args=[str(ttl), str(mb)], bins=["/usr/sbin/mkfs.ext4", "dd", "/usr/sbin/mkswap", "/usr/sbin/swapon"], modules=["zram"], disks=["2G"], mem=1024)}
+        hog, files, own = rows["hog"], rows["files"], rows["own"]
+        fate = f"ended after {hog['secs']:.0f} s" if hog["ended"] else "got it all"
+        print(f"    min_ttl_ms {ttl:4}: {fate:18} a round through the file: 99 in 100 within {files['ms_p99']:6.1f} ms, worst {files['ms_max']:6.1f}, {files['rounds_expected'] - files['rounds']:.0f} missed;")
+        print(f"    {'':17}through its own: 99 in 100 within {own['ms_p99']:5.1f} ms, worst {own['ms_max']:5.1f}; read back from disk {hog['faults']:,} times; everything stalled {hog['stalled_us'] / 1e6:.1f} s")
+        return bool(hog["ended"])
+
+    for mb, what in [(1400, "more than there is (it's ended either way)"), (950, "what fits only with the other's file pushed out"), (700, "what fits")]:
+        print(f"  the program takes {mb} MB, {what}:")
+        for ttl in (0, 1000):
+            run(ttl, mb)
+    print(f"\n  the program that fits (700 MB), {reps} times more with min_ttl_ms 1000:")
+    ended = sum(run(1000, 700) for _ in range(reps))
+    print(f"\n  ended in {ended} of {reps}\n")
+
+
+SLOW_DISK = r"""
+mkfs.ext4 -q -F /dev/vda; mkfs.ext4 -q -F /dev/vdb
+mkdir -p /fast /slow; mount /dev/vda /fast; mount /dev/vdb /slow
+if [ "$1" = limit ]; then echo 1 > /sys/block/vdb/bdi/strict_limit; echo 16777216 > /sys/block/vdb/bdi/max_bytes; fi
+/bin/kbench writer /fast/meanwhile --secs 45 > /tmp/w & W=$!
+sleep 1
+echo "fill|$(/bin/kbench fill /slow/big --mb 600)"
+wait $W; echo "saves|$(cat /tmp/w)"
+"""
+
+FAST_DISK = r"""
+mkfs.ext4 -q -F /dev/vda; mkdir -p /fast; mount /dev/vda /fast
+if [ "$1" != none ]; then echo 1 > /sys/block/vda/bdi/strict_limit; echo $1 > /sys/block/vda/bdi/max_bytes; fi
+/bin/kbench fill /fast/warm --mb 1500 > /dev/null; rm /fast/warm; sync
+echo "fill|$(/bin/kbench fill /fast/big --mb 1500)"
+"""
+
+
+def slow_disks():
+    print("A removable disk's writes: 600 MB copied to a disk that takes 10 MB a second (2 GB of memory)\n")
+    for mode, what in [("none", "as the kernel comes"), ("limit", "16 MB may wait")]:
+        rows = {r[0]: r[-1] for r in guest(SLOW_DISK, args=[mode], bins=["/usr/sbin/mkfs.ext4"], disks=["2G", "2G,throttling.bps-write=10485760"])}
+        fill, saves = rows["fill"], rows["saves"]
+        print(f"  {what:20} the copy ended after {fill['write_secs']:5.1f} s with {fill['unwritten_mb_after']:4} MB still in memory; on the disk {fill['sync_secs']:5.1f} s later ({fill['write_secs'] + fill['sync_secs']:.1f} s in all);")
+        print(f"  {'':20} saves to the fast disk meanwhile: 99 in 100 within {saves['ms_p99']:.1f} ms")
+    print("\n  what the limit costs the disk's own speed (1,500 MB written and made durable), by how fast the disk is,")
+    print("  with this computer quiet and with every processor of it busy (kbench spin, here, beside the guest):")
+    for speed, what in [("400000000", "400 MB a second"), ("1000000000", "1 GB a second"), ("", "as fast as this computer's")]:
+        for busy in (False, True):
+            line = f"    {what:28} {'busy ' if busy else 'quiet'}"
+            for cap in ("none", "16777216", "33554432", "67108864"):
+                load = subprocess.Popen([KBENCH, "spin", "--threads", str(os.cpu_count()), "--secs", "15"], stdout=subprocess.DEVNULL) if busy else None
+                fill = {r[0]: r[-1] for r in guest(FAST_DISK, args=[cap], bins=["/usr/sbin/mkfs.ext4", "rm", "sync"], disks=["4G" + (",throttling.bps-write=" + speed if speed else "")])}["fill"]
+                if load:
+                    load.wait(timeout=60)
+                line += f"   {'no limit' if cap == 'none' else str(int(cap) >> 20) + ' MB'} {fill['write_secs'] + fill['sync_secs']:5.2f} s"
+            print(line)
+    print()
+
+
+CRYPT = r"""
+DEV=$1
+[ $DEV = /dev/vda ] && dd if=/dev/urandom of=/dev/vda bs=1M count=3900 oflag=direct 2>/dev/null
+SECT=$(cat /sys/block/${DEV##*/}/size)
+KEY=$(head -c 64 /dev/urandom | od -An -tx1 | tr -d ' \n')
+for how in queued direct; do
+  [ $how = direct ] && flags="2 no_read_workqueue no_write_workqueue" || flags=
+  echo "0 $SECT crypt aes-xts-plain64 $KEY 0 $DEV 0 $flags" | dmsetup create c || exit 1
+  for spec in "4096 1" "4096 8" "1048576 1"; do
+    set -- $1 $spec
+    echo "$how|read|$2|$3|$(/bin/kbench io /dev/dm-0 --secs 3 --bs $2 --threads $3)"
+    echo "$how|write|$2|$3|$(/bin/kbench io /dev/dm-0 --secs 3 --bs $2 --threads $3 --write)"
+  done
+  dmsetup remove c
+done
+"""
+
+WATERMARK = r"""
+mkfs.ext4 -q -F /dev/vda; mkdir -p /d; mount /dev/vda /d
+dd if=/dev/urandom of=/d/file bs=1M count=1700 oflag=direct 2>/dev/null
+echo $1 > /proc/sys/vm/watermark_scale_factor
+for i in 1 2 3; do
+  cat /d/file > /dev/null
+  echo "hog|$(/bin/kbench hog --mb 500)"
+done
+"""
+
+
+def left_alone():
+    print("Measured and left as the kernel comes\n")
+    print("  dm-crypt (an encrypted disk) with its work queues, and without (no_read_workqueue, no_write_workqueue):")
+    for dev, what, opts in [("/dev/ram0", "a ramdisk", dict(modules=["brd rd_nr=1 rd_size=1048576", "dm_crypt"], mem=3072)), ("/dev/vda", "a disk (this computer's, through the guest)", dict(modules=["dm_crypt"], disks=["4G"], mem=3072))]:
+        rows = guest(CRYPT, args=[dev], bins=["dmsetup", "od", "tr", "head", "dd"], **opts)
+        print(f"    {what}:")
+        by = {(r[0], r[1], r[2], r[3]): r[-1] for r in rows}
+        for op in ("read", "write"):
+            for bs, threads in (("4096", "1"), ("4096", "8"), ("1048576", "1")):
+                q, d = by[("queued", op, bs, threads)], by[("direct", op, bs, threads)]
+                size = "4 KB" if bs == "4096" else "1 MB"
+                print(f"      {op + 's of ' + size + ', ' + threads + (' thread' if threads == '1' else ' threads'):28} queued {q['mb_per_sec']:8.1f} MB/s, one in {q['us_p50']:7.1f} us   without {d['mb_per_sec']:8.1f} MB/s, one in {d['us_p50']:7.1f} us   {d['mb_per_sec'] / q['mb_per_sec']:.2f}×")
+    print("\n  memory asked for while it's full of files' cache (500 MB taken, three times), by vm.watermark_scale_factor:")
+    for factor in ("10", "100"):
+        rows = [r[-1] for r in guest(WATERMARK, args=[factor], bins=["/usr/sbin/mkfs.ext4", "dd"], disks=["2G"])]
+        print(f"    {factor:>3}: a megabyte in {statistics.median(x['ms_p50'] for x in rows):.2f} ms; 99 in 100 within {statistics.median(x['ms_p99'] for x in rows):.2f}, worst {max(x['ms_max'] for x in rows):.1f}")
+    print()
+
+
+def main():
+    # (Said as it goes, into a file or a pipe too: it runs for minutes.)
+    sys.stdout.reconfigure(line_buffering=True)
+    args = sys.argv[1:]
+    if any(a in ("-h", "--help") for a in args):
+        print(__doc__)
+        return
+    if not os.path.exists(KBENCH):
+        sys.exit("kernel-check: no kbench: cargo build --release -p olo-system --example kbench")
+    reps = int(args[args.index("--reps") + 1]) if "--reps" in args else 3
+    which = [a for a in args if not a.startswith("--") and not a.isdigit()] or ["preemption", "slow-disks", "thrashing", "left-alone"]
+    for name in which:
+        run = {"preemption": lambda: preemption(reps), "thrashing": lambda: thrashing(reps), "slow-disks": slow_disks, "left-alone": left_alone}.get(name)
+        if run is None:
+            sys.exit(f"kernel-check: {name}? preemption, thrashing, slow-disks or left-alone")
+        run()
+
+
+if __name__ == "__main__":
+    main()

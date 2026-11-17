@@ -26,14 +26,25 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+#include <linux/build_bug.h>
 #include <linux/kernel.h>
 #include <linux/livepatch.h>
 #include <linux/module.h>
+#include <drm/ttm/ttm_backup.h>
 
 static u64 olo_ttm_backup_bytes_avail(void)
 {
 	return 0;
 }
+
+/*
+ * A kernel that comes with an update is built for like any other. If its
+ * ttm_backup_bytes_avail() is no longer there, or no longer takes
+ * nothing and gives a u64, this doesn't build: olo-gpu-memory says so
+ * and the kernel is left as it comes, where a function of another shape
+ * put in its place would be called wrongly.
+ */
+static_assert(__builtin_types_compatible_p(typeof(&ttm_backup_bytes_avail), typeof(&olo_ttm_backup_bytes_avail)));
 
 static struct klp_func funcs[] = {
 	{

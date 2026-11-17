@@ -59,6 +59,54 @@ Each note: what to do, then why (what happened), then how to apply it.
   console's only on failure with `--quiet`. `ip netns add` needs
   `/var/run` (it's there); `seq` isn't (use `for ((i…))`); a program
   more is `--bin`. An argument can't hold a double quote.
+  A disk for the guest is `--disk SIZE[,OPT…]` (`/dev/vda`, `vdb`, …;
+  `throttling.bps-write=10485760` makes a 10 MB/s one); a module with
+  parameters is `--module "brd rd_nr=1 rd_size=1048576"`. The script's
+  standard error isn't shown with `--quiet`: say what matters on
+  standard output. `/dev/mapper/NAME` isn't made (no udev): a dm
+  device is `/dev/dm-0`. `basename` isn't there (`${x##*/}`).
+- **Judging a kernel setting** (kernel/TUNING.md): `tools/dev/kernel-check`
+  and `kbench` (crates/system/examples). A guest's timings carry the
+  host's noise (a build here, Ben's own work): run each way in turn,
+  several guests each, and take the middle; one lazy guest in six did
+  40% more pipe messages than the rest. A thread woken by a *timer* on a
+  busy processor is switched to at once even by a lazy kernel (the
+  interrupt returns to user space, which is where lazy gives way): the
+  delay shows only when it's woken from another processor (`kbench
+  relay`) or the processor is in the kernel. Memory that's all zeros
+  but two bytes compresses to nothing in zram: a hog meant to fill
+  memory needs `--random 2048`.
+  A USB stick for the guest is `--usb-disk 1G` with `--module
+  usb_storage` (it appears a second after the start: wait for
+  `/sys/block/sda`); udev runs there as `/bin/systemd-udevd --daemon`
+  (`--bin /usr/lib/systemd/systemd-udevd --bin udevadm`, the rule with
+  `--file`), then `udevadm trigger --action=add --subsystem-match=block;
+  udevadm settle`: how data/udev/61-olo-slow-disks.rules was shown to
+  work. A disk's `bdi/max_bytes` reads back a little under what was
+  written (16,773,338 for 16,777,216: the kernel keeps a share of its
+  whole limit), so compare `strict_limit`, not the bytes.
+  `scx_lavd` loads in the guest once the kernel's build options are
+  where its loader looks (`--bin /usr/local/libexec/olo/scx_lavd --file
+  /lib/modules/REL/config:/boot/config-REL`; without them: "Failed to
+  load BPF program: Invalid argument").
+- **The next kernel, without installing it.** `tools/dev/kernel-next`
+  does it all; by hand: `dnf5 repoquery --available --latest-limit=1
+  kernel-core` (as anyone; run it from /var/tmp), `dnf5 download
+  --destdir DIR kernel-core-V kernel-modules-core-V kernel-modules-V
+  kernel-modules-extra-V kernel-devel-V`, `rpm2cpio X.rpm | cpio -idm`
+  for each in one folder, `depmod -b FOLDER RELEASE` (the package's own
+  scripts would have), then `kvm-guest --kernel
+  FOLDER/lib/modules/RELEASE/vmlinuz --modules-dir
+  FOLDER/lib/modules/RELEASE` and `make -C
+  FOLDER/usr/src/kernels/RELEASE M=…` for a module. `--ko FILE` only
+  puts the file in the guest (`/ko/NAME.ko`): the script loads it.
+  The older kernel still installed here (7.2.11) has no headers left
+  (`kernel-devel-matched` keeps the newest's).
+- **Two files written one after the other can have the same time.** A
+  file's time comes from the kernel's coarse clock, a tick (1 ms) wide:
+  a test that writes two files and expects the second to be newer fails
+  once in a great many runs (Doctor's start-up chime test did,
+  2026-11-16). Set the times the test goes by (`File::set_modified`).
 - **Probing the kernel from a module: what bit.** A kretprobe is skipped
   for a call that arrives while another probe's handler runs on the same
   processor (an interrupt's TCP work during a send's): the self-check's

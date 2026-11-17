@@ -29,6 +29,7 @@ pub mod gpu_tuning;
 pub mod gpus;
 pub mod hid_monitor;
 pub mod hosts;
+pub mod kernel_tuning;
 pub mod keyring_prompt;
 pub mod listening;
 pub mod media;

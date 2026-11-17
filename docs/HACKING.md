@@ -8619,6 +8619,155 @@ ends; a start takes under a second. `--kernel` runs another kernel (the
 reference one with Google's patches). `olo_net`'s `tcp-flow` (crates/net
 examples) makes the flows and reads what the kernel says of each.
 
+## The kernel's settings (`olo_system::kernel_tuning`, Olo Doctor's kernel.rs; Preferences ▸ Performance ▸ Kernel; tools/dev/kernel-check)
+
+Ben, 2026-11-16: "research what other linux kernel patches are
+recommended for high performance, responsive desktop operating systems
+and if you find any that are win-win over the fedora 45 kernel and would
+be a win for olo users then also integrate them into olo like bbr3 so
+that olo doctor can offer them. let's also have a new tab in the
+performance prefs for kernel tuning where this stuff can live and be
+configured and show any stats/details/data in there about the running
+patches too".
+
+[kernel/TUNING.md](../kernel/TUNING.md) is the whole account: what the
+desktop kernels (XanMod, Zen, CachyOS) carry and where Fedora 45's
+kernel stands on each, what was measured, and what was measured and left
+alone. Read it before adding a setting. The rule it goes by: **a setting
+is offered only when it was measured here, off and on, and gained
+something with nothing given up**; a trade isn't offered (dm-crypt
+without its work queues: small reads 2.5× quicker, large ones a quarter
+slower), nor is anything taken on another distribution's word, or on
+its first runs: MGLRU's thrash protection (`min_ttl_ms` 1000, the
+kernel's own advice for a desktop) looked like a clear gain until the
+same run was made nine times, in three of which it ended a program
+that fitted in memory.
+`tools/dev/kernel-check` makes every measurement again, in a KVM guest
+on this computer's kernel (`kvm-guest` has `--disk SIZE[,OPT…]` for it:
+an empty disk, slow with QEMU's `throttling.bps-write=`; and `--module
+"NAME PARAM=VALUE"`), with `kbench` (crates/system/examples/kbench.rs:
+disk latency, wake latency alone and from another thread, compute, pipe
+chatter, a memory hog, a working set in use, saves, a copy).
+
+Two settings came of it:
+
+- **Preemption: full** (`preempt=full`). A program woken while the
+  processors are busy runs at once, where Fedora's lazy kernel has it
+  wait for the next tick: with every processor computing at nice 19, 99
+  in 100 wakes within 4 µs where they took 950; computing, pipes and
+  contended writes got as much done (0.998× to 1.04×).
+- **Removable disks: 16 MB may wait** (`bdi/strict_limit`,
+  `bdi/max_bytes`, by a udev rule). Of 600 MB copied to a disk that
+  takes 10 MB a second, 14 MB were still in memory when the copy ended
+  where 280 were, and it was all on the disk 1.5 s later where it took
+  28 s; the whole took as long, and a disk that takes 400 MB a second
+  loses nothing to the limit, busy computer or not (one that takes
+  1 GB a second loses a fifth to two fifths while the computer is busy,
+  so a disk on a USB link of 10 Gbit/s or faster is left out).
+
+**Read** (`olo_system::kernel_tuning`; anyone, no root):
+`look(&Places::here())` gives a `State` of `Preemption` (what the
+kernel was built to start on, from its build options, read once; what
+it was started with, `/proc/cmdline`; what the next start has,
+`/etc/kernel/cmdline` or GRUB's defaults; a switch since the start,
+which the kernel tells only root, so Olo notes it in
+`/run/olo-kernel/preemption`; whether the running kernel can be
+switched, which a locked-down one, Secure Boot's, can't), `SlowDisks`
+(Olo's rule; each removable disk here with its limit; what waits now
+and what may), and Olo's own pieces in the kernel: `Bbr3` (the
+congestion control, the module, and the connections on it now: how many
+of all TCP's, their round trips' middle, the share of their segments
+sent again, from `olo_system::netdiag::flows`, one walk of the kernel's
+table of connections, `sock_diag` with each one's `tcp_info` and
+congestion control) and `GraphicsMemory` (the live patch).
+`OLO_KERNEL_ROOT=DIR` reads a made-up computer under DIR (its
+connections from `proc/net/olo-flows`: lines of "control state rtt_us
+sent sent_again").
+
+**Set** (apps/doctor/src/kernel.rs; root, through the helper):
+`kernel::steps(setting, on, &places)` gives the steps that put a setting
+on, now and at every start, or back as the kernel comes; only what
+isn't so already.
+
+| | on | off |
+| --- | --- | --- |
+| preemption | `Step::AddKernelArgument` `preempt=full`; where the kernel isn't locked down, `full` written to `/sys/kernel/debug/sched/preempt` and noted | `Step::RemoveKernelArgument` `preempt` (new: an argument taken out wherever one is put); the running kernel back on what it was built with |
+| slow-disks | `/etc/udev/rules.d/61-olo-slow-disks.rules` (data/udev); each removable disk here without a limit given `strict_limit` 1 and `max_bytes` 16777216 (which reads back a little under: the kernel keeps a share of its whole limit) | the rule removed; each back to `strict_limit` 0, `max_ratio` 100 |
+| bbr3, graphics-memory | Olo Doctor's own fix for each (its service installed, enabled, started) | its service stopped (which takes its work out of the running kernel) and disabled |
+
+The kernel-argument steps carry the file system's root, so a test's tree
+is written like the real one. `olo-doctor --kernel` prints what there is
+as JSON (every setting's `on`, what it is now, its figures; null where
+the computer has nothing to set), for anyone; `olo-doctor --kernel
+SETTING on|off` sets one, asking for an administrator's password once.
+Under `OLO_KERNEL_ROOT` it writes the tree as the person, with no
+password and nothing of systemd asked (the unit, the link systemd would
+make, and what the service would leave in the kernel stand for a
+service chosen): how the tab's switches are tried in a test session.
+The steps themselves were done to this kernel in the guest: `full`
+written to the switch took 99 in 100 wakes from 942 µs to 7 in the same
+boot, and the rule, run by udev there on a USB stick
+(`kvm-guest --usb-disk`), limited it and left the guest's own disk
+alone.
+
+**After a kernel update** (Ben, 2026-11-16: "make sure all these kernel
+tunings/mods will continue to work properly after doing os updates that
+update the kernel"; kernel/TUNING.md, "After a kernel update", and
+kernel/README.md). The start argument: Fedora's kernel-install makes a
+new kernel's entry from `/etc/kernel/cmdline`, unless that is older than
+GRUB's defaults; the kernel-argument steps write the defaults first and
+leave the command line no older than them (`edit_kernel_arguments`, its
+test). A start made without the argument though it was kept before that
+start (`Preemption::lost`: the kept file's time against the computer's
+start, `/proc/stat`'s `btime`) is said by Doctor ("The kernel was
+started without full preemption") and its fix puts it in every entry
+again. The udev rule isn't the kernel's version's. The two modules are
+built for the new kernel by their services at its first start
+(`olo_kmod`; both services' `built_for_the_kernel_an_update_brings_…`
+tests), and the live patch now refuses to build where the function it
+replaces has gone or changed shape. BBRv3's module is built for any
+kernel; the series its full self-check has passed on are
+kernel/bbr3/CHECKED, and where the running kernel's isn't one of them
+Doctor's "TCP sends with BBRv3" and the tab's Network box say so.
+**`tools/dev/kernel-next`** checks all of it on the newest kernel
+Fedora's repositories have, before it's installed (its packages
+unpacked in scratch, the kernel run in the guest: the settings, BBRv3's
+self-check there through `bbr3-check --on RELEASE --root DIR`, the live
+patch loaded and taken out, the services' own builds): run it when a
+new kernel is on its way, and add a series BBRv3 passes on to CHECKED.
+On 2026-11-16 it passed on 7.3.3-300.fc45, with BBRv3's full self-check
+(1,265,738 figures over 25 links).
+
+**Offered** (apps/doctor/src/checks.rs, `kernel_settings`): the
+suggestions `kernel:preemption` (Preempt at Once) and
+`kernel:slow-disks` (Limit Removable Disks), each with what was
+measured, where the kernel has the setting and it isn't on. A `preempt=` of the person's own choosing is theirs (nothing
+is suggested), and nothing is suggested while a scheduler loaded over
+the kernel's is chosen or scheduling: it asks for each switch itself,
+so the setting changes nothing (measured with LAVD: the same wakes
+either way), which the tab's Preemption box says too. A locked-down kernel with the argument kept is fine,
+"from the next restart". A stick plugged in before the rule was there
+is offered its limit.
+
+**Shown and switched** (Preferences ▸ Performance ▸ Kernel;
+`olo-preferences kernel`, or `performance --tab Kernel`): a box for
+each, the kernel's settings on the left and Olo's pieces on the right,
+with a check box (`kernel-preemption`, `kernel-slow-disks`,
+`kernel-bbr3`, `kernel-graphics-memory`), what it does in a sentence,
+and its figures as facts: what the kernel is on now and at the next
+start; what may wait for a removable disk, what waits now, and the
+disks here with whether each is limited; what new connections use, how
+many connections are on BBRv3 now, their round trip and the share of
+their segments sent again, and whether its module was checked on this
+kernel's series; whether the patch is in the running kernel and at
+every start. A switch runs `olo-doctor --kernel` on a thread
+("Setting it: an administrator's password is asked…", every box
+dimmed; refused or failed, as it was, with why in red). The figures are
+read every two seconds while the tab is shown, by a thread that sleeps
+(parked, not polling) on any other tab and ends with the panel. A
+setting the kernel hasn't says so in place of its switch; the Graphics
+box is there only where Intel's xe driver is.
+
 ## Every frame on time (app_server frames.rs; Activity Monitor ▸ Displays)
 
 A display's frames are paced by app_server from each vblank: it waits,

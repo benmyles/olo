@@ -12,6 +12,12 @@
 //! Doctor set it (`olo-doctor --scheduler`, as root through polkit), and
 //! what's shown is read from the system (`olo_system::scheduler`).
 //!
+//! And the kernel's settings Olo suggests, with Olo's own pieces in the
+//! kernel (the Kernel tab; `olo_system::kernel_tuning`): each with a
+//! switch, what it does, and its figures as they are, read every two
+//! seconds while the tab is shown and not at all otherwise. They're the
+//! computer's too: a switch has Olo Doctor set it (`olo-doctor --kernel`).
+//!
 //! Beside it, the kept core (`Settings::keep_core`, app_server's, and the
 //! system's services kept off it too, Olo Doctor's as root:
 //! `olo-doctor --keep-core`), and the pointer on a thread of its own:
@@ -21,6 +27,7 @@
 use std::{
     sync::{
         Arc,
+        atomic::{AtomicBool, Ordering},
         mpsc::{Receiver, channel},
     },
     time::{Duration, Instant},
@@ -28,11 +35,14 @@ use std::{
 
 use olo_kit::{
     Child, Cx, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m, px, style, theme,
-    widgets::{Button, CheckBox, RadioButton, Slider, StringView, TabView, TextControl, TextField, TextFieldEvent, heading},
+    widgets::{Button, CheckBox, RadioButton, Slider, StringView, TabView, TextControl, TextField, TextFieldEvent, dashboard::Facts, heading},
 };
 use olo_protocol::performance::{PerformanceSettings, Thresholds};
 use olo_sync::Mutex;
-use olo_system::scheduler::{self, Choice};
+use olo_system::{
+    kernel_tuning::{self as tuning, Setting},
+    scheduler::{self, Choice},
+};
 
 use crate::{Msg, PanelView, form::Ui, panel};
 
@@ -57,9 +67,127 @@ struct Scheduler {
     keep_said: Option<Result<String, String>>,
 }
 
+/// The kernel's settings as last read, and a switch of one under way.
+#[derive(Clone, Default)]
+struct Kernel {
+    /// None until read.
+    state: Option<tuning::State>,
+    /// The one being switched, and to what (the administrator's password
+    /// asked, the steps run): shown so meanwhile.
+    applying: Option<(Setting, bool)>,
+    /// How the last switch went, until the next.
+    said: Option<Result<String, String>>,
+}
+
+/// The Kernel tab's reader: a thread that reads the settings and their
+/// figures every two seconds while the tab is shown (the connections on
+/// BBRv3 every fifth time: listing them is the kernel's walk of its
+/// whole table), and sleeps until it's shown otherwise; it ends with the
+/// panel.
+struct KernelWatch {
+    shared: Arc<Mutex<Kernel>>,
+    /// The tab is shown; the panel has closed.
+    shown: Arc<AtomicBool>,
+    closed: Arc<AtomicBool>,
+    thread: Option<std::thread::Thread>,
+}
+
+impl KernelWatch {
+    fn new() -> KernelWatch {
+        let (shared, shown, closed): (Arc<Mutex<Kernel>>, _, _) = (Default::default(), Arc::new(AtomicBool::new(false)), Arc::new(AtomicBool::new(false)));
+        // Tests (the layout lint): a computer with everything on, and
+        // the longest of what each says.
+        if cfg!(test) {
+            shared.lock().unwrap().state = Some(made_up_kernel());
+            return KernelWatch { shared, shown, closed, thread: None };
+        }
+        let (out, proxy, is_shown, is_closed) = (shared.clone(), olo_kit::proxy(), shown.clone(), closed.clone());
+        let thread = std::thread::Builder::new()
+            .name("kernel-settings".into())
+            .spawn(move || {
+                let places = tuning::Places::here();
+                let (mut last, mut looks): (Option<tuning::State>, u32) = (None, 0);
+                while !is_closed.load(Ordering::Relaxed) {
+                    if !is_shown.load(Ordering::Relaxed) {
+                        // (Shown again: everything afresh.)
+                        looks = 0;
+                        std::thread::park();
+                        continue;
+                    }
+                    let now = match &last {
+                        Some(before) if looks % 5 != 0 => tuning::look_again(&places, before),
+                        _ => tuning::look(&places),
+                    };
+                    looks += 1;
+                    last = Some(now.clone());
+                    {
+                        let mut k = out.lock().unwrap();
+                        if k.state.as_ref() != Some(&now) {
+                            k.state = Some(now);
+                            proxy.send(Msg::Redraw);
+                        }
+                    }
+                    std::thread::park_timeout(Duration::from_secs(2));
+                }
+            })
+            .expect("thread");
+        KernelWatch { shared, shown, closed, thread: Some(thread.thread().clone()) }
+    }
+
+    /// The tab came to be shown, or stopped being.
+    fn show(&self, on: bool) {
+        if self.shown.swap(on, Ordering::Relaxed) != on
+            && on
+            && let Some(t) = &self.thread
+        {
+            t.unpark();
+        }
+    }
+}
+
+impl Drop for KernelWatch {
+    fn drop(&mut self) {
+        self.closed.store(true, Ordering::Relaxed);
+        if let Some(t) = &self.thread {
+            t.unpark();
+        }
+    }
+}
+
+/// A computer with every setting on, for the layout lint.
+#[cfg(test)]
+fn made_up_kernel() -> tuning::State {
+    tuning::State {
+        preemption: Some(tuning::Preemption { built: "lazy".into(), started: Some("full".into()), kept: Some("full".into()), switched: None, live: true, lost: false }),
+        slow_disks: tuning::SlowDisks {
+            can: true,
+            kept: true,
+            disks: vec![tuning::SlowDisk { name: "sdb".into(), model: "Kingston DataTraveler 3.0".into(), limit: Some(tuning::SLOW_DISK_BYTES) }],
+            may_wait: 15_355_826_176,
+            waiting: 30_195_712,
+        },
+        bbr3: Some(tuning::Bbr3 {
+            control: "bbr3".into(),
+            loaded: true,
+            kept: true,
+            said: Some("bbr3".into()),
+            on_it: Some(tuning::OnIt { connections: 137, of: 152, round_trip_ms: Some(118.4), sent: 386_748_267, sent_again: 35_939 }),
+            series: "7.9".into(),
+            checked: false,
+        }),
+        graphics_memory: Some(tuning::GraphicsMemory { patched: true, kept: true, said: None }),
+    }
+}
+
+#[cfg(not(test))]
+fn made_up_kernel() -> tuning::State {
+    tuning::State::default()
+}
+
 pub struct State {
     settings: Option<PerformanceSettings>,
     scheduler: Arc<Mutex<Scheduler>>,
+    kernel: KernelWatch,
     rx: Receiver<PerformanceSettings>,
     /// Our own last change: the watcher's echoes of older files are
     /// ignored for a moment after it.
@@ -133,18 +261,223 @@ impl State {
                 })
                 .expect("thread");
         }
-        State { settings, scheduler, rx, edited: None, background, _watch: watch, tab: 0 }
+        State { settings, scheduler, kernel: KernelWatch::new(), rx, edited: None, background, _watch: watch, tab: 0 }
     }
 }
 
 /// Performance's tabs.
-pub const TABS: [&str; 3] = ["Supervisor", "Watchdog", "Scheduler"];
+pub const TABS: [&str; 4] = ["Supervisor", "Watchdog", "Scheduler", "Kernel"];
+/// The Kernel tab's place among them.
+const KERNEL_TAB: usize = 3;
 
 /// Performance shown on tab `name` (`--tab`).
 pub fn show_tab(st: &mut State, name: &str) {
     if let Some(i) = TABS.iter().position(|t| t.eq_ignore_ascii_case(name)) {
         st.tab = i;
+        st.kernel.show(i == KERNEL_TAB);
     }
+}
+
+/// Switch one of the kernel's settings: Olo Doctor does it (`olo-doctor
+/// --kernel SETTING on|off`: its helper, as root through polkit, which
+/// asks for the password), on a thread; how it went is said under the
+/// boxes.
+fn set_kernel(shared: Arc<Mutex<Kernel>>, proxy: olo_kit::Proxy, setting: Setting, on: bool) {
+    {
+        let mut k = shared.lock().unwrap();
+        if k.applying.is_some() {
+            return;
+        }
+        k.applying = Some((setting, on));
+        k.said = None;
+    }
+    proxy.send(Msg::Redraw);
+    std::thread::Builder::new()
+        .name("kernel-apply".into())
+        .spawn(move || {
+            let said = crate::ask_doctor(&["--kernel", setting.word(), if on { "on" } else { "off" }]);
+            let now = tuning::look(&tuning::Places::here());
+            let mut k = shared.lock().unwrap();
+            (k.applying, k.said, k.state) = (None, Some(said), Some(now));
+            drop(k);
+            proxy.send(Msg::Redraw);
+        })
+        .expect("thread");
+}
+
+/// A size in words ("16 MB", "14.3 GB").
+fn size(bytes: u64) -> String {
+    match bytes {
+        b if b >= 1 << 30 => format!("{:.1} GB", b as f64 / (1u64 << 30) as f64),
+        b if b >= 1 << 20 => format!("{:.0} MB", b as f64 / (1u64 << 20) as f64),
+        b => format!("{:.0} KB", b as f64 / 1024.0),
+    }
+}
+
+/// A count in words ("386.7 million", "35,939").
+fn count(n: u64) -> String {
+    match n {
+        n if n >= 1_000_000_000 => format!("{:.1} billion", n as f64 / 1e9),
+        n if n >= 1_000_000 => format!("{:.1} million", n as f64 / 1e6),
+        n => style::thousands(n as usize),
+    }
+}
+
+/// What the Kernel tab says of each setting: its box's title, its
+/// switch's label, whether it's on, what it does, and its figures. A
+/// setting the computer hasn't is left out, or says why it can't be set
+/// (no switch).
+struct KernelBox {
+    title: &'static str,
+    setting: Setting,
+    label: &'static str,
+    /// None: it can't be set here (`about` says why).
+    on: Option<bool>,
+    about: String,
+    facts: Vec<(&'static str, String)>,
+}
+
+fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox> {
+    let mut boxes = Vec::new();
+    boxes.push(match &s.preemption {
+        Some(p) => KernelBox {
+            title: "Preemption",
+            setting: Setting::Preemption,
+            label: "Switch to a woken program at once",
+            on: Some(p.on()),
+            // (A scheduler loaded over the kernel's asks for its switches
+            // itself: the setting changes nothing while it schedules.)
+            about: match scheduled_by {
+                Some(name) => format!("A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick (full preemption). {name} is scheduling now and decides that itself: this is for the kernel's own scheduler."),
+                None => "A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick, up to a millisecond (full preemption).".into(),
+            },
+            facts: vec![("Now", p.now().to_owned()), ("Next start", p.next().to_owned())],
+        },
+        None => KernelBox {
+            title: "Preemption",
+            setting: Setting::Preemption,
+            label: "",
+            on: None,
+            about: "This kernel has one way of preempting only: it wasn't built to be told another.".into(),
+            facts: Vec::new(),
+        },
+    });
+    let d = &s.slow_disks;
+    boxes.push(if d.can {
+        KernelBox {
+            title: "Removable Disks",
+            setting: Setting::SlowDisks,
+            label: "Limit what waits to be written to them",
+            on: Some(d.on()),
+            about: format!("A copy to a stick or a card goes at the disk's own pace, {} waiting in memory at most, so its progress is true and ejecting is quick.", size(tuning::SLOW_DISK_BYTES)),
+            facts: vec![
+                ("May wait", if d.kept { format!("{} for each", size(tuning::SLOW_DISK_BYTES)) } else { format!("up to {}", size(d.may_wait)) }),
+                ("Waiting now", format!("{}, all disks", size(d.waiting))),
+                (
+                    "Here",
+                    match d.disks.as_slice() {
+                        [] => "none".to_owned(),
+                        disks => disks
+                            .iter()
+                            .map(|k| format!("{}, {}", if k.model.is_empty() { &k.name } else { &k.model }, if k.limit.is_some() { "limited" } else { "not limited" }))
+                            .collect::<Vec<_>>()
+                            .join("; "),
+                    },
+                ),
+            ],
+        }
+    } else {
+        KernelBox {
+            title: "Removable Disks",
+            setting: Setting::SlowDisks,
+            label: "",
+            on: None,
+            about: "This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).".into(),
+            facts: Vec::new(),
+        }
+    });
+    if let Some(b) = &s.bbr3 {
+        let o = b.on_it.clone();
+        boxes.push(KernelBox {
+            title: "Network",
+            setting: Setting::Bbr3,
+            label: "Send with BBRv3",
+            on: Some(b.on()),
+            about: "TCP sends at the pace its path can carry, by a model of it, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).".into(),
+            facts: vec![
+                ("New connections", b.control.clone()),
+                ("On it now", o.as_ref().map_or("—".to_owned(), |o| format!("{} of {} connections", count(o.connections as u64), count(o.of as u64)))),
+                (
+                    "Their round trip",
+                    o.as_ref().and_then(|o| o.round_trip_ms).map_or("—".to_owned(), |ms| format!("{} ms, the middle of them", if ms < 10.0 { format!("{ms:.1}") } else { format!("{ms:.0}") })),
+                ),
+                ("Sent again", o.as_ref().filter(|o| o.sent > 0).map_or("—".to_owned(), |o| format!("{:.2}% of their {} segments", o.sent_again as f64 * 100.0 / o.sent as f64, count(o.sent)))),
+                // (Built for whatever kernel an update brings; whether it
+                // has passed its self-check on that kernel's series.)
+                (
+                    "Checked",
+                    if b.series.is_empty() {
+                        "—".to_owned()
+                    } else if b.checked {
+                        format!("on this kernel's series, {}", b.series)
+                    } else {
+                        format!("not yet on this kernel's series, {}", b.series)
+                    },
+                ),
+            ],
+        });
+    }
+    if let Some(g) = &s.graphics_memory {
+        boxes.push(KernelBox {
+            title: "Graphics",
+            setting: Setting::GraphicsMemory,
+            label: "Keep windows' graphics memory out of swap",
+            on: Some(g.on()),
+            about: "Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).".into(),
+            facts: vec![("The patch", if g.patched { "in the running kernel" } else { "not in the running kernel" }.to_owned()), ("At every start", if g.kept { "yes" } else { "no" }.to_owned())],
+        });
+    }
+    boxes
+}
+
+/// The Kernel tab: the kernel's settings Olo suggests and Olo's own
+/// pieces in it, each with its switch, what it does and its figures, in
+/// two columns.
+fn kernel_tab(ui: &mut Ui, shared: &Arc<Mutex<Kernel>>, scheduled_by: Option<&str>) {
+    let k = shared.lock().unwrap().clone();
+    let Some(state) = k.state else { return ui.note("Reading…") };
+    let p = theme::palette();
+    let (dim, text) = (style::disabled_text(&p), style::c(p.panel_text));
+    let busy = k.applying.is_some();
+    let one = |ui: &mut Ui, b: KernelBox| {
+        ui.bbox(b.title, |ui| {
+            let Some(on) = b.on else { return ui.note(b.about) };
+            let shown = match k.applying {
+                Some((s, to)) if s == b.setting => to,
+                _ => on,
+            };
+            let (shared, proxy, setting) = (shared.clone(), olo_kit::proxy(), b.setting);
+            ui.add(CheckBox::new(b.label, shown).id(format!("kernel-{}", setting.word())).enabled(!busy).on_toggle(move |on, _| set_kernel(shared.clone(), proxy.clone(), setting, *on)));
+            // (Under the label, past the mark.)
+            let rows: Vec<(SharedString, SharedString)> = b.facts.into_iter().map(|(l, v)| (SharedString::from(l), SharedString::from(v))).collect();
+            ui.add(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).flex().flex_col().gap(px(m::TIGHT)).child(StringView::new(b.about).dim(true).wrap(true)).child(Facts::new(rows).colors(dim, text)));
+        });
+    };
+    // The kernel's settings on the left, Olo's pieces on the right.
+    let (settings, pieces): (Vec<KernelBox>, Vec<KernelBox>) = kernel_boxes(&state, scheduled_by).into_iter().partition(|b| !matches!(b.setting, Setting::Bbr3 | Setting::GraphicsMemory));
+    let left = ui.collect(|ui| settings.into_iter().for_each(|b| one(ui, b)));
+    let right = ui.collect(|ui| {
+        pieces.into_iter().for_each(|b| one(ui, b));
+        match (&k.applying, &k.said) {
+            (Some(_), _) => ui.note("Setting it: an administrator's password is asked…"),
+            (None, Some(Err(why))) => ui.add(StringView::new(format!("Not changed. {why}")).wrap(true).color(style::c(p.failure))),
+            (None, Some(Ok(said))) => ui.note(said.clone()),
+            _ => {}
+        }
+        ui.note("Each is the computer's, not this account's, so switching one asks for an administrator's password. Olo Doctor suggests each, with what was measured for it.");
+    });
+    let column = |items: Vec<olo_kit::Element>| div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(items);
+    ui.add(div().flex().flex_row().gap(px(m::SPACING)).child(column(left)).child(column(right)));
 }
 
 /// Put `choice` in force: Olo Doctor does it (`olo-doctor --scheduler`:
@@ -361,7 +694,16 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     // watchdog's thresholds, and the computer's scheduler.
     let tab = st.tab;
     let scheduler = st.scheduler.clone();
+    let kernel = st.kernel.shared.clone();
+    st.kernel.show(tab == KERNEL_TAB);
     let items = ui.collect(|ui| {
+        if tab == KERNEL_TAB {
+            // (What's loaded over the kernel's scheduler, as the
+            // Scheduler tab's reader last saw it: "LAVD" for Olo's.)
+            let loaded = scheduler.lock().unwrap().state.clone().flatten().and_then(|s| s.loaded);
+            let by = loaded.map(|ops| if ops.starts_with("lavd") { "LAVD".to_owned() } else { ops });
+            return kernel_tab(ui, &kernel, by.as_deref());
+        }
         if tab == 2 {
             scheduler_tab(ui, &scheduler);
             kept_core_box(ui, &scheduler);
@@ -454,6 +796,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let pick = ui.on_view(|v, i: &usize, cx| {
         if let Some(st) = state_of(v) {
             st.tab = *i;
+            st.kernel.show(*i == KERNEL_TAB);
         }
         cx.notify();
     });

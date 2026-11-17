@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-16
 
+### Olo Doctor suggests two kernel settings
+
+*18:27* — Full preemption ("Preempt at Once") and a limit on what waits in memory for a removable disk ("Limit Removable Disks"), each with what was measured for it on this kernel in a KVM guest. They are the two of everything the desktop kernels are known for that gained something here with nothing given up; the rest is in Fedora's kernel already, can't be had without replacing it, or was measured and left alone (kernel/TUNING.md).
+
+![Olo Doctor suggests two kernel settings](2026-11-16/182729-olo-doctor-suggests-two-kernel-settings.png)
+
+### Preferences ▸ Performance ▸ Kernel
+
+*18:25* — A new tab for the kernel's settings Olo suggests and Olo's own pieces in the kernel, each with its switch, what it does and its figures as they are: full preemption and a limit on what waits in memory for a removable disk (the two settings that measured as a gain with nothing given up: kernel/TUNING.md), BBRv3 with the connections on it now, and the graphics-memory live patch. A switch has Olo Doctor set it, as root; the figures are read while the tab is shown. (A made-up computer.)
+
+![Preferences ▸ Performance ▸ Kernel](2026-11-16/182545-preferences-performance-kernel.png)
+
 ### Network Speed Test
 
 *16:24* — A new app: what the connection carries each way, and everything that can be measured or read of it. Four cards (Download, Upload, Latency, Connection), each a figure, a graph and its facts, live as the test runs: the round trip idle and while the line is busy and what the busy line adds, what TCP sent again (this computer's kernel's count going up, the server's coming down), the congestion control and BBR's model of the path, what arrived out of order, how long the name, TCP and TLS took, the link. (Made-up results here.)

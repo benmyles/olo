@@ -14,6 +14,7 @@ const RTM_GETLINK: u16 = 18;
 const NLMSG_ERROR: u16 = 2;
 const NLMSG_DONE: u16 = 3;
 const INET_DIAG_INFO: u16 = 2;
+const INET_DIAG_CONG: u16 = 4;
 const IFLA_IFNAME: u16 = 3;
 const IFLA_STATS64: u16 = 23;
 
@@ -211,6 +212,80 @@ fn tcp_sockets(nl: &Netlink, out: &mut Vec<Socket>) -> io::Result<()> {
     Ok(())
 }
 
+/// A TCP connection as its congestion control has it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Flow {
+    /// Its congestion control's name ("cubic", "bbr3").
+    pub control: String,
+    /// TCP's state number (1 established … 10 listen).
+    pub state: u8,
+    /// Its smoothed round trip, in microseconds (0: none measured yet).
+    pub rtt_us: u32,
+    /// Segments of data it has sent, and segments it has sent again.
+    pub sent: u32,
+    pub sent_again: u32,
+}
+
+/// An `inet_diag_msg` and its attributes, as a flow.
+fn flow(m: &[u8]) -> Option<Flow> {
+    if m.len() < 72 {
+        return None;
+    }
+    let mut f = Flow { control: String::new(), state: m[1], rtt_us: 0, sent: 0, sent_again: 0 };
+    let word = |data: &[u8], at: usize| data.get(at..at + 4).and_then(|b| b.try_into().ok()).map(u32::from_ne_bytes);
+    for (kind, data) in attributes(&m[72..]) {
+        match kind {
+            // tcp_info: tcpi_rtt at 68, tcpi_total_retrans at 100,
+            // tcpi_data_segs_out at 156.
+            INET_DIAG_INFO => {
+                f.rtt_us = word(data, 68).unwrap_or(0);
+                f.sent_again = word(data, 100).unwrap_or(0);
+                f.sent = word(data, 156).unwrap_or(0);
+            }
+            INET_DIAG_CONG => f.control = String::from_utf8_lossy(data).trim_end_matches('\0').to_owned(),
+            _ => {}
+        }
+    }
+    Some(f)
+}
+
+/// Every TCP socket, v4 and v6, with its congestion control and what
+/// that has to show for it: one walk of the kernel's table (see
+/// [`sockets`] for what a walk costs), or one a family where the kernel
+/// takes only that.
+pub fn flows() -> io::Result<Vec<Flow>> {
+    let ext = (1u8 << (INET_DIAG_INFO - 1)) | (1u8 << (INET_DIAG_CONG - 1));
+    let mut out = Vec::new();
+    let both = (|| -> io::Result<()> {
+        let mut req = vec![0u8, 0, 0, ext];
+        req.extend_from_slice(&[0u8; 48]);
+        req.extend_from_slice(&u32::MAX.to_ne_bytes());
+        req.extend_from_slice(&0u32.to_ne_bytes());
+        for (kind, m) in Netlink::open(NETLINK_SOCK_DIAG)?.dump(TCPDIAG_GETSOCK, &req)? {
+            if kind == TCPDIAG_GETSOCK {
+                out.extend(flow(&m));
+            }
+        }
+        Ok(())
+    })();
+    if both.is_ok() {
+        return Ok(out);
+    }
+    out.clear();
+    let nl = Netlink::open(NETLINK_SOCK_DIAG)?;
+    for family in [libc::AF_INET as u8, libc::AF_INET6 as u8] {
+        let mut req = vec![family, libc::IPPROTO_TCP as u8, ext, 0];
+        req.extend_from_slice(&u32::MAX.to_ne_bytes());
+        req.extend_from_slice(&[0u8; 48]);
+        for (kind, m) in nl.dump(SOCK_DIAG_BY_FAMILY, &req)? {
+            if kind == SOCK_DIAG_BY_FAMILY {
+                out.extend(flow(&m));
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// An interface's counters so far.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Link {
@@ -274,6 +349,33 @@ mod tests {
         assert!((1000..=1001).contains(&theirs.sent), "{}", theirs.sent);
         assert!(all.iter().any(|s| s.tcp && s.local.1 == port && s.state == 10), "the listener");
         assert!(theirs.inode != 0);
+    }
+
+    #[test]
+    fn a_flow_says_its_congestion_control_and_what_it_sent() {
+        use std::{
+            io::{Read, Write},
+            os::fd::AsRawFd,
+        };
+        // (Reno is in every kernel, and nothing else here asks for it: a
+        // connection of ours is told from everyone's by it.)
+        let ours = |all: &[Flow]| all.iter().filter(|f| f.control == "reno" && f.state == 1 && f.sent > 0).cloned().collect::<Vec<_>>();
+        let before = ours(&flows().unwrap()).len();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut client = std::net::TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let name = b"reno";
+        // SAFETY: our own socket, the name and its length given.
+        assert_eq!(unsafe { libc::setsockopt(client.as_raw_fd(), libc::IPPROTO_TCP, libc::TCP_CONGESTION, name.as_ptr().cast(), name.len() as u32) }, 0);
+        let (mut server, _) = listener.accept().unwrap();
+        client.write_all(&[7u8; 3000]).unwrap();
+        let mut got = [0u8; 3000];
+        server.read_exact(&mut got).unwrap();
+        let all = flows().unwrap();
+        let mine = ours(&all);
+        assert_eq!(mine.len(), before + 1, "{mine:?}");
+        assert!(mine.iter().any(|f| f.rtt_us > 0 && f.sent >= 1 && f.sent_again == 0), "{mine:?}");
+        // Every connection names its congestion control.
+        assert!(all.iter().filter(|f| f.state == 1).all(|f| !f.control.is_empty()));
     }
 
     #[test]
