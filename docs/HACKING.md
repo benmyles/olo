@@ -5779,7 +5779,11 @@ lint at a time).
   "Let coding agents keep their tab's title current" (`agent_titles`,
   off; Terminal's **Coding agents' tab titles**) and "Tell coding agents
   to use Olo's Agent Screens" (`agent_screens`, off; Terminal's **Coding
-  agents and Agent Screens**).
+  agents and Agent Screens**). The worktrees' field has Choose… beside it (Ben,
+  2026-11-17: "the worktrees location should also have a button to pick
+  the folder"): a folder panel opened at the folder set, or the nearest
+  above it that there is; what's chosen is written from `~` where it's
+  under the home folder.
   Terminal follows them live (`settings::watch`).
 * Windows (`windows.rs`) sets the space Olo leaves around the windows it
   arranges (`Settings::tiling`: margin at the display's edges, gap

@@ -301,6 +301,8 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "terminal", tab: "", group: "Coding Agents", name: "Let coding agents keep their tab’s title current", role: "CheckBox" },
     Setting { panel: "terminal", tab: "", group: "Coding Agents", name: "Tell coding agents to use Olo’s Agent Screens", role: "CheckBox" },
     Setting { panel: "terminal", tab: "", group: "Coding Agents", name: "Keep It Going says", role: "TextInput" },
+    Setting { panel: "terminal", tab: "", group: "Git Worktrees", name: "New ones go in", role: "TextInput" },
+    Setting { panel: "terminal", tab: "", group: "Git Worktrees", name: "Choose…", role: "Button" },
     Setting { panel: "terminal", tab: "", group: "Command Suggestions", name: "Suggest commands from a model of your own", role: "CheckBox" },
     Setting { panel: "themes", tab: "", group: "", name: "Classic", role: "RadioButton" },
     Setting { panel: "themes", tab: "", group: "", name: "Platinum", role: "RadioButton" },

@@ -57,11 +57,6 @@ something nobody here has is in "Blocked", with what it waits for.
   view, kept (a cache keyed by the file, its size and its date, and the
   scale), never resampled when drawn, the kind's own icon until it's
   ready.
-- **Preferences ▸ Terminal: a button to choose the worktrees' folder**
-  (Ben, 2026-11-17, with a picture of Git Worktrees' "New ones go in:"
-  field: "the worktrees location should also have a button to pick the
-  folder"). Beside the field, Choose…: the kit's file panel for a
-  folder, its choice written in the field (with `~` for home, as typed).
 - **The website covers Terminal's work with agents** (Ben, 2026-11-16:
   "update the website to cover all the agent integration features in olo
   terminal"). olo-desktop.com's Agents part: what Terminal does for
@@ -5983,6 +5978,13 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Preferences ▸ Terminal: a button to choose the worktrees'
+  folder**~~ (Ben, 2026-11-17: "the worktrees location should also have
+  a button to pick the folder"; done 2026-11-17). Choose… beside the
+  field opens a folder panel at the folder set (or the nearest above it
+  that there is); what's chosen is written from `~` under the home
+  folder.
 
 - ~~**Olo Classic's default wallpaper is the dunes**~~ (Ben,
   2026-11-16: "make the default wallpaper for the olo classic theme the

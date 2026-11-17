@@ -23,9 +23,40 @@ fn worktrees(ui: &mut Ui) {
     let t = ui.s.terminal.clone();
     ui.bbox("Git Worktrees", |ui| {
         let mono: Font = olo_kit::style::mono_font(olo_kit::FontWeight::NORMAL);
-        ui.text("worktrees", &t.worktrees, |f| f.hint("~/worktrees").font(mono), |c| c.label("New ones go in:").divider(100.0), |s, v| s.terminal.worktrees = v);
+        ui.field("worktrees", &t.worktrees, |f| f.hint("~/worktrees").font(mono).name("New ones go in"), |s, v| s.terminal.worktrees = v);
         let base = t.worktrees.trim().trim_end_matches('/');
         let base = if base.is_empty() { "~/worktrees" } else { base };
+        // The folder chosen in a panel too (Ben, 2026-11-17: "the
+        // worktrees location should also have a button to pick the
+        // folder"): opened at the one set, or the nearest folder above
+        // it that there is.
+        let set = base.to_owned();
+        let choose = move |_: &ClickEvent, _: &mut WindowCx| {
+            let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+            let mut at = match set.strip_prefix("~") {
+                Some(rest) => home.join(rest.trim_start_matches('/')),
+                None => std::path::PathBuf::from(&set),
+            };
+            while !at.is_dir() && at.pop() {}
+            // (The field shows it: without the keyboard, it follows
+            // the setting.)
+            olo_kit::file_panel::show("Choose Where Worktrees Go", olo_kit::file_panel::FilePanel::folder(at), move |a| {
+                if let olo_kit::file_panel::PanelResult::Chosen(path) = a.result {
+                    let folder = tilde(&path, &home);
+                    crate::prefs().edit_as("", "Worktrees", move |s| s.terminal.worktrees = folder);
+                }
+            });
+        };
+        let enabled = ui.enabled();
+        ui.add(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(m::SPACING))
+                .child(div().flex_1().min_w_0().child(ui.control_of("worktrees").label("New ones go in:").divider(100.0)))
+                .child(Button::new("Choose…").id("worktrees-choose").enabled(enabled).on_click(choose)),
+        );
         ui.note(format!("Each repository gets a folder in there: olo’s worktree fix-tabs goes in {base}/olo/fix-tabs."));
     });
 }
@@ -69,4 +100,28 @@ fn coding_agents(ui: &mut Ui) {
         );
         ui.note("Keep It Going, in a tab’s menu, types this to the coding agent in the tab when it has stopped: after two quiet minutes, at most once an hour. Left empty, it says “Please continue”.");
     });
+}
+
+/// `path` as the setting has it: under the home folder, from `~`.
+fn tilde(path: &std::path::Path, home: &std::path::Path) -> String {
+    match path.strip_prefix(home) {
+        Ok(rest) if !home.as_os_str().is_empty() && rest.as_os_str().is_empty() => "~".into(),
+        Ok(rest) if !home.as_os_str().is_empty() => format!("~/{}", rest.display()),
+        _ => path.display().to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    #[test]
+    fn a_folder_under_home_is_written_from_the_tilde() {
+        let home = Path::new("/home/mira");
+        assert_eq!(super::tilde(Path::new("/home/mira/src/trees"), home), "~/src/trees");
+        assert_eq!(super::tilde(Path::new("/home/mira"), home), "~");
+        assert_eq!(super::tilde(Path::new("/srv/trees"), home), "/srv/trees");
+        assert_eq!(super::tilde(Path::new("/home/mirabel/trees"), home), "/home/mirabel/trees");
+        assert_eq!(super::tilde(Path::new("/srv/trees"), Path::new("")), "/srv/trees");
+    }
 }

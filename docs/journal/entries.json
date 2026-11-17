@@ -4732,5 +4732,11 @@
   "title": "Classic's wallpaper is the Dunes",
   "caption": "A new install, and the Classic theme when chosen, start with Olo's own Dunes, by day and by night. (It was Mac OS 9's Blueberry Oxygen, still in the pack.)",
   "image": "2026-11-17/035405-classic-s-wallpaper-is-the-dunes.png"
+ },
+ {
+  "time": "2026-11-17T04:06:58",
+  "title": "Preferences \u25b8 Terminal: Choose\u2026 for the worktrees' folder",
+  "caption": "The folder New Worktree\u2026 makes worktrees in can be chosen in a folder panel, with Choose\u2026 beside the field.",
+  "image": "2026-11-17/040658-preferences-terminal-choose-for-the-worktrees-fo.png"
  }
 ]
