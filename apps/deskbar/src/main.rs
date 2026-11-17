@@ -2081,6 +2081,16 @@ fn phone_menu(phone: &olo_protocol::phone::PhoneState) -> Menu {
     if !phone.link.connected() {
         m = m.item("Try the Phone Again", "phone:reconnect");
     }
+    // A call ringing or on, taken here (`olo-phone --answer`,
+    // `--hang-up`).
+    if let Some(call) = phone.call {
+        m = m.separator().item(call.words(), "").enabled(false);
+        if call == olo_protocol::phone::CallState::Ringing {
+            m = m.item("Answer", "phone:answer").item("Decline", "phone:hang-up");
+        } else {
+            m = m.item("Hang Up", "phone:hang-up");
+        }
+    }
     // What it's playing, and its remote control (`olo-phone --music`).
     if let Some(music) = &phone.music {
         let mut line = music.line();

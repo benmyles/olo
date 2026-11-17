@@ -34,6 +34,8 @@ const DEVICE: &str = "org.bluez.Device1";
 const MANAGER: &str = "org.bluez.ProfileManager1";
 const ADVERTS: &str = "org.bluez.LEAdvertisingManager1";
 const CHARACTERISTIC: &str = "org.bluez.GattCharacteristic1";
+/// The hands-free profile's audio gateway (a phone's side of it).
+pub const HANDS_FREE_GATEWAY: &str = "0000111f-0000-1000-8000-00805f9b34fb";
 /// The Device Information service's Model Number String.
 const MODEL_NUMBER: &str = "00002a24-0000-1000-8000-00805f9b34fb";
 /// Where Olo's advertisement soliciting an iPhone is served.
@@ -583,6 +585,23 @@ impl Profiles {
         let _ = std::thread::Builder::new().name("phone-le".into()).spawn(move || {
             if let Err(e) = conn.call_method(Some(DEST), phone.as_str(), Some("org.bluez.Bearer.LE1"), "Connect", &()) {
                 tracing::debug!("phone: low energy: {e}");
+            }
+        });
+    }
+
+    /// Connect `phone`'s hands-free side (its audio gateway: the sound
+    /// server, as the hands-free unit, then has its calls:
+    /// [`super::calls`]), or let it go. Asked on a thread of its own
+    /// (connecting waits for the phone); what comes of it shows in the
+    /// telephony service. An iPhone connected so sends every call's
+    /// sound here, as to a car: connected only for a call taken or made
+    /// here, and let go after.
+    pub fn hands_free(&self, phone: &str, on: bool) {
+        let (conn, phone) = (self.conn.clone(), phone.to_owned());
+        let _ = std::thread::Builder::new().name("phone-hands-free".into()).spawn(move || {
+            let method = if on { "ConnectProfile" } else { "DisconnectProfile" };
+            if let Err(e) = conn.call_method(Some(DEST), phone.as_str(), Some(DEVICE), method, &(HANDS_FREE_GATEWAY,)) {
+                tracing::info!("phone: hands-free ({method}): {e}");
             }
         });
     }

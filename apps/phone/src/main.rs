@@ -42,6 +42,9 @@ const USAGE: &str = "usage: olo-phone [COMMAND]
   --mark-read WHO
   --contacts [QUERY] [--json] the phone's contacts
   --reconnect                 try the phone again now
+  --call NUMBER|NAME          call through the phone, its sound here
+  --answer | --hang-up        the call ringing, answered here; the call
+                              ended (or declined)
   --music [play|pause|toggle|next|previous]
                               what the phone is playing; or play, pause
                               or skip it
@@ -135,6 +138,21 @@ fn main() -> ExitCode {
             Err(e) => fail(&e),
         },
         "--reconnect" => done(ask(&Request::Reconnect)),
+        // A call through the phone, its sound here (to a number, or a
+        // contact's name); the call ringing answered here; hung up.
+        "--call" if !arg(1).is_empty() => {
+            let who = args[1..].join(" ");
+            let number = match ask(&Request::Contacts { query: who.clone() }).ok().and_then(|r| r.contacts) {
+                Some(found) if !who.chars().any(|c| c.is_ascii_digit()) => match found.iter().find_map(|p| p.phones.first().cloned()) {
+                    Some(number) => number,
+                    None => return fail(&format!("no contact named {who} has a number")),
+                },
+                _ => who,
+            };
+            done(ask(&Request::Call { number }))
+        }
+        "--answer" => done(ask(&Request::Answer)),
+        "--hang-up" => done(ask(&Request::HangUp)),
         // What it's playing (said); or its remote control pressed.
         "--music" if arg(1).is_empty() => match phone::ask(&Request::Status, Duration::from_secs(5)).map(|r| r.state.unwrap_or_default().music) {
             Ok(Some(m)) => {
@@ -207,6 +225,7 @@ fn main() -> ExitCode {
                 out!("agent-screens: {}", s.agent_screens.word());
                 out!("copy-codes: {}", on(s.copy_codes));
                 out!("others: {}", on(s.others));
+                out!("calls: {}", on(s.calls));
             }
             ExitCode::SUCCESS
         }
@@ -221,6 +240,7 @@ fn main() -> ExitCode {
                 ("codes-in-browser", _) => on.map(|v| s.codes_in_browser = v),
                 ("copy-codes", _) => on.map(|v| s.copy_codes = v),
                 ("others", _) => on.map(|v| s.others = v),
+                ("calls", _) => on.map(|v| s.calls = v),
                 ("agent-screens", w) => AgentCodes::from_word(w).map(|v| s.agent_screens = v),
                 _ => None,
             };
@@ -348,6 +368,9 @@ fn status(json: bool) -> ExitCode {
     }
     if let Some(m) = &state.music {
         out!("  {}: {}", if m.playing { "playing" } else { "paused" }, m.line());
+    }
+    if let Some(call) = state.call {
+        out!("  {}", call.words());
     }
     if state.others {
         out!("  its other notifications come here too");

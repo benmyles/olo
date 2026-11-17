@@ -48,7 +48,10 @@ fn standin(address: &str, more: &[&str]) -> Standin {
 fn against_the_standin() {
     let Ok(address) = std::env::var("OLO_TEST_BUS") else { return };
     // SAFETY: set before any other thread reads the environment.
-    unsafe { std::env::set_var("OLO_PHONE_BLUEZ", &address) };
+    unsafe {
+        std::env::set_var("OLO_PHONE_BLUEZ", &address);
+        std::env::set_var("OLO_PHONE_TELEPHONY", &address);
+    }
     for android in [false, true] {
         let _standin = standin(&address, if android { &["--android"] } else { &[] });
         let (tx, opened) = mpsc::channel::<Opened>();
@@ -210,6 +213,45 @@ fn against_the_standin() {
             let mut packet = [0u8; 64];
             assert_eq!(source.read(&mut packet).unwrap_or(0), 0);
             assert!(profiles.notifications(&phone.path).unwrap().is_none());
+        }
+
+        // Its calls taken here: its hands-free side connected, the sound
+        // server's telephony service has the phone and the call ringing;
+        // it's answered and ended, and one is made.
+        {
+            use olo_system::phone::calls::{Call, Gateway, State, Telephony};
+            let t = Telephony::open().unwrap();
+            assert_eq!(t.survey(), (Vec::new(), Vec::new()), "not before it's connected hands-free");
+            let until = |what: &str, want: &dyn Fn(&(Vec<Gateway>, Vec<Call>)) -> bool| {
+                let start = std::time::Instant::now();
+                loop {
+                    let now = t.survey();
+                    if want(&now) {
+                        return now;
+                    }
+                    assert!(start.elapsed() < Duration::from_secs(5), "never: {what} ({now:?})");
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+            };
+            tell(&address, &["call", "+15550100142", "Mira", "Kovač"]);
+            profiles.hands_free(&phone.path, true);
+            let (gateways, calls) = until("the call ringing there", &|s| s.1.len() == 1);
+            assert_eq!(gateways.iter().map(|g| g.address.as_str()).collect::<Vec<_>>(), [phone.address.as_str()]);
+            assert_eq!((calls[0].state, calls[0].number.as_str(), calls[0].name.as_str(), calls[0].gateway()), (State::Incoming, "+15550100142", "Mira Kovač", gateways[0].path.as_str()));
+            t.answer(&calls[0].path).unwrap();
+            until("answered", &|s| s.1.first().is_some_and(|c| c.state == State::Active));
+            t.hang_up(&calls[0].path).unwrap();
+            until("ended", &|s| s.1.is_empty());
+            t.dial(&gateways[0].path, "+15550100190").unwrap();
+            let (_, calls) = until("dialling", &|s| s.1.first().is_some_and(|c| c.state == State::Dialing));
+            assert_eq!(calls[0].number, "+15550100190");
+            tell(&address, &["picked-up"]);
+            until("picked up", &|s| s.1.first().is_some_and(|c| c.state == State::Active));
+            tell(&address, &["hung-up"]);
+            until("over", &|s| s.1.is_empty());
+            assert!(tell(&address, &["acted"]).ends_with("answered here Mira Kovač\nhung up Mira Kovač\ndialed +15550100190\n"));
+            profiles.hands_free(&phone.path, false);
+            until("let go", &|s| s.0.is_empty());
         }
 
         // Out of reach: said, and nothing opens.

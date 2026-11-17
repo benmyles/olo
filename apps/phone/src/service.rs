@@ -42,13 +42,15 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+use crate::calling::{self, Calling};
 use crate::others::{Effect, Others};
 use olo_kit_base::notify::{Note, NoteEvent, NoteId, Notifier};
 use olo_protocol::{
     notifications::NoteStyle,
-    phone::{Conversation, FromBrowser, Kind, Link, Message, Notify, Person, PhoneSettings, PhoneState, Reply, Request, ToBrowser, Waiting},
+    phone::{CallState, Conversation, FromBrowser, Kind, Link, Message, Notify, Person, PhoneSettings, PhoneState, Reply, Request, ToBrowser, Waiting},
 };
 use olo_system::phone::{
+    calls::{self, Telephony},
     link::{self, Channel, Opened, Profiles, Stream},
     map::{self, BMessage, Listed, Mas},
     obex, pbap,
@@ -102,6 +104,8 @@ enum Ev {
     /// The phone's notification service (its link numbered so) said
     /// something.
     Others(u64, OthersSaid),
+    /// The sound server's telephony service said something.
+    Calls,
     /// The session (the one numbered so) says something.
     Session(u64, FromSession),
     Settings,
@@ -198,6 +202,10 @@ enum About {
     /// link numbered so); an incoming call among them.
     Other(u64, u32),
     Call(u64, u32),
+    /// The call taken here, as the telephony service has it.
+    CallHere,
+    /// Something of a call that couldn't be done, said.
+    CallFailed,
 }
 
 /// The phone's other notifications, while their link is open.
@@ -209,6 +217,13 @@ struct OthersLink {
     write: mpsc::Sender<Vec<u8>>,
     /// The notifications shown, by the phone's numbers.
     notes: HashMap<u32, NoteId>,
+}
+
+/// What's asked of the telephony service.
+enum CallJob {
+    Dial(String, String),
+    Answer(String),
+    HangUp(String),
 }
 
 /// What the notification service's threads say.
@@ -253,6 +268,18 @@ struct Service {
     others: Option<OthersLink>,
     others_opened: u64,
     others_since: Option<Instant>,
+    /// Calls taken here: the sound server's telephony service (none:
+    /// it couldn't be reached), what it has for the phone now (its
+    /// gateway there while it's connected hands-free, and its calls),
+    /// when the hands-free side is connected and what's asked, the
+    /// call's notification, and the thread that asks the service.
+    telephony: Option<Arc<Telephony>>,
+    calls_now: (Option<String>, Vec<calls::Call>),
+    calling: Calling,
+    /// How the call taken here stands (the telephony service's word).
+    call_here: Option<CallState>,
+    call_note: Option<NoteId>,
+    call_jobs: Option<mpsc::Sender<CallJob>>,
     /// The session open or being opened: its number, and its thread's ear
     /// once the channel has come.
     generation: u64,
@@ -445,6 +472,12 @@ pub fn run() -> ! {
         others: None,
         others_opened: 0,
         others_since: None,
+        telephony: None,
+        calls_now: (None, Vec::new()),
+        calling: Calling::default(),
+        call_here: None,
+        call_note: None,
+        call_jobs: None,
         keep_at: None,
         generation: 0,
         opening: false,
@@ -486,6 +519,7 @@ pub fn run() -> ! {
             .chain(s.opening_until)
             .chain(s.keep_at)
             .chain(s.others.as_ref().and_then(|o| o.state.due()))
+            .chain(s.calling.due())
             // (When advertising for its other notifications ends.)
             .chain(s.others_since.filter(|_| s.others.is_none() && s.solicit.is_some()).map(|since| since + ALLOW_FOR).filter(|at| *at > Instant::now()))
             .min();
@@ -529,6 +563,7 @@ impl Service {
                 }
                 self.details();
             }
+            Ev::Calls => self.calls_survey(),
             Ev::Others(generation, said) => {
                 if self.others.as_ref().is_some_and(|o| o.generation == generation) {
                     self.others_said(said);
@@ -547,8 +582,10 @@ impl Service {
                     if !self.settings.codes {
                         self.codes.clear();
                     }
-                    // (Its other notifications, turned on or off.)
+                    // (Its other notifications, turned on or off; calls
+                    // taken here or not.)
                     self.others_link();
+                    self.calls_survey();
                 }
             }
             Ev::Ask(request, on_a_screen, answer) => self.ask(request, on_a_screen, answer),
@@ -690,6 +727,7 @@ impl Service {
         self.phone = phone;
         self.details();
         self.others_link();
+        self.calls_survey();
         let st = &mut self.state;
         match &self.phone {
             None => {
@@ -721,6 +759,156 @@ impl Service {
                     }
                 }
             }
+        }
+    }
+
+    /// The sound server's telephony service, reached once and followed
+    /// (`calls`): what it says comes as `Ev::Calls`.
+    fn telephony(&mut self) -> Option<Arc<Telephony>> {
+        if self.telephony.is_none() {
+            let t = Telephony::open().ok()?;
+            let to = self.tx.clone();
+            t.watch(move || {
+                let _ = to.send(Ev::Calls);
+            })
+            .ok()?;
+            let t = Arc::new(t);
+            // What's asked of it, on a thread: an answer waits for the
+            // phone.
+            let (jobs, asked) = mpsc::channel::<CallJob>();
+            let service = t.clone();
+            let _ = std::thread::Builder::new().name("phone-call".into()).spawn(move || {
+                for job in asked {
+                    let done = match &job {
+                        CallJob::Dial(gateway, number) => service.dial(gateway, number),
+                        CallJob::Answer(call) => service.answer(call),
+                        CallJob::HangUp(call) => service.hang_up(call),
+                    };
+                    if let Err(e) = done {
+                        tracing::info!("phone: the telephony service didn't take it: {e}");
+                    }
+                }
+            });
+            (self.telephony, self.call_jobs) = (Some(t), Some(jobs));
+        }
+        self.telephony.clone()
+    }
+
+    /// What the telephony service has for the phone now, and what
+    /// follows from it (`calling`).
+    fn calls_survey(&mut self) {
+        let phone = self.phone.clone().filter(|p| p.connected && self.settings.calls);
+        let now = match (phone, self.telephony()) {
+            (Some(phone), Some(t)) => {
+                let (gateways, calls) = t.survey();
+                match gateways.into_iter().find(|g| g.address.eq_ignore_ascii_case(&phone.address)) {
+                    Some(g) => {
+                        let calls = calls.into_iter().filter(|c| c.gateway() == g.path).collect();
+                        (Some(g.path), calls)
+                    }
+                    None => (None, Vec::new()),
+                }
+            }
+            _ => (None, Vec::new()),
+        };
+        if now.0 != self.calls_now.0 {
+            tracing::info!("phone: {}", if now.0.is_some() { "connected hands-free: its calls can be taken here" } else { "no longer connected hands-free" });
+        }
+        self.calls_now = now;
+        let effects = self.calling.survey(self.calls_now.0.as_deref(), &self.calls_now.1, Instant::now());
+        self.calls_do(effects);
+    }
+
+    /// The call ringing, answered here (the hands-free way, its sound
+    /// here); where calls aren't taken here, on the phone.
+    fn call_answer(&mut self) {
+        if !self.settings.calls {
+            return self.call_on_the_phone(true);
+        }
+        let effects = self.calling.answer(self.calls_now.0.as_deref(), &self.calls_now.1, Instant::now());
+        self.calls_do(effects);
+    }
+
+    /// The ringing call's own action, done on the phone through its
+    /// notification (an iPhone's): answered there, or declined.
+    fn call_on_the_phone(&mut self, answer: bool) {
+        let Some(o) = &self.others else { return };
+        let ringing = self.about.iter().rev().find_map(|(id, about)| match about {
+            About::Call(generation, uid) if *generation == o.generation && o.notes.get(uid) == Some(id) => Some(*uid),
+            _ => None,
+        });
+        if let Some(uid) = ringing {
+            let effects = o.state.act(uid, answer);
+            self.others_do(effects);
+        }
+    }
+
+    fn calls_do(&mut self, effects: Vec<calling::Effect>) {
+        use calling::Effect as E;
+        for effect in effects {
+            match effect {
+                E::HandsFree(on) => {
+                    if let (Some(profiles), Some(phone)) = (&self.profiles, &self.phone) {
+                        tracing::info!("phone: {}", if on { "connecting its hands-free side for a call here" } else { "letting go of its hands-free side" });
+                        profiles.hands_free(&phone.path, on);
+                    }
+                }
+                E::Dial { gateway, number } => self.call_job(CallJob::Dial(gateway, number)),
+                E::Answer(call) => self.call_job(CallJob::Answer(call)),
+                E::HangUp(call) => self.call_job(CallJob::HangUp(call)),
+                E::OnThePhone => {
+                    tracing::info!("phone: its hands-free side didn't come: the call is answered on the phone");
+                    self.call_on_the_phone(true);
+                }
+                E::Show(shown) => {
+                    use calls::State;
+                    self.call_here = Some(match shown.state {
+                        State::Incoming | State::Waiting => CallState::Ringing,
+                        State::Dialing | State::Alerting => CallState::Calling,
+                        State::Held => CallState::Held,
+                        _ => CallState::Active,
+                    });
+                    // (Ringing, with the phone's own notification of
+                    // it up: that one is the call's, with who it is.)
+                    if shown.state.ringing() && self.rung() {
+                        continue;
+                    }
+                    let who = pbap::name_of(&self.contacts, &shown.number)
+                        .map(str::to_owned)
+                        .or_else(|| Some(shown.name.clone()).filter(|n| !n.is_empty()))
+                        .or_else(|| Some(shown.number.clone()).filter(|n| !n.is_empty()))
+                        .unwrap_or_else(|| "Unknown caller".into());
+                    let mut note = Note::new(who).subtitle(self.call_here.map_or("", CallState::words)).icon("phone").sticky(true);
+                    note = if shown.state.ringing() { note.action("answer", "Answer").action("hangup", "Decline") } else { note.action("hangup", "Hang Up") };
+                    let had = self.call_note;
+                    let id = self.notes.show(had, note);
+                    self.call_note = Some(id);
+                    if had.is_none() {
+                        self.remember(id, About::CallHere);
+                    }
+                }
+                E::Close => {
+                    self.call_here = None;
+                    if let Some(id) = self.call_note.take() {
+                        self.notes.close(id);
+                    }
+                }
+                E::Failed(why) => {
+                    let id = self.notes.show(None, Note::new("Call").body(why).icon("phone").kind(olo_kit_base::notify::NoteKind::Error));
+                    self.remember(id, About::CallFailed);
+                }
+            }
+        }
+    }
+
+    /// The phone's own notification of a call ringing is up.
+    fn rung(&self) -> bool {
+        self.others.as_ref().is_some_and(|o| self.about.iter().any(|(id, about)| matches!(about, About::Call(g, uid) if *g == o.generation && o.notes.get(uid) == Some(id))))
+    }
+
+    fn call_job(&mut self, job: CallJob) {
+        if let Some(jobs) = &self.call_jobs {
+            let _ = jobs.send(job);
         }
     }
 
@@ -852,6 +1040,14 @@ impl Service {
                     let mut note = Note::new(shown.title.clone()).subtitle(shown.app.clone()).body(shown.body.clone()).icon("phone");
                     if shown.call {
                         note = note.sticky(true);
+                        // (The telephony service's word of the same
+                        // call ringing, shown first: this one, with who
+                        // it is as the phone says, is the call's.)
+                        if self.call_here == Some(CallState::Ringing)
+                            && let Some(id) = self.call_note.take()
+                        {
+                            self.notes.close(id);
+                        }
                     }
                     if let Some(label) = &shown.positive {
                         note = note.action("positive", label.clone());
@@ -1378,6 +1574,41 @@ impl Service {
                     _ => no("the phone isn't playing anything"),
                 }
             }
+            Request::Call { number } => {
+                let number = number.trim().to_owned();
+                // (Said as a notification too: whoever asked may be a
+                // button.)
+                let refused = if !self.settings.calls {
+                    Some("Calls aren’t taken on this computer (Preferences ▸ Phone).")
+                } else if number.is_empty() {
+                    Some("No number to call.")
+                } else if !self.phone.as_ref().is_some_and(|p| p.connected) || self.telephony().is_none() {
+                    Some("The phone isn’t in reach.")
+                } else {
+                    None
+                };
+                if let Some(why) = refused {
+                    self.calls_do(vec![calling::Effect::Failed(why)]);
+                    no(why)
+                } else {
+                    let effects = self.calling.dial(&number, self.calls_now.0.as_deref(), Instant::now());
+                    self.calls_do(effects);
+                    Reply { ok: true, ..Default::default() }
+                }
+            }
+            Request::Answer => {
+                self.call_answer();
+                Reply { ok: true, ..Default::default() }
+            }
+            Request::HangUp => {
+                let effects = self.calling.hang_up(&self.calls_now.1);
+                if effects.is_empty() {
+                    // (Not a call here: one ringing on the phone, declined.)
+                    self.call_on_the_phone(false);
+                }
+                self.calls_do(effects);
+                Reply { ok: true, ..Default::default() }
+            }
             Request::Browser { .. } => Reply::default(),
         };
         // (What it changed is published before it's answered: who asked
@@ -1540,6 +1771,10 @@ impl Service {
         if self.keep_at.is_some_and(|at| at <= t) {
             self.keep_for_next_run();
         }
+        if self.calling.due().is_some_and(|at| at <= t) {
+            let effects = self.calling.tick(t);
+            self.calls_do(effects);
+        }
         if let Some(o) = &mut self.others
             && o.state.due().is_some_and(|at| at <= t)
         {
@@ -1600,8 +1835,15 @@ impl Service {
                         copy(c.code.code.clone());
                     }
                 }
+                // A call ringing on the phone: answered here (its sound
+                // here), or declined; the call taken here, hung up.
+                (Some(About::Call(..)), "positive") | (Some(About::CallHere), "answer") => self.call_answer(),
+                (Some(About::CallHere), "hangup") => {
+                    let effects = self.calling.hang_up(&self.calls_now.1);
+                    self.calls_do(effects);
+                }
                 // One of the phone's other notifications: its action,
-                // done on the phone (Answer, Decline, Clear).
+                // done on the phone (Decline, Clear).
                 (Some(About::Other(generation, uid) | About::Call(generation, uid)), "positive" | "negative") => {
                     if let Some(o) = self.others.as_ref().filter(|o| o.generation == generation) {
                         let effects = o.state.act(uid, key == "positive");
@@ -1680,6 +1922,9 @@ impl Service {
                 self.keep_at = Some(Instant::now() + KEEP_AFTER);
             }
         }
+        // (A call: as the telephony service has it, or ringing on the
+        // phone with its notification up.)
+        self.state.call = self.call_here.or_else(|| self.rung().then_some(CallState::Ringing));
         // (Since when the link has stood as it does.)
         if self.published.as_ref().map(|p| p.link) != Some(self.state.link) {
             self.state.since = now();

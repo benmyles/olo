@@ -17,20 +17,13 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **The phone's calls, with their sound here** (what's left of "the
-  phone's other notifications, calls and music"). An incoming call
-  shows now, with Answer and Decline that act on the phone (its
-  notification, below), but the call is then on the phone itself. To
-  take it here: the hands-free profile, which the sound server speaks
-  (PipeWire's `org.pipewire.Telephony`, there on this computer, with
-  this computer offering the hands-free service; read 2026-11-17: no
-  modem in it, the phone hasn't connected its side). Connect the
-  phone's hands-free side when a call is answered or made from here
-  (not all the while: an iPhone then sends every call's sound to the
-  computer, as to a car), answer and hang up through the telephony
-  service, dial from Phone (a contact's Call), show the call while it
-  lasts, and let go of the profile when it ends. Also left: groups'
-  names for text messages (the notification service has them).
+- **Groups' names for the phone's text messages** (what's left of "the
+  phone's other notifications, calls and music"). A message to a group
+  comes by the Message Access Profile with its sender alone, so it
+  lands in the sender's own conversation; the notification service has
+  the group's name (its notification's title, the sender its
+  subtitle). Match the two (the same text, at the same time) and keep
+  group messages in a conversation of the group's.
 - **A paired phone's own picture** (Ben, 2026-11-16: "generate theme
   styled icons for the top 10 most popular android and iphone models and
   show the closest matching icon for a paired phone based on what it
@@ -181,7 +174,17 @@ something nobody here has is in "Blocked", with what it waits for.
   here. Preferences ▸ Phone turns them off. (3) Play something on the
   phone: Deskbar's phone menu and Phone show it, with Play or Pause,
   Next and Previous. (4) After an upgrade or a restart Phone has the
-  conversations at once, what you sent from here among them.
+  conversations at once, what you sent from here among them. (5)
+  **Calls** (the same day; HACKING, "Its calls, taken here"): when the
+  phone rings, press Answer on its notification here: Olo connects the
+  phone's hands-free side for that call, answers it, and the sound
+  should be on the computer (PipeWire carries it: I couldn't hear
+  that), with a notification to hang up; afterwards the phone is let
+  go of, so calls answered on the phone stay on it. Call on a
+  contact's number in Phone (or `olo-phone --call NAME`) makes one. If
+  the phone won't connect that way in 8 seconds, the call is answered
+  on the phone instead. Preferences ▸ Phone, "Take calls on this
+  computer", turns it off.
 
 - **The website: screenshots zoom; beta said; a hardware skill; a deploy
   script** (Ben, 2026-11-16: "for the website, make it so that clicking

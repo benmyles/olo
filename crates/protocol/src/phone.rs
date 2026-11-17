@@ -127,6 +127,29 @@ impl MusicAction {
     }
 }
 
+/// How a call taken on this computer stands (never who it's with).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CallState {
+    /// Ringing, to be answered or declined.
+    Ringing,
+    /// Made from here, not yet answered there.
+    Calling,
+    Active,
+    Held,
+}
+
+impl CallState {
+    pub fn words(self) -> &'static str {
+        match self {
+            CallState::Ringing => "Incoming call",
+            CallState::Calling => "Calling…",
+            CallState::Active => "On a call",
+            CallState::Held => "On hold",
+        }
+    }
+}
+
 /// What the service knows. No sender, number, text or code is here: who
 /// reads this file learns that a message came, never what it said.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -171,6 +194,8 @@ pub struct PhoneState {
     pub others: bool,
     /// What it says it is ("iPhone17,3"), once it has said.
     pub model: String,
+    /// A call ringing or on, taken through this computer.
+    pub call: Option<CallState>,
 }
 
 impl PhoneState {
@@ -298,11 +323,14 @@ pub struct PhoneSettings {
     /// Show the phone's other notifications here too (an iPhone's, of
     /// every app: mail, calls, the rest), with their actions.
     pub others: bool,
+    /// Take calls here: a call answered or made on this computer has
+    /// its sound here (else Answer answers it on the phone).
+    pub calls: bool,
 }
 
 impl Default for PhoneSettings {
     fn default() -> PhoneSettings {
-        PhoneSettings { notify: Notify::Messages, show_text: true, codes: true, codes_in_browser: true, agent_screens: AgentCodes::Give, copy_codes: false, others: true }
+        PhoneSettings { notify: Notify::Messages, show_text: true, codes: true, codes_in_browser: true, agent_screens: AgentCodes::Give, copy_codes: false, others: true, calls: true }
     }
 }
 
@@ -341,16 +369,32 @@ pub enum Request {
     Conversations,
     /// The phone's contacts whose name or number has `query` in it (all,
     /// with none).
-    Contacts { query: String },
+    Contacts {
+        query: String,
+    },
     /// Send `text` to `to` (a telephone number or an address; a
     /// conversation's `key` answers it).
-    Send { to: String, text: String },
+    Send {
+        to: String,
+        text: String,
+    },
     /// A conversation's messages read (on the phone too).
-    MarkRead { key: String },
+    MarkRead {
+        key: String,
+    },
     /// Try the phone again now.
     Reconnect,
     /// Play, pause or skip the phone's music.
-    Music { action: MusicAction },
+    Music {
+        action: MusicAction,
+    },
+    /// Call `number` through the phone, its sound here.
+    Call {
+        number: String,
+    },
+    /// Answer the call ringing, here; hang up (or decline) the call.
+    Answer,
+    HangUp,
     /// A browser's extension host, staying connected: from here on the
     /// connection carries [`ToBrowser`] one way and [`FromBrowser`] the
     /// other, a JSON line each.
@@ -526,7 +570,27 @@ mod tests {
         let keys: Vec<String> = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&text).unwrap().keys().cloned().collect();
         assert_eq!(
             keys,
-            ["pid", "name", "kind", "path", "link", "contacts", "battery", "conversations", "unread", "codes", "code_at", "trouble", "profiles", "changes", "since", "music", "others", "model"]
+            [
+                "pid",
+                "name",
+                "kind",
+                "path",
+                "link",
+                "contacts",
+                "battery",
+                "conversations",
+                "unread",
+                "codes",
+                "code_at",
+                "trouble",
+                "profiles",
+                "changes",
+                "since",
+                "music",
+                "others",
+                "model",
+                "call"
+            ]
         );
         // (What it's playing is there, when it plays: a song's name
         // isn't a message's.)

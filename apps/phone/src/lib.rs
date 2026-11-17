@@ -3,6 +3,7 @@
 //! of one-time codes in messages (`codes`). Nothing here draws: the
 //! window is `olo-phone`'s (main.rs, window.rs).
 
+pub mod calling;
 pub mod codes;
 pub mod kept;
 pub mod others;

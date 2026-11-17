@@ -14018,6 +14018,61 @@ on. At rest with the link open: 0.0% of a core, 0 wakeups a second.
 test): on Ben's, read only, the phone was connected over the classic
 link alone, bonded for low energy and not connected that way.
 
+**Its calls, taken here** (`olo_system::phone::calls`,
+`apps/phone/src/calling.rs`; Preferences ▸ Phone's "Take calls on this
+computer", `PhoneSettings::calls`). The hands-free profile, which the
+sound server speaks: PipeWire, as the hands-free unit of a phone
+connected that way, runs the profile and carries the call's sound (the
+far end to the output in use, the microphone in use to the phone), and
+says what it knows on the session bus, `org.pipewire.Telephony`: an
+object manager at `/org/pipewire/Telephony`, a gateway for each phone
+connected hands-free (`…/agN`, `AudioGateway1`: `Address`,
+`Dial(number)`) and under it its calls (`…/agN/callM`, `Call1`:
+`State` (incoming, waiting, dialing, alerting, active, held),
+`LineIdentification`, `Name`, `Answer`, `Hangup`); read from the
+interfaces PipeWire 1.6's Bluetooth plugin declares (on this computer:
+the service is there and the hands-free unit's record is offered).
+`calls.rs` reads and drives it (`Telephony::survey`, `dial`, `answer`,
+`hang_up`, `watch`: its signals, nothing polled). **A phone connected
+hands-free sends every call's sound to the computer, as to a car,
+wherever it's answered**, so Olo connects it that way only for a call
+answered or made *here* (`Profiles::hands_free`: BlueZ's
+`ConnectProfile` of the phone's audio gateway, 0x111f) and lets go
+when no call is left; a call answered on the phone stays there, and a
+phone that connected hands-free by itself is left as it is.
+`calling.rs` decides, with no I/O (`Calling`: `answer`, `dial`,
+`hang_up`, `survey`, `tick` return `Effect`s): Answer on a ringing
+call's notification (the phone's own, above), `olo-phone --answer` or
+Deskbar's Answer connects the hands-free side, waits up to 8 s for
+the telephony service to have the phone and the call ringing, and
+answers it there; Call on a contact's number in Phone, or `olo-phone
+--call NUMBER|NAME`, connects, dials when the gateway is there, and
+waits for the call to show. If the hands-free side doesn't come, a
+call being answered is answered on the phone instead (its
+notification's action: its sound stays on the phone), one being made
+isn't (said). While a call is on, a sticky notification says who (the
+phone's contacts by the number) and how it stands, with Hang Up; a
+ringing call has one notification, the phone's own where there is one
+(whichever word of it comes first). `PhoneState::call` says how a call
+stands (ringing, calling, active, held; never who), for Deskbar's menu
+(Answer and Decline, or Hang Up) and `olo-phone --status`;
+`Request::Call`, `Answer` and `HangUp` (not from an agent's screen).
+With calls turned off, Answer answers on the phone.
+
+The stand-in is the telephony service too (its gateway while its
+hands-free side is connected, `--tell call NUMBER NAME`, `picked-up`,
+`hung-up`, `set hands-free yes`: connected by itself, `set
+refuses-hands-free yes`). Tested against it: `calling.rs`'s own tests
+(answered here, a phone connected by itself, made here, the hands-free
+side never coming), the integration test (ring, answer, end, dial,
+pick up, let go), and the service in a headless session: a call rung,
+answered here (hands-free connected, the call's notification with Hang
+Up), hung up (let go); one made, picked up, ended by the other end; a
+phone that refuses hands-free (answered on the phone after 8 s); one
+declined; a phone hands-free by itself (one notification, its Answer
+pressed, left connected). **Not tried with a real phone**, and no
+call's sound was heard: that part is PipeWire's.
+
 **Kept between runs** (`apps/phone/src/kept.rs`). The service keeps the
 phone's conversations, the handles of the messages it has seen and its
 contacts in one file, `~/.local/state/olo/phone/kept.json` (the

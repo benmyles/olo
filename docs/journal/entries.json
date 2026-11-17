@@ -4720,5 +4720,11 @@
   "title": "Phone: an iPhone's other notifications, with their actions",
   "caption": "An iPhone's notifications show on the computer: every app's, calls among them, with Answer and Decline or Clear, which act on the phone; one dealt with on the phone goes here too. (A stand-in phone, in a test.)",
   "image": "2026-11-17/031624-phone-an-iphone-s-other-notifications-with-their.png"
+ },
+ {
+  "time": "2026-11-17T03:37:16",
+  "title": "Phone: a call answered on the computer",
+  "caption": "Answer on a ringing call's notification takes the call on the computer: Olo connects the phone hands-free for that call, answers it, shows it with Hang Up, and lets the phone go after. Phone's contacts have Call. (A stand-in phone, in a test.)",
+  "image": "2026-11-17/033716-phone-a-call-answered-on-the-computer.png"
  }
 ]

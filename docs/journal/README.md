@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### Phone: a call answered on the computer
+
+*03:37* — Answer on a ringing call's notification takes the call on the computer: Olo connects the phone hands-free for that call, answers it, shows it with Hang Up, and lets the phone go after. Phone's contacts have Call. (A stand-in phone, in a test.)
+
+![Phone: a call answered on the computer](2026-11-17/033716-phone-a-call-answered-on-the-computer.png)
+
 ### Phone: an iPhone's other notifications, with their actions
 
 *03:16* — An iPhone's notifications show on the computer: every app's, calls among them, with Answer and Decline or Clear, which act on the phone; one dealt with on the phone goes here too. (A stand-in phone, in a test.)

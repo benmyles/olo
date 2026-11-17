@@ -138,6 +138,7 @@ pub fn test_state() -> PhoneState {
         music: None,
         others: true,
         model: String::new(),
+        call: None,
     }
 }
 
@@ -544,6 +545,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             // (An iPhone's, of every app, calls among them: its Show
             // Notifications switch for this computer allows them.)
             ui.add(CheckBox::new("Show the phone’s other notifications", settings.others).on_toggle(save(|s, on| s.others = on)));
+            // (Answered or made here, a call's sound is here: the
+            // hands-free profile, for that call alone.)
+            ui.add(CheckBox::new("Take calls on this computer", settings.calls).on_toggle(save(|s, on| s.calls = on)));
         });
         ui.add(BBox::new("Notifications").child(div().flex().flex_col().gap(px(m::SPACING)).py(px(m::SPACING * 0.5)).children(items)));
     });

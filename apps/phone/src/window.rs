@@ -718,6 +718,19 @@ impl View for Phone {
             "reconnect" => {
                 cx.work(|| drop(phone::ask(&Request::Reconnect, ASK)), |()| Msg::Told);
             }
+            // A call through the phone to a number (its sound here);
+            // the call ringing answered here; the call ended.
+            c if c.starts_with("call:") || c == "answer" || c == "hang-up" => {
+                let request = match c {
+                    "answer" => Request::Answer,
+                    "hang-up" => Request::HangUp,
+                    _ => Request::Call { number: c[5..].trim().to_owned() },
+                };
+                if !self.demo {
+                    // (What can't be done, the service says itself.)
+                    cx.work(move || drop(phone::ask(&request, ASK)), |()| Msg::Told);
+                }
+            }
             // The phone's music: play or pause, the next, the one before.
             c if c.starts_with("music:") => {
                 let Some(action) = phone::MusicAction::parse(&c[6..]) else { return false };
@@ -931,7 +944,22 @@ impl Phone {
         if !music.artist.is_empty() {
             words = words.child(StringView::new(music.artist.clone()).cut(true).dim(true).small(true));
         }
-        Some(div().flex().flex_col().gap(px(m::TIGHT)).p(px(m::SPACING)).border_t_1().border_color(c(p.shadow).opacity(0.55)).child(words).child(buttons).into_element())
+        // (The window's own edge under it: its inset, whole at every
+        // scale.)
+        Some(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(m::TIGHT))
+                .px(px(m::SPACING))
+                .pt(px(m::SPACING))
+                .pb(px(m::WINDOW_INSET))
+                .border_t_1()
+                .border_color(c(p.shadow).opacity(0.55))
+                .child(words)
+                .child(buttons)
+                .into_element(),
+        )
     }
 
     fn thread_rows(&mut self, cx: &mut Cx<Self>) -> Element {
@@ -1146,12 +1174,18 @@ impl Phone {
         .flex_shrink_0();
         let mut ways = div().w_full().flex().flex_col().gap(px(m::SPACING));
         for (i, address) in person.phones.iter().chain(&person.emails).enumerate() {
-            let to = address.clone();
-            ways = ways.child(div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(StringView::new(address.clone()).cut(true))).child(
-                Button::new("Message").id(format!("message-{i}")).small().on_click(cx.listener(move |v: &mut Phone, _: &ClickEvent, cx| {
-                    v.write_to(&to, cx);
-                })),
-            ));
+            let (to, number) = (address.clone(), address.clone());
+            let mut way = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(StringView::new(address.clone()).cut(true)));
+            // (A number can be called too: through the phone, the call's
+            // sound here.)
+            if i < person.phones.len() {
+                way = way.child(Button::new("Call").id(format!("call-{i}")).small().on_click(cx.listener(move |v: &mut Phone, _: &ClickEvent, cx| {
+                    v.command(&format!("call:{number}"), cx);
+                })));
+            }
+            ways = ways.child(way.child(Button::new("Message").id(format!("message-{i}")).small().on_click(cx.listener(move |v: &mut Phone, _: &ClickEvent, cx| {
+                v.write_to(&to, cx);
+            }))));
         }
         let column = div()
             .w(px(360.0))
@@ -1555,7 +1589,7 @@ impl Phone {
                 })
                 .size_full(),
             );
-        let mut bottom = div().flex().flex_col().gap(px(m::TIGHT)).px(px(m::WINDOW_INSET)).py(px(m::SPACING)).bg(c(p.panel_background)).flex_shrink_0();
+        let mut bottom = div().flex().flex_col().gap(px(m::TIGHT)).px(px(m::WINDOW_INSET)).pt(px(m::SPACING)).pb(px(m::WINDOW_INSET)).bg(c(p.panel_background)).flex_shrink_0();
         if let Some(why) = &self.trouble {
             bottom = bottom.child(StringView::new(format!("Not sent: {why}")).color(c(p.failure)).wrap(true));
         }

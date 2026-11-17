@@ -43,6 +43,12 @@ const NOTIFICATIONS: &str = "/org/bluez/hci0/dev_02_00_00_00_F0_01/service0040";
 const SOURCE: &str = "/org/bluez/hci0/dev_02_00_00_00_F0_01/service0040/char0041";
 const CONTROL_POINT: &str = "/org/bluez/hci0/dev_02_00_00_00_F0_01/service0040/char0044";
 const DATA: &str = "/org/bluez/hci0/dev_02_00_00_00_F0_01/service0040/char0047";
+/// The sound server's telephony service, which the stand-in is too: a
+/// gateway for the phone while its hands-free side is connected, its
+/// calls under it.
+const TELEPHONY: &str = "org.pipewire.Telephony";
+const TELEPHONY_ROOT: &str = "/org/pipewire/Telephony";
+const GATEWAY: &str = "/org/pipewire/Telephony/ag0";
 /// How much of an answer goes in a packet (the least a link carries: an
 /// answer of any length comes in pieces).
 const PACKET: usize = 20;
@@ -88,6 +94,25 @@ enum Job {
     /// The Notification Source was subscribed to: what's on the phone
     /// already is told of, as there before.
     Subscribed,
+    /// The phone's hands-free side connects (its gateway appears in the
+    /// telephony service, with a call ringing if one is) or lets go.
+    HandsFree(bool),
+    /// A call's object comes, changes state, or goes.
+    CallCame(u32),
+    CallChanged(u32),
+    CallWent(u32),
+}
+
+/// A call on the stand-in phone.
+#[derive(Clone)]
+struct OnCall {
+    n: u32,
+    number: String,
+    name: String,
+    /// As the telephony service says it: incoming, dialing, active.
+    state: &'static str,
+    /// Its notification on the phone while it rings.
+    uid: Option<u32>,
 }
 
 /// A notification on the stand-in phone.
@@ -143,6 +168,11 @@ struct World {
     next_uid: u32,
     apps: HashMap<String, String>,
     acted: Vec<String>,
+    /// Its hands-free side is connected (or won't be), and its calls.
+    hands_free: bool,
+    refuses_hands_free: bool,
+    calls: Vec<OnCall>,
+    next_call: u32,
     /// What it's playing (`--tell music`; none: it has no player), and
     /// what its remote control was pressed (`--tell pressed`).
     music: Option<Playing>,
@@ -310,6 +340,16 @@ impl Device {
             return Err(Error::NotAvailable("br-connection-page-timeout".into()));
         }
         let uuid = uuid.to_ascii_lowercase();
+        // (Its hands-free side: the sound server's to speak, there in
+        // its telephony service once connected. `--tell set refuses
+        // hands-free`: a phone that won't.)
+        if uuid == "0000111f-0000-1000-8000-00805f9b34fb" {
+            if w.refuses_hands_free {
+                return Err(Error::NotAvailable("br-connection-refused".into()));
+            }
+            let _ = w.jobs.send(Job::HandsFree(true));
+            return Ok(());
+        }
         if !w.profiles.contains_key(&uuid) {
             return Err(Error::InvalidArguments("no such profile registered".into()));
         }
@@ -326,6 +366,10 @@ impl Device {
         let mut w = self.0.lock().expect("world");
         if uuid.eq_ignore_ascii_case(map::MAS_UUID) && w.stale {
             w.stale = false;
+            return Ok(());
+        }
+        if uuid.eq_ignore_ascii_case("0000111f-0000-1000-8000-00805f9b34fb") && w.hands_free {
+            let _ = w.jobs.send(Job::HandsFree(false));
             return Ok(());
         }
         Err(Error::NotAvailable("not connected".into()))
@@ -469,6 +513,98 @@ fn track(music: Option<&Playing>) -> HashMap<String, OwnedValue> {
     t
 }
 
+/// The phone in the telephony service while its hands-free side is
+/// connected.
+struct Gateway(Shared);
+
+#[zbus::interface(name = "org.pipewire.Telephony.AudioGateway1")]
+impl Gateway {
+    #[zbus(property)]
+    fn address(&self) -> String {
+        "02:00:00:00:F0:01".into()
+    }
+
+    fn dial(&self, number: &str) -> Result<(), Error> {
+        let mut w = self.0.lock().expect("world");
+        if !w.calls.is_empty() {
+            return Err(Error::NotAvailable("a call is on".into()));
+        }
+        w.next_call += 1;
+        let n = w.next_call;
+        w.calls.push(OnCall { n, number: number.to_owned(), name: String::new(), state: "dialing", uid: None });
+        w.acted.push(format!("dialed {number}"));
+        let _ = w.jobs.send(Job::CallCame(n));
+        Ok(())
+    }
+
+    fn hangup_all(&self) {
+        let mut w = self.0.lock().expect("world");
+        for call in std::mem::take(&mut w.calls) {
+            let _ = w.jobs.send(Job::CallWent(call.n));
+        }
+    }
+}
+
+/// One of its calls there.
+struct CallObject {
+    world: Shared,
+    n: u32,
+}
+
+impl CallObject {
+    fn with<T>(&self, read: impl FnOnce(&OnCall) -> T) -> Option<T> {
+        self.world.lock().expect("world").calls.iter().find(|c| c.n == self.n).map(read)
+    }
+}
+
+/// The notification of a call that rings no more goes from the phone.
+fn rung(w: &mut World, uid: Option<u32>) {
+    if let Some(at) = uid.and_then(|uid| w.on_phone.iter().position(|n| n.told.uid == uid)) {
+        let n = w.on_phone.remove(at);
+        let _ = w.jobs.send(Job::Source(ancs::told_bytes(&ancs::Told { event: ancs::Event::Removed, ..n.told }, 0)));
+    }
+}
+
+#[zbus::interface(name = "org.pipewire.Telephony.Call1")]
+impl CallObject {
+    #[zbus(property)]
+    fn state(&self) -> String {
+        self.with(|c| c.state.to_owned()).unwrap_or_else(|| "disconnected".into())
+    }
+
+    #[zbus(property)]
+    fn line_identification(&self) -> String {
+        self.with(|c| c.number.clone()).unwrap_or_default()
+    }
+
+    #[zbus(property)]
+    fn name(&self) -> String {
+        self.with(|c| c.name.clone()).unwrap_or_default()
+    }
+
+    /// Answered from the computer: the call is on, its sound there.
+    fn answer(&self) -> Result<(), Error> {
+        let mut w = self.world.lock().expect("world");
+        let Some(call) = w.calls.iter_mut().find(|c| c.n == self.n && c.state == "incoming") else { return Err(Error::NotAvailable("not ringing".into())) };
+        call.state = "active";
+        let (uid, who) = (call.uid.take(), if call.name.is_empty() { call.number.clone() } else { call.name.clone() });
+        w.acted.push(format!("answered here {who}"));
+        rung(&mut w, uid);
+        let _ = w.jobs.send(Job::CallChanged(self.n));
+        Ok(())
+    }
+
+    fn hangup(&self) -> Result<(), Error> {
+        let mut w = self.world.lock().expect("world");
+        let Some(at) = w.calls.iter().position(|c| c.n == self.n) else { return Err(Error::NotAvailable("no such call".into())) };
+        let call = w.calls.remove(at);
+        w.acted.push(format!("hung up {}", if call.name.is_empty() { call.number.clone() } else { call.name.clone() }));
+        rung(&mut w, call.uid);
+        let _ = w.jobs.send(Job::CallWent(self.n));
+        Ok(())
+    }
+}
+
 /// The phone over low energy, as BlueZ shows the link (asked to connect
 /// it: it comes if the phone's owner allowed its notifications here).
 struct LowEnergy(Shared);
@@ -568,6 +704,17 @@ impl Characteristic {
                 let Some(at) = w.on_phone.iter().position(|n| n.told.uid == uid) else { return Err(Error::InvalidArguments("0xa2: no such notification".into())) };
                 let n = w.on_phone.remove(at);
                 w.acted.push(format!("{} {}", if positive { "positive" } else { "negative" }, n.says.title));
+                // (A call's: answered on the phone itself, or declined.)
+                if let Some(at) = w.calls.iter().position(|c| c.uid == Some(uid)) {
+                    if positive {
+                        w.calls[at].state = "active";
+                        w.calls[at].uid = None;
+                        let _ = w.jobs.send(Job::CallChanged(w.calls[at].n));
+                    } else {
+                        let call = w.calls.remove(at);
+                        let _ = w.jobs.send(Job::CallWent(call.n));
+                    }
+                }
                 // (Answered, declined or cleared: it goes from the phone.)
                 let _ = w.jobs.send(Job::Source(ancs::told_bytes(&ancs::Told { event: ancs::Event::Removed, ..n.told }, 0)));
             }
@@ -613,6 +760,48 @@ impl Told {
         w.on_phone.push(OnPhone { told, says });
         let _ = w.jobs.send(Job::Source(ancs::told_bytes(&told, 1)));
         uid
+    }
+
+    /// The phone rings: a call from `number` (`name` in its contacts).
+    /// Its notification comes (an iPhone's, with Answer and Decline),
+    /// and, with its hands-free side connected, the call in the
+    /// telephony service. The notification's number.
+    fn call(&self, number: &str, name: &str) -> u32 {
+        let uid = self.notify("com.apple.mobilephone", "Phone", if name.is_empty() { number } else { name }, "Incoming Call", "call");
+        let mut w = self.0.lock().expect("world");
+        w.next_call += 1;
+        let n = w.next_call;
+        w.calls.push(OnCall { n, number: number.to_owned(), name: name.to_owned(), state: "incoming", uid: Some(uid) });
+        if w.hands_free {
+            let _ = w.jobs.send(Job::CallCame(n));
+        }
+        uid
+    }
+
+    /// The other end picks up a call made from here.
+    fn picked_up(&self) {
+        let mut w = self.0.lock().expect("world");
+        let changed: Vec<u32> = w
+            .calls
+            .iter_mut()
+            .filter(|c| c.state == "dialing")
+            .map(|c| {
+                c.state = "active";
+                c.n
+            })
+            .collect();
+        for n in changed {
+            let _ = w.jobs.send(Job::CallChanged(n));
+        }
+    }
+
+    /// The other end hangs up (or gives up ringing): the calls are over.
+    fn hung_up(&self) {
+        let mut w = self.0.lock().expect("world");
+        for call in std::mem::take(&mut w.calls) {
+            rung(&mut w, call.uid);
+            let _ = w.jobs.send(Job::CallWent(call.n));
+        }
     }
 
     /// The phone's owner dealt with notification `uid` there (read it,
@@ -684,6 +873,12 @@ impl Told {
             }
             // The low-energy link alone goes (out of its reach, the
             // phone asleep), or is asked back.
+            // The phone connects its hands-free side by itself (as to a
+            // car), or lets go.
+            "hands-free" => {
+                let _ = w.jobs.send(Job::HandsFree(on && w.connected));
+            }
+            "refuses-hands-free" => w.refuses_hands_free = on,
             "low-energy" => {
                 let _ = w.jobs.send(Job::LowEnergy(on && w.notifications_allowed && w.connected && !w.android));
             }
@@ -737,7 +932,9 @@ const USAGE: &str = "usage: phone-standin [--address ADDRESS] [--android] [--unp
        phone-standin [--address ADDRESS] --tell pressed
        phone-standin [--address ADDRESS] --tell set notifications|low-energy yes|no
        phone-standin [--address ADDRESS] --tell notify APP NAME TITLE MESSAGE [call|silent]
-       phone-standin [--address ADDRESS] --tell unnotify NUMBER | acted";
+       phone-standin [--address ADDRESS] --tell unnotify NUMBER | acted
+       phone-standin [--address ADDRESS] --tell set hands-free yes|no
+       phone-standin [--address ADDRESS] --tell call NUMBER [NAME…] | picked-up | hung-up";
 
 fn main() {
     olo_crash::install();
@@ -781,6 +978,10 @@ fn main() {
         next_uid: 100,
         apps: HashMap::new(),
         acted: Vec::new(),
+        hands_free: false,
+        refuses_hands_free: false,
+        calls: Vec::new(),
+        next_call: 0,
         music: None,
         pressed: Vec::new(),
         pairings: 0,
@@ -798,6 +999,8 @@ fn main() {
         .and_then(|b| b.serve_at(DEVICE, Device(world.clone())))
         .and_then(|b| b.serve_at(DEVICE, Control(world.clone())))
         .and_then(|b| b.serve_at(DEVICE, LowEnergy(world.clone())))
+        .and_then(|b| b.serve_at(TELEPHONY_ROOT, zbus::fdo::ObjectManager))
+        .and_then(|b| b.name(TELEPHONY))
         .and_then(|b| b.serve_at(PLAYER, Player(world.clone())))
         .and_then(|b| b.name(NAME))
         .and_then(|b| b.build());
@@ -962,6 +1165,46 @@ fn main() {
                 let none: Vec<&str> = Vec::new();
                 let _ = conn.emit_signal(None::<&str>, DEVICE, "org.freedesktop.DBus.Properties", "PropertiesChanged", &("org.bluez.Device1", changed, none));
             }
+            Job::HandsFree(on) => {
+                let mut w = world.lock().expect("world");
+                if w.hands_free == on {
+                    continue;
+                }
+                w.hands_free = on;
+                let calls: Vec<u32> = w.calls.iter().map(|c| c.n).collect();
+                drop(w);
+                let server = conn.object_server();
+                if on {
+                    let _ = server.at(GATEWAY, Gateway(world.clone()));
+                    // (A call ringing or on: the service learns of it as
+                    // the phone connects.)
+                    for n in calls {
+                        let _ = server.at(format!("{GATEWAY}/call{n}"), CallObject { world: world.clone(), n });
+                    }
+                } else {
+                    for n in calls {
+                        let _ = server.remove::<CallObject, _>(format!("{GATEWAY}/call{n}"));
+                    }
+                    let _ = server.remove::<Gateway, _>(GATEWAY);
+                }
+            }
+            Job::CallCame(n) => {
+                if world.lock().expect("world").hands_free {
+                    let _ = conn.object_server().at(format!("{GATEWAY}/call{n}"), CallObject { world: world.clone(), n });
+                }
+            }
+            Job::CallChanged(n) => {
+                let state = world.lock().expect("world").calls.iter().find(|c| c.n == n).map(|c| c.state);
+                if let Some(state) = state {
+                    let mut changed: HashMap<&str, Value> = HashMap::new();
+                    changed.insert("State", state.into());
+                    let none: Vec<&str> = Vec::new();
+                    let _ = conn.emit_signal(None::<&str>, format!("{GATEWAY}/call{n}"), "org.freedesktop.DBus.Properties", "PropertiesChanged", &("org.pipewire.Telephony.Call1", changed, none));
+                }
+            }
+            Job::CallWent(n) => {
+                let _ = conn.object_server().remove::<CallObject, _>(format!("{GATEWAY}/call{n}"));
+            }
             Job::Source(packet) => {
                 use std::io::Write as _;
                 if let Some(source) = &mut world.lock().expect("world").source {
@@ -1092,6 +1335,18 @@ fn told(address: &str, words: &[String]) -> i32 {
         },
         ["unnotify", uid] => call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Unnotify", &(uid.parse::<u32>().unwrap_or(0),))),
         ["acted"] => call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Acted", &())),
+        ["call", number, name @ ..] => match conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Call", &(*number, name.join(" ").as_str())).and_then(|m| m.body().deserialize::<u32>()) {
+            Ok(uid) => {
+                println!("{uid}");
+                0
+            }
+            Err(e) => {
+                eprintln!("phone-standin: {e}");
+                1
+            }
+        },
+        ["picked-up"] => call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "PickedUp", &())),
+        ["hung-up"] => call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "HungUp", &())),
         ["sent"] => call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Sent", &())),
         _ => {
             eprintln!("{USAGE}");
