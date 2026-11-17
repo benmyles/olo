@@ -58,6 +58,11 @@ something nobody here has is in "Blocked", with what it waits for.
   native olo apps and olo slack."; and: "also the red/blue dot colors
   should be customizable by the chosen theme/color scheme too").
 
+- **Agent Screens: Screens ▸ New Screen brings back an old one** (Ben,
+  2026-11-17: "when i go screens -> new screen in agent screens app it
+  seems to bring back an old archived/deleted screen instead of
+  creating an actual new screen").
+
 ## Done, waiting for Ben to try or confirm
 
 - **The phone's other notifications, its music, its conversations
