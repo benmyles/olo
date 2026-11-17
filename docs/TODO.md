@@ -83,7 +83,12 @@ something nobody here has is in "Blocked", with what it waits for.
   happen. Olo Doctor no longer installs BlueFerry and offers to remove
   it where it did. What a real iPhone does is tried with Ben's, by Ben.
   Then the website says so (Ben: "when you're done update the website to
-  highlight the native phone pairing support").
+  highlight the native phone pairing support"). **Android too** (Ben:
+  "and also include support for android too in addition to iphone"): the
+  same profiles, so the same client; its own habits (a listing without
+  the whole text, a real sent folder, MMS, asking on the phone as it
+  pairs, none of an iPhone's conditions) in the stand-in, the setup's
+  steps and the tests.
   *Under way.* Done: OBEX, MAP and PBAP in Rust (`olo_system::phone`),
   tested end to end against a stand-in iPhone that speaks them. Next:
   the link (BlueZ's profiles and channels, what an iPhone needs of the
