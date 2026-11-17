@@ -234,6 +234,9 @@
         /\bsms\b|text message|texted|by text|via text|(phone|mobile) number ending|ending in \d{2,4}|sent to \+?[\d*•x()\s-]{6,}|sent (you )?(a|an|the|your)? ?(\d.digit |verification |security |one.time )?(code|pin|passcode) to (your )?(phone|mobile|number|device|\+|\(|\*|•|x{2,})/.test(
           said,
         ),
+      // ("We sent a code to b•••@example.com", "Check your email",
+      // "the code we emailed you", "sent to your inbox".)
+      by_mail: /\be-?mail(ed|s)?\b|\binbox\b|[\w.*•+-]+@[\w-]+\.[a-z]{2,}/.test(said),
       by_app: /authenticator|authentication app|authy\b|\btotp\b|code generator|security key/.test(said),
       age: Math.round((Date.now() - otpSeenAt) / 1000),
     };

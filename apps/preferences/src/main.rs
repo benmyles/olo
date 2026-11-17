@@ -33,6 +33,7 @@ mod integrations;
 mod keyboard;
 #[cfg(test)]
 mod lint;
+mod mail;
 mod network;
 mod notifications;
 mod palm_trainer;
@@ -274,7 +275,7 @@ impl Prefs {
         self.windows.push(Shown::Launcher(window));
     }
 
-    fn handle_args(&mut self, args: &[String]) {
+    pub(crate) fn handle_args(&mut self, args: &[String]) {
         // A setting to show (the command palette's, `olo_xdg::settings`):
         // its panel opens with it lit, on its tab, in its box.
         let (mut show, mut tab, mut group, mut rest) = (None, None, None, Vec::new());

@@ -724,7 +724,14 @@ brush and the root Wi-Fi healer carry it as lightly as the kit's apps.
   program up. Before, such a program's log and its panic's message went
   nowhere (Viewer's crash in TODO left no trace). A crash's own line
   goes there marked an error (`<3>`), "PROGRAM: SIGSEGV; the report is
-  PATH". The kit's log writes colour codes only to a terminal.
+  PATH". The kit's log writes colour codes only to a terminal. Not a
+  program a test started (cargo's environment, `CARGO_MANIFEST_DIR`,
+  which a test's children have; `OLO_CRASH_JOURNAL` names a socket of
+  the test's own): its lines in the person's journal read as the real
+  program's (a phone test's service, its stderr discarded, said "can't
+  register with BlueZ" and named the stand-in's phone among the real
+  service's lines, 2026-11-17). Give what a test starts a log file of
+  its own instead (the phone tests' `phoned.log`).
 - **Told**: the session's `olo-doctor --watch` follows the folder by
   inotify and tells of each new report once ("Viewer crashed", what and
   in which thread, the program's own icon; more than three at once in
@@ -811,6 +818,7 @@ long after a way out comes back.
 | `crates/yuv` | `olo-yuv`: a video's picture as its decoder made it (`YuvFrame`: Y'CbCr 4:2:0 planes, or `YuvMemory`, the decoder's own memory) and the matrix that makes RGB of it. olo-interface draws it (`Painter::paint_yuv`) and re-exports it; what decodes (olo-images, olo-video, olo-vaapi) makes it. |
 | `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit: data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; the person's own choice first (`open::set_default`, kept in `~/.config/olo/default-apps.list` in mimeapps.list's form and copied into `olo-mimeapps.list` for other programs; `handler_cached` notices it changed, in any process), then Olo's apps, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`; Open With's few apps for a kind, `open::handlers_for`: as the person set them (`set_offered`, Preferences ▸ Default Apps ▸ Open With), else the one it opens in, Olo's own for it, then those whose entries claim it or a broader kind, by name, eight at most; worked out off the UI thread by `open::warm` (a folder's kinds, as Tracker lists it) and read by menus from `offer_cached`; `open::kind_of` names a kind by the file's name alone; `open::every_app` is every app whose command takes files (`DesktopEntry::takes_files`), Olo's first, and `Handler::icon` its icon; the person's own kinds of file are `mime::own_kinds` (`set_own_kinds`; `mime::type_for_extensions` keeps the type its extensions all share, else makes one of Olo's own, `application/x-olo-kind-EXT`, which `mime::from_name` gives first); desktop entries are kept until an applications folder changes, `desktop_entry::all_cached`; and the same for other programs: `open::for_others` gives the hidden `olo.viewer`, `olo.styled-edit` and `olo.tracker` desktop entries, each listing every type shared-mime-info knows that Olo opens with it, and an `olo-mimeapps.list` making them the defaults, which GIO, `gio open`/xdg-open and xdg-desktop-portal's OpenURI read before `mimeapps.list` while `XDG_CURRENT_DESKTOP` names Olo; olo-session writes them into `~/.local/share/applications` at start, makes that folder's `mimeinfo.cache` again when they change (`open::mime_cache`, as update-desktop-database would: GIO only finds an app for a type through it) and removes ones it wrote that are no longer wanted, `X-Olo-Written=true`; and, once Olo's Chrome is installed, `open::offer_browser` writes `~/.local/share/applications/olo-mimeapps.list` naming it for web pages and links, read after every `mimeapps.list` in the config directories so a browser the person chose wins, but ahead of the system's lists), `find_program`, `spawn_detached` (`spawn_detached_app` and `open::spawn_app` for a desktop entry's program, in a scope of its own: `scope`; Olo's own programs keep the launcher's stderr, the session's journal, so what Deskbar, Tracker or the palette starts logs like the rest; others' goes nowhere). |
 | `crates/release` | `olo-release`: Olo's releases on GitHub (the newest, with its checksum file and commit's time; downloaded, checked, unpacked, put in place): Setup's install, and the program an installed Olo's session asks for upgrades (`olo-release latest`, `install`). |
+| `crates/mail` | `olo-mail`: mail accounts read for one-time codes (see "Codes sent by mail"): Gmail and Fastmail over IMAP with an app password kept in the login keyring, natively (rustls with the system's certificates; IMAP: LOGIN, SELECT, SEARCH, FETCH, IDLE; MIME: encoded words, multipart, quoted-printable, base64, charsets, HTML made words); `Watch` an inbox for a while on a thread of its own; `standin`, a stand-in IMAP server for tests. |
 | `crates/net` | `olo-net`: the network changing under a program that talks over it (see "The network changing"): connections on a network that went cut at once, what's kept for the network (`PerNetwork`: an HTTP client) made again for the new one, requests tried again across a change (`across_changes`), waits for a network (`wait_online`), and with its `ureq` feature a download that goes on where it broke off (`http::Download`).; and one TCP connection as the kernel keeps it (`tcp_info`: `TCP_INFO`'s every figure, the congestion control read and set, BBR's model of the path, which BBR the kernel's own is). `examples/tcp-flow`: flows to measure a congestion control with (tools/dev/bbr3-check). |
 | `crates/kmod` | `olo-kmod`: one of Olo's kernel modules built for the running kernel and installed (see "BBRv3 for TCP"): what the services that load them share (apps/gpu-memory, apps/bbr3). |
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
@@ -1672,7 +1680,10 @@ pixels, over a faint wash. It comes in 150 ms, holds and goes over the
 last 450 of `spotlight::LIT` (1.6 s); the window's `Frame` draws it
 over everything else. Frames are asked for only while it comes and
 goes: held, one timer wakes the window for its going, and once gone
-nothing runs. False if there's no such control. Preferences uses it
+nothing runs. With no control so named, the box called `group` is lit
+(the palette's index names a control that is this computer's own by
+its kind: "Mail" for Security ▸ Passwords' "Mail to …"); false if
+there's neither. Preferences uses it
 for `--show` (the command palette's settings); an agent can use it to
 show the person what it's talking about.
 
@@ -5530,7 +5541,9 @@ recorded otherwise.
     labels'), `uneven-gaps` (a row of controls spaced unevenly by a
     point or few), `after-commit` (a commit row, push buttons Apply,
     Revert, Save or Done, not a toolbar's icons, with anything under it
-    closer than `metrics::SECTION`,
+    in its own column (the innermost box it's in, as wide: a column
+    beside it isn't what follows it, Preferences ▸ Integrations' Mail
+    rows beside Telegram's Save) closer than `metrics::SECTION`,
     two spacings: the row ends its group, so what follows is a new
     section; as close as the rows above, the row reads as the start of
     what follows, as Preferences ▸ Power ▸ Graphics' Screen Recordings did),
@@ -5943,6 +5956,17 @@ lint at a time).
   username empty for the active account or the `user:` of hosts.yml;
   `go-keyring-base64:` values decoded). Test the keyring parts with
   `tools/dev/private-keyring` (`github::tests::tokens_from_a_keyring`).
+  Mail (`mail.rs`, beside GitHub; Telegram in the column beside them,
+  its sign-in the tallest): any number of Gmail (a free account or a
+  Workspace one) and Fastmail accounts, looked in for one-time codes
+  (see "Codes sent by mail"). Add Gmail… or Add Fastmail… asks the
+  address and an app password (Make an App Password… opens the
+  provider's page; Gmail's wants 2-Step Verification, Fastmail's isn't
+  on the Basic plan) and tries them first, on a worker (signed in, the
+  inbox opened, `olo_mail::check`); taken, the password goes in the
+  login keyring (`application=olo service=mail account=ADDRESS`) and the
+  address in `~/.config/olo/mail.json`. Each is tried again as the panel
+  opens (Check Again), and says how it stands; Remove forgets both.
 * Tracker (`tracker.rs`) sets `Settings::tracker` (the view new folder
   windows open in); its icon is Tracker's own, as in Haiku.
 * Terminal (`terminal.rs`) sets `Settings::terminal`: where New
@@ -14512,8 +14536,8 @@ every tab's frames (`chrome.scripting.executeScript`, content.js's
 with what it knows of each (`Waiting`: host, title, whether the field
 has the focus, its tab shows and its window is in front, whether the
 field declares itself `one-time-code`, how many digits it takes, whether
-the page says the code was sent by text or comes from an authenticator
-app, how long ago the field was first seen). After every browser has
+the page says the code was sent by text or by mail or comes from an
+authenticator app, how long ago the field was first seen). After every browser has
 answered, or 700 ms, `codes::choose` takes the best (`score`: bound to
 its site +100 and to no other; the service the message names in the
 tab's host or title +40; focus +25, text +20, showing +15, front +10,
@@ -14532,7 +14556,7 @@ gone from every other tab it showed in.
 
 **A tab on an agent's screen** is known by its Chrome's environment
 (`OLO_SCREEN`, read by the service from the connecting process, not
-taken on its word). By Preferences ▸ Phone's "In an agent's tab": **Fill
+taken on its word). By Security ▸ Passwords' "In an agent's tab": **Fill
 It In** (the default: Ben's "it should go to the agent's tab not the
 user"): put in at once when the code is surely that tab's (`sure`: bound
 to its site; or of the service the message names; or a field no older
@@ -14545,6 +14569,54 @@ the code); when it isn't sure the person is asked; **Ask Me First**
 (agents' tabs aren't candidates). The doubt it guards: a page on an
 agent's screen that merely has a code field must not be handed the code
 of a sign-in the person began elsewhere.
+
+**Codes sent by mail** (Ben, 2026-11-17: "the extension should see that
+the user is on a page waiting for a one time password, so it should
+check the configured email accounts to see if a new message has arrived
+with the code and keep looking for up to 60s until one arrives from
+phone/email and then offer to fill it"). The phone service is where
+every code goes to the browsers, so it reads the mail too (it runs
+whether or not a phone is set up). When a code field comes up or takes
+the focus (`FromBrowser::Waiting { id: None }`) and no code had is for
+it, on a page that says the code was mailed (content.js's `by_mail`:
+"email", "inbox", an address, masked or not) or says nothing of a text
+or an app, every mail account set up and not left out
+(`PhoneSettings::unwatched_mail`) is watched for a minute (`MAIL_FOR`;
+`olo_mail::Watch`, a thread each): signed in with its app password from
+the keyring, what came in the last five minutes read (of the inbox's
+newest five, by INTERNALDATE), then each message as it comes, the
+server telling (IDLE; one without it asked every five seconds), until
+the minute is up (signed out) or a code is given to a tab (the watch's
+connection shut: over at once); another field coming up watches
+longer. A message's code (`codes::find_mail`: in its subject, else in
+its words read after the subject; who it's from, its sender's name if
+the words don't say) becomes a pending code as a texted one does
+(`mail_came`; each message once, the same code had already not again)
+and goes to the tab by `choose`, scored by where the page says the
+code comes (+20 when the page says mail and it came by mail, or text and
+it came by text; `sure` takes a page that says mail as one that says
+text). Mail's way of showing a code, alone on a line of its own under
+"Your verification code" with a footer's year and address about it, is
+`find`'s too: a message that says it's a code and has one number alone
+on a line has that number. Nothing of a message is kept or logged.
+Tested end to end (`a_code_from_mail_to_the_tab_waiting_for_it`: the
+service against `olo_mail::standin`, an IMAP server of the test's own
+reached through `OLO_MAIL_IMAP`, and a stand-in browser) and on the
+mail of eleven services that are codes and three that aren't.
+
+**What's looked in, and where codes go, is Security ▸ Passwords'**
+One-Time Codes box (`phone::codes`; Ben: "move the phone prefs
+one-time codes stuff into prefs -> security -> passwords and change it
+up a bit so that you can choose what to monitor"): "Look for codes in:"
+the phone set up ("Text messages to “Mira's iPhone”", `codes`) and
+each mail account ("Mail to ada@example.com (Gmail)", not in
+`unwatched_mail`), then Offer a code in the browser tab, In an agent's
+tab and Copy a code no tab is waiting for, as before. Saved in
+`phone.json`, which the service follows. Phone's panel says where they
+went, with a Security… button (Security on its Passwords tab). The
+palette's index names the sources by kind ("Text Messages", "Mail"),
+and the spotlight lights their box (`spotlight::show`: no control so
+named, its box).
 
 **Connecting a phone is Preferences ▸ Phone**, three steps each seen to
 happen (phone.rs, `connect`; Ben: "make the pairing/setup process much
@@ -18063,7 +18135,8 @@ reproduced on a screen with a page made for it. What was fixed:
 - `select` "its menu has no item (or didn't open)" (31, all in Chrome):
   a page's `<select>` menu is the browser's, with no items in any
   tree. The Olo extension now lists a select's options on its node
-  (`UiNode::options`, tree.js; extension 1.13.0), the outline shows
+  (`UiNode::options`, tree.js; extension 1.13.0; 1.14.0 says a page's
+  code was mailed, `by_mail`), the outline shows
   them (`options=[…]`), and `select` chooses by the keyboard, by the
   option's words (`find::option_meant`: the same, else the only one
   starting so, else the only one holding them), then checks the value.

@@ -47,7 +47,7 @@ use crate::others::{Effect, Others};
 use olo_kit_base::notify::{Note, NoteEvent, NoteId, Notifier};
 use olo_protocol::{
     notifications::NoteStyle,
-    phone::{CallState, Conversation, FromBrowser, Kind, Link, Message, Notify, Person, PhoneSettings, PhoneState, Reply, Request, ToBrowser, Waiting},
+    phone::{AgentCodes, CallState, Conversation, FromBrowser, Kind, Link, Message, Notify, Person, PhoneSettings, PhoneState, Reply, Request, ToBrowser, Waiting},
 };
 use olo_system::phone::{
     calls::{self, Telephony},
@@ -63,6 +63,9 @@ use crate::codes::{self, Code, How};
 pub const CODE_LIFE: Duration = Duration::from_secs(5 * 60);
 /// How long the browsers have to say which tabs are waiting.
 const ROUND: Duration = Duration::from_millis(700);
+/// How long mail is looked in for a code once a page waits for one (Ben,
+/// 2026-11-17: "keep looking for up to 60s").
+const MAIL_FOR: Duration = Duration::from_secs(60);
 /// A message is one that has just come if it's no older than this (and
 /// not from more than a minute ahead: the phone's clock and this one's).
 const JUST: i64 = 5 * 60;
@@ -161,6 +164,9 @@ enum Ev {
     Said(u64, FromBrowser),
     Left(u64),
     Note(NoteEvent),
+    /// A mail account (its address) watched for a code has this message
+    /// (its UID there).
+    Mail(String, u32, olo_mail::Message),
 }
 
 /// What a session's thread is asked.
@@ -404,6 +410,11 @@ struct Service {
     codes: Vec<Pending>,
     next_code: u64,
     browsers: HashMap<u64, Browser>,
+    /// The mail accounts watched for a code while a page waits for one
+    /// (by address): stopped when dropped.
+    mail: HashMap<String, olo_mail::Watch>,
+    /// The mail messages looked in (account, UID): each once.
+    mail_seen: HashSet<(String, u32)>,
     notes: Notifier,
     about: Vec<(NoteId, About)>,
     tx: mpsc::Sender<Ev>,
@@ -653,6 +664,8 @@ pub fn run() -> ! {
         codes: Vec::new(),
         next_code: 0,
         browsers: HashMap::new(),
+        mail: HashMap::new(),
+        mail_seen: HashSet::new(),
         notes,
         about: Vec::new(),
         tx,
@@ -743,8 +756,12 @@ impl Service {
                 if settings != self.settings {
                     self.settings = settings;
                     if !self.settings.codes {
-                        self.codes.clear();
+                        self.codes.retain(|c| c.code.mail);
                     }
+                    // (Mail no longer looked in: its watch stopped.)
+                    let unwatched = &self.settings.unwatched_mail;
+                    let in_browser = self.settings.codes_in_browser;
+                    self.mail.retain(|address, _| in_browser && !unwatched.contains(address));
                     // (Its other notifications, turned on or off; calls
                     // taken here or not.)
                     self.others_link();
@@ -767,6 +784,7 @@ impl Service {
                 }
             }
             Ev::Note(e) => self.note(e),
+            Ev::Mail(address, uid, message) => self.mail_came(address, uid, message),
         }
     }
 
@@ -1999,15 +2017,64 @@ impl Service {
                 if !self.settings.codes_in_browser {
                     return;
                 }
+                // A page that may be waiting for a code sent by mail (it
+                // says so, or says nothing of a text message or an app).
+                // (Not an agent's tab, when agents are never given codes.)
+                let agents = self.browsers.get(&browser).is_some_and(|b| b.screen.is_some());
+                let by_mail = tabs.iter().any(|t| t.by_mail || !(t.by_app || t.by_text)) && !(agents && self.settings.agent_screens == AgentCodes::Never);
                 let tabs: Vec<(u64, Waiting)> = tabs.into_iter().map(|t| (browser, t)).collect();
                 let ids: Vec<u64> = self.codes.iter().rev().filter(|c| c.round.is_none() && c.asking.is_none()).map(|c| c.id).collect();
                 for id in ids {
                     if self.give(id, &tabs) {
-                        break;
+                        return;
                     }
+                }
+                // No code had is for it: the mail looked in, for the
+                // minute to come.
+                if by_mail {
+                    self.watch_mail();
                 }
             }
         }
+    }
+
+    /// Look in the mail accounts set up (but those left out) for a code,
+    /// for the minute to come: what came in the last minutes, then each
+    /// message as it comes (`olo_mail::Watch`, a thread each, the server
+    /// telling). One already watched watches longer.
+    fn watch_mail(&mut self) {
+        let until = Instant::now() + paced(MAIL_FOR);
+        for account in olo_mail::accounts() {
+            if self.settings.unwatched_mail.contains(&account.address) {
+                continue;
+            }
+            if let Some(w) = self.mail.get(&account.address).filter(|w| w.running()) {
+                w.extend(until);
+                continue;
+            }
+            let (tx, key, address) = (self.tx.clone(), account.address.clone(), account.address.clone());
+            let w = olo_mail::Watch::start(account, Duration::from_secs(JUST as u64), until, move |uid, m| tx.send(Ev::Mail(address.clone(), uid, m)).is_ok());
+            self.mail.insert(key, w);
+        }
+    }
+
+    /// A message in a mail account watched: its code, if it has one,
+    /// given to the tab waiting for it as a texted one is.
+    fn mail_came(&mut self, address: String, uid: u32, m: olo_mail::Message) {
+        if !self.mail_seen.insert((address, uid)) {
+            return;
+        }
+        let Some(code) = codes::find_mail(&m.subject, &m.text, &m.from) else { return };
+        // (The same code had already, from the phone or another account.)
+        if self.codes.iter().any(|c| c.code.code == code.code) {
+            return;
+        }
+        self.next_code += 1;
+        let from = code.service.clone().unwrap_or(m.from);
+        self.codes.push(Pending { id: self.next_code, code, from, until: Instant::now() + CODE_LIFE, round: None, asking: None, given: HashSet::new() });
+        self.state.codes += 1;
+        self.state.code_at = Some(now());
+        self.ask_browsers(self.next_code);
     }
 
     /// The asking is over: the tab it's for, of those that answered.
@@ -2050,6 +2117,9 @@ impl Service {
     }
 
     fn send_code(&mut self, id: u64, browser: u64, tab: &Waiting, fill: bool) {
+        // (A code has come for the page: the mail needn't be watched for
+        // one any longer.)
+        self.mail.clear();
         let Some(c) = self.codes.iter_mut().find(|c| c.id == id) else { return };
         let Some(b) = self.browsers.get(&browser) else { return };
         c.given.insert((browser, tab.tab));

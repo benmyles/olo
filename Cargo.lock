@@ -7826,6 +7826,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-mail"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "encoding_rs",
+ "olo-system",
+ "olo-xdg",
+ "rustls",
+ "rustls-platform-verifier",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "olo-net"
 version = "0.1.0"
 dependencies = [
@@ -8002,6 +8017,7 @@ dependencies = [
  "olo-crash",
  "olo-kit",
  "olo-kit-base",
+ "olo-mail",
  "olo-protocol",
  "olo-sync",
  "olo-system",
@@ -8090,6 +8106,7 @@ dependencies = [
  "olo-fido",
  "olo-keychain",
  "olo-kit",
+ "olo-mail",
  "olo-net",
  "olo-palm",
  "olo-protocol",
@@ -8188,6 +8205,7 @@ dependencies = [
 name = "olo-release"
 version = "0.1.0"
 dependencies = [
+ "olo-crash",
  "olo-net",
  "rustls",
  "serde_json",

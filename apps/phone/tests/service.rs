@@ -92,6 +92,77 @@ fn wait_for(what: &str, mut ready: impl FnMut() -> bool) {
     }
 }
 
+/// Codes sent by mail (Ben, 2026-11-17): a page's code field comes up,
+/// and the mail account set up (a stand-in IMAP server here) is looked
+/// in: what came in the last minutes, then each message as it comes, the
+/// server telling (IDLE). Nothing older is read; with nothing come, the
+/// watch ends after its minute (a thirtieth of it here) and signs out; a
+/// code in a message that comes goes to the tab as a texted one does; an
+/// account left out (Security ▸ Passwords) isn't looked in.
+#[test]
+fn a_code_from_mail_to_the_tab_waiting_for_it() {
+    let Ok(address) = std::env::var("OLO_TEST_BUS") else { return };
+    use olo_mail::standin;
+    // (On disk: /tmp is memory here.)
+    let dir = Path::new("/var/tmp").join(format!("olo-phone-mail-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("run")).unwrap();
+    let (run, socket) = (dir.join("run"), dir.join("run/olo-phone.sock"));
+    let old = "From: Acme <no-reply@acme.example>\r\nSubject: Your Acme code\r\n\r\nYour Acme verification code is 111111.\r\n";
+    let server = standin::Server::start(vec![(standin::ago(3600), old.into())]);
+    std::fs::write(run.join("mail.json"), r#"[{"provider": "gmail", "address": "me@example.com"}]"#).unwrap();
+    let _service = Ended(
+        Command::new(env!("CARGO_BIN_EXE_olo-phoned"))
+            .env("DBUS_SESSION_BUS_ADDRESS", &address)
+            // (No BlueZ: the other tests' stand-in, on the same bus, isn't
+            // this one's, and mail wants none.)
+            .env("OLO_PHONE_BLUEZ", format!("unix:path={}", dir.join("no-bluez.sock").display()))
+            .env("OLO_PHONE_DIR", &run)
+            .env("OLO_PHONE_SETTINGS", run.join("phone.json"))
+            .env("OLO_MAIL_ACCOUNTS", run.join("mail.json"))
+            .env("OLO_MAIL_IMAP", server.address())
+            .env("OLO_PHONE_PACE", "30")
+            .env("XDG_STATE_HOME", dir.join("state"))
+            .env_remove("OLO_SCREEN")
+            // (Its log in the test's folder, to read when it fails.)
+            .stderr(std::fs::File::create(dir.join("phoned.log")).unwrap())
+            .spawn()
+            .unwrap(),
+    );
+    wait_for("the service never listened", || socket.exists());
+    let said = |what: &str| server.said().iter().filter(|c| c.as_str() == what).count();
+
+    // A page waits; no mail comes. Signed in, the old message passed
+    // over, waited with (IDLE); after its minute, signed out.
+    let page = |tab: u32, digits: Option<u32>| json!([{"tab": tab, "host": "github.com", "title": "Device verification", "focused": true, "active": true, "front": true, "by_mail": true, "age": 2, "digits": digits}]);
+    let first = browser(&socket, None, page(20, None), 300, true);
+    wait_for("the mail was never looked in", || said("IDLE") == 1);
+    let idle_at = Instant::now();
+    assert_eq!(heard(first), [] as [Value; 0]);
+    wait_for("the watch never ended", || said("LOGOUT") == 1);
+    let lasted = idle_at.elapsed();
+    assert!(lasted >= Duration::from_millis(1500) && lasted < Duration::from_secs(4), "a minute, paced: {lasted:?}");
+    assert!(!server.said().iter().any(|c| c.starts_with("UID FETCH")), "nothing from before the last minutes was read: {:?}", server.said());
+    assert_eq!(server.logins(), ["me@example.com standin"]);
+
+    // Another waits, and the code's message comes: offered in its tab.
+    let mine = browser(&socket, None, page(21, None), 2500, true);
+    wait_for("the mail was never looked in again", || said("IDLE") == 2);
+    server.deliver("From: GitHub <noreply@github.com>\r\nSubject: [GitHub] Please verify your device\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>Hey there!</p><p>Verification code: <b>482913</b></p>\r\n");
+    assert_eq!(heard(mine), [json!({"say": "any", "id": 1}), json!({"say": "code", "id": 1, "tab": 21, "frame": 0, "code": "482913", "from": "GitHub", "fill": false})]);
+    assert_eq!(said("UID FETCH 2 (UID BODY.PEEK[]<0.65536>)"), 1);
+
+    // Left out: a page waiting (for four digits: not the code had) has
+    // the mail looked in no more.
+    std::fs::write(run.join("phone.json"), r#"{"unwatched_mail": ["me@example.com"]}"#).unwrap();
+    std::thread::sleep(Duration::from_millis(300));
+    let logins = server.logins().len();
+    let later = browser(&socket, None, page(22, Some(4)), 800, true);
+    assert_eq!(heard(later), [] as [Value; 0]);
+    assert_eq!(server.logins().len(), logins);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// One stand-in BlueZ at a time on the test's bus.
 static BUS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -137,7 +208,8 @@ fn a_flaky_phone() {
             .env("OLO_PHONE_PACE", "30")
             .env("XDG_STATE_HOME", &state)
             .env_remove("OLO_SCREEN")
-            .stderr(Stdio::null())
+            // (Its log in the test's folder, to read when it fails.)
+            .stderr(std::fs::File::create(dir.join("phoned.log")).unwrap())
             .spawn()
             .unwrap(),
     );
@@ -301,7 +373,8 @@ fn messages_and_a_code_to_the_tab_waiting_for_it() {
             .env("OLO_PHONE_SETTINGS", run.join("phone.json"))
             .env("XDG_STATE_HOME", &state)
             .env_remove("OLO_SCREEN")
-            .stderr(Stdio::null())
+            // (Its log in the test's folder, to read when it fails.)
+            .stderr(std::fs::File::create(dir.join("phoned.log")).unwrap())
             .spawn()
             .unwrap(),
     );

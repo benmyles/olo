@@ -1,5 +1,7 @@
 //! Integrations: the services Olo works with, each connected here (and
-//! only here). Telegram: its API ID and signing in (`telegram.rs`). GitHub: Terminal shows each tab's pull request and its
+//! only here). Telegram: its API ID and signing in (`telegram.rs`). Mail:
+//! Gmail and Fastmail accounts looked in for one-time codes (`mail.rs`).
+//! GitHub: Terminal shows each tab's pull request and its
 //! checks with it. The sign-in is `olo_system::github`'s: a token Olo keeps
 //! in the login keyring, else `GH_TOKEN`, else the GitHub CLI's. Checking
 //! and connecting talk to GitHub on a worker.
@@ -45,6 +47,7 @@ pub struct State {
     adding: bool,
     proxy: olo_kit::Proxy,
     pub telegram: crate::telegram::State,
+    pub mail: crate::mail::State,
 }
 
 impl State {
@@ -58,7 +61,7 @@ impl State {
                 cx.notify();
             }
         });
-        let mut st = State { github: Arc::default(), token, adding: false, proxy: olo_kit::proxy(), telegram: crate::telegram::State::new(cx) };
+        let mut st = State { github: Arc::default(), token, adding: false, proxy: olo_kit::proxy(), telegram: crate::telegram::State::new(cx), mail: crate::mail::State::new(cx) };
         // (Tests, the layout lint, never read the keyring.)
         if cfg!(test) {
             *st.github.lock().unwrap() = GitHub::None;
@@ -248,7 +251,11 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         row
     };
     items.push(buttons(row).into_element());
-    ui.add(BBox::new("GitHub").children(items));
-    ui.space(m::SPACING);
-    crate::telegram::ui(ui, &mut st.telegram);
+    // (GitHub and Mail beside Telegram, whose sign-in is the tallest.)
+    let left = ui.collect(|ui| {
+        ui.add(BBox::new("GitHub").children(items));
+        crate::mail::ui(ui, &mut st.mail);
+    });
+    let right = ui.collect(|ui| crate::telegram::ui(ui, &mut st.telegram));
+    ui.add_columns(left, right);
 }

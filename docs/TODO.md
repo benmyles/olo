@@ -17,23 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **One-time codes from mail too: Gmail and Fastmail accounts in
-  Integrations, and what's watched for codes chosen in Security ▸
-  Passwords** (Ben, 2026-11-17: "add to prefs -> integrations support
-  for connecting any number of gmail (free or workspace gmail) accounts
-  as well as fastmail accounts. then, under prefs -> security ->
-  passwords move the phone prefs one-time codes stuff into prefs ->
-  security -> passwords and change it up a bit so that you can choose
-  what to monitor for one-time passwords, so it should support
-  monitoring specific phone devices that have been setup as well as
-  specific email accounts that have been setup in integrations. then,
-  for the email one-time password monitoring make it triggered by the
-  olo password extension -- the extension should see that the user is
-  on a page waiting for a one time password, so it should check the
-  configured email accounts to see if a new message has arrived with
-  the code and keep looking for up to 60s until one arrives from
-  phone/email and then offer to fill it.").
-
 - **An element laid over a kit list from outside doesn't show at
   fractional scales** (found 2026-11-17: a canvas, absolute over a
   `ColumnListView` in the same box, drew its frame at 1× and 2× and
@@ -75,12 +58,38 @@ something nobody here has is in "Blocked", with what it waits for.
   pixel, hue, etc needs to be just absolutely perfect and stunningly
   beautiful").
 
+- **The phone back in reach is connected again by itself** (Ben,
+  2026-11-17: "after leaving the room and coming back it says my phone
+  is out of reach and doesn't seem to have auto reconnected. check the
+  logs now to see what the deal is and fix after this work"). Phone
+  still said "out of reach. It's tried again by itself." with the phone
+  back in the room; the logs read at once, the cause found and fixed.
+  What they showed (15:10): the link dropped at 14:48:46; the service's
+  first ask was answered "org.bluez.Error.InProgress:
+  br-connection-busy", and nothing was logged after (a failure the same
+  as the last isn't); bluetoothd's own reconnect failed alike at 14:48:54
+  ("Reconnecting services failed: Device or resource busy"), its HFP
+  connect "Host is down" before it; the service's loop woke every 300 s
+  (AWAY's last step: asking again, each failing unseen); BlueZ had the
+  phone not connected. So: BlueZ stuck busy with the phone (something
+  pending that never ends), every ask refused. To do: say a failure
+  that repeats (now and then, with how many); when BlueZ stays busy
+  with a phone that isn't connected, have it let go of what's pending
+  (the device's Disconnect cancels a stuck connect) and ask again; the
+  stand-in BlueZ made able to stick so, for a test.
+
 - **Last, once everything above that isn't blocked is done: the website,
   the README and the docs refreshed, and a new GitHub release** (Ben,
   2026-11-17: "when all the other todos that aren't blocked are
   completed, please refresh the website with fresh
   screenshots/apps/callouts etc and also the README.md and any other
-  docs that need updating and make a new github release").
+  docs that need updating and make a new github release"). With it, on
+  the website (Ben, 2026-11-17: "i want every app and preferences pane
+  shown on the site in a big grid and when you click one it takes you on
+  a screenshot/visual walkthrough through the screens and functionality
+  for it, e.g. a carousel type thing with captions"): every app and every
+  Preferences panel in one big grid, each opening a walkthrough of its
+  screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
 
@@ -5932,6 +5941,21 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**One-time codes from mail too: Gmail and Fastmail accounts in
+  Integrations, and what's watched for codes chosen in Security ▸
+  Passwords**~~ (Ben, 2026-11-17; done the same day). Preferences ▸
+  Integrations ▸ Mail adds any number of Gmail (free or Workspace) and
+  Fastmail accounts with an app password (tried before it's kept, in
+  the login keyring); Security ▸ Passwords' One-Time Codes box (moved
+  from Phone) chooses what's looked in: the phone, each mail account.
+  When the extension (1.14.0) sees a page waiting for a code, the
+  phone service watches the accounts' mail for a minute (IDLE: told as
+  a message comes) and offers the code in the tab as a texted one is.
+  Olo reads the mail itself (olo-mail: TLS, IMAP, MIME). Tested end to
+  end against a stand-in IMAP server, and Gmail's and Fastmail's own
+  servers greet over TLS with IDLE; not tried with Ben's own accounts
+  (an app password is his to make: Integrations ▸ Mail ▸ Add Gmail…).
 
 - ~~**Agent Screens: Take Screenshot…, at the time shown, at a size
   chosen**~~ (Ben, 2026-11-17; done the same day). Beside Export

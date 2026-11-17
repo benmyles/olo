@@ -1,0 +1,17 @@
+[package]
+name = "olo-mail"
+description = "Mail accounts for one-time codes: Gmail and Fastmail over IMAP with an app password, read natively (TLS, IMAP, MIME), the newest messages' words"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+olo-system.workspace = true
+olo-xdg.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+base64 = "0.22"
+encoding_rs = "0.8"
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std"] }
+rustls-platform-verifier = "0.7"

@@ -10,6 +10,7 @@ name = "olo-release"
 path = "src/main.rs"
 
 [dependencies]
+olo-crash.workspace = true
 olo-net = { workspace = true, features = ["ureq"] }
 serde_json.workspace = true
 # GitHub over HTTPS, the SHA-256 checked, the .tar.zst opened.

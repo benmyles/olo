@@ -42,6 +42,7 @@ fn say(v: serde_json::Value) {
 }
 
 fn main() {
+    olo_crash::install();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let Some(prefix) = option(&args, "--prefix").map(PathBuf::from) else {
         eprintln!("{USAGE}");

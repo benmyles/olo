@@ -233,7 +233,8 @@ impl Panel {
             // With its panel beside it: what it is, how Olo draws for it
             // and why. As tall as the display's rows (`Fit`).
             Panel::Display => (940, 520),
-            Panel::Integrations => (460, 600),
+            // GitHub and Mail beside Telegram.
+            Panel::Integrations => (900, 480),
             Panel::Keyboard => (520, 736),
             // Seven tabs; Hosts' four columns; Shaping's two ways side by side.
             Panel::Network => (640, 420),

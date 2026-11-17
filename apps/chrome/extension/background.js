@@ -517,10 +517,12 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 });
 
-// ---- One-time codes texted to the phone ----
+// ---- One-time codes texted to the phone, or mailed ----
 //
 // Olo's phone service (olo-phone) finds a code in a text message as it
-// comes and asks every browser, through its host, which tabs are waiting
+// comes, or in the mail accounts set up while a page waits for one (a
+// minute from when its field comes up, or takes the focus), and asks
+// every browser, through its host, which tabs are waiting
 // for one ({code: {any}}): each frame says for itself (content.js's
 // codeWaiting), and this adds what Chrome knows of the tab. The service
 // chooses among all the browsers' tabs (the person's and each agent
@@ -566,6 +568,7 @@ async function codeTabs(only) {
             declared: !!w.declared,
             digits: w.digits ?? null,
             by_text: !!w.by_text,
+            by_mail: !!w.by_mail,
             by_app: !!w.by_app,
             age: w.age || 0,
           });
@@ -638,7 +641,8 @@ async function codeFromPasswords(tab, frameId, url, frames) {
   if (step && !step.otpDone) return;
   for (const o of passwordCodes.values()) if (o.tabId === tab.id && o.frameId === frameId && Date.now() - o.at < 2 * 60 * 1000) return;
   const frame = frames.find((f) => f.frame === frameId);
-  if (!frame || (frame.by_text && !frame.by_app)) return;
+  // (A page that says its code was texted or mailed waits for that one.)
+  if (!frame || ((frame.by_text || frame.by_mail) && !frame.by_app)) return;
   const entry = await logins(url);
   if (entry.state !== "logins") return;
   const withCode = entry.logins.filter((l) => l.otp);

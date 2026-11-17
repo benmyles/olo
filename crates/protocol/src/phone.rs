@@ -416,6 +416,10 @@ pub struct PhoneSettings {
     pub agent_screens: AgentCodes,
     /// Copy a code no tab is waiting for to the clipboard.
     pub copy_codes: bool,
+    /// Mail accounts (their addresses, `olo_mail::accounts`) not looked
+    /// in for codes; every other one set up is, while a page waits for a
+    /// code (Preferences ▸ Security ▸ Passwords).
+    pub unwatched_mail: Vec<String>,
     /// Show the phone's other notifications here too (an iPhone's, of
     /// every app: mail, calls, the rest), with their actions.
     pub others: bool,
@@ -426,7 +430,17 @@ pub struct PhoneSettings {
 
 impl Default for PhoneSettings {
     fn default() -> PhoneSettings {
-        PhoneSettings { notify: Notify::Messages, show_text: true, codes: true, codes_in_browser: true, agent_screens: AgentCodes::Give, copy_codes: false, others: true, calls: true }
+        PhoneSettings {
+            notify: Notify::Messages,
+            show_text: true,
+            codes: true,
+            codes_in_browser: true,
+            agent_screens: AgentCodes::Give,
+            copy_codes: false,
+            unwatched_mail: Vec::new(),
+            others: true,
+            calls: true,
+        }
     }
 }
 
@@ -588,9 +602,10 @@ pub struct Waiting {
     /// how many one-digit boxes there are).
     pub digits: Option<u32>,
     /// What the page says round the field: that the code was sent by
-    /// text message (or to a phone), or that it comes from an
+    /// text message (or to a phone), by mail, or that it comes from an
     /// authenticator app.
     pub by_text: bool,
+    pub by_mail: bool,
     pub by_app: bool,
     /// How long ago the field was first seen there, in seconds.
     pub age: u64,

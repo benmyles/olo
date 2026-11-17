@@ -14,8 +14,10 @@
 //! Connected, the panel says how the phone stands (the phone service's
 //! state file, followed by inotify, read off the UI thread) and has Olo's
 //! settings for it (`phone.json`, which the service follows): what is
-//! told of, and where one-time codes go. What is asked of the service is
-//! asked on a worker thread: the window never waits.
+//! told of. One-time codes are Security ▸ Passwords' ([`codes`]: which
+//! of the phone and the mail accounts are looked in, and where codes go),
+//! said from here. What is asked of the service is asked on a worker
+//! thread: the window never waits.
 
 use std::{
     sync::{
@@ -47,6 +49,8 @@ enum Job {
 struct Shared {
     state: PhoneState,
     settings: PhoneSettings,
+    /// The mail accounts set up (Integrations ▸ Mail), for [`codes`].
+    mail: Vec<olo_mail::Account>,
     /// The state file was read: something to show.
     known: bool,
     error: Option<String>,
@@ -67,23 +71,27 @@ fn link(proxy: olo_kit::Proxy) -> &'static Link {
         if cfg!(test) {
             let mut s = shared.lock().unwrap();
             (s.state, s.known) = (test_state(), true);
+            s.mail = vec![
+                olo_mail::Account { provider: olo_mail::Provider::Gmail, address: "ada@example.com".into() },
+                olo_mail::Account { provider: olo_mail::Provider::Fastmail, address: "ada@example.org".into() },
+            ];
             drop(s);
             return Link { shared, tx: channel().0 };
         }
         let read = {
             let (shared, proxy) = (shared.clone(), proxy.clone());
             move |_: &[std::path::PathBuf]| {
-                let (state, settings) = (PhoneState::load(), PhoneSettings::load());
+                let (state, settings, mail) = (PhoneState::load(), PhoneSettings::load(), olo_mail::accounts());
                 let mut s = shared.lock().unwrap();
-                if s.known && s.state == state && s.settings == settings {
+                if s.known && s.state == state && s.settings == settings && s.mail == mail {
                     return;
                 }
-                (s.state, s.settings, s.known) = (state, settings, true);
+                (s.state, s.settings, s.mail, s.known) = (state, settings, mail, true);
                 drop(s);
                 proxy.send(Msg::Redraw);
             }
         };
-        let paths = [PhoneState::path(), PhoneSettings::path()];
+        let paths = [PhoneState::path(), PhoneSettings::path(), olo_mail::accounts_path()];
         let first = read.clone();
         std::thread::spawn(move || first(&[]));
         if let Some(w) = olo_kit::watch::watch(paths, read) {
@@ -565,26 +573,13 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         });
         ui.add(BBox::new("Notifications").child(div().flex().flex_col().gap(px(m::SPACING)).py(px(m::SPACING * 0.5)).children(items)));
     });
+    // (One-time codes are set in Security ▸ Passwords, with the mail
+    // accounts': said here, a button away.)
     let right = ui.collect(|ui| {
         let items = ui.collect(|ui| {
-            ui.add(CheckBox::new("Find the one-time codes in messages", settings.codes).on_toggle(save(|s, on| s.codes = on)));
-            ui.enabled_if(settings.codes, |ui| {
-                ui.add(CheckBox::new("Offer a code in the browser tab waiting for it", settings.codes_in_browser).enabled(ui.enabled()).on_toggle(save(|s, on| s.codes_in_browser = on)));
-                let names: Vec<SharedString> = AgentCodes::ALL.iter().map(|a| SharedString::from(a.label())).collect();
-                let at = AgentCodes::ALL.iter().position(|a| *a == settings.agent_screens).unwrap_or(0);
-                ui.add(MenuField::new("phone-agent-codes", names, at).label("In an agent’s tab:").enabled(ui.enabled() && settings.codes_in_browser).on_change(move |i, _| {
-                    let mut s = link.shared.lock().unwrap().settings.clone();
-                    s.agent_screens = AgentCodes::ALL[*i];
-                    link.shared.lock().unwrap().settings = s.clone();
-                    let _ = link.tx.send(Job::Save(s));
-                }));
-                ui.note(match settings.agent_screens {
-                    AgentCodes::Give => "A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.",
-                    AgentCodes::Ask => "You’re asked each time a tab on an Agent Screen is the one waiting.",
-                    AgentCodes::Never => "Tabs on Agent Screens are never given a code.",
-                });
-                ui.add(CheckBox::new("Copy a code no tab is waiting for", settings.copy_codes).enabled(ui.enabled()).on_toggle(save(|s, on| s.copy_codes = on)));
-            });
+            let said = if settings.codes { "Codes texted to this phone are offered in the browser tab waiting for them." } else { "Codes texted to this phone aren’t looked for." };
+            ui.add(StringView::new(format!("{said} What’s looked in for codes, and where they go: Security ▸ Passwords.")).wrap(true));
+            ui.add(div().flex().flex_row().child(Button::new("Security…").on_click(|_, _| crate::prefs().handle_args(&["passwords".to_owned()]))));
         });
         ui.add(BBox::new("One-Time Codes").child(div().flex().flex_col().gap(px(m::SPACING)).py(px(m::SPACING * 0.5)).children(items)));
     });
@@ -592,4 +587,72 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     if let Some(e) = error {
         ui.label(e);
     }
+}
+
+/// One-time codes (Security ▸ Passwords; Ben, 2026-11-17: "move the
+/// phone prefs one-time codes stuff into prefs -> security -> passwords
+/// and change it up a bit so that you can choose what to monitor"): which
+/// of the phone set up and the mail accounts (Integrations ▸ Mail) are
+/// looked in, and where a code goes. Saved in `phone.json`, which the
+/// phone service, the one that gives codes to the browsers, follows.
+pub fn codes(ui: &mut Ui) {
+    let link = link(olo_kit::proxy());
+    let (state, settings, mail) = {
+        let s = link.shared.lock().unwrap();
+        (s.state.clone(), s.settings.clone(), s.mail.clone())
+    };
+    let save = move |s: PhoneSettings| {
+        link.shared.lock().unwrap().settings = s.clone();
+        let _ = link.tx.send(Job::Save(s));
+    };
+    let toggle = move |change: fn(&mut PhoneSettings, bool)| {
+        move |on: &bool, _: &mut WindowCx| {
+            let mut s = link.shared.lock().unwrap().settings.clone();
+            change(&mut s, *on);
+            save(s);
+        }
+    };
+    let phone = state.paired();
+    let watched = |a: &olo_mail::Account| !settings.unwatched_mail.contains(&a.address);
+    let any = (phone && settings.codes) || mail.iter().any(watched);
+    let items = ui.collect(|ui| {
+        ui.label("Look for codes in:");
+        if phone {
+            ui.add(CheckBox::new(format!("Text messages to “{}”", state.name), settings.codes).on_toggle(toggle(|s, on| s.codes = on)));
+        }
+        for account in &mail {
+            let address = account.address.clone();
+            ui.add(CheckBox::new(format!("Mail to {} ({})", account.address, account.provider.name()), watched(account)).on_toggle(move |on: &bool, _: &mut WindowCx| {
+                let mut s = link.shared.lock().unwrap().settings.clone();
+                s.unwatched_mail.retain(|a| *a != address);
+                if !*on {
+                    s.unwatched_mail.push(address.clone());
+                }
+                save(s);
+            }));
+        }
+        match (phone, mail.is_empty()) {
+            (false, true) => ui.note("No phone or mail account is set up: a phone in Phone, Gmail or Fastmail in Integrations ▸ Mail."),
+            (true, true) => ui.note("Gmail and Fastmail accounts, added in Integrations ▸ Mail, are looked in too."),
+            (false, false) => ui.note("Mail is read only while a page waits for a code, for up to a minute. A phone, set up in Phone, is looked in too."),
+            (true, false) => ui.note("Mail is read only while a page waits for a code, for up to a minute."),
+        }
+        ui.enabled_if(any, |ui| {
+            ui.add(CheckBox::new("Offer a code in the browser tab waiting for it", settings.codes_in_browser).enabled(ui.enabled()).on_toggle(toggle(|s, on| s.codes_in_browser = on)));
+            let names: Vec<SharedString> = AgentCodes::ALL.iter().map(|a| SharedString::from(a.label())).collect();
+            let at = AgentCodes::ALL.iter().position(|a| *a == settings.agent_screens).unwrap_or(0);
+            ui.add(MenuField::new("phone-agent-codes", names, at).label("In an agent’s tab:").enabled(ui.enabled() && settings.codes_in_browser).on_change(move |i, _| {
+                let mut s = link.shared.lock().unwrap().settings.clone();
+                s.agent_screens = AgentCodes::ALL[*i];
+                save(s);
+            }));
+            ui.note(match settings.agent_screens {
+                AgentCodes::Give => "A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.",
+                AgentCodes::Ask => "You’re asked each time a tab on an Agent Screen is the one waiting.",
+                AgentCodes::Never => "Tabs on Agent Screens are never given a code.",
+            });
+            ui.add(CheckBox::new("Copy a code no tab is waiting for", settings.copy_codes).enabled(ui.enabled()).on_toggle(toggle(|s, on| s.copy_codes = on)));
+        });
+    });
+    ui.add(BBox::new("One-Time Codes").child(div().flex().flex_col().gap(px(m::SPACING)).py(px(m::SPACING * 0.5)).children(items)));
 }

@@ -4,9 +4,10 @@
 //! (`security_keys`) and Face Unlock (`face_unlock`), each standing for
 //! the password wherever it's asked, all at once. Passwords: how Passwords
 //! keeps its secrets (syncing with 1Password, locking, `op` on the command
-//! line, the clipboard; Passwords follows these live) and how Olo's keyring
+//! line, the clipboard; Passwords follows these live), how Olo's keyring
 //! is going (olo-secrets, its state followed from the file it writes;
-//! Unlock when it's locked).
+//! Unlock when it's locked), and one-time codes: which of the phone and
+//! the mail accounts are looked in, and where codes go (`phone::codes`).
 
 use std::sync::{Arc, OnceLock};
 
@@ -93,11 +94,6 @@ fn passwords(ui: &mut Ui) {
         ui.check("Lock when the screen locks", p.lock_with_screen, |s, v| s.security.passwords.lock_with_screen = v);
     });
     clipboard(ui, &p);
-}
-
-/// Passwords' tab's second column.
-fn passwords_more(ui: &mut Ui) {
-    let p = ui.s.security.passwords.clone();
     ui.bbox("Passwords: Command line", |ui| {
         ui.check("Answer 1Password’s op command", p.op_cli, |s, v| s.security.passwords.op_cli = v);
         // (Served from the next login, or as soon as Passwords is opened:
@@ -107,6 +103,13 @@ fn passwords_more(ui: &mut Ui) {
             ssh_config_note(ui);
         }
     });
+}
+
+/// Passwords' tab's second column: one-time codes (where they're looked
+/// for, the phone's and the mail accounts', and where they go), and the
+/// keyring.
+fn passwords_more(ui: &mut Ui) {
+    crate::phone::codes(ui);
     ui.bbox("Programs’ Secrets", secrets_note);
 }
 

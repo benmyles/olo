@@ -356,6 +356,19 @@ fn ui_lint_settings_index() {
                 // (Each keyboard's check box, by the made-up keyboards'
                 // names: one, as every computer has it.)
                 let name = if group == "Swap Alt and the Windows Key" { "This Keyboard".to_owned() } else { name };
+                // (One-time codes' sources, the made-up phone's and mail
+                // accounts': one of each kind, as every computer has
+                // them; an account's own Remove, a row's, none.)
+                if group == "Mail" && name == "Remove" {
+                    continue;
+                }
+                let name = if group == "One-Time Codes" && name.starts_with("Text messages to ") {
+                    "Text Messages".to_owned()
+                } else if group == "One-Time Codes" && name.starts_with("Mail to ") {
+                    "Mail".to_owned()
+                } else {
+                    name
+                };
                 let row = (tab.clone().unwrap_or_default(), group, name, n.role.clone());
                 if !found.contains(&row) {
                     found.push(row);

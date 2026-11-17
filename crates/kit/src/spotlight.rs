@@ -23,7 +23,9 @@ const GOING: f32 = 0.45;
 /// Light the control called `name` in this window (a label's colon
 /// aside), in the box called `group` where given (one in no such box is
 /// taken if that's all there is: a box's name can be generic, "Display"
-/// for a display's). False if there's none.
+/// for a display's); with no control so called, the box itself (the
+/// index names a control that's this computer's own by its kind: "Mail"
+/// for "Mail to …"). False if there's neither.
 pub fn show(cx: &mut WindowCx, group: Option<&str>, name: &str) -> bool {
     let tree = crate::agent::tree(cx);
     let (group, name) = (group.filter(|g| !g.is_empty()), name.trim_end_matches(':').trim());
@@ -37,7 +39,10 @@ pub fn show(cx: &mut WindowCx, group: Option<&str>, name: &str) -> bool {
             tree.nodes.iter().filter(|o| o.role == "Group" && inside(n, o)).min_by(|a, b| (a.width * a.height).total_cmp(&(b.width * b.height))).and_then(|o| o.name.as_deref()) == Some(g)
         })
     };
-    let Some(n) = tree.nodes.iter().filter(named).find(|n| in_group(n)).or_else(|| tree.nodes.iter().find(named)) else { return false };
+    // (A setting the index names by its kind, its control named for this
+    // computer's own (a phone's, a mail account's): its box lit.)
+    let its_box = || group.and_then(|g| tree.nodes.iter().find(|o| o.role == "Group" && !o.offscreen && o.name.as_deref() == Some(g)));
+    let Some(n) = tree.nodes.iter().filter(named).find(|n| in_group(n)).or_else(|| tree.nodes.iter().find(named)).or_else(its_box) else { return false };
     let bounds = Bounds { origin: point(px(n.x), px(n.y)), size: size(px(n.width), px(n.height)) };
     cx.send_root::<crate::Frame>(FrameMessage::Light(bounds));
     true

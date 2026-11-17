@@ -842,11 +842,16 @@ fn after_commit(p: &Parts, out: &mut Vec<Finding>) {
             continue;
         }
         rows.push(r.max.y);
+        // (Only what's under it in its own column: the box it's in, the
+        // innermost, is as wide as what it acts on; a column beside it,
+        // its rows and boxes, isn't what follows it.)
+        let column = p.containers.iter().filter(|b| b.contains_rect(r) && !p.panes.contains(b)).min_by(|a, b| a.area().total_cmp(&b.area())).map(|b| b.x_range());
+        let in_column = |o: &Rect| column.is_none_or(|c| o.min.x < c.max && o.max.x > c.min);
         // (Not a scroll bar's own parts: the arrow at the foot of the
         // bar beside a form scrolled to its end is the scroller's, not
         // something that follows the form's Save.)
-        let under = all.iter().filter(|(o, ..)| o.min.y > r.max.y && !bars.contains(o)).map(|(o, name, ..)| (o.min.y - r.max.y, name.clone(), *o));
-        let boxes = p.containers.iter().filter(|b| b.min.y > r.max.y && !p.panes.contains(b)).map(|b| (b.min.y - r.max.y, "a box".to_owned(), *b));
+        let under = all.iter().filter(|(o, ..)| o.min.y > r.max.y && !bars.contains(o) && in_column(o)).map(|(o, name, ..)| (o.min.y - r.max.y, name.clone(), *o));
+        let boxes = p.containers.iter().filter(|b| b.min.y > r.max.y && !p.panes.contains(b) && in_column(b)).map(|b| (b.min.y - r.max.y, "a box".to_owned(), *b));
         let Some((gap, name, at)) = under.chain(boxes).min_by(|a, b| a.0.total_cmp(&b.0)) else { continue };
         if gap < crate::metrics::SECTION - NEAR_EDGE {
             push(
@@ -1290,6 +1295,20 @@ mod tests {
         assert_eq!(found(&p), 1);
         let p = Parts { controls: vec![button("Save", 20.0, "[save]"), under("Scroll Down")], ..Parts::default() };
         assert_eq!(found(&p), 0);
+        // Two boxes side by side (Preferences ▸ Integrations): what's in
+        // the other column, just under the Save's row, doesn't follow it;
+        // what's under it in its own box's column does.
+        let (left, right) = (Rect::from_min_max(pos2(0.0, 0.0), pos2(195.0, 120.0)), Rect::from_min_max(pos2(205.0, 0.0), pos2(400.0, 52.0)));
+        let save = button("Save", 300.0, "[save]");
+        let beside = |x: f32| {
+            let mut c = button("Remove", x, "[remove]");
+            c.rect = Rect::from_min_max(pos2(x, 48.0), pos2(x + 80.0, 72.0));
+            c
+        };
+        let p = Parts { controls: vec![save.clone(), beside(100.0)], containers: vec![left, right], ..Parts::default() };
+        assert_eq!(found(&p), 0);
+        let p = Parts { controls: vec![save, beside(220.0)], containers: vec![left, right], ..Parts::default() };
+        assert_eq!(found(&p), 1);
     }
 
     /// Text a few points under a button is crowded; with a rule drawn

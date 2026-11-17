@@ -173,7 +173,16 @@ fn journal_stderr(program: &str) {
         return;
     }
     // (`OLO_CRASH_JOURNAL`: another socket, for the tests.)
-    let socket = std::env::var_os("OLO_CRASH_JOURNAL").map_or_else(|| PathBuf::from(JOURNAL), PathBuf::from);
+    let test_socket = std::env::var_os("OLO_CRASH_JOURNAL");
+    // A program a test started (cargo's environment, which a test's
+    // children have) keeps out of the person's journal: there its lines
+    // read as the real program's (olo-logs, Olo Doctor; 2026-11-17, a
+    // test's phone service, its stderr discarded, said "can't register
+    // with BlueZ" and named the stand-in's phone among the real one's).
+    if test_socket.is_none() && std::env::var_os("CARGO_MANIFEST_DIR").is_some() {
+        return;
+    }
+    let socket = test_socket.map_or_else(|| PathBuf::from(JOURNAL), PathBuf::from);
     let Ok(mut s) = UnixStream::connect(socket) else { return };
     // The stream's header: its name, no unit, info unless a line starts
     // "<N>" (a crash's: error), and not on to syslog, the kernel's log or

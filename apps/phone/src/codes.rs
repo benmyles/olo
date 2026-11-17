@@ -1,6 +1,6 @@
-//! One-time codes in text messages: finding one in what a message says
-//! ([`find`]), and choosing which browser tab, of those waiting for a
-//! code, it's for ([`score`], [`sure`]).
+//! One-time codes in text messages and in mail: finding one in what a
+//! message says ([`find`], [`find_mail`]), and choosing which browser tab,
+//! of those waiting for a code, it's for ([`score`], [`sure`]).
 //!
 //! Finding is a heuristic, written for the messages services send ("Your
 //! Acme code is 482913", "G-482913 is your verification code", "482913
@@ -22,8 +22,11 @@ pub struct Code {
     /// The site the message binds it to, if it does (a last line
     /// "@acme.example #482913"): it's for that site and no other.
     pub domain: Option<String>,
-    /// Who the message says it's from ("Acme Bank"), if it says.
+    /// Who the message says it's from ("Acme Bank"), if it says; a mail
+    /// message, else the name it's sent under ("GitHub").
     pub service: Option<String>,
+    /// Found in a mail message (else in a text message).
+    pub mail: bool,
 }
 
 /// The most of a message that's read (codes come in short ones).
@@ -452,7 +455,7 @@ pub fn find(message: &str) -> Option<Code> {
             && (4..=10).contains(&code.len())
             && code.chars().all(|c| c.is_ascii_alphanumeric())
         {
-            return Some(Code { code: code.to_owned(), domain: Some(site.to_ascii_lowercase()), service });
+            return Some(Code { code: code.to_owned(), domain: Some(site.to_ascii_lowercase()), service, mail: false });
         }
     }
     let all = sentences(&text);
@@ -487,17 +490,48 @@ pub fn find(message: &str) -> Option<Code> {
         }
     }
     if let Some((_, _, code)) = best {
-        return Some(Code { code, domain: None, service });
+        return Some(Code { code, domain: None, service, mail: false });
     }
     // Said in one sentence, the number in another ("Here is your
     // verification code.\n482913"): the one number there is.
     if has(&text, 0, text.len(), STRONG) && !has(&text, 0, text.len(), NOT) {
         let mut numbers = candidates(&text, &plain, 0, text.len());
         if numbers.len() == 1 {
-            return Some(Code { code: numbers.remove(0).code, domain: None, service });
+            return Some(Code { code: numbers.remove(0).code, domain: None, service, mail: false });
+        }
+        // Or shown on a line of its own (mail's way: "Your verification
+        // code", then the code in large type), whatever other numbers are
+        // about it (a footer's year, an address): the one number alone.
+        let mut alone: Vec<Candidate> = all
+            .iter()
+            .filter_map(|&(from, to)| {
+                let start = (from..to).find(|&i| !text[i].is_whitespace())?;
+                let end = (from..to).rev().find(|&i| !text[i].is_whitespace())? + 1;
+                let mut c = candidates(&text, &plain, start, end);
+                (c.len() == 1 && c[0].start == start && c[0].end == end).then(|| c.remove(0))
+            })
+            .collect();
+        if alone.len() == 1 {
+            return Some(Code { code: alone.remove(0).code, domain: None, service, mail: false });
         }
     }
     None
+}
+
+/// The code in a mail message: in its subject ("482913 is your Acme
+/// code"), else in its words, read after the subject (which may be what
+/// says it's a code: "Your verification code", then the number alone).
+/// Who it's from: who the message says, else `sender`, the name it's sent
+/// under ("GitHub").
+pub fn find_mail(subject: &str, text: &str, sender: &str) -> Option<Code> {
+    let mut code = find(subject).or_else(|| find(&format!("{}.\n{text}", subject.trim_end_matches(['.', ':', ' ']))))?;
+    code.mail = true;
+    // (A site bound to is a text message's way: "@site #code" at its end.)
+    code.domain = None;
+    if code.service.is_none() && !sender.trim().is_empty() {
+        code.service = Some(sender.trim().to_owned());
+    }
+    Some(code)
 }
 
 /// "482913 is your code", "482913 ist Ihr Code": the number, then what
@@ -704,9 +738,9 @@ pub fn score(code: &Code, tab: &Waiting) -> Option<i32> {
     }
     let named = names(code, tab);
     // A page that says its code comes from an app, and nothing of a text
-    // message, is waiting for another code: unless the message is bound
-    // to its site or names it.
-    if tab.by_app && !tab.by_text && !named && code.domain.is_none() {
+    // message or mail, is waiting for another code: unless the message is
+    // bound to its site or names it.
+    if tab.by_app && !tab.by_text && !tab.by_mail && !named && code.domain.is_none() {
         return None;
     }
     if named {
@@ -724,7 +758,8 @@ pub fn score(code: &Code, tab: &Waiting) -> Option<i32> {
     if tab.declared {
         s += 10;
     }
-    if tab.by_text {
+    // (The page says the code comes the way this one came.)
+    if (tab.by_text && !code.mail) || (tab.by_mail && code.mail) {
         s += 20;
     }
     s += match tab.age {
@@ -743,7 +778,7 @@ pub fn score(code: &Code, tab: &Waiting) -> Option<i32> {
 pub fn sure(code: &Code, tab: &Waiting) -> bool {
     match &code.domain {
         Some(site) => under(&tab.host.to_lowercase(), site),
-        None => names(code, tab) || (tab.age <= 600 && (tab.by_text || tab.focused) && !(tab.by_app && !tab.by_text)),
+        None => names(code, tab) || (tab.age <= 600 && (tab.by_text || tab.by_mail || tab.focused) && !(tab.by_app && !tab.by_text && !tab.by_mail)),
     }
 }
 
@@ -931,5 +966,50 @@ mod tests {
         // (A name any service has tells nothing.)
         let generic = find("Your Security Team code is 482913").unwrap();
         assert!(!sure(&generic, &Waiting { age: 5000, ..tab("security.example", "Team sign in") }));
+    }
+
+    /// Codes in mail as services send it (its words as `olo_mail` reads
+    /// them: an HTML message's blocks are lines), and mail that has
+    /// numbers and no code.
+    #[test]
+    fn codes_in_mail() {
+        let mail = |subject: &str, text: &str, sender: &str| find_mail(subject, text, sender).map(|c| (c.code, c.service.unwrap_or_default()));
+        let device = "Hey there!\nA sign in attempt requires further verification because we did not recognize your device. To complete the sign in, enter the verification code on the unrecognized device.\nDevice: Chrome on Linux\nVerification code: 482913\nIf you did not attempt to sign in to your account, your password may be compromised. Visit https://github.com/settings/security to create a new, strong password for your GitHub account.\nThanks,\nThe GitHub Team";
+        assert_eq!(mail("[GitHub] Please verify your device", device, "GitHub").map(|c| c.0), Some("482913".into()));
+        // The code in the subject.
+        assert_eq!(
+            mail("482913 is your Acme verification code", "Hi,\nSomeone is signing in to Acme. If it wasn't you, ignore this message.\n© 2026 Acme, Inc. 1 Main St, Springfield", "Acme"),
+            Some(("482913".into(), "Acme".into()))
+        );
+        // The subject says it's a code; the body is the number alone, and
+        // a footer with a year and an address.
+        assert_eq!(mail("Your Acme verification code", "Acme\n4829135\nThis code expires in 10 minutes.\n© 2026 Acme, Inc.", "Acme").map(|c| c.0), Some("4829135".into()));
+        let otp = "Verify your new account\nTo verify your email address, please use the following One Time Password (OTP):\n482913\nDo not share this OTP with anyone. We take your account security very seriously. Customer Service will never ask you to disclose or verify your password, OTP, credit card, or banking account number.\nThank you!";
+        assert_eq!(mail("Verify your new account", otp, "Shop").map(|c| c.0), Some("482913".into()));
+        assert_eq!(mail("Security code", "Please use the following security code for the account a***@example.com.\nSecurity code: 4829135\nIf you don't recognize the account, you can remove your email address from that account.\nThanks,\nThe account team", "Account Team").map(|c| c.0), Some("4829135".into()));
+        assert_eq!(
+            mail(
+                "Your sign-in code",
+                "Your confirmation code is below. Enter it in your open browser window and we'll help you get signed in.\n482-913\nIf you didn't request this email, there's nothing to worry about.",
+                "Chat"
+            )
+            .map(|c| c.0),
+            Some("482913".into())
+        );
+        // A sender's name when the message names no one.
+        assert_eq!(mail("Sign in", "Your code is 482913", "GitHub").map(|c| c.1), Some("GitHub".into()));
+        // Not codes.
+        assert_eq!(mail("Your weekly digest", "You have 12 new notifications.\nOrder 48291375 has shipped.\nUse code SAVE20 for 20% off.", "Shop"), None);
+        assert_eq!(mail("Invoice 48291375", "Thanks for your payment of $4829.13 on 2026-11-17. Questions? Call 555-0100-1234.", "Billing"), None);
+        assert_eq!(mail("Lunch?", "Are you free at 1230 on Friday? Room 4829.", "Mira"), None);
+        // Scored as mail: a page that says it sent a code by mail is
+        // likelier for one; one that says an authenticator app (and
+        // nothing of mail) isn't for it.
+        let c = find_mail("Your code", "Your Acme code is 482913", "Acme").unwrap();
+        let by_mail = Waiting { by_mail: true, ..tab("forum.example", "Two-step sign in") };
+        let by_text = Waiting { by_text: true, ..tab("forum.example", "Two-step sign in") };
+        assert!(score(&c, &by_mail) > score(&c, &by_text));
+        assert_eq!(score(&c, &Waiting { by_app: true, ..tab("forum.example", "Two-step sign in") }), None);
+        assert!(sure(&c, &Waiting { by_mail: true, age: 20, ..tab("shop.example", "Checkout") }));
     }
 }
