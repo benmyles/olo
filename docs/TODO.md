@@ -55,6 +55,25 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Beta, and a skill that adds a computer's hardware** (Ben,
+  2026-11-16: "on the website, and in the readme, let's warn that it is
+  beta quality and only tested on limited hardware configurations. also
+  add an agent skill in this repo that a new olo user can call that asks
+  the agent to analyze their hardware and add first-class support for it
+  in olo like we have done with the thinkpad p1 gen9. and then mention
+  how to use this skill in both the readme, and the install section of
+  the website"). The warning in both places; the skill in the repository
+  (what the ThinkPad P1 Gen 9's support was made of, as steps: reading
+  the hardware, what Olo keeps per machine, how each is tested and
+  measured); both say how to run it.
+- **A script that builds and deploys the website** (Ben, 2026-11-16:
+  "the website is hosted on cloudflare pages i.e.
+  https://dash.cloudflare.com/f478a9adcc0580847cb1e3d5a2189185/workers/services/view/olo-desktop/production
+  please add a script for building and deploying a website release to
+  there -- it should prompt interactively if i need to install anything
+  and offer to install for me and same with logging in / auth"). One
+  command: builds `website/`, deploys it to the `olo-desktop` project,
+  asking before installing what it needs and before signing in.
 - **The website: a click on a screenshot zooms it** (Ben, 2026-11-16:
   "for the website, make it so that clicking on one of the screenshots
   zooms it"). olo-desktop.com (`website/`): each screenshot opens large
