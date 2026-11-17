@@ -2776,6 +2776,16 @@ it.
   a band, the arrows, Page Up and Down, Home and End (⇧ grows), ⌘A,
   and typing a name (`type_select`) select (`on_select`); a press on a
   selected row keeps the selection until the release (for dragging);
+  **what's dragged over a list**: the view's `drop_over` asks the model
+  what's under the point (`ListModel::row_under(at)`: None outside the
+  rows, `Some(None)` over them on no row, the row) and says where it
+  would go before it says the list (`ListModel::mark_drop`: a row
+  framed, or the rows outlined), which the list draws over its rows
+  with its band, at every scale (Tracker's list view: onto a folder's
+  row, or into the folder shown; it took no drops at all before
+  2026-11-17). Draw such a mark through the list, not as an element of
+  your own over it: one laid over the list from outside showed at 1×
+  and 2× and not at 1.25×, 1.5× or 1.75×;
   double click or Return opens (`on_open`; **a double click opens at
   its release, where it wasn't dragged**: the second press of two quick
   ones that moves is a drag or a band, as any press is. It opened at

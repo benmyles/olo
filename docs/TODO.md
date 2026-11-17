@@ -34,10 +34,29 @@ something nobody here has is in "Blocked", with what it waits for.
   the code and keep looking for up to 60s until one arrives from
   phone/email and then offer to fill it.").
 
-- **Tracker's list view takes no drops** (found 2026-11-17, trying
-  drags: a file dragged onto a folder's row there, or into the window
-  from another, isn't taken; `FolderWin::drop_over` answers none for
-  `ViewMode::List`). The icon and column views take both.
+- **An element laid over a kit list from outside doesn't show at
+  fractional scales** (found 2026-11-17: a canvas, absolute over a
+  `ColumnListView` in the same box, drew its frame at 1× and 2× and
+  nothing at 1.25×, 1.5× and 1.75×, while the list's own overlay, its
+  band, shows at all of them). Why isn't known yet; Tracker's drop mark
+  goes through the list (`ListModel::mark_drop`) instead.
+
+- **Tracker: Copy (and Paste?) in a file's right-click menu does
+  nothing, though the shortcut works** (Ben, 2026-11-17: "check we have
+  a bugfix todo for copy (and maybe paste?) not working via the right
+  click menu on a file in tracker even though it did work via
+  shortcut").
+
+- **Deskbar: the red dot alone sits where the blue one does** (Ben,
+  2026-11-17, with a picture of his Deskbar: "if there is no blue dot
+  then the red dot should still be right aligned ie where the blue dot
+  is right now it is left indented").
+
+- **The upgrader looks at GitHub's releases too, and asks which** (Ben,
+  2026-11-17: "olo's upgrader should look at github releases as well as
+  the local build directory when offering an upgrade and if more than
+  one option is found when clicking upgrade ask the user which one they
+  want to upgrade to").
 
 - **Agent Screens: what real agents tripped on, found in their
   histories and fixed** (Ben, 2026-11-17: "go through the agent screens
@@ -5903,6 +5922,16 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Tracker's list view takes no drops**~~ (found 2026-11-17, done
+  the same day). A file dragged onto a folder's row in the list view
+  goes into it (the row framed while it's over it, the folder springing
+  open if it rests there), and one dragged over the rest of the rows
+  goes into the folder shown (the rows outlined), as in the icon and
+  column views. Tried at 1×, 1.25×, 1.5×, 1.75× and 2×: onto a folder's
+  row, the file moved and the frame showed each time. Dragging in from
+  another window wasn't tried (a test session's Tracker windows share
+  one frame as tabs); it is the same step as the icon view's.
 
 - ~~**The file panel remembers, per app, where it was and how it was
   sorted**~~ (Ben, 2026-11-17: "it should remember the last location

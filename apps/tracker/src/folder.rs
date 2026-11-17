@@ -1181,6 +1181,10 @@ impl FolderWin {
             let l = items::layout_item(name, e.label(), items::Look::Mini, true, e.is_link);
             Some((row, r.element_within(cx, &l, Point::default(), Some(cell.size.width - px(1.0)))))
         });
+        // What something dragged over it would go into: a folder's row
+        // framed, or the rows outlined (the folder shown), as the other
+        // views show it; drawn by the list, over its rows.
+        self.list_model.mark_drop(self.dropping.map(|(_, on)| on));
         let list = ColumnListView::new(cx, "list", &self.list_model, cols, self.entries.len(), |f: &FolderWin, cell, g| {
             let Some(e) = f.entries.get(cell.row) else { return };
             let editing = f.editing.as_ref().is_some_and(|r| r.path == e.path);
@@ -1351,6 +1355,24 @@ impl FolderWin {
             return None;
         }
         let over = self.icon_hit(at).map(|i| (i, &self.entries[i], self.list.selected.contains(&i)));
+        let (accept, on) = items::item_drop(cx, self.id, o, over, Some(&self.current_dir()));
+        let spring_to = on.filter(|_| accept.is_some()).map(|i| self.entries[i].path.clone());
+        self.dropping = accept.is_some().then_some((0, on));
+        self.rest_on(spring_to.as_deref(), cx);
+        accept
+    }
+
+    /// What's dragged over the list view at `at`: onto a folder's row, or
+    /// (anywhere else over the rows) into the folder shown, as the icon
+    /// view takes it. (The list view took no drops at all: a file dragged
+    /// onto a folder there, or in from another window, was refused.)
+    fn list_drop_over(&mut self, o: &DropOffer, at: Point<Pixels>, cx: &mut Cx<Self>) -> Option<DropAccept> {
+        let Some(row) = self.list_model.row_under(at) else {
+            self.dropping = None;
+            self.rest_on(None, cx);
+            return None;
+        };
+        let over = row.and_then(|i| self.entries.get(i).map(|e| (i, e, self.list.selected.contains(&i))));
         let (accept, on) = items::item_drop(cx, self.id, o, over, Some(&self.current_dir()));
         let spring_to = on.filter(|_| accept.is_some()).map(|i| self.entries[i].path.clone());
         self.dropping = accept.is_some().then_some((0, on));
@@ -1745,12 +1767,13 @@ impl View for FolderWin {
     fn drop_over(&mut self, offer: Option<&DropOffer>, at: Point<Pixels>, cx: &mut Cx<Self>) -> Option<DropAccept> {
         let was = self.dropping;
         let accept = match (offer, self.view) {
-            (None, _) | (_, ViewMode::List) => {
+            (None, _) => {
                 self.dropping = None;
                 self.rest_on(None, cx);
                 None
             }
             (Some(o), ViewMode::Columns) => self.columns_drop_over(o, at, cx),
+            (Some(o), ViewMode::List) if self.error.is_none() => self.list_drop_over(o, at, cx),
             (Some(o), _) if self.error.is_none() => self.icon_drop_over(o, at, cx),
             _ => None,
         };

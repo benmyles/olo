@@ -92,6 +92,9 @@ struct Model {
     order: Vec<SharedString>,
     /// The order and widths kept for the list's id were read.
     arranged: bool,
+    /// Where something dragged over the list would go
+    /// ([`ListModel::mark_drop`]).
+    mark: Option<Option<usize>>,
     typing: TypeSelect,
     drag: Option<Drag>,
     /// How many rows it had and how tall each was, as last shown.
@@ -128,6 +131,7 @@ impl ListModel {
             widths: HashMap::new(),
             order: Vec::new(),
             arranged: false,
+            mark: None,
             typing: TypeSelect::default(),
             drag: None,
             rows: 0,
@@ -203,6 +207,40 @@ impl ListModel {
     /// app's arrangement.
     pub fn set_column_order(&self, columns: &[Column], order: &[usize]) {
         self.0.borrow_mut().order = order.iter().filter_map(|&c| columns.get(c)).map(|c| c.title.clone()).collect();
+    }
+
+    /// Show where something dragged over the list would go: `Some(row)`
+    /// into that row (framed), `Some(None)` into what the list shows (its
+    /// rows outlined), None nowhere. Said by the view before it says the
+    /// list (in its `body`, from what its `drop_over` found with
+    /// [`ListModel::row_under`]); the list draws it over its rows, with
+    /// its band.
+    pub fn mark_drop(&self, mark: Option<Option<usize>>) {
+        self.0.borrow_mut().mark = mark;
+    }
+
+    /// Where the rows show in the window, as the list was last laid
+    /// out (under the header, beside the scroll bar).
+    pub fn rows_bounds(&self) -> Bounds<Pixels> {
+        self.0.borrow().scroll.bounds()
+    }
+
+    /// What of the rows is at `at` (in the window), as the list was last
+    /// laid out: None outside where the rows show; `Some(None)` there
+    /// but on no row (below the last); the row. For what's dragged over
+    /// a list (onto a row, or into what the list shows).
+    pub fn row_under(&self, at: Point<Pixels>) -> Option<Option<usize>> {
+        let body = self.rows_bounds();
+        body.contains(&at).then(|| self.row_at(at, body))
+    }
+
+    /// Where row `row` is in the window, as the list was last laid out
+    /// and is scrolled now (it may be out of sight: clip to
+    /// [`ListModel::rows_bounds`]).
+    pub fn row_bounds(&self, row: usize) -> Bounds<Pixels> {
+        let m = self.0.borrow();
+        let body = m.scroll.bounds();
+        Bounds { origin: point(body.left(), body.top() + m.scroll.offset().y + px(row as f32 * m.row_height)), size: size(body.size.width, px(m.row_height)) }
     }
 
     /// Gives the list the keyboard.
@@ -747,8 +785,24 @@ impl<V: View> IntoElement for ColumnListView<V> {
                 let p = theme::palette();
                 g.with_content_mask(Some(ContentMask { bounds: b }), |g| style::selection_band(g, r, &p));
             }
+            // Where what's dragged over the list would go: a row framed,
+            // or the rows outlined.
+            if let Some(mark) = m.mark {
+                let ink = style::c(theme::palette().keyboard_navigation);
+                match mark {
+                    Some(row) => {
+                        let r = Bounds { origin: point(b.left(), b.top() + m.scroll.offset().y + px(row as f32 * m.row_height)), size: size(b.size.width, px(m.row_height)) };
+                        g.with_content_mask(Some(ContentMask { bounds: b }), |g| style::frame_rect(g, r, ink));
+                    }
+                    None => {
+                        style::frame_rect(g, b, ink);
+                        let inner = style::inset(g, b, 1.0);
+                        style::frame_rect(g, inner, ink);
+                    }
+                }
+            }
         })
-        .paint_key(0)
+        .paint_key(style::key(model.0.borrow().mark))
         .absolute()
         .inset_0()
         .on_any_mouse_down(move |e, cx| rows_pressed(&down_model, &down_handlers, e, cx))

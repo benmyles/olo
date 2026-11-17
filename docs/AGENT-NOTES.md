@@ -204,6 +204,14 @@ Each note: what to do, then why (what happened), then how to apply it.
   `udisks_fake`, `dnf_fake`) against an `olo-bus` of your own. The
   phone service's had failed since the day its step went stale
   (2026-11-17), unseen.
+- **A drag held a second over a folder springs it open** (Tracker): a
+  picture taken "mid-drag" after a long hold is of the new window, and
+  everything after it lands on the wrong one. Hold under half a second
+  for a picture; and a second Tracker window in a test session is a tab
+  in the first's frame (same place, the last one in front), so rows
+  read from the tree by title may be of a window that isn't showing:
+  one window a test, started fresh, its view set
+  (`{"invoke":"view-list"}`) after every start.
 - **Terminal is one program per session, a test session too**: a
   second `tsession run NAME olo-terminal` hands its window to the one
   running and exits, so the PID `run` printed is gone and the window is
