@@ -545,7 +545,12 @@ its key differs, or it asked to be. So:
   shows a placeholder for and asks with a message.
 - Draw what shows: `g.visible_bounds()` is what can be seen of the
   drawing (it's then drawn again as that changes). A tall drawing in
-  a scroll view must not draw what's off screen.
+  a scroll view must not draw what's off screen. In a scroll view it
+  is the band kept painted round what shows (some hundreds of points
+  either side, moved in steps, so that scrolling doesn't paint every
+  frame): draw by it, but don't take its top for where the view is
+  scrolled to. That is the `ScrollHandle`'s offset (a deck's "page at
+  the top" read from the band was a page behind).
 - `g.paint_again_within(seconds)` for what moves with time (a clock's
   hand, a spinner): asked for per drawing, so nothing else runs.
   Never a timer that invalidates the view to animate.

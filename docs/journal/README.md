@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### Viewer and Quick Look: a PowerPoint's slides, drawn
+
+*08:37* — A presentation showed as a list of Slide 1 to Slide 4 headings. Now each slide is drawn as it looks (its shapes, text, pictures, tables, its master's and theme's), natively, one under another, for the pixels it covers. (A deck made for the tests.)
+
+![Viewer and Quick Look: a PowerPoint's slides, drawn](2026-11-17/083734-viewer-and-quick-look-a-powerpoint-s-slides-draw.png)
+
 ### Passwords: a page's one-time code QR
 
 *07:27* — A page setting up two-step sign-in shows a QR code; Passwords' Chrome extension notices it, Passwords reads it and asks whether to add it to the site's login (here: replace the one it has).

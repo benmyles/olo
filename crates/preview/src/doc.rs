@@ -524,27 +524,8 @@ pub fn office(path: &Path, ext: &str) -> Result<Update, String> {
     }
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let mut z = zip::ZipArchive::new(file).map_err(|_| unreadable())?;
-    let (blocks, kind) = match ext {
-        "pptx" => {
-            let mut slides: Vec<(u32, String)> = (0..z.len())
-                .filter_map(|i| z.by_index(i).ok().and_then(|f| f.name().ok().map(|n| n.into_owned())))
-                .filter_map(|n| {
-                    let num = n.strip_prefix("ppt/slides/slide")?.strip_suffix(".xml")?.parse().ok()?;
-                    Some((num, n))
-                })
-                .collect();
-            slides.sort();
-            let mut blocks = Vec::new();
-            for (num, name) in slides {
-                blocks.push(Block::Heading(2, vec![Span { text: format!("Slide {num}"), ..Default::default() }]));
-                if let Some(x) = zip_text(&mut z, &name) {
-                    blocks.extend(pptx_slide(&x));
-                }
-            }
-            (blocks, "PowerPoint presentation")
-        }
-        _ => (odf(&zip_text(&mut z, "content.xml").ok_or_else(unreadable)?, true), "OpenDocument presentation"),
-    };
+    // (A PowerPoint presentation is drawn, slide by slide: `pptx`.)
+    let (blocks, kind) = (odf(&zip_text(&mut z, "content.xml").ok_or_else(unreadable)?, true), "OpenDocument presentation");
     Ok(Update::Body(Body::Rich { blocks, note: kind.into() }))
 }
 
@@ -631,36 +612,6 @@ pub fn rich(doc: olo_richtext::Document) -> Vec<Block> {
     }
     if quoted {
         blocks.push(Block::QuoteEnd);
-    }
-    blocks
-}
-
-fn pptx_slide(xml: &str) -> Vec<Block> {
-    let mut blocks = Vec::new();
-    let mut spans: Vec<Span> = Vec::new();
-    let mut style = Span::default();
-    let mut in_text = false;
-    for ev in xml_events(xml) {
-        match ev {
-            X::Start(n, a) => match n.as_str() {
-                "p" => spans.clear(),
-                "rPr" => {
-                    style.bold = attr(&a, "b") == Some("1");
-                    style.italic = attr(&a, "i") == Some("1");
-                }
-                "r" => style = Span::default(),
-                "t" => in_text = true,
-                "br" => spans.push(Span { text: "\n".into(), ..Default::default() }),
-                _ => {}
-            },
-            X::End(n) => match n.as_str() {
-                "t" => in_text = false,
-                "p" if !spans.is_empty() => blocks.push(Block::Para(std::mem::take(&mut spans))),
-                _ => {}
-            },
-            X::Text(t) if in_text => spans.push(Span { text: t, ..style.clone() }),
-            X::Text(_) => {}
-        }
     }
     blocks
 }

@@ -41,7 +41,7 @@ pub fn load(path: &Path, cancel: &Arc<AtomicBool>, send: Send) {
     let page_size = pages[0].render_dimensions();
     let (want, wanted) = mpsc::channel::<usize>();
     let note = format!("PDF document, {n} page{}", if n == 1 { "" } else { "s" });
-    send(Update::Body(Body::Pages { pages: vec![None; n], page_size, note, want }));
+    send(Update::Body(Body::Pages { pages: vec![None; n], page_size, note, want, every: false, words: Vec::new(), px: Default::default() }));
 
     let cache = RenderCache::new();
     let settings = InterpreterSettings::default();

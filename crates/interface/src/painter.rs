@@ -264,7 +264,9 @@ impl<'a> Painter<'a> {
     /// What can be seen of the view being painted, in the window's
     /// coordinates: for a view that draws only what shows (a long text's
     /// lines in view). Asking makes the view drawn again whenever that
-    /// changes, so ask only to draw less.
+    /// changes, so ask only to draw less. (In a scroll view it is the
+    /// band kept painted round what shows, more than the view: where
+    /// it's scrolled to is its handle's offset.)
     pub fn visible_bounds(&mut self) -> Bounds<Pixels> {
         self.notes.by_visible = true;
         self.visible.intersect(&self.content_mask().bounds)

@@ -17,12 +17,7 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Quick Look of a PowerPoint shows only its slides' numbers** (Ben,
-  2026-11-16: "pptx doesn't render properly in the viewer, when i hit
-  space on /home/ben/Documents/ShiftUp-JackHenry-AI-Architecture.pptx
-  it just shows" a list of "Slide 1" to "Slide 4" headings, nothing of
-  what's on them). Each slide drawn as it looks (its shapes, text,
-  pictures, theme), natively, in Quick Look and in Viewer.
+(Nothing: what is left is in "Done, waiting for Ben" and "Blocked".)
 
 ## Done, waiting for Ben to try or confirm
 
@@ -5874,6 +5869,34 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Quick Look of a PowerPoint shows only its slides' numbers**~~
+  (Ben, 2026-11-16: "pptx doesn't render properly in the viewer, when
+  i hit space on" a presentation "it just shows" a list of "Slide 1" to
+  "Slide 4" headings; done 2026-11-17). Its slides were pictures, and
+  only text was read. Now each slide is drawn as it looks, natively
+  (Olo's own reader of the format, written as SVG for resvg: shapes,
+  text with what its layout, master and theme give it, pictures,
+  tables, connectors and arrowheads), one under another in Quick Look
+  and in the Viewer, each for the pixels it covers (the same at 1×,
+  1.25×, 1.5×, 1.75× and 2×, to the pixel). Ben's own deck: each slide
+  within 1.7 of 255 of the picture it holds scaled down, 160 to 230 ms
+  a slide on the loader's thread. At rest 0.0% of a core, 0 wakeups a
+  second; a scroll's slowest frame 1.0 ms. Go ▸ Next Page and the page
+  keys work for it, agents read each slide's words, and it comes back
+  at its slide after an upgrade. Not drawn: charts and SmartArt
+  without a picture of their own in the file, shadows and other
+  effects. (HACKING, "Presentations".)
+
+- ~~**A Viewer window comes back at its document's size, not its
+  own**~~ (found 2026-11-17, trying the above over a reload in place;
+  done the same day). A picture's, a text's or a deck's window kept
+  its place over a reload but went back to the size the Viewer gives a
+  newly opened document. Its size is kept with its page now.
+
+- ~~**`scroll-check --pid` without `--at` fails**~~ (found and done
+  2026-11-17: it had no place to point at; the middle of that
+  program's first window now).
 
 - ~~**A new window's glow takes 6 to 11 ms to draw**~~ (app_server's
   log, 2026-11-16; done 2026-11-17). It was the halo's band across the

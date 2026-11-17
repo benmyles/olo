@@ -302,6 +302,16 @@ Each note: what to do, then why (what happened), then how to apply it.
   something that depends on torch can replace the torch you installed
   (spandrel's moved 2.11+cu128 to 2.15+cu132): look at `torch.__version__`
   after.
+- **A program started while another has the keyboard doesn't take it**
+  (app_server's rule: a window comes forward for input in its own
+  program, not by itself). In a tsession, `tsession run` a second
+  program and `tsession key` still types into the first: activate the
+  new window (`tsession ipc NAME '{"type":"activate","id":N}'`, the id
+  from `list_windows`), or end the first, before sending keys.
+- **A kit program's tree lists what was painted, not only what shows**:
+  a scrolled drawing's nodes outside the view are there too, with a
+  `y` above or below it (the scroll view's band). Filter by the
+  window's height before saying what's on screen.
 
 ## Measuring
 

@@ -255,6 +255,12 @@ struct Shown {
     presenting: bool,
     #[serde(default)]
     before: Option<(f32, f32)>,
+    /// The size its window had (what it shows, in points), to come back
+    /// at: a window opened anew is sized to its document, one brought
+    /// back keeps the size it was given. (Found 2026-11-17: after a
+    /// reload in place every window went back to its document's size.)
+    #[serde(default)]
+    size: Option<(f32, f32)>,
 }
 
 /// What one window keeps (`View::save_state`).
@@ -338,7 +344,8 @@ impl Hub {
         }
         let title = file_name(&path);
         let min_w = if is_pdf(&path) { pdfview::MIN_WIDTH } else { 360.0 };
-        let mut options = WindowOptions::new(title, 720.0, 560.0).min_size(min_w, 240.0);
+        let (w, h) = shown.size.unwrap_or((720.0, 560.0));
+        let mut options = WindowOptions::new(title, w, h).min_size(min_w, 240.0);
         // A look floats over the panel that asked, as Quick Look does:
         // never a tile or a tab.
         if self.shared.look {
@@ -471,6 +478,8 @@ impl Doc {
             crop_press: None,
         };
         doc.load(path, cx);
+        // (Brought back at the size it had: not sized to its document.)
+        doc.sized = shown.size.is_some();
         doc
     }
 
@@ -560,8 +569,12 @@ impl Doc {
         match item {
             Some(item) => {
                 let (speed, generation) = (self.speed, next_generation());
+                // (A presentation: the slide it was at before an upgrade
+                // in place, once.)
+                let page = std::mem::take(&mut self.start_page);
                 let preview = cx.new_view(|cx| {
                     let mut p = PreviewView::new(item, generation, true, cx);
+                    p.start_at_page(page);
                     p.set_playback_rate(speed, cx);
                     p
                 });
@@ -1162,6 +1175,11 @@ impl Doc {
                 .enabled(v.current_page + 1 < n)
                 .item("First Page", "first-page")
                 .item("Last Page", "last-page");
+        } else if let Content::Other(p) = &self.content
+            && p.read(cx).pages_shown().is_some_and(|(n, _)| n > 1)
+        {
+            // A presentation's slides: its pages, one under another.
+            go = go.separator().item("Previous Page", "prev-page").item("Next Page", "next-page").item("First Page", "first-page").item("Last Page", "last-page");
         }
         menus.push(go);
         if let Some(v) = pdf
@@ -1213,6 +1231,21 @@ impl Doc {
                 return;
             }
             _ => {}
+        }
+        // A presentation's pages (the preview's own, scrolled to).
+        if let ("prev-page" | "next-page" | "first-page" | "last-page", Content::Other(p)) = (command, &self.content) {
+            p.update(cx, |p, cx| {
+                if let Some((n, at)) = p.pages_shown() {
+                    let to = match command {
+                        "prev-page" => at.saturating_sub(1),
+                        "next-page" => (at + 1).min(n.saturating_sub(1)),
+                        "first-page" => 0,
+                        _ => n.saturating_sub(1),
+                    };
+                    p.go_to_page(to, cx);
+                }
+            });
+            return;
         }
         if let Some(k) = command.strip_prefix("unsign:").and_then(|k| k.parse::<usize>().ok()) {
             {
@@ -1615,6 +1648,17 @@ impl Doc {
                 }
                 cx.stop_propagation();
             }
+            // A presentation: its pages by the same keys.
+            Content::Other(p) if plain && p.read(cx).pages_shown().is_some() => {
+                match key {
+                    "pageup" => self.run("prev-page", cx),
+                    "pagedown" => self.run("next-page", cx),
+                    "home" => self.run("first-page", cx),
+                    "end" => self.run("last-page", cx),
+                    _ => return,
+                }
+                cx.stop_propagation();
+            }
             _ => {}
         }
     }
@@ -1889,10 +1933,13 @@ impl View for Doc {
         let shown = Shown {
             page: match &self.content {
                 Content::Pdf(v) => v.read(cx).current_page,
+                Content::Other(p) => p.read(cx).pages_shown().map_or(0, |(_, at)| at),
                 _ => 0,
             },
             presenting: self.presenting,
             before: self.before_presenting.map(|s| (f32::from(s.width), f32::from(s.height))),
+            // (Full screen or presenting, its size isn't its own.)
+            size: (!self.presenting && !cx.is_fullscreen()).then(|| cx.viewport_size()).map(|s| (f32::from(s.width), f32::from(s.height))),
         };
         serde_json::to_string(&SavedDoc { file: self.path.clone(), speed, shown }).ok()
     }

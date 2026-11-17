@@ -9,9 +9,10 @@ mod rich;
 mod table;
 
 use std::{
+    collections::HashMap,
     path::Path,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
@@ -115,6 +116,15 @@ pub enum Msg {
     /// Nothing has been read for a while: the recogniser's models go
     /// (the reading counted so, if none came since).
     TextIdle(u64),
+    /// A page of a document whose every page shows, made to draw.
+    /// (Its number, and the device pixels it was made for.)
+    PageMade(u64, usize, (u32, u32), Option<Arc<RenderImage>>),
+    /// The pages in view or their size changed (told by the painting):
+    /// those are wanted, and the far ones let go.
+    PagesInView(u64),
+    /// The pages' size has been the same a moment (the window isn't
+    /// being resized any more): those in view are made for it.
+    PagesSettled(u64, (u32, u32)),
 }
 
 /// Call once as a program that shows previews starts, before it has
@@ -154,6 +164,20 @@ pub struct PreviewView {
     /// A PDF's first page is in the picture's view (`image`): it shows
     /// there, the card until then.
     first_page: bool,
+    /// Every page shown (a presentation's slides, `Body::Pages::every`):
+    /// those made, by number, each with the device pixels it was made
+    /// for (the ones in view and a few either side: the rest are let
+    /// go), the size each was last asked at, and what the painting last
+    /// saw.
+    pages: HashMap<usize, ((u32, u32), Arc<RenderImage>)>,
+    pages_asked: HashMap<usize, (u32, u32)>,
+    pages_seen: Arc<Mutex<PagesSeen>>,
+    /// The page to show first, once the pages are laid out (the one it
+    /// was at before an upgrade in place; 0: the first).
+    pages_start: usize,
+    /// A page's row (`page_row`) where the view is scrolled to was set
+    /// for: at another width the same page stays at the top.
+    pages_row: f32,
     failed: Option<String>,
     cancel: Arc<AtomicBool>,
     started: Instant,
@@ -269,6 +293,11 @@ impl PreviewView {
             frame: None,
             yuv_frame: None,
             first_page: false,
+            pages: HashMap::new(),
+            pages_asked: HashMap::new(),
+            pages_seen: Arc::default(),
+            pages_start: 0,
+            pages_row: 0.0,
             decode_with: video::Device::default(),
             rate: 1.0,
             decoding_said: None,
@@ -327,6 +356,10 @@ impl PreviewView {
         self.generation = generation;
         self.failed = None;
         self.first_page = false;
+        self.pages.clear();
+        self.pages_asked.clear();
+        *self.pages_seen.lock().unwrap_or_else(|e| e.into_inner()) = PagesSeen::default();
+        self.pages_row = 0.0;
         self.player = None;
         self.video = None;
         self.stop_tick(cx);
@@ -403,6 +436,15 @@ impl PreviewView {
             // A PDF's first page, as a picture (Ben, 2026-11-07: Quick
             // Look showed a PDF as its icon; pages are the Viewer's, its
             // Open with Viewer).
+            // Every page shown: each as it's made, turned into what's
+            // drawn off the looper.
+            Update::Page(i, page) if matches!(self.body, Some(Body::Pages { every: true, .. })) => {
+                let (generation, size) = (self.generation, page.size);
+                cx.work(
+                    move || image::RgbaImage::from_raw(page.size[0] as u32, page.size[1] as u32, page.to_bgra_unmultiplied()).map(|img| Arc::new(RenderImage::new([image::Frame::new(img)]))),
+                    move |made| Msg::PageMade(generation, i, (size[0] as u32, size[1] as u32), made),
+                );
+            }
             Update::Page(0, page) => {
                 if let Some(Body::Pages { note, .. }) = &self.body {
                     let (full, note) = ([page.size[0] as f32, page.size[1] as f32], note.clone());
@@ -760,6 +802,15 @@ impl PreviewView {
             (Some(b), _) => match b {
                 // One picture pixel a point, as a 72 dpi picture on a Mac.
                 Body::Image { full, .. } => fit(full[0], full[1]),
+                // Every page shown: one page fills the window (the
+                // next a scroll away), with the room round it and the
+                // scroll bar beside.
+                Body::Pages { page_size, every: true, .. } => {
+                    let (pw, ph) = (page_size.0.max(1.0), page_size.1.max(1.0));
+                    let beside = 2.0 * PAGE_GAP + olo_kit::widgets::SCROLL_BAR;
+                    let page_w = (max_w.min(960.0) - beside).min((max_h - 2.0 * PAGE_GAP) * pw / ph).max(200.0);
+                    ((page_w + beside).round(), ((page_w * ph / pw).round() + 2.0 * PAGE_GAP).max(200.0))
+                }
                 Body::Pages { page_size, .. } => {
                     let (pw, ph) = (page_size.0.max(1.0), page_size.1.max(1.0));
                     fit(max_h * pw / ph + 2.0 * m::SPACING, max_h)
@@ -908,6 +959,46 @@ impl View for PreviewView {
                 }
                 return;
             }
+            Msg::PageMade(generation, i, px, made) => {
+                if generation == self.generation
+                    && let Some(made) = made
+                {
+                    self.pages.insert(i, (px, made));
+                    self.keep_pages_near();
+                    cx.invalidate();
+                }
+            }
+            Msg::PagesInView(generation) => {
+                if generation == self.generation {
+                    let size = self.pages_seen.lock().unwrap_or_else(|e| e.into_inner()).px;
+                    // Laid out at another width (the window resized):
+                    // the page at the top stays there, as far into it.
+                    if let Some(row) = self.page_row() {
+                        if self.pages_row > 0.0 && (row - self.pages_row).abs() > 0.01 {
+                            let y = f32::from(self.text_scroll.offset().y) * row / self.pages_row;
+                            self.text_scroll.set_offset(cx, point(px(0.0), px(y.round())));
+                        }
+                        self.pages_row = row;
+                    }
+                    // (Laid out for the first time: at the page it was at.)
+                    match std::mem::take(&mut self.pages_start) {
+                        0 => {}
+                        page => self.go_to_page(page, cx),
+                    }
+                    // Pages there are none of yet come at once; ones
+                    // made for another size (the window is being
+                    // resized, or the scale changed) once it settles.
+                    self.want_pages(false);
+                    cx.after(PAGES_SETTLE, Msg::PagesSettled(generation, size));
+                    // (Laid out again if the column's width changed.)
+                    cx.invalidate();
+                }
+            }
+            Msg::PagesSettled(generation, px) => {
+                if generation == self.generation && self.pages_seen.lock().unwrap_or_else(|e| e.into_inner()).px == px {
+                    self.want_pages(true);
+                }
+            }
             Msg::TextIdle(reading) => {
                 if READINGS.load(std::sync::atomic::Ordering::Relaxed) == reading {
                     olo_ocr::let_go();
@@ -944,6 +1035,7 @@ impl View for PreviewView {
                 canvas(move |g, b| card(g, b, &item, None, spinning)).size_full().into_any_element()
             }
             (None, Some(Body::Image { .. })) => self.image.element(),
+            (None, Some(Body::Pages { every: true, .. })) => self.pages_view(cx),
             (None, Some(Body::Pages { .. })) if self.first_page => self.image.element(),
             (None, Some(Body::Card { .. } | Body::Pages { .. })) => {
                 let item = self.item.clone();
@@ -969,7 +1061,150 @@ impl View for PreviewView {
     }
 }
 
+/// The room round and between the pages of a document shown whole.
+const PAGE_GAP: f32 = 12.0;
+/// How long the pages' size stays the same before they are made again
+/// for it (a window being resized shows the ones it has, stretched).
+const PAGES_SETTLE: Duration = Duration::from_millis(160);
+
+/// What the painting of a document's pages last saw: the pages in view
+/// (`first..last`), the column's width in points, and a page's size in
+/// device pixels.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct PagesSeen {
+    first: usize,
+    last: usize,
+    width: f32,
+    px: (u32, u32),
+}
+/// Pages kept made either side of those in view.
+const PAGES_NEAR: usize = 2;
+
 impl PreviewView {
+    // ---- every page of a document (a presentation's slides) ------------------
+
+    /// Asks for the pages in view (and one either side) that aren't made
+    /// or asked for yet, at the size they show at; `again`: those made
+    /// for another size too.
+    fn want_pages(&mut self, again: bool) {
+        let Some(Body::Pages { pages, want, px, every: true, .. }) = &self.body else { return };
+        let seen = *self.pages_seen.lock().unwrap_or_else(|e| e.into_inner());
+        if seen.px.0 == 0 || seen.px.1 == 0 {
+            return;
+        }
+        px.store((seen.px.0 as u64) << 32 | seen.px.1 as u64, Ordering::Relaxed);
+        for i in seen.first.saturating_sub(1)..(seen.last + 1).min(pages.len()) {
+            let have = self.pages.get(&i).map(|p| p.0);
+            let asked = self.pages_asked.get(&i).copied();
+            let wanted = match (have, asked) {
+                (None, None) => true,
+                _ => again && have != Some(seen.px) && asked != Some(seen.px),
+            };
+            if wanted {
+                self.pages_asked.insert(i, seen.px);
+                let _ = want.send(i);
+            }
+        }
+        self.keep_pages_near();
+    }
+
+    /// Lets go of the pages far from those in view (a slide made is
+    /// megabytes): asked for again if they come back into view.
+    fn keep_pages_near(&mut self) {
+        let seen = *self.pages_seen.lock().unwrap_or_else(|e| e.into_inner());
+        let near = |i: &usize| *i + PAGES_NEAR >= seen.first && *i <= seen.last + PAGES_NEAR;
+        self.pages.retain(|i, _| near(i));
+        self.pages_asked.retain(|i, _| near(i));
+    }
+
+    /// How tall a page and the gap under it are, in points, in the
+    /// column as last painted (`None` before that).
+    fn page_row(&self) -> Option<f32> {
+        let Some(Body::Pages { page_size, every: true, .. }) = &self.body else { return None };
+        let width = self.pages_seen.lock().unwrap_or_else(|e| e.into_inner()).width;
+        (width > 1.0).then(|| ((width - 2.0 * PAGE_GAP).max(120.0) * page_size.1.max(1.0) / page_size.0.max(1.0)).round() + PAGE_GAP)
+    }
+
+    /// How many pages the document shown whole has, and which is at the
+    /// top of the view now (from where it's scrolled to: a page scrolled
+    /// to, its gap at the view's top, is that one; offsets are whole
+    /// device pixels, the half is for that).
+    pub fn pages_shown(&self) -> Option<(usize, usize)> {
+        let Some(Body::Pages { pages, every: true, .. }) = &self.body else { return None };
+        let at = self.page_row().map_or(0, |row| ((-f32::from(self.text_scroll.offset().y) + 0.5) / row).floor().max(0.0) as usize);
+        Some((pages.len(), at.min(pages.len().saturating_sub(1))))
+    }
+
+    /// Shows page `page` first, if what it loads is a document whose
+    /// every page shows (where it was before an upgrade in place).
+    pub fn start_at_page(&mut self, page: usize) {
+        self.pages_start = page;
+    }
+
+    /// Scrolls to page `to` (the Viewer's Next Page and Previous Page).
+    pub fn go_to_page(&mut self, to: usize, cx: &mut Cx<Self>) {
+        let (Some(Body::Pages { pages, every: true, .. }), Some(row)) = (&self.body, self.page_row()) else { return };
+        let to = to.min(pages.len().saturating_sub(1));
+        self.text_scroll.set_offset(cx, point(px(0.0), px(-(to as f32 * row))));
+        cx.invalidate();
+    }
+
+    /// Every page, one under another, as wide as the view: those in view
+    /// drawn (a page not made yet is its paper, blank), the rest neither
+    /// made nor drawn; scrolled through.
+    fn pages_view(&mut self, cx: &mut Cx<Self>) -> Element {
+        let Some(Body::Pages { pages, page_size, words, .. }) = &self.body else { return div().into_any_element() };
+        let (n, (pw, ph)) = (pages.len(), (page_size.0.max(1.0), page_size.1.max(1.0)));
+        // (As wide as the column was last painted; a guess from the
+        // window's width the first time, put right by that painting.)
+        let column = Some(self.pages_seen.lock().unwrap_or_else(|e| e.into_inner()).width).filter(|w| *w > 1.0).unwrap_or_else(|| f32::from(cx.viewport_size().width) - olo_kit::widgets::SCROLL_BAR);
+        let page_w = (column - 2.0 * PAGE_GAP).max(120.0);
+        let page_h = (page_w * ph / pw).round();
+        let row = page_h + PAGE_GAP;
+        let made: HashMap<usize, Arc<RenderImage>> = self.pages.iter().map(|(i, p)| (*i, p.1.clone())).collect();
+        let (seen, tell, generation) = (self.pages_seen.clone(), cx.messenger(), self.generation);
+        let words: Arc<Vec<String>> = Arc::new(words.clone());
+        let paint = canvas(move |g, b| {
+            let p = theme::palette();
+            let view = g.visible_bounds();
+            // (What is painted is more than what shows: the scroll
+            // view's band round it, painted once and moved as it's
+            // scrolled. Its pages are the ones made.)
+            let first = (f32::from(view.top() - b.top()) / row).floor().max(0.0) as usize;
+            let last = ((f32::from(view.bottom() - b.top()) / row).ceil().max(0.0) as usize).min(n);
+            // (What's in view and how big a page is in device pixels,
+            // told once each time either changes: the view asks for
+            // the pages then.)
+            {
+                let page = style::snap(g, Bounds::new(point(b.left() + px(PAGE_GAP), b.top() + px(PAGE_GAP)), size(px(page_w), px(page_h))));
+                let k = g.scale_factor();
+                let now = PagesSeen { first, last, width: f32::from(b.size.width), px: ((f32::from(page.size.width) * k).round() as u32, (f32::from(page.size.height) * k).round() as u32) };
+                let mut seen = seen.lock().unwrap_or_else(|e| e.into_inner());
+                if *seen != now {
+                    *seen = now;
+                    tell.send(Msg::PagesInView(generation));
+                }
+            }
+            for i in first..last {
+                let at = style::snap(g, Bounds::new(point(b.left() + px(PAGE_GAP), b.top() + px(PAGE_GAP + i as f32 * row)), size(px(page_w), px(page_h))));
+                style::fill_rect(g, at, olo_kit::white());
+                if let Some(image) = made.get(&i) {
+                    let _ = g.paint_image(at, olo_kit::Corners::default(), image.clone(), 0, false);
+                }
+                style::frame_rect(g, at, style::c(p.shadow).opacity(0.5));
+                let name = match words.get(i).map(String::as_str).filter(|w| !w.is_empty()) {
+                    Some(w) => format!("Page {} of {n}: {w}", i + 1),
+                    None => format!("Page {} of {n}", i + 1),
+                };
+                agent::record(g, agent::Node { role: "Image", name: Some(name.into()), bounds: at, enabled: true, ..Default::default() });
+            }
+        })
+        .w_full()
+        .h(px(n as f32 * row + PAGE_GAP));
+        let p = theme::palette();
+        div().size_full().child(ScrollView::new(&self.text_scroll).border(false).background(p.panel_background).child(paint)).into_any_element()
+    }
+
     // ---- the text's selection ----------------------------------------------
 
     /// Read the text in the picture shown, once it has been there a

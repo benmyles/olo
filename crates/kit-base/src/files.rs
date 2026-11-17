@@ -86,7 +86,7 @@ pub fn kind_for(path: &Path, is_dir: bool, mode: u32) -> Kind {
         "pdf" => Kind::Pdf,
         "docx" | "doc" | "odt" | "rtf" | "pages" => Kind::WordDocument,
         "xlsx" | "xlsm" | "xlsb" | "xls" | "ods" | "numbers" => Kind::Spreadsheet,
-        "pptx" | "ppt" | "odp" | "key" => Kind::Presentation,
+        "pptx" | "ppsx" | "potx" | "ppt" | "odp" | "key" => Kind::Presentation,
         "ttf" | "otf" | "ttc" | "otc" | "woff" | "woff2" => Kind::Font,
         "tsv" => Kind::Text,
         "appimage" => Kind::Application,

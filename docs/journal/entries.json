@@ -4798,5 +4798,11 @@
   "title": "Passwords: a page's one-time code QR",
   "caption": "A page setting up two-step sign-in shows a QR code; Passwords' Chrome extension notices it, Passwords reads it and asks whether to add it to the site's login (here: replace the one it has).",
   "image": "2026-11-17/072709-passwords-a-page-s-one-time-code-qr.png"
+ },
+ {
+  "time": "2026-11-17T08:37:34",
+  "title": "Viewer and Quick Look: a PowerPoint's slides, drawn",
+  "caption": "A presentation showed as a list of Slide 1 to Slide 4 headings. Now each slide is drawn as it looks (its shapes, text, pictures, tables, its master's and theme's), natively, one under another, for the pixels it covers. (A deck made for the tests.)",
+  "image": "2026-11-17/083734-viewer-and-quick-look-a-powerpoint-s-slides-draw.png"
  }
 ]

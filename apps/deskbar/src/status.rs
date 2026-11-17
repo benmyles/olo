@@ -18,7 +18,7 @@ use olo_system::audio;
 
 use olo_kit::{
     BorderStyle, Bounds, FontWeight, Hsla, Painter, PathBuilder, Pixels, Point,
-    palette::{Hue, Palette, ThemeMode},
+    palette::{Hue, Palette},
     point, px, quad, size,
     style::{self, c},
     transparent_black,
@@ -1123,11 +1123,6 @@ pub fn draw_phone(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, phone: &olo_p
         disc(g, (l + 12.0, t + 3.0), 4.0, c(p.panel_background));
         disc(g, (l + 12.0, t + 3.0), 3.0, c(p.keyboard_navigation));
     }
-}
-
-/// Whether the palette is dark (the wordmark's version).
-pub fn dark(p: &Palette) -> bool {
-    p.mode == ThemeMode::Dark
 }
 
 #[cfg(test)]

@@ -42,6 +42,18 @@ pub enum Body {
         page_size: (f32, f32),
         note: String,
         want: std::sync::mpsc::Sender<usize>,
+        /// Every page is shown, one under another, scrolled through (a
+        /// presentation's slides); else the first (a PDF's: its pages
+        /// are the Viewer's).
+        every: bool,
+        /// Each page's words, for agents (a slide's text; empty: none
+        /// said).
+        words: Vec<String>,
+        /// The size in device pixels a page asked for is wanted at
+        /// (width in the high half, height in the low; 0: the loader's
+        /// own): set by the view that shows every page before it asks,
+        /// so a page is drawn for the pixels it covers, never resampled.
+        px: Arc<std::sync::atomic::AtomicU64>,
     },
     Text(text::Text),
     /// Formatted documents: Markdown, Word, OpenDocument, PowerPoint.
@@ -100,8 +112,9 @@ pub fn load(entry: &Item, want: Want, cancel: &Arc<AtomicBool>, send: Send) {
         match (entry.kind, ext.as_str()) {
             (_, "svg" | "svgz") => svg(&entry.path, max_image / 2),
             (_, "pdf") => return pdf::load(&entry.path, cancel, send),
+            (_, "pptx" | "ppsx" | "potx") => return crate::pptx::load(&entry.path, cancel, send),
             (_, "md" | "markdown" | "mdown") => doc::markdown(&entry.path),
-            (_, "docx" | "odt" | "rtf" | "pptx" | "odp") => doc::office(&entry.path, &ext),
+            (_, "docx" | "odt" | "rtf" | "odp") => doc::office(&entry.path, &ext),
             (_, "xlsx" | "xlsm" | "xlsb" | "xls" | "ods" | "csv" | "tsv") => doc::table(&entry.path, &ext),
             (_, "ttf" | "otf" | "ttc" | "otc") => font(&entry.path),
             (Kind::Image, _) => image(&entry.path, max_image),

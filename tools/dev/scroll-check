@@ -81,10 +81,12 @@ class Check:
         env = json.load(open(os.path.join(BASE, name, "env.json")))
         self.sock, self.runtime = env["OLO_SOCKET"], env["XDG_RUNTIME_DIR"]
         wins = req(self.sock, {"type": "list_windows"})["windows"]
-        if pid is None:
-            mine = [w for w in wins if app is None or app in (w.get("app_id") or "") or app in (w.get("title") or "")]
+        # (With --pid and no --at too: the middle of that program's
+        # first window. It had no place to point at, and failed.)
+        if pid is None or at is None:
+            mine = [w for w in wins if (w.get("pid") == pid if pid is not None else app is None or app in (w.get("app_id") or "") or app in (w.get("title") or ""))]
             if not mine:
-                sys.exit(f"no window{' of ' + app if app else ''}: {[w.get('app_id') for w in wins]}")
+                sys.exit(f"no window{' of ' + (app or str(pid)) if app or pid else ''}: {[(w.get('app_id'), w.get('pid')) for w in wins]}")
             w = mine[0]
             pid = w["pid"]
             if at is None:
