@@ -6547,9 +6547,11 @@ for an app … keep the fading blue dot for notifications but remove the
 number … for apps that support it … a red dot to the left of the blue
 dot [for] unread/pending items in the app itself. red dot doesn't fade
 it's either there or not"). The **blue** one is its notifications'
-(`Dot::notes`); the **red** one, left of the blue one's place
-(`UNREAD_DOT_GAP`; there whether or not the blue one is, so the red
-ones line up down the Deskbar), is what the app says is unread or
+(`Dot::notes`); the **red** one, at the row's right end where the blue
+one goes, and left of the blue one when there are both
+(`UNREAD_DOT_GAP`; alone it sat a dot in from the right, to line the
+red ones up: "if there is no blue dot then the red dot should still be
+right aligned", Ben, the same day), is what the app says is unread or
 waiting in it (`Dot::unread`: its launcher entry's count above none, or
 its wish for attention), whole while there is anything and gone when
 there isn't; Preferences ▸ Deskbar ▸ Applications turns it off

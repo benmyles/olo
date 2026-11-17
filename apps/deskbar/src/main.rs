@@ -3564,12 +3564,13 @@ impl Deskbar {
                 c(p.panel_text)
             };
             let font = style::ui_font(if focused { FontWeight::BOLD } else { FontWeight::NORMAL });
-            // The room the dots take at the row's right end: the blue
-            // one's place, and the red one's left of it when there is one.
+            // The room the dots take at the row's right end: one dot's
+            // place, and the red one's left of the blue when there are
+            // both.
             let dots = notes.unwrap_or_default();
             let dot_room = match (dots.notes.is_some(), dots.unread) {
-                (_, true) => 2.0 * NOTE_DOT + UNREAD_DOT_GAP + NOTE_DOT_GAP,
-                (true, false) => NOTE_DOT + NOTE_DOT_GAP,
+                (true, true) => 2.0 * NOTE_DOT + UNREAD_DOT_GAP + NOTE_DOT_GAP,
+                (true, false) | (false, true) => NOTE_DOT + NOTE_DOT_GAP,
                 (false, false) => 0.0,
             };
             let text_x = f32::from(icon_r.right()) + 8.0;
@@ -3602,11 +3603,16 @@ impl Deskbar {
                 }
             }
             // Something unread or waiting in the app itself: a red dot,
-            // left of the blue one's place, whole while there is anything
-            // (on a selected row its red would be lost on the highlight:
-            // ringed in the row's text colour there).
+            // whole while there is anything: at the right end, where the
+            // blue one goes, and left of the blue one when there are both
+            // (alone it sat a dot's width in from the others' line: Ben,
+            // 2026-11-17, "if there is no blue dot then the red dot should
+            // still be right aligned"). (On a selected row its red would
+            // be lost on the highlight: ringed in the row's text colour
+            // there.)
             if dots.unread {
-                let x = r.right() - px(NOTE_DOT_INSET + NOTE_DOT + UNREAD_DOT_GAP + NOTE_DOT / 2.0);
+                let beside = if dots.notes.is_some() { NOTE_DOT + UNREAD_DOT_GAP } else { 0.0 };
+                let x = r.right() - px(NOTE_DOT_INSET + beside + NOTE_DOT / 2.0);
                 let at = style::snap_centred(g, point(x, r.center().y), NOTE_DOT, NOTE_DOT);
                 let centre = point(at.center().x + px(shaken(dots.unread_shake)), at.center().y);
                 let radius = f32::from(at.size.width) / 2.0;

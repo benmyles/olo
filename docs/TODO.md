@@ -41,11 +41,6 @@ something nobody here has is in "Blocked", with what it waits for.
   band, shows at all of them). Why isn't known yet; Tracker's drop mark
   goes through the list (`ListModel::mark_drop`) instead.
 
-- **Deskbar: the red dot alone sits where the blue one does** (Ben,
-  2026-11-17, with a picture of his Deskbar: "if there is no blue dot
-  then the red dot should still be right aligned ie where the blue dot
-  is right now it is left indented").
-
 - **The upgrader looks at GitHub's releases too, and asks which** (Ben,
   2026-11-17: "olo's upgrader should look at github releases as well as
   the local build directory when offering an upgrade and if more than
@@ -5921,6 +5916,13 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Deskbar: the red dot alone sits where the blue one does**~~ (Ben,
+  2026-11-17: "if there is no blue dot then the red dot should still be
+  right aligned"; done the same day). Alone, the red dot is at the
+  row's right end; with a blue one, left of it as before. Looked at
+  with one app's unread count at 1×, 1.5× and 2× (the layout review:
+  nothing).
 
 - ~~**Tracker: Copy (and Paste?) in a file's right-click menu does
   nothing, though the shortcut works**~~ (Ben, 2026-11-17; done the
