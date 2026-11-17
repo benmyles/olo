@@ -490,6 +490,18 @@ impl Profiles {
         let _ = self.conn.call_method(Some(DEST), phone, Some(DEVICE), "DisconnectProfile", &(channel.uuid(),));
     }
 
+    /// Whether BlueZ has a Bluetooth adapter now. (With none, its
+    /// devices aren't listed either: a phone missing then hasn't been
+    /// unpaired.)
+    pub fn has_adapter(&self) -> bool {
+        type Objects = HashMap<OwnedObjectPath, HashMap<String, HashMap<String, OwnedValue>>>;
+        self.conn
+            .call_method(Some(DEST), "/", Some("org.freedesktop.DBus.ObjectManager"), "GetManagedObjects", &())
+            .ok()
+            .and_then(|m| m.body().deserialize::<Objects>().ok())
+            .is_some_and(|objects| objects.values().any(|interfaces| interfaces.contains_key("org.bluez.Adapter1")))
+    }
+
     /// What `phone` is playing ([`music::music`]).
     pub fn music(&self, phone: &str) -> Option<music::Music> {
         music::music(&self.conn, phone)

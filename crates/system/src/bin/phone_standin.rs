@@ -100,6 +100,8 @@ struct World {
     /// broadcast: an iPhone shows its switches for the computer only
     /// while one is.
     soliciting: bool,
+    /// Who registered the advertisement.
+    advertiser: Option<String>,
     /// What it's playing (`--tell music`; none: it has no player), and
     /// what its remote control was pressed (`--tell pressed`).
     music: Option<Playing>,
@@ -149,7 +151,9 @@ impl Adverts {
         let who = header.sender().map(|s| s.to_string()).unwrap_or_default();
         // (Read once this has answered: asking from in here would wait
         // on the thread that hears the answer.)
-        let _ = self.0.lock().expect("world").jobs.send(Job::Advert(who, advert.as_str().to_owned()));
+        let mut w = self.0.lock().expect("world");
+        w.advertiser = Some(who.clone());
+        let _ = w.jobs.send(Job::Advert(who, advert.as_str().to_owned()));
     }
 
     fn unregister_advertisement(&self, _advert: OwnedObjectPath) {
@@ -551,6 +555,7 @@ fn main() {
         discovering: false,
         agent: None,
         soliciting: false,
+        advertiser: None,
         music: None,
         pressed: Vec::new(),
         pairings: 0,
@@ -577,6 +582,32 @@ fn main() {
             std::process::exit(1);
         }
     };
+    // Who registered a profile, the agent or an advertisement and has
+    // left the bus: BlueZ forgets what was theirs (a service killed
+    // leaves nothing registered for the next one to trip over).
+    {
+        let world = world.clone();
+        let conn = conn.clone();
+        std::thread::spawn(move || {
+            let Ok(dbus) = zbus::blocking::fdo::DBusProxy::new(&conn) else { return };
+            let Ok(changes) = dbus.receive_name_owner_changed() else { return };
+            for change in changes {
+                let Ok(args) = change.args() else { continue };
+                if args.new_owner().is_some() {
+                    continue;
+                }
+                let gone = args.name().to_string();
+                let mut w = world.lock().expect("world");
+                w.profiles.retain(|_, (who, _)| *who != gone);
+                if w.agent.as_ref().is_some_and(|(who, _)| *who == gone) {
+                    w.agent = None;
+                }
+                if w.advertiser.as_deref() == Some(gone.as_str()) {
+                    (w.advertiser, w.soliciting) = (None, false);
+                }
+            }
+        });
+    }
     // What the methods ask for, done once they've answered: a channel
     // opened is a socket pair, one end the stand-in phone's, the other
     // handed to whoever registered the profile.

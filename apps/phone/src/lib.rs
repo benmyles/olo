@@ -4,6 +4,7 @@
 //! window is `olo-phone`'s (main.rs, window.rs).
 
 pub mod codes;
+pub mod kept;
 pub mod service;
 
 use olo_protocol::phone::PhoneState;

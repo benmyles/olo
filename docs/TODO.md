@@ -22,11 +22,13 @@ something nobody here has is in "Blocked", with what it waits for.
   codes. Not yet: its other apps' notifications (Apple's Notification
   Center Service over low energy, which the advertisement already asks
   for, would bring them, and groups' names), calls (the hands-free
-  profile: the computer already says it's a hands-free device), and
-  conversations kept across a restart of the service. Its music's
-  controls are done (2026-11-17: Deskbar's menu, Phone, `olo-phone
-  --music`; for Ben to try with the real phone, where only reading was
-  checked). Found reading the real phone on 2026-11-17: it's connected
+  profile: the computer already says it's a hands-free device). Its
+  music's controls are done (2026-11-17: Deskbar's menu, Phone,
+  `olo-phone --music`; for Ben to try with the real phone, where only
+  reading was checked), and its conversations and contacts are kept
+  across a restart of the service (a file of yours alone,
+  ~/.local/state/olo/phone/kept.json; removed when the phone is
+  unpaired). Found reading the real phone on 2026-11-17: it's connected
   over classic Bluetooth only (bonded for low energy, not connected:
   notifications need that link, and an iPhone says its exact model
   only over it); the sound server has a telephony service

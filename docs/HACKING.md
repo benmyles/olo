@@ -13954,6 +13954,27 @@ command line, for people and agents: `olo-phone` (`--status [--json]`),
 `--find-code`, `--settings`, `--set SETTING VALUE`; with nothing asked,
 or `--open WHO`, it is Phone, the app.
 
+**Kept between runs** (`apps/phone/src/kept.rs`). The service keeps the
+phone's conversations, the handles of the messages it has seen and its
+contacts in one file, `~/.local/state/olo/phone/kept.json` (the
+person's alone: 0600 in a 0700 folder; what a message says is in it, as
+in the phone's own store), so they are there the moment it starts again
+(an upgrade, a restart, the next login), before the phone has been asked
+anything and while it's out of reach, and what was sent from here (an
+iPhone keeps nothing of it) isn't lost with the service. Written two
+seconds after the conversations or contacts change (`KEEP_AFTER`: once
+a burst has come, not at each; whole beside the file and moved over
+it), and at once when a message is sent; read when the phone is found
+(`devices`), for that phone alone (its address); another phone's
+replaces it, and a phone unpaired has it removed (its device gone while
+BlueZ still has its adapter, `Profiles::has_adapter`: with the adapter
+gone too, switched off or unplugged, nothing was unpaired). Tried
+against the stand-in: a message sent, the service killed, the phone out
+of reach, the service started: the conversations with what was sent and
+the contacts were there; unpaired, the file went. (The stand-in now
+forgets what a departed program registered, as BlueZ does: the killed
+service's profiles had stood in the next one's way.)
+
 **Its music** (`olo_system::phone::music`; found 2026-11-17 on Ben's
 iPhone). A connected phone is a player and the computer its remote
 control (AVRCP), which BlueZ already keeps as a `MediaPlayer1` under the

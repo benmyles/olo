@@ -86,6 +86,9 @@ const STUCK: Duration = Duration::from_secs(90);
 const ALLOW_LATER: Duration = Duration::from_secs(300);
 /// How long after a try a phone out of reach is tried again, try by try.
 const AWAY: [u64; 5] = [15, 30, 60, 120, 300];
+/// How soon after the conversations or contacts change they're kept for
+/// the next run (`kept`): once a burst of them has come, not at each.
+const KEEP_AFTER: Duration = Duration::from_secs(2);
 
 enum Ev {
     /// BlueZ opened a channel.
@@ -209,8 +212,10 @@ struct Service {
     /// to let go of the profile before it's asked again.
     let_go: bool,
     /// What the conversations and contacts came to when last published
-    /// (`PhoneState::changes` counts its changes).
+    /// (`PhoneState::changes` counts its changes), and when to keep them
+    /// for the next run (`kept`).
     digest: u64,
+    keep_at: Option<Instant>,
     /// The phone in use, and its music's player with BlueZ while it
     /// has one.
     phone: Option<link::Phone>,
@@ -404,6 +409,7 @@ pub fn run() -> ! {
         digest: 0,
         phone: None,
         music_player: None,
+        keep_at: None,
         generation: 0,
         opening: false,
         session: None,
@@ -433,7 +439,17 @@ pub fn run() -> ! {
     loop {
         // Asleep until something is said, or until a round of asking
         // ends, a code gets too old, or it's time to try the phone again.
-        let next = s.codes.iter().flat_map(|c| [Some(c.until), c.round.as_ref().map(|r| r.until)]).flatten().chain(s.retry_at).chain(s.profiles_at).chain(s.contacts_at).chain(s.opening_until).min();
+        let next = s
+            .codes
+            .iter()
+            .flat_map(|c| [Some(c.until), c.round.as_ref().map(|r| r.until)])
+            .flatten()
+            .chain(s.retry_at)
+            .chain(s.profiles_at)
+            .chain(s.contacts_at)
+            .chain(s.opening_until)
+            .chain(s.keep_at)
+            .min();
         let ev = match next {
             Some(at) => match rx.recv_timeout(at.saturating_duration_since(Instant::now())) {
                 Ok(ev) => Some(ev),
@@ -606,6 +622,24 @@ impl Service {
             (self.threads, self.contacts, self.seen) = (Vec::new(), Vec::new(), HashSet::new());
             self.codes.clear();
             (self.state.conversations, self.state.unread, self.state.contacts, self.state.code_at) = (0, 0, false, None);
+            self.keep_at = None;
+            match &phone {
+                // What was kept of it when the service last ran: there
+                // at once, before the phone has been asked anything.
+                Some(p) => {
+                    if let Some(kept) = crate::kept::load(&p.address) {
+                        tracing::info!("phone: {} conversations and {} contacts kept from before", kept.threads.len(), kept.contacts.len());
+                        self.threads = kept.threads;
+                        self.seen = kept.seen.into_iter().collect();
+                        self.contacts = kept.contacts.into_iter().map(|c| pbap::Contact { name: c.name, phones: c.phones, emails: c.emails }).collect();
+                        self.count();
+                    }
+                }
+                // Unpaired (its device gone while the adapter is
+                // there): nothing of it stays.
+                None if self.phone.is_some() && profiles.has_adapter() => crate::kept::forget(),
+                None => {}
+            }
         }
         self.phone = phone;
         self.details();
@@ -640,6 +674,24 @@ impl Service {
                     }
                 }
             }
+        }
+    }
+
+    /// Keep the conversations, the messages seen and the contacts for
+    /// the next run (`kept`).
+    fn keep_for_next_run(&mut self) {
+        self.keep_at = None;
+        let Some(phone) = &self.phone else { return };
+        let mut seen: Vec<String> = self.seen.iter().cloned().collect();
+        seen.sort();
+        let kept = crate::kept::Kept {
+            phone: phone.address.clone(),
+            threads: self.threads.clone(),
+            seen,
+            contacts: self.contacts.iter().map(|c| Person { name: c.name.clone(), phones: c.phones.clone(), emails: c.emails.clone() }).collect(),
+        };
+        if let Err(e) = crate::kept::save(&kept) {
+            tracing::warn!("phone: can't keep its conversations in {}: {e}", crate::kept::path().display());
         }
     }
 
@@ -892,6 +944,8 @@ impl Service {
                     let ti = self.thread_for(&to, "");
                     self.threads[ti].messages.push(Message { handle: String::new(), text, at, outgoing: true, read: true });
                     self.count();
+                    // (Kept at once: what was sent is nowhere else.)
+                    self.keep_for_next_run();
                 }
                 if let (Err(why), Some(note)) = (&done, note) {
                     self.notes.show(Some(note), Note::new("Not sent").body(why.clone()).kind(olo_kit_base::notify::NoteKind::Error));
@@ -1276,6 +1330,9 @@ impl Service {
     /// go; a phone out of reach is tried again when it's time.
     fn tick(&mut self) {
         let t = Instant::now();
+        if self.keep_at.is_some_and(|at| at <= t) {
+            self.keep_for_next_run();
+        }
         if self.profiles_at.is_some_and(|at| at <= t) {
             self.register();
             self.devices();
@@ -1397,6 +1454,10 @@ impl Service {
         if digest != self.digest {
             self.digest = digest;
             self.state.changes += 1;
+            // (Kept for the next run, once a burst of them has come.)
+            if self.phone.is_some() && self.keep_at.is_none() {
+                self.keep_at = Some(Instant::now() + KEEP_AFTER);
+            }
         }
         // (Since when the link has stood as it does.)
         if self.published.as_ref().map(|p| p.link) != Some(self.state.link) {
