@@ -557,6 +557,9 @@ pub struct Session {
     path: OwnedObjectPath,
     /// Where its signals go while someone listens.
     sink: Sink,
+    /// Asks the thread that hears its signals to pass on what has come,
+    /// then that the call being heard ended (`listen`).
+    ended: async_channel::Sender<()>,
 }
 
 /// What a listener hears: an event, or that the call it waits on ended.
@@ -656,8 +659,8 @@ impl Session {
         }
         let path: OwnedObjectPath = conn.call_method(Some(DEST), ROOT, Some(SESSIONS), "open_session", &(opts.0,))?.body().deserialize()?;
         let sink: Sink = Arc::new(Mutex::new(None));
-        listen(&conn, &path, sink.clone())?;
-        Ok(Session { conn, path, sink })
+        let ended = listen(&conn, &path, sink.clone())?;
+        Ok(Session { conn, path, sink, ended })
     }
 
     fn call<B, R>(&self, iface: &str, method: &str, body: &B) -> Result<R>
@@ -691,7 +694,14 @@ impl Session {
             s.spawn(move || {
                 let r = f(self);
                 let _ = done_tx.send(r);
-                let _ = tx.send(Heard::Done);
+                // (Said by the thread that hears the signals, once it has
+                // passed on every one that came before the call's end:
+                // else the last of them, the transaction's end among
+                // them, could come after it and be lost. Without that
+                // thread, at once.)
+                if self.ended.send_blocking(()).is_err() {
+                    let _ = tx.send(Heard::Done);
+                }
             });
             loop {
                 match rx.recv() {
@@ -1031,23 +1041,62 @@ impl Drop for Session {
 }
 
 /// Hear the session's signals for as long as its connection lasts,
-/// handing them to whoever listens.
-fn listen(conn: &Connection, path: &OwnedObjectPath, sink: Sink) -> Result<()> {
+/// handing them to whoever listens; and, asked (what's returned), that
+/// the call being heard ended, after every signal that came before its
+/// reply. (The connection queues those signals for this thread before
+/// it gives the caller the reply, but this thread may not have taken
+/// them yet when the caller has it: dnf_fake's test lost the
+/// transaction's end so, one run in five. Asked, it takes what's queued
+/// first.)
+fn listen(conn: &Connection, path: &OwnedObjectPath, sink: Sink) -> Result<async_channel::Sender<()>> {
+    use futures_lite::StreamExt as _;
     let rule = zbus::MatchRule::builder().msg_type(zbus::message::Type::Signal).path(path.as_str())?.build();
-    let iter = zbus::blocking::MessageIterator::for_match_rule(rule, conn, Some(256))?;
+    let mut stream = zbus::blocking::MessageIterator::for_match_rule(rule, conn, Some(256))?.into_inner();
+    let (ended, asked) = async_channel::unbounded::<()>();
+    let heard = sink.clone();
+    let pass_on = move |msg: &zbus::Message| {
+        if let Some(e) = event(msg)
+            && let Some(tx) = &*heard.lock().unwrap_or_else(|e| e.into_inner())
+        {
+            let _ = tx.send(Heard::Event(e));
+        }
+    };
+    let done = move || {
+        if let Some(tx) = &*sink.lock().unwrap_or_else(|e| e.into_inner()) {
+            let _ = tx.send(Heard::Done);
+        }
+    };
+    /// What comes first: a signal, or the caller saying its call ended
+    /// (true; false: the session is gone).
+    enum Next {
+        Signal(Option<zbus::Result<zbus::Message>>),
+        Ended(bool),
+    }
     std::thread::Builder::new()
         .name("dnf-signals".into())
         .spawn(move || {
-            for msg in iter {
-                let Ok(msg) = msg else { break };
-                let Some(e) = event(&msg) else { continue };
-                if let Some(tx) = &*sink.lock().unwrap_or_else(|e| e.into_inner()) {
-                    let _ = tx.send(Heard::Event(e));
+            futures_lite::future::block_on(async move {
+                loop {
+                    // (A signal first, if both are there.)
+                    let next = futures_lite::future::or(async { Next::Signal(stream.next().await) }, async { Next::Ended(asked.recv().await.is_ok()) }).await;
+                    match next {
+                        Next::Signal(Some(Ok(msg))) => pass_on(&msg),
+                        // (Its connection gone, or its session.)
+                        Next::Signal(_) | Next::Ended(false) => break,
+                        // The caller has the call's reply: every signal
+                        // that came before it is queued here by now.
+                        Next::Ended(true) => {
+                            while let Some(Some(Ok(msg))) = futures_lite::future::poll_once(stream.next()).await {
+                                pass_on(&msg);
+                            }
+                            done();
+                        }
+                    }
                 }
-            }
+            });
         })
         .map_err(|e| zbus::Error::InputOutput(Arc::new(e)))?;
-    Ok(())
+    Ok(ended)
 }
 
 /// A signal as an [`Event`].

@@ -21190,8 +21190,12 @@ address), `remove`, `downgrade`, `reinstall`, `system_upgrade`, then
 `resolve` (every item: action, reason, package, sizes; problems), then
 `run(offline, comment)`; `hearing(events, f)` hands the session's
 signals (each download's progress, a key to trust, RPM's verify and
-prepare, each package, scriptlet errors) to `events` while `f` runs;
-`cancel` (only while downloading: the daemon can't stop RPM),
+prepare, each package, scriptlet errors) to `events` while `f` runs,
+the call's end said by the thread that hears the signals once it has
+passed on every one queued before the reply (`listen`: before, that
+thread could still hold the last of them, the transaction's end among
+them, when the call returned, and dnf_fake's test lost it one run in
+five); `cancel` (only while downloading: the daemon can't stop RPM),
 `confirm_key`, `enable`, `cancel_offline`, `offline_then`. The
 daemon refuses an attribute it doesn't know (`excluded_pkgs`), so
 `REPO_ATTRS` is the list it takes; `mirrors(id)` is asked for alone (a
