@@ -87,8 +87,14 @@ extern "C" fn on_xcpu(_: libc::c_int) {
 }
 
 /// Thread `tid` marked as registered, where app_server can see it:
-/// SCHED_RESET_ON_FORK set on its normal class (its nice kept), which the
-/// threads it starts don't have (the kernel clears it in them). A thread
+/// SCHED_RESET_ON_FORK set on its class, whichever of the normal ones it
+/// is (its nice kept), which the threads it starts don't have (the
+/// kernel clears it in them). Batch and idle too: a program a build
+/// started is in the build's class, and Olo's supervisor lowers builds
+/// to batch; marked only from "other", such a program's loopers were
+/// never marked, so never made realtime (and this module's own test
+/// failed whenever the tests ran from a build long enough to be
+/// lowered: a whole workspace's, not one crate's; 2026-11-17). A thread
 /// a window's looper starts takes the looper's name (`w>…`), and
 /// app_server makes realtime only the named threads that are marked
 /// ([`marked`]), not those (Agent Screens' export, encoding video,
@@ -96,12 +102,12 @@ extern "C" fn on_xcpu(_: libc::c_int) {
 fn mark(tid: i32) {
     // SAFETY: sched_getscheduler only reads.
     let policy = unsafe { libc::sched_getscheduler(tid) };
-    if policy == libc::SCHED_OTHER {
+    if matches!(policy, libc::SCHED_OTHER | libc::SCHED_BATCH | libc::SCHED_IDLE) {
         let param = libc::sched_param { sched_priority: 0 };
         // SAFETY: sched_setscheduler reads `param`; setting the flag on a
         // thread of our own (never clearing it) needs no privilege, and the
-        // normal class keeps the thread's nice.
-        unsafe { libc::sched_setscheduler(tid, libc::SCHED_OTHER | libc::SCHED_RESET_ON_FORK, &param) };
+        // same class keeps the thread's nice.
+        unsafe { libc::sched_setscheduler(tid, policy | libc::SCHED_RESET_ON_FORK, &param) };
     }
 }
 
@@ -298,16 +304,55 @@ mod tests {
     #[test]
     fn a_registered_thread_is_marked_and_what_it_starts_isnt() {
         std::thread::spawn(|| {
-            // SAFETY: setpriority on this thread (0 with PRIO_PROCESS is
-            // the calling thread on Linux); raising a nice needs no privilege.
-            unsafe { libc::setpriority(libc::PRIO_PROCESS, 0, 3) };
+            // (A nice of its own: one more than it has, whatever that is.
+            // A test run from a build Olo's supervisor lowered starts at
+            // the build's nice, and a nice only goes up without privilege:
+            // asked for 3 from 12, it stayed 12.)
+            // SAFETY: getpriority only reads; setpriority on this thread (0
+            // with PRIO_PROCESS is the calling thread on Linux), raising
+            // its nice, needs no privilege.
+            let nice = (unsafe { libc::getpriority(libc::PRIO_PROCESS, 0) } + 1).min(19);
+            unsafe { libc::setpriority(libc::PRIO_PROCESS, 0, nice) };
             register_self(8).unwrap();
             let me = tid();
             assert!(marked(me));
             // SAFETY: getpriority only reads.
-            assert_eq!(unsafe { libc::getpriority(libc::PRIO_PROCESS, 0) }, 3, "its nice kept");
+            assert_eq!(unsafe { libc::getpriority(libc::PRIO_PROCESS, 0) }, nice, "its nice kept");
             let child = std::thread::spawn(|| marked(tid())).join().unwrap();
             assert!(!child, "a thread it starts isn't marked");
+            forget(me);
+        })
+        .join()
+        .unwrap();
+    }
+
+    /// A thread in the batch class (a program a lowered build started) is
+    /// marked too, its class kept; put back to the normal class, marked
+    /// still.
+    #[test]
+    fn a_batch_thread_is_marked_in_its_class() {
+        std::thread::spawn(|| {
+            let param = libc::sched_param { sched_priority: 0 };
+            let me = tid();
+            // SAFETY: sched_setscheduler reads `param`, for this thread;
+            // sched_getscheduler only reads.
+            // (Batch, unless the tests themselves run in the idle class,
+            // which nothing leaves without privilege: then that one.)
+            let class = unsafe {
+                libc::sched_setscheduler(0, libc::SCHED_BATCH, &param);
+                libc::sched_getscheduler(me)
+            };
+            assert!(matches!(class, libc::SCHED_BATCH | libc::SCHED_IDLE), "{class}");
+            assert!(!marked(me));
+            register_self(4).unwrap();
+            // SAFETY: sched_getscheduler only reads.
+            assert_eq!(unsafe { libc::sched_getscheduler(me) }, class | libc::SCHED_RESET_ON_FORK);
+            assert!(marked(me) && !is_realtime(me));
+            if class == libc::SCHED_BATCH {
+                assert!(demote(me));
+                // SAFETY: as above.
+                assert_eq!(unsafe { libc::sched_getscheduler(me) }, libc::SCHED_OTHER | libc::SCHED_RESET_ON_FORK);
+            }
             forget(me);
         })
         .join()

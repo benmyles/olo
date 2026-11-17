@@ -395,6 +395,15 @@ Each note: what to do, then why (what happened), then how to apply it.
   a file) shows `wl_keyboard.enter`/`leave` and `xdg_popup.grab` in
   order; that is how the submenu's lost keyboard was found.
 
+- **A long build is lowered, and so are the tests it runs.**
+  olo-supervisor puts background work (cargo, rustc, and what they
+  start) in the batch class with its nice raised once it has been busy
+  a while. A test that passes alone and fails in `cargo test
+  --workspace` may be reading its own class or nice: run it as lowered,
+  `chrt -b 0 nice -n 12 cargo test -p CRATE` (and `chrt -i 0 …` for the
+  idle class, which nothing leaves without privilege). A nice only
+  goes up: a test asks for one above what it has, never a fixed one.
+
 ## Ben's computer
 
 - **Don't probe sudo.** Even `sudo -n` runs face unlock (the IR camera)

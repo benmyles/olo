@@ -17,13 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **A realtime test fails when the whole workspace's tests run at once**
-  (found 2026-11-16: `olo-app`'s
-  `realtime::tests::a_registered_thread_is_marked_and_what_it_starts_isnt`
-  failed at `register_self(8).unwrap()` in `cargo test --workspace
-  --no-fail-fast`, and passes alone). Find what refuses the thread then
-  (rtkit's budget for one user with many test programs asking at once?)
-  and have the test not depend on it.
 - **MGLRU's thrash protection at 250 ms: enough runs to say** (found
   2026-11-16, kernel/TUNING.md). At the kernel's advised 1000 ms it
   ended a program that fitted in memory in 3 runs of 9, so it isn't
@@ -5926,6 +5919,22 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**A realtime test fails when the whole workspace's tests run at
+  once**~~ (found 2026-11-16; done 2026-11-17). Not rtkit: a build
+  busy long enough is lowered by olo-supervisor (batch class, nice
+  up), and the tests it runs with it. `mark` marked only a thread in
+  the "other" class, so in a lowered program nothing was marked (the
+  test's `marked(me)`), and the test asked for nice 3, which from 12
+  can't be had. Fixed where it was wrong: a thread is marked in
+  whichever normal class it has (a lowered program's loopers can now be
+  made realtime), the supervisor sets a class with the mark kept, and
+  the tests ask nothing of the class or nice they start with. Shown by
+  running olo-app's and the supervisor's tests as a lowered build's
+  children (`chrt -b 0 nice -n 12`, `chrt -i 0`, `nice -n 19`): the one
+  test failed before, none after. The whole workspace's tests as
+  lowered weren't run through (an hour and more on a busy computer):
+  they are run before the release.
 
 - ~~**A window tab's menu: Hide ▸ and Close ▸, each with Others and
   All**~~ (Ben, 2026-11-16: "we need a Close All option when right

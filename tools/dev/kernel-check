@@ -20,6 +20,13 @@ settings were chosen.
       with min_ttl_ms 0 and 1000; swap in compressed memory as large as
       memory, and vm.swappiness 1, as Olo has them. The case that fits
       N (3) times with the protection: it ends that program in some.
+  tools/dev/kernel-check thrashing --ttl MS [--reps N]
+      another setting of it, run enough to say: the program that fits
+      (700 MB) and the case between (950 MB), N (20) times each at
+      min_ttl_ms MS, and what it's for (1,400 MB, a fifth as often) at
+      MS and at 0. How many times each was ended, and every run's worst
+      round. Each run is a guest for three minutes: 20 is over two
+      hours.
   tools/dev/kernel-check slow-disks
       600 MB copied to a disk that takes 10 MB a second, with and
       without the limit: what's still in memory when the copy ends, and
@@ -132,7 +139,7 @@ wait $O; echo "own|$(cat /tmp/o)"
 """
 
 
-def thrashing(reps):
+def thrashing(reps, ttl_only=None):
     print("MGLRU's thrash protection (left alone): 1 GB of memory, swap in compressed memory as large, vm.swappiness 1;")
     print("a program takes memory at 12 MB a second while another reads through 250 MB of a file and 150 MB of its own, ten times a second\n")
 
@@ -144,6 +151,27 @@ def thrashing(reps):
         print(f"    {'':17}through its own: 99 in 100 within {own['ms_p99']:5.1f} ms, worst {own['ms_max']:5.1f}; read back from disk {hog['faults']:,} times; everything stalled {hog['stalled_us'] / 1e6:.1f} s")
         return bool(hog["ended"])
 
+    if ttl_only is not None:
+        # One setting, enough times to say whether it ever ends a program
+        # for nothing: turn about, so a busy moment of the computer falls
+        # on each case alike.
+        cases = [(700, "fits"), (950, "fits with the other's file pushed out")]
+        ended = {mb: [] for mb, _ in cases}
+        gain = {ttl: [] for ttl in (0, ttl_only)}
+        for i in range(reps):
+            print(f"  run {i + 1} of {reps}, min_ttl_ms {ttl_only}:")
+            for mb, what in cases:
+                print(f"   {mb} MB ({what}):")
+                ended[mb].append(run(ttl_only, mb))
+            if i % 5 == 0:
+                for ttl in gain:
+                    print("   1400 MB (more than there is):")
+                    gain[ttl].append(run(ttl, 1400))
+        print(f"\n  at min_ttl_ms {ttl_only}:")
+        for mb, what in cases:
+            print(f"    {mb} MB ({what}): ended in {sum(ended[mb])} of {len(ended[mb])}")
+        print(f"    1400 MB: {len(gain[ttl_only])} runs each with it and without (above)\n")
+        return
     for mb, what in [(1400, "more than there is (it's ended either way)"), (950, "what fits only with the other's file pushed out"), (700, "what fits")]:
         print(f"  the program takes {mb} MB, {what}:")
         for ttl in (0, 1000):
@@ -249,10 +277,11 @@ def main():
         return
     if not os.path.exists(KBENCH):
         sys.exit("kernel-check: no kbench: cargo build --release -p olo-system --example kbench")
-    reps = int(args[args.index("--reps") + 1]) if "--reps" in args else 3
+    ttl = int(args[args.index("--ttl") + 1]) if "--ttl" in args else None
+    reps = int(args[args.index("--reps") + 1]) if "--reps" in args else (3 if ttl is None else 20)
     which = [a for a in args if not a.startswith("--") and not a.isdigit()] or ["preemption", "slow-disks", "thrashing", "left-alone"]
     for name in which:
-        run = {"preemption": lambda: preemption(reps), "thrashing": lambda: thrashing(reps), "slow-disks": slow_disks, "left-alone": left_alone}.get(name)
+        run = {"preemption": lambda: preemption(reps), "thrashing": lambda: thrashing(reps, ttl), "slow-disks": slow_disks, "left-alone": left_alone}.get(name)
         if run is None:
             sys.exit(f"kernel-check: {name}? preemption, thrashing, slow-disks or left-alone")
         run()

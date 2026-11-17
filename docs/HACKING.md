@@ -12268,8 +12268,14 @@ process (libpipewire's realtime module, where it went through rtkit)
 can't be raised again: then nothing there is made realtime. app_server
 makes another program's threads realtime only when its limits are the
 guard's (`olo_app::realtime::guarded`, from /proc) and the thread is
-marked as registered (`marked`: SCHED_RESET_ON_FORK on its normal class,
-which threads it starts don't have, though they take its name). The kit
+marked as registered (`marked`: SCHED_RESET_ON_FORK on its class,
+which threads it starts don't have, though they take its name; on
+whichever normal class it has, batch and idle too, as a program a
+build started is in the build's class and olo-supervisor lowers builds
+to batch: marked only from "other", such a program's loopers were never
+marked, and olo-app's own test failed whenever the tests ran from a
+build long enough to be lowered, the whole workspace's and not one
+crate's). The kit
 registers each window's looper and its display thread as they start
 (`guard_ui_thread`), and a registration is forgotten as its thread ends
 (a thread-local's destructor: the kernel gives the id to new threads).
@@ -14400,7 +14406,11 @@ the folder's change time, `Owners`; each file in one read) and:
   back), `SCHED_BATCH`, idle I/O priority. Never a realtime thread (a
   program's sound), and putting back only touches threads at batch, so
   one made realtime meanwhile stays so (it once put every thread to
-  `SCHED_OTHER`). A nice orders threads only inside their cgroup: one
+  `SCHED_OTHER`). A class is set with the thread's mark kept (`policy`:
+  SCHED_RESET_ON_FORK, which a window's looper has once registered,
+  "Realtime threads"): the kernel lets nobody without privilege take
+  the mark off, so set without it a marked thread was neither lowered
+  nor put back. A nice orders threads only inside their cgroup: one
   running in a unit of the person's own manager (a build service, a
   `systemd-run` scope; `olo_system::systemd::user_unit_of`, from its
   cgroup) has the unit lowered whole as well (`CPUWeight=idle` for as

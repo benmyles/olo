@@ -35,10 +35,19 @@ fn ioprio_set(tid: i32, class: i32, level: i32) -> bool {
     unsafe { libc::syscall(libc::SYS_ioprio_set, IOPRIO_WHO_PROCESS, tid, (class << IOPRIO_CLASS_SHIFT) | level) == 0 }
 }
 
+/// Thread `tid` in class `policy`, its mark kept: a thread registered
+/// as one that may be realtime (`olo_app::realtime`: a window's looper)
+/// has SCHED_RESET_ON_FORK on its class, which the kernel lets nobody
+/// without privilege take off (EPERM), so set without it a marked thread
+/// was neither lowered nor, lowered before it was marked, put back.
 fn policy(tid: i32, policy: i32) -> bool {
     let param = libc::sched_param { sched_priority: 0 };
-    // SAFETY: sched_setscheduler on one of our own threads.
-    unsafe { libc::sched_setscheduler(tid, policy, &param) == 0 }
+    // SAFETY: sched_getscheduler only reads; sched_setscheduler on one
+    // of our own threads.
+    unsafe {
+        let mark = libc::sched_getscheduler(tid).max(0) & libc::SCHED_RESET_ON_FORK;
+        libc::sched_setscheduler(tid, policy | mark, &param) == 0
+    }
 }
 
 fn nice_of(tid: i32) -> Option<i32> {
@@ -97,8 +106,19 @@ pub fn restore(pid: i32) {
 mod tests {
     use super::*;
 
+    /// The tests themselves run in the idle class (`chrt -i`): nothing
+    /// leaves it without privilege, so there is no lowering to batch and
+    /// no putting back to see.
+    fn idle() -> bool {
+        // SAFETY: sched_getscheduler only reads.
+        unsafe { libc::sched_getscheduler(0) & !libc::SCHED_RESET_ON_FORK == libc::SCHED_IDLE }
+    }
+
     #[test]
     fn lowers_and_puts_back_a_child() {
+        if idle() {
+            return;
+        }
         // A process of our own to lower: `sleep`, found by its pid.
         let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
         let pid = child.id() as i32;
@@ -112,5 +132,29 @@ mod tests {
         assert_eq!(unsafe { libc::sched_getscheduler(pid) }, libc::SCHED_OTHER);
         let _ = child.kill();
         let _ = child.wait();
+    }
+
+    /// A marked thread (a window's looper: SCHED_RESET_ON_FORK on its
+    /// class) is lowered and put back as any, its mark kept.
+    #[test]
+    fn a_marked_thread_is_lowered_and_put_back() {
+        if idle() {
+            return;
+        }
+        std::thread::spawn(|| {
+            let param = libc::sched_param { sched_priority: 0 };
+            // SAFETY: plain scheduler calls on this thread; setting the
+            // mark needs no privilege.
+            unsafe {
+                let me = libc::gettid();
+                assert_eq!(libc::sched_setscheduler(me, libc::SCHED_OTHER | libc::SCHED_RESET_ON_FORK, &param), 0);
+                assert!(policy(me, libc::SCHED_BATCH));
+                assert_eq!(libc::sched_getscheduler(me), libc::SCHED_BATCH | libc::SCHED_RESET_ON_FORK);
+                assert!(policy(me, libc::SCHED_OTHER));
+                assert_eq!(libc::sched_getscheduler(me), libc::SCHED_OTHER | libc::SCHED_RESET_ON_FORK);
+            }
+        })
+        .join()
+        .unwrap();
     }
 }
