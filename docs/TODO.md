@@ -6009,8 +6009,13 @@ people.
   speed, at 1×, 1.5× and 2×; a long video to try with is made by an
   ignored test, `makes_a_long_video`). The glyph is 8 by 14 points in
   the middle of its cell (it was 10 by 16, below it and to its right).
-  Nothing else was found wrong with long videos or at 2× in what was
-  tried (playing, seeking by the bar); say if you see more.
+  **And the timeline itself** (found with Ben's own recording, which he
+  said to try): the player was drawn again only when its next picture
+  was due, and a screen recording's still stretch is one picture many
+  seconds long, so the time and the bar stood still through it and then
+  jumped (2:22:07, then 2:22:11 ten seconds on at 2×, then +37 s). It's
+  drawn again whenever the time shown changes (`until_time_changes`):
+  +10 s every 5 s at 2× now, through the same stretches.
 
 - ~~**The website: one zoom, an HDR ring, the hardware skill's command**~~
   (Ben, 2026-11-17; done 2026-11-17: 2285a4d8d, 177b4165e, 201833c6b).

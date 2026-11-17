@@ -1427,6 +1427,15 @@ struct TransportAt {
 /// The speed button's width: room for the longest, "0.25×".
 const SPEED_W: f32 = 44.0;
 
+/// How long until the time a transport shows changes, playing from
+/// `position` (seconds) at `rate`: it's written in whole seconds,
+/// rounded, so at the next half second of the media, sooner played
+/// faster (and a little after, to be past it when looked at).
+fn until_time_changes(position: f64, rate: f64) -> Duration {
+    let into = (position + 0.5).rem_euclid(1.0);
+    Duration::from_secs_f64(((1.0 - into) / rate.max(0.05)).max(0.0) + 0.01)
+}
+
 /// The room the transport's two times take, the gaps beside them
 /// included: the time played after the button, and the time left before
 /// the speed. By the widest each gets (the whole length, in a face
@@ -1601,6 +1610,17 @@ impl PreviewView {
             cx.emit(PreviewEvent::Played);
         }
         if let Some(d) = next_due {
+            // Drawn again when the next picture is due, and when the time
+            // shown changes, whichever is first: a screen recording's
+            // still stretch is one picture many seconds long, and drawn
+            // only at its pictures the time and the bar stood still
+            // through it and then jumped (Ben's 2:45:18 recording: "the
+            // timeline has just gone nuts"). The time is written in
+            // whole seconds, rounded: it changes at each half.
+            let d = match &self.video {
+                Some(v) if Transport::playing(v) => d.min(until_time_changes(Transport::position(v), Transport::rate(v))),
+                _ => d,
+            };
             self.tick_in(d, cx);
         }
         // Stopped (played to its end) or started as the clock ticked here:
@@ -1858,6 +1878,20 @@ impl PreviewView {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The time shown changes at each half second of the media: looked
+    /// at again then, sooner played faster.
+    #[test]
+    fn the_time_is_drawn_as_it_changes() {
+        let ms = |p: f64, r: f64| (until_time_changes(p, r).as_secs_f64() * 1000.0).round() as u64;
+        // 10.0 shows 0:10 until 10.5.
+        assert_eq!(ms(10.0, 1.0), 510);
+        assert_eq!(ms(10.0, 2.0), 260);
+        // Just before it changes, and just after.
+        assert_eq!(ms(10.49, 1.0), 20);
+        assert_eq!(ms(10.5, 1.0), 1010);
+        assert_eq!(ms(8522.25, 0.25), 1010);
+    }
 
     /// The transport's times have the room of their widest: a short
     /// video's as before, an hour's more (in a face 6.6 points a digit).
