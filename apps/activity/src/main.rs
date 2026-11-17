@@ -266,22 +266,32 @@ pub fn tell(msg: Msg) {
     olo_kit::proxy().send(msg);
 }
 
-/// Asks olo-complete how its model does, every second while the AI
-/// section shows and at once when it comes to show; nothing otherwise
-/// (`want`: whether it shows). It answers in microseconds; one not
-/// running is asked nothing (the socket refuses at once).
+/// How often what only the sidebar shows of a section is asked for,
+/// while another section shows: its row's figure is over the last
+/// minute (frames dropped, the pointer's gaps, suggestions taken), and
+/// every row has its figure from the start and keeps it current, as
+/// CPU's and Memory's do (Ben, 2026-11-17: "several of the side menu
+/// items like AI, Inputs and probably others don't show a value or say
+/// Off until I click them and then they have values. they should all
+/// update properly"). They were asked for only while their own section
+/// showed.
+const SIDEBAR_PACE: std::time::Duration = std::time::Duration::from_secs(5);
+const SHOWN_PACE: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// Asks olo-complete how its model does: at once as the app starts and
+/// when the AI section comes to show, every second while it shows, and
+/// every few while another does (`want`: whether it shows; the
+/// sidebar's row has its figure either way). It answers in
+/// microseconds; one not running is asked nothing (the socket refuses
+/// at once).
 fn model_poller(send: impl Fn(Msg) + Send + 'static, rx: mpsc::Receiver<bool>) {
     use olo_complete::protocol::{self, Reply, Request, Settings};
     let mut want = false;
     loop {
-        let ask = if want { rx.recv_timeout(std::time::Duration::from_secs(1)) } else { rx.recv().map_err(|_| mpsc::RecvTimeoutError::Disconnected) };
-        match ask {
+        match rx.recv_timeout(if want { SHOWN_PACE } else { SIDEBAR_PACE }) {
             Ok(w) => want = w,
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => return,
-        }
-        if !want {
-            continue;
         }
         // (Headless: a model a while in use, to look at.)
         if std::env::var_os("OLO_ACTIVITY_DEMO_AI").is_some() {
@@ -385,17 +395,18 @@ enum FramesAsk {
     Capture(bool),
 }
 
-/// Asks app_server how each display keeps up, every second while the
-/// Displays section shows and at once when it comes to show; nothing
-/// otherwise. Capturing drops is app_server's to do (`CaptureDrops`).
+/// Asks app_server how each display and the pointer keep up: at once as
+/// the app starts and when the Displays or Inputs section comes to
+/// show, every second while one shows, and every few while another does
+/// (the sidebar's rows have their figures either way: `SIDEBAR_PACE`).
+/// Capturing drops is app_server's to do (`CaptureDrops`).
 fn frames_poller(send: impl Fn(Msg) + Send + 'static, rx: mpsc::Receiver<FramesAsk>) {
     use olo_protocol::{Client, Reply, Request};
     let mut want = false;
     let mut capture = false;
     let mut client: Option<Client> = None;
     loop {
-        let ask = if want { rx.recv_timeout(std::time::Duration::from_secs(1)) } else { rx.recv().map_err(|_| mpsc::RecvTimeoutError::Disconnected) };
-        match ask {
+        match rx.recv_timeout(if want { SHOWN_PACE } else { SIDEBAR_PACE }) {
             Ok(FramesAsk::Want(w)) => want = w,
             Ok(FramesAsk::Capture(on)) => {
                 capture = on;
@@ -410,9 +421,6 @@ fn frames_poller(send: impl Fn(Msg) + Send + 'static, rx: mpsc::Receiver<FramesA
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => return,
-        }
-        if !want {
-            continue;
         }
         // (Headless test sessions have no displays: made-up ones to look at.)
         if std::env::var_os("OLO_ACTIVITY_DEMO_FRAMES").is_some() {
@@ -700,6 +708,9 @@ pub struct Activity {
     /// brush's suggestions: on or not, and olo-complete's account (the
     /// AI section), as `model_poller` last heard.
     pub model_on: bool,
+    /// The model has been asked after (until then its row says nothing,
+    /// not "Off").
+    pub model_known: bool,
     pub model: Option<Box<olo_complete::protocol::Stats>>,
     model_ask: mpsc::Sender<bool>,
     /// How often the processor had been throttled for heat at each
@@ -777,6 +788,7 @@ impl Activity {
             frame_history: HashMap::new(),
             frames: pollers.frames,
             model_on: false,
+            model_known: false,
             model: None,
             model_ask: pollers.model_ask,
             throttles: VecDeque::new(),
@@ -1266,6 +1278,12 @@ impl View for Activity {
             Msg::Supervisor(s) => self.supervisor = *s,
             Msg::Palms(stats) => self.palm_stats = Some(stats),
             Msg::Frames(displays, capture, pointer, touch, inputs) => {
+                // (Asked for the sidebar's rows alone while another
+                // section shows: drawn again only if a row's figure
+                // changed. Each asking drew the whole window again, 6%
+                // more work with nothing to show for it.)
+                let rows = |a: &Activity| (sections::sidebar_value(a, Section::Displays), sections::sidebar_value(a, Section::Inputs));
+                let (shown, before) = (matches!(self.settings.section, Section::Displays | Section::Inputs), rows(self));
                 // Each figure kept over time, for the sections' graphs.
                 let t = self.t();
                 let mut keep = |key: String, v: f64| {
@@ -1293,6 +1311,9 @@ impl View for Activity {
                 self.pointer_health = pointer;
                 self.touch_health = touch;
                 self.inputs = inputs;
+                if !shown && rows(self) == before {
+                    return;
+                }
             }
             Msg::Model(on, stats) => {
                 if let Some(s) = stats.as_ref().filter(|s| s.latency_count > 0) {
@@ -1305,12 +1326,18 @@ impl View for Activity {
                         }
                     }
                 }
-                // (Nothing new: nothing to draw.)
-                if self.model_on == on && self.model == stats {
+                // (Nothing new: nothing to draw; nor, while another
+                // section shows, when its row's figure is as it was.)
+                if self.model_known && self.model_on == on && self.model == stats {
                     return;
                 }
+                let before = self.model_known.then(|| sections::sidebar_value(self, Section::Ai));
+                self.model_known = true;
                 self.model_on = on;
                 self.model = stats;
+                if self.settings.section != Section::Ai && before.as_deref() == Some(sections::sidebar_value(self, Section::Ai).as_str()) {
+                    return;
+                }
             }
             Msg::Access(access) => self.access = access,
             Msg::Alert(message) => alert(&message, cx),

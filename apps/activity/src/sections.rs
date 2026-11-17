@@ -247,7 +247,7 @@ pub fn sidebar_value(app: &Activity, s: Section) -> String {
         // Of the suggestions shown, how many were taken.
         Section::Ai => match &app.model {
             Some(s) if s.offered > 0 => percent(s.accepted as f64 / s.offered as f64),
-            _ if !app.model_on => "Off".to_owned(),
+            _ if app.model_known && !app.model_on => "Off".to_owned(),
             _ => String::new(),
         },
         _ => String::new(),

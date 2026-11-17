@@ -17,14 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Bug: Activity Monitor's sidebar rows with no value until clicked**
-  (Ben, 2026-11-17: "several of the side menu items like AI, Inputs and
-  probably others don't show a value or say Off until I click them and
-  then they have values. they should all update properly"). Each
-  section's row in the sidebar shows its value from the start and as it
-  changes, whether or not the section has been opened: find which
-  sections only start measuring (or only publish their value) once
-  shown, and have every row's value fed as the others' are.
 - **The phone's other notifications, calls and music** (found
   2026-11-16; natively since). Olo has a phone's messages, contacts and
   codes. Not yet: its other apps' notifications (Apple's Notification
@@ -5976,6 +5968,16 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Bug: Activity Monitor's sidebar rows with no value until
+  clicked**~~ (Ben, 2026-11-17: "several of the side menu items like
+  AI, Inputs and probably others don't show a value or say Off until I
+  click them"; done 2026-11-17). Displays, Inputs and AI were asked
+  after only while their own section showed (and AI said "Off" before
+  it had ever asked). They're asked at the start and every five seconds
+  while another section shows (every second while their own does, as
+  before), and the window is drawn again only if a row's figure
+  changed: the same 253 frames in 30 s as before.
 
 - ~~**Everything Olo Doctor does can be undone**~~ (Ben, 2026-11-16:
   "everything in olo doctor that it does must be reversible, e.g. for
