@@ -49,6 +49,26 @@ fn socket_on(app_id: &str, display: &str) -> PathBuf {
     rt.join(format!("{app_id}-{display}.sock"))
 }
 
+/// Whether a program's first argument asks what it is or does, not for
+/// it to run: `--help`, `-h`, `--version`, `-V`.
+pub fn asks(first: Option<&str>) -> bool {
+    matches!(first, Some("--help" | "-h" | "--version" | "-V"))
+}
+
+/// A window program asked `--help` (or its version) says it has none and
+/// ends, with no window: here before a launch is handed to the copy that
+/// runs ([`forward`]), and in the kit before a program of its own starts
+/// (`olo_kit::run`). A program with help of its own answers before
+/// either. (Asked from a shell in the person's session, a question
+/// opened a window on their screen: `olo-logs --help`, then
+/// `olo-terminal --help` from an agent's shell, 2026-11-17.)
+pub fn no_window_for_a_question(app_id: &str, first: Option<&str>) {
+    if asks(first) {
+        eprintln!("{app_id}: a window program with no {} of its own (nothing was opened); see docs/HACKING.md", first.unwrap_or_default());
+        std::process::exit(2);
+    }
+}
+
 /// If `app_id` is already running, hand it `args` and return true. Not
 /// when this process was moved here from another display (`moving`), or
 /// carries state (`restore`: re-executing): not a launch, and handed to
@@ -60,6 +80,7 @@ fn socket_on(app_id: &str, display: &str) -> PathBuf {
 /// cleared, so what it starts isn't a copy too: call this first thing,
 /// before any thread starts.
 pub fn forward(app_id: &str, args: &[String]) -> bool {
+    no_window_for_a_question(app_id, args.first().map(String::as_str));
     if std::env::var_os(olo_xdg::NEW_INSTANCE).is_some_and(|v| v == "1") {
         // SAFETY: called first thing in main, before threads start.
         unsafe { std::env::remove_var(olo_xdg::NEW_INSTANCE) };
@@ -196,6 +217,19 @@ fn listen_at(path: PathBuf, proxy: Proxy) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A question isn't a launch: only as the first argument (a
+    /// command's own `-h` after `-e` is its).
+    #[test]
+    fn a_question_is_not_a_launch() {
+        for q in ["--help", "-h", "--version", "-V"] {
+            assert!(asks(Some(q)), "{q}");
+        }
+        for not in ["--tab", "-e", "notes.txt", "help", "--print", ""] {
+            assert!(!asks(Some(not)), "{not}");
+        }
+        assert!(!asks(None));
+    }
     use std::time::{Duration, Instant};
 
     fn at(name: &str) -> PathBuf {

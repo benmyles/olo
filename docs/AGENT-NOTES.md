@@ -17,11 +17,20 @@ Each note: what to do, then why (what happened), then how to apply it.
   …)"`.** A failed start left Ben's display set in the shell, and what
   ran next opened on his screen. Start what you test with `tsession run
   NAME PROGRAM`, which sets its environment itself.
-- **No app binaries from the shell.** Even `--help` opens the app on
-  Ben's screen (the shell has his `WAYLAND_DISPLAY`). Read the program's
-  `main.rs` to find a flag that prints and exits (`olo-doctor --report`,
-  `olo-logs --print`), and mind backticks inside a double-quoted grep:
-  one ran a binary once.
+- **No app binaries from the shell.** Anything but a flag that prints
+  and exits opens the app on Ben's screen (the shell has his
+  `WAYLAND_DISPLAY`). Read the program's `main.rs` to find one
+  (`olo-doctor --report`, `olo-logs --print`), and mind backticks
+  inside a double-quoted grep: one ran a binary once. `--help`,
+  `-h`, `--version` and `-V` as the first argument no longer open
+  anything (an agent ran `olo-terminal --help` and a window opened,
+  2026-11-17: the kit now refuses them in `instance::forward` and
+  `olo_kit::run`, and Terminal has a `--help` of its own and refuses
+  options it doesn't know), but any other argument, a wrong one
+  included, is still a launch. When a window did open by mistake: find
+  the process you started by its start time and parent (`ps -eo
+  pid,ppid,etimes,args --sort=etimes`), check it's yours and idle, and
+  end that one PID.
 - **Kill test processes by PID, only after checking they're yours.**
   `pkill -f` once killed Ben's real Tracker. Find the PID, check its
   `/proc/PID/environ` names your test session (`olo-dev/NAME`), then

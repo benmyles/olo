@@ -3291,6 +3291,37 @@ impl Terminal {
     }
 }
 
+const USAGE: &str = "usage: olo-terminal [--tab] [-w DIR] [-e COMMAND [ARG…]]
+  (nothing)                  a new window (in the Terminal that runs)
+  --tab                      a new tab in the window in front instead
+  -w, --working-directory DIR
+                             its shell starts in DIR
+  -e, -- COMMAND [ARG…]      run COMMAND in it instead of a shell
+  --tab-title TITLE          title the tab this is run in (a coding agent's)
+  --help                     this";
+
+/// Whether a launch's arguments ask for help (true), are a launch's own
+/// (false), or have an option that isn't one (which).
+fn launch_check(args: &[String]) -> Result<bool, String> {
+    let mut args = args.iter();
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "-h" | "--help" => return Ok(true),
+            "--tab" => {}
+            "-w" | "--working-directory" => {
+                args.next();
+            }
+            // (The command and its own arguments: anything.)
+            "-e" | "--" => return Ok(false),
+            // (A tab's title set from its shell: its words follow.)
+            s if s == agent_title::SET_FLAG => return Ok(false),
+            s if s.starts_with('-') => return Err(s.to_owned()),
+            _ => {}
+        }
+    }
+    Ok(false)
+}
+
 fn main() {
     olo_crash::install();
     // A session or install from before the rename (Tabula) carries on.
@@ -3324,6 +3355,23 @@ fn main() {
             c if c == std::process::ExitCode::SUCCESS => 0,
             _ => 1,
         });
+    }
+    // Anything else opens a window (here, or handed to the Terminal that
+    // runs): never for a question or a slip. `--help` says what there is,
+    // and an option that isn't one is refused, both without a window.
+    // (Any option it didn't know was passed over, so `olo-terminal
+    // --help` from an agent's shell opened a window on the person's
+    // screen: 2026-11-17.)
+    match launch_check(&args) {
+        Ok(false) => {}
+        Ok(true) => {
+            println!("{USAGE}");
+            return;
+        }
+        Err(option) => {
+            eprintln!("olo-terminal: no option {option}\n{USAGE}");
+            std::process::exit(2);
+        }
     }
     if instance::forward(APP_ID, &args) {
         return;
@@ -3537,6 +3585,22 @@ mod tile_group_tests {
 
 #[cfg(test)]
 mod drop_tests {
+    /// A launch's options: its own pass, help is asked for, and one
+    /// that isn't an option is refused (never a window for a slip).
+    #[test]
+    fn a_launchs_options() {
+        let check = |args: &[&str]| super::launch_check(&args.iter().map(|a| (*a).to_owned()).collect::<Vec<_>>());
+        assert_eq!(check(&[]), Ok(false));
+        assert_eq!(check(&["--tab", "-w", "/srv/x"]), Ok(false));
+        assert_eq!(check(&["-w", "--odd-folder"]), Ok(false), "a folder's name isn't an option");
+        assert_eq!(check(&["-e", "ls", "--color"]), Ok(false), "the command's own options are its");
+        assert_eq!(check(&["--", "top", "-d", "1"]), Ok(false));
+        assert_eq!(check(&["--help"]), Ok(true));
+        assert_eq!(check(&["--tab", "-h"]), Ok(true));
+        assert_eq!(check(&["--version"]), Err("--version".into()));
+        assert_eq!(check(&["--tab", "--frob"]), Err("--frob".into()));
+    }
+
     /// A tab's kept settings find it again: by its shell where that's
     /// the one it had, by its place where the shell is a new one (after
     /// a restart), and not at all if fewer opened than were kept (which

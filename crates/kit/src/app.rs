@@ -899,6 +899,8 @@ fn few_arenas() {
 /// program quits: when its last window closes, unless it's
 /// [`stay_resident`].
 pub fn run(app_id: &str, build: impl FnOnce(&mut AppCx)) {
+    // (A question, `--help`, never opens a window.)
+    olo_kit_base::instance::no_window_for_a_question(app_id, std::env::args().nth(1).as_deref());
     few_arenas();
     // Olo's apps render with the GPU the compositor's primary is (the one
     // the computer started on, which the renderer takes first): a device

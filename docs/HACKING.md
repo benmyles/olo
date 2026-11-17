@@ -1053,6 +1053,15 @@ the Book: a worker with progress, a child view, a drawing, a menu.)
   `olo-pbcopy` and `olo-pbpaste`, installed with Olo's programs; the
   session (`graphical::command_names`) and the installer link `pbcopy`
   and `pbpaste` to them beside them, never over the person's own.
+* **A question never opens a window**: `--help`, `-h`, `--version` or
+  `-V` as a window program's first argument is refused with a line on
+  stderr and exit 2, before a launch is handed to the copy that runs
+  (`instance::forward`) and before a program of its own starts
+  (`olo_kit::run`; `instance::no_window_for_a_question`). A program
+  with help of its own answers before either (Terminal's `--help`
+  prints its options, and it refuses an option it doesn't know:
+  `launch_check`). Asked from a shell in the person's session, the
+  question used to be a launch: a window on their screen.
 * **Single instance** (`olo_kit::instance`): call `instance::forward(app_id,
   &args)` first in `main` (returns true if a running copy took the
   arguments; exit then), and `instance::listen(app_id, olo_kit::proxy())`

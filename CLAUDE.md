@@ -100,7 +100,9 @@ are universal and non-negotiable:
   PIL, so shots and journal entries fail under it. Your shell has the
   person's `WAYLAND_DISPLAY`, so a GUI program you run from it opens on
   their screen: `olo-logs` prints only with `--print` as its first
-  argument (else, even with `--help`, Logs opens).
+  argument. A kit program asked `--help` or `--version` refuses without
+  a window; any other argument, a wrong one too, is a launch: read the
+  program's `main.rs` for its options, don't ask it.
 - **Scratch on disk, in `/var/tmp`, never `/tmp`.** `/tmp` is RAM
   (tmpfs), so whatever goes there fills the person's memory: sandbox
   HOMEs, a `CARGO_TARGET_DIR`, copies of builds (a release binary is
