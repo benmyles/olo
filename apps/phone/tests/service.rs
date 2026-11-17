@@ -1,9 +1,10 @@
-//! `olo-phone --service` end to end: against `blueferry-fake` (olo-system's
-//! stand-in backend, found beside olo-phone in the build's folder) and
-//! stand-in browsers that say which tabs wait for a code. Needs a bus to
-//! meet on: run with `OLO_TEST_BUS=unix:path=…` (a private bus: `olo-bus
-//! unix:path=/var/tmp/…/bus.sock`) after `cargo build -p olo-system --bin
-//! blueferry-fake`. Without them the test does nothing.
+//! `olo-phone --service` end to end: against `phone-standin` (olo-system's
+//! stand-in BlueZ with a stand-in phone behind it, found beside olo-phone
+//! in the build's folder) and stand-in browsers that say which tabs wait
+//! for a code. Needs a bus to meet on: run with `OLO_TEST_BUS=unix:path=…`
+//! (a private bus: `olo-bus unix:path=/var/tmp/…/bus.sock`) after `cargo
+//! build -p olo-system --bin phone-standin`. Without them the test does
+//! nothing.
 //!
 //! A browser on an agent's screen is known by its process's environment
 //! (`OLO_SCREEN`), so the stand-in browsers are processes of their own:
@@ -92,12 +93,12 @@ fn wait_for(what: &str, mut ready: impl FnMut() -> bool) {
 }
 
 #[test]
-fn a_code_goes_to_the_tab_waiting_for_it() {
+fn messages_and_a_code_to_the_tab_waiting_for_it() {
     let Ok(address) = std::env::var("OLO_TEST_BUS") else { return };
     let phone = PathBuf::from(env!("CARGO_BIN_EXE_olo-phone"));
-    let fake = phone.with_file_name("blueferry-fake");
-    if !fake.exists() {
-        eprintln!("no {}: build it (cargo build -p olo-system --bin blueferry-fake)", fake.display());
+    let standin = phone.with_file_name("phone-standin");
+    if !standin.exists() {
+        eprintln!("no {}: build it (cargo build -p olo-system --bin phone-standin)", standin.display());
         return;
     }
     // (On disk: /tmp is memory here.)
@@ -105,13 +106,25 @@ fn a_code_goes_to_the_tab_waiting_for_it() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("run")).unwrap();
     let (run, state, socket) = (dir.join("run"), dir.join("state"), dir.join("run/olo-phone.sock"));
-    let tell = |words: &[&str]| assert!(Command::new(&fake).args(["--address", &address, "--tell"]).args(words).status().unwrap().success());
-    let _fake = Ended(Command::new(&fake).args(["--address", &address]).spawn().unwrap());
+    let tell = |words: &[&str]| {
+        let out = Command::new(&standin).args(["--address", &address, "--tell"]).args(words).output().unwrap();
+        assert!(out.status.success(), "{words:?}");
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+    let _standin = Ended(Command::new(&standin).args(["--address", &address]).spawn().unwrap());
+    wait_for("the stand-in never took its name", || {
+        zbus::blocking::connection::Builder::address(address.as_str())
+            .and_then(|b| b.build())
+            .and_then(|c| zbus::blocking::fdo::DBusProxy::new(&c).and_then(|d| Ok(d.name_has_owner("org.bluez".try_into().unwrap())?)))
+            .unwrap_or(false)
+    });
+    // The phone's own switch is off as the service starts.
+    tell(&["set", "messages", "no"]);
     let _service = Ended(
         Command::new(&phone)
             .arg("--service")
             .env("DBUS_SESSION_BUS_ADDRESS", &address)
-            .env("OLO_PHONE_BUS", &address)
+            .env("OLO_PHONE_BLUEZ", &address)
             .env("OLO_PHONE_DIR", &run)
             .env("OLO_PHONE_SETTINGS", run.join("phone.json"))
             .env("XDG_STATE_HOME", &state)
@@ -121,17 +134,30 @@ fn a_code_goes_to_the_tab_waiting_for_it() {
             .unwrap(),
     );
     let published = || std::fs::read_to_string(run.join("olo-phone.json")).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).unwrap_or(Value::Null);
-    wait_for("the service never found the backend", || published()["link"] == "ready");
+    let olo_phone = |args: &[&str], screen: Option<&str>| {
+        let mut c = Command::new(&phone);
+        c.args(args).env("OLO_PHONE_DIR", &run).env_remove("OLO_SCREEN").stderr(Stdio::piped());
+        if let Some(s) = screen {
+            c.env("OLO_SCREEN", s);
+        }
+        let out = c.output().unwrap();
+        (out.status.success(), String::from_utf8_lossy(&out.stdout).trim().to_owned(), String::from_utf8_lossy(&out.stderr).trim().to_owned())
+    };
+
+    // Paired, in reach, and not allowed yet: said so. Allowed on the
+    // phone: found within its ten seconds, the inbox read, the contacts.
+    wait_for("the service never said the phone must allow it", || published()["link"] == "allow");
+    assert_eq!((published()["name"].as_str(), published()["kind"].as_str()), (Some("Mira’s iPhone"), Some("i-phone")));
+    tell(&["set", "messages", "yes"]);
+    let start = Instant::now();
+    while published()["link"] != "ready" || published()["contacts"] != true {
+        assert!(start.elapsed() < Duration::from_secs(25), "the service never connected: {}", published());
+        std::thread::sleep(Duration::from_millis(50));
+    }
     let s = published();
-    assert_eq!((s["backend"].as_str(), s["battery"].as_u64(), s["conversations"].as_u64(), s["unread"].as_u64(), s["codes"].as_u64()), (Some("running"), Some(81), Some(5), Some(0), Some(0)));
-    // (The backend's own popups are off: Olo tells of messages itself.)
-    wait_for("the backend's popups stayed on", || {
-        zbus::blocking::connection::Builder::address(address.as_str())
-            .and_then(|b| b.build())
-            .and_then(|c| c.call_method(Some("io.weirdware.BlueFerry"), "/io/weirdware/BlueFerry", Some("io.weirdware.BlueFerry.Messages1"), "GetNotificationPolicy", &()))
-            .and_then(|m| m.body().deserialize::<String>())
-            .is_ok_and(|p| p == "none")
-    });
+    assert_eq!((s["conversations"].as_u64(), s["unread"].as_u64(), s["codes"].as_u64()), (Some(2), Some(0), Some(0)));
+    let (ok, said, _) = olo_phone(&["--conversations"], None);
+    assert!(ok && said.contains("Mira Kovač") && said.contains("Are you still coming on Saturday?"), "a contact's name on her conversation: {said}");
 
     // The person's tab has the focus, on some forum; the tab on the
     // agent's screen is the bank's, its field just come up. The bank's
@@ -152,45 +178,61 @@ fn a_code_goes_to_the_tab_waiting_for_it() {
     assert_eq!((action["kind"].as_str(), action["args"][0].as_str(), action["result"]["from"].as_str()), (Some("code"), Some("login.acmebank.example"), Some("Acme Bank")));
     assert!(!history.contains("482913"));
     let s = published();
-    assert_eq!((s["codes"].as_u64(), s["code_at"].is_null(), s["unread"].as_u64()), (Some(1), true, Some(1)));
+    assert_eq!((s["codes"].as_u64(), s["code_at"].is_null(), s["unread"].as_u64(), s["conversations"].as_u64()), (Some(1), true, Some(1), Some(3)));
     assert!(!s.to_string().contains("482913") && !s.to_string().contains("Acme"));
 
-    // The person's tab alone: offered there, for them to take.
+    // The person's tab alone: offered there, for them to take; and a
+    // code field that comes up after the code did gets it too.
     let mine = browser(&socket, None, json!([{"tab": 11, "host": "login.acmebank.example", "title": "Sign in", "focused": true, "active": true, "front": true, "age": 15}]), 2000, false);
     std::thread::sleep(Duration::from_millis(500));
     tell(&["receive", "", "22395", "Your Acme Bank verification code is 771204."]);
     assert_eq!(heard(mine), [json!({"say": "any", "id": 2}), json!({"say": "code", "id": 2, "tab": 11, "frame": 0, "code": "771204", "from": "Acme Bank", "fill": false})]);
-    // A code field that comes up after the code did gets it too, while
-    // it's good; a tab it was shown in isn't shown it again.
     let later = browser(&socket, None, json!([{"tab": 12, "host": "acmebank.example", "title": "Verify", "focused": true, "active": true, "front": true}]), 1200, true);
     assert_eq!(heard(later), [json!({"say": "code", "id": 2, "tab": 12, "frame": 0, "code": "771204", "from": "Acme Bank", "fill": false})]);
-    // (Each browser is another to the service: one that comes back with
-    // the same tab is offered it again, as its page may have loaded
-    // again.)
-
     // Nothing that isn't a code is offered anywhere.
     let mine = browser(&socket, None, json!([{"tab": 11, "host": "shop.example", "title": "Checkout", "focused": true, "active": true, "front": true, "age": 5}]), 1500, false);
     std::thread::sleep(Duration::from_millis(500));
-    tell(&["receive", "", "+15550190", "Your parcel arrives tomorrow between 10:00 and 12:00. Tracking 48291375."]);
+    tell(&["receive", "", "+15550100190", "Your parcel arrives tomorrow between 10:00 and 12:00. Tracking 48291375."]);
     assert_eq!(heard(mine), [] as [Value; 0]);
 
-    // The latest code is given to what asks here, never on an agent's
+    // What a message says is the person's: the latest code and the
+    // conversations are given to what asks here, never on an agent's
     // screen.
-    let ask = |screen: Option<&str>| {
-        let mut c = Command::new(&phone);
-        c.arg("--code").env("OLO_PHONE_DIR", &run).env_remove("OLO_SCREEN").stderr(Stdio::piped());
-        if let Some(s) = screen {
-            c.env("OLO_SCREEN", s);
-        }
-        let out = c.output().unwrap();
-        (out.status.success(), String::from_utf8_lossy(&out.stdout).trim().to_owned(), String::from_utf8_lossy(&out.stderr).trim().to_owned())
-    };
-    assert_eq!(ask(None), (true, "771204".into(), String::new()));
-    assert_eq!(ask(Some("agent")), (false, String::new(), "olo-phone: not from an agent's screen".into()));
+    assert_eq!(olo_phone(&["--code"], None), (true, "771204".into(), String::new()));
+    assert_eq!(olo_phone(&["--code"], Some("agent")), (false, String::new(), "olo-phone: not from an agent's screen".into()));
+    assert_eq!(olo_phone(&["--conversations"], Some("agent")).2, "olo-phone: not from an agent's screen");
 
-    // The phone goes out of reach: said.
-    tell(&["set", "link", "reconnecting"]);
-    wait_for("the state never said the phone had gone", || published()["link"] == "reconnecting" && published()["battery"].is_null());
+    // An answer, by the conversation's name; a new message to a number;
+    // what isn't one is refused plainly. The phone has what was sent,
+    // and the conversation keeps it.
+    assert_eq!(olo_phone(&["--send", "Mira Kovač", "See", "you", "at", "ten."], None), (true, String::new(), String::new()));
+    // (Conversations are ordered by the second.)
+    std::thread::sleep(Duration::from_millis(1100));
+    assert_eq!(olo_phone(&["--send", "+15550100117", "Thanks Tomas"], None).0, true);
+    assert_eq!(olo_phone(&["--send", "nobody at all", "x"], None), (false, String::new(), "olo-phone: That isn't a telephone number or an address.".into()));
+    assert_eq!(tell(&["sent"]), "+15550100142: See you at ten.\n+15550100117: Thanks Tomas\n");
+    let (_, read, _) = olo_phone(&["--read", "Mira Kovač"], None);
+    assert!(read.ends_with("you: See you at ten."), "{read}");
+    let (_, all, _) = olo_phone(&["--conversations"], None);
+    assert!(all.starts_with("Tomas Lind"), "the latest first, a contact's name on a new one: {all}");
+    assert_eq!(olo_phone(&["--mark-read", "22395"], None).0, true);
+    assert_eq!(published()["unread"].as_u64(), Some(1), "the parcel's is still unread");
+    assert_eq!(olo_phone(&["--contacts", "tomas"], None).1, "Tomas Lind  +15550100117, tomas@example.org");
+
+    // The phone goes out of reach: said; back: connected again by itself.
+    tell(&["set", "connected", "no"]);
+    assert_eq!(olo_phone(&["--send", "Mira Kovač", "still there?"], None).0, false);
+    wait_for("the state never said the phone had gone", || published()["link"] == "away");
+    tell(&["set", "connected", "yes"]);
+    let start = Instant::now();
+    while published()["link"] != "ready" {
+        assert!(start.elapsed() < Duration::from_secs(25), "the service never came back: {}", published());
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(published()["conversations"].as_u64(), Some(4), "what it had is kept");
+    // Unpaired: no phone, and nothing of it kept.
+    tell(&["set", "paired", "no"]);
+    wait_for("the state never said no phone is paired", || published()["link"] == "not-paired" && published()["conversations"] == 0);
     drop(_service);
     let _ = std::fs::remove_dir_all(&dir);
 }

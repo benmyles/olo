@@ -116,22 +116,35 @@ Each note: what to do, then why (what happened), then how to apply it.
   (`kernel-devel-matched` keeps the newest's).
 - **The phone without a phone** (see HACKING, "The phone"): a private
   bus (`target/release/olo-bus unix:path=/var/tmp/ME/bus.sock --ready`),
-  `blueferry-fake --address ADDRESS` on it, then `olo-phone --service`
-  with `DBUS_SESSION_BUS_ADDRESS` and `OLO_PHONE_BUS` both that address
+  `phone-standin --address ADDRESS [--unpaired] [--android]` on it (a
+  stand-in BlueZ with a stand-in phone), then `olo-phone --service` with
+  `DBUS_SESSION_BUS_ADDRESS` and `OLO_PHONE_BLUEZ` both that address
   (its notifications go to whatever bus is its session's: the person's,
   if you leave theirs), `OLO_PHONE_DIR`, `OLO_PHONE_SETTINGS` and
-  `XDG_STATE_HOME` in scratch (an agent screen's history is written
-  under the state folder), and `env -u OLO_SCREEN` if your shell has
-  one. Chrome for it: `cp -a --reflink=always
+  `XDG_STATE_HOME` in scratch, and `env -u OLO_SCREEN` if your shell has
+  one. Preferences ▸ Phone against it: `tsession run NAME
+  DBUS_SYSTEM_BUS_ADDRESS=ADDRESS OLO_PHONE_DIR=… olo-preferences phone`
+  (**without `DBUS_SYSTEM_BUS_ADDRESS` its first step starts a search on
+  the person's real Bluetooth**). `phone-standin --address ADDRESS
+  --tell receive "" 22395 "Your Acme Bank verification code is
+  482913."` makes a code come; `--tell set messages no` turns the
+  phone's switch off. Chrome for it: `cp -a --reflink=always
   ~/.local/share/olo/chrome/VERSION` into a scratch
   `XDG_DATA_HOME/olo/chrome/`, a `current` link and a fresh `.checked`
   beside it; `tsession run NAME HOME=… XDG_DATA_HOME=… OLO_PHONE_DIR=…
   target/release/olo-chrome --user-data-dir=… --no-first-run URL`, the
   page served from 127.0.0.1. A second Chrome with `OLO_SCREEN=agent`
   in its environment (and a profile and HOME of its own) is "on an
-  agent's screen" to the service. `blueferry-fake --address ADDRESS
-  --tell receive "" 22395 "Your Acme Bank verification code is 482913."`
-  makes a code come.
+  agent's screen" to the service.
+- **Never call a blocking zbus method from inside a zbus interface
+  method on the same connection**: the thread that would read the
+  answer is the one waiting (the pairing agent did, and every question
+  a device asked hung). Take `#[zbus(connection)] conn: &zbus::Connection`
+  and await the call.
+- **`cargo test` with `OLO_TEST_BUS` set runs every bus test at once**
+  on that one bus (dnf-fake's failed once so, among the phone's): give
+  the variable to the test you mean (`--test NAME`), not to a whole
+  crate's run.
 - **The commit hook's layout lint runs over the working tree**, not
   what's staged: committing one thing while another's panel is half
   done fails on that panel (a new Preferences panel needs the settings

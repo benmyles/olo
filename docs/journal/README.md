@@ -5,6 +5,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-16
 
+### Connecting a phone: its own switches
+
+*23:25* — The third step: the phone's own switches for this computer, drawn as the phone shows them (an iPhone's Show Notifications and Sync Contacts; an Android's Text messages and Contacts). Each turns green as the phone turns it on; the page follows by itself.
+
+![Connecting a phone: its own switches](2026-11-16/232538-connecting-a-phone-its-own-switches.png)
+
+### Connecting a phone: the code, large
+
+*23:25* — The second step: the same six digits on the computer and on the phone, shown large in two groups, with It Matches (Return) and It's Different. (Building it found that Olo's pairing agent hung on every question a device asked: fixed.)
+
+![Connecting a phone: the code, large](2026-11-16/232537-connecting-a-phone-the-code-large.png)
+
+### Connecting a phone, natively: find it
+
+*23:25* — Olo now speaks to an iPhone or an Android phone itself, in Rust (OBEX, the Message Access and Phone Book Access profiles over channels BlueZ opens); BlueFerry is gone. Preferences ▸ Phone connects one in three steps, each seen to happen: here the first, the phones nearby with Pair. (A stand-in phone and a stand-in BlueZ.)
+
+![Connecting a phone, natively: find it](2026-11-16/232536-connecting-a-phone-natively-find-it.png)
+
 ### Setting up an iPhone, a step at a time
 
 *22:16* — How do I set up my iPhone? Preferences ▸ Phone now says, and does each step from where it is: Install BlueFerry (the button has Olo Doctor install it; no trip to Doctor), Pair the iPhone (the pairing opens), and what to turn on on the phone; each step ticked as it is done, the one to do next in bold with its button. A phone in Bluetooth's list has Messages and Codes…, which opens the same panel. (A stand-in backend, no phone paired.)

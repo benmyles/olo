@@ -1,8 +1,9 @@
-//! olo-phone: the phone (an iPhone's messages and one-time codes, through
-//! BlueFerry's backend). `--service` is the session's service (see
-//! service.rs); the rest is the command line, for people and agents
-//! alike: what the service knows, the conversations, sending, and Olo's
-//! settings for it.
+//! olo-phone: the phone (an iPhone's or an Android phone's messages,
+//! contacts and one-time codes, spoken to by Olo itself over Bluetooth).
+//! `--service` is the session's service (see service.rs); the rest is the
+//! command line, for people and agents alike, which asks the service on
+//! its socket: how the phone stands, the conversations, sending, and
+//! Olo's settings for it.
 
 mod codes;
 mod service;
@@ -17,26 +18,25 @@ macro_rules! out {
 
 use std::{process::ExitCode, time::Duration};
 
-use olo_protocol::phone::{self, AgentCodes, Backend, Notify, PhoneSettings, PhoneState, Request};
-use olo_system::blueferry::{self, Client};
+use olo_protocol::phone::{self, AgentCodes, Conversation, Notify, PhoneSettings, PhoneState, Reply, Request};
 
 const USAGE: &str = "usage: olo-phone [COMMAND]
-  --status [--json]           the phone: connected, its battery, how many
-                              conversations and unread messages
-  --conversations [--json]    the conversations, the newest first
-  --read KEY [--json]         one conversation's messages
-  --send TO TEXT…             a new message to a number or an address
-  --reply KEY TEXT…           an answer in a conversation
-  --mark-read KEY
-  --start                     start the backend (Olo's service does, and
-                              keeps it running, once a phone is paired)
+  --status [--json]           the phone: paired, connected, its battery,
+                              how many conversations and unread messages
+  --conversations [--json]    the conversations, the latest first
+  --read WHO [--json]         one conversation's messages (WHO: its key,
+                              its name, or the number)
+  --send TO TEXT…             a message to a number, an address, or a
+                              conversation (its key or its name)
+  --mark-read WHO
+  --contacts [QUERY] [--json] the phone's contacts
   --reconnect                 try the phone again now
   --code                      the latest one-time code, while it's good
   --copy-code                 the same, put on the clipboard
   --find-code                 what code a message has (read from standard
                               input; nothing is sent or kept)
   --settings [--json]         Olo's settings for the phone
-  --set SETTING VALUE         notify: messages|everything|nothing
+  --set SETTING VALUE         notify: messages|nothing
                               show-text, codes, codes-in-browser,
                               copy-codes: on|off
                               agent-screens: give|ask|never
@@ -61,84 +61,71 @@ fn main() -> ExitCode {
     let rest = |i: usize| args.get(i..).map(|a| a.join(" ")).unwrap_or_default();
     match arg(0).as_str() {
         "" | "--status" => status(json),
-        "--conversations" => backend(|c| {
-            let threads = c.threads(200)?;
+        "--conversations" => conversations(|all| {
             if json {
-                let list: Vec<_> = threads.iter().map(thread_json).collect();
-                out!("{}", serde_json::to_string_pretty(&list).unwrap_or_default());
+                out!("{}", serde_json::to_string_pretty(&all).unwrap_or_default());
                 return Ok(());
             }
-            for t in &threads {
-                let last = t.messages.last();
+            for t in &all {
                 let unread = match t.unread() {
                     0 => String::new(),
                     n => format!(" ({n} unread)"),
                 };
                 out!("{}{unread}  [{}]", t.name, t.key);
-                if let Some(m) = last {
-                    out!("    {}{}", if m.outgoing { "you: " } else { "" }, one_line(&m.body, 100));
+                if let Some(m) = t.messages.last() {
+                    out!("    {}{}", if m.outgoing { "you: " } else { "" }, one_line(&m.text, 100));
                 }
             }
             Ok(())
         }),
-        "--read" if !arg(1).is_empty() => backend(|c| {
-            let threads = c.threads(200)?;
-            let Some(t) = find(&threads, &arg(1)) else { return Err(not_found(&arg(1))) };
+        "--read" if !arg(1).is_empty() => conversations(|all| {
+            let Some(t) = find(&all, &arg(1)) else { return Err(format!("no conversation “{}” (--conversations lists them)", arg(1))) };
             if json {
-                out!("{}", serde_json::to_string_pretty(&thread_json(t)).unwrap_or_default());
+                out!("{}", serde_json::to_string_pretty(t).unwrap_or_default());
                 return Ok(());
             }
-            out!("{}{}", t.name, if t.is_group { format!(" ({})", t.recipients.join(", ")) } else { String::new() });
+            out!("{} ({})", t.name, t.address);
             for m in &t.messages {
-                let who = if m.outgoing {
-                    "you"
-                } else if t.is_group && !m.sender.is_empty() {
-                    m.sender.as_str()
-                } else {
-                    t.name.as_str()
-                };
-                out!("{}  {who}: {}", m.at, m.body);
+                out!("{}  {}: {}", clock(m.at), if m.outgoing { "you" } else { t.name.as_str() }, m.text);
             }
             Ok(())
         }),
-        "--send" if !arg(2).is_empty() => backend(|c| c.send(&arg(1), &rest(2))),
-        "--reply" if !arg(2).is_empty() => backend(|c| {
-            let threads = c.threads(200)?;
-            let Some(t) = find(&threads, &arg(1)) else { return Err(not_found(&arg(1))) };
-            c.reply(t, &rest(2))
-        }),
-        "--mark-read" if !arg(1).is_empty() => backend(|c| {
-            let threads = c.threads(200)?;
-            let Some(t) = find(&threads, &arg(1)) else { return Err(not_found(&arg(1))) };
-            c.mark_read(&t.key).map(|_| ())
-        }),
-        "--start" => {
-            if !blueferry::installed() {
-                return fail("the phone's backend (BlueFerry) isn't installed: Olo Doctor offers it");
-            }
-            if !blueferry::configured() {
-                return fail("BlueFerry starts once an iPhone is paired: Preferences ▸ Phone pairs it");
-            }
-            let _ = olo_system::env::reload_session_bus();
-            match Client::connect().and_then(|c| c.status()) {
-                Ok(s) => {
-                    out!("BlueFerry {} is running.", s.release);
-                    ExitCode::SUCCESS
-                }
-                Err(e) => fail(&blueferry::said(&e)),
-            }
+        "--send" | "--reply" if !arg(2).is_empty() => {
+            // (A conversation's name stands for its key.)
+            let to = match ask(&Request::Conversations) {
+                Ok(r) => find(&r.conversations.unwrap_or_default(), &arg(1)).map_or_else(|| arg(1), |t| t.key.clone()),
+                Err(_) => arg(1),
+            };
+            done(ask(&Request::Send { to, text: rest(2) }))
         }
-        "--reconnect" => backend(|c| c.reconnect().map(|how| out!("{how}"))),
-        "--code" => match phone::ask(&Request::Code, Duration::from_secs(5)) {
-            Ok(r) if r.ok => {
+        "--mark-read" if !arg(1).is_empty() => conversations(|all| {
+            let Some(t) = find(&all, &arg(1)) else { return Err(format!("no conversation “{}”", arg(1))) };
+            ask(&Request::MarkRead { key: t.key.clone() }).map(|_| ())
+        }),
+        "--contacts" => match ask(&Request::Contacts { query: rest(1) }) {
+            Ok(r) => {
+                let people = r.contacts.unwrap_or_default();
+                if json {
+                    out!("{}", serde_json::to_string_pretty(&people).unwrap_or_default());
+                } else {
+                    for p in &people {
+                        out!("{}  {}", p.name, p.phones.iter().chain(&p.emails).cloned().collect::<Vec<_>>().join(", "));
+                    }
+                }
+                ExitCode::SUCCESS
+            }
+            Err(e) => fail(&e),
+        },
+        "--reconnect" => done(ask(&Request::Reconnect)),
+        "--code" => match ask(&Request::Code) {
+            Ok(r) => {
                 out!("{}", r.code.unwrap_or_default());
                 ExitCode::SUCCESS
             }
-            Ok(r) => fail(&r.error.unwrap_or_default()),
-            Err(e) => fail(&format!("the phone service isn't running ({e})")),
+            Err(e) => fail(&e),
         },
-        "--copy-code" => match phone::ask(&Request::Code, Duration::from_secs(5)) {
-            Ok(r) if r.ok => {
+        "--copy-code" => match ask(&Request::Code) {
+            Ok(r) => {
                 // (Held until something else is copied.)
                 use zeroize::Zeroize as _;
                 let mut code = r.code.unwrap_or_default();
@@ -149,8 +136,7 @@ fn main() -> ExitCode {
                     Err(e) => fail(&format!("can't copy: {e}")),
                 }
             }
-            Ok(r) => fail(&r.error.unwrap_or_default()),
-            Err(e) => fail(&format!("the phone service isn't running ({e})")),
+            Err(e) => fail(&e),
         },
         "--find-code" => {
             let mut text = String::new();
@@ -194,7 +180,6 @@ fn main() -> ExitCode {
             let on = on_off(&arg(2));
             let set = match (arg(1).as_str(), arg(2).as_str()) {
                 ("notify", "messages") => Some(s.notify = Notify::Messages),
-                ("notify", "everything") => Some(s.notify = Notify::Everything),
                 ("notify", "nothing") => Some(s.notify = Notify::Nothing),
                 ("show-text", _) => on.map(|v| s.show_text = v),
                 ("codes", _) => on.map(|v| s.codes = v),
@@ -231,18 +216,38 @@ fn on_off(v: &str) -> Option<bool> {
     }
 }
 
-fn not_found(key: &str) -> zbus_error::Error {
-    zbus_error::Error::Failure(format!("no conversation “{key}” (--conversations lists them)"))
+/// Ask the service; its answer, or why not, said plainly.
+fn ask(request: &Request) -> Result<Reply, String> {
+    match phone::ask(request, Duration::from_secs(50)) {
+        Ok(r) if r.ok => Ok(r),
+        Ok(r) => Err(r.error.unwrap_or_else(|| "the phone service said no".into())),
+        Err(e) => Err(format!("the phone service isn't running ({e})")),
+    }
 }
 
-/// What the backend's errors are here: `olo_system`'s (zbus's).
-mod zbus_error {
-    pub use olo_system::Error;
+fn done(answer: Result<Reply, String>) -> ExitCode {
+    match answer {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(e) => fail(&e),
+    }
 }
 
-/// A conversation by its key, else by its name (any case).
-fn find<'a>(threads: &'a [blueferry::Thread], which: &str) -> Option<&'a blueferry::Thread> {
-    threads.iter().find(|t| t.key == which).or_else(|| threads.iter().find(|t| t.name.eq_ignore_ascii_case(which)))
+/// Do `with` the conversations.
+fn conversations(with: impl FnOnce(Vec<Conversation>) -> Result<(), String>) -> ExitCode {
+    match ask(&Request::Conversations).and_then(|r| with(r.conversations.unwrap_or_default())) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => fail(&e),
+    }
+}
+
+/// A conversation by its key, else by its name (any case), else by its
+/// number however it's written.
+fn find<'a>(all: &'a [Conversation], which: &str) -> Option<&'a Conversation> {
+    let digits = |s: &str| s.chars().filter(char::is_ascii_digit).collect::<String>();
+    all.iter()
+        .find(|t| t.key == which)
+        .or_else(|| all.iter().find(|t| t.name.eq_ignore_ascii_case(which)))
+        .or_else(|| all.iter().find(|t| digits(which).len() >= 5 && digits(&t.address).ends_with(&digits(which))))
 }
 
 fn one_line(s: &str, most: usize) -> String {
@@ -250,30 +255,10 @@ fn one_line(s: &str, most: usize) -> String {
     if line.chars().count() > most { format!("{}…", line.chars().take(most).collect::<String>()) } else { line }
 }
 
-fn thread_json(t: &blueferry::Thread) -> serde_json::Value {
-    serde_json::json!({
-        "key": t.key, "name": t.name, "group": t.is_group, "recipients": t.recipients, "can_reply": t.reply_ready, "unread": t.unread(), "starred": t.starred,
-        "messages": t.messages.iter().map(|m| serde_json::json!({"at": m.at, "from_me": m.outgoing, "read": m.read, "sender": m.sender, "text": m.body})).collect::<Vec<_>>(),
-    })
-}
-
-/// Ask the backend, saying plainly why not if it can't be.
-fn backend(ask: impl FnOnce(&Client) -> olo_system::Result<()>) -> ExitCode {
-    let client = match Client::connect() {
-        Ok(c) => c,
-        Err(e) => return fail(&format!("no session bus: {e}")),
-    };
-    if !client.running() {
-        return fail(match (blueferry::installed(), blueferry::configured()) {
-            (false, _) => "the phone's backend (BlueFerry) isn't installed: Olo Doctor offers it",
-            (true, false) => "no iPhone is paired yet: Preferences ▸ Phone pairs it",
-            (true, true) => "the phone's backend isn't running (olo-phone --start says why)",
-        });
-    }
-    match ask(&client) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(e) => fail(&blueferry::said(&e)),
-    }
+/// A time, as this computer's clock says it.
+fn clock(at: i64) -> String {
+    use chrono::TimeZone as _;
+    chrono::Local.timestamp_opt(at, 0).single().map_or_else(String::new, |t| t.format("%Y-%m-%d %H:%M").to_string())
 }
 
 fn status(json: bool) -> ExitCode {
@@ -286,18 +271,16 @@ fn status(json: bool) -> ExitCode {
         out!("{}", serde_json::to_string_pretty(&state).unwrap_or_default());
         return ExitCode::SUCCESS;
     }
-    out!("{}", state.words());
+    if state.paired() {
+        out!("{}: {}", state.name, state.words());
+    } else {
+        out!("{}", state.words());
+    }
     if !state.trouble.is_empty() {
         out!("  {}", state.trouble);
     }
-    if state.backend == Backend::Running {
-        out!("  BlueFerry {}", state.release);
-        let up = |on: bool| if on { "yes" } else { "no" };
-        out!("  messages: {}, contacts: {}, the phone's notifications: {}", up(state.messages), up(state.contacts), up(state.notifications));
-        out!("  {} conversations, {} unread", state.conversations, state.unread);
-        if state.storage != "ready" && !state.storage.is_empty() {
-            out!("  its store of messages is {}", state.storage);
-        }
+    if state.link.connected() {
+        out!("  {} conversations, {} unread{}", state.conversations, state.unread, if state.contacts { "" } else { "; its contacts haven't come" });
     }
     ExitCode::SUCCESS
 }

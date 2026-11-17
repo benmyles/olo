@@ -177,6 +177,21 @@ pub fn install(names: &[&str], progress: &mut dyn FnMut(Progress)) -> Result<()>
     transaction("InstallPackages", &(ONLY_TRUSTED, ids), progress).map(|_| ())
 }
 
+/// Remove the installed packages called `names`, and what was installed
+/// only for them (those not installed are passed over). Nothing else
+/// that needs them is taken with them: PackageKit refuses then, and the
+/// error says what would go.
+pub fn remove(names: &[&str], progress: &mut dyn FnMut(Progress)) -> Result<()> {
+    let wanted: Vec<String> = names.iter().map(|n| n.to_string()).collect();
+    let ids: Vec<String> = transaction("Resolve", &(FILTER_INSTALLED, wanted), &mut |_| {})?.into_iter().filter(native).filter(|p| p.installed).map(|p| p.id).collect();
+    if ids.is_empty() {
+        return Ok(());
+    }
+    // (No transaction flags; not what depends on them; what only they
+    // needed goes too.)
+    transaction("RemovePackages", &(0u64, ids, false, true), progress).map(|_| ())
+}
+
 /// Install a package file (`path`, readable by PackageKit): a
 /// repository's release package, which isn't signed by a key the system
 /// trusts yet.

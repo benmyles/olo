@@ -92,11 +92,26 @@ something nobody here has is in "Blocked", with what it waits for.
   **And Phone, the app** (Ben: "did you already build an app for working
   with the messages, contacts etc? if not we need that too"): the
   conversations, reading and answering them, a new message, the
-  contacts; what a notification and Deskbar's tray open.
-  *Under way.* Done: OBEX, MAP and PBAP in Rust (`olo_system::phone`),
-  tested end to end against a stand-in iPhone that speaks them. Next:
-  the link (BlueZ's profiles and channels, what an iPhone needs of the
-  computer to offer its switches), the service on it, the pairing sheet.
+  contacts; what a notification and Deskbar's tray open. Styled with
+  care (Ben: "make sure the messages/contacts/etc app is really nicely
+  styled, the weather and telegram apps are good examples of well styled
+  apps. don't just make it super plain and clunky"): Telegram's
+  conversation list and bubbles, people's initials in colour, Weather's
+  attention to spacing and type.
+  *Under way.* Done (2026-11-16; HACKING, "The phone"): OBEX, MAP and
+  PBAP in Rust; the link through BlueZ's profiles; the service on it
+  (conversations, sending, contacts, codes, reconnecting); BlueFerry
+  gone from Olo, and Olo Doctor offering to remove it where it's
+  installed; Preferences ▸ Phone connecting a phone in three steps;
+  Android's habits in the stand-in; all tested end to end against a
+  stand-in BlueZ and phone. **Not yet tried with a real phone.**
+  **For Ben**: Upgrade; Olo Doctor shows "BlueFerry is installed, and
+  Olo no longer uses it" (Remove BlueFerry); then Preferences ▸ Phone
+  ▸ Pair, with the iPhone unlocked on Settings ▸ Bluetooth. Tell me what
+  it does at each step: the notes say what an iPhone may want besides
+  (the computer's class as hands-free; an advertisement while its
+  switches are waited for), which I'll add from what yours shows.
+  Still to do: Phone the app; the website; the phones' own icons.
 - **Everything Olo Doctor does can be undone** (Ben, 2026-11-16: "one
   more thing we need: everything in olo doctor that it does must be
   reversible, e.g. for any fix/suggestion applied i should be able to
@@ -140,6 +155,20 @@ something nobody here has is in "Blocked", with what it waits for.
   it is; otherwise it plays at a quarter of the output's full volume,
   whatever the person's volume is set to, and leaves that setting as it
   found it.
+- **A paired phone's own picture** (Ben, 2026-11-16: "generate theme
+  styled icons for the top 10 most popular android and iphone models and
+  show the closest matching icon for a paired phone based on what it
+  is"). Icons in both looks (docs/ICONS.md) for the ten commonest
+  iPhones and ten commonest Android phones; the paired phone's nearest
+  (by what it says of itself: its Bluetooth name, its Modalias' product,
+  its PnP id) shown in Preferences ▸ Phone, Bluetooth's list, Deskbar's
+  menu and Phone; `phone` for one that matches none.
+- **Text in a picture can be selected and copied** (Ben, 2026-11-16:
+  "the quick look and viewer should support, when viewing an image with
+  text in it, selecting and copying that text -- much like how it works
+  in preview in macos"). Viewer and Quick Look recognise the text in a
+  picture (natively, in process, off the UI thread), and it is selected
+  with the pointer and copied as text is in a document.
 - **The website covers Terminal's work with agents** (Ben, 2026-11-16:
   "update the website to cover all the agent integration features in olo
   terminal"). olo-desktop.com's Agents part: what Terminal does for

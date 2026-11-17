@@ -57,7 +57,6 @@ Ways in that keep the person's session out of it:
 | olo-diskbackup-app `serve_google` | the fake Google it serves (`OLO_FAKE_GOOGLE_AT`); the build's DiskBackup on an agent screen with its own HOME and config, `OLO_DISKBACKUP_DIR`, `_KEY`, `_GOOGLE_API`, `_GOOGLE`; the browser played as `set_up_drive` plays it | pass: the setup window from the client's ID through the sign-in to "Backed up … 2 snapshots kept" in the fake Drive |
 | olo-doctor `fix::live::rpm_fusion_s_release_package_is_there` | network | pass |
 | olo-doctor `releases::tests::installs_from_github` | network; two binaries into /var/tmp, removed | pass |
-| olo-doctor `releases::tests::a_package_from_github` | network; BlueFerry's Fedora 45 package downloaded and checked against its release's SHA256SUMS, in memory; nothing installed | pass (2026-11-16) |
 | olo-voice `tests::speech_level_cost` | as is (release; pin it: `taskset -c 1`) | pass, 2026-11-16: a 10 ms frame 0.88 µs measured with its level said, 0.08 µs boosted |
 | olo-gpu-memory `tests::builds_for_this_kernel` | as is (needs kernel-devel for the running kernel, make and gcc; builds the live patch into /var/tmp, loads nothing) | pass, 2026-11-16: 1.9 s, a live patch of `ttm_backup_bytes_avail` for 7.2.15 |
 | olo-bbr3 `tests::builds_for_this_kernel` | as is (the same needs; builds `tcp_bbr3` into /var/tmp, loads nothing; what it does once loaded is `tools/dev/bbr3-check`'s, in a KVM guest) | pass, 2026-11-16: 1.7 s, `tcp_bbr3` version 3 for 7.2.15, without the self-check's probe |

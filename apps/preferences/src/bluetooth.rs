@@ -26,24 +26,25 @@ use crate::{Msg, PanelView, form::Ui, panel};
 /// How long a search for devices runs.
 const SEARCH: Duration = Duration::from_secs(30);
 
-enum Request {
+pub(crate) enum Request {
     Power(String, bool),
     Search(String),
 }
 
 #[derive(Default)]
-struct Shared {
+pub(crate) struct Shared {
     /// None until first read; Err when BlueZ isn't running.
-    status: Option<Result<Status, String>>,
+    pub(crate) status: Option<Result<Status, String>>,
     /// What's being done to which device ("Pairing…").
-    doing: HashMap<String, &'static str>,
-    question: Option<Question>,
-    error: Option<String>,
+    pub(crate) doing: HashMap<String, &'static str>,
+    pub(crate) question: Option<Question>,
+    pub(crate) error: Option<String>,
 }
 
-struct Link {
-    shared: Arc<Mutex<Shared>>,
-    tx: Sender<Request>,
+/// (The Phone panel pairs through it too: one watcher and one agent.)
+pub(crate) struct Link {
+    pub(crate) shared: Arc<Mutex<Shared>>,
+    pub(crate) tx: Sender<Request>,
     proxy: olo_kit::Proxy,
 }
 
@@ -88,7 +89,7 @@ fn test_status() -> Status {
 
 /// BlueZ's watcher and pairing agent (one for the app), telling the
 /// windows through `proxy` when anything changes.
-fn link(proxy: olo_kit::Proxy) -> &'static Link {
+pub(crate) fn link(proxy: olo_kit::Proxy) -> &'static Link {
     static LINK: OnceLock<Link> = OnceLock::new();
     LINK.get_or_init(|| {
         let shared: Arc<Mutex<Shared>> = Default::default();
@@ -161,7 +162,7 @@ fn link(proxy: olo_kit::Proxy) -> &'static Link {
 }
 
 /// Do something slow to a device on its own thread.
-fn act(link: &'static Link, device: String, doing: &'static str, failed: &'static str, f: impl FnOnce(&str) -> olo_system::Result<()> + Send + 'static) {
+pub(crate) fn act(link: &'static Link, device: String, doing: &'static str, failed: &'static str, f: impl FnOnce(&str) -> olo_system::Result<()> + Send + 'static) {
     link.shared.lock().unwrap().doing.insert(device.clone(), doing);
     link.proxy.send(Msg::Redraw);
     std::thread::spawn(move || {
@@ -180,7 +181,7 @@ fn act(link: &'static Link, device: String, doing: &'static str, failed: &'stati
     });
 }
 
-fn cancel_pairing(device: String) {
+pub(crate) fn cancel_pairing(device: String) {
     std::thread::spawn(move || {
         let _ = bt::cancel_pairing(&device);
     });

@@ -147,6 +147,8 @@ pub struct Phone {
     pub connected: bool,
     /// It offers its contacts too.
     pub contacts: bool,
+    /// Its battery, in percent, when BlueZ has it.
+    pub battery: Option<u8>,
 }
 
 /// Apple's Bluetooth vendor id, in a Modalias ("bluetooth:v004Cp…").
@@ -262,6 +264,7 @@ impl Profiles {
                     kind: kind_of(&text("Modalias")),
                     connected: flag("Connected"),
                     contacts: offers(pbap::PSE_UUID),
+                    battery: interfaces.get("org.bluez.Battery1").and_then(|b| b.get("Percentage")).and_then(|v| u8::try_from(v).ok()),
                 })
             })
             .collect();

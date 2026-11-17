@@ -242,7 +242,7 @@ impl Panel {
             Panel::Performance => (900, 560),
             // How the phone stands, then what's told of beside where
             // codes go.
-            Panel::Phone => (820, 420),
+            Panel::Phone => (820, 464),
             // Three tabs: the power modes and what each sets (a grid of
             // the processors and each GPU), the GPUs side by side, and the
             // battery with when idle beside it.

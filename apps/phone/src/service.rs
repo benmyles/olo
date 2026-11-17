@@ -1,29 +1,38 @@
-//! `olo-phone --service`: the session's phone service. It follows
-//! BlueFerry's backend on the session bus (its signals: nothing is
-//! polled), publishes what it knows ([`PhoneState`], none of it what a
-//! message says), tells of each message as it comes in a notification of
-//! Olo's own (answered in place), finds the one-time code in one
-//! (codes.rs) and gets it to the browser tab that is waiting for it:
-//! every browser's extension host stays connected to the service's
-//! socket, is asked which of its tabs are waiting for a code when one
-//! comes, and says so by itself when a code field comes up; the service
-//! chooses among them all (`codes::choose`) and only the chosen browser
-//! is given the code. A tab on an agent's screen gets it by the person's
-//! setting (put in at once when it surely is that tab's, the person told;
-//! else asked first, or never), and what it got goes in that screen's
-//! history, without the code.
+//! `olo-phone --service`: the session's phone service. It speaks to the
+//! phone itself (`olo_system::phone`: Olo's profiles registered with
+//! BlueZ, the Message Access and Phone Book Access profiles over the
+//! channels BlueZ opens), keeps the conversations, publishes how the
+//! phone stands ([`PhoneState`], none of it what a message says), tells
+//! of each message as it comes in a notification of Olo's own (answered
+//! in place), finds the one-time code in one (codes.rs) and gets it to
+//! the browser tab that is waiting for it, and answers Phone the app and
+//! the command line on its socket (the conversations, sending).
 //!
-//! **It starts the backend and keeps it running** (Ben, 2026-11-16: "olo
-//! should handle starting and keeping it running"). BlueFerry's unit
-//! starts only once a phone is paired (its configuration is there), and
-//! then with each session; here, once it's installed and paired and not
-//! on the bus (just paired, just installed, stopped, crashed past
-//! systemd's own restarts), it is asked for (`start`: the bus starts
-//! it), on a thread, again after 5 s, 30 s, 2 min and then every 10 min
-//! while it won't start, saying why in the state (`trouble`).
+//! **The link.** With a phone paired (anything paired that offers its
+//! messages), the service asks BlueZ for a channel to its messages and
+//! opens a session on it (a thread of its own, `session`: it waits on the
+//! phone, the service's loop never does): refused, the phone's owner
+//! hasn't allowed this computer yet (`Link::Allow`: tried again every
+//! ten seconds, as allowing it says nothing); open, the phone is asked to
+//! tell of messages as they come, which it does by connecting to Olo's
+//! own Notification Server, and the newest of its inbox is read. Its
+//! contacts are fetched once a session (names for numbers). A phone out
+//! of reach is tried again when BlueZ says anything of it and otherwise
+//! after 15 s, 30 s, 1, 2 and then every 5 minutes: nothing else runs
+//! while it's away.
 //!
-//! A code is kept in memory only, for [`CODE_LIFE`], wiped when it's used
-//! or too old. Nothing a message says is logged or written to disk here.
+//! **Codes.** Every browser's extension host stays connected to the
+//! service's socket, is asked which of its tabs are waiting for a code
+//! when one comes, and says so by itself when a code field comes up; the
+//! service chooses among them all (`codes::choose`) and only the chosen
+//! browser is given the code. A tab on an agent's screen gets it by the
+//! person's setting, and what it got goes in that screen's history,
+//! without the code. A code is kept in memory only, for [`CODE_LIFE`],
+//! wiped when it's used or too old.
+//!
+//! Conversations are kept in memory (what the phone's inbox has when it
+//! connects, what comes, what's sent from here): nothing a message says
+//! is logged or written to disk.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -36,9 +45,13 @@ use std::{
 use olo_kit_base::notify::{Note, NoteEvent, NoteId, Notifier};
 use olo_protocol::{
     notifications::NoteStyle,
-    phone::{self, Backend, FromBrowser, Link, Notify, PhoneSettings, PhoneState, Reply, Request, ToBrowser, Waiting},
+    phone::{Conversation, FromBrowser, Kind, Link, Message, Notify, Person, PhoneSettings, PhoneState, Reply, Request, ToBrowser, Waiting},
 };
-use olo_system::blueferry::{self, Client, Event, Thread};
+use olo_system::phone::{
+    link::{self, Channel, Opened, Profiles, Stream},
+    map::{self, BMessage, Listed, Mas},
+    obex, pbap,
+};
 use zeroize::Zeroize;
 
 use crate::codes::{self, Code, How};
@@ -50,25 +63,62 @@ const ROUND: Duration = Duration::from_millis(700);
 /// A message is one that has just come if it's no older than this (and
 /// not from more than a minute ahead: the phone's clock and this one's).
 const JUST: i64 = 5 * 60;
-/// The conversations looked through when the history changes (the
-/// newest; a new message is in one of them).
-const THREADS: u32 = 50;
+/// How much of the phone's inbox is read as a session opens.
+const INBOX: u16 = 60;
+/// How often a phone that hasn't allowed this computer is tried.
+const ALLOW_EVERY: Duration = Duration::from_secs(10);
+/// How long after a try a phone out of reach is tried again, try by try.
+const AWAY: [u64; 5] = [15, 30, 60, 120, 300];
 
 enum Ev {
-    Bus(Event),
+    /// BlueZ opened a channel.
+    Opened(Opened),
+    /// BlueZ said something of its devices.
+    Devices,
+    /// The session (the one numbered so) says something.
+    Session(u64, FromSession),
     Settings,
-    /// The backend's files came or went (installed, removed, updated),
-    /// or its configuration did (a phone paired, or forgotten).
-    Installed,
-    /// Starting the backend came to this (`None`: it's up).
-    Started(Option<String>),
     Ask(Request, bool, mpsc::Sender<Reply>),
     Hello(u64, Option<String>, u32, UnixStream),
     Said(u64, FromBrowser),
     Left(u64),
     Note(NoteEvent),
-    /// A reply sent from a notification came to this.
-    Sent(NoteId, Result<(), String>),
+}
+
+/// What a session's thread is asked.
+enum Cmd {
+    /// Fetch the message with this handle (it has just come).
+    Fetch(String),
+    Send {
+        to: String,
+        text: String,
+        note: Option<NoteId>,
+        answer: Option<mpsc::Sender<Reply>>,
+    },
+    MarkRead(Vec<String>),
+    Close,
+}
+
+/// What a session's thread says.
+enum FromSession {
+    /// Asking BlueZ for the channel failed (out of reach).
+    NoChannel(String),
+    /// The phone's owner hasn't allowed this computer.
+    NotAllowed,
+    /// The session is open: the newest of the inbox.
+    Up(Vec<Listed>),
+    /// A message that came: as its listing has it, and whole.
+    Came(Listed, BMessage),
+    Contacts(Vec<pbap::Contact>),
+    Sent {
+        to: String,
+        text: String,
+        done: Result<(), String>,
+        note: Option<NoteId>,
+        answer: Option<mpsc::Sender<Reply>>,
+    },
+    /// The session ended (the link went, or it failed): why.
+    Down(String),
 }
 
 struct Browser {
@@ -116,40 +166,67 @@ enum About {
 }
 
 struct Service {
-    client: Client,
+    /// Olo's profiles with BlueZ (None: not registered, `state.trouble`
+    /// says why).
+    profiles: Option<Profiles>,
+    profiles_at: Option<Instant>,
+    /// The phone in use.
+    phone: Option<link::Phone>,
+    /// The session open or being opened: its number, and its thread's ear
+    /// once the channel has come.
+    generation: u64,
+    opening: bool,
+    session: Option<mpsc::Sender<Cmd>>,
+    /// When to try the phone again, and how many tries have failed.
+    retry_at: Option<Instant>,
+    tries: usize,
+    /// When to ask for its contacts again (they come only once the
+    /// phone's owner allows them, which says nothing), and how often
+    /// they've been asked for this session.
+    contacts_at: Option<Instant>,
+    contacts_tries: u32,
     settings: PhoneSettings,
     state: PhoneState,
     published: Option<PhoneState>,
-    threads: Vec<Thread>,
+    contacts: Vec<pbap::Contact>,
+    threads: Vec<Conversation>,
     /// The messages seen (their handles): one not among them is new.
     seen: HashSet<String>,
-    first: bool,
     codes: Vec<Pending>,
     next_code: u64,
     browsers: HashMap<u64, Browser>,
     notes: Notifier,
     about: Vec<(NoteId, About)>,
     tx: mpsc::Sender<Ev>,
-    /// Keeping the backend running: it's being started now; when to try
-    /// next; how many tries have failed in a row.
-    starting: bool,
-    start_at: Option<Instant>,
-    failed: u32,
 }
 
 fn now() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs())
 }
 
-/// When a message says it was sent, in Unix seconds: with its zone, or
-/// (the phone often leaves it out) as this computer's time.
+/// When a message says it was sent, in Unix seconds: a listing's
+/// `YYYYMMDDTHHMMSS`, with `Z` or an offset (`+0100`) when the phone
+/// knows the zone, and otherwise (an iPhone often) as this computer's
+/// time.
 pub fn when(at: &str) -> Option<i64> {
     use chrono::TimeZone as _;
-    if let Ok(t) = chrono::DateTime::parse_from_rfc3339(at) {
-        return Some(t.timestamp());
+    let at = at.trim();
+    let (stamp, zone) = at.split_at(at.len().min(15));
+    let naive = chrono::NaiveDateTime::parse_from_str(stamp, "%Y%m%dT%H%M%S").ok()?;
+    match zone {
+        "" => chrono::Local.from_local_datetime(&naive).earliest().map(|t| t.timestamp()),
+        "Z" | "z" => Some(naive.and_utc().timestamp()),
+        z => {
+            let sign = match z.as_bytes()[0] {
+                b'+' => 1,
+                b'-' => -1,
+                _ => return None,
+            };
+            let digits: String = z[1..].chars().filter(char::is_ascii_digit).collect();
+            let (h, m): (i64, i64) = (digits.get(..2)?.parse().ok()?, digits.get(2..4).unwrap_or("00").parse().ok()?);
+            Some(naive.and_utc().timestamp() - sign * (h * 3600 + m * 60))
+        }
     }
-    let naive = chrono::NaiveDateTime::parse_from_str(at, "%Y-%m-%dT%H:%M:%S").or_else(|_| chrono::NaiveDateTime::parse_from_str(at, "%Y%m%dT%H%M%S")).ok()?;
-    chrono::Local.from_local_datetime(&naive).earliest().map(|t| t.timestamp())
 }
 
 /// Whether a message sent at `at` has just come (`now` in Unix seconds).
@@ -158,32 +235,66 @@ fn just_came(at: &str, now: i64) -> bool {
     when(at).is_none_or(|t| (now - t) <= JUST && (t - now) <= 60)
 }
 
+/// One session with the phone's messages, on a thread of its own: from
+/// asking BlueZ for the channel to the link's end. It says what happens
+/// (`FromSession`) and does what it's asked (`Cmd`).
+fn session(stream: Stream, cmds: mpsc::Receiver<Cmd>, said: impl Fn(FromSession)) {
+    let closer = stream.closer();
+    let mut mas = match Mas::open(stream) {
+        Ok(m) => m,
+        Err(obex::Error::Refused(obex::code::FORBIDDEN | obex::code::UNAUTHORIZED)) => return said(FromSession::NotAllowed),
+        Err(e) => return said(FromSession::Down(e.to_string())),
+    };
+    // Told of messages as they come (the phone connects back), and what
+    // the inbox has now.
+    let opened = mas.notify(true).and_then(|()| mas.listing("inbox", INBOX));
+    match opened {
+        Ok(listed) => said(FromSession::Up(listed)),
+        Err(e) => return said(FromSession::Down(e.to_string())),
+    }
+    for cmd in cmds {
+        let done = match cmd {
+            Cmd::Fetch(handle) => (|| {
+                // (Its listing's row has when it came; the message
+                // whole has all of its text, which an Android's row
+                // doesn't.)
+                let row = mas.listing("inbox", 12)?.into_iter().find(|m| m.handle == handle).unwrap_or(Listed { handle: handle.clone(), ..Default::default() });
+                let whole = mas.message(&handle)?;
+                said(FromSession::Came(row, whole));
+                Ok(())
+            })(),
+            Cmd::Send { to, text, note, answer } => {
+                let done = match BMessage::outgoing(&[to.as_str()], &text) {
+                    None => Err("That isn't a telephone number or an address.".to_owned()),
+                    Some(b) => mas.send(&b).map(|_| ()).map_err(|e| e.to_string()),
+                };
+                let broke = done.is_err() && !mas_alive(&mut mas);
+                said(FromSession::Sent { to, text, done, note, answer });
+                if broke { Err(obex::Error::Malformed("the link went")) } else { Ok(()) }
+            }
+            Cmd::MarkRead(handles) => handles.iter().try_for_each(|h| mas.mark_read(h).or_else(|e| if matches!(e, obex::Error::Refused(_)) { Ok(()) } else { Err(e) })),
+            Cmd::Close => break,
+        };
+        if let Err(e) = done {
+            closer.close();
+            return said(FromSession::Down(e.to_string()));
+        }
+    }
+    mas.close();
+    said(FromSession::Down(String::new()))
+}
+
+/// Whether the session still answers (after something failed: a refusal
+/// leaves it up, a link gone doesn't).
+fn mas_alive(mas: &mut Mas<Stream>) -> bool {
+    mas.listing("inbox", 1).is_ok()
+}
+
 pub fn run() -> ! {
     let (tx, rx) = mpsc::channel::<Ev>();
-    let client = match Client::connect() {
-        Ok(c) => c,
-        Err(e) => {
-            // (No session bus: nothing to follow. Not an error to be
-            // started again for.)
-            tracing::warn!("phone: no session bus: {e}");
-            std::process::exit(0);
-        }
-    };
-    let to = tx.clone();
-    if let Err(e) = Client::watch(move |e| {
-        let _ = to.send(Ev::Bus(e));
-    }) {
-        tracing::warn!("phone: can't follow the backend: {e}");
-    }
     let to = tx.clone();
     let _watch = olo_kit_base::watch::watch([PhoneSettings::path()], move |_| {
         let _ = to.send(Ev::Settings);
-    });
-    // The backend installed while the session runs (Olo Doctor's fix):
-    // seen by its D-Bus activation file coming.
-    let to = tx.clone();
-    let _installed = olo_kit_base::watch::watch([std::path::PathBuf::from(blueferry::ACTIVATION), blueferry::configuration()], move |_| {
-        let _ = to.send(Ev::Installed);
     });
     let to = tx.clone();
     let notes = Notifier::with_events("Phone", "olo-phone", move |e| {
@@ -191,28 +302,36 @@ pub fn run() -> ! {
     });
     serve(tx.clone());
     let mut s = Service {
-        client,
+        profiles: None,
+        profiles_at: None,
+        phone: None,
+        generation: 0,
+        opening: false,
+        session: None,
+        retry_at: None,
+        tries: 0,
+        contacts_at: None,
+        contacts_tries: 0,
         settings: PhoneSettings::load(),
         state: PhoneState { pid: std::process::id(), ..Default::default() },
         published: None,
+        contacts: Vec::new(),
         threads: Vec::new(),
         seen: HashSet::new(),
-        first: true,
         codes: Vec::new(),
         next_code: 0,
         browsers: HashMap::new(),
         notes,
         about: Vec::new(),
         tx,
-        starting: false,
-        start_at: None,
-        failed: 0,
     };
-    s.look();
+    s.register();
+    s.devices();
+    s.publish();
     loop {
         // Asleep until something is said, or until a round of asking
-        // ends or a code gets too old.
-        let next = s.codes.iter().flat_map(|c| [Some(c.until), c.round.as_ref().map(|r| r.until)]).flatten().chain(s.start_at).min();
+        // ends, a code gets too old, or it's time to try the phone again.
+        let next = s.codes.iter().flat_map(|c| [Some(c.until), c.round.as_ref().map(|r| r.until)]).flatten().chain(s.retry_at).chain(s.profiles_at).chain(s.contacts_at).min();
         let ev = match next {
             Some(at) => match rx.recv_timeout(at.saturating_duration_since(Instant::now())) {
                 Ok(ev) => Some(ev),
@@ -235,68 +354,28 @@ pub fn run() -> ! {
 impl Service {
     fn take(&mut self, ev: Ev) {
         match ev {
-            Ev::Bus(Event::Up) => {
-                (self.failed, self.start_at) = (0, None);
-                self.first = true;
-                self.look();
+            Ev::Opened(opened) => self.opened(opened),
+            Ev::Devices => {
+                // (Something changed: a phone back in reach is tried now.)
+                self.tries = 0;
+                self.devices();
             }
-            // Gone: looked at, and started again in a moment if it
-            // should be running (systemd restarts one that crashed
-            // itself, 5 s on: after that).
-            Ev::Bus(Event::Down) => {
-                self.first = true;
-                self.start_at = Some(Instant::now() + Duration::from_secs(8));
-                self.look();
+            Ev::Session(generation, said) if generation == self.generation => self.from_session(said),
+            // (An earlier session's: old news; but an answer owed is given.)
+            Ev::Session(_, FromSession::Sent { answer: Some(answer), .. }) => {
+                let _ = answer.send(Reply { ok: false, error: Some("The phone went.".into()), ..Default::default() });
             }
-            Ev::Started(why) => {
-                self.starting = false;
-                match why {
-                    None => (self.failed, self.start_at) = (0, None),
-                    Some(why) => {
-                        self.failed += 1;
-                        let wait = [5, 30, 120, 600][(self.failed as usize - 1).min(3)];
-                        self.start_at = Some(Instant::now() + Duration::from_secs(wait));
-                        tracing::info!("phone: the backend didn't start (try {}): {why}", self.failed);
-                        self.state.trouble = why;
-                    }
-                }
-                self.look();
-            }
-            Ev::Bus(Event::Status) => self.status(),
-            Ev::Bus(Event::History) => self.history(),
-            // (A popup of the backend's own was clicked: the message it
-            // wants shown. Nothing shows conversations yet.)
-            Ev::Bus(Event::Open(_)) => {}
-            // Just installed, or just paired: looked at again, and
-            // started if it should be running.
-            Ev::Installed => {
-                (self.failed, self.start_at) = (0, None);
-                self.first = true;
-                self.look();
-            }
+            Ev::Session(..) => {}
             Ev::Settings => {
                 let settings = PhoneSettings::load();
                 if settings != self.settings {
                     self.settings = settings;
-                    self.policy();
                     if !self.settings.codes {
                         self.codes.clear();
                     }
                 }
             }
-            Ev::Ask(request, on_a_screen, answer) => {
-                let reply = match request {
-                    Request::Status => Reply { ok: true, state: Some(self.state.clone()), ..Default::default() },
-                    // (An agent's program asks its tab's way, not this.)
-                    Request::Code if on_a_screen => Reply { ok: false, error: Some("not from an agent's screen".into()), ..Default::default() },
-                    Request::Code => match self.codes.last() {
-                        Some(c) => Reply { ok: true, code: Some(c.code.code.clone()), from: Some(c.from.clone()), ..Default::default() },
-                        None => Reply { ok: false, error: Some("no code has come in the last few minutes".into()), ..Default::default() },
-                    },
-                    Request::Browser { .. } => Reply::default(),
-                };
-                let _ = answer.send(reply);
-            }
+            Ev::Ask(request, on_a_screen, answer) => self.ask(request, on_a_screen, answer),
             Ev::Hello(id, screen, pid, out) => {
                 tracing::info!("phone: a browser is listening (process {pid}{})", screen.as_ref().map(|s| format!(", on agent screen {s}")).unwrap_or_default());
                 self.browsers.insert(id, Browser { screen, out });
@@ -312,142 +391,327 @@ impl Service {
                 }
             }
             Ev::Note(e) => self.note(e),
-            Ev::Sent(id, Err(why)) => {
-                self.notes.show(Some(id), Note::new("Not sent").body(why).kind(olo_kit_base::notify::NoteKind::Error));
-            }
-            Ev::Sent(_, Ok(())) => {}
         }
     }
 
-    /// The backend as it stands now, from the start.
-    fn look(&mut self) {
-        if !self.client.running() {
-            let installed = blueferry::installed();
-            self.state = PhoneState {
-                pid: std::process::id(),
-                backend: if installed { Backend::Stopped } else { Backend::Missing },
-                release: blueferry::installed_release().unwrap_or_default(),
-                paired: installed && blueferry::configured(),
-                trouble: std::mem::take(&mut self.state.trouble),
-                codes: self.state.codes,
-                ..Default::default()
-            };
-            self.threads.clear();
-            // Installed, a phone paired, and not running: started.
-            if self.state.paired && self.start_at.is_none() && self.failed == 0 {
-                self.start();
-            } else if !self.state.paired {
+    /// Olo's profiles, registered with BlueZ (tried again in a minute
+    /// where it can't be: no BlueZ, or another program has them).
+    fn register(&mut self) {
+        self.profiles_at = None;
+        if self.profiles.is_some() {
+            return;
+        }
+        let to = self.tx.clone();
+        let registered = Profiles::register(move |opened| {
+            let _ = to.send(Ev::Opened(opened));
+        })
+        .and_then(|p| {
+            let to = self.tx.clone();
+            p.watch(move || {
+                let _ = to.send(Ev::Devices);
+            })?;
+            Ok(p)
+        });
+        match registered {
+            Ok(p) => {
+                self.profiles = Some(p);
                 self.state.trouble.clear();
             }
-            return;
-        }
-        self.state.trouble.clear();
-        self.status();
-        if self.state.backend == Backend::Running {
-            self.policy();
-            self.history();
+            Err(e) => {
+                let taken = e.to_string().contains("AlreadyExists");
+                if taken {
+                    self.state.link = Link::Taken;
+                }
+                self.state.trouble = if taken {
+                    "Another program has the phone’s message profiles (BlueFerry’s or GNOME’s obexd). Olo Doctor removes BlueFerry.".into()
+                } else {
+                    "Bluetooth isn’t answering.".into()
+                };
+                tracing::info!("phone: can't register with BlueZ: {e}");
+                self.profiles_at = Some(Instant::now() + Duration::from_secs(60));
+            }
         }
     }
 
-    fn status(&mut self) {
-        let status = match self.client.status() {
-            Ok(s) => s,
-            Err(e) => {
-                tracing::warn!("phone: the backend's status: {e}");
-                return;
-            }
-        };
+    /// The phones there are now: the one in use, and a session opened to
+    /// it if there's none.
+    fn devices(&mut self) {
+        let Some(profiles) = &self.profiles else { return };
+        let phones = profiles.phones().unwrap_or_default();
+        // (The one in use while it's still paired; else one in reach;
+        // else the first.)
+        let phone = self.phone.as_ref().and_then(|had| phones.iter().find(|p| p.path == had.path)).or_else(|| phones.iter().find(|p| p.connected)).or(phones.first()).cloned();
+        if phone.as_ref().map(|p| &p.path) != self.phone.as_ref().map(|p| &p.path) {
+            // Another phone, or none: what the last one had is let go.
+            self.end_session();
+            (self.threads, self.contacts, self.seen) = (Vec::new(), Vec::new(), HashSet::new());
+            self.codes.clear();
+            (self.state.conversations, self.state.unread, self.state.contacts, self.state.code_at) = (0, 0, false, None);
+        }
+        self.phone = phone;
         let st = &mut self.state;
-        st.release = status.release.clone();
-        st.backend = if status.api == phone::API { Backend::Running } else { Backend::Other };
-        st.paired = status.profile.is_some();
-        st.link = if status.profile.is_none() { Link::NotPaired } else { Link::of(&status.connectivity) };
-        (st.messages, st.contacts, st.notifications) = (status.map, status.pbap, status.ancs);
-        st.battery = status.battery.filter(|_| st.link.connected());
-        st.storage = status.storage_state.clone();
-        if status.notification_policy != self.settings.notify.backend_policy() && st.backend == Backend::Running {
-            self.policy();
+        match &self.phone {
+            None => {
+                (st.name, st.path, st.battery, st.link) = (String::new(), String::new(), None, Link::NotPaired);
+                self.retry_at = None;
+            }
+            Some(p) => {
+                st.name = p.name.clone();
+                st.path = p.path.clone();
+                st.kind = if p.kind == link::Kind::IPhone { Kind::IPhone } else { Kind::Android };
+                st.battery = p.battery.filter(|_| p.connected);
+                // Out of reach with a session open: the session has
+                // ended, whether or not its channel has said so yet.
+                let gone = !p.connected && (self.session.is_some() || self.opening);
+                if gone {
+                    if let Some(cmds) = self.session.take() {
+                        let _ = cmds.send(Cmd::Close);
+                    }
+                    self.opening = false;
+                    self.generation += 1;
+                    st.link = Link::Away;
+                }
+                if self.session.is_none() && !self.opening {
+                    if st.link == Link::NotPaired || st.link == Link::Ready {
+                        st.link = Link::Away;
+                    }
+                    if self.retry_at.is_none() {
+                        self.open();
+                    }
+                }
+            }
         }
     }
 
-    /// The backend's own popups as Olo's setting has them: Olo tells of
-    /// messages itself, so they're for everything on the phone, or off.
-    fn policy(&mut self) {
-        if self.state.backend != Backend::Running {
-            return;
+    /// Ask BlueZ for a channel to the phone's messages (on a thread: it
+    /// waits while the phone is looked for); the channel comes as
+    /// `Ev::Opened`, a failure as the session's `NoChannel`.
+    fn open(&mut self) {
+        let (Some(profiles), Some(phone)) = (&self.profiles, &self.phone) else { return };
+        self.generation += 1;
+        (self.opening, self.retry_at) = (true, None);
+        if self.state.link != Link::Allow {
+            self.state.link = if phone.connected { Link::Connecting } else { Link::Away };
         }
-        let want = self.settings.notify.backend_policy();
-        match self.client.status() {
-            Ok(s) if s.notification_policy != want => {
-                if let Err(e) = self.client.set_notification_policy(want) {
-                    tracing::warn!("phone: the backend's popups: {e}");
-                }
-            }
-            _ => {}
+        if let Err(e) = profiles.open(&phone.path, Channel::Messages) {
+            let _ = self.tx.send(Ev::Session(self.generation, FromSession::NoChannel(e.to_string())));
         }
     }
 
-    /// The conversations changed: what's new in them.
-    fn history(&mut self) {
-        if self.state.backend != Backend::Running {
+    /// A channel BlueZ opened.
+    fn opened(&mut self, opened: Opened) {
+        if self.phone.as_ref().map(|p| p.path.as_str()) != Some(opened.phone.as_str()) {
             return;
         }
-        let threads = match self.client.threads(THREADS) {
-            Ok(t) => t,
-            Err(e) => {
-                // (Locked or not ready: said in the state by the status.)
-                tracing::debug!("phone: the conversations: {}", blueferry::error_name(&e).unwrap_or("error"));
-                return;
+        let (tx, generation) = (self.tx.clone(), self.generation);
+        match opened.channel {
+            Channel::Messages => {
+                let (cmds, heard) = mpsc::channel();
+                self.session = Some(cmds);
+                self.opening = false;
+                let _ = std::thread::Builder::new().name("phone-session".into()).spawn(move || {
+                    session(opened.stream, heard, |said| {
+                        let _ = tx.send(Ev::Session(generation, said));
+                    })
+                });
             }
-        };
-        let now_s = now() as i64;
-        let mut seen = HashSet::new();
-        let mut new: Vec<(usize, usize)> = Vec::new();
-        for (ti, t) in threads.iter().enumerate() {
-            for (mi, m) in t.messages.iter().enumerate() {
-                if !self.seen.contains(&m.handle) && !m.outgoing && !m.read && just_came(&m.at, now_s) && (!self.first || when(&m.at).is_some()) {
-                    new.push((ti, mi));
+            // The phone telling of messages: each fetched by the session.
+            Channel::Notifications => {
+                let Some(cmds) = self.session.clone() else { return };
+                opened.stream.patience(Duration::ZERO);
+                let _ = std::thread::Builder::new().name("phone-events".into()).spawn(move || {
+                    let _ = map::serve_notifications(opened.stream, |event| {
+                        if let map::Event::New { handle, .. } = event {
+                            let _ = cmds.send(Cmd::Fetch(handle));
+                        }
+                    });
+                });
+            }
+            Channel::Contacts => {
+                let _ = std::thread::Builder::new().name("phone-contacts".into()).spawn(move || {
+                    if let Ok(contacts) = pbap::contacts(opened.stream) {
+                        let _ = tx.send(Ev::Session(generation, FromSession::Contacts(contacts)));
+                    }
+                });
+            }
+        }
+    }
+
+    fn end_session(&mut self) {
+        if let Some(cmds) = self.session.take() {
+            let _ = cmds.send(Cmd::Close);
+        }
+        self.opening = false;
+        self.generation += 1;
+    }
+
+    /// What the session says.
+    fn from_session(&mut self, said: FromSession) {
+        match said {
+            FromSession::NoChannel(why) => {
+                (self.opening, self.session) = (false, None);
+                self.state.link = Link::Away;
+                let wait = AWAY[self.tries.min(AWAY.len() - 1)];
+                self.tries += 1;
+                self.retry_at = Some(Instant::now() + Duration::from_secs(wait));
+                tracing::debug!("phone: not in reach ({why}): again in {wait} s");
+            }
+            FromSession::NotAllowed => {
+                (self.opening, self.session) = (false, None);
+                self.state.link = Link::Allow;
+                self.retry_at = Some(Instant::now() + ALLOW_EVERY);
+            }
+            FromSession::Up(listed) => {
+                (self.tries, self.retry_at) = (0, None);
+                self.state.link = Link::Ready;
+                self.state.trouble.clear();
+                let now_s = now() as i64;
+                let mut fresh = Vec::new();
+                // (Oldest first, as conversations keep them.)
+                for row in listed.into_iter().rev() {
+                    if self.seen.contains(&row.handle) {
+                        continue;
+                    }
+                    // One that has just come (while the service wasn't
+                    // there to be told) is fetched whole and told of; the
+                    // rest is what there was.
+                    if !row.read && when(&row.datetime).is_some() && just_came(&row.datetime, now_s) {
+                        fresh.push(row.handle);
+                    } else {
+                        self.keep(&row, row.subject.clone());
+                    }
                 }
-                seen.insert(m.handle.clone());
+                if let Some(cmds) = &self.session {
+                    for handle in fresh {
+                        let _ = cmds.send(Cmd::Fetch(handle));
+                    }
+                }
+                // Its contacts (names for numbers): asked for now, and
+                // again while they haven't come.
+                self.contacts_tries = 0;
+                self.ask_contacts();
+                self.count();
+            }
+            FromSession::Came(row, whole) => {
+                if self.seen.contains(&row.handle) {
+                    return;
+                }
+                let row = Listed {
+                    sender: if row.sender.is_empty() { whole.from.clone() } else { row.sender },
+                    sender_name: if row.sender_name.is_empty() { whole.from_name.clone() } else { row.sender_name },
+                    read: false,
+                    ..row
+                };
+                let text = if whole.text.is_empty() { row.subject.clone() } else { whole.text };
+                let (ti, mi) = self.keep(&row, text);
+                self.count();
+                self.came(ti, mi);
+            }
+            FromSession::Contacts(contacts) => {
+                self.contacts = contacts;
+                self.state.contacts = true;
+                self.contacts_at = None;
+                for t in &mut self.threads {
+                    if let Some(name) = pbap::name_of(&self.contacts, &t.address) {
+                        t.name = name.to_owned();
+                    }
+                }
+            }
+            FromSession::Sent { to, text, done, note, answer } => {
+                if done.is_ok() {
+                    // (An iPhone keeps nothing of what was sent through
+                    // it: kept here.)
+                    let at = now() as i64;
+                    let ti = self.thread_for(&to, "");
+                    self.threads[ti].messages.push(Message { handle: String::new(), text, at, outgoing: true, read: true });
+                    self.count();
+                }
+                if let (Err(why), Some(note)) = (&done, note) {
+                    self.notes.show(Some(note), Note::new("Not sent").body(why.clone()).kind(olo_kit_base::notify::NoteKind::Error));
+                }
+                if let Some(answer) = answer {
+                    let _ = answer.send(Reply { ok: done.is_ok(), error: done.err(), ..Default::default() });
+                }
+            }
+            FromSession::Down(why) => {
+                (self.opening, self.session) = (false, None);
+                if !why.is_empty() {
+                    tracing::info!("phone: the session ended: {why}");
+                }
+                self.state.link = Link::Away;
+                // (Tried again at once, once: a link dropped and still there.)
+                self.retry_at = Some(Instant::now() + Duration::from_secs(if self.tries == 0 { 2 } else { AWAY[self.tries.min(AWAY.len() - 1)] }));
+                self.tries += 1;
             }
         }
-        self.seen = seen;
-        self.state.conversations = threads.len() as u32;
-        self.state.unread = threads.iter().map(|t| t.unread() as u32).sum();
-        self.threads = threads;
-        // (At the start, what's there was told of before: only a code
-        // still good is taken up.)
-        let first = std::mem::take(&mut self.first);
-        for (ti, mi) in new {
-            self.came(ti, mi, first);
+    }
+
+    /// Ask BlueZ for a channel to the phone's contacts; and, until they
+    /// come, again: every 15 s for the first five minutes of a session
+    /// (the phone's owner is turning its switches on), then every five
+    /// minutes.
+    fn ask_contacts(&mut self) {
+        self.contacts_at = None;
+        let (Some(profiles), Some(phone)) = (&self.profiles, &self.phone) else { return };
+        if !phone.contacts || self.state.link != Link::Ready {
+            return;
         }
+        if let Err(e) = profiles.open(&phone.path, Channel::Contacts) {
+            tracing::debug!("phone: its contacts: {e}");
+        }
+        if !self.state.contacts {
+            self.contacts_tries += 1;
+            self.contacts_at = Some(Instant::now() + Duration::from_secs(if self.contacts_tries <= 20 { 15 } else { 300 }));
+        }
+    }
+
+    /// The conversation with `address` (made if there's none), named by
+    /// the contacts, else as `named`, else by the address itself.
+    fn thread_for(&mut self, address: &str, named: &str) -> usize {
+        let key = pbap::key(address);
+        if let Some(i) = self.threads.iter().position(|t| t.key == key) {
+            return i;
+        }
+        let name = pbap::name_of(&self.contacts, address).map(str::to_owned).or_else(|| Some(named.trim().to_owned()).filter(|n| !n.is_empty())).unwrap_or_else(|| address.to_owned());
+        self.threads.push(Conversation { key, name, address: address.to_owned(), messages: Vec::new() });
+        self.threads.len() - 1
+    }
+
+    /// Keep a message that came, in its conversation: where it is.
+    fn keep(&mut self, row: &Listed, text: String) -> (usize, usize) {
+        self.seen.insert(row.handle.clone());
+        let ti = self.thread_for(&row.sender, &row.sender_name);
+        let at = when(&row.datetime).unwrap_or_else(|| now() as i64);
+        let t = &mut self.threads[ti];
+        let mi = t.messages.iter().position(|m| m.at > at).unwrap_or(t.messages.len());
+        t.messages.insert(mi, Message { handle: row.handle.clone(), text, at, outgoing: false, read: row.read });
+        (ti, mi)
+    }
+
+    /// How many conversations and unread messages there are, said.
+    fn count(&mut self) {
+        self.state.conversations = self.threads.len() as u32;
+        self.state.unread = self.threads.iter().map(|t| t.unread() as u32).sum();
         self.notes.badge(self.state.unread);
     }
 
-    /// A message has just come.
-    fn came(&mut self, ti: usize, mi: usize, quiet: bool) {
+    /// A message has just come: told of, and its code taken up.
+    fn came(&mut self, ti: usize, mi: usize) {
         let thread = &self.threads[ti];
         let message = &thread.messages[mi];
-        let code = if self.settings.codes && !thread.is_group { codes::find(&message.body) } else { None };
+        let code = if self.settings.codes { codes::find(&message.text) } else { None };
         let id = code.map(|code| {
             self.next_code += 1;
             let from = code.service.clone().unwrap_or_else(|| thread.name.clone());
-            let age = Duration::from_secs(when(&message.at).map_or(0, |t| (now() as i64 - t).clamp(0, JUST) as u64));
+            let age = Duration::from_secs((now() as i64 - message.at).clamp(0, JUST) as u64);
             self.codes.push(Pending { id: self.next_code, code, from, until: Instant::now() + CODE_LIFE.saturating_sub(age), round: None, asking: None, given: HashSet::new() });
             self.state.codes += 1;
             self.state.code_at = Some(now());
             self.next_code
         });
-        if !quiet && self.settings.notify == Notify::Messages {
-            let who = if thread.is_group && !message.sender.is_empty() { Some(message.sender.clone()) } else { None };
-            let mut note = Note::new(thread.name.clone()).style(NoteStyle::Message).icon("phone").action("read", "Mark as Read");
-            note = note.body(if self.settings.show_text { message.body.clone() } else { "New message".into() });
-            if let Some(who) = who {
-                note = note.subtitle(who);
-            }
-            if thread.reply_ready && !thread.is_group {
-                note = note.reply("Reply");
-            }
+        if self.settings.notify == Notify::Messages {
+            let mut note = Note::new(thread.name.clone()).style(NoteStyle::Message).icon("phone").action("read", "Mark as Read").reply("Reply");
+            note = note.body(if self.settings.show_text { message.text.clone() } else { "New message".into() });
             if id.is_some() {
                 note = note.action("copy", "Copy Code");
             }
@@ -458,6 +722,109 @@ impl Service {
         if let Some(id) = id {
             self.ask_browsers(id);
         }
+    }
+
+    /// Send `text` to `to`: a conversation's key, or a number or an
+    /// address.
+    fn send(&mut self, to: &str, text: String, note: Option<NoteId>, answer: Option<mpsc::Sender<Reply>>) {
+        let to = self.threads.iter().find(|t| t.key == to).map_or_else(|| to.trim().to_owned(), |t| t.address.clone());
+        let refuse = |why: &str, answer: Option<mpsc::Sender<Reply>>| {
+            if let Some(answer) = answer {
+                let _ = answer.send(Reply { ok: false, error: Some(why.to_owned()), ..Default::default() });
+            }
+        };
+        match &self.session {
+            Some(cmds) if self.state.link == Link::Ready => {
+                if let Err(mpsc::SendError(Cmd::Send { answer, .. })) = cmds.send(Cmd::Send { to, text, note, answer }) {
+                    refuse("The phone went.", answer);
+                }
+            }
+            _ => {
+                if let Some(note) = note {
+                    self.notes.show(Some(note), Note::new("Not sent").body("The phone isn’t connected.").kind(olo_kit_base::notify::NoteKind::Error));
+                }
+                refuse("The phone isn’t connected.", answer);
+            }
+        }
+    }
+
+    /// A conversation's messages read, here and on the phone.
+    fn mark_read(&mut self, key: &str) {
+        let Some(t) = self.threads.iter_mut().find(|t| t.key == key) else { return };
+        let handles: Vec<String> = t
+            .messages
+            .iter_mut()
+            .filter(|m| !m.outgoing && !m.read)
+            .map(|m| {
+                m.read = true;
+                m.handle.clone()
+            })
+            .filter(|h| !h.is_empty())
+            .collect();
+        if let (Some(cmds), false) = (&self.session, handles.is_empty()) {
+            let _ = cmds.send(Cmd::MarkRead(handles));
+        }
+        self.count();
+    }
+
+    /// What's asked on the socket.
+    fn ask(&mut self, request: Request, on_a_screen: bool, answer: mpsc::Sender<Reply>) {
+        let no = |why: &str| Reply { ok: false, error: Some(why.to_owned()), ..Default::default() };
+        // (What a message says is the person's: not a program's on an
+        // agent's screen.)
+        let private = !matches!(request, Request::Status | Request::Browser { .. });
+        let reply = match request {
+            _ if private && on_a_screen => no("not from an agent's screen"),
+            Request::Status => Reply { ok: true, state: Some(self.state.clone()), ..Default::default() },
+            Request::Code => match self.codes.last() {
+                Some(c) => Reply { ok: true, code: Some(c.code.code.clone()), from: Some(c.from.clone()), ..Default::default() },
+                None => no("no code has come in the last few minutes"),
+            },
+            Request::Conversations => {
+                let mut all = self.threads.clone();
+                all.sort_by_key(|t| std::cmp::Reverse(t.latest()));
+                Reply { ok: true, conversations: Some(all), ..Default::default() }
+            }
+            Request::Contacts { query } => {
+                let q = query.trim().to_lowercase();
+                let digits: String = q.chars().filter(char::is_ascii_digit).collect();
+                let found = self.contacts.iter().filter(|c| {
+                    q.is_empty()
+                        || c.name.to_lowercase().contains(&q)
+                        || c.emails.iter().any(|e| e.to_lowercase().contains(&q))
+                        || (digits.len() >= 3 && c.phones.iter().any(|p| p.chars().filter(char::is_ascii_digit).collect::<String>().contains(&digits)))
+                });
+                Reply { ok: true, contacts: Some(found.map(|c| Person { name: c.name.clone(), phones: c.phones.clone(), emails: c.emails.clone() }).collect()), ..Default::default() }
+            }
+            Request::Send { to, text } => {
+                if text.trim().is_empty() {
+                    no("nothing to send")
+                } else {
+                    // (Answered when the phone has taken it.)
+                    return self.send(&to, text, None, Some(answer));
+                }
+            }
+            Request::MarkRead { key } => {
+                self.mark_read(&key);
+                Reply { ok: true, ..Default::default() }
+            }
+            Request::Reconnect => {
+                self.tries = 0;
+                if !self.state.contacts {
+                    self.contacts_tries = 0;
+                    self.ask_contacts();
+                }
+                if self.session.is_none() && !self.opening && self.phone.is_some() {
+                    self.open();
+                }
+                Reply { ok: true, state: Some(self.state.clone()), ..Default::default() }
+            }
+            Request::Browser { .. } => Reply::default(),
+        };
+        // (What it changed is published before it's answered: who asked
+        // may read the state next.)
+        self.publish();
+        let _ = answer.send(reply);
     }
 
     /// Ask every browser which of its tabs are waiting for a code.
@@ -607,30 +974,21 @@ impl Service {
         }
     }
 
-    /// Ask the bus for the backend, which starts it: on a thread (it
-    /// waits on the start), its outcome back as `Ev::Started`.
-    fn start(&mut self) {
-        if self.starting {
-            return;
-        }
-        (self.starting, self.start_at) = (true, None);
-        let tx = self.tx.clone();
-        std::thread::spawn(move || {
-            // (The bus told of an activation file that has just come.)
-            let _ = olo_system::env::reload_session_bus();
-            let why = Client::connect().and_then(|c| c.status()).err().map(|e| blueferry::said(&e));
-            let _ = tx.send(Ev::Started(why));
-        });
-    }
-
     /// Rounds that have waited long enough are decided; codes too old
-    /// go; a backend that should be running is tried again when it's time.
+    /// go; a phone out of reach is tried again when it's time.
     fn tick(&mut self) {
         let t = Instant::now();
-        if self.start_at.is_some_and(|at| at <= t) {
-            self.start_at = None;
-            if blueferry::installed() && blueferry::configured() && !self.client.running() {
-                self.start();
+        if self.profiles_at.is_some_and(|at| at <= t) {
+            self.register();
+            self.devices();
+        }
+        if self.contacts_at.is_some_and(|at| at <= t) {
+            self.ask_contacts();
+        }
+        if self.retry_at.is_some_and(|at| at <= t) {
+            self.retry_at = None;
+            if self.session.is_none() && !self.opening && self.phone.is_some() {
+                self.open();
             }
         }
         let due: Vec<u64> = self.codes.iter().filter(|c| c.round.as_ref().is_some_and(|r| r.until <= t)).map(|c| c.id).collect();
@@ -650,11 +1008,7 @@ impl Service {
     fn note(&mut self, e: NoteEvent) {
         match e {
             NoteEvent::Action { id, key, .. } => match (self.about(id).cloned(), key.as_str()) {
-                (Some(About::Message(thread, _)), "read") => {
-                    if let Err(e) = self.client.mark_read(&thread) {
-                        tracing::debug!("phone: marking read: {}", blueferry::error_name(&e).unwrap_or("error"));
-                    }
-                }
+                (Some(About::Message(thread, _)), "read") => self.mark_read(&thread),
                 (Some(About::Message(_, Some(code))), "copy") => {
                     if let Some(c) = self.codes.iter().find(|c| c.id == code) {
                         copy(c.code.code.clone());
@@ -675,14 +1029,9 @@ impl Service {
                 _ => {}
             },
             NoteEvent::Replied { id, text } => {
-                let Some(About::Message(key, _)) = self.about(id) else { return };
-                let Some(thread) = self.threads.iter().find(|t| &t.key == key).cloned() else { return };
-                // (Sending waits on the phone: not here.)
-                let tx = self.tx.clone();
-                std::thread::spawn(move || {
-                    let sent = Client::connect().and_then(|c| c.reply(&thread, &text)).map_err(|e| blueferry::said(&e));
-                    let _ = tx.send(Ev::Sent(id, sent));
-                });
+                let Some(About::Message(key, _)) = self.about(id).cloned() else { return };
+                self.mark_read(&key);
+                self.send(&key, text, Some(id), None);
             }
             // (Gone from the screen; a message's stays in the
             // notification centre, where it can still be answered, so
@@ -826,7 +1175,7 @@ fn serve(tx: mpsc::Sender<Ev>) {
                         Ok(request) => {
                             let (answer, got) = mpsc::channel();
                             let _ = tx.send(Ev::Ask(request, screen.is_some(), answer));
-                            let reply = got.recv_timeout(Duration::from_secs(10)).unwrap_or_else(|_| Reply { ok: false, error: Some("the service is busy".into()), ..Default::default() });
+                            let reply = got.recv_timeout(Duration::from_secs(45)).unwrap_or_else(|_| Reply { ok: false, error: Some("the service is busy".into()), ..Default::default() });
                             let mut out = serde_json::to_vec(&reply).unwrap_or_default();
                             out.push(b'\n');
                             let _ = (&stream).write_all(&out);
@@ -851,16 +1200,18 @@ mod tests {
 
     #[test]
     fn when_a_message_came() {
-        assert_eq!(when("2026-08-12T10:00:00+00:00"), Some(1_786_528_800));
-        assert_eq!(when("2026-08-12T12:00:00+02:00"), Some(1_786_528_800));
+        assert_eq!(when("20260812T100000Z"), Some(1_786_528_800));
+        assert_eq!(when("20260812T120000+0200"), Some(1_786_528_800));
+        assert_eq!(when("20260812T030000-0700"), Some(1_786_528_800));
         // (Without a zone: this computer's, whatever it is.)
-        let local = when("2026-08-12T10:00:00").unwrap();
+        let local = when("20260812T100000").unwrap();
         assert!((local - 1_786_528_800).abs() <= 14 * 3600);
         assert_eq!(when("yesterday"), None);
+        assert_eq!(when(""), None);
         let now = 1_786_528_800;
-        assert!(just_came("2026-08-12T09:56:00+00:00", now));
-        assert!(!just_came("2026-08-12T09:54:00+00:00", now), "older than five minutes");
-        assert!(!just_came("2026-08-12T10:02:00+00:00", now), "from the future");
+        assert!(just_came("20260812T095600Z", now));
+        assert!(!just_came("20260812T095400Z", now), "older than five minutes");
+        assert!(!just_came("20260812T100200Z", now), "from the future");
         assert!(just_came("", now), "one that doesn't say when is new to us");
     }
 }

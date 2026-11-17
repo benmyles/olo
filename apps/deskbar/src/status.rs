@@ -1095,7 +1095,7 @@ pub fn draw_airpods(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, lowest: Opt
 /// Whether the phone has something to show in the tray: connected, or
 /// messages unread, or a one-time code still good.
 pub fn phone_shown(p: &olo_protocol::phone::PhoneState) -> bool {
-    p.backend == olo_protocol::phone::Backend::Running && (p.link.connected() || p.unread > 0 || p.code_at.is_some())
+    p.paired() && (p.link.connected() || p.unread > 0 || p.code_at.is_some())
 }
 
 /// A phone: a tall rounded slab with its screen, dim while it's out of

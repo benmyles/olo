@@ -47,6 +47,8 @@ enum Job {
     Tell(String),
     /// Say that the device's properties changed.
     Changed,
+    /// Pair: the agent is asked whether the code matches; yes pairs.
+    Pair,
 }
 
 struct World {
@@ -56,6 +58,9 @@ struct World {
     paired: bool,
     connected: bool,
     android: bool,
+    discovering: bool,
+    /// The pairing agent registered: (who, their object).
+    agent: Option<(String, String)>,
     jobs: mpsc::Sender<Job>,
 }
 
@@ -81,7 +86,23 @@ impl Manager {
     }
 }
 
-struct Adapter;
+struct Agents(Shared);
+
+#[zbus::interface(name = "org.bluez.AgentManager1")]
+impl Agents {
+    fn register_agent(&self, agent: OwnedObjectPath, _capability: String, #[zbus(header)] header: zbus::message::Header<'_>) {
+        let who = header.sender().map(|s| s.to_string()).unwrap_or_default();
+        self.0.lock().expect("world").agent = Some((who, agent.as_str().to_owned()));
+    }
+
+    fn unregister_agent(&self, _agent: OwnedObjectPath) {
+        self.0.lock().expect("world").agent = None;
+    }
+
+    fn request_default_agent(&self, _agent: OwnedObjectPath) {}
+}
+
+struct Adapter(Shared);
 
 #[zbus::interface(name = "org.bluez.Adapter1")]
 impl Adapter {
@@ -94,8 +115,28 @@ impl Adapter {
         true
     }
     #[zbus(property)]
+    fn power_state(&self) -> String {
+        "on".into()
+    }
+    #[zbus(property)]
+    fn discoverable(&self) -> bool {
+        false
+    }
+    #[zbus(property)]
+    fn discovering(&self) -> bool {
+        self.0.lock().expect("world").discovering
+    }
+    #[zbus(property)]
     fn alias(&self) -> String {
-        "olo".into()
+        "studio-laptop".into()
+    }
+
+    fn start_discovery(&self) {
+        self.0.lock().expect("world").discovering = true;
+    }
+
+    fn stop_discovery(&self) {
+        self.0.lock().expect("world").discovering = false;
     }
 }
 
@@ -132,6 +173,8 @@ impl Device {
         self.0.lock().expect("world").paired
     }
     #[zbus(property)]
+    fn set_trusted(&self, _trusted: bool) {}
+    #[zbus(property)]
     fn connected(&self) -> bool {
         self.0.lock().expect("world").connected
     }
@@ -152,6 +195,18 @@ impl Device {
         let _ = w.jobs.send(Job::Open(uuid));
         Ok(())
     }
+
+    /// Pairing: answered once the agent has (the code confirmed).
+    fn pair(&self) -> Result<(), Error> {
+        let w = self.0.lock().expect("world");
+        if w.agent.is_none() {
+            return Err(Error::NotAvailable("no agent".into()));
+        }
+        let _ = w.jobs.send(Job::Pair);
+        Ok(())
+    }
+
+    fn cancel_pairing(&self) {}
 
     fn connect(&self) -> Result<(), Error> {
         let mut w = self.0.lock().expect("world");
@@ -242,12 +297,13 @@ fn main() {
     let (tx, jobs) = mpsc::channel::<Job>();
     let phone = Phone::sample();
     phone.0.lock().expect("phone").android = android;
-    let world: Shared = Arc::new(Mutex::new(World { phone: phone.clone(), profiles: HashMap::new(), paired: !unpaired, connected: !unpaired, android, jobs: tx }));
+    let world: Shared = Arc::new(Mutex::new(World { phone: phone.clone(), profiles: HashMap::new(), paired: !unpaired, connected: !unpaired, android, discovering: false, agent: None, jobs: tx }));
     let built = zbus::blocking::connection::Builder::address(address.as_str())
         .and_then(|b| b.serve_at("/", zbus::fdo::ObjectManager))
         .and_then(|b| b.serve_at("/org/bluez", Manager(world.clone())))
         .and_then(|b| b.serve_at("/org/bluez", Told(world.clone())))
-        .and_then(|b| b.serve_at(ADAPTER, Adapter))
+        .and_then(|b| b.serve_at("/org/bluez", Agents(world.clone())))
+        .and_then(|b| b.serve_at(ADAPTER, Adapter(world.clone())))
         .and_then(|b| b.serve_at(DEVICE, Device(world.clone())))
         .and_then(|b| b.name(NAME))
         .and_then(|b| b.build());
@@ -261,10 +317,15 @@ fn main() {
     // What the methods ask for, done once they've answered: a channel
     // opened is a socket pair, one end the stand-in phone's, the other
     // handed to whoever registered the profile.
+    // (The channels open, to end them when the phone goes out of reach.)
+    let open: Mutex<Vec<UnixStream>> = Mutex::new(Vec::new());
     for job in jobs {
         let hand_over = |uuid: &str, serve: Box<dyn FnOnce(UnixStream) + Send>| {
             let Some((who, path)) = world.lock().expect("world").profiles.get(uuid).cloned() else { return };
             let Ok((ours, theirs)) = UnixStream::pair() else { return };
+            if let Ok(kept) = ours.try_clone() {
+                open.lock().expect("open").push(kept);
+            }
             std::thread::spawn(move || serve(ours));
             let device = zvariant::ObjectPath::try_from(DEVICE).expect("a path");
             let fd = zvariant::OwnedFd::from(OwnedFd::from(theirs));
@@ -288,11 +349,28 @@ fn main() {
                     hand_over(map::MNS_UUID, Box::new(move |link| drop(p.tell(link, &handle))));
                 }
             }
+            // The code on both: the agent is asked; its yes pairs the
+            // phone and brings it in reach.
+            Job::Pair => {
+                let Some((who, path)) = world.lock().expect("world").agent.clone() else { continue };
+                let device = zvariant::ObjectPath::try_from(DEVICE).expect("a path");
+                let asked = conn.call_method(Some(who.as_str()), path.as_str(), Some("org.bluez.Agent1"), "RequestConfirmation", &(device, 482_913u32));
+                if asked.is_ok() {
+                    let mut w = world.lock().expect("world");
+                    (w.paired, w.connected) = (true, true);
+                    let _ = w.jobs.send(Job::Changed);
+                }
+            }
             Job::Changed => {
                 let w = world.lock().expect("world");
                 let mut changed: HashMap<&str, Value> = HashMap::new();
                 changed.insert("Connected", w.connected.into());
                 changed.insert("Paired", w.paired.into());
+                if !w.connected || !w.paired {
+                    for channel in open.lock().expect("open").drain(..) {
+                        let _ = channel.shutdown(std::net::Shutdown::Both);
+                    }
+                }
                 drop(w);
                 let none: Vec<&str> = Vec::new();
                 let _ = conn.emit_signal(None::<&str>, DEVICE, "org.freedesktop.DBus.Properties", "PropertiesChanged", &("org.bluez.Device1", changed, none));

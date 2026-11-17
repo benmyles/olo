@@ -253,18 +253,25 @@ struct AgentObject {
 }
 
 impl AgentObject {
-    fn name(device: &OwnedObjectPath) -> String {
-        status().ok().and_then(|s| s.devices.into_iter().find(|d| d.path == device.as_str())).map_or_else(|| "The device".to_owned(), |d| d.name)
+    /// The device's name, asked of BlueZ on the connection the question
+    /// came on, without waiting on it from the connection's own thread:
+    /// a blocking call here (it was `status()`) is never answered, as the
+    /// thread that would read the answer is the one waiting, and every
+    /// question a device asked while pairing hung until BlueZ gave up
+    /// (a phone's "does it show this number?"; found 2026-11-16).
+    async fn name(conn: &zbus::Connection, device: &OwnedObjectPath) -> String {
+        let asked = conn.call_method(Some(DEST), device.as_str(), Some("org.freedesktop.DBus.Properties"), "Get", &(DEVICE, "Alias")).await;
+        asked.ok().and_then(|m| m.body().deserialize::<OwnedValue>().ok()).and_then(|v| String::try_from(v).ok()).filter(|n| !n.is_empty()).unwrap_or_else(|| "The device".to_owned())
     }
 
     /// Show something that needs no answer (a code to type on the device).
-    fn show(&self, device: &OwnedObjectPath, ask: Ask) {
-        (self.on)(AgentEvent::Ask(Question { device: Self::name(device), path: device.as_str().to_owned(), ask, reply: None }));
+    async fn show(&self, conn: &zbus::Connection, device: &OwnedObjectPath, ask: Ask) {
+        (self.on)(AgentEvent::Ask(Question { device: Self::name(conn, device).await, path: device.as_str().to_owned(), ask, reply: None }));
     }
 
-    async fn ask(&self, device: &OwnedObjectPath, ask: Ask) -> std::result::Result<Option<String>, AgentError> {
+    async fn ask(&self, conn: &zbus::Connection, device: &OwnedObjectPath, ask: Ask) -> std::result::Result<Option<String>, AgentError> {
         let (tx, rx) = async_channel::bounded(1);
-        (self.on)(AgentEvent::Ask(Question { device: Self::name(device), path: device.as_str().to_owned(), ask, reply: Some(tx) }));
+        (self.on)(AgentEvent::Ask(Question { device: Self::name(conn, device).await, path: device.as_str().to_owned(), ask, reply: Some(tx) }));
         match rx.recv().await {
             Ok(Some(a)) => Ok(Some(a)),
             Ok(None) => Err(AgentError::Rejected("Rejected".into())),
@@ -277,32 +284,32 @@ impl AgentObject {
 impl AgentObject {
     fn release(&self) {}
 
-    async fn request_pin_code(&self, device: OwnedObjectPath) -> std::result::Result<String, AgentError> {
-        Ok(self.ask(&device, Ask::EnterPin).await?.unwrap_or_default())
+    async fn request_pin_code(&self, device: OwnedObjectPath, #[zbus(connection)] conn: &zbus::Connection) -> std::result::Result<String, AgentError> {
+        Ok(self.ask(conn, &device, Ask::EnterPin).await?.unwrap_or_default())
     }
 
-    fn display_pin_code(&self, device: OwnedObjectPath, pincode: String) {
-        self.show(&device, Ask::ShowPin(pincode));
+    async fn display_pin_code(&self, device: OwnedObjectPath, pincode: String, #[zbus(connection)] conn: &zbus::Connection) {
+        self.show(conn, &device, Ask::ShowPin(pincode)).await;
     }
 
-    async fn request_passkey(&self, device: OwnedObjectPath) -> std::result::Result<u32, AgentError> {
-        let a = self.ask(&device, Ask::EnterPasskey).await?.unwrap_or_default();
+    async fn request_passkey(&self, device: OwnedObjectPath, #[zbus(connection)] conn: &zbus::Connection) -> std::result::Result<u32, AgentError> {
+        let a = self.ask(conn, &device, Ask::EnterPasskey).await?.unwrap_or_default();
         a.trim().parse().map_err(|_| AgentError::Rejected("Not a number".into()))
     }
 
-    fn display_passkey(&self, device: OwnedObjectPath, passkey: u32, entered: u16) {
+    async fn display_passkey(&self, device: OwnedObjectPath, passkey: u32, entered: u16, #[zbus(connection)] conn: &zbus::Connection) {
         // Called again as each digit is typed; show it once.
         if entered == 0 {
-            self.show(&device, Ask::ShowPasskey(passkey));
+            self.show(conn, &device, Ask::ShowPasskey(passkey)).await;
         }
     }
 
-    async fn request_confirmation(&self, device: OwnedObjectPath, passkey: u32) -> std::result::Result<(), AgentError> {
-        self.ask(&device, Ask::Confirm(passkey)).await.map(|_| ())
+    async fn request_confirmation(&self, device: OwnedObjectPath, passkey: u32, #[zbus(connection)] conn: &zbus::Connection) -> std::result::Result<(), AgentError> {
+        self.ask(conn, &device, Ask::Confirm(passkey)).await.map(|_| ())
     }
 
-    async fn request_authorization(&self, device: OwnedObjectPath) -> std::result::Result<(), AgentError> {
-        self.ask(&device, Ask::Authorize).await.map(|_| ())
+    async fn request_authorization(&self, device: OwnedObjectPath, #[zbus(connection)] conn: &zbus::Connection) -> std::result::Result<(), AgentError> {
+        self.ask(conn, &device, Ask::Authorize).await.map(|_| ())
     }
 
     async fn authorize_service(&self, _device: OwnedObjectPath, _uuid: String) -> std::result::Result<(), AgentError> {

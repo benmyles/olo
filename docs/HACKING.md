@@ -814,7 +814,7 @@ long after a way out comes back.
 | `crates/kmod` | `olo-kmod`: one of Olo's kernel modules built for the running kernel and installed (see "BBRv3 for TCP"): what the services that load them share (apps/gpu-memory, apps/bbr3). |
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
 | `apps/airpods` | `olo-airpods`: AirPods, natively (see "AirPods"): the session's service and its command line. |
-| `apps/phone` | `olo-phone`: an iPhone's messages and one-time codes through BlueFerry's backend (see "The phone"): the session's service, which gives codes to the browser tab waiting for them, and its command line. |
+| `apps/phone` | `olo-phone`: an iPhone's or an Android phone's messages, contacts and one-time codes, spoken to by Olo itself over Bluetooth (see "The phone"): the session's service, which gives codes to the browser tab waiting for them, and its command line. |
 | `apps/voice` | `olo-voice`: the voice service (see "The voice service"): every microphone through voice processing, and its command line. |
 | `apps/installer` | `olo-installer`: the Installer (first called Olo Setup), a stock Fedora Workstation made Olo in one full-screen program (see "The Installer"). |
 | `apps/dconf` | `olo-dconf`: Olo's dconf service (`ca.desrt.dconf`), GSettings programs' settings written into dconf's own database in place of GNOME's dconf-service (see "Other toolkits' programs"). |
@@ -12671,9 +12671,6 @@ build tree, which mustn't be installed again).
   opens) saw a tab `cd`'d into a worktree as still in its first folder.
   olo-brush's `prompt` hook (vendor/brush-interactive's, called as each
   prompt shows) moves the process there, as other shells move on `cd`.
-- **The phone's backend** (checks.rs, `phone`, with the checks since
-  it looks at the system: see "The phone"): BlueFerry, from its makers'
-  latest release, through PackageKit.
 - **Programs worth having** (`TOOLS`, `tool_list`): just, uv, mise and
   worktrunk (`wt`), each suggested while it's on no folder of PATH nor
   in ~/.local/bin or ~/.cargo/bin (where installers put them, which a
@@ -13492,99 +13489,137 @@ session with it in the environment). `olo-fakesound` with
 `FAKESOUND_AIRPODS=AA:BB:CC:DD:EE:FF` adds their output (AAC, music
 quality, the default) and card, for Sound.
 
-## The phone (apps/phone, olo_system::blueferry, olo_protocol::phone; Preferences ▸ Phone)
+## The phone (apps/phone, olo_system::phone, olo_protocol::phone; Preferences ▸ Phone)
 
-An iPhone's messages and its one-time codes, on this computer (Ben,
-2026-11-16: "integrate https://github.com/erikwb/blueferry into olo so
-that doctor suggests installing the backend and handles doing it and
-then write olo native frontend prefs/deskbar/app integration including
-capturing OTPs from SMS messages and extend the olo chrome extension to
-offer to fill them in the browser when they arrive like how macos does
-it … it could be from a user chrome tab or one on an agent screen in
-which case it should go to the agent's tab not the user").
+An iPhone's or an Android phone's messages, contacts and one-time codes,
+on this computer. **Olo speaks to the phone itself**, in Rust, in
+process, as it speaks to AirPods; nothing else is installed.
 
-**The backend is BlueFerry's** (github.com/erikwb/blueferry, GPL, Python;
-0.9.1 when this was written): MAP for messages, PBAP for contacts and
-ANCS for notifications over Bluetooth, with no cloud or account, behind
-a D-Bus API on the session bus (`io.weirdware.BlueFerry`, its
-`Messages1` and `Events1`: commands and snapshots, most JSON in a
-string; signals that say only that something changed). Nothing of it is
-in Olo, which only talks to it, written from its published contract
-(`data/io.weirdware.BlueFerry.xml`, `docs/en/developer/dbus-api.md`):
-`olo_system::blueferry` (`Client`: `status`, `threads`, `send`, `reply`,
-`mark_read`, `find_contacts`, `set_notification_policy`, `reconnect`,
-`watch`). It reads leniently, as BlueFerry's own clients do (a key of
-another type or missing is unset, unknown keys pass), checks the API's
-generation (`olo_protocol::phone::API`, 2; another is said plainly:
-"update them"), and never starts the backend by asking whether it runs.
-A reply to a group carries the members it was shown with
-(`Thread::group_token`: the roster warning's id, then each distinct
-address in order, a line each), as the backend demands. **Everything
-native doesn't reach to this**: Ben asked for this backend; its makers
-test it on real phones and controllers, and Olo's part is its own front
-end. Pairing, which the D-Bus API doesn't have (it is 3,000 lines of
-quirks in BlueFerry's clients), is the backend's own wizard run in
-Olo's Terminal (`blueferry pair-setup`) until Olo has a sheet for it
-(TODO).
+(It began, on 2026-11-16, as a front end to BlueFerry, a Python backend
+over BlueZ's obexd that Olo Doctor installed. That evening its unit
+wouldn't start, and Ben: "i don't love this blueferry dependency it's
+going to be too flaky. get rid of blueferry and build everything we need
+in rust ourselves and make the pairing/setup process much nicer and
+intuitive and visually well designed", then "and also include support
+for android too". BlueFerry's protocol notes remain the best account of
+what an iPhone does over Bluetooth, and are where the iPhone's habits
+below were learnt; none of its code is in Olo. Where it's still
+installed, Olo Doctor offers to remove it: "BlueFerry is installed, and
+Olo no longer uses it" (`Step::RemovePackages`, and Olo's Bluetooth
+drop-in back to what AirPods alone need), since its obexd would hold the
+profiles Olo's own then can't register: `Link::Taken`.)
 
-**Olo Doctor installs it** (checks.rs, `phone`): on a Fedora it has a
-package for (43 and up) with a Bluetooth controller, "Your iPhone's
-messages and codes on this computer" is suggested; its fix is
-`Step::InstallReleasePackage`: the latest GitHub release's asset named
-`blueferry-backend-…​.fcN.noarch.rpm` for this Fedora, else the one
-before's (`releases::package_asset`), downloaded, checked against the
-release's `SHA256SUMS`, and installed through PackageKit with what it
-needs from Fedora (python3-cryptography, -phonenumbers, -typer,
-bluez-obexd: all in Fedora 45, checked). The package starts Bluetooth
-again as it goes in and brings a drop-in of its own (`bluetoothd -E -P
-hfp`: the experimental interfaces it needs, and BlueZ's own hands-free
-plugin left out, which experimental loads from 5.87 and which would make
-the computer the phone's hands-free set). Olo's own drop-in for AirPods
-(`/etc/systemd/system/bluetooth.service.d/olo.conf`) comes after it by
-name and is the one that counts, so with the backend here Olo's says
-both (`bluetooth_drop_in(program, true)`: `--experimental -P hfp`): the
-install's steps write it first when it's there (so Bluetooth starts
-once), AirPods' own fix writes it so when the backend's drop-in exists,
-and a backend installed with Bluetooth started otherwise is a finding of
-its own ("Bluetooth isn't started as the phone needs").
+**The protocols** (`olo_system::phone`, written from the Bluetooth
+specifications):
 
-**`olo-phone --service`** (service.rs; a real session's, `REAL_SHELL`)
-follows the backend by its signals (asleep on the bus otherwise: 0
-wakeups a second at rest), publishes `$XDG_RUNTIME_DIR/olo-phone.json`
-(`PhoneState`: the backend, the link, which of the phone's services are
-up, its battery, how many conversations and unread, a count of codes;
-**never a sender, a number, a text or a code**), and answers on
-`olo-phone.sock` (0600). It tells of each message as it comes in a
-notification of Olo's own, in the Message style, answered in place
-(`Note::reply`; sent on a thread, a failure said) with Mark as Read and,
-for one with a code, Copy Code; so the backend's own popups are kept
-off, or, for "Everything on the Phone", set to all with Olo's off
-(`Notify::backend_policy`: Olo owns that setting of the backend's and
-puts it back if another client changes it). A message "has just come"
-when it is new to the service, incoming, unread and no older than five
-minutes by its own time (`when`: with its zone, or as local time when
-the phone left it out); at the start what is already there is told of
-by nothing, only a code still good taken up. Settings are
-`~/.config/olo/phone.json` (`PhoneSettings`, followed by inotify).
+- `obex`: OBEX's packets and headers, a client's session (Connect, Get,
+  Put, SetPath, Disconnect; an object in as many packets as the other
+  side takes, 32 MB at most) and a server's (`Server::next`: one whole
+  operation at a time), over anything that reads and writes.
+- `map`: the Message Access Profile's client side. `Mas`: a session in
+  the phone's `telecom/msg`: `listing` (the inbox), `message` (one whole,
+  a bMessage), `mark_read`, `send`, and `notify`, after which the phone
+  connects back to **Olo's own Message Notification Server**
+  (`serve_notifications`) and tells it of each message as it comes
+  (`Event::New`, a handle to fetch it by). `BMessage::outgoing` makes a
+  message to send: a recipient is structure in a bMessage, so one that
+  would break out of its line (a line end, a second `@`, anything but a
+  number or an address) is refused, never escaped; a line of the text
+  that reads `END:MSG` is. Handles are hexadecimal and nothing else
+  (`is_handle`), checked before one goes back to the phone.
+- `pbap`: the phone's contacts in one pull (`contacts`: names, numbers
+  and addresses only, by the filter; the owner's own card, entry 0,
+  passed over), vCards 2.1 and 3.0 read (`parse`), and whose a number is
+  however it's written (`key`: its last ten digits; `name_of`: nobody's,
+  when two contacts share it).
+- `link`: **the link is BlueZ's**. Olo registers three profiles
+  (`ProfileManager1.RegisterProfile`): the client's side of the phone's
+  messages and of its contacts, and the Notification Server, with its
+  service record (what a phone looks for to know this computer wants to
+  be told). BlueZ finds the phone's channel for a profile, opens it and
+  hands over the socket (`Profile1.NewConnection`: `Opened`, a `Stream`
+  with a patience of 30 s); `Profiles::open` asks for one
+  (`Device1.ConnectProfile`); `phones` lists what's paired and offers
+  its messages (an iPhone by Apple's vendor id in its Modalias; its
+  battery when BlueZ has it); `watch` tells when that changes. No root,
+  no obexd.
 
-**One-time codes** (codes.rs). `find` is a heuristic of Olo's own (not
-BlueFerry's, which copies to the clipboard and tells no client): a
-number of four to eight digits ("123-456", "123 456" and "G-123456" are
-123456; right after "code", letters and digits too) is a code only when
-a word for one is said with it, in the same sentence: strong words
-("verification code", "OTP", "Bestätigungscode", "验证码", …) by
-themselves; "code", "PIN", "password" only in a sentence about signing
-in or right beside the number ("code: 4829", "482913 is your code").
-Never amounts, dates, times, decimals, phone numbers, order and tracking
-numbers, or codes people and shops tell each other ("my code", door,
-Wi-Fi, promo). A last line `@site #code` binds the code to that site.
-`service` reads who it says it's from ("Your Acme Bank verification
-code…", "[Acme] …", "… for Acme"). Tested on 30 messages that are codes
-and 18 that aren't; `olo-phone --find-code` reads a message from
-standard input and says what it finds, for trying a provider's wording.
-A code is kept in memory only, for five minutes (`CODE_LIFE`), wiped
-(zeroize) when it's used or too old; nothing a message says is logged
-or written.
+**What phones do** (kept true in `standin`, the stand-in phone):
+
+- An **iPhone** refuses its messages (OBEX Forbidden) until its owner
+  turns on Show Notifications for this computer (Settings ▸ Bluetooth ▸
+  ⓘ), and its contacts until Sync Contacts; turning them on says
+  nothing, so they're asked for again (below). An SMS and an iMessage
+  both come as `SMS_GSM`; a listing's `subject` is the whole text; its
+  sent folder is empty (what's sent from here is kept here); it often
+  gives a time with no zone (taken as this computer's). A message is
+  sent with an empty originator, the recipient's `TEL` or `EMAIL`, and
+  `TYPE:SMS_GSM` whichever way the phone then sends it.
+- An **Android** phone asks on the phone, as it pairs or as the profile
+  first opens, whether this computer may see messages and contacts. Its
+  listing has only a message's first words (so a message that comes is
+  always fetched whole), and what was sent is in its sent folder.
+- **Not yet tried with a real phone of either kind** (2026-11-16): all
+  of this is tested against stand-ins. What BlueFerry found an iPhone
+  to want besides, and Olo doesn't do yet, to try with Ben's: the
+  computer's Class of Device as hands-free (major 4, minor 8), and an
+  LE advertisement soliciting ANCS while the switches are waited for
+  (on iOS 26 they appeared only while it was broadcast); and pairing by
+  `Device1.Connect` on the unpaired phone rather than `Pair`, which on
+  some controllers is what gives one bond for both transports. Groups'
+  names (ANCS), and a store of conversations that outlives the service,
+  are also to come.
+
+**`olo-phone --service`** (service.rs; a real session's, `REAL_SHELL`).
+With a phone paired, it asks BlueZ for a channel to its messages and
+opens a session on it, on a thread of its own (`session`: it waits on
+the phone, the service's loop never does). Refused: `Link::Allow`, and
+tried again every ten seconds (`ALLOW_EVERY`). Open: `Link::Ready`; the
+phone is asked to tell of messages, the newest 60 of its inbox are read
+(what's there is history; an unread one that came within five minutes
+is fetched whole and told of, as one that comes), and its contacts are
+asked for, and again every 15 s for five minutes and then every five
+minutes until they come (`ask_contacts`). A message that comes
+(`FromSession::Came`: its listing's row for when, itself whole for its
+text) goes in its conversation (`thread_for`: one for each number or
+address, named by the contacts, else as the phone names the sender,
+else the number). A phone out of reach (`Link::Away`: BlueZ says it
+isn't connected, or the channel can't be had) is tried when BlueZ says
+anything of it and otherwise after 15 s, 30 s, 1, 2 and then every 5
+minutes (`AWAY`); a session whose link drops is tried again after 2 s,
+once. Another phone, or none: what the last had is let go.
+Conversations are kept in memory only: **nothing a message says is
+logged or written to disk**. It publishes
+`$XDG_RUNTIME_DIR/olo-phone.json` (`PhoneState`: the phone's name and
+kind, the link, whether its contacts came, its battery, how many
+conversations and unread, a count of codes; never a sender, a number, a
+text or a code) before it answers a request that changed it, and
+answers on `olo-phone.sock` (0600): `Status`, `Conversations`,
+`Contacts`, `Send` (to a number, an address or a conversation's key;
+answered when the phone has taken it), `MarkRead` (on the phone too),
+`Reconnect`, `Code`. Everything but `Status` is refused to a program on
+an agent's screen. Each message is told of in a notification of Olo's
+own, in the Message style, answered in place (the answer sent through
+the session; a failure said in the notification), with Mark as Read
+and, for one with a code, Copy Code. Settings are
+`~/.config/olo/phone.json` (`PhoneSettings`, followed by inotify). At
+rest it is asleep on its channel: 0 wakeups a second.
+
+**One-time codes** (codes.rs). `find` is a heuristic: a number of four
+to eight digits ("123-456", "123 456" and "G-123456" are 123456; right
+after "code", letters and digits too) is a code only when a word for
+one is said with it, in the same sentence: strong words ("verification
+code", "OTP", "Bestätigungscode", "验证码", …) by themselves; "code",
+"PIN", "password" only in a sentence about signing in or right beside
+the number ("code: 4829", "482913 is your code"). Never amounts, dates,
+times, decimals, phone numbers, order and tracking numbers, or codes
+people and shops tell each other ("my code", door, Wi-Fi, promo). A
+last line `@site #code` binds the code to that site. `service` reads
+who it says it's from ("Your Acme Bank verification code…", "[Acme] …",
+"… for Acme"). Tested on 30 messages that are codes and 18 that aren't;
+`olo-phone --find-code` reads a message from standard input and says
+what it finds. A code is kept in memory only, for five minutes
+(`CODE_LIFE`), wiped (zeroize) when it's used or too old.
 
 **Which tab it's for** (as macOS offers a code from Messages, but
 choosing the tab). Every browser's extension host stays connected to
@@ -13628,90 +13663,76 @@ the code); when it isn't sure the person is asked; **Ask Me First**
 (a notification on their screen, Give Code or Not Now); **Never**
 (agents' tabs aren't candidates). The doubt it guards: a page on an
 agent's screen that merely has a code field must not be handed the code
-of a sign-in the person began elsewhere. `olo-phone --code` (the latest
-code, for Deskbar's Copy) is refused to a program on an agent's screen.
+of a sign-in the person began elsewhere.
 
-**Setting it up is one place, a step at a time** (Ben, 2026-11-16, an
-hour after installing the backend from Olo Doctor and finding nothing
-more: "how do i setup my iphone? we should make that easy/obvious. is
-there an app or preferences somewhere?"). Preferences ▸ Phone, until a
-phone is paired and allowed, is "Set Up Your iPhone" (`setup`): 1.
-Install BlueFerry (Install…: the panel asks Olo Doctor itself,
-`olo-doctor --fix phone-backend`, on its worker), 2. Pair the iPhone
-(Pair…: the wizard in Terminal), 3. On the iPhone, let it share (the
-switches, by name); each ticked once done, the one to do next in bold
-with its button.
+**Connecting a phone is Preferences ▸ Phone**, three steps each seen to
+happen (phone.rs, `connect`; Ben: "make the pairing/setup process much
+nicer and intuitive and visually well designed"; then, of a first
+rework with a large title in a narrow centred column: "ewww it was
+better before": it is a Preferences panel like the others, the kit's
+heading and group boxes at full width, with room between its rows): a
+drawn stepper (`stepper`: a numbered disc each, ticked green once done,
+the one being done blue and bold); 1. **Find your phone**: the phones
+Bluetooth sees nearby (a search started as the page shows), each with
+Pair (one already paired with this computer for something else:
+Connect); 2. **Confirm the code**: the six digits large, in two groups
+(`code`), "Does “Mira's iPhone” show this number?", It Matches (Return)
+or It's Different; 3. **Allow it on the phone**: the phone's own
+switches for this computer drawn as the phone shows them (`switches`:
+an iPhone's Show Notifications and Sync Contacts; an Android's Text
+messages and Contacts), each turning green as the phone turns it on
+(the service's state), the page following by itself. Pairing is the
+Bluetooth panel's own watcher and agent (`bluetooth::link`): one
+pairing, wherever it's started. (**Found building it**: the pairing
+agent asked BlueZ for the device's name with a blocking call from
+inside its own handler, on the connection's own thread, which never
+gets its answer: every question a device asked while pairing, a phone's
+"does it show this number?" among them, hung until BlueZ gave up.
+`AgentObject::name` now asks on the handler's connection, awaited.)
+Connected, the panel is how the phone stands, what is told of, and
+One-Time Codes. A phone's row in Preferences ▸ Bluetooth has Messages
+and Codes…; `olo-preferences iphone` (or `messages`, `codes`, `sms`)
+opens the panel.
 
-**BlueFerry runs only once a phone is paired**, and from then on Olo
-keeps it running. Its unit has `ConditionPathExists=
-~/.config/blueferry/local.env`, which pairing writes
-(`blueferry::configuration`, `configured`): installed and never paired,
-it isn't running and can't be started, and that is no fault. (The panel
-first took "installed, not running" for a fault and offered Start It,
-which could only fail: "Could not activate remote peer
-'io.weirdware.BlueFerry': unit failed"; the stand-in backend ran
-unpaired, which the real one never does. Ben, 2026-11-16: "error trying
-to start ... also olo should handle starting and keeping it running in
-olo doctor if i apply it".) `PhoneState::paired` says which it is
-(running: it has a phone's profile; not running: its configuration is
-there). Once it's installed and paired, the phone service starts it
-whenever it isn't on the bus (`Service::start`: the bus asked for it, on
-a thread): as the service starts, when its files or its configuration
-come (just installed, just paired: both followed by inotify), and 8 s
-after it leaves the bus (systemd restarts a crash itself at 5 s); if it
-won't start, again after 5 s, 30 s, 2 min and then every 10 min, with
-why in `PhoneState::trouble`, which the panel's third step shows beside
-Start It ("Olo tries again by itself"). `olo-phone --start` does it by
-hand and says why not. Olo Doctor: installed and not paired, "Pair your
-iPhone"; paired and not on the bus, "The phone's backend isn't running"
-(Start It). Every way
-in leads there: Olo Doctor, once the backend is installed and no phone
-paired (`Roots::phone_paired`, the phone service's state), suggests
-"Pair your iPhone" (Set It Up… opens the panel; told once in a
-notification, as every suggestion); a phone's row in Preferences ▸
-Bluetooth has Messages and Codes…; `olo-preferences iphone` (or
-`messages`, `codes`, `sms`) opens it.
-
-**Where it shows.** Preferences ▸ Phone (phone.rs): the setup's steps
-until it's set up, else how it stands
-(what the phone must allow, its battery, which services are up, how
-many conversations and unread; Try Again, Pair Again…), what is told of
-(Messages, Everything on the Phone, Nothing; Show what a message says),
-and One-Time Codes (find them; offer in the browser; in an agent's tab;
-copy one no tab is waiting for). Deskbar's tray (`status::draw_phone`: a
-slab with its screen, dim out of reach, amber at 20% and red at 10%, a
-blue dot while messages are unread), shown while the phone is
-connected, has unread messages or a code still good; its menu says how
-it stands, copies the code that just came, tries the phone again, and
-opens the panel. The command line, for people and agents: `olo-phone`
-(`--status [--json]`), `--conversations`, `--read KEY`, `--send TO
-TEXT…`, `--reply KEY TEXT…`, `--mark-read KEY`, `--reconnect`,
-`--code`, `--copy-code`, `--find-code`, `--settings`, `--set SETTING
-VALUE`. (A program on an agent's screen is on that screen's own bus,
-where there is no backend: the conversations are the person's.)
+**Elsewhere.** Deskbar's tray (`status::draw_phone`: a slab with its
+screen, dim out of reach, amber at 20% and red at 10%, a blue dot while
+messages are unread), shown while the phone is connected, has unread
+messages or a code still good; its menu says how it stands, copies the
+code that just came, tries the phone again, and opens the panel. The
+command line, for people and agents: `olo-phone` (`--status [--json]`),
+`--conversations`, `--read WHO`, `--send TO TEXT…`, `--mark-read WHO`,
+`--contacts [QUERY]`, `--reconnect`, `--code`, `--copy-code`,
+`--find-code`, `--settings`, `--set SETTING VALUE`. Phone, the app (the
+conversations and the contacts in a window), is still to come.
 
 **Tests never touch Bluetooth, a phone or anyone's messages.**
-`blueferry-fake` (olo-system's, beside `dnf-fake`) takes the backend's
-name on a bus and plays an iPhone at 81% with five conversations between
-made-up people; `--tell receive NAME ADDRESS TEXT…` has a message
-arrive, `--tell set link|battery|paired|storage VALUE` changes how it
-stands. `OLO_PHONE_BUS=ADDRESS` points Olo at that bus,
-`OLO_PHONE_DIR=DIR` keeps the service's state and socket in DIR (give
-it to the service and to what reads it: Preferences, Deskbar, Chrome),
-`OLO_PHONE_SETTINGS=FILE` its settings; the service's own
-`DBUS_SESSION_BUS_ADDRESS` must be the private bus too, or its
-notifications go to the person's. `crates/system/tests/blueferry_fake.rs`
-and `apps/phone/tests/service.rs` run end to end with
-`OLO_TEST_BUS=unix:path=…` (an `olo-bus` of the test's): the client
-against the stand-in; then the service with stand-in browsers, one of
-them on an agent's screen (processes of their own, since a screen is
-known by a process's environment). The extension was tried in a copy of
-Chrome in a scratch `XDG_DATA_HOME` (as "Google Chrome" says) on a page
-served from 127.0.0.1: offered and taken by click and by keys; with a
-second Chrome started with `OLO_SCREEN=agent`, the bank's code put in
-its tab while the person's tab, on an authenticator's page, was left
-alone; a code that came before any tab waited, offered when the page
-opened.
+`phone-standin` (olo-system's, beside `dnf-fake`) is a stand-in BlueZ
+on a bus of the test's own (`org.bluez`: its devices, profiles
+registered, a profile's channel opened as a socket pair handed over the
+bus, discovery, pairing through the agent with a code) with a stand-in
+phone behind it (`olo_system::phone::standin`): an iPhone with made-up
+people in it, or with `--android` a phone with an Android's habits;
+`--unpaired` for one nearby and not paired. `--tell receive NAME ADDRESS
+TEXT…` has a message arrive (the phone opens a channel to the
+Notification Server and tells it), `--tell set messages|contacts|
+connected|paired yes|no` turns the phone's own switches and takes it
+out of reach, `--tell sent` prints what was sent through it.
+`OLO_PHONE_BLUEZ=ADDRESS` points the link at that bus
+(`DBUS_SYSTEM_BUS_ADDRESS=ADDRESS` the rest of Olo's Bluetooth: the
+panel's pairing), `OLO_PHONE_DIR=DIR` keeps the service's state and
+socket in DIR, `OLO_PHONE_SETTINGS=FILE` its settings; the service's
+own `DBUS_SESSION_BUS_ADDRESS` must be the private bus too, or its
+notifications go to the person's. End to end with
+`OLO_TEST_BUS=unix:path=…` (an `olo-bus` of the test's):
+`crates/system/tests/phone_standin.rs` (the link and the profiles, for
+both kinds of phone) and `apps/phone/tests/service.rs` (the service:
+not allowed, allowed, the inbox and the contacts; codes to stand-in
+browsers, one on an agent's screen; sending by name and by number; out
+of reach and back; unpaired). The panel's steps were gone through in a
+headless session against the stand-in (find, the code, the switches
+turned on one at a time, connected), the review clean at 1×, 1.5× and
+2×. The extension was tried in a copy of Chrome in a scratch
+`XDG_DATA_HOME` on a page served from 127.0.0.1.
 
 ## The supervisor (apps/supervisor, Preferences ▸ Performance)
 

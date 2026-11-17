@@ -1,13 +1,14 @@
-//! The phone: an iPhone's messages and one-time codes, through
-//! BlueFerry's backend (github.com/erikwb/blueferry: MAP, PBAP and ANCS
-//! over Bluetooth, a D-Bus API on the session bus; Olo Doctor installs
-//! it). What `olo-phone --service` knows of it (a JSON file in the
-//! runtime directory, rewritten on every change, which Deskbar's tray and
-//! Preferences ▸ Phone follow; **nothing a message says is ever in it**),
-//! Olo's own settings for it, what may be asked of the service over its
-//! socket ([`Request`], one JSON line each way), and what the service and
-//! a browser's extension host say to each other about a one-time code
-//! ([`ToBrowser`], [`FromBrowser`]).
+//! The phone: an iPhone's or an Android phone's messages, contacts and
+//! one-time codes, spoken to by Olo itself over Bluetooth
+//! (`olo_system::phone`: the Message Access and Phone Book Access
+//! profiles; nothing else is installed). What `olo-phone --service` knows
+//! (a JSON file in the runtime directory, rewritten on every change,
+//! which Deskbar's tray and Preferences ▸ Phone follow; **nothing a
+//! message says is ever in it**), Olo's own settings for it, what may be
+//! asked of the service over its socket ([`Request`], one JSON line each
+//! way: the conversations and sending among it, for Phone the app and the
+//! command line), and what the service and a browser's extension host say
+//! to each other about a one-time code ([`ToBrowser`], [`FromBrowser`]).
 
 use std::path::PathBuf;
 
@@ -19,76 +20,62 @@ fn runtime_dir() -> PathBuf {
     std::env::var_os("OLO_PHONE_DIR").or_else(|| std::env::var_os("XDG_RUNTIME_DIR")).map(PathBuf::from).unwrap_or_else(std::env::temp_dir)
 }
 
-/// How the backend stands.
+/// What kind of phone it is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum Backend {
-    /// Not installed (Olo Doctor offers it).
+pub enum Kind {
     #[default]
-    Missing,
-    /// Installed, not running.
-    Stopped,
-    /// Running, but it speaks another generation of its API than this
-    /// Olo knows ([`API`]): one of them wants updating.
-    Other,
-    Running,
+    IPhone,
+    /// Android, or anything else that speaks the profiles.
+    Android,
 }
 
-/// The generation of BlueFerry's messaging API this Olo speaks
-/// (`GetStatus`'s `api_version`).
-pub const API: u32 = 2;
+impl Kind {
+    pub fn word(self) -> &'static str {
+        match self {
+            Kind::IPhone => "iPhone",
+            Kind::Android => "phone",
+        }
+    }
+}
 
 /// How the phone stands with this computer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Link {
-    /// No phone has been paired for messages.
+    /// No phone is paired with this computer.
     #[default]
     NotPaired,
-    /// Starting, or opening its Bluetooth profiles.
+    /// Paired, and not in reach (off, away, its Bluetooth off): tried
+    /// again by itself.
+    Away,
+    /// In reach: its messages being opened.
     Connecting,
+    /// The phone has to allow it: its own switch for this computer
+    /// (an iPhone's Show Notifications; an Android's message access).
+    Allow,
     /// Messages come and go.
     Ready,
-    /// Some of it works (messages without contacts, say).
-    Limited,
-    /// The phone went (out of range, Bluetooth off): tried again by
-    /// itself.
-    Reconnecting,
-    /// The phone has to allow it: its switches under Settings ▸
-    /// Bluetooth ▸ ⓘ.
-    Allow,
-    /// The phone refused the messages' connection.
-    Refused,
+    /// Another program has the phone's profiles (BlueFerry's obexd):
+    /// Olo can't open them until it lets go.
+    Taken,
 }
 
 impl Link {
-    /// From the backend's `connectivity_state`.
-    pub fn of(state: &str) -> Link {
-        match state {
-            "ready" => Link::Ready,
-            "degraded" => Link::Limited,
-            "reconnecting" => Link::Reconnecting,
-            "authorization-required" => Link::Allow,
-            "map-connection-refused" => Link::Refused,
-            _ => Link::Connecting,
-        }
-    }
-
     /// In a few words, for a status line.
     pub fn words(self) -> &'static str {
         match self {
             Link::NotPaired => "No phone paired",
+            Link::Away => "Out of reach",
             Link::Connecting => "Connecting…",
-            Link::Ready => "Connected",
-            Link::Limited => "Connected in part",
-            Link::Reconnecting => "Out of reach",
             Link::Allow => "Waiting for the phone to allow it",
-            Link::Refused => "The phone refused",
+            Link::Ready => "Connected",
+            Link::Taken => "Another program has the phone",
         }
     }
 
     pub fn connected(self) -> bool {
-        matches!(self, Link::Ready | Link::Limited)
+        self == Link::Ready
     }
 }
 
@@ -99,34 +86,26 @@ impl Link {
 pub struct PhoneState {
     /// The service's process (a state file left by one gone isn't it).
     pub pid: u32,
-    pub backend: Backend,
-    /// The backend's release ("0.9.1-1.fc45").
-    pub release: String,
-    /// A phone has been paired (the backend has its configuration: it
-    /// runs only once it does).
-    pub paired: bool,
-    /// Why the backend isn't running though a phone is paired, when
-    /// starting it failed (Olo starts it and keeps it running).
-    pub trouble: String,
+    /// The phone paired, as it's named ("Mira's iPhone"; empty: none).
+    pub name: String,
+    pub kind: Kind,
+    /// Its object with BlueZ (to pair again, to forget it).
+    pub path: String,
     pub link: Link,
-    /// Which of the phone's services are up: its messages (MAP), its
-    /// contacts (PBAP), its notifications (ANCS).
-    pub messages: bool,
+    /// Its contacts came too (names for numbers).
     pub contacts: bool,
-    pub notifications: bool,
     /// The phone's battery, in percent, when it says.
     pub battery: Option<u8>,
     /// Conversations kept, and messages in them not yet read.
     pub conversations: u32,
     pub unread: u32,
-    /// The backend's store of messages: "ready", "locked",
-    /// "unavailable", "disabled".
-    pub storage: String,
     /// One-time codes that have arrived since the service started (the
     /// count alone), and when the latest did (Unix seconds) while it can
     /// still be used: Deskbar's menu offers to copy it.
     pub codes: u64,
     pub code_at: Option<u64>,
+    /// Why it isn't working, when it's something to say plainly.
+    pub trouble: String,
 }
 
 impl PhoneState {
@@ -154,26 +133,23 @@ impl PhoneState {
         std::fs::rename(&tmp, &path)
     }
 
+    /// A phone is paired.
+    pub fn paired(&self) -> bool {
+        self.link != Link::NotPaired
+    }
+
     /// In a line, for Deskbar's tip and the command line.
     pub fn words(&self) -> String {
-        match self.backend {
-            Backend::Missing => "The phone's backend isn't installed".into(),
-            Backend::Stopped if !self.paired => "No phone paired".into(),
-            Backend::Stopped => "The phone's backend isn't running".into(),
-            Backend::Other => "The phone's backend and Olo don't match: update them".into(),
-            Backend::Running => {
-                let mut s = self.link.words().to_owned();
-                if self.link.connected() {
-                    if let Some(b) = self.battery {
-                        s.push_str(&format!(" · {b}%"));
-                    }
-                    if self.unread > 0 {
-                        s.push_str(&format!(" · {} unread", self.unread));
-                    }
-                }
-                s
+        let mut s = self.link.words().to_owned();
+        if self.link.connected() {
+            if let Some(b) = self.battery {
+                s.push_str(&format!(" · {b}%"));
+            }
+            if self.unread > 0 {
+                s.push_str(&format!(" · {} unread", self.unread));
             }
         }
+        s
     }
 }
 
@@ -219,34 +195,20 @@ impl AgentCodes {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Notify {
-    /// Each message, in a notification of Olo's own that can be
-    /// answered in place (the backend's own popups off).
+    /// Each message, in a notification that can be answered in place.
     #[default]
     Messages,
-    /// Everything the phone notifies of, its other apps too, in the
-    /// backend's own popups (it mirrors them as the phone shows them).
-    Everything,
     /// Nothing.
     Nothing,
 }
 
 impl Notify {
-    pub const ALL: [Notify; 3] = [Notify::Messages, Notify::Everything, Notify::Nothing];
+    pub const ALL: [Notify; 2] = [Notify::Messages, Notify::Nothing];
 
     pub fn label(self) -> &'static str {
         match self {
             Notify::Messages => "Messages",
-            Notify::Everything => "Everything on the Phone",
             Notify::Nothing => "Nothing",
-        }
-    }
-
-    /// The backend's own policy that goes with it: Olo tells of messages
-    /// itself, so the backend's popups are for everything or off.
-    pub fn backend_policy(self) -> &'static str {
-        match self {
-            Notify::Everything => "all",
-            Notify::Messages | Notify::Nothing => "none",
         }
     }
 }
@@ -305,6 +267,20 @@ pub enum Request {
     /// The latest one-time code, while it can still be used (Deskbar's
     /// Copy Code). Refused to a program on an agent's screen.
     Code,
+    /// The conversations, the latest first, each with its messages (for
+    /// Phone the app and the command line). Refused to a program on an
+    /// agent's screen, as everything a message says is.
+    Conversations,
+    /// The phone's contacts whose name or number has `query` in it (all,
+    /// with none).
+    Contacts { query: String },
+    /// Send `text` to `to` (a telephone number or an address; a
+    /// conversation's `key` answers it).
+    Send { to: String, text: String },
+    /// A conversation's messages read (on the phone too).
+    MarkRead { key: String },
+    /// Try the phone again now.
+    Reconnect,
     /// A browser's extension host, staying connected: from here on the
     /// connection carries [`ToBrowser`] one way and [`FromBrowser`] the
     /// other, a JSON line each.
@@ -326,6 +302,57 @@ pub struct Reply {
     /// `Code`'s: the code and who sent it.
     pub code: Option<String>,
     pub from: Option<String>,
+    /// `Conversations`' and `Contacts`'.
+    pub conversations: Option<Vec<Conversation>>,
+    pub contacts: Option<Vec<Person>>,
+}
+
+/// A message in a conversation.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Message {
+    /// The phone's handle for it (empty for one sent from here).
+    pub handle: String,
+    pub text: String,
+    /// When (Unix seconds).
+    pub at: i64,
+    /// Sent from here.
+    pub outgoing: bool,
+    pub read: bool,
+}
+
+/// A conversation: everything to and from one number or address.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Conversation {
+    /// What it's known by to the service (send to it to answer).
+    pub key: String,
+    /// Who: their name in the phone's contacts, else as the phone names
+    /// them, else the number.
+    pub name: String,
+    /// Their number or address, as written.
+    pub address: String,
+    /// The oldest first.
+    pub messages: Vec<Message>,
+}
+
+impl Conversation {
+    pub fn unread(&self) -> usize {
+        self.messages.iter().filter(|m| !m.outgoing && !m.read).count()
+    }
+
+    pub fn latest(&self) -> i64 {
+        self.messages.last().map_or(0, |m| m.at)
+    }
+}
+
+/// Someone in the phone's contacts.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Person {
+    pub name: String,
+    pub phones: Vec<String>,
+    pub emails: Vec<String>,
 }
 
 /// A tab with a field waiting for a one-time code, as its browser's
@@ -422,12 +449,12 @@ mod tests {
 
     #[test]
     fn the_state_says_nothing_of_what_a_message_says() {
-        let s = PhoneState { backend: Backend::Running, link: Link::Ready, battery: Some(81), unread: 2, codes: 1, code_at: Some(1_794_700_000), ..Default::default() };
+        let s = PhoneState { name: "Mira’s iPhone".into(), link: Link::Ready, battery: Some(81), unread: 2, codes: 1, code_at: Some(1_794_700_000), ..Default::default() };
         assert_eq!(s.words(), "Connected · 81% · 2 unread");
+        assert!(s.paired() && !PhoneState::default().paired());
         let text = serde_json::to_string(&s).unwrap();
         let keys: Vec<String> = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&text).unwrap().keys().cloned().collect();
-        assert_eq!(keys, ["pid", "backend", "release", "paired", "trouble", "link", "messages", "contacts", "notifications", "battery", "conversations", "unread", "storage", "codes", "code_at"]);
-        assert_eq!(Link::of("authorization-required"), Link::Allow);
-        assert_eq!(Link::of("something new"), Link::Connecting);
+        assert_eq!(keys, ["pid", "name", "kind", "path", "link", "contacts", "battery", "conversations", "unread", "codes", "code_at", "trouble"]);
+        assert_eq!(serde_json::to_string(&Request::Send { to: "+15550100142".into(), text: "hi".into() }).unwrap(), r#"{"do":"send","to":"+15550100142","text":"hi"}"#);
     }
 }

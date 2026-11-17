@@ -298,11 +298,6 @@ pub struct Roots {
     pub units: Box<dyn Fn(&str) -> Result<UnitState, String> + Send + Sync>,
     /// AirPods are paired here (the AirPods service's state).
     pub airpods: bool,
-    /// A phone is paired for messages (the backend has its
-    /// configuration, which pairing writes: it runs only once it does).
-    pub phone_paired: bool,
-    /// The phone's backend is on the session bus.
-    pub phone_running: bool,
     /// Bluetooth controllers that don't answer (BlueZ's adapter powered
     /// and its power off, or the other way round), by name ("hci0").
     pub bluetooth_stuck: Vec<String>,
@@ -424,9 +419,6 @@ impl Roots {
             scope,
             units: Box::new(crate::fix::unit_state),
             airpods,
-            phone_paired: olo_system::blueferry::configured(),
-            // (Asking whether it's there never starts it.)
-            phone_running: olo_system::blueferry::Client::connect().is_ok_and(|c| c.running()),
             bluetooth_stuck,
             packages: Box::new(real_packages),
             updates: Box::new(real_updates),
@@ -679,7 +671,7 @@ pub fn scan(roots: &Roots) -> Report {
     let realtime_leave = realtime(roots, &mut r);
     voice_realtime(roots, &procs, realtime_leave, &mut r);
     airpods_listening(roots, &procs, &mut r);
-    phone(roots, &procs, &mut r);
+    phone(roots, &mut r);
     util_clamp(roots, &mut r);
     kept_core(roots, &mut r);
     session_weight(roots, &mut r);
@@ -2012,9 +2004,7 @@ fn airpods_listening(roots: &Roots, procs: &[Proc], r: &mut Report) {
         label: "Let Bluetooth Listen".into(),
         root: true,
         steps: vec![
-            // (With the phone's backend here, without BlueZ's own
-            // hands-free plugin too: see `phone`.)
-            Step::WriteFile { path: format!("/{BLUETOOTH_DROP_IN}").into(), content: bluetooth_drop_in(&program, roots.fs.join(PHONE_DROP_IN).exists()), mode: 0o644 },
+            Step::WriteFile { path: format!("/{BLUETOOTH_DROP_IN}").into(), content: bluetooth_drop_in(&program), mode: 0o644 },
             Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Reload },
             Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Restart },
         ],
@@ -2028,141 +2018,48 @@ fn airpods_listening(roots: &Roots, procs: &[Proc], r: &mut Report) {
     });
 }
 
-/// Olo's own way of starting Bluetooth (a drop-in), which comes after
-/// any other by its name and so is the one that counts.
+/// Olo's own way of starting Bluetooth (a drop-in).
 const BLUETOOTH_DROP_IN: &str = "etc/systemd/system/bluetooth.service.d/olo.conf";
-/// The phone's backend's (BlueFerry's package's): `bluetoothd -E -P hfp`.
-const PHONE_DROP_IN: &str = "usr/lib/systemd/system/bluetooth.service.d/blueferry.conf";
-/// What says the phone's backend is installed.
+/// What says BlueFerry's backend is installed.
 const PHONE_BACKEND: &[&str] = &["usr/share/dbus-1/services/io.weirdware.BlueFerry.service", "usr/bin/blueferry"];
-/// The oldest Fedora BlueFerry packages for.
-const PHONE_FEDORA: u32 = 43;
 
-/// Olo's drop-in for Bluetooth: BlueZ's experimental interfaces on (the
-/// AirPods' broadcasts; the phone's bearers), and with the phone's
-/// backend here (`no_hands_free`), BlueZ's own hands-free plugin left
-/// out, as the backend's package starts it: experimental loads that
-/// plugin (BlueZ 5.87), which would make this computer a phone's
-/// hands-free set.
-fn bluetooth_drop_in(program: &str, no_hands_free: bool) -> String {
-    let why =
-        if no_hands_free { "BlueZ's experimental interfaces (AirPods' broadcasts, the phone's bearers), without its own hands-free plugin" } else { "BlueZ's advertisement monitor, for AirPods" };
-    format!("# Olo: {why} (Olo Doctor).\n[Service]\nExecStart=\nExecStart={program} --experimental{}\n", if no_hands_free { " -P hfp" } else { "" })
+/// Olo's drop-in for Bluetooth: BlueZ's experimental interfaces on (its
+/// advertisement monitor, for AirPods' broadcasts).
+fn bluetooth_drop_in(program: &str) -> String {
+    format!("# Olo: BlueZ's advertisement monitor, for AirPods (Olo Doctor).\n[Service]\nExecStart=\nExecStart={program} --experimental\n")
 }
 
-/// Whether bluetoothd's arguments leave its hands-free plugin out
-/// (`-P hfp`, `-Phfp`, `--noplugin=hfp`, among others listed with it).
-fn without_hands_free(args: &[String]) -> bool {
-    let listed = |v: &str| v.split(',').any(|p| p.trim() == "hfp");
-    args.iter().enumerate().any(|(i, a)| match a.as_str() {
-        "-P" | "--noplugin" => args.get(i + 1).is_some_and(|v| listed(v)),
-        a => a.strip_prefix("--noplugin=").or_else(|| a.strip_prefix("-P")).is_some_and(listed),
-    })
-}
-
-/// The phone: an iPhone's messages and one-time codes come through
-/// BlueFerry's backend (github.com/erikwb/blueferry), which Fedora
-/// doesn't carry. Where it can run (Fedora, a Bluetooth controller) and
-/// isn't installed, it's suggested: its package from its makers' latest
-/// release, checked against what they published, installed with what it
-/// needs from Fedora. Installed, Bluetooth must be started as the
-/// backend wants it (its own drop-in says so, but Olo's, written for
-/// AirPods, comes after it and counts): Olo's is written again to say
-/// both.
-fn phone(roots: &Roots, procs: &[Proc], r: &mut Report) {
-    let (ids, version) = os_release(&roots.fs);
-    let version = version.and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
-    let controller = std::fs::read_dir(roots.fs.join("sys/class/bluetooth")).is_ok_and(|d| d.flatten().any(|e| e.file_name().to_string_lossy().starts_with("hci")));
-    let installed = PHONE_BACKEND.iter().any(|p| roots.fs.join(p).exists());
-    let ours = read(&roots.fs.join(BLUETOOTH_DROP_IN));
-    // Olo's drop-in as it should be with the backend here: what it
-    // starts now, with the hands-free plugin left out.
-    let rewritten = |ours: &str| {
-        let line = ours.lines().rev().find_map(|l| l.trim().strip_prefix("ExecStart=").filter(|v| !v.trim().is_empty()))?;
-        let mut words = line.split_whitespace();
-        let program = words.next()?;
-        let args: Vec<String> = words.map(str::to_owned).collect();
-        (!without_hands_free(&args) || !args.iter().any(|a| a == "-E" || a == "--experimental")).then(|| bluetooth_drop_in(program, true))
-    };
-    if !installed {
-        if !ids.iter().any(|i| i == "fedora") || version < PHONE_FEDORA || !controller {
-            return;
-        }
-        let mut steps = Vec::new();
-        // (First, so Bluetooth starts again once: the package starts it
-        // again as it goes in.)
-        if let Some(content) = ours.as_deref().and_then(rewritten) {
-            steps.push(Step::WriteFile { path: format!("/{BLUETOOTH_DROP_IN}").into(), content, mode: 0o644 });
-        }
-        steps.push(Step::InstallReleasePackage {
-            name: "BlueFerry’s backend".into(),
-            repo: "erikwb/blueferry".into(),
-            starts: "blueferry-backend-".into(),
-            ends: (PHONE_FEDORA..=version).rev().map(|v| format!(".fc{v}.noarch.rpm")).collect(),
-            sums: "SHA256SUMS".into(),
-        });
-        r.findings.push(Finding {
-            id: "phone-backend".into(),
-            severity: Severity::Suggestion,
-            title: "Your iPhone’s messages and codes on this computer".into(),
-            detail: "BlueFerry (github.com/erikwb/blueferry) brings an iPhone’s messages and contacts here over Bluetooth, with no cloud or account between them. With it, Phone shows the conversations and answers them, and a one-time code texted to the phone is offered in the browser tab that is waiting for it. Its backend is installed from its makers’ latest release, checked against what they published, with what it needs from Fedora; Bluetooth starts again once as it goes in (what’s connected comes back by itself). Then pair the phone in Preferences ▸ Phone.".into(),
-            fix: Some(Fix { label: "Install It".into(), root: true, steps }),
-        });
+/// BlueFerry, which Olo no longer uses (it speaks to the phone itself:
+/// `olo_system::phone`), where an earlier Olo Doctor installed it (or
+/// the person did): its backend would hold the phone's message and
+/// contact profiles through obexd, which Olo's own then can't have, and
+/// its drop-in starts Bluetooth its way. Offered for removal: the
+/// package (and what was installed only for it), and Olo's own Bluetooth
+/// drop-in back as AirPods alone need it. What it kept (its history in
+/// ~/.local/state/blueferry, its settings in ~/.config/blueferry) is the
+/// person's to keep or delete; said.
+fn phone(roots: &Roots, r: &mut Report) {
+    if !PHONE_BACKEND.iter().any(|p| roots.fs.join(p).exists()) {
         return;
     }
-    let release = read(&roots.fs.join("usr/share/blueferry/package-release")).map(|s| s.trim().to_owned()).filter(|s| !s.is_empty());
-    let release = release.map(|v| format!(" {v}")).unwrap_or_default();
-    if !roots.phone_paired {
-        // Installed, and nothing to show for it yet: the next step, said
-        // where the install was done (Ben, 2026-11-16, having installed
-        // it: "how do i setup my iphone? we should make that easy/obvious").
-        // (The backend doesn't run until then: its unit starts only once
-        // pairing has written its configuration.)
-        r.findings.push(Finding {
-            id: "phone-pair".into(),
-            severity: Severity::Suggestion,
-            title: "Pair your iPhone".into(),
-            detail: format!(
-                "BlueFerry{release} is installed. Preferences ▸ Phone pairs the iPhone, a step at a time: it finds the phone, shows the same code on both, and says what to turn on on the phone. Then its messages and one-time codes come here."
-            ),
-            fix: Some(Fix { label: "Set It Up…".into(), root: false, steps: vec![Step::StartProgram { argv: vec!["olo-preferences".into(), "phone".into()] }] }),
-        });
-    } else if !roots.phone_running {
-        // Paired and not running. Olo's phone service starts it and
-        // keeps it running (Ben: "olo should handle starting and keeping
-        // it running"); seen here, it couldn't, or isn't there to.
-        r.findings.push(Finding {
-            id: "phone-stopped".into(),
-            severity: Severity::Advice,
-            title: "The phone’s backend isn’t running".into(),
-            detail: format!("BlueFerry{release} is installed and an iPhone paired, but it isn’t running: no messages or codes come. Olo starts it and keeps it running; the fix starts it now; Preferences ▸ Phone says why if it won’t."),
-            fix: Some(Fix { label: "Start It".into(), root: false, steps: vec![Step::StartProgram { argv: vec!["olo-phone".into(), "--start".into()] }] }),
-        });
-    } else {
-        r.fine.push(Fine {
-            title: "The phone’s backend is running, with an iPhone paired".into(),
-            detail: format!("BlueFerry{release}: an iPhone’s messages and one-time codes, over Bluetooth. Its settings are in Preferences ▸ Phone."),
-        });
+    let mut steps = vec![Step::RemovePackages { names: vec!["blueferry-backend".into(), "blueferry-gtk".into(), "blueferry-qt".into(), "blueferry-quickshell".into()] }];
+    // Olo's drop-in, written for BlueFerry's needs (the hands-free plugin
+    // left out), back as it is without it; Bluetooth started so.
+    if let Some(ours) = read(&roots.fs.join(BLUETOOTH_DROP_IN))
+        && let Some(line) = ours.lines().rev().find_map(|l| l.trim().strip_prefix("ExecStart=").filter(|v| !v.trim().is_empty()))
+        && let Some(program) = line.split_whitespace().next()
+        && line.contains("hfp")
+    {
+        steps.push(Step::WriteFile { path: format!("/{BLUETOOTH_DROP_IN}").into(), content: bluetooth_drop_in(program), mode: 0o644 });
+        steps.push(Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Reload });
+        steps.push(Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Restart });
     }
-    // Bluetooth, started as the backend needs it.
-    let Some(bluez) = procs.iter().find(|p| p.name == "bluetoothd") else { return };
-    let cmdline = std::fs::read(roots.fs.join(format!("proc/{}/cmdline", bluez.pid))).unwrap_or_default();
-    let args: Vec<String> = cmdline.split(|b| *b == 0).map(|a| String::from_utf8_lossy(a).into_owned()).collect();
-    if args.iter().any(|a| a == "-E" || a == "--experimental") && without_hands_free(&args) {
-        return;
-    }
-    let mut steps = Vec::new();
-    if let Some(content) = ours.as_deref().and_then(rewritten) {
-        steps.push(Step::WriteFile { path: format!("/{BLUETOOTH_DROP_IN}").into(), content, mode: 0o644 });
-    }
-    steps.push(Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Reload });
-    steps.push(Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Restart });
     r.findings.push(Finding {
-        id: "phone-bluetooth".into(),
+        id: "phone-blueferry".into(),
         severity: Severity::Advice,
-        title: "Bluetooth isn’t started as the phone needs".into(),
-        detail: "The phone’s backend needs BlueZ’s experimental interfaces, and BlueZ’s own hands-free plugin left out (it would make this computer the phone’s hands-free set). The fix starts Bluetooth so; what’s connected comes back by itself.".into(),
-        fix: Some(Fix { label: "Start It So".into(), root: true, steps }),
+        title: "BlueFerry is installed, and Olo no longer uses it".into(),
+        detail: "Olo now speaks to your phone itself (Preferences ▸ Phone). BlueFerry’s backend would hold the phone’s messages and contacts where Olo’s own can’t reach them. The fix removes BlueFerry and what was installed only for it, and starts Bluetooth as it was before (what’s connected comes back by itself). What BlueFerry kept (its history in ~/.local/state/blueferry and its settings in ~/.config/blueferry) is left for you to keep or delete.".into(),
+        fix: Some(Fix { label: "Remove BlueFerry".into(), root: true, steps }),
     });
 }
 
@@ -4224,8 +4121,6 @@ mod tests {
             scope: Some("session-2.scope".into()),
             units,
             airpods: true,
-            phone_paired: false,
-            phone_running: false,
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
@@ -4755,8 +4650,6 @@ mod tests {
             scope: None,
             units: Box::new(|_| Err("none".into())),
             airpods: false,
-            phone_paired: false,
-            phone_running: false,
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
@@ -4841,8 +4734,6 @@ mod tests {
             scope: None,
             units: Box::new(|_| Err("none".into())),
             airpods: false,
-            phone_paired: false,
-            phone_running: false,
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
@@ -5308,82 +5199,34 @@ mod tests {
         let _ = std::fs::remove_dir_all(&fs);
     }
 
-    /// The phone's backend: suggested on a Fedora it has a package for,
-    /// with a Bluetooth controller; installed, Bluetooth is started as it
-    /// needs, Olo's own drop-in (which comes last) saying so too.
+    /// BlueFerry, where it's installed: offered for removal, with Olo's
+    /// own Bluetooth drop-in back as it is without it.
     #[test]
-    fn the_phones_backend_suggested_and_bluetooth_started_as_it_needs() {
+    fn blueferry_installed_is_offered_for_removal() {
         let (fs, roots) = machine("phone");
         let w = |p: &str, c: &str| {
             let path = fs.join(p);
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(path, c).unwrap();
         };
-        let phone = |roots: &Roots| {
-            let r = scan(roots);
-            (r.findings.into_iter().filter(|f| f.id.starts_with("phone-")).collect::<Vec<_>>(), r.fine.into_iter().filter(|f| f.title.starts_with("The phone")).count())
-        };
-        // No Fedora, or one too old, or no controller: nothing said.
-        assert_eq!(phone(&roots).0.len(), 0);
-        w("etc/os-release", "NAME=\"Fedora Linux\"\nID=fedora\nVERSION_ID=45\n");
-        assert_eq!(phone(&roots).0.len(), 0, "no Bluetooth controller");
-        w("sys/class/bluetooth/hci0/address", "00:11:22:33:44:55\n");
-        w("etc/os-release", "NAME=\"Fedora Linux\"\nID=fedora\nVERSION_ID=42\n");
-        assert_eq!(phone(&roots).0.len(), 0, "no package for Fedora 42");
-        // Fedora 45: its package, else 44's, else 43's, from the release.
-        w("etc/os-release", "NAME=\"Fedora Linux\"\nID=fedora\nVERSION_ID=45\n");
-        let (found, fine) = phone(&roots);
-        assert_eq!((found.len(), fine), (1, 0));
-        assert_eq!((found[0].id.as_str(), found[0].severity), ("phone-backend", Severity::Suggestion));
-        let fix = found[0].fix.as_ref().unwrap();
+        let found = |roots: &Roots| scan(roots).findings.into_iter().filter(|f| f.id.starts_with("phone-")).collect::<Vec<_>>();
+        assert_eq!(found(&roots).len(), 0, "not installed: nothing said (and never suggested)");
+        w("usr/share/dbus-1/services/io.weirdware.BlueFerry.service", "[D-BUS Service]\n");
+        let f = found(&roots);
+        assert_eq!((f.len(), f[0].id.as_str(), f[0].severity), (1, "phone-blueferry", Severity::Advice));
+        let fix = f[0].fix.as_ref().unwrap();
         assert!(fix.root);
-        let [Step::InstallReleasePackage { repo, starts, ends, sums, .. }] = fix.steps.as_slice() else { panic!("{:?}", fix.steps) };
-        assert_eq!((repo.as_str(), starts.as_str(), sums.as_str()), ("erikwb/blueferry", "blueferry-backend-", "SHA256SUMS"));
-        assert_eq!(ends, &[".fc45.noarch.rpm", ".fc44.noarch.rpm", ".fc43.noarch.rpm"]);
-        // With Olo's drop-in there (AirPods): written again first, with
-        // the hands-free plugin left out, so Bluetooth starts once.
-        w(BLUETOOTH_DROP_IN, &bluetooth_drop_in("/usr/libexec/bluetooth/bluetoothd", false));
-        let (found, _) = phone(&roots);
-        let steps = &found[0].fix.as_ref().unwrap().steps;
+        assert_eq!(fix.steps, [Step::RemovePackages { names: vec!["blueferry-backend".into(), "blueferry-gtk".into(), "blueferry-qt".into(), "blueferry-quickshell".into()] }]);
+        // Olo's drop-in as an earlier Doctor wrote it for BlueFerry:
+        // back to what AirPods alone need, and Bluetooth started so.
+        w(BLUETOOTH_DROP_IN, "# Olo\n[Service]\nExecStart=\nExecStart=/usr/libexec/bluetooth/bluetoothd --experimental -P hfp\n");
+        let f = found(&roots);
+        let steps = &f[0].fix.as_ref().unwrap().steps;
         assert!(
-            matches!(&steps[0], Step::WriteFile { path, content, .. } if path == Path::new("/etc/systemd/system/bluetooth.service.d/olo.conf") && content.ends_with("ExecStart=/usr/libexec/bluetooth/bluetoothd --experimental -P hfp\n")),
+            matches!(&steps[1], Step::WriteFile { path, content, .. } if path == Path::new("/etc/systemd/system/bluetooth.service.d/olo.conf") && content.ends_with("ExecStart=/usr/libexec/bluetooth/bluetoothd --experimental\n")),
             "{steps:?}"
         );
-        assert!(matches!(&steps[1], Step::InstallReleasePackage { .. }));
-
-        // Installed, Bluetooth still as Olo's old drop-in started it.
-        w("usr/share/dbus-1/services/io.weirdware.BlueFerry.service", "[D-BUS Service]\n");
-        w("usr/share/blueferry/package-release", "0.9.1-1.fc45\n");
-        w(PHONE_DROP_IN, "[Service]\nExecStart=\nExecStart=/usr/libexec/bluetooth/bluetoothd -E -P hfp\n");
-        w("proc/903/cmdline", "/usr/libexec/bluetooth/bluetoothd\0--experimental\0");
-        // (And no phone paired yet: the next step, which opens the panel.)
-        let (found, fine) = phone(&roots);
-        assert_eq!((found.iter().map(|f| f.id.as_str()).collect::<Vec<_>>(), fine), (vec!["phone-pair", "phone-bluetooth"], 0));
-        assert_eq!(found[0].fix.as_ref().unwrap().steps, [Step::StartProgram { argv: vec!["olo-preferences".into(), "phone".into()] }]);
-        assert!(!found[0].fix.as_ref().unwrap().root && found[0].detail.starts_with("BlueFerry 0.9.1-1.fc45 is installed."));
-        // Paired, and not running: said, with a fix that starts it.
-        let roots = Roots { phone_paired: true, ..roots };
-        let (found, _) = phone(&roots);
-        assert_eq!(found.iter().map(|f| f.id.as_str()).collect::<Vec<_>>(), ["phone-stopped", "phone-bluetooth"]);
-        assert_eq!(found[0].fix.as_ref().unwrap().steps, [Step::StartProgram { argv: vec!["olo-phone".into(), "--start".into()] }]);
-        let roots = Roots { phone_running: true, ..roots };
-        let r = scan(&roots);
-        assert!(r.fine.iter().any(|f| f.title == "The phone’s backend is running, with an iPhone paired" && f.detail.starts_with("BlueFerry 0.9.1-1.fc45:")));
-        let (found, _) = phone(&roots);
-        assert_eq!(found.iter().map(|f| f.id.as_str()).collect::<Vec<_>>(), ["phone-bluetooth"]);
-        let steps = &found[0].fix.as_ref().unwrap().steps;
-        assert!(matches!(&steps[0], Step::WriteFile { content, .. } if content.contains("--experimental -P hfp")));
-        assert_eq!(steps[1..], [Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Reload }, Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Restart }]);
-        // (The AirPods' own fix, made now, leaves the plugin out too.)
-        assert!(bluetooth_drop_in("/usr/libexec/bluetooth/bluetoothd", roots.fs.join(PHONE_DROP_IN).exists()).contains("-P hfp"));
-        // Started as the backend's own drop-in has it (Olo's rewritten,
-        // or not there): nothing to say.
-        w(BLUETOOTH_DROP_IN, &bluetooth_drop_in("/usr/libexec/bluetooth/bluetoothd", true));
-        w("proc/903/cmdline", "/usr/libexec/bluetooth/bluetoothd\0-E\0-P\0hfp\0");
-        assert_eq!(phone(&roots), (vec![], 1));
-        for (args, out) in [(vec!["-P", "hfp"], true), (vec!["--noplugin=sap,hfp"], true), (vec!["-Phfp"], true), (vec!["--noplugin", "sap"], false), (vec!["--experimental"], false)] {
-            assert_eq!(without_hands_free(&args.iter().map(|a| (*a).to_owned()).collect::<Vec<_>>()), out, "{args:?}");
-        }
+        assert_eq!(steps[2..], [Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Reload }, Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Restart }]);
         let _ = std::fs::remove_dir_all(&fs);
     }
 
@@ -6251,8 +6094,6 @@ mod tests {
                 scope: None,
                 units: Box::new(|_| Err("none".into())),
                 airpods: false,
-                phone_paired: false,
-                phone_running: false,
                 bluetooth_stuck: Vec::new(),
                 packages: Box::new(|_| None),
                 updates: Box::new(|| None),

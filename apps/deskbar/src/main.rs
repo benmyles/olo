@@ -2072,7 +2072,7 @@ fn voice_items(m: Menu, v: &olo_protocol::voice::Settings) -> Menu {
 /// come (copied), trying it again while it's out of reach, and the way
 /// to its settings.
 fn phone_menu(phone: &olo_protocol::phone::PhoneState) -> Menu {
-    let mut m = Menu::new("Phone").item(format!("iPhone: {}", phone.words()), "").enabled(false).separator();
+    let mut m = Menu::new("Phone").item(format!("{}: {}", phone.name, phone.words()), "").enabled(false).separator();
     if phone.code_at.is_some() {
         m = m.item("Copy the Code That Just Came", "phone:copy-code");
     }
@@ -3056,7 +3056,7 @@ impl Deskbar {
         // come): how it stands, Phone, and its settings.
         if let Some(phone) = st.phone.clone() {
             let drawn = phone.clone();
-            let (r, h) = tray_item(&mut d, "phone", format!("iPhone: {}", phone.words()), Box::new(move |g, r| status::draw_phone(g, r, &theme::palette(), &drawn)));
+            let (r, h) = tray_item(&mut d, "phone", format!("{}: {}", phone.name, phone.words()), Box::new(move |g, r| status::draw_phone(g, r, &theme::palette(), &drawn)));
             let (m, v) = (model.clone(), view.clone());
             d.hits.push(h.on_any_button(move |e, cx| {
                 if matches!(button(e), MouseButton::Left | MouseButton::Right) {
