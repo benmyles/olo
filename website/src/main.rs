@@ -269,14 +269,18 @@ fn shot(name: &str, alt: &str, eager: bool, b: &mut Build) -> Result<String, Str
     let light = ["png", "jpg"].iter().map(|x| img.join(format!("{name}.{x}"))).find(|p| p.is_file()).ok_or_else(|| format!("no docs/img/{name}.png"))?;
     let (set, (w, h)) = srcset(&light, "/img/shots", name, SHOT_WIDTHS, b)?;
     let sizes = "(min-width: 1240px) 1200px, 100vw";
-    let mut html = String::from("<picture>");
+    // A link to the picture at its largest: a click shows it as large as
+    // the window has room for (js/site.js, in a <dialog>); with no
+    // script, the link opens the picture itself.
+    let largest = widths_for(w, SHOT_WIDTHS).last().copied().unwrap_or(w);
+    let mut html = format!("<a class=\"zoom\" href=\"/img/shots/{name}-{largest}.webp\" aria-label=\"Enlarge: {}\"><picture>", escape(alt));
     if let Some(dark) = ["png", "jpg"].iter().map(|x| img.join(format!("{name}-dark.{x}"))).find(|p| p.is_file()) {
         let (dset, _) = srcset(&dark, "/img/shots", &format!("{name}-dark"), SHOT_WIDTHS, b)?;
         html += &format!("<source media=\"(prefers-color-scheme: dark)\" srcset=\"{dset}\" sizes=\"{sizes}\">");
     }
     let loading = if eager { "eager\" fetchpriority=\"high" } else { "lazy" };
     html += &format!(
-        "<img src=\"/img/shots/{name}-{}.webp\" srcset=\"{set}\" sizes=\"{sizes}\" width=\"{w}\" height=\"{h}\" alt=\"{}\" loading=\"{loading}\" decoding=\"async\"></picture>",
+        "<img src=\"/img/shots/{name}-{}.webp\" srcset=\"{set}\" sizes=\"{sizes}\" width=\"{w}\" height=\"{h}\" alt=\"{}\" loading=\"{loading}\" decoding=\"async\"></picture></a>",
         widths_for(w, SHOT_WIDTHS)[0],
         escape(alt)
     );

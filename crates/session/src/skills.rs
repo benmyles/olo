@@ -1,6 +1,7 @@
 //! Agent skills: a real session puts Olo's skills where coding agents
-//! look for them, so an agent run under Olo knows how to use it (for
-//! now Agent Screens, `apps/screen/SKILL.md`). Claude Code reads
+//! look for them, so an agent run under Olo knows how to use it (Agent
+//! Screens, `apps/screen/SKILL.md`) and how to add a computer's hardware
+//! to it (`docs/skills/olo-hardware/SKILL.md`). Claude Code reads
 //! `~/.claude/skills` (or `$CLAUDE_CONFIG_DIR/skills`); Codex reads
 //! `~/.agents/skills`. A skill goes only to agents the person has (their
 //! folder exists), and replaces only a skill Olo wrote: one whose
@@ -10,7 +11,11 @@
 use std::path::{Path, PathBuf};
 
 /// (folder name, SKILL.md).
-const SKILLS: &[(&str, &str)] = &[("olo-screens", include_str!("../../../apps/screen/SKILL.md"))];
+const SKILLS: &[(&str, &str)] = &[
+    ("olo-screens", include_str!("../../../apps/screen/SKILL.md")),
+    // Adding a computer's hardware to Olo (docs/skills/olo-hardware).
+    ("olo-hardware", include_str!("../../../docs/skills/olo-hardware/SKILL.md")),
+];
 
 /// In every skill Olo writes: without it, the file is the person's.
 const MARKER: &str = "<!-- Kept up to date by Olo;";

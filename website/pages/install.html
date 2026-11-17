@@ -12,6 +12,8 @@ description: Install Olo on Fedora 44 or 45 Workstation with one program, beside
 
 <div class="wrap">
   <div class="prose">
+    <div class="note"><p><strong>Olo is beta software.</strong> It is developed and tested on a few computers (a Lenovo ThinkPad P1 Gen 9 above all). It installs beside GNOME, which stays as it is, so trying it costs nothing; but on hardware it hasn't met, expect rough edges: a special key that does nothing, a touchpad that wants tuning, a display mode that isn't offered. <a href="#your-hardware">Your computer can be made one it knows.</a></p></div>
+
     <div class="shot">{{shot olo-installer | Olo's Installer: one full-screen program, after BeOS's own}}</div>
 
     <h2>What you need</h2>
@@ -47,6 +49,17 @@ description: Install Olo on Fedora 44 or 45 Workstation with one program, beside
     </div>
     <p><code>tools/setup.sh</code> installs what's missing (compilers, libraries, Rust, Git LFS, drivers), builds Olo into <code>~/.local/bin</code> and adds it to the login screen. Run it again any time: each step only does what isn't done yet.</p>
     <p>After a <code>git pull</code> and a build, Deskbar offers the new build in its tray, and its Upgrade installs it and reloads the running desktop in place.</p>
+
+    <h2 id="your-hardware">Your hardware</h2>
+    <p>Olo is at its best on the computers it was developed on, where the panel's HDR and refresh rates, both GPUs, the touchpad's palms, the special keys, the fans, the battery's charge limit and the speakers were each looked at, measured and made right. For any other computer there is a skill for coding agents, <code>olo-hardware</code>, that does the same for yours: it reads what your computer has, compares it with what Olo supports, agrees with you what to do, and implements, tests and documents it.</p>
+    <p>Running Olo, in a clone of its repository, start your coding agent and ask for it:</p>
+    <div class="command">
+      <pre id="hardware-command"><span class="p">$ </span>git clone https://github.com/benmyles/olo &amp;&amp; cd olo
+<span class="p">$ </span>claude</pre>
+      <button class="copy" type="button" data-copy="hardware-command">Copy</button>
+    </div>
+    <p>Then, in Claude Code, type <code>/olo-hardware</code>; in Codex, say <em>use the olo-hardware skill</em>. Olo puts its skills where both look for them as you log in; with another agent, say <em>read docs/skills/olo-hardware/SKILL.md and follow it</em>.</p>
+    <p>It changes nothing on your computer by itself: what needs your password is an Olo Doctor fix you apply with a button, and what it builds you install with Deskbar's Upgrade. If the result would help others with the same computer, it offers to open a pull request.</p>
 
     <h2>Then</h2>
     <ul>

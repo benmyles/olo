@@ -837,7 +837,7 @@ long after a way out comes back.
 | `data/icons` | Icon set, pre-scaled to device sizes (`data/icons/<px>/<name>.png`). |
 | `data/themes` | The other looks of the icons (`data/themes/<id>/icons/<px>/<name>.png`), chosen in Preferences ▸ Themes; see "Themes" in [ICONS.md](ICONS.md). |
 | `data/brand` | Olo's wordmark ("Olo" in Sora, light and on dark) and, in `sizes/`, the horizontal logo pre-scaled for the veil and boot splash; made by `tools/mkbrand.py` from the mark (`docs/brand/olo-mark.png`) and the font. See [BRAND.md](BRAND.md). |
-| `website/` | olo-desktop.com, a static site: its own small Rust builder (`cargo run --release` there; not in the workspace) puts `pages/` in `templates/layout.html` and writes `website/dist`, its pictures taken from `docs/img`, `data/icons` and `data/wallpapers`. See `website/README.md`. |
+| `website/` | olo-desktop.com, a static site: its own small Rust builder (`cargo run --release` there; not in the workspace) puts `pages/` in `templates/layout.html` and writes `website/dist`, its pictures taken from `docs/img`, `data/icons` and `data/wallpapers`. See `website/README.md`. `tools/deploy-website.sh` builds it and deploys it to Cloudflare (the project `olo-desktop`), asking before it installs anything or signs in. |
 | `data/session` | `olo.desktop` for the login screen (installed by `tools/install-session.sh`). |
 | `tools/` | `install-session.sh` (release build → `~/.local`, session entry → `/usr/share/wayland-sessions`, an atomic system's `/usr/local/share/wayland-sessions`), `dev/tsession` (headless UI testing), `genicon.py`/`genicons.sh`/`mkicons.py`/`iconsheet.py` (icons, see [ICONS.md](ICONS.md)), `mkbrand.py` (the brand's pictures, see [BRAND.md](BRAND.md)), `dev/readme-shots` (the README's and website's 4K screenshots, on an Agent Screen). |
 
@@ -16483,6 +16483,21 @@ is there and in `~/.agents/skills/` when Codex is, replacing only a copy
 that still has Olo's marker line. **Change SKILL.md with the CLI**:
 it is the agents' manual. Headless sessions never write it, so tests
 don't touch the person's home.
+
+The same way goes the **`olo-hardware` skill**
+(`docs/skills/olo-hardware/SKILL.md`; Ben, 2026-11-16: "add an agent
+skill in this repo that a new olo user can call that asks the agent to
+analyze their hardware and add first-class support for it in olo like we
+have done with the thinkpad p1 gen9"): how a coding agent, on a computer
+Olo wasn't developed on, reads what the computer has, compares it with
+what Olo supports (by this document's sections), agrees with its owner
+what to do, and does each piece properly (keyed by the hardware, tested
+on a stand-in, measured, documented, an Olo Doctor fix for what needs
+root). The README and the website's install page say how to ask for it
+(`/olo-hardware` in Claude Code), under the warning that Olo is beta and
+tested on few computers. **When a kind of hardware gets a new home in
+Olo (a new section here, a new place per-machine data lives), say so in
+that skill**: it is the map a stranger's agent follows.
 
 While the person controls a screen (Take Control), the viewer writes
 `NAME.control` (its pid) in the screens' folder, and `olo-screen`

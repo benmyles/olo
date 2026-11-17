@@ -22,6 +22,13 @@ you.
   <img src="docs/img/olo-desktop.png" alt="Olo: Tracker showing a picture's preview, StyledEdit, Terminal and DeskCalc, with Deskbar's live widgets at the top right, on the Orbit wallpaper">
 </picture>
 
+> **Olo is beta software.** It is developed and tested on a few
+> computers (a Lenovo ThinkPad P1 Gen 9 above all), on Fedora 44 and 45.
+> It installs beside GNOME, which stays as it is, so trying it costs
+> nothing; but on hardware it hasn't met, expect rough edges: a special
+> key that does nothing, a touchpad that wants tuning, a display mode
+> that isn't offered. [Your computer can be made one it knows](#your-hardware).
+
 ## What makes it Olo
 
 - **Fast and light, measured.** Idle costs nothing: no polling, no
@@ -75,6 +82,34 @@ login screen. Run it again any time: each step only does what isn't done
 yet. After a `git pull` and a build, Deskbar offers the new build in its
 tray, and its Upgrade installs it and reloads the running desktop in
 place.
+
+### Your hardware
+
+Olo is at its best on the computers it was developed on, where the
+panel's HDR and refresh rates, both GPUs, the touchpad's palms, the
+special keys, the fans, the battery's charge limit and the speakers were
+each looked at, measured and made right. For any other computer there is
+a skill for coding agents, `olo-hardware`, that does the same for yours:
+it reads what your computer has, compares it with what Olo supports,
+agrees with you what to do, and implements, tests and documents it, the
+way the ThinkPad P1 Gen 9's support was made.
+
+Running Olo, in a clone of this repository, start your coding agent and
+ask for it:
+
+```sh
+git clone https://github.com/benmyles/olo && cd olo
+claude        # Claude Code; then:   /olo-hardware
+codex         # Codex; then:         use the olo-hardware skill
+```
+
+Olo puts its skills where Claude Code and Codex look for them as you log
+in. With another agent, or before you have logged in to Olo, say: *read
+docs/skills/olo-hardware/SKILL.md and follow it*. It changes nothing on
+your computer by itself: what needs your password is an Olo Doctor fix
+you apply with a button, and what it builds you install with Deskbar's
+Upgrade. If the result would help others with the same computer, it
+offers to open a pull request.
 
 ## The desktop
 

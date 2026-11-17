@@ -82,30 +82,6 @@ something nobody here has is in "Blocked", with what it waits for.
   the phone's switches shown as they are on the phone, each step seen to
   happen. Olo Doctor no longer installs BlueFerry and offers to remove
   it where it did. What a real iPhone does is tried with Ben's, by Ben.
-- **Beta, and a skill that adds a computer's hardware** (Ben,
-  2026-11-16: "on the website, and in the readme, let's warn that it is
-  beta quality and only tested on limited hardware configurations. also
-  add an agent skill in this repo that a new olo user can call that asks
-  the agent to analyze their hardware and add first-class support for it
-  in olo like we have done with the thinkpad p1 gen9. and then mention
-  how to use this skill in both the readme, and the install section of
-  the website"). The warning in both places; the skill in the repository
-  (what the ThinkPad P1 Gen 9's support was made of, as steps: reading
-  the hardware, what Olo keeps per machine, how each is tested and
-  measured); both say how to run it.
-- **A script that builds and deploys the website** (Ben, 2026-11-16:
-  "the website is hosted on cloudflare pages i.e.
-  https://dash.cloudflare.com/f478a9adcc0580847cb1e3d5a2189185/workers/services/view/olo-desktop/production
-  please add a script for building and deploying a website release to
-  there -- it should prompt interactively if i need to install anything
-  and offer to install for me and same with logging in / auth"). One
-  command: builds `website/`, deploys it to the `olo-desktop` project,
-  asking before installing what it needs and before signing in.
-- **The website: a click on a screenshot zooms it** (Ben, 2026-11-16:
-  "for the website, make it so that clicking on one of the screenshots
-  zooms it"). olo-desktop.com (`website/`): each screenshot opens large
-  over the page on a click (Escape, a click or the close button puts it
-  away), by keyboard too.
 - **Everything Olo Doctor does can be undone** (Ben, 2026-11-16: "one
   more thing we need: everything in olo doctor that it does must be
   reversible, e.g. for any fix/suggestion applied i should be able to
@@ -217,6 +193,33 @@ something nobody here has is in "Blocked", with what it waits for.
   pictures, theme), natively, in Quick Look and in Viewer.
 
 ## Done, waiting for Ben to try or confirm
+
+- **The website: screenshots zoom; beta said; a hardware skill; a deploy
+  script** (Ben, 2026-11-16: "for the website, make it so that clicking
+  on one of the screenshots zooms it"; "on the website, and in the
+  readme, let's warn that it is beta quality and only tested on limited
+  hardware configurations. also add an agent skill in this repo that a
+  new olo user can call that asks the agent to analyze their hardware and
+  add first-class support for it in olo like we have done with the
+  thinkpad p1 gen9. and then mention how to use this skill in both the
+  readme, and the install section of the website"; "the website is
+  hosted on cloudflare pages … please add a script for building and
+  deploying a website release to there -- it should prompt interactively
+  if i need to install anything and offer to install for me and same
+  with logging in / auth"). *Done 2026-11-16.* A click on a screenshot
+  shows it as large as the window has room for (Escape, a click or Close
+  puts it away; without script the link opens the picture). The README
+  and the install page say Olo is beta and tested on few computers, and
+  both have "Your hardware": the `olo-hardware` skill
+  (docs/skills/olo-hardware, put where Claude Code and Codex look by
+  Olo's session) and how to ask for it. `tools/deploy-website.sh` builds
+  and deploys. **For Ben**: run `tools/deploy-website.sh` (it will ask to
+  fetch wrangler and to sign in the first time; `--preview` first if you
+  like): I haven't deployed anything, and couldn't try the deploy itself
+  without your Cloudflare sign-in. It asks Cloudflare whether
+  `olo-desktop` is a Pages project or a Worker with static files and
+  deploys accordingly; your account id is in `website/.cloudflare-account`
+  on this computer (not in git).
 
 - **Copy works in Quick Look** (Ben, 2026-11-16: "also fix this bug:
   copy/paste doesn't work in quick look viewer -- it should"). *Done
