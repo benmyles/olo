@@ -94,7 +94,8 @@ usage: olo-screen                         open Agent Screens (watch, take contro
        olo-screen menus NAME [--window ID]
                                              the menus of a window's app (default: the focused one)
        olo-screen invoke NAME COMMAND [--window ID]
-                                             choose a menu command (as `menus` lists it)
+                                             choose a menu command (as `menus` lists it,
+                                             or by its label)
        olo-screen review NAME [--window ID] [--json]
                                              the layout review of Olo apps' windows as drawn
                                              now: errors (blurry, seams), then what almost
@@ -108,11 +109,12 @@ usage: olo-screen                         open Agent Screens (watch, take contro
                                              the middle of what FIND matches (below)
        olo-screen set NAME FIND… TEXT     click into a field, replace its text
        olo-screen select NAME FIND… ITEM  open a dropdown, choose ITEM from its menu
+                                             (a page's <select>: by its words, from its options)
        olo-screen wait NAME [FIND…] [--gone] [--idle] [--timeout MS]
                                              until it shows (or goes, or the windows stop changing)
        olo-screen wait NAME --free [--timeout MS]
                                              until the person hands the screen back (Take Control)
-       olo-screen scroll-to NAME FIND… [--at X,Y]
+       olo-screen scroll-to NAME FIND…|WORDS [--at X,Y]
                                              scroll the list (under X,Y) until it shows
        olo-screen move NAME X Y
        olo-screen down NAME X Y [--right] | up NAME [--right]
@@ -589,9 +591,37 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             Ok(())
         }),
         "invoke" => screen().and_then(|s| {
-            let command = rest.get(1).filter(|a| !a.starts_with("--")).ok_or("invoke needs a menu command (see `menus`)")?;
+            // (Asked to press a control by its name, as `click` does: said
+            // what each is for. "invoke needs a menu command" alone was
+            // read ten times without the agent seeing why.)
+            if ["--name", "--role", "--match", "--text"].iter().any(|f| has(rest, f)) {
+                return Err("invoke chooses one of the app's menu commands, by its command (`menus` lists them: `invoke NAME save`); to press a button or another control by its name, use `click NAME --role Button --name …`".into());
+            }
+            let command = positionals(rest).get(1).cloned().ok_or("invoke needs a menu command (`menus` lists them: `invoke NAME save`)")?;
             let w = app_window(&s, window_arg(rest)?)?;
-            if commands::invoke(pid_of(&w)?, command) { Ok(()) } else { Err(format!("{} has no command {command:?} that can be chosen now", w.app_id)) }
+            let pid = pid_of(&w)?;
+            if commands::invoke(pid, &command) {
+                return Ok(());
+            }
+            // Why not, and what there is like it.
+            let entries = commands::menus(pid).map(|m| m.entries).unwrap_or_default();
+            // Its label (or its command but for case), the one item so
+            // named: that item, chosen. (Agents write what the menu says.)
+            let named: Vec<&commands::Entry> = entries.iter().filter(|e| e.command != command && (find::plain(&e.label) == find::plain(&command) || find::plain(&e.command) == find::plain(&command))).collect();
+            if let [e] = named[..]
+                && e.enabled
+                && commands::invoke(pid, &e.command)
+            {
+                print_json(&json!({ "invoked": e.command, "label": e.label }));
+                return Ok(());
+            }
+            if let Some(e) = entries.iter().find(|e| e.command == command).or(named.first().copied()) {
+                return Err(format!("{} ▸ {} ({:?}) is off now: it can't be chosen as things are", e.path.join(" ▸ "), e.label, e.command));
+            }
+            let mut like: Vec<&commands::Entry> = entries.iter().filter(|e| e.enabled).collect();
+            like.sort_by_key(|e| std::cmp::Reverse(find::likeness(&command, &e.label).max(find::likeness(&command, &e.command))));
+            let shown: Vec<String> = like.iter().take(8).map(|e| format!("{:?} ({})", e.command, e.label)).collect();
+            Err(format!("{} has no command {command:?}{}", w.app_id, if shown.is_empty() { " (it says no menus)".into() } else { format!("; the nearest it has: {} (`menus` has them all)", shown.join(", ")) }))
         }),
         "review" => screen().and_then(|s| {
             let only = window_arg(rest)?;
@@ -703,7 +733,7 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             let f = into_view(&s, &q, find::find(&s, &q)?)?;
             // Into the field (once more if the first click went astray:
             // the keys below would edit whatever has the focus).
-            let into = |s: &screens::Screen| find::after(s).focused.is_some_and(|now| now.window == f.window && now.x == f.x && now.y == f.y);
+            let into = |s: &screens::Screen| find::after(s).focused.is_some_and(|now| find::focus_in(&now, &f));
             let mut focused = false;
             for _ in 0..2 {
                 s.input(screens::click(f.center.0 as f64, f.center.1 as f64, screens::LEFT, 1))?;
@@ -728,16 +758,63 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             let s = screen()?;
             let q = find::Query::from_args(rest)?.ok_or("select needs the dropdown: --name, --role or --match")?;
             let item = positionals(rest).get(1).cloned().ok_or("select needs the item to choose")?;
-            let field = find::find(&s, &q)?;
-            s.input(screens::click(field.center.0 as f64, field.center.1 as f64, screens::LEFT, 1))?;
-            // Its menu opens in a frame or two; then choose the item.
-            let want = find::Query { name: Some(item.clone()), role: Some("MenuItem".into()), window: Some(field.window), ..Default::default() };
-            let chosen = match find::wait_for(&s, &want, false, Duration::from_secs(3)) {
-                Ok(Some(f)) => f,
-                _ => {
-                    s.input(screens::chord(&screens::parse_chord("Esc")?))?;
-                    return Err(format!("its menu has no item {item:?} (or didn't open)"));
+            let field = into_view(&s, &q, find::find(&s, &q)?)?;
+            // A dropdown that says what it offers and draws its menu
+            // itself (a web page's <select>: the browser's menu, whose
+            // items are no things of their own on the screen): chosen by
+            // the keyboard, by its words, and checked. (Waited for as
+            // menu items, they never came: "its menu has no item (or
+            // didn't open)", 31 times in the agents' histories, all in
+            // Chrome.)
+            if !field.options.is_empty() {
+                let want = find::option_meant(&field.options, &item).map_err(|e| format!("{} {:?}: {e}", field.role, field.name.as_deref().unwrap_or("")))?.clone();
+                if field.value.as_deref().map(find::plain) != Some(find::plain(&want)) {
+                    s.input(screens::click(field.center.0 as f64, field.center.1 as f64, screens::LEFT, 1))?;
+                    std::thread::sleep(Duration::from_millis(250));
+                    s.type_text(&want)?;
+                    std::thread::sleep(Duration::from_millis(150));
+                    s.input(screens::chord(&screens::parse_chord("Enter")?))?;
                 }
+                let after = find::after(&s);
+                let now = find::find(&s, &find::Query { index: 0, ..q.clone() }).ok().filter(|n| n.window == field.window);
+                let says = now.as_ref().and_then(|n| n.value.clone()).unwrap_or_default();
+                if find::plain(&says) != find::plain(&want) {
+                    s.input(screens::chord(&screens::parse_chord("Esc")?))?;
+                    return Err(format!("chose {want:?}, but the {} says {says:?}", field.role));
+                }
+                print_json(&json!({ "field": field, "chose": want, "after": after }));
+                return Ok(());
+            }
+            // (What shows of a menu's kind before it opens: a menu bar's
+            // own, a page's lists. More than that is its menu, open.)
+            const ITEMS: [&str; 3] = ["MenuItem", "MenuItemRadio", "ListBoxOption"];
+            let items_in = |trees: &[ScreenTree]| -> Vec<String> {
+                ITEMS.iter().flat_map(|role| find::matches(trees, &find::Query { role: Some((*role).into()), ..Default::default() })).filter_map(|f| f.name).collect()
+            };
+            let before = items_in(&trees(&s, None)?).len();
+            s.input(screens::click(field.center.0 as f64, field.center.1 as f64, screens::LEFT, 1))?;
+            // Its menu opens in a frame or two; then choose the item: a
+            // menu's item, or (a page's own dropdown) an option of a list.
+            // A menu that has opened without the item says so at once; one
+            // that doesn't open is given three seconds.
+            let until = std::time::Instant::now() + Duration::from_secs(3);
+            let mut open_for = 0;
+            let chosen = loop {
+                let trees = trees(&s, None)?;
+                let item_of = |role: &str| find::matches(&trees, &find::Query { name: Some(item.clone()), role: Some(role.into()), ..Default::default() }).into_iter().next();
+                if let Some(f) = ["MenuItem", "MenuItemRadio", "MenuItemCheckBox", "ListBoxOption", "ListItem"].into_iter().find_map(item_of) {
+                    break f;
+                }
+                let mut shown: Vec<String> = items_in(&trees).into_iter().map(|n| format!("{n:?}")).collect();
+                open_for = if shown.len() > before { open_for + 1 } else { 0 };
+                if open_for >= 3 || std::time::Instant::now() >= until {
+                    // What its menu does show, to choose from.
+                    shown.dedup();
+                    shown.truncate(20);
+                    s.input(screens::chord(&screens::parse_chord("Esc")?))?;
+                    return Err(if shown.is_empty() { format!("its menu didn't open (no item {item:?} showed)") } else { format!("its menu has no item {item:?}; it has: {}", shown.join(", ")) });
+                }
+                std::thread::sleep(Duration::from_millis(120));
             };
             s.input(screens::click(chosen.center.0 as f64, chosen.center.1 as f64, screens::LEFT, 1))?;
             print_json(&json!({ "field": field, "chose": chosen, "after": find::after(&s) }));
@@ -774,7 +851,16 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
         })(),
         "scroll-to" => (|| {
             let s = screen()?;
-            let q = find::Query::from_args(rest)?.ok_or("scroll-to needs what to find: --name, --role, --match or --text")?;
+            // (The words alone, as `scroll-to NAME "Pricing"`: what's
+            // looked for, anywhere in a name or a value. Seven of eight
+            // refusals in the agents' histories were that.)
+            let q = match find::Query::from_args(rest)? {
+                Some(q) => q,
+                None => match positionals(rest).get(1) {
+                    Some(text) => find::Query { text: Some(text.clone()), window: window_arg(rest)?, ..Default::default() },
+                    None => return Err("scroll-to needs what to find: the words, or --name, --role, --match or --text".into()),
+                },
+            };
             let at = option(rest, "--at")
                 .map(|a| {
                     let (x, y) = a.split_once(',').ok_or("--at is X,Y")?;
@@ -1307,6 +1393,12 @@ fn outline(trees: &[ScreenTree], filter: &Filter) -> String {
             }
             if let Some(value) = &n.value {
                 let _ = write!(o, " value={:?}", filter.cut(value));
+            }
+            // (What a dropdown offers, where its items aren't things of
+            // their own: what `select` can choose.)
+            if !n.options.is_empty() {
+                let shown: Vec<String> = n.options.iter().take(12).map(|o| format!("{:?}", filter.cut(o))).collect();
+                let _ = write!(o, " options=[{}{}]", shown.join(", "), if n.options.len() > shown.len() { format!(", … {} in all", n.options.len()) } else { String::new() });
             }
             let _ = write!(o, " at {:.0},{:.0} {:.0}x{:.0}", n.x, n.y, n.width, n.height);
             if let (Some(row), Some(rows)) = (n.row, n.rows) {

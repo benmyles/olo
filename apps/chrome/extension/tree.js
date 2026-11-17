@@ -214,6 +214,9 @@
       else if (e.hasAttribute("aria-checked")) extra.checked = e.getAttribute("aria-checked") === "true";
       if (e.hasAttribute("aria-selected")) extra.selected = e.getAttribute("aria-selected") === "true";
       else if (e.localName === "option") extra.selected = e.selected;
+      // What a <select> offers: its menu is the browser's to draw, so its
+      // options are no nodes of their own (agents choose by their words).
+      if (e.localName === "select") extra.options = Array.from(e.options).slice(0, 60).map((o) => clip(o.text)).filter(Boolean);
       const value = valueOf(e, role);
       if (value) extra.value = value;
       if (role === "Iframe") {

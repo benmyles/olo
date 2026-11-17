@@ -52,12 +52,13 @@ something nobody here has is in "Blocked", with what it waits for.
   should give me a menu where i can choose to react with an emoji and
   let me pick an emoji reaction").
 
-- **Agent Screens: what real agents tripped on, found in their
-  histories and fixed** (Ben, 2026-11-17: "go through the agent screens
-  history for a sample of the real agent screens that have run and
-  identify any problems the agents hit whether bugs or
-  confusing/unintuitive agent ux and fix what we can to make it easier
-  for agents to use with fewer mistakes and higher efficiency").
+- **Phone: archive conversations, as Telegram's are** (Ben, 2026-11-17:
+  "in the phone app the ability to archive messages. if this can't be
+  done for real on the phone due to protocol limitations then at least
+  let me archive them in the phone app and have it remember. show the
+  archived ones like we do in telegram. and i also need to be able to
+  multi-select the threads from the messages list and bulk archive /
+  unarchive").
 
 - **Last, once everything above that isn't blocked is done: the website,
   the README and the docs refreshed, and a new GitHub release** (Ben,
@@ -5916,6 +5917,23 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Agent Screens: what real agents tripped on, found in their
+  histories and fixed**~~ (Ben, 2026-11-17: "go through the agent
+  screens history for a sample of the real agent screens that have run
+  and identify any problems the agents hit whether bugs or
+  confusing/unintuitive agent ux and fix what we can to make it easier
+  for agents to use with fewer mistakes and higher efficiency"; done
+  the same day). Every screen's history read (61 screens, 66 000
+  actions, 500 refused). Fixed: typing into web fields that move as
+  they take the focus (60 refusals), choosing in a web page's dropdowns
+  (31, all of them), finding things by name (quotes, case and "…",
+  waiting a moment on a changing screen, a miss naming what's most
+  like it and the same words under another role), `invoke` by an
+  item's label, `scroll-to` by words alone, and each action answers in
+  about half the time (a click 160 → 76 ms). HACKING's "What real
+  agents tripped on" has the counts. The Chrome extension is 1.13.0
+  (Chrome takes it at its next start).
 
 - ~~**Deskbar: the red dot alone sits where the blue one does**~~ (Ben,
   2026-11-17: "if there is no blue dot then the red dot should still be

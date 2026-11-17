@@ -17922,6 +17922,51 @@ question for one. To try it: `cargo test -p
 olo-passwords fixture -- --ignored` writes a store with a few items
 (`OLO_FIXTURE_VAULT`, `OLO_FIXTURE_KEY`).
 
+**What real agents tripped on** (Ben, 2026-11-17: "go through the agent
+screens history for a sample of the real agent screens that have run
+and identify any problems the agents hit ... and fix what we can").
+Read from every screen's `actions.jsonl` (61 screens, 66 000 actions,
+500 refused; counted and shaped, never their words), and each kind
+reproduced on a screen with a page made for it. What was fixed:
+
+- `set` "didn't take the focus; nothing typed" (60, all but two in
+  Chrome): a field that moves as it takes the focus (a label floating
+  up, a page scrolling it in) was compared by its exact place.
+  `find::focus_in`: the same kind of thing by the same name, or one
+  that takes typing where it was.
+- `select` "its menu has no item (or didn't open)" (31, all in Chrome):
+  a page's `<select>` menu is the browser's, with no items in any
+  tree. The Olo extension now lists a select's options on its node
+  (`UiNode::options`, tree.js; extension 1.13.0), the outline shows
+  them (`options=[…]`), and `select` chooses by the keyboard, by the
+  option's words (`find::option_meant`: the same, else the only one
+  starting so, else the only one holding them), then checks the value.
+  A kit pop-up whose menu opened without the item says so at once with
+  what it has (it waited three seconds).
+- A miss by name (215 clicks and sets; after most the agent tried other
+  words, coordinates or a key): names now match but for case, quotes
+  and dots (`find::plain`), what's asked for on a screen still changing
+  is looked for again for up to 1.5 s (a screen at rest answers at
+  once), and a miss says the same words under another role ("there is
+  a Link with those words") and lists the names most like it first
+  (`find::likeness`), with how many there are.
+- `invoke` given a control's name (10): says it's for menu commands and
+  what presses a button; given an item's label, chooses that item; a
+  command it hasn't names the nearest; one that's off says so.
+- `scroll-to` given the words alone (7 of 8 of its refusals): takes
+  them as `--text`.
+- Every action's `after` waited a flat 150 ms: it now reads as soon as
+  the focus has settled (two reads alike, 30 ms apart, from 40 ms; at
+  most 0.4 s). Measured on a screen: a kit app's click 160 → 76 ms, a
+  key 160 → 82 ms, a page's `set` 312 → 161 ms (its first click had
+  taken the focus all along; the second was the miss above). At the
+  histories' rate (9 000 clicks, 9 000 keys, 2 800 types) that is about
+  half of the time agents spent in `after`.
+
+Already fixed before this look, and gone from the recent histories: key
+names as X11 and the web write them (`Page_Down`), points as `X,Y` and
+`--at`, scroll's `--dy` alone, `stop` of a screen already gone.
+
 ## Google Chrome (apps/chrome)
 
 `olo-chrome` is Google Chrome in Olo's applications (`OUR_APPS`).

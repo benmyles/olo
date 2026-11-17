@@ -243,19 +243,35 @@ olo-screen look agent --crop 100,80,400,300 --no-pointer
 ## Act
 
 Find things by what they are rather than where: `--name` (exact, else
-part of it; a field's value counts), `--role`, `--match ROLE:TEXT`,
-`--text` (anywhere in name or value), `--index N` (from 0) and
-`--window ID`. A miss says what there is of that role.
+the same but for case, quotes and dots, "Don't save" for "Don’t
+Save", "Open..." for "Open…", else part of it; a field's value
+counts), `--role`, `--match ROLE:TEXT`, `--text` (anywhere in name or
+value), `--index N` (from 0) and `--window ID`. On a screen still
+changing (a page loading, a dialog coming), what isn't there yet is
+looked for again for a moment, so click right after what brings it. A
+miss says the same words under another role if they're there ("there
+is a Link with those words (--role Link …)"; a web page's links and
+buttons look alike), and the names of that role most like what you
+asked, first.
 
 ```sh
 olo-screen click agent --role Button --name "="
 olo-screen click agent --match "Row:panicked" --double
 olo-screen set agent --name Find "PAM"                # click in, replace the text
 olo-screen select agent --role ComboBox --index 1 "Errors Only"
+olo-screen select agent --name Country "united k"     # a page's <select>: by its words, checked
 olo-screen wait agent --text "61 lines"               # until it shows (--gone: until it goes)
 olo-screen wait agent --idle                          # until the windows stop changing (and have drawn their sizes)
 olo-screen scroll-to agent --match "Row:12:04:31"     # scroll the list until it shows
+olo-screen scroll-to agent "Pricing"                  # (the words alone: anywhere in a name or value)
 ```
+
+A web page's dropdown (`<select>`) lists what it offers in the tree
+(`ComboBox "Country" value="France" options=["France", …]`); its menu
+is the browser's own, with no items to click, and `select` chooses by
+the keyboard: the option with those words (or the only one starting
+with them, or holding them), then checks the field says it. A miss
+says what it has.
 
 `click` and `set` scroll what they find into view first when it's out
 of sight (a web page's tree has the whole page: a field below the fold
@@ -277,8 +293,11 @@ olo-screen key agent Cmd+A Delete   # several chords in turn
 ```
 
 Actions print JSON: what they matched and, under `after`, the focused
-window and element. Typing goes to the focused element; `type` and `set`
-warn when that isn't a text field (a list takes ⌘A as Select All).
+window and element, read once they've settled (as soon as the app has
+taken it in, at most 0.4 s). Typing goes to the focused element; `type`
+and `set` warn when that isn't a text field (a list takes ⌘A as Select
+All). `set` types into a field that moves as it takes the focus (a
+label floating up, a page scrolling it into view).
 
 Windows: `focus`, `close`, `minimize`, `zoom` (`--window ID`, else the
 focused or only one), `resize agent 1200x800` (the content's size) and
@@ -289,7 +308,12 @@ Menus are easier through their commands than by clicking:
 ```sh
 olo-screen menus agent [--window 3]       # the menu bar: path, label, command, keys, enabled
 olo-screen invoke agent save [--window 3] # choose it, as from the menu
+olo-screen invoke agent "Save As…"        # (its label does too, the one item so named)
 ```
+
+`invoke` is for menu commands; a button in a window is `click --role
+Button --name …`. A command it hasn't, or one that's off now, says so,
+with the nearest it has.
 
 Checking how an Olo app looks (one you are changing): `olo-screen
 review agent [--window 3] [--json]` lists what its windows look to have

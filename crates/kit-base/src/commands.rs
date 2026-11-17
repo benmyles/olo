@@ -99,6 +99,12 @@ pub struct UiNode {
     pub checked: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected: Option<bool>,
+    /// What a dropdown offers that doesn't show its items as things of
+    /// their own (a web page's `<select>`, whose menu the browser draws):
+    /// each one's words, so an agent knows what it can choose
+    /// (`olo-screen select`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<String>,
     /// A table row's index (from 0), and how many rows the table has.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub row: Option<usize>,
