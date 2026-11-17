@@ -815,7 +815,10 @@ impl FolderWin {
             let selected = self.list.selected.contains(&i);
             let l = items::layout_item(c, e.label(), look, selected, e.is_link);
             let editing = self.editing.as_ref().is_some_and(|r| r.path == e.path);
-            items::paint_item(g, &l, items::icon_of(e), selected || drop_on == Some(i), false, !editing, &p);
+            // (A picture's icon is the picture, a video's a frame of it:
+            // the big icons; the small ones are their kinds'.)
+            let small = if look == Look::Icons { items::small(g, e) } else { None };
+            items::paint_item(g, &l, items::icon_of(e), small.as_ref(), selected || drop_on == Some(i), false, !editing, &p);
             if let Some(done) = e.progress() {
                 items::paint_progress(g, l.icon, done, &p);
             }
@@ -836,6 +839,11 @@ impl FolderWin {
         for i in row * cols..((row + 1) * cols).min(self.entries.len()) {
             let e = &self.entries[i];
             (row_key(e), self.list.selected.contains(&i), drop_on == Some(i), self.editing.as_ref().is_some_and(|r| r.path == e.path)).hash(&mut h);
+            // (A row with a picture in it is drawn again as pictures are
+            // made small: its own may be the one that came.)
+            if look == Look::Icons && items::small_of(e).is_some() {
+                crate::thumbs::made().hash(&mut h);
+            }
         }
         h.finish()
     }

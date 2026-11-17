@@ -22,6 +22,10 @@ olo-appimage.workspace = true
 olo-images.workspace = true
 olo-protocol.workspace = true
 image = { version = "0.25", default-features = false }
+# Thumbnails kept where every desktop keeps them: named by the MD5 of the
+# file's URI, PNGs that say the file and its date.
+md5 = "0.8"
+png = "0.18"
 tracing.workspace = true
 zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
 serde.workspace = true

@@ -4762,5 +4762,11 @@
   "title": "Tiling: the main window can be pinned",
   "caption": "Pin as Main (\u2303\u2325\u21e7\u2318M, a window's menu, Deskbar) keeps a tile the main one of Main and Stack: windows that open take the stack's places. Making another main by hand lets it go.",
   "image": "2026-11-17/050715-tiling-the-main-window-can-be-pinned.png"
+ },
+ {
+  "time": "2026-11-17T05:25:03",
+  "title": "Tracker: a picture's icon is the picture",
+  "caption": "In the icon view (and on the desktop) pictures show as themselves and a video as a frame of it, made as they scroll into view and kept in the desktop's thumbnail cache. (Left 1\u00d7, right 2\u00d7.)",
+  "image": "2026-11-17/052503-tracker-a-picture-s-icon-is-the-picture.png"
  }
 ]

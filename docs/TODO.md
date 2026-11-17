@@ -17,13 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Tracker's icon view shows pictures and videos as themselves** (Ben,
-  2026-11-17: "in tracker's icon view the icons should show preview
-  thumb of images/videos"). A picture's icon is the picture, small; a
-  video's a frame of it: made off the UI thread as they scroll into
-  view, kept (a cache keyed by the file, its size and its date, and the
-  scale), never resampled when drawn, the kind's own icon until it's
-  ready.
 - **The website covers Terminal's work with agents** (Ben, 2026-11-16:
   "update the website to cover all the agent integration features in olo
   terminal"). olo-desktop.com's Agents part: what Terminal does for
@@ -5958,6 +5951,15 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Tracker's icon view shows pictures and videos as themselves**~~
+  (Ben, 2026-11-17: "in tracker's icon view the icons should show
+  preview thumb of images/videos"; done 2026-11-17). In the icon view
+  and on the desktop a picture's icon is the picture and a video's a
+  frame of it, made off the UI thread as they come into view and kept
+  in memory and in the desktop's shared thumbnail cache
+  (~/.cache/thumbnails), drawn at the exact device size; the kind's
+  icon until it's ready. (HACKING, Tracker.)
 
 - ~~**A tiled window pinned as the main one**~~ (Ben, 2026-11-17:
   "ability to \"pin\" a tiled window as the main one so that it doesn't

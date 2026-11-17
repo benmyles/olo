@@ -38,6 +38,24 @@ fn selected_tint() -> Hsla {
     olo_kit::hsla(0.0, 0.0, 185.0 / 255.0, 1.0)
 }
 
+/// What `e` is to make small, if its icon in the icon view is itself: a
+/// picture, a video (a frame of it). (Ben, 2026-11-17: "in tracker's
+/// icon view the icons should show preview thumb of images/videos".)
+pub fn small_of(e: &Entry) -> Option<crate::thumbs::Of> {
+    match e.kind {
+        olo_kit_base::files::Kind::Image => Some(crate::thumbs::Of::Picture),
+        olo_kit_base::files::Kind::Video => Some(crate::thumbs::Of::Video),
+        _ => None,
+    }
+}
+
+/// `e`'s own picture for the icon view, at the scale `g` draws at: none
+/// while it's made (its kind's icon shows; drawn again when it has
+/// been), or for anything else.
+pub fn small(g: &Painter, e: &Entry) -> Option<crate::thumbs::Thumb> {
+    crate::thumbs::of(&e.path, small_of(e)?, (ICON * g.scale_factor()).round() as u32, g.scale_factor())
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Look {
     Icons,
@@ -232,9 +250,29 @@ pub fn layout_item(cell: Bounds<Pixels>, label: &str, look: Look, selected: bool
 /// colour over a shadow; elsewhere on the document's ground. With `label`
 /// false only the icon is drawn (its name is being edited).
 #[allow(clippy::too_many_arguments)]
-pub fn paint_item(window: &mut Painter, l: &ItemLayout, icon: &str, selected: bool, desktop: bool, label: bool, p: &Palette) {
+pub fn paint_item(window: &mut Painter, l: &ItemLayout, icon: &str, small: Option<&crate::thumbs::Thumb>, selected: bool, desktop: bool, label: bool, p: &Palette) {
     agent::record(window, agent::Node { role: "ListItem", name: Some(l.name.clone()), bounds: l.hit(), enabled: true, clickable: true, selected: Some(selected), ..Default::default() });
-    if selected && label {
+    if let Some(small) = small {
+        // The picture itself (a video's frame), small: at its own size,
+        // a texture pixel a device pixel, in a hairline frame; darkened
+        // as an icon is when selected.
+        let s = window.scale_factor();
+        let at = style::snap_centred(window, l.icon.center(), small.size.0 as f32 / s, small.size.1 as f32 / s);
+        let _ = window.paint_image(at, olo_kit::Corners::default(), small.image.clone(), 0, false);
+        if selected && label {
+            style::fill_rect(window, at, olo_kit::hsla(0.0, 0.0, 0.0, 0.28));
+        }
+        let hair = style::hairline(window);
+        let edge = style::c(p.shadow).opacity(0.7);
+        for r in [
+            Bounds { origin: at.origin, size: size(at.size.width, hair) },
+            Bounds { origin: point(at.left(), at.bottom() - hair), size: size(at.size.width, hair) },
+            Bounds { origin: at.origin, size: size(hair, at.size.height) },
+            Bounds { origin: point(at.right() - hair, at.top()), size: size(hair, at.size.height) },
+        ] {
+            style::fill_rect(window, r, edge);
+        }
+    } else if selected && label {
         icons::paint_tinted(window, l.icon, icon, selected_tint());
     } else {
         icons::paint(window, l.icon, icon);

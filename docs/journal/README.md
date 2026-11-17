@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### Tracker: a picture's icon is the picture
+
+*05:25* — In the icon view (and on the desktop) pictures show as themselves and a video as a frame of it, made as they scroll into view and kept in the desktop's thumbnail cache. (Left 1×, right 2×.)
+
+![Tracker: a picture's icon is the picture](2026-11-17/052503-tracker-a-picture-s-icon-is-the-picture.png)
+
 ### Tiling: the main window can be pinned
 
 *05:07* — Pin as Main (⌃⌥⇧⌘M, a window's menu, Deskbar) keeps a tile the main one of Main and Stack: windows that open take the stack's places. Making another main by hand lets it go.

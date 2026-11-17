@@ -360,6 +360,17 @@ Each note: what to do, then why (what happened), then how to apply it.
   ran from 2026-11-10 to 2026-11-15 02:30 and is disabled since (the
   kernel's EEVDF): look at `/sys/kernel/sched_ext/state`.
 
+- **Resident memory has two parts**: `VmRSS` counts a program's own
+  pages (`RssAnon`) and the pages of its file it has touched
+  (`RssFile`: its code and tables, shared and reclaimable). Linking a
+  big crate grows `RssFile` (Tracker 58 → 66 MB when the text
+  recogniser was linked) without the program holding any more. Read
+  both in `/proc/PID/status` before calling a change heavy.
+- **A cargo test isn't a kit app's allocator**: a kit app has four
+  malloc arenas (`few_arenas`), a test binary one a thread. What stays
+  resident after a burst of work differs a lot between them: measure
+  memory in the app, in a headless session.
+
 ## Ben's computer
 
 - **Don't probe sudo.** Even `sudo -n` runs face unlock (the IR camera)

@@ -16574,6 +16574,37 @@ deferred so the Tracker can update the window back):
   where its content would be unscrolled, and the stage moves it.
   The column preview is keyed by its file and the thumbnails made
   (`thumbs::made`).
+- **A picture's icon is the picture, a video's a frame of it** (the
+  icon view's big icons and the desktop's; `items::small`, `thumbs.rs`;
+  Ben, 2026-11-17: "in tracker's icon view the icons should show
+  preview thumb of images/videos"). Asked for as a row is drawn
+  (`thumbs::of`: so only what's in view), made on the thumbnails'
+  thread, the last asked for first (what has just scrolled into view;
+  no more than 240 wait, the oldest askings let go), and the kind's own
+  icon shows until it's made (a row with a picture in it is drawn again
+  as pictures come: `thumbs::made` in its key). Kept in memory (900 at
+  most, those asked for longest ago let go) and on disk where every
+  desktop keeps them: the freedesktop thumbnail cache,
+  `~/.cache/thumbnails/normal` (128 pixels a side; `large`, `x-large`
+  and `xx-large` for the column view's bigger previews), a PNG named by
+  the MD5 of the file's URI that says the file and its date
+  (`Thumb::URI`, `Thumb::MTime`), the person's alone (0600 in 0700
+  folders), so a folder of photographs is decoded once, by whichever
+  program shows it first, and other programs' thumbnails are used.
+  What's drawn is made from that at the exact device size (`drawn`: the
+  picture fitted to the 48-point box at the scale, its shape kept; one
+  smaller than the box in points is a point a pixel, as big on every
+  display), a texture pixel a device pixel, in a hairline frame, and
+  darkened as an icon is when selected. A video's frame is the
+  preview's (`olo_preview::media::video`). What decoding took goes back
+  to the system when the queue is empty (`malloc_trim`). Measured
+  (release, a folder of 35 pictures and a film, icon view, three runs):
+  resident 84 to 91 MB against the installed build's 74 to 75, of which
+  7 MB is the bigger program's own pages (the recogniser linked for
+  Quick Look: file-backed, 58 → 66 MB with an empty folder, where
+  what's private is 14 → 15 MB) and 2 MB its four threads; at rest
+  0.0% of a core and 1 wakeup a second, as before. Looked at 1×, 1.5×
+  and 2×.
 - `Desktop` (desktop.rs): a background layer anchored to every edge;
   icons placed by hand kept in `desktop.json`, the rest on the grid.
   Each icon is a drawing of its own keyed by what it shows, laid out

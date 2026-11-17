@@ -288,7 +288,8 @@ impl Desktop {
         let layouts = self.layouts.borrow();
         let (Some(it), Some(l)) = (self.item(i), layouts.get(i)) else { return };
         let p = theme::palette();
-        items::paint_item(g, l, it.icon, self.selected.contains(&i) || self.drop_on == Some(i), true, label, &p);
+        let small = items::small(g, &it.entry);
+        items::paint_item(g, l, it.icon, small.as_ref(), self.selected.contains(&i) || self.drop_on == Some(i), true, label, &p);
         if crate::backups::backed_up(&it.entry.path) {
             items::paint_mark(g, l.icon, &l.name, &p);
         }
@@ -901,7 +902,9 @@ impl View for Desktop {
                 let it = self.item(i).expect("an item");
                 let selected = self.selected.contains(&i);
                 let lit = selected || self.drop_on == Some(i);
-                let key = style::key((it.entry.look(), &it.label, it.icon, selected, lit, editing == Some(i), crate::backups::backed_up(&it.entry.path)));
+                // (A picture's icon is drawn again as pictures are made small.)
+                let made = items::small_of(&it.entry).map(|_| crate::thumbs::made());
+                let key = style::key((it.entry.look(), &it.label, it.icon, selected, lit, editing == Some(i), crate::backups::backed_up(&it.entry.path), made));
                 let c = cells[i];
                 cx.canvas(move |d: &Desktop, g, _| d.paint_icon(g, i, editing != Some(i)))
                     .paint_key(key)
