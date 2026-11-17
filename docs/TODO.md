@@ -17,14 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **An idle window keeps its whole swapchain** (found 2026-11-16,
-  answering Ben's "doesn't 6gb of memory seem really high for olo app
-  server too?"): a full-size window on his 5K display (4640 × 2840
-  pixels at 2.5×) holds 3 or 4 buffers of 50 MiB whether or not it
-  draws; twelve of them, 2.1 GiB (the kernel's list of shared buffers:
-  221, 3.4 GiB in all). A window that hasn't drawn for a while could
-  give its spare buffers back and take new ones at its next frame
-  (measured: what the first frame after costs).
 - **A new window's glow takes 6 to 11 ms to draw** (app_server's log,
   2026-11-16: "slow window elements: … glow 10.9 ms", each time a
   window opens): over a frame at 120 Hz. Found while reading the log
@@ -5886,6 +5878,15 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**An idle window keeps its whole swapchain**~~ (found 2026-11-16;
+  done 2026-11-17). A window still for 30 s that isn't the one you're
+  at (no keyboard, no pointer in it) gives its swapchain's images back
+  and makes them again as you come to it, or at its next frame: a
+  window filling the 5K display goes from 244 MiB of GPU memory to 44
+  while it rests (three of its four 49 MiB images; the compositor keeps
+  the one shown), and its swapchain is back in 1.4 to 3.1 ms (30 ms
+  once). (HACKING, "A window that rests gives its swapchain back".)
 
 - ~~**MGLRU's thrash protection at 250 ms: enough runs to say**~~
   (found 2026-11-16; done 2026-11-17). It can be said: at 250 ms the

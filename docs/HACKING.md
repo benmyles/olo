@@ -7122,6 +7122,35 @@ display has room again, not left at the squeezed size (Weather at 2× on
 a 1600 × 1000 screen was 800 × 500; back at 1× it stayed so, its columns
 run past its edge, until this).
 
+**A window that rests gives its swapchain back** (found 2026-11-16,
+answering Ben's "doesn't 6gb of memory seem really high for olo app
+server too?"; `BladeRenderer::rest`/`wake`, wayland/window.rs
+`rest_later`, `used`; blade's `release_surface`). A window's swapchain
+is three or four images of its size, held whether or not it draws:
+50 MiB each for one filling his 5K display, twelve such windows
+2.1 GiB. A window that has drawn nothing for `REST_AFTER` (30 s), whose
+images are 8 MiB and more each (`REST_FROM_BYTES`: a small window's are
+little to give back, and Deskbar would make its own again every minute
+for its clock), and that isn't the one the person is at (it hasn't the
+keyboard, and the pointer isn't in it) lets its swapchain go; what it
+last showed stays showing, the compositor keeping that one buffer. It
+is made again as the keyboard or the pointer comes to the window
+(`used`), ahead of the key or click that follows, or else as its next
+frame begins (a window that draws by itself: one frame late, after
+half a minute of stillness); that frame draws all of it. One timer a
+window, set by a frame (or by the keyboard or pointer leaving) when
+none is set, which sleeps on if frames came meanwhile: one wake every
+30 s while a window draws, one after it stops, none while it rests.
+Measured (release, a headless display of a 5K one's size, Tracker's
+window filling it, 4615 × 2763, `OLO_REST_SECS=3` to shorten the
+rest): the program held 244 MiB of GPU memory just drawn and 44 MiB
+rested (fdinfo; three of the four images are really given back, the
+fourth being the compositor's to show); with the keyboard it never
+rested; its swapchain made again took 1.4 to 3.1 ms in five tries
+(30 ms in one, the first), 1.8 to 3.6 ms until the frame after was
+done; rested, 0.0% of a core and 0 wakeups/s. Tracker's benchmark
+frames as before (0.20 to 0.36 ms in the middle).
+
 A display unplugged (`display_leaving`, before its output leaves the
 space: udev's `connector_disconnected`, a display made a mirror, a test
 screen) sends its windows to the main display of the rest, each onto

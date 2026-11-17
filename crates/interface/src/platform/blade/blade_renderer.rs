@@ -489,6 +489,12 @@ pub struct BladeRenderer {
     last_sync_point: Option<gpu::SyncPoint>,
     /// What each of the swapchain's images holds (`Held`).
     images: Vec<Held>,
+    /// Olo: the swapchain was let go while the window rested
+    /// (`rest`): made again as its next frame begins.
+    resting: bool,
+    /// Olo: when it was made again and how long that took, until that
+    /// frame is drawn (said in the log: what a rest costs).
+    woke: Option<(std::time::Instant, std::time::Duration)>,
     /// A frame begun (`begin_frame`) and not drawn yet: its image, the
     /// parts of it to draw (None: all), and what changed in it for the
     /// compositor.
@@ -589,6 +595,8 @@ impl BladeRenderer {
             self.wait_for_gpu();
             self.surface_config.color_space = space;
             let format = self.surface.info().format;
+            // (Made now, resting or not: the pipelines go by its format.)
+            self.resting = false;
             self.gpu.reconfigure_surface(&mut self.surface, self.surface_config);
             self.images.clear();
             // (P3's swapchain is ten bits a channel where offered: the
@@ -644,6 +652,8 @@ impl BladeRenderer {
             command_encoder,
             last_sync_point: None,
             images: Vec::new(),
+            resting: false,
+            woke: None,
             begun: None,
             drawn: surface_config.size,
             pipelines,
@@ -799,6 +809,7 @@ impl BladeRenderer {
         self.wait_for_gpu();
         let format = self.surface.info().format;
         self.gpu.destroy_surface(&mut self.surface);
+        self.resting = false;
         self.gpu.reconfigure_surface(&mut surface, self.surface_config);
         self.images.clear();
         if surface.info().format != format {
@@ -843,6 +854,50 @@ impl BladeRenderer {
         self.drawn = gpu::Extent { width: w, height: h, depth: 1 };
     }
 
+    /// Olo: how much memory the swapchain's images take, each (four
+    /// bytes a pixel).
+    pub fn image_bytes(&self) -> u64 {
+        u64::from(self.surface_config.size.width) * u64::from(self.surface_config.size.height) * 4
+    }
+
+    /// Olo: the window rests (nothing drawn for a while): its
+    /// swapchain's images are given back, all but the one the compositor
+    /// shows (which is the compositor's to keep), and made again as its
+    /// next frame begins (`wake`). An idle window filling a 5K display
+    /// held three or four images of 50 MiB each whether or not it drew;
+    /// twelve such windows, 2.1 GiB (2026-11-16).
+    pub fn rest(&mut self) {
+        if self.resting || self.begun.is_some() {
+            return;
+        }
+        self.wait_for_gpu();
+        self.gpu.release_surface(&mut self.surface);
+        self.images.clear();
+        self.resting = true;
+    }
+
+    /// Olo: a rested window is about to be used (the keyboard or the
+    /// pointer came to it): its swapchain made again now, ahead of the
+    /// frame that will want it.
+    pub fn wake_now(&mut self) {
+        if self.resting {
+            self.wake();
+            // (Not a frame's cost: said with the next frame all the same.)
+        }
+    }
+
+    /// Olo: a frame is wanted of a window that rested: its swapchain made
+    /// again (new images: its first frame draws all of it).
+    fn wake(&mut self) {
+        if !std::mem::take(&mut self.resting) {
+            return;
+        }
+        let t = std::time::Instant::now();
+        self.gpu.reconfigure_surface(&mut self.surface, self.surface_config);
+        self.images.clear();
+        self.woke = Some((t, t.elapsed()));
+    }
+
     /// Olo: the part of the swapchain drawn in (the window's size).
     pub fn drawn_size(&self) -> Size<DevicePixels> {
         Size { width: DevicePixels(self.drawn.width as i32), height: DevicePixels(self.drawn.height as i32) }
@@ -868,7 +923,10 @@ impl BladeRenderer {
         if always_resize || gpu_size != self.surface_config.size {
             self.wait_for_gpu();
             self.surface_config.size = gpu_size;
-            self.gpu.reconfigure_surface(&mut self.surface, self.surface_config);
+            // (A resting one stays so, at its new size: made as it wakes.)
+            if !self.resting {
+                self.gpu.reconfigure_surface(&mut self.surface, self.surface_config);
+            }
             self.images.clear();
             self.destroy_path_targets();
         }
@@ -1021,6 +1079,7 @@ impl BladeRenderer {
     /// keeps what was drawn into it, so only what changed since it was
     /// last drawn is missing from it.
     fn acquire(&mut self, damage: Option<&[Bounds<ScaledPixels>]>) -> (gpu::Frame, Option<Vec<[i32; 4]>>, Option<Vec<[i32; 4]>>) {
+        self.wake();
         let frame = {
             profiling::scope!("acquire frame");
             self.surface.acquire_frame()
@@ -1450,6 +1509,17 @@ impl BladeRenderer {
         #[cfg(not(target_os = "macos"))]
         self.after_yuv(&sync_point);
         self.last_sync_point = Some(sync_point);
+        // Olo: the first frame after a rest, from its swapchain's making
+        // to its last GPU work done.
+        if let Some((at, made)) = self.woke.take() {
+            log::info!(
+                "a rested window's swapchain was made again: {}×{} in {:.1} ms, {:.1} ms before its next frame was done",
+                self.surface_config.size.width,
+                self.surface_config.size.height,
+                made.as_secs_f64() * 1e3,
+                at.elapsed().as_secs_f64() * 1e3
+            );
+        }
     }
 }
 

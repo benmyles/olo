@@ -220,6 +220,16 @@ impl super::Context {
         }
     }
 
+    /// Olo: the surface's swapchain let go, its images' memory with it
+    /// (a window that rests: three or four images of its size, 50 MiB
+    /// each for a window filling a 5K display). Nothing is acquired or
+    /// drawn (`Frame::is_lost`) until `reconfigure_surface` makes one
+    /// again; what the window last showed stays showing, the compositor
+    /// keeping that buffer.
+    pub fn release_surface(&self, surface: &mut super::Surface) {
+        unsafe { surface.deinit_swapchain(&self.device.core) };
+    }
+
     pub fn reconfigure_surface(&self, surface: &mut super::Surface, config: crate::SurfaceConfig) {
         let khr_surface = self.instance.surface.as_ref().unwrap();
 

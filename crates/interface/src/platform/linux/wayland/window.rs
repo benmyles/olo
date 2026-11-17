@@ -310,6 +310,12 @@ struct FrameLoop {
     /// first (so a frame kept back and drawn half a millisecond later,
     /// as most are, wakes nothing).
     frame_after: Cell<Option<calloop::RegistrationToken>>,
+    /// Olo: when a frame was last drawn, and whether the timer that
+    /// lets a rested window's swapchain go is set (`rest_later`).
+    drawn_at: Cell<std::time::Instant>,
+    resting_timer: Cell<bool>,
+    /// Olo: the pointer is in the window.
+    hovered: Cell<bool>,
     /// Olo: the window is gone (its surface destroyed): a frame queued
     /// before draws nothing.
     closed: Cell<bool>,
@@ -823,6 +829,9 @@ impl WaylandWindow {
                 wheel: RefCell::new(None),
                 wheel_held: Cell::new(false),
                 frame_after: Cell::new(None),
+                drawn_at: Cell::new(std::time::Instant::now()),
+                resting_timer: Cell::new(false),
+                hovered: Cell::new(false),
                 closed: Cell::new(false),
                 in_frame: Cell::new(false),
                 wanted: Cell::new(false),
@@ -1658,6 +1667,44 @@ impl WaylandWindowStatePtr {
         self.frames.frame_after.set(timer.ok());
     }
 
+    /// Olo: a window that has drawn nothing for [`REST_AFTER`], and
+    /// isn't the one the person is at, gives its swapchain's images
+    /// back (`BladeRenderer::rest`): one timer a window, set by a frame
+    /// (or by the keyboard or pointer leaving) when none is, which
+    /// sleeps on if frames came meanwhile (one wake every `REST_AFTER`
+    /// while it draws, one after it stops, none while it rests).
+    fn rest_later(&self) {
+        if self.frames.resting_timer.replace(true) {
+            return;
+        }
+        let this = self.downgrade();
+        let after = rest_after();
+        let set = self.frames.handle.insert_source(calloop::timer::Timer::from_duration(after), move |_, _, _| {
+            let Some(this) = this.upgrade() else { return calloop::timer::TimeoutAction::Drop };
+            let since = this.frames.drawn_at.get().elapsed();
+            if since < after && !this.frames.closed.get() {
+                return calloop::timer::TimeoutAction::ToDuration(after - since);
+            }
+            this.frames.resting_timer.set(false);
+            // Not the window the person is at (it has the keyboard, or
+            // the pointer is in it): its next frame is one they wait
+            // for. It may rest once they've left it (`used`).
+            if !this.frames.closed.get()
+                && !this.frames.hovered.get()
+                && let Ok(mut state) = this.state.try_borrow_mut()
+                && !state.resizing
+                && !state.active
+                && state.renderer.image_bytes() >= REST_FROM_BYTES
+            {
+                state.renderer.rest();
+            }
+            calloop::timer::TimeoutAction::Drop
+        });
+        if set.is_err() {
+            self.frames.resting_timer.set(false);
+        }
+    }
+
     /// Olo: a resize by hand ended: once the size has rested, the
     /// swapchain is made to fit (its room is GPU memory: three screens'
     /// worth for a window grown to its screen's size and back).
@@ -1709,14 +1756,35 @@ impl WaylandWindowStatePtr {
 
     pub fn set_focused(&self, focus: bool) {
         self.state.borrow_mut().active = focus;
+        self.used(focus);
         if let Some(ref mut fun) = self.callbacks.borrow_mut().active_status_change {
             fun(focus);
         }
     }
 
     pub fn set_hovered(&self, focus: bool) {
+        self.frames.hovered.set(focus);
+        self.used(focus);
         if let Some(ref mut fun) = self.callbacks.borrow_mut().hover_status_change {
             fun(focus);
+        }
+    }
+
+    /// Olo: the keyboard or the pointer came to the window (`now`) or
+    /// left it. Coming, a rested window's swapchain is made again at
+    /// once, before the key or the click that follows wants a frame of
+    /// it (making one is 2 to 30 ms for a window filling a 5K display:
+    /// not a frame's worth, so never in the frame the person is waiting
+    /// for). Leaving, the window may rest once it has been still.
+    fn used(&self, now: bool) {
+        if !now {
+            if !self.frames.closed.get() {
+                self.rest_later();
+            }
+            return;
+        }
+        if let Ok(mut state) = self.state.try_borrow_mut() {
+            state.renderer.wake_now();
         }
     }
 
@@ -2135,6 +2203,13 @@ impl PlatformWindow for WaylandWindow {
         }
         state.renderer.draw(scene);
         self.0.frames.drawn.set(true);
+        let big = state.renderer.image_bytes() >= REST_FROM_BYTES;
+        drop(state);
+        self.0.frames.drawn_at.set(std::time::Instant::now());
+        if big {
+            self.0.rest_later();
+        }
+        let mut state = self.borrow_mut();
         // Olo: the frame committed, external pictures placed with it show
         // each new picture as it comes again.
         for key in std::mem::take(&mut state.externals_synced) {
@@ -2332,6 +2407,19 @@ fn layer_keyboard(layer: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, keyboard: c
         crate::LayerKeyboard::OnDemand if layer.version() >= 4 => zwlr_layer_surface_v1::KeyboardInteractivity::OnDemand,
         crate::LayerKeyboard::OnDemand => zwlr_layer_surface_v1::KeyboardInteractivity::None,
     }
+}
+
+/// Olo: how long after its last frame a window's swapchain is let go
+/// (`rest_later`), and from what size of image (four bytes a pixel): a
+/// small window's are little to give back, and Deskbar, which draws its
+/// clock each minute, would make its own again as often.
+const REST_AFTER: std::time::Duration = std::time::Duration::from_secs(30);
+const REST_FROM_BYTES: u64 = 8 << 20;
+
+/// [`REST_AFTER`], or `OLO_REST_SECS` (a test's: read once).
+fn rest_after() -> std::time::Duration {
+    static AFTER: std::sync::OnceLock<std::time::Duration> = std::sync::OnceLock::new();
+    *AFTER.get_or_init(|| std::env::var("OLO_REST_SECS").ok().and_then(|s| s.parse::<f32>().ok()).filter(|s| *s > 0.0).map_or(REST_AFTER, std::time::Duration::from_secs_f32))
 }
 
 /// Olo: how long a window's size rests after a resize by hand before its
