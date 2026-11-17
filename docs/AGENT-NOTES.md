@@ -145,6 +145,26 @@ Each note: what to do, then why (what happened), then how to apply it.
   page served from 127.0.0.1. A second Chrome with `OLO_SCREEN=agent`
   in its environment (and a profile and HOME of its own) is "on an
   agent's screen" to the service.
+- **A test's Passwords can't be unlocked** (it wants the account's
+  password, a face or a key; approving without asking wants the
+  password too). Run it as on an agent's screen instead, where it's
+  open with only what's shared: `tsession run NAME OLO_SCREEN=x
+  XDG_STATE_HOME=S XDG_CONFIG_HOME=C target/release/olo-passwords`, with
+  a fixture vault (`cargo test --release -p olo-passwords otp_fixture --
+  --ignored` and its like, `OLO_FIXTURE_VAULT`, `OLO_FIXTURE_KEY`)
+  copied to `S/olo/screens/x/passwords.vault` and its key beside it as
+  `passwords.key`; the test Chrome gets the same `OLO_SCREEN`. Its
+  socket is the session's (`$XDG_RUNTIME_DIR/olo-keychain-wayland-N.sock`),
+  asked with `target/release/examples/olo-keychain-ask` (which answers
+  only the kind). And **`cargo build -p A -p B --example E` builds only
+  the example**: the programs stayed old, and a test Chrome ran the old
+  extension. Build the programs in a command of their own.
+- **Run the tests, read their result, then commit: never in one
+  command.** `cargo test … | grep …; git commit …` commits whatever the
+  tests said (a commit went in with a failing test, 2026-11-17, caught
+  before it was pushed). And a test that writes a version or a count
+  out again fails at every change of it (the extension's version, twice):
+  have it read the thing itself.
 - **The layout lint lays out a panel only as its test state shows
   it.** Preferences ▸ Bluetooth went out with its last button cut off
   (a phone chosen shows four buttons) because the lint only ever saw it

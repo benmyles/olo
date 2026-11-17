@@ -17826,6 +17826,36 @@ service, `background.js`'s `codeTabs` asks every tab's frames, and
 and shows the offer under it (`showOffer`), or puts the code in on an
 agent's screen.
 
+**An authenticator's code, offered** (Ben, 2026-11-17: "when a login
+asks for a one time code from the authenticator app and the passwords
+item has it then olo passwords ext should be smart enough to offer to
+auto fill it like it does for when they come via sms"). A code field
+that comes up or takes the focus (`code-field`) is also looked at for
+Passwords' own code (`background.js`, `codeFromPasswords`): where a
+login for the site has a one-time code, the same offer shows under the
+field, "Fill code 123456 / From Passwords, for ann". Which login: the
+one filled in this tab (`filledIn`), else the one last used on this
+site in this profile (`chosenFor`), else the only one with a code; with
+several and none of those, none (the menu's One-Time Code has each).
+Not where the page says its code was texted (`by_text` without
+`by_app`), not while a sign-in under way will fill its own (`nextStep`),
+and, sent away, not on that site in that tab for ten minutes. The code
+alone is asked of Passwords, never the login's password
+(`Request::Code { url, vault, id }`, answered `Response::Code { code,
+seconds }` only for a site the login is for; it doesn't wait: locked,
+nothing is offered and nothing asks to unlock), as it's offered and
+again as it's taken (`code-fresh`: a code changes every half minute,
+and what's filled is the one good then). Tested: the request in the
+store (`a_logins_code_alone`: the right code, refused for another site
+or a login with none, nothing else of the login in the answer), and in
+a headless session with a Chrome of its own and a Passwords on a
+fixture vault (`otp_fixture`; as on an agent's screen, the one way a
+test's Passwords is unlocked: `OLO_SCREEN` and the vault as that
+screen's shared copy): offered on a page asking for an authenticator's
+code; taken half a minute later, the field had the code good then, not
+the one offered; Escape, and not offered again; nothing offered on a
+page saying the code was texted, nor with two logins that have codes.
+
 **Passwords in Chrome** (`extension/`, `src/extension.rs`, `src/host.rs`).
 Each start (before exec) packs `apps/chrome/extension` (built into the
 binary, plus a `palette.css` from Olo's palette, light and dark) into

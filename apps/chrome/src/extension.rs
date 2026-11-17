@@ -291,7 +291,11 @@ mod tests {
         assert!(key.verifying_key().verify(&message, &sig).is_ok());
         let header = &a[12..12 + header_len];
         assert!(header.windows(sig.to_der().as_bytes().len()).any(|w| w == sig.to_der().as_bytes()));
-        assert_eq!(version(), "1.11.0");
+        // (The manifest's own, three numbers: not a number written here
+        // too, which failed at every change of the extension.)
+        let manifest: serde_json::Value = serde_json::from_str(include_str!("../extension/manifest.json")).unwrap();
+        assert_eq!(Some(version().as_str()), manifest["version"].as_str());
+        assert!(version().split('.').count() == 3 && version().split('.').all(|n| n.parse::<u32>().is_ok()), "{}", version());
     }
 
     #[test]

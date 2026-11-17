@@ -208,6 +208,7 @@ fn allowed(r: &Request) -> bool {
         r,
         Request::Logins { .. }
             | Request::Fill { .. }
+            | Request::Code { .. }
             | Request::Cards { .. }
             | Request::FillCard { .. }
             | Request::Check { .. }

@@ -441,6 +441,7 @@ async function autofill(tab, frameId, url, vault, id) {
   const c = await credentials(url, vault, id);
   const did = (await send(tab.id, frameId, { type: "fill", origin, username: c.username, password: c.password, otp: c.otp })) || {};
   remember(url, vault, id);
+  filledIn.set(tab.id, { site: siteOf(url), vault, id });
   if (!did.password || c.otp) {
     steps.set(tab.id, { site: siteOf(url), vault, id, until: Date.now() + STEP_FOR, otpDone: !!did.otp });
     chrome.tabs.sendMessage(tab.id, { type: "watch" }).catch(() => {});
@@ -464,6 +465,8 @@ async function nextStep(tabId, frameId, url) {
 chrome.tabs.onRemoved.addListener((tabId) => {
   otpLooked.delete(tabId);
   steps.delete(tabId);
+  filledIn.delete(tabId);
+  for (const [id, o] of passwordCodes) if (o.tabId === tabId) passwordCodes.delete(id);
   dropWaiting(tabId);
 });
 // Another page in the tab: its sign-ins' waits are over.
@@ -592,10 +595,70 @@ function fromPhone(c) {
 }
 
 // A code field came up or took the focus in this tab: said to the phone
-// service, which may have a code that came before it.
-function codeField(tab) {
+// service, which may have a code that came before it; and Passwords may
+// have the code itself.
+function codeField(tab, frameId, url) {
   if (!port) connect();
-  codeTabs(tab).then((tabs) => tabs.length && port?.postMessage({ code_waiting: { id: null, tabs } }));
+  codeTabs(tab).then((tabs) => {
+    if (tabs.length) port?.postMessage({ code_waiting: { id: null, tabs } });
+    codeFromPasswords(tab, frameId, url, tabs).catch(() => {});
+  });
+}
+
+// ---- One-time codes Passwords has (an authenticator's) ----
+//
+// A field waiting for a one-time code, on a site whose login in
+// Passwords has one: offered under the field, as a texted one is (Ben,
+// 2026-11-17: "when a login asks for a one time code from the
+// authenticator app and the passwords item has it then olo passwords ext
+// should be smart enough to offer to auto fill it like it does for when
+// they come via sms"). Which login: the one filled in this tab's
+// sign-in, else the one last used on this site in this profile, else the
+// only one with a code; with several and none of those, none is offered
+// (the menu has each). Not where the page says its code was texted. The
+// code alone is asked of Passwords (never the password), as it's offered
+// and again as it's taken (it changes every half minute); locked,
+// nothing is offered. Sent away, it isn't offered on that site in that
+// tab for ten minutes.
+
+// The offers showing: id → {tabId, frameId, url, vault, id, site, at}.
+const passwordCodes = new Map();
+// `tab:site` → when one was sent away there.
+const passwordCodesAway = new Map();
+// tab → {site, vault, id}: the login last filled there.
+const filledIn = new Map();
+let passwordCodeNext = 0;
+
+async function codeFromPasswords(tab, frameId, url, frames) {
+  if (!web(url)) return;
+  const site = siteOf(url);
+  if (Date.now() - (passwordCodesAway.get(`${tab.id}:${site}`) || 0) < 10 * 60 * 1000) return;
+  // (A sign-in under way fills its own code: nextStep.)
+  const step = stepOf(tab.id, url);
+  if (step && !step.otpDone) return;
+  for (const o of passwordCodes.values()) if (o.tabId === tab.id && o.frameId === frameId && Date.now() - o.at < 2 * 60 * 1000) return;
+  const frame = frames.find((f) => f.frame === frameId);
+  if (!frame || (frame.by_text && !frame.by_app)) return;
+  const entry = await logins(url);
+  if (entry.state !== "logins") return;
+  const withCode = entry.logins.filter((l) => l.otp);
+  const same = (a) => (a ? withCode.find((l) => l.vault === a.vault && l.id === a.id) : null);
+  const filled = filledIn.get(tab.id);
+  const pick = same(filled && filled.site === site ? filled : null) || same(await chosenFor(url)) || (withCode.length === 1 ? withCode[0] : null);
+  if (!pick) return;
+  const r = await ask({ type: "code", url, vault: pick.vault, id: pick.id });
+  if (r.type !== "code") return;
+  const id = `passwords:${++passwordCodeNext}`;
+  const shown = await send(tab.id, frameId, { type: "code-offer", id, code: r.code, from: pick.username || pick.title || "", passwords: true, host: frame.host });
+  if (shown?.outcome === "shown") passwordCodes.set(id, { tabId: tab.id, frameId, url, vault: pick.vault, id: pick.id, site, at: Date.now() });
+}
+
+// The code as it is now, for an offer being taken.
+async function passwordCodeNow(id) {
+  const o = passwordCodes.get(id);
+  if (!o) return {};
+  const r = await ask({ type: "code", url: o.url, vault: o.vault, id: o.id }).catch(() => null);
+  return r && r.type === "code" ? { code: r.code } : {};
 }
 
 // ---- Messages from pages and the popup ----
@@ -615,7 +678,15 @@ chrome.runtime.onMessage.addListener((m, sender, reply) => {
   } else if (m.type === "passkey-gone" && fromPage) {
     giveUp(`${sender.tab.id}:${sender.frameId}:`);
   } else if (m.type === "code-field" && fromPage && web(sender.url)) {
-    codeField(sender.tab);
+    codeField(sender.tab, sender.frameId, sender.url);
+  } else if (m.type === "code-fresh" && fromPage) {
+    passwordCodeNow(m.id).then(reply, () => reply({}));
+    return true;
+  } else if (m.type === "code-outcome" && fromPage && typeof m.id === "string" && m.id.startsWith("passwords:")) {
+    // Passwords' own offer, taken or sent away: nothing of the phone's.
+    const o = passwordCodes.get(m.id);
+    passwordCodes.delete(m.id);
+    if (o && m.outcome === "dismissed") passwordCodesAway.set(`${o.tabId}:${o.site}`, Date.now());
   } else if (m.type === "qr-shown" && fromPage && web(sender.url)) {
     otpShown(sender.tab);
   } else if (m.type === "code-outcome" && fromPage) {

@@ -256,6 +256,19 @@
   function takeOffer() {
     if (!offer) return;
     const { field, code } = offer;
+    // One of Passwords' own (an authenticator's): the code as it is now,
+    // not as it was when offered (it changes every half minute).
+    if (offer.fresh) {
+      const id = offer.id;
+      dropOffer();
+      tell({ type: "code-fresh", id }).then((r) => {
+        if (field.isConnected && usable(field)) {
+          setOtp(field, (r && r.code) || code);
+          tell({ type: "code-outcome", id, outcome: "filled" });
+        } else tell({ type: "code-outcome", id, outcome: "gone" });
+      });
+      return;
+    }
     if (field.isConnected && usable(field)) {
       // (Dropped first: putting it in is typing, which dismisses it.)
       const id = offer.id;
@@ -289,8 +302,14 @@
     what.textContent = `Fill code ${m.code}`;
     const from = document.createElement("div");
     from.className = "from";
-    from.textContent = m.from ? `From ${m.from}, by text message` : "From a text message";
-    button.setAttribute("aria-label", `Fill code ${m.code}${m.from ? ` from ${m.from}` : ""}`);
+    from.textContent = m.passwords
+      ? m.from
+        ? `From Passwords, for ${m.from}`
+        : "From Passwords"
+      : m.from
+        ? `From ${m.from}, by text message`
+        : "From a text message";
+    button.setAttribute("aria-label", `Fill code ${m.code}${m.passwords ? " from Passwords" : ""}${m.from ? `${m.passwords ? " for" : " from"} ${m.from}` : ""}`);
     button.append(what, from);
     root.append(style, button);
     const place = () => {
@@ -329,6 +348,7 @@
       id: m.id,
       field,
       code: m.code,
+      fresh: !!m.passwords,
       stop() {
         clearTimeout(timer);
         el.remove();

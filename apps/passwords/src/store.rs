@@ -922,6 +922,24 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
             let otp = item.fields.iter().find(|f| f.field_type == ItemFieldType::Totp).and_then(|f| crate::otp_code(&f.value));
             Response::Credentials { username: user.map(|f| f.value.clone()).unwrap_or_default(), password: password.map(|f| f.value.clone()).unwrap_or_default(), otp }
         }
+        // Its one-time code alone, as it is now: for a field waiting
+        // for one on a page the login is for.
+        Request::Code { url, vault, id } => {
+            let item = match c.get(vault, id) {
+                Ok(i) => i,
+                Err(e) => return error(&e),
+            };
+            if !item.websites.iter().any(|w| fits(w, url)) {
+                return Response::Error { message: format!("“{}” isn’t saved for this site.", item.title) };
+            }
+            match item.fields.iter().find(|f| f.field_type == ItemFieldType::Totp).and_then(|f| onepassword::totp::Totp::parse(&f.value).ok()) {
+                Some(totp) => {
+                    let (code, seconds) = totp.now();
+                    Response::Code { code, seconds }
+                }
+                None => Response::Error { message: format!("“{}” has no one-time code.", item.title) },
+            }
+        }
         Request::Cards { .. } => {
             let mut cards: Vec<olo_keychain::Card> = candidates
                 .iter()
@@ -1221,6 +1239,46 @@ mod tests {
     /// with the site's logins it could go in; added to a login, put in
     /// place of the one it has, or kept in a new login; one a login has
     /// already is known, and a picture with none says so.
+    /// A login's one-time code alone, for a page it's for: the code as
+    /// it is now and how long it has; refused for another site, and for
+    /// a login with none. Nothing else of the login comes with it.
+    #[test]
+    fn a_logins_code_alone() {
+        let dir = std::path::Path::new("/var/tmp").join(format!("olo-store-code-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut v = Vault::open_at(dir.join("passwords.vault"), Some(&dir.join("key"))).unwrap();
+        let vault = v.data.vaults[0].id.clone();
+        let site = |url: &str| vec![Website { url: url.into(), label: "website".into(), autofill_behavior: AutofillBehavior::AnywhereOnWebsite }];
+        let uri = "otpauth://totp/Example:ann?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=Example";
+        let mut p = ItemCreateParams::new(ItemCategory::Login, vault.clone(), "Example");
+        p.fields = vec![
+            ItemField::new("username", "username", ItemFieldType::Text, "ann"),
+            ItemField::new("password", "password", ItemFieldType::Concealed, "hunter2"),
+            ItemField::new("one-time password", "one-time password", ItemFieldType::Totp, uri),
+        ];
+        p.websites = site("https://example.com");
+        let with = v.create(&p).unwrap();
+        let mut p = ItemCreateParams::new(ItemCategory::Login, vault.clone(), "Plain");
+        p.fields = vec![ItemField::new("password", "password", ItemFieldType::Concealed, "hunter2")];
+        p.websites = site("https://example.com");
+        let without = v.create(&p).unwrap();
+        let ids = vec![(vault.clone(), with.id.clone()), (vault.clone(), without.id.clone())];
+        let ask = |v: &mut Vault, url: &str, id: &str| super::keychain(v, &Request::Code { url: url.into(), vault: vault.clone(), id: id.into() }, &ids, "", &|_| {});
+        // (Asked either side of working it out here: a code that turned
+        // over between is one of the two.)
+        let totp = onepassword::totp::Totp::parse(uri).unwrap();
+        let before = totp.now().0;
+        let got = ask(&mut v, "https://example.com/login/two-step", &with.id);
+        let after = totp.now().0;
+        assert!(matches!(&got, Response::Code { code, seconds } if (*code == before || *code == after) && (1..=30).contains(seconds) && code.len() == 6), "{:?}", std::mem::discriminant(&got));
+        let said = serde_json::to_string(&got).unwrap();
+        assert!(!said.contains("hunter2") && !said.contains("ann"), "the code and nothing else");
+        assert!(matches!(ask(&mut v, "https://elsewhere.example/", &with.id), Response::Error { .. }));
+        assert!(matches!(&ask(&mut v, "https://example.com/", &without.id), Response::Error { message } if message.contains("no one-time code")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_pages_one_time_code_is_kept() {
         use base64::Engine as _;

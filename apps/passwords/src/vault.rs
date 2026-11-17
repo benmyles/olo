@@ -1117,6 +1117,29 @@ mod tests {
         }
     }
 
+    /// A store with a login for a page served at 127.0.0.1 that has a
+    /// one-time code (the secret RFC 6238's examples use, in Base32), to
+    /// try a page's code field with (`OLO_FIXTURE_VAULT`, its key in
+    /// `OLO_FIXTURE_KEY`; with `OLO_FIXTURE_CODES=2`, two such logins).
+    /// `cargo test --release -p olo-passwords otp_fixture -- --ignored`.
+    #[test]
+    #[ignore]
+    fn otp_fixture() {
+        let (Some(file), Some(key)) = (std::env::var_os("OLO_FIXTURE_VAULT"), std::env::var_os("OLO_FIXTURE_KEY")) else { return };
+        let mut v = Vault::open_at(PathBuf::from(file), Some(Path::new(&key))).unwrap();
+        let several = std::env::var("OLO_FIXTURE_CODES").is_ok_and(|n| n == "2");
+        for user in ["ann", "bob"].iter().take(if several { 2 } else { 1 }) {
+            let mut p = ItemCreateParams::new(ItemCategory::Login, v.data.vaults[0].id.clone(), "Local");
+            p.fields = vec![
+                ItemField::new("username", "username", ItemFieldType::Text, *user),
+                ItemField::new("password", "password", ItemFieldType::Concealed, "correct horse battery staple"),
+                ItemField::new("one-time password", "one-time password", ItemFieldType::Totp, format!("otpauth://totp/Local:{user}?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=Local")),
+            ];
+            p.websites = vec![onepassword::Website { url: "http://127.0.0.1".into(), label: "website".into(), autofill_behavior: onepassword::AutofillBehavior::AnywhereOnWebsite }];
+            v.create(&p).unwrap();
+        }
+    }
+
     /// A store with an SSH key in it, to try the SSH agent with
     /// (`OLO_FIXTURE_VAULT`, its key in `OLO_FIXTURE_KEY`): an Ed25519 key
     /// made from a fixed seed; its public key printed. `cargo test --release

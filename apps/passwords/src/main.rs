@@ -1058,7 +1058,10 @@ impl Passwords {
         {
             return incoming.reply(Response::Passkeys { passkeys: Vec::new() });
         }
-        let waits = !matches!(incoming.request, Request::OtpScan { .. } | Request::Logins { .. } | Request::Cards { .. } | Request::Check { .. } | Request::Search { .. } | Request::Passkeys { .. });
+        let waits = !matches!(
+            incoming.request,
+            Request::OtpScan { .. } | Request::Logins { .. } | Request::Code { .. } | Request::Cards { .. } | Request::Check { .. } | Request::Search { .. } | Request::Passkeys { .. }
+        );
         if self.lock.locked {
             if !waits {
                 return incoming.reply(Response::Locked);
@@ -1213,7 +1216,7 @@ impl Passwords {
                     .collect();
                 return self.store.send(Job::OtpRead { incoming: Box::new(incoming), candidates });
             }
-            Request::Logins { url } | Request::Fill { url, .. } | Request::Check { url, .. } | Request::Save { url, .. } => {
+            Request::Logins { url } | Request::Fill { url, .. } | Request::Code { url, .. } | Request::Check { url, .. } | Request::Save { url, .. } => {
                 let url = url.clone();
                 Box::new(move |w| store::fits(w, &url))
             }

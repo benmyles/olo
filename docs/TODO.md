@@ -34,12 +34,6 @@ something nobody here has is in "Blocked", with what it waits for.
   the code and keep looking for up to 60s until one arrives from
   phone/email and then offer to fill it.").
 
-- **Passwords fills an authenticator's one-time code as it does one
-  that came by text** (Ben, 2026-11-17: "when a login asks for a one
-  time code from the authenticator app and the passwords item has it
-  then olo passwords ext should be smart enough to offer to auto fill
-  it like it does for when they come via sms").
-
 - **Deskbar: the fading blue dot without its number; a red dot for
   what's unread in the app itself** (Ben, 2026-11-17: "currently in the
   deskbar we show a count of recent notifications and a blue dot that
@@ -5913,6 +5907,21 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Passwords fills an authenticator's one-time code as it does one
+  that came by text**~~ (Ben, 2026-11-17: "when a login asks for a one
+  time code from the authenticator app and the passwords item has it
+  then olo passwords ext should be smart enough to offer to auto fill
+  it like it does for when they come via sms"; done the same day). A
+  field waiting for a one-time code, on a site whose login in Passwords
+  has one, gets "Fill code 123456 / From Passwords, for NAME" under it,
+  as a texted code does: a click (or ↓ and Enter) fills the code as it
+  is at that moment. Which login: the one filled in that tab, else the
+  one last used on the site, else the only one with a code; several and
+  none of those, nothing is offered (the menu has each). Not where the
+  page says the code was texted; not while Passwords is locked. The
+  extension is 1.12.0 (Chrome takes it at its next start). (HACKING,
+  "An authenticator's code, offered".)
 
 - ~~**A window tab's menu: Pin ▸ Always Main / Always [where it is]**~~
   (Ben, 2026-11-17: "i often have some windows like telegram where i

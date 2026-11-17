@@ -42,6 +42,12 @@ pub enum Request {
     /// context menu (a card isn't kept for a site, so any page can be
     /// given one, but only that way).
     FillCard { url: String, vault: String, id: String },
+    /// Login `vault`/`id`'s one-time code as it is now (an authenticator's:
+    /// the login has its secret), for a field on the page at `url` that
+    /// waits for one: only for a site the login is for, and nothing else
+    /// of it. Answered `Code`; an error if it has none. Doesn't wait:
+    /// `Locked` while locked.
+    Code { url: String, vault: String, id: String },
     /// Whether a login just used on `url` is already saved.
     Check { url: String, username: String, password: String },
     /// Save a login used on `url`: replacing `replace`'s password, or new.
@@ -229,7 +235,7 @@ impl Request {
     /// How long a reply can take.
     pub fn timeout(&self) -> Duration {
         match self {
-            Request::Logins { .. } | Request::Cards { .. } | Request::Search { .. } | Request::Passkeys { .. } => Duration::from_secs(15),
+            Request::Logins { .. } | Request::Code { .. } | Request::Cards { .. } | Request::Search { .. } | Request::Passkeys { .. } => Duration::from_secs(15),
             Request::Check { .. } => Duration::from_secs(60),
             // These wait for you to unlock Passwords.
             Request::Fill { .. }
@@ -318,6 +324,11 @@ pub enum Response {
         username: String,
         password: String,
         otp: Option<String>,
+    },
+    /// For `Code`: the one-time code now, and the seconds it has left.
+    Code {
+        code: String,
+        seconds: u64,
     },
     /// For `Cards`.
     Cards {
@@ -436,6 +447,7 @@ impl Drop for Response {
                 number.zeroize();
                 code.zeroize();
             }
+            Response::Code { code, .. } => code.zeroize(),
             Response::Secrets { values } => values.iter_mut().for_each(|v| v.zeroize()),
             _ => {}
         }
