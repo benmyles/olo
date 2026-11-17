@@ -95,14 +95,49 @@ impl Channel {
 
 /// A channel to a phone: read from and written to as any stream; a read
 /// gives up after a while ([`Stream::patience`]) rather than wait for
-/// good, and [`Stream::closer`] ends it from another thread.
-pub struct Stream(std::fs::File);
+/// good, [`Stream::closer`] ends it from another thread, and
+/// [`Stream::gone`] waits for the other side to end it.
+///
+/// BlueZ hands its sockets over as it uses them itself: **non-blocking**
+/// (the flag is the socket's, not the descriptor's), so a read here
+/// would fail at once with "Resource temporarily unavailable" (Ben's
+/// iPhone, 2026-11-17: every session ended so as it began); it's made
+/// blocking, with the patience. And a phone that offers OBEX over L2CAP
+/// (an Android; an iPhone offers RFCOMM alone) is connected to that way
+/// by BlueZ: a socket of **packets**, each read one whole OBEX packet
+/// and no more. Read here a packet at a time and handed on as a stream;
+/// what's written is a whole packet a write already (`obex`).
+pub struct Stream {
+    file: std::fs::File,
+    packets: bool,
+    /// A packet read and not all taken yet.
+    pending: Vec<u8>,
+    at: usize,
+}
 
 impl Stream {
-    fn new(fd: OwnedFd) -> Stream {
-        let s = Stream(std::fs::File::from(fd));
+    /// A socket BlueZ handed over (or a stand-in's end of one).
+    pub fn adopt(fd: OwnedFd) -> Stream {
+        let file = std::fs::File::from(fd);
+        let raw = file.as_raw_fd();
+        let mut kind: libc::c_int = 0;
+        let mut len = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
+        // SAFETY: our own descriptor; an int of the size given.
+        unsafe {
+            let flags = libc::fcntl(raw, libc::F_GETFL);
+            if flags >= 0 && flags & libc::O_NONBLOCK != 0 {
+                libc::fcntl(raw, libc::F_SETFL, flags & !libc::O_NONBLOCK);
+            }
+            libc::getsockopt(raw, libc::SOL_SOCKET, libc::SO_TYPE, (&raw mut kind).cast(), &raw mut len);
+        }
+        let s = Stream { file, packets: kind == libc::SOCK_SEQPACKET, pending: Vec::new(), at: 0 };
         s.patience(Duration::from_secs(30));
         s
+    }
+
+    /// A link of packets (L2CAP), not a stream of bytes (RFCOMM).
+    pub fn packets(&self) -> bool {
+        self.packets
     }
 
     /// How long a read or a write waits (0: for good).
@@ -110,14 +145,19 @@ impl Stream {
         let tv = libc::timeval { tv_sec: wait.as_secs() as libc::time_t, tv_usec: wait.subsec_micros() as libc::suseconds_t };
         for option in [libc::SO_RCVTIMEO, libc::SO_SNDTIMEO] {
             // SAFETY: a timeval of the size given, on our own socket.
-            unsafe { libc::setsockopt(self.0.as_raw_fd(), libc::SOL_SOCKET, option, (&raw const tv).cast(), std::mem::size_of::<libc::timeval>() as libc::socklen_t) };
+            unsafe { libc::setsockopt(self.file.as_raw_fd(), libc::SOL_SOCKET, option, (&raw const tv).cast(), std::mem::size_of::<libc::timeval>() as libc::socklen_t) };
         }
     }
 
     /// Something that ends the channel from elsewhere (a read waiting on
-    /// it returns).
+    /// it returns, and [`Gone::wait`]).
     pub fn closer(&self) -> Closer {
-        Closer(self.0.try_clone().ok())
+        Closer(self.file.try_clone().ok())
+    }
+
+    /// Something that waits for the channel's end from elsewhere.
+    pub fn gone(&self) -> Gone {
+        Gone(self.file.try_clone().ok())
     }
 }
 
@@ -132,15 +172,53 @@ impl Closer {
     }
 }
 
+/// A channel's end, waited for ([`Stream::gone`]).
+pub struct Gone(Option<std::fs::File>);
+
+impl Gone {
+    /// Asleep until the other side has closed the channel, the link under
+    /// it has gone, or it was ended here ([`Closer::close`]): nothing is
+    /// read, and what arrives meanwhile doesn't wake it. A session that
+    /// waits to be asked something would otherwise learn its phone had
+    /// closed the channel only when next it tried to use it.
+    pub fn wait(&self) {
+        let Some(f) = &self.0 else { return };
+        let mut fd = libc::pollfd { fd: f.as_raw_fd(), events: libc::POLLRDHUP, revents: 0 };
+        loop {
+            // SAFETY: one pollfd of our own descriptor.
+            let n = unsafe { libc::poll(&raw mut fd, 1, -1) };
+            if n > 0 || (n < 0 && std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted) {
+                return;
+            }
+        }
+    }
+}
+
 impl Read for Stream {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        self.0.read(buf)
+        if !self.packets {
+            return self.file.read(buf);
+        }
+        if self.at == self.pending.len() {
+            // (The largest an L2CAP packet gets.)
+            self.pending.resize(0x1_0000, 0);
+            self.at = 0;
+            let n = self.file.read(&mut self.pending);
+            self.pending.truncate(*n.as_ref().unwrap_or(&0));
+            if n? == 0 {
+                return Ok(0);
+            }
+        }
+        let n = buf.len().min(self.pending.len() - self.at);
+        buf[..n].copy_from_slice(&self.pending[self.at..self.at + n]);
+        self.at += n;
+        Ok(n)
     }
 }
 
 impl Write for Stream {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0.write(buf)
+        self.file.write(buf)
     }
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
@@ -200,7 +278,7 @@ impl Profile {
     fn release(&self) {}
 
     fn new_connection(&self, device: OwnedObjectPath, fd: zvariant::OwnedFd, _properties: HashMap<String, OwnedValue>) {
-        (self.opened)(Opened { channel: self.channel, phone: device.as_str().to_owned(), stream: Stream::new(OwnedFd::from(fd)) });
+        (self.opened)(Opened { channel: self.channel, phone: device.as_str().to_owned(), stream: Stream::adopt(OwnedFd::from(fd)) });
     }
 
     fn request_disconnection(&self, _device: OwnedObjectPath) {}
@@ -390,6 +468,15 @@ impl Profiles {
     /// reach, doesn't offer it, or refused.
     pub fn open(&self, phone: &str, channel: Channel) -> Result<()> {
         self.conn.call_method(Some(DEST), phone, Some(DEVICE), "ConnectProfile", &(channel.uuid(),)).map(|_| ())
+    }
+
+    /// Have BlueZ let go of what it holds of a channel to `phone`: after
+    /// it said yes to [`Profiles::open`] and no channel came (it took
+    /// the profile for connected already, and answers so without opening
+    /// anything), so the next asking starts afresh. An error (it held
+    /// nothing) is nothing.
+    pub fn let_go(&self, phone: &str, channel: Channel) {
+        let _ = self.conn.call_method(Some(DEST), phone, Some(DEVICE), "DisconnectProfile", &(channel.uuid(),));
     }
 
     /// The phones paired with this computer: what's paired and offers

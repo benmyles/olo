@@ -13671,11 +13671,62 @@ isn't connected, or the channel can't be had) is tried when BlueZ says
 anything of it and otherwise after 15 s, 30 s, 1, 2 and then every 5
 minutes (`AWAY`); a session whose link drops is tried again after 2 s,
 once. Another phone, or none: what the last had is let go.
-**Olo Doctor watches it** (`phone_link`): with a phone paired, the
-service not running (the session leaves one stopped that ended again
-and again) or its profiles not registered (`PhoneState::profiles`:
-another program has them; Bluetooth not answering) is a problem it
-says, with why; all well, it says so among what's fine.
+**Nothing in it waits for good, and what goes wrong is seen** (Ben,
+2026-11-17, his iPhone paired and the panel still at "Waiting for the
+phone": "olo needs to supervise/monitor it and make it bulletproof").
+What his phone showed, and what's kept true since:
+
+- **BlueZ's sockets are non-blocking** (it reads them from its own
+  loop; the flag is the socket's, so the descriptor it hands over has
+  it): the first read failed at once with "Resource temporarily
+  unavailable", and every session ended as it began. `Stream::adopt`
+  makes it blocking, with its patience. **And of packets** where the
+  phone offers OBEX over L2CAP (an Android; an iPhone offers RFCOMM
+  alone), which BlueZ then connects by (profile.c, `record_cb`): each
+  read one whole OBEX packet, read so and handed on as a stream; a
+  write is a whole packet already. The stand-in BlueZ hands over
+  sockets the same (non-blocking; packets for the Android's messages
+  and contacts): with the fix taken out, the link's test fails as his
+  phone did.
+- **Every wait has an end.** Asked for a channel, BlueZ has a minute to
+  answer (`OPEN_ANSWER`) and, once it has said yes, five seconds for
+  the channel to come (`OPEN_COMES`): it says yes and opens nothing
+  when it takes the profile for connected already, which left the
+  service at "connecting" for good. Past either the asking is given up,
+  BlueZ is told to let go of the profile (`Profiles::let_go`:
+  `DisconnectProfile`) and asked again in three seconds. BlueZ busy
+  with the phone (`InProgress`: connecting, pairing) is asked again in
+  three too.
+- **A phone that closes the channel is known of at once**, not when
+  next something is asked of it: its end is waited for, asleep
+  (`Stream::gone`: a `poll` for hang-up that nothing arriving wakes),
+  and the session asked for again a second later. A session shuts its
+  channel however it ends (`Shut`).
+- **The service's own loop is watched** (`watchdog`): told as the loop
+  takes something up and as it's done, and if it isn't done in 90 s
+  (`STUCK`: it asks BlueZ what phones there are, and BlueZ can stop
+  answering) the service ends, and the session starts it afresh. Two
+  messages a turn of the loop; nothing at rest.
+- **The pairing agent is BlueZ's default while a panel has it**
+  (`Agent::register`: `RequestDefaultAgent`), so a pairing the phone
+  starts is asked about too (BlueZ had "No agent available" for his
+  iPhone's), and it's registered again with a BlueZ started since
+  (the bus's word of its new owner).
+- **It says what it does**: each change of how the phone stands is a
+  line in the log (`olo-logs --print --program olo-phone`): the profiles
+  registered, the phone and whether it's connected, a channel open and
+  of which kind, refused, its messages open, its contacts come, why a
+  channel couldn't be had or a session ended; `PhoneState::trouble` the
+  last of those while the phone is connected, `since` when the link
+  came to stand as it does.
+- **Olo Doctor watches it** (`phone_link`): with a phone paired, the
+  service not running (the session leaves one stopped that ended again
+  and again), or its profiles not registered (`PhoneState::profiles`:
+  another program has them; Bluetooth not answering), or the phone
+  connected and its messages not opened for three minutes
+  (`phone-messages`, with why; its fix ends the service for the session
+  to start afresh) is a problem it says; all well, it says so among
+  what's fine.
 Conversations are kept in memory only: **nothing a message says is
 logged or written to disk**. It publishes
 `$XDG_RUNTIME_DIR/olo-phone.json` (`PhoneState`: the phone's name and

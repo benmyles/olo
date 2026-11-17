@@ -302,6 +302,8 @@ pub struct Roots {
     pub phone: bool,
     /// An iPhone among them (Apple's vendor id).
     pub iphone: bool,
+    /// A paired phone is connected now (BlueZ's word).
+    pub phone_connected: bool,
     /// The class of device the Bluetooth adapter says now (None: no
     /// adapter, or BlueZ not answering).
     pub bluetooth_class: Option<u32>,
@@ -421,6 +423,7 @@ impl Roots {
             .map(|s| s.devices.iter().filter(|d| d.paired && d.icon == "phone").map(|d| d.modalias.as_deref().is_some_and(|m| m.to_ascii_lowercase().starts_with("bluetooth:v004c"))).collect())
             .unwrap_or_default();
         let (phone, iphone) = (!phones.is_empty(), phones.contains(&true));
+        let phone_connected = olo_system::bluetooth::status().map(|s| s.devices.iter().any(|d| d.paired && d.connected && d.icon == "phone")).unwrap_or(false);
         let bluetooth_class = olo_system::bluetooth::status().ok().and_then(|s| s.adapter).map(|a| a.class);
         let bluetooth_stuck =
             olo_system::bluetooth::status().ok().and_then(|s| s.adapter).filter(|a| a.not_answering()).map(|a| a.path.rsplit('/').next().unwrap_or_default().to_owned()).into_iter().collect();
@@ -433,6 +436,7 @@ impl Roots {
             airpods,
             phone,
             iphone,
+            phone_connected,
             bluetooth_class,
             bluetooth_stuck,
             packages: Box::new(real_packages),
@@ -2091,6 +2095,10 @@ fn phone(roots: &Roots, r: &mut Report) {
     });
 }
 
+/// How long (seconds) a connected phone's messages may fail to open
+/// before Olo Doctor says so.
+const PHONE_STALLED: u64 = 180;
+
 /// A phone paired: its messages, contacts and codes reach Olo only
 /// through the phone service (`olo-phone --service`, which the session
 /// starts) and the profiles it registers with BlueZ. It registers them
@@ -2127,6 +2135,27 @@ fn phone_link(roots: &Roots, r: &mut Report) {
         return;
     }
     let name = if state.name.is_empty() { "The phone".to_owned() } else { format!("“{}”", state.name) };
+    // The phone is there (BlueZ has it connected) and its messages have
+    // not reached Olo for minutes. The service asks again by itself, and
+    // every wait of its has an end, so this long is something it can't
+    // get past: said, with why, and the service started afresh if the
+    // person wants (ended here; the session starts it again).
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    let waiting = matches!(state.link, olo_protocol::phone::Link::Away | olo_protocol::phone::Link::Connecting);
+    if roots.phone_connected && waiting && state.since > 0 && now.saturating_sub(state.since) > PHONE_STALLED {
+        let why = if state.trouble.is_empty() { String::new() } else { format!(" {}", state.trouble) };
+        r.findings.push(Finding {
+            id: "phone-messages".into(),
+            severity: Severity::Problem,
+            title: "The phone is connected, but its messages aren’t reaching Olo".into(),
+            detail: format!(
+                "{name} is connected over Bluetooth, and for {} minutes Olo’s phone service hasn’t been able to open its messages, though it keeps asking.{why} The fix starts the phone service afresh. If it’s the same after: on the phone, turn its switches for this computer off and on (its Bluetooth settings), or pair again from Preferences ▸ Phone.",
+                now.saturating_sub(state.since) / 60
+            ),
+            fix: Some(Fix { label: "Start the Phone Service Again".into(), root: false, steps: vec![Step::Signal { pid: state.pid as i32, signal: libc::SIGTERM }] }),
+        });
+        return;
+    }
     r.fine.push(Fine {
         title: "The phone’s messages can reach Olo".into(),
         detail: format!("Olo’s phone service is running, its profiles registered with Bluetooth. {name}: {}.", state.link.words().trim_end_matches('.')),
@@ -4336,6 +4365,7 @@ mod tests {
             airpods: true,
             phone: false,
             iphone: false,
+            phone_connected: false,
             bluetooth_class: None,
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
@@ -4868,6 +4898,7 @@ mod tests {
             airpods: false,
             phone: false,
             iphone: false,
+            phone_connected: false,
             bluetooth_class: None,
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
@@ -4955,6 +4986,7 @@ mod tests {
             airpods: false,
             phone: false,
             iphone: false,
+            phone_connected: false,
             bluetooth_class: None,
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
@@ -5486,6 +5518,28 @@ mod tests {
         let report = scan(&roots);
         assert!(report.findings.iter().all(|f| !f.id.starts_with("phone-")));
         assert!(report.fine.iter().any(|f| f.title == "The phone’s messages can reach Olo"));
+        // The phone connected and its messages not opened for minutes:
+        // said, with why, and the service started afresh by the fix.
+        let mut stalled = |since: u64, connected: bool| {
+            let s = olo_protocol::phone::PhoneState {
+                pid: 4242,
+                name: "Mira’s iPhone".into(),
+                profiles: true,
+                link: olo_protocol::phone::Link::Connecting,
+                since,
+                trouble: "Bluetooth couldn’t open the phone’s messages (br-connection-busy).".into(),
+                ..Default::default()
+            };
+            std::fs::write(roots.temp.runtime.join("olo-phone.json"), serde_json::to_string(&s).unwrap()).unwrap();
+            roots.phone_connected = connected;
+            scan(&roots).findings.into_iter().find(|f| f.id == "phone-messages")
+        };
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        assert!(stalled(now - 30, true).is_none(), "half a minute: it's still trying");
+        assert!(stalled(now - 600, false).is_none(), "the phone not connected: out of reach, nothing wrong");
+        let f = stalled(now - 600, true).expect("said");
+        assert!(f.detail.contains("for 10 minutes") && f.detail.contains("br-connection-busy"), "{}", f.detail);
+        assert_eq!(f.fix.unwrap().steps, [Step::Signal { pid: 4242, signal: libc::SIGTERM }]);
         let _ = std::fs::remove_dir_all(&fs);
     }
 
@@ -6412,6 +6466,7 @@ mod tests {
                 airpods: false,
                 phone: false,
                 iphone: false,
+                phone_connected: false,
                 bluetooth_class: None,
                 bluetooth_stuck: Vec::new(),
                 packages: Box::new(|_| None),

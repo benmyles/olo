@@ -18,11 +18,15 @@
 
 use std::{
     collections::HashMap,
-    os::{fd::OwnedFd, unix::net::UnixStream},
+    os::fd::{FromRawFd as _, OwnedFd},
     sync::{Arc, Mutex, mpsc},
 };
 
-use olo_system::phone::{map, pbap, standin::Phone};
+use olo_system::phone::{
+    link::{Closer, Stream},
+    map, pbap,
+    standin::Phone,
+};
 use zvariant::{OwnedObjectPath, OwnedValue, Value};
 
 const NAME: &str = "org.bluez";
@@ -55,6 +59,9 @@ enum Job {
     /// An advertisement was registered (who, their object): read what
     /// it solicits.
     Advert(String, String),
+    /// The phone closes every channel it has open, and stays connected
+    /// (its owner turned a switch off; it had enough).
+    HangUp,
 }
 
 struct World {
@@ -73,6 +80,10 @@ struct World {
     /// The profile whose phone-book client record is published (an
     /// iPhone offers Sync Contacts only to a computer that has one).
     pce_record: Option<String>,
+    /// BlueZ takes the phone's messages for connected already (`--tell
+    /// set stale yes`): asked to connect them, it says yes and opens
+    /// nothing, until it's told to let go (`DisconnectProfile`).
+    stale: bool,
     /// An advertisement soliciting Apple's notification service is
     /// broadcast: an iPhone shows its switches for the computer only
     /// while one is.
@@ -241,8 +252,22 @@ impl Device {
         if !w.profiles.contains_key(&uuid) {
             return Err(Error::InvalidArguments("no such profile registered".into()));
         }
+        // (As BlueZ with a profile it takes for connected: yes, and
+        // nothing opened.)
+        if w.stale && uuid == map::MAS_UUID {
+            return Ok(());
+        }
         let _ = w.jobs.send(Job::Open(uuid));
         Ok(())
+    }
+
+    fn disconnect_profile(&self, uuid: String) -> Result<(), Error> {
+        let mut w = self.0.lock().expect("world");
+        if uuid.eq_ignore_ascii_case(map::MAS_UUID) && w.stale {
+            w.stale = false;
+            return Ok(());
+        }
+        Err(Error::NotAvailable("not connected".into()))
     }
 
     /// Pairing: answered once the agent has (the code confirmed).
@@ -315,6 +340,7 @@ impl Told {
         match key {
             "messages" => w.phone.0.lock().expect("phone").messages_allowed = on,
             "contacts" => w.phone.0.lock().expect("phone").contacts_allowed = on,
+            "stale" => w.stale = on,
             "connected" => w.connected = on,
             "paired" => w.paired = on,
             _ => return Err(Error::InvalidArguments(format!("nothing called {key}"))),
@@ -327,6 +353,10 @@ impl Told {
     /// is registered.
     fn soliciting(&self) -> bool {
         self.0.lock().expect("world").soliciting
+    }
+
+    fn hang_up(&self) {
+        let _ = self.0.lock().expect("world").jobs.send(Job::HangUp);
     }
 
     fn pairings(&self) -> u32 {
@@ -355,8 +385,8 @@ fn now() -> String {
 
 const USAGE: &str = "usage: phone-standin [--address ADDRESS] [--android] [--unpaired]
        phone-standin [--address ADDRESS] --tell receive NAME ADDRESS TEXT…
-       phone-standin [--address ADDRESS] --tell set messages|contacts|connected|paired yes|no
-       phone-standin [--address ADDRESS] --tell sent";
+       phone-standin [--address ADDRESS] --tell set messages|contacts|connected|paired|stale yes|no
+       phone-standin [--address ADDRESS] --tell hang-up | soliciting | pairings | sent";
 
 fn main() {
     olo_crash::install();
@@ -393,6 +423,7 @@ fn main() {
         soliciting: false,
         pairings: 0,
         pce_record: None,
+        stale: false,
         jobs: tx,
     }));
     let built = zbus::blocking::connection::Builder::address(address.as_str())
@@ -416,17 +447,47 @@ fn main() {
     // opened is a socket pair, one end the stand-in phone's, the other
     // handed to whoever registered the profile.
     // (The channels open, to end them when the phone goes out of reach.)
-    let open: Mutex<Vec<UnixStream>> = Mutex::new(Vec::new());
-    for job in jobs {
-        let hand_over = |uuid: &str, serve: Box<dyn FnOnce(UnixStream) + Send>| {
-            let Some((who, path)) = world.lock().expect("world").profiles.get(uuid).cloned() else { return };
-            let Ok((ours, theirs)) = UnixStream::pair() else { return };
-            if let Ok(kept) = ours.try_clone() {
-                open.lock().expect("open").push(kept);
+    let open: Mutex<Vec<Closer>> = Mutex::new(Vec::new());
+    // A channel's two ends, as BlueZ's are: the one handed over
+    // non-blocking (BlueZ reads its sockets from its own loop), and of
+    // packets where the phone offers OBEX over L2CAP, which BlueZ then
+    // connects by (an Android's messages and contacts; never the
+    // Notification Server's, whose record offers RFCOMM alone).
+    let pair = |packets: bool| -> Option<(OwnedFd, OwnedFd)> {
+        let mut fds = [0 as libc::c_int; 2];
+        let kind = if packets { libc::SOCK_SEQPACKET } else { libc::SOCK_STREAM };
+        // SAFETY: two descriptors of ours, owned from here on.
+        unsafe {
+            if libc::socketpair(libc::AF_UNIX, kind | libc::SOCK_CLOEXEC, 0, fds.as_mut_ptr()) != 0 {
+                return None;
             }
-            std::thread::spawn(move || serve(ours));
+            let flags = libc::fcntl(fds[1], libc::F_GETFL);
+            libc::fcntl(fds[1], libc::F_SETFL, flags | libc::O_NONBLOCK);
+            Some((OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])))
+        }
+    };
+    for job in jobs {
+        let hand_over = |uuid: &str, serve: Box<dyn FnOnce(Stream) + Send>| {
+            let (found, android) = {
+                let w = world.lock().expect("world");
+                (w.profiles.get(uuid).cloned(), w.android)
+            };
+            let Some((who, path)) = found else { return };
+            let Some((ours, theirs)) = pair(android && uuid != map::MNS_UUID) else { return };
+            // (The phone's end: it waits for what's asked of it as long
+            // as it takes.)
+            let ours = Stream::adopt(ours);
+            ours.patience(std::time::Duration::ZERO);
+            open.lock().expect("open").push(ours.closer());
+            // (Served to its end, then closed, as a phone closes a
+            // channel it's done with.)
+            let done = ours.closer();
+            std::thread::spawn(move || {
+                serve(ours);
+                done.close();
+            });
             let device = zvariant::ObjectPath::try_from(DEVICE).expect("a path");
-            let fd = zvariant::OwnedFd::from(OwnedFd::from(theirs));
+            let fd = zvariant::OwnedFd::from(theirs);
             let none: HashMap<&str, Value> = HashMap::new();
             if let Err(e) = conn.call_method(Some(who.as_str()), path.as_str(), Some("org.bluez.Profile1"), "NewConnection", &(device, fd, none)) {
                 eprintln!("phone-standin: handing over a channel: {e}");
@@ -472,6 +533,11 @@ fn main() {
                     .unwrap_or_default();
                 world.lock().expect("world").soliciting = solicits.iter().any(|u| u.eq_ignore_ascii_case("7905f431-b5ce-4e99-a40f-4b1e122d00d0"));
             }
+            Job::HangUp => {
+                for channel in open.lock().expect("open").drain(..) {
+                    channel.close();
+                }
+            }
             Job::Changed => {
                 let w = world.lock().expect("world");
                 let mut changed: HashMap<&str, Value> = HashMap::new();
@@ -479,7 +545,7 @@ fn main() {
                 changed.insert("Paired", w.paired.into());
                 if !w.connected || !w.paired {
                     for channel in open.lock().expect("open").drain(..) {
-                        let _ = channel.shutdown(std::net::Shutdown::Both);
+                        channel.close();
                     }
                 }
                 drop(w);
@@ -536,6 +602,7 @@ fn told(address: &str, words: &[String]) -> i32 {
                 1
             }
         },
+        ["hang-up"] => call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "HangUp", &())),
         ["sent"] => call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Sent", &())),
         _ => {
             eprintln!("{USAGE}");

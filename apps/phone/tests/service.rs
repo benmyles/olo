@@ -239,6 +239,27 @@ fn messages_and_a_code_to_the_tab_waiting_for_it() {
         std::thread::sleep(Duration::from_millis(50));
     }
     assert_eq!(published()["conversations"].as_u64(), Some(4), "what it had is kept");
+    // The phone closes the channel to its messages and stays connected
+    // (its owner turned the switch off and on): known of at once, not
+    // when next something is asked, and asked for again. So a message
+    // sent a few seconds on, the first thing asked since, goes.
+    tell(&["hang-up"]);
+    std::thread::sleep(Duration::from_secs(4));
+    assert_eq!(published()["link"], "ready", "it never came back from the phone hanging up: {}", published());
+    assert_eq!(olo_phone(&["--send", "Mira Kovač", "back again"], None).0, true);
+    // BlueZ takes the phone's messages for connected and, asked for
+    // them, says yes and opens nothing (as it did with Ben's iPhone,
+    // where the service then waited for good): given up after a few
+    // seconds, BlueZ told to let go, and asked again.
+    tell(&["set", "stale", "yes"]);
+    tell(&["hang-up"]);
+    wait_for("the state never said the messages had gone", || published()["link"] != "ready");
+    let start = Instant::now();
+    while published()["link"] != "ready" {
+        assert!(start.elapsed() < Duration::from_secs(45), "the service waited for good on a channel that never came: {}", published());
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(olo_phone(&["--send", "Mira Kovač", "and again"], None).0, true);
     // Its contacts came: nothing is advertised any more.
     wait_for("the service went on advertising with nothing to wait for", || tell(&["soliciting"]).trim() == "no");
     // BlueZ is started again (an update; Olo Doctor changing how it's

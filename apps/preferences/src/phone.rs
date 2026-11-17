@@ -134,6 +134,7 @@ pub fn test_state() -> PhoneState {
         trouble: String::new(),
         profiles: true,
         changes: 0,
+        since: 0,
     }
 }
 

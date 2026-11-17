@@ -142,6 +142,18 @@ Each note: what to do, then why (what happened), then how to apply it.
   with nothing chosen. A panel whose controls change with what's chosen
   starts, under `cfg!(test)`, at its fullest: the most buttons, the
   longest words (Bluetooth's chooses its test phone).
+- **A stand-in must hand over what the real thing does, not what's
+  convenient.** The stand-in BlueZ passed ordinary blocking sockets;
+  BlueZ's are non-blocking (and packet sockets when it connects over
+  L2CAP), and the phone service worked in every test and failed at its
+  first read with Ben's iPhone. When a stand-in passes a descriptor, a
+  buffer or a handle, read the real program's source for how it made
+  it (flags, type, who closes it), and check the stand-in reproduces a
+  failure by taking the fix out once.
+- **`tsession click` takes logical points, not the screenshot's
+  pixels**: at 1.5× a button at (1204, 616) in the shot is clicked at
+  (803, 411). A click that seems to do nothing: divide by the scale
+  before suspecting the app.
 - **Never call a blocking zbus method from inside a zbus interface
   method on the same connection**: the thread that would read the
   answer is the one waiting (the pairing agent did, and every question

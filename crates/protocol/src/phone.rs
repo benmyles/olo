@@ -113,6 +113,9 @@ pub struct PhoneState {
     /// How many times the conversations or the contacts have changed
     /// (the count alone): who shows them asks again when it moves.
     pub changes: u64,
+    /// Since when (Unix seconds) the link has stood as it does: a phone
+    /// connected whose messages have long not come is Olo Doctor's to say.
+    pub since: u64,
 }
 
 impl PhoneState {
@@ -461,7 +464,7 @@ mod tests {
         assert!(s.paired() && !PhoneState::default().paired());
         let text = serde_json::to_string(&s).unwrap();
         let keys: Vec<String> = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&text).unwrap().keys().cloned().collect();
-        assert_eq!(keys, ["pid", "name", "kind", "path", "link", "contacts", "battery", "conversations", "unread", "codes", "code_at", "trouble", "profiles", "changes"]);
+        assert_eq!(keys, ["pid", "name", "kind", "path", "link", "contacts", "battery", "conversations", "unread", "codes", "code_at", "trouble", "profiles", "changes", "since"]);
         assert_eq!(serde_json::to_string(&Request::Send { to: "+15550100142".into(), text: "hi".into() }).unwrap(), r#"{"do":"send","to":"+15550100142","text":"hi"}"#);
     }
 }

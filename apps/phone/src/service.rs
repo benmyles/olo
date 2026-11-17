@@ -73,6 +73,16 @@ const ALLOW_EVERY: Duration = Duration::from_secs(10);
 /// and with no advertisement, so a phone never allowed costs next to
 /// nothing.
 const ALLOW_FOR: Duration = Duration::from_secs(15 * 60);
+/// How long BlueZ has to answer when asked for a channel (it waits on
+/// the phone, half a minute at most), and how long the channel has to
+/// come once it has said yes (it's opened by then). Past either, the
+/// asking is given up and made again: nothing waits for good.
+const OPEN_ANSWER: Duration = Duration::from_secs(60);
+const OPEN_COMES: Duration = Duration::from_secs(5);
+/// How long the service's own loop may take over one thing (it asks
+/// BlueZ what phones there are, and BlueZ can stop answering) before
+/// it's taken for stuck and ended, for the session to start afresh.
+const STUCK: Duration = Duration::from_secs(90);
 const ALLOW_LATER: Duration = Duration::from_secs(300);
 /// How long after a try a phone out of reach is tried again, try by try.
 const AWAY: [u64; 5] = [15, 30, 60, 120, 300];
@@ -126,6 +136,10 @@ enum FromSession {
     },
     /// The session ended (the link went, or it failed): why.
     Down(String),
+    /// BlueZ said yes to opening the channel: it's due.
+    Asked,
+    /// The phone closed the channel, or the link under it went.
+    Hung,
 }
 
 struct Browser {
@@ -185,6 +199,12 @@ struct Service {
     allow_since: Option<Instant>,
     /// Why the last channel couldn't be had (logged when it changes).
     said_why: String,
+    /// While a channel is being opened: when to give up on it
+    /// (`OPEN_ANSWER`, `OPEN_COMES`).
+    opening_until: Option<Instant>,
+    /// BlueZ said yes to the last asking and opened nothing: it's told
+    /// to let go of the profile before it's asked again.
+    let_go: bool,
     /// What the conversations and contacts came to when last published
     /// (`PhoneState::changes` counts its changes).
     digest: u64,
@@ -257,7 +277,15 @@ fn just_came(at: &str, now: i64) -> bool {
 /// asking BlueZ for the channel to the link's end. It says what happens
 /// (`FromSession`) and does what it's asked (`Cmd`).
 fn session(stream: Stream, cmds: mpsc::Receiver<Cmd>, said: impl Fn(FromSession)) {
-    let closer = stream.closer();
+    // However it ends, the channel is shut (not only closed here: what
+    // waits for its end, `Stream::gone`, holds it too).
+    struct Shut(link::Closer);
+    impl Drop for Shut {
+        fn drop(&mut self) {
+            self.0.close();
+        }
+    }
+    let _shut = Shut(stream.closer());
     let mut mas = match Mas::open(stream) {
         Ok(m) => m,
         Err(obex::Error::Refused(obex::code::FORBIDDEN | obex::code::UNAUTHORIZED)) => return said(FromSession::NotAllowed),
@@ -294,7 +322,6 @@ fn session(stream: Stream, cmds: mpsc::Receiver<Cmd>, said: impl Fn(FromSession)
             Cmd::Close => break,
         };
         if let Err(e) = done {
-            closer.close();
             return said(FromSession::Down(e.to_string()));
         }
     }
@@ -306,6 +333,47 @@ fn session(stream: Stream, cmds: mpsc::Receiver<Cmd>, said: impl Fn(FromSession)
 /// leaves it up, a link gone doesn't).
 fn mas_alive(mas: &mut Mas<Stream>) -> bool {
     mas.listing("inbox", 1).is_ok()
+}
+
+/// The service's own loop, watched: it's told when the loop takes
+/// something up (true) and when it's done with it (false), and if the
+/// second doesn't come within `STUCK` the service is stuck (waiting on a
+/// BlueZ that has stopped answering, most likely) and is ended; the
+/// session starts it again, and it starts from what the phone and BlueZ
+/// say then. Asleep whenever the loop is: it costs two messages a turn
+/// of the loop and nothing at rest.
+fn watchdog() -> mpsc::Sender<bool> {
+    watch(STUCK, || {
+        tracing::error!("phone: stuck for {} s (Bluetooth not answering?): ending, to be started afresh", STUCK.as_secs());
+        std::process::exit(75);
+    })
+}
+
+/// [`watchdog`]'s thread: `stuck` is called if what was taken up (true)
+/// isn't done with (false) within `limit`.
+fn watch(limit: Duration, stuck: impl Fn() + Send + 'static) -> mpsc::Sender<bool> {
+    let (tx, rx) = mpsc::channel::<bool>();
+    let _ = std::thread::Builder::new().name("phone-watch".into()).spawn(move || {
+        loop {
+            match rx.recv() {
+                Ok(true) => {}
+                Ok(false) => continue,
+                Err(_) => return,
+            }
+            loop {
+                match rx.recv_timeout(limit) {
+                    Ok(false) => break,
+                    Ok(true) => {}
+                    Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                        stuck();
+                        break;
+                    }
+                }
+            }
+        }
+    });
+    tx
 }
 
 pub fn run() -> ! {
@@ -326,6 +394,8 @@ pub fn run() -> ! {
         solicit_failed: false,
         allow_since: None,
         said_why: String::new(),
+        opening_until: None,
+        let_go: false,
         digest: 0,
         phone: None,
         generation: 0,
@@ -348,13 +418,16 @@ pub fn run() -> ! {
         about: Vec::new(),
         tx,
     };
+    let beat = watchdog();
+    let _ = beat.send(true);
     s.register();
     s.devices();
     s.publish();
+    let _ = beat.send(false);
     loop {
         // Asleep until something is said, or until a round of asking
         // ends, a code gets too old, or it's time to try the phone again.
-        let next = s.codes.iter().flat_map(|c| [Some(c.until), c.round.as_ref().map(|r| r.until)]).flatten().chain(s.retry_at).chain(s.profiles_at).chain(s.contacts_at).min();
+        let next = s.codes.iter().flat_map(|c| [Some(c.until), c.round.as_ref().map(|r| r.until)]).flatten().chain(s.retry_at).chain(s.profiles_at).chain(s.contacts_at).chain(s.opening_until).min();
         let ev = match next {
             Some(at) => match rx.recv_timeout(at.saturating_duration_since(Instant::now())) {
                 Ok(ev) => Some(ev),
@@ -366,11 +439,14 @@ pub fn run() -> ! {
                 Err(_) => std::process::exit(1),
             },
         };
+        // (Watched while it works: see `watchdog`.)
+        let _ = beat.send(true);
         if let Some(ev) = ev {
             s.take(ev);
         }
         s.tick();
         s.publish();
+        let _ = beat.send(false);
     }
 }
 
@@ -532,7 +608,7 @@ impl Service {
                     if let Some(cmds) = self.session.take() {
                         let _ = cmds.send(Cmd::Close);
                     }
-                    self.opening = false;
+                    (self.opening, self.opening_until) = (false, None);
                     self.generation += 1;
                     st.link = Link::Away;
                 }
@@ -557,14 +633,21 @@ impl Service {
         let (Some(profiles), Some(phone)) = (self.profiles.clone().filter(|_| self.state.profiles), &self.phone) else { return };
         self.generation += 1;
         (self.opening, self.retry_at) = (true, None);
+        self.opening_until = Some(Instant::now() + OPEN_ANSWER);
         if self.state.link != Link::Allow {
             self.state.link = if phone.connected { Link::Connecting } else { Link::Away };
         }
         let (tx, generation, path) = (self.tx.clone(), self.generation, phone.path.clone());
+        let let_go = std::mem::take(&mut self.let_go);
         let _ = std::thread::Builder::new().name("phone-open".into()).spawn(move || {
-            if let Err(e) = profiles.open(&path, Channel::Messages) {
-                let _ = tx.send(Ev::Session(generation, FromSession::NoChannel(e.to_string())));
+            if let_go {
+                profiles.let_go(&path, Channel::Messages);
             }
+            let said = match profiles.open(&path, Channel::Messages) {
+                Ok(()) => FromSession::Asked,
+                Err(e) => FromSession::NoChannel(e.to_string()),
+            };
+            let _ = tx.send(Ev::Session(generation, said));
         });
     }
 
@@ -576,9 +659,22 @@ impl Service {
         let (tx, generation) = (self.tx.clone(), self.generation);
         match opened.channel {
             Channel::Messages => {
+                // (One session: another there, unasked for, is ended.)
+                if let Some(old) = self.session.take() {
+                    let _ = old.send(Cmd::Close);
+                }
+                tracing::info!("phone: a channel to its messages is open ({})", if opened.stream.packets() { "packets: L2CAP" } else { "a stream: RFCOMM" });
                 let (cmds, heard) = mpsc::channel();
                 self.session = Some(cmds);
-                self.opening = false;
+                (self.opening, self.opening_until, self.let_go) = (false, None, false);
+                // Its end is waited for (asleep): a phone that closes the
+                // channel, or a link that goes under it, is known of at
+                // once, not when next something is asked of it.
+                let (gone, hung) = (opened.stream.gone(), tx.clone());
+                let _ = std::thread::Builder::new().name("phone-link".into()).spawn(move || {
+                    gone.wait();
+                    let _ = hung.send(Ev::Session(generation, FromSession::Hung));
+                });
                 let _ = std::thread::Builder::new().name("phone-session".into()).spawn(move || {
                     session(opened.stream, heard, |said| {
                         let _ = tx.send(Ev::Session(generation, said));
@@ -646,17 +742,34 @@ impl Service {
         if let Some(cmds) = self.session.take() {
             let _ = cmds.send(Cmd::Close);
         }
-        self.opening = false;
+        (self.opening, self.opening_until) = (false, None);
         self.generation += 1;
     }
 
     /// What the session says.
     fn from_session(&mut self, said: FromSession) {
         match said {
-            FromSession::NoChannel(why) => {
-                (self.opening, self.session) = (false, None);
+            FromSession::Asked => {
+                if self.opening {
+                    self.opening_until = Some(Instant::now() + OPEN_COMES);
+                }
+            }
+            FromSession::Hung => {
+                // (Its own end, after it ended here, says nothing new.)
+                let Some(cmds) = self.session.take() else { return };
+                tracing::info!("phone: it closed the channel to its messages (or the link went): asking again");
+                let _ = cmds.send(Cmd::Close);
+                self.generation += 1;
+                (self.opening, self.opening_until) = (false, None);
                 self.state.link = Link::Away;
-                let wait = AWAY[self.tries.min(AWAY.len() - 1)];
+                (self.tries, self.retry_at) = (0, Some(Instant::now() + Duration::from_secs(1)));
+            }
+            FromSession::NoChannel(why) => {
+                (self.opening, self.session, self.opening_until) = (false, None, None);
+                self.state.link = Link::Away;
+                // (BlueZ busy with the phone, connecting or pairing:
+                // soon; otherwise further and further apart.)
+                let wait = if why.contains("InProgress") || why.contains("no channel came") { 3 } else { AWAY[self.tries.min(AWAY.len() - 1)] };
                 self.tries += 1;
                 self.retry_at = Some(Instant::now() + Duration::from_secs(wait));
                 // Why, said plainly when the phone is there and still
@@ -670,7 +783,7 @@ impl Service {
                     if connected { format!("Bluetooth couldn’t open the phone’s messages ({}).", why.rsplit(": ").next().unwrap_or(&why).trim_end_matches('.')) } else { String::new() };
             }
             FromSession::NotAllowed => {
-                (self.opening, self.session) = (false, None);
+                (self.opening, self.session, self.opening_until) = (false, None, None);
                 if self.state.link != Link::Allow {
                     tracing::info!("phone: it refuses its messages until its owner allows this computer (its switches for it)");
                 }
@@ -759,9 +872,12 @@ impl Service {
                 }
             }
             FromSession::Down(why) => {
-                (self.opening, self.session) = (false, None);
+                (self.opening, self.session, self.opening_until) = (false, None, None);
                 if !why.is_empty() {
                     tracing::info!("phone: the session ended: {why}");
+                    if self.phone.as_ref().is_some_and(|p| p.connected) {
+                        self.state.trouble = format!("The phone’s messages stopped ({}).", why.trim_end_matches('.'));
+                    }
                 }
                 self.state.link = Link::Away;
                 // (Tried again at once, once: a link dropped and still there.)
@@ -1117,6 +1233,14 @@ impl Service {
         if self.contacts_at.is_some_and(|at| at <= t) {
             self.ask_contacts();
         }
+        // A channel asked for that never came: given up, BlueZ told to
+        // let go of it, and asked again (what comes of the old asking
+        // now is old news).
+        if self.opening && self.opening_until.is_some_and(|at| at <= t) {
+            self.generation += 1;
+            self.let_go = true;
+            self.from_session(FromSession::NoChannel("Bluetooth said it would open them and no channel came".into()));
+        }
         if self.retry_at.is_some_and(|at| at <= t) {
             self.retry_at = None;
             if self.session.is_none() && !self.opening && self.phone.is_some() {
@@ -1213,6 +1337,10 @@ impl Service {
         if digest != self.digest {
             self.digest = digest;
             self.state.changes += 1;
+        }
+        // (Since when the link has stood as it does.)
+        if self.published.as_ref().map(|p| p.link) != Some(self.state.link) {
+            self.state.since = now();
         }
         if self.published.as_ref() != Some(&self.state) {
             if let Err(e) = self.state.save() {
@@ -1347,6 +1475,33 @@ fn serve(tx: mpsc::Sender<Ev>) {
 
 #[cfg(test)]
 mod tests {
+    /// The loop's watch: quiet while each thing taken up is done with in
+    /// time, and at rest however long; it says so when one isn't.
+    #[test]
+    fn a_loop_that_stops_is_noticed() {
+        let fired = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let f = fired.clone();
+        let beat = super::watch(std::time::Duration::from_millis(150), move || {
+            f.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        });
+        let count = || fired.load(std::sync::atomic::Ordering::SeqCst);
+        // At rest for longer than the limit: nothing.
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        assert_eq!(count(), 0);
+        // Work done in time, again and again: nothing.
+        for _ in 0..5 {
+            beat.send(true).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(40));
+            beat.send(false).unwrap();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert_eq!(count(), 0);
+        // Taken up and never done with: said, once.
+        beat.send(true).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        assert_eq!(count(), 1);
+    }
+
     use super::*;
 
     #[test]

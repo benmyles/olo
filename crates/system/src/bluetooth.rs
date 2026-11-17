@@ -359,21 +359,58 @@ impl AgentObject {
 /// A registered pairing agent; dropping it unregisters.
 pub struct Agent {
     conn: &'static Connection,
+    gone: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+/// Register the agent with BlueZ, and as its default: the one asked
+/// about a pairing nobody here started, as when a phone connected to
+/// unpaired starts it itself ([`pair_phone`]: BlueZ said "No agent
+/// available for request type 2" to Ben's iPhone, and pairing from its
+/// side failed, with the agent registered for this process's own
+/// pairings only).
+fn announce_agent(conn: &Connection) -> Result<()> {
+    let path = zvariant::ObjectPath::try_from(AGENT_PATH)?;
+    bus::call::<_, ()>(conn, DEST, "/org/bluez", "org.bluez.AgentManager1", "RegisterAgent", &(path.clone(), "KeyboardDisplay"))?;
+    bus::call::<_, ()>(conn, DEST, "/org/bluez", "org.bluez.AgentManager1", "RequestDefaultAgent", &(path,))
 }
 
 impl Agent {
-    /// Register an agent for pairings this process starts.
+    /// Register an agent, BlueZ's default while it's kept: for pairings
+    /// this process starts and those a device starts. A BlueZ started
+    /// again (an update; Olo Doctor changing how it starts) has forgotten
+    /// it and says nothing: it's registered again with the new one, told
+    /// by the bus (its name's new owner), not looked for.
     pub fn register(on: impl Fn(AgentEvent) + Send + Sync + 'static) -> Result<Agent> {
         let conn = bus::system()?;
         conn.object_server().at(AGENT_PATH, AgentObject { on: Box::new(on) })?;
-        let path = zvariant::ObjectPath::try_from(AGENT_PATH)?;
-        bus::call::<_, ()>(conn, DEST, "/org/bluez", "org.bluez.AgentManager1", "RegisterAgent", &(path, "KeyboardDisplay"))?;
-        Ok(Agent { conn })
+        announce_agent(conn)?;
+        let gone = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let rule =
+            zbus::MatchRule::builder().msg_type(zbus::message::Type::Signal).sender("org.freedesktop.DBus")?.interface("org.freedesktop.DBus")?.member("NameOwnerChanged")?.arg(0, DEST)?.build();
+        let heard = zbus::blocking::MessageIterator::for_match_rule(rule, conn, None)?;
+        let left = gone.clone();
+        let _ = std::thread::Builder::new().name("bluetooth-agent".into()).spawn(move || {
+            for m in heard.flatten() {
+                if left.load(std::sync::atomic::Ordering::Relaxed) {
+                    break;
+                }
+                let Ok((_, _, new)) = m.body().deserialize::<(String, String, String)>() else { continue };
+                if new.is_empty() {
+                    continue;
+                }
+                match announce_agent(conn) {
+                    Ok(()) => tracing::info!("bluetooth: the pairing agent is registered with BlueZ started again"),
+                    Err(e) => tracing::warn!("bluetooth: the pairing agent, with BlueZ started again: {e}"),
+                }
+            }
+        });
+        Ok(Agent { conn, gone })
     }
 }
 
 impl Drop for Agent {
     fn drop(&mut self) {
+        self.gone.store(true, std::sync::atomic::Ordering::Relaxed);
         if let Ok(path) = zvariant::ObjectPath::try_from(AGENT_PATH) {
             let _ = bus::call::<_, ()>(self.conn, DEST, "/org/bluez", "org.bluez.AgentManager1", "UnregisterAgent", &(path,));
         }
