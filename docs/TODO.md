@@ -55,6 +55,13 @@ something nobody here has is in "Blocked", with what it waits for.
   extensions it supports (e.g. here StyledEdit supports it) and appear
   in the Open With menu").
 
+- **Agent Screens: what real agents tripped on, found in their
+  histories and fixed** (Ben, 2026-11-17: "go through the agent screens
+  history for a sample of the real agent screens that have run and
+  identify any problems the agents hit whether bugs or
+  confusing/unintuitive agent ux and fix what we can to make it easier
+  for agents to use with fewer mistakes and higher efficiency").
+
 ## Done, waiting for Ben to try or confirm
 
 - **The phone's other notifications, its music, its conversations
