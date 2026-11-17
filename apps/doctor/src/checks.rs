@@ -2183,15 +2183,19 @@ fn with_bluez_class(conf: &str, class: u32) -> String {
     text
 }
 
-/// An iPhone paired: it offers its messages and contacts to a computer
-/// (the switches under it in its Bluetooth settings) by what the
-/// computer said it was when they paired, and BlueFerry's notes found
-/// them offered to one that says it's a hands-free device (Ben,
-/// 2026-11-17: "have it identify as blueferry suggests"). BlueZ says so
-/// at every start from its own settings (`Class`), so nothing has to put
-/// it back. The fix writes it there and starts Bluetooth again.
+/// An iPhone offers its messages and contacts to a computer (the
+/// switches under it in its Bluetooth settings) by what the computer said
+/// it was as they paired, and BlueFerry's notes found them offered to one
+/// that says it's a hands-free device (Ben, 2026-11-17: "have it identify
+/// as blueferry suggests"). BlueZ says so at every start from its own
+/// settings (`Class`), so nothing has to put it back; the fix writes it
+/// there and starts Bluetooth again. Said wherever there's Bluetooth,
+/// since it must be so *before* an iPhone pairs: a problem with one
+/// paired, a suggestion otherwise. (At first only with an iPhone paired:
+/// Ben, who had unpaired to pair again, "olo doctor didn't say anything
+/// about it".)
 fn phone_class(roots: &Roots, r: &mut Report) {
-    if !roots.iphone {
+    if !roots.iphone && bluetooth_controllers(&roots.fs).is_empty() {
         return;
     }
     // (Whole: written back with only the class changed.)
@@ -2199,14 +2203,19 @@ fn phone_class(roots: &Roots, r: &mut Report) {
     let class = bluez_class(&conf);
     // (Only the major and minor classes count: BlueZ takes no more.)
     if class.is_some_and(|c| c & 0x1ffc == HANDS_FREE & 0x1ffc) {
-        r.fine.push(Fine { title: "Bluetooth presents this computer as an iPhone expects".into(), detail: "As a hands-free device: the iPhone offers its messages and contacts to it.".into() });
+        r.fine.push(Fine { title: "Bluetooth presents this computer as an iPhone expects".into(), detail: "As a hands-free device: an iPhone offers its messages and contacts to it.".into() });
         return;
     }
+    let (severity, title) = if roots.iphone {
+        (Severity::Problem, "Bluetooth doesn’t present this computer as an iPhone expects")
+    } else {
+        (Severity::Advice, "For an iPhone: have Bluetooth present this computer as one expects")
+    };
     r.findings.push(Finding {
         id: "phone-class".into(),
-        severity: Severity::Problem,
-        title: "Bluetooth doesn’t present this computer as an iPhone expects".into(),
-        detail: "An iPhone offers its messages and contacts to a computer (Show Notifications and Sync Contacts, under it in the iPhone’s Bluetooth settings) by what the computer says it is, and it offers them to one that says it’s a hands-free device. The fix has Bluetooth say so from now on (Class in /etc/bluetooth/main.conf) and starts it again. If the switches still don’t appear, it’s what the computer said as they paired that counts: forget this computer on the iPhone and pair again (Preferences ▸ Phone). The iPhone may then also offer this computer for calls’ sound.".into(),
+        severity,
+        title: title.into(),
+        detail: "An iPhone offers its messages and contacts to a computer (Show Notifications and Sync Contacts, under it in the iPhone’s Bluetooth settings) by what the computer says it is as they pair, and it offers its contacts to one that says it’s a hands-free device; this one says it’s a laptop. The fix has Bluetooth say so from now on (Class in /etc/bluetooth/main.conf) and starts it again. An iPhone paired before: forget this computer on the iPhone, remove the iPhone in Preferences ▸ Bluetooth, and pair again (Preferences ▸ Phone). The iPhone may then also offer this computer for calls’ sound, and other devices see it as a headset.".into(),
         fix: Some(Fix {
             label: "Present as Hands-Free".into(),
             root: true,
@@ -5434,8 +5443,13 @@ mod tests {
     fn an_iphone_wants_a_hands_free_computer() {
         let (fs, mut roots) = machine("phone-class");
         let found = |roots: &Roots| scan(roots).findings.into_iter().find(|f| f.id == "phone-class");
-        assert!(found(&roots).is_none(), "no iPhone: nothing said");
+        assert!(found(&roots).is_none(), "no Bluetooth: nothing said");
+        // Bluetooth, no iPhone paired yet: suggested (it must be so before
+        // one pairs); one paired: a problem.
+        std::fs::create_dir_all(fs.join("sys/class/bluetooth/hci0")).unwrap();
+        assert_eq!(found(&roots).map(|f| f.severity), Some(Severity::Advice));
         roots.iphone = true;
+        assert_eq!(found(&roots).map(|f| f.severity), Some(Severity::Problem));
         let conf = "[General]\n# Default device class.\n#Class = 0x000100\n#DiscoverableTimeout = 0\n\n[BR]\n#PageScanType = \n";
         let path = fs.join(BLUEZ_CONF);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();

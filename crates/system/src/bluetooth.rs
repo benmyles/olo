@@ -30,9 +30,20 @@ pub struct Adapter {
     pub power_state: String,
     pub discoverable: bool,
     pub discovering: bool,
+    /// Its Class of Device: what it says this computer is (a laptop; a
+    /// hands-free device, for an iPhone: [`Adapter::hands_free`]).
+    pub class: u32,
 }
 
 impl Adapter {
+    /// It says this computer is a hands-free device (Audio/Video,
+    /// Hands-Free: the major and minor classes, whatever the service
+    /// bits), which an iPhone wants of a computer to offer it its
+    /// contacts (Olo Doctor's Present as Hands-Free).
+    pub fn hands_free(&self) -> bool {
+        self.class & 0x1ffc == 0x0408
+    }
+
     /// The controller doesn't answer: BlueZ has it powered and its power
     /// off, or the other way round, which isn't a change under way (those
     /// are "off-enabling" and "on-disabling"). So a controller looks whose
@@ -114,6 +125,7 @@ pub fn status() -> Result<Status> {
             power_state: get(a, "PowerState").unwrap_or_default(),
             discoverable: get(a, "Discoverable").unwrap_or(false),
             discovering: get(a, "Discovering").unwrap_or(false),
+            class: get(a, "Class").unwrap_or(0),
         })
     });
     let mut devices: Vec<Device> = paths

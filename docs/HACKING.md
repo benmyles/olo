@@ -13615,10 +13615,15 @@ specifications):
 - **The computer says it's a hands-free device** (Ben, 2026-11-17:
   "have it identify as blueferry suggests"): Class of Device major 4
   (Audio/Video), minor 2 (Hands-Free, the byte 0x08), as BlueFerry's
-  notes found an iPhone wants. Olo Doctor offers it with an iPhone
-  paired (`phone_class`: `Class = 0x000408` in /etc/bluetooth/main.conf,
+  notes found an iPhone wants. Olo Doctor offers it wherever there's
+  Bluetooth, a problem with an iPhone paired and a suggestion before one
+  is (`phone_class`: `Class = 0x000408` in /etc/bluetooth/main.conf,
   Bluetooth started again), which bluetoothd applies itself at every
-  start: nothing has to put it back. (Not Car Audio, the other class an
+  start: nothing has to put it back. Preferences ▸ Phone's first step
+  says so while the adapter isn't (`Adapter::hands_free`), with Open Olo
+  Doctor: it must be so *before* the iPhone pairs. (At first Doctor said
+  it only with an iPhone paired, and Ben, who had unpaired to pair
+  again, heard nothing of it.) (Not Car Audio, the other class an
   iPhone gives a car's features to: it can turn on the iPhone's Driving
   Focus.) What the computer said as they paired is what counts, so a
   phone paired before may need pairing again.

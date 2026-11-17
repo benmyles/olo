@@ -74,6 +74,7 @@ fn test_status() -> Status {
             power_state: "on".into(),
             discoverable: false,
             discovering: true,
+            class: 0x6c010c,
         }),
         devices: vec![
             // (A phone, connected: the row of buttons at its widest,

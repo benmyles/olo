@@ -309,6 +309,25 @@ fn connect(ui: &mut Ui, st: &mut State, state: &PhoneState, error: Option<String
                 st.searched = true;
                 let _ = blue.tx.send(bluetooth::Request::Search(adapter.path.clone()));
             }
+            // An iPhone goes by what the computer says it is as they
+            // pair: a hands-free device has its contacts offered, a
+            // laptop not (Olo Doctor's fix, which needs a password).
+            if !adapter.hands_free() {
+                ui.add(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(m::SPACING))
+                        .child(div().flex_1().min_w_0().child(StringView::new("An iPhone first: Bluetooth doesn’t yet present this computer as an iPhone expects, and the iPhone would offer it its notifications but not its contacts. Olo Doctor fixes it (Present as Hands-Free); then pair.").wrap(true)))
+                        .child(Button::new("Open Olo Doctor").on_click(|_, _| {
+                            if let Err(e) = olo_xdg::spawn_detached("olo-doctor") {
+                                tracing::warn!("olo-doctor: {e}");
+                            }
+                        })),
+                );
+                ui.space(m::SPACING * 0.5);
+            }
             ui.add(StringView::new("On the phone, open Settings ▸ Bluetooth and keep it open there. It appears here in a moment.").wrap(true));
             ui.space(m::SPACING * 0.5);
             let phones: Vec<&bt::Device> = status.devices.iter().filter(|d| d.icon == "phone" && (d.named || d.paired)).collect();

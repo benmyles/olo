@@ -174,6 +174,11 @@ impl Adapter {
     fn alias(&self) -> String {
         "studio-laptop".into()
     }
+    /// A laptop's (Computer, Laptop), as BlueZ's default is.
+    #[zbus(property)]
+    fn class(&self) -> u32 {
+        0x6c010c
+    }
 
     fn start_discovery(&self) {
         self.0.lock().expect("world").discovering = true;
