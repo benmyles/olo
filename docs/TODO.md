@@ -64,6 +64,24 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **The phone, natively: no BlueFerry** (Ben, 2026-11-16, the evening
+  the BlueFerry integration landed and its backend wouldn't start: "i
+  don't love this blueferry dependency it's going to be too flaky. get
+  rid of blueferry and build everything we need in rust ourselves and
+  make the pairing/setup process much nicer and intuitive and visually
+  well designed"). Olo speaks to the iPhone itself, in Rust, in process,
+  as it does to AirPods: pairing and the link through BlueZ; OBEX, the
+  Message Access Profile (messages in, out and as they arrive: an MNS
+  server of Olo's own) and the Phone Book Access Profile (names for
+  numbers) over RFCOMM; ANCS over LE if it earns its keep (group names).
+  `olo-phone --service` keeps its notifications, its code finding and
+  the browsers' side as they are, on the new backend
+  (`olo_system::blueferry` goes; `blueferry-fake` becomes a stand-in
+  phone that speaks the profiles). Pairing is a sheet of Olo's own in
+  Preferences ▸ Phone, designed: find the phone, the code large on both,
+  the phone's switches shown as they are on the phone, each step seen to
+  happen. Olo Doctor no longer installs BlueFerry and offers to remove
+  it where it did. What a real iPhone does is tried with Ben's, by Ben.
 - **Beta, and a skill that adds a computer's hardware** (Ben,
   2026-11-16: "on the website, and in the readme, let's warn that it is
   beta quality and only tested on limited hardware configurations. also
