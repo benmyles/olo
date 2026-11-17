@@ -53,11 +53,14 @@ something nobody here has is in "Blocked", with what it waits for.
   it is; otherwise it plays at a quarter of the output's full volume,
   whatever the person's volume is set to, and leaves that setting as it
   found it.
-- **Close All in a window tab's menu** (Ben, 2026-11-16: "we need a
-  Close All option when right clicking a window tab (we have Close and
-  Close Others already)"). A window tab's right-click menu gets Close
-  All beside Close and Close Others: every tab of that group closed
-  (each asked as Close asks it: unsaved changes, a running program).
+- **A window tab's menu: Hide ▸ and Close ▸, each with Others and All**
+  (Ben, 2026-11-16: "we need a Close All option when right clicking a
+  window tab (we have Close and Close Others already)"; then: "we need
+  Hide Others and Hide All too. just nest both of them under like Hide
+  -> ... and Close -> ..."). A window tab's right-click menu gets two
+  submenus: Close ▸ Close, Close Others, Close All, and Hide ▸ Hide,
+  Hide Others, Hide All, each acting on the tabs of that group (a close
+  asked as Close asks it: unsaved changes, a running program).
 - **MGLRU's thrash protection at 250 ms: enough runs to say** (found
   2026-11-16, kernel/TUNING.md). At the kernel's advised 1000 ms it
   ended a program that fitted in memory in 3 runs of 9, so it isn't
