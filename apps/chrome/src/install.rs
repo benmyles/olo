@@ -354,8 +354,102 @@ fn download(package: &Package, to: &Path, cancel: &AtomicBool, tell: &dyn Fn(Pro
     Ok(Some(()))
 }
 
-/// An rpm header's entries we need: the payload's compressor.
-fn read_header(r: &mut impl Read, pad: bool) -> Result<HashMap<u32, String>, String> {
+/// An rpm header: its strings by tag (the payload's compressor), and
+/// the rest as it is, for the files' arrays ([`Header::files`]).
+#[derive(Default)]
+struct Header {
+    strings: HashMap<u32, String>,
+    /// Each entry: its tag, type, offset in `data` and count.
+    index: Vec<(u32, u32, usize, usize)>,
+    data: Vec<u8>,
+}
+
+/// A file of the package as its header says it: what the payload's
+/// newer form leaves out of the archive (rpm 6's "stripped" cpio, whose
+/// entries are only a number: the file's place in these).
+#[derive(Debug, Clone, PartialEq)]
+struct PackageFile {
+    /// As an archive names it: `./opt/google/chrome/chrome`.
+    name: String,
+    mode: u32,
+    size: u64,
+    inode: u64,
+    /// How many names the file has (hard links: its data comes with the
+    /// last of them).
+    links: u64,
+}
+
+impl Header {
+    fn get(&self, tag: u32) -> Option<(u32, usize, usize)> {
+        self.index.iter().find(|e| e.0 == tag).map(|e| (e.1, e.2, e.3))
+    }
+
+    /// An array of numbers (16, 32 or 64 bits each, big-endian).
+    fn numbers(&self, tag: u32) -> Vec<u64> {
+        let Some((kind, offset, count)) = self.get(tag) else { return Vec::new() };
+        let width = match kind {
+            3 => 2,
+            4 => 4,
+            5 => 8,
+            _ => return Vec::new(),
+        };
+        (0..count).map_while(|i| self.data.get(offset + i * width..offset + (i + 1) * width)).map(|b| b.iter().fold(0u64, |n, byte| n << 8 | u64::from(*byte))).collect()
+    }
+
+    /// An array of strings (each ended by a zero).
+    fn texts(&self, tag: u32) -> Vec<String> {
+        let Some((kind, mut offset, count)) = self.get(tag) else { return Vec::new() };
+        if !matches!(kind, 6 | 8 | 9) {
+            return Vec::new();
+        }
+        let mut out = Vec::with_capacity(count.min(100_000));
+        for _ in 0..count {
+            let Some(rest) = self.data.get(offset..) else { break };
+            let end = rest.iter().position(|&b| b == 0).unwrap_or(rest.len());
+            out.push(String::from_utf8_lossy(&rest[..end]).into_owned());
+            offset += end + 1;
+        }
+        out
+    }
+
+    /// The package's files, in the header's order: names from the
+    /// folders' and the files' own (DIRNAMES, DIRINDEXES, BASENAMES),
+    /// sizes (LONGFILESIZES, else FILESIZES), modes, and inodes (and
+    /// link counts, where given) for hard links.
+    fn files(&self) -> Vec<PackageFile> {
+        const FILESIZES: u32 = 1028;
+        const FILEMODES: u32 = 1030;
+        const FILEINODES: u32 = 1096;
+        const DIRINDEXES: u32 = 1116;
+        const BASENAMES: u32 = 1117;
+        const DIRNAMES: u32 = 1118;
+        const LONGFILESIZES: u32 = 5008;
+        const FILENLINKS: u32 = 5045;
+        let (bases, dirs, at) = (self.texts(BASENAMES), self.texts(DIRNAMES), self.numbers(DIRINDEXES));
+        let sizes = Some(self.numbers(LONGFILESIZES)).filter(|s| !s.is_empty()).unwrap_or_else(|| self.numbers(FILESIZES));
+        let (modes, inodes, links) = (self.numbers(FILEMODES), self.numbers(FILEINODES), self.numbers(FILENLINKS));
+        // (A package that doesn't say how many names a file has: as many
+        // files as have its inode.)
+        let sharing = |i: usize| match (links.get(i), inodes.get(i)) {
+            (Some(n), _) => *n,
+            (None, Some(inode)) if modes.get(i).is_some_and(|m| m & 0o170000 == 0o100000) => inodes.iter().zip(&modes).filter(|(other, m)| *other == inode && *m & 0o170000 == 0o100000).count() as u64,
+            _ => 1,
+        };
+        bases
+            .iter()
+            .enumerate()
+            .map(|(i, base)| PackageFile {
+                name: format!(".{}{base}", at.get(i).and_then(|d| dirs.get(*d as usize)).map_or("/", String::as_str)),
+                mode: modes.get(i).copied().unwrap_or(0) as u32,
+                size: sizes.get(i).copied().unwrap_or(0),
+                inode: inodes.get(i).copied().unwrap_or(0),
+                links: sharing(i),
+            })
+            .collect()
+    }
+}
+
+fn read_header(r: &mut impl Read, pad: bool) -> Result<Header, String> {
     let mut head = [0u8; 16];
     r.read_exact(&mut head).map_err(|_| "The package is cut short.")?;
     if head[..3] != [0x8e, 0xad, 0xe8] {
@@ -373,16 +467,17 @@ fn read_header(r: &mut impl Read, pad: bool) -> Result<HashMap<u32, String>, Str
         let mut skip = vec![0u8; 8 - size % 8];
         r.read_exact(&mut skip).map_err(|_| "The package is cut short.")?;
     }
-    let mut out = HashMap::new();
+    let mut out = Header::default();
     for e in index.chunks(16) {
         let word = |i: usize| u32::from_be_bytes(e[i..i + 4].try_into().unwrap());
-        let (tag, kind, offset) = (word(0), word(4), word(8) as usize);
-        // Strings (type 6) only.
+        let (tag, kind, offset, count) = (word(0), word(4), word(8) as usize, word(12) as usize);
+        out.index.push((tag, kind, offset, count));
         if kind == 6 && offset < data.len() {
             let end = data[offset..].iter().position(|&b| b == 0).map_or(data.len(), |p| offset + p);
-            out.insert(tag, String::from_utf8_lossy(&data[offset..end]).into_owned());
+            out.strings.insert(tag, String::from_utf8_lossy(&data[offset..end]).into_owned());
         }
     }
+    out.data = data;
     Ok(out)
 }
 
@@ -397,39 +492,74 @@ fn unpack_rpm(mut r: impl Read, dest: &Path, cancel: &AtomicBool) -> Result<bool
     }
     read_header(&mut r, true)?; // the signature
     let header = read_header(&mut r, false)?;
-    let payload: Box<dyn Read> = match header.get(&PAYLOAD_COMPRESSOR).map(String::as_str).unwrap_or("gzip") {
+    let payload: Box<dyn Read> = match header.strings.get(&PAYLOAD_COMPRESSOR).map(String::as_str).unwrap_or("gzip") {
         "xz" | "lzma" => Box::new(liblzma::read::XzDecoder::new(r)),
         "zstd" => Box::new(zstd::stream::read::Decoder::new(r).map_err(|e| e.to_string())?),
         "gzip" => Box::new(flate2::read::GzDecoder::new(r)),
         other => return Err(format!("The package is compressed with {other}, which Olo can't unpack.")),
     };
-    unpack_cpio(payload, dest, cancel)
+    unpack_cpio(payload, dest, cancel, &header.files())
 }
 
-/// The files under [`PREFIX`] in a "newc" cpio archive, into `dest`.
-fn unpack_cpio(mut r: impl Read, dest: &Path, cancel: &AtomicBool) -> Result<bool, String> {
+/// The files under [`PREFIX`] in a cpio archive, into `dest`: "newc"
+/// (each entry says its name, mode and size), or rpm 6's stripped form
+/// (`07070X` and a number: the file's place in `files`, the package
+/// header's list, which says the rest; Chrome's packages since
+/// 157.0.8103.78, built with rpm 6: the updater said "in a form Olo
+/// can't unpack" and Chrome stayed as it was, 2026-11-17). An archive
+/// may hold both, and ends as newc's do.
+fn unpack_cpio(mut r: impl Read, dest: &Path, cancel: &AtomicBool, files: &[PackageFile]) -> Result<bool, String> {
     let damaged = |e: io::Error| format!("The package's contents are damaged: {e}.");
     fs::create_dir_all(dest).map_err(|e| e.to_string())?;
     // Hard links: names waiting for the data that comes with the last one.
     let mut links: HashMap<u64, Vec<PathBuf>> = HashMap::new();
+    // (Stripped: how many of an inode's names have come; its data is
+    // with the last.)
+    let mut seen: HashMap<u64, u64> = HashMap::new();
     let mut at = 0u64;
     loop {
         if cancel.load(Ordering::Relaxed) {
             return Ok(false);
         }
-        let mut head = [0u8; 110];
-        r.read_exact(&mut head).map_err(damaged)?;
-        if &head[..6] != b"070701" && &head[..6] != b"070702" {
-            return Err("The package's contents are in a form Olo can't unpack.".into());
-        }
-        let field = |i: usize| u64::from_str_radix(std::str::from_utf8(&head[6 + i * 8..14 + i * 8]).unwrap_or("0"), 16).unwrap_or(0);
-        let (ino, mode, nlink, size, namesize) = (field(0), field(1) as u32, field(4), field(6), field(11) as usize);
-        let mut name = vec![0u8; namesize];
-        r.read_exact(&mut name).map_err(damaged)?;
-        at += 110 + namesize as u64;
+        let mut magic = [0u8; 6];
+        r.read_exact(&mut magic).map_err(damaged)?;
+        // What the entry is, and how much of the archive is its data.
+        let (name, ino, mode, nlink, size) = match &magic {
+            b"070701" | b"070702" => {
+                let mut head = [0u8; 104];
+                r.read_exact(&mut head).map_err(damaged)?;
+                let field = |i: usize| u64::from_str_radix(std::str::from_utf8(&head[i * 8..8 + i * 8]).unwrap_or("0"), 16).unwrap_or(0);
+                let (ino, mode, nlink, size, namesize) = (field(0), field(1) as u32, field(4), field(6), field(11) as usize);
+                let mut name = vec![0u8; namesize];
+                r.read_exact(&mut name).map_err(damaged)?;
+                at += 110 + namesize as u64;
+                (String::from_utf8_lossy(&name[..namesize.saturating_sub(1)]).into_owned(), ino, mode, nlink, size)
+            }
+            b"07070X" => {
+                let mut number = [0u8; 8];
+                r.read_exact(&mut number).map_err(damaged)?;
+                at += 14;
+                let file = std::str::from_utf8(&number).ok().and_then(|n| usize::from_str_radix(n, 16).ok()).and_then(|i| files.get(i));
+                let Some(f) = file else { return Err("The package's contents name a file its header doesn't have.".into()) };
+                let kind = f.mode & 0o170000;
+                // Data for a file, with the last of its names, and for a
+                // link (where it goes, as in newc); none for a folder.
+                let last = f.links <= 1 || {
+                    let n = seen.entry(f.inode).or_insert(0);
+                    *n += 1;
+                    *n == f.links
+                };
+                let size = match kind {
+                    0o100000 if last => f.size,
+                    0o120000 => f.size,
+                    _ => 0,
+                };
+                (f.name.clone(), f.inode, f.mode, f.links, size)
+            }
+            _ => return Err("The package's contents are in a form Olo can't unpack.".into()),
+        };
         skip(&mut r, pad4(at))?;
         at += pad4(at);
-        let name = String::from_utf8_lossy(&name[..namesize.saturating_sub(1)]).into_owned();
         if name == "TRAILER!!!" {
             return Ok(true);
         }
@@ -596,12 +726,110 @@ mod tests {
         entry(&mut a, "TRAILER!!!", 0, b"");
         let dest = std::env::temp_dir().join(format!("olo-chrome-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dest);
-        assert!(unpack_cpio(a.as_slice(), &dest, &AtomicBool::new(false)).unwrap());
+        assert!(unpack_cpio(a.as_slice(), &dest, &AtomicBool::new(false), &[]).unwrap());
         assert_eq!(fs::read(dest.join("google-chrome")).unwrap(), b"#!/bin/sh\n");
         // The setuid bit isn't kept.
         assert_eq!(fs::metadata(dest.join("google-chrome")).unwrap().permissions().mode() & 0o7777, 0o755);
         assert_eq!(fs::read(dest.join("link")).unwrap(), b"elf");
         assert!(!dest.join("usr").exists() && !dest.parent().unwrap().join("etc/evil").exists());
         let _ = fs::remove_dir_all(&dest);
+    }
+
+    /// rpm 6's stripped payload: each entry a number, the file's place in
+    /// the header's list, which says its name, mode and size (and that
+    /// two names are one file, whose data comes with the last); a
+    /// link's target is its data, as in newc.
+    #[test]
+    fn unpacks_a_stripped_archive_by_the_header() {
+        let file = |name: &str, mode: u32, size: u64, _link: &str, inode: u64, links: u64| PackageFile { name: name.into(), mode, size, inode, links };
+        let files = [
+            file("./opt/google/chrome", 0o040755, 0, "", 1, 2),
+            file("./opt/google/chrome/google-chrome", 0o104755, 10, "", 2, 1),
+            file("./opt/google/chrome/lib/x.so", 0o100644, 3, "", 3, 1),
+            file("./opt/google/chrome/link", 0o120777, 8, "lib/x.so", 4, 1),
+            file("./usr/bin/google-chrome", 0o100755, 2, "", 5, 1),
+            file("./opt/google/chrome/one", 0o100644, 4, "", 6, 2),
+            file("./opt/google/chrome/two", 0o100644, 4, "", 6, 2),
+            file("./opt/google/chrome/../../etc/evil", 0o100644, 2, "", 7, 1),
+        ];
+        let mut a = Vec::new();
+        let mut put = |i: usize, data: &[u8]| {
+            a.extend_from_slice(format!("07070X{i:08x}").as_bytes());
+            while a.len() % 4 != 0 {
+                a.push(0);
+            }
+            a.extend_from_slice(data);
+            while a.len() % 4 != 0 {
+                a.push(0);
+            }
+        };
+        put(0, b"");
+        put(1, b"#!/bin/sh\n");
+        put(2, b"elf");
+        put(3, b"lib/x.so");
+        put(4, b"no");
+        put(5, b"");
+        put(6, b"same");
+        put(7, b"no");
+        entry(&mut a, "TRAILER!!!", 0, b"");
+        // (On disk: /tmp is memory here.)
+        let dest = PathBuf::from("/var/tmp").join(format!("olo-chrome-stripped-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dest);
+        assert!(unpack_cpio(a.as_slice(), &dest, &AtomicBool::new(false), &files).unwrap());
+        assert_eq!(fs::read(dest.join("google-chrome")).unwrap(), b"#!/bin/sh\n");
+        assert_eq!(fs::metadata(dest.join("google-chrome")).unwrap().permissions().mode() & 0o7777, 0o755);
+        assert_eq!(fs::read_link(dest.join("link")).unwrap(), Path::new("lib/x.so"));
+        assert_eq!(fs::read(dest.join("link")).unwrap(), b"elf");
+        assert_eq!((fs::read(dest.join("one")).unwrap(), fs::read(dest.join("two")).unwrap()), (b"same".to_vec(), b"same".to_vec()));
+        assert!(!dest.join("usr").exists() && !dest.parent().unwrap().join("etc/evil").exists());
+        // A number the header hasn't: said, not guessed at.
+        let mut odd = Vec::new();
+        odd.extend_from_slice(b"07070X00000063\0\0");
+        assert!(unpack_cpio(odd.as_slice(), &dest, &AtomicBool::new(false), &files).unwrap_err().contains("header doesn't have"));
+        let _ = fs::remove_dir_all(&dest);
+    }
+
+    /// A package as Google ships it (`OLO_CHROME_RPM`, a file fetched by
+    /// hand; unpacked under `OLO_CHROME_UNPACK_TO`): Chrome's own files
+    /// come out, its program whole. `cargo test --release -p olo-chrome
+    /// unpacks_a_real_package -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn unpacks_a_real_package() {
+        let (Some(rpm), Some(dest)) = (std::env::var_os("OLO_CHROME_RPM"), std::env::var_os("OLO_CHROME_UNPACK_TO")) else { return };
+        let dest = PathBuf::from(dest);
+        let _ = fs::remove_dir_all(&dest);
+        let t = std::time::Instant::now();
+        assert!(unpack_rpm(io::BufReader::new(fs::File::open(rpm).unwrap()), &dest, &AtomicBool::new(false)).unwrap());
+        let chrome = fs::metadata(dest.join("chrome")).unwrap();
+        let count = walk(&dest);
+        println!("unpacked {count} files in {:.1} s; chrome is {} MB, mode {:o}", t.elapsed().as_secs_f32(), chrome.len() >> 20, chrome.permissions().mode() & 0o7777);
+        assert!(chrome.len() > 100 << 20 && chrome.permissions().mode() & 0o111 != 0);
+        assert!(dest.join("google-chrome").exists() && dest.join("product_logo_48.png").exists() && count > 100);
+        fn walk(dir: &Path) -> usize {
+            fs::read_dir(dir).map(|d| d.flatten().map(|e| if e.path().is_dir() && !e.path().is_symlink() { walk(&e.path()) } else { 1 }).sum()).unwrap_or(0)
+        }
+    }
+
+    /// A header's arrays as rpm writes them: the files named from their
+    /// folders, sizes of 64 bits before those of 32.
+    #[test]
+    fn a_headers_files() {
+        let mut h = Header::default();
+        let mut add = |tag: u32, kind: u32, count: usize, bytes: &[u8]| {
+            h.index.push((tag, kind, h.data.len(), count));
+            h.data.extend_from_slice(bytes);
+        };
+        add(1117, 8, 2, b"chrome\0icon.png\0");
+        add(1118, 8, 2, b"/opt/google/chrome/\0/usr/share/icons/\0");
+        add(1116, 4, 2, &[0, 0, 0, 0, 0, 0, 0, 1]);
+        add(1030, 3, 2, &[0x81, 0xed, 0x81, 0xa4]);
+        add(5008, 5, 2, &[0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9]);
+        add(1028, 4, 2, &[0, 0, 0, 7, 0, 0, 0, 7]);
+        add(1096, 4, 2, &[0, 0, 0, 5, 0, 0, 0, 6]);
+        let files = h.files();
+        assert_eq!(files.len(), 2);
+        assert_eq!((files[0].name.as_str(), files[0].mode, files[0].size, files[0].links), ("./opt/google/chrome/chrome", 0o100755, 1 << 32, 1));
+        assert_eq!((files[1].name.as_str(), files[1].mode, files[1].size), ("./usr/share/icons/icon.png", 0o100644, 9));
     }
 }

@@ -17483,8 +17483,13 @@ against egui's 77) (`install.rs`, on a worker thread, cancellable): Google's rpm
 repository for this CPU (`repomd.xml` → the primary index → the newest
 `google-chrome-stable`), the package downloaded with live progress and
 its sha256 checked against the index, then unpacked natively (the rpm
-lead and headers, the payload's compressor from tag 1125, a "newc" cpio
-stream; only `./opt/google/chrome/`, no setuid bits, no `..`) into
+lead and headers, the payload's compressor from tag 1125, a cpio
+stream: "newc", or rpm 6's stripped form, `07070X` and a number for
+each file, its place in the header's own list of files, which gives
+its name, mode and size, `Header::files`; Google's packages since
+157.0.8103.78 are built with rpm 6.0.1, and until 2026-11-17 the daily
+update said "in a form Olo can't unpack" and Chrome stayed as it was;
+only `./opt/google/chrome/`, no setuid bits, no `..`) into
 `<version>/`, with `current` switched over by a rename and older versions
 removed. It installs Chrome's icons into the hicolor theme and a
 `google-chrome.desktop` that starts it through `olo-chrome` (NoDisplay,

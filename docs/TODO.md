@@ -17,13 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Chrome's updater can't unpack the newest package** (found
-  2026-11-17, in a test's log: "olo-chrome: couldn't update Chrome: The
-  package's contents are in a form Olo can't unpack", `install.rs`'s
-  cpio reader, from the daily `--olo-update` with Chrome 157 installed).
-  Find what the newer rpm's payload is (a cpio form other than "newc"?)
-  and read it, so Chrome goes on updating.
-
 - **MGLRU's thrash protection at 250 ms: enough runs to say** (found
   2026-11-16, kernel/TUNING.md). At the kernel's advised 1000 ms it
   ended a program that fitted in memory in 3 runs of 9, so it isn't
@@ -5901,6 +5894,14 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Chrome's updater can't unpack the newest package**~~ (found and
+  done 2026-11-17). Google builds Chrome's rpm with rpm 6 since
+  157.0.8103.78: its payload is the "stripped" cpio, each entry only a
+  number for the file's place in the package's header. `olo-chrome`
+  reads it now (names, modes and sizes from the header). The real
+  package unpacks whole: 252 files, each matching the package's own
+  SHA-256. Chrome updates again at its next daily check.
 
 - ~~**Passwords reads a page's MFA QR code**~~ (Ben, 2026-11-16:
   "olo passwords and its chrome extension should be able to scan/detect
