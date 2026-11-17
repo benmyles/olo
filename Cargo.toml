@@ -18,6 +18,7 @@ olo-app = { path = "crates/app" }
 olo-interface = { path = "crates/interface" }
 olo-kit = { path = "crates/kit" }
 olo-net = { path = "crates/net" }
+olo-release = { path = "crates/release" }
 olo-crash = { path = "crates/crash" }
 olo-kmod = { path = "crates/kmod" }
 olo-video = { path = "crates/video" }

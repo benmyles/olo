@@ -224,9 +224,11 @@ impl Msg {
 enum Effect {
     /// Restart or Shut Down: its alert.
     ConfirmPower(Power),
-    /// The newer build olo-session found: its alert (`waiting`: already
-    /// asked for, while a build runs, which the alert says).
-    Upgrade { message: String, waiting: bool },
+    /// What olo-session has on offer: its alert, its buttons (Later
+    /// first), and what each but Later chooses (`Some("build")`,
+    /// `Some("release")`; None: the session's own choice, the one there
+    /// is) or nothing (an alert that only says: OK).
+    Upgrade { message: String, buttons: Vec<String>, choices: Vec<Option<Option<&'static str>>> },
 }
 
 /// Tells the app (its looper, from any thread).
@@ -1388,22 +1390,75 @@ impl Deskbar {
         }
     }
 
-    /// Offer the newer build olo-session found.
+    /// Offer what olo-session found: a newer build, a newer release, or
+    /// both (then which: the newer the default); or say how one under way
+    /// is going.
     fn ask_upgrade(&mut self) {
+        let say = |message: String| tell(Msg::Effect(Effect::Upgrade { message, buttons: vec!["OK".into()], choices: vec![None] }));
+        let offer = self.status.upgrade_offer.clone();
+        // A release being installed: how far.
+        if let Some((version, doing, fraction)) = &offer.installing {
+            let title = offer.release.as_ref().map_or_else(|| format!("Olo {version}"), |r| r.title.clone());
+            return say(format!("{title} is being installed ({doing}, {:.0}%). Olo switches to it when it's done: your windows stay open.", fraction * 100.0));
+        }
         // Already asked for, while a build runs: it says so.
         if self.status.upgrade_waiting {
-            let message = "A build of Olo is still running. Olo upgrades as soon as it has finished: your windows stay open.".to_owned();
-            return tell(Msg::Effect(Effect::Upgrade { message, waiting: true }));
+            return say("A build of Olo is still running. Olo upgrades as soon as it has finished: your windows stay open.".to_owned());
         }
-        // A new app_server means a reload, which programs it can't keep
-        // (ones that came before olo-wlproxy, or without it) don't
-        // survive.
-        let closing: Vec<String> = if self.status.upgrade.iter().any(|p| p == "olo-app-server") {
-            self.teams(None, None).into_iter().filter(|t| t.windows.iter().any(|w| !w.kept && our_app(&w.app_id).is_none())).map(|t| t.name).collect()
-        } else {
-            Vec::new()
+        let build = !self.status.upgrade.is_empty();
+        let release = offer.release.clone();
+        let h24 = self.clock.twenty_four_hour;
+        let now = olo_kit::when::now();
+        let at = |t: u64| {
+            let t = t as i64;
+            let day = olo_kit::when::day(t, now);
+            format!("{} at {}", if day == "Today" || day == "Yesterday" { day.to_lowercase() } else { day }, olo_kit::when::time(t, h24))
         };
-        tell(Msg::Effect(Effect::Upgrade { message: upgrade_message(&self.status.upgrade, &closing), waiting: false }));
+        match (build, release) {
+            (false, None) => {}
+            (true, None) => {
+                // A new app_server means a reload, which programs it can't
+                // keep (ones that came before olo-wlproxy, or without it)
+                // don't survive.
+                let closing = self.closing_on_reload(true);
+                tell(Msg::Effect(Effect::Upgrade { message: upgrade_message(&self.status.upgrade, &closing), buttons: vec!["Later".into(), "Upgrade".into()], choices: vec![None, Some(None)] }));
+            }
+            (false, Some(r)) => {
+                let failed = offer.failed.as_ref().map(|e| format!(" (The last try didn't go through: {e}.)")).unwrap_or_default();
+                let message = format!(
+                    "{} is ready, made {} ({} to download). Install it? Olo downloads it in the background and switches to it when it's done: your windows stay open.{failed}",
+                    r.title,
+                    at(r.made),
+                    olo_kit::files::format_size(r.download_bytes)
+                );
+                tell(Msg::Effect(Effect::Upgrade { message, buttons: vec!["Later".into(), "Upgrade".into()], choices: vec![None, Some(Some("release"))] }));
+            }
+            (true, Some(r)) => {
+                let built = offer.build_made.map(|t| format!(", made {}", at(t))).unwrap_or_default();
+                let message = format!(
+                    "Two upgrades are ready: a new build of Olo ({}{built}), and {} from GitHub, made {} ({} to download). Which do you want? Your windows stay open either way.",
+                    listing(&upgrade_names(&self.status.upgrade)),
+                    r.title,
+                    at(r.made),
+                    olo_kit::files::format_size(r.download_bytes)
+                );
+                // The newer of the two is the default (the last button).
+                let build_first = offer.build_made.is_some_and(|b| b < r.made);
+                let (b, rel) = (("The New Build".to_owned(), Some(Some("build"))), (r.title.clone(), Some(Some("release"))));
+                let (first, second) = if build_first { (b, rel) } else { (rel, b) };
+                tell(Msg::Effect(Effect::Upgrade { message, buttons: vec!["Later".into(), first.0, second.0], choices: vec![None, first.1, second.1] }));
+            }
+        }
+    }
+
+    /// The apps a reload of app_server (an upgrade that has a new one)
+    /// would close: the programs it can't keep (ones from before
+    /// olo-wlproxy, or without it).
+    fn closing_on_reload(&mut self, reloads: bool) -> Vec<String> {
+        if !reloads || !self.status.upgrade.iter().any(|p| p == "olo-app-server") {
+            return Vec::new();
+        }
+        self.teams(None, None).into_iter().filter(|t| t.windows.iter().any(|w| !w.kept && our_app(&w.app_id).is_none())).map(|t| t.name).collect()
     }
 
     /// New word from the notification service: the apps a notification
@@ -2273,9 +2328,10 @@ fn notifications_menu(quiet: bool) -> Menu {
         .item("Notification Settings…", "pref:notifications")
 }
 
-/// "Terminal, Deskbar and 3 others", for the upgrade alert.
-fn upgrade_message(programs: &[String], closing: &[String]) -> String {
-    let names: Vec<String> = programs
+/// The programs' names as the person knows them ("Terminal", "the window
+/// server").
+fn upgrade_names(programs: &[String]) -> Vec<String> {
+    programs
         .iter()
         .map(|bin| match OUR_APPS.iter().find(|(b, _, _)| b == bin) {
             Some((_, name, _)) => name.to_string(),
@@ -2287,8 +2343,12 @@ fn upgrade_message(programs: &[String], closing: &[String]) -> String {
                 other => other.to_string(),
             },
         })
-        .collect();
-    let list = listing(&names);
+        .collect()
+}
+
+/// "Terminal, Deskbar and 3 others", for the upgrade alert.
+fn upgrade_message(programs: &[String], closing: &[String]) -> String {
+    let list = listing(&upgrade_names(programs));
     if closing.is_empty() {
         return format!("A new build of Olo is ready ({list}). Install it now? Your windows stay open.");
     }
@@ -2450,14 +2510,22 @@ impl BarView {
                     }
                 });
             }
-            Effect::Upgrade { message, waiting } => {
+            Effect::Upgrade { message, buttons, choices } => {
                 if let Some(w) = self.upgrade_ask.take() {
                     w.close(cx);
                 }
-                let buttons: &[&str] = if waiting { &["OK"] } else { &["Later", "Upgrade"] };
-                self.upgrade_ask = olo_kit::widgets::open_alert(cx, "Upgrade Olo", "system", &message, buttons, move |choice, _| {
-                    if *choice == Some(1) && !waiting {
-                        // olo-session installs the programs and reloads in place.
+                let labels: Vec<&str> = buttons.iter().map(String::as_str).collect();
+                self.upgrade_ask = olo_kit::widgets::open_alert(cx, "Upgrade Olo", "system", &message, &labels, move |choice, _| {
+                    if let Some(Some(which)) = choice.and_then(|i| choices.get(i).copied()) {
+                        // Which one (a build or a release), where both
+                        // were on offer: said before the signal.
+                        if let Some(which) = which {
+                            let path = olo_xdg::state_runtime_dir().join(format!("upgrade-choice-{}", olo_xdg::display_name()));
+                            if let Err(e) = std::fs::write(&path, which) {
+                                tracing::warn!("couldn't say which upgrade: {e}");
+                            }
+                        }
+                        // olo-session installs it and reloads in place.
                         match std::env::var("OLO_SESSION_PID").ok().and_then(|p| p.parse::<i32>().ok()) {
                             // SAFETY: sending a signal.
                             Some(pid) if unsafe { libc::kill(pid, libc::SIGUSR2) } == 0 => {}
@@ -2761,7 +2829,7 @@ impl Deskbar {
             + tray_widgets.len()
             + [
                 display_number.is_some(),
-                !st.upgrade.is_empty() || st.upgrade_waiting,
+                status::upgrade_shown(&st),
                 st.recording.is_some(),
                 st.backup.is_some(),
                 !st.sharing.is_empty(),
@@ -2967,14 +3035,19 @@ impl Deskbar {
                 }
             }));
         }
-        if !st.upgrade.is_empty() || st.upgrade_waiting {
+        if status::upgrade_shown(&st) {
             let n = st.upgrade.len();
-            let tip_text = if st.upgrade_waiting {
-                "A build of Olo is running: Olo upgrades as soon as it has finished.".to_owned()
-            } else {
-                format!("A new build of Olo is ready ({n} program{}). Click to upgrade.", if n == 1 { "" } else { "s" })
+            let offer = &st.upgrade_offer;
+            let release = offer.release.as_ref().map(|r| r.title.clone());
+            let tip_text = match (&offer.installing, st.upgrade_waiting, n, &release) {
+                (Some((v, doing, f)), ..) => format!("Installing {}: {doing}, {:.0}%.", release.clone().unwrap_or_else(|| format!("Olo {v}")), f * 100.0),
+                (None, true, ..) => "A build of Olo is running: Olo upgrades as soon as it has finished.".to_owned(),
+                (None, false, 0, Some(r)) => format!("{r} is ready. Click to upgrade."),
+                (None, false, n, Some(r)) => format!("A new build of Olo ({n} program{}) and {r} are ready. Click to choose.", if n == 1 { "" } else { "s" }),
+                (None, false, n, None) => format!("A new build of Olo is ready ({n} program{}). Click to upgrade.", if n == 1 { "" } else { "s" }),
             };
-            let (_, h) = tray_item(&mut d, "upgrade", tip_text, Box::new(|g, r| status::draw_upgrade(g, r, &theme::palette())));
+            let done = offer.installing.as_ref().map(|(_, _, f)| *f);
+            let (_, h) = tray_item(&mut d, "upgrade", tip_text, Box::new(move |g, r| status::draw_upgrade(g, r, &theme::palette(), done)));
             let m = model.clone();
             d.hits.push(h.on_any_button(move |e, _cx| {
                 if matches!(button(e), MouseButton::Left | MouseButton::Right) {

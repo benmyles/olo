@@ -50,7 +50,9 @@ use serde::{Deserialize, Serialize};
 
 const USAGE: &str = "usage: olo-session [--tty-udev | --winit | --headless WxH] [--no-shell | --greeter]
        olo-session reload     restart app_server in place (picks up upgrades)
-       olo-session upgrade    install newer programs from the build tree, then reload
+       olo-session upgrade [build|release]
+                              install newer programs (from the build tree, or Olo's
+                              newest release), then reload
        olo-session quit       end the session";
 
 const SHELL: &[&[&str]] = &[&["olo-deskbar"], &["olo-tracker", "--desktop"]];
@@ -137,7 +139,14 @@ pub fn run() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("reload") => signal_session(libc::SIGHUP),
-        Some("upgrade") => signal_session(libc::SIGUSR2),
+        Some("upgrade") => {
+            // Which, where both are on offer: `upgrade build` or
+            // `upgrade release` (Deskbar's choice, as the person made it).
+            if let Some(which) = args.get(1).filter(|w| matches!(w.as_str(), "build" | "release")) {
+                let _ = std::fs::write(upgrade::choice_path(&olo_xdg::display_name()), which);
+            }
+            signal_session(libc::SIGUSR2)
+        }
         Some("quit") => signal_session(libc::SIGTERM),
         Some("-h" | "--help") => println!("{USAGE}"),
         _ => {
@@ -443,7 +452,7 @@ impl Session {
             skills::start();
         }
         if !greeter {
-            s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
+            s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display, s.real));
         }
         // The screen's bus, looked after with the shell (started again if
         // it ends, ended with the session).
@@ -547,7 +556,7 @@ impl Session {
         // from now.)
         s.say_real();
         if !greeter {
-            s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
+            s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display, s.real));
         }
         // Just installed (an upgrade re-executed us into this version):
         // what comes with the programs copied again, by this version,
@@ -555,10 +564,9 @@ impl Session {
         // (Ben, 2026-11-15: Backgrounds' choices didn't stay, the pack's
         // JPEG pictures and tiles left out by the version before). Not
         // on a reload long after: nothing is installed unasked.
-        if let Some(w) = &s.upgrades
+        if let Some((from, to)) = s.upgrades.as_ref().and_then(|w| w.paths())
             && just_installed()
         {
-            let (from, to) = w.paths();
             std::thread::spawn(move || upgrade::sync_data(&from, &to));
         }
         // A new proxy (this upgrade's) takes new programs from now on.
@@ -630,7 +638,7 @@ impl Session {
             log("nothing to install Olo from (not an installed session)");
             return;
         };
-        let done = w.install();
+        let done = w.install(Some(upgrade::Choice::Build));
         log(format!("installed {} programs", done.len()));
         if let Some(dir) = exe().parent() {
             upgrade::link_old_names(dir);
@@ -823,6 +831,10 @@ impl Session {
             if self.upgrades.as_mut().is_some_and(|w| w.check()) {
                 self.upgrade();
             }
+            // A release's install, done: switched to as a build's is.
+            if let Some(done) = self.upgrades.as_mut().and_then(|w| w.release_installed()) {
+                self.upgraded(done);
+            }
             // `keyd reload` forgets what we asked.
             if self.real && self.keyd_at.elapsed() > Duration::from_secs(60) {
                 self.keyd_at = Instant::now();
@@ -840,10 +852,20 @@ impl Session {
             log("nothing to upgrade from (not an installed session)");
             return;
         };
-        let done = w.install();
+        // (Which one, where Deskbar asked the person: a build or a
+        // release. A release's install goes on in the background and
+        // comes back through `release_installed`.)
+        let done = w.install(upgrade::chosen(&self.display));
+        self.upgraded(done);
+    }
+
+    /// `done`, the programs an upgrade installed, switched to: app_server
+    /// reloaded in place if it's one, the others nudged to re-execute.
+    fn upgraded(&mut self, done: Vec<String>) {
         if done.is_empty() {
             return;
         }
+        let Some(w) = &self.upgrades else { return };
         let restarts = done.iter().any(|p| p == "olo-app-server");
         if restarts {
             // Our apps re-execute as it restarts (the kit does, as it

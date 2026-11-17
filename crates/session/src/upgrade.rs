@@ -1,16 +1,32 @@
-//! Upgrades from a build tree. An installed session (tools/install-session.sh)
-//! knows the tree it came from (`<prefix>/share/olo/build-dir`, or
-//! `OLO_UPGRADE_FROM`) and watches it: once a build has finished and
-//! left newer programs there, it lists them in a file Deskbar reads
+//! Upgrades, from a build tree and from Olo's releases on GitHub.
+//!
+//! An installed session (tools/install-session.sh) knows the tree it came
+//! from (`<prefix>/share/olo/build-dir`, or `OLO_UPGRADE_FROM`) and
+//! watches it: once a build has finished and left newer programs there,
+//! it lists them in a file Deskbar reads
 //! (`$XDG_RUNTIME_DIR/olo-upgrade-<display>.json`), which shows a tray
-//! icon. Choosing to upgrade there signals us (SIGUSR2, or
-//! `olo-session upgrade`): we install the new programs beside ours and
-//! reload in place. Asked while a build is running, we say so in the
-//! same file (`waiting`) and upgrade as soon as it has finished.
+//! icon. And the person's session (Setup's install too, which has no
+//! tree) asks GitHub, through `olo-release` beside it, two minutes after
+//! it starts and every six hours, whether there's a release newer than
+//! what's installed, and offers that in the same file (`release`).
+//!
+//! Choosing to upgrade there signals us (SIGUSR2, or `olo-session
+//! upgrade [build|release]`), with which one where both are on offer
+//! (`choice_path`, Deskbar asks the person). A build: we install the new
+//! programs beside ours and reload in place; asked while a build is
+//! running, we say so (`waiting`) and upgrade as soon as it has finished.
+//! A release: `olo-release install` downloads, checks, unpacks and puts
+//! it in place, saying how far it has got (`installing`, Deskbar shows
+//! it); then we reload in place as for a build (`release_installed`).
 
 use std::{
-    os::{fd::AsRawFd, unix::fs::PermissionsExt},
+    io::BufRead as _,
+    os::{
+        fd::AsRawFd,
+        unix::{fs::PermissionsExt, process::CommandExt as _},
+    },
     path::{Path, PathBuf},
+    sync::mpsc,
     time::{Duration, Instant, SystemTime},
 };
 
@@ -31,89 +47,341 @@ pub const RETIRED: &[&str] = &["olo-suggestions", "olo-smart-tile"];
 /// What Deskbar reads.
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Available {
-    /// The programs that would change, by name.
+    /// The build's programs that would change, by name.
     pub programs: Vec<String>,
     /// Upgrading was asked for while a build was running: it happens
     /// once the build has finished.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub waiting: bool,
+    /// When the build's newest program on offer was made (seconds since
+    /// the epoch).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build_made: Option<u64>,
+    /// A release of Olo newer than what's installed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release: Option<ReleaseOffer>,
+    /// A release being installed: at what, and how far.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installing: Option<Installing>,
+    /// Why the last release's install didn't go through.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failed: Option<String>,
+}
+
+/// A release on offer, as `olo-release latest` says it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ReleaseOffer {
+    /// "2026.11.17-4e8d72a5", and its title ("Olo 2026.11.17").
+    pub version: String,
+    pub title: String,
+    /// When what it holds was made (its commit's time).
+    pub made: u64,
+    /// What installing it downloads.
+    pub download_bytes: u64,
+}
+
+/// How far a release's install has got.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Installing {
+    pub version: String,
+    /// "downloading", "unpacking" or "installing".
+    pub doing: String,
+    pub fraction: f32,
+}
+
+/// Which upgrade the person chose, where both are on offer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Choice {
+    Build,
+    Release,
 }
 
 pub fn state_path(display: &str) -> PathBuf {
     olo_xdg::state_runtime_dir().join(format!("upgrade-{display}.json"))
 }
 
+/// Where Deskbar (or `olo-session upgrade build|release`) says which,
+/// before it signals us: "build" or "release".
+pub fn choice_path(display: &str) -> PathBuf {
+    olo_xdg::state_runtime_dir().join(format!("upgrade-choice-{display}"))
+}
+
+/// The choice said for this upgrade, taken (read once).
+pub fn chosen(display: &str) -> Option<Choice> {
+    let path = choice_path(display);
+    let said = std::fs::read_to_string(&path).ok()?;
+    let _ = std::fs::remove_file(&path);
+    match said.trim() {
+        "build" => Some(Choice::Build),
+        "release" => Some(Choice::Release),
+        _ => None,
+    }
+}
+
+/// When the session first asks GitHub, and then how often.
+const RELEASES_FIRST: Duration = Duration::from_secs(120);
+const RELEASES_EVERY: Duration = Duration::from_secs(6 * 3600);
+/// After a question that went unanswered (offline, GitHub down).
+const RELEASES_AGAIN: Duration = Duration::from_secs(1800);
+
+/// What's known of Olo's releases, and the one being installed.
+struct Releases {
+    /// When to ask GitHub next.
+    next: Instant,
+    /// `olo-release latest`'s answer, on its way.
+    asking: Option<mpsc::Receiver<serde_json::Value>>,
+    offer: Option<ReleaseOffer>,
+    /// `olo-release install`'s words, as they come, and the last.
+    installing: Option<(mpsc::Receiver<serde_json::Value>, Installing)>,
+    failed: Option<String>,
+    /// What an install put in place, for the session to finish
+    /// (`release_installed`).
+    installed: Option<Vec<String>>,
+}
+
 pub struct Watcher {
-    from: PathBuf,
+    /// The build tree, for an install made from one.
+    from: Option<PathBuf>,
     to: PathBuf,
     state: PathBuf,
     pending: Vec<String>,
+    build_made: Option<u64>,
     last: Option<Instant>,
     /// Asked to upgrade while a build was running.
     wanted: bool,
+    /// Olo's releases, for the person's session.
+    releases: Option<Releases>,
 }
 
 impl Watcher {
-    /// Watch for programs newer than ours (in `to`), if we know where
-    /// they're built.
-    pub fn new(to: &Path, display: &str) -> Option<Watcher> {
+    /// Watch for programs newer than ours (in `to`): in the tree they're
+    /// built in, if we know where; and, for the person's own session
+    /// (`releases`), Olo's releases. None for a development session (run
+    /// from the build tree itself), or with nothing to watch.
+    pub fn new(to: &Path, display: &str, releases: bool) -> Option<Watcher> {
         let from = std::env::var_os("OLO_UPGRADE_FROM").map(PathBuf::from).or_else(|| {
             let file = to.parent()?.join("share/olo/build-dir");
             Some(PathBuf::from(std::fs::read_to_string(file).ok()?.trim()))
-        })?;
-        // A development session runs from the build tree itself.
-        if same_dir(&from, to) {
+        });
+        // A development session runs from the build tree itself (or one
+        // the tree's own tools put in a folder of their own: no releases).
+        if from.as_deref().is_some_and(|f| same_dir(f, to)) || (from.is_none() && !to.parent().is_some_and(|p| p.join("share/olo").is_dir())) {
             return None;
         }
-        crate::log(format!("watching {} for upgrades", from.display()));
-        Some(Watcher { from, to: to.to_owned(), state: state_path(display), pending: Vec::new(), last: None, wanted: false })
+        let releases = releases && std::env::var("OLO_UPGRADE_RELEASES").map_or(true, |v| v != "0");
+        if from.is_none() && !releases {
+            return None;
+        }
+        if let Some(from) = &from {
+            crate::log(format!("watching {} for upgrades", from.display()));
+        }
+        if releases {
+            crate::log("asking GitHub for Olo's releases (two minutes after starting, then every six hours)");
+        }
+        let releases = releases.then(|| Releases { next: Instant::now() + RELEASES_FIRST, asking: None, offer: None, installing: None, failed: None, installed: None });
+        Some(Watcher { from, to: to.to_owned(), state: state_path(display), pending: Vec::new(), build_made: None, last: None, wanted: false, releases })
     }
 
     /// Look again (now and then), and tell Deskbar if what's on offer
     /// changed; true when an upgrade asked for during a build can go
     /// ahead now that it has finished.
     pub fn check(&mut self) -> bool {
+        if self.check_releases() {
+            self.publish();
+        }
         if self.last.is_some_and(|t| t.elapsed() < EVERY) {
             return false;
         }
         self.last = Some(Instant::now());
-        if building(&self.from) {
+        let Some(from) = self.from.clone() else { return false };
+        if building(&from) {
             return false;
         }
         // (None while a program it left is too fresh to trust.)
-        let Some(now) = newer(&self.from, &self.to) else { return false };
+        let Some(now) = newer(&from, &self.to) else { return false };
         if now != self.pending {
+            self.build_made = made_of(&from, &now);
             self.pending = now;
             self.publish();
         }
         std::mem::take(&mut self.wanted)
     }
 
+    /// What GitHub said, and how an install goes: whether what's on
+    /// offer changed. Asks again when it's time (no more than reading
+    /// two channels otherwise: nothing waits).
+    fn check_releases(&mut self) -> bool {
+        let to = self.to.clone();
+        let Some(r) = self.releases.as_mut() else { return false };
+        let mut changed = false;
+        if let Some(rx) = &r.asking {
+            match rx.try_recv() {
+                Ok(v) => {
+                    r.asking = None;
+                    if let Some(e) = v["error"].as_str() {
+                        crate::log(format!("couldn't ask GitHub for Olo's releases: {e}"));
+                        r.next = Instant::now() + RELEASES_AGAIN;
+                    } else {
+                        let offer = v["newer"].as_bool().unwrap_or(false).then(|| ReleaseOffer {
+                            version: v["version"].as_str().unwrap_or_default().to_owned(),
+                            title: v["title"].as_str().unwrap_or_default().to_owned(),
+                            made: v["made"].as_u64().unwrap_or(0),
+                            download_bytes: v["download_bytes"].as_u64().unwrap_or(0),
+                        });
+                        if offer != r.offer {
+                            match &offer {
+                                Some(o) => crate::log(format!("a newer release of Olo is available: {} ({})", o.title, o.version)),
+                                None => crate::log("no release of Olo newer than this one"),
+                            }
+                            r.offer = offer;
+                            changed = true;
+                        }
+                    }
+                }
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    r.asking = None;
+                    r.next = Instant::now() + RELEASES_AGAIN;
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+            }
+        }
+        if let Some((rx, now)) = r.installing.as_mut() {
+            let mut finished: Option<Result<Vec<String>, String>> = None;
+            loop {
+                match rx.try_recv() {
+                    Ok(v) => {
+                        if let Some(e) = v["error"].as_str() {
+                            finished = Some(Err(e.to_owned()));
+                        } else if let Some(list) = v["installed"].as_array() {
+                            finished = Some(Ok(list.iter().filter_map(|p| p.as_str().map(str::to_owned)).collect()));
+                        } else if let Some(doing) = v["doing"].as_str() {
+                            *now = Installing { version: now.version.clone(), doing: doing.to_owned(), fraction: v["fraction"].as_f64().unwrap_or(0.0) as f32 };
+                            changed = true;
+                        }
+                    }
+                    Err(mpsc::TryRecvError::Empty) => break,
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        finished.get_or_insert_with(|| Err("olo-release stopped before it had finished".into()));
+                        break;
+                    }
+                }
+            }
+            if let Some(f) = finished {
+                let version = now.version.clone();
+                r.installing = None;
+                changed = true;
+                match f {
+                    Ok(done) => {
+                        crate::log(format!("installed release {version}: {} programs changed", done.len()));
+                        r.offer = None;
+                        r.failed = None;
+                        r.installed = Some(done);
+                        // (Asked again soon: what's installed now.)
+                        r.next = Instant::now() + RELEASES_FIRST;
+                    }
+                    Err(e) => {
+                        crate::log(format!("couldn't install release {version}: {e}"));
+                        r.failed = Some(e);
+                    }
+                }
+            }
+        }
+        if r.asking.is_none() && r.installing.is_none() && Instant::now() >= r.next {
+            r.next = Instant::now() + RELEASES_EVERY;
+            r.asking = run_release(&to, &["latest"]);
+        }
+        changed
+    }
+
+    /// What installing a release put in place, once it has: the programs
+    /// that changed, for the session to switch to (as after a build's).
+    pub fn release_installed(&mut self) -> Option<Vec<String>> {
+        self.releases.as_mut()?.installed.take()
+    }
+
     fn publish(&self) {
-        if self.pending.is_empty() && !self.wanted {
+        let r = self.releases.as_ref();
+        let release = r.and_then(|r| r.offer.clone());
+        let installing = r.and_then(|r| r.installing.as_ref().map(|(_, i)| i.clone()));
+        let failed = r.and_then(|r| r.failed.clone());
+        if self.pending.is_empty() && !self.wanted && release.is_none() && installing.is_none() {
             let _ = std::fs::remove_file(&self.state);
             return;
         }
         if self.wanted {
             crate::log("upgrading once the build has finished");
-        } else {
+        } else if !self.pending.is_empty() && installing.is_none() {
             crate::log(format!("upgrade available: {}", self.pending.join(", ")));
         }
-        let json = serde_json::to_string(&Available { programs: self.pending.clone(), waiting: self.wanted }).unwrap_or_default();
+        let available = Available { programs: self.pending.clone(), waiting: self.wanted, build_made: self.build_made, release, installing, failed };
+        let json = serde_json::to_string(&available).unwrap_or_default();
         let tmp = self.state.with_extension("new");
         if std::fs::write(&tmp, json).is_ok() {
             let _ = std::fs::rename(&tmp, &self.state);
         }
     }
 
-    /// The build tree it installs from and the directory it installs to.
-    pub fn paths(&self) -> (PathBuf, PathBuf) {
-        (self.from.clone(), self.to.clone())
+    /// The build tree it installs from and the directory it installs to
+    /// (none for an install without a tree).
+    pub fn paths(&self) -> Option<(PathBuf, PathBuf)> {
+        Some((self.from.clone()?, self.to.clone()))
     }
 
-    /// Install what's newer; the programs that were.
-    pub fn install(&mut self) -> Vec<String> {
-        if building(&self.from) {
+    /// Upgrade as `choice` says (none said: the build, if it has
+    /// anything newer, else the release on offer). A build's programs are
+    /// installed now, and returned; a release's install is started, and
+    /// what it put in place comes later (`release_installed`).
+    pub fn install(&mut self, choice: Option<Choice>) -> Vec<String> {
+        let offered = self.releases.as_ref().and_then(|r| r.offer.clone());
+        let release = match choice {
+            Some(Choice::Release) => true,
+            Some(Choice::Build) => false,
+            None => self.pending.is_empty() && !self.wanted && offered.is_some(),
+        };
+        if release {
+            self.install_release(offered);
+            return Vec::new();
+        }
+        let Some(from) = self.from.clone() else {
+            crate::log("nothing to upgrade from: no build tree");
+            return Vec::new();
+        };
+        self.install_build(&from)
+    }
+
+    /// `olo-release install` started for the release on offer.
+    fn install_release(&mut self, offer: Option<ReleaseOffer>) {
+        let to = self.to.clone();
+        let Some(r) = self.releases.as_mut() else {
+            crate::log("not looking at releases here");
+            return;
+        };
+        if r.installing.is_some() {
+            crate::log("a release is being installed already");
+            return;
+        }
+        let Some(offer) = offer else {
+            crate::log("no release on offer to install");
+            return;
+        };
+        let mut args = vec!["install"];
+        for name in RETIRED {
+            args.extend(["--retire", name]);
+        }
+        match run_release(&to, &args) {
+            Some(rx) => {
+                crate::log(format!("installing release {} ({})", offer.title, offer.version));
+                r.failed = None;
+                r.installing = Some((rx, Installing { version: offer.version, doing: "downloading".into(), fraction: 0.0 }));
+            }
+            None => r.failed = Some("olo-release isn't installed beside the session".into()),
+        }
+        self.publish();
+    }
+
+    /// The build's newer programs installed; the programs that were.
+    fn install_build(&mut self, from: &Path) -> Vec<String> {
+        if building(from) {
             // Asked for now, done when it has finished (`check`), and
             // said so meanwhile.
             crate::log("a build is still running; upgrading as soon as it has finished");
@@ -122,10 +390,10 @@ impl Watcher {
             return Vec::new();
         }
         self.wanted = false;
-        let programs = newer(&self.from, &self.to).unwrap_or_default();
+        let programs = newer(from, &self.to).unwrap_or_default();
         let mut done = Vec::new();
         for name in &programs {
-            match install(&self.from.join(name), &self.to, name) {
+            match install(&from.join(name), &self.to, name) {
                 Ok(()) => done.push(name.clone()),
                 Err(e) => crate::log(format!("could not install {name}: {e}")),
             }
@@ -139,8 +407,9 @@ impl Watcher {
             }
         }
         // New and redrawn icons come with them (a new panel's, say).
-        sync_data(&self.from, &self.to);
-        self.pending = newer(&self.from, &self.to).unwrap_or_default();
+        sync_data(from, &self.to);
+        self.pending = newer(from, &self.to).unwrap_or_default();
+        self.build_made = made_of(from, &self.pending);
         self.publish();
         done
     }
@@ -361,6 +630,56 @@ fn building(from: &Path) -> bool {
         }
         false
     })
+}
+
+/// `olo-release` (beside the session in `to`) run with `args` and the
+/// install's prefix, at a low priority, what it says read on a thread of
+/// its own: each line, as JSON. (The session's `reap` reaps it.) None if
+/// it isn't there or can't start.
+fn run_release(to: &Path, args: &[&str]) -> Option<mpsc::Receiver<serde_json::Value>> {
+    let program = to.join("olo-release");
+    if !program.is_file() {
+        return None;
+    }
+    let mut cmd = std::process::Command::new(&program);
+    cmd.args(args).arg("--prefix").arg(to.parent()?).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped());
+    // SAFETY: async-signal-safe calls only, between fork and exec.
+    unsafe {
+        cmd.pre_exec(|| {
+            // No signals blocked (the session blocks its own), and in
+            // the background: a download and an unpack, never ahead of
+            // what the person is doing.
+            let mut set: libc::sigset_t = std::mem::zeroed();
+            libc::sigemptyset(&mut set);
+            libc::sigprocmask(libc::SIG_SETMASK, &set, std::ptr::null_mut());
+            libc::setpriority(libc::PRIO_PROCESS, 0, 10);
+            Ok(())
+        });
+    }
+    let mut child = cmd.spawn().map_err(|e| crate::log(format!("couldn't start olo-release: {e}"))).ok()?;
+    let out = child.stdout.take()?;
+    // (Reaped by the session's waitpid, not through `Child`.)
+    std::mem::forget(child);
+    let (tx, rx) = mpsc::channel();
+    std::thread::Builder::new()
+        .name("olo-release".into())
+        .spawn(move || {
+            for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line)
+                    && tx.send(v).is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .ok()?;
+    Some(rx)
+}
+
+/// When the newest of `programs` in `from` was made (seconds since the
+/// epoch).
+fn made_of(from: &Path, programs: &[String]) -> Option<u64> {
+    programs.iter().filter_map(|p| std::fs::metadata(from.join(p)).ok()?.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs())).max()
 }
 
 /// Our programs in `from` that are newer than (or missing from) `to`;
@@ -656,6 +975,67 @@ mod tests {
         panic!("{c:?} stayed busy");
     }
 
+    /// The person's session's watcher and `olo-release` (a stand-in,
+    /// saying what the real one says): a newer release asked for and
+    /// offered in Deskbar's file, then, chosen, installed, how far said
+    /// as it goes, and what it put in place handed to the session.
+    #[test]
+    fn a_release_offered_then_installed() {
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-release-watch-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let bin = dir.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::create_dir_all(dir.join("share/olo")).unwrap();
+        let stand_in = bin.join("olo-release");
+        std::fs::write(
+            &stand_in,
+            "#!/bin/sh\ncase \"$1\" in\nlatest) echo '{\"version\":\"2\",\"title\":\"Olo 2\",\"made\":123,\"newer\":true,\"download_bytes\":10}' ;;\ninstall) echo '{\"doing\":\"downloading\",\"fraction\":0.5}'; echo '{\"installed\":[\"olo-a\"],\"version\":\"2\"}' ;;\nesac\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&stand_in, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let display = format!("test-release-watch-{}", std::process::id());
+        // (A copy of the session's: no build tree here.)
+        let mut w = Watcher::new(&bin, &display, true).expect("an install to watch for releases");
+        assert!(w.from.is_none());
+        w.releases.as_mut().unwrap().next = Instant::now();
+        let until = Instant::now() + Duration::from_secs(10);
+        let state = state_path(&display);
+        let read = || -> serde_json::Value { std::fs::read(&state).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default() };
+        while read()["release"]["version"] != "2" {
+            assert!(Instant::now() < until, "never offered");
+            w.check();
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(read()["release"]["title"], "Olo 2");
+        // Chosen: installed, and handed over.
+        assert!(w.install(Some(Choice::Release)).is_empty(), "a release's install goes on in the background");
+        assert_eq!(read()["installing"]["version"], "2");
+        let done = loop {
+            assert!(Instant::now() < until, "never installed");
+            w.check();
+            if let Some(done) = w.release_installed() {
+                break done;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        assert_eq!(done, ["olo-a"]);
+        assert!(!state.exists(), "nothing on offer any more");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Which upgrade: as said in its file, read once.
+    #[test]
+    fn the_choice_is_read_once() {
+        let display = format!("test-choice-{}", std::process::id());
+        std::fs::create_dir_all(olo_xdg::state_runtime_dir()).unwrap();
+        std::fs::write(choice_path(&display), "release\n").unwrap();
+        assert_eq!(chosen(&display), Some(Choice::Release));
+        assert_eq!(chosen(&display), None);
+        std::fs::write(choice_path(&display), "nonsense").unwrap();
+        assert_eq!(chosen(&display), None);
+        assert!(!choice_path(&display).exists());
+    }
+
     #[test]
     fn a_program_whose_display_has_gone_is_left_over() {
         // One of ours (by name) three times: its display gone, there, none.
@@ -700,7 +1080,7 @@ mod tests {
         std::fs::copy("/usr/bin/bash", &session).unwrap();
         let run = |backend: &str| spawn_just_copied(std::process::Command::new(&session).args(["-c", "sleep 5; :", backend]));
         let (mut screen, mut real) = (run("--headless"), run("--tty-udev"));
-        let w = Watcher { from: dir.join("build"), to: dir.clone(), state: dir.join("state.json"), pending: Vec::new(), last: None, wanted: false };
+        let w = Watcher { from: Some(dir.join("build")), to: dir.clone(), state: dir.join("state.json"), pending: Vec::new(), build_made: None, last: None, wanted: false, releases: None };
         std::thread::sleep(std::time::Duration::from_millis(100));
         // Not replaced yet: nothing old.
         assert!(!w.old_screens().contains(&(screen.id() as i32)));
@@ -750,8 +1130,8 @@ mod tests {
         program(&from, RETIRED[0], 60);
         program(&to, RETIRED[0], 600);
         assert_eq!(newer(&from, &to).unwrap(), ["olo-deskbar"]);
-        let mut w = Watcher { from, to: to.clone(), state: base.join("olo-upgrade-test.json"), pending: Vec::new(), last: None, wanted: false };
-        assert_eq!(w.install(), ["olo-deskbar"]);
+        let mut w = Watcher { from: Some(from), to: to.clone(), state: base.join("olo-upgrade-test.json"), pending: Vec::new(), build_made: None, last: None, wanted: false, releases: None };
+        assert_eq!(w.install(None), ["olo-deskbar"]);
         assert!(to.join("olo-deskbar").exists() && !to.join(RETIRED[0]).exists());
         let _ = std::fs::remove_dir_all(&base);
     }
@@ -765,12 +1145,12 @@ mod tests {
         std::fs::create_dir_all(&to).unwrap();
         program(&from, "olo-deskbar", 60);
         let state = base.join("olo-upgrade-test.json");
-        let mut w = Watcher { from: from.clone(), to, state: state.clone(), pending: Vec::new(), last: None, wanted: false };
+        let mut w = Watcher { from: Some(from.clone()), to, state: state.clone(), pending: Vec::new(), build_made: None, last: None, wanted: false, releases: None };
         // Cargo holds its lock while it builds.
         let lock = std::fs::File::create(from.join(".cargo-lock")).unwrap();
         // SAFETY: flock on a file we own.
         assert_eq!(unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) }, 0);
-        assert!(w.install().is_empty());
+        assert!(w.install(None).is_empty());
         let said: Available = serde_json::from_str(&std::fs::read_to_string(&state).unwrap()).unwrap();
         assert!(said.waiting);
         assert!(!w.check());

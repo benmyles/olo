@@ -7604,18 +7604,14 @@ dependencies = [
  "olo-doctor",
  "olo-kit",
  "olo-net",
+ "olo-release",
  "olo-system",
  "olo-theme",
  "olo-xdg",
- "rustls",
  "serde_json",
- "sha2 0.11.1",
- "tar",
  "tracing",
  "tracing-subscriber",
- "ureq",
  "zbus",
- "zstd 0.14.3",
 ]
 
 [[package]]
@@ -8186,6 +8182,19 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "olo-release"
+version = "0.1.0"
+dependencies = [
+ "olo-net",
+ "rustls",
+ "serde_json",
+ "sha2 0.11.1",
+ "tar",
+ "ureq",
+ "zstd 0.14.3",
 ]
 
 [[package]]

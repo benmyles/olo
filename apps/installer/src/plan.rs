@@ -352,7 +352,7 @@ pub fn install(choices: Choices, given: Option<String>, stop: Arc<AtomicBool>, t
     };
     say(Event::Note(format!("Olo: {}", source.name)));
     let mut last = -1i64;
-    let archives = bundle::fetch(&source, &stop, &mut |file, files, got, total| {
+    let archives = bundle::fetch(&source, &[], &stop, &mut |file, files, got, total| {
         let mb = (got >> 20) as i64 + ((file as i64) << 40);
         if mb != last {
             last = mb;

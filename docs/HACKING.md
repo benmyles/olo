@@ -810,6 +810,7 @@ long after a way out comes back.
 | `crates/kit-base` | `olo-kit-base`: what the kit has that doesn't draw, re-exported by olo-kit under the same names: `instance` (one process per app), `settings`, `notify`, `files`, `places`, `watch`, `tracker`, `metrics` (the spacing system), `Proxy`, `search` (the query language, facets and suggestions), `masonry` (cards in columns), and `store` (an app's own files, written whole), `commands`, the socket agents and the command palette read apps through (its protocol, server and client), with `review`'s findings and `layout_review`'s checks, `list` (a list's selection and type-select), `spell` and `keys` (the keyboard profile's keys). Nothing in it draws. |
 | `crates/yuv` | `olo-yuv`: a video's picture as its decoder made it (`YuvFrame`: Y'CbCr 4:2:0 planes, or `YuvMemory`, the decoder's own memory) and the matrix that makes RGB of it. olo-interface draws it (`Painter::paint_yuv`) and re-exports it; what decodes (olo-images, olo-video, olo-vaapi) makes it. |
 | `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit: data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; the person's own choice first (`open::set_default`, kept in `~/.config/olo/default-apps.list` in mimeapps.list's form and copied into `olo-mimeapps.list` for other programs; `handler_cached` notices it changed, in any process), then Olo's apps, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`; Open With's few apps for a kind, `open::handlers_for`: as the person set them (`set_offered`, Preferences ▸ Default Apps ▸ Open With), else the one it opens in, Olo's own for it, then those whose entries claim it or a broader kind, by name, eight at most; worked out off the UI thread by `open::warm` (a folder's kinds, as Tracker lists it) and read by menus from `offer_cached`; `open::kind_of` names a kind by the file's name alone; `open::every_app` is every app whose command takes files (`DesktopEntry::takes_files`), Olo's first, and `Handler::icon` its icon; the person's own kinds of file are `mime::own_kinds` (`set_own_kinds`; `mime::type_for_extensions` keeps the type its extensions all share, else makes one of Olo's own, `application/x-olo-kind-EXT`, which `mime::from_name` gives first); desktop entries are kept until an applications folder changes, `desktop_entry::all_cached`; and the same for other programs: `open::for_others` gives the hidden `olo.viewer`, `olo.styled-edit` and `olo.tracker` desktop entries, each listing every type shared-mime-info knows that Olo opens with it, and an `olo-mimeapps.list` making them the defaults, which GIO, `gio open`/xdg-open and xdg-desktop-portal's OpenURI read before `mimeapps.list` while `XDG_CURRENT_DESKTOP` names Olo; olo-session writes them into `~/.local/share/applications` at start, makes that folder's `mimeinfo.cache` again when they change (`open::mime_cache`, as update-desktop-database would: GIO only finds an app for a type through it) and removes ones it wrote that are no longer wanted, `X-Olo-Written=true`; and, once Olo's Chrome is installed, `open::offer_browser` writes `~/.local/share/applications/olo-mimeapps.list` naming it for web pages and links, read after every `mimeapps.list` in the config directories so a browser the person chose wins, but ahead of the system's lists), `find_program`, `spawn_detached` (`spawn_detached_app` and `open::spawn_app` for a desktop entry's program, in a scope of its own: `scope`; Olo's own programs keep the launcher's stderr, the session's journal, so what Deskbar, Tracker or the palette starts logs like the rest; others' goes nowhere). |
+| `crates/release` | `olo-release`: Olo's releases on GitHub (the newest, with its checksum file and commit's time; downloaded, checked, unpacked, put in place): Setup's install, and the program an installed Olo's session asks for upgrades (`olo-release latest`, `install`). |
 | `crates/net` | `olo-net`: the network changing under a program that talks over it (see "The network changing"): connections on a network that went cut at once, what's kept for the network (`PerNetwork`: an HTTP client) made again for the new one, requests tried again across a change (`across_changes`), waits for a network (`wait_online`), and with its `ureq` feature a download that goes on where it broke off (`http::Download`).; and one TCP connection as the kernel keeps it (`tcp_info`: `TCP_INFO`'s every figure, the congestion control read and set, BBR's model of the path, which BBR the kernel's own is). `examples/tcp-flow`: flows to measure a congestion control with (tools/dev/bbr3-check). |
 | `crates/kmod` | `olo-kmod`: one of Olo's kernel modules built for the running kernel and installed (see "BBRv3 for TCP"): what the services that load them share (apps/gpu-memory, apps/bbr3). |
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
@@ -4373,6 +4374,51 @@ OLO_UPGRADE_FROM=<tree> tsession start NAME --session --shell` and
 For the race: touch an app's program, send the app SIGURG, then send
 the session SIGHUP 30–120 ms later, and check the window kept its
 place.
+
+**Upgrades from Olo's releases** (Ben, 2026-11-17: "olo's upgrader
+should look at github releases as well as the local build directory
+when offering an upgrade and if more than one option is found when
+clicking upgrade ask the user which one they want to upgrade to"). The
+person's own session (not a screen's, not one run from the tree)
+asks `olo-release latest --prefix ~/.local` two minutes after it
+starts and every six hours (half an hour after a failed question):
+a program of its own beside the session (`crates/release`, which Setup's
+code moved into: `olo_release`), run at nice 10, its answer read on a
+thread and picked up by the session's loop (`check_releases`: two
+channels read, nothing waited on). It asks GitHub's API for the latest
+release (`latest`, `OLO_RELEASES` for another server), with its
+checksum file and its commit's time (`/commits/SHA`), and says whether
+it's newer than what's installed (`is_newer`: not the version
+installed, `share/olo/version`; made after the release installed was,
+`share/olo/release.json`, else after the programs there were last put
+there: a release made from an older commit than the build installed
+isn't offered over it), and what it would download (`download_bytes`:
+the archive, and each part whose SHA-256 isn't in the installed
+release's checksum file, `share/olo/release.sha256`: the wallpapers'
+1.6 GB once). A newer one goes in the same file as the build's
+(`Available::release`, `build_made`), and Deskbar's arrow offers it:
+alone, "Olo 2026.11.17 is ready, made today at 12:02 PM (541 MB to
+download). Install it?"; with a build, "Two upgrades are ready: …
+Which do you want?" with a button for each, the newer the default
+(the last), and the choice written to `upgrade-choice-<display>`
+before the signal (`chosen`; `olo-session upgrade build|release` the
+same). Chosen, `olo-release install --prefix ~/.local --retire …`
+downloads into the cache, checks, unpacks and puts it in place
+(`place_prefix`: only programs that differ from those there, each
+renamed over its old self; the keyring's PAM module in `lib/olo`; the
+data copied over; retired programs taken away; what was installed
+recorded), saying how far it has got a line at a time (Deskbar: the
+arrow's tray fills, its tip and question say "downloading, 42%"); what
+it put in place comes back to the session (`release_installed`), which
+switches to it as after a build's (`upgraded`: app_server reloaded if
+it's new, the rest nudged, the session re-executing if it is). The
+download is removed once in place. A release from before 2026.11.17's
+next has no `olo-release`: its session offers nothing until Setup
+installs one that has. Tested: `olo_release`'s
+`a_release_found_and_installed_as_an_upgrade` (a server of the test's
+own as GitHub), the session's `a_release_offered_then_installed` (a
+stand-in `olo-release`), and the real API read (`olo-release latest
+--prefix` an empty folder).
 
 **Agent Screens follow the person's upgrade.** A screen is a headless
 olo-session of the installed programs; it installs nothing (that's the
@@ -13536,7 +13582,8 @@ The work (`plan.rs`) runs on a worker, each stage told to the window
 Fedora (`PACKAGES`: what its programs link, `ldd` on every program,
 22 packages, and the services and fonts a session uses) through
 PackageKit; RPM Fusion's two repositories if chosen (Olo Doctor's
-`InstallRepository`); Olo itself (`bundle.rs`: the newest GitHub
+`InstallRepository`); Olo itself (`olo_release`, `crates/release`, shared with
+the upgrader: the newest GitHub
 release's `olo-VERSION-ARCH.tar.zst` of `benmyles/olo`, or `--bundle
 URL|FILE`, downloaded into `~/.cache/olo-installer` and kept, its
 published SHA-256 checked, unpacked (zstd, tar; nothing outside `olo/`)

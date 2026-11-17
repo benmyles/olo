@@ -41,12 +41,6 @@ something nobody here has is in "Blocked", with what it waits for.
   band, shows at all of them). Why isn't known yet; Tracker's drop mark
   goes through the list (`ListModel::mark_drop`) instead.
 
-- **The upgrader looks at GitHub's releases too, and asks which** (Ben,
-  2026-11-17: "olo's upgrader should look at github releases as well as
-  the local build directory when offering an upgrade and if more than
-  one option is found when clicking upgrade ask the user which one they
-  want to upgrade to").
-
 - **Telegram and Phone: react to a message from its right-click menu**
   (Ben, 2026-11-17: "right clicking on a message in telegram or phone
   should give me a menu where i can choose to react with an emoji and
@@ -5939,6 +5933,23 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**The upgrader looks at GitHub's releases too, and asks which**~~
+  (Ben, 2026-11-17: "olo's upgrader should look at github releases as
+  well as the local build directory when offering an upgrade and if
+  more than one option is found when clicking upgrade ask the user
+  which one they want to upgrade to"; done the same day). Your session
+  asks GitHub two minutes after it starts and every six hours whether
+  there's a release newer than what's installed (a release made from an
+  older commit than the build you installed isn't offered), and
+  Deskbar's arrow offers it; with a new build too, it asks which, the
+  newer the default. A release is downloaded and installed in the
+  background (the arrow's tray fills as it goes) and Olo switches to it
+  as after a build. Setup's installs get upgrades this way from the
+  next release on (2026.11.17 has no `olo-release` yet). Looked at in a
+  test Deskbar at 1×, 1.5× and 2× (the layout review: nothing); tested
+  against a server standing in for GitHub, and the real API read. Your
+  own session starts asking after the upgrade.
 
 - ~~**Agent Screens: what real agents tripped on, found in their
   histories and fixed**~~ (Ben, 2026-11-17: "go through the agent

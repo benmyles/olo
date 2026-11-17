@@ -1,0 +1,20 @@
+[package]
+name = "olo-release"
+description = "Olo's releases on GitHub: the newest found, its files downloaded and checked, unpacked and put in place (Setup's, and an installed Olo's upgrades through olo-release)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "olo-release"
+path = "src/main.rs"
+
+[dependencies]
+olo-net = { workspace = true, features = ["ureq"] }
+serde_json.workspace = true
+# GitHub over HTTPS, the SHA-256 checked, the .tar.zst opened.
+ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "platform-verifier", "json"] }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+sha2 = "0.11"
+zstd = "0.14"
+tar = "0.4"

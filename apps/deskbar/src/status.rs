@@ -68,6 +68,9 @@ pub struct Status {
     /// Upgrading was asked for while a build was running: olo-session
     /// upgrades once it has finished.
     pub upgrade_waiting: bool,
+    /// The rest of olo-session's offer: a newer release of Olo, and how
+    /// installing one goes.
+    pub upgrade_offer: UpgradeOffer,
     /// Unread notifications and Do Not Disturb (None: no notification
     /// service).
     pub notifications: Option<NotificationState>,
@@ -171,13 +174,62 @@ fn upgrade_path() -> PathBuf {
     olo_xdg::state_runtime_dir().join(format!("upgrade-{}.json", olo_xdg::display_name()))
 }
 
+/// A release of Olo on offer (olo-session's `ReleaseOffer`).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ReleaseOffer {
+    pub version: String,
+    /// "Olo 2026.11.17".
+    pub title: String,
+    /// When what it holds was made, in seconds since the epoch.
+    pub made: u64,
+    pub download_bytes: u64,
+}
+
+/// What olo-session offers besides a build's programs.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct UpgradeOffer {
+    /// When the build on offer was made (its newest program).
+    pub build_made: Option<u64>,
+    pub release: Option<ReleaseOffer>,
+    /// A release being installed: its version, at what ("downloading",
+    /// "unpacking", "installing"), and how far (0–1).
+    pub installing: Option<(String, String, f32)>,
+    /// Why the last release's install didn't go through.
+    pub failed: Option<String>,
+}
+
+impl UpgradeOffer {
+    fn read(v: &serde_json::Value) -> UpgradeOffer {
+        let r = &v["release"];
+        let i = &v["installing"];
+        UpgradeOffer {
+            build_made: v["build_made"].as_u64(),
+            release: r.is_object().then(|| ReleaseOffer {
+                version: r["version"].as_str().unwrap_or_default().to_owned(),
+                title: r["title"].as_str().filter(|t| !t.is_empty()).or(r["version"].as_str()).unwrap_or("a new release").to_owned(),
+                made: r["made"].as_u64().unwrap_or(0),
+                download_bytes: r["download_bytes"].as_u64().unwrap_or(0),
+            }),
+            installing: i
+                .is_object()
+                .then(|| (i["version"].as_str().unwrap_or_default().to_owned(), i["doing"].as_str().unwrap_or("downloading").to_owned(), i["fraction"].as_f64().unwrap_or(0.0) as f32)),
+            failed: v["failed"].as_str().map(str::to_owned),
+        }
+    }
+}
+
 /// What's on offer, and whether olo-session waits for a build to finish
 /// to upgrade.
-fn upgrade() -> (Vec<String>, bool) {
-    let Ok(text) = std::fs::read_to_string(upgrade_path()) else { return (Vec::new(), false) };
+fn upgrade() -> (Vec<String>, bool, UpgradeOffer) {
+    let Ok(text) = std::fs::read_to_string(upgrade_path()) else { return (Vec::new(), false, UpgradeOffer::default()) };
     let v: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
     let programs = v["programs"].as_array().map(|a| a.iter().filter_map(|p| p.as_str().map(str::to_owned)).collect()).unwrap_or_default();
-    (programs, v["waiting"].as_bool().unwrap_or(false))
+    (programs, v["waiting"].as_bool().unwrap_or(false), UpgradeOffer::read(&v))
+}
+
+/// Whether there's anything to upgrade to, or one under way.
+pub fn upgrade_shown(s: &Status) -> bool {
+    !s.upgrade.is_empty() || s.upgrade_waiting || s.upgrade_offer.release.is_some() || s.upgrade_offer.installing.is_some()
 }
 
 /// The agent screens running: those `olo-screen` lists in
@@ -403,9 +455,10 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
                 if let Some(n) = n {
                     s.agent_screens = n;
                 }
-                if let Some((up, waiting)) = up {
+                if let Some((up, waiting, offer)) = up {
                     s.upgrade = up;
                     s.upgrade_waiting = waiting;
+                    s.upgrade_offer = offer;
                 }
             });
         }
@@ -742,7 +795,7 @@ pub fn draw_volume(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, level: f32, 
 }
 
 /// A newer build is ready: a green arrow rising out of a tray.
-pub fn draw_upgrade(g: &mut Painter, r: Bounds<Pixels>, p: &Palette) {
+pub fn draw_upgrade(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, done: Option<f32>) {
     let cx = f32::from(r.center().x);
     let (rt, rb) = (f32::from(r.top()), f32::from(r.bottom()));
     // The arrow, filled, then its outline.
@@ -756,6 +809,12 @@ pub fn draw_upgrade(g: &mut Painter, r: Bounds<Pixels>, p: &Palette) {
     style::hline_above(g, px(l), px(right), px(b), ink(p));
     style::vline(g, px(l), px(post), px(b), ink(p));
     style::vline_left_of(g, px(right), px(post), px(b), ink(p));
+    // A release being installed: the tray fills from the left as it goes.
+    if let Some(done) = done {
+        let fill_to = whole(g, l + 1.0 + (right - l - 2.0) * done.clamp(0.0, 1.0));
+        let top = whole(g, b - 3.0);
+        style::fill_rect(g, Bounds::from_corners(point(px(l + 1.0), px(top)), point(px(fill_to), px(b - 1.0))), c(p.success));
+    }
 }
 
 /// A bell, with a count of unread notifications; struck through and dim
