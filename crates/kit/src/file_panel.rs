@@ -124,7 +124,14 @@ pub struct FilePanel {
     filter: usize,
     multiple: bool,
     choices: Vec<Choice>,
+    /// The app it's shown for (its id): whose panels' sorting it opens
+    /// with and keeps. This app's own, unless told ([`FilePanel::app`]).
+    app: String,
 }
+
+/// The file panel's columns, by their titles (what an app's sorting is
+/// kept by: `places::sorted`).
+const COLUMNS: [&str; 4] = ["Name", "Kind", "Size", "Modified"];
 
 impl FilePanel {
     pub fn open(dir: impl Into<PathBuf>) -> Self {
@@ -143,7 +150,15 @@ impl FilePanel {
 
     fn new(mode: Mode, dir: PathBuf, name: String) -> Self {
         let dir = if dir.is_dir() { dir } else { home() };
-        FilePanel { mode, dir, name, types: Vec::new(), filters: Arc::default(), filter: 0, multiple: false, choices: Vec::new() }
+        FilePanel { mode, dir, name, types: Vec::new(), filters: Arc::default(), filter: 0, multiple: false, choices: Vec::new(), app: crate::app_id().to_owned() }
+    }
+
+    /// Shown for another app (the portal's, for the program that asked):
+    /// its panels are sorted as that app's were last, and how this one
+    /// is left is kept for its next (`places::sorted_for`).
+    pub fn app(mut self, id: impl Into<String>) -> Self {
+        self.app = id.into();
+        self
     }
 
     /// Only offer files with these extensions (folders always show).
@@ -332,6 +347,16 @@ fn natural(a: &str, b: &str) -> std::cmp::Ordering {
 impl PanelView {
     fn new(panel: FilePanel, on_done: OnDone, cx: &mut Cx<Self>) -> PanelView {
         let list = ListModel::new(panel.multiple);
+        // Sorted as the app's panels were last (a small file read, as
+        // the folder pop-up's). (It opened by name every time: Ben,
+        // 2026-11-17, "it should remember the last location and sort
+        // column/order etc that was used for the file picker in that
+        // app ... i have to ... change the sort order every time".)
+        if let Some((title, up)) = places::sorted_for(&panel.app)
+            && let Some(column) = COLUMNS.iter().position(|c| *c == title)
+        {
+            list.state_mut().sort = Some((column, up));
+        }
         let name = (panel.mode == Mode::Save).then(|| {
             let field = text_field(cx, |f| f.name("Save as").with_text(panel.name.clone()));
             field.update(cx, |f, cx| f.caret_to_end(cx));
@@ -812,7 +837,16 @@ impl View for PanelView {
             PanelMsg::GoTo(path) => self.went_to(path, cx),
             PanelMsg::LookStep(by) => self.look_step(by, cx),
             PanelMsg::Exported(handle) => self.over = handle,
-            PanelMsg::Sorted => self.refilter(cx),
+            PanelMsg::Sorted => {
+                // Kept for the app's next panel, off the looper.
+                if let Some((column, up)) = self.list.state().sort
+                    && let Some(title) = COLUMNS.get(column)
+                {
+                    let app = self.panel.app.clone();
+                    std::thread::spawn(move || places::sorted(&app, title, up));
+                }
+                self.refilter(cx)
+            }
             PanelMsg::Selected => {
                 // A look up follows the selection.
                 self.look_follows();
@@ -908,7 +942,7 @@ impl View for PanelView {
         // scrolling).
         let (kind_w, size_w, modified_w) = (96.0, 72.0, 140.0);
         let name_w = (width - kind_w - size_w - modified_w - SCROLL_BAR - 6.0).floor().max(120.0);
-        let columns = [Column::new("Name", name_w), Column::new("Kind", kind_w), Column::new("Size", size_w).right(), Column::new("Modified", modified_w)];
+        let columns = [Column::new(COLUMNS[0], name_w), Column::new(COLUMNS[1], kind_w), Column::new(COLUMNS[2], size_w).right(), Column::new(COLUMNS[3], modified_w)];
         let message = match (&self.error, self.loading) {
             (Some(e), _) => e.clone(),
             (None, true) => String::new(),

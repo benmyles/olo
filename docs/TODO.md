@@ -46,13 +46,6 @@ something nobody here has is in "Blocked", with what it waits for.
   confusing/unintuitive agent ux and fix what we can to make it easier
   for agents to use with fewer mistakes and higher efficiency").
 
-- **The file panel remembers, per app, where it was and how it was
-  sorted** (Ben, 2026-11-17: "when the file picker is shown for an app
-  it should remember the last location and sort column/order etc that
-  was used for the file picker in that app. i know at least in slack
-  this doesn't happen and i have to go find it again every time and
-  change the sort order every time").
-
 - **Last, once everything above that isn't blocked is done: the website,
   the README and the docs refreshed, and a new GitHub release** (Ben,
   2026-11-17: "when all the other todos that aren't blocked are
@@ -5910,6 +5903,25 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**The file panel remembers, per app, where it was and how it was
+  sorted**~~ (Ben, 2026-11-17: "it should remember the last location
+  and sort column/order etc that was used for the file picker in that
+  app. i know at least in slack this doesn't happen and i have to go
+  find it again every time and change the sort order every time"; done
+  the same day). The sorting wasn't kept at all: every panel opened by
+  name. Now it opens sorted by the column and direction that app's
+  panels were last left with (per app: Slack's, Chrome's, each kit
+  app's own). **The last location was already kept per app** (since
+  2026-11-02), and tried again as a program asks for it (through the
+  portal, with a stand-in for the program): the next panel opened in
+  the folder the last was left in. On this computer Slack's, Chrome's
+  and an older Slack's are all the same standard folder, which is
+  where they open. **If Slack's still opens somewhere other than where
+  you last chose a file from it**, say where it opened and where you'd
+  been, and that will find it. Column widths and order were kept
+  already. Found on the way: two changes to the places file at once
+  could lose one (now one at a time).
 
 - ~~**Screenshot's screen recording records the display it was started
   on**~~ (Ben, 2026-11-17: "it showed the recording bar on my main

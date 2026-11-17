@@ -31,6 +31,23 @@ pub struct AppFolders {
     pub open: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub save: Option<PathBuf>,
+    /// How its panels' list was last sorted: the column's title
+    /// ("Modified") and whether upwards (A to Z, oldest first).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sort: Option<(String, bool)>,
+}
+
+/// One change to the file at a time in a program: each is the file read,
+/// changed and written whole, and two at once (a panel's folder noted as
+/// visited on one thread, where it was left on another) lost one.
+static CHANGING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn change(f: impl FnOnce(&mut Places) -> bool) {
+    let _one = CHANGING.lock().unwrap_or_else(|e| e.into_inner());
+    let mut p = load();
+    if f(&mut p) {
+        save(&p);
+    }
 }
 
 fn path() -> PathBuf {
@@ -54,24 +71,26 @@ fn save(p: &Places) {
 
 /// `dir` a favourite, or (`on` false) not.
 pub fn set_favorite(dir: &Path, on: bool) {
-    let mut p = load();
-    p.favorites.retain(|f| f != dir);
-    if on {
-        p.favorites.push(dir.to_path_buf());
-    }
-    save(&p);
+    change(|p| {
+        p.favorites.retain(|f| f != dir);
+        if on {
+            p.favorites.push(dir.to_path_buf());
+        }
+        true
+    });
 }
 
 /// `dir` was gone to: the most recent folder.
 pub fn visited(dir: &Path) {
-    let mut p = load();
-    if p.recent.first().is_some_and(|r| r == dir) {
-        return;
-    }
-    p.recent.retain(|r| r != dir);
-    p.recent.insert(0, dir.to_path_buf());
-    p.recent.truncate(RECENT);
-    save(&p);
+    change(|p| {
+        if p.recent.first().is_some_and(|r| r == dir) {
+            return false;
+        }
+        p.recent.retain(|r| r != dir);
+        p.recent.insert(0, dir.to_path_buf());
+        p.recent.truncate(RECENT);
+        true
+    });
 }
 
 /// The folder `app`'s panel was last in (`saving`: a Save panel's), if
@@ -87,14 +106,38 @@ pub fn left_in(app: &str, saving: bool, dir: &Path) {
     if app.is_empty() {
         return;
     }
-    let mut p = load();
-    let f = p.apps.entry(app.to_owned()).or_default();
-    let slot = if saving { &mut f.save } else { &mut f.open };
-    if slot.as_deref() == Some(dir) {
+    change(|p| {
+        let f = p.apps.entry(app.to_owned()).or_default();
+        let slot = if saving { &mut f.save } else { &mut f.open };
+        if slot.as_deref() == Some(dir) {
+            return false;
+        }
+        *slot = Some(dir.to_path_buf());
+        true
+    });
+}
+
+/// How `app`'s panels' list was last sorted (the column's title, and
+/// whether upwards), if the person ever sorted one.
+pub fn sorted_for(app: &str) -> Option<(String, bool)> {
+    load().apps.get(app)?.sort.clone()
+}
+
+/// `app`'s panel was sorted by the column titled `column`, upwards or
+/// not: its next opens so.
+pub fn sorted(app: &str, column: &str, up: bool) {
+    if app.is_empty() {
         return;
     }
-    *slot = Some(dir.to_path_buf());
-    save(&p);
+    change(|p| {
+        let f = p.apps.entry(app.to_owned()).or_default();
+        let now = Some((column.to_owned(), up));
+        if f.sort == now {
+            return false;
+        }
+        f.sort = now;
+        true
+    });
 }
 
 /// The standard folders that are there: Home, then Desktop, Documents,
@@ -144,6 +187,21 @@ pub fn label(dir: &Path) -> String {
 mod tests {
     use super::*;
 
+    /// An app's panel's sorting is kept beside its folders, and a file
+    /// from before it reads as before.
+    #[test]
+    fn an_apps_sorting_is_kept() {
+        let old: Places = serde_json::from_str(r#"{"apps":{"olo.slack":{"open":"/a"}}}"#).unwrap();
+        assert_eq!(old.apps["olo.slack"], AppFolders { open: Some("/a".into()), save: None, sort: None });
+        let mut p = old.clone();
+        p.apps.get_mut("olo.slack").unwrap().sort = Some(("Modified".into(), false));
+        let text = serde_json::to_string(&p).unwrap();
+        assert!(text.contains(r#""sort":["Modified",false]"#), "{text}");
+        assert_eq!(serde_json::from_str::<Places>(&text).unwrap(), p);
+        // (One never sorted writes nothing of it.)
+        assert!(!serde_json::to_string(&old).unwrap().contains("sort"));
+    }
+
     #[test]
     fn standard_folders_start_at_home() {
         let s = standard();
@@ -161,7 +219,7 @@ mod tests {
         assert!(old.apps.is_empty() && old.favorites == [PathBuf::from("/a")]);
         assert!(!serde_json::to_string(&old).unwrap().contains("apps"));
         let mut p = old;
-        p.apps.insert("com.slack.Slack".into(), AppFolders { open: Some("/home/x/Pictures".into()), save: None });
+        p.apps.insert("com.slack.Slack".into(), AppFolders { open: Some("/home/x/Pictures".into()), save: None, sort: None });
         let back: Places = serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
         assert_eq!(back, p);
         assert_eq!(back.apps["com.slack.Slack"].save, None);

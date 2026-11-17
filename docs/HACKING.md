@@ -11098,7 +11098,20 @@ its request, for the app's Cancel and for holding an upgrade off.
   `places.json` as the panel goes, `left_in`, Cancel included; by the
   app id the portal gives, else the app whose window has the keyboard),
   else in its `current_folder`; a save naming a `current_file` starts
-  in that file's folder. It proposes the app's `current_name`. The app's filters (globs and MIME types; `current_filter`
+  in that file's folder. **Sorted as that app's panels were last**: the
+  panel is made `FilePanel::app(id)` for the asking app, opens sorted by
+  the column and direction kept for it (`places::sorted_for`; its
+  header marked) and keeps each sort the person makes
+  (`places::sorted`, by the column's title, in `places.json` beside the
+  app's folders: `AppFolders::sort`); a kit app's own panels do the
+  same under its own id. (Every panel opened by name: uploading the
+  latest screenshot to Slack meant sorting by Modified each time; Ben,
+  2026-11-17. Where it was last was kept already, and tried: it is.)
+  The list's column widths and order are the kit's to keep
+  (`kept::table`, by the list's id). Every change to `places.json` in
+  a program is one at a time (`places::change`: read, changed and
+  written whole; two threads at once lost one's). It proposes the
+  app's `current_name`. The app's filters (globs and MIME types; `current_filter`
   shown first, or added) are the panel's Show pop-up, `multiple` lets it
   choose several files, and its `choices` sit above the buttons; the
   answer carries the `uris`, the filter shown and the choices made.

@@ -188,7 +188,8 @@ impl Portal {
             files::Purpose::Save => ("Save", FilePanel::save(dir, ask.name.clone())),
             files::Purpose::SaveFiles => ("Choose Where to Save", FilePanel::folder(dir)),
         };
-        panel = panel.filters(ask.filters.clone(), ask.current).choices(ask.choices.clone());
+        // (Sorted as this app's panels were last, and kept for its next.)
+        panel = panel.filters(ask.filters.clone(), ask.current).choices(ask.choices.clone()).app(ask.app.clone());
         let title = if ask.title.is_empty() { default.to_owned() } else { ask.title.clone() };
         let options = ui::over(file_panel::window_options(title), &ask.parent);
         let request = ask.request.clone();
