@@ -99,9 +99,14 @@ ask for it:
 
 ```sh
 git clone https://github.com/benmyles/olo && cd olo
-claude        # Claude Code; then:   /olo-hardware
-codex         # Codex; then:         use the olo-hardware skill
+claude --model claude-opus-5-5 --effort xhigh   # Claude Code; then: /olo-hardware
+codex                                           # Codex; then: use the olo-hardware skill
 ```
+
+Claude Opus 5.5 at extra-high effort, as that command starts it, is
+highly recommended for the best results: the skill reads the whole of
+your computer and Olo before it changes anything, and makes, tests and
+measures what it adds.
 
 Olo puts its skills where Claude Code and Codex look for them as you log
 in. With another agent, or before you have logged in to Olo, say: *read

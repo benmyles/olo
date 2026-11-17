@@ -55,9 +55,10 @@ description: Install Olo on Fedora 44 or 45 Workstation with one program, beside
     <p>Running Olo, in a clone of its repository, start your coding agent and ask for it:</p>
     <div class="command">
       <pre id="hardware-command"><span class="p">$ </span>git clone https://github.com/benmyles/olo &amp;&amp; cd olo
-<span class="p">$ </span>claude</pre>
+<span class="p">$ </span>claude --model claude-opus-5-5 --effort xhigh</pre>
       <button class="copy" type="button" data-copy="hardware-command">Copy</button>
     </div>
+    <p>Claude Opus 5.5 at extra-high effort, as that command starts it, is highly recommended for the best results: the skill reads the whole of your computer and Olo before it changes anything, and makes, tests and measures what it adds.</p>
     <p>Then, in Claude Code, type <code>/olo-hardware</code>; in Codex, say <em>use the olo-hardware skill</em>. Olo puts its skills where both look for them as you log in; with another agent, say <em>read docs/skills/olo-hardware/SKILL.md and follow it</em>.</p>
     <p>It changes nothing on your computer by itself: what needs your password is an Olo Doctor fix you apply with a button, and what it builds you install with Deskbar's Upgrade. If the result would help others with the same computer, it offers to open a pull request.</p>
 
