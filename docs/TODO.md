@@ -55,6 +55,11 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **The website: a click on a screenshot zooms it** (Ben, 2026-11-16:
+  "for the website, make it so that clicking on one of the screenshots
+  zooms it"). olo-desktop.com (`website/`): each screenshot opens large
+  over the page on a click (Escape, a click or the close button puts it
+  away), by keyboard too.
 - **Everything Olo Doctor does can be undone** (Ben, 2026-11-16: "one
   more thing we need: everything in olo doctor that it does must be
   reversible, e.g. for any fix/suggestion applied i should be able to
