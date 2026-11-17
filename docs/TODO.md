@@ -87,6 +87,15 @@ something nobody here has is in "Blocked", with what it waits for.
   upgrade in place, and what a restart restores a reopened tab from), and
   comes back with the tab: the same tab reopened has its message, a new
   tab the default.
+- **The start-up sound: silent when muted, and at one volume** (Ben,
+  2026-11-16: "the olo startup sound should not play if the sound is
+  muted, and if not muted it should play at the same volume regardless
+  of what the user volume is set at, and that should be 25% of the max
+  volume"). The chime (olo-chime, the root service at start, and the
+  session's own) reads whether the output is muted, and plays nothing if
+  it is; otherwise it plays at a quarter of the output's full volume,
+  whatever the person's volume is set to, and leaves that setting as it
+  found it.
 - **A notification's click goes to its own window and tab** (Ben,
   2026-11-16: "when a notification appears in olo for a tab within a
   group of windows, e.g. i noticed it with terminal where i'll get a
