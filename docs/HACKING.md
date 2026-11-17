@@ -14542,6 +14542,29 @@ One-Time Codes. A phone's row in Preferences ▸ Bluetooth has Messages
 and Codes…; `olo-preferences iphone` (or `messages`, `codes`, `sms`)
 opens the panel.
 
+**Archived conversations** (Ben, 2026-11-17: "in the phone app the
+ability to archive messages. if this can't be done for real on the
+phone due to protocol limitations then at least let me archive them in
+the phone app and have it remember. show the archived ones like we do
+in telegram. and i also need to be able to multi-select the threads
+from the messages list and bulk archive / unarchive"). The phone can't
+be told: MAP reads and sends, and an iPhone's has no archive (nor
+deletes). So Phone keeps its own (`~/.local/state/olo/phone/
+archived.json`: each conversation's key and when it was archived,
+written off the looper), and a conversation is archived until a
+message comes after that (`archived_in`): it's back among the rest, as
+Telegram's are, and leaves the file. As in Telegram: the archive's row
+at the top of the conversations ("Archived", a few names, the unread
+among them), clicked for the archive with a band back over it
+("‹ Archived Conversations"), View ▸ Archived Conversations; ⌘-click
+chooses a conversation too (the one open with it), ⇧-click every one
+from the last chosen; a right-click is for the conversation or, on one
+of several chosen, all of them ("Archive 3 Conversations", "Unarchive",
+"Mark All as Read"), Conversation ▸ the same for those chosen or the
+one open, Edit ▸ Select All Conversations. A search finds archived
+ones too. Agents: `archive:NAME[,NAME…]` and `unarchive:…` (by key or
+name) through the menus' socket.
+
 **Elsewhere.** Deskbar's tray (`status::draw_phone`: a slab with its
 screen, dim out of reach, amber at 20% and red at 10%, a blue dot while
 messages are unread), shown while the phone is connected, has unread

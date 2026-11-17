@@ -46,14 +46,6 @@ something nobody here has is in "Blocked", with what it waits for.
   should give me a menu where i can choose to react with an emoji and
   let me pick an emoji reaction").
 
-- **Phone: archive conversations, as Telegram's are** (Ben, 2026-11-17:
-  "in the phone app the ability to archive messages. if this can't be
-  done for real on the phone due to protocol limitations then at least
-  let me archive them in the phone app and have it remember. show the
-  archived ones like we do in telegram. and i also need to be able to
-  multi-select the threads from the messages list and bulk archive /
-  unarchive").
-
 - **Opening in an app with several windows asks which window** (Ben,
   2026-11-17: "when something is opening with the default app, e.g. a
   url opening in chrome, and that app has > 1 windows open and the url
@@ -75,6 +67,29 @@ something nobody here has is in "Blocked", with what it waits for.
   and they should all automatically go away with a nice fade out
   animation over about 5s after activating the target tab (or window if
   it's not a tabbed app)").
+
+- **Themes: one list (Classic, Platinum, BeOS and every scheme), each
+  perfect, with icons of its own, Customize…, and a wallpaper of its
+  own** (Ben, 2026-11-17: "the split between themes and colors doesn't
+  make a lot of sense. let's just have Classic, Platinum and BeOS as
+  their own themes (as well as all the other themes). then do an
+  extremely detailed visual study on every different theme, checking
+  how they look in multiple different apps, in the terminal, in light
+  and dark, at normal size and zoomed/closeup. i want you to make every
+  single theme just absolutely perfect. start with Classic, then BeOS,
+  then Platinum, and keep going from there. Also pick 10 more of the
+  most popular themes online and add support for them too. And, themes
+  should be able to have their own icons. For now it's fine to just
+  have the custom icons for Classic and Platinum and I also want you to
+  create a complete custom icon set for BeOS. the rest of the themes
+  can just use the Classic icons. also add a "Customize..." button on
+  the right where i can click on a theme then press Customize and then
+  i can change everything about it -- any of the colors, the icon set,
+  the wallpaper etc.. also pick from the wallpapers that olo comes with
+  the best matching default wallpaper for each theme. i want you to pay
+  so much attention to detail on this it's not even funny: every single
+  pixel, hue, etc needs to be just absolutely perfect and stunningly
+  beautiful").
 
 - **Last, once everything above that isn't blocked is done: the website,
   the README and the docs refreshed, and a new GitHub release** (Ben,
@@ -5933,6 +5948,17 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Phone: archive conversations, as Telegram's are**~~ (Ben,
+  2026-11-17; done the same day). The phone itself can't archive (what
+  Olo has of its messages, MAP, reads and sends; an iPhone's has no
+  archive), so Phone keeps its own, remembered between runs: the
+  archive's row at the top of the conversations as in Telegram, a band
+  back from it, ⌘-click and ⇧-click to choose several and a right-click
+  (or Conversation ▸) to Archive, Unarchive or Mark All as Read them,
+  Edit ▸ Select All Conversations. An archived conversation comes back
+  when a new message arrives in it, as Telegram's do. Tried with the
+  demo's conversations at 1×, 1.5× and 2× (the layout review: nothing).
 
 - ~~**The upgrader looks at GitHub's releases too, and asks which**~~
   (Ben, 2026-11-17: "olo's upgrader should look at github releases as

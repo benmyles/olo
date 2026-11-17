@@ -50,6 +50,8 @@ const LIST: f32 = 300.0;
 const LIST_MIN: f32 = 230.0;
 /// The conversation's header.
 const HEADER: f32 = 60.0;
+/// The archive's band back to the conversations.
+const ARCHIVE_BACK: f32 = 28.0;
 /// A message's text, and the small print (its time).
 const TEXT: f32 = 13.0;
 const META: f32 = 10.5;
@@ -106,6 +108,50 @@ struct Saved {
     draft: String,
     list_width: Option<f32>,
     list_hidden: bool,
+    /// The archive shown in the list.
+    #[serde(default)]
+    in_archive: bool,
+}
+
+/// Where the conversations archived here are kept: each by its key, with
+/// when it was archived (seconds since the epoch). Here, not on the
+/// phone: what Olo has of a phone's messages (MAP) reads and sends, and
+/// an iPhone's has no archive (nor deletes); Olo's archive is its own,
+/// kept across its runs.
+fn archived_path() -> std::path::PathBuf {
+    olo_xdg::state_dir().join("phone").join("archived.json")
+}
+
+fn load_archived() -> std::collections::HashMap<String, i64> {
+    std::fs::read(archived_path()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+/// The archive written (off the looper: a file read and written whole).
+fn save_archived(archived: std::collections::HashMap<String, i64>) {
+    std::thread::spawn(move || {
+        let path = archived_path();
+        let Some(dir) = path.parent() else { return };
+        let _ = std::fs::create_dir_all(dir);
+        let tmp = path.with_extension("json.new");
+        if std::fs::write(&tmp, serde_json::to_vec(&archived).unwrap_or_default()).is_ok() {
+            let _ = std::fs::rename(&tmp, &path);
+        }
+    });
+}
+
+/// Whether `t` is archived in `archived`: archived, and nothing has come
+/// since (a new message brings a conversation back, as Telegram's do).
+fn archived_in(archived: &std::collections::HashMap<String, i64>, t: &Conversation) -> bool {
+    archived.get(&t.key).is_some_and(|&at| t.latest() <= at)
+}
+
+/// What a row of the conversations' list is.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum ListRow {
+    /// The archive's row, at the top of the conversations (as Telegram's).
+    Archive,
+    /// A conversation, by its index.
+    Thread(usize),
 }
 
 /// What the layout lint draws the window as.
@@ -276,6 +322,14 @@ pub struct Phone {
     /// more shaping is due next frame.
     talk_width: f32,
     shaping: bool,
+    /// Conversations archived here, by key: when each was (`archived_in`).
+    archived: std::collections::HashMap<String, i64>,
+    /// The list shows the archive.
+    in_archive: bool,
+    /// Conversations chosen together (⌘-click, ⇧-click, Select All), by
+    /// key, and the one a ⇧-click goes from.
+    chosen: Vec<String>,
+    chosen_from: Option<String>,
     _watch: Option<olo_kit::watch::Watch>,
 }
 
@@ -373,6 +427,10 @@ impl Phone {
             data: 0,
             talk_width: 0.0,
             shaping: false,
+            archived: if demo.is_some() { Default::default() } else { load_archived() },
+            in_archive: saved.in_archive,
+            chosen: Vec::new(),
+            chosen_from: None,
             _watch: None,
         };
         if let Some(many) = demo {
@@ -476,7 +534,11 @@ impl Phone {
             (0..self.threads.len())
                 .filter(|&i| {
                     let t = &self.threads[i];
-                    q.is_empty() || t.name.to_lowercase().contains(q) || t.address.to_lowercase().contains(q) || t.messages.iter().any(|m| m.text.to_lowercase().contains(q))
+                    // (The archive's, or the rest; a search finds both.)
+                    if q.is_empty() {
+                        return archived_in(&self.archived, t) == self.in_archive;
+                    }
+                    t.name.to_lowercase().contains(q) || t.address.to_lowercase().contains(q) || t.messages.iter().any(|m| m.text.to_lowercase().contains(q))
                 })
                 .collect()
         })
@@ -537,6 +599,21 @@ impl Phone {
         }
     }
 
+    /// `key`'s conversation read (chosen in the list, not shown): said to
+    /// the service, as for the one shown.
+    fn mark_read_key(&mut self, key: &str, cx: &mut Cx<Self>) {
+        let Some(t) = self.threads.iter_mut().find(|t| t.key == key) else { return };
+        if t.unread() == 0 {
+            return;
+        }
+        t.messages.iter_mut().for_each(|m| m.read = true);
+        self.data += 1;
+        if !self.demo {
+            let key = key.to_owned();
+            cx.work(move || drop(phone::ask(&Request::MarkRead { key }, ASK)), |()| Msg::Told);
+        }
+    }
+
     fn send_typed(&mut self, cx: &mut Cx<Self>) {
         let text = self.draft.read(cx).text().trim().to_owned();
         if !text.is_empty() {
@@ -587,11 +664,19 @@ impl Phone {
 
     fn menus(&self) -> Vec<Menu> {
         let open = self.thread().is_some();
-        let unread = self.thread().is_some_and(|t| t.unread() > 0);
         let paired = self.state.paired() || self.demo;
         vec![
             Menu::new("File").app_items(&["phone"]).item("New Message", "new-message").key("n").enabled(paired).close_quit(),
-            Menu::new("Edit").item("Find…", "find").key("f").item("Copy Conversation", "copy-conversation").enabled(open),
+            Menu::new("Edit")
+                .item("Find…", "find")
+                .key("f")
+                .item("Copy Conversation", "copy-conversation")
+                .enabled(open)
+                .separator()
+                .item("Select All Conversations", "select-all-conversations")
+                .enabled(self.tab == Tab::Messages && !self.threads.is_empty())
+                .item("Deselect All Conversations", "deselect-conversations")
+                .enabled(!self.chosen.is_empty()),
             Menu::new("View")
                 .item("Messages", "tab:messages")
                 .key("1")
@@ -599,12 +684,14 @@ impl Phone {
                 .item("Contacts", "tab:contacts")
                 .key("2")
                 .checked(self.tab == Tab::Contacts)
+                .item("Archived Conversations", "archive:toggle")
+                .checked(self.in_archive && self.tab == Tab::Messages)
+                .enabled(self.in_archive || self.threads.iter().any(|t| archived_in(&self.archived, t)))
                 .separator()
                 .item(if self.side.collapsed() { "Show List" } else { "Hide List" }, "sidebar")
                 .key("s"),
-            Menu::new("Conversation")
-                .item("Mark as Read", "mark-read")
-                .enabled(unread)
+            self.archive_items(Menu::new("Conversation"), &self.acted_on())
+                .separator()
                 .item("Copy Latest Code", "copy-code")
                 .enabled(self.state.code_at.is_some())
                 .separator()
@@ -646,6 +733,13 @@ impl View for Phone {
                 match threads {
                     Ok(mut threads) => {
                         threads.sort_by_key(|t| std::cmp::Reverse(t.latest()));
+                        // Archived ones with something new since: back
+                        // among the rest, and out of the file.
+                        let before = self.archived.len();
+                        self.archived.retain(|key, at| threads.iter().find(|t| t.key == *key).is_none_or(|t| t.latest() <= *at));
+                        if self.archived.len() != before && !self.demo {
+                            save_archived(self.archived.clone());
+                        }
                         // More in the conversation shown: to its end.
                         let had = self.thread().map(|t| t.messages.len());
                         self.threads = threads;
@@ -709,7 +803,47 @@ impl View for Phone {
             "tab:messages" => self.tab = Tab::Messages,
             "tab:contacts" => self.tab = Tab::Contacts,
             "sidebar" => self.side.toggle(),
-            "mark-read" => self.mark_read(cx),
+            "mark-read" => {
+                // Those chosen together, or the one open.
+                if self.chosen.is_empty() {
+                    self.mark_read(cx);
+                } else {
+                    for key in self.acted_on() {
+                        self.mark_read_key(&key, cx);
+                    }
+                }
+            }
+            "archive" => {
+                let keys = self.acted_on();
+                self.archive(&keys, true, cx);
+            }
+            "unarchive" => {
+                let keys = self.acted_on();
+                self.archive(&keys, false, cx);
+            }
+            "archive:show" => self.show_archive(true, cx),
+            "archive:hide" => self.show_archive(false, cx),
+            "archive:toggle" => self.show_archive(!(self.in_archive && self.tab == Tab::Messages), cx),
+            "archive:unarchive-all" => {
+                let keys: Vec<String> = self.threads.iter().filter(|t| archived_in(&self.archived, t)).map(|t| t.key.clone()).collect();
+                self.archive(&keys, false, cx);
+            }
+            "select-all-conversations" => {
+                self.tab = Tab::Messages;
+                self.chosen = self.list_rows(cx).iter().filter_map(|r| if let ListRow::Thread(k) = r { self.threads.get(*k).map(|t| t.key.clone()) } else { None }).collect();
+                self.chosen_from = self.chosen.first().cloned();
+            }
+            "deselect-conversations" => self.chosen.clear(),
+            // (An agent's: these conversations, by key or name, archived
+            // or not.)
+            c if c.starts_with("archive:") || c.starts_with("unarchive:") => {
+                let (on, which) = c.split_once(':').map(|(a, w)| (a == "archive", w)).unwrap_or((true, ""));
+                let keys: Vec<String> = which.split(',').filter_map(|w| self.threads.iter().find(|t| t.key == w.trim() || t.name == w.trim()).map(|t| t.key.clone())).collect();
+                if keys.is_empty() {
+                    return false;
+                }
+                self.archive(&keys, on, cx);
+            }
             "copy-code" => {
                 if !self.demo {
                     cx.work(|| phone::ask(&Request::Code, ASK).ok().and_then(|r| r.code), Msg::Code);
@@ -792,7 +926,9 @@ impl View for Phone {
     }
 
     fn save_state(&mut self, cx: &mut Cx<Self>) -> Option<String> {
-        let saved = Saved { tab: self.tab, shown: self.shown.clone(), draft: self.draft.read(cx).text().to_owned(), list_width: Some(self.side.width()), list_hidden: self.side.collapsed() };
+        let in_archive = self.in_archive;
+        let saved =
+            Saved { tab: self.tab, shown: self.shown.clone(), draft: self.draft.read(cx).text().to_owned(), list_width: Some(self.side.width()), list_hidden: self.side.collapsed(), in_archive };
         serde_json::to_string(&saved).ok()
     }
 }
@@ -809,7 +945,9 @@ fn in_view(scroll: &ScrollHandle, margin: f32) -> (f32, f32) {
 
 /// A list painted in one drawing, only its rows in view: `n` rows of
 /// `row` points in the scroller `scroll`, painted by `paint` (the row,
-/// whether the pointer is on it) and chosen by `pick`.
+/// whether the pointer is on it), chosen by `pick` (with the keys held)
+/// and right-clicked for `menu` (where, in the window).
+#[allow(clippy::too_many_arguments)]
 fn rows(
     cx: &mut Cx<Phone>,
     id: &'static str,
@@ -817,7 +955,8 @@ fn rows(
     n: usize,
     row: f32,
     paint: impl Fn(&Phone, &mut Painter, Bounds<Pixels>, usize, bool) + 'static,
-    pick: impl Fn(&mut Phone, usize, &mut Cx<Phone>) + 'static,
+    pick: impl Fn(&mut Phone, usize, olo_kit::Modifiers, &mut Cx<Phone>) + 'static,
+    menu: impl Fn(&mut Phone, usize, olo_kit::Point<Pixels>, &mut Cx<Phone>) + 'static,
 ) -> Element {
     let scroll = scroll.clone();
     let drawn = cx.canvas(move |v: &Phone, g, b| {
@@ -842,9 +981,17 @@ fn rows(
             if e.standard_click()
                 && let Some(i) = at(e.position().y, cx.listener_bounds().origin.y)
             {
-                pick(v, i, cx);
+                pick(v, i, e.modifiers(), cx);
             }
         }))
+        .on_mouse_down(
+            MouseButton::Right,
+            cx.listener(move |v: &mut Phone, e: &MouseDownEvent, cx| {
+                if let Some(i) = at(e.position.y, cx.listener_bounds().origin.y) {
+                    menu(v, i, e.position, cx);
+                }
+            }),
+        )
         .on_mouse_move(cx.listener(move |v: &mut Phone, e: &MouseMoveEvent, cx| {
             let now = at(e.position.y, cx.listener_bounds().origin.y).map(|i| (id, i));
             if v.hot != now {
@@ -913,8 +1060,41 @@ impl Phone {
             Tab::Messages => (self.list_scroll.clone(), self.thread_rows(cx)),
             Tab::Contacts => (self.people_scroll.clone(), self.people_rows(cx)),
         };
+        // In the archive: a band back to the conversations over the list
+        // (as Telegram's "Archived Chats"), its menu Unarchive All.
+        let back = (self.tab == Tab::Messages && self.in_archive && self.search.read(cx).text(cx).trim().is_empty()).then(|| {
+            let drawn = canvas(|g, b| {
+                let p = theme::palette();
+                let ink = c(p.panel_text);
+                let cc = point(b.origin.x + px(m::SPACING + 4.0), b.center().y);
+                g.paint_segment(point(cc.x + px(4.0), cc.y - px(5.0)), point(cc.x - px(1.0), cc.y), px(1.6), true, ink);
+                g.paint_segment(point(cc.x - px(1.0), cc.y), point(cc.x + px(4.0), cc.y + px(5.0)), px(1.6), true, ink);
+                style::label(g, b.origin.x + px(m::SPACING + 16.0), b.center().y, Align::Left, "Archived Conversations", style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), ink);
+                agent::record(g, agent::Node::button("Back to Conversations", b));
+            })
+            .paint_key(0);
+            div()
+                .id("archive-back")
+                .h(px(ARCHIVE_BACK))
+                .w_full()
+                .flex_shrink_0()
+                .cursor(CursorStyle::PointingHand)
+                .on_click(cx.listener(|v: &mut Phone, e: &ClickEvent, cx| {
+                    if e.standard_click() {
+                        v.show_archive(false, cx);
+                    }
+                }))
+                .on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(|v: &mut Phone, e: &MouseDownEvent, cx| {
+                        let menu = Menu::new("Archive").item("Back to Conversations", "archive:hide").item("Unarchive All", "archive:unarchive-all");
+                        v.popup(menu, e.position, cx);
+                    }),
+                )
+                .child(drawn.size_full())
+        });
         let list = ScrollView::new(&handle).border(false).auto_hide(true).background(p.list_background).on_scroll(cx.listener(|_: &mut Phone, _, cx| cx.invalidate())).child(content);
-        let mut column = div().size_full().flex().flex_col().bg(c(p.panel_background)).child(top).child(div().flex_1().min_h_0().child(list));
+        let mut column = div().size_full().flex().flex_col().bg(c(p.panel_background)).child(top).children(back).child(div().flex_1().min_h_0().child(list));
         if let Some(playing) = self.playing(cx) {
             column = column.child(playing);
         }
@@ -962,10 +1142,22 @@ impl Phone {
         )
     }
 
-    fn thread_rows(&mut self, cx: &mut Cx<Self>) -> Element {
+    /// The conversations' list's rows: the archive's row first (with
+    /// all the rest shown, and something archived), then the
+    /// conversations.
+    fn list_rows(&self, cx: &Cx<Self>) -> Rc<Vec<ListRow>> {
         let listed = self.listed(cx);
-        if listed.is_empty() {
-            let words = if !self.threads.is_empty() {
+        let searching = !self.search.read(cx).text(cx).trim().is_empty();
+        let pile = !searching && !self.in_archive && self.threads.iter().any(|t| archived_in(&self.archived, t));
+        Rc::new(pile.then_some(ListRow::Archive).into_iter().chain(listed.iter().map(|&i| ListRow::Thread(i))).collect())
+    }
+
+    fn thread_rows(&mut self, cx: &mut Cx<Self>) -> Element {
+        let rows_now = self.list_rows(cx);
+        if rows_now.is_empty() {
+            let words = if self.in_archive {
+                "Nothing is archived."
+            } else if !self.threads.is_empty() {
                 "No conversation has that."
             } else if self.state.link == Link::Ready || self.demo {
                 "No messages yet."
@@ -974,30 +1166,216 @@ impl Phone {
             };
             return div().p(px(m::SPACING)).child(StringView::new(words).dim(true).wrap(true)).into_element();
         }
-        let (paint_list, pick_list) = (listed.clone(), listed.clone());
+        let (paint_list, pick_list, menu_list) = (rows_now.clone(), rows_now.clone(), rows_now.clone());
         let scroll = self.list_scroll.clone();
         rows(
             cx,
             "threads",
             &scroll,
-            listed.len(),
+            rows_now.len(),
             ROW,
-            move |v, g, r, i, hot| {
-                if let Some(t) = paint_list.get(i).and_then(|&k| v.threads.get(k)) {
-                    v.thread_row(g, r, t, hot);
+            move |v, g, r, i, hot| match paint_list.get(i) {
+                Some(ListRow::Archive) => v.archive_row(g, r, hot),
+                Some(ListRow::Thread(k)) => {
+                    if let Some(t) = v.threads.get(*k) {
+                        v.thread_row(g, r, t, hot);
+                    }
                 }
+                None => {}
             },
-            move |v, i, cx| {
-                if let Some(key) = pick_list.get(i).and_then(|&k| v.threads.get(k)).map(|t| t.key.clone()) {
-                    v.open_thread(&key, cx);
+            move |v, i, mods, cx| match pick_list.get(i) {
+                Some(ListRow::Archive) => v.show_archive(true, cx),
+                Some(ListRow::Thread(k)) => {
+                    let keys: Vec<String> = pick_list.iter().filter_map(|r| if let ListRow::Thread(k) = r { v.threads.get(*k).map(|t| t.key.clone()) } else { None }).collect();
+                    if let Some(key) = v.threads.get(*k).map(|t| t.key.clone()) {
+                        v.choose(&key, &keys, mods, cx);
+                    }
                 }
+                None => {}
+            },
+            move |v, i, at, cx| match menu_list.get(i) {
+                Some(ListRow::Thread(k)) => {
+                    if let Some(key) = v.threads.get(*k).map(|t| t.key.clone()) {
+                        v.thread_menu(&key, at, cx);
+                    }
+                }
+                Some(ListRow::Archive) => {
+                    let menu = Menu::new("Archive").item("Show Archived Conversations", "archive:show").item("Unarchive All", "archive:unarchive-all");
+                    v.popup(menu, at, cx);
+                }
+                None => {}
             },
         )
     }
 
+    /// `key` clicked in the list (`keys`, the conversations it shows, in
+    /// order): opened; with ⌘ chosen too, or not; with ⇧ every one from
+    /// the last chosen (or the one open) to it. As Telegram's list.
+    fn choose(&mut self, key: &str, keys: &[String], mods: olo_kit::Modifiers, cx: &mut Cx<Self>) {
+        if mods.control || mods.platform {
+            match self.chosen.iter().position(|c| c == key) {
+                Some(i) => {
+                    self.chosen.remove(i);
+                }
+                None => {
+                    // (The one open is chosen with it, as a list's first
+                    // selection is.)
+                    if self.chosen.is_empty()
+                        && let Shown::Thread(open) = &self.shown
+                        && open != key
+                        && keys.contains(open)
+                    {
+                        self.chosen.push(open.clone());
+                    }
+                    self.chosen.push(key.to_owned());
+                }
+            }
+            self.chosen_from = Some(key.to_owned());
+            cx.invalidate();
+            return;
+        }
+        if mods.shift {
+            let open = if let Shown::Thread(k) = &self.shown { Some(k.clone()) } else { None };
+            let from = self.chosen_from.clone().or(open).and_then(|f| keys.iter().position(|k| *k == f));
+            if let (Some(from), Some(to)) = (from, keys.iter().position(|k| k == key)) {
+                self.chosen = keys[from.min(to)..=from.max(to)].to_vec();
+                cx.invalidate();
+                return;
+            }
+        }
+        self.chosen.clear();
+        self.chosen_from = Some(key.to_owned());
+        self.open_thread(key, cx);
+    }
+
+    /// The conversations an action from the list or the menus is for:
+    /// those chosen together, else the one open.
+    fn acted_on(&self) -> Vec<String> {
+        if !self.chosen.is_empty() {
+            return self.chosen.iter().filter(|k| self.threads.iter().any(|t| t.key == **k)).cloned().collect();
+        }
+        match &self.shown {
+            Shown::Thread(k) if self.threads.iter().any(|t| t.key == *k) => vec![k.clone()],
+            _ => Vec::new(),
+        }
+    }
+
+    /// A conversation's right-click menu: for it, or (on one of several
+    /// chosen) for all of them.
+    fn thread_menu(&mut self, key: &str, at: olo_kit::Point<Pixels>, cx: &mut Cx<Self>) {
+        if !self.chosen.iter().any(|k| k == key) {
+            self.chosen.clear();
+            self.chosen_from = Some(key.to_owned());
+            if !matches!(&self.shown, Shown::Thread(k) if k == key) {
+                self.chosen.push(key.to_owned());
+            }
+        }
+        let keys = if self.chosen.is_empty() { vec![key.to_owned()] } else { self.chosen.clone() };
+        let menu = self.archive_items(Menu::new("Conversation"), &keys);
+        self.popup(menu, at, cx);
+        cx.invalidate();
+    }
+
+    /// Archive and Unarchive (and Mark as Read) for `keys`: "Archive",
+    /// or "Archive 3 Conversations".
+    fn archive_items(&self, menu: Menu, keys: &[String]) -> Menu {
+        let ts: Vec<&Conversation> = self.threads.iter().filter(|t| keys.contains(&t.key)).collect();
+        let n = ts.len();
+        let some = |archived: bool| ts.iter().any(|t| archived_in(&self.archived, t) == archived);
+        let label = |verb: &str| if n > 1 { format!("{verb} {n} Conversations") } else { verb.to_owned() };
+        let mut menu = menu;
+        if some(false) {
+            menu = menu.item(label("Archive"), "archive");
+        }
+        if some(true) {
+            menu = menu.item(label("Unarchive"), "unarchive");
+        }
+        let unread = ts.iter().any(|t| t.unread() > 0);
+        menu.item(if n > 1 { "Mark All as Read".to_owned() } else { "Mark as Read".to_owned() }, "mark-read").enabled(unread)
+    }
+
+    /// `menu` where the list was right-clicked; what's chosen goes to the
+    /// window's commands.
+    fn popup(&mut self, menu: Menu, at: olo_kit::Point<Pixels>, cx: &mut Cx<Self>) {
+        let me = cx.view_ref();
+        olo_kit::menu::context_menu(cx, menu, at, move |cmd, cx| {
+            let cmd = cmd.to_owned();
+            me.update(cx, move |v, cx| {
+                v.command(&cmd, cx);
+            });
+        });
+    }
+
+    /// `keys` archived (`on`) or not: kept here, the lists drawn again,
+    /// the archive left once it's empty.
+    fn archive(&mut self, keys: &[String], on: bool, cx: &mut Cx<Self>) {
+        let now = when::now();
+        for k in keys {
+            if on {
+                // (As of now, or its latest message if that's later: a
+                // phone's clock ahead of ours doesn't bring it back.)
+                let latest = self.threads.iter().find(|t| t.key == *k).map_or(0, Conversation::latest);
+                self.archived.insert(k.clone(), now.max(latest));
+            } else {
+                self.archived.remove(k);
+            }
+        }
+        self.chosen.clear();
+        self.data += 1;
+        if self.in_archive && !self.threads.iter().any(|t| archived_in(&self.archived, t)) {
+            self.in_archive = false;
+        }
+        if !self.demo {
+            save_archived(self.archived.clone());
+        }
+        cx.invalidate();
+    }
+
+    /// The archive shown in the list (`on`), or the conversations.
+    fn show_archive(&mut self, on: bool, cx: &mut Cx<Self>) {
+        self.in_archive = on;
+        self.chosen.clear();
+        self.tab = Tab::Messages;
+        self.data += 1;
+        self.list_scroll.set_offset(cx, point(px(0.0), px(0.0)));
+        cx.invalidate();
+    }
+
+    /// The archive's row: its icon, "Archived", a few of its
+    /// conversations' names and how many unread among them.
+    fn archive_row(&self, g: &mut Painter, r: Bounds<Pixels>, hot: bool) {
+        let p = theme::palette();
+        let (ink, dim) = row_ground(g, r, false, hot);
+        let pic = Bounds { origin: point(r.origin.x + px(10.0), r.center().y - px(PICTURE / 2.0)), size: size(px(PICTURE), px(PICTURE)) };
+        g.paint_sector(pic.center(), px(0.0), px(PICTURE / 2.0), 0.0, std::f32::consts::TAU, c(olo_kit::palette::mix(p.list_background, p.list_item_text, 0.35)));
+        let icon = Bounds { origin: point(pic.center().x - px(13.0), pic.center().y - px(13.0)), size: size(px(26.0), px(26.0)) };
+        olo_kit::icons::paint(g, icon, "archive");
+        let (x, right) = (pic.right() + px(12.0), r.right() - px(12.0));
+        let (title, small) = (style::PLAIN_SIZE + 0.5, style::DETAIL_SIZE);
+        let (bold, normal) = (style::ui_font(FontWeight::BOLD), style::ui_font(FontWeight::NORMAL));
+        let base1 = style::baseline_at(g, r.origin.y + px(21.0), title);
+        let base2 = style::baseline_at(g, r.origin.y + px(43.0), small);
+        style::label_on_baseline_fit(g, x, base1, Align::Left, "Archived".to_owned(), title, bold, ink, right - x);
+        let pile: Vec<&Conversation> = self.threads.iter().filter(|t| archived_in(&self.archived, t)).collect();
+        let unread: usize = pile.iter().map(|t| t.unread()).sum();
+        let mut room = right - x;
+        if unread > 0 {
+            let count = unread.to_string();
+            let w = style::pill_width(&count, small, &normal);
+            style::pill_on_baseline(g, right - px(w), base2, &count, small, normal.clone(), dim, white());
+            room -= px(w + 8.0);
+        }
+        let names = pile.iter().take(4).map(|t| t.name.as_str()).collect::<Vec<_>>().join(", ");
+        style::label_on_baseline_fit(g, x, base2, Align::Left, names.clone(), small, normal, dim, room);
+        if g.content_mask().bounds.intersects(&r) {
+            agent::record(g, agent::Node { value: Some(format!("{} archived: {names}", pile.len()).into()), ..agent::Node::button("Archived", r) });
+        }
+    }
+
     fn thread_row(&self, g: &mut Painter, r: Bounds<Pixels>, t: &Conversation, hot: bool) {
         let p = theme::palette();
-        let selected = matches!(&self.shown, Shown::Thread(key) if *key == t.key);
+        // Those chosen together, else the one open.
+        let selected = if self.chosen.is_empty() { matches!(&self.shown, Shown::Thread(key) if *key == t.key) } else { self.chosen.contains(&t.key) };
         let (ink, dim) = row_ground(g, r, selected, hot);
         let pic = Bounds { origin: point(r.origin.x + px(10.0), r.center().y - px(PICTURE / 2.0)), size: size(px(PICTURE), px(PICTURE)) };
         picture(g, pic, &t.name, &t.address, p.mode == olo_kit::palette::ThemeMode::Dark);
@@ -1070,7 +1448,7 @@ impl Phone {
                     }
                 }
             },
-            move |v, i, cx| match (&pick_direct, i) {
+            move |v, i, _, cx| match (&pick_direct, i) {
                 (Some(address), 0) => v.write_to(address, cx),
                 _ => {
                     let Some(person) = pick_list.get(i - lead).and_then(|&k| v.contacts.get(k)).cloned() else { return };
@@ -1084,6 +1462,7 @@ impl Phone {
                     }
                 }
             },
+            |_, _, _, _| {},
         )
     }
 
@@ -1675,5 +2054,29 @@ impl Look {
         let small_h = para::line_height(META);
         let cy = br.bottom() - px(PAD.1 + small_h / 2.0) + px(if bl.time_under { 0.0 } else { 1.0 });
         style::label(g, br.right() - px(PAD.0), cy, Align::Right, bl.time.clone(), META, style::ui_font(FontWeight::NORMAL), self.dim);
+    }
+}
+
+#[cfg(test)]
+mod archive_tests {
+    use super::*;
+
+    fn conversation(key: &str, latest: i64) -> Conversation {
+        Conversation { key: key.into(), name: key.into(), address: key.into(), messages: vec![Message { at: latest, text: "hi".into(), ..Default::default() }] }
+    }
+
+    /// A conversation is archived until something comes after it was
+    /// archived (then it's back among the rest, as Telegram's); one
+    /// never archived isn't.
+    #[test]
+    fn archived_until_something_new() {
+        let archived = std::collections::HashMap::from([("a".to_owned(), 100), ("b".to_owned(), 100)]);
+        assert!(archived_in(&archived, &conversation("a", 100)));
+        assert!(archived_in(&archived, &conversation("a", 50)));
+        assert!(!archived_in(&archived, &conversation("b", 101)), "a message since: back");
+        assert!(!archived_in(&archived, &conversation("c", 10)));
+        // (As the file keeps it.)
+        let text = serde_json::to_string(&archived).unwrap();
+        assert_eq!(serde_json::from_str::<std::collections::HashMap<String, i64>>(&text).unwrap(), archived);
     }
 }
