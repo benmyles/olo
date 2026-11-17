@@ -40,6 +40,23 @@ something nobody here has is in "Blocked", with what it waits for.
   then olo passwords ext should be smart enough to offer to auto fill
   it like it does for when they come via sms").
 
+- **Deskbar: the fading blue dot without its number; a red dot for
+  what's unread in the app itself** (Ben, 2026-11-17: "currently in the
+  deskbar we show a count of recent notifications and a blue dot that
+  fades away as they age. i love the blue dot but the count itself
+  makes it look more like an unread badge count for an app, e.g. in
+  slack it'd be unread message count. change it so that we keep the
+  fading blue dot for notifications but remove the number. then, also
+  add to olo the ability, for apps that support it, to show a red dot
+  to the left of the blue dot and the red dot indicates there are
+  unread/pending items in the app itself. red dot doesn't fade it's
+  either there or not. should be a deskbar option to choose whether or
+  not to show it (enabled by default). idk if there's like a linux
+  desktop standard to get this info, if there is then use that and make
+  sure every native olo app supports it as well as olo's slack. if
+  there is no standard then create something and make it work for all
+  native olo apps and olo slack.").
+
 ## Done, waiting for Ben to try or confirm
 
 - **The phone's other notifications, its music, its conversations
