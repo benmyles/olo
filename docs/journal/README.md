@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### Olo Doctor: everything it does can be undone
+
+*01:59* — What Doctor fixed is listed under Fixed with when, what undoing does, and Undo: the file as it was, the service as it stood, the packages it added removed. What can't be put back (an update) is said. (Made-up entries, in a test.)
+
+![Olo Doctor: everything it does can be undone](2026-11-17/015940-olo-doctor-everything-it-does-can-be-undone.png)
+
 ### Deskbar: the phone's tray glyph, the size of the others
 
 *01:40* — The phone in Deskbar's tray was taller than its cell and off to the right; it's 8 by 14 points in the middle of it now, level with its neighbours. A dot while messages are unread.

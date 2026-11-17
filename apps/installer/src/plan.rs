@@ -266,7 +266,7 @@ impl Root {
                     }
                     tell(Event::Progress { share: Some(begun.saturating_sub(1) as f32 / n as f32), text });
                 }
-                Ok(Some(FromHelper::Done { id: i, results })) if i == id => {
+                Ok(Some(FromHelper::Done { id: i, results, .. })) if i == id => {
                     return match results.into_iter().find_map(Result::err) {
                         Some(e) => Err(e),
                         None => Ok(()),

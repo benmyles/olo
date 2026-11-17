@@ -49,7 +49,9 @@ enum Msg {
     Prepared(String, Vec<Step>),
     Scanned(Report),
     /// A fix run as this user: the finding and its steps' outcomes.
-    Ran(String, Vec<Result<(), String>>),
+    /// A fix's steps ran (as this user): how each went, and what undoes
+    /// those that did.
+    Ran(String, helper::Ran),
     /// How a fix run as this user is going (a download's share).
     Progress(String, String),
     Helper(Option<FromHelper>),
@@ -149,7 +151,7 @@ fn counted(n: usize, s: Severity, alone: bool) -> String {
 }
 
 /// "a, b and c".
-fn and_list(parts: &[String]) -> String {
+pub(crate) fn and_list(parts: &[String]) -> String {
     match parts {
         [] => String::new(),
         [one] => one.clone(),
@@ -223,16 +225,16 @@ impl Doctor {
             std::thread::spawn(move || {
                 if demo {
                     let results = crate::demo::fix(&id);
-                    to.send(Msg::Ran(id, results));
+                    to.send(Msg::Ran(id, helper::Ran { results, ..Default::default() }));
                 } else if let Err(e) = crate::checks::prepare(&id) {
-                    to.send(Msg::Ran(id, vec![Err(e)]));
+                    to.send(Msg::Ran(id, helper::Ran { results: vec![Err(e)], ..Default::default() }));
                 } else if root {
                     to.send(Msg::Prepared(id, steps));
                 } else {
-                    let results = helper::run_steps_with(&steps, &mut |text| {
+                    let ran = helper::run_steps_keeping(&steps, &mut |text| {
                         to.send(Msg::Progress(id.clone(), text));
                     });
-                    to.send(Msg::Ran(id, results));
+                    to.send(Msg::Ran(id, ran));
                 }
             });
         }
@@ -328,12 +330,22 @@ impl Doctor {
         }
     }
 
-    fn finished(&mut self, id: String, results: Vec<Result<(), String>>, cx: &mut Cx<Self>) {
-        let outcome = match results.into_iter().find_map(Result::err) {
-            Some(e) => Outcome::Failed(e),
+    fn finished(&mut self, id: String, ran: helper::Ran, cx: &mut Cx<Self>) {
+        let outcome = match ran.results.iter().find_map(|r| r.as_ref().err()) {
+            Some(e) => Outcome::Failed(e.clone()),
             None => Outcome::Fixed,
         };
         let fixed = outcome == Outcome::Fixed;
+        // What it did is kept with what undoes it (applied.rs); an undo
+        // done is forgotten.
+        if !crate::demo::on() {
+            let fix = self.report.as_ref().and_then(|r| r.action(&id).map(|fix| (r.find(&id).map(|f| f.title.clone()), fix.clone())));
+            if let Some(kept) = keep_applied(&id, fix, &ran, fixed)
+                && let Err(e) = kept
+            {
+                tracing::warn!("doctor: what undoes {id} couldn't be kept: {e}");
+            }
+        }
         self.outcomes.insert(id.clone(), outcome);
         if let Some(then) = crate::checks::after_fix(&id).filter(|_| fixed) {
             // What the fix leaves to do as the person (off this thread:
@@ -357,10 +369,10 @@ impl Doctor {
                     self.progress.insert(finding.clone(), text);
                 }
             }
-            Some(FromHelper::Done { id, results }) => {
+            Some(FromHelper::Done { id, results, undo, kept }) => {
                 if let Some(finding) = self.running.remove(&id) {
                     self.progress.remove(&finding);
-                    self.finished(finding, results, cx);
+                    self.finished(finding, helper::Ran { results, undo, kept }, cx);
                 }
             }
             None => {
@@ -537,9 +549,9 @@ impl View for Doctor {
                     self.scan(cx);
                 }
             }
-            Msg::Ran(id, results) => {
+            Msg::Ran(id, ran) => {
                 self.progress.remove(&id);
-                self.finished(id, results, cx)
+                self.finished(id, ran, cx)
             }
             Msg::Progress(id, text) => {
                 if self.outcomes.get(&id) == Some(&Outcome::Fixing) {
@@ -605,12 +617,41 @@ impl View for Doctor {
                 list = list.child(self.finding_card(f, &ink, cx));
             }
             let fine_ink = style::c(p.hue_text(olo_theme::Hue::Green));
-            if !self.fixed.is_empty() {
+            // What was fixed: each thing applied that can be put back,
+            // with Undo (applied.rs: kept from one day to the next), then
+            // what was fixed this time that left nothing to undo.
+            let applied: Vec<&checks::Undo> = r.undo.iter().filter(|u| crate::applied::of(&u.id).is_some()).collect();
+            let plain: Vec<&String> = self.fixed.iter().filter(|t| !applied.iter().any(|u| u.title == **t)).collect();
+            if !applied.is_empty() || !plain.is_empty() {
                 let open = self.show_fixed;
-                list = list.child(latch(format!("Fixed ({})", self.fixed.len()), "fixed", open, |d, open| d.show_fixed = open, cx));
+                list = list.child(latch(format!("Fixed ({})", applied.len() + plain.len()), "fixed", open, |d, open| d.show_fixed = open, cx));
                 if open {
-                    let mut lines = card(None).gap(px(m::TIGHT));
-                    for t in &self.fixed {
+                    let mut lines = card(None).gap(px(m::STACK));
+                    let kept = crate::applied::all();
+                    for u in applied {
+                        let outcome = self.outcomes.get(&u.id);
+                        let id = u.id.clone();
+                        let label = match outcome {
+                            Some(Outcome::Fixing) => "Undoing…".to_owned(),
+                            Some(Outcome::Failed(_)) => "Try Again".to_owned(),
+                            _ => u.fix.label.clone(),
+                        };
+                        let mut text = div().flex().flex_col().gap(px(2.0)).child(StringView::new(u.title.clone()).wrap(true).color(ink.text));
+                        if let Some(a) = crate::applied::of(&u.id).and_then(|finding| kept.iter().find(|a| a.id == finding)) {
+                            text = text.child(StringView::new(a.line()).wrap(true).color(ink.dim));
+                        }
+                        let mut side = div().flex().flex_col().items_end().gap(px(m::TIGHT)).child(
+                            Button::new(label)
+                                .id(format!("fix-{}", u.id))
+                                .enabled(outcome != Some(&Outcome::Fixing))
+                                .on_click(cx.listener(move |d: &mut Doctor, _: &ClickEvent, cx| d.fix(std::slice::from_ref(&id), cx))),
+                        );
+                        if let Some(Outcome::Failed(e)) = outcome {
+                            side = side.child(StringView::new(e.clone()).color(style::c(p.failure)));
+                        }
+                        lines = lines.child(row(mark(fine_ink), text, Some(side)));
+                    }
+                    for t in plain {
                         lines = lines.child(row(mark(fine_ink), StringView::new(t.clone()).wrap(true).color(ink.text).into_element(), None));
                     }
                     list = list.child(lines);
@@ -715,6 +756,22 @@ impl View for Doctor {
                 .child(footer),
         )
     }
+}
+
+/// Keep what a fix that ran did (its undo), or forget an undo that's
+/// done: what `finished` and the command line both do. `fix`: the
+/// finding's title (None: it was an undo's button) and the fix that ran.
+fn keep_applied(id: &str, fix: Option<(Option<String>, Fix)>, ran: &helper::Ran, fixed: bool) -> Option<std::io::Result<()>> {
+    // An undo of ours, done: forgotten. (One that failed stays, to try
+    // again.)
+    if let Some(finding) = crate::applied::of(id) {
+        return fixed.then(|| crate::applied::remove(finding));
+    }
+    // A finding's fix (not a suggestion's own undo button): kept, with
+    // what undoes the steps that ran, all of them or the first of them.
+    let (Some(title), fix) = fix? else { return None };
+    let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    Some(crate::applied::add(crate::applied::Applied { id: id.to_owned(), title, label: fix.label, at, root: fix.root, undo: ran.undo.clone(), kept: ran.kept.clone() }))
 }
 
 /// The program.
@@ -837,12 +894,12 @@ fn fix_from_the_command_line(ids: &[String]) -> i32 {
     let mut failed = false;
     for (n, (id, title, fix, _)) in chosen.iter().enumerate() {
         println!("{title}: {}", fix.label);
-        let results = if crate::demo::on() {
-            crate::demo::fix(id)
+        let ran = if crate::demo::on() {
+            helper::Ran { results: crate::demo::fix(id), ..Default::default() }
         } else if let Err(e) = crate::checks::prepare(id) {
-            vec![Err(e)]
+            helper::Ran { results: vec![Err(e)], ..Default::default() }
         } else if !fix.root || root {
-            helper::run_steps_with(&fix.steps, &mut |text| println!("  {text}"))
+            helper::run_steps_keeping(&fix.steps, &mut |text| println!("  {text}"))
         } else {
             if helper.is_none() {
                 let way = if std::env::var_os("OLO_DOCTOR_HELPER").is_some() { helper::way() } else { helper::Way::Pkexec };
@@ -866,13 +923,26 @@ fn fix_from_the_command_line(ids: &[String]) -> i32 {
             h.send(&ToHelper::Run { id: n as u64, steps: fix.steps.clone() });
             loop {
                 match rx.recv() {
-                    Ok(Some(FromHelper::Done { id, results })) if id == n as u64 => break results,
+                    Ok(Some(FromHelper::Done { id, results, undo, kept })) if id == n as u64 => break helper::Ran { results, undo, kept },
                     Ok(Some(FromHelper::Progress { text, .. })) => println!("  {text}"),
                     Ok(Some(_)) => continue,
-                    _ => break vec![Err("the root helper stopped".into())],
+                    _ => break helper::Ran { results: vec![Err("the root helper stopped".into())], ..Default::default() },
                 }
             }
         };
+        // Kept with what undoes it (`olo-doctor --fix applied:ID`), as
+        // the window keeps it; an undo done is forgotten.
+        if !crate::demo::on() {
+            let done = ran.results.iter().all(Result::is_ok);
+            let finding = report.find(id).map(|f| f.title.clone());
+            if let Some(Err(e)) = keep_applied(id, Some((finding, (*fix).clone())), &ran, done) {
+                eprintln!("{program}: what undoes it couldn't be kept: {e}");
+            }
+            for k in &ran.kept {
+                println!("  (Can't be undone: {k})");
+            }
+        }
+        let results = ran.results;
         for (step, r) in fix.steps.iter().zip(&results) {
             match r {
                 Ok(()) => println!("  {}: done", step.describe()),

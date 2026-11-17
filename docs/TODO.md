@@ -25,16 +25,6 @@ something nobody here has is in "Blocked", with what it waits for.
   changes, whether or not the section has been opened: find which
   sections only start measuring (or only publish their value) once
   shown, and have every row's value fed as the others' are.
-- **Everything Olo Doctor does can be undone** (Ben, 2026-11-16: "one
-  more thing we need: everything in olo doctor that it does must be
-  reversible, e.g. for any fix/suggestion applied i should be able to
-  undo/restore to the previous behavior"). Today only some suggestions
-  have an undo (brush, worktrunk's place, the kernel's settings); a fix
-  (a rule written, a drop-in, a package installed, a unit stopped, a
-  kernel argument) has none. Every fix and suggestion applied keeps what
-  it replaced (the file as it was, the unit's state, the setting's
-  value) and is listed with a button that puts it back, the phone's
-  backend and the other installs among them (removed again).
 - **The phone's other notifications, calls and music** (found
   2026-11-16; natively since). Olo has a phone's messages, contacts and
   codes. Not yet: its other apps' notifications (Apple's Notification
@@ -103,6 +93,11 @@ something nobody here has is in "Blocked", with what it waits for.
   view, kept (a cache keyed by the file, its size and its date, and the
   scale), never resampled when drawn, the kind's own icon until it's
   ready.
+- **Preferences ▸ Terminal: a button to choose the worktrees' folder**
+  (Ben, 2026-11-17, with a picture of Git Worktrees' "New ones go in:"
+  field: "the worktrees location should also have a button to pick the
+  folder"). Beside the field, Choose…: the kit's file panel for a
+  folder, its choice written in the field (with `~` for home, as typed).
 - **The website covers Terminal's work with agents** (Ben, 2026-11-16:
   "update the website to cover all the agent integration features in olo
   terminal"). olo-desktop.com's Agents part: what Terminal does for
@@ -5981,6 +5976,21 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Everything Olo Doctor does can be undone**~~ (Ben, 2026-11-16:
+  "everything in olo doctor that it does must be reversible, e.g. for
+  any fix/suggestion applied i should be able to undo/restore to the
+  previous behavior"; done 2026-11-17). Every step says what puts it
+  back before it runs; what a fix did is kept and listed under Fixed
+  with Undo (and `olo-doctor --fix applied:ID`). HACKING, "Olo Doctor".
+  What can't be put back (an update of packages, a kept build removed)
+  is said on its line. **For Ben**: fixes applied before this left
+  nothing to undo by: the two on your computer were BlueFerry's removal
+  (`dnf install blueferry-backend` would bring it back; Olo no longer
+  uses it) and Present as Hands-Free (to take back: remove the `Class`
+  and `Name` lines it added to /etc/bluetooth/main.conf and `-P
+  hostname` from /etc/systemd/system/bluetooth.service.d/olo.conf, then
+  restart Bluetooth; say if you'd like Doctor to offer that).
 
 - ~~**The phone, natively: an iPhone's or an Android phone's messages,
   contacts and one-time codes, and Phone, the app**~~ (Ben, 2026-11-16

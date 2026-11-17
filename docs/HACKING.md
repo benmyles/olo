@@ -12339,7 +12339,41 @@ but the suggestions', `suggestions` every suggestion; root
 steps through the helper and pkexec, or, under sudo, run there with the
 scan made for the sudo user), `olo-doctor --fans [auto|cool]` (the fan
 profile: "The fans", above), `olo-doctor --scheduler [kernel|lavd]`
-("The scheduler", above). What it looks for:
+("The scheduler", above).
+
+**Everything it does can be undone** (applied.rs; Ben, 2026-11-16:
+"everything in olo doctor that it does must be reversible, e.g. for any
+fix/suggestion applied i should be able to undo/restore to the previous
+behavior"). Each step says, just before it runs, what puts back what
+it's about to change (`Step::inverse`, asked by whoever runs the step:
+the root helper for root's files, which only it can read): a file's
+words as they were (or the file removed, if it wasn't there; a program
+or a picture copied back from a kept copy, root's under
+/var/lib/olo/doctor/kept), a unit stopped that it started and started
+that it stopped, enabled or not as it was, a sysfs value, a kernel
+argument, a login shell, the packages it added removed and those it
+removed added, a folder it made removed if still empty. What only makes
+a change take effect (systemd reading its files again, a service
+started again, NetworkManager's settings read, the start-up images
+made) is done again after everything is put back, once
+(`fix::undo_of`: put back last-changed-first, then those). What can't
+be put back is said, in the step's own words (an update of packages; a
+kept build removed; a repository's release package), and what changes
+nothing that stays (a process ended, hardware started again) has
+nothing to undo. The helper answers with the undo of the steps that ran
+(`FromHelper::Done`'s `undo` and `kept`), and it's kept with Doctor's
+state (`~/.local/state/olo/doctor/applied.json`: the finding, its
+title, the button's words, when, the steps). The window lists them
+under **Fixed**, each with when and what undoing does, and **Undo**;
+`olo-doctor --fix` lists them as `applied:ID`, and `--fix applied:ID`
+undoes one. Undone, an entry goes; one whose finding is found again
+goes too (the fix isn't in force), as does one a suggestion has an undo
+of its own for. A fix that fails part way keeps the undo of the steps
+that ran. Tested on files (applied, undone: as they were), in the
+helper's protocol, and in the window against a made-up entry. Fixes
+applied before this (2026-11-17) left nothing to undo by.
+
+What it looks for:
 
 - **DiskBackup** (`diskbackup`, from its settings and its service's
   state file): not set up ("Nothing is backed up": said, no button,

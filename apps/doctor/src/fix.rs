@@ -199,6 +199,11 @@ pub enum Step {
     /// Failing partway, nothing is left off: the card's driver is loaded
     /// again (udev told the card was added, which loads it by its PCI
     /// alias) and the services started.
+    /// Remove a folder if it's empty (what a `MakeDir` made, undone: one
+    /// with something in it is left).
+    RemoveEmptyDir {
+        path: PathBuf,
+    },
     RestartGpu {
         address: String,
         modules: Vec<String>,
@@ -308,6 +313,7 @@ impl Step {
             Step::InstallRepository { name, .. } => format!("Adding the {name} repository"),
             Step::CopyTree { to, .. } => format!("Installing {}", to.display()),
             Step::MakeDir { path, .. } => format!("Making {}", path.display()),
+            Step::RemoveEmptyDir { path } => format!("Removing {} if it's empty", path.display()),
             Step::MakeSystemUsers { config } => format!("Making the users {} names", config.display()),
             Step::SelinuxLabels { restore, .. } => format!("Labelling {} for SELinux", restore.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")),
             Step::RebuildInitramfs => "Making the start-up images again".into(),
@@ -455,6 +461,11 @@ impl Step {
             }
             Step::CopyTree { from, to, mode } => copy_tree(from, to, *mode).map_err(failed),
             Step::MakeDir { path, mode, owner } => make_dir(path, *mode, owner.as_deref()).map_err(failed),
+            // (Gone already, or holding something: left, and no failure.)
+            Step::RemoveEmptyDir { path } => {
+                let _ = std::fs::remove_dir(path);
+                Ok(())
+            }
             Step::SelinuxLabels { rules, restore } => selinux_labels(rules, restore).map_err(|e| format!("{}: {e}", self.describe())),
             Step::MakeSystemUsers { config } => {
                 let out = std::process::Command::new("systemd-sysusers").arg(config).stdin(std::process::Stdio::null()).output();
@@ -465,6 +476,269 @@ impl Step {
                 }
             }
             Step::RebuildInitramfs => rebuild_initramfs(&mut |_| {}).map_err(|e| format!("{}: {e}", self.describe())),
+        }
+    }
+}
+
+/// What puts back what a step changes (Ben, 2026-11-16: "everything in
+/// olo doctor that it does must be reversible, e.g. for any
+/// fix/suggestion applied i should be able to undo/restore to the
+/// previous behavior"): worked out just before the step runs, by whoever
+/// runs it (the root helper for root's files: only it can read what
+/// they hold), from how things stand then.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Inverse {
+    /// What puts back what it changes (the file as it was, the unit as
+    /// it stood, the value it had): done last-changed-first.
+    pub restore: Vec<Step>,
+    /// What makes that take effect (systemd reading its files again, a
+    /// service started again): done after everything is put back, in
+    /// the order the fix did them.
+    pub after: Vec<Step>,
+    /// What of it can't be put back, said plainly ("the packages stay
+    /// updated").
+    pub note: Option<String>,
+}
+
+impl Inverse {
+    fn restore(steps: Vec<Step>) -> Inverse {
+        Inverse { restore: steps, ..Default::default() }
+    }
+
+    fn after(step: Step) -> Inverse {
+        Inverse { after: vec![step], ..Default::default() }
+    }
+
+    fn note(text: impl Into<String>) -> Inverse {
+        Inverse { note: Some(text.into()), ..Default::default() }
+    }
+}
+
+/// The steps that undo `done` (a fix's steps that ran, with what each
+/// one's [`Step::inverse`] said before it did): everything put back,
+/// last-changed-first, then what makes it take effect, each once; and
+/// what can't be undone.
+pub fn undo_of(done: Vec<Inverse>) -> (Vec<Step>, Vec<String>) {
+    let mut steps: Vec<Step> = done.iter().rev().flat_map(|i| i.restore.iter().cloned()).collect();
+    for step in done.iter().flat_map(|i| i.after.iter()) {
+        if !steps.contains(step) {
+            steps.push(step.clone());
+        }
+    }
+    let mut notes: Vec<String> = Vec::new();
+    for note in done.into_iter().filter_map(|i| i.note) {
+        if !notes.contains(&note) {
+            notes.push(note);
+        }
+    }
+    (steps, notes)
+}
+
+/// Where copies are kept of what a fix replaces that can't be written
+/// back from words (a program, a picture): root's under /var/lib, the
+/// person's with Olo Doctor's state. (`OLO_DOCTOR_KEPT`: tests.)
+fn kept_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("OLO_DOCTOR_KEPT") {
+        return dir.into();
+    }
+    // SAFETY: geteuid has no preconditions.
+    if unsafe { libc::geteuid() } == 0 { PathBuf::from("/var/lib/olo/doctor/kept") } else { olo_xdg::state_dir().join("doctor/kept") }
+}
+
+fn mode_of(path: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::metadata(path).map(|m| m.permissions().mode() & 0o7777).unwrap_or(0o644)
+}
+
+/// The steps that make file `path` what it is now: its words written
+/// back, or a kept copy of it copied back; removed, if it isn't there
+/// now. None: it can't be kept (a folder; no room for the copy).
+fn put_back(path: &Path) -> Option<Vec<Step>> {
+    let Ok(meta) = std::fs::symlink_metadata(path) else { return Some(vec![Step::RemoveFile { path: path.to_owned() }]) };
+    if !meta.is_file() {
+        return None;
+    }
+    let mode = mode_of(path);
+    let bytes = std::fs::read(path).ok()?;
+    // (Settings are words, and small: kept in the step itself, so the
+    // undo reads as what it writes.)
+    if bytes.len() <= 256 << 10
+        && let Ok(content) = String::from_utf8(bytes.clone())
+    {
+        return Some(vec![Step::WriteFile { path: path.to_owned(), content, mode }]);
+    }
+    let dir = kept_dir();
+    std::fs::create_dir_all(&dir).ok()?;
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
+    let kept = dir.join(format!("{stamp}-{}", path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()));
+    write_bytes(&kept, &bytes, 0o600).ok()?;
+    Some(vec![Step::CopyFile { from: kept, to: path.to_owned(), mode }])
+}
+
+/// The kernel's argument for `key` as it's kept under `root` now
+/// ("preempt=full"; a bare "quiet"): from /etc/kernel/cmdline, else the
+/// first boot entry's options.
+fn kernel_argument(root: &Path, key: &str) -> Option<String> {
+    let cmdline = std::fs::read_to_string(root.join("etc/kernel/cmdline")).ok().or_else(|| {
+        let mut entries: Vec<PathBuf> = std::fs::read_dir(root.join("boot/loader/entries")).ok()?.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "conf")).collect();
+        entries.sort();
+        let text = std::fs::read_to_string(entries.first()?).ok()?;
+        text.lines().find_map(|l| l.strip_prefix("options ").map(str::to_owned))
+    })?;
+    cmdline.split_whitespace().find(|a| a.split('=').next() == Some(key)).map(str::to_owned)
+}
+
+/// `user`'s login shell, as /etc/passwd has it.
+fn login_shell(passwd: &Path, user: &str) -> Option<PathBuf> {
+    let text = std::fs::read_to_string(passwd).ok()?;
+    text.lines().find_map(|l| {
+        let mut f = l.split(':');
+        (f.next() == Some(user)).then(|| f.nth(5).map(PathBuf::from)).flatten()
+    })
+}
+
+impl Step {
+    /// What puts back what this step is about to change: see
+    /// [`Inverse`]. Read from how things stand now, so it's asked just
+    /// before [`Step::run`].
+    pub fn inverse(&self) -> Inverse {
+        let cant = |what: &str| Inverse::note(what);
+        match self {
+            Step::WriteFile { path, content, .. } => match put_back(path) {
+                // (As it is already: nothing changes, nothing to undo.)
+                Some(back) if matches!(back.as_slice(), [Step::WriteFile { content: now, .. }] if now == content) => Inverse::default(),
+                Some(back) => Inverse::restore(back),
+                None => cant(&format!("What {} held couldn't be kept.", path.display())),
+            },
+            Step::CopyFile { to, .. } | Step::InstallRelease { to, .. } => match put_back(to) {
+                Some(back) => Inverse::restore(back),
+                None => cant(&format!("What {} held couldn't be kept.", to.display())),
+            },
+            Step::RemoveFile { path } => match put_back(path) {
+                // (Not there: nothing is removed.)
+                Some(back) if matches!(back.as_slice(), [Step::RemoveFile { .. }]) => Inverse::default(),
+                Some(back) => Inverse::restore(back),
+                None => cant(&format!("What {} held couldn't be kept.", path.display())),
+            },
+            Step::CopyTree { from, to, .. } => {
+                // Each file it will write: as it is now.
+                let mut steps = Vec::new();
+                let mut lost = false;
+                for name in std::fs::read_dir(from).into_iter().flatten().flatten().filter(|e| e.path().is_file()).map(|e| e.file_name()) {
+                    match put_back(&to.join(&name)) {
+                        Some(back) => steps.extend(back),
+                        None => lost = true,
+                    }
+                }
+                Inverse { restore: steps, after: Vec::new(), note: lost.then(|| format!("Some of what {} held couldn't be kept.", to.display())) }
+            }
+            Step::MakeDir { path, .. } => {
+                if path.exists() {
+                    Inverse::default()
+                } else {
+                    Inverse::restore(vec![Step::RemoveEmptyDir { path: path.clone() }])
+                }
+            }
+            Step::RemoveEmptyDir { path } => {
+                if path.is_dir() {
+                    Inverse::restore(vec![Step::MakeDir { path: path.clone(), mode: mode_of(path), owner: None }])
+                } else {
+                    Inverse::default()
+                }
+            }
+            Step::WriteSysfs { path, value } => match std::fs::read_to_string(path) {
+                Ok(now) => {
+                    // (A choice shows all its values, the one in force in
+                    // brackets: "always [madvise] never".)
+                    let now = now.trim();
+                    let now = now.split_whitespace().find_map(|w| w.strip_prefix('[').and_then(|w| w.strip_suffix(']'))).unwrap_or(now).to_owned();
+                    if now == value.trim() { Inverse::default() } else { Inverse::restore(vec![Step::WriteSysfs { path: path.clone(), value: now }]) }
+                }
+                Err(_) => cant(&format!("What {} was set to couldn't be read.", path.display())),
+            },
+            Step::Unit { name, action } => {
+                let state = unit_state(name).ok();
+                let (active, enabled) = (state.as_ref().is_some_and(|s| s.active), state.as_ref().is_some_and(|s| s.enabled));
+                let unit = |action: UnitAction| Step::Unit { name: name.clone(), action };
+                match action {
+                    UnitAction::Start if !active => Inverse::restore(vec![unit(UnitAction::Stop)]),
+                    UnitAction::Stop if active => Inverse::restore(vec![unit(UnitAction::Start)]),
+                    UnitAction::Enable if !enabled => Inverse::restore(vec![unit(UnitAction::Disable)]),
+                    UnitAction::Disable if enabled => Inverse::restore(vec![unit(UnitAction::Enable)]),
+                    UnitAction::Start | UnitAction::Stop | UnitAction::Enable | UnitAction::Disable => Inverse::default(),
+                    // (Its files put back, systemd reads them again; a
+                    // service running before runs again with them, and
+                    // one this started is stopped.)
+                    UnitAction::Reload => Inverse::after(unit(UnitAction::Reload)),
+                    UnitAction::Restart if active => Inverse::after(unit(UnitAction::Restart)),
+                    UnitAction::Restart => Inverse::restore(vec![unit(UnitAction::Stop)]),
+                    UnitAction::MakeDefault => match std::fs::read_link("/etc/systemd/system/default.target").ok().and_then(|t| t.file_name().map(|n| n.to_string_lossy().into_owned())) {
+                        Some(was) if was == *name => Inverse::default(),
+                        Some(was) => Inverse::restore(vec![Step::Unit { name: was, action: UnitAction::MakeDefault }]),
+                        None => cant("What the computer started to before isn't known."),
+                    },
+                }
+            }
+            Step::NetworkManagerReload => Inverse::after(Step::NetworkManagerReload),
+            Step::SessionBusReload => Inverse::after(Step::SessionBusReload),
+            Step::RebuildInitramfs => Inverse::after(Step::RebuildInitramfs),
+            Step::SetSessionEnvironment { vars } => {
+                let now = olo_system::env::manager_environment().unwrap_or_default();
+                let was: Vec<(String, String)> = vars.iter().filter_map(|(k, v)| now.iter().find(|(n, _)| n == k).filter(|(_, old)| old != v).cloned()).collect();
+                let unset = vars.iter().any(|(k, _)| !now.iter().any(|(n, _)| n == k));
+                Inverse {
+                    restore: if was.is_empty() { Vec::new() } else { vec![Step::SetSessionEnvironment { vars: was }] },
+                    after: Vec::new(),
+                    note: unset.then(|| "A variable it sets for the session stays set until you log out.".to_owned()),
+                }
+            }
+            Step::AddShell { path } => {
+                let shells = Path::new("/etc/shells");
+                let listed = std::fs::read_to_string(shells).is_ok_and(|t| t.lines().any(|l| Path::new(l.trim()) == path));
+                if listed { Inverse::default() } else { put_back(shells).map(Inverse::restore).unwrap_or_default() }
+            }
+            Step::AddKernelArgument { arg, root } => {
+                let key = arg.split('=').next().unwrap_or(arg);
+                match kernel_argument(root, key) {
+                    Some(was) if was == *arg => Inverse::default(),
+                    Some(was) => Inverse::restore(vec![Step::AddKernelArgument { arg: was, root: root.clone() }]),
+                    None => Inverse::restore(vec![Step::RemoveKernelArgument { key: key.to_owned(), root: root.clone() }]),
+                }
+            }
+            Step::RemoveKernelArgument { key, root } => match kernel_argument(root, key) {
+                Some(was) => Inverse::restore(vec![Step::AddKernelArgument { arg: was, root: root.clone() }]),
+                None => Inverse::default(),
+            },
+            Step::SetLoginShell { user, shell } => match login_shell(Path::new("/etc/passwd"), user) {
+                Some(was) if was == *shell => Inverse::default(),
+                Some(was) => Inverse::restore(vec![Step::SetLoginShell { user: user.clone(), shell: was }]),
+                None => cant(&format!("{user}'s login shell before isn't known.")),
+            },
+            // Those it installs that aren't installed now: removed again;
+            // those it removes that are: installed again.
+            Step::InstallPackages { names } => {
+                let new: Vec<String> = names.iter().filter(|n| olo_system::packages::installed(n) == Some(false)).cloned().collect();
+                if new.is_empty() { Inverse::default() } else { Inverse::restore(vec![Step::RemovePackages { names: new }]) }
+            }
+            Step::RemovePackages { names } => {
+                let there: Vec<String> = names.iter().filter(|n| olo_system::packages::installed(n) == Some(true)).cloned().collect();
+                if there.is_empty() { Inverse::default() } else { Inverse::restore(vec![Step::InstallPackages { names: there }]) }
+            }
+            Step::KeepOffCores { kept, on } => Inverse::restore(vec![Step::KeepOffCores { kept: kept.clone(), on: !on }]),
+            Step::FstabSwapOff => put_back(Path::new("/etc/fstab")).map(Inverse::restore).unwrap_or_default(),
+            // What can't be put back, said.
+            Step::UpdatePackages { .. } => cant("The packages stay updated: an update can't be taken back."),
+            Step::InstallPackageServices => cant("PackageKit and dnf's service stay installed."),
+            Step::InstallRepository { name, .. } => cant(&format!("The {name} repository stays added (its release package can be removed in OS Updates).")),
+            Step::AllowThunderbolt { .. } => cant("The Thunderbolt device stays let in (boltctl forget takes it out)."),
+            Step::SelinuxLabels { .. } => cant("The SELinux labels stay recorded."),
+            Step::MakeSystemUsers { .. } => cant("The system users it made stay."),
+            Step::RemoveKeptBuild { name, .. } => cant(&format!("The kept build {name} is gone for good.")),
+            Step::SwapOff => cant("Swap is back at the next start (or as /etc/fstab says once it's put back)."),
+            Step::RemakeZramSwap { .. } => Inverse::default(),
+            // What changes nothing that stays: a process ended, hardware
+            // started again, a program run.
+            Step::Signal { .. } | Step::RestartGpu { .. } | Step::RestartBluetooth { .. } | Step::TryShell { .. } | Step::StartProgram { .. } | Step::LetSessionLockMemory { .. } => Inverse::default(),
         }
     }
 }
@@ -1126,6 +1400,76 @@ fn is_rpm(bytes: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    /// What undoes a fix: each file as it was (written back, removed if
+    /// it wasn't there, a program copied back from a kept copy), last
+    /// changed first, then what makes it take effect, once.
+    #[test]
+    fn a_fix_is_undone_to_how_things_stood() {
+        let dir = PathBuf::from(format!("/var/tmp/olo-doctor-undo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("etc")).unwrap();
+        // SAFETY: this test's own variable.
+        unsafe { std::env::set_var("OLO_DOCTOR_KEPT", dir.join("kept")) };
+        let (conf, rule, program) = (dir.join("etc/main.conf"), dir.join("etc/new.rules"), dir.join("etc/program"));
+        std::fs::write(&conf, "[General]\n#Class = 0x000100\n").unwrap();
+        std::fs::write(&program, [0u8, 159, 146, 150, 255]).unwrap();
+        let steps = vec![
+            Step::WriteFile { path: conf.clone(), content: "[General]\nClass = 0x000408\n".into(), mode: 0o644 },
+            Step::WriteFile { path: rule.clone(), content: "a rule\n".into(), mode: 0o644 },
+            Step::CopyFile { from: conf.clone(), to: program.clone(), mode: 0o755 },
+            Step::MakeDir { path: dir.join("made"), mode: 0o755, owner: None },
+            Step::Signal { pid: 0, signal: 0 },
+            Step::UpdatePackages { names: vec!["x".into()] },
+        ];
+        let before: Vec<Inverse> = steps.iter().map(Step::inverse).collect();
+        // The settings: their words. A file that isn't there: removed. A
+        // program: a kept copy. A folder made: removed if empty. A
+        // process ended: nothing. An update: can't be, and said.
+        assert_eq!(before[0].restore, [Step::WriteFile { path: conf.clone(), content: "[General]\n#Class = 0x000100\n".into(), mode: 0o644 }]);
+        assert_eq!(before[1].restore, [Step::RemoveFile { path: rule.clone() }]);
+        assert!(matches!(&before[2].restore[..], [Step::CopyFile { from, to, .. }] if to == &program && from.starts_with(dir.join("kept"))), "{:?}", before[2]);
+        assert_eq!(before[3].restore, [Step::RemoveEmptyDir { path: dir.join("made") }]);
+        assert_eq!(before[4], Inverse::default());
+        assert!(before[5].restore.is_empty() && before[5].note.as_deref().is_some_and(|n| n.contains("can't be taken back")));
+        // Done (the files), then undone: as they were.
+        for s in &steps[..4] {
+            s.run().unwrap();
+        }
+        assert!(rule.exists() && dir.join("made").is_dir() && std::fs::read(&program).unwrap() != [0u8, 159, 146, 150, 255]);
+        let (undo, notes) = undo_of(before);
+        assert_eq!(notes.len(), 1);
+        // (Last changed first.)
+        assert!(matches!(&undo[..], [Step::RemoveEmptyDir { .. }, Step::CopyFile { .. }, Step::RemoveFile { .. }, Step::WriteFile { .. }]), "{undo:?}");
+        for s in &undo {
+            s.run().unwrap();
+        }
+        assert_eq!(std::fs::read_to_string(&conf).unwrap(), "[General]\n#Class = 0x000100\n");
+        assert_eq!(std::fs::read(&program).unwrap(), [0u8, 159, 146, 150, 255]);
+        assert!(!rule.exists() && !dir.join("made").exists());
+        // Written as it is already, removed when it isn't there: nothing
+        // changes, nothing to undo.
+        assert_eq!(Step::WriteFile { path: conf.clone(), content: "[General]\n#Class = 0x000100\n".into(), mode: 0o644 }.inverse(), Inverse::default());
+        assert_eq!(Step::RemoveFile { path: rule.clone() }.inverse(), Inverse::default());
+        // What makes it take effect comes after everything is put back,
+        // once, however many steps asked for it.
+        let reload = || Inverse { after: vec![Step::NetworkManagerReload], ..Default::default() };
+        let (undo, _) = undo_of(vec![Inverse { restore: vec![Step::RemoveFile { path: rule.clone() }], ..Default::default() }, reload(), reload()]);
+        assert_eq!(undo, [Step::RemoveFile { path: rule.clone() }, Step::NetworkManagerReload]);
+        // A kernel argument: the one it had again, or none.
+        std::fs::create_dir_all(dir.join("etc/kernel")).unwrap();
+        std::fs::write(dir.join("etc/kernel/cmdline"), "root=UUID=1 quiet preempt=voluntary\n").unwrap();
+        let add = |arg: &str| Step::AddKernelArgument { arg: arg.into(), root: dir.clone() }.inverse().restore;
+        assert_eq!(add("preempt=full"), [Step::AddKernelArgument { arg: "preempt=voluntary".into(), root: dir.clone() }]);
+        assert_eq!(add("mitigations=off"), [Step::RemoveKernelArgument { key: "mitigations".into(), root: dir.clone() }]);
+        assert_eq!(add("quiet"), []);
+        assert_eq!(Step::RemoveKernelArgument { key: "quiet".into(), root: dir.clone() }.inverse().restore, [Step::AddKernelArgument { arg: "quiet".into(), root: dir.clone() }]);
+        // A login shell: the one /etc/passwd has.
+        std::fs::write(dir.join("passwd"), "root:x:0:0:root:/root:/bin/bash\nmira:x:1000:1000:Mira:/home/mira:/usr/bin/zsh\n").unwrap();
+        assert_eq!(login_shell(&dir.join("passwd"), "mira"), Some(PathBuf::from("/usr/bin/zsh")));
+        assert_eq!(login_shell(&dir.join("passwd"), "nobody"), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// dracut's own words (Fedora 45's, `--verbose`) as the progress
     /// said under the finding.

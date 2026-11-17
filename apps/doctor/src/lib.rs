@@ -3,6 +3,7 @@
 //! helper, the session's watch, and the window and command line (`run`).
 
 mod app;
+pub mod applied;
 pub mod checks;
 pub mod crashes;
 pub mod demo;

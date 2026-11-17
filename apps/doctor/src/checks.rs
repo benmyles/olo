@@ -651,6 +651,8 @@ pub fn look() -> Report {
     let mut report = scan(&Roots::real());
     report.merge(crate::suggest::scan());
     report.set_aside(&crate::ignored::all());
+    // What was applied and can be undone (applied.rs).
+    crate::applied::into_report(&mut report);
     report.sort();
     tell_tray(&report);
     report

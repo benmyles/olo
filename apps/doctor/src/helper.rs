@@ -35,9 +35,15 @@ pub enum FromHelper {
         text: String,
     },
     /// The steps' outcomes, in order; the first failure stops the rest.
+    /// And what undoes those that ran (`fix::undo_of`: worked out here,
+    /// where what they replace can be read), with what can't be.
     Done {
         id: u64,
         results: Vec<Result<(), String>>,
+        #[serde(default)]
+        undo: Vec<Step>,
+        #[serde(default)]
+        kept: Vec<String>,
     },
 }
 
@@ -69,18 +75,38 @@ pub fn run_steps(steps: &[Step]) -> Vec<Result<(), String>> {
 /// Run `steps` in order, stopping at the first failure, telling how each
 /// goes (`progress`: the step, then what it says as it goes).
 pub fn run_steps_with(steps: &[Step], progress: &mut dyn FnMut(String)) -> Vec<Result<(), String>> {
+    run_steps_keeping(steps, progress).results
+}
+
+/// What running some steps came to: each one's outcome, the steps that
+/// undo those that ran, and what of them can't be undone.
+#[derive(Debug, Default)]
+pub struct Ran {
+    pub results: Vec<Result<(), String>>,
+    pub undo: Vec<Step>,
+    pub kept: Vec<String>,
+}
+
+/// [`run_steps_with`], keeping what undoes each step that runs (asked of
+/// it just before it does: `Step::inverse`). A step that fails changed
+/// nothing to undo; those before it did, and their undo is kept.
+pub fn run_steps_keeping(steps: &[Step], progress: &mut dyn FnMut(String)) -> Ran {
     let mut results = Vec::with_capacity(steps.len());
+    let mut done = Vec::new();
     for s in steps {
         let what = s.describe();
         progress(what.clone());
+        let inverse = s.inverse();
         let r = s.run_with(&mut |p| progress(format!("{what}: {p}")));
         let failed = r.is_err();
         results.push(r);
         if failed {
             break;
         }
+        done.push(inverse);
     }
-    results
+    let (undo, kept) = crate::fix::undo_of(done);
+    Ran { results, undo, kept }
 }
 
 /// Run `steps` as root and wait for them: here if this is root already
@@ -89,9 +115,14 @@ pub fn run_steps_with(steps: &[Step], progress: &mut dyn FnMut(String)) -> Vec<R
 /// person's own session only; as `OLO_DOCTOR_HELPER` says in a test).
 /// Err: root wasn't given, or isn't asked for here.
 pub fn run_as_root(steps: &[Step], progress: &mut dyn FnMut(String)) -> Result<Vec<Result<(), String>>, String> {
+    run_as_root_keeping(steps, progress).map(|ran| ran.results)
+}
+
+/// [`run_as_root`], with what undoes the steps that ran.
+pub fn run_as_root_keeping(steps: &[Step], progress: &mut dyn FnMut(String)) -> Result<Ran, String> {
     // SAFETY: geteuid has no preconditions.
     if unsafe { libc::geteuid() } == 0 {
-        return Ok(run_steps_with(steps, progress));
+        return Ok(run_steps_keeping(steps, progress));
     }
     // (Never asked for from a test session or an agent's screen: `way`.)
     let way = way();
@@ -107,7 +138,7 @@ pub fn run_as_root(steps: &[Step], progress: &mut dyn FnMut(String)) -> Result<V
     helper.send(&ToHelper::Run { id: 1, steps: steps.to_vec() });
     loop {
         match rx.recv() {
-            Ok(Some(FromHelper::Done { id: 1, results })) => return Ok(results),
+            Ok(Some(FromHelper::Done { id: 1, results, undo, kept })) => return Ok(Ran { results, undo, kept }),
             Ok(Some(FromHelper::Progress { text, .. })) => progress(text),
             Ok(Some(_)) => continue,
             _ => return Err("the administrator's helper stopped.".into()),
@@ -137,7 +168,10 @@ fn serve_on(input: impl BufRead, out: impl Write) {
         let Ok(line) = line else { break };
         let Ok(msg) = serde_json::from_str::<ToHelper>(&line) else { continue };
         let answer = match msg {
-            ToHelper::Run { id, steps } => FromHelper::Done { id, results: run_steps_with(&steps, &mut |text| _ = say(&FromHelper::Progress { id, text })) },
+            ToHelper::Run { id, steps } => {
+                let ran = run_steps_keeping(&steps, &mut |text| _ = say(&FromHelper::Progress { id, text }));
+                FromHelper::Done { id, results: ran.results, undo: ran.undo, kept: ran.kept }
+            }
         };
         // The app went: nothing to do but go too.
         if !say(&answer) {
@@ -263,10 +297,14 @@ mod tests {
             .collect();
         assert_eq!(begun, [format!("Writing {}", file.display()), format!("Setting {} to x", dir.join("missing/b").display())]);
         match said.last().unwrap() {
-            FromHelper::Done { id: 7, results } => {
+            FromHelper::Done { id: 7, results, undo, kept } => {
                 assert_eq!(results.len(), 2, "stopped at the failure: {results:?}");
                 assert!(results[0].is_ok());
                 assert!(results[1].as_ref().unwrap_err().contains("missing/b"));
+                // What undoes the step that ran (the file wasn't there:
+                // removed); nothing for the one that failed.
+                assert_eq!(undo, &[Step::RemoveFile { path: file.clone() }]);
+                assert!(kept.is_empty());
             }
             other => panic!("{other:?}"),
         }
