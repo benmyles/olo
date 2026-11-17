@@ -55,7 +55,8 @@ something nobody here has is in "Blocked", with what it waits for.
   desktop standard to get this info, if there is then use that and make
   sure every native olo app supports it as well as olo's slack. if
   there is no standard then create something and make it work for all
-  native olo apps and olo slack.").
+  native olo apps and olo slack."; and: "also the red/blue dot colors
+  should be customizable by the chosen theme/color scheme too").
 
 ## Done, waiting for Ben to try or confirm
 
