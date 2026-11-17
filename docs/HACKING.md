@@ -17058,11 +17058,19 @@ point is `X Y`, `X,Y` or `--at X,Y`, `scroll` takes `--dx`/`--dy` and
 `Next`, `ArrowDown`, `KP_Enter`): what agents write, which failed
 "x must be a number" and "unknown key" 21 times on that screen. Actions
 print JSON with `after`,
-the focused window and element. Popups are in the trees: the kit paints
-its menus (no AccessKit), so `Kit::popup_nodes` adds each open popup's
-`menu::popup_nodes` (a `Menu`, a `MenuItem` per item in view, laid out by
-the same `PopupLayout` that draws them) to its owner window's tree,
-placed by the popups' configured positions. `WindowInfo::popups` gives
+the focused window and element. Popups are in the trees: a kit program
+gives an open menu or dropdown as a window's tree of its own (a menu's
+with no title, a submenu's titled by its item; its nodes placed within
+the popup), and `olo-screen` puts each under the window it opened from
+(`with_popups`: the program's trees no window took, matched to the
+window's `WindowInfo::popups` by size, never one titled as another
+window; its root a `Menu`, its items moved to the popup's place on the
+screen), so `tree` lists a `Menu` with its `MenuItem`s, `click --role
+MenuItem --name …` chooses one, and `--visible-only` keeps them though
+a popup hangs outside its window. (With Olo's own kits a popup became a
+window of its own in the program's answer and was dropped, as no
+window of app_server's matched it: an open menu wasn't in `tree` until
+2026-11-17.) `WindowInfo::popups` gives
 every window's open popups' frames, GTK's too (smithay's
 `PopupManager::popups_for_surface`, from the client's geometry). Table
 rows carry their place (`UiNode::row`/`rows`, printed `row 13/61`)

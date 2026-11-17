@@ -573,7 +573,7 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                     t.nodes.retain(|n| {
                         let d = n.parent.and_then(|p| depth.get(&p)).map_or(0, |d| d + 1);
                         depth.insert(n.id, d);
-                        filter.keeps(n, d, c)
+                        filter.keeps(n, d, c, &t.popups)
                     });
                 }
                 println!("{}", serde_json::to_string_pretty(&trees).unwrap_or_default());
@@ -1106,6 +1106,47 @@ struct ScreenTree {
     content: Frame,
     /// In tree order, a node's children after it; x and y are the screen's.
     nodes: Vec<commands::UiNode>,
+    /// Where its open menus and dropdowns are (their items are in
+    /// `nodes`, under a `Menu` each).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    popups: Vec<Frame>,
+}
+
+/// A window's open menus and dropdowns, put under it. A program gives a
+/// popup's tree as a window's of its own (a menu's with no title, a
+/// submenu's titled by its item), and app_server lists a popup with its
+/// window, not as one: so the trees left over (`rest`: the program's
+/// that no window took yet; not one titled as another window of the
+/// program, `windows`) are matched to the window's `popups` by size,
+/// each one's nodes moved to its popup's place on the screen, numbered
+/// after the window's, its root a `Menu` under the window's. (They were
+/// dropped: an open menu's items, a dropdown's, weren't in `tree` and
+/// couldn't be clicked by name, as the skill says they can.) The popups
+/// taken, in order.
+fn with_popups(nodes: &mut Vec<commands::UiNode>, popups: &[Frame], rest: &mut Vec<commands::WindowTree>, windows: &[String]) -> Vec<Frame> {
+    let root = nodes.first().map(|n| n.id);
+    let mut shown = Vec::new();
+    for p in popups {
+        let fits = |t: &commands::WindowTree| t.layer.is_none() && t.width as i32 == p.width && t.height as i32 == p.height && (t.title.is_empty() || !windows.contains(&t.title));
+        let Some(i) = rest.iter().position(fits) else { continue };
+        let menu = rest.remove(i);
+        let after = nodes.iter().map(|n| n.id).max().map_or(0, |m| m + 1);
+        for mut n in menu.nodes {
+            n.id += after;
+            n.x += p.x as f32;
+            n.y += p.y as f32;
+            match n.parent {
+                Some(parent) => n.parent = Some(parent + after),
+                None => {
+                    n.parent = root;
+                    n.role = "Menu".into();
+                }
+            }
+            nodes.push(n);
+        }
+        shown.push(*p);
+    }
+    shown
 }
 
 /// What the windows on `s` (or just window `only`) show. Windows of apps
@@ -1125,6 +1166,7 @@ fn trees(s: &screens::Screen, only: Option<u64>) -> Result<Vec<ScreenTree>, Stri
     let mut answers: Vec<(u32, Vec<commands::WindowTree>)> =
         asked.into_iter().map(|(pid, t)| (pid, t.join().ok().flatten().unwrap_or_default().into_iter().filter(|t| t.layer.is_none()).collect())).collect();
     let mut out = Vec::new();
+    let titles: Vec<String> = windows.iter().map(|w| w.title.clone()).collect();
     for w in windows {
         let (Some(content), Some(pid)) = (w.content, w.pid) else { continue };
         let Some((_, mine)) = answers.iter_mut().find(|(p, _)| *p == pid as u32) else { continue };
@@ -1140,12 +1182,17 @@ fn trees(s: &screens::Screen, only: Option<u64>) -> Result<Vec<ScreenTree>, Stri
             continue;
         };
         let tree = mine.remove(i);
-        let nodes = tree.nodes.into_iter().map(|mut n| {
-            n.x += content.x as f32;
-            n.y += content.y as f32;
-            n
-        });
-        out.push(ScreenTree { window: w.id, app_id: w.app_id, title: w.title, focused: w.focused, content, nodes: nodes.collect() });
+        let mut nodes: Vec<commands::UiNode> = tree
+            .nodes
+            .into_iter()
+            .map(|mut n| {
+                n.x += content.x as f32;
+                n.y += content.y as f32;
+                n
+            })
+            .collect();
+        let popups = with_popups(&mut nodes, &w.popups, mine, &titles);
+        out.push(ScreenTree { window: w.id, app_id: w.app_id, title: w.title, focused: w.focused, content, nodes, popups });
     }
     Ok(out)
 }
@@ -1183,12 +1230,15 @@ impl Filter {
     }
 
     /// Keep `n` (at `depth`, in a window whose content is `c`)?
-    fn keeps(&self, n: &commands::UiNode, depth: usize, c: Frame) -> bool {
+    fn keeps(&self, n: &commands::UiNode, depth: usize, c: Frame, popups: &[Frame]) -> bool {
         if self.depth.is_some_and(|d| depth > d) {
             return false;
         }
         if self.visible_only {
-            let inside = n.x < (c.x + c.width) as f32 && n.y < (c.y + c.height) as f32 && n.x + n.width > c.x as f32 && n.y + n.height > c.y as f32;
+            // (A menu's items show wherever its popup is, the window's
+            // content or not.)
+            let within = |c: &Frame| n.x < (c.x + c.width) as f32 && n.y < (c.y + c.height) as f32 && n.x + n.width > c.x as f32 && n.y + n.height > c.y as f32;
+            let inside = within(&c) || popups.iter().any(within);
             if n.width < 1.0 || n.height < 1.0 || !inside {
                 return false;
             }
@@ -1247,7 +1297,7 @@ fn outline(trees: &[ScreenTree], filter: &Filter) -> String {
             if n.role == "TextRun" || n.name.is_none() && n.value.is_none() && matches!(n.role.as_str(), "GenericContainer" | "Window" | "Pane" | "Group" | "ScrollView") {
                 continue;
             }
-            if !filter.keeps(n, d, c) {
+            if !filter.keeps(n, d, c, &t.popups) {
                 continue;
             }
             let indent = if filter.narrows() { 2 } else { 2 + 2 * d.min(8) };
@@ -1329,6 +1379,62 @@ mod tests {
 
     fn args(a: &[&str]) -> Vec<String> {
         a.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    /// An open menu's items are in its window's tree: the program's tree
+    /// with no title, taken by its popup's size, moved to the popup's
+    /// place, under a `Menu` under the window; a tree no popup fits is
+    /// left.
+    #[test]
+    fn an_open_menu_is_under_its_window() {
+        let node = |id, parent, role: &str, name: Option<&str>, x, y| commands::UiNode {
+            id,
+            parent,
+            role: role.into(),
+            name: name.map(str::to_owned),
+            x,
+            y,
+            width: 100.0,
+            height: 20.0,
+            enabled: true,
+            ..Default::default()
+        };
+        let tree = |title: &str, w, h, nodes| commands::WindowTree { title: title.into(), width: w, height: h, active: false, layer: None, surface: None, path: None, nodes };
+        let mut nodes = vec![node(0, None, "Window", Some("Notes"), 50.0, 60.0), node(1, Some(0), "Button", Some("Save"), 60.0, 70.0)];
+        let mut rest = vec![
+            tree("", 300, 90, vec![node(0, None, "Window", None, 0.0, 0.0), node(1, Some(0), "MenuItem", Some("Other"), 4.0, 4.0)]),
+            tree("", 200, 60, vec![node(0, None, "Window", None, 0.0, 0.0), node(1, Some(0), "MenuItem", Some("Copy"), 4.0, 4.0), node(2, Some(0), "MenuItem", Some("Paste"), 4.0, 24.0)]),
+            // (Another window of the program, the size of a popup: a window's.)
+            tree("Letter", 120, 40, vec![node(0, None, "Window", Some("Letter"), 0.0, 0.0)]),
+            // (A submenu: titled by its item.)
+            tree("Paste", 120, 40, vec![node(0, None, "Window", Some("Paste"), 0.0, 0.0), node(1, Some(0), "MenuItem", Some("As Plain Text"), 4.0, 4.0)]),
+        ];
+        let popups = [Frame { x: 400, y: 300, width: 200, height: 60 }, Frame { x: 0, y: 0, width: 77, height: 77 }, Frame { x: 598, y: 320, width: 120, height: 40 }];
+        let shown = with_popups(&mut nodes, &popups, &mut rest, &["Notes".to_owned(), "Letter".to_owned()]);
+        assert_eq!(shown, vec![popups[0], popups[2]]);
+        assert_eq!(rest.iter().map(|t| t.title.as_str()).collect::<Vec<_>>(), ["", "Letter"], "the tree no popup fits stays, and another window's");
+        assert_eq!(
+            nodes.split_off(5).iter().map(|n| (n.id, n.parent, n.role.as_str(), n.name.as_deref(), n.x, n.y)).collect::<Vec<_>>(),
+            vec![(5, Some(0), "Menu", Some("Paste"), 598.0, 320.0), (6, Some(5), "MenuItem", Some("As Plain Text"), 602.0, 324.0)]
+        );
+        let said: Vec<_> = nodes.iter().map(|n| (n.id, n.parent, n.role.as_str(), n.name.as_deref(), n.x, n.y)).collect();
+        assert_eq!(
+            said,
+            vec![
+                (0, None, "Window", Some("Notes"), 50.0, 60.0),
+                (1, Some(0), "Button", Some("Save"), 60.0, 70.0),
+                (2, Some(0), "Menu", None, 400.0, 300.0),
+                (3, Some(2), "MenuItem", Some("Copy"), 404.0, 304.0),
+                (4, Some(2), "MenuItem", Some("Paste"), 404.0, 324.0),
+            ]
+        );
+        // Found by name, and listed in the outline under the window;
+        // seen with --visible-only though outside the window's content.
+        let t = ScreenTree { window: 7, app_id: "olo.notes".into(), title: "Notes".into(), focused: true, content: Frame { x: 50, y: 60, width: 300, height: 200 }, nodes, popups: shown };
+        let found = find::matches(std::slice::from_ref(&t), &find::Query { role: Some("MenuItem".into()), name: Some("Paste".into()), ..Default::default() });
+        assert_eq!(found.len(), 1);
+        let o = outline(std::slice::from_ref(&t), &Filter { visible_only: true, ..Default::default() });
+        assert!(o.contains("Menu at 400,300 100x20") && o.contains("MenuItem \"Copy\" at 404,304"), "{o}");
     }
 
     /// Where, as agents write it: `X Y`, `X,Y`, `--at X,Y`; anything else
