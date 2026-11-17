@@ -118,6 +118,14 @@ Each note: what to do, then why (what happened), then how to apply it.
   '{"type":"list_windows"}'`). A fit zoom that isn't clamped isn't a
   round number: work it out from the tree, or search for it. Viewer at
   1×, 1.5× and 2× showed three different faults this way (2026-11-16).
+- **A deadline in seconds on the wall isn't one on a busy computer.**
+  `tools/dev/ui-lint` runs at idle priority; with other work going (a
+  load of 38 on 15 processors: a build, another agent's tests) its apps
+  hardly ran in the 20 s they had, and a push was refused for "Kache:
+  no window came up". Its waits now leave out the time the app and its
+  window server were ready with no processor to run on
+  (`/proc/PID/schedstat`'s second number, `kept_waiting`). Do the same
+  for any wait on something that runs at low priority.
 - **Two files written one after the other can have the same time.** A
   file's time comes from the kernel's coarse clock, a tick (1 ms) wide:
   a test that writes two files and expects the second to be newer fails

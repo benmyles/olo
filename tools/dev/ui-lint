@@ -237,14 +237,35 @@ def set_look(name, theme, scale):
     ipc(name, {"type": "set_settings", "settings": st})
 
 
+def kept_waiting(*pids):
+    """Seconds the main threads of `pids` have spent ready to run with no
+    processor to run on (the kernel's count, /proc/PID/schedstat). The
+    lint and all it starts run at idle priority, so on a computer busy
+    with other work (a build, another agent's tests: a load of 38 on 15
+    processors, 2026-11-16) an app and its window server wait for a
+    processor far longer than they run, and a deadline in seconds on the
+    wall said "no window came up" of apps that had hardly run. A wait's
+    deadline here doesn't count that time."""
+    total = 0.0
+    for pid in pids:
+        try:
+            with open(f"/proc/{pid}/schedstat") as f:
+                total += int(f.read().split()[1]) / 1e9
+        except (OSError, ValueError, IndexError):
+            pass
+    return total
+
+
 def drawn(pid, layers, scale=None, dark=None, within=6.0):
     """The app's review once its windows are drawn (at `scale`, in the look
     `dark` says, when given): asked again until they are, never waited
-    for longer than it takes. None if they never are."""
-    end = time.time() + within
+    for longer than it takes. None if they never are (`within` seconds,
+    and as long again as the app was kept waiting for a processor, a
+    minute of that at most)."""
+    began, waiting = time.time(), kept_waiting(pid)
     last = None
     settled = None
-    while time.time() < end:
+    while time.time() < began + within + min(kept_waiting(pid) - waiting, 60):
         wins = [w for w in (ask_app(pid, {"review": True}, timeout=8) or []) if layers or not w.get("layer")]
         if wins:
             last = wins
@@ -323,11 +344,21 @@ def lint_one(spec, slot, master, screen, scales, show_review, work):
         sh("run", name, f"HOME={home}", f"PULSE_SERVER=unix:{pulse}", "OLO_NO_FINGERPRINT=1", "OLO_ACTIVITY_HELPER=off", "OLO_DOCTOR_HELPER=off", *[f"{k}={v}" for k, v in env.items()], *argv)
         exe = argv[0]
         pid = None
-        end = time.time() + 20
-        while time.time() < end:
+        # 20 s for its window, not counting what the app and the
+        # session's window server spent waiting for a processor (two
+        # minutes of that at most).
+        try:
+            with open(os.path.join(BASE, name, "env.json")) as f:
+                server = json.load(f).get("pid")
+        except (OSError, ValueError):
+            server = None
+        began, waiting = time.time(), kept_waiting(server)
+        while True:
             ps = pids_of(exe, home)
             if ps and (layers or windows_of(name, ps[0])):
                 pid = ps[0]
+                break
+            if time.time() > began + 20 + min(kept_waiting(server, *ps[:1]) - waiting, 120):
                 break
             time.sleep(0.1)
         if pid is None or drawn(pid, layers) is None:
