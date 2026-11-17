@@ -40,6 +40,7 @@ pub mod netdiag;
 pub mod network;
 pub mod nvme_power;
 pub mod packages;
+pub mod phone;
 pub mod polkit;
 pub mod power;
 pub mod power_profile;

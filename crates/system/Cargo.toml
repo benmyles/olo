@@ -30,6 +30,8 @@ getrandom = "0.3"
 # Passwords asked for ([`keyring_prompt::ask_password`]), wiped after.
 zeroize = "1"
 futures-lite = "2"
+# The phone's message listings and events (MAP: XML).
+quick-xml = "0.42"
 # udisks-fake's jobs.
 async-io = "2"
 # nm-fake's --dump; the GPUs' tuning.

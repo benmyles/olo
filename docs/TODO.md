@@ -82,6 +82,12 @@ something nobody here has is in "Blocked", with what it waits for.
   the phone's switches shown as they are on the phone, each step seen to
   happen. Olo Doctor no longer installs BlueFerry and offers to remove
   it where it did. What a real iPhone does is tried with Ben's, by Ben.
+  Then the website says so (Ben: "when you're done update the website to
+  highlight the native phone pairing support").
+  *Under way.* Done: OBEX, MAP and PBAP in Rust (`olo_system::phone`),
+  tested end to end against a stand-in iPhone that speaks them. Next:
+  the link (BlueZ's profiles and channels, what an iPhone needs of the
+  computer to offer its switches), the service on it, the pairing sheet.
 - **Everything Olo Doctor does can be undone** (Ben, 2026-11-16: "one
   more thing we need: everything in olo doctor that it does must be
   reversible, e.g. for any fix/suggestion applied i should be able to
