@@ -13631,9 +13631,29 @@ agent's screen that merely has a code field must not be handed the code
 of a sign-in the person began elsewhere. `olo-phone --code` (the latest
 code, for Deskbar's Copy) is refused to a program on an agent's screen.
 
-**Where it shows.** Preferences ▸ Phone (phone.rs): the backend missing
-(Olo Doctor…), stopped (Start It), of another generation, no phone
-paired (Pair an iPhone…: the wizard in Terminal), else how it stands
+**Setting it up is one place, a step at a time** (Ben, 2026-11-16, an
+hour after installing the backend from Olo Doctor and finding nothing
+more: "how do i setup my iphone? we should make that easy/obvious. is
+there an app or preferences somewhere?"). Preferences ▸ Phone, until a
+phone is paired and allowed, is "Set Up Your iPhone" (`setup`): 1.
+Install BlueFerry (Install…: the panel asks Olo Doctor itself,
+`olo-doctor --fix phone-backend`, on its worker; Start It for one
+installed and not running), 2. Pair the iPhone (Pair…: the wizard in
+Terminal), 3. On the iPhone, let it share (the switches, by name); each
+ticked once done, the one to do next in bold with its button. Every way
+in leads there: Olo Doctor, once the backend is installed and no phone
+paired (`Roots::phone_paired`, the phone service's state), suggests
+"Pair your iPhone" (Set It Up… opens the panel; told once in a
+notification, as every suggestion); a phone's row in Preferences ▸
+Bluetooth has Messages and Codes…; `olo-preferences iphone` (or
+`messages`, `codes`, `sms`) opens it. And the phone service sees the
+backend installed while the session runs (its D-Bus activation file
+coming, `blueferry::ACTIVATION`) and starts it, as it starts by itself
+with every session after: before, a backend just installed sat
+"activatable" and stopped until the next login.
+
+**Where it shows.** Preferences ▸ Phone (phone.rs): the setup's steps
+until it's set up, else how it stands
 (what the phone must allow, its battery, which services are up, how
 many conversations and unread; Try Again, Pair Again…), what is told of
 (Messages, Everything on the Phone, Nothing; Show what a message says),

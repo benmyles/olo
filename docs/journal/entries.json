@@ -4636,5 +4636,11 @@
   "title": "Quick Look copies, selects all and finds",
   "caption": "Tracker's Quick Look had no keys of its own beyond Space and the arrows: Copy did nothing. It now has Copy (what is selected of a text, else the file itself), Select All and Find, by key, in the command palette and for agents; and typing in its find field no longer loses the letters and the space the window takes for itself. (Here, a text with all of it selected.)",
   "image": "2026-11-16/220910-quick-look-copies-selects-all-and-finds.png"
+ },
+ {
+  "time": "2026-11-16T22:16:57",
+  "title": "Setting up an iPhone, a step at a time",
+  "caption": "How do I set up my iPhone? Preferences \u25b8 Phone now says, and does each step from where it is: Install BlueFerry (the button has Olo Doctor install it; no trip to Doctor), Pair the iPhone (the pairing opens), and what to turn on on the phone; each step ticked as it is done, the one to do next in bold with its button. A phone in Bluetooth's list has Messages and Codes\u2026, which opens the same panel. (A stand-in backend, no phone paired.)",
+  "image": "2026-11-16/221657-setting-up-an-iphone-a-step-at-a-time.png"
  }
 ]

@@ -383,6 +383,13 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                     crate::prefs().open("airpods");
                 }));
             }
+            // A phone: its messages and codes are the Phone panel's
+            // (another pairing than this one: its own steps).
+            if d.icon == "phone" {
+                row = row.child(Button::new("Messages and Codes…").on_click(move |_, _cx| {
+                    crate::prefs().open("phone");
+                }));
+            }
             if busy && doing.get(&d.path) == Some(&"Pairing…") {
                 let p = d.path.clone();
                 row = row.child(Button::new("Cancel").on_click(move |_, _| cancel_pairing(p.clone())));

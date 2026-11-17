@@ -46,10 +46,19 @@ something nobody here has is in "Blocked", with what it waits for.
   paired with it yet** (Ben's is his to pair). **Still to do**: Phone,
   the app (the conversations, reading and answering them, a new
   message), which the notifications and Deskbar then open.
-  **For Ben**: after upgrading, Olo Doctor shows "Your iPhone's messages
-  and codes on this computer": Install It (Bluetooth starts again
-  once), then Preferences ▸ Phone ▸ Pair an iPhone… (BlueFerry's wizard,
-  in Terminal). Say what the real thing does that the stand-in didn't.
+  **Setting it up made one place** (Ben, 2026-11-16, having installed
+  the backend from Olo Doctor: "how do i setup my iphone? we should make
+  that easy/obvious. is there an app or preferences somewhere?"):
+  Preferences ▸ Phone is now the steps, each done from there (Install,
+  Pair, the phone's switches); Doctor follows the install with "Pair
+  your iPhone"; a phone's row in Bluetooth leads there; a backend just
+  installed is started at once.
+  **For Ben**: BlueFerry is installed here already (your Install It, at
+  10:06 PM) and not yet started. After upgrading: Preferences ▸ Phone
+  shows the steps: Start It, then Pair… (BlueFerry's wizard, in
+  Terminal: keep the iPhone unlocked on Settings ▸ Bluetooth), then the
+  switches on the phone. Say what the real thing does that the stand-in
+  didn't.
   **To decide**: a code that is surely an agent's tab's is put in there
   without asking (you are told); "Ask Me First" is the other setting.
 

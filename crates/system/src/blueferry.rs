@@ -27,10 +27,14 @@ const EVENTS: &str = "io.weirdware.BlueFerry.Events1";
 /// Its expected errors' names begin with this ("…Error.NotReady").
 const ERRORS: &str = "io.weirdware.BlueFerry.Error.";
 
+/// The backend's D-Bus activation file: there once it's installed (the
+/// bus starts it by this when it's asked for).
+pub const ACTIVATION: &str = "/usr/share/dbus-1/services/io.weirdware.BlueFerry.service";
+
 /// Whether the backend is installed here (its D-Bus activation file, or
 /// its program).
 pub fn installed() -> bool {
-    ["/usr/share/dbus-1/services/io.weirdware.BlueFerry.service", "/usr/bin/blueferry", "/usr/local/bin/blueferry"].iter().any(|p| std::path::Path::new(p).exists())
+    [ACTIVATION, "/usr/bin/blueferry", "/usr/local/bin/blueferry"].iter().any(|p| std::path::Path::new(p).exists())
 }
 
 /// The backend's release as its package says it ("0.9.1-1.fc45"), if

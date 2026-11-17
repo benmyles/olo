@@ -48,6 +48,8 @@ const THREADS: u32 = 50;
 enum Ev {
     Bus(Event),
     Settings,
+    /// The backend's files came or went (installed, removed, updated).
+    Installed,
     Ask(Request, bool, mpsc::Sender<Reply>),
     Hello(u64, Option<String>, u32, UnixStream),
     Said(u64, FromBrowser),
@@ -160,6 +162,12 @@ pub fn run() -> ! {
     let _watch = olo_kit_base::watch::watch([PhoneSettings::path()], move |_| {
         let _ = to.send(Ev::Settings);
     });
+    // The backend installed while the session runs (Olo Doctor's fix):
+    // seen by its D-Bus activation file coming.
+    let to = tx.clone();
+    let _installed = olo_kit_base::watch::watch([std::path::PathBuf::from(blueferry::ACTIVATION)], move |_| {
+        let _ = to.send(Ev::Installed);
+    });
     let to = tx.clone();
     let notes = Notifier::with_events("Phone", "olo-phone", move |e| {
         let _ = to.send(Ev::Note(e));
@@ -216,6 +224,18 @@ impl Service {
             // (A popup of the backend's own was clicked: the message it
             // wants shown. Nothing shows conversations yet.)
             Ev::Bus(Event::Open(_)) => {}
+            // Just installed: started (the bus told of it first), as it
+            // starts by itself with every session from the next on.
+            Ev::Installed => {
+                if blueferry::installed() && !self.client.running() {
+                    let _ = olo_system::env::reload_session_bus();
+                    if let Err(e) = self.client.status() {
+                        tracing::info!("phone: the backend, just installed, didn't start: {}", blueferry::said(&e));
+                    }
+                }
+                self.first = true;
+                self.look();
+            }
             Ev::Settings => {
                 let settings = PhoneSettings::load();
                 if settings != self.settings {

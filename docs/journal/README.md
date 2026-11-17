@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-16
 
+### Setting up an iPhone, a step at a time
+
+*22:16* — How do I set up my iPhone? Preferences ▸ Phone now says, and does each step from where it is: Install BlueFerry (the button has Olo Doctor install it; no trip to Doctor), Pair the iPhone (the pairing opens), and what to turn on on the phone; each step ticked as it is done, the one to do next in bold with its button. A phone in Bluetooth's list has Messages and Codes…, which opens the same panel. (A stand-in backend, no phone paired.)
+
+![Setting up an iPhone, a step at a time](2026-11-16/221657-setting-up-an-iphone-a-step-at-a-time.png)
+
 ### Quick Look copies, selects all and finds
 
 *22:09* — Tracker's Quick Look had no keys of its own beyond Space and the arrows: Copy did nothing. It now has Copy (what is selected of a text, else the file itself), Select All and Find, by key, in the command palette and for agents; and typing in its find field no longer loses the letters and the space the window takes for itself. (Here, a text with all of it selected.)

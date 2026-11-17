@@ -1,7 +1,9 @@
 //! Phone: an iPhone's messages and one-time codes on this computer,
-//! through BlueFerry's backend. How the phone stands (the phone service's
-//! state file, followed by inotify, read off the UI thread), pairing it
-//! (the backend's own wizard, in Terminal), and Olo's settings for it
+//! through BlueFerry's backend. Setting it up, a step at a time, each
+//! done from here (`setup`: the backend installed, through Olo Doctor;
+//! the phone paired, in the backend's own wizard in Terminal; the phone's
+//! switches); how the phone stands (the phone service's state file,
+//! followed by inotify, read off the UI thread); and Olo's settings for it
 //! (`phone.json`, which the service follows): what is told of, and where
 //! one-time codes go. What is asked of the backend (trying the phone
 //! again, starting it) is asked on a worker thread: the window never
@@ -22,6 +24,8 @@ use olo_sync::Mutex;
 use crate::{Msg, form::Ui};
 
 enum Job {
+    /// Install the backend: Olo Doctor's fix (it asks for the password).
+    Install,
     Save(PhoneSettings),
     /// Try the phone again now.
     Reconnect,
@@ -36,6 +40,8 @@ struct Shared {
     /// The state file was read: something to show.
     known: bool,
     error: Option<String>,
+    /// The backend is being installed.
+    installing: bool,
 }
 
 struct Link {
@@ -83,14 +89,25 @@ fn link(proxy: olo_kit::Proxy) -> &'static Link {
             .spawn(move || {
                 use olo_system::blueferry::{self, Client};
                 while let Ok(job) = rx.recv() {
+                    if matches!(job, Job::Install) {
+                        sh.lock().unwrap().installing = true;
+                        proxy.send(Msg::Redraw);
+                    }
                     let error = match job {
+                        // (The phone service sees it come and starts it;
+                        // asked for here too, so the bus knows of it.)
+                        Job::Install => crate::ask_doctor(&["--fix", "phone-backend"]).err().or_else(|| {
+                            let _ = olo_system::env::reload_session_bus();
+                            Client::connect().and_then(|c| c.status()).err().map(|e| blueferry::said(&e))
+                        }),
                         Job::Save(s) => s.save().err().map(|e| format!("Couldn't save: {e}")),
                         Job::Reconnect => Client::connect().and_then(|c| c.reconnect()).err().map(|e| blueferry::said(&e)),
                         // (Its status asked: the bus starts it to answer.)
                         Job::Start => Client::connect().and_then(|c| c.status()).err().map(|e| blueferry::said(&e)),
                     };
                     let mut s = sh.lock().unwrap();
-                    if s.error != error {
+                    let was = std::mem::take(&mut s.installing);
+                    if s.error != error || was {
                         s.error = error;
                         drop(s);
                         proxy.send(Msg::Redraw);
@@ -144,6 +161,78 @@ fn pair() {
     spawn("olo-terminal -e blueferry pair-setup", "olo.terminal");
 }
 
+/// A step of setting up: its number (a tick once done), what it is and
+/// what it does, and its button while it's the one to do.
+fn step(ui: &mut Ui, n: u32, done: bool, now: bool, title: &str, detail: &str, button: Option<Button>) {
+    let mark = if done { "✓".to_owned() } else { format!("{n}.") };
+    let words = div().flex_1().min_w_0().flex().flex_col().gap(px(m::STACK)).child(StringView::new(title.to_owned()).bold(now)).child(StringView::new(detail.to_owned()).dim(true).wrap(true));
+    let mut row = div().flex().flex_row().items_start().gap(px(m::SPACING)).child(div().w(px(20.0)).flex_shrink_0().child(StringView::new(mark).bold(now).dim(!now && !done))).child(words);
+    if let Some(b) = button {
+        row = row.child(div().flex_shrink_0().child(b));
+    }
+    ui.add(row);
+}
+
+/// Setting the phone up, a step at a time, each done from here: the
+/// backend, pairing, and the phone's own switches.
+fn setup(ui: &mut Ui, link: &'static Link, state: &PhoneState, installing: bool, error: Option<String>) {
+    let running = state.backend == Backend::Running;
+    let paired = running && state.link != PhoneLink::NotPaired;
+    ui.add(StringView::new("Your iPhone’s messages and its one-time codes can come to this computer, over Bluetooth, with no cloud or account between them.").wrap(true));
+    let items = ui.collect(|ui| {
+        // 1. The backend.
+        let (detail, button) = match state.backend {
+            Backend::Missing if installing => ("Installing… (Olo Doctor asks for your password; Bluetooth starts again once.)".to_owned(), Some(Button::new("Installing…").enabled(false))),
+            Backend::Missing => (
+                "BlueFerry talks to the phone. It’s installed from its makers’ latest release, checked against what they published.".to_owned(),
+                Some(Button::new("Install…").default(true).on_click(move |_, _| {
+                    let _ = link.tx.send(Job::Install);
+                })),
+            ),
+            Backend::Stopped => (
+                "BlueFerry is installed and not running.".to_owned(),
+                Some(Button::new("Start It").default(true).on_click(move |_, _| {
+                    let _ = link.tx.send(Job::Start);
+                })),
+            ),
+            Backend::Other => (
+                format!("BlueFerry {} and this Olo speak different versions: update Olo, or install BlueFerry’s latest.", state.release),
+                Some(Button::new("Install Latest…").enabled(!installing).on_click(move |_, _| {
+                    let _ = link.tx.send(Job::Install);
+                })),
+            ),
+            Backend::Running => (format!("BlueFerry {} is installed and running.", state.release), None),
+        };
+        step(ui, 1, running, !running, "Install BlueFerry", &detail, button);
+        // 2. Pairing.
+        let first = (running && !paired).then(|| Button::new("Pair…").default(true).on_click(move |_, _| pair()));
+        let again = paired.then(|| Button::new("Pair Again…").on_click(move |_, _| pair()));
+        step(
+            ui,
+            2,
+            paired,
+            running && !paired,
+            "Pair the iPhone",
+            "Unlock it and keep Settings ▸ Bluetooth open on it. Pairing opens in Terminal: it finds the phone and shows the same code on both.",
+            first.or(again),
+        );
+        // 3. The phone's own switches.
+        step(
+            ui,
+            3,
+            false,
+            paired,
+            "On the iPhone, let it share",
+            "In Settings ▸ Bluetooth, tap ⓘ beside this computer and turn on Show Message Notifications and Sync Contacts (and Share System Notifications, for group names). They can take a minute to appear.",
+            None,
+        );
+    });
+    ui.add(BBox::new("Set Up Your iPhone").children(items));
+    if let Some(e) = error {
+        ui.label(e);
+    }
+}
+
 pub fn ui(ui: &mut Ui, st: &mut State) {
     let link = st.link;
     let (state, settings, known, error) = {
@@ -153,44 +242,17 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     if !known {
         return ui.add(EmptyState::new("Looking for the phone…").icon("phone"));
     }
-    match state.backend {
-        Backend::Missing => {
-            return ui.add(
-                EmptyState::new("Your iPhone’s messages and codes can come to this computer.")
-                    .icon("phone")
-                    .detail("They come over Bluetooth through BlueFerry, with no cloud or account between. Olo Doctor installs it; then pair the phone here.")
-                    .action("Olo Doctor…", move |_, _cx| spawn("olo-doctor", "olo.doctor")),
-            );
-        }
-        Backend::Stopped => {
-            return ui.add(EmptyState::new("The phone’s backend isn’t running.").icon("phone").detail("BlueFerry starts with your session; it has stopped.").action("Start It", move |_, _cx| {
-                let _ = link.tx.send(Job::Start);
-            }));
-        }
-        Backend::Other => {
-            return ui.add(
-                EmptyState::new("BlueFerry and Olo don’t speak the same version.")
-                    .icon("phone")
-                    .detail(format!("BlueFerry {} is installed. Update Olo, or BlueFerry (Olo Doctor installs its latest release), so they match.", state.release))
-                    .action("Olo Doctor…", move |_, _cx| spawn("olo-doctor", "olo.doctor")),
-            );
-        }
-        Backend::Running => {}
-    }
-    if state.link == PhoneLink::NotPaired {
-        return ui.add(
-            EmptyState::new("No iPhone is paired for messages.")
-                .icon("phone")
-                .detail("Unlock the iPhone and keep Settings ▸ Bluetooth open on it. Pairing opens in Terminal: it finds the phone, shows the same code on both, and says which switches to turn on on the phone.")
-                .action("Pair an iPhone…", move |_, _cx| pair()),
-        );
+    // Not all set up yet: the steps, and nothing else to look at.
+    if state.backend != Backend::Running || !state.link.connected() && !state.messages && matches!(state.link, PhoneLink::NotPaired | PhoneLink::Allow) {
+        let installing = link.shared.lock().unwrap().installing;
+        return setup(ui, link, &state, installing, error);
     }
 
     // How it stands.
     let connected = state.link.connected();
     let status = ui.collect(|ui| {
         let what = match state.link {
-            PhoneLink::Allow => "Waiting for the phone: on it, in Settings ▸ Bluetooth, tap ⓘ beside this computer and turn on Show Message Notifications and Sync Contacts.".to_owned(),
+            PhoneLink::Allow => "Waiting for the phone to allow it (Settings ▸ Bluetooth ▸ ⓘ beside this computer).".to_owned(),
             PhoneLink::Refused => "The phone refused the messages’ connection. Pair it again.".to_owned(),
             PhoneLink::Reconnecting => "The phone is out of reach or its Bluetooth is off. It’s tried again by itself.".to_owned(),
             other => other.words().to_owned(),

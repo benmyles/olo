@@ -298,6 +298,9 @@ pub struct Roots {
     pub units: Box<dyn Fn(&str) -> Result<UnitState, String> + Send + Sync>,
     /// AirPods are paired here (the AirPods service's state).
     pub airpods: bool,
+    /// A phone is paired for messages (the phone service's state:
+    /// `olo_protocol::phone`), as far as that's known.
+    pub phone_paired: bool,
     /// Bluetooth controllers that don't answer (BlueZ's adapter powered
     /// and its power off, or the other way round), by name ("hci0").
     pub bluetooth_stuck: Vec<String>,
@@ -419,6 +422,10 @@ impl Roots {
             scope,
             units: Box::new(crate::fix::unit_state),
             airpods,
+            phone_paired: {
+                let phone = olo_protocol::phone::PhoneState::load();
+                phone.backend == olo_protocol::phone::Backend::Running && phone.link != olo_protocol::phone::Link::NotPaired
+            },
             bluetooth_stuck,
             packages: Box::new(real_packages),
             updates: Box::new(real_updates),
@@ -2103,13 +2110,26 @@ fn phone(roots: &Roots, procs: &[Proc], r: &mut Report) {
         return;
     }
     let release = read(&roots.fs.join("usr/share/blueferry/package-release")).map(|s| s.trim().to_owned()).filter(|s| !s.is_empty());
-    r.fine.push(Fine {
-        title: "The phone’s backend is installed".into(),
-        detail: format!(
-            "BlueFerry{}: an iPhone’s messages and one-time codes, over Bluetooth. The phone is paired and set up in Preferences ▸ Phone.",
-            release.map(|v| format!(" {v}")).unwrap_or_default()
-        ),
-    });
+    let release = release.map(|v| format!(" {v}")).unwrap_or_default();
+    if roots.phone_paired {
+        r.fine.push(Fine {
+            title: "The phone’s backend is installed, and an iPhone paired".into(),
+            detail: format!("BlueFerry{release}: an iPhone’s messages and one-time codes, over Bluetooth. Its settings are in Preferences ▸ Phone."),
+        });
+    } else {
+        // Installed, and nothing to show for it yet: the next step, said
+        // where the install was done (Ben, 2026-11-16, having installed
+        // it: "how do i setup my iphone? we should make that easy/obvious").
+        r.findings.push(Finding {
+            id: "phone-pair".into(),
+            severity: Severity::Suggestion,
+            title: "Pair your iPhone".into(),
+            detail: format!(
+                "BlueFerry{release} is installed. Preferences ▸ Phone pairs the iPhone, a step at a time: it finds the phone, shows the same code on both, and says what to turn on on the phone. Then its messages and one-time codes come here."
+            ),
+            fix: Some(Fix { label: "Set It Up…".into(), root: false, steps: vec![Step::StartProgram { argv: vec!["olo-preferences".into(), "phone".into()] }] }),
+        });
+    }
     // Bluetooth, started as the backend needs it.
     let Some(bluez) = procs.iter().find(|p| p.name == "bluetoothd") else { return };
     let cmdline = std::fs::read(roots.fs.join(format!("proc/{}/cmdline", bluez.pid))).unwrap_or_default();
@@ -4190,6 +4210,7 @@ mod tests {
             scope: Some("session-2.scope".into()),
             units,
             airpods: true,
+            phone_paired: false,
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
@@ -4719,6 +4740,7 @@ mod tests {
             scope: None,
             units: Box::new(|_| Err("none".into())),
             airpods: false,
+            phone_paired: false,
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
@@ -4803,6 +4825,7 @@ mod tests {
             scope: None,
             units: Box::new(|_| Err("none".into())),
             airpods: false,
+            phone_paired: false,
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
@@ -5316,8 +5339,14 @@ mod tests {
         w("usr/share/blueferry/package-release", "0.9.1-1.fc45\n");
         w(PHONE_DROP_IN, "[Service]\nExecStart=\nExecStart=/usr/libexec/bluetooth/bluetoothd -E -P hfp\n");
         w("proc/903/cmdline", "/usr/libexec/bluetooth/bluetoothd\0--experimental\0");
+        // (And no phone paired yet: the next step, which opens the panel.)
+        let (found, fine) = phone(&roots);
+        assert_eq!((found.iter().map(|f| f.id.as_str()).collect::<Vec<_>>(), fine), (vec!["phone-pair", "phone-bluetooth"], 0));
+        assert_eq!(found[0].fix.as_ref().unwrap().steps, [Step::StartProgram { argv: vec!["olo-preferences".into(), "phone".into()] }]);
+        assert!(!found[0].fix.as_ref().unwrap().root && found[0].detail.starts_with("BlueFerry 0.9.1-1.fc45 is installed."));
+        let roots = Roots { phone_paired: true, ..roots };
         let r = scan(&roots);
-        assert!(r.fine.iter().any(|f| f.title == "The phone’s backend is installed" && f.detail.starts_with("BlueFerry 0.9.1-1.fc45:")));
+        assert!(r.fine.iter().any(|f| f.title == "The phone’s backend is installed, and an iPhone paired" && f.detail.starts_with("BlueFerry 0.9.1-1.fc45:")));
         let (found, _) = phone(&roots);
         assert_eq!(found.iter().map(|f| f.id.as_str()).collect::<Vec<_>>(), ["phone-bluetooth"]);
         let steps = &found[0].fix.as_ref().unwrap().steps;
@@ -6200,6 +6229,7 @@ mod tests {
                 scope: None,
                 units: Box::new(|_| Err("none".into())),
                 airpods: false,
+                phone_paired: false,
                 bluetooth_stuck: Vec::new(),
                 packages: Box::new(|_| None),
                 updates: Box::new(|| None),
