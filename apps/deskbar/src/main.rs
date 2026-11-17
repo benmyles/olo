@@ -81,9 +81,11 @@ const NOTE_DOT_GAP: f32 = 5.0;
 /// faint well of its colour, this strong.
 const NOTE_DOT_FLOOR: f32 = 0.3;
 const NOTE_DOT_WELL: f32 = 0.28;
-/// With the count shown (Preferences ▸ Notifications), its gap from the
-/// dot.
-const NOTE_COUNT_GAP: f32 = 6.0;
+/// Something unread or waiting in the application itself (what it says:
+/// a launcher entry's count, or its wish for attention): a red dot, this
+/// far left of where the blue one goes (there or not, so the red ones
+/// line up down the Deskbar). It doesn't drain: there, or not.
+const UNREAD_DOT_GAP: f32 = 4.0;
 /// One arriving shakes the dot side to side: this long, this far, this
 /// many times, settling as it goes.
 const SHAKE: Duration = Duration::from_millis(600);
@@ -316,6 +318,8 @@ struct Settings {
     keys: KeyboardProfile,
     /// The live widgets (Preferences ▸ Deskbar).
     widgets: Vec<olo_protocol::deskbar::Widget>,
+    /// A red dot beside an app with something unread in it.
+    unread_dots: bool,
 }
 
 /// A team: the windows of one application.
@@ -381,6 +385,9 @@ struct Deskbar {
     /// The person's changes to app_server's shortcuts, for the keys the
     /// Olo menu shows.
     keys: KeyboardProfile,
+    /// A red dot beside an app with something unread in it (Preferences ▸
+    /// Deskbar).
+    unread_dots: bool,
     /// Approving requests without asking until then (seconds since the
     /// epoch; app_server's approve.rs).
     approve_until: Option<u64>,
@@ -416,19 +423,20 @@ struct Deskbar {
     sources: olo_system::meters::Sources,
 }
 
-/// An application's dot: how far its shake has gone if one just came
-/// (0–1), how fresh its notifications are together (1: none has begun to
-/// fade; the dot drains from its right as they do), and how many it has.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// An application's dots. Its notifications' (blue: `Palette::notice`),
+/// if it has any: how fresh they are together (1: none has begun to
+/// fade; the dot drains from its right as they do) and how many there
+/// are (said to agents; no number is drawn: Ben, 2026-11-17, "the count
+/// itself makes it look more like an unread badge count for an app").
+/// And whether something is unread or waiting in the app itself (red:
+/// `Palette::unread`). Each with how far its shake has gone, if
+/// something just came (0–1).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 struct Dot {
-    shake: Option<f32>,
-    fresh: f32,
-    count: u32,
-}
-
-/// The count beside a dot, as shown.
-fn count_text(n: u32) -> String {
-    if n > 99 { "99+".to_owned() } else { n.to_string() }
+    notes: Option<(f32, u32)>,
+    notes_shake: Option<f32>,
+    unread: bool,
+    unread_shake: Option<f32>,
 }
 
 /// Which app a notification's dot belongs to.
@@ -1416,30 +1424,29 @@ impl Deskbar {
         self.notes_seen = Some(self.notes_seen.map_or(newest, |s| s.max(newest)));
     }
 
-    /// Whether `team`'s application has notifications unread (or a
-    /// launcher badge's count, or wants attention): its dot.
+    /// `team`'s application's dots: for its notifications unread, and
+    /// (where Preferences ▸ Deskbar has it on) for what it says is unread
+    /// or waiting in it (a launcher entry's count above none, or its
+    /// wish for attention). None with neither.
     fn notes_of(&mut self, team: &Team) -> Option<Dot> {
         let app_id = team.windows.first().map(|w| w.app_id.clone()).unwrap_or_default();
         let entry = self.entry(&app_id);
-        let badge = self.badge_of(team).filter(|b| b.count.is_some() || b.urgent);
+        let badge = self.badge_of(team).filter(|b| b.count.is_some_and(|c| c > 0) || b.urgent).filter(|_| self.unread_dots);
         let (apps, fade) = self.status.notifications.as_ref().map_or((&[][..], None), |n| (n.apps.as_slice(), n.fade_minutes));
         let mine: Vec<&NoteApp> = apps.iter().filter(|a| same_app(a, &app_id, entry.as_ref(), &team.name)).collect();
-        let mut keys: Vec<String> = mine.iter().map(|a| note_key(a)).collect();
-        keys.extend(badge.as_ref().map(|b| badge_key(&b.app)));
-        if keys.is_empty() {
+        if mine.is_empty() && badge.is_none() {
             return None;
         }
         let now = Instant::now();
-        let shake = keys.iter().filter_map(|k| self.shaking.get(k)).map(|at| now.duration_since(*at).as_secs_f32() / SHAKE.as_secs_f32()).filter(|t| *t < 1.0).reduce(f32::min);
+        let shake_of = |keys: &[String]| keys.iter().filter_map(|k| self.shaking.get(k)).map(|at| now.duration_since(*at).as_secs_f32() / SHAKE.as_secs_f32()).filter(|t| *t < 1.0).reduce(f32::min);
         // Each notification its share, however many apps' they are (a
-        // browser's sites); a badge alone is full.
+        // browser's sites).
         let secs = now_secs();
         let weight = |a: &NoteApp| a.count.max(1) as f32;
         let total: f32 = mine.iter().map(|a| weight(a)).sum();
-        let fresh = if total > 0.0 { mine.iter().map(|a| a.freshness(fade, secs) * weight(a)).sum::<f32>() / total } else { 1.0 };
-        let notes: u32 = mine.iter().map(|a| a.count).sum();
-        let count = if notes > 0 { notes } else { badge.and_then(|b| b.count).unwrap_or(0) as u32 };
-        Some(Dot { shake, fresh, count })
+        let notes = (total > 0.0).then(|| (mine.iter().map(|a| a.freshness(fade, secs) * weight(a)).sum::<f32>() / total, mine.iter().map(|a| a.count).sum::<u32>()));
+        let note_keys: Vec<String> = mine.iter().map(|a| note_key(a)).collect();
+        Some(Dot { notes, notes_shake: shake_of(&note_keys), unread: badge.is_some(), unread_shake: badge.as_ref().and_then(|b| shake_of(&[badge_key(&b.app)])) })
     }
 
     /// `team`'s application's launcher badge, if it sent one: matched by
@@ -1618,6 +1625,7 @@ impl Deskbar {
                 self.menu_icons = s.menu_icons;
                 self.tiling = s.tiling;
                 self.keys = s.keys;
+                self.unread_dots = s.unread_dots;
                 self.glances.set(&s.widgets, &proxy);
                 self.live.set(s.widgets, &proxy);
                 if seconds {
@@ -1813,7 +1821,14 @@ fn add_keys(menu: &mut Menu, profile: &KeyboardProfile) {
 }
 
 fn settings_msg(settings: olo_protocol::Settings) -> Msg {
-    Msg::Settings(Settings { clock: settings.clock, menu_icons: settings.appearance.menu_icons, tiling: settings.tiling, keys: settings.keyboard.profile, widgets: settings.deskbar.widgets })
+    Msg::Settings(Settings {
+        clock: settings.clock,
+        menu_icons: settings.appearance.menu_icons,
+        tiling: settings.tiling,
+        keys: settings.keyboard.profile,
+        unread_dots: settings.deskbar.unread_dots,
+        widgets: settings.deskbar.widgets,
+    })
 }
 
 /// `menu` and its submenus with no icons (Appearance ▸ Show icons in the
@@ -3487,10 +3502,10 @@ impl Deskbar {
         // What agents read of it: its unread count, notifications, progress.
         let said: Vec<String> = [
             badge.as_ref().and_then(|b| b.count).map(|n| format!("{n} unread")),
-            notes.map(|d| match (d.count, d.fresh < 1.0) {
+            notes.and_then(|d| d.notes).map(|(fresh, count)| match (count, fresh < 1.0) {
                 (0, _) => "has notifications".to_owned(),
                 (n, false) => format!("has notifications ({n})"),
-                (n, true) => format!("has notifications ({n}, the dot {}% full)", (d.fresh * 100.0).round()),
+                (n, true) => format!("has notifications ({n}, the dot {}% full)", (fresh * 100.0).round()),
             }),
             badge.as_ref().and_then(|b| b.progress).map(|p| format!("{}% done", (p * 100.0).round())),
         ]
@@ -3500,11 +3515,10 @@ impl Deskbar {
         // In the workspace showing, the row is on its lit ground.
         let lit = self.lit(display, ws);
         let ground = self.ground(p, display, ws);
-        let show_count = self.status.notifications.as_ref().is_some_and(|n| n.show_count);
-        if notes.is_some_and(|n| n.shake.is_some()) {
+        if notes.is_some_and(|n| n.notes_shake.is_some() || n.unread_shake.is_some()) {
             d.animating = true;
         }
-        if notes.is_some_and(|n| n.fresh < 1.0) {
+        if notes.is_some_and(|n| n.notes.is_some_and(|(fresh, _)| fresh < 1.0)) {
             d.fading = true;
         }
         let (name, icon) = (team.name.clone(), team.icon.clone());
@@ -3550,31 +3564,35 @@ impl Deskbar {
                 c(p.panel_text)
             };
             let font = style::ui_font(if focused { FontWeight::BOLD } else { FontWeight::NORMAL });
-            let count_font = style::ui_font(FontWeight::NORMAL);
-            // The count beside the dot, when asked for.
-            let count = notes.filter(|d| show_count && d.count > 0).map(|d| count_text(d.count));
-            let count_w = count.as_ref().map_or(0.0, |t| f32::from(style::text_width(t.clone(), style::DETAIL_SIZE, count_font.clone())) + NOTE_COUNT_GAP);
-            let dot_room = if notes.is_some() { NOTE_DOT + NOTE_DOT_GAP + count_w } else { 0.0 };
+            // The room the dots take at the row's right end: the blue
+            // one's place, and the red one's left of it when there is one.
+            let dots = notes.unwrap_or_default();
+            let dot_room = match (dots.notes.is_some(), dots.unread) {
+                (_, true) => 2.0 * NOTE_DOT + UNREAD_DOT_GAP + NOTE_DOT_GAP,
+                (true, false) => NOTE_DOT + NOTE_DOT_GAP,
+                (false, false) => 0.0,
+            };
             let text_x = f32::from(icon_r.right()) + 8.0;
             let max_w = f32::from(r.right()) - text_x - 6.0 - dot_room;
             style::label_fit(g, px(text_x), r.center().y, Align::Left, name.clone(), style::PLAIN_SIZE, font, text_color, px(max_w));
-            // Notifications unread: a dot at the right end, in the
-            // history's mark for what is unread (on a selected row, in its
-            // text's colour); one just in shakes it a moment. As they fade
-            // it drains from its right, to a floor (the rest a faint well
-            // of its colour); the count, when shown, beside it.
-            if let Some(dot) = notes {
+            let scale = g.scale_factor();
+            let tau = std::f32::consts::TAU;
+            // (Whole device pixels: the shake too, so the edge stays sharp.)
+            let shaken = |t: Option<f32>| t.map_or(0.0, |t| (SHAKE_PX * (t * SHAKE_TIMES * tau).sin() * (1.0 - t).powi(2) * scale).round() / scale);
+            let lit = open || drop_here || chosen;
+            // Notifications unread: a dot at the right end, in the look's
+            // colour for them (on a selected row, in its text's colour);
+            // one just in shakes it a moment. As they fade it drains from
+            // its right, to a floor (the rest a faint well of its colour).
+            // No number beside it: how many is the history's to say.
+            if let Some((fresh, _)) = dots.notes {
                 let at = style::snap_centred(g, point(r.right() - px(NOTE_DOT_INSET + NOTE_DOT / 2.0), r.center().y), NOTE_DOT, NOTE_DOT);
-                let scale = g.scale_factor();
-                // (Whole device pixels: the shake too, so the edge stays sharp.)
-                let dx = dot.shake.map_or(0.0, |t| (SHAKE_PX * (t * SHAKE_TIMES * std::f32::consts::TAU).sin() * (1.0 - t).powi(2) * scale).round() / scale);
-                let color = if open || drop_here || chosen { text_color } else { c(p.keyboard_navigation) };
-                let centre = point(at.center().x + px(dx), at.center().y);
+                let color = if lit { text_color } else { c(p.notice) };
+                let centre = point(at.center().x + px(shaken(dots.notes_shake)), at.center().y);
                 let radius = f32::from(at.size.width) / 2.0;
-                let fill = NOTE_DOT_FLOOR + (1.0 - NOTE_DOT_FLOOR) * dot.fresh.clamp(0.0, 1.0);
+                let fill = NOTE_DOT_FLOOR + (1.0 - NOTE_DOT_FLOOR) * fresh.clamp(0.0, 1.0);
                 let cx_ = f32::from(centre.x);
                 let edge = ((cx_ - radius + fill * 2.0 * radius) * scale).round() / scale;
-                let tau = std::f32::consts::TAU;
                 if edge >= cx_ + radius - 0.5 / scale {
                     g.paint_sector(centre, px(0.0), px(radius), 0.0, tau, color);
                 } else {
@@ -3582,9 +3600,20 @@ impl Deskbar {
                     let left = Bounds::from_corners(point(px(cx_ - radius - 1.0), centre.y - px(radius + 1.0)), point(px(edge), centre.y + px(radius + 1.0)));
                     g.with_content_mask(Some(ContentMask { bounds: left }), |g| g.paint_sector(centre, px(0.0), px(radius), 0.0, tau, color));
                 }
-                if let Some(t) = count {
-                    style::label(g, at.left() + px(dx - NOTE_COUNT_GAP), r.center().y, Align::Right, t, style::DETAIL_SIZE, count_font, color);
+            }
+            // Something unread or waiting in the app itself: a red dot,
+            // left of the blue one's place, whole while there is anything
+            // (on a selected row its red would be lost on the highlight:
+            // ringed in the row's text colour there).
+            if dots.unread {
+                let x = r.right() - px(NOTE_DOT_INSET + NOTE_DOT + UNREAD_DOT_GAP + NOTE_DOT / 2.0);
+                let at = style::snap_centred(g, point(x, r.center().y), NOTE_DOT, NOTE_DOT);
+                let centre = point(at.center().x + px(shaken(dots.unread_shake)), at.center().y);
+                let radius = f32::from(at.size.width) / 2.0;
+                if lit {
+                    g.paint_sector(centre, px(0.0), px(radius + 1.0), 0.0, tau, text_color);
                 }
+                g.paint_sector(centre, px(0.0), px(radius), 0.0, tau, c(p.unread));
             }
             // Something under way (a download): a thin bar along the row's
             // foot, under the name, in the selection's colour on a faint
@@ -3999,6 +4028,7 @@ fn main() {
             menu_output: None,
             menu_workspace: None,
             keys: KeyboardProfile::default(),
+            unread_dots: true,
             approve_until: None,
             arrangement: (None, None),
             notes_seen: None,

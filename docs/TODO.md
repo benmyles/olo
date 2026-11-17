@@ -34,28 +34,24 @@ something nobody here has is in "Blocked", with what it waits for.
   the code and keep looking for up to 60s until one arrives from
   phone/email and then offer to fill it.").
 
-- **Deskbar: the fading blue dot without its number; a red dot for
-  what's unread in the app itself** (Ben, 2026-11-17: "currently in the
-  deskbar we show a count of recent notifications and a blue dot that
-  fades away as they age. i love the blue dot but the count itself
-  makes it look more like an unread badge count for an app, e.g. in
-  slack it'd be unread message count. change it so that we keep the
-  fading blue dot for notifications but remove the number. then, also
-  add to olo the ability, for apps that support it, to show a red dot
-  to the left of the blue dot and the red dot indicates there are
-  unread/pending items in the app itself. red dot doesn't fade it's
-  either there or not. should be a deskbar option to choose whether or
-  not to show it (enabled by default). idk if there's like a linux
-  desktop standard to get this info, if there is then use that and make
-  sure every native olo app supports it as well as olo's slack. if
-  there is no standard then create something and make it work for all
-  native olo apps and olo slack."; and: "also the red/blue dot colors
-  should be customizable by the chosen theme/color scheme too").
-
 - **Agent Screens: Screens ▸ New Screen brings back an old one** (Ben,
   2026-11-17: "when i go screens -> new screen in agent screens app it
   seems to bring back an old archived/deleted screen instead of
   creating an actual new screen").
+
+- **Tracker: dragging a file by its name only sometimes works** (Ben,
+  2026-11-17: "previously i reported a bug where sometimes dragging a
+  file from tracker via the name instead of the icon doesn't work. i
+  thought it was fixed but it still happens. it always works if i drag
+  by icon but only sometimes if i drag by the name").
+
+- **Viewer: Find Again and Find Previous don't work; what apps have
+  in common belongs in the kit** (Ben, 2026-11-17: "in viewer find
+  again and find previous shortcuts don't work. we really need to
+  standardize all these common capabilities that most apps have into
+  the kit or some common library so that if it works in one place it
+  will work everywhere and work consistently. not just for find but
+  everything that is common across apps").
 
 ## Done, waiting for Ben to try or confirm
 
@@ -5907,6 +5903,20 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Deskbar: the fading blue dot without its number; a red dot for
+  what's unread in the app itself**~~ (Ben, 2026-11-17; done the same
+  day). The blue dot of an app's notifications has no number beside it
+  any more (and the setting that showed one is gone). A red dot, left
+  of the blue one's place, is there while the app says something is
+  unread or waiting in it, and gone when nothing is; Preferences ▸
+  Deskbar ▸ Applications turns it off (on by default). The standard
+  there is for it is the launcher entry's count (what Chrome, Electron
+  apps and Telegram send, which Deskbar already heard). Olo's apps
+  that have something unread say it: Telegram, Phone, Slack, and now
+  Terminal (tabs waiting for you), OS Updates (updates waiting) and
+  Olo Doctor (problems found). Both dots' colours are the theme's or
+  colour scheme's own. (HACKING, "Two dots beside an application".)
 
 - ~~**Passwords fills an authenticator's one-time code as it does one
   that came by text**~~ (Ben, 2026-11-17: "when a login asks for a one

@@ -64,6 +64,10 @@ pub struct Seeds {
     pub failure: Rgba,
     pub warning: Rgba,
     pub hues: Hues,
+    /// Deskbar's dots (`Palette::notice`, `unread`), if not the focus
+    /// colour and the failure red.
+    pub notice: Option<Rgba>,
+    pub unread: Option<Rgba>,
     /// Controls' outlines, if not a shade of the panel (Halftone's ink).
     pub border: Option<Rgba>,
     /// The gloss along the top of coloured fills: 0 for flat looks.
@@ -87,6 +91,8 @@ const LIGHT: Seeds = Seeds {
     failure: hex(0xcc2b2b),
     warning: hex(0x966400),
     hues: HUES_LIGHT,
+    notice: None,
+    unread: None,
     border: None,
     gloss: 70,
 };
@@ -107,6 +113,8 @@ const DARK: Seeds = Seeds {
     failure: hex(0xff6b63),
     warning: hex(0xf0c040),
     hues: HUES_DARK,
+    notice: None,
+    unread: None,
     border: None,
     gloss: 40,
 };
@@ -133,6 +141,7 @@ pub const THEMES: &[Theme] = &[
             on_tab: hex(0x131a26),
             tooltip: hex(0xfff6c8),
             status: hex(0x2b86f5),
+            unread: Some(hex(0xe5392e)),
             gloss: 110,
             ..LIGHT
         },
@@ -147,6 +156,7 @@ pub const THEMES: &[Theme] = &[
             on_tab: hex(0x121212),
             tooltip: hex(0x3a3825),
             status: hex(0x3d86f5),
+            unread: Some(hex(0xff5a4f)),
             gloss: 60,
             ..DARK
         },
@@ -168,6 +178,7 @@ pub const THEMES: &[Theme] = &[
             on_tab: hex(0x000000),
             tooltip: hex(0xffffcc),
             status: hex(0x6363d6),
+            unread: Some(hex(0xdd0806)),
             gloss: 50,
             ..LIGHT
         },
@@ -182,6 +193,7 @@ pub const THEMES: &[Theme] = &[
             on_tab: hex(0x111118),
             tooltip: hex(0x3c3a2c),
             status: hex(0x6c6cdc),
+            unread: Some(hex(0xff6259)),
             gloss: 30,
             ..DARK
         },
@@ -380,6 +392,8 @@ pub fn build(s: &Seeds, mode: ThemeMode, terminal: Terminal) -> Palette {
             failure: readable_on_doc(s.failure),
             warning: readable_on_doc(s.warning),
             keyboard_navigation: s.navigation,
+            notice: readable(s.notice.unwrap_or(s.navigation), p, 3.0),
+            unread: readable(s.unread.unwrap_or(s.failure), p, 3.0),
             desktop_text: WHITE,
             desktop_text_shadow: [0, 0, 0, 160],
             status_bar: s.status,
@@ -431,6 +445,8 @@ pub fn build(s: &Seeds, mode: ThemeMode, terminal: Terminal) -> Palette {
             failure: readable_on_doc(s.failure),
             warning: readable_on_doc(s.warning),
             keyboard_navigation: s.navigation,
+            notice: readable(s.notice.unwrap_or(s.navigation), p, 3.0),
+            unread: readable(s.unread.unwrap_or(s.failure), p, 3.0),
             desktop_text: mix(ink, WHITE, 0.5),
             desktop_text_shadow: [0, 0, 0, 200],
             status_bar: s.status,
@@ -580,6 +596,12 @@ mod tests {
                 assert!(contrast(c, p.document_background) >= 3.0, "{look}: {what} {:.2}", contrast(c, p.document_background));
             }
             assert!(contrast(p.keyboard_navigation, p.panel_background) >= 2.5, "{look}: focus {:.2}", contrast(p.keyboard_navigation, p.panel_background));
+            // Deskbar's dots: each shows on a panel, and they're told apart.
+            for (what, dot) in [("notice", p.notice), ("unread", p.unread)] {
+                assert!(contrast(dot, p.panel_background) >= 3.0, "{look}: the {what} dot {:.2}", contrast(dot, p.panel_background));
+            }
+            let (n, u) = (p.notice, p.unread);
+            assert!(u[0] as i32 - u[2] as i32 > 60 && n[2] as i32 + n[1] as i32 > n[0] as i32 * 2 - 40, "{look}: a red dot {u:?} and one that isn't {n:?}");
         }
     }
 

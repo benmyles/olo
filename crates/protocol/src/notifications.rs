@@ -38,8 +38,6 @@ pub struct NotificationSettings {
     pub fade: bool,
     /// Over how long (minutes).
     pub fade_minutes: u32,
-    /// Deskbar shows how many notifications each app has beside its dot.
-    pub deskbar_count: bool,
     /// One arriving while another of the same app with the same title
     /// and text is still active (a banner up, or unread in the history)
     /// takes its place: the earlier one goes.
@@ -73,7 +71,6 @@ impl Default for NotificationSettings {
             view: HistoryView::List,
             fade: true,
             fade_minutes: 60,
-            deskbar_count: false,
             one_of_each: true,
         }
     }
@@ -324,8 +321,6 @@ pub struct NotificationState {
     /// How the history fades (minutes; None: it doesn't), so each dot
     /// drains as its app's notifications fade.
     pub fade_minutes: Option<u32>,
-    /// Deskbar shows each app's count beside its dot (the setting).
-    pub show_count: bool,
 }
 
 /// An app with notifications unread, as Deskbar finds it among its
@@ -455,7 +450,7 @@ mod tests {
         assert_eq!(NoteApp::default().freshness(Some(60), now), 1.0);
         // An older service's state still reads.
         let old: NotificationState = serde_json::from_str(r#"{"unread":1,"quiet":false,"apps":[{"name":"Slack","newest":[5,1]}]}"#).unwrap();
-        assert_eq!((old.apps[0].count, old.fade_minutes, old.show_count), (0, None, false));
+        assert_eq!((old.apps[0].count, old.fade_minutes), (0, None));
     }
 
     #[test]

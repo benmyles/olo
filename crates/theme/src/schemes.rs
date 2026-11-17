@@ -135,6 +135,11 @@ impl Scheme {
                 brown: mix(v.orange, v.muted, 0.5),
                 gray: v.muted,
             },
+            // (Deskbar's dots: the scheme's own blue and red; a red too
+            // muted to read as one at a dot's size, Tokyo Night Light's,
+            // half way to a plain one.)
+            notice: Some(v.blue),
+            unread: Some(if (v.red[0] as i32 - v.red[1].max(v.red[2]) as i32) < 90 { mix(v.red, if light { hex(0xd0283c) } else { hex(0xff5a5f) }, 0.5) } else { v.red }),
             border: Some(if light { mix(v.panel, v.ink, 0.38) } else { mix(v.panel, hex(0x000000), 0.45) }),
             gloss: 0,
         }

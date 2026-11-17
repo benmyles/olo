@@ -193,6 +193,14 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 ),
         );
         ui.note("Each shows in the Deskbar as it changes. Click one there for Activity Monitor (a Token Pool one, Token Pool; an app's, its app).");
+        // Beside each application's name: the blue dot of its
+        // notifications is always there (it drains as they fade); the
+        // red one, for what the app itself says is unread or waiting.
+        let on = ui.s.deskbar.unread_dots;
+        ui.bbox("Applications", |ui| {
+            ui.check("A red dot for an app with something unread in it", on, |s, v| s.deskbar.unread_dots = v);
+            ui.note("Left of the blue dot of its notifications. It stays while there's something unread or waiting in the app.");
+        });
     });
     let right = ui.collect(|ui| match selected.and_then(|i| widgets.get(i)) {
         Some(w) => editor(ui, w, selected.is_some_and(|i| widgets[..i].iter().any(|o| o.place == w.place)), &sources),

@@ -775,6 +775,8 @@ pub(crate) struct Terminal {
     /// Preferences ▸ Terminal: what Keep It Going says.
     pub(crate) keep_going_says: String,
     notifier: Notifier,
+    /// How many tabs waiting for the person were last said (`say_waiting`).
+    waiting_said: u32,
     /// The notification each shell's agent last put up.
     notes: HashMap<u64, NoteId>,
     /// The windows as last kept on disk (`remember`).
@@ -2118,6 +2120,18 @@ impl Terminal {
         }
     }
 
+    /// How many tabs wait for the person (an agent that needs an answer,
+    /// or is done, in a tab not looked at since: `Tab::attention`), said
+    /// as the app's unread count when it changes: Deskbar's red dot
+    /// beside Terminal (`Notifier::badge`).
+    pub(crate) fn say_waiting(&mut self) {
+        let waiting = self.windows.values().map(|w| if let Win::Term(t) = w { t.tabs.iter().filter(|tab| tab.attention).count() } else { 0 }).sum::<usize>() as u32;
+        if self.waiting_said != waiting {
+            self.waiting_said = waiting;
+            self.notifier.badge(waiting);
+        }
+    }
+
     /// A tab's agent started, stopped or moved on: show it, and say so
     /// when it now needs the person and they aren't looking at it.
     fn agent_changed(&mut self, cx: &mut Cx, agent::Report(shell, now): agent::Report) {
@@ -2147,6 +2161,9 @@ impl Terminal {
             return;
         };
         tab.attention = true;
+        self.say_waiting();
+        let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
+        let tab = &mut t.tabs[i];
         let place = match tab.group.and_then(|g| t.groups.get(g)) {
             Some(g) => format!("{} — {}", g.name, tab.title),
             None => tab.title.clone(),
@@ -3450,6 +3467,7 @@ fn main() {
             worktrees_at: olo_protocol::TerminalSettings::default().worktrees,
             keep_going_says: olo_protocol::TerminalSettings::KEEP_GOING_SAYS.into(),
             notifier: Notifier::new(proxy.clone(), "Terminal", "olo-terminal"),
+            waiting_said: 0,
             notes: HashMap::new(),
             remembered: None,
             remembering: false,

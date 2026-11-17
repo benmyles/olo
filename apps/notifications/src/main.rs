@@ -218,13 +218,7 @@ impl Notifications {
             self.history.save();
         }
         let quiet = self.quiet();
-        let state = NotificationState {
-            unread: self.history.unread(),
-            quiet,
-            apps: self.history.unread_apps(),
-            fade_minutes: self.settings.fade.then_some(self.settings.fade_minutes),
-            show_count: self.settings.deskbar_count,
-        };
+        let state = NotificationState { unread: self.history.unread(), quiet, apps: self.history.unread_apps(), fade_minutes: self.settings.fade.then_some(self.settings.fade_minutes) };
         if self.told.as_ref() != Some(&state) {
             olo_kit::store::save_bytes(NotificationState::path(), serde_json::to_vec(&state).unwrap_or_default());
             self.told = Some(state.clone());

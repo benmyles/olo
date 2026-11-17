@@ -1132,14 +1132,18 @@ impl Terminal {
         // (Whatever changed shows here: kept on disk soon.)
         self.remember_soon(&mut Cx);
         let Some(layout) = self.lay_out(id, vs, scale, &metrics) else { return div() };
+        {
+            let Some(Win::Term(t)) = self.windows.get_mut(&id) else { return div() };
+            if focused != t.focused {
+                t.focused = focused;
+                t.tab().report_focus(focused);
+            }
+            if focused {
+                t.tab_mut().attention = false;
+            }
+        }
+        self.say_waiting();
         let Some(Win::Term(t)) = self.windows.get_mut(&id) else { return div() };
-        if focused != t.focused {
-            t.focused = focused;
-            t.tab().report_focus(focused);
-        }
-        if focused {
-            t.tab_mut().attention = false;
-        }
         {
             let session = &t.tab().session;
             let mut current = session.shared.scheme.lock().unwrap();

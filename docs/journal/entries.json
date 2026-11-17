@@ -4822,5 +4822,11 @@
   "title": "Passwords in Chrome: an authenticator's code, offered under the field",
   "caption": "A field waiting for a one-time code, on a site whose login in Passwords has one, is offered the code as a texted one is; taken, the code good at that moment goes in. (A page and a login made for the test.)",
   "image": "2026-11-17/104808-passwords-in-chrome-an-authenticator-s-code-offe.png"
+ },
+ {
+  "time": "2026-11-17T11:16:14",
+  "title": "Deskbar: a blue dot for notifications, a red one for what's unread in the app",
+  "caption": "No number beside the blue dot any more; left of it, a red dot while the app says something is unread or waiting in it (here Terminal has both, StyledEdit a notification, the Viewer something unread), at 1\u00d7, 1.5\u00d7 and 2\u00d7. Their colours are the look's own.",
+  "image": "2026-11-17/111614-deskbar-a-blue-dot-for-notifications-a-red-one-f.png"
  }
 ]

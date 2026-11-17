@@ -120,6 +120,9 @@ fn tell_suggestions(notes: &Notifier, findings: &[Finding]) {
 /// `suggestions`, of suggestions); whether a problem was told.
 fn look(notes: &Notifier, suggestions: bool) -> bool {
     let report = checks::look();
+    // (What's wrong now, as the app's unread count: Deskbar's red dot
+    // beside Olo Doctor while its window is open.)
+    notes.badge(report.findings.iter().filter(|f| matches!(f.severity, Severity::Critical | Severity::Problem)).count() as u32);
     let mut told = read_told();
     let (new, remember) = news(&report.findings, &told);
     told.ids = remember.ids;

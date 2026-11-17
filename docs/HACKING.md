@@ -6457,20 +6457,52 @@ Electron and Telegram send: `application://slack.desktop` with `count`,
 `progress`, `urgent` and their `-visible`s, each update changing only
 what it names), kept per desktop entry until the sender leaves the bus
 and matched to a row as notifications are (`same_app`). An unread count
-or a wish for attention lights the row's dot (no number, as for
-notifications), a count going up or attention newly wanted shakes it,
-and progress is a 2-point bar along the row's foot from the name to the
+above none, or a wish for attention, is the row's **red dot** (below);
+a count going up or attention newly wanted shakes it; and progress is a 2-point bar along the row's foot from the name to the
 right inset, a device pixel above the row's line, in
 `keyboard_navigation` on a faint track; agents read "3 unread, 40% done"
 as the row's value. To try it, run a throwaway Slack in a test session
 (sandbox HOME and `--user-data-dir`, `--proxy-server=127.0.0.1:9` so it
 reaches nothing): its icon and whole menu show.
 
-An app with notifications unread has a dot at its row's right end
-(`NOTE_DOT`, 7 points, on device pixels: `style::snap_centred`), in
-the colour the history marks unread ones with (`keyboard_navigation`,
-not an alarm's red; a selected row's text colour on a selected row),
-its name shortened to keep clear of it. Notes are matched to the row by
+**Two dots beside an application** (Ben, 2026-11-17: "i love the blue
+dot but the count itself makes it look more like an unread badge count
+for an app … keep the fading blue dot for notifications but remove the
+number … for apps that support it … a red dot to the left of the blue
+dot [for] unread/pending items in the app itself. red dot doesn't fade
+it's either there or not"). The **blue** one is its notifications'
+(`Dot::notes`); the **red** one, left of the blue one's place
+(`UNREAD_DOT_GAP`; there whether or not the blue one is, so the red
+ones line up down the Deskbar), is what the app says is unread or
+waiting in it (`Dot::unread`: its launcher entry's count above none, or
+its wish for attention), whole while there is anything and gone when
+there isn't; Preferences ▸ Deskbar ▸ Applications turns it off
+(`DeskbarSettings::unread_dots`, on by default). No number is drawn
+beside either (the setting that drew one, `deskbar_count`, is gone):
+how many is the history's to say, and agents read it in the row's
+value. **Their colours are the look's**: `Palette::notice` and
+`Palette::unread`, a theme's or a colour scheme's own
+(`Seeds::notice`, `unread`: Classic's and Platinum's reds, a scheme's
+blue and red, a red too muted for a dot brought half way to a plain
+one) or else its focus colour and its failure red, each kept 3 to 1
+on the panel (`text_reads_everywhere` holds every look to it); on a
+selected row the blue one is in the row's text colour and the red one
+ringed in it. **The standard is the launcher entry's**
+(`com.canonical.Unity.LauncherEntry`, what Chromium, Electron and
+Telegram send and Deskbar already heard): an Olo app says its count
+with `Notifier::badge(n)` (kit-base, for its desktop entry; 0 takes
+it away, and it goes when the app leaves the bus). Olo's that have
+something unread say it: Telegram (unread chats), Phone (unread
+messages), Slack (olo-slack's count, from its page), **Terminal**
+(tabs waiting for the person: an agent that needs an answer or has
+finished in a tab not looked at since, `Tab::attention`,
+`say_waiting`), **OS Updates** (updates waiting, while it's open) and
+**Olo Doctor** (critical findings and problems, from its background
+look). The others have nothing that is unread.
+
+An app with notifications unread has its blue dot at its row's right
+end (`NOTE_DOT`, 7 points, on device pixels: `style::snap_centred`),
+its name shortened to keep clear of the dots. Notes are matched to the row by
 the desktop entry they name (an Olo app's `olo-terminal` is window
 `olo.terminal`'s; another's, its entry's file or `StartupWMClass`), else
 by name (`same_app`). One arriving (its `(time, id)` newer than any
@@ -6485,11 +6517,13 @@ as a dot, the rest a faint well of its colour (`NOTE_DOT_WELL`), its
 edge on a device pixel; repainted every 20 s while it isn't full.
 olo-notifications puts in `NotificationState` each app's `count` and
 when each of its fading ones came (`fading`), and the fade's length.
-With Preferences ▸ Notifications ▸ Deskbar ▸ "Show how many beside each
-app's dot" (`deskbar_count`, off by default) the count goes beside the
-dot in the small type and the dot's colour ("99+" past 99; the name is
-cut short first). Agents read the row's value, "has notifications (2,
-the dot 60% full)".
+Agents read the row's value, "3 unread, has notifications (2, the dot
+60% full)". Looked at in a headless session with test counts and
+notifications sent on its own bus (`gdbus emit … LauncherEntry.Update`,
+`Notify` with a `desktop-entry` hint; olo-notifications started with
+`--bus`): red and blue, blue alone, red alone in its column, at 1×,
+1.5× and 2×, light and dark, in Dracula and SynthWave's colours and in
+Platinum, and with the red one turned off.
 
 Clicking an app's row in Deskbar brings it forward with every window it
 has there, as a Mac's Dock does (BeOS's brought one forward):

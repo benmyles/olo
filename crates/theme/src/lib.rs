@@ -156,6 +156,16 @@ pub struct Terminal {
     pub ansi: [Rgba; 16],
 }
 
+/// A palette written before it had the dots' colours (`Palette::notice`,
+/// `unread`): BeOS's, light.
+fn notice_before() -> Rgba {
+    [0, 0, 229, 255]
+}
+
+fn unread_before() -> Rgba {
+    [214, 28, 28, 255]
+}
+
 /// Every colour the desktop draws with. Names follow the Haiku/BeOS
 /// `color_which` constants where one exists. A palette is one look in
 /// one mode: [`looks::palette`] makes them.
@@ -224,6 +234,16 @@ pub struct Palette {
     pub warning: Rgba,
     #[serde(with = "hex_color")]
     pub keyboard_navigation: Rgba,
+    /// Deskbar's two dots beside an application: `notice` for its
+    /// notifications (it drains as they fade), `unread` for what is
+    /// unread or waiting in the app itself (it stays while there is
+    /// any). Each look's own (`looks::Seeds::notice`, `unread`; a colour
+    /// scheme's blue and red), else its focus colour and its red; both
+    /// read on its panels as marks do (3 to 1).
+    #[serde(with = "hex_color", default = "notice_before")]
+    pub notice: Rgba,
+    #[serde(with = "hex_color", default = "unread_before")]
+    pub unread: Rgba,
     // Desktop
     #[serde(with = "hex_color")]
     pub desktop_text: Rgba,
@@ -393,6 +413,8 @@ impl Palette {
             failure: rgb(220, 0, 0),
             warning: rgb(150, 100, 0),
             keyboard_navigation: rgb(0, 0, 229),
+            notice: rgb(0, 0, 229),
+            unread: rgb(214, 28, 28),
             desktop_text: rgb(255, 255, 255),
             desktop_text_shadow: [0, 0, 0, 160],
             status_bar: rgb(50, 150, 255),
@@ -460,6 +482,8 @@ impl Palette {
             failure: rgb(255, 90, 80),
             warning: rgb(250, 208, 70),
             keyboard_navigation: rgb(96, 144, 255),
+            notice: rgb(96, 144, 255),
+            unread: rgb(255, 98, 88),
             desktop_text: rgb(240, 240, 240),
             desktop_text_shadow: [0, 0, 0, 200],
             status_bar: rgb(60, 140, 230),

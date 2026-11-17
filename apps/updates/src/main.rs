@@ -148,6 +148,9 @@ struct Saved {
 }
 
 pub struct OsUpdates {
+    /// For the app's unread count alone (how many updates wait: Deskbar's
+    /// red dot beside it): it shows no notifications of its own.
+    notes: olo_kit_base::notify::Notifier,
     pub section: Section,
     pub session: Option<Arc<Session>>,
     pub updates: Rc<dnf::Updates>,
@@ -173,6 +176,7 @@ impl OsUpdates {
         let saved: Saved = olo_kit::restored_state().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
         let u = updates::State::new(cx, &saved.search, saved.chosen, saved.selected);
         let mut app = OsUpdates {
+            notes: olo_kit_base::notify::Notifier::with_events("OS Updates", "olo-updates", |_| {}),
             section: saved.section,
             session: None,
             updates: Rc::default(),
@@ -449,6 +453,7 @@ impl View for OsUpdates {
                         }
                         self.error = None;
                         self.updates = Rc::new(loaded.updates);
+                        self.notes.badge(self.updates.updates.len() as u32);
                         self.repos = Rc::new(loaded.repos);
                         self.history = Rc::new(loaded.history);
                         self.offline = loaded.offline;

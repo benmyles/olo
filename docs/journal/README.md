@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### Deskbar: a blue dot for notifications, a red one for what's unread in the app
+
+*11:16* — No number beside the blue dot any more; left of it, a red dot while the app says something is unread or waiting in it (here Terminal has both, StyledEdit a notification, the Viewer something unread), at 1×, 1.5× and 2×. Their colours are the look's own.
+
+![Deskbar: a blue dot for notifications, a red one for what's unread in the app](2026-11-17/111614-deskbar-a-blue-dot-for-notifications-a-red-one-f.png)
+
 ### Passwords in Chrome: an authenticator's code, offered under the field
 
 *10:48* — A field waiting for a one-time code, on a site whose login in Passwords has one, is offered the code as a texted one is; taken, the code good at that moment goes in. (A page and a login made for the test.)

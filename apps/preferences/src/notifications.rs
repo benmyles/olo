@@ -222,7 +222,6 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         ui.note("One like it again from the same app (its title and text) takes the earlier one's place while that's still showing or unread.");
     });
     ui.bbox("Deskbar", |ui| {
-        check(ui, "Show how many beside each app's dot", s.deskbar_count, |s, v| s.deskbar_count = v);
         ui.note(if s.fade { "An app's dot drains as its notifications fade." } else { "An app with notifications unread has a dot beside its name." });
     });
     apps_ui(ui, st, &s);

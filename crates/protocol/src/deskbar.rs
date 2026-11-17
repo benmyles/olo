@@ -18,11 +18,22 @@ pub const MAX_EVERY_MS: u32 = 60_000;
 /// The longest a graph looks back, in seconds.
 pub const MAX_SPAN_S: u32 = 3600;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct DeskbarSettings {
     /// Its widgets, in order: each place shows its own in this order.
     pub widgets: Vec<Widget>,
+    /// A red dot beside an application with something unread or waiting
+    /// in it (what it says of itself: `com.canonical.Unity.LauncherEntry`'s
+    /// count, or that it wants attention), left of the blue dot of its
+    /// notifications. On unless turned off.
+    pub unread_dots: bool,
+}
+
+impl Default for DeskbarSettings {
+    fn default() -> Self {
+        DeskbarSettings { widgets: Vec::new(), unread_dots: true }
+    }
 }
 
 impl DeskbarSettings {
@@ -439,7 +450,7 @@ mod tests {
         let w: Widget = serde_json::from_str(r#"{"id": 3, "measure": {"kind": "network", "interface": null, "down": true, "up": false}, "place": "tray"}"#).unwrap();
         assert_eq!((w.id, w.place, w.every_ms, w.look), (3, Place::Tray, 1000, Look::Graph));
         assert_eq!(w.measure, Measure::Network { interface: None, down: true, up: false });
-        let s = DeskbarSettings { widgets: vec![w.clone(), Widget::new(7, Measure::Power)] };
+        let s = DeskbarSettings { widgets: vec![w.clone(), Widget::new(7, Measure::Power)], ..Default::default() };
         assert_eq!(s.next_id(), 8);
         assert_eq!(serde_json::from_str::<DeskbarSettings>(&serde_json::to_string(&s).unwrap()).unwrap(), s);
     }
