@@ -387,6 +387,16 @@ Each note: what to do, then why (what happened), then how to apply it.
   never reclaimed (`memory.min`), which is where PipeWire and
   WirePlumber run; Olo's own programs are in the login's
   `session-N.scope`, which has none: they lock their own memory.
+- **Notifications in a test session**: `tsession start NAME --session`
+  has no notification service; run `olo-notifications --bus
+  "$DBUS_SESSION_BUS_ADDRESS"` in it (`tsession run`). They show at the
+  bottom right, newest lowest, and aren't in `list_windows`: find a
+  button in a screenshot and click its point; a notification gone
+  above moves the rest, so look again before each click. A service
+  that keeps files in the runtime folder (olo-phoned's state and
+  socket) must not share the person's: give it an `XDG_RUNTIME_DIR` of
+  its own, and a client that needs both that and the session's display
+  an absolute `WAYLAND_DISPLAY` (`/run/user/1000/wayland-N`).
 - **Two kinds of volume here**: the Studio Display's (USB, Ben's usual
   output) is the card's own (its `PCM` control; the sound server says
   `HW_VOLUME_CTRL`), the built-in speakers' is the sound server's (the

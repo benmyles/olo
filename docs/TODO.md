@@ -17,23 +17,20 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **The phone's other notifications, calls and music** (found
-  2026-11-16; natively since). Olo has a phone's messages, contacts and
-  codes. Not yet: its other apps' notifications (Apple's Notification
-  Center Service over low energy, which the advertisement already asks
-  for, would bring them, and groups' names), calls (the hands-free
-  profile: the computer already says it's a hands-free device). Its
-  music's controls are done (2026-11-17: Deskbar's menu, Phone,
-  `olo-phone --music`; for Ben to try with the real phone, where only
-  reading was checked), and its conversations and contacts are kept
-  across a restart of the service (a file of yours alone,
-  ~/.local/state/olo/phone/kept.json; removed when the phone is
-  unpaired). Found reading the real phone on 2026-11-17: it's connected
-  over classic Bluetooth only (bonded for low energy, not connected:
-  notifications need that link, and an iPhone says its exact model
-  only over it); the sound server has a telephony service
-  (`org.pipewire.Telephony`) and this computer offers the hands-free
-  service, but the phone hasn't connected its side (no modem there).
+- **The phone's calls, with their sound here** (what's left of "the
+  phone's other notifications, calls and music"). An incoming call
+  shows now, with Answer and Decline that act on the phone (its
+  notification, below), but the call is then on the phone itself. To
+  take it here: the hands-free profile, which the sound server speaks
+  (PipeWire's `org.pipewire.Telephony`, there on this computer, with
+  this computer offering the hands-free service; read 2026-11-17: no
+  modem in it, the phone hasn't connected its side). Connect the
+  phone's hands-free side when a call is answered or made from here
+  (not all the while: an iPhone then sends every call's sound to the
+  computer, as to a car), answer and hang up through the telephony
+  service, dial from Phone (a contact's Call), show the call while it
+  lasts, and let go of the profile when it ends. Also left: groups'
+  names for text messages (the notification service has them).
 - **A paired phone's own picture** (Ben, 2026-11-16: "generate theme
   styled icons for the top 10 most popular android and iphone models and
   show the closest matching icon for a paired phone based on what it
@@ -167,6 +164,24 @@ something nobody here has is in "Blocked", with what it waits for.
   pictures, theme), natively, in Quick Look and in Viewer.
 
 ## Done, waiting for Ben to try or confirm
+
+- **The phone's other notifications, its music, its conversations
+  kept** (2026-11-17; HACKING, "The phone": Its other notifications,
+  Its music, Kept between runs). All built and tested against the
+  stand-in phone; with your iPhone only reading was done (nothing is
+  connected to or pressed on a real phone in a test). **To try**, after
+  the upgrade: (1) `olo-phone --status`: "its other notifications come
+  here too" and "it says it is iPhone…" mean the low-energy link came
+  (Olo asks BlueZ for it and advertises for 15 minutes after the phone
+  connects; the phone's Show Notifications switch for this computer
+  must be on). If it doesn't say so, tell me what `olo-logs --print`
+  says of "phone:" and I'll go by that. (2) A notification on the
+  phone (a mail, a call) shows here; a call's Answer and Decline and a
+  notification's Clear act on the phone; one read on the phone goes
+  here. Preferences ▸ Phone turns them off. (3) Play something on the
+  phone: Deskbar's phone menu and Phone show it, with Play or Pause,
+  Next and Previous. (4) After an upgrade or a restart Phone has the
+  conversations at once, what you sent from here among them.
 
 - **The website: screenshots zoom; beta said; a hardware skill; a deploy
   script** (Ben, 2026-11-16: "for the website, make it so that clicking

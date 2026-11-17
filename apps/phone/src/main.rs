@@ -206,6 +206,7 @@ fn main() -> ExitCode {
                 out!("codes-in-browser: {}", on(s.codes_in_browser));
                 out!("agent-screens: {}", s.agent_screens.word());
                 out!("copy-codes: {}", on(s.copy_codes));
+                out!("others: {}", on(s.others));
             }
             ExitCode::SUCCESS
         }
@@ -219,6 +220,7 @@ fn main() -> ExitCode {
                 ("codes", _) => on.map(|v| s.codes = v),
                 ("codes-in-browser", _) => on.map(|v| s.codes_in_browser = v),
                 ("copy-codes", _) => on.map(|v| s.copy_codes = v),
+                ("others", _) => on.map(|v| s.others = v),
                 ("agent-screens", w) => AgentCodes::from_word(w).map(|v| s.agent_screens = v),
                 _ => None,
             };
@@ -346,6 +348,12 @@ fn status(json: bool) -> ExitCode {
     }
     if let Some(m) = &state.music {
         out!("  {}: {}", if m.playing { "playing" } else { "paused" }, m.line());
+    }
+    if state.others {
+        out!("  its other notifications come here too");
+    }
+    if !state.model.is_empty() {
+        out!("  it says it is {}", state.model);
     }
     ExitCode::SUCCESS
 }

@@ -167,6 +167,10 @@ pub struct PhoneState {
     /// What the phone is playing or last played, while it's connected
     /// and has said (none: nothing, or no phone).
     pub music: Option<Music>,
+    /// Its other notifications come too (an iPhone's, over low energy).
+    pub others: bool,
+    /// What it says it is ("iPhone17,3"), once it has said.
+    pub model: String,
 }
 
 impl PhoneState {
@@ -291,11 +295,14 @@ pub struct PhoneSettings {
     pub agent_screens: AgentCodes,
     /// Copy a code no tab is waiting for to the clipboard.
     pub copy_codes: bool,
+    /// Show the phone's other notifications here too (an iPhone's, of
+    /// every app: mail, calls, the rest), with their actions.
+    pub others: bool,
 }
 
 impl Default for PhoneSettings {
     fn default() -> PhoneSettings {
-        PhoneSettings { notify: Notify::Messages, show_text: true, codes: true, codes_in_browser: true, agent_screens: AgentCodes::Give, copy_codes: false }
+        PhoneSettings { notify: Notify::Messages, show_text: true, codes: true, codes_in_browser: true, agent_screens: AgentCodes::Give, copy_codes: false, others: true }
     }
 }
 
@@ -517,7 +524,10 @@ mod tests {
         assert!(s.paired() && !PhoneState::default().paired());
         let text = serde_json::to_string(&s).unwrap();
         let keys: Vec<String> = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&text).unwrap().keys().cloned().collect();
-        assert_eq!(keys, ["pid", "name", "kind", "path", "link", "contacts", "battery", "conversations", "unread", "codes", "code_at", "trouble", "profiles", "changes", "since", "music"]);
+        assert_eq!(
+            keys,
+            ["pid", "name", "kind", "path", "link", "contacts", "battery", "conversations", "unread", "codes", "code_at", "trouble", "profiles", "changes", "since", "music", "others", "model"]
+        );
         // (What it's playing is there, when it plays: a song's name
         // isn't a message's.)
         let playing = Music { playing: true, title: "So What".into(), artist: "Miles Davis".into(), album: "Kind of Blue".into() };

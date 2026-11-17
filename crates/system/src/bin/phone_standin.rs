@@ -23,6 +23,7 @@ use std::{
 };
 
 use olo_system::phone::{
+    ancs,
     link::{Closer, Stream},
     map, pbap,
     standin::Phone,
@@ -33,6 +34,18 @@ const NAME: &str = "org.bluez";
 const ADAPTER: &str = "/org/bluez/hci0";
 const DEVICE: &str = "/org/bluez/hci0/dev_02_00_00_00_F0_01";
 const STANDIN: &str = "org.olo.PhoneStandin";
+/// Its services over low energy, as BlueZ numbers a device's: Device
+/// Information with its model number, and Apple's notification service
+/// with its three characteristics.
+const INFORMATION: &str = "/org/bluez/hci0/dev_02_00_00_00_F0_01/service0010";
+const MODEL: &str = "/org/bluez/hci0/dev_02_00_00_00_F0_01/service0010/char0011";
+const NOTIFICATIONS: &str = "/org/bluez/hci0/dev_02_00_00_00_F0_01/service0040";
+const SOURCE: &str = "/org/bluez/hci0/dev_02_00_00_00_F0_01/service0040/char0041";
+const CONTROL_POINT: &str = "/org/bluez/hci0/dev_02_00_00_00_F0_01/service0040/char0044";
+const DATA: &str = "/org/bluez/hci0/dev_02_00_00_00_F0_01/service0040/char0047";
+/// How much of an answer goes in a packet (the least a link carries: an
+/// answer of any length comes in pieces).
+const PACKET: usize = 20;
 /// The phone's music player, where BlueZ puts a connected phone's.
 const PLAYER: &str = "/org/bluez/hci0/dev_02_00_00_00_F0_01/avrcp/player0";
 
@@ -66,6 +79,22 @@ enum Job {
     HangUp,
     /// What the phone plays changed: said, as BlueZ says it.
     Music,
+    /// The low-energy link comes (its services appear) or goes.
+    LowEnergy(bool),
+    /// A packet for the Notification Source, or the Data Source (an
+    /// answer, cut into packets).
+    Source(Vec<u8>),
+    Answer(Vec<u8>),
+    /// The Notification Source was subscribed to: what's on the phone
+    /// already is told of, as there before.
+    Subscribed,
+}
+
+/// A notification on the stand-in phone.
+#[derive(Clone)]
+struct OnPhone {
+    told: ancs::Told,
+    says: ancs::Notification,
 }
 
 /// What the stand-in phone plays.
@@ -102,6 +131,18 @@ struct World {
     soliciting: bool,
     /// Who registered the advertisement.
     advertiser: Option<String>,
+    /// Its owner allowed its notifications to this computer (`--tell set
+    /// notifications`), the low-energy link is up, the phone's ends of
+    /// the two notified characteristics once subscribed to, the
+    /// notifications on it, the apps' names, and the actions done.
+    notifications_allowed: bool,
+    low_energy: bool,
+    source: Option<std::fs::File>,
+    data: Option<std::fs::File>,
+    on_phone: Vec<OnPhone>,
+    next_uid: u32,
+    apps: HashMap<String, String>,
+    acted: Vec<String>,
     /// What it's playing (`--tell music`; none: it has no player), and
     /// what its remote control was pressed (`--tell pressed`).
     music: Option<Playing>,
@@ -428,10 +469,168 @@ fn track(music: Option<&Playing>) -> HashMap<String, OwnedValue> {
     t
 }
 
+/// The phone over low energy, as BlueZ shows the link (asked to connect
+/// it: it comes if the phone's owner allowed its notifications here).
+struct LowEnergy(Shared);
+
+#[zbus::interface(name = "org.bluez.Bearer.LE1")]
+impl LowEnergy {
+    fn connect(&self) -> Result<(), Error> {
+        let w = self.0.lock().expect("world");
+        if !w.paired || !w.connected || w.android || !w.notifications_allowed {
+            return Err(Error::NotAvailable("le-connection-abort-by-local".into()));
+        }
+        let _ = w.jobs.send(Job::LowEnergy(true));
+        Ok(())
+    }
+
+    #[zbus(property)]
+    fn connected(&self) -> bool {
+        self.0.lock().expect("world").low_energy
+    }
+}
+
+/// A service of the phone's, as BlueZ shows one.
+struct Service(&'static str);
+
+#[zbus::interface(name = "org.bluez.GattService1")]
+impl Service {
+    #[zbus(property, name = "UUID")]
+    fn uuid(&self) -> String {
+        self.0.to_owned()
+    }
+
+    #[zbus(property)]
+    fn primary(&self) -> bool {
+        true
+    }
+}
+
+/// One of its characteristics.
+struct Characteristic {
+    world: Shared,
+    uuid: &'static str,
+}
+
+#[zbus::interface(name = "org.bluez.GattCharacteristic1")]
+impl Characteristic {
+    #[zbus(property, name = "UUID")]
+    fn uuid(&self) -> String {
+        self.uuid.to_owned()
+    }
+
+    fn read_value(&self, _options: HashMap<String, OwnedValue>) -> Result<Vec<u8>, Error> {
+        match self.uuid {
+            "00002a24-0000-1000-8000-00805f9b34fb" => Ok(b"iPhone17,3".to_vec()),
+            _ => Err(Error::NotAvailable("not to be read".into())),
+        }
+    }
+
+    /// Subscribed to, as a socket: a packet each notification.
+    fn acquire_notify(&self, _options: HashMap<String, OwnedValue>) -> Result<(zvariant::OwnedFd, u16), Error> {
+        let mut fds = [0 as libc::c_int; 2];
+        // SAFETY: two descriptors of ours, owned from here on.
+        let (ours, theirs) = unsafe {
+            if libc::socketpair(libc::AF_UNIX, libc::SOCK_SEQPACKET | libc::SOCK_CLOEXEC, 0, fds.as_mut_ptr()) != 0 {
+                return Err(Error::NotAvailable("no socket".into()));
+            }
+            (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1]))
+        };
+        let mut w = self.world.lock().expect("world");
+        match self.uuid {
+            ancs::NOTIFICATION_SOURCE => {
+                w.source = Some(ours.into());
+                let _ = w.jobs.send(Job::Subscribed);
+            }
+            ancs::DATA_SOURCE => w.data = Some(ours.into()),
+            _ => return Err(Error::NotAvailable("not notified".into())),
+        }
+        Ok((theirs.into(), (PACKET + 3) as u16))
+    }
+
+    /// The Control Point: a question answered on the Data Source, an
+    /// action done; anything else refused, as a phone refuses it.
+    fn write_value(&self, value: Vec<u8>, _options: HashMap<String, OwnedValue>) -> Result<(), Error> {
+        if self.uuid != ancs::CONTROL_POINT {
+            return Err(Error::NotAvailable("not to be written".into()));
+        }
+        let mut w = self.world.lock().expect("world");
+        match ancs::command(&value) {
+            Some(ancs::Command::GetNotification(uid)) => {
+                let Some(n) = w.on_phone.iter().find(|n| n.told.uid == uid) else { return Err(Error::InvalidArguments("0xa2: no such notification".into())) };
+                let _ = w.jobs.send(Job::Answer(ancs::answer_bytes(&ancs::Answer::Notification(n.says.clone()))));
+            }
+            Some(ancs::Command::GetApp(id)) => {
+                let name = w.apps.get(&id).cloned().unwrap_or_default();
+                let _ = w.jobs.send(Job::Answer(ancs::answer_bytes(&ancs::Answer::App(id, name))));
+            }
+            Some(ancs::Command::Act { uid, positive }) => {
+                let Some(at) = w.on_phone.iter().position(|n| n.told.uid == uid) else { return Err(Error::InvalidArguments("0xa2: no such notification".into())) };
+                let n = w.on_phone.remove(at);
+                w.acted.push(format!("{} {}", if positive { "positive" } else { "negative" }, n.says.title));
+                // (Answered, declined or cleared: it goes from the phone.)
+                let _ = w.jobs.send(Job::Source(ancs::told_bytes(&ancs::Told { event: ancs::Event::Removed, ..n.told }, 0)));
+            }
+            None => return Err(Error::InvalidArguments("0xa1: not a command".into())),
+        }
+        Ok(())
+    }
+}
+
 struct Told(Shared);
 
 #[zbus::interface(name = "org.olo.PhoneStandin")]
 impl Told {
+    /// A notification comes on the phone (from app `app`, named `name`
+    /// there): its number. `kind` "call" is an incoming call, with
+    /// Answer and Decline; "silent" one delivered quietly; anything else
+    /// an ordinary one, with Clear.
+    fn notify(&self, app: &str, name: &str, title: &str, message: &str, kind: &str) -> u32 {
+        let mut w = self.0.lock().expect("world");
+        w.next_uid += 1;
+        let uid = w.next_uid;
+        w.apps.insert(app.to_owned(), name.to_owned());
+        let call = kind == "call";
+        let told = ancs::Told {
+            event: ancs::Event::Added,
+            silent: kind == "silent",
+            important: call,
+            pre_existing: false,
+            positive: call,
+            negative: true,
+            category: if call { ancs::Category::IncomingCall } else { ancs::Category::Other },
+            uid,
+        };
+        let says = ancs::Notification {
+            uid,
+            app: app.to_owned(),
+            title: title.to_owned(),
+            subtitle: String::new(),
+            message: message.to_owned(),
+            positive: if call { "Answer".into() } else { String::new() },
+            negative: if call { "Decline".into() } else { "Clear".into() },
+        };
+        w.on_phone.push(OnPhone { told, says });
+        let _ = w.jobs.send(Job::Source(ancs::told_bytes(&told, 1)));
+        uid
+    }
+
+    /// The phone's owner dealt with notification `uid` there (read it,
+    /// the caller gave up): it goes.
+    fn unnotify(&self, uid: u32) {
+        let mut w = self.0.lock().expect("world");
+        if let Some(at) = w.on_phone.iter().position(|n| n.told.uid == uid) {
+            let n = w.on_phone.remove(at);
+            let _ = w.jobs.send(Job::Source(ancs::told_bytes(&ancs::Told { event: ancs::Event::Removed, ..n.told }, 0)));
+        }
+    }
+
+    /// The actions done on its notifications from the computer, in
+    /// order ("positive Mira Kovač").
+    fn acted(&self) -> Vec<String> {
+        self.0.lock().expect("world").acted.clone()
+    }
+
     /// What the phone plays: `status` playing or paused, or none (it has
     /// no player).
     fn music(&self, status: &str, title: &str, artist: &str) -> Result<(), Error> {
@@ -473,6 +672,21 @@ impl Told {
             "messages" => w.phone.0.lock().expect("phone").messages_allowed = on,
             "contacts" => w.phone.0.lock().expect("phone").contacts_allowed = on,
             "stale" => w.stale = on,
+            // Its owner allows its notifications to this computer (or no
+            // longer): the phone connects over low energy to a computer
+            // advertising for them, and lets go when they're taken back.
+            "notifications" => {
+                w.notifications_allowed = on;
+                let come = on && w.soliciting && w.connected && !w.android;
+                if come || !on {
+                    let _ = w.jobs.send(Job::LowEnergy(come));
+                }
+            }
+            // The low-energy link alone goes (out of its reach, the
+            // phone asleep), or is asked back.
+            "low-energy" => {
+                let _ = w.jobs.send(Job::LowEnergy(on && w.notifications_allowed && w.connected && !w.android));
+            }
             "connected" => w.connected = on,
             "paired" => w.paired = on,
             _ => return Err(Error::InvalidArguments(format!("nothing called {key}"))),
@@ -520,7 +734,10 @@ const USAGE: &str = "usage: phone-standin [--address ADDRESS] [--android] [--unp
        phone-standin [--address ADDRESS] --tell set messages|contacts|connected|paired|stale yes|no
        phone-standin [--address ADDRESS] --tell hang-up | soliciting | pairings | sent
        phone-standin [--address ADDRESS] --tell music playing|paused|none [TITLE [ARTIST]]
-       phone-standin [--address ADDRESS] --tell pressed";
+       phone-standin [--address ADDRESS] --tell pressed
+       phone-standin [--address ADDRESS] --tell set notifications|low-energy yes|no
+       phone-standin [--address ADDRESS] --tell notify APP NAME TITLE MESSAGE [call|silent]
+       phone-standin [--address ADDRESS] --tell unnotify NUMBER | acted";
 
 fn main() {
     olo_crash::install();
@@ -556,6 +773,14 @@ fn main() {
         agent: None,
         soliciting: false,
         advertiser: None,
+        notifications_allowed: false,
+        low_energy: false,
+        source: None,
+        data: None,
+        on_phone: Vec::new(),
+        next_uid: 100,
+        apps: HashMap::new(),
+        acted: Vec::new(),
         music: None,
         pressed: Vec::new(),
         pairings: 0,
@@ -572,6 +797,7 @@ fn main() {
         .and_then(|b| b.serve_at(ADAPTER, Adverts(world.clone())))
         .and_then(|b| b.serve_at(DEVICE, Device(world.clone())))
         .and_then(|b| b.serve_at(DEVICE, Control(world.clone())))
+        .and_then(|b| b.serve_at(DEVICE, LowEnergy(world.clone())))
         .and_then(|b| b.serve_at(PLAYER, Player(world.clone())))
         .and_then(|b| b.name(NAME))
         .and_then(|b| b.build());
@@ -696,7 +922,69 @@ fn main() {
                     .and_then(|m| m.body().deserialize::<HashMap<String, OwnedValue>>().ok())
                     .and_then(|all| all.get("SolicitUUIDs").and_then(|v| <Vec<String>>::try_from(v.try_clone().ok()?).ok()))
                     .unwrap_or_default();
-                world.lock().expect("world").soliciting = solicits.iter().any(|u| u.eq_ignore_ascii_case("7905f431-b5ce-4e99-a40f-4b1e122d00d0"));
+                let mut w = world.lock().expect("world");
+                w.soliciting = solicits.iter().any(|u| u.eq_ignore_ascii_case("7905f431-b5ce-4e99-a40f-4b1e122d00d0"));
+                // An iPhone whose owner allowed its notifications here
+                // connects over low energy to the computer advertising
+                // for them.
+                if w.soliciting && w.notifications_allowed && w.connected && !w.android && !w.low_energy {
+                    let _ = w.jobs.send(Job::LowEnergy(true));
+                }
+            }
+            Job::LowEnergy(on) => {
+                let mut w = world.lock().expect("world");
+                if w.low_energy == on {
+                    continue;
+                }
+                w.low_energy = on;
+                // (Gone: the subscriptions end with it.)
+                (w.source, w.data) = (None, None);
+                drop(w);
+                let server = conn.object_server();
+                let characteristic = |uuid: &'static str| Characteristic { world: world.clone(), uuid };
+                if on {
+                    let _ = server.at(INFORMATION, Service("0000180a-0000-1000-8000-00805f9b34fb"));
+                    let _ = server.at(MODEL, characteristic("00002a24-0000-1000-8000-00805f9b34fb"));
+                    let _ = server.at(NOTIFICATIONS, Service(ancs::SERVICE));
+                    let _ = server.at(SOURCE, characteristic(ancs::NOTIFICATION_SOURCE));
+                    let _ = server.at(CONTROL_POINT, characteristic(ancs::CONTROL_POINT));
+                    let _ = server.at(DATA, characteristic(ancs::DATA_SOURCE));
+                } else {
+                    for path in [MODEL, SOURCE, CONTROL_POINT, DATA] {
+                        let _ = server.remove::<Characteristic, _>(path);
+                    }
+                    for path in [INFORMATION, NOTIFICATIONS] {
+                        let _ = server.remove::<Service, _>(path);
+                    }
+                }
+                let mut changed: HashMap<&str, Value> = HashMap::new();
+                changed.insert("ServicesResolved", on.into());
+                let none: Vec<&str> = Vec::new();
+                let _ = conn.emit_signal(None::<&str>, DEVICE, "org.freedesktop.DBus.Properties", "PropertiesChanged", &("org.bluez.Device1", changed, none));
+            }
+            Job::Source(packet) => {
+                use std::io::Write as _;
+                if let Some(source) = &mut world.lock().expect("world").source {
+                    let _ = source.write_all(&packet);
+                }
+            }
+            Job::Answer(answer) => {
+                use std::io::Write as _;
+                if let Some(data) = &mut world.lock().expect("world").data {
+                    for packet in answer.chunks(PACKET) {
+                        let _ = data.write_all(packet);
+                    }
+                }
+            }
+            Job::Subscribed => {
+                use std::io::Write as _;
+                let mut w = world.lock().expect("world");
+                let there: Vec<Vec<u8>> = w.on_phone.iter().map(|n| ancs::told_bytes(&ancs::Told { pre_existing: true, ..n.told }, 1)).collect();
+                if let Some(source) = &mut w.source {
+                    for packet in there {
+                        let _ = source.write_all(&packet);
+                    }
+                }
             }
             Job::HangUp => {
                 for channel in open.lock().expect("open").drain(..) {
@@ -789,6 +1077,21 @@ fn told(address: &str, words: &[String]) -> i32 {
             call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Music", &(*status, title, artist)))
         }
         ["pressed"] => call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Pressed", &())),
+        ["notify", app, name, title, message, kind @ ..] => match conn
+            .call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Notify", &(*app, *name, *title, *message, kind.first().copied().unwrap_or_default()))
+            .and_then(|m| m.body().deserialize::<u32>())
+        {
+            Ok(uid) => {
+                println!("{uid}");
+                0
+            }
+            Err(e) => {
+                eprintln!("phone-standin: {e}");
+                1
+            }
+        },
+        ["unnotify", uid] => call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Unnotify", &(uid.parse::<u32>().unwrap_or(0),))),
+        ["acted"] => call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Acted", &())),
         ["sent"] => call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Sent", &())),
         _ => {
             eprintln!("{USAGE}");

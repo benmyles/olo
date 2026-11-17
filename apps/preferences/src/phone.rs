@@ -136,6 +136,8 @@ pub fn test_state() -> PhoneState {
         changes: 0,
         since: 0,
         music: None,
+        others: true,
+        model: String::new(),
     }
 }
 
@@ -539,6 +541,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 }));
             }
             ui.add(CheckBox::new("Show what a message says", settings.show_text).enabled(settings.notify == Notify::Messages).on_toggle(save(|s, on| s.show_text = on)));
+            // (An iPhone's, of every app, calls among them: its Show
+            // Notifications switch for this computer allows them.)
+            ui.add(CheckBox::new("Show the phone’s other notifications", settings.others).on_toggle(save(|s, on| s.others = on)));
         });
         ui.add(BBox::new("Notifications").child(div().flex().flex_col().gap(px(m::SPACING)).py(px(m::SPACING * 0.5)).children(items)));
     });

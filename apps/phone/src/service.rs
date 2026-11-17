@@ -42,6 +42,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+use crate::others::{Effect, Others};
 use olo_kit_base::notify::{Note, NoteEvent, NoteId, Notifier};
 use olo_protocol::{
     notifications::NoteStyle,
@@ -98,6 +99,9 @@ enum Ev {
     /// BlueZ said the phone's battery or what it's playing changed
     /// (nothing about reaching it: no try is made for it).
     Detail,
+    /// The phone's notification service (its link numbered so) said
+    /// something.
+    Others(u64, OthersSaid),
     /// The session (the one numbered so) says something.
     Session(u64, FromSession),
     Settings,
@@ -190,6 +194,29 @@ enum About {
     Message(String, Option<u64>),
     /// Whether an agent's tab gets code `id`.
     Agent(u64),
+    /// One of the phone's other notifications (its number there, in the
+    /// link numbered so); an incoming call among them.
+    Other(u64, u32),
+    Call(u64, u32),
+}
+
+/// The phone's other notifications, while their link is open.
+struct OthersLink {
+    /// Which opening this is (an earlier one's packets are old news).
+    generation: u64,
+    state: Others,
+    /// To the thread that writes its commands to the phone.
+    write: mpsc::Sender<Vec<u8>>,
+    /// The notifications shown, by the phone's numbers.
+    notes: HashMap<u32, NoteId>,
+}
+
+/// What the notification service's threads say.
+enum OthersSaid {
+    Told(Vec<u8>),
+    Data(Vec<u8>),
+    /// A stream ended: the link went.
+    Gone,
 }
 
 struct Service {
@@ -220,6 +247,12 @@ struct Service {
     /// has one.
     phone: Option<link::Phone>,
     music_player: Option<String>,
+    /// Its other notifications, while their link is open; how many
+    /// times it has opened; and since when it's been waited for (the
+    /// phone connected: advertised to and asked for a while).
+    others: Option<OthersLink>,
+    others_opened: u64,
+    others_since: Option<Instant>,
     /// The session open or being opened: its number, and its thread's ear
     /// once the channel has come.
     generation: u64,
@@ -409,6 +442,9 @@ pub fn run() -> ! {
         digest: 0,
         phone: None,
         music_player: None,
+        others: None,
+        others_opened: 0,
+        others_since: None,
         keep_at: None,
         generation: 0,
         opening: false,
@@ -449,6 +485,9 @@ pub fn run() -> ! {
             .chain(s.contacts_at)
             .chain(s.opening_until)
             .chain(s.keep_at)
+            .chain(s.others.as_ref().and_then(|o| o.state.due()))
+            // (When advertising for its other notifications ends.)
+            .chain(s.others_since.filter(|_| s.others.is_none() && s.solicit.is_some()).map(|since| since + ALLOW_FOR).filter(|at| *at > Instant::now()))
             .min();
         let ev = match next {
             Some(at) => match rx.recv_timeout(at.saturating_duration_since(Instant::now())) {
@@ -490,6 +529,11 @@ impl Service {
                 }
                 self.details();
             }
+            Ev::Others(generation, said) => {
+                if self.others.as_ref().is_some_and(|o| o.generation == generation) {
+                    self.others_said(said);
+                }
+            }
             Ev::Session(generation, said) if generation == self.generation => self.from_session(said),
             // (An earlier session's: old news; but an answer owed is given.)
             Ev::Session(_, FromSession::Sent { answer: Some(answer), .. }) => {
@@ -503,6 +547,8 @@ impl Service {
                     if !self.settings.codes {
                         self.codes.clear();
                     }
+                    // (Its other notifications, turned on or off.)
+                    self.others_link();
                 }
             }
             Ev::Ask(request, on_a_screen, answer) => self.ask(request, on_a_screen, answer),
@@ -643,6 +689,7 @@ impl Service {
         }
         self.phone = phone;
         self.details();
+        self.others_link();
         let st = &mut self.state;
         match &self.phone {
             None => {
@@ -671,6 +718,161 @@ impl Service {
                     }
                     if self.retry_at.is_none() {
                         self.open();
+                    }
+                }
+            }
+        }
+    }
+
+    /// The phone's other notifications (an iPhone's, `others`): their
+    /// link opened when the phone shows the service (connected over low
+    /// energy, its owner having allowed it), closed when the phone goes
+    /// or they're turned off. While the phone is connected without it,
+    /// it's asked to connect that way too, once, and advertised to for
+    /// a while (`solicit`).
+    fn others_link(&mut self) {
+        let wanted = self.settings.others;
+        let phone = self.phone.clone().filter(|p| p.connected && p.kind == link::Kind::IPhone && wanted);
+        let Some((phone, profiles)) = phone.zip(self.profiles.clone()) else {
+            self.others_end();
+            self.others_since = None;
+            return;
+        };
+        if self.state.model.is_empty()
+            && let Some(model) = profiles.model(&phone.path)
+        {
+            tracing::info!("phone: it says it is {model}");
+            self.state.model = model;
+        }
+        if self.others.is_some() {
+            return;
+        }
+        let mut link = match profiles.notifications(&phone.path) {
+            Ok(Some(link)) => link,
+            Ok(None) => {
+                // Not there (yet): asked for once each time the phone
+                // comes.
+                if self.others_since.is_none() {
+                    self.others_since = Some(Instant::now());
+                    profiles.connect_low_energy(&phone.path);
+                }
+                return;
+            }
+            Err(e) => {
+                tracing::info!("phone: its other notifications can't be opened: {e}");
+                return;
+            }
+        };
+        let Some((source, data)) = link.streams() else { return };
+        self.others_opened += 1;
+        let generation = self.others_opened;
+        // A thread each: the two streams (a packet a read, until the
+        // link goes), and the commands (a write waits for the phone).
+        for (name, mut stream, data) in [("phone-told", source, false), ("phone-answers", data, true)] {
+            let to = self.tx.clone();
+            let _ = std::thread::Builder::new().name(name.into()).spawn(move || {
+                use std::io::Read as _;
+                let mut packet = [0u8; 1024];
+                loop {
+                    match stream.read(&mut packet) {
+                        Ok(n) if n > 0 => {
+                            let said = if data { OthersSaid::Data(packet[..n].to_vec()) } else { OthersSaid::Told(packet[..n].to_vec()) };
+                            if to.send(Ev::Others(generation, said)).is_err() {
+                                return;
+                            }
+                        }
+                        Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                        _ => break,
+                    }
+                }
+                let _ = to.send(Ev::Others(generation, OthersSaid::Gone));
+            });
+        }
+        let (write, commands) = mpsc::channel::<Vec<u8>>();
+        let writer = link.writer();
+        let _ = std::thread::Builder::new().name("phone-asks".into()).spawn(move || {
+            for command in commands {
+                if let Err(e) = writer(&command) {
+                    tracing::info!("phone: it didn't take a question of its notifications: {e}");
+                }
+            }
+        });
+        tracing::info!("phone: its other notifications are open");
+        let mut state = Others::default();
+        state.messages_elsewhere = self.session.is_some();
+        self.others = Some(OthersLink { generation, state, write, notes: HashMap::new() });
+        self.state.others = true;
+    }
+
+    /// The link to the phone's other notifications is over: a call
+    /// still shown as ringing goes (nothing more will be heard of it);
+    /// the rest stay, as read.
+    fn others_end(&mut self) {
+        let Some(link) = self.others.take() else { return };
+        tracing::info!("phone: its other notifications are closed");
+        self.state.others = false;
+        let calls: Vec<NoteId> =
+            self.about.iter().filter(|(id, about)| matches!(about, About::Call(g, _) if *g == link.generation) && link.notes.values().any(|n| n == id)).map(|(id, _)| *id).collect();
+        for id in calls {
+            self.notes.close(id);
+        }
+    }
+
+    fn others_said(&mut self, said: OthersSaid) {
+        let now = Instant::now();
+        let Some(o) = &mut self.others else { return };
+        // (Text messages come whole another way while their session is
+        // open: theirs aren't shown twice.)
+        o.state.messages_elsewhere = self.session.is_some();
+        let effects = match said {
+            OthersSaid::Told(packet) => {
+                tracing::debug!("phone: told of a notification ({} bytes)", packet.len());
+                o.state.told(&packet, now)
+            }
+            OthersSaid::Data(packet) => o.state.data(&packet, now),
+            OthersSaid::Gone => {
+                self.others_end();
+                // (It may come again: asked for anew.)
+                self.others_since = None;
+                self.others_link();
+                return;
+            }
+        };
+        self.others_do(effects);
+    }
+
+    fn others_do(&mut self, effects: Vec<Effect>) {
+        for effect in effects {
+            let Some(o) = &mut self.others else { return };
+            match effect {
+                Effect::Write(command) => {
+                    let _ = o.write.send(command);
+                }
+                Effect::Show(shown) => {
+                    let mut note = Note::new(shown.title.clone()).subtitle(shown.app.clone()).body(shown.body.clone()).icon("phone");
+                    if shown.call {
+                        note = note.sticky(true);
+                    }
+                    if let Some(label) = &shown.positive {
+                        note = note.action("positive", label.clone());
+                    }
+                    if let Some(label) = &shown.negative {
+                        note = note.action("negative", label.clone());
+                    }
+                    // (Which app, never what it says.)
+                    tracing::info!("phone: a notification of its {} shown{}", shown.app, if shown.call { " (a call)" } else { "" });
+                    let (generation, had) = (o.generation, o.notes.get(&shown.uid).copied());
+                    let id = self.notes.show(had, note);
+                    if let Some(o) = &mut self.others {
+                        o.notes.insert(shown.uid, id);
+                    }
+                    if had.is_none() {
+                        self.remember(id, if shown.call { About::Call(generation, shown.uid) } else { About::Other(generation, shown.uid) });
+                    }
+                }
+                Effect::Close(uid) => {
+                    if let Some(id) = o.notes.remove(&uid) {
+                        self.notes.close(id);
                     }
                 }
             }
@@ -796,7 +998,12 @@ impl Service {
             Link::Ready => !self.state.contacts,
             _ => false,
         };
-        let phone = self.phone.as_ref().filter(|p| p.kind == link::Kind::IPhone && p.connected && self.state.profiles && wanting && waited);
+        // (And for its other notifications, which come over low energy:
+        // an iPhone connects that way to a computer advertising for
+        // them. For a while after the phone came, while they aren't
+        // open.)
+        let others = self.settings.others && self.others.is_none() && self.others_since.is_some_and(|since| since.elapsed() < ALLOW_FOR);
+        let phone = self.phone.as_ref().filter(|p| p.kind == link::Kind::IPhone && p.connected && self.state.profiles && ((wanting && waited) || others));
         let Some(phone) = phone else {
             if self.solicit.take().is_some() {
                 tracing::info!("phone: no longer advertising for the iPhone's switches");
@@ -1333,6 +1540,12 @@ impl Service {
         if self.keep_at.is_some_and(|at| at <= t) {
             self.keep_for_next_run();
         }
+        if let Some(o) = &mut self.others
+            && o.state.due().is_some_and(|at| at <= t)
+        {
+            let effects = o.state.tick(t);
+            self.others_do(effects);
+        }
         if self.profiles_at.is_some_and(|at| at <= t) {
             self.register();
             self.devices();
@@ -1385,6 +1598,14 @@ impl Service {
                 (Some(About::Message(_, Some(code))), "copy") => {
                     if let Some(c) = self.codes.iter().find(|c| c.id == code) {
                         copy(c.code.code.clone());
+                    }
+                }
+                // One of the phone's other notifications: its action,
+                // done on the phone (Answer, Decline, Clear).
+                (Some(About::Other(generation, uid) | About::Call(generation, uid)), "positive" | "negative") => {
+                    if let Some(o) = self.others.as_ref().filter(|o| o.generation == generation) {
+                        let effects = o.state.act(uid, key == "positive");
+                        self.others_do(effects);
                     }
                 }
                 (Some(About::Agent(code)), "give") => {

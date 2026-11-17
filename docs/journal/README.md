@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### Phone: an iPhone's other notifications, with their actions
+
+*03:16* — An iPhone's notifications show on the computer: every app's, calls among them, with Answer and Decline or Clear, which act on the phone; one dealt with on the phone goes here too. (A stand-in phone, in a test.)
+
+![Phone: an iPhone's other notifications, with their actions](2026-11-17/031624-phone-an-iphone-s-other-notifications-with-their.png)
+
 ### Phone: what the phone is playing, with Play, Next and Previous
 
 *02:50* — Phone shows what the phone is playing under the list, with Previous, Pause or Play and Next; Deskbar's phone menu has them too, and olo-phone --music. The phone stays the player: Olo is its remote control. (Sample data.)

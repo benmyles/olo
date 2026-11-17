@@ -5,6 +5,7 @@
 
 pub mod codes;
 pub mod kept;
+pub mod others;
 pub mod service;
 
 use olo_protocol::phone::PhoneState;

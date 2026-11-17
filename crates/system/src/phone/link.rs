@@ -26,13 +26,16 @@ use std::{
 use zbus::blocking::Connection;
 use zvariant::{OwnedObjectPath, OwnedValue, Value};
 
-use super::{map, music, pbap};
+use super::{ancs, map, music, pbap};
 use crate::Result;
 
 const DEST: &str = "org.bluez";
 const DEVICE: &str = "org.bluez.Device1";
 const MANAGER: &str = "org.bluez.ProfileManager1";
 const ADVERTS: &str = "org.bluez.LEAdvertisingManager1";
+const CHARACTERISTIC: &str = "org.bluez.GattCharacteristic1";
+/// The Device Information service's Model Number String.
+const MODEL_NUMBER: &str = "00002a24-0000-1000-8000-00805f9b34fb";
 /// Where Olo's advertisement soliciting an iPhone is served.
 const ADVERT: &str = "/org/olo/phone/solicit";
 /// Apple's Notification Center Service, which an advertisement solicits:
@@ -231,6 +234,33 @@ pub struct Opened {
     /// The phone's object path with BlueZ.
     pub phone: String,
     pub stream: Stream,
+}
+
+/// An iPhone's notification service, open ([`Profiles::notifications`]).
+pub struct Notifications {
+    conn: Connection,
+    control: String,
+    source: Option<OwnedFd>,
+    data: Option<OwnedFd>,
+}
+
+impl Notifications {
+    /// The two streams, once: the Notification Source's packets and the
+    /// Data Source's, a packet each read; either ends when the link goes.
+    pub fn streams(&mut self) -> Option<(std::fs::File, std::fs::File)> {
+        Some((self.source.take()?.into(), self.data.take()?.into()))
+    }
+
+    /// What writes its commands (an [`ancs`] command each): waits for
+    /// the phone's answer to the write, so not on a thread that mustn't.
+    pub fn writer(&self) -> impl Fn(&[u8]) -> Result<()> + Send + 'static {
+        let (conn, control) = (self.conn.clone(), self.control.clone());
+        move |command: &[u8]| {
+            let mut options: HashMap<&str, Value> = HashMap::new();
+            options.insert("type", "request".into());
+            conn.call_method(Some(DEST), control.as_str(), Some(CHARACTERISTIC), "WriteValue", &(command, options)).map(|_| ())
+        }
+    }
 }
 
 /// What [`Profiles::watch`] says changed.
@@ -488,6 +518,73 @@ impl Profiles {
     /// nothing) is nothing.
     pub fn let_go(&self, phone: &str, channel: Channel) {
         let _ = self.conn.call_method(Some(DEST), phone, Some(DEVICE), "DisconnectProfile", &(channel.uuid(),));
+    }
+
+    /// `phone`'s characteristics with BlueZ, by their UUIDs: the ones it
+    /// has shown since the phone connected over low energy and its
+    /// services were read (none before, or with no such link).
+    fn characteristics(&self, phone: &str) -> HashMap<String, String> {
+        type Objects = HashMap<OwnedObjectPath, HashMap<String, HashMap<String, OwnedValue>>>;
+        let under = format!("{phone}/");
+        self.conn
+            .call_method(Some(DEST), "/", Some("org.freedesktop.DBus.ObjectManager"), "GetManagedObjects", &())
+            .ok()
+            .and_then(|m| m.body().deserialize::<Objects>().ok())
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|(path, _)| path.as_str().starts_with(&under))
+            .filter_map(|(path, interfaces)| {
+                let uuid = interfaces.get(CHARACTERISTIC)?.get("UUID").and_then(|v| <&str>::try_from(v).ok())?.to_ascii_lowercase();
+                Some((uuid, path.as_str().to_owned()))
+            })
+            .collect()
+    }
+
+    /// An iPhone's other notifications (Apple's Notification Center
+    /// Service, [`ancs`]), open: none while the phone doesn't show the
+    /// service (it isn't connected over low energy, or its owner hasn't
+    /// allowed its notifications to this computer). Its two notified
+    /// characteristics are taken as sockets (`AcquireNotify`: a packet
+    /// each read, none lost or merged, as two changes of a property in
+    /// one turn of BlueZ's loop would be).
+    pub fn notifications(&self, phone: &str) -> Result<Option<Notifications>> {
+        let all = self.characteristics(phone);
+        let (Some(source), Some(control), Some(data)) = (all.get(ancs::NOTIFICATION_SOURCE), all.get(ancs::CONTROL_POINT), all.get(ancs::DATA_SOURCE)) else { return Ok(None) };
+        let acquire = |path: &str| -> Result<OwnedFd> {
+            let options: HashMap<&str, Value> = HashMap::new();
+            let (fd, _mtu): (zvariant::OwnedFd, u16) = self.conn.call_method(Some(DEST), path, Some(CHARACTERISTIC), "AcquireNotify", &(options,))?.body().deserialize()?;
+            Ok(fd.into())
+        };
+        // (The answers' first: none is missed between the two.)
+        let data = acquire(data)?;
+        let source = acquire(source)?;
+        Ok(Some(Notifications { conn: self.conn.clone(), control: control.clone(), source: Some(source), data: Some(data) }))
+    }
+
+    /// What `phone` says it is ("iPhone17,3": its Device Information's
+    /// model number), where BlueZ shows that (over low energy).
+    pub fn model(&self, phone: &str) -> Option<String> {
+        let all = self.characteristics(phone);
+        let path = all.get(MODEL_NUMBER)?;
+        let options: HashMap<&str, Value> = HashMap::new();
+        let bytes: Vec<u8> = self.conn.call_method(Some(DEST), path.as_str(), Some(CHARACTERISTIC), "ReadValue", &(options,)).ok()?.body().deserialize().ok()?;
+        Some(String::from_utf8_lossy(&bytes).trim_matches(|c: char| c == '\0' || c.is_whitespace()).to_owned()).filter(|m| !m.is_empty())
+    }
+
+    /// Ask BlueZ to connect `phone` over low energy too (a phone bonded
+    /// for both and connected over the classic link alone): what its
+    /// notifications come over. Answers at once; the link, if it comes,
+    /// shows as its services do ([`Profiles::watch`]). An error (the
+    /// phone isn't to be found that way now, this BlueZ can't) is
+    /// nothing: an iPhone also connects by itself to a computer
+    /// advertising for its notifications ([`Profiles::solicit`]).
+    pub fn connect_low_energy(&self, phone: &str) {
+        let (conn, phone) = (self.conn.clone(), phone.to_owned());
+        let _ = std::thread::Builder::new().name("phone-le".into()).spawn(move || {
+            if let Err(e) = conn.call_method(Some(DEST), phone.as_str(), Some("org.bluez.Bearer.LE1"), "Connect", &()) {
+                tracing::debug!("phone: low energy: {e}");
+            }
+        });
     }
 
     /// Whether BlueZ has a Bluetooth adapter now. (With none, its

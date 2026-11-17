@@ -144,6 +144,74 @@ fn against_the_standin() {
         let contacts = pbap::contacts(next(Channel::Contacts).stream).unwrap();
         assert_eq!(pbap::name_of(&contacts, "+1 (555) 010-0142"), Some("Mira Kovač"));
 
+        // An iPhone's other notifications: there once its owner allows
+        // them (it then connects over low energy to the computer
+        // advertising for them), each told of as it comes, what it says
+        // asked for and spliced from the answer's packets, and its
+        // action done on the phone.
+        if !android {
+            use std::io::Read as _;
+
+            use olo_system::phone::ancs;
+            assert!(profiles.notifications(&phone.path).unwrap().is_none(), "not before it's allowed");
+            let before: u32 = tell(&address, &["notify", "com.apple.reminders", "Reminders", "Water the plants", "Today"]).trim().parse().unwrap();
+            tell(&address, &["set", "notifications", "yes"]);
+            let start = std::time::Instant::now();
+            let mut link = loop {
+                match profiles.notifications(&phone.path).unwrap() {
+                    Some(link) => break link,
+                    None => assert!(start.elapsed() < Duration::from_secs(5), "its notification service never came"),
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            };
+            assert_eq!(profiles.model(&phone.path).as_deref(), Some("iPhone17,3"));
+            let (mut source, mut data) = link.streams().unwrap();
+            let write = link.writer();
+            let mut told = || {
+                let mut packet = [0u8; 64];
+                let n = source.read(&mut packet).unwrap();
+                ancs::told(&packet[..n]).expect("a Notification Source packet")
+            };
+            let mut reader = ancs::Reader::default();
+            let mut answer = || loop {
+                let mut packet = [0u8; 64];
+                let n = data.read(&mut packet).unwrap();
+                assert!(n > 0 && n <= 20, "a packet of {n} bytes");
+                if let Some(answer) = reader.push(&packet[..n]).pop() {
+                    return answer;
+                }
+            };
+            // (What was on the phone already: said to be so.)
+            let old = told();
+            assert!(old.pre_existing && old.uid == before);
+            let uid: u32 = tell(&address, &["notify", "com.apple.mobilemail", "Mail", "Jun Tanaka", "The photos are up, have a look when you can."]).trim().parse().unwrap();
+            let new = told();
+            assert_eq!((new.event, new.uid, new.pre_existing, new.positive, new.negative), (ancs::Event::Added, uid, false, false, true));
+            write(&ancs::get_notification(uid)).unwrap();
+            let says = ancs::Notification {
+                uid,
+                app: "com.apple.mobilemail".into(),
+                title: "Jun Tanaka".into(),
+                subtitle: String::new(),
+                message: "The photos are up, have a look when you can.".into(),
+                positive: String::new(),
+                negative: "Clear".into(),
+            };
+            assert_eq!(answer(), ancs::Answer::Notification(says));
+            write(&ancs::get_app("com.apple.mobilemail")).unwrap();
+            assert_eq!(answer(), ancs::Answer::App("com.apple.mobilemail".into(), "Mail".into()));
+            // (Nonsense, and a notification that isn't: refused.)
+            assert!(write(&[9]).is_err() && write(&ancs::get_notification(7)).is_err());
+            // Cleared from here: done on the phone, which removes it.
+            write(&ancs::act(uid, false)).unwrap();
+            assert_eq!((told().event, tell(&address, &["acted"]).trim().to_owned()), (ancs::Event::Removed, "negative Jun Tanaka".to_owned()));
+            // The low-energy link goes: its streams end.
+            tell(&address, &["set", "low-energy", "no"]);
+            let mut packet = [0u8; 64];
+            assert_eq!(source.read(&mut packet).unwrap_or(0), 0);
+            assert!(profiles.notifications(&phone.path).unwrap().is_none());
+        }
+
         // Out of reach: said, and nothing opens.
         while changed.try_recv().is_ok() {}
         tell(&address, &["set", "connected", "no"]);

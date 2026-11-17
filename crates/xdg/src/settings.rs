@@ -205,6 +205,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "phone", tab: "", group: "Notifications", name: "Messages: each as it comes, answered in place", role: "RadioButton" },
     Setting { panel: "phone", tab: "", group: "Notifications", name: "Nothing", role: "RadioButton" },
     Setting { panel: "phone", tab: "", group: "Notifications", name: "Show what a message says", role: "CheckBox" },
+    Setting { panel: "phone", tab: "", group: "Notifications", name: "Show the phone’s other notifications", role: "CheckBox" },
     Setting { panel: "phone", tab: "", group: "One-Time Codes", name: "Find the one-time codes in messages", role: "CheckBox" },
     Setting { panel: "phone", tab: "", group: "One-Time Codes", name: "Offer a code in the browser tab waiting for it", role: "CheckBox" },
     Setting { panel: "phone", tab: "", group: "One-Time Codes", name: "In an agent’s tab", role: "ComboBox" },

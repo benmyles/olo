@@ -13954,6 +13954,70 @@ command line, for people and agents: `olo-phone` (`--status [--json]`),
 `--find-code`, `--settings`, `--set SETTING VALUE`; with nothing asked,
 or `--open WHO`, it is Phone, the app.
 
+**Its other notifications** (an iPhone's: `olo_system::phone::ancs`,
+`apps/phone/src/others.rs`; Preferences ▸ Phone's "Show the phone's
+other notifications", `PhoneSettings::others`). Apple's Notification
+Center Service, which an iPhone offers over low energy to a paired
+computer its owner allowed (its Show Notifications switch): every
+notification on the phone as it's added, changed and removed, what it
+says when asked, and its actions. Three characteristics: the
+Notification Source (eight bytes a notification: event, flags,
+category, count, its number), the Control Point (written: ask what a
+notification says, ask an app's name, do an action) and the Data
+Source (the answers, cut into as many packets as the link needs).
+`ancs.rs` is the bytes (`told`, `get_notification`, `get_app`, `act`,
+and `Reader`, which splices an answer from its packets: whole when
+every attribute asked for has come), written from Apple's
+specification. `link.rs` has the characteristics from BlueZ
+(`Profiles::notifications`: found under the phone's device by their
+UUIDs once BlueZ shows them; the two notified ones taken as sockets
+with `AcquireNotify`, a packet a read, since two changes of a `Value`
+property in one turn of BlueZ's loop would merge; the Control Point
+written with `WriteValue`, type request, on a thread of its own, as a
+write waits for the phone). `others.rs` decides, as a state machine
+with no I/O (`Others`: `told`, `data`, `act`, `tick` return
+`Effect`s: write this, show that, close that): what a notification
+says is asked for one question at a time (answers share one stream),
+given up on after 5 s; an app's name is asked the first time it's met;
+then it's shown (the app as the subtitle, its title and text, its
+actions' buttons: an incoming call's Answer and Decline, sticky; a
+notification's Clear), shown again when it changes, and closed when
+the phone removes it. Not shown: what was on the phone before the
+link opened (old news, but for a call ringing), and text messages
+while they come whole the other way (the Message Access Profile, with
+their own notification: `messages_elsewhere`). Dismissing one here
+does nothing on the phone (a call isn't declined by closing its
+notification): only its buttons act. The link (`Service::others_link`):
+opened whenever BlueZ shows the service on a connected iPhone, closed
+when it goes (a call still shown ringing goes with it) or the setting
+is turned off; while the phone is connected without it, BlueZ is asked
+once to connect it over low energy too (`Bearer.LE1.Connect`) and the
+computer advertises for the service for 15 minutes (`solicit`, the
+advertisement an iPhone's switches need anyway: an iPhone connects
+that way by itself to a computer advertising for its notifications).
+`PhoneState::others` says they come; `PhoneState::model` is what the
+phone says it is over that link (its Device Information's model
+number, "iPhone17,3"). The log says which app a notification shown was
+of, never what it said.
+
+The stand-in has it all (`--tell set notifications yes`: its owner
+allows them, and it connects over low energy to a computer advertising
+for them; `--tell notify APP NAME TITLE MESSAGE [call|silent]`,
+`--tell unnotify NUMBER`, `--tell acted`, `--tell set low-energy
+no`): BlueZ's objects for the services and characteristics, answers in
+20-byte packets, what was there before told as such at subscribing,
+a malformed command and an unknown number refused. Tested against it:
+the integration test (the link, a notification told of, asked, spliced
+and cleared, the link gone), `others.rs`'s and `ancs.rs`'s own, and the
+service in a headless session with the notification service: a mail
+and a call shown, Answer pressed (done on the phone, the notification
+gone), a mail read on the phone (gone here), Clear pressed, the link
+dropped and back (the ringing call shown again), the setting off and
+on. At rest with the link open: 0.0% of a core, 0 wakeups a second.
+**Not tried with a real iPhone** (nothing is connected to one in a
+test): on Ben's, read only, the phone was connected over the classic
+link alone, bonded for low energy and not connected that way.
+
 **Kept between runs** (`apps/phone/src/kept.rs`). The service keeps the
 phone's conversations, the handles of the messages it has seen and its
 contacts in one file, `~/.local/state/olo/phone/kept.json` (the

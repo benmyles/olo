@@ -7,6 +7,7 @@
 //! control of the phone's player). Written from the Bluetooth
 //! specifications.
 
+pub mod ancs;
 pub mod link;
 pub mod map;
 pub mod music;
