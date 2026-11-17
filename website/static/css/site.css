@@ -360,6 +360,40 @@ kbd {
   filter: drop-shadow(0 24px 30px rgba(13, 60, 160, 0.22));
 }
 
+.hero-mark-frame {
+  display: block;
+}
+
+/* On a screen that shows HDR the ring is its HDR copy, at its full
+   brightness, and not run through a filter (which can draw what it covers
+   in SDR): its shadow is drawn behind it instead. */
+@media (dynamic-range: high) {
+  .hero-mark-frame {
+    position: relative;
+    width: clamp(120px, 16vw, 184px);
+    margin: 0 auto 28px;
+    isolation: isolate;
+  }
+
+  .hero-mark-frame .hero-mark {
+    width: 100%;
+    margin: 0;
+    filter: none;
+    dynamic-range-limit: no-limit;
+  }
+
+  .hero-mark-frame::before {
+    content: "";
+    position: absolute;
+    inset: 12% 12% 4%;
+    translate: 0 24px;
+    border-radius: 50%;
+    background: rgba(13, 60, 160, 0.22);
+    filter: blur(24px);
+    z-index: -1;
+  }
+}
+
 .eyebrow {
   display: inline-flex;
   align-items: center;

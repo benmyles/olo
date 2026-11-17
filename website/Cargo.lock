@@ -137,6 +137,7 @@ name = "olo-website"
 version = "0.1.0"
 dependencies = [
  "image",
+ "png",
 ]
 
 [[package]]

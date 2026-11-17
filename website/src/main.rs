@@ -135,7 +135,8 @@ fn build() -> Result<(), String> {
             fs::copy(from, to).map_err(|e| format!("{} → {}: {e}", from.display(), to.display()))?;
         }
     }
-    make_pictures(b.jobs)?;
+    make_pictures(std::mem::take(&mut b.jobs))?;
+    hdr_mark(&mut b)?;
 
     let today = date_today();
     let mut sitemap = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
@@ -391,6 +392,93 @@ fn make(src: &Path, jobs: &[Job]) -> Result<(), String> {
         write(&j.out, &data)?;
         println!("  {}", j.out.strip_prefix(dist()).unwrap_or(&j.out).display());
     }
+    Ok(())
+}
+
+/// The ring in HDR (Ben, 2026-11-17: "make the large o ring logo on the
+/// website hdr enabled"), for screens that show HDR (the page asks for it
+/// with `media="(dynamic-range: high)"`; others never load it): the same
+/// picture, its colours where they are (SDR white at BT.2408's 203 nits),
+/// its brighter parts lifted towards `HDR_HEADROOM` times that: the
+/// glossy highlights to about 810 nits, the yellow's light a little, the
+/// blue not at all. A 16-bit PNG in PQ (SMPTE ST 2084) with BT.709's
+/// primaries, which its `cICP` chunk says (PNG's third edition: Chrome
+/// and Safari show it as HDR), and its brightest in `cLLi`. 512 points
+/// across: the hero shows it at most 184 CSS pixels wide, 460 device
+/// pixels at 2.5x. Made again when the ring is newer (a new way of
+/// making it: a new `HDR_MARK` name, which caches see as new too).
+const HDR_MARK: &str = "brand/olo-mark-hdr-1.png";
+const HDR_MARK_SIZE: u32 = 512;
+/// SDR white, in nits (ITU-R BT.2408).
+const SDR_WHITE: f32 = 203.0;
+/// The brightest the ring goes, as a multiple of SDR white.
+const HDR_HEADROOM: f32 = 4.0;
+/// From where (linear luminance, 0 to 1) the light is lifted, up to the
+/// full headroom at 1.
+const HDR_FROM: f32 = 0.6;
+
+fn hdr_mark(b: &mut Build) -> Result<(), String> {
+    let src = site().join("static/brand/olo-mark.png");
+    let out = dist().join(HDR_MARK);
+    b.made.insert(out.clone());
+    if !newer(&src, &out) {
+        return Ok(());
+    }
+    let img = image::open(&src).map_err(|e| format!("{}: {e}", src.display()))?.to_rgba8();
+    // Linear light, its alpha premultiplied, to be made smaller without
+    // dark edges.
+    let linear = |v: u8| {
+        let c = f32::from(v) / 255.0;
+        if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+    };
+    let mut light = image::Rgba32FImage::new(img.width(), img.height());
+    for (x, y, p) in img.enumerate_pixels() {
+        let a = f32::from(p[3]) / 255.0;
+        light.put_pixel(x, y, image::Rgba([linear(p[0]) * a, linear(p[1]) * a, linear(p[2]) * a, a]));
+    }
+    let (w, h) = (HDR_MARK_SIZE, (HDR_MARK_SIZE as f64 * img.height() as f64 / img.width() as f64).round() as u32);
+    let small = image::imageops::resize(&light, w, h, FilterType::Lanczos3);
+    // PQ: nits to its signal, 0 to 1.
+    let pq = |nits: f32| {
+        let (m1, m2, c1, c2, c3) = (0.159_301_76_f32, 78.843_75_f32, 0.835_937_5_f32, 18.851_562_f32, 18.6875_f32);
+        let l = (nits / 10_000.0).clamp(0.0, 1.0).powf(m1);
+        ((c1 + c2 * l) / (1.0 + c3 * l)).powf(m2)
+    };
+    let mut data = Vec::with_capacity((w * h * 8) as usize);
+    let mut brightest: f32 = 0.0;
+    for p in small.pixels() {
+        let a = p[3].clamp(0.0, 1.0);
+        let rgb = if a > 0.0 { [p[0] / a, p[1] / a, p[2] / a].map(|c| c.clamp(0.0, 1.0)) } else { [0.0; 3] };
+        let y = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+        let t = ((y - HDR_FROM) / (1.0 - HDR_FROM)).clamp(0.0, 1.0);
+        let gain = 1.0 + (HDR_HEADROOM - 1.0) * t * t * (3.0 - 2.0 * t);
+        for c in rgb {
+            let nits = c * SDR_WHITE * gain;
+            if a > 0.5 {
+                brightest = brightest.max(nits);
+            }
+            data.extend_from_slice(&((pq(nits) * 65535.0).round() as u16).to_be_bytes());
+        }
+        data.extend_from_slice(&((a * 65535.0).round() as u16).to_be_bytes());
+    }
+    let mut bytes = Vec::new();
+    {
+        let mut e = png::Encoder::new(&mut bytes, w, h);
+        e.set_color(png::ColorType::Rgba);
+        e.set_depth(png::BitDepth::Sixteen);
+        e.set_compression(png::Compression::High);
+        let mut out = e.write_header().map_err(|e| e.to_string())?;
+        // BT.709 primaries (1), PQ (16), RGB (0), full range (1).
+        out.write_chunk(png::chunk::ChunkType(*b"cICP"), &[1, 16, 0, 1]).map_err(|e| e.to_string())?;
+        // Its brightest pixel and its average, in 0.0001 nits.
+        let cll = (brightest.round() as u32) * 10_000;
+        let mut cl = cll.to_be_bytes().to_vec();
+        cl.extend_from_slice(&((SDR_WHITE as u32) * 10_000).to_be_bytes());
+        out.write_chunk(png::chunk::ChunkType(*b"cLLi"), &cl).map_err(|e| e.to_string())?;
+        out.write_image_data(&data).map_err(|e| e.to_string())?;
+    }
+    write(&out, &bytes)?;
+    println!("  {HDR_MARK} (HDR, its brightest {} nits)", brightest.round());
     Ok(())
 }
 

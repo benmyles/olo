@@ -4,7 +4,10 @@ description: Olo is a fast, light desktop for Linux in the spirit of BeOS, writt
 ---
 <section class="hero" aria-labelledby="hero-title">
   <div class="wrap">
-    <img class="hero-mark" src="/brand/olo-mark.png" width="1024" height="1024" alt="" fetchpriority="high">
+    <picture class="hero-mark-frame">
+      <source media="(dynamic-range: high)" srcset="/brand/olo-mark-hdr-1.png">
+      <img class="hero-mark" src="/brand/olo-mark.png" width="1024" height="1024" alt="" fetchpriority="high">
+    </picture>
     <p class="eyebrow"><b>Free</b> A desktop for Linux, in the spirit of BeOS</p>
     <h1 id="hero-title">The desktop that <em>never makes you wait</em>.</h1>
     <p class="lead">Olo is a whole desktop, written in Rust for Wayland. BeOS's yellow window tabs, Deskbar and Tracker's spatial folders, brought to 2026: crisp at every scale, light, dark and night, and made for you and the AI agents working beside you.</p>

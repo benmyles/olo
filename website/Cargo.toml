@@ -12,6 +12,9 @@ description = "Builds olo-desktop.com, Olo's website, as a static site (website/
 
 [dependencies]
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+# The HDR ring's PNG, with its cICP and cLLi chunks (hdr_mark): the same
+# version image uses.
+png = "0.18"
 
 [profile.release]
 debug = false
