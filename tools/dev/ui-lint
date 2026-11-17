@@ -59,7 +59,7 @@ def apps(home):
         # (Made up: never the person's kache, its service or its files.)
         ("Kache", ["olo-kache"], {"OLO_KACHE_DEMO": "1"}, False),
         # (Made-up results: nothing is connected to.)
-        ("Network Speed Test", ["olo-speedtest"], {"OLO_SPEEDTEST_DEMO": "1"}, False),
+        ("Speed Test", ["olo-speedtest"], {"OLO_SPEEDTEST_DEMO": "1"}, False),
         ("Logs", ["olo-logs"], {}, False),
         ("Passwords", ["olo-passwords"], {"OLO_PASSWORDS_KEYFILE": os.path.join(home, ".pw-key")}, False),
         ("StyledEdit", ["olo-styled-edit", os.path.join(home, "README.md")], {}, False),
