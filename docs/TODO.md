@@ -17,6 +17,13 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **The phone "just works": hardened against a flaky link** (Ben,
+  2026-11-17: "for the phone integration, harden it as much as possible
+  so that olo aggressively tries to reconnect and get everything,
+  assume the phone connection is flaky and needs to be constantly
+  monitored try to work around unexpected things etc so that to the
+  user it 'just works'").
+
 - **A window tab's menu: Pin ▸ Always Main / Always [where it is]**
   (Ben, 2026-11-17: "i often have some windows like telegram where i
   want it to always open in the top-left quarter, and phone in the
