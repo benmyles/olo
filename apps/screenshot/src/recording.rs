@@ -309,6 +309,10 @@ pub struct Made {
     /// The camera shown in its bubble, if one was.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub camera: Option<String>,
+    /// The display (its connector) recorded, or that the window recorded
+    /// was on.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display: Option<String>,
     /// Why there's none, when one was asked for.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub camera_note: Option<String>,
@@ -520,6 +524,29 @@ fn rect(v: &str) -> Option<[f64; 4]> {
     (r[2] > 0.0 && r[3] > 0.0 && r[0] >= 0.0 && r[1] >= 0.0).then_some(r)
 }
 
+/// The display the pointer is on, as app_server says (None: it doesn't,
+/// an older one: the first there is, as before).
+fn pointer_display() -> Option<String> {
+    match olo_protocol::Client::connect().ok()?.request(&olo_protocol::Request::PointerDisplay).ok()? {
+        olo_protocol::Reply::Display { name } => name,
+        _ => None,
+    }
+}
+
+/// The display a recording of `source` shows on: the one recorded
+/// (`captured`, its capture's name), a window's own.
+fn shown_on(source: &Source, captured: &str) -> Option<String> {
+    match source {
+        Source::Window { id, .. } => {
+            let reply = olo_protocol::Client::connect().ok().and_then(|mut c| c.request(&olo_protocol::Request::ListWindows).ok());
+            let Some(olo_protocol::Reply::Windows { windows }) = reply else { return None };
+            windows.iter().find(|w| w.id == *id).and_then(|w| w.output.clone())
+        }
+        Source::Display(_) => None,
+        _ => Some(captured.to_owned()).filter(|n| !n.is_empty()),
+    }
+}
+
 /// The scale of display `name` (pixels a point).
 fn scale_of(name: &str) -> f64 {
     let reply = olo_protocol::Client::connect().ok().and_then(|mut c| c.request(&olo_protocol::Request::Outputs).ok());
@@ -561,7 +588,14 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
     }
     let mut source = match option(args, "--window") {
         Some(id) => Source::Window { id: id.parse().map_err(|_| "--window takes a window's id")?, app_id: String::new(), title: String::new() },
-        None => Source::Output(option(args, "--display").map(str::to_owned)),
+        // The display named, else the one the pointer is on: where the
+        // person is, where the countdown shows and a screenshot is
+        // taken. (None named meant the first there is, the laptop's own
+        // panel whichever display it was started on: Ben, 2026-11-17,
+        // "it showed the recording bar on my main screen where i
+        // launched it from but then it recorded my laptop's built in
+        // display instead".)
+        None => Source::Output(option(args, "--display").map(str::to_owned).or_else(pointer_display)),
     };
     // Part of a display: given (points), else dragged out now (pixels of
     // the display it was dragged on).
@@ -685,6 +719,7 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         recorded_ms: 0,
         as_of: 0,
         args: again(args, picked, crop, scale_of(capture.name())),
+        output: shown_on(&source, capture.name()),
     };
     let _ = std::fs::write(going_path(), serde_json::to_vec(&g).unwrap_or_default());
     // The status says it goes until what it makes is whole (a GIF made
@@ -732,7 +767,7 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         Some(_) if matches!(source, Source::Window { .. }) => {
             (None, None, Some("a window's recording is only the window: the camera shows in recordings of the screen or a region, or of a window on a background".to_owned()))
         }
-        Some(id) => match CameraBubble::start(&id) {
+        Some(id) => match CameraBubble::start(&id, g.output.as_deref()) {
             Ok((b, name)) => (Some(b), Some(name), None),
             Err(e) => {
                 eprintln!("olo-screenshot: recording without the camera: {e}");
@@ -749,6 +784,7 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
     drop(waker);
     let mut made = result?;
     (made.camera, made.camera_note) = (camera, camera_note);
+    made.display = g.output.clone();
     // Discarded (`--discard`: the controls' Discard or Restart): nothing kept.
     let discard = olo_protocol::recording::discard_path_for(&olo_protocol::recording::this_display());
     if discard.exists() {
@@ -1040,6 +1076,7 @@ fn record_into(
         gif: None,
         camera: None,
         camera_note: None,
+        display: None,
         marks: marks.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|(ms, title)| Mark { at: *ms as f64 / 1000.0, title: title.clone() }).collect(),
     })
 }
@@ -1316,11 +1353,13 @@ struct CameraBubble(std::process::Child);
 impl CameraBubble {
     /// Started for camera `id` ("auto": the first colour camera), once
     /// its first frame is on the screen; and the camera's name.
-    fn start(id: &str) -> Result<(CameraBubble, String), String> {
+    fn start(id: &str, display: Option<&str>) -> Result<(CameraBubble, String), String> {
         use std::io::BufRead as _;
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         let mut child = std::process::Command::new(exe)
             .args(["--camera-bubble", "--camera", id])
+            // (On the display recorded, in its corner.)
+            .args(display.map(|d| ["--display", d]).into_iter().flatten())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .spawn()
@@ -1402,10 +1441,16 @@ pub fn toggle(args: &[String]) -> i32 {
             // What it made, in a card in the corner (`after.rs`); told in
             // a notification if that can't start, or something went wrong
             // on the way (it says what).
-            let card = (made.encoder_note.is_none() && made.stopped_early.is_none())
-                .then(|| std::env::current_exe().ok())
-                .flatten()
-                .and_then(|exe| std::process::Command::new(exe).arg("--after").arg(&made.path).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).spawn().ok());
+            let card = (made.encoder_note.is_none() && made.stopped_early.is_none()).then(|| std::env::current_exe().ok()).flatten().and_then(|exe| {
+                std::process::Command::new(exe)
+                    .arg("--after")
+                    .arg(&made.path)
+                    .args(made.display.as_deref().map(|d| ["--display", d]).into_iter().flatten())
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .spawn()
+                    .ok()
+            });
             if card.is_none() {
                 tell(&made);
             }

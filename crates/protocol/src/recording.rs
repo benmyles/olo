@@ -35,6 +35,10 @@ pub struct Going {
     /// The recorder's own arguments: what Restart starts again.
     #[serde(default)]
     pub args: Vec<String>,
+    /// The display (its connector) being recorded, or that the window
+    /// recorded is on: where the recording's controls show.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
 }
 
 impl Going {

@@ -339,6 +339,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 | Request::GetSettings
                 | Request::Workspaces
                 | Request::Outputs
+                | Request::PointerDisplay
                 | Request::PowerStatus
                 | Request::ActivationToken
                 | Request::Timings { .. }
@@ -797,6 +798,10 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
                 self.backend_data.wake(None);
                 Reply::Ok
+            }
+            Request::PointerDisplay => {
+                let at = self.pointer.current_location();
+                Reply::Display { name: self.space.output_under(at).next().or_else(|| self.space.outputs().next()).map(|o| o.name()) }
             }
             Request::Countdown { n } => {
                 let at = self.pointer.current_location();

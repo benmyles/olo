@@ -232,10 +232,14 @@ pub fn run() -> std::process::ExitCode {
     };
     let Some(first) = first else { return std::process::ExitCode::SUCCESS };
     olo_kit::run(APP_ID, move |_| {
+        // On the display being recorded (a window's: the one it's on),
+        // not wherever a surface that names none is put (the main one).
+        let on = first.output.clone();
         let options = WindowOptions::new("Recording", 420.0, SMALL_BUTTON_HEIGHT + 2.0 * m::TIGHT)
             .no_panel()
             .layer(CONTROLS_NAMESPACE, LayerShellLayer::Overlay, (true, false, false, false))
-            .layer_options(|l| {
+            .layer_options(move |l| {
+                l.output = on;
                 // (The bar `MARGIN` from the top: its shadow's room above it.)
                 l.margin = ((MARGIN - SHADOW * 0.6).round() as i32, 0, 0, 0);
                 l.keyboard = LayerKeyboard::None;

@@ -10661,7 +10661,18 @@ Screens' Export Video uses too).
   recording at a time on each display: what's going is in
   `$XDG_RUNTIME_DIR/olo-recording-<display>.json`
   (`olo-screenshot --recording` says it), so an Agent Screen's and the
-  person's don't meet.
+  person's don't meet. ("Display" there is the Wayland display, the
+  session.) **Which monitor**: `--display NAME`, else **the one the
+  pointer is on** (`Request::PointerDisplay`, as a screenshot and the
+  countdown take it; `pointer_display`), a region's the one it was
+  dragged on. What's recorded is said (`Going::output`, the result's
+  `display`: the monitor recorded, or the one a recorded window is
+  on), and **everything the recording shows is on that monitor**: its
+  controls, the camera bubble and the saved card name it
+  (`LayerShellOptions::output`). (None named was the first there is,
+  the laptop's own panel, and the controls, naming none, went to the
+  main display: started on an external main display, the bar showed
+  there and the laptop's panel was recorded. Ben, 2026-11-17.)
 - **A region's shape and size** (`region.rs`, the screenshot's region
   picker too): a bar at the top of each screen while it's picked, as
   CleanShot X's: Free, 16:9, 4:3, 1:1 (keys 1 to 4; ⇧ makes a free drag

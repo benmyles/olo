@@ -343,6 +343,7 @@ pub fn run(args: &[String]) -> std::process::ExitCode {
         return std::process::ExitCode::from(2);
     };
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let on = args.iter().position(|a| a == "--display").and_then(|i| args.get(i + 1)).cloned();
     let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
     let input = olo_preview::input::Input::file(&path);
     // What it is (quick: its index), here; its picture on a worker.
@@ -367,11 +368,14 @@ pub fn run(args: &[String]) -> std::process::ExitCode {
     let aspect = if height > 0 { width as f32 / height as f32 } else { 16.0 / 10.0 };
     olo_kit::run(APP_ID, move |_| {
         let (cw, ch) = card_size(aspect);
-        let options = WindowOptions::new("Recording Saved", cw + 2.0 * SHADOW, ch + 2.0 * SHADOW).no_panel().layer(NAMESPACE, LayerShellLayer::Top, (false, true, true, false)).layer_options(|l| {
-            // (The card `MARGIN` from the edges: its shadow's room inside.)
-            l.margin = (0, 0, (MARGIN - SHADOW * 1.4).max(0.0).round() as i32, (MARGIN - SHADOW).round() as i32);
-            l.keyboard = LayerKeyboard::None;
-        });
+        let options =
+            WindowOptions::new("Recording Saved", cw + 2.0 * SHADOW, ch + 2.0 * SHADOW).no_panel().layer(NAMESPACE, LayerShellLayer::Top, (false, true, true, false)).layer_options(move |l| {
+                // (On the display that was recorded.)
+                l.output = on;
+                // (The card `MARGIN` from the edges: its shadow's room inside.)
+                l.margin = (0, 0, (MARGIN - SHADOW * 1.4).max(0.0).round() as i32, (MARGIN - SHADOW).round() as i32);
+                l.keyboard = LayerKeyboard::None;
+            });
         let shown = path.clone();
         let window = olo_kit::open_window(options, move |cx| {
             let mut after = After {

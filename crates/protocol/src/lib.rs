@@ -356,6 +356,10 @@ pub enum Request {
         #[serde(default)]
         display: Option<String>,
     },
+    /// The display the pointer is on (its connector): what "the screen"
+    /// means to a capture that names none, as [`Request::Screenshot`]
+    /// and [`Request::Countdown`] take it. Answered [`Reply::Display`].
+    PointerDisplay,
     /// A recording's countdown: `n` shown large in the middle of the
     /// screen under the pointer, till the next (0: taken down).
     Countdown {
@@ -802,6 +806,11 @@ pub enum Reply {
     },
     Outputs {
         outputs: Vec<OutputInfo>,
+    },
+    /// [`Request::PointerDisplay`]: the display's connector (None: no
+    /// display yet).
+    Display {
+        name: Option<String>,
     },
     InputDevices {
         devices: Vec<touchpad::InputDeviceInfo>,

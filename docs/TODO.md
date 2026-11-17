@@ -53,11 +53,12 @@ something nobody here has is in "Blocked", with what it waits for.
   this doesn't happen and i have to go find it again every time and
   change the sort order every time").
 
-- **Screenshot's screen recording records the display it was started
-  on** (Ben, 2026-11-17: "the screen recording feature in screenshots
-  doesn't seem to record the correct screen in a multi display setup.
-  it showed the recording bar on my main screen where i launched it
-  from but then it recorded my laptop's built in display instead").
+- **Last, once everything above that isn't blocked is done: the website,
+  the README and the docs refreshed, and a new GitHub release** (Ben,
+  2026-11-17: "when all the other todos that aren't blocked are
+  completed, please refresh the website with fresh
+  screenshots/apps/callouts etc and also the README.md and any other
+  docs that need updating and make a new github release").
 
 ## Done, waiting for Ben to try or confirm
 
@@ -5909,6 +5910,19 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Screenshot's screen recording records the display it was started
+  on**~~ (Ben, 2026-11-17: "it showed the recording bar on my main
+  screen where i launched it from but then it recorded my laptop's
+  built in display instead"; done the same day). A recording that named
+  no display took the first one there is (the laptop's own panel), and
+  its bar, naming none either, went to the main display. Now it records
+  the display the pointer is on (as a screenshot and the countdown do),
+  and its bar, camera bubble and saved card show on the display
+  recorded (a window's: the one it's on). Tried headless with two
+  displays, the pointer on each in turn. **Needs the new app_server**
+  (after the upgrade): the old one doesn't say where the pointer is,
+  and the recording falls back to the first display as before.
 
 - ~~**The palette's `/ask` knows it was asked from the Terminal; Return
   copies the snippet and the palette goes**~~ (Ben, 2026-11-17: "if the

@@ -148,13 +148,17 @@ pub fn run(args: &[String]) -> i32 {
         }
     };
     let name = camera.info.name.clone();
+    // (The display recorded: its corner.)
+    let on = args.iter().position(|a| a == "--display").and_then(|i| args.get(i + 1)).cloned();
     let latest: Latest = Arc::default();
     olo_kit::run(APP_ID, move |_| {
-        let options =
-            WindowOptions::new("Camera", SIDE + 2.0 * SHADOW, SIDE + 2.0 * SHADOW).no_panel().layer("screenshot-camera", LayerShellLayer::Overlay, (false, true, false, true)).layer_options(|l| {
+        let options = WindowOptions::new("Camera", SIDE + 2.0 * SHADOW, SIDE + 2.0 * SHADOW).no_panel().layer("screenshot-camera", LayerShellLayer::Overlay, (false, true, false, true)).layer_options(
+            move |l| {
+                l.output = on;
                 l.margin = (0, MARGIN, MARGIN, 0);
                 l.keyboard = LayerKeyboard::None;
-            });
+            },
+        );
         let shown = latest.clone();
         let window = olo_kit::open_window(options, move |_| Bubble { latest: shown, name, frame: None, margin: (MARGIN, MARGIN), drag: None });
         let to = window.messenger();
