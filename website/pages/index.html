@@ -180,7 +180,7 @@ description: Olo is a fast, light desktop for Linux in the spirit of BeOS, writt
         <ul>
           <li><b>Agent Screens</b>: whole headless Olo desktops for agents, which you can watch live, scrub back through, and take over at any moment.</li>
           <li><b>Structured, not pixels</b>: every window's widgets as a tree, every menu command by name, and an API to click, type and choose.</li>
-          <li><b>Coding agents in Terminal</b> keep their tab's title current and know which repository each tab group is for.</li>
+          <li><b>Coding agents in Terminal</b> title their own tabs, are kept going while you sleep and get worktrees made for them: more below.</li>
           <li><b>Token Pool</b> shares several Claude and ChatGPT subscriptions among them, with no gap across upgrades.</li>
         </ul>
 <pre><span class="p">$ </span>olo-screen start
@@ -189,6 +189,71 @@ description: Olo is a fast, light desktop for Linux in the spirit of BeOS, writt
 <span class="p">$ </span>olo-screen click agent --role Button --name <span class="k">Save</span></pre>
       </div>
       <div class="shot">{{shot olo-agent-screens | Agent Screens: an agent's own desktop, live, beside yours}}</div>
+    </div>
+
+    <div class="feature flip">
+      <div class="feature-text">
+        <h3>Terminal knows its coding agents</h3>
+        <p>Run Claude Code or Codex in a tab and Terminal sees it there: the tab says whether the agent is working, waiting for you or needs an answer, and a notification tells you when it does.</p>
+        <ul>
+          <li><b>Titles kept by the agent</b>: each agent gets a tool to title its tab with what it's working on, and keeps it current, so a row of tabs reads as a list of what's under way.</li>
+          <li><b>Tab groups</b>, named and coloured, one per feature or per repository; a window whose tabs are all in one repository becomes its group by itself.</li>
+          <li><b>Told where it is</b> as it starts: the group's name and every repository and worktree its tabs are in, its own marked. The picture shows the very words.</li>
+        </ul>
+      </div>
+      <div class="shot">{{shot olo-terminal-agents | Terminal: a tab group named Refunds, three tabs titled by their agents, and what an agent is told as it starts in one}}</div>
+    </div>
+
+    <div class="feature">
+      <div class="feature-text">
+        <h3>Keep It Going</h3>
+        <p>An agent that stops at midnight has stopped until morning. Turn on Keep It Going in its tab's menu and Terminal types &ldquo;Please continue&rdquo; for you.</p>
+        <ul>
+          <li><b>Only when it has really stopped</b>: two quiet minutes, its turn over and its own prompt showing; never while it works, never on a question, at most once an hour.</li>
+          <li><b>Your words</b>: a message of your own for every tab, or for one agent alone.</li>
+          <li><b>Kept</b> with the tab through upgrades and restarts.</li>
+        </ul>
+      </div>
+      <div class="shot">{{shot olo-terminal-agent-menu | A tab's menu in Terminal, with Keep It Going's own menu open: On, the default message, a custom message}}</div>
+    </div>
+
+    <div class="feature flip">
+      <div class="feature-text">
+        <h3>Auto Approve</h3>
+        <p>&ldquo;Do you want to proceed?&rdquo; needn't wait for you either. With Auto Approve on, Terminal answers Yes thirty seconds after an agent asks leave to go on.</p>
+        <ul>
+          <li><b>A countdown you can stop</b> in the tab's corner; typing in the tab makes the question yours.</li>
+          <li><b>Only what asks leave</b>: not a plan waiting to be approved, not another kind of question.</li>
+          <li><b>Yours to turn on</b>: an agent that asks for it gets an alert on your screen whose Return is Cancel, so it can't answer its own questions.</li>
+        </ul>
+      </div>
+      <div class="shot">{{shot olo-terminal-auto-approve | Terminal: an agent's stand-in asking whether to proceed, and Auto Approve counting down to Yes with a Stop button}}</div>
+    </div>
+
+    <div class="feature">
+      <div class="feature-text">
+        <h3>Worktrees and pull requests, per tab</h3>
+        <p>An agent per worktree is how several work on one repository at once. Terminal makes them for you and shows where each stands.</p>
+        <ul>
+          <li><b>New Worktree&hellip;</b>: a name, which is a folder and a branch both, made where you keep them and opened in a new tab of the group. Rename and remove them from the tab's menu too.</li>
+          <li><b>Git in process</b>: no git command to shell out to, and nothing polled; a tab follows its folder as it changes.</li>
+          <li><b>Each tab wears its pull request</b>: open, draft, merged or closed, and whether its checks pass, fail or run.</li>
+        </ul>
+      </div>
+      <div class="shot">{{shot olo-terminal-worktree | Terminal's New Worktree window: a name typed, and where its folder and branch will be made}}</div>
+    </div>
+
+    <div class="feature flip">
+      <div class="feature-text">
+        <h3>You say what agents are told</h3>
+        <p>Everything Terminal tells an agent is a setting, off until you turn it on, in Preferences &#9656; Terminal.</p>
+        <ul>
+          <li><b>Screens of their own</b>: agents are told to test desktop apps and web pages on an Agent Screen, never on yours. A tab moves to an agent's screen from its menu, its shell still running.</li>
+          <li><b>Scratch on disk</b>: where /tmp is held in memory, agents are told to keep their builds and downloads out of it.</li>
+          <li><b>Set up for you</b>: Terminal puts its hook and its tool in Claude Code's and Codex's own settings, every other setting of theirs as it was, and takes them out when you turn it off.</li>
+        </ul>
+      </div>
+      <div class="shot">{{shot olo-terminal-agent-prefs | Preferences, Terminal: what coding agents are told, what Keep It Going says, and where worktrees go}}</div>
     </div>
   </div>
 </div>

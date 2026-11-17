@@ -17,12 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **The website covers Terminal's work with agents** (Ben, 2026-11-16:
-  "update the website to cover all the agent integration features in olo
-  terminal"). olo-desktop.com's Agents part: what Terminal does for
-  coding agents (tab groups and their titles kept by the agent, what an
-  agent is told as it starts, worktrees, keep going, Agent Screens from a
-  tab, the rest of HACKING's "Terminal" on agents), each with a picture.
 - **Smart tiling with a model, removed** (Ben, 2026-11-16: "remove the
   smart tiling with a model feature completely -- it never worked well
   and is, frankly, silly"). `apps/smart-tile`, its shortcut, its part of
@@ -5951,6 +5945,20 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**The website covers Terminal's work with agents**~~ (Ben,
+  2026-11-16: "update the website to cover all the agent integration
+  features in olo terminal"; done 2026-11-17). olo-desktop.com's Agents
+  part has five more rows, each with a picture made by
+  `tools/dev/readme-shots terminal-agents` (stand-in agents in a sample
+  home, Terminal's real windows): tabs titled by their agents in a
+  group and what an agent is told as it starts, Keep It Going, Auto
+  Approve, worktrees and pull requests, and Preferences ▸ Terminal.
+  Not deployed: `tools/deploy-website.sh` is Ben's to run. Staging the
+  pictures found and fixed four things on the way: `--help` opening a
+  window, a submenu opened by the pointer losing the keyboard, an open
+  menu missing from `olo-screen tree`, and a window coming back at an
+  alert's place.
 
 - ~~**Tracker's icon view shows pictures and videos as themselves**~~
   (Ben, 2026-11-17: "in tracker's icon view the icons should show

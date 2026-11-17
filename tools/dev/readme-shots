@@ -54,7 +54,9 @@ def env_for_screens(run_dir=RUN):
     """olo-screen's environment: this tree's build first, the sample home,
     a runtime folder of the shots' own; nothing of the person's session."""
     env = dict(os.environ, XDG_RUNTIME_DIR=run_dir, HOME=HOME, PATH=RELEASE + ":" + os.environ.get("PATH", ""))
-    for k in ("WAYLAND_DISPLAY", "OLO_SOCKET", "OLO_SESSION", "OLO_SESSION_PID", "OLO_REAL_SESSION", "OLO_SCREEN", "DBUS_SESSION_BUS_ADDRESS", "DISPLAY"):
+    # (Nor the person's coding agents' settings: Terminal's settings for
+    # agents write hooks where these point.)
+    for k in ("WAYLAND_DISPLAY", "OLO_SOCKET", "OLO_SESSION", "OLO_SESSION_PID", "OLO_REAL_SESSION", "OLO_SCREEN", "DBUS_SESSION_BUS_ADDRESS", "DISPLAY", "CLAUDE_CONFIG_DIR", "CODEX_HOME"):
         env.pop(k, None)
     return env
 
@@ -536,7 +538,228 @@ def scene_agents():
     research("stop")
 
 
+# ---- Terminal and coding agents ----------------------------------------------
+
+# A coding agent's stand-in, named as one (Terminal knows an agent by its
+# program's name): it titles its tab as an agent without the tool does,
+# shows what Terminal's hook tells an agent as it starts there (the real
+# words), and waits. Nothing of any agent's own interface is drawn.
+STAND_IN = r"""#!/bin/bash
+olo-terminal --tab-title "$*" >/dev/null 2>&1
+clear
+if [ -n "$ASKS" ]; then
+    # Asking leave to go on, as an agent does (the words Auto Approve
+    # answers: a question, its first answer Yes, chosen).
+    printf '\n  \e[2m(A stand-in for a coding agent, asking leave to go on.)\e[0m\n\n'
+    printf '  Run the tests before committing?\n\n      cargo test --workspace\n\n'
+    printf ' Do you want to proceed?\n \xe2\x9d\xaf 1. Yes\n   2. No\n'
+    read -r _
+    printf '\n  Yes: running the tests.\n'
+    exec sleep 100000
+fi
+printf '\n\e[2m  What Olo Terminal tells a coding agent as it starts in this tab (the home folder written ~):\e[0m\n\n'
+printf '{"session_id":"shots-%s","cwd":"%s","hook_event_name":"SessionStart"}' "$$" "$PWD" | olo-terminal --agent-context | sed "s|$HOME|~|g" | fold -s -w 104 | sed 's/^/  /'
+exec -a "$(basename "$0")" sleep 100000 2>/dev/null || sleep 100000
+"""
+
+
+def agents_world():
+    """Two repositories and a worktree in the sample home, the stand-ins
+    on a PATH of their own, and Terminal's settings for agents on (their
+    hooks go nowhere: the sample home has no agent set up)."""
+    src = os.path.join(HOME, "src")
+    shutil.rmtree(src, ignore_errors=True)
+    shutil.rmtree(os.path.join(HOME, "worktrees"), ignore_errors=True)
+    git = lambda d, *a: subprocess.run(["/usr/bin/git", "-C", d, "-c", "user.name=Mira", "-c", "user.email=mira@example.com", *a], check=True, capture_output=True)
+    for repo in ("shop-web", "shop-api"):
+        d = os.path.join(src, repo)
+        os.makedirs(d)
+        git(d, "init", "-q", "-b", "main")
+        with open(os.path.join(d, "README.md"), "w") as f:
+            f.write(f"# {repo}\n")
+        git(d, "add", ".")
+        git(d, "commit", "-q", "-m", "Start")
+    os.makedirs(os.path.join(HOME, "worktrees", "shop-api"))
+    git(os.path.join(src, "shop-api"), "worktree", "add", "-q", "-b", "refunds", os.path.join(HOME, "worktrees", "shop-api", "refunds"))
+    bin = os.path.join(WORK, "bin")
+    os.makedirs(bin, exist_ok=True)
+    for name, text in (("claude", STAND_IN), ("codex", STAND_IN)):
+        with open(os.path.join(bin, name), "w") as f:
+            f.write(text)
+        os.chmod(os.path.join(bin, name), 0o755)
+    settings(lambda s: s["terminal"].update(agent_context=True, agent_titles=True, agent_screens=False))
+    return src, bin
+
+
+def menu_items():
+    """Terminal's menu items as the screen lists them (path, label,
+    command, checked…), the front window's."""
+    found = []
+
+    def walk(v):
+        if isinstance(v, dict):
+            if "command" in v and "label" in v:
+                found.append(v)
+            for x in v.values():
+                walk(x)
+        elif isinstance(v, list):
+            for x in v:
+                walk(x)
+
+    try:
+        walk(json.loads(screen("menus")))
+    except json.JSONDecodeError:
+        pass
+    return found
+
+
+def command_like(start):
+    """The first menu command that starts with `start` (a tab's commands
+    carry its shell: `tab-new-group:7`)."""
+    return next((m["command"] for m in menu_items() if m["command"].startswith(start)), None)
+
+
+def agents_terminal(src, bin, folders, frame):
+    """A Terminal with a tab in each of `folders`, plain shells whose
+    prompt is the folder's name, the stand-ins on their PATH."""
+    shell = ["bash", "--norc", "--noprofile", "-i"]
+    run("olo-terminal", "-w", folders[0], "-e", *shell, env={"PS1": "\\W \\$ ", "HOME": HOME, "PATH": f"{bin}:{RELEASE}:/usr/bin:/bin"})
+    term = wait_for(by_app("olo.terminal"))
+    place(term, *frame)
+    settle(2)
+    for folder in folders[1:]:
+        run("olo-terminal", "--tab", "-w", folder, "-e", *shell)
+        settle(2)
+    activate(term)
+    return term
+
+
+def scene_terminal_agents():
+    """Terminal with coding agents: a tab group for a feature that spans
+    two repositories, each tab titled by its agent, the front one showing
+    what an agent is told as it starts there."""
+    close_all()
+    widgets([])
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+    src, bin = agents_world()
+    refunds = os.path.join(HOME, "worktrees", "shop-api", "refunds")
+    agents_terminal(src, bin, [os.path.join(src, "shop-web"), os.path.join(src, "shop-api"), refunds], (250, 150, 980, 520))
+    # The group, named by the person: the first tab starts it, the others join.
+    screen("invoke", "tab:0")
+    settle(0.6)
+    screen("invoke", command_like("tab-new-group:"))
+    settle(1.5)
+    type_text("Refunds")
+    key("Return")
+    settle(1.5)
+    for i in (1, 2):
+        screen("invoke", f"tab:{i}")
+        settle(0.6)
+        screen("invoke", command_like("tab-group:"))
+        settle(0.6)
+    # An agent in each, the front one last (what it's told lists the
+    # group's places as they are then).
+    for i, words in ((2, ' codex "Migrate the ledger"'), (1, ' claude "Add the refunds endpoint"'), (0, ' claude "Refund button on an order"')):
+        screen("invoke", f"tab:{i}")
+        settle(0.6)
+        type_text(words + "\n")
+        settle(3.5)
+    settle(3)
+    shot("olo-terminal-agents", crop=AGENTS_CROP)
+
+    # A tab's menu, Keep It Going's own open beside it.
+    x, y, w, h = where("Tab", "Add the refunds endpoint")
+    screen("click", x + 150, y + h // 2, "--right")
+    settle(1.5)
+    if at := where("MenuItem", "Keep It Going"):
+        screen("move", at[0] + at[2] // 2, at[1] + at[3] // 2)
+        settle(1.5)
+    debug("menu-open")
+    shot("olo-terminal-agent-menu", crop=AGENTS_CROP)
+    key("Escape", "Escape")
+    settle(1)
+
+    # A new worktree for the window's repository, over the window.
+    screen("invoke", "worktree-new")
+    dialog = wait_for(by_app("olo.terminal", "New Worktree"))
+    place(dialog, 540, 300)
+    settle(1.5)
+    type_text("refunds-export")
+    settle(2)
+    debug("worktree")
+    shot("olo-terminal-worktree", crop=AGENTS_CROP)
+    key("Escape")
+    settle(1)
+
+    # An agent asking leave to go on, and Auto Approve counting down to
+    # its Yes: turned on from the tab's menu, as the person does.
+    run("olo-terminal", "--tab", "-w", os.path.join(src, "shop-web"), "-e", "bash", "--norc", "--noprofile", "-i")
+    settle(2.5)
+    type_text(' ASKS=1 claude "Run the tests"\n')
+    settle(3)
+    x, y, w, h = where("Tab", "Run the tests")
+    screen("click", x + w // 2, y + h // 2, "--right")
+    settle(1.2)
+    screen("click", "--role", "MenuItem", "--name", "Auto Approve")
+    settle(4)
+    debug("auto-approve")
+    shot("olo-terminal-auto-approve", crop=AGENTS_CROP)
+
+    # Preferences ▸ Terminal: what agents are told, what Keep It Going
+    # says, where worktrees go. (The stand-ins ended first: a Terminal
+    # with programs running asks before it closes.)
+    end_stand_ins()
+    close_all()
+    run("olo-preferences", "terminal")
+    prefs = wait_for(by_app("olo.preferences"))
+    place(prefs, 300, 140)
+    settle(3)
+    f = next(w for w in windows() if w["id"] == prefs["id"])["frame"]
+    debug("prefs")
+    shot("olo-terminal-agent-prefs", crop=(f["x"] - 70, f["y"] - 60, f["width"] + 140, f["height"] + 120))
+    settings(lambda s: s["terminal"].update(agent_context=False, agent_titles=False))
+
+
+# The part of the screen the Terminal pictures keep (points): the window
+# and some of the desktop around it.
+AGENTS_CROP = (190, 90, 1100, 640)
+
+
+def end_stand_ins():
+    """The coding agents' stand-ins on the screen, ended (by pid: what has
+    this screen's socket and one of their names)."""
+    mine = f"OLO_SOCKET={SCREEN_ENV['OLO_SOCKET']}".encode()
+    for pid in filter(str.isdigit, os.listdir("/proc")):
+        try:
+            if open(f"/proc/{pid}/comm").read().strip() in ("claude", "codex", "sleep") and mine in open(f"/proc/{pid}/environ", "rb").read().split(b"\0"):
+                os.kill(int(pid), 15)
+        except OSError:
+            pass
+    time.sleep(1.5)
+
+
+def where(role, name):
+    """Where the screen's tree has a `role` whose name starts with `name`:
+    (x, y, width, height), or None."""
+    import re
+
+    for line in screen("tree").split("\n"):
+        m = re.match(r'\s*(\w+) "([^"]*)".* at (-?\d+),(-?\d+) (\d+)x(\d+)', line)
+        if m and m.group(1) == role and m.group(2).startswith(name):
+            return tuple(int(v) for v in m.groups()[2:])
+    return None
+
+
+def debug(name):
+    """With OLO_SHOTS_DEBUG set: the tree's lines and the screen as it
+    is, kept in the work folder (to see a scene's steps while making it)."""
+    if os.environ.get("OLO_SHOTS_DEBUG"):
+        print(f"-- {name}\n" + screen("tree")[:6000])
+        grab(f"debug-{name}").save(os.path.join(WORK, f"debug-{name}-kept.png"))
+
+
 SCENES = {
+    "terminal-agents": scene_terminal_agents,
     "desktop": scene_desktop,
     "themes": scene_themes,
     "tracker": scene_tracker,
@@ -640,4 +863,5 @@ if __name__ == "__main__":
             print(f"== {s}")
             SCENES[s]()
     finally:
+        # (OLO_SHOTS_KEEP: the work folder's pictures are looked at after.)
         stop()

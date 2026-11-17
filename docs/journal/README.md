@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### Website: Terminal and coding agents
+
+*06:08* — Five new rows in the website's Agents part (tab titles and groups, Keep It Going, Auto Approve, worktrees, Preferences), each with a picture from tools/dev/readme-shots terminal-agents. Also fixed on the way: --help opens no window, a hover-opened submenu keeps the keyboard, open menus are in olo-screen's tree, a window comes back to its own place.
+
+![Website: Terminal and coding agents](2026-11-17/060800-website-terminal-and-coding-agents.png)
+
 ### Tracker: a picture's icon is the picture
 
 *05:25* — In the icon view (and on the desktop) pictures show as themselves and a video as a frame of it, made as they scroll into view and kept in the desktop's thumbnail cache. (Left 1×, right 2×.)

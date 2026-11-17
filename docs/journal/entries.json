@@ -4768,5 +4768,11 @@
   "title": "Tracker: a picture's icon is the picture",
   "caption": "In the icon view (and on the desktop) pictures show as themselves and a video as a frame of it, made as they scroll into view and kept in the desktop's thumbnail cache. (Left 1\u00d7, right 2\u00d7.)",
   "image": "2026-11-17/052503-tracker-a-picture-s-icon-is-the-picture.png"
+ },
+ {
+  "time": "2026-11-17T06:08:00",
+  "title": "Website: Terminal and coding agents",
+  "caption": "Five new rows in the website's Agents part (tab titles and groups, Keep It Going, Auto Approve, worktrees, Preferences), each with a picture from tools/dev/readme-shots terminal-agents. Also fixed on the way: --help opens no window, a hover-opened submenu keeps the keyboard, open menus are in olo-screen's tree, a window comes back to its own place.",
+  "image": "2026-11-17/060800-website-terminal-and-coding-agents.png"
  }
 ]

@@ -380,6 +380,21 @@ Each note: what to do, then why (what happened), then how to apply it.
   resident after a burst of work differs a lot between them: measure
   memory in the app, in a headless session.
 
+- **Pictures of Terminal with coding agents** come from
+  `tools/dev/readme-shots terminal-agents`: stand-ins named `claude`
+  and `codex` on a PATH of their own (Terminal knows an agent by its
+  program's name), which title their tab with `olo-terminal
+  --tab-title` and print what the hook tells an agent there.
+  `OLO_SHOTS_DEBUG=1` prints the tree and keeps a picture at each step
+  of a scene being made (`debug()`).
+- **A Terminal with programs running asks before it closes**, and
+  olo-termd starts Terminal again while its shells live. A script that
+  closes windows and then ends what's left gets a Terminal back: end
+  the programs in its tabs first (by pid), then close.
+- **Where a key goes**: `WAYLAND_DEBUG=1` on the program (its stderr to
+  a file) shows `wl_keyboard.enter`/`leave` and `xdg_popup.grab` in
+  order; that is how the submenu's lost keyboard was found.
+
 ## Ben's computer
 
 - **Don't probe sudo.** Even `sudo -n` runs face unlock (the IR camera)
