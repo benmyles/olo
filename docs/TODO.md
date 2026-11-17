@@ -17,7 +17,14 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-(Nothing: what is left is in "Done, waiting for Ben" and "Blocked".)
+- **Phone: conversations show numbers, not names** (Ben, 2026-11-17:
+  "in the phone app it is just showing numbers not contact names … it
+  seems to have synced some contacts but not all?"). In his pictures a
+  conversation headed by a number with its country code got its name a
+  little later, one headed by a ten-digit number without one kept the
+  number, and short codes are numbers (as they should be). Also seen in
+  the same pictures: two messages end mid-word ("…call us using
+  Contac", "How's the n"), cut off.
 
 ## Done, waiting for Ben to try or confirm
 
