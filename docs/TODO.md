@@ -146,6 +146,11 @@ something nobody here has is in "Blocked", with what it waits for.
   coding agents (tab groups and their titles kept by the agent, what an
   agent is told as it starts, worktrees, keep going, Agent Screens from a
   tab, the rest of HACKING's "Terminal" on agents), each with a picture.
+- **Smart tiling with a model, removed** (Ben, 2026-11-16: "remove the
+  smart tiling with a model feature completely -- it never worked well
+  and is, frankly, silly"). `apps/smart-tile`, its shortcut, its part of
+  Preferences ▸ AI and of app_server, its docs and tests: all of it
+  gone (what else uses `crates/ai` stays).
 - **Go to File or Folder in the file panel** (Ben, 2026-11-16, with a
   picture of an Open File panel on Pictures: "i should be able to use
   the go to file/folder shortcut in a picker like this"). In the kit's
