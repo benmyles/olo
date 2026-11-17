@@ -36,12 +36,18 @@ pub fn kind_of<'a>(items: impl IntoIterator<Item = (&'a str, bool)>) -> Option<S
     kinds.all(|k| k == first).then_some(first)
 }
 
-/// Open With ▸ for files of `kind`: the apps worked out for it (not
-/// worked out yet, no submenu), the one it opens in marked, Other…, and
+/// Open With ▸ for files of `kind`: the apps worked out for it (now,
+/// if they weren't ahead), the one it opens in marked, Other…, and
 /// Always Open With ▸ to make another the kind's. No app knows the kind:
 /// Other… alone.
 pub fn menu(kind: &str) -> Option<Menu> {
-    let offer = open::offer_cached(kind)?;
+    // (Worked out ahead as a folder is listed; a kind that wasn't there
+    // then, or any after a choice was changed (Always Open With forgot
+    // them all and worked out only its own again), is worked out now:
+    // `open::offer`. The submenu was simply missing for such a file:
+    // Ben, 2026-11-17, "the open with in tracker doesn't seem to
+    // consistently work. it doesn't appear for this file".)
+    let offer = open::offer(kind);
     let ids: Vec<(String, String)> = offer.handlers.iter().filter_map(|h| Some((open::handler_id(h)?, h.name()))).collect();
     if ids.is_empty() {
         return Some(Menu::new("Open With").item("Other…", OTHER));

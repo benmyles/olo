@@ -94,37 +94,129 @@ fn ours(mime: &str) -> Option<&'static str> {
 
 /// [`ours`], among the programs `installed` says are there.
 fn ours_among(mime: &str, installed: impl Fn(&str) -> bool) -> Option<&'static str> {
-    ours_for(mime).iter().copied().find(|bin| installed(bin))
+    ours_ranked(mime).into_iter().filter(|(rank, _)| *rank == 0).map(|(_, bin)| bin).find(|bin| installed(bin))
 }
 
-/// Olo's apps that open `mime`, the one it opens in first.
-fn ours_for(mime: &str) -> &'static [&'static str] {
-    let (major, _) = mime.split_once('/').unwrap_or((mime, ""));
-    let candidates: &[&'static str] = match (major, mime) {
-        (_, "inode/directory") => &["olo-tracker"],
-        (_, "text/html" | "application/xhtml+xml") => &["olo-chrome", "olo-styled-edit"],
-        ("text", _) | (_, "application/x-shellscript" | "application/json" | "application/xml" | "application/toml" | "application/rtf") => &["olo-styled-edit", "olo-viewer"],
-        ("image" | "audio" | "video" | "font", _) => &["olo-viewer"],
-        (
-            _,
-            "application/pdf"
-            | "application/zip"
-            | "application/x-tar"
-            | "application/x-compressed-tar"
-            | "application/gzip"
-            | "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            | "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-            | "application/vnd.oasis.opendocument.text"
-            | "application/vnd.oasis.opendocument.spreadsheet"
-            | "application/vnd.oasis.opendocument.presentation",
-        ) => &["olo-viewer"],
-        (_, "x-scheme-handler/http" | "x-scheme-handler/https") => &["olo-chrome"],
-        (_, "x-scheme-handler/slack") => &["olo-slack"],
-        (_, crate::mime::SETTINGS_BACKUP) => &["olo-preferences"],
-        _ => &[],
-    };
-    candidates
+/// What one of Olo's apps opens. A kind is a type ("application/pdf")
+/// or every type of a family ("text/*").
+struct Opens {
+    bin: &'static str,
+    /// The kinds it is the app for: they open in it.
+    opens: &'static [&'static str],
+    /// Kinds whose every narrower kind it opens too (anything that is
+    /// text, or XML): what opens in it where no installed app says it
+    /// opens that very kind.
+    narrower: &'static [&'static str],
+    /// Kinds, and the narrower kinds of them, it is offered for (Open
+    /// With) without being what they open in.
+    also: &'static [&'static str],
+}
+
+/// What each of Olo's apps opens, said once, here: an app is offered in
+/// Open With for every kind it names, the entries other programs read
+/// are written from the same (`for_others`), and the app a kind opens in
+/// is the first that names it in `opens`. An app that learns to open
+/// something says so here and nowhere else. (It was a rule by kind, and
+/// what an app opened had to be remembered in it: a Word document was
+/// offered the Viewer and not StyledEdit, which opens and writes them,
+/// and nothing of Olo's was offered for a YAML file, an EPUB, a 7z or an
+/// old Excel sheet, all of which Olo opens. Ben, 2026-11-17: "an app
+/// should register the extensions it supports (e.g. here StyledEdit
+/// supports it) and appear in the Open With menu". The test
+/// `what_olos_apps_open` holds every extension the apps read to it.)
+const OPENS: &[Opens] = &[
+    Opens { bin: "olo-tracker", opens: &["inode/directory"], narrower: &[], also: &[] },
+    Opens { bin: "olo-chrome", opens: &["text/html", "application/xhtml+xml", "x-scheme-handler/http", "x-scheme-handler/https"], narrower: &[], also: &[] },
+    Opens { bin: "olo-slack", opens: &["x-scheme-handler/slack"], narrower: &[], also: &[] },
+    Opens { bin: "olo-preferences", opens: &[crate::mime::SETTINGS_BACKUP], narrower: &[], also: &[] },
+    Opens {
+        bin: "olo-styled-edit",
+        opens: &[
+            "text/*",
+            "application/x-shellscript",
+            "application/json",
+            "application/xml",
+            "application/toml",
+            "application/yaml",
+            "application/x-yaml",
+            "application/javascript",
+            "application/sql",
+            "application/rtf",
+        ],
+        narrower: &["text/plain", "application/json", "application/xml"],
+        also: &["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.oasis.opendocument.text"],
+    },
+    Opens {
+        bin: "olo-viewer",
+        opens: &[
+            "image/*",
+            "audio/*",
+            "video/*",
+            "font/*",
+            "application/pdf",
+            // Archives (`olo_archive::kind`), and what is one inside.
+            "application/zip",
+            "application/x-tar",
+            "application/x-compressed-tar",
+            "application/x-bzip2-compressed-tar",
+            "application/x-xz-compressed-tar",
+            "application/x-zstd-compressed-tar",
+            "application/gzip",
+            "application/x-bzip2",
+            "application/x-xz",
+            "application/zstd",
+            "application/x-7z-compressed",
+            "application/vnd.rar",
+            "application/x-cpio",
+            "application/x-cd-image",
+            "application/vnd.efi.iso",
+            "application/epub+zip",
+            "application/java-archive",
+            "application/vnd.android.package-archive",
+            // Documents, sheets and decks (`olo_preview`).
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "application/vnd.openxmlformats-officedocument.presentationml.slideshow",
+            "application/vnd.openxmlformats-officedocument.presentationml.template",
+            "application/vnd.ms-excel",
+            "application/vnd.ms-excel.sheet.macroEnabled.12",
+            "application/vnd.ms-excel.sheet.binary.macroEnabled.12",
+            "application/vnd.oasis.opendocument.text",
+            "application/vnd.oasis.opendocument.spreadsheet",
+            "application/vnd.oasis.opendocument.presentation",
+        ],
+        narrower: &[],
+        // Anything that is text, it shows.
+        also: &["text/*", "text/plain", "application/json", "application/xml", "application/rtf"],
+    },
+];
+
+/// Olo's apps for `mime` ([`OPENS`]), each with how it has it: 0, the
+/// app for the kind; 1, by a broader kind it takes the narrower ones
+/// of; 2, offered.
+fn ours_ranked(mime: &str) -> Vec<(u8, &'static str)> {
+    let names = |kind: &str, t: &str| kind == t || kind.strip_suffix("/*").is_some_and(|family| t.split_once('/').is_some_and(|(major, _)| major == family));
+    let broader = ancestors(mime);
+    let in_chain = |kinds: &[&str]| kinds.iter().any(|k| names(k, mime) || broader.iter().any(|t| names(k, t)));
+    let mut out: Vec<(u8, &'static str)> = Vec::new();
+    for app in OPENS {
+        if app.opens.iter().any(|k| names(k, mime)) {
+            out.push((0, app.bin));
+        } else if app.narrower.iter().any(|k| broader.iter().any(|t| t == k)) {
+            out.push((1, app.bin));
+        } else if in_chain(app.also) {
+            out.push((2, app.bin));
+        }
+    }
+    out.sort_by_key(|(rank, _)| *rank);
+    out
+}
+
+/// Olo's apps that open `mime`, the one it opens in first, then the
+/// others offered for it.
+fn ours_for(mime: &str) -> Vec<&'static str> {
+    ours_ranked(mime).into_iter().map(|(_, bin)| bin).collect()
 }
 
 /// Olo's apps that open files for other programs too: binary, what kind
@@ -320,24 +412,25 @@ fn entry_by_file(file: &str) -> Option<DesktopEntry> {
 /// The broader types `mime` is a kind of (text/x-rust → text/plain), from
 /// shared-mime-info's subclasses list.
 fn parents(mime: &str) -> Vec<String> {
-    // (shared-mime-info's subclasses, read once: a few thousand lines.)
-    static SUBCLASSES: std::sync::LazyLock<Vec<(String, String)>> = std::sync::LazyLock::new(|| {
-        let sys = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
-        let mut v = Vec::new();
-        for dir in sys.split(':').filter(|s| !s.is_empty()) {
-            let Ok(text) = std::fs::read_to_string(Path::new(dir).join("mime/subclasses")) else { continue };
-            v.extend(text.lines().filter_map(|l| l.split_once(' ')).map(|(c, p)| (c.to_owned(), p.to_owned())));
-        }
-        v
-    });
-    let mut out: Vec<String> = Vec::new();
-    for (child, parent) in SUBCLASSES.iter() {
-        if child == mime && !out.iter().any(|p| p == parent) {
-            out.push(parent.clone());
-        }
-    }
+    let mut out: Vec<String> = mime::broader_of(mime).to_vec();
     if mime.starts_with("text/") && mime != "text/plain" && !out.iter().any(|p| p == "text/plain") {
         out.push("text/plain".into());
+    }
+    out
+}
+
+/// Every broader type `mime` is a kind of, nearest first (an Android
+/// package is a Java archive, which is a zip).
+fn ancestors(mime: &str) -> Vec<String> {
+    let mut out = parents(mime);
+    let mut k = 0;
+    while k < out.len() && out.len() < 16 {
+        for p in parents(&out[k]) {
+            if p != mime && !out.contains(&p) {
+                out.push(p);
+            }
+        }
+        k += 1;
     }
     out
 }
@@ -364,19 +457,22 @@ pub fn handler(mime: &str) -> Option<Handler> {
     if let Some(bin) = ours(mime) {
         return Some(Handler::Ours(bin));
     }
-    let mut types = vec![mime.to_owned()];
-    types.extend(parents(mime));
-    for t in &types {
-        for text in &files {
-            for file in defaults_in(text, t) {
-                if let Some(e) = entry_by_file(&file) {
-                    return Some(Handler::Entry(Box::new(e)));
-                }
-            }
-        }
-    }
+    // Then whoever is the default for this very kind, or says it opens
+    // it; then Olo's app that takes it as a narrower kind of what it
+    // opens (a kind of text: StyledEdit); then the same for the broader
+    // kinds, nearest first.
     let all = desktop_entry::all_cached();
-    types.iter().find_map(|t| all.iter().find(|e| e.mime_types.iter().any(|m| m == t)).cloned().map(|e| Handler::Entry(Box::new(e))))
+    let of = |t: &str| -> Option<Handler> {
+        let default = files.iter().flat_map(|text| defaults_in(text, t)).find_map(|file| entry_by_file(&file));
+        default.or_else(|| all.iter().find(|e| e.mime_types.iter().any(|m| m == t)).cloned()).map(|e| Handler::Entry(Box::new(e)))
+    };
+    if let Some(h) = of(mime) {
+        return Some(h);
+    }
+    if let Some((_, bin)) = ours_ranked(mime).into_iter().find(|(rank, bin)| *rank == 1 && find_program(bin).is_some()) {
+        return Some(Handler::Ours(bin));
+    }
+    ancestors(mime).iter().find_map(|t| of(t))
 }
 
 // ---- the person's choices ---------------------------------------------
@@ -545,11 +641,11 @@ pub fn handlers_for(mime: &str) -> Vec<Handler> {
     if let Some(h) = handler(mime) {
         add(h, &mut out);
     }
-    for bin in ours_for(mime).iter().filter(|b| find_program(b).is_some()) {
+    for bin in ours_for(mime).into_iter().filter(|b| find_program(b).is_some()) {
         add(Handler::Ours(bin), &mut out);
     }
     let mut types = vec![mime.to_owned()];
-    types.extend(parents(mime));
+    types.extend(ancestors(mime));
     let all = desktop_entry::all_cached();
     let mut claimed: Vec<(usize, &DesktopEntry)> =
         all.iter().filter(|e| !e.no_display && e.exec.is_some() && !e.id.starts_with("olo.")).filter_map(|e| types.iter().position(|t| e.mime_types.contains(t)).map(|k| (k, e))).collect();
@@ -582,24 +678,44 @@ pub fn every_app() -> Vec<Handler> {
     out
 }
 
-type Offers = Mutex<std::collections::HashMap<String, Offer>>;
+/// What an offer was worked out from: the person's choices and the
+/// applications installed, by when each last changed.
+type Stamp = (Option<std::time::SystemTime>, Vec<Option<std::time::SystemTime>>);
+type Offers = Mutex<std::collections::HashMap<String, (Stamp, Offer)>>;
 static OFFERS: std::sync::OnceLock<Offers> = std::sync::OnceLock::new();
 
+fn offer_stamp() -> Stamp {
+    (std::fs::metadata(choices_file()).and_then(|m| m.modified()).ok(), desktop_entry::stamps())
+}
+
 /// [`handlers_for`] (and the default) as last worked out by [`warm`], if
-/// it was: what a menu built on the UI thread offers. None: not known
-/// yet.
+/// it was and still holds (the choices changed since, here or in
+/// another app, or an app was installed or removed: it doesn't): what a
+/// menu built on the UI thread offers. A few `stat`s. None: to work out
+/// ([`offer`]).
 pub fn offer_cached(mime: &str) -> Option<Offer> {
-    OFFERS.get_or_init(Default::default).lock().unwrap().get(mime).cloned()
+    let stamp = offer_stamp();
+    OFFERS.get_or_init(Default::default).lock().unwrap().get(mime).filter(|(s, _)| *s == stamp).map(|(_, o)| o.clone())
+}
+
+/// What Open With offers for `mime`: as kept, else worked out now and
+/// kept (0.1 to 0.2 ms once the desktop entries are read, 6 ms the first
+/// time in a program or after an app is installed).
+pub fn offer(mime: &str) -> Offer {
+    if let Some(o) = offer_cached(mime) {
+        return o;
+    }
+    let stamp = offer_stamp();
+    let offer = Offer { default: handler(mime).as_ref().and_then(handler_id), handlers: handlers_for(mime) };
+    OFFERS.get_or_init(Default::default).lock().unwrap().insert(mime.to_owned(), (stamp, offer.clone()));
+    offer
 }
 
 /// Work out what Open With offers for the kinds in `mimes` (a folder's:
-/// off the UI thread), for [`offer_cached`].
+/// off the UI thread), so a menu finds them at once.
 pub fn warm(mimes: impl IntoIterator<Item = String>) {
     for m in mimes {
-        if offer_cached(&m).is_none() {
-            let offer = Offer { default: handler(&m).as_ref().and_then(handler_id), handlers: handlers_for(&m) };
-            OFFERS.get_or_init(Default::default).lock().unwrap().insert(m, offer);
-        }
+        offer(&m);
     }
 }
 
@@ -903,6 +1019,97 @@ mod tests {
         assert!(matches!(Target::parse("file:///tmp/a%20b"), Target::Path(p) if p == Path::new("/tmp/a b")));
         assert!(matches!(Target::parse("https://x"), Target::Url(_)));
         assert!(matches!(Target::parse("/etc/hosts"), Target::Path(_)));
+    }
+}
+
+#[cfg(test)]
+mod opens {
+    use super::*;
+
+    /// What each of Olo's apps opens is said once (`OPENS`): the one a
+    /// kind opens in first, then the others offered for it.
+    #[test]
+    fn what_olos_apps_open() {
+        const DOCX: &str = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        assert_eq!(ours_for(DOCX), ["olo-viewer", "olo-styled-edit"], "a Word document opens in the Viewer; StyledEdit, which opens and writes them, is offered");
+        assert_eq!(ours_for("application/vnd.oasis.opendocument.text"), ["olo-viewer", "olo-styled-edit"]);
+        assert_eq!(ours_for("text/plain"), ["olo-styled-edit", "olo-viewer"]);
+        assert_eq!(ours_for("text/markdown"), ["olo-styled-edit", "olo-viewer"]);
+        assert_eq!(ours_for("application/rtf"), ["olo-styled-edit", "olo-viewer"]);
+        assert_eq!(ours_for("text/html"), ["olo-chrome", "olo-styled-edit", "olo-viewer"]);
+        assert_eq!(ours_for("image/png"), ["olo-viewer"]);
+        assert_eq!(ours_for("application/epub+zip"), ["olo-viewer"]);
+        assert_eq!(ours_for("application/x-7z-compressed"), ["olo-viewer"]);
+        assert_eq!(ours_for("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"), ["olo-viewer"]);
+        assert_eq!(ours_for("inode/directory"), ["olo-tracker"]);
+        assert_eq!(ours_for("x-scheme-handler/https"), ["olo-chrome"]);
+        assert!(ours_for("application/x-nothing-olo-opens").is_empty());
+        // A name however long and dotted is the kind its last extension
+        // says.
+        assert_eq!(kind_of("Compare A.B and A.B - edits CLEAN (1) (1).docx", false), DOCX);
+        // Broader kinds: a kind of text or of XML is StyledEdit's, after
+        // the app for the kind itself; a picture that is XML stays the
+        // Viewer's, and can be edited.
+        assert_eq!(ours_ranked("application/x-desktop"), [(1, "olo-styled-edit"), (2, "olo-viewer")]);
+        assert_eq!(ours_for("image/svg+xml"), ["olo-viewer", "olo-styled-edit"]);
+        assert_eq!(ours("application/x-desktop"), None, "not said to other programs, nor before an app that says it opens the very kind");
+        // Every app named is one of Olo's programs, and every kind is a
+        // type or a family.
+        for app in OPENS {
+            assert!(app.bin.starts_with("olo-"), "{}", app.bin);
+            for k in app.opens.iter().chain(app.narrower).chain(app.also) {
+                assert!(k.split_once('/').is_some_and(|(a, b)| !a.is_empty() && !b.is_empty()), "{}: {k}", app.bin);
+            }
+        }
+        // Every extension the apps read (`olo_preview::load`, StyledEdit's
+        // Open) is a kind its app is offered for, where this computer's
+        // shared-mime-info knows the name at all.
+        if mime::known().is_empty() {
+            return;
+        }
+        let viewer = "svg svgz pdf pptx ppsx potx md markdown docx odt rtf odp xlsx xlsm xlsb xls ods csv tsv ttf otf ttc opus aiff wma mka mp3 flac ogg wav m4a mp4 mkv webm mov avi \
+                      jar apk epub zip tar gz tgz bz2 xz zst 7z rar tar.gz tar.bz2 tar.xz tar.zst cpio iso png jpg jpeg gif webp avif heic tiff bmp ico jxl txt log json toml yaml xml html rs py sh c";
+        let edit = "md markdown docx odt rtf txt log json toml yaml yml xml html rs py sh c h cpp js css csv sql";
+        let mut missing = Vec::new();
+        for (bin, exts) in [("olo-viewer", viewer), ("olo-styled-edit", edit)] {
+            for ext in exts.split_whitespace() {
+                let kind = kind_of(&format!("a.{ext}"), false);
+                if kind != "application/octet-stream" && !ours_for(&kind).contains(&bin) {
+                    missing.push(format!("{bin} .{ext} ({kind})"));
+                }
+            }
+        }
+        assert!(missing.is_empty(), "not offered for what they open: {missing:#?}");
+        assert_eq!(kind_of("a.json", false), "application/json", "not the schema, which claims the name alike");
+        assert_eq!(kind_of("a.otf", false), "font/otf");
+    }
+
+    /// How long a name's kind takes (`cargo test --release -p olo-xdg
+    /// kind_cost -- --ignored --nocapture`).
+    #[test]
+    #[ignore]
+    fn kind_cost() {
+        for name in ["notes.txt", "a.json", "a.py", "report.docx", "a.ogg", "archive.tar.gz", "README"] {
+            let t = std::time::Instant::now();
+            let mut n = 0;
+            for _ in 0..100_000 {
+                n += kind_of(std::hint::black_box(name), false).len();
+            }
+            println!("{name}: {:.0} ns a name ({})", t.elapsed().as_secs_f64() * 1e9 / 100_000.0, n / 100_000);
+        }
+    }
+
+    /// How long working out one kind's Open With takes, cold (`cargo test
+    /// --release -p olo-xdg open_with_cost -- --ignored --nocapture`).
+    #[test]
+    #[ignore]
+    fn open_with_cost() {
+        for kind in ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain", "image/png", "application/x-nothing"] {
+            let t = std::time::Instant::now();
+            let n = handlers_for(kind).len();
+            let d = handler(kind).is_some();
+            println!("{kind}: {n} offered, a default {d}, in {:.2} ms", t.elapsed().as_secs_f64() * 1e3);
+        }
     }
 }
 

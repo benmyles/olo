@@ -3048,12 +3048,32 @@ it.
 - `open_with`: Open With, the same in every app that shows files
   (Tracker's windows and desktop, Quick Look, the file panels).
   `open_with::kind_of(names)` is the kind a selection all is (None:
-  mixed); `open_with::menu(kind)` the submenu: the apps worked out for
-  it (`olo_xdg::open::offer_cached`, so warm the kinds where the files
-  are listed, off the UI thread: `olo_xdg::open::warm`), the one it
-  opens in marked "(default)", Other…, and Always Open With ▸ (the
-  kind's checked) to make another its default; a kind no app knows gets
-  Other… alone. `open_with::is_command(cmd)` tells its commands, and
+  mixed); `open_with::menu(kind)` the submenu, **always there for a
+  file**: the apps worked out for it (`olo_xdg::open::offer`: as kept,
+  else worked out then, 0.1 to 0.2 ms; warm the kinds where the files
+  are listed, off the UI thread, `olo_xdg::open::warm`, so a menu finds
+  them; what's kept holds while the person's choices and the installed
+  apps are as they were, a few `stat`s to tell), the one it opens in
+  marked "(default)", Other…, and Always Open With ▸ (the kind's
+  checked) to make another its default; a kind no app knows gets Other…
+  alone. (The submenu was missing for any kind not warmed: a file whose
+  kind came after the listing, and every kind after an Always Open
+  With, which forgot them all.)
+  **What each of Olo's apps opens is said once, in
+  `olo_xdg::open::OPENS`**: per app, `opens` (the kinds it is the app
+  for: a type, or a family, "text/*"), `narrower` (kinds whose every
+  narrower kind it takes too, by shared-mime-info's subclasses: a kind
+  of text or XML is StyledEdit's, after any installed app that says it
+  opens that very kind) and `also` (offered in Open With without being
+  what the kind opens in: StyledEdit for a Word or OpenDocument text,
+  the Viewer for text). Open With, what a double click opens
+  (`open::handler`) and the entries written for other programs
+  (`open::for_others`, from `opens` alone) all read it, so **an app
+  that learns a format is added there and nowhere else**; the test
+  `what_olos_apps_open` holds every extension the Viewer and StyledEdit
+  read to it (add the extension to the test's lists with the reader).
+  A name two kinds claim alike (`*.json`: JSON and a JSON schema) is
+  the broader of them (`mime::from_name`). `open_with::is_command(cmd)` tells its commands, and
   `open_with::run(cmd, kind, paths, cx)` does one: opens with the app
   (Always: and makes it the kind's, `open::set_default`), on a thread,
   or opens Other…, `OpenWithWin` (every app that opens files,

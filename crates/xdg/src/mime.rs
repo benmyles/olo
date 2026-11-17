@@ -186,7 +186,51 @@ fn from_name_globs(name: &str) -> Option<String> {
     hits.extend(suffixes(name).iter().filter_map(|k| db.exact.get(k)).flatten().copied());
     let (lower_chars, exact_chars): (Vec<char>, Vec<char>) = (lower.chars().collect(), name.chars().collect());
     hits.extend(db.others.iter().filter(|(i, p)| glob_match(p, if db.all[*i].case_sensitive { &exact_chars } else { &lower_chars })).map(|(i, _)| *i));
-    hits.into_iter().map(|i| &db.all[i]).max_by_key(|g| (g.weight, g.pattern.len())).map(|g| g.mime.clone())
+    let best = hits.iter().map(|i| &db.all[*i]).map(|g| (g.weight, g.pattern.len())).max()?;
+    let mut tied: Vec<&str> = hits.iter().map(|i| &db.all[*i]).filter(|g| (g.weight, g.pattern.len()) == best).map(|g| g.mime.as_str()).collect();
+    tied.dedup();
+    if let [one] = tied[..] {
+        return Some(one.to_owned());
+    }
+    // Several kinds claim the name alike (`*.json`: JSON, and a JSON
+    // schema, which is a kind of JSON): the broader of them, the one the
+    // others are kinds of; none is, the last, as before. (It took the
+    // last always, so every `.json` was a schema, which no app of Olo's
+    // said it opened.)
+    let kinds_of = |t: &str| tied.iter().filter(|o| broader_of(o).iter().any(|p| p == t)).count();
+    let broader = tied.iter().copied().max_by_key(|t| kinds_of(t));
+    broader.filter(|t| kinds_of(t) > 0).or(tied.last().copied()).map(str::to_owned)
+}
+
+/// The broader kinds `mime` is said to be a kind of (`text/x-rust`:
+/// `text/plain`), by shared-mime-info's subclasses.
+pub(crate) fn broader_of(mime: &str) -> &'static [String] {
+    static BY_KIND: std::sync::LazyLock<HashMap<&'static str, Vec<String>>> = std::sync::LazyLock::new(|| {
+        let mut map: HashMap<&'static str, Vec<String>> = HashMap::new();
+        for (child, parent) in subclasses() {
+            let list = map.entry(child.as_str()).or_default();
+            if !list.contains(parent) {
+                list.push(parent.clone());
+            }
+        }
+        map
+    });
+    BY_KIND.get(mime).map_or(&[], |v| v.as_slice())
+}
+
+/// shared-mime-info's subclasses: each kind and a broader kind it is one
+/// of (`text/x-rust`, `text/plain`), read once: a few hundred lines.
+fn subclasses() -> &'static [(String, String)] {
+    static SUBCLASSES: std::sync::LazyLock<Vec<(String, String)>> = std::sync::LazyLock::new(|| {
+        let sys = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
+        let mut v = Vec::new();
+        for dir in sys.split(':').filter(|s| !s.is_empty()) {
+            let Ok(text) = std::fs::read_to_string(Path::new(dir).join("mime/subclasses")) else { continue };
+            v.extend(text.lines().filter_map(|l| l.split_once(' ')).map(|(c, p)| (c.to_owned(), p.to_owned())));
+        }
+        v
+    });
+    &SUBCLASSES
 }
 
 /// The type of the file at `path`: folders, then the name, then a look at

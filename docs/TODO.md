@@ -47,20 +47,31 @@ something nobody here has is in "Blocked", with what it waits for.
   will work everywhere and work consistently. not just for find but
   everything that is common across apps").
 
-- **Tracker: Open With isn't there for every file an app opens** (Ben,
-  2026-11-17: "the open with in tracker doesn't seem to consistently
-  work. it doesn't appear for this file in ~/Downloads" (a `.docx` with
-  a long name: spaces, dots, parentheses) "this is another scenario
-  where things should be consistent -- an app should register the
-  extensions it supports (e.g. here StyledEdit supports it) and appear
-  in the Open With menu").
-
 - **Agent Screens: what real agents tripped on, found in their
   histories and fixed** (Ben, 2026-11-17: "go through the agent screens
   history for a sample of the real agent screens that have run and
   identify any problems the agents hit whether bugs or
   confusing/unintuitive agent ux and fix what we can to make it easier
   for agents to use with fewer mistakes and higher efficiency").
+
+- **The palette's `/ask` knows it was asked from the Terminal** (Ben,
+  2026-11-17: "the command pallete `/ask` should have tight integration
+  with the olo terminal -- if the user launches command pallete from
+  the terminal then include in the prompt context that it was launched
+  from the terminal and provide the shell type, cwd, and any other
+  useful details so that `/ask` can provide the best possible answer").
+
+- **The palette's `/ask`: Return copies the answer's snippet and the
+  palette goes away** (Ben, 2026-11-17: "in the `/ask` command pallete
+  if the user hits enter to copy the response snippet then the command
+  pallete should also go away/close").
+
+- **The file panel remembers, per app, where it was and how it was
+  sorted** (Ben, 2026-11-17: "when the file picker is shown for an app
+  it should remember the last location and sort column/order etc that
+  was used for the file picker in that app. i know at least in slack
+  this doesn't happen and i have to go find it again every time and
+  change the sort order every time").
 
 ## Done, waiting for Ben to try or confirm
 
@@ -5912,6 +5923,26 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Tracker: Open With isn't there for every file an app opens**~~
+  (Ben, 2026-11-17: "the open with in tracker doesn't seem to
+  consistently work. it doesn't appear for this file [a .docx in
+  Downloads] ... an app should register the extensions it supports
+  (e.g. here StyledEdit supports it) and appear in the Open With menu";
+  done the same day). Two causes. The submenu was only there for kinds
+  worked out ahead as the folder was listed, and choosing Always Open
+  With once forgot every kind but its own until the folder was listed
+  again: now a menu works out what it wasn't given (0.1 to 0.2 ms), and
+  what's kept is dropped when the choices or the installed apps change,
+  in any app. And which of Olo's apps opens what was a rule by kind
+  that the apps' own readers had drifted from: now one table
+  (`olo_xdg::open::OPENS`) says what each app opens and is offered for,
+  held by a test to every extension the Viewer and StyledEdit read.
+  Newly offered: StyledEdit for Word and OpenDocument text (and SVG and
+  other XML); StyledEdit and the Viewer for JSON (every `.json` was
+  taken for a JSON schema), YAML, SQL, JavaScript; the Viewer for EPUB,
+  jar, apk, 7z, rar, xz, bz2, zst, cpio, disc images, old and
+  macro-enabled Excel sheets, PowerPoint shows and templates.
 
 - ~~**Tracker: dragging a file by its name only sometimes works**~~
   (Ben, 2026-11-17: "it always works if i drag by icon but only
