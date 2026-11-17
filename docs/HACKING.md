@@ -16776,7 +16776,19 @@ put it away.
   window, or a layer) is sent a frame callback at once
   (`popup_destroyed`): the kit draws on frames, and a still screen
   makes none, so a menu's window otherwise showed the menu gone only at
-  the next change on screen.
+  the next change on screen. **A Copy chosen from a menu**: the menu's
+  popup has the keyboard, the keyboard goes back to the window a turn
+  after the popup is destroyed (`popup_destroyed`'s idle step: the
+  popup manager must have seen it go), and the program sets the
+  clipboard right after closing its menu, in between, when the
+  keyboard is the dead popup's: smithay refuses a selection from a
+  client without the keyboard, in silence. So the program whose menu
+  just went counts as having it until it's given back
+  (`AnvilState::menu_gone`, asked by the vendored smithay's
+  `DataDeviceHandler::selection_without_focus`, Olo's addition there).
+  (Copy and Cut in Tracker's right-click menu did nothing, and every
+  menu's Copy chosen with the mouse, where ⌘C worked: Ben,
+  2026-11-17.)
 
 ## The emoji picker (apps/emoji-picker, app_server insert.rs)
 

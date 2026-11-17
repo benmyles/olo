@@ -128,6 +128,14 @@ pub trait DataDeviceHandler: Sized + SelectionHandler + WaylandDndGrabHandler {
     fn action_choice(&mut self, available: WlDndAction, preferred: WlDndAction) -> WlDndAction {
         default_action_chooser(available, preferred)
     }
+
+    /// Olo: whether `client` may set the selection though the keyboard
+    /// isn't its just now (a compositor that hands the keyboard back a
+    /// moment after a client's menu closes: the client still has it, as
+    /// far as a Copy chosen from that menu goes). Never, unless said.
+    fn selection_without_focus(&mut self, _client: &Client) -> bool {
+        false
+    }
 }
 
 /// Handler for wayland client initiated drag'n'drop

@@ -365,8 +365,14 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         // other program, as Deskbar's right after a window's tab menu
         // put away with Escape).
         let gone = surface.wl_surface().clone();
+        // Its program still has the keyboard, as far as setting the
+        // clipboard goes, until it's given back below (`menu_gone`).
+        if self.seat.get_keyboard().is_some_and(|k| k.with_grab(|_, grab| grab.is::<PopupKeyboardGrab<Self>>()).unwrap_or(false)) {
+            self.menu_gone = gone.client().map(|c| c.id());
+        }
         let root = self.popup_root_focus(&PopupKind::Xdg(surface));
         self.handle.insert_idle(move |state| {
+            state.menu_gone = None;
             state.popups.cleanup();
             // A parent menu still open keeps its grab (and the keyboard).
             let open = root.as_ref().and_then(|r| r.wl_surface()).is_some_and(|w| smithay::desktop::PopupManager::popups_for_surface(&w).any(|(p, _)| p.alive() && *p.wl_surface() != gone));

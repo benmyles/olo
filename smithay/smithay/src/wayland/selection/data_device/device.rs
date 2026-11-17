@@ -145,8 +145,13 @@ where
                 debug!(serial = ?serial, client = ?client, "denying drag from client without implicit grab");
             }
             wl_data_device::Request::SetSelection { source, .. } => {
+                // (Olo: or a client the compositor says still has it:
+                // `DataDeviceHandler::selection_without_focus`.)
+                let focused = seat
+                    .get_keyboard()
+                    .is_some_and(|keyboard| keyboard.client_of_object_has_focus(&resource.id()));
                 let seat_data = match seat.get_keyboard() {
-                    Some(keyboard) if keyboard.client_of_object_has_focus(&resource.id()) => seat
+                    Some(_) if focused || handler.selection_without_focus(client) => seat
                         .user_data()
                         .get::<RefCell<SeatData<D::SelectionUserData>>>()
                         .unwrap(),

@@ -41,12 +41,6 @@ something nobody here has is in "Blocked", with what it waits for.
   band, shows at all of them). Why isn't known yet; Tracker's drop mark
   goes through the list (`ListModel::mark_drop`) instead.
 
-- **Tracker: Copy (and Paste?) in a file's right-click menu does
-  nothing, though the shortcut works** (Ben, 2026-11-17: "check we have
-  a bugfix todo for copy (and maybe paste?) not working via the right
-  click menu on a file in tracker even though it did work via
-  shortcut").
-
 - **Deskbar: the red dot alone sits where the blue one does** (Ben,
   2026-11-17, with a picture of his Deskbar: "if there is no blue dot
   then the red dot should still be right aligned ie where the blue dot
@@ -57,6 +51,11 @@ something nobody here has is in "Blocked", with what it waits for.
   the local build directory when offering an upgrade and if more than
   one option is found when clicking upgrade ask the user which one they
   want to upgrade to").
+
+- **Telegram and Phone: react to a message from its right-click menu**
+  (Ben, 2026-11-17: "right clicking on a message in telegram or phone
+  should give me a menu where i can choose to react with an emoji and
+  let me pick an emoji reaction").
 
 - **Agent Screens: what real agents tripped on, found in their
   histories and fixed** (Ben, 2026-11-17: "go through the agent screens
@@ -5922,6 +5921,21 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Tracker: Copy (and Paste?) in a file's right-click menu does
+  nothing, though the shortcut works**~~ (Ben, 2026-11-17; done the
+  same day). Reproduced: Copy (and Cut) chosen from a file's menu left
+  the clipboard as it was; ⌘C filled it. The cause was app_server's,
+  and every program's menus had it, the menu bar's Copy chosen with the
+  mouse too: a menu has the keyboard while it's open, app_server gives
+  it back to the window a turn after the menu closes, and a Copy chosen
+  from the menu sets the clipboard in between, when the keyboard is
+  nobody's: refused, in silence. Now the program whose menu just closed
+  may still set the clipboard until its window has the keyboard back.
+  Tried: Copy from a file's menu, then Paste from the folder's menu,
+  made the copy; Cut the same. Paste itself was never broken (it only
+  had nothing to paste). **Needs the new app_server** (after the
+  upgrade).
 
 - ~~**Tracker's list view takes no drops**~~ (found 2026-11-17, done
   the same day). A file dragged onto a folder's row in the list view

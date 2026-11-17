@@ -136,6 +136,14 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// What had the keyboard as a menu's popup grab began, for when the
     /// menu goes (the grab itself remembers only the menu's parent).
     pub keyboard_before_popup: Option<crate::focus::KeyboardFocusTarget>,
+    /// The program whose menu (a popup that had the keyboard) has just
+    /// gone, until the keyboard is back with its window (`popup_destroyed`
+    /// gives it back a turn later): it may still set the clipboard. A
+    /// Copy chosen from a menu puts the menu away and copies at once: the
+    /// keyboard was the dead popup's then, nobody's program, and the copy
+    /// was refused (Copy in Tracker's right-click menu did nothing, and
+    /// every menu's Copy chosen with the mouse: Ben, 2026-11-17).
+    pub menu_gone: Option<smithay::reexports::wayland_server::backend::ClientId>,
     /// Touchpad scrolls gliding on after the fingers lift.
     /// Finger scrolls and glides, sent on the frame clock (`pace.rs`).
     pub pacer: crate::pace::Pacer,
@@ -400,6 +408,10 @@ pub struct DndIcon {
 impl<BackendData: Backend> DataDeviceHandler for AnvilState<BackendData> {
     fn data_device_state(&mut self) -> &mut DataDeviceState {
         &mut self.data_device_state
+    }
+
+    fn selection_without_focus(&mut self, client: &smithay::reexports::wayland_server::Client) -> bool {
+        self.menu_gone.as_ref() == Some(&client.id())
     }
 }
 
@@ -1231,6 +1243,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             space: Space::default(),
             popups: PopupManager::default(),
             keyboard_before_popup: None,
+            menu_gone: None,
             pacer: Default::default(),
             pinching: false,
             touch_pointer: None,
