@@ -16865,7 +16865,20 @@ put it away.
 ## The emoji picker (apps/emoji-picker, app_server insert.rs)
 
 `olo-emoji-picker` puts an emoji into the field that had the keyboard,
-in any app. ⌃⌘Space (Windows' keys: ⊞.; BeOS': ⌃⌘Space;
+in any app; or, asked by an app (`olo-emoji-picker --pick`, through
+`olo_kit::pick_emoji()`, which waits: off the UI thread), it's a copy of
+its own, shown at once over everything, that prints the one picked and
+ends (nothing printed if put away): React ▸ Other… in Telegram's and
+Phone's message menus (Ben, 2026-11-17: "right clicking on a message in
+telegram or phone should give me a menu where i can choose to react
+with an emoji and let me pick an emoji reaction"). Telegram sends it
+as the message's reaction (the chat may not allow it: Telegram says).
+Phone's balloons have React ▸ an iPhone's six (Love, Like, Dislike,
+Laugh, Emphasize, Question) and Other…, sent as a phone sends a
+reaction by text, "Loved “…”" or "Reacted 🥳 to “…”", the draft left
+as it is (`Phone::react`): MAP sends text, and a phone's own reactions
+aren't reachable through it; Google's Messages shows those as
+reactions, an iPhone as words. ⌃⌘Space (Windows' keys: ⊞.; BeOS': ⌃⌘Space;
 `Shortcut::EmojiPicker`, "emoji-picker") starts `olo-emoji-picker
 --toggle`, which hands the toggle to the running copy (resident, as the
 palette is); the same overlay (a full-output layer, the keyboard its

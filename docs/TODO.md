@@ -41,11 +41,6 @@ something nobody here has is in "Blocked", with what it waits for.
   band, shows at all of them). Why isn't known yet; Tracker's drop mark
   goes through the list (`ListModel::mark_drop`) instead.
 
-- **Telegram and Phone: react to a message from its right-click menu**
-  (Ben, 2026-11-17: "right clicking on a message in telegram or phone
-  should give me a menu where i can choose to react with an emoji and
-  let me pick an emoji reaction").
-
 - **Opening in an app with several windows asks which window** (Ben,
   2026-11-17: "when something is opening with the default app, e.g. a
   url opening in chrome, and that app has > 1 windows open and the url
@@ -5948,6 +5943,16 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Telegram and Phone: react to a message from its right-click
+  menu**~~ (Ben, 2026-11-17; done the same day). Telegram's message
+  menu had React ▸ ten emoji; it now has Other… too, which brings up
+  Olo's emoji picker for any. Phone's balloons have React ▸ an iPhone's
+  six (Love, Like, Dislike, Laugh, Emphasize, Question) and Other…:
+  the phone can only be given text, so a reaction goes as a phone sends
+  one by text ("Loved “…”", "Reacted 🥳 to “…”"), which Google's
+  Messages shows as a reaction and an iPhone as those words. Tried in
+  the demo Phone: Love, and Other… through the picker.
 
 - ~~**Phone: archive conversations, as Telegram's are**~~ (Ben,
   2026-11-17; done the same day). The phone itself can't archive (what

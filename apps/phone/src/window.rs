@@ -52,6 +52,10 @@ const LIST_MIN: f32 = 230.0;
 const HEADER: f32 = 60.0;
 /// The archive's band back to the conversations.
 const ARCHIVE_BACK: f32 = 28.0;
+
+/// The reactions a balloon's menu offers: an iPhone's (its Tapbacks),
+/// each with what it's called when sent by text.
+const REACTIONS: [(&str, &str); 6] = [("❤️", "Love"), ("👍", "Like"), ("👎", "Dislike"), ("😂", "Laugh"), ("‼️", "Emphasize"), ("❓", "Question")];
 /// A message's text, and the small print (its time).
 const TEXT: f32 = 13.0;
 const META: f32 = 10.5;
@@ -172,6 +176,9 @@ pub enum Msg {
     Loaded(u64, Result<Vec<Conversation>, String>, Vec<Person>),
     /// A message sent, or why it wasn't (with what it was, to put back).
     Sent(Result<(), String>, String),
+    /// An emoji picked to react with (React ▸ Other…), for message
+    /// `index` of conversation `key`.
+    Reacted(String, usize, String),
     /// The clock's style changed: 24 hours or 12.
     Clock(bool),
     /// Started again while running, with these arguments.
@@ -622,11 +629,20 @@ impl Phone {
     }
 
     fn send(&mut self, text: String, cx: &mut Cx<Self>) {
+        self.send_text(text, true, cx);
+    }
+
+    /// `text` sent to the conversation shown; `from_draft`: it's what was
+    /// typed (the field emptied, and what wasn't sent put back), else
+    /// something sent beside it (a reaction: the field left as it is).
+    fn send_text(&mut self, text: String, from_draft: bool, cx: &mut Cx<Self>) {
         let Some((to, _)) = self.writing_to() else { return };
         if self.sending {
             return;
         }
-        self.draft.update(cx, |f, cx| f.set_text("", cx));
+        if from_draft {
+            self.draft.update(cx, |f, cx| f.set_text("", cx));
+        }
         (self.trouble, self.to_end) = (None, true);
         if self.demo {
             let key = key_of(&to);
@@ -647,9 +663,29 @@ impl Phone {
                 Ok(r) => Err(r.error.unwrap_or_else(|| "The phone didn’t take it.".into())),
                 Err(_) => Err("The phone service isn’t running.".into()),
             },
-            move |done| Msg::Sent(done, said),
+            move |done| Msg::Sent(done, if from_draft { said } else { String::new() }),
         );
         cx.invalidate();
+    }
+
+    /// A reaction to message `index` of the conversation shown, as a
+    /// phone sends one by text (an iPhone's to a number off iMessage:
+    /// Google's Messages shows it as a reaction, an iPhone as its words):
+    /// "Loved “…”", "Reacted 🥳 to “…”". (MAP sends text; a phone's own
+    /// reactions aren't reachable through it.)
+    fn react(&mut self, index: usize, emoji: &str, cx: &mut Cx<Self>) {
+        let Some(m) = self.thread().and_then(|t| t.messages.get(index)) else { return };
+        let quoted = format!("\u{201c}{}\u{201d}", m.text.trim());
+        let text = match emoji {
+            "❤️" => format!("Loved {quoted}"),
+            "👍" => format!("Liked {quoted}"),
+            "👎" => format!("Disliked {quoted}"),
+            "😂" => format!("Laughed at {quoted}"),
+            "‼️" => format!("Emphasized {quoted}"),
+            "❓" => format!("Questioned {quoted}"),
+            other => format!("Reacted {other} to {quoted}"),
+        };
+        self.send_text(text, false, cx);
     }
 
     /// The conversation as text (Edit ▸ Copy Conversation).
@@ -761,6 +797,11 @@ impl View for Phone {
                 self.contacts = contacts;
                 self.data += 1;
                 self.mark_read(cx);
+            }
+            Msg::Reacted(key, index, emoji) => {
+                if matches!(&self.shown, Shown::Thread(k) if *k == key) {
+                    self.react(index, &emoji, cx);
+                }
             }
             Msg::Sent(done, text) => {
                 self.sending = false;
@@ -1892,11 +1933,37 @@ impl Phone {
                     });
                     let Some((index, code)) = hit else { return };
                     let Some(text) = v.thread().and_then(|t| t.messages.get(index)).map(|m| m.text.clone()) else { return };
+                    let key = v.thread().map(|t| t.key.clone()).unwrap_or_default();
                     let mut menu = Menu::new("").item("Copy", "copy");
                     if code.is_some() {
                         menu = menu.item("Copy Code", "copy-code");
                     }
-                    olo_kit::menu::context_menu(cx, menu, e.position, move |command, _| {
+                    // A reaction: an iPhone's six, or any emoji.
+                    let mut react = Menu::new("React");
+                    for (emoji, what) in REACTIONS {
+                        react = react.item(format!("{emoji}  {what}"), format!("react:{emoji}"));
+                    }
+                    let can_send = v.state.paired() || v.demo;
+                    menu = menu.separator().submenu(react.separator().item("Other…", "react-other")).enabled(can_send);
+                    let me = cx.view_ref();
+                    let to = cx.messenger();
+                    olo_kit::menu::context_menu(cx, menu, e.position, move |command, cx| {
+                        if let Some(emoji) = command.strip_prefix("react:") {
+                            let emoji = emoji.to_owned();
+                            me.update(cx, move |v, cx| v.react(index, &emoji, cx));
+                            return;
+                        }
+                        if command == "react-other" {
+                            let (to, key) = (to.clone(), key.clone());
+                            // (The picker waits for the person: on a
+                            // thread of its own.)
+                            std::thread::spawn(move || {
+                                if let Some(emoji) = olo_kit::pick_emoji() {
+                                    to.send(Msg::Reacted(key, index, emoji));
+                                }
+                            });
+                            return;
+                        }
                         let what = if command == "copy-code" { code.clone().unwrap_or_default() } else { text.clone() };
                         olo_kit::clipboard::write(ClipboardItem::new_string(what));
                     });

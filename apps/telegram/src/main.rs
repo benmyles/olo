@@ -855,6 +855,16 @@ impl Tg {
                 let mine = m.reactions.iter().any(|r| r.mine && r.emoji == e);
                 self.backend.send(Cmd::React { chat, id, emoji: if mine { None } else { Some(e) } });
             }
+            // An emoji from the picker, on its thread (it waits for the
+            // person), back as `Picked::React`.
+            "react-other" => {
+                let to = cx.messenger();
+                std::thread::spawn(move || {
+                    if let Some(emoji) = olo_kit::pick_emoji() {
+                        to.send(Box::new(Picked::React { chat, id, emoji }));
+                    }
+                });
+            }
             _ => {}
         }
         cx.invalidate();
@@ -1127,6 +1137,9 @@ impl Tg {
     /// What a picker's row or an Info window's setting asks.
     fn picked(&mut self, picked: Picked, cx: &mut Cx<Self>) {
         match picked {
+            Picked::React { chat, id, emoji } => {
+                self.backend.send(Cmd::React { chat, id, emoji: Some(emoji) });
+            }
             Picked::Forward { from, ids, to } => {
                 self.backend.send(Cmd::Forward { from, ids, to });
                 self.open_chat(to, None, cx);
@@ -1751,6 +1764,12 @@ enum Picked {
     Contact(ChatId),
     /// A chat's setting ("chat:mute", …).
     Chat(ChatId, &'static str),
+    /// A reaction picked for a message (React ▸ Other…).
+    React {
+        chat: ChatId,
+        id: MsgId,
+        emoji: String,
+    },
 }
 
 /// A row to pick: a chat or a contact, as the main window knows it.

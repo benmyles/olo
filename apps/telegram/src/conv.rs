@@ -834,6 +834,9 @@ fn message_menu(m: &Message, chat: &olo_tg::Chat) -> Menu {
         let mine_too = m.reactions.iter().any(|r| r.mine && r.emoji == e);
         react = react.item(e, format!("react:{e}")).checked(mine_too);
     }
+    // Any other, from Olo's emoji picker (as the chat allows it: Telegram
+    // says if it doesn't).
+    react = react.separator().item("Other…", "react-other");
     let mut menu = Menu::new("").item("Reply", "reply").enabled(m.pending.is_none() && m.service.is_none());
     if mine && has_text {
         menu = menu.item("Edit", "edit").enabled(m.pending.is_none());

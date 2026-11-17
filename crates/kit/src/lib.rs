@@ -31,6 +31,21 @@ mod lock;
 pub mod menu;
 pub mod open_with;
 pub mod para;
+
+/// An emoji the person picks, for an app (a reaction): Olo's emoji
+/// picker shown over everything for it (`olo-emoji-picker --pick`), its
+/// choice read back. None if it's put away, or can't start. Waits for
+/// the person: call it off the UI thread (`Cx::work`).
+pub fn pick_emoji() -> Option<String> {
+    let out = std::process::Command::new(olo_xdg::find_program("olo-emoji-picker").unwrap_or_else(|| "olo-emoji-picker".into()))
+        .arg("--pick")
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    let picked = String::from_utf8_lossy(&out.stdout).trim().to_owned();
+    (!picked.is_empty()).then_some(picked)
+}
 pub mod person;
 pub mod pictures;
 pub mod review;

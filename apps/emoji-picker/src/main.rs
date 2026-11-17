@@ -17,6 +17,11 @@
 //! It stays running between uses so it opens at once: app_server starts
 //! `olo-emoji-picker --toggle`, which hands the toggle to the running
 //! copy.
+//!
+//! `olo-emoji-picker --pick` is for an app that asks for an emoji (a
+//! reaction, in Telegram or Phone: React ▸ Other…): a copy of its own,
+//! shown at once, that prints the one picked (and a newline) and ends,
+//! or ends with nothing printed if it's put away.
 
 mod ai;
 mod data;
@@ -515,6 +520,14 @@ impl Picker {
         }
         self.hide(cx);
         let text = cell.text.to_string();
+        // For an app that asked: told it, and done.
+        if PICKING.load(Ordering::Relaxed) {
+            use std::io::Write as _;
+            let mut out = std::io::stdout().lock();
+            let _ = writeln!(out, "{text}");
+            let _ = out.flush();
+            return;
+        }
         // app_server puts it in once the keyboard is back with the window
         // that had it (our panel gone).
         let _ = std::thread::Builder::new().name("emoji-insert".into()).spawn(move || {
@@ -964,16 +977,23 @@ fn capitalised(name: &str) -> String {
     c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
 }
 
+/// Picking for an app (`--pick`): what's chosen is printed, not put in.
+static PICKING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 fn main() {
     olo_crash::install();
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if instance::forward(APP_ID, &args) {
+    let pick = args.iter().any(|a| a == "--pick");
+    PICKING.store(pick, Ordering::Relaxed);
+    if !pick && instance::forward(APP_ID, &args) {
         return;
     }
-    let toggle = args.iter().any(|a| a == "--toggle");
+    let toggle = args.iter().any(|a| a == "--toggle") || pick;
     olo_kit::run(APP_ID, move |app| {
-        olo_kit::stay_resident();
-        instance::listen(APP_ID, olo_kit::proxy());
+        if !pick {
+            olo_kit::stay_resident();
+            instance::listen(APP_ID, olo_kit::proxy());
+        }
         // The emoji, and which the font draws: off the UI thread, once.
         let proxy = olo_kit::proxy();
         let _ = std::thread::Builder::new().name("emoji-load".into()).spawn(move || {
@@ -995,6 +1015,13 @@ fn main() {
                 Err(m) => m,
             };
             let message = match message.downcast::<Closed>() {
+                // (Picking for an app: put away, chosen or not, it's done.)
+                Ok(_) if pick => {
+                    // (After this turn: the line printed is flushed, the
+                    // window gone.)
+                    olo_kit::quit();
+                    return;
+                }
                 Ok(_) => {
                     // (Unless another has come up since.)
                     if hub.showing().is_none() {
