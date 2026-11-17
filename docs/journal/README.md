@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### A window tab's menu: Hide ▸ and Close ▸
+
+*06:38* — A tab of a window group has Hide ▸ (Hide, Hide Others, Hide All) and Close ▸ (Close, Close Others, Close All), acting on the group's windows.
+
+![A window tab's menu: Hide ▸ and Close ▸](2026-11-17/063843-a-window-tab-s-menu-hide-and-close.png)
+
 ### File panels: Go to File or Folder
 
 *06:29* — Every Open, Save and folder panel opens Tracker's Go to File or Folder by its keys (⇧⌘G), or by a / or ~ typed in the list. Left: a path typed with Tab completing; right: the panel there, the file selected.

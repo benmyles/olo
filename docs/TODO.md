@@ -17,14 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **A window tab's menu: Hide ▸ and Close ▸, each with Others and All**
-  (Ben, 2026-11-16: "we need a Close All option when right clicking a
-  window tab (we have Close and Close Others already)"; then: "we need
-  Hide Others and Hide All too. just nest both of them under like Hide
-  -> ... and Close -> ..."). A window tab's right-click menu gets two
-  submenus: Close ▸ Close, Close Others, Close All, and Hide ▸ Hide,
-  Hide Others, Hide All, each acting on the tabs of that group (a close
-  asked as Close asks it: unsaved changes, a running program).
 - **A realtime test fails when the whole workspace's tests run at once**
   (found 2026-11-16: `olo-app`'s
   `realtime::tests::a_registered_thread_is_marked_and_what_it_starts_isnt`
@@ -5934,6 +5926,15 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**A window tab's menu: Hide ▸ and Close ▸, each with Others and
+  All**~~ (Ben, 2026-11-16: "we need a Close All option when right
+  clicking a window tab"; "we need Hide Others and Hide All too. just
+  nest both of them under like Hide -> ... and Close -> ..."; done
+  2026-11-17). A tab of a group has Hide ▸ Hide, Hide Others, Hide All
+  and Close ▸ Close, Close Others, Close All, acting on the group's
+  windows, each closed as its close box closes it; a window alone
+  keeps the plain Hide and Close. (HACKING, "The window menu".)
 
 - ~~**Go to File or Folder in the file panel**~~ (Ben, 2026-11-16: "i
   should be able to use the go to file/folder shortcut in a picker like

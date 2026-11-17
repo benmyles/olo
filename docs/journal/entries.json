@@ -4786,5 +4786,11 @@
   "title": "File panels: Go to File or Folder",
   "caption": "Every Open, Save and folder panel opens Tracker's Go to File or Folder by its keys (\u21e7\u2318G), or by a / or ~ typed in the list. Left: a path typed with Tab completing; right: the panel there, the file selected.",
   "image": "2026-11-17/062945-file-panels-go-to-file-or-folder.png"
+ },
+ {
+  "time": "2026-11-17T06:38:43",
+  "title": "A window tab's menu: Hide \u25b8 and Close \u25b8",
+  "caption": "A tab of a window group has Hide \u25b8 (Hide, Hide Others, Hide All) and Close \u25b8 (Close, Close Others, Close All), acting on the group's windows.",
+  "image": "2026-11-17/063843-a-window-tab-s-menu-hide-and-close.png"
  }
 ]

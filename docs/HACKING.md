@@ -16259,6 +16259,20 @@ put it away.
     show the profile's keys for every app's Close and Quit
     (`app_keys::app_key`: ⌘W and ⌘Q on a Mac, Ctrl+W and Ctrl+Q on
     Windows, Alt+W and Alt+Q on BeOS).
+  - A window in a group has Hide ▸ and Close ▸ where Hide and Close
+    are (Ben, 2026-11-16: "we need a Close All option when right
+    clicking a window tab (we have Close and Close Others already)";
+    "we need Hide Others and Hide All too. just nest both of them
+    under like Hide -> ... and Close -> ..."): the window's own (Hide
+    with its keys; Close as above), Others (`hide-others`,
+    `close-others`: every other window of its group) and All
+    (`hide-all`, `close-all`: the others first, the one asked on last;
+    `group_targets`). Each is hidden as Hide hides it
+    (`Request::Minimize`) or closed as its close box closes it
+    (`Request::Close`), so an app that asks first (unsaved changes, a
+    program running) asks for each. A window alone has the plain Hide
+    and Close. Tried headless on three StyledEdit windows in a group:
+    Hide Others, Hide All, Close Others, Close All each did so.
 
   The app is named as Deskbar names it (`olo_xdg::apps::app_name`). The
   other items are the shortcuts', done

@@ -304,7 +304,12 @@ pub fn build(f: &Facts) -> Menu {
         }
     }
     let mut m = Menu::new(f.title.clone());
-    m = shortcut(m, "hide-window", "Hide");
+    // In a group, Hide and Close are each a menu: the window, the others
+    // of its group, all of them (Ben, 2026-11-16: "we need a Close All
+    // option when right clicking a window tab (we have Close and Close
+    // Others already)"; "we need Hide Others and Hide All too. just nest
+    // both of them under like Hide -> ... and Close -> ...").
+    m = if f.grouped { m.submenu(shortcut(Menu::new("Hide"), "hide-window", "Hide").item("Hide Others", "hide-others").item("Hide All", "hide-all")) } else { shortcut(m, "hide-window", "Hide") };
     m = shortcut(m, "roll-up", if f.rolled { "Roll Down" } else { "Roll Up" });
     m = shortcut(m, "zoom", "Zoom");
     m = shortcut(m, "zoom-vertical", "Zoom Vertically");
@@ -423,20 +428,48 @@ pub fn build(f: &Facts) -> Menu {
             None => m,
         }
     };
-    m = match &f.app.close {
+    let close = |m: Menu| match &f.app.close {
         Some((label, keys, enabled)) => item(m, label.clone(), "app-close", keys.clone(), *enabled),
         None => item(m, "Close".into(), "close", app_keys(f, "close"), true),
     };
-    if f.grouped {
+    m = if f.grouped {
         // Every other window in its group (Ben, 2026-11-09: "we need a
         // "Close Others" option when right clicking a menu on a window tab
-        // that's part of a group"), as a browser's Close Other Tabs.
-        m = m.item("Close Others", "close-others");
-    }
+        // that's part of a group"), as a browser's Close Other Tabs; and
+        // every one of them.
+        m.submenu(close(Menu::new("Close")).item("Close Others", "close-others").item("Close All", "close-all"))
+    } else {
+        close(m)
+    };
     match &f.app.quit {
         Some((label, keys, enabled)) => item(m, quit_label(f, Some(label)), "app-quit", keys.clone(), *enabled),
         None => item(m, quit_label(f, None), "quit-all", app_keys(f, "quit"), true),
     }
+}
+
+/// A command for the windows of a group: whether it closes (else hides),
+/// and whether all of them (else all but the one asked on).
+fn of_group(command: &str) -> Option<(bool, bool)> {
+    match command {
+        "close-others" => Some((true, false)),
+        "close-all" => Some((true, true)),
+        "hide-others" => Some((false, false)),
+        "hide-all" => Some((false, true)),
+        _ => None,
+    }
+}
+
+/// The windows of `window`'s group a group command acts on: the others
+/// in the order listed, then (`all`) the one asked on, last, so what it
+/// shows stays put while the rest go. None for a window in no group.
+/// (`windows`: each one's id and group.)
+fn group_targets(windows: &[(u64, Option<u64>)], window: u64, all: bool) -> Vec<u64> {
+    let Some(group) = windows.iter().find(|(id, _)| *id == window).and_then(|(_, g)| *g) else { return Vec::new() };
+    let mut ids: Vec<u64> = windows.iter().filter(|(id, g)| *g == Some(group) && *id != window).map(|(id, _)| *id).collect();
+    if all {
+        ids.push(window);
+    }
+    ids
 }
 
 /// Do `command` to `window` (of `app`), off the UI thread.
@@ -455,15 +488,17 @@ pub fn perform(window: u64, app: &Owner, command: &str) {
         });
         return;
     }
-    // The other windows of its group, each closed as its own close box
-    // closes it (an app that asks first, unsaved work, still asks).
-    if command == "close-others" {
+    // The other windows of its group, or all of them (the others first,
+    // the one asked on last): each closed as its own close box closes it
+    // (an app that asks first, unsaved work or a program running, still
+    // asks), or hidden as Hide hides it.
+    if let Some((close, all)) = of_group(command) {
         let _ = std::thread::Builder::new().name("window-menu-do".into()).spawn(move || {
             let Ok(mut c) = Client::connect() else { return };
             let Ok(Reply::Windows { windows }) = c.request(&Request::ListWindows) else { return };
-            let Some(group) = windows.iter().find(|w| w.id == window).and_then(|w| w.group) else { return };
-            for w in windows.iter().filter(|w| w.group == Some(group) && w.id != window) {
-                let _ = c.request(&Request::Close { id: w.id });
+            let listed: Vec<(u64, Option<u64>)> = windows.iter().map(|w| (w.id, w.group)).collect();
+            for id in group_targets(&listed, window, all) {
+                let _ = c.request(&if close { Request::Close { id } } else { Request::Minimize { id } });
             }
         });
         return;
@@ -697,7 +732,8 @@ mod tests {
                 || c.strip_prefix("window-to:").is_some_and(|id| id.parse::<u64>().is_ok())
                 || c.strip_prefix("group-to:").is_some_and(|id| id.parse::<u64>().is_ok())
                 || c.strip_prefix("app-workspace:").is_some_and(|n| n == "none" || n.parse::<u32>().is_ok())
-                || ["send-to-back", "on-top", "close", "close-others", "quit-all", "ungroup", "float", "float-group", "unfloat", tracker::COMMAND].contains(&c.as_str());
+                || ["send-to-back", "on-top", "close", "close-others", "close-all", "hide-others", "hide-all", "quit-all", "ungroup", "float", "float-group", "unfloat", tracker::COMMAND]
+                    .contains(&c.as_str());
             assert!(known, "{c}");
         }
         // Each agent screen running, and a new one; none where the
@@ -713,8 +749,11 @@ mod tests {
         let mut alone = Vec::new();
         commands(&build(&Facts { grouped: false, ..facts.clone() }), &mut alone);
         assert!(!alone.contains(&"ungroup".to_owned()));
-        // Close Others only for a window in one, after its Close.
-        assert!(!alone.contains(&"close-others".to_owned()) && alone.ends_with(&["close".to_owned(), "quit-all".to_owned()]));
+        // Others and All, of Close and of Hide, only for a window in one:
+        // alone, a plain Hide first and a plain Close before Quit.
+        assert!(!alone.iter().any(|c| of_group(c).is_some()) && alone.ends_with(&["close".to_owned(), "quit-all".to_owned()]));
+        assert_eq!(alone.first().map(String::as_str), Some("shortcut:hide-window"));
+        assert!(matches!(build(&Facts { grouped: false, ..facts.clone() }).items.first(), Some(menu::MenuItem::Action(a)) if a.label == "Hide"));
         // Into another of its app's windows; its group too, if in one.
         assert!(all.contains(&"window-to:12".to_owned()) && all.contains(&"group-to:12".to_owned()));
         assert!(alone.contains(&"window-to:12".to_owned()) && !alone.contains(&"group-to:12".to_owned()));
@@ -812,12 +851,30 @@ mod tests {
         assert!(all.contains(&"shortcut:next-display".to_owned()) && all.contains(&"workspace:2".to_owned()));
         // Each shows the keys it has now: changed, default, or none.
         let menu = build(&facts);
+        // (The menu's own items, and those of Hide ▸ and Close ▸, which a
+        // window in a group has.)
+        fn within<'a>(menu: &'a Menu, title: &str) -> &'a Menu {
+            menu.items.iter().find_map(|i| if let menu::MenuItem::Submenu(s) = i { (s.title == title).then_some(s) } else { None }).unwrap_or_else(|| panic!("no {title} menu"))
+        }
+        let said = |menu: &Menu| -> Vec<(String, String, Option<String>)> {
+            menu.items
+                .iter()
+                .filter_map(|i| if let menu::MenuItem::Action(a) = i { Some((a.label.to_string(), a.command.to_string(), a.keys.as_ref().map(|k| k.to_string()))) } else { None })
+                .collect()
+        };
+        let item = |label: &str, command: &str, keys: Option<&str>| (label.to_owned(), command.to_owned(), keys.map(str::to_owned));
         let keys_of = |label: &str| {
-            menu.items.iter().find_map(|i| match i {
+            menu.items.iter().chain(&within(&menu, "Hide").items).chain(&within(&menu, "Close").items).find_map(|i| match i {
                 menu::MenuItem::Action(a) if a.label == label => Some(a.keys.clone()),
                 _ => None,
             })
         };
+        // In a group: Hide ▸ first, Close ▸ before Quit, each the window,
+        // the others, all.
+        assert!(matches!(menu.items.first(), Some(menu::MenuItem::Submenu(s)) if s.title == "Hide"));
+        assert_eq!(said(within(&menu, "Hide")), [item("Hide", "shortcut:hide-window", Some("⌘M")), item("Hide Others", "hide-others", None), item("Hide All", "hide-all", None)]);
+        assert_eq!(said(within(&menu, "Close")), [item("Close", "close", Some("⌘W")), item("Close Others", "close-others", None), item("Close All", "close-all", None)]);
+        assert!(matches!(&menu.items[menu.items.len() - 2..], [menu::MenuItem::Submenu(s), menu::MenuItem::Action(q)] if s.title == "Close" && q.label == "Quit Gedit"));
         assert_eq!(keys_of("Zoom"), Some(Some("⌃⌘Z".into())));
         assert_eq!(keys_of("Hide"), Some(Some("⌘M".into())));
         assert_eq!(keys_of("Center"), Some(None));
@@ -825,13 +882,12 @@ mod tests {
         // windows, under every app's keys in the profile.
         assert_eq!(keys_of("Close"), Some(Some("⌘W".into())));
         assert_eq!(keys_of("Quit Gedit"), Some(Some("⌘Q".into())));
-        assert!(all.ends_with(&["close".to_owned(), "close-others".to_owned(), "quit-all".to_owned()]));
+        assert!(all.ends_with(&["close".to_owned(), "close-others".to_owned(), "close-all".to_owned(), "quit-all".to_owned()]));
         let mut windows = facts.clone();
         windows.keys.platform = olo_protocol::shortcuts::Platform::Windows;
         let on_windows = build(&windows);
-        let said: Vec<(String, Option<String>)> =
-            on_windows.items.iter().rev().take(3).filter_map(|i| if let menu::MenuItem::Action(a) = i { Some((a.label.to_string(), a.keys.as_ref().map(|k| k.to_string()))) } else { None }).collect();
-        assert_eq!(said, [("Quit Gedit".to_owned(), Some("Ctrl+Q".to_owned())), ("Close Others".to_owned(), None), ("Close".to_owned(), Some("Ctrl+W".to_owned()))]);
+        assert_eq!(said(within(&on_windows, "Close"))[0], item("Close", "close", Some("Ctrl+W")));
+        assert_eq!(said(&on_windows).last(), Some(&item("Quit Gedit", "quit-all", Some("Ctrl+Q"))));
         // A kit app's are its own, from that window's menus: Terminal's
         // Close Tab with a tab of several, chosen in the app.
         let kit = Facts {
@@ -846,21 +902,15 @@ mod tests {
             ..facts.clone()
         };
         let kit_menu = build(&kit);
-        let last: Vec<(String, String, Option<String>)> = kit_menu
-            .items
-            .iter()
-            .rev()
-            .take(3)
-            .filter_map(|i| if let menu::MenuItem::Action(a) = i { Some((a.label.to_string(), a.command.to_string(), a.keys.as_ref().map(|k| k.to_string()))) } else { None })
-            .collect();
-        assert_eq!(
-            last,
-            [
-                ("Quit Terminal".to_owned(), "app-quit".to_owned(), Some("⌘Q".to_owned())),
-                ("Close Others".to_owned(), "close-others".to_owned(), None),
-                ("Close Tab".to_owned(), "app-close".to_owned(), Some("⌘W".to_owned()))
-            ]
-        );
+        assert_eq!(said(within(&kit_menu, "Close")), [item("Close Tab", "app-close", Some("⌘W")), item("Close Others", "close-others", None), item("Close All", "close-all", None)]);
+        assert_eq!(said(&kit_menu).last(), Some(&item("Quit Terminal", "app-quit", Some("⌘Q"))));
+        // Whom a group's commands act on: the others as listed, then, for
+        // All, the one asked on; nobody for a window in no group.
+        let listed = [(1, Some(7)), (2, None), (3, Some(7)), (4, Some(9)), (5, Some(7))];
+        assert_eq!(group_targets(&listed, 3, false), [1, 5]);
+        assert_eq!(group_targets(&listed, 3, true), [1, 5, 3]);
+        assert_eq!(group_targets(&listed, 2, true), Vec::<u64>::new());
+        assert_eq!((of_group("close-all"), of_group("hide-others"), of_group("close")), (Some((true, true)), Some((false, false)), None));
         let Some(menu::MenuItem::Submenu(spaces)) = menu.items.iter().find(|i| matches!(i, menu::MenuItem::Submenu(s) if s.title == "Move to Workspace")) else { panic!() };
         let menu::MenuItem::Action(first) = &spaces.items[0] else { panic!() };
         // Every display's workspaces, named for theirs, left to right: its
