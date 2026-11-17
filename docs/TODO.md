@@ -139,6 +139,13 @@ something nobody here has is in "Blocked", with what it waits for.
   submenus: Close ▸ Close, Close Others, Close All, and Hide ▸ Hide,
   Hide Others, Hide All, each acting on the tabs of that group (a close
   asked as Close asks it: unsaved changes, a running program).
+- **A realtime test fails when the whole workspace's tests run at once**
+  (found 2026-11-16: `olo-app`'s
+  `realtime::tests::a_registered_thread_is_marked_and_what_it_starts_isnt`
+  failed at `register_self(8).unwrap()` in `cargo test --workspace
+  --no-fail-fast`, and passes alone). Find what refuses the thread then
+  (rtkit's budget for one user with many test programs asking at once?)
+  and have the test not depend on it.
 - **MGLRU's thrash protection at 250 ms: enough runs to say** (found
   2026-11-16, kernel/TUNING.md). At the kernel's advised 1000 ms it
   ended a program that fitted in memory in 3 runs of 9, so it isn't

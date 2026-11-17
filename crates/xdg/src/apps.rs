@@ -76,6 +76,7 @@ pub const PREFERENCE_PANELS: &[(&str, &str, &str)] = &[
     ("network", "Network", "network-prefs"),
     ("notifications", "Notifications", "notifications"),
     ("performance", "Performance", "performance"),
+    ("phone", "Phone", "phone"),
     ("power", "Power", "power"),
     ("screensaver", "Screen Saver", "screensaver"),
     ("security", "Security", "security"),

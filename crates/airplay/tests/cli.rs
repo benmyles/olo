@@ -126,7 +126,7 @@ fn a_film_played_and_one_stopped() {
 
     // Nothing is playing now, and nothing is left saying one is.
     assert_eq!(run(&state, &["playing"]), (true, "Nothing is playing.\n".into()));
-    assert_eq!(std::fs::read_dir(state.join("run/olo-airplay")).unwrap().count(), 0);
+    assert_eq!(std::fs::read_dir(state.join("run/olo-state/airplay")).unwrap().count(), 0);
     assert!(!run(&state, &["stop"]).0 && !run(&state, &["pause", "Front Room"]).0);
 
     // A long one: said to be playing, paused and gone on with from
