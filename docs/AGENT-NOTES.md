@@ -536,3 +536,13 @@ Each note: what to do, then why (what happened), then how to apply it.
 - **Self-healing, not patches**: design what can fail so it recovers by
   itself (an HTTP MCP server reconnects, stdio never does), never with a
   manual step for Ben.
+- **BlueZ 5.87 can be stuck busy with the phone.** After the phone
+  goes out of reach, BlueZ's hands-free connecting fails ("Host is
+  down") and never ends, so every ConnectProfile after is refused
+  `org.bluez.Error.InProgress: br-connection-busy` until the device's
+  `Disconnect` (harmless on a device that isn't connected) or
+  bluetoothd's restart. The phone service now does that itself; if a
+  phone seems stuck "out of reach", read `olo-logs --print --program
+  olo-phoned` for "busy" lines, and look (only) at
+  `busctl --system get-property org.bluez PATH org.bluez.Device1
+  Connected`; never connect or disconnect the person's phone yourself.

@@ -545,6 +545,22 @@ impl Profiles {
         let _ = self.conn.call_method(Some(DEST), phone, Some(DEVICE), "DisconnectProfile", &(channel.uuid(),));
     }
 
+    /// Have BlueZ give up what it's stuck on with `phone`, one that isn't
+    /// connected: a connecting that never ended, and every asking after it
+    /// refused "br-connection-busy" (BlueZ 5.87's hands-free side never
+    /// says that a connection it couldn't make failed: profiles/audio/
+    /// hfp-hf.c's `connect_cb` leaves the service connecting, and the
+    /// device's pending list with it, for good; seen 2026-11-17 after
+    /// the phone went out of reach, ever after). `Disconnect` on a device
+    /// that isn't connected does that and nothing more (src/device.c's
+    /// `device_request_disconnect`: the pending connections dropped, an
+    /// unanswered Connect answered, a lookup of its services cancelled;
+    /// answered at once). Never for a phone that's connected: it would
+    /// drop it.
+    pub fn unstick(&self, phone: &str) -> Result<()> {
+        self.conn.call_method(Some(DEST), phone, Some(DEVICE), "Disconnect", &()).map(|_| ())
+    }
+
     /// `phone`'s characteristics with BlueZ, by their UUIDs: the ones it
     /// has shown since the phone connected over low energy and its
     /// services were read (none before, or with no such link).

@@ -274,6 +274,23 @@ fn a_flaky_phone() {
     tell(&["set", "connected", "yes"]);
     ready_within(25, "the service never came back");
 
+    // Out of reach, and BlueZ stuck: its hands-free side's connecting
+    // failed and never said so (BlueZ 5.87's), so every asking after is
+    // refused "br-connection-busy" (Ben's phone, 2026-11-17: away for good,
+    // though back in the room). Back in reach, not connected until it's
+    // paged: BlueZ, busy with it three times running, is told to let go
+    // (`Disconnect`, the phone not connected), and the asking after pages
+    // it. Said in the log.
+    tell(&["set", "connected", "no"]);
+    wait_for("the state never said the phone had gone", || published()["link"] == "away");
+    tell(&["set", "stuck", "yes"]);
+    tell(&["set", "in-reach", "yes"]);
+    ready_within(30, "a phone in reach, BlueZ stuck busy with it, was never connected again");
+    assert_eq!(count("unstuck"), 1);
+    let log = std::fs::read_to_string(dir.join("phoned.log")).unwrap_or_default();
+    assert!(log.contains("told to let go of what it's stuck on"), "the log never said so");
+    tell(&["set", "in-reach", "no"]);
+
     // A phone that doesn't tell of the messages that come: its inbox is
     // looked in on (every 2 s here), and the message found and told of.
     tell(&["set", "quiet", "yes"]);

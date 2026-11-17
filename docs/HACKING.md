@@ -14372,9 +14372,12 @@ them (`Kept::whole`), so none is asked for twice. Asking doesn't change
 whether a message was read. The conversations kept from a run before
 are named again by the contacts as the service starts (`name_threads`). A phone out of reach (`Link::Away`: BlueZ says it
 isn't connected, or the channel can't be had) is tried when BlueZ says
-anything of it and otherwise after 15 s, 30 s, 1, 2 and then every 5
-minutes (`AWAY`); a session whose link drops is tried again after 2 s,
-once. Another phone, or none: what the last had is let go.
+anything of it and otherwise after 15 s, 30 s, then every minute for
+its first half hour away (`AWAY_A_WHILE`: it doesn't connect by itself
+when it's back, it's found by being asked for), and after that 2 and
+then every 5 minutes (`AWAY`, `away_wait`); a session whose link drops
+is tried again after 2 s, once. Another phone, or none: what the last
+had is let go.
 
 **A flaky phone** (Ben, 2026-11-17: "harden it as much as possible …
 assume the phone connection is flaky and needs to be constantly
@@ -14403,6 +14406,33 @@ phone that does each: `--tell set asleep`, `classic-gatt`, `deaf`,
   phone out of reach (`BUSY_SOON`); a phone that closes the channel
   within 10 s of its coming three times running, further and further
   apart (`hangs`, `HELD_UP`).
+- **BlueZ stuck busy with a phone that isn't connected is told to let
+  go** (Ben, 2026-11-17: "after leaving the room and coming back it says
+  my phone is out of reach and doesn't seem to have auto reconnected").
+  Out of reach, the link dropped; BlueZ's own reconnecting tried its
+  hands-free side, which failed ("Host is down"), and BlueZ 5.87 never
+  ended that connecting (profiles/audio/hfp-hf.c's `connect_cb`, on an
+  error, never calls `btd_service_connecting_complete`), so the
+  device's pending list stood for good and every asking after was
+  refused `org.bluez.Error.InProgress: br-connection-busy`
+  (src/device.c's `device_connect_profiles`: `pending || connect ||
+  browse`): 52 minutes and counting, the service asking every 5
+  minutes, each refusal unlogged (the same as the last), with the
+  phone back in the room. Now three busy answers running with the phone
+  not connected (no connecting takes six seconds: a page times out in
+  five) have the next asking begin with `Profiles::unstick`, the
+  device's `Disconnect`, which on a device that isn't connected only
+  drops what's pending, answers an unanswered Connect and cancels a
+  lookup (`device_request_disconnect`), and the asking after it pages
+  the phone afresh; no more than every 2 minutes (`UNSTICK_AFTER`,
+  `UNSTICK_EVERY`), said in the log. A failure the same as the last is
+  logged again every 10 minutes with how many times it has been
+  (`SAY_AGAIN`), so a service that keeps trying never reads as one that
+  stopped. The stand-in plays it: `--tell set stuck yes` (refused busy
+  until `Disconnect`; `--tell unstuck` counts), `--tell set in-reach
+  yes` (not connected, but connected by the next asking, as a phone
+  back in the room). BlueZ's own fix is upstream's to make (the failure
+  passed to `btd_service_connecting_complete` in `connect_cb`).
 - **Its other notifications are taken over low energy only.** BlueZ
   shows an iPhone's characteristics over the classic link too, with
   `org.bluez.Bearer.LE1`'s `Connected` false, and takes a subscription

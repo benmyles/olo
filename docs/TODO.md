@@ -58,26 +58,6 @@ something nobody here has is in "Blocked", with what it waits for.
   pixel, hue, etc needs to be just absolutely perfect and stunningly
   beautiful").
 
-- **The phone back in reach is connected again by itself** (Ben,
-  2026-11-17: "after leaving the room and coming back it says my phone
-  is out of reach and doesn't seem to have auto reconnected. check the
-  logs now to see what the deal is and fix after this work"). Phone
-  still said "out of reach. It's tried again by itself." with the phone
-  back in the room; the logs read at once, the cause found and fixed.
-  What they showed (15:10): the link dropped at 14:48:46; the service's
-  first ask was answered "org.bluez.Error.InProgress:
-  br-connection-busy", and nothing was logged after (a failure the same
-  as the last isn't); bluetoothd's own reconnect failed alike at 14:48:54
-  ("Reconnecting services failed: Device or resource busy"), its HFP
-  connect "Host is down" before it; the service's loop woke every 300 s
-  (AWAY's last step: asking again, each failing unseen); BlueZ had the
-  phone not connected. So: BlueZ stuck busy with the phone (something
-  pending that never ends), every ask refused. To do: say a failure
-  that repeats (now and then, with how many); when BlueZ stays busy
-  with a phone that isn't connected, have it let go of what's pending
-  (the device's Disconnect cancels a stuck connect) and ask again; the
-  stand-in BlueZ made able to stick so, for a test.
-
 - **Last, once everything above that isn't blocked is done: the website,
   the README and the docs refreshed, and a new GitHub release** (Ben,
   2026-11-17: "when all the other todos that aren't blocked are
@@ -5941,6 +5921,20 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**The phone back in reach is connected again by itself**~~ (Ben,
+  2026-11-17: "after leaving the room and coming back it says my phone
+  is out of reach and doesn't seem to have auto reconnected. check the
+  logs now to see what the deal is and fix after this work"; done the
+  same day). The logs and a look at the service's D-Bus traffic: BlueZ
+  had been refusing every asking "br-connection-busy" since the link
+  dropped at 14:48 (its hands-free side's failed connecting never
+  ended: BlueZ 5.87's bug), the service asking every 5 minutes,
+  unlogged. Now it has BlueZ let go (the device's Disconnect, the phone
+  not connected) after three busy answers, asks for a phone that's
+  away at least every minute for its first half hour, and says a
+  failure that repeats. Ben's running service is still the old one:
+  the new build fixes it once he upgrades (Deskbar's tray).
 
 - ~~**One-time codes from mail too: Gmail and Fastmail accounts in
   Integrations, and what's watched for codes chosen in Security ▸

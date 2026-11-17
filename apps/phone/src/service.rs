@@ -92,6 +92,11 @@ const STUCK: Duration = Duration::from_secs(90);
 const ALLOW_LATER: Duration = Duration::from_secs(300);
 /// How long after a try a phone out of reach is tried again, try by try.
 const AWAY: [u64; 5] = [15, 30, 60, 120, 300];
+/// For this long after it went, a phone out of reach is tried again at
+/// least every minute (`AWAY` to its third step): it doesn't connect by
+/// itself when it's back (Ben's iPhone), it's found by being asked for,
+/// and back in the room it waited up to five minutes for that.
+const AWAY_A_WHILE: u64 = 30 * 60;
 /// How long a phone has to give its first answers on a channel just
 /// opened (the session's, and its inbox). A phone asleep takes the
 /// channel and answers when it wakes: 50 s was seen, and nothing within
@@ -109,6 +114,16 @@ const SILENT: [u64; 4] = [30, 120, 300, 900];
 /// How many times in a row BlueZ, busy with the phone, is asked again in
 /// three seconds; past that, as a phone out of reach.
 const BUSY_SOON: usize = 5;
+/// BlueZ busy with a phone that isn't connected this many times running
+/// (six seconds and more: no connecting takes that long, its page timing
+/// out in five) is stuck: told to let go (`Profiles::unstick`), and
+/// asked again; no more often than `UNSTICK_EVERY`.
+const UNSTICK_AFTER: usize = 3;
+const UNSTICK_EVERY: Duration = Duration::from_secs(120);
+/// A failure the same as the last is logged again after this, with how
+/// many times it has been (else a service that keeps trying, and keeps
+/// failing alike, says nothing: its log read as if it had stopped).
+const SAY_AGAIN: Duration = Duration::from_secs(10 * 60);
 /// A session the phone closed within this of its channel coming didn't
 /// hold: after three such running, it's asked for again further and
 /// further apart, not at once.
@@ -323,8 +338,15 @@ struct Service {
     solicit: Option<link::Solicit>,
     solicit_failed: bool,
     allow_since: Option<Instant>,
-    /// Why the last channel couldn't be had (logged when it changes).
+    /// Why the last channel couldn't be had (logged when it changes),
+    /// how many times running, and when it was last logged.
     said_why: String,
+    why_times: usize,
+    why_said_at: Option<Instant>,
+    /// BlueZ is to let go of what it's stuck on with the phone before the
+    /// next asking (`UNSTICK_AFTER`), and when it last was.
+    unstick: bool,
+    unstuck_at: Option<Instant>,
     /// While a channel is being opened: when to give up on it
     /// (`OPEN_ANSWER`, `OPEN_COMES`).
     opening_until: Option<Instant>,
@@ -620,6 +642,10 @@ pub fn run() -> ! {
         solicit_failed: false,
         allow_since: None,
         said_why: String::new(),
+        why_times: 0,
+        why_said_at: None,
+        unstick: false,
+        unstuck_at: None,
         opening_until: None,
         let_go: false,
         digest: 0,
@@ -1368,7 +1394,11 @@ impl Service {
         }
         let (tx, generation, path) = (self.tx.clone(), self.generation, phone.path.clone());
         let let_go = std::mem::take(&mut self.let_go);
+        let unstick = std::mem::take(&mut self.unstick);
         let _ = std::thread::Builder::new().name("phone-open".into()).spawn(move || {
+            if unstick && let Err(e) = profiles.unstick(&path) {
+                tracing::info!("phone: Bluetooth wasn't let go of what it's stuck on: {e}");
+            }
             if let_go {
                 profiles.let_go(&path, Channel::Messages);
             }
@@ -1485,6 +1515,15 @@ impl Service {
         self.generation += 1;
     }
 
+    /// How long until a phone out of reach is asked for again: further
+    /// and further apart (`AWAY`), but at least every minute for its
+    /// first half hour away (`AWAY_A_WHILE`).
+    fn away_wait(&self) -> u64 {
+        let away_for = now().saturating_sub(self.state.since);
+        let last = if self.state.link == Link::Away && away_for < AWAY_A_WHILE { 2 } else { AWAY.len() - 1 };
+        AWAY[self.tries.min(last)]
+    }
+
     /// What the session says.
     fn from_session(&mut self, said: FromSession) {
         match said {
@@ -1537,15 +1576,36 @@ impl Service {
                 // not every three seconds for ever.)
                 let busy = why.contains("InProgress") || why.contains("no channel came");
                 self.busy = if busy { self.busy + 1 } else { 0 };
-                let wait = if busy && self.busy <= BUSY_SOON { 3 } else { AWAY[self.tries.min(AWAY.len() - 1)] };
+                let connected = self.phone.as_ref().is_some_and(|p| p.connected);
+                // BlueZ busy, time after time, with a phone that isn't
+                // connected: stuck (a connecting it never ended). Told to
+                // let go before the next asking, which pages the phone
+                // afresh.
+                let stuck = why.contains("InProgress") && !connected && self.busy >= UNSTICK_AFTER;
+                if stuck && self.unstuck_at.is_none_or(|at| at.elapsed() >= UNSTICK_EVERY) {
+                    tracing::info!("phone: Bluetooth has said it's busy with the phone {} times running, the phone not connected: told to let go of what it's stuck on, and asked again", self.busy);
+                    (self.unstick, self.unstuck_at) = (true, Some(Instant::now()));
+                }
+                let wait = if busy && (self.busy <= BUSY_SOON || self.unstick) { 3 } else { self.away_wait() };
                 self.tries += 1;
                 self.retry_at = Some(Instant::now() + Duration::from_secs(wait));
                 // Why, said plainly when the phone is there and still
                 // can't be spoken to (out of reach needs no more words).
-                let connected = self.phone.as_ref().is_some_and(|p| p.connected);
+                // Said when it changes, and again now and then while it
+                // doesn't, with how many times it has been.
                 if self.said_why != why {
                     tracing::info!("phone: no channel to its messages, the phone {} ({why})", if connected { "connected" } else { "not connected" });
-                    self.said_why = why.clone();
+                    (self.said_why, self.why_times, self.why_said_at) = (why.clone(), 1, Some(Instant::now()));
+                } else {
+                    self.why_times += 1;
+                    if self.why_said_at.is_none_or(|at| at.elapsed() >= SAY_AGAIN) {
+                        tracing::info!(
+                            "phone: still no channel to its messages, the phone {} ({why}; {} times running, asked again in {wait} s)",
+                            if connected { "connected" } else { "not connected" },
+                            self.why_times
+                        );
+                        self.why_said_at = Some(Instant::now());
+                    }
                 }
                 self.state.trouble =
                     if connected { format!("Bluetooth couldn’t open the phone’s messages ({}).", why.rsplit(": ").next().unwrap_or(&why).trim_end_matches('.')) } else { String::new() };
@@ -1654,7 +1714,7 @@ impl Service {
                 }
                 self.state.link = Link::Away;
                 // (Tried again at once, once: a link dropped and still there.)
-                self.retry_at = Some(Instant::now() + Duration::from_secs(if self.tries == 0 { 2 } else { AWAY[self.tries.min(AWAY.len() - 1)] }));
+                self.retry_at = Some(Instant::now() + Duration::from_secs(if self.tries == 0 { 2 } else { self.away_wait() }));
                 self.tries += 1;
             }
         }

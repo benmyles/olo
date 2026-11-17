@@ -13,7 +13,10 @@
 //! `phone-standin [--address ADDRESS] --tell receive NAME ADDRESS TEXT…`
 //! (a message arrives now, and the phone tells whoever asked to be told),
 //! `--tell set messages|contacts|connected|paired yes|no` (the phone's
-//! own switches; in reach or not; paired or not), `--tell sent` (prints
+//! own switches; in reach or not; paired or not; `in-reach`: not
+//! connected, but a connecting asked for reaches it; `stuck`: BlueZ busy
+//! with it for good, `--tell unstuck` how many times it was let go of),
+//! `--tell sent` (prints
 //! what was sent through it, a line each).
 
 use std::{
@@ -64,6 +67,7 @@ enum Error {
     AlreadyExists(String),
     InvalidArguments(String),
     AuthenticationRejected(String),
+    InProgress(String),
 }
 
 enum Job {
@@ -191,6 +195,17 @@ struct World {
     next_uid: u32,
     apps: HashMap<String, String>,
     acted: Vec<String>,
+    /// Not connected, but in reach (`--tell set in-reach yes`): asked
+    /// to connect one of its profiles, BlueZ pages it and it connects, as
+    /// a real phone back in the room that doesn't connect by itself.
+    in_reach: bool,
+    /// BlueZ stuck connecting it (`--tell set stuck yes`): as BlueZ 5.87
+    /// after its hands-free side's connecting failed and never said so,
+    /// every connecting asked for after is refused "br-connection-busy"
+    /// until it's told to let go (`Disconnect`, the phone not connected),
+    /// which `unstuck` counts.
+    stuck: bool,
+    unstuck: u32,
     /// Its hands-free side is connected (or won't be), and its calls.
     hands_free: bool,
     refuses_hands_free: bool,
@@ -363,6 +378,16 @@ impl Device {
         if uuid == map::MAS_UUID {
             w.asked += 1;
         }
+        // (BlueZ's first look: anything pending with the device, and it's
+        // busy.)
+        if w.stuck {
+            return Err(Error::InProgress("br-connection-busy".into()));
+        }
+        // Paged, in reach: connected.
+        if w.paired && !w.connected && w.in_reach {
+            w.connected = true;
+            let _ = w.jobs.send(Job::Changed);
+        }
         if !w.paired || !w.connected {
             return Err(Error::NotAvailable("br-connection-page-timeout".into()));
         }
@@ -439,6 +464,12 @@ impl Device {
 
     fn disconnect(&self) {
         let mut w = self.0.lock().expect("world");
+        // (Not connected, what it was stuck on is dropped, as BlueZ's
+        // `device_request_disconnect` drops it.)
+        if !w.connected && w.stuck {
+            w.stuck = false;
+            w.unstuck += 1;
+        }
         w.connected = false;
         let _ = w.jobs.send(Job::Changed);
     }
@@ -923,6 +954,8 @@ impl Told {
             }
             "connected" => w.connected = on,
             "paired" => w.paired = on,
+            "in-reach" => w.in_reach = on,
+            "stuck" => w.stuck = on,
             _ => return Err(Error::InvalidArguments(format!("nothing called {key}"))),
         }
         let _ = w.jobs.send(Job::Changed);
@@ -945,9 +978,9 @@ impl Told {
 
     /// How many times its messages were asked for, and how many times
     /// its characteristics were subscribed to.
-    fn counts(&self) -> (u32, u32) {
+    fn counts(&self) -> (u32, u32, u32) {
         let w = self.0.lock().expect("world");
-        (w.asked, w.acquired)
+        (w.asked, w.acquired, w.unstuck)
     }
 
     fn sent(&self) -> Vec<String> {
@@ -1039,6 +1072,9 @@ fn main() {
         deaf: false,
         asked: 0,
         acquired: 0,
+        in_reach: false,
+        stuck: false,
+        unstuck: 0,
         jobs: tx,
     }));
     let built = zbus::blocking::connection::Builder::address(address.as_str())
@@ -1394,9 +1430,16 @@ fn told(address: &str, words: &[String]) -> i32 {
             }
         },
         ["hang-up"] => call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "HangUp", &())),
-        [what @ ("asked" | "acquired")] => match conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Counts", &()).and_then(|m| m.body().deserialize::<(u32, u32)>()) {
-            Ok((asked, acquired)) => {
-                println!("{}", if *what == "asked" { asked } else { acquired });
+        [what @ ("asked" | "acquired" | "unstuck")] => match conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Counts", &()).and_then(|m| m.body().deserialize::<(u32, u32, u32)>()) {
+            Ok((asked, acquired, unstuck)) => {
+                println!(
+                    "{}",
+                    match *what {
+                        "asked" => asked,
+                        "acquired" => acquired,
+                        _ => unstuck,
+                    }
+                );
                 0
             }
             Err(e) => {
