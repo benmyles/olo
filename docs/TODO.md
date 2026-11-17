@@ -24,6 +24,24 @@ something nobody here has is in "Blocked", with what it waits for.
   monitored try to work around unexpected things etc so that to the
   user it 'just works'").
 
+- **Colour schemes: Catppuccin and the ten most used editor schemes,
+  for Terminal and for Themes ▸ Custom Colors** (Ben, 2026-11-17: "in
+  the terminal app bake in support for all the https://catppuccin.com/
+  color schemes and also go find the top 10 color schemes for
+  vscode/cursor and bake in support for those too. and actually let's
+  unify them so that all these are also available under themes ->
+  custom colors and when choosing a custom color scheme it should
+  automatically set the terminal to follow that too unless the user has
+  explicitly chosen a non-default color scheme for the terminal (we
+  want to support the terminal being set independently as well b/c some
+  users have strong preferences for terminal colors). also make sure
+  that every color scheme has a light and dark variant and that
+  everything is visually QA'd with screenshots to check that the colors
+  work well with both of olo's themes. customize/tweak the colors if
+  needed to fit: you don't have to make them _exactly_ the same as what
+  they are officially. just add a note that they have been optimized
+  for olo or something. make sure every single one is beautiful.").
+
 - **A window tab's menu: Pin ▸ Always Main / Always [where it is]**
   (Ben, 2026-11-17: "i often have some windows like telegram where i
   want it to always open in the top-left quarter, and phone in the
