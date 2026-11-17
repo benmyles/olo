@@ -163,10 +163,10 @@ pub struct WindowMeta {
     /// it was on there, for when it's plugged in again
     /// (`windows_back_home`).
     pub away: RefCell<Option<(String, u32)>>,
-    /// Olo asked it to close (its close box, ⌘W, the window menu, an
-    /// agent): when it goes, it is gone, not kept for its app starting
-    /// again (`remember_placement`).
-    pub closed_by_hand: Cell<bool>,
+    /// When Olo last asked it to close (its close box, ⌘W, the window
+    /// menu, an agent): going then, it is gone, not kept for its app
+    /// starting again (`remember_placement`, [`WindowMeta::closed_by_hand`]).
+    pub close_asked: Cell<Option<std::time::Instant>>,
     /// Picture in picture (`shell::pip`): over every window, in no group,
     /// tile or remembered place. Decided on its first commit.
     pub pip: Cell<bool>,
@@ -186,7 +186,21 @@ pub struct WindowMeta {
     pub confined: RefCell<Option<(String, Rectangle<i32, Logical>)>>,
 }
 
+/// How long after Olo asked a window to close its going is the person's
+/// doing: the time to answer a program that asks first ("Close it
+/// anyway?"). Asked and still there after that, it said no (the person
+/// cancelled): going later (its program upgraded in place, or ended) it
+/// is kept for its program starting again, as any window. (The mark was
+/// for good: a window once asked to close and kept was never put back
+/// where it was after an upgrade.)
+pub const CLOSED_BY_HAND_WITHIN: std::time::Duration = std::time::Duration::from_secs(10);
+
 impl WindowMeta {
+    /// Olo asked it to close a moment ago ([`CLOSED_BY_HAND_WITHIN`]).
+    pub fn closed_by_hand(&self) -> bool {
+        self.close_asked.get().is_some_and(|at| at.elapsed() < CLOSED_BY_HAND_WITHIN)
+    }
+
     /// How strong its glow is now (0: none; one that has faded is let go).
     pub fn glow_strength(&self) -> f32 {
         let Some((since, total)) = self.glow.get() else { return 0.0 };
@@ -237,7 +251,7 @@ impl WindowElement {
             glow_pieces: Default::default(),
             moved_on_purpose: Cell::new(false),
             away: RefCell::new(None),
-            closed_by_hand: Cell::new(false),
+            close_asked: Cell::new(None),
             pip: Cell::new(false),
             all_workspaces: Cell::new(false),
             scratch: Cell::new(false),

@@ -189,7 +189,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     pub fn close_window(&mut self, window: &WindowElement) {
-        window.meta().closed_by_hand.set(true);
+        window.meta().close_asked.set(Some(std::time::Instant::now()));
         match window.0.underlying_surface() {
             WindowSurface::Wayland(w) => w.send_close(),
         }

@@ -154,6 +154,13 @@ pub struct Placement {
     /// The process that showed it (0: not known, any may take it).
     #[serde(default)]
     pub pid: i32,
+    /// An alert or a dialog (it names a parent, or is an alert that names
+    /// none): its place is only another such window's, and a window's
+    /// only a window's. (A Terminal ended while its "Close it anyway?"
+    /// alert was up came back with its window at the alert's place and
+    /// size: the alert's was the place remembered under its title.)
+    #[serde(default)]
+    pub transient: bool,
     /// The display it was on: its name and place. Back on that display
     /// unchanged, it is put back exactly; only after the displays changed
     /// is it fitted to them again.
@@ -337,6 +344,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             displays: Vec::new(),
             at: now(),
             pid: meta.owner.borrow().as_ref().map_or(0, |(pid, _)| *pid),
+            transient: Self::transient(w),
             client: meta.owner.borrow().as_ref().map(|(_, c)| c.clone()),
             screen,
             screen_key,
@@ -376,13 +384,19 @@ impl<B: Backend + 'static> AnvilState<B> {
         Some((o.name(), [g.loc.x, g.loc.y, g.size.w, g.size.h]))
     }
 
+    /// An alert or a dialog: it names a parent, or is an alert that names
+    /// none.
+    fn transient(w: &WindowElement) -> bool {
+        w.0.toplevel().is_some_and(|t| t.parent().is_some()) || crate::shell::groups::is_parentless_alert(w)
+    }
+
     /// Remember a window that is going away (it may come straight back, as
     /// when an app re-executes itself after an upgrade). Not one closed by
     /// hand: a window of the same title its app opens later is a new one
     /// (StyledEdit's next "Untitled 1" opens where the person is, not
     /// where the last one was closed).
     pub fn remember_placement(&mut self, w: &WindowElement) {
-        if w.meta().closed_by_hand.get() {
+        if w.meta().closed_by_hand() {
             return;
         }
         let focused = self.seat.get_keyboard().and_then(|k| k.current_focus()).and_then(|f| f.wl_surface().map(|s| s.into_owned()));
@@ -561,7 +575,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         // An alert or a dialog of an app started again is a new one: in
         // the middle of the screen or over its parent, not where the last
         // one was (which may have been on a screen of another size).
-        let transient = window.0.toplevel().is_some_and(|t| t.parent().is_some()) || crate::shell::groups::is_parentless_alert(window);
+        let transient = Self::transient(window);
         // The app started again: its old process is gone.
         let restarted = |e: &Placement| {
             !transient && age(e) < RESTART_KEEP.as_secs() && e.pid > 0 && owner.as_ref().is_some_and(|(pid, _)| e.pid != *pid) && !std::path::Path::new(&format!("/proc/{}", e.pid)).exists()
@@ -569,11 +583,12 @@ impl<B: Backend + 'static> AnvilState<B> {
         // By the key its app gave it, if it gave one: that window's place,
         // and no other's.
         let key = restore_key(window);
-        let theirs = |e: &Placement| e.key.is_none() || e.key == key;
+        // (And a window's place is a window's, an alert's an alert's.)
+        let theirs = |e: &Placement| (e.key.is_none() || e.key == key) && e.transient == transient;
         let i = key.as_ref().and_then(|_| {
             (0..self.layout.len()).rev().find(|&i| {
                 let e = &self.layout[i];
-                e.app_id == app_id && e.key == key && (same(e) || restarted(e))
+                e.app_id == app_id && e.key == key && e.transient == transient && (same(e) || restarted(e))
             })
         });
         // The newest first: the place it had last.

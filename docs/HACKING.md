@@ -3983,7 +3983,15 @@ for a 3-second `sleep`.
   windows are remembered in memory, up to 200, but not one closed by
   hand, which Olo asked to close: `WindowMeta::closed_by_hand`, so a
   new "Untitled 1" opens where the person is, not where the last one
-  was closed). An app started again
+  was closed; a close asked for counts for ten seconds,
+  `CLOSED_BY_HAND_WITHIN`, the time to answer a program that asks
+  first: one still there after that said no, and going later is kept
+  as any window, where the mark was for good and a window once asked
+  to close and kept was never put back after an upgrade). A place says
+  whether it was an alert's or a dialog's (`Placement::transient`) and
+  is only taken by its kind: a Terminal ended while its "Close it
+  anyway?" alert was up came back with its window at the alert's place
+  and size. An app started again
   gets the place back but not a group the window was put in by hand
   (`Grouping::With` becomes `Auto`): it is another window with the same
   title ("Untitled 2"), and would join another app's windows. The place is claimed at
