@@ -13270,7 +13270,7 @@ its top left where BeOS's had Be's, and beside it a white box of words
 that says what to do and then what is being done: what installing
 does and that the password is asked for once (why this computer can't
 have Olo, in red, if it can't: `plan::unsuitable`, not Fedora 44 or
-newer, an atomic Fedora, root, under 6 GB free; Begin is dimmed), then
+newer, an atomic Fedora, root, under 9 GB free; Begin is dimmed), then
 the stages and their notes as they come, a failure in red with what to
 do, and at the end "Installation completed" and how to get to Olo.
 Under it
@@ -13363,13 +13363,31 @@ says as JSON whether this computer can have Olo and opens nothing.
 
 The release (`tools/release.sh [OUT]`, from a release build): every
 `olo-*` program stripped (300 MB with line tables to 30 MB; a third of
-that compressed), `pam_olo_keyring.so`, Olo's data as
-install-session.sh copies it and what goes outside the home folder
-(`system/`: the session entry, udev rules, PAM services, the login
-screen's unit, user and folders), and `VERSION` (the date and the
-commit) in `olo-VERSION-ARCH.tar.zst` (zstd -19), and the installer
-stripped beside it, each with its `.sha256`. Publishing them (a GitHub
-release) is a separate step.
+that compressed), `pam_olo_keyring.so` and face unlock's
+`libpam_olo_face.so`, Olo's data as an upgrade installs it
+(`upgrade::sync_data`: the icons' and themes' sizes, the brand, the
+fonts, the models that read text in pictures and that know a face;
+never a data folder whole, which also holds what its pictures are made
+from) and what goes outside the home folder (`system/`: the session
+entry, udev rules, PAM services, the login screen's unit, user and
+folders), and `VERSION` (the date and the commit) in
+`olo-VERSION-ARCH.tar.zst` (zstd -19, 567 MB), and the installer
+stripped beside it, each with its `.sha256`. **The wallpapers are a
+part of their own**, `olo-wallpapers-VERSION.tar.zst` (1.67 GB, any
+architecture; `olo/share/olo/wallpapers`): GitHub takes files under
+2 GiB, and with the lossless pack Olo was 2.2 GB (4.7 with the
+wallpapers' sources, which the script copied too until 2026-11-17).
+The archive's `.sha256` names both; Setup takes every other `.tar.zst`
+named there as a part (`bundle::parts`), fetches it from beside the
+archive (`Origin::beside`: the same release, or folder), checks it and
+unpacks it over the first (`bundle::fetch`, `bundle::unpack`); the
+script stops if either is 2 GiB or more. A Setup from before the parts
+installs such a release without its wallpapers. `cargo test --release
+-p olo-installer a_real_release -- --ignored` with
+`OLO_RELEASE=OUT/olo-VERSION-ARCH.tar.zst` finds, checks and unpacks
+what the script made as Setup does (into a folder beside it, removed)
+and says what's missing. Publishing them (a GitHub release with the
+five files) is a separate step.
 
 `tools/dev/installer-check` tries it all in a virtual machine (KVM, a
 virtio GPU, no window, driven through QEMU's monitor; `boot --gl

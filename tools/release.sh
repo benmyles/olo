@@ -7,15 +7,26 @@
 #
 # Writes, for this machine's architecture (x86_64 or aarch64):
 #   olo-VERSION-ARCH.tar.zst         Olo itself
-#   olo-VERSION-ARCH.tar.zst.sha256  its SHA-256, as `sha256sum` writes it
+#   olo-wallpapers-VERSION.tar.zst   its wallpapers (any architecture): a
+#                                    part of their own, as with them Olo
+#                                    is more than the 2 GiB a file GitHub
+#                                    takes
+#   olo-VERSION-ARCH.tar.zst.sha256  both archives' SHA-256, as
+#                                    `sha256sum` writes them: the
+#                                    installer takes every other archive
+#                                    named there as a part, fetches it
+#                                    from beside the first and unpacks it
+#                                    over it
 #   olo-installer-ARCH               the installer (one program)
 #   olo-installer-ARCH.sha256
 # VERSION is the date and the commit (2026.11.07-60cbfff5). The bundle
 # holds, under olo/:
-#   bin/       every olo-* program, stripped, and pam_olo_keyring.so
-#   share/olo/ Olo's data: icons, brand, fonts, the themes' icons and
-#              wordmarks, the wallpapers (as tools/install-session.sh
-#              copies them)
+#   bin/       every olo-* program, stripped, pam_olo_keyring.so and
+#              libpam_olo_face.so
+#   share/olo/ Olo's data: icons, brand, fonts, the models that read
+#              text in pictures, the themes' icons (what an upgrade
+#              installs: crates/session/src/upgrade.rs); the wallpapers'
+#              archive holds olo/share/olo/wallpapers
 #   system/    what goes outside the home folder: the login screen's
 #              session entry, udev rules, PAM services, the login screen's
 #              unit, user and folders (data/session, udev, pam, systemd,
@@ -23,7 +34,7 @@
 #   VERSION, LICENSE
 # It builds nothing: run `cargo build --release --workspace` first (the
 # installer is part of the workspace). Publishing (a GitHub release with
-# these four files) is a separate, deliberate step.
+# these five files) is a separate, deliberate step.
 set -eu
 cd "$(dirname "$0")/.."
 OUT=${1:-target/dist}
@@ -42,11 +53,44 @@ for b in target/release/olo-*; do
     strip -o "$STAGE/olo/bin/$name" "$b"
 done
 strip -o "$STAGE/olo/bin/pam_olo_keyring.so" target/release/libpam_olo_keyring.so
-cp -r data/icons data/brand data/fonts data/wallpapers "$STAGE/olo/share/olo/"
+# Face unlock's PAM module, beside the programs, where Preferences ▸
+# Security looks for it to install (with olo-faced and the models,
+# share/olo/face): a released Olo had neither, and its Face Unlock
+# said "isn't in this build".
+strip -o "$STAGE/olo/bin/libpam_olo_face.so" target/release/libpam_olo_face.so
+# Olo's data, as an upgrade installs it (crates/session/src/upgrade.rs,
+# sync_data), never a folder whole: the tree also holds what the
+# pictures are made from (data/icons/src, the wallpapers' src: 2.5 GB,
+# not in the repository), which went into the bundle and made it 4.7 GB
+# (2026-11-17; GitHub takes 2 GiB a file).
+SHARE="$STAGE/olo/share/olo"
+# An icon set's sizes (16, 24, …) and lists; not its sources or references.
+sizes() {
+    mkdir -p "$2"
+    for d in "$1"/*/; do
+        d=${d%/}
+        case "${d##*/}" in *[!0-9]*) continue ;; esac
+        cp -r "$d" "$2/"
+    done
+}
+sizes data/icons "$SHARE/icons"
+cp data/icons/manifest.txt "$SHARE/icons/"
 for theme in data/themes/*/; do
     theme=${theme%/}
-    mkdir -p "$STAGE/olo/share/olo/themes/${theme##*/}"
-    cp -r "$theme/icons" "$STAGE/olo/share/olo/themes/${theme##*/}/"
+    [ -d "$theme/icons" ] && sizes "$theme/icons" "$SHARE/themes/${theme##*/}/icons"
+done
+# The brand's pictures, the fonts, the models that read the text in
+# pictures and that know a face (both were left out: a released Olo
+# read no text and had no face unlock).
+cp -r data/brand data/fonts data/ocr data/face "$SHARE/"
+# The wallpaper pack, in an archive of its own: its list, both shapes
+# (with their HDR gain maps), the previews and the tiles.
+WALLS="$OUT/stage-wallpapers/olo/share/olo/wallpapers"
+rm -rf "$OUT/stage-wallpapers"
+mkdir -p "$WALLS"
+cp data/wallpapers/pack.txt "$WALLS/"
+for sub in 4k ultrawide thumbs tiles; do
+    cp -r --reflink=auto "data/wallpapers/$sub" "$WALLS/"
 done
 for d in session udev pam systemd sysusers tmpfiles; do
     cp -r "data/$d" "$STAGE/olo/system/"
@@ -56,9 +100,21 @@ echo "$VERSION" > "$STAGE/olo/VERSION"
 cp LICENSE "$STAGE/olo/LICENSE"
 BUNDLE="olo-$VERSION-$ARCH.tar.zst"
 tar -C "$STAGE" --owner=0 --group=0 --numeric-owner --sort=name -cf - olo | zstd -q -19 -T0 -o "$OUT/$BUNDLE" -f
-(cd "$OUT" && sha256sum "$BUNDLE" > "$BUNDLE.sha256")
+# (The pictures are compressed already: packed fast.)
+WALLPAPERS="olo-wallpapers-$VERSION.tar.zst"
+tar -C "$OUT/stage-wallpapers" --owner=0 --group=0 --numeric-owner --sort=name -cf - olo | zstd -q -3 -T0 -o "$OUT/$WALLPAPERS" -f
+rm -rf "$OUT/stage-wallpapers"
+(cd "$OUT" && sha256sum "$BUNDLE" "$WALLPAPERS" > "$BUNDLE.sha256")
+# (A GitHub release takes files under 2 GiB.)
+for f in "$BUNDLE" "$WALLPAPERS"; do
+    SIZE=$(stat -c %s "$OUT/$f")
+    if [ "$SIZE" -ge 2147483648 ]; then
+        echo "release.sh: $f is $SIZE bytes: 2 GiB or more, which GitHub won't take" >&2
+        exit 1
+    fi
+done
 strip -o "$OUT/olo-installer-$ARCH" target/release/olo-installer
 (cd "$OUT" && sha256sum "olo-installer-$ARCH" > "olo-installer-$ARCH.sha256")
 rm -rf "$STAGE"
-ls -l "$OUT/$BUNDLE" "$OUT/olo-installer-$ARCH"
+ls -l "$OUT/$BUNDLE" "$OUT/$WALLPAPERS" "$OUT/olo-installer-$ARCH"
 echo "Olo $VERSION for $ARCH in $OUT."

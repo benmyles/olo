@@ -160,9 +160,10 @@ pub fn unsuitable(c: &Computer) -> Option<String> {
     if !matches!(bundle::arch(), "x86_64" | "aarch64") {
         return Some(format!("Olo is made for x86_64 and aarch64 computers; this is {}.", bundle::arch()));
     }
-    // (The archive, unpacked, and its copy: about 6 GB at most.)
-    if c.free < 6 << 30 {
-        return Some(format!("Olo needs about 6 GB free in your home folder; there are {:.1} GB.", c.free as f64 / (1u64 << 30) as f64));
+    // (The archives, 2.2 GB, unpacked, 3.3 GB, and their copy: about
+    // 9 GB at most. It was 6, from before the wallpapers were lossless.)
+    if c.free < 9 << 30 {
+        return Some(format!("Olo needs about 9 GB free in your home folder; there are {:.1} GB.", c.free as f64 / (1u64 << 30) as f64));
     }
     None
 }
@@ -351,16 +352,18 @@ pub fn install(choices: Choices, given: Option<String>, stop: Arc<AtomicBool>, t
     };
     say(Event::Note(format!("Olo: {}", source.name)));
     let mut last = -1i64;
-    let archive = bundle::fetch(&source, &stop, &mut |got, total| {
-        let mb = (got >> 20) as i64;
+    let archives = bundle::fetch(&source, &stop, &mut |file, files, got, total| {
+        let mb = (got >> 20) as i64 + ((file as i64) << 40);
         if mb != last {
             last = mb;
             let share = (total > 0).then(|| got as f32 / total as f32);
             let text = if total > 0 { format!("{} MB of {} MB", got >> 20, total >> 20) } else { format!("{} MB", got >> 20) };
+            // (Olo itself, then its wallpapers: said when there are both.)
+            let text = if files > 1 { format!("Part {file} of {files}: {text}") } else { text };
             say(Event::Progress { share, text });
         }
     });
-    let archive = match archive {
+    let archives = match archives {
         Ok(a) => a,
         Err(_) if stopped() => return say(Event::Stopped),
         Err(e) => return say(fail("Downloading Olo", e, "Check the network connection, then try again: what has come so far is kept.")),
@@ -379,7 +382,7 @@ pub fn install(choices: Choices, given: Option<String>, stop: Arc<AtomicBool>, t
             }
         }
     };
-    let olo = match bundle::unpack(&archive, &staging, &stop, Box::new(tell_unpack)) {
+    let olo = match bundle::unpack(&archives, &staging, &stop, Box::new(tell_unpack)) {
         Ok(o) => o,
         Err(_) if stopped() => return say(Event::Stopped),
         Err(e) => return say(fail("Unpacking Olo", e, "Try again: if the archive was damaged, it's downloaded again.")),

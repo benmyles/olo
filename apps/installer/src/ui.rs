@@ -446,7 +446,7 @@ impl Setup {
                 },
             ))
             // (As BeOS's pane ended: what it takes, and what there is.)
-            .child(StringView::new(format!("Disk space required: about 6 GB. {:.0} GB are free in your home folder.", gb(self.computer.free))))
+            .child(StringView::new(format!("Disk space required: about 9 GB. {:.0} GB are free in your home folder.", gb(self.computer.free))))
             .into_element()
     }
 

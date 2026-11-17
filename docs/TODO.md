@@ -5870,6 +5870,18 @@ people.
 
 ## Done (most recently finished first)
 
+- ~~**The release was 4.7 GB, more than GitHub takes, and lacked what
+  reads text and faces**~~ (found 2026-11-17, making the release; done
+  the same day). `tools/release.sh` copied the data folders whole: the
+  wallpapers' sources (2.5 GB, not in the repository) and the icons'
+  went in, and the models that read the text in pictures and face
+  unlock's module and models didn't (a released Olo read no text, and
+  its Face Unlock said "isn't in this build"). It ships what an upgrade
+  installs now, with those; the wallpapers (1.67 GB, lossless) are an
+  archive of their own that Setup fetches, checks and unpacks with the
+  first (GitHub takes 2 GiB a file: Olo's own is 567 MB). Setup asks
+  for 9 GB free, not 6. (HACKING, "The Installer".)
+
 - ~~**Quick Look of a PowerPoint shows only its slides' numbers**~~
   (Ben, 2026-11-16: "pptx doesn't render properly in the viewer, when
   i hit space on" a presentation "it just shows" a list of "Slide 1" to
