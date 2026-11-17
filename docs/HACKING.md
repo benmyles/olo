@@ -13617,9 +13617,18 @@ specifications):
   (Audio/Video), minor 2 (Hands-Free, the byte 0x08), as BlueFerry's
   notes found an iPhone wants. Olo Doctor offers it wherever there's
   Bluetooth, a problem with an iPhone paired and a suggestion before one
-  is (`phone_class`: `Class = 0x000408` in /etc/bluetooth/main.conf,
+  is, judged by the class the adapter says now (`Roots::bluetooth_class`)
+  (`phone_class`: `Class = 0x000408` in /etc/bluetooth/main.conf, and
   Bluetooth started again), which bluetoothd applies itself at every
-  start: nothing has to put it back. Preferences ▸ Phone's first step
+  start: nothing has to put it back. **BlueZ's hostname plugin puts its
+  own class over it** when the chassis is one it knows ("laptop":
+  Computer, Laptop): Ben's adapter stayed a laptop with the class set.
+  So the fix also starts bluetoothd without that plugin (`-P hostname`,
+  in Olo's drop-in, which the AirPods and BlueFerry fixes keep), and,
+  since the plugin also named the adapter after the computer, writes
+  that name in main.conf (`Name`: pretty, static, then transient
+  hostname, as the plugin chose; one set there already is kept), or the
+  adapter would be "BlueZ 5.87". Preferences ▸ Phone's first step
   says so while the adapter isn't (`Adapter::hands_free`), with Open Olo
   Doctor: it must be so *before* the iPhone pairs. (At first Doctor said
   it only with an iPhone paired, and Ben, who had unpaired to pair

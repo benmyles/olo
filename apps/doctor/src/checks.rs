@@ -302,6 +302,9 @@ pub struct Roots {
     pub phone: bool,
     /// An iPhone among them (Apple's vendor id).
     pub iphone: bool,
+    /// The class of device the Bluetooth adapter says now (None: no
+    /// adapter, or BlueZ not answering).
+    pub bluetooth_class: Option<u32>,
     /// Bluetooth controllers that don't answer (BlueZ's adapter powered
     /// and its power off, or the other way round), by name ("hci0").
     pub bluetooth_stuck: Vec<String>,
@@ -418,6 +421,7 @@ impl Roots {
             .map(|s| s.devices.iter().filter(|d| d.paired && d.icon == "phone").map(|d| d.modalias.as_deref().is_some_and(|m| m.to_ascii_lowercase().starts_with("bluetooth:v004c"))).collect())
             .unwrap_or_default();
         let (phone, iphone) = (!phones.is_empty(), phones.contains(&true));
+        let bluetooth_class = olo_system::bluetooth::status().ok().and_then(|s| s.adapter).map(|a| a.class);
         let bluetooth_stuck =
             olo_system::bluetooth::status().ok().and_then(|s| s.adapter).filter(|a| a.not_answering()).map(|a| a.path.rsplit('/').next().unwrap_or_default().to_owned()).into_iter().collect();
         Roots {
@@ -429,6 +433,7 @@ impl Roots {
             airpods,
             phone,
             iphone,
+            bluetooth_class,
             bluetooth_stuck,
             packages: Box::new(real_packages),
             updates: Box::new(real_updates),
@@ -683,7 +688,7 @@ pub fn scan(roots: &Roots) -> Report {
     airpods_listening(roots, &procs, &mut r);
     phone(roots, &mut r);
     phone_link(roots, &mut r);
-    phone_class(roots, &mut r);
+    phone_class(roots, &procs, &mut r);
     util_clamp(roots, &mut r);
     kept_core(roots, &mut r);
     session_weight(roots, &mut r);
@@ -2016,7 +2021,7 @@ fn airpods_listening(roots: &Roots, procs: &[Proc], r: &mut Report) {
         label: "Let Bluetooth Listen".into(),
         root: true,
         steps: vec![
-            Step::WriteFile { path: format!("/{BLUETOOTH_DROP_IN}").into(), content: bluetooth_drop_in(&program), mode: 0o644 },
+            Step::WriteFile { path: format!("/{BLUETOOTH_DROP_IN}").into(), content: bluetooth_drop_in(&program, drop_in_hands_free(roots)), mode: 0o644 },
             Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Reload },
             Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Restart },
         ],
@@ -2037,8 +2042,19 @@ const PHONE_BACKEND: &[&str] = &["usr/share/dbus-1/services/io.weirdware.BlueFer
 
 /// Olo's drop-in for Bluetooth: BlueZ's experimental interfaces on (its
 /// advertisement monitor, for AirPods' broadcasts).
-fn bluetooth_drop_in(program: &str) -> String {
+fn bluetooth_drop_in(program: &str, hands_free: bool) -> String {
+    if hands_free {
+        return format!(
+            "# Olo: BlueZ's advertisement monitor, for AirPods, and without its hostname plugin, which would say\n# this computer is a laptop over the hands-free class an iPhone wants (Olo Doctor).\n[Service]\nExecStart=\nExecStart={program} --experimental -P hostname\n"
+        );
+    }
     format!("# Olo: BlueZ's advertisement monitor, for AirPods (Olo Doctor).\n[Service]\nExecStart=\nExecStart={program} --experimental\n")
+}
+
+/// Olo's drop-in starts Bluetooth without its hostname plugin (the
+/// hands-free class kept: `phone_class`).
+fn drop_in_hands_free(roots: &Roots) -> bool {
+    read(&roots.fs.join(BLUETOOTH_DROP_IN)).is_some_and(|d| d.lines().any(|l| l.trim().starts_with("ExecStart=") && (l.contains("-P hostname") || l.contains("--noplugin=hostname"))))
 }
 
 /// BlueFerry, which Olo no longer uses (it speaks to the phone itself:
@@ -2062,7 +2078,7 @@ fn phone(roots: &Roots, r: &mut Report) {
         && let Some(program) = line.split_whitespace().next()
         && line.contains("hfp")
     {
-        steps.push(Step::WriteFile { path: format!("/{BLUETOOTH_DROP_IN}").into(), content: bluetooth_drop_in(program), mode: 0o644 });
+        steps.push(Step::WriteFile { path: format!("/{BLUETOOTH_DROP_IN}").into(), content: bluetooth_drop_in(program, drop_in_hands_free(roots)), mode: 0o644 });
         steps.push(Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Reload });
         steps.push(Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Restart });
     }
@@ -2123,28 +2139,12 @@ const BLUEZ_CONF: &str = "etc/bluetooth/main.conf";
 /// 4), Hands-Free (minor 2, the byte 0x08); BlueZ adds the service bits.
 const HANDS_FREE: u32 = 0x000408;
 
-/// The `Class` set in BlueZ's settings ([General]; commented out: none).
-fn bluez_class(conf: &str) -> Option<u32> {
-    let mut general = false;
-    for line in conf.lines().map(str::trim) {
-        if line.starts_with('[') {
-            general = line == "[General]";
-        } else if general
-            && let Some((k, v)) = line.split_once('=')
-            && k.trim() == "Class"
-        {
-            let v = v.trim();
-            return u32::from_str_radix(v.trim_start_matches("0x").trim_start_matches("0X"), 16).ok();
-        }
-    }
-    None
-}
-
-/// BlueZ's settings with `Class` set to `class` in [General]: the line
-/// there replaced, else put after its commented example, else first in
+/// BlueZ's settings with `key` set to `value` in [General]: the line
+/// there replaced, else put after its commented example, else last in
 /// the section (a section made if there's none). The rest as it was.
-fn with_bluez_class(conf: &str, class: u32) -> String {
-    let line = format!("Class = 0x{class:06x}");
+fn with_bluez(conf: &str, key: &str, value: &str) -> String {
+    let line = format!("{key} = {value}");
+    let is = |t: &str| t.split_once('=').is_some_and(|(k, _)| k.trim() == key);
     let mut out: Vec<String> = Vec::new();
     let (mut general, mut done, mut seen_general) = (false, false, false);
     for l in conf.lines() {
@@ -2159,13 +2159,13 @@ fn with_bluez_class(conf: &str, class: u32) -> String {
             out.push(l.to_owned());
             continue;
         }
-        if general && !done && t.split_once('=').is_some_and(|(k, _)| k.trim() == "Class") {
+        if general && !done && is(t) {
             out.push(line.clone());
             done = true;
             continue;
         }
         out.push(l.to_owned());
-        if general && !done && t.trim_start_matches('#').split_once('=').is_some_and(|(k, _)| k.trim() == "Class") {
+        if general && !done && t.starts_with('#') && is(t.trim_start_matches('#')) {
             out.push(line.clone());
             done = true;
         }
@@ -2183,6 +2183,35 @@ fn with_bluez_class(conf: &str, class: u32) -> String {
     text
 }
 
+/// A [General] setting of BlueZ's (commented out: none).
+fn bluez_setting(conf: &str, key: &str) -> Option<String> {
+    let mut general = false;
+    for line in conf.lines().map(str::trim) {
+        if line.starts_with('[') {
+            general = line == "[General]";
+        } else if general
+            && let Some((k, v)) = line.split_once('=')
+            && k.trim() == key
+        {
+            return Some(v.trim().to_owned());
+        }
+    }
+    None
+}
+
+/// The `Class` set in BlueZ's settings.
+fn bluez_class(conf: &str) -> Option<u32> {
+    let v = bluez_setting(conf, "Class")?;
+    u32::from_str_radix(v.trim_start_matches("0x").trim_start_matches("0X"), 16).ok()
+}
+
+/// This computer's name, as BlueZ's hostname plugin names the adapter:
+/// the pretty hostname, else the static, else the transient.
+fn host_name(roots: &Roots) -> Option<String> {
+    let pretty = read(&roots.fs.join("etc/machine-info")).and_then(|t| t.lines().find_map(|l| l.strip_prefix("PRETTY_HOSTNAME=").map(|v| v.trim().trim_matches('"').trim_matches('\'').to_owned())));
+    [pretty, read(&roots.fs.join("etc/hostname")), read(&roots.fs.join("proc/sys/kernel/hostname"))].into_iter().flatten().map(|n| n.trim().to_owned()).find(|n| !n.is_empty())
+}
+
 /// An iPhone offers its messages and contacts to a computer (the
 /// switches under it in its Bluetooth settings) by what the computer said
 /// it was as they paired, and BlueFerry's notes found them offered to one
@@ -2194,15 +2223,17 @@ fn with_bluez_class(conf: &str, class: u32) -> String {
 /// paired, a suggestion otherwise. (At first only with an iPhone paired:
 /// Ben, who had unpaired to pair again, "olo doctor didn't say anything
 /// about it".)
-fn phone_class(roots: &Roots, r: &mut Report) {
+fn phone_class(roots: &Roots, procs: &[Proc], r: &mut Report) {
     if !roots.iphone && bluetooth_controllers(&roots.fs).is_empty() {
         return;
     }
-    // (Whole: written back with only the class changed.)
+    // (Whole: written back with only what's needed changed.)
     let conf = std::fs::read_to_string(roots.fs.join(BLUEZ_CONF)).unwrap_or_default();
-    let class = bluez_class(&conf);
-    // (Only the major and minor classes count: BlueZ takes no more.)
-    if class.is_some_and(|c| c & 0x1ffc == HANDS_FREE & 0x1ffc) {
+    let set = bluez_class(&conf).is_some_and(|c| c & 0x1ffc == HANDS_FREE);
+    // What the adapter says now is what counts (only the major and
+    // minor classes: BlueZ takes no more); without it, the settings.
+    let says = roots.bluetooth_class.map(|c| c & 0x1ffc == HANDS_FREE);
+    if says.unwrap_or(set && drop_in_hands_free(roots)) {
         r.fine.push(Fine { title: "Bluetooth presents this computer as an iPhone expects".into(), detail: "As a hands-free device: an iPhone offers its messages and contacts to it.".into() });
         return;
     }
@@ -2211,19 +2242,37 @@ fn phone_class(roots: &Roots, r: &mut Report) {
     } else {
         (Severity::Advice, "For an iPhone: have Bluetooth present this computer as one expects")
     };
+    // The class, in BlueZ's settings; and, since BlueZ's hostname plugin
+    // puts its own over it (a laptop's, from the chassis: Ben's, after
+    // the class alone was set), Bluetooth started without that plugin,
+    // and the name it gave the adapter kept in BlueZ's settings (else
+    // it's "BlueZ 5.87"), unless one is set there already.
+    let mut conf2 = with_bluez(&conf, "Class", &format!("0x{HANDS_FREE:06x}"));
+    if bluez_setting(&conf, "Name").is_none()
+        && let Some(name) = host_name(roots)
+    {
+        conf2 = with_bluez(&conf2, "Name", &name);
+    }
+    let mut steps = vec![Step::WriteFile { path: format!("/{BLUEZ_CONF}").into(), content: conf2, mode: 0o644 }];
+    let bluez = procs.iter().find(|p| p.name == "bluetoothd");
+    let program = bluez
+        .and_then(|b| {
+            let cmdline = std::fs::read(roots.fs.join(format!("proc/{}/cmdline", b.pid))).unwrap_or_default();
+            b.exe.clone().map(|e| e.trim_end_matches(" (deleted)").to_owned()).or_else(|| cmdline.split(|c| *c == 0).next().map(|a| String::from_utf8_lossy(a).into_owned()))
+        })
+        .filter(|e| e.starts_with('/'))
+        .unwrap_or_else(|| "/usr/libexec/bluetooth/bluetoothd".to_owned());
+    if !drop_in_hands_free(roots) {
+        steps.push(Step::WriteFile { path: format!("/{BLUETOOTH_DROP_IN}").into(), content: bluetooth_drop_in(&program, true), mode: 0o644 });
+        steps.push(Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Reload });
+    }
+    steps.push(Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Restart });
     r.findings.push(Finding {
         id: "phone-class".into(),
         severity,
         title: title.into(),
-        detail: "An iPhone offers its messages and contacts to a computer (Show Notifications and Sync Contacts, under it in the iPhone’s Bluetooth settings) by what the computer says it is as they pair, and it offers its contacts to one that says it’s a hands-free device; this one says it’s a laptop. The fix has Bluetooth say so from now on (Class in /etc/bluetooth/main.conf) and starts it again. An iPhone paired before: forget this computer on the iPhone, remove the iPhone in Preferences ▸ Bluetooth, and pair again (Preferences ▸ Phone). The iPhone may then also offer this computer for calls’ sound, and other devices see it as a headset.".into(),
-        fix: Some(Fix {
-            label: "Present as Hands-Free".into(),
-            root: true,
-            steps: vec![
-                Step::WriteFile { path: format!("/{BLUEZ_CONF}").into(), content: with_bluez_class(&conf, HANDS_FREE), mode: 0o644 },
-                Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Restart },
-            ],
-        }),
+        detail: "An iPhone offers its messages and contacts to a computer (Show Notifications and Sync Contacts, under it in the iPhone’s Bluetooth settings) by what the computer says it is as they pair, and it offers its contacts to one that says it’s a hands-free device; this one says it’s a laptop. The fix has Bluetooth say so from now on (Class in /etc/bluetooth/main.conf, and Bluetooth started without its hostname plugin, which would put a laptop’s class over it; the computer’s name kept) and starts it again. An iPhone paired before: forget this computer on the iPhone, remove the iPhone in Preferences ▸ Bluetooth, and pair again (Preferences ▸ Phone). The iPhone may then also offer this computer for calls’ sound, and other devices see it as a headset.".into(),
+        fix: Some(Fix { label: "Present as Hands-Free".into(), root: true, steps }),
     });
 }
 
@@ -4287,6 +4336,7 @@ mod tests {
             airpods: true,
             phone: false,
             iphone: false,
+            bluetooth_class: None,
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
@@ -4818,6 +4868,7 @@ mod tests {
             airpods: false,
             phone: false,
             iphone: false,
+            bluetooth_class: None,
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
@@ -4904,6 +4955,7 @@ mod tests {
             airpods: false,
             phone: false,
             iphone: false,
+            bluetooth_class: None,
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
@@ -5442,31 +5494,53 @@ mod tests {
     #[test]
     fn an_iphone_wants_a_hands_free_computer() {
         let (fs, mut roots) = machine("phone-class");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
         let found = |roots: &Roots| scan(roots).findings.into_iter().find(|f| f.id == "phone-class");
         assert!(found(&roots).is_none(), "no Bluetooth: nothing said");
         // Bluetooth, no iPhone paired yet: suggested (it must be so before
         // one pairs); one paired: a problem.
         std::fs::create_dir_all(fs.join("sys/class/bluetooth/hci0")).unwrap();
+        roots.bluetooth_class = Some(0x6c010c);
         assert_eq!(found(&roots).map(|f| f.severity), Some(Severity::Advice));
         roots.iphone = true;
-        assert_eq!(found(&roots).map(|f| f.severity), Some(Severity::Problem));
         let conf = "[General]\n# Default device class.\n#Class = 0x000100\n#DiscoverableTimeout = 0\n\n[BR]\n#PageScanType = \n";
-        let path = fs.join(BLUEZ_CONF);
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, conf).unwrap();
+        w(BLUEZ_CONF, conf);
+        w("proc/sys/kernel/hostname", "fedora\n");
         let f = found(&roots).expect("said");
+        assert_eq!(f.severity, Severity::Problem);
         let fix = f.fix.unwrap();
         assert!(fix.root);
         let Step::WriteFile { content, .. } = &fix.steps[0] else { panic!("{:?}", fix.steps) };
-        assert_eq!(content, "[General]\n# Default device class.\n#Class = 0x000100\nClass = 0x000408\n#DiscoverableTimeout = 0\n\n[BR]\n#PageScanType = \n");
-        assert_eq!(fix.steps[1], Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Restart });
-        // Done: fine (whatever service bits it has with it).
-        std::fs::write(&path, content).unwrap();
+        // The class after its commented example; the name the hostname
+        // plugin gave the adapter at the section's end.
+        assert_eq!(content, "[General]\n# Default device class.\n#Class = 0x000100\nClass = 0x000408\n#DiscoverableTimeout = 0\n\nName = fedora\n[BR]\n#PageScanType = \n");
+        // Bluetooth without its hostname plugin (which puts a laptop's
+        // class over it), started so.
+        let Step::WriteFile { path, content: drop_in, .. } = &fix.steps[1] else { panic!("{:?}", fix.steps) };
+        assert_eq!(path, Path::new("/etc/systemd/system/bluetooth.service.d/olo.conf"));
+        assert!(drop_in.ends_with("ExecStart=/usr/libexec/bluetooth/bluetoothd --experimental -P hostname\n"), "{drop_in}");
+        assert_eq!(fix.steps[2..], [Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Reload }, Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Restart }]);
+        // The settings set and the adapter still a laptop (Ben's: the
+        // hostname plugin's class over it): still said, the drop-in
+        // still needed.
+        w(BLUEZ_CONF, content);
+        assert_eq!(found(&roots).unwrap().fix.unwrap().steps.len(), 4);
+        // The adapter says hands-free (service bits with it): fine.
+        roots.bluetooth_class = Some(0x240408);
         assert!(found(&roots).is_none());
-        // Another class set: replaced, in place; none at all: a section.
-        assert_eq!(with_bluez_class("[General]\nName = x\nClass = 0x00010c\n[LE]\n", HANDS_FREE), "[General]\nName = x\nClass = 0x000408\n[LE]\n");
-        assert_eq!(with_bluez_class("[General]\nName = x\n[LE]\nClass = 1\n", HANDS_FREE), "[General]\nName = x\nClass = 0x000408\n[LE]\nClass = 1\n");
-        assert_eq!(with_bluez_class("", HANDS_FREE), "[General]\nClass = 0x000408\n");
+        // Not known (BlueZ not answering): by the settings and the drop-in.
+        roots.bluetooth_class = None;
+        assert!(found(&roots).is_some(), "the drop-in isn't there yet");
+        w(BLUETOOTH_DROP_IN, &bluetooth_drop_in("/usr/libexec/bluetooth/bluetoothd", true));
+        assert!(found(&roots).is_none());
+        // A name already set is kept; another class replaced, in place.
+        assert_eq!(with_bluez("[General]\nName = x\nClass = 0x00010c\n[LE]\n", "Class", "0x000408"), "[General]\nName = x\nClass = 0x000408\n[LE]\n");
+        assert_eq!(with_bluez("[General]\nName = x\n[LE]\nClass = 1\n", "Class", "0x000408"), "[General]\nName = x\nClass = 0x000408\n[LE]\nClass = 1\n");
+        assert_eq!(with_bluez("", "Class", "0x000408"), "[General]\nClass = 0x000408\n");
         assert_eq!(bluez_class("[General]\nClass = 0x240408\n"), Some(0x240408));
         assert_eq!(bluez_class("[LE]\nClass = 0x000408\n"), None);
         let _ = std::fs::remove_dir_all(&fs);
@@ -6338,6 +6412,7 @@ mod tests {
                 airpods: false,
                 phone: false,
                 iphone: false,
+                bluetooth_class: None,
                 bluetooth_stuck: Vec::new(),
                 packages: Box::new(|_| None),
                 updates: Box::new(|| None),
