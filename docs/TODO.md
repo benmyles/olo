@@ -140,6 +140,12 @@ something nobody here has is in "Blocked", with what it waits for.
   it is; otherwise it plays at a quarter of the output's full volume,
   whatever the person's volume is set to, and leaves that setting as it
   found it.
+- **The website covers Terminal's work with agents** (Ben, 2026-11-16:
+  "update the website to cover all the agent integration features in olo
+  terminal"). olo-desktop.com's Agents part: what Terminal does for
+  coding agents (tab groups and their titles kept by the agent, what an
+  agent is told as it starts, worktrees, keep going, Agent Screens from a
+  tab, the rest of HACKING's "Terminal" on agents), each with a picture.
 - **Go to File or Folder in the file panel** (Ben, 2026-11-16, with a
   picture of an Open File panel on Pictures: "i should be able to use
   the go to file/folder shortcut in a picker like this"). In the kit's
