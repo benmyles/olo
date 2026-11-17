@@ -94,16 +94,16 @@ fn link(proxy: olo_kit::Proxy) -> &'static Link {
                         proxy.send(Msg::Redraw);
                     }
                     let error = match job {
-                        // (The phone service sees it come and starts it;
-                        // asked for here too, so the bus knows of it.)
-                        Job::Install => crate::ask_doctor(&["--fix", "phone-backend"]).err().or_else(|| {
-                            let _ = olo_system::env::reload_session_bus();
-                            Client::connect().and_then(|c| c.status()).err().map(|e| blueferry::said(&e))
-                        }),
+                        // (The phone service sees it come. It runs once
+                        // a phone is paired, the next step.)
+                        Job::Install => crate::ask_doctor(&["--fix", "phone-backend"]).err(),
                         Job::Save(s) => s.save().err().map(|e| format!("Couldn't save: {e}")),
                         Job::Reconnect => Client::connect().and_then(|c| c.reconnect()).err().map(|e| blueferry::said(&e)),
                         // (Its status asked: the bus starts it to answer.)
-                        Job::Start => Client::connect().and_then(|c| c.status()).err().map(|e| blueferry::said(&e)),
+                        Job::Start => {
+                            let _ = olo_system::env::reload_session_bus();
+                            Client::connect().and_then(|c| c.status()).err().map(|e| blueferry::said(&e))
+                        }
                     };
                     let mut s = sh.lock().unwrap();
                     let was = std::mem::take(&mut s.installing);
@@ -125,6 +125,8 @@ pub fn test_state() -> PhoneState {
         pid: 0,
         backend: Backend::Running,
         release: "0.9.1-1.fc45".into(),
+        paired: true,
+        trouble: String::new(),
         link: PhoneLink::Ready,
         messages: true,
         contacts: true,
@@ -174,10 +176,14 @@ fn step(ui: &mut Ui, n: u32, done: bool, now: bool, title: &str, detail: &str, b
 }
 
 /// Setting the phone up, a step at a time, each done from here: the
-/// backend, pairing, and the phone's own switches.
+/// backend installed, the phone paired (the backend runs from then on:
+/// its unit starts only once pairing has written its configuration, and
+/// Olo's phone service starts it and keeps it running), and the phone's
+/// own switches.
 fn setup(ui: &mut Ui, link: &'static Link, state: &PhoneState, installing: bool, error: Option<String>) {
+    let installed = state.backend != Backend::Missing;
     let running = state.backend == Backend::Running;
-    let paired = running && state.link != PhoneLink::NotPaired;
+    let paired = state.paired;
     ui.add(StringView::new("Your iPhone’s messages and its one-time codes can come to this computer, over Bluetooth, with no cloud or account between them.").wrap(true));
     let items = ui.collect(|ui| {
         // 1. The backend.
@@ -189,43 +195,47 @@ fn setup(ui: &mut Ui, link: &'static Link, state: &PhoneState, installing: bool,
                     let _ = link.tx.send(Job::Install);
                 })),
             ),
-            Backend::Stopped => (
-                "BlueFerry is installed and not running.".to_owned(),
-                Some(Button::new("Start It").default(true).on_click(move |_, _| {
-                    let _ = link.tx.send(Job::Start);
-                })),
-            ),
             Backend::Other => (
                 format!("BlueFerry {} and this Olo speak different versions: update Olo, or install BlueFerry’s latest.", state.release),
                 Some(Button::new("Install Latest…").enabled(!installing).on_click(move |_, _| {
                     let _ = link.tx.send(Job::Install);
                 })),
             ),
-            Backend::Running => (format!("BlueFerry {} is installed and running.", state.release), None),
+            Backend::Stopped | Backend::Running => (format!("BlueFerry {} is installed.", state.release).replace("  ", " "), None),
         };
-        step(ui, 1, running, !running, "Install BlueFerry", &detail, button);
-        // 2. Pairing.
-        let first = (running && !paired).then(|| Button::new("Pair…").default(true).on_click(move |_, _| pair()));
-        let again = paired.then(|| Button::new("Pair Again…").on_click(move |_, _| pair()));
+        let have = installed && state.backend != Backend::Other;
+        step(ui, 1, have, !have, "Install BlueFerry", &detail, button);
+        // 2. Pairing (BlueFerry starts once it's done).
+        let first = (have && !paired).then(|| Button::new("Pair…").default(true).on_click(move |_, _| pair()));
+        let again = (have && paired).then(|| Button::new("Pair Again…").on_click(move |_, _| pair()));
         step(
             ui,
             2,
             paired,
-            running && !paired,
+            have && !paired,
             "Pair the iPhone",
             "Unlock it and keep Settings ▸ Bluetooth open on it. Pairing opens in Terminal: it finds the phone and shows the same code on both.",
             first.or(again),
         );
-        // 3. The phone's own switches.
-        step(
-            ui,
-            3,
-            false,
-            paired,
-            "On the iPhone, let it share",
-            "In Settings ▸ Bluetooth, tap ⓘ beside this computer and turn on Show Message Notifications and Sync Contacts (and Share System Notifications, for group names). They can take a minute to appear.",
-            None,
-        );
+        // 3. The phone's own switches; or, paired and the backend not
+        // up: why, and a way to try now (Olo keeps trying by itself).
+        if paired && !running {
+            let why = if state.trouble.is_empty() { "BlueFerry is starting…".to_owned() } else { format!("{} Olo tries again by itself.", state.trouble) };
+            let start = Button::new("Start It").default(true).on_click(move |_, _| {
+                let _ = link.tx.send(Job::Start);
+            });
+            step(ui, 3, false, true, "Start BlueFerry", &why, Some(start));
+        } else {
+            step(
+                ui,
+                3,
+                false,
+                paired,
+                "On the iPhone, let it share",
+                "In Settings ▸ Bluetooth, tap ⓘ beside this computer and turn on Show Message Notifications and Sync Contacts (and Share System Notifications, for group names). They can take a minute to appear.",
+                None,
+            );
+        }
     });
     ui.add(BBox::new("Set Up Your iPhone").children(items));
     if let Some(e) = error {
@@ -243,7 +253,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         return ui.add(EmptyState::new("Looking for the phone…").icon("phone"));
     }
     // Not all set up yet: the steps, and nothing else to look at.
-    if state.backend != Backend::Running || !state.link.connected() && !state.messages && matches!(state.link, PhoneLink::NotPaired | PhoneLink::Allow) {
+    if state.backend != Backend::Running || !state.paired || !state.link.connected() && !state.messages && state.link == PhoneLink::Allow {
         let installing = link.shared.lock().unwrap().installing;
         return setup(ui, link, &state, installing, error);
     }

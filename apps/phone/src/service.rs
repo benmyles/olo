@@ -13,6 +13,15 @@
 //! else asked first, or never), and what it got goes in that screen's
 //! history, without the code.
 //!
+//! **It starts the backend and keeps it running** (Ben, 2026-11-16: "olo
+//! should handle starting and keeping it running"). BlueFerry's unit
+//! starts only once a phone is paired (its configuration is there), and
+//! then with each session; here, once it's installed and paired and not
+//! on the bus (just paired, just installed, stopped, crashed past
+//! systemd's own restarts), it is asked for (`start`: the bus starts
+//! it), on a thread, again after 5 s, 30 s, 2 min and then every 10 min
+//! while it won't start, saying why in the state (`trouble`).
+//!
 //! A code is kept in memory only, for [`CODE_LIFE`], wiped when it's used
 //! or too old. Nothing a message says is logged or written to disk here.
 
@@ -48,8 +57,11 @@ const THREADS: u32 = 50;
 enum Ev {
     Bus(Event),
     Settings,
-    /// The backend's files came or went (installed, removed, updated).
+    /// The backend's files came or went (installed, removed, updated),
+    /// or its configuration did (a phone paired, or forgotten).
     Installed,
+    /// Starting the backend came to this (`None`: it's up).
+    Started(Option<String>),
     Ask(Request, bool, mpsc::Sender<Reply>),
     Hello(u64, Option<String>, u32, UnixStream),
     Said(u64, FromBrowser),
@@ -118,6 +130,11 @@ struct Service {
     notes: Notifier,
     about: Vec<(NoteId, About)>,
     tx: mpsc::Sender<Ev>,
+    /// Keeping the backend running: it's being started now; when to try
+    /// next; how many tries have failed in a row.
+    starting: bool,
+    start_at: Option<Instant>,
+    failed: u32,
 }
 
 fn now() -> u64 {
@@ -165,7 +182,7 @@ pub fn run() -> ! {
     // The backend installed while the session runs (Olo Doctor's fix):
     // seen by its D-Bus activation file coming.
     let to = tx.clone();
-    let _installed = olo_kit_base::watch::watch([std::path::PathBuf::from(blueferry::ACTIVATION)], move |_| {
+    let _installed = olo_kit_base::watch::watch([std::path::PathBuf::from(blueferry::ACTIVATION), blueferry::configuration()], move |_| {
         let _ = to.send(Ev::Installed);
     });
     let to = tx.clone();
@@ -187,12 +204,15 @@ pub fn run() -> ! {
         notes,
         about: Vec::new(),
         tx,
+        starting: false,
+        start_at: None,
+        failed: 0,
     };
     s.look();
     loop {
         // Asleep until something is said, or until a round of asking
         // ends or a code gets too old.
-        let next = s.codes.iter().flat_map(|c| [Some(c.until), c.round.as_ref().map(|r| r.until)]).flatten().min();
+        let next = s.codes.iter().flat_map(|c| [Some(c.until), c.round.as_ref().map(|r| r.until)]).flatten().chain(s.start_at).min();
         let ev = match next {
             Some(at) => match rx.recv_timeout(at.saturating_duration_since(Instant::now())) {
                 Ok(ev) => Some(ev),
@@ -215,8 +235,31 @@ pub fn run() -> ! {
 impl Service {
     fn take(&mut self, ev: Ev) {
         match ev {
-            Ev::Bus(Event::Up | Event::Down) => {
+            Ev::Bus(Event::Up) => {
+                (self.failed, self.start_at) = (0, None);
                 self.first = true;
+                self.look();
+            }
+            // Gone: looked at, and started again in a moment if it
+            // should be running (systemd restarts one that crashed
+            // itself, 5 s on: after that).
+            Ev::Bus(Event::Down) => {
+                self.first = true;
+                self.start_at = Some(Instant::now() + Duration::from_secs(8));
+                self.look();
+            }
+            Ev::Started(why) => {
+                self.starting = false;
+                match why {
+                    None => (self.failed, self.start_at) = (0, None),
+                    Some(why) => {
+                        self.failed += 1;
+                        let wait = [5, 30, 120, 600][(self.failed as usize - 1).min(3)];
+                        self.start_at = Some(Instant::now() + Duration::from_secs(wait));
+                        tracing::info!("phone: the backend didn't start (try {}): {why}", self.failed);
+                        self.state.trouble = why;
+                    }
+                }
                 self.look();
             }
             Ev::Bus(Event::Status) => self.status(),
@@ -224,15 +267,10 @@ impl Service {
             // (A popup of the backend's own was clicked: the message it
             // wants shown. Nothing shows conversations yet.)
             Ev::Bus(Event::Open(_)) => {}
-            // Just installed: started (the bus told of it first), as it
-            // starts by itself with every session from the next on.
+            // Just installed, or just paired: looked at again, and
+            // started if it should be running.
             Ev::Installed => {
-                if blueferry::installed() && !self.client.running() {
-                    let _ = olo_system::env::reload_session_bus();
-                    if let Err(e) = self.client.status() {
-                        tracing::info!("phone: the backend, just installed, didn't start: {}", blueferry::said(&e));
-                    }
-                }
+                (self.failed, self.start_at) = (0, None);
                 self.first = true;
                 self.look();
             }
@@ -284,10 +322,26 @@ impl Service {
     /// The backend as it stands now, from the start.
     fn look(&mut self) {
         if !self.client.running() {
-            self.state = PhoneState { pid: std::process::id(), backend: if blueferry::installed() { Backend::Stopped } else { Backend::Missing }, codes: self.state.codes, ..Default::default() };
+            let installed = blueferry::installed();
+            self.state = PhoneState {
+                pid: std::process::id(),
+                backend: if installed { Backend::Stopped } else { Backend::Missing },
+                release: blueferry::installed_release().unwrap_or_default(),
+                paired: installed && blueferry::configured(),
+                trouble: std::mem::take(&mut self.state.trouble),
+                codes: self.state.codes,
+                ..Default::default()
+            };
             self.threads.clear();
+            // Installed, a phone paired, and not running: started.
+            if self.state.paired && self.start_at.is_none() && self.failed == 0 {
+                self.start();
+            } else if !self.state.paired {
+                self.state.trouble.clear();
+            }
             return;
         }
+        self.state.trouble.clear();
         self.status();
         if self.state.backend == Backend::Running {
             self.policy();
@@ -306,6 +360,7 @@ impl Service {
         let st = &mut self.state;
         st.release = status.release.clone();
         st.backend = if status.api == phone::API { Backend::Running } else { Backend::Other };
+        st.paired = status.profile.is_some();
         st.link = if status.profile.is_none() { Link::NotPaired } else { Link::of(&status.connectivity) };
         (st.messages, st.contacts, st.notifications) = (status.map, status.pbap, status.ancs);
         st.battery = status.battery.filter(|_| st.link.connected());
@@ -552,9 +607,32 @@ impl Service {
         }
     }
 
-    /// Rounds that have waited long enough are decided; codes too old go.
+    /// Ask the bus for the backend, which starts it: on a thread (it
+    /// waits on the start), its outcome back as `Ev::Started`.
+    fn start(&mut self) {
+        if self.starting {
+            return;
+        }
+        (self.starting, self.start_at) = (true, None);
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            // (The bus told of an activation file that has just come.)
+            let _ = olo_system::env::reload_session_bus();
+            let why = Client::connect().and_then(|c| c.status()).err().map(|e| blueferry::said(&e));
+            let _ = tx.send(Ev::Started(why));
+        });
+    }
+
+    /// Rounds that have waited long enough are decided; codes too old
+    /// go; a backend that should be running is tried again when it's time.
     fn tick(&mut self) {
         let t = Instant::now();
+        if self.start_at.is_some_and(|at| at <= t) {
+            self.start_at = None;
+            if blueferry::installed() && blueferry::configured() && !self.client.running() {
+                self.start();
+            }
+        }
         let due: Vec<u64> = self.codes.iter().filter(|c| c.round.as_ref().is_some_and(|r| r.until <= t)).map(|c| c.id).collect();
         for id in due {
             self.decide(id);

@@ -28,6 +28,8 @@ const USAGE: &str = "usage: olo-phone [COMMAND]
   --send TO TEXT…             a new message to a number or an address
   --reply KEY TEXT…           an answer in a conversation
   --mark-read KEY
+  --start                     start the backend (Olo's service does, and
+                              keeps it running, once a phone is paired)
   --reconnect                 try the phone again now
   --code                      the latest one-time code, while it's good
   --copy-code                 the same, put on the clipboard
@@ -110,6 +112,22 @@ fn main() -> ExitCode {
             let Some(t) = find(&threads, &arg(1)) else { return Err(not_found(&arg(1))) };
             c.mark_read(&t.key).map(|_| ())
         }),
+        "--start" => {
+            if !blueferry::installed() {
+                return fail("the phone's backend (BlueFerry) isn't installed: Olo Doctor offers it");
+            }
+            if !blueferry::configured() {
+                return fail("BlueFerry starts once an iPhone is paired: Preferences ▸ Phone pairs it");
+            }
+            let _ = olo_system::env::reload_session_bus();
+            match Client::connect().and_then(|c| c.status()) {
+                Ok(s) => {
+                    out!("BlueFerry {} is running.", s.release);
+                    ExitCode::SUCCESS
+                }
+                Err(e) => fail(&blueferry::said(&e)),
+            }
+        }
         "--reconnect" => backend(|c| c.reconnect().map(|how| out!("{how}"))),
         "--code" => match phone::ask(&Request::Code, Duration::from_secs(5)) {
             Ok(r) if r.ok => {
@@ -246,7 +264,11 @@ fn backend(ask: impl FnOnce(&Client) -> olo_system::Result<()>) -> ExitCode {
         Err(e) => return fail(&format!("no session bus: {e}")),
     };
     if !client.running() {
-        return fail(if blueferry::installed() { "the phone's backend isn't running" } else { "the phone's backend (BlueFerry) isn't installed: Olo Doctor offers it" });
+        return fail(match (blueferry::installed(), blueferry::configured()) {
+            (false, _) => "the phone's backend (BlueFerry) isn't installed: Olo Doctor offers it",
+            (true, false) => "no iPhone is paired yet: Preferences ▸ Phone pairs it",
+            (true, true) => "the phone's backend isn't running (olo-phone --start says why)",
+        });
     }
     match ask(&client) {
         Ok(()) => ExitCode::SUCCESS,
@@ -265,6 +287,9 @@ fn status(json: bool) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     out!("{}", state.words());
+    if !state.trouble.is_empty() {
+        out!("  {}", state.trouble);
+    }
     if state.backend == Backend::Running {
         out!("  BlueFerry {}", state.release);
         let up = |on: bool| if on { "yes" } else { "no" };

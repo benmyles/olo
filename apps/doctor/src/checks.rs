@@ -298,9 +298,11 @@ pub struct Roots {
     pub units: Box<dyn Fn(&str) -> Result<UnitState, String> + Send + Sync>,
     /// AirPods are paired here (the AirPods service's state).
     pub airpods: bool,
-    /// A phone is paired for messages (the phone service's state:
-    /// `olo_protocol::phone`), as far as that's known.
+    /// A phone is paired for messages (the backend has its
+    /// configuration, which pairing writes: it runs only once it does).
     pub phone_paired: bool,
+    /// The phone's backend is on the session bus.
+    pub phone_running: bool,
     /// Bluetooth controllers that don't answer (BlueZ's adapter powered
     /// and its power off, or the other way round), by name ("hci0").
     pub bluetooth_stuck: Vec<String>,
@@ -422,10 +424,9 @@ impl Roots {
             scope,
             units: Box::new(crate::fix::unit_state),
             airpods,
-            phone_paired: {
-                let phone = olo_protocol::phone::PhoneState::load();
-                phone.backend == olo_protocol::phone::Backend::Running && phone.link != olo_protocol::phone::Link::NotPaired
-            },
+            phone_paired: olo_system::blueferry::configured(),
+            // (Asking whether it's there never starts it.)
+            phone_running: olo_system::blueferry::Client::connect().is_ok_and(|c| c.running()),
             bluetooth_stuck,
             packages: Box::new(real_packages),
             updates: Box::new(real_updates),
@@ -2111,15 +2112,12 @@ fn phone(roots: &Roots, procs: &[Proc], r: &mut Report) {
     }
     let release = read(&roots.fs.join("usr/share/blueferry/package-release")).map(|s| s.trim().to_owned()).filter(|s| !s.is_empty());
     let release = release.map(|v| format!(" {v}")).unwrap_or_default();
-    if roots.phone_paired {
-        r.fine.push(Fine {
-            title: "The phone’s backend is installed, and an iPhone paired".into(),
-            detail: format!("BlueFerry{release}: an iPhone’s messages and one-time codes, over Bluetooth. Its settings are in Preferences ▸ Phone."),
-        });
-    } else {
+    if !roots.phone_paired {
         // Installed, and nothing to show for it yet: the next step, said
         // where the install was done (Ben, 2026-11-16, having installed
         // it: "how do i setup my iphone? we should make that easy/obvious").
+        // (The backend doesn't run until then: its unit starts only once
+        // pairing has written its configuration.)
         r.findings.push(Finding {
             id: "phone-pair".into(),
             severity: Severity::Suggestion,
@@ -2128,6 +2126,22 @@ fn phone(roots: &Roots, procs: &[Proc], r: &mut Report) {
                 "BlueFerry{release} is installed. Preferences ▸ Phone pairs the iPhone, a step at a time: it finds the phone, shows the same code on both, and says what to turn on on the phone. Then its messages and one-time codes come here."
             ),
             fix: Some(Fix { label: "Set It Up…".into(), root: false, steps: vec![Step::StartProgram { argv: vec!["olo-preferences".into(), "phone".into()] }] }),
+        });
+    } else if !roots.phone_running {
+        // Paired and not running. Olo's phone service starts it and
+        // keeps it running (Ben: "olo should handle starting and keeping
+        // it running"); seen here, it couldn't, or isn't there to.
+        r.findings.push(Finding {
+            id: "phone-stopped".into(),
+            severity: Severity::Advice,
+            title: "The phone’s backend isn’t running".into(),
+            detail: format!("BlueFerry{release} is installed and an iPhone paired, but it isn’t running: no messages or codes come. Olo starts it and keeps it running; the fix starts it now; Preferences ▸ Phone says why if it won’t."),
+            fix: Some(Fix { label: "Start It".into(), root: false, steps: vec![Step::StartProgram { argv: vec!["olo-phone".into(), "--start".into()] }] }),
+        });
+    } else {
+        r.fine.push(Fine {
+            title: "The phone’s backend is running, with an iPhone paired".into(),
+            detail: format!("BlueFerry{release}: an iPhone’s messages and one-time codes, over Bluetooth. Its settings are in Preferences ▸ Phone."),
         });
     }
     // Bluetooth, started as the backend needs it.
@@ -4211,6 +4225,7 @@ mod tests {
             units,
             airpods: true,
             phone_paired: false,
+            phone_running: false,
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
@@ -4741,6 +4756,7 @@ mod tests {
             units: Box::new(|_| Err("none".into())),
             airpods: false,
             phone_paired: false,
+            phone_running: false,
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
@@ -4826,6 +4842,7 @@ mod tests {
             units: Box::new(|_| Err("none".into())),
             airpods: false,
             phone_paired: false,
+            phone_running: false,
             bluetooth_stuck: Vec::new(),
             packages: Box::new(|_| None),
             updates: Box::new(|| None),
@@ -5344,9 +5361,14 @@ mod tests {
         assert_eq!((found.iter().map(|f| f.id.as_str()).collect::<Vec<_>>(), fine), (vec!["phone-pair", "phone-bluetooth"], 0));
         assert_eq!(found[0].fix.as_ref().unwrap().steps, [Step::StartProgram { argv: vec!["olo-preferences".into(), "phone".into()] }]);
         assert!(!found[0].fix.as_ref().unwrap().root && found[0].detail.starts_with("BlueFerry 0.9.1-1.fc45 is installed."));
+        // Paired, and not running: said, with a fix that starts it.
         let roots = Roots { phone_paired: true, ..roots };
+        let (found, _) = phone(&roots);
+        assert_eq!(found.iter().map(|f| f.id.as_str()).collect::<Vec<_>>(), ["phone-stopped", "phone-bluetooth"]);
+        assert_eq!(found[0].fix.as_ref().unwrap().steps, [Step::StartProgram { argv: vec!["olo-phone".into(), "--start".into()] }]);
+        let roots = Roots { phone_running: true, ..roots };
         let r = scan(&roots);
-        assert!(r.fine.iter().any(|f| f.title == "The phone’s backend is installed, and an iPhone paired" && f.detail.starts_with("BlueFerry 0.9.1-1.fc45:")));
+        assert!(r.fine.iter().any(|f| f.title == "The phone’s backend is running, with an iPhone paired" && f.detail.starts_with("BlueFerry 0.9.1-1.fc45:")));
         let (found, _) = phone(&roots);
         assert_eq!(found.iter().map(|f| f.id.as_str()).collect::<Vec<_>>(), ["phone-bluetooth"]);
         let steps = &found[0].fix.as_ref().unwrap().steps;
@@ -6230,6 +6252,7 @@ mod tests {
                 units: Box::new(|_| Err("none".into())),
                 airpods: false,
                 phone_paired: false,
+                phone_running: false,
                 bluetooth_stuck: Vec::new(),
                 packages: Box::new(|_| None),
                 updates: Box::new(|| None),

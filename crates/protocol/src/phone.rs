@@ -102,6 +102,12 @@ pub struct PhoneState {
     pub backend: Backend,
     /// The backend's release ("0.9.1-1.fc45").
     pub release: String,
+    /// A phone has been paired (the backend has its configuration: it
+    /// runs only once it does).
+    pub paired: bool,
+    /// Why the backend isn't running though a phone is paired, when
+    /// starting it failed (Olo starts it and keeps it running).
+    pub trouble: String,
     pub link: Link,
     /// Which of the phone's services are up: its messages (MAP), its
     /// contacts (PBAP), its notifications (ANCS).
@@ -152,6 +158,7 @@ impl PhoneState {
     pub fn words(&self) -> String {
         match self.backend {
             Backend::Missing => "The phone's backend isn't installed".into(),
+            Backend::Stopped if !self.paired => "No phone paired".into(),
             Backend::Stopped => "The phone's backend isn't running".into(),
             Backend::Other => "The phone's backend and Olo don't match: update them".into(),
             Backend::Running => {
@@ -419,7 +426,7 @@ mod tests {
         assert_eq!(s.words(), "Connected · 81% · 2 unread");
         let text = serde_json::to_string(&s).unwrap();
         let keys: Vec<String> = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&text).unwrap().keys().cloned().collect();
-        assert_eq!(keys, ["pid", "backend", "release", "link", "messages", "contacts", "notifications", "battery", "conversations", "unread", "storage", "codes", "code_at"]);
+        assert_eq!(keys, ["pid", "backend", "release", "paired", "trouble", "link", "messages", "contacts", "notifications", "battery", "conversations", "unread", "storage", "codes", "code_at"]);
         assert_eq!(Link::of("authorization-required"), Link::Allow);
         assert_eq!(Link::of("something new"), Link::Connecting);
     }

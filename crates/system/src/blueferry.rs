@@ -37,6 +37,19 @@ pub fn installed() -> bool {
     [ACTIVATION, "/usr/bin/blueferry", "/usr/local/bin/blueferry"].iter().any(|p| std::path::Path::new(p).exists())
 }
 
+/// Where the backend keeps what pairing wrote (which phone, how): its
+/// unit starts only once this is there (`ConditionPathExists`), so a
+/// backend installed and never paired doesn't run, and can't be started.
+pub fn configuration() -> std::path::PathBuf {
+    let config = std::env::var_os("XDG_CONFIG_HOME").map(std::path::PathBuf::from).filter(|p| p.is_absolute());
+    config.unwrap_or_else(|| std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config")).join("blueferry/local.env")
+}
+
+/// Whether a phone has been paired with it (its configuration is there).
+pub fn configured() -> bool {
+    configuration().is_file()
+}
+
 /// The backend's release as its package says it ("0.9.1-1.fc45"), if
 /// it's installed from one.
 pub fn installed_release() -> Option<String> {
@@ -242,6 +255,19 @@ pub fn said(e: &zbus::Error) -> String {
             (Some(_), Some(m)) if !m.is_empty() => m.clone(),
             (Some(name), _) => format!("The phone's backend refused ({name})."),
             (None, _) if name.as_str() == "org.freedesktop.DBus.Error.ServiceUnknown" => "The phone's backend isn't running.".into(),
+            // The bus couldn't start it ("Could not activate remote peer
+            // …: unit failed", a spawn that failed, no answer in time).
+            (None, m)
+                if name.as_str().starts_with("org.freedesktop.DBus.Error.Spawn")
+                    || m.as_deref().is_some_and(|m| m.contains("activate"))
+                    || matches!(name.as_str(), "org.freedesktop.DBus.Error.TimedOut" | "org.freedesktop.DBus.Error.NoReply") =>
+            {
+                if configured() {
+                    "BlueFerry couldn't be started. Its log says why (Logs, or journalctl --user -u blueferry).".into()
+                } else {
+                    "BlueFerry starts once an iPhone is paired.".into()
+                }
+            }
             (None, m) => m.clone().unwrap_or_else(|| name.to_string()),
         },
         e => e.to_string(),

@@ -13637,20 +13637,40 @@ more: "how do i setup my iphone? we should make that easy/obvious. is
 there an app or preferences somewhere?"). Preferences ▸ Phone, until a
 phone is paired and allowed, is "Set Up Your iPhone" (`setup`): 1.
 Install BlueFerry (Install…: the panel asks Olo Doctor itself,
-`olo-doctor --fix phone-backend`, on its worker; Start It for one
-installed and not running), 2. Pair the iPhone (Pair…: the wizard in
-Terminal), 3. On the iPhone, let it share (the switches, by name); each
-ticked once done, the one to do next in bold with its button. Every way
+`olo-doctor --fix phone-backend`, on its worker), 2. Pair the iPhone
+(Pair…: the wizard in Terminal), 3. On the iPhone, let it share (the
+switches, by name); each ticked once done, the one to do next in bold
+with its button.
+
+**BlueFerry runs only once a phone is paired**, and from then on Olo
+keeps it running. Its unit has `ConditionPathExists=
+~/.config/blueferry/local.env`, which pairing writes
+(`blueferry::configuration`, `configured`): installed and never paired,
+it isn't running and can't be started, and that is no fault. (The panel
+first took "installed, not running" for a fault and offered Start It,
+which could only fail: "Could not activate remote peer
+'io.weirdware.BlueFerry': unit failed"; the stand-in backend ran
+unpaired, which the real one never does. Ben, 2026-11-16: "error trying
+to start ... also olo should handle starting and keeping it running in
+olo doctor if i apply it".) `PhoneState::paired` says which it is
+(running: it has a phone's profile; not running: its configuration is
+there). Once it's installed and paired, the phone service starts it
+whenever it isn't on the bus (`Service::start`: the bus asked for it, on
+a thread): as the service starts, when its files or its configuration
+come (just installed, just paired: both followed by inotify), and 8 s
+after it leaves the bus (systemd restarts a crash itself at 5 s); if it
+won't start, again after 5 s, 30 s, 2 min and then every 10 min, with
+why in `PhoneState::trouble`, which the panel's third step shows beside
+Start It ("Olo tries again by itself"). `olo-phone --start` does it by
+hand and says why not. Olo Doctor: installed and not paired, "Pair your
+iPhone"; paired and not on the bus, "The phone's backend isn't running"
+(Start It). Every way
 in leads there: Olo Doctor, once the backend is installed and no phone
 paired (`Roots::phone_paired`, the phone service's state), suggests
 "Pair your iPhone" (Set It Up… opens the panel; told once in a
 notification, as every suggestion); a phone's row in Preferences ▸
 Bluetooth has Messages and Codes…; `olo-preferences iphone` (or
-`messages`, `codes`, `sms`) opens it. And the phone service sees the
-backend installed while the session runs (its D-Bus activation file
-coming, `blueferry::ACTIVATION`) and starts it, as it starts by itself
-with every session after: before, a backend just installed sat
-"activatable" and stopped until the next login.
+`messages`, `codes`, `sms`) opens it.
 
 **Where it shows.** Preferences ▸ Phone (phone.rs): the setup's steps
 until it's set up, else how it stands
