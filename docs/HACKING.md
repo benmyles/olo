@@ -19491,12 +19491,13 @@ runs it against the fake on the session's bus (`@session-bus`).
 details from a worker), 1.4 ms on average, the slowest 3.7 ms.
 Reviewed at 1×, 1.25×, 1.5×, 1.75× and 2×, light and dark.
 
-## Network Speed Test (apps/speedtest; olo_net::tcp_info)
+## Speed Test (apps/speedtest; olo_net::tcp_info)
 
 What the connection carries each way, and everything that can be
 measured or read of it as it does (Ben, 2026-11-16: "a new olo native
 Network Speed Test app that show not just total up/down but also all the
-advaned metrics/data about the connection that we are able to get").
+advaned metrics/data about the connection that we are able to get";
+and the same day: "just rename the app to "Speed Test"").
 Speed tests elsewhere give two numbers and a ping; this one's point is
 the rest: what happens to everything else while the line is busy, and
 what TCP did on the way.
@@ -19542,7 +19543,14 @@ networkQuality grades responsiveness). The link is NetworkManager's
 cable's rate; and whether it's metered: then the app asks before moving
 gigabytes).
 
-**The window** (view.rs): Start Test and how far it is, then four cards
+**The window** (view.rs) is the size of what it shows and no other
+(`fixed`, `fits_content`), and floats: never a tile or a tab. It was an
+ordinary window at first, and tiled or zoomed it was stretched to a size
+its four cards didn't fill, its menu bar stopping where they did (Ben,
+2026-11-16: "should be floating with max size so it doesn't look
+broken"). Its view is as wide as its window all the same, so a width it
+is given by anything else has the bar and the cards across all of it.
+Start Test and how far it is, then four cards
 on the dashboard's gutter (the kit's `dashboard::Card`, as Activity
 Monitor's): Download, Upload, Latency, Connection, each a figure, a
 graph (but Connection) and its facts. Everything is live as the test

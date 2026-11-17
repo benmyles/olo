@@ -1,4 +1,4 @@
-//! Network Speed Test: what the connection carries each way, and
+//! Speed Test: what the connection carries each way, and
 //! everything that can be measured or read of it as it does (Ben,
 //! 2026-11-16: "add a new olo native Network Speed Test app that show not
 //! just total up/down but also all the advaned metrics/data about the

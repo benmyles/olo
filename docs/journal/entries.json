@@ -4570,5 +4570,11 @@
   "title": "Viewer: Presentation, Full Screen and keys for a PDF's pages",
   "caption": "Presentation (View \u25b8 Presentation, \u21e7\u2318P or P) leaves the window with nothing in it but the page: no menu bar, no tool bar, no scroll bars, and the window takes the page's own shape, so it can be shared as it is in a call or over AirPlay. Full Screen (F) is the same on the whole screen. In both a PDF is a page at a time: the arrows, Space, Return, Page Up and Down, Home and End, a wheel's notch or a click turn the pages, Escape leaves. Next, Previous, First and Last Page, Fit Width and Fit Page have keys in the menus. (A made-up deck.)",
   "image": "2026-11-16/202343-viewer-presentation-full-screen-and-keys-for-a-p.png"
+ },
+ {
+  "time": "2026-11-16T21:20:03",
+  "title": "Speed Test floats at its own size, and is called Speed Test",
+  "caption": "Network Speed Test is now Speed Test, and its window is the size of what it shows and no other: it floats over tiled windows and is never a tile or a tab. Tiled, it was stretched to a window its four cards filled a corner of, its menu bar stopping where they did. (Here with auto-tiling on: StyledEdit's window has the tile, Speed Test floats over it.)",
+  "image": "2026-11-16/212003-speed-test-floats-at-its-own-size-and-is-called-.png"
  }
 ]

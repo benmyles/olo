@@ -13,10 +13,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-(Nothing.)
-
-## Not started (highest priority first)
-
 - **Blueferry: a phone's messages and one-time codes in Olo** (Ben,
   2026-11-16: "integrate https://github.com/erikwb/blueferry into olo so
   that doctor suggests installing the backend and handles doing it and
@@ -37,6 +33,9 @@ something nobody here has is in "Blocked", with what it waits for.
   is, which may be the person's or one on an Agent Screen (then it goes
   to the agent's tab, never the person's, and is logged in the agent's
   history).
+
+## Not started (highest priority first)
+
 - **Terminal remembers a tab's own "keep going" message** (Ben,
   2026-11-16: "when a custom "keep going" message has been set on a tab
   in terminal then terminal should remember that across upgrades and
@@ -108,6 +107,17 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Done, waiting for Ben to try or confirm
 
+- **Speed Test floats at its own size, and is called "Speed Test"** (Ben,
+  2026-11-16, with a picture of it tiled, its cards in a corner of a
+  window four times their size: "network speed test app should be
+  floating with max size so it doesn't look broken. and also just rename
+  the app to "Speed Test""). *Done 2026-11-16.* Its window is the size of
+  what it shows and no other, and floats over tiled windows (never a
+  tile or a tab); its view is as wide as its window whatever that is.
+  Named "Speed Test" in its window, its alert, what it copies, Deskbar,
+  the app list and the shortcuts. **For Ben**: after upgrading, open it
+  with windows tiled: it floats at its own size.
+
 - **Viewer: a PDF's images at full quality, keys for everything, full
   screen and a presentation mode** (Ben, 2026-11-16: "when viewing a pdf
   in the viewer app that has high res images in it (e.g. see
@@ -176,7 +186,7 @@ something nobody here has is in "Blocked", with what it waits for.
   work add a new olo native Network Speed Test app that show not just
   total up/down but also all the advaned metrics/data about the
   connection that we are able to get"). *Done 2026-11-16* (HACKING,
-  "Network Speed Test"): Network Speed Test, among the apps. Download
+  "Speed Test"): Speed Test (so renamed), among the apps. Download
   and upload over four connections each for eight seconds against
   Cloudflare's servers, with, live as it runs: the round trip idle and
   while the line is busy and what the busy line adds; what was sent

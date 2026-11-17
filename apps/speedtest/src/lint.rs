@@ -30,5 +30,5 @@ fn ui_lint_window() {
             found.push(Found { text: format!("{state:?}: {}", f.text), ..f });
         }
     }
-    assert_clean("Network Speed Test's window", &found);
+    assert_clean("Speed Test's window", &found);
 }

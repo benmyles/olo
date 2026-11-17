@@ -75,7 +75,7 @@ pub const APPS: &[(&str, &str)] = &[
     ("olo.palette", "Command Palette"),
     ("olo.telegram", "Telegram"),
     ("olo.doctor", "Olo Doctor"),
-    ("olo.speedtest", "Network Speed Test"),
+    ("olo.speedtest", "Speed Test"),
     // (Slack is Chrome too, olo-slack: these are its keys as well.)
     ("google-chrome", "Chrome and Slack"),
 ];
