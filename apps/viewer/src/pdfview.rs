@@ -125,6 +125,10 @@ pub struct PdfView {
     pages: HashMap<usize, PageImg>,
     /// Scale last asked of the worker, per page.
     asked: HashMap<usize, f32>,
+    /// The scale the pages near the view are due an exact render for,
+    /// once the zoom has stood still, and the timer that's out for it
+    /// (`sharpen_soon`).
+    sharpen: Option<(f32, olo_kit::TimerId)>,
     pub zoom: f32,
     pub fit: Option<Fit>,
     pub tool: Tool,
@@ -238,6 +242,7 @@ impl PdfView {
             editable: false,
             pages: HashMap::new(),
             asked: HashMap::new(),
+            sharpen: None,
             zoom: 1.0,
             fit: Some(Fit::Width),
             tool: Tool::Select,
@@ -1234,6 +1239,64 @@ impl PdfView {
     /// pages near the view asked of the worker at this zoom and scale,
     /// those far from it let go. Whether what its window says of it
     /// changed.
+    /// How long the zoom stands still before pages rendered for a zoom
+    /// close to it are rendered again for exactly it.
+    const SHARPEN_AFTER: std::time::Duration = std::time::Duration::from_millis(150);
+
+    /// The pages near the view whose picture isn't for exactly `want`
+    /// (pixels a point), nor asked for at it, where a render at it would
+    /// look any different (not past the size cap).
+    fn inexact(&self, want: f32) -> Vec<usize> {
+        let near = Rect { x0: self.offset.x, y0: self.offset.y - self.view.height, x1: self.offset.x + self.view.width, y1: self.offset.y + 2.0 * self.view.height };
+        self.layout()
+            .iter()
+            .enumerate()
+            .filter(|(_, pr)| pr.intersects(&near))
+            .filter(|(i, _)| {
+                let max_scale = crate::pdfwork::MAX_PX / self.geoms[*i].size.0.max(self.geoms[*i].size.1).max(1.0);
+                wants_exact(self.pages.get(i).map(|p| p.scale), self.asked.get(i).copied(), want, max_scale)
+            })
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// A page rendered for a zoom within 2% of the one it's shown at is
+    /// stretched to fit. That is what a pinch, or a window being sized,
+    /// wants while it moves (a render at every step would never be in
+    /// time), and not what's wanted once it stops: a stretched page is
+    /// soft, with bands across it where the two grids drift apart, and
+    /// one whose zoom moved by a fraction of a percent was left so for
+    /// good (a window fitting its width as it opens: a third of a percent
+    /// on a 1.5× display, where the fit isn't a round number; Ben,
+    /// 2026-11-16: "it is showing as lower quality with visible
+    /// artifacts"). Once the zoom has stood still for a moment, the pages
+    /// near the view that aren't for exactly it are asked for again, and
+    /// drawn a pixel to a pixel when they come.
+    fn sharpen_soon(&mut self, cx: &mut Cx<Self>) {
+        let want = self.zoom * cx.scale_factor();
+        if self.sharpen.is_some_and(|(due, _)| due == want) {
+            return;
+        }
+        // (The zoom moved on: the timer out for where it was is no use.)
+        if let Some((_, timer)) = self.sharpen.take() {
+            cx.cancel(timer);
+        }
+        if self.inexact(want).is_empty() {
+            return;
+        }
+        let timer = cx.after_do(Self::SHARPEN_AFTER, move |v: &mut Self, cx| {
+            v.sharpen = None;
+            if v.zoom * cx.scale_factor() != want {
+                return;
+            }
+            for i in v.inexact(want) {
+                let _ = v.tx.send(Request::Render { page: i, scale: want });
+                v.asked.insert(i, want);
+            }
+        });
+        self.sharpen = Some((want, timer));
+    }
+
     fn settle(&mut self, s: f32) -> bool {
         self.look();
         let layout = self.layout();
@@ -1553,6 +1616,7 @@ impl View for PdfView {
         if self.settle(cx.scale_factor()) {
             cx.emit(Changed);
         }
+        self.sharpen_soon(cx);
         let pages = cx.canvas(|v: &PdfView, g, b| v.paint(g, b)).size_full();
         let mut body = div()
             .id("pdf-pages")
@@ -1658,6 +1722,9 @@ impl View for PdfView {
                 if v.settle(cx.scale_factor()) {
                     cx.emit(Changed);
                 }
+                // (A page scrolled in may be one rendered for a zoom
+                // close to this one.)
+                v.sharpen_soon(cx);
             }))
             .child(body);
         let bar = self.find.as_ref().map(|f| self.find_bar(f, cx));
@@ -1875,9 +1942,39 @@ fn draw_selection(g: &mut Painter, p: &olo_kit::palette::Palette, r: Bounds<Pixe
     }
 }
 
+/// Whether a page wants a render for exactly `want` (pixels a point):
+/// its picture (`have`: the scale it was rendered at, the size cap
+/// counted) isn't for it, none is asked for at it (`asked`), and one
+/// would look different (a picture already at the size cap, `max_scale`,
+/// with more wanted, wouldn't).
+fn wants_exact(have: Option<f32>, asked: Option<f32>, want: f32, max_scale: f32) -> bool {
+    let exact = |s: Option<f32>| s.is_some_and(|s| (s / want - 1.0).abs() < 1e-4);
+    let capped = have.is_some_and(|h| h >= max_scale * 0.99) && want > max_scale;
+    !exact(have) && !exact(asked) && !capped
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A page is rendered again for exactly the zoom it's shown at once
+    /// that stands still: one rendered for a zoom a third of a percent
+    /// off (shown stretched, and left so before), one never rendered;
+    /// not one that is for it, or asked for at it, or already at the
+    /// size cap with more wanted.
+    #[test]
+    fn a_page_is_rendered_again_for_exactly_its_zoom() {
+        let want = 0.518_92;
+        assert!(super::wants_exact(Some(0.517_2), Some(0.517_2), want, 1.5625));
+        assert!(super::wants_exact(None, None, want, 1.5625));
+        assert!(!super::wants_exact(Some(want), Some(0.517_2), want, 1.5625));
+        assert!(!super::wants_exact(Some(0.517_2), Some(want), want, 1.5625));
+        // Past the cap (a 3840-point page at 200% on a 2× display wants
+        // 4 pixels a point; 6000 pixels is 1.5625): the capped picture
+        // is all there is to have.
+        assert!(!super::wants_exact(Some(1.5625), Some(4.0), 4.0, 1.5625));
+        assert!(super::wants_exact(Some(1.2), Some(1.2), 4.0, 1.5625));
+    }
 
     #[test]
     fn affine_round_trip() {

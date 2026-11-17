@@ -8101,6 +8101,17 @@ Chrome, GTK 4.16 text), and how Olo does it:
   - *At 1.25× and 1.75×* two points are 2.5 and 3.5 pixels. Edges are
     still crisp there (each is rounded), but spacing may differ by a
     pixel.
+- **A picture made for the device is drawn at its own size whatever the
+  float noise of its bounds** (`sprite_bounds`, interface painter.rs).
+  A picture's bounds reach the painter as logical pixels and are
+  multiplied by the scale; its corner is floored and its size ceiled,
+  as a picture covering part of a pixel must be. But 968 / 1.5 × 1.5 is
+  968.00006, and ceiled as it came a 968-pixel tile was drawn 969 wide,
+  every texel blended with the next (Viewer's PDF pages at 1.5×: soft
+  across the second tile, a seam where the tiles met). A bound within a
+  hundredth of a whole device pixel is now that pixel, before the floor
+  and the ceil; its test tries every size to 4096 at 1.25×, 1.5× and
+  1.75×.
 - **Text** is drawn by the Interface Kit at the device size, each line's
   baseline on a whole pixel, as each display's text rendering says
   (Preferences ▸ Display): at most hinted vertically
@@ -10997,6 +11008,32 @@ offer).
   fields as `TextInput`, `CheckBox` (checked), `RadioButton` (its
   on-state as its value), `ComboBox` or `ListBox`; while one is typed in,
   as its editor.
+  **A page is shown a texture pixel to a device pixel, and a picture in
+  it at full quality** (Ben, 2026-11-16: a PDF of 3840 × 2160 slides
+  "is showing as lower quality with visible artifacts but if i use a
+  different pdf viewer the quality looks great"). Four things were in
+  the way, each found by comparing what the window shows, pixel by
+  pixel, with the renderer's own output and with an exact Lanczos
+  resampling of the page's picture (the ignored `render_png` test
+  renders a page at `$SCALE`; the page is found in a `tsession shot` by
+  its place in the app's tree): (1) the renderer dropped a column and a
+  row of a picture drawn smaller, and filtered it softly (vendor/hayro,
+  vendor/README.md: an exact Lanczos resampling now; Viewer's
+  `a_picture_shown_smaller_keeps_every_column_and_its_detail`); (2) a
+  page rendered for a zoom within 2% of the one it's shown at was
+  stretched to fit and left so (a window fitting its width as it opens,
+  on a 1.5× display): once the zoom has stood still for 150 ms the
+  pages near the view that aren't for exactly it are asked for again
+  (`sharpen_soon`, `wants_exact`), the 2% staying as what a pinch or a
+  resize uses while it moves; (3) the kit drew a tile whose size was a
+  whole pixel but for float noise a pixel wider, blended (see
+  "Fractional scaling", `sprite_bounds`); (4) a render capped at the
+  size limit (`MAX_PX`) said it was for the scale asked, and was drawn
+  unstretched over part of its page at the first zoom step past the cap
+  (the worker now says the scale it rendered at). After: at 1×, 1.25×,
+  1.5×, 1.75× and 2×, fresh and across live scale changes, what the
+  window shows is the renderer's output with no pixel different, and
+  that is within 57.5 dB of the exact resampling.
   Its text (`pdftext.rs`): read natively on the worker, once a page,
   after the page is first rendered (renders first; Select All and Find
   ask for the rest, `Request::AllText`, read a page at a time between

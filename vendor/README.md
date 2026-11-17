@@ -12,6 +12,31 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
   patch (`Executor::main_loop` in `src/lib.rs`) stops a thread that is
   over the limit *or* has had nothing to do for half a second, as its
   comment says it should.
+- **hayro 0.8.0** (Apache-2.0 OR MIT), the PDF renderer (Viewer, Quick
+  Look, thumbnails): a picture drawn smaller than it is came out with a
+  column and a row of it missing somewhere across, and softer than other
+  viewers make it. It was resized to its size on the device rounded up
+  to whole pixels (Hermite), and that was drawn through the last
+  fraction of the scale with nearest-pixel sampling: at 2200.3 pixels
+  across, resized to 2201 and squeezed. A page that is one 3840 × 2160
+  picture (slides exported as pictures: Ben's, 2026-11-16) showed a
+  break through its text. The patch (`src/exact.rs`, and
+  `draw_image_exact` and the lines marked "Olo:" in `src/image.rs`): an
+  upright picture drawn smaller is resampled once, with a three-lobed
+  Lanczos filter, onto the very device pixels it covers, and drawn there
+  a pixel to a pixel (its rows shared among up to eight threads: a full
+  page takes 34 ms, as the published path did; 181 ms on one). Measured
+  against an exact Lanczos resampling of the same picture: 57.5 dB
+  (24 to 40 dB as published), as sharp as it (edge energy 14.42 against
+  14.46; 12.97 as published). And a picture (not a stencil) drawn larger
+  by less than four times is smoothed whether or not it asks to be, as
+  other viewers do. 0.9.0 has the same code. Its tests:
+  `CARGO_TARGET_DIR=/var/tmp/… cargo test --manifest-path
+  vendor/hayro/Cargo.toml exact` (the crate isn't a member of the
+  workspace), and Viewer's `a_picture_shown_smaller_keeps_every_column_
+  and_its_detail`, which goes through the whole renderer and fails on
+  the published one. The crate's example is left out. Drop it once
+  upstream resamples exactly.
 - **velato 0.12.0** (Apache-2.0 OR MIT): it read 11 of Telegram
   Desktop's 52 animated stickers. 24 hit `todo!()` (a transform with no
   rotation, or a split one), 17 a position it required; and a frame

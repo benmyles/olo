@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-16
 
+### Viewer: a PDF's pictures at full quality
+
+*19:48* — A PDF page that is one large picture (slides exported at 3840 × 2160) was shown soft and with breaks: the renderer dropped a column and a row of a picture drawn smaller and filtered it softly; Viewer left a page stretched when its zoom moved by a fraction of a percent; the kit drew a tile a pixel wider than it is at 1.5×; and a page past the size cap was drawn over part of its place. Now what the window shows is the renderer's output pixel for pixel at every scale, and that is an exact Lanczos resampling of the picture. (A made-up slide, three times enlarged.)
+
+![Viewer: a PDF's pictures at full quality](2026-11-16/194806-viewer-a-pdf-s-pictures-at-full-quality.png)
+
 ### Olo Doctor suggests two kernel settings
 
 *18:27* — Full preemption ("Preempt at Once") and a limit on what waits in memory for a removable disk ("Limit Removable Disks"), each with what was measured for it on this kernel in a KVM guest. They are the two of everything the desktop kernels are known for that gained something here with nothing given up; the rest is in Fedora's kernel already, can't be had without replacing it, or was measured and left alone (kernel/TUNING.md).

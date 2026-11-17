@@ -13,10 +13,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-(Nothing.)
-
-## Not started (highest priority first)
-
 - **Viewer: a PDF's images at full quality, keys for everything, full
   screen and a presentation mode** (Ben, 2026-11-16: "when viewing a pdf
   in the viewer app that has high res images in it (e.g. see
@@ -35,6 +31,9 @@ something nobody here has is in "Blocked", with what it waits for.
   listed in its menus; Full Screen; and Presentation: the window as it
   is, with the menu bar, toolbar and status line gone, so the window can
   be shared as it is.
+
+## Not started (highest priority first)
+
 - **Blueferry: a phone's messages and one-time codes in Olo** (Ben,
   2026-11-16: "integrate https://github.com/erikwb/blueferry into olo so
   that doctor suggests installing the backend and handles doing it and

@@ -1027,7 +1027,7 @@ impl<'a> Painter<'a> {
                     crate::Gamut::Srgb => 0,
                 },
             grayscale,
-            bounds: bounds.map_origin(|origin| origin.floor()).map_size(|size| size.ceil()),
+            bounds: sprite_bounds(bounds),
             content_mask,
             corner_radii,
             tile,
@@ -1144,9 +1144,24 @@ struct GlyphRunKey {
     phase: (i32, i32),
 }
 
+/// A picture's place in device pixels: its corner floored and its size
+/// ceiled, as a picture that covers part of a pixel must be, but first
+/// whatever of them is a whole pixel save for its arithmetic made that
+/// pixel. Bounds come here as logical pixels times the scale, and a
+/// picture made for the device (a 968-pixel tile of a PDF's page, at
+/// 1.5×) has a size of 968 / 1.5 × 1.5, which is 968.00006: ceiled as
+/// it came, the tile was drawn 969 wide, every texel across it blended
+/// with its neighbour (Viewer's pages at 1.5×, soft over their right-hand
+/// part, a seam where the tiles met).
+fn sprite_bounds(bounds: Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
+    let whole = |v: ScaledPixels| if (v.0 - v.0.round()).abs() < 0.01 { ScaledPixels(v.0.round()) } else { v };
+    Bounds { origin: point(whole(bounds.origin.x).floor(), whole(bounds.origin.y).floor()), size: size(whole(bounds.size.width).ceil(), whole(bounds.size.height).ceil()) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Size;
 
     /// A glyph's sub-pixel variant is how far into its device pixel it
     /// starts, whichever side of the window's corner it's on.
@@ -1157,6 +1172,36 @@ mod tests {
         // (-83.4 is 0.6 into the pixel from -84.)
         assert_eq!([at(-84.0), at(-83.7), at(-83.4), at(-83.01)], [0, 1, 2, 3]);
         assert_eq!(subpixel_variant(Point { x: ScaledPixels(-0.25), y: ScaledPixels(-0.5) }).y, 0);
+    }
+
+    /// A picture made for the device is drawn at its own size whatever
+    /// the float noise of its bounds: a 968-pixel tile at 1.5×, placed
+    /// 1024 pixels along, is 968 wide at 1125 (it was 969: every texel
+    /// blended with the next). One that truly covers part of a pixel
+    /// still covers the whole of it.
+    #[test]
+    fn a_picture_is_its_own_size_whatever_the_float_noise() {
+        let scale = 1.5f32;
+        // As Viewer places a page's second tile: the page's corner on a
+        // device pixel, the tile's place and size in logical pixels.
+        let k = 1.0 / scale;
+        let at = Pixels((101.0f32 / scale * scale).round() / scale) + Pixels(1024.0 * k);
+        let logical = Bounds { origin: Point { x: at, y: Pixels(183.0 / scale) }, size: Size { width: Pixels(968.0 * k), height: Pixels(1024.0 * k) } };
+        let device = logical.scale(scale);
+        assert!(device.size.width.0 > 968.0, "the noise this is about: {}", device.size.width.0);
+        let b = sprite_bounds(device);
+        assert_eq!((b.origin.x.0, b.origin.y.0, b.size.width.0, b.size.height.0), (1125.0, 183.0, 968.0, 1024.0));
+        // Every size from 1 to 4096 device pixels, at the fractional
+        // scales, comes back as itself.
+        for scale in [1.25f32, 1.5, 1.75] {
+            for n in 1..=4096 {
+                let b = sprite_bounds(Bounds { origin: Point { x: Pixels(n as f32 / scale), y: Pixels(0.0) }, size: Size { width: Pixels(n as f32 / scale), height: Pixels(1.0) } }.scale(scale));
+                assert_eq!((b.origin.x.0, b.size.width.0), (n as f32, n as f32), "{n} at {scale}");
+            }
+        }
+        // A picture stretched over 100.4 pixels from 10.6 covers 10 to 111.
+        let b = sprite_bounds(Bounds { origin: Point { x: ScaledPixels(10.6), y: ScaledPixels(0.0) }, size: Size { width: ScaledPixels(100.4), height: ScaledPixels(7.0) } });
+        assert_eq!((b.origin.x.0, b.size.width.0), (10.0, 101.0));
     }
 
     /// A glyph a quarter into a pixel at 1.25× is drawn there however its
