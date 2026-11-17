@@ -1,0 +1,59 @@
+---
+title: Install Olo Desktop
+description: Install Olo on Fedora 44 or 45 Workstation with one program, beside GNOME, or build it from source. How to update, and what the Installer does.
+---
+<div class="page-head">
+  <div class="wrap">
+    <span class="kicker">Install</span>
+    <h1>Olo on your computer, in minutes.</h1>
+    <p class="lead">One program installs Olo beside GNOME, which stays as it is. You choose Olo or GNOME each time you log in.</p>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="prose">
+    <div class="shot">{{shot olo-installer | Olo's Installer: one full-screen program, after BeOS's own}}</div>
+
+    <h2>What you need</h2>
+    <ul>
+      <li><strong>Fedora 44 or 45 Workstation</strong>, x86_64. (To build from source: Workstation or an atomic desktop such as Silverblue, on x86_64 or aarch64.)</li>
+      <li>Your password, once: the Installer adds what Olo needs from Fedora.</li>
+    </ul>
+
+    <h2>With the Installer</h2>
+    <p>Download the Installer from the latest release and run it:</p>
+    <div class="command">
+      <pre id="install-command"><span class="p">$ </span>curl -LO https://github.com/benmyles/olo/releases/latest/download/olo-installer-x86_64
+<span class="p">$ </span>chmod +x olo-installer-x86_64 &amp;&amp; ./olo-installer-x86_64</pre>
+      <button class="copy" type="button" data-copy="install-command">Copy</button>
+    </div>
+    <p>The Installer is one full-screen program, after BeOS's own: agree to the licence, then click Begin.</p>
+    <ol class="steps">
+      <li>It installs what Olo needs from Fedora.</li>
+      <li>It downloads Olo and checks it.</li>
+      <li>It puts Olo in your home folder (<code>~/.local</code>) and adds it to the login screen.</li>
+      <li>If you like, it also installs Olo's own login screen and boot splash, and RPM Fusion.</li>
+    </ol>
+    <div class="note"><p>Then log out, and choose <strong>Olo Desktop</strong> from the login screen's session menu (the gear by Sign In) before you log in again. Fedora's GNOME stays there too.</p></div>
+
+    <h2>Updating</h2>
+    <p>Run the Installer again: it keeps what you chose and brings everything up to date. Olo upgrades in place: the running desktop is replaced without closing a window, and your apps come back as they were.</p>
+
+    <h2>From source</h2>
+    <p>To build Olo yourself:</p>
+    <div class="command">
+      <pre id="source-command"><span class="p">$ </span>git clone https://github.com/benmyles/olo &amp;&amp; cd olo &amp;&amp; tools/setup.sh</pre>
+      <button class="copy" type="button" data-copy="source-command">Copy</button>
+    </div>
+    <p><code>tools/setup.sh</code> installs what's missing (compilers, libraries, Rust, Git LFS, drivers), builds Olo into <code>~/.local/bin</code> and adds it to the login screen. Run it again any time: each step only does what isn't done yet.</p>
+    <p>After a <code>git pull</code> and a build, Deskbar offers the new build in its tray, and its Upgrade installs it and reloads the running desktop in place.</p>
+
+    <h2>Then</h2>
+    <ul>
+      <li>Press <kbd>⌘</kbd> <kbd>Space</kbd> for the command palette, and type what you're after.</li>
+      <li>Open <strong>Preferences ▸ Themes</strong> to choose Classic or Platinum, and <strong>Backgrounds</strong> for a wallpaper.</li>
+      <li>If something gets in Olo's way, <strong>Olo Doctor</strong> finds it and fixes it with a button.</li>
+      <li>Want to help? Start with <a href="https://github.com/benmyles/olo/blob/main/docs/HACKING.md">Hacking on Olo</a>.</li>
+    </ul>
+  </div>
+</div>

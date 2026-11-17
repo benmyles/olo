@@ -9,9 +9,6 @@
 //! helper, this program run again through pkexec. It can be stopped and
 //! run again: each stage does only what isn't done.
 //!
-//! Olo is a work of love, dedicated to Sir Samwise, the bestest English
-//! Labrador that ever walked the earth.
-//!
 //! ```text
 //! olo-installer                    the window
 //! olo-installer --yes [--login-screen] [--boot-splash] [--rpm-fusion]

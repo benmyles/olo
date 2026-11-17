@@ -1,18 +1,27 @@
 #!/usr/bin/env python3
-"""The README's pictures, made again (Ben, 2026-11-07: "a full collection
-of screenshots in light/dark and different themes and make sure they
-cover all the different apps, features, agent functionality etc").
+"""The README's and the website's pictures, made again, in 4K (Ben,
+2026-11-07: "a full collection of screenshots in light/dark and different
+themes and make sure they cover all the different apps, features, agent
+functionality etc"; 2026-11-16: "take new screenshots via olo agent
+screens (use a high res screen to get 4k screenshots) of all the features
+and apps").
 
   tools/dev/readme-shots [SCENE...]     (default: every scene)
+  tools/dev/readme-shots --list         the scenes
 
-A headless session of its own (`tsession --session --shell`: Deskbar and
-the desktop) at 2560×1600 and 1.5×, release builds, and a sample home
-folder (`fixture-home`: nothing of anyone's). Each scene sets the look
-it wants, opens and places its windows, waits for them to settle and
-saves `docs/img/NAME.jpg` (JPEG, no chroma subsampling: the windows'
-text stays sharp). Apps that would show this computer's own (the
-journal, processes, devices, accounts) are left out or shown on demo
-data. Look at every picture before committing it.
+An Agent Screen of its own (`olo-screen start readme --size 3840x2160
+--scale 2`: a whole headless Olo desktop, Deskbar and Tracker's desktop
+included), from this tree's release build (target/release/olo-screen, so
+the screen runs the build's app_server and apps), with a runtime folder
+of its own (none of the person's screens are seen or touched) and a
+sample home folder (`fixture-home`, with some of Olo's wallpapers in its
+Pictures: nothing of anyone's). Each scene sets the look it wants, opens
+and places its windows through app_server's IPC (the screen's
+OLO_SOCKET), drives them with olo-screen (keys, typing, clicks), waits
+for them to settle and saves `docs/img/NAME.png`: 3840 × 2160 (or a
+crop of it), lossless. Apps that would show this computer's own
+(the journal, processes, devices, accounts) are left out or run on their
+demo data. Look at every picture before committing it.
 
 Build first: `cargo build --release --workspace`. Run with
 /usr/bin/python3 (it has PIL).
@@ -21,36 +30,59 @@ Build first: `cargo build --release --workspace`. Run with
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-TSESSION = os.path.join(ROOT, "tools/dev/tsession")
+RELEASE = os.path.join(ROOT, "target/release")
 OUT = os.path.join(ROOT, "docs/img")
 WORK = "/var/tmp/olo-readme-shots"
 HOME = os.path.join(WORK, "home")
+RUN = os.path.join(WORK, "run")
 NAME = "readme"
-SIZE, SCALE = (2560, 1600), 1.5
+SIZE, SCALE = (3840, 2160), 2
 # The screen in points.
 W, H = int(SIZE[0] / SCALE), int(SIZE[1] / SCALE)
-DESKBAR = 172
+
+# The screen's environment, once started (`olo-screen env`).
+SCREEN_ENV = {}
 
 
-def ts(*args, check=False):
-    env = dict(os.environ, TSESSION_PROFILE="release")
-    for k in ("WAYLAND_DISPLAY", "OLO_SOCKET", "OLO_SESSION", "OLO_SESSION_PID", "OLO_REAL_SESSION"):
+def env_for_screens(run_dir=RUN):
+    """olo-screen's environment: this tree's build first, the sample home,
+    a runtime folder of the shots' own; nothing of the person's session."""
+    env = dict(os.environ, XDG_RUNTIME_DIR=run_dir, HOME=HOME, PATH=RELEASE + ":" + os.environ.get("PATH", ""))
+    for k in ("WAYLAND_DISPLAY", "OLO_SOCKET", "OLO_SESSION", "OLO_SESSION_PID", "OLO_REAL_SESSION", "OLO_SCREEN", "DBUS_SESSION_BUS_ADDRESS", "DISPLAY"):
         env.pop(k, None)
-    r = subprocess.run(["/usr/bin/python3", TSESSION, *args], capture_output=True, text=True, env=env, cwd=ROOT)
+    return env
+
+
+def screen(*args, run_dir=RUN, name=NAME, check=False):
+    """`olo-screen ARGS` on the shots' screen (NAME is put after the verb)."""
+    argv = [os.path.join(RELEASE, "olo-screen"), args[0]]
+    if args[0] not in ("list",):
+        argv.append(name)
+    argv += [str(a) for a in args[1:]]
+    r = subprocess.run(argv, env=env_for_screens(run_dir), capture_output=True, text=True, timeout=120)
     if check and r.returncode:
-        sys.exit(f"tsession {' '.join(args)}: {r.stderr or r.stdout}")
+        sys.exit(f"olo-screen {' '.join(argv[1:])}: {r.stderr or r.stdout}")
     return r.stdout
 
 
 def ipc(obj):
-    out = ts("ipc", NAME, json.dumps(obj))
+    """app_server's IPC on the screen (a line of JSON each way)."""
+    s = socket.socket(socket.AF_UNIX)
+    s.settimeout(20)
     try:
-        return json.loads(out)
+        s.connect(SCREEN_ENV["OLO_SOCKET"])
+        s.sendall((json.dumps(obj) + "\n").encode())
+        line = s.makefile().readline()
+    finally:
+        s.close()
+    try:
+        return json.loads(line) if line else {}
     except json.JSONDecodeError:
         return {}
 
@@ -66,11 +98,13 @@ def windows():
 
 
 def run(*cmd, env=None):
+    """A program on the screen, with `env` added (through env(1): the
+    screen starts what it's given)."""
     extra = [f"{k}={v}" for k, v in (env or {}).items()]
-    ts("run", NAME, *extra, *cmd)
+    screen("run", *(["env", *extra] if extra else []), *cmd)
 
 
-def wait_for(pick, timeout=15):
+def wait_for(pick, timeout=20):
     """The first window `pick` takes, once there."""
     until = time.time() + timeout
     while time.time() < until:
@@ -78,11 +112,15 @@ def wait_for(pick, timeout=15):
             if pick(w):
                 return w
         time.sleep(0.3)
-    sys.exit(f"no window came: {pick}")
+    sys.exit(f"no window came: {pick.__doc__ or pick}")
 
 
 def by_app(app, title=None):
-    return lambda w: w["app_id"] == app and (title is None or w["title"] == title)
+    def pick(w):
+        return w["app_id"] == app and (title is None or w["title"] == title)
+
+    pick.__doc__ = f"{app} {title or ''}"
+    return pick
 
 
 def activate(w):
@@ -90,23 +128,33 @@ def activate(w):
     time.sleep(0.5)
 
 
-def place(w, x, y, width, height):
-    ipc({"type": "place", "id": w["id"], "frame": {"x": int(x), "y": int(y), "width": int(width), "height": int(height)}})
+def place(w, x, y, width=None, height=None):
+    f = w["frame"]
+    ipc({"type": "place", "id": w["id"], "frame": {"x": int(x), "y": int(y), "width": int(width or f["width"]), "height": int(height or f["height"])}})
 
 
 def close_all():
     for w in windows():
         ipc({"type": "close", "id": w["id"]})
     time.sleep(1.5)
-    # (One that asks before it closes: ended by its process, a test's own.)
+    # (One that asks before it closes: ended by its process, the screen's own.)
     for w in windows():
         try:
             env = open(f"/proc/{w['pid']}/environ", "rb").read()
         except OSError:
             continue
-        if f"WAYLAND_DISPLAY={DISPLAY}".encode() in env.split(b"\0"):
+        if f"OLO_SOCKET={SCREEN_ENV['OLO_SOCKET']}".encode() in env.split(b"\0"):
             os.kill(w["pid"], 15)
     time.sleep(1)
+
+
+def key(*chords):
+    for c in chords:
+        screen("key", c)
+
+
+def type_text(text):
+    screen("type", text)
 
 
 def look(theme="light", icons="classic", colors="theme", wallpaper=None):
@@ -116,30 +164,49 @@ def look(theme="light", icons="classic", colors="theme", wallpaper=None):
         a["icon_theme"] = icons
         a["colors"] = colors
         s["wallpaper"] = wallpaper or {"classic": "pack:blueberry-oxygen", "platinum": "pack:quantum-foam"}.get(icons)
+
     settings(change)
-    time.sleep(2)
+    time.sleep(2.5)
 
 
 def widgets(ws):
     settings(lambda s: s.__setitem__("deskbar", {"widgets": ws}))
 
 
-def shot(name, crop=None, width=None):
-    """docs/img/NAME.jpg of the screen (or `crop`, in points), `width`
-    pixels across if given."""
+def grab(name, crop=None):
+    """The screen (or `crop`, in points) as a PIL picture, device pixels."""
     from PIL import Image
 
     png = os.path.join(WORK, f"{name}.png")
-    args = ["shot", NAME, png]
+    args = ["look", png, "--no-pointer"]
     if crop:
-        args += [str(int(v)) for v in crop]
-    ts(*args, check=True)
-    im = Image.open(png).convert("RGB")
+        args += ["--crop", ",".join(str(int(v)) for v in crop)]
+    if os.path.exists(png):
+        os.remove(png)
+    said = screen(*args, check=True)
+    if not os.path.exists(png):
+        sys.exit(f"olo-screen look wrote no picture for {name}: {said.strip()[:300]}")
+    return Image.open(png).convert("RGB")
+
+
+def save(im, name, width=None):
+    """docs/img/NAME.png: lossless (Ben, 2026-11-16: "zero visual
+    artifacts"; the website serves them as lossless WebP), the JPEG from
+    before taken away."""
+    from PIL import Image
+
     if width and im.width > width:
         im = im.resize((width, round(im.height * width / im.width)), Image.LANCZOS)
-    path = os.path.join(OUT, f"{name}.jpg")
-    im.save(path, quality=90, subsampling=0, optimize=True)
-    print(f"{path} ({im.width}×{im.height}, {os.path.getsize(path) // 1024} KB)")
+    path = os.path.join(OUT, f"{name}.png")
+    im.save(path, optimize=True)
+    old = os.path.join(OUT, f"{name}.jpg")
+    if os.path.exists(old):
+        os.remove(old)
+    print(f"{os.path.relpath(path, ROOT)} ({im.width}×{im.height}, {os.path.getsize(path) // 1024} KB)")
+
+
+def shot(name, crop=None, width=None):
+    save(grab(name, crop), name, width)
 
 
 def settle(seconds=2.5):
@@ -147,6 +214,26 @@ def settle(seconds=2.5):
 
 
 # ---- the scenes ---------------------------------------------------------------
+
+DESKBAR_WIDGETS = [
+    {"id": 1, "measure": {"kind": "cpu", "cores": True}, "place": "tray", "look": "bars", "hue": "blue"},
+    {"id": 2, "measure": {"kind": "temperature", "sensor": None}, "place": "tray", "look": "number", "hue": "red"},
+    {"id": 3, "measure": {"kind": "cpu", "cores": False}, "place": "top", "look": "graph", "size": "medium", "hue": "blue"},
+    {"id": 4, "measure": {"kind": "network", "interface": None, "down": True, "up": True}, "place": "top", "look": "graph", "size": "medium", "hue": "teal"},
+    {"id": 5, "measure": {"kind": "memory", "swap": False}, "place": "top", "look": "meter", "size": "small", "hue": "green"},
+]
+
+# Olo's own wallpaper for the desktop pictures (its dark version in dark mode).
+DESKTOP_WALLPAPER = "pack:olo-orbit"
+
+
+def terminal(*cmd, workdir=None):
+    """A Terminal in the sample home, its shell plain bash (no rc files:
+    the login shell's own prompt and title say who and where this
+    computer is), its prompt "~ $"."""
+    run("olo-terminal", "-w", workdir or HOME, "-e", "bash", "--norc", "--noprofile", "-i", *cmd, env={"PS1": "\\w \\$ ", "HOME": HOME})
+    return wait_for(by_app("olo.terminal"))
+
 
 def desktop_windows():
     """Tracker, StyledEdit, Terminal and DeskCalc on the first workspace."""
@@ -157,76 +244,38 @@ def desktop_windows():
     term = terminal()
     run("olo-deskcalc")
     calc = wait_for(by_app("olo.deskcalc"))
-    place(tracker, 30, 70, 790, 420)
-    place(edit, 150, 520, 620, 430)
-    place(term, 850, 90, 560, 380)
-    place(calc, 830, 520, 260, 330)
+    place(tracker, 60, 80, 920, 480)
+    place(edit, 210, 600, 720, 440)
+    place(term, 1010, 120, 640, 440)
+    place(calc, 990, 620, 260, 330)
     settle()
     # A command in Terminal, to show it working.
     activate(term)
-    ts("type", NAME, "ls Pictures Documents\n")
+    type_text("ls Pictures Documents\n")
     activate(calc)
-    ts("type", NAME, "355/113\n")
+    type_text("355/113\n")
     # Tracker's Pictures, its first picture's preview in the next column.
     activate(tracker)
-    ts("type", NAME, "Pic")
+    type_text("Pic")
     settle(1)
-    ts("key", NAME, "106")
+    key("Right")
     settle(1.5)
     return tracker, edit, term, calc
-
-
-def terminal(*cmd):
-    """A Terminal in the sample home, its shell plain bash (no rc files:
-    the login shell's own prompt and title say who and where this
-    computer is), its prompt "~ $"."""
-    run("olo-terminal", "-w", HOME, "-e", "bash", "--norc", "--noprofile", "-i", *cmd, env={"PS1": "\\w \\$ ", "HOME": HOME})
-    return wait_for(by_app("olo.terminal"))
-
-
-DESKBAR_WIDGETS = [
-    {"id": 1, "measure": {"kind": "cpu", "cores": True}, "place": "tray", "look": "bars", "hue": "blue"},
-    {"id": 2, "measure": {"kind": "temperature", "sensor": None}, "place": "tray", "look": "number", "hue": "red"},
-    {"id": 3, "measure": {"kind": "cpu", "cores": False}, "place": "top", "look": "graph", "size": "medium", "hue": "blue"},
-    {"id": 4, "measure": {"kind": "network", "interface": None, "down": True, "up": True}, "place": "top", "look": "graph", "size": "medium", "hue": "teal"},
-    {"id": 5, "measure": {"kind": "memory", "swap": False}, "place": "top", "look": "meter", "size": "small", "hue": "green"},
-]
 
 
 def scene_desktop():
     close_all()
     widgets(DESKBAR_WIDGETS)
-    look("light")
+    look("light", wallpaper=DESKTOP_WALLPAPER)
     desktop_windows()
     settle(4)
     shot("olo-desktop")
-    look("dark")
+    look("dark", wallpaper=DESKTOP_WALLPAPER)
     settle(3)
     shot("olo-desktop-dark")
 
 
 THEMES = [("classic", "light"), ("classic", "dark"), ("platinum", "light"), ("platinum", "dark")]
-
-
-def grab(name, crop=None):
-    from PIL import Image
-
-    png = os.path.join(WORK, f"{name}.png")
-    args = ["shot", NAME, png]
-    if crop:
-        args += [str(int(v)) for v in crop]
-    ts(*args, check=True)
-    return Image.open(png).convert("RGB")
-
-
-def save(im, name, width=None):
-    from PIL import Image
-
-    if width and im.width > width:
-        im = im.resize((width, round(im.height * width / im.width)), Image.LANCZOS)
-    path = os.path.join(OUT, f"{name}.jpg")
-    im.save(path, quality=90, subsampling=0, optimize=True)
-    print(f"{path} ({im.width}×{im.height}, {os.path.getsize(path) // 1024} KB)")
 
 
 def scene_themes():
@@ -242,81 +291,60 @@ def scene_themes():
     for icons, mode in THEMES:
         look(mode, icons)
         settle(3)
-        tiles.append(grab(f"theme-{icons}-{mode}").resize((1280, 800), Image.LANCZOS))
-    gap = 10
-    sheet = Image.new("RGB", (2 * 1280 + gap, 2 * 800 + gap), (128, 128, 128))
+        tiles.append(grab(f"theme-{icons}-{mode}").resize((SIZE[0] // 2, SIZE[1] // 2), Image.LANCZOS))
+    gap = 16
+    sheet = Image.new("RGB", (SIZE[0] + gap, SIZE[1] + gap), (128, 128, 128))
     for i, t in enumerate(tiles):
-        sheet.paste(t, ((i % 2) * (1280 + gap), (i // 2) * (800 + gap)))
+        sheet.paste(t, ((i % 2) * (SIZE[0] // 2 + gap), (i // 2) * (SIZE[1] // 2 + gap)))
     save(sheet, "olo-themes")
     look("light")
 
 
-def frame_of(w):
-    f = w["frame"]
-    return (f["x"] - 16, f["y"] - 16, f["width"] + 32, f["height"] + 32)
-
-
-def scene_apps():
-    """The Viewer, Telegram (its demo) and Activity Monitor's graphs."""
-    close_all()
-    widgets([])
-    look("light")
-    run("olo-viewer", os.path.join(HOME, "Pictures", "holiday.png"))
-    viewer = wait_for(by_app("olo.viewer"))
-    place(viewer, 40, 60, 900, 640)
-    tg = os.path.join(HOME, ".telegram-demo")
-    run("olo-telegram", env={"OLO_TELEGRAM_DEMO": "4", "OLO_TELEGRAM_CACHE": tg + "/cache", "OLO_TELEGRAM_SECRETS": tg + "/secrets"})
-    telegram = wait_for(by_app("olo.telegram"))
-    place(telegram, 700, 240, 900, 600)
-    settle(5)
-    # A chat open (the demo's: nobody's).
-    ts("click", NAME, "845", "627")
-    settle(2)
-    shot("olo-viewer-telegram")
-    look("dark")
-    settle(3)
-    shot("olo-viewer-telegram-dark")
-    look("light")
-
-
-def scene_preferences():
-    """Preferences: Appearance, Themes and Deskbar's widgets."""
+def scene_tracker():
+    """Tracker: the Pictures folder as icons, the home folder under it,
+    and Quick Look on a tall picture beside them (Quick Look sizes itself
+    for what it shows: a wide one would cover both)."""
     close_all()
     widgets(DESKBAR_WIDGETS)
-    look("light")
-    for panel in ("appearance", "themes", "deskbar"):
-        run("olo-preferences", panel)
-    themes = wait_for(by_app("olo.preferences", "Themes"))
-    appearance = wait_for(by_app("olo.preferences", "Appearance"))
-    deskbar = wait_for(by_app("olo.preferences", "Deskbar"))
-    place(themes, 30, 40, themes["frame"]["width"], themes["frame"]["height"])
-    place(appearance, 1000, 40, appearance["frame"]["width"], appearance["frame"]["height"])
-    place(deskbar, 560, 470, deskbar["frame"]["width"], deskbar["frame"]["height"])
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+    run("olo-tracker", HOME)
+    home = wait_for(by_app("olo.tracker", "Home"))
+    place(home, 110, 690, 860, 350)
+    run("olo-tracker", os.path.join(HOME, "Pictures"))
+    pics = wait_for(by_app("olo.tracker", "Pictures"))
+    place(pics, 70, 90, 900, 560)
     settle(2)
-    # A widget chosen in Deskbar's list, its settings beside it.
-    activate(deskbar)
-    ts("click", NAME, str(560 + 80), str(470 + 100))
-    settle(3)
-    shot("olo-preferences")
+    screen("invoke", "view-icons", "--window", pics["id"])
+    settle(1.5)
+    activate(pics)
+    # The poster chosen by typing its name, and Quick Look (Space) on it.
+    type_text("Pos")
+    settle(1)
+    key("Space")
+    wait_for(by_app("olo.tracker", "Poster.jpg"))
+    settle(2)
+    place(wait_for(by_app("olo.tracker", "Poster.jpg")), 1020, 100)
+    settle(2)
+    shot("olo-tracker")
 
 
 def scene_features():
-    """The command palette, keyboard hints, the overview, auto-tiling."""
+    """The command palette, the overview, auto-tiling."""
     close_all()
     widgets(DESKBAR_WIDGETS)
-    look("light")
-    tracker, edit, term, calc = desktop_windows()
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+    desktop_windows()
     settle(2)
-    # The palette (⌘Space: Super and Space here).
-    ts("key", NAME, "125", "57")
+    # The palette (⌘Space).
+    key("Cmd+Space")
     settle(1.5)
-    ts("type", NAME, "term")
+    type_text("term")
     settle(1.5)
     shot("olo-palette")
-    ts("key", NAME, "1")
+    key("Esc")
     settle(1)
     ipc({"type": "overview", "show": True})
-    settle(2)
+    settle(2.5)
     shot("olo-overview")
     ipc({"type": "overview", "show": False})
     settle(1)
@@ -327,74 +355,253 @@ def scene_features():
     settle(1)
 
 
+def telegram():
+    tg = os.path.join(HOME, ".telegram-demo")
+    run("olo-telegram", env={"OLO_TELEGRAM_DEMO": "4", "OLO_TELEGRAM_CACHE": tg + "/cache", "OLO_TELEGRAM_SECRETS": tg + "/secrets"})
+    return wait_for(by_app("olo.telegram"))
+
+
+def scene_apps():
+    """The Viewer and Telegram (its demo)."""
+    close_all()
+    widgets([])
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+    run("olo-viewer", os.path.join(HOME, "Pictures", "Glass.jpg"))
+    viewer = wait_for(by_app("olo.viewer"))
+    place(viewer, 60, 80, 1100, 700)
+    tg = telegram()
+    place(tg, 760, 330, 960, 680)
+    settle(5)
+    # A chat open (the demo's: nobody's).
+    screen("click", "--window", tg["id"], "--role", "ListItem", "--name", "Design Crew")
+    settle(3)
+    shot("olo-viewer-telegram")
+    look("dark", wallpaper=DESKTOP_WALLPAPER)
+    settle(3)
+    shot("olo-viewer-telegram-dark")
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+
+
+def scene_terminal():
+    """Terminal: three tabs, the front one at work. Each tab is the same
+    plain shell (`--tab -e`: a tab opened with ⌘T runs the login shell,
+    whose prompt and title name this computer's person), titled by an
+    escape sequence as a program would."""
+    close_all()
+    widgets([])
+    look("dark", wallpaper=DESKTOP_WALLPAPER)
+    term = terminal()
+    place(term, 330, 210, 1180, 600)
+    settle(1.5)
+
+    def title(text):
+        type_text(f" printf '\\e]0;{text}\\a'; clear\n")
+        settle(0.8)
+
+    title("Home")
+    type_text("ls -F --color=always\n")
+    for name, folder in (("Documents", "Documents"), ("Pictures", "Pictures")):
+        run("olo-terminal", "--tab", "-w", os.path.join(HOME, folder), "-e", "bash", "--norc", "--noprofile", "-i")
+        settle(2)
+        activate(term)
+        title(name)
+    type_text("ls -lgo --color=always\n")
+    settle(0.8)
+    type_text("for c in 4 3 4 3 4; do printf '\\e[4%dm      \\e[0m ' $c; done; echo; echo Olo blue and Olo yellow\n")
+    settle(2)
+    shot("olo-terminal")
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+
+
+def scene_styled_edit():
+    """StyledEdit with the welcome document, beside its Markdown."""
+    close_all()
+    widgets([])
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+    run("olo-styled-edit", os.path.join(HOME, "Documents", "Welcome.md"))
+    edit = wait_for(by_app("olo.styled-edit"))
+    place(edit, 260, 90, 1200, 900)
+    settle(3)
+    shot("olo-styled-edit")
+
+
+def scene_preferences():
+    """Preferences: Themes, and Backgrounds on Olo's own collection."""
+    close_all()
+    widgets(DESKBAR_WIDGETS)
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+    for panel in ("themes", "backgrounds"):
+        run("olo-preferences", panel)
+    themes = wait_for(by_app("olo.preferences", "Themes"))
+    backgrounds = wait_for(by_app("olo.preferences", "Backgrounds"))
+    place(themes, 50, 70)
+    place(backgrounds, 900, 150)
+    settle(4)
+    activate(backgrounds)
+    settle(2)
+    shot("olo-preferences")
+
+
 def scene_activity():
     """Activity Monitor: its graphs (not its processes: they're this
     computer's)."""
     close_all()
     widgets([])
-    look("light")
+    look("light", wallpaper=DESKTOP_WALLPAPER)
     run("olo-activity", env={"OLO_ACTIVITY_HELPER": "off"})
     a = wait_for(by_app("olo.activity"))
-    place(a, 40, 40, 1100, 900)
+    place(a, 60, 60, 1300, 960)
     settle(12)
     # (Its graphs; the busiest programs under them are this computer's.)
-    shot("olo-activity", crop=(30, 30, 1120, 488))
+    shot("olo-activity", crop=(40, 40, 1340, 520))
+
+
+def scene_weather():
+    """Weather, on its demo forecast."""
+    close_all()
+    widgets([])
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+    run("olo-weather", env={"OLO_WEATHER_DEMO": "1"})
+    w = wait_for(by_app("olo.weather"))
+    place(w, 160, 80, 1500, 920)
+    settle(5)
+    shot("olo-weather")
+
+
+def scene_doctor():
+    """Olo Doctor (its demo findings) and the Speed Test (made-up
+    results): nothing of this computer's."""
+    close_all()
+    widgets([])
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+    run("olo-doctor", env={"OLO_DOCTOR_DEMO": "1"})
+    d = wait_for(by_app("olo.doctor"))
+    place(d, 60, 70)
+    run("olo-speedtest", env={"OLO_SPEEDTEST_DEMO": "1"})
+    s = wait_for(by_app("olo.speedtest"))
+    place(s, 1000, 260)
+    settle(6)
+    shot("olo-doctor")
+
+
+def scene_installer():
+    """Olo's Installer, on a made-up stock Fedora (`OLO_SETUP_DEMO`:
+    Begin installs nothing): one full-screen program, its licence agreed
+    to, ready to begin. The picture is the screen's middle, the window
+    and the ground round it."""
+    close_all()
+    widgets([])
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+    run("olo-installer", env={"OLO_SETUP_DEMO": "done"})
+    wait_for(by_app("olo.installer"))
+    settle(3)
+    screen("click", "--role", "Button", "--name", "Agree")
+    settle(3)
+    # Its window is drawn in one surface that covers the screen: found as
+    # what isn't the ground's colour, and the picture cut 16:10 round it.
+    from PIL import ImageChops, Image
+
+    full = grab("olo-installer")
+    ground = Image.new("RGB", full.size, full.getpixel((8, 8)))
+    x0, y0, x1, y1 = ImageChops.difference(full, ground).getbbox()
+    cw = min(full.width, max(round((x1 - x0) * 1.9), 1920))
+    ch = min(full.height, round(cw * 10 / 16))
+    x = min(max(0, (x0 + x1) // 2 - cw // 2), full.width - cw)
+    y = min(max(0, (y0 + y1) // 2 - ch // 2), full.height - ch)
+    save(full.crop((x, y, x + cw, y + ch)), "olo-installer")
 
 
 def scene_agents():
     """Agent Screens: an agent's screen of its own beside the person's
-    desktop. Its runtime folder is a private one, so only this demo's
-    screen is listed (the computer's own agents' screens never are)."""
-    run_dir = os.path.join(WORK, "run")
-    os.makedirs(run_dir, mode=0o700, exist_ok=True)
-    env = dict(os.environ, XDG_RUNTIME_DIR=run_dir, HOME=HOME, PATH=os.path.join(ROOT, "target/release") + ":" + os.environ.get("PATH", ""))
-    for k in ("WAYLAND_DISPLAY", "OLO_SOCKET", "OLO_SESSION", "OLO_SESSION_PID", "OLO_REAL_SESSION", "OLO_SCREEN", "DBUS_SESSION_BUS_ADDRESS"):
-        env.pop(k, None)
-    screen = lambda *a: subprocess.run([os.path.join(ROOT, "target/release/olo-screen"), *a], env=env, capture_output=True, text=True)
-    screen("stop", "research")
-    print(screen("start", "research", "--size", "1280x800").stdout.strip()[:200])
-    screen("run", "research", "olo-styled-edit", os.path.join(HOME, "Documents", "Welcome.md"))
-    screen("run", "research", "olo-tracker", HOME)
+    desktop. The agent's screen lives in a runtime folder of its own, so
+    only this demo's screen is listed (not the shots' own, nor the
+    computer's agents')."""
+    agents_run = os.path.join(WORK, "run-agents")
+    os.makedirs(agents_run, mode=0o700, exist_ok=True)
+    research = lambda *a: screen(*a, run_dir=agents_run, name="research")
+    research("stop")
+    print(research("start", "--size", "1280x800").strip()[:200])
+    research("run", "olo-styled-edit", os.path.join(HOME, "Documents", "Welcome.md"))
+    research("run", "olo-tracker", HOME)
     time.sleep(6)
     close_all()
     widgets(DESKBAR_WIDGETS)
-    look("light")
-    run("olo-screen", env={"XDG_RUNTIME_DIR": run_dir, "WAYLAND_DISPLAY": f"/run/user/{os.getuid()}/{DISPLAY}"})
+    look("light", wallpaper=DESKTOP_WALLPAPER)
+    display = os.path.join(RUN, SCREEN_ENV["WAYLAND_DISPLAY"]) if not SCREEN_ENV["WAYLAND_DISPLAY"].startswith("/") else SCREEN_ENV["WAYLAND_DISPLAY"]
+    run("env", f"XDG_RUNTIME_DIR={agents_run}", f"WAYLAND_DISPLAY={display}", "olo-screen")
     viewer = wait_for(lambda w: w["app_id"] == "olo.screen")
-    place(viewer, 40, 50, 1350, 960)
-    settle(6)
+    place(viewer, 60, 60, 1560, 980)
+    settle(7)
     shot("olo-agent-screens")
-    screen("stop", "research")
+    research("stop")
 
 
 SCENES = {
     "desktop": scene_desktop,
     "themes": scene_themes,
-    "apps": scene_apps,
-    "preferences": scene_preferences,
+    "tracker": scene_tracker,
     "features": scene_features,
+    "apps": scene_apps,
+    "terminal": scene_terminal,
+    "styled-edit": scene_styled_edit,
+    "preferences": scene_preferences,
     "activity": scene_activity,
+    "weather": scene_weather,
+    "doctor": scene_doctor,
+    "installer": scene_installer,
     "agents": scene_agents,
 }
 
 
 def start():
     shutil.rmtree(WORK, ignore_errors=True)
-    os.makedirs(WORK)
+    os.makedirs(RUN, mode=0o700)
     subprocess.run([os.path.join(ROOT, "tools/dev/fixture-home"), HOME], check=True, capture_output=True, env=dict(os.environ, PATH="/usr/bin:" + os.environ.get("PATH", "")))
-    # A document to show.
+    # A document to show, and some of Olo's own pictures to show in it.
     with open(os.path.join(HOME, "Documents", "Welcome.md"), "w") as f:
         f.write(WELCOME)
-    ts("stop", NAME)
-    # (What the session's apps kept from a run before: DeskCalc's sum.)
-    shutil.rmtree(f"/var/tmp/olo-dev/{NAME}", ignore_errors=True)
-    out = ts("start", NAME, f"{SIZE[0]}x{SIZE[1]}", "--scale", str(SCALE), "--session", "--shell", "--home", HOME, check=True)
-    global DISPLAY
-    DISPLAY = out.split(":")[1].split()[0] if ":" in out else ""
+    from PIL import Image
+
+    # Olo's own pictures, at their full 4K (a picture fitted to a window
+    # on a 2× screen is drawn from all its pixels), and a tall one for
+    # Quick Look.
+    def wallpaper(name):
+        folder = os.path.join(ROOT, "data/wallpapers/4k")
+        return next((os.path.join(folder, f"{name}.{x}") for x in ("webp", "png", "jpg") if os.path.exists(os.path.join(folder, f"{name}.{x}"))), None)
+
+    for name, label in [("olo-glass", "Glass"), ("olo-orbit", "Orbit"), ("olo-dunes", "Dunes"), ("olo-halo", "Halo"), ("olo-shapes", "Shapes"), ("olo-ribbons", "Ribbons")]:
+        if src := wallpaper(name):
+            Image.open(src).convert("RGB").save(os.path.join(HOME, "Pictures", label + ".jpg"), quality=95, subsampling=0)
+    if src := wallpaper("olo-shapes"):
+        Image.open(src).convert("RGB").crop((0, 0, 1620, 2160)).save(os.path.join(HOME, "Pictures", "Poster.jpg"), quality=95, subsampling=0)
+    for old in ("house.jpg", "holiday.png"):
+        if os.path.exists(os.path.join(HOME, "Pictures", old)):
+            os.remove(os.path.join(HOME, "Pictures", old))
+    # (`--size` is in points.)
+    out = screen("start", "--size", f"{W}x{H}", "--scale", str(SCALE), check=True)
+    print(out.strip()[:200])
+    SCREEN_ENV.update(dict(line.split("=", 1) for line in screen("env").replace("export ", "").split("\n") if "=" in line))
+    for k, v in list(SCREEN_ENV.items()):
+        SCREEN_ENV[k] = v.strip().strip("'\"")
+    if "OLO_SOCKET" not in SCREEN_ENV:
+        sys.exit(f"the screen's environment has no OLO_SOCKET: {SCREEN_ENV}")
     time.sleep(6)
+    # Nothing locks, blanks or sleeps the screen while the scenes run.
+    settings(lambda s: s.update(power=dict(s.get("power", {}), display_off_minutes=0, sleep_minutes=0, lock_on_display_off=False), screen_saver=dict(s.get("screen_saver", {}), enabled=False, lock=False)))
 
 
-DISPLAY = ""
+def stop():
+    screen("stop")
+    # `olo-screen stop` can leave processes behind (docs/AGENT-NOTES.md):
+    # end, by pid, what still has this screen's socket.
+    mine = f"OLO_SOCKET={SCREEN_ENV.get('OLO_SOCKET', '-')}".encode()
+    for pid in filter(str.isdigit, os.listdir("/proc")):
+        try:
+            if mine in open(f"/proc/{pid}/environ", "rb").read().split(b"\0"):
+                os.kill(int(pid), 15)
+        except OSError:
+            pass
+
 
 WELCOME = """# Welcome to Olo
 
@@ -420,11 +627,17 @@ A desktop in the spirit of **BeOS**, written in Rust for Wayland.
 """
 
 if __name__ == "__main__":
+    if sys.argv[1:] == ["--list"]:
+        print("\n".join(SCENES))
+        sys.exit()
     wanted = sys.argv[1:] or list(SCENES)
+    unknown = [s for s in wanted if s not in SCENES]
+    if unknown:
+        sys.exit(f"no scene {unknown}; the scenes: {', '.join(SCENES)}")
     start()
     try:
         for s in wanted:
             print(f"== {s}")
             SCENES[s]()
     finally:
-        ts("stop", NAME)
+        stop()

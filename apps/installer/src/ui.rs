@@ -9,7 +9,7 @@
 //! pop-ups under it; "More Options", a latch that opens the optional
 //! parts under it (the window grows to hold them, as BeOS's did); a
 //! status bar while it works; and Begin, which is Stop while it works.
-//! About comes in front of it, with the dedication.
+//! About comes in front of it.
 //!
 //! Reminiscent, not a copy: BeOS's pop-ups chose a CD and a volume, and
 //! here there is one of each (Olo's newest release; this computer), so
@@ -332,12 +332,6 @@ fn words(text: impl Into<SharedString>) -> StringView {
     StringView::new(text).wrap(true).color(style::c(theme::palette().document_text))
 }
 
-/// Quieter words in one.
-fn quiet_words(text: impl Into<SharedString>) -> StringView {
-    let p = theme::palette();
-    StringView::new(text).wrap(true).color(style::c(olo_theme::mix(p.document_text, p.document_background, 0.5)))
-}
-
 /// Olo's mark at the Installer's top left, where BeOS's had Be's.
 fn mark(icon: &'static str) -> Element {
     canvas(move |g, b| {
@@ -374,7 +368,6 @@ impl Setup {
         let p = theme::palette();
         let mut c = div().flex().flex_col().gap(px(m::STACK)).p(px(m::TEXT_INSET));
         let red = |t: String| StringView::new(t).wrap(true).color(style::c(p.failure));
-        let dedication = || quiet_words("Olo is a work of love, dedicated to Sir Samwise, the bestest English Labrador that ever walked the earth.");
         match (self.page, &self.outcome) {
             (Page::Done, Some(Outcome::Done { version, restart })) => {
                 let how = if *restart {
@@ -382,7 +375,7 @@ impl Setup {
                 } else {
                     "Log out, then choose “Olo Desktop” from the login screen's session menu (the gear by Sign In) before you log in again. Fedora's GNOME stays there too."
                 };
-                c = c.child(words(format!("Installation completed. Olo {version} is on this computer."))).child(words(how)).child(dedication());
+                c = c.child(words(format!("Installation completed. Olo {version} is on this computer."))).child(words(how));
             }
             (Page::Installing, _) => {
                 // The stages and their notes so far, the newest last.
@@ -556,7 +549,6 @@ fn about(cx: &mut Cx<Setup>) -> Element {
             div().flex().flex_col().child(StringView::new("Olo Installer").bold(true).size(15.0).height(22.0)).child(StringView::new(format!("Version {}", env!("CARGO_PKG_VERSION"))).dim(true)),
         ))
         .child(para("Olo is a desktop in the spirit of BeOS: fast, light, and made to be understood, for people and for the agents working beside them."))
-        .child(para("Olo is a work of love, dedicated to Sir Samwise, the bestest English Labrador that ever walked the earth."))
         .child(div().flex().justify_end().child(Button::new("OK").id("about-ok").default(true).on_click(cx.msg(Msg::About(false)))));
     beos_window("About Installer", body, ABOUT_WIDE)
 }

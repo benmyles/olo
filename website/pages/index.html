@@ -1,0 +1,224 @@
+---
+title: Olo Desktop: a desktop for Linux in the spirit of BeOS
+description: Olo is a fast, light desktop for Linux in the spirit of BeOS, written in Rust for Wayland: Deskbar, Tracker, yellow window tabs and forty native apps, made for people and AI agents alike.
+---
+<section class="hero" aria-labelledby="hero-title">
+  <div class="wrap">
+    <img class="hero-mark" src="/brand/olo-mark.png" width="1024" height="1024" alt="" fetchpriority="high">
+    <p class="eyebrow"><b>Free</b> A desktop for Linux, in the spirit of BeOS</p>
+    <h1 id="hero-title">The desktop that <em>never makes you wait</em>.</h1>
+    <p class="lead">Olo is a whole desktop, written in Rust for Wayland. BeOS's yellow window tabs, Deskbar and Tracker's spatial folders, brought to 2026: crisp at every scale, light, dark and night, and made for you and the AI agents working beside you.</p>
+    <div class="actions">
+      <a class="button" href="/install/">Install Olo</a>
+      <a class="button button-quiet" href="https://github.com/benmyles/olo">Source on GitHub</a>
+    </div>
+    <p class="fine">Open source under the MIT License · Fedora 44 and 45</p>
+    <div class="hero-shot shot">{{shot olo-desktop | Olo's desktop: Tracker showing a picture's preview, StyledEdit, Terminal and DeskCalc, with Deskbar and its live widgets at the top right | eager}}</div>
+  </div>
+</section>
+
+<section aria-labelledby="why-title">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker">Why Olo</span>
+      <h2 id="why-title">Everything BeOS got right, and what 2026 does better.</h2>
+      <p>Olo keeps what made BeOS a joy, a desktop you understand and that answers at once, and takes the better way wherever there is one.</p>
+    </div>
+    <div class="pillars">
+      <div class="card">
+        {{icon performance 64}}
+        <h3>Fast and light, measured</h3>
+        <p>Idle costs nothing: no polling, no frames when nothing changed. Anything that can take more than a frame runs on a worker thread with live progress. Every change to what runs per frame is measured before and after.</p>
+      </div>
+      <div class="card">
+        {{icon application 64}}
+        <h3>Native, all the way down</h3>
+        <p>The window server, the kit and every app are Olo's own, in Rust, sharing one kit. Formats and protocols are read and spoken in process, so the whole desktop looks and behaves as one.</p>
+      </div>
+      <div class="card">
+        {{icon agent-screens 64}}
+        <h3>Made for agents too</h3>
+        <p>What you can see, an agent can read as structure and drive through a documented API, on screens of its own that you can watch live and take over, never touching your pointer.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="features" aria-labelledby="features-title">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker">The desktop</span>
+      <h2 id="features-title">Familiar the moment you see it. Quick the moment you touch it.</h2>
+    </div>
+
+    <div class="feature">
+      <div class="feature-text">
+        <h3>Deskbar and Tracker, as they should be</h3>
+        <p>Deskbar sits in the top-right corner, as on BeOS: the Olo menu, the clock, a tray, and each workspace's running apps. Tracker is the desktop and its folders, spatial, with Quick Look for almost any file.</p>
+        <ul>
+          <li><b>Live widgets</b> in Deskbar: processor, memory, GPUs, disks, network, temperatures and power, as graphs, bars, meters or numbers.</li>
+          <li><b>Icon, list and column views</b>, each folder opening where you left it.</li>
+          <li><b>Quick Look</b> previews of pictures, PDFs, video, audio, documents and archives.</li>
+        </ul>
+      </div>
+      <div class="shot">{{shot olo-tracker | Tracker: a folder of pictures as icons, and Quick Look on one of them}}</div>
+    </div>
+
+    <div class="feature flip">
+      <div class="feature-text">
+        <h3>A command palette for everything</h3>
+        <p>Press <kbd>⌘</kbd> <kbd>Space</kbd> and type: apps, the front app's menu commands, open windows, files, settings and the web, all in one place.</p>
+        <p>Keyboard hints put a letter on every control in every window, so anything you can click, you can reach from the keyboard.</p>
+      </div>
+      <div class="shot">{{shot olo-palette | The command palette, finding Terminal}}</div>
+    </div>
+
+    <div class="feature">
+      <div class="feature-text">
+        <h3>Workspaces, the overview and tiling</h3>
+        <p>A set of workspaces for each display, and an overview of them all. Arrange windows from the keyboard, turn on auto-tiling, keep a window group in tabs, or let Smart Tiling place things for you.</p>
+      </div>
+      <div class="pair">
+        <figure><div class="shot">{{shot olo-overview | The overview of every workspace}}</div><figcaption>The overview</figcaption></figure>
+        <figure><div class="shot">{{shot olo-tiling | Windows auto-tiled}}</div><figcaption>Auto-tiling</figcaption></figure>
+      </div>
+    </div>
+
+    <div class="feature flip">
+      <div class="feature-text">
+        <h3>Two themes, light, dark and night</h3>
+        <p><b>Classic</b>, after BeOS, and <b>Platinum</b>, after Mac OS 9: each draws every icon, window and control in its own style, with a wallpaper to match. Night mode warms the screen on a schedule, gradually if you like.</p>
+        <p>Pixel-exact at 1×, 1.5×, 2× and every scale between, with HDR and wide-gamut colour, variable refresh rate, and each display on its own GPU.</p>
+      </div>
+      <div class="shot">{{shot olo-themes | The same desktop in Classic and Platinum, light and dark}}</div>
+    </div>
+
+    <div class="feature">
+      <div class="feature-text">
+        <h3>Preferences, one panel per thing</h3>
+        <p>Appearance, themes, displays, keyboard, touchpad, sound, network, Bluetooth, AirPods, power, security and more, each a panel that says what it does and does it at once.</p>
+      </div>
+      <div class="shot">{{shot olo-preferences | Preferences: Themes, and Backgrounds with Olo's own wallpapers}}</div>
+    </div>
+
+    <div class="more">
+      <div class="card">{{icon software-update 48}}<h3>Upgrades in place</h3><p>A new build replaces the running desktop without closing a window. Apps come back as they were.</p></div>
+      <div class="card">{{icon stop 48}}<h3>Olo Rescue</h3><p>From anywhere, a full-screen terminal, the processes to end and every setting, without quitting anything.</p></div>
+      <div class="card">{{icon keyboard 48}}<h3>Your keys</h3><p>Mac, Windows or BeOS keyboard profiles, keyboard hints, an emoji picker, and a touchpad tuned like a Mac's.</p></div>
+      <div class="card">{{icon fingerprint 48}}<h3>Security</h3><p>Lock screen, fingerprint, face unlock with the infrared camera, security keys and Touch ID keyboards.</p></div>
+      <div class="card">{{icon notifications 48}}<h3>Notifications</h3><p>Banners, a history, Do Not Disturb and settings for each app.</p></div>
+      <div class="card">{{icon screenshot 48}}<h3>Screenshots and recording</h3><p>Pictures and videos of the screen, a window or an area, all in process.</p></div>
+      <div class="card">{{icon airpods 48}}<h3>AirPods and AirPlay</h3><p>AirPods' levels and every setting, spoken natively; show your screen or play on AirPlay.</p></div>
+      <div class="card">{{icon lock-screen 48}}<h3>Login and boot</h3><p>Olo's own login screen, boot splash, start-up sound and screen saver.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="apps" aria-labelledby="apps-title">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker">The apps</span>
+      <h2 id="apps-title">Forty native apps, one kit.</h2>
+      <p>Every app is Olo's own, built on the same kit, so they look alike, behave alike, and never make you wait.</p>
+    </div>
+    <div class="apps">
+      <div class="app">{{icon tracker 56}}<h3>Tracker</h3><p>Files, folders, the desktop, Quick Look and Open With.</p></div>
+      <div class="app">{{icon terminal 56}}<h3>Terminal</h3><p>Tabs and tab groups, Git per tab, sudo in a window, suggestions from a local model.</p></div>
+      <div class="app">{{icon styled-edit 56}}<h3>StyledEdit</h3><p>Rich text, Markdown and source code, spelling, tables, pictures and print.</p></div>
+      <div class="app">{{icon show-image 56}}<h3>Viewer</h3><p>Pictures to edit, PDFs to fill and sign, video with GPU decoding, and audio.</p></div>
+      <div class="app">{{icon calculator 56}}<h3>DeskCalc</h3><p>BeOS's desk calculator, with scientific keys.</p></div>
+      <div class="app">{{icon activity 56}}<h3>Activity Monitor</h3><p>Processes, CPU, memory, disks, network, GPU, displays and sensors, live.</p></div>
+      <div class="app">{{icon passwords 56}}<h3>Passwords</h3><p>Logins, passkeys and notes, encrypted, synced with 1Password if you like.</p></div>
+      <div class="app">{{icon weather 56}}<h3>Weather</h3><p>Every detail of the forecast for your places, and an assistant given all of it.</p></div>
+      <div class="app">{{icon speed-test 56}}<h3>Network Speed Test</h3><p>Both ways, with everything that can be read of the connection as it runs.</p></div>
+      <div class="app">{{icon doctor 56}}<h3>Olo Doctor</h3><p>Finds what gets in Olo's way and fixes it with a button.</p></div>
+      <div class="app">{{icon drive-setup 56}}<h3>DriveSetup and DiskUsage</h3><p>Disks, partitions and encryption; and where the space went.</p></div>
+      <div class="app">{{icon diskbackup 56}}<h3>DiskBackup</h3><p>Continuous backups to the cloud: versioned, deduplicated and encrypted.</p></div>
+      <div class="app">{{icon logs 56}}<h3>Log Viewer</h3><p>Every program's log, searchable and live.</p></div>
+      <div class="app">{{icon telegram 56}}<h3>Telegram and Slack</h3><p>Native chat, and Slack as an Olo app.</p></div>
+      <div class="app">{{icon token-pool 56}}<h3>Token Pool</h3><p>Several Claude and ChatGPT subscriptions, shared by coding agents.</p></div>
+      <div class="app">{{icon agent-screens 56}}<h3>Agent Screens</h3><p>Headless Olo screens for AI agents, to watch and take over.</p></div>
+    </div>
+    <div class="gallery">
+      <figure><div class="shot">{{shot olo-viewer-telegram | The Viewer and Telegram}}</div><figcaption>The Viewer and Telegram</figcaption></figure>
+      <figure><div class="shot">{{shot olo-terminal | Terminal with tabs}}</div><figcaption>Terminal</figcaption></figure>
+      <figure><div class="shot">{{shot olo-styled-edit | StyledEdit with a styled document}}</div><figcaption>StyledEdit</figcaption></figure>
+      <figure><div class="shot">{{shot olo-activity | Activity Monitor's graphs}}</div><figcaption>Activity Monitor</figcaption></figure>
+      <figure><div class="shot">{{shot olo-weather | Weather}}</div><figcaption>Weather</figcaption></figure>
+      <figure><div class="shot">{{shot olo-doctor | Olo Doctor}}</div><figcaption>Olo Doctor and the Speed Test</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<div id="agents" class="band" aria-labelledby="agents-title">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker">Made for agents too</span>
+      <h2 id="agents-title">Your agents get a desktop of their own.</h2>
+      <p>Agent-first, as much as people-first: everything you can see and do, an agent can read and drive, without getting in your way.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-text">
+        <ul>
+          <li><b>Agent Screens</b>: whole headless Olo desktops for agents, which you can watch live, scrub back through, and take over at any moment.</li>
+          <li><b>Structured, not pixels</b>: every window's widgets as a tree, every menu command by name, and an API to click, type and choose.</li>
+          <li><b>Coding agents in Terminal</b> keep their tab's title current and know which repository each tab group is for.</li>
+          <li><b>Token Pool</b> shares several Claude and ChatGPT subscriptions among them, with no gap across upgrades.</li>
+        </ul>
+<pre><span class="p">$ </span>olo-screen start
+<span class="p">$ </span>olo-screen run agent olo-styled-edit notes.md
+<span class="p">$ </span>olo-screen tree agent --role Button
+<span class="p">$ </span>olo-screen click agent --role Button --name <span class="k">Save</span></pre>
+      </div>
+      <div class="shot">{{shot olo-agent-screens | Agent Screens: an agent's own desktop, live, beside yours}}</div>
+    </div>
+  </div>
+</div>
+
+<section id="wallpapers" aria-labelledby="wallpapers-title">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker">Wallpapers</span>
+      <h2 id="wallpapers-title">Olo blue, Olo yellow, in 4K.</h2>
+      <p>Olo's own abstract collection, each with a version for dark mode (this page shows the one your system is in), beside the classic systems' own: Mac OS 9 and X, AmigaOS, Windows, OS/2 and CDE, redrawn for 4K.</p>
+    </div>
+    <div class="wallpapers">
+      {{wallpaper olo-orbit | Orbit}}
+      {{wallpaper olo-halo | Halo}}
+      {{wallpaper olo-ribbons | Ribbons}}
+      {{wallpaper olo-shapes | Shapes}}
+      {{wallpaper olo-glass | Glass}}
+      {{wallpaper olo-dunes | Dunes}}
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="fast-title">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker">Fast and light</span>
+      <h2 id="fast-title">Rules, not hopes.</h2>
+      <p>Speed isn't a feature added at the end. Olo holds every change to a few rules, and measures it against them.</p>
+    </div>
+    <div class="principles">
+      <div class="principle"><span class="num">1</span><div><h3>Idle costs nothing</h3><p>No polling, no frames or events when nothing changed. Work follows what changed, not what's on screen, and work done once is kept.</p></div></div>
+      <div class="principle"><span class="num">2</span><div><h3>Never block the UI</h3><p>Anything that can take more than a frame runs on a worker thread, shows live progress, streams its results and can be cancelled.</p></div></div>
+      <div class="principle"><span class="num">3</span><div><h3>Measured, every time</h3><p>Every change to what runs per frame, per event or at rest is measured on release builds before and after, latency included, and the numbers go in its commit.</p></div></div>
+      <div class="principle"><span class="num">4</span><div><h3>Pixel-perfect at every scale</h3><p>Checked in light, dark and night at 1×, 1.5× and 2×. Nothing drawn from a bitmap is resampled: one texture pixel to one device pixel.</p></div></div>
+    </div>
+
+    <div class="cta">
+      <img class="hero-mark" src="/brand/icon-512.png" width="512" height="512" alt="" loading="lazy">
+      <h2>Try Olo today.</h2>
+      <p>On Fedora 44 or 45 Workstation, one program installs it beside GNOME. Choose Olo or GNOME each time you log in.</p>
+      <div class="command">
+        <pre id="install-command"><span class="p">$ </span>curl -LO https://github.com/benmyles/olo/releases/latest/download/olo-installer-x86_64
+<span class="p">$ </span>chmod +x olo-installer-x86_64 &amp;&amp; ./olo-installer-x86_64</pre>
+        <button class="copy" type="button" data-copy="install-command">Copy</button>
+      </div>
+      <div class="actions">
+        <a class="button" href="/install/">Read the install guide</a>
+      </div>
+    </div>
+  </div>
+</section>
