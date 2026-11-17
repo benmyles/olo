@@ -17,13 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Groups' names for the phone's text messages** (what's left of "the
-  phone's other notifications, calls and music"). A message to a group
-  comes by the Message Access Profile with its sender alone, so it
-  lands in the sender's own conversation; the notification service has
-  the group's name (its notification's title, the sender its
-  subtitle). Match the two (the same text, at the same time) and keep
-  group messages in a conversation of the group's.
 - **A paired phone's own picture** (Ben, 2026-11-16: "generate theme
   styled icons for the top 10 most popular android and iphone models and
   show the closest matching icon for a paired phone based on what it
@@ -5682,6 +5675,21 @@ need Ben".)
 
 ## Blocked
 
+- **Groups' names for the phone's text messages** (what's left of "the
+  phone's other notifications, calls and music"). A message to a group
+  comes by the Message Access Profile with its sender alone, so it
+  lands in the sender's own conversation; the notification service has
+  the group's name (its notification's title, the sender its
+  subtitle). Match the two (the same text, at the same time) and keep
+  group messages in a conversation of the group's.
+  **Blocked on** what a real iPhone says of a group's message: which
+  of its notification's title and subtitle is the group and which the
+  sender (it differs by iOS version, and the stand-in can't say). The
+  service logs the shape of each text message's notification now
+  ("phone: a text message's notification has a subtitle", never what
+  it says): after a group message has come with the phone's other
+  notifications working, the log and one look at the phone's own
+  notification settle it.
 - **An Android phone with Olo** (needs an Android phone at this
   computer). The same profiles as an iPhone's, and the stand-in has an
   Android's habits, but none has been paired. BlueZ connects an

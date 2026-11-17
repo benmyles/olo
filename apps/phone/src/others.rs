@@ -114,6 +114,12 @@ impl Others {
             match answer {
                 Answer::Notification(n) => {
                     if !self.live.contains_key(&n.uid) || (self.messages_elsewhere && n.app == ancs::MESSAGES_APP) {
+                        // (Its shape alone, never what it says: what a
+                        // group's message looks like here isn't known
+                        // yet. TODO, "Groups' names".)
+                        if n.app == ancs::MESSAGES_APP {
+                            tracing::info!("phone: a text message's notification has {} subtitle", if n.subtitle.is_empty() { "no" } else { "a" });
+                        }
                         self.live.remove(&n.uid);
                         continue;
                     }
