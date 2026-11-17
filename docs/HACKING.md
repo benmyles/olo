@@ -14056,6 +14056,68 @@ isn't connected, or the channel can't be had) is tried when BlueZ says
 anything of it and otherwise after 15 s, 30 s, 1, 2 and then every 5
 minutes (`AWAY`); a session whose link drops is tried again after 2 s,
 once. Another phone, or none: what the last had is let go.
+
+**A flaky phone** (Ben, 2026-11-17: "harden it as much as possible …
+assume the phone connection is flaky and needs to be constantly
+monitored … so that to the user it 'just works'"). What a night of his
+iPhone showed in the service's own log, and what's kept true since
+(`apps/phone/tests/service.rs`, `a_flaky_phone`, against a stand-in
+phone that does each: `--tell set asleep`, `classic-gatt`, `deaf`,
+`quiet`; `--tell asked` and `acquired` count what was asked of it):
+
+- **A phone asleep takes the channel and says nothing.** 71 sessions
+  of 78 ended on the 30 s a read waited ("Resource temporarily
+  unavailable"); the phone dropped the link twenty seconds after each,
+  the next asking paged it back, and round it went, a minute a round
+  for hours. An answer did come at 50 s once. Now its first answers
+  are waited for 3 minutes (`FIRST_ANSWER`; later ones 45 s, `ANSWER`:
+  `Stream::patient` changes a channel's patience from outside what
+  speaks on it), while the link stands (its end ends the wait at once).
+  Silence past that is the phone asleep (`FromSession::Silent`), not
+  the link gone: asked again after 30 s, 2, 5, then every 15 minutes
+  (`SILENT`), and the panel says "connected but isn't answering (it may
+  be asleep)". A phone that connects by itself (not paged from here in
+  the last 20 s: `paged_at`) is awake and asked at once; after
+  silences, no sooner than 30 s or 2 minutes.
+- **Nothing is asked again at once for ever.** BlueZ busy with the
+  phone (`InProgress`) is asked again in 3 s five times, then as a
+  phone out of reach (`BUSY_SOON`); a phone that closes the channel
+  within 10 s of its coming three times running, further and further
+  apart (`hangs`, `HELD_UP`).
+- **Its other notifications are taken over low energy only.** BlueZ
+  shows an iPhone's characteristics over the classic link too, with
+  `org.bluez.Bearer.LE1`'s `Connected` false, and takes a subscription
+  there; the phone tells nothing that way and BlueZ closes the socket
+  at once. The service took the characteristics for the link, and
+  opened it again the moment it closed: 4667 times in twelve minutes
+  after one upgrade, until BlueZ refused ("Notify acquired"), after
+  which it was never tried again. `Profiles::notifications` now gives
+  none while that bearer is down (`low_energy`; a BlueZ too old to say
+  is taken at its word), the bearer's coming is news
+  (`Change::Link`), the phone is asked to connect that way every 5
+  minutes while they're wanted (`LE_ASK`), and a link that closes
+  within 30 s without a word, or can't be opened, is tried again
+  after 5 s, 30 s, 2 and then every 10 minutes (`OTHERS_AGAIN`,
+  `others_failed`), one line in the log, not one an opening. A link
+  that held and went is asked for again at once.
+- **A message sent while the link is down waits for it** (25 s,
+  `HOLD`, the phone asked for at once), and goes when the session is
+  up: a drop of a second or two no longer answers "The phone isn't
+  connected". One whose sending broke off is still said to have
+  failed (it may have gone: sending it twice would be worse).
+- **A phone that doesn't connect back to tell of messages is looked
+  in on**: its inbox's newest read every minute (`CHECK_UNTOLD`,
+  `Cmd::Check`; it's asked once more to tell, `Cmd::Notify`), what's
+  new taken as what's told of is. A phone that tells isn't looked in
+  on: its session sits idle for hours, and a phone asleep that's
+  asked something doesn't answer, which would end the session.
+
+Measured (release, the stand-in phone): at rest with a session open,
+with the phone's services showing over the classic link, and with the
+phone asleep and its channel waited on: 0.0% of a core, 0 wakeups a
+second each; subscribed to 0 times where it was 13 times a second.
+A test's waits are a thirtieth of these (`OLO_PHONE_PACE=30`: `paced`).
+
 **Nothing in it waits for good, and what goes wrong is seen** (Ben,
 2026-11-17, his iPhone paired and the panel still at "Waiting for the
 phone": "olo needs to supervise/monitor it and make it bulletproof").

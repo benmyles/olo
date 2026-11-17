@@ -89,6 +89,53 @@ const STUCK: Duration = Duration::from_secs(90);
 const ALLOW_LATER: Duration = Duration::from_secs(300);
 /// How long after a try a phone out of reach is tried again, try by try.
 const AWAY: [u64; 5] = [15, 30, 60, 120, 300];
+/// How long a phone has to give its first answers on a channel just
+/// opened (the session's, and its inbox). A phone asleep takes the
+/// channel and answers when it wakes: 50 s was seen, and nothing within
+/// the 30 s first allowed, 71 times of 78 in one night, each given up,
+/// the link dropped by the phone twenty seconds after and brought back by
+/// the next asking, a minute a round. It's waited for while its link
+/// stands (whose end ends the wait at once: `Stream::gone`).
+const FIRST_ANSWER: Duration = Duration::from_secs(180);
+/// How long it has to answer anything asked later.
+const ANSWER: Duration = Duration::from_secs(45);
+/// How long after a phone that took the channel and said nothing it's
+/// tried again, silence by silence (it's asleep: asked seldom, and at
+/// once when it comes by itself).
+const SILENT: [u64; 4] = [30, 120, 300, 900];
+/// How many times in a row BlueZ, busy with the phone, is asked again in
+/// three seconds; past that, as a phone out of reach.
+const BUSY_SOON: usize = 5;
+/// A session the phone closed within this of its channel coming didn't
+/// hold: after three such running, it's asked for again further and
+/// further apart, not at once.
+const HELD_UP: Duration = Duration::from_secs(10);
+/// How often an open session is looked in on (its inbox's newest read)
+/// while the phone hasn't connected back to tell of messages, when
+/// looking is the only way they come. A phone that tells isn't looked in
+/// on: its session sits idle for hours, and a phone asleep that's asked
+/// something doesn't answer, which ends the session.
+const CHECK_UNTOLD: Duration = Duration::from_secs(60);
+/// How long after its other notifications closed as they opened (or
+/// couldn't be opened) they're tried again, failure by failure; a link
+/// that held this long and went is asked for again at once.
+const OTHERS_AGAIN: [u64; 4] = [5, 30, 120, 600];
+const OTHERS_HELD: Duration = Duration::from_secs(30);
+/// How often the phone is asked to connect over low energy too, while
+/// its other notifications are wanted and that link isn't up.
+const LE_ASK: Duration = Duration::from_secs(300);
+/// How long a message sent while the phone's messages aren't open waits
+/// for them (the link is being brought back) before it's said to have
+/// failed.
+const HOLD: Duration = Duration::from_secs(25);
+
+/// A wait as it's kept: divided by `OLO_PHONE_PACE` where a test sets
+/// it (its stand-in phone's minutes pass in seconds).
+fn paced(wait: Duration) -> Duration {
+    static PACE: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+    wait / *PACE.get_or_init(|| std::env::var("OLO_PHONE_PACE").ok().and_then(|p| p.parse().ok()).filter(|p| *p > 0).unwrap_or(1))
+}
+
 /// How soon after the conversations or contacts change they're kept for
 /// the next run (`kept`): once a burst of them has come, not at each.
 const KEEP_AFTER: Duration = Duration::from_secs(2);
@@ -130,7 +177,20 @@ enum Cmd {
         answer: Option<mpsc::Sender<Reply>>,
     },
     MarkRead(Vec<String>),
+    /// Look in: the newest of the inbox.
+    Check,
+    /// Ask again to be told of messages.
+    Notify,
     Close,
+}
+
+/// A message held while the phone's messages aren't open.
+struct Held {
+    to: String,
+    text: String,
+    note: Option<NoteId>,
+    answer: Option<mpsc::Sender<Reply>>,
+    until: Instant,
 }
 
 /// What a session's thread says.
@@ -141,6 +201,10 @@ enum FromSession {
     NotAllowed,
     /// The session is open: the newest of the inbox.
     Up(Vec<Listed>),
+    /// The phone took the channel and said nothing in `FIRST_ANSWER`.
+    Silent,
+    /// Looked in on: the newest of the inbox now.
+    Listed(Vec<Listed>),
     /// A message that came: as its listing has it, and whole.
     Came(Listed, BMessage),
     /// A message's text whole (`None`: the phone wouldn't give it).
@@ -217,6 +281,9 @@ enum About {
 struct OthersLink {
     /// Which opening this is (an earlier one's packets are old news).
     generation: u64,
+    /// When it opened, and whether the phone has said anything on it.
+    opened_at: Instant,
+    heard: bool,
     state: Others,
     /// To the thread that writes its commands to the phone.
     write: mpsc::Sender<Vec<u8>>,
@@ -293,6 +360,33 @@ struct Service {
     /// When to try the phone again, and how many tries have failed.
     retry_at: Option<Instant>,
     tries: usize,
+    /// How many times in a row the phone took the channel and said
+    /// nothing (`SILENT`), and BlueZ was busy with it (`BUSY_SOON`).
+    silent: usize,
+    busy: usize,
+    /// How many sessions running the phone closed within `HELD_UP` of
+    /// their channel coming.
+    hangs: usize,
+    /// When the phone was last asked for while it wasn't connected (its
+    /// connecting just after is that asking's doing, not its own), and
+    /// when the session's channel came.
+    paged_at: Option<Instant>,
+    channel_at: Option<Instant>,
+    /// When the open session is next looked in on (`CHECK`); whether
+    /// the phone has connected back to tell of messages this session,
+    /// and whether it was asked a second time to.
+    check_at: Option<Instant>,
+    told: bool,
+    asked_again: bool,
+    /// Messages sent while the phone's messages weren't open (`HOLD`).
+    held: Vec<Held>,
+    /// Its other notifications: when they're tried again after closing
+    /// as they opened, how many times running they have (`OTHERS_AGAIN`),
+    /// and when the phone is next asked to connect over low energy
+    /// (`LE_ASK`).
+    others_at: Option<Instant>,
+    others_fails: usize,
+    le_ask_at: Option<Instant>,
     /// When to ask for its contacts again (they come only once the
     /// phone's owner allows them, which says nothing), and how often
     /// they've been asked for this session.
@@ -372,18 +466,23 @@ fn session(stream: Stream, cmds: mpsc::Receiver<Cmd>, said: impl Fn(FromSession)
         }
     }
     let _shut = Shut(stream.closer());
+    // (Its first answers are waited for long: a phone asleep.)
+    let patient = stream.patient();
+    patient.set(paced(FIRST_ANSWER));
+    let down = |e: obex::Error| if waited_out(&e) { FromSession::Silent } else { FromSession::Down(e.to_string()) };
     let mut mas = match Mas::open(stream) {
         Ok(m) => m,
         Err(obex::Error::Refused(obex::code::FORBIDDEN | obex::code::UNAUTHORIZED)) => return said(FromSession::NotAllowed),
-        Err(e) => return said(FromSession::Down(e.to_string())),
+        Err(e) => return said(down(e)),
     };
     // Told of messages as they come (the phone connects back), and what
     // the inbox has now.
     let opened = mas.notify(true).and_then(|()| mas.listing("inbox", INBOX));
     match opened {
         Ok(listed) => said(FromSession::Up(listed)),
-        Err(e) => return said(FromSession::Down(e.to_string())),
+        Err(e) => return said(down(e)),
     }
+    patient.set(paced(ANSWER));
     for cmd in cmds {
         let done = match cmd {
             Cmd::Fetch(handle) => (|| {
@@ -418,14 +517,31 @@ fn session(stream: Stream, cmds: mpsc::Receiver<Cmd>, said: impl Fn(FromSession)
                 if broke { Err(obex::Error::Malformed("the link went")) } else { Ok(()) }
             }
             Cmd::MarkRead(handles) => handles.iter().try_for_each(|h| mas.mark_read(h).or_else(|e| if matches!(e, obex::Error::Refused(_)) { Ok(()) } else { Err(e) })),
+            // (Waited for as its first answers are: asleep, it says
+            // nothing, and the session is over.)
+            Cmd::Check => {
+                patient.set(paced(FIRST_ANSWER));
+                let listed = mas.listing("inbox", 12).map(|listed| said(FromSession::Listed(listed)));
+                patient.set(paced(ANSWER));
+                listed
+            }
+            // (Refused: it's told already, or won't be; the looking in
+            // goes on.)
+            Cmd::Notify => mas.notify(true).or_else(|e| if matches!(e, obex::Error::Refused(_)) { Ok(()) } else { Err(e) }),
             Cmd::Close => break,
         };
         if let Err(e) = done {
-            return said(FromSession::Down(e.to_string()));
+            return said(down(e));
         }
     }
     mas.close();
     said(FromSession::Down(String::new()))
+}
+
+/// Whether an error is a wait that ran out (nothing came in the
+/// channel's patience), not the link going.
+fn waited_out(e: &obex::Error) -> bool {
+    matches!(e, obex::Error::Io(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut))
 }
 
 /// Whether the session still answers (after something failed: a refusal
@@ -513,6 +629,18 @@ pub fn run() -> ! {
         session: None,
         retry_at: None,
         tries: 0,
+        silent: 0,
+        busy: 0,
+        hangs: 0,
+        paged_at: None,
+        channel_at: None,
+        check_at: None,
+        told: false,
+        asked_again: false,
+        held: Vec::new(),
+        others_at: None,
+        others_fails: 0,
+        le_ask_at: None,
         contacts_at: None,
         contacts_tries: 0,
         settings: PhoneSettings::load(),
@@ -548,6 +676,11 @@ pub fn run() -> ! {
             .chain(s.contacts_at)
             .chain(s.opening_until)
             .chain(s.keep_at)
+            .chain(s.check_at)
+            .chain(s.held.iter().map(|h| h.until))
+            .chain(s.others_at)
+            // (Asked again over low energy only while that's waited for.)
+            .chain(s.le_ask_at.filter(|_| s.others.is_none() && s.others_since.is_some()))
             .chain(s.others.as_ref().and_then(|o| o.state.due()))
             .chain(s.calling.due())
             // (When advertising for its other notifications ends.)
@@ -759,6 +892,7 @@ impl Service {
                 None => {}
             }
         }
+        let came = phone.as_ref().is_some_and(|p| p.connected) && !self.phone.as_ref().is_some_and(|p| p.connected);
         self.phone = phone;
         self.details();
         self.others_link();
@@ -788,6 +922,17 @@ impl Service {
                 if self.session.is_none() && !self.opening {
                     if st.link == Link::NotPaired || st.link == Link::Ready {
                         st.link = Link::Away;
+                    }
+                    // The phone came by itself (not paged from here just
+                    // now): it's awake, and asked at once; after
+                    // silences, no sooner than its first waits (a phone
+                    // asleep that comes and goes isn't asked a minute a
+                    // round).
+                    if came && self.paged_at.is_none_or(|at| at.elapsed() > Duration::from_secs(20)) {
+                        let soon = Instant::now() + if self.silent == 0 { Duration::ZERO } else { paced(Duration::from_secs(SILENT[self.silent.min(2) - 1])) };
+                        if self.retry_at.is_some_and(|at| at > soon) {
+                            (self.retry_at, self.tries) = (Some(soon), 0);
+                        }
                     }
                     if self.retry_at.is_none() {
                         self.open();
@@ -957,7 +1102,7 @@ impl Service {
         let phone = self.phone.clone().filter(|p| p.connected && p.kind == link::Kind::IPhone && wanted);
         let Some((phone, profiles)) = phone.zip(self.profiles.clone()) else {
             self.others_end();
-            self.others_since = None;
+            (self.others_since, self.others_at, self.others_fails, self.le_ask_at) = (None, None, 0, None);
             return;
         };
         if self.state.model.is_empty()
@@ -969,23 +1114,41 @@ impl Service {
         if self.others.is_some() {
             return;
         }
+        // (After closing as they opened: not before their time. Without
+        // this they were opened again the moment they closed, 4667
+        // times in twelve minutes on Ben's iPhone, whose characteristics
+        // BlueZ showed over the classic link.)
+        let now = Instant::now();
+        if self.others_at.is_some_and(|at| at > now) {
+            return;
+        }
+        self.others_at = None;
         let mut link = match profiles.notifications(&phone.path) {
             Ok(Some(link)) => link,
             Ok(None) => {
-                // Not there (yet): asked for once each time the phone
-                // comes.
-                if self.others_since.is_none() {
-                    self.others_since = Some(Instant::now());
+                // Not there (yet): no low-energy link, or it shows none
+                // of this. The phone is asked to connect that way now
+                // and every few minutes, and advertised to for a while
+                // from when it came (`solicit`); the link is taken the
+                // moment BlueZ says it's up.
+                self.others_fails = 0;
+                self.others_since.get_or_insert(now);
+                if self.le_ask_at.is_none_or(|at| at <= now) {
+                    self.le_ask_at = Some(now + paced(LE_ASK));
                     profiles.connect_low_energy(&phone.path);
                 }
                 return;
             }
             Err(e) => {
                 tracing::info!("phone: its other notifications can't be opened: {e}");
+                self.others_failed();
                 return;
             }
         };
-        let Some((source, data)) = link.streams() else { return };
+        let Some((source, data)) = link.streams() else {
+            self.others_failed();
+            return;
+        };
         self.others_opened += 1;
         let generation = self.others_opened;
         // A thread each: the two streams (a packet a read, until the
@@ -1019,11 +1182,24 @@ impl Service {
                 }
             }
         });
-        tracing::info!("phone: its other notifications are open");
+        if self.others_fails == 0 {
+            tracing::info!("phone: its other notifications are open");
+        }
         let mut state = Others::default();
         state.messages_elsewhere = self.session.is_some();
-        self.others = Some(OthersLink { generation, state, write, notes: HashMap::new() });
+        self.others = Some(OthersLink { generation, opened_at: now, heard: false, state, write, notes: HashMap::new() });
         self.state.others = true;
+    }
+
+    /// Its other notifications couldn't be opened, or closed as they
+    /// opened: tried again further and further apart.
+    fn others_failed(&mut self) {
+        let wait = paced(Duration::from_secs(OTHERS_AGAIN[self.others_fails.min(OTHERS_AGAIN.len() - 1)]));
+        self.others_fails += 1;
+        self.others_at = Some(Instant::now() + wait);
+        if self.others_fails == 1 || self.others_fails == OTHERS_AGAIN.len() {
+            tracing::info!("phone: its other notifications don't stay open: tried again in {} s", wait.as_secs());
+        }
     }
 
     /// The link to the phone's other notifications is over: a call
@@ -1031,7 +1207,11 @@ impl Service {
     /// the rest stay, as read.
     fn others_end(&mut self) {
         let Some(link) = self.others.take() else { return };
-        tracing::info!("phone: its other notifications are closed");
+        // (Said of one that held; one closed as it opened is said of in
+        // `others_failed`, not a line an opening.)
+        if link.heard || link.opened_at.elapsed() >= paced(OTHERS_HELD) || self.others_fails == 0 {
+            tracing::info!("phone: its other notifications are closed");
+        }
         self.state.others = false;
         let calls: Vec<NoteId> =
             self.about.iter().filter(|(id, about)| matches!(about, About::Call(g, _) if *g == link.generation) && link.notes.values().any(|n| n == id)).map(|(id, _)| *id).collect();
@@ -1049,14 +1229,26 @@ impl Service {
         let effects = match said {
             OthersSaid::Told(packet) => {
                 tracing::debug!("phone: told of a notification ({} bytes)", packet.len());
+                o.heard = true;
                 o.state.told(&packet, now)
             }
-            OthersSaid::Data(packet) => o.state.data(&packet, now),
+            OthersSaid::Data(packet) => {
+                o.heard = true;
+                o.state.data(&packet, now)
+            }
             OthersSaid::Gone => {
+                // A link that held and went (the phone out of its reach
+                // a moment) may come again: asked for anew, at once. One
+                // that closed as it opened isn't asked for at once.
+                let held = o.heard || o.opened_at.elapsed() >= paced(OTHERS_HELD);
                 self.others_end();
-                // (It may come again: asked for anew.)
                 self.others_since = None;
-                self.others_link();
+                if held {
+                    self.others_fails = 0;
+                    self.others_link();
+                } else {
+                    self.others_failed();
+                }
                 return;
             }
         };
@@ -1150,6 +1342,9 @@ impl Service {
         self.generation += 1;
         (self.opening, self.retry_at) = (true, None);
         self.opening_until = Some(Instant::now() + OPEN_ANSWER);
+        if !phone.connected {
+            self.paged_at = Some(Instant::now());
+        }
         if self.state.link != Link::Allow {
             self.state.link = if phone.connected { Link::Connecting } else { Link::Away };
         }
@@ -1183,6 +1378,7 @@ impl Service {
                 let (cmds, heard) = mpsc::channel();
                 self.session = Some(cmds);
                 (self.opening, self.opening_until, self.let_go) = (false, None, false);
+                self.channel_at = Some(Instant::now());
                 // Its end is waited for (asleep): a phone that closes the
                 // channel, or a link that goes under it, is known of at
                 // once, not when next something is asked of it.
@@ -1200,6 +1396,10 @@ impl Service {
             // The phone telling of messages: each fetched by the session.
             Channel::Notifications => {
                 let Some(cmds) = self.session.clone() else { return };
+                if !self.told {
+                    tracing::info!("phone: it connected back to tell of messages");
+                }
+                (self.told, self.check_at) = (true, None);
                 opened.stream.patience(Duration::ZERO);
                 let _ = std::thread::Builder::new().name("phone-events".into()).spawn(move || {
                     let _ = map::serve_notifications(opened.stream, |event| {
@@ -1278,19 +1478,48 @@ impl Service {
             FromSession::Hung => {
                 // (Its own end, after it ended here, says nothing new.)
                 let Some(cmds) = self.session.take() else { return };
-                tracing::info!("phone: it closed the channel to its messages (or the link went): asking again");
                 let _ = cmds.send(Cmd::Close);
                 self.generation += 1;
-                (self.opening, self.opening_until) = (false, None);
+                (self.opening, self.opening_until, self.check_at) = (false, None, None);
                 self.state.link = Link::Away;
-                (self.tries, self.retry_at) = (0, Some(Instant::now() + Duration::from_secs(1)));
+                // Asked for again at once (its owner turned the switch
+                // off and on; the link dropped a moment). A phone that
+                // closes it as it opens, time after time, is asked
+                // further and further apart: never a second a round for
+                // good.
+                self.hangs = if self.channel_at.is_none_or(|at| at.elapsed() >= HELD_UP) { 0 } else { self.hangs + 1 };
+                if self.hangs <= 2 {
+                    tracing::info!("phone: it closed the channel to its messages (or the link went): asking again");
+                    (self.tries, self.retry_at) = (0, Some(Instant::now() + Duration::from_secs(1)));
+                } else {
+                    let wait = AWAY[(self.hangs - 3).min(AWAY.len() - 1)];
+                    tracing::info!("phone: it closes the channel to its messages as it opens: asking again in {wait} s");
+                    self.retry_at = Some(Instant::now() + paced(Duration::from_secs(wait)));
+                }
+            }
+            // It took the channel and said nothing: asleep. Asked again
+            // seldom; at once when it comes by itself (`devices`).
+            FromSession::Silent => {
+                (self.opening, self.session, self.opening_until, self.check_at) = (false, None, None, None);
+                let wait = paced(Duration::from_secs(SILENT[self.silent.min(SILENT.len() - 1)]));
+                self.silent += 1;
+                tracing::info!("phone: it took the channel to its messages and said nothing for {} s (asleep?): asked again in {} s", paced(FIRST_ANSWER).as_secs(), wait.as_secs());
+                self.state.link = Link::Away;
+                if self.phone.as_ref().is_some_and(|p| p.connected) {
+                    self.state.trouble = "The phone is connected but isn’t answering (it may be asleep). It’s asked again from time to time, and at once when it wakes.".into();
+                }
+                self.retry_at = Some(Instant::now() + wait);
             }
             FromSession::NoChannel(why) => {
                 (self.opening, self.session, self.opening_until) = (false, None, None);
                 self.state.link = Link::Away;
                 // (BlueZ busy with the phone, connecting or pairing:
                 // soon; otherwise further and further apart.)
-                let wait = if why.contains("InProgress") || why.contains("no channel came") { 3 } else { AWAY[self.tries.min(AWAY.len() - 1)] };
+                // (Busy for good, it's asked as a phone out of reach is:
+                // not every three seconds for ever.)
+                let busy = why.contains("InProgress") || why.contains("no channel came");
+                self.busy = if busy { self.busy + 1 } else { 0 };
+                let wait = if busy && self.busy <= BUSY_SOON { 3 } else { AWAY[self.tries.min(AWAY.len() - 1)] };
                 self.tries += 1;
                 self.retry_at = Some(Instant::now() + Duration::from_secs(wait));
                 // Why, said plainly when the phone is there and still
@@ -1315,52 +1544,39 @@ impl Service {
                 self.retry_at = Some(Instant::now() + if since.elapsed() < ALLOW_FOR { ALLOW_EVERY } else { ALLOW_LATER });
             }
             FromSession::Up(listed) => {
-                (self.tries, self.retry_at) = (0, None);
+                (self.tries, self.retry_at, self.silent, self.busy) = (0, None, 0, 0);
                 tracing::info!("phone: its messages are open ({} in its inbox)", listed.len());
                 self.state.link = Link::Ready;
                 self.state.trouble.clear();
                 self.said_why.clear();
                 self.allow_since.get_or_insert_with(Instant::now);
-                let now_s = now() as i64;
-                let mut fresh = Vec::new();
-                // What a listing has of a message may be only its
-                // beginning: those are asked for whole, once each (the
-                // ones kept from before too, the newest first).
-                let mut cut = Vec::new();
-                // (Oldest first, as conversations keep them.)
-                for row in listed.into_iter().rev() {
-                    let may_be_cut = may_be_cut(&row.subject) && !self.whole.contains(&row.handle);
-                    if self.seen.contains(&row.handle) {
-                        if may_be_cut {
-                            cut.push(row.handle);
-                        }
-                        continue;
-                    }
-                    // One that has just come (while the service wasn't
-                    // there to be told) is fetched whole and told of; the
-                    // rest is what there was.
-                    if !row.read && when(&row.datetime).is_some() && just_came(&row.datetime, now_s) {
-                        fresh.push(row.handle);
-                    } else {
-                        self.keep(&row, row.subject.clone());
-                        if may_be_cut {
-                            cut.push(row.handle);
-                        }
-                    }
-                }
+                // Looked in on from here on; what was sent meanwhile goes.
+                (self.told, self.asked_again, self.check_at) = (false, false, Some(Instant::now() + paced(CHECK_UNTOLD)));
                 if let Some(cmds) = &self.session {
-                    for handle in fresh {
-                        let _ = cmds.send(Cmd::Fetch(handle));
-                    }
-                    for handle in cut.into_iter().rev() {
-                        let _ = cmds.send(Cmd::Whole(handle));
+                    for h in self.held.drain(..) {
+                        let _ = cmds.send(Cmd::Send { to: h.to, text: h.text, note: h.note, answer: h.answer });
                     }
                 }
+                self.take_listed(listed);
                 // Its contacts (names for numbers): asked for now, and
                 // again while they haven't come.
                 self.contacts_tries = 0;
                 self.ask_contacts();
                 self.count();
+            }
+            // Looked in on: what it didn't tell of is taken as what it
+            // tells of is. A phone that hasn't connected back to tell is
+            // asked to once more, and looked in on often.
+            FromSession::Listed(listed) => {
+                self.take_listed(listed);
+                self.count();
+                if !self.told && !self.asked_again {
+                    self.asked_again = true;
+                    if let Some(cmds) = &self.session {
+                        let _ = cmds.send(Cmd::Notify);
+                    }
+                }
+                self.check_at = (!self.told).then(|| Instant::now() + paced(CHECK_UNTOLD));
             }
             FromSession::Came(row, whole) => {
                 if self.seen.contains(&row.handle) {
@@ -1382,17 +1598,7 @@ impl Service {
                 self.count();
                 self.came(ti, mi);
             }
-            // A message's text, whole: in place of its beginning (asked
-            // for once, whatever came of it).
-            FromSession::Whole(handle, text) => {
-                if let Some(text) = text.filter(|t| !t.is_empty())
-                    && let Some(m) = self.threads.iter_mut().flat_map(|t| &mut t.messages).find(|m| m.handle == handle)
-                    && m.text != text
-                {
-                    m.text = text;
-                }
-                self.whole.insert(handle);
-            }
+            FromSession::Whole(handle, text) => self.whole_came(handle, text),
             FromSession::Contacts(contacts) => {
                 if !self.state.contacts {
                     tracing::info!("phone: its contacts came ({})", contacts.len());
@@ -1421,7 +1627,7 @@ impl Service {
                 }
             }
             FromSession::Down(why) => {
-                (self.opening, self.session, self.opening_until) = (false, None, None);
+                (self.opening, self.session, self.opening_until, self.check_at) = (false, None, None, None);
                 if !why.is_empty() {
                     tracing::info!("phone: the session ended: {why}");
                     if self.phone.as_ref().is_some_and(|p| p.connected) {
@@ -1434,6 +1640,60 @@ impl Service {
                 self.tries += 1;
             }
         }
+    }
+
+    /// What a listing of the inbox has that's new here: one that has
+    /// just come is fetched whole and told of, the rest is kept as what
+    /// there was; and what may be only a message's beginning is asked
+    /// for whole.
+    fn take_listed(&mut self, listed: Vec<Listed>) {
+        let now_s = now() as i64;
+        let mut fresh = Vec::new();
+        // What a listing has of a message may be only its
+        // beginning: those are asked for whole, once each (the
+        // ones kept from before too, the newest first).
+        let mut cut = Vec::new();
+        // (Oldest first, as conversations keep them.)
+        for row in listed.into_iter().rev() {
+            let may_be_cut = may_be_cut(&row.subject) && !self.whole.contains(&row.handle);
+            if self.seen.contains(&row.handle) {
+                if may_be_cut {
+                    cut.push(row.handle);
+                }
+                continue;
+            }
+            // One that has just come (while the service wasn't
+            // there to be told) is fetched whole and told of; the
+            // rest is what there was.
+            if !row.read && when(&row.datetime).is_some() && just_came(&row.datetime, now_s) {
+                fresh.push(row.handle);
+            } else {
+                self.keep(&row, row.subject.clone());
+                if may_be_cut {
+                    cut.push(row.handle);
+                }
+            }
+        }
+        if let Some(cmds) = &self.session {
+            for handle in fresh {
+                let _ = cmds.send(Cmd::Fetch(handle));
+            }
+            for handle in cut.into_iter().rev() {
+                let _ = cmds.send(Cmd::Whole(handle));
+            }
+        }
+    }
+
+    /// A message's text, whole: in place of its beginning (asked for
+    /// once, whatever came of it).
+    fn whole_came(&mut self, handle: String, text: Option<String>) {
+        if let Some(text) = text.filter(|t| !t.is_empty())
+            && let Some(m) = self.threads.iter_mut().flat_map(|t| &mut t.messages).find(|m| m.handle == handle)
+            && m.text != text
+        {
+            m.text = text;
+        }
+        self.whole.insert(handle);
     }
 
     /// Ask BlueZ for a channel to the phone's contacts; and, until they
@@ -1539,6 +1799,15 @@ impl Service {
             Some(cmds) if self.state.link == Link::Ready => {
                 if let Err(mpsc::SendError(Cmd::Send { answer, .. })) = cmds.send(Cmd::Send { to, text, note, answer }) {
                     refuse("The phone went.", answer);
+                }
+            }
+            // The link is down or coming back (a moment, most often):
+            // held for it, and the phone asked for now.
+            _ if self.phone.is_some() && matches!(self.state.link, Link::Away | Link::Connecting | Link::Ready) => {
+                self.held.push(Held { to, text, note, answer, until: Instant::now() + paced(HOLD).max(Duration::from_secs(3)) });
+                if self.session.is_none() && !self.opening {
+                    self.retry_at = None;
+                    self.open();
                 }
             }
             _ => {
@@ -1867,6 +2136,33 @@ impl Service {
             self.generation += 1;
             self.let_go = true;
             self.from_session(FromSession::NoChannel("Bluetooth said it would open them and no channel came".into()));
+        }
+        // An open session, looked in on (answered with `Listed`, which
+        // sets the next; unanswered, the session ends and is asked for
+        // again).
+        if self.check_at.is_some_and(|at| at <= t) {
+            self.check_at = None;
+            if let Some(cmds) = self.session.as_ref().filter(|_| self.state.link == Link::Ready && !self.told) {
+                let _ = cmds.send(Cmd::Check);
+            }
+        }
+        // What was held for the link and it didn't come back in time.
+        if self.held.iter().any(|h| h.until <= t) {
+            let (late, held): (Vec<Held>, Vec<Held>) = std::mem::take(&mut self.held).into_iter().partition(|h| h.until <= t);
+            self.held = held;
+            for h in late {
+                if let Some(note) = h.note {
+                    self.notes.show(Some(note), Note::new("Not sent").body("The phone isn’t connected.").kind(olo_kit_base::notify::NoteKind::Error));
+                }
+                if let Some(answer) = h.answer {
+                    let _ = answer.send(Reply { ok: false, error: Some("The phone isn’t connected.".into()), ..Default::default() });
+                }
+            }
+        }
+        // Its other notifications, tried again; the phone asked again
+        // to connect over low energy.
+        if self.others_at.is_some_and(|at| at <= t) || (self.others.is_none() && self.others_since.is_some() && self.le_ask_at.is_some_and(|at| at <= t)) {
+            self.others_link();
         }
         if self.retry_at.is_some_and(|at| at <= t) {
             self.retry_at = None;

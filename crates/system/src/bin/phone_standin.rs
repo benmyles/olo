@@ -67,6 +67,9 @@ enum Error {
 }
 
 enum Job {
+    /// Which of its services show changed (the low-energy link, or
+    /// `classic-gatt`).
+    Shown,
     /// Open a channel of `uuid` to whoever registered that profile.
     Open(String),
     /// Tell whoever asked that message `handle` came.
@@ -150,6 +153,26 @@ struct World {
     /// set stale yes`): asked to connect them, it says yes and opens
     /// nothing, until it's told to let go (`DisconnectProfile`).
     stale: bool,
+    /// The phone is asleep (`--tell set asleep yes`): it takes a channel
+    /// to its messages and answers nothing on it until it wakes (Ben's
+    /// iPhone at night: nothing for 30 s and more, 71 times of 78).
+    asleep: bool,
+    /// Its characteristics show over the classic link, its low-energy
+    /// one down (`--tell set classic-gatt yes`), as BlueZ shows an
+    /// iPhone's: subscribed to there, the socket is closed at once.
+    classic_gatt: bool,
+    /// It doesn't tell of the messages that come (`--tell set quiet
+    /// yes`): they're in its inbox, for whoever looks.
+    quiet: bool,
+    /// Subscribed to over low energy too, its characteristics close at
+    /// once (`--tell set deaf yes`: a phone that won't tell this
+    /// computer, a BlueZ that doesn't say which link is up).
+    deaf: bool,
+    /// How many times its messages were asked for (`ConnectProfile`),
+    /// and its characteristics subscribed to (`--tell asked`,
+    /// `acquired`).
+    asked: u32,
+    acquired: u32,
     /// An advertisement soliciting Apple's notification service is
     /// broadcast: an iPhone shows its switches for the computer only
     /// while one is.
@@ -335,11 +358,14 @@ impl Device {
     }
 
     fn connect_profile(&self, uuid: String) -> Result<(), Error> {
-        let w = self.0.lock().expect("world");
+        let mut w = self.0.lock().expect("world");
+        let uuid = uuid.to_ascii_lowercase();
+        if uuid == map::MAS_UUID {
+            w.asked += 1;
+        }
         if !w.paired || !w.connected {
             return Err(Error::NotAvailable("br-connection-page-timeout".into()));
         }
-        let uuid = uuid.to_ascii_lowercase();
         // (Its hands-free side: the sound server's to speak, there in
         // its telephony service once connected. `--tell set refuses
         // hands-free`: a phone that won't.)
@@ -673,6 +699,12 @@ impl Characteristic {
             (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1]))
         };
         let mut w = self.world.lock().expect("world");
+        w.acquired += 1;
+        // (Over the classic link: taken, and closed at once.)
+        if !w.low_energy || w.deaf {
+            drop(ours);
+            return Ok((theirs.into(), (PACKET + 3) as u16));
+        }
         match self.uuid {
             ancs::NOTIFICATION_SOURCE => {
                 w.source = Some(ours.into());
@@ -861,6 +893,13 @@ impl Told {
             "messages" => w.phone.0.lock().expect("phone").messages_allowed = on,
             "contacts" => w.phone.0.lock().expect("phone").contacts_allowed = on,
             "stale" => w.stale = on,
+            "asleep" => w.asleep = on,
+            "quiet" => w.quiet = on,
+            "deaf" => w.deaf = on,
+            "classic-gatt" => {
+                w.classic_gatt = on;
+                let _ = w.jobs.send(Job::Shown);
+            }
             // Its owner allows its notifications to this computer (or no
             // longer): the phone connects over low energy to a computer
             // advertising for them, and lets go when they're taken back.
@@ -902,6 +941,13 @@ impl Told {
 
     fn pairings(&self) -> u32 {
         self.0.lock().expect("world").pairings
+    }
+
+    /// How many times its messages were asked for, and how many times
+    /// its characteristics were subscribed to.
+    fn counts(&self) -> (u32, u32) {
+        let w = self.0.lock().expect("world");
+        (w.asked, w.acquired)
     }
 
     fn sent(&self) -> Vec<String> {
@@ -987,6 +1033,12 @@ fn main() {
         pairings: 0,
         pce_record: None,
         stale: false,
+        asleep: false,
+        classic_gatt: false,
+        quiet: false,
+        deaf: false,
+        asked: 0,
+        acquired: 0,
         jobs: tx,
     }));
     let built = zbus::blocking::connection::Builder::address(address.as_str())
@@ -1091,13 +1143,27 @@ fn main() {
             Job::Open(uuid) => {
                 let p = phone.clone();
                 if uuid == map::MAS_UUID {
-                    hand_over(&uuid, Box::new(move |link| drop(p.serve_messages(link))));
+                    // (Asleep: the channel is taken and nothing said on
+                    // it until the phone wakes.)
+                    let world = world.clone();
+                    hand_over(
+                        &uuid,
+                        Box::new(move |link| {
+                            while world.lock().expect("world").asleep {
+                                std::thread::sleep(std::time::Duration::from_millis(30));
+                            }
+                            drop(p.serve_messages(link))
+                        }),
+                    );
                 } else if uuid == pbap::PSE_UUID {
                     hand_over(&uuid, Box::new(move |link| drop(p.serve_contacts(link))));
                 }
             }
             Job::Tell(handle) => {
-                if phone.notifying() && world.lock().expect("world").connected {
+                let w = world.lock().expect("world");
+                let (connected, quiet) = (w.connected, w.quiet);
+                drop(w);
+                if phone.notifying() && connected && !quiet {
                     let p = phone.clone();
                     hand_over(map::MNS_UUID, Box::new(move |link| drop(p.tell(link, &handle))));
                 }
@@ -1142,7 +1208,20 @@ fn main() {
                 w.low_energy = on;
                 // (Gone: the subscriptions end with it.)
                 (w.source, w.data) = (None, None);
+                let _ = w.jobs.send(Job::Shown);
                 drop(w);
+                let mut changed: HashMap<&str, Value> = HashMap::new();
+                changed.insert("Connected", on.into());
+                let none: Vec<&str> = Vec::new();
+                let _ = conn.emit_signal(None::<&str>, DEVICE, "org.freedesktop.DBus.Properties", "PropertiesChanged", &("org.bluez.Bearer.LE1", changed, none));
+            }
+            // Its services show while the low-energy link is up, or over
+            // the classic one (`classic-gatt`).
+            Job::Shown => {
+                let on = {
+                    let w = world.lock().expect("world");
+                    w.low_energy || (w.classic_gatt && w.connected)
+                };
                 let server = conn.object_server();
                 let characteristic = |uuid: &'static str| Characteristic { world: world.clone(), uuid };
                 if on {
@@ -1315,6 +1394,16 @@ fn told(address: &str, words: &[String]) -> i32 {
             }
         },
         ["hang-up"] => call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "HangUp", &())),
+        [what @ ("asked" | "acquired")] => match conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Counts", &()).and_then(|m| m.body().deserialize::<(u32, u32)>()) {
+            Ok((asked, acquired)) => {
+                println!("{}", if *what == "asked" { asked } else { acquired });
+                0
+            }
+            Err(e) => {
+                eprintln!("phone-standin: {e}");
+                1
+            }
+        },
         ["music", status, words @ ..] => {
             let (title, artist) = (words.first().copied().unwrap_or_default(), words.get(1).copied().unwrap_or_default());
             call(conn.call_method(Some(NAME), "/org/bluez", Some(STANDIN), "Music", &(*status, title, artist)))

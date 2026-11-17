@@ -147,11 +147,13 @@ impl Stream {
 
     /// How long a read or a write waits (0: for good).
     pub fn patience(&self, wait: Duration) {
-        let tv = libc::timeval { tv_sec: wait.as_secs() as libc::time_t, tv_usec: wait.subsec_micros() as libc::suseconds_t };
-        for option in [libc::SO_RCVTIMEO, libc::SO_SNDTIMEO] {
-            // SAFETY: a timeval of the size given, on our own socket.
-            unsafe { libc::setsockopt(self.file.as_raw_fd(), libc::SOL_SOCKET, option, (&raw const tv).cast(), std::mem::size_of::<libc::timeval>() as libc::socklen_t) };
-        }
+        patience(&self.file, wait);
+    }
+
+    /// Something that changes the channel's patience from elsewhere (the
+    /// stream itself given away to what speaks on it).
+    pub fn patient(&self) -> Patient {
+        Patient(self.file.try_clone().ok())
     }
 
     /// Something that ends the channel from elsewhere (a read waiting on
@@ -163,6 +165,27 @@ impl Stream {
     /// Something that waits for the channel's end from elsewhere.
     pub fn gone(&self) -> Gone {
         Gone(self.file.try_clone().ok())
+    }
+}
+
+fn patience(file: &std::fs::File, wait: Duration) {
+    let tv = libc::timeval { tv_sec: wait.as_secs() as libc::time_t, tv_usec: wait.subsec_micros() as libc::suseconds_t };
+    for option in [libc::SO_RCVTIMEO, libc::SO_SNDTIMEO] {
+        // SAFETY: a timeval of the size given, on our own socket.
+        unsafe { libc::setsockopt(file.as_raw_fd(), libc::SOL_SOCKET, option, (&raw const tv).cast(), std::mem::size_of::<libc::timeval>() as libc::socklen_t) };
+    }
+}
+
+/// A channel's patience, set from elsewhere ([`Stream::patient`]).
+pub struct Patient(Option<std::fs::File>);
+
+impl Patient {
+    /// As [`Stream::patience`], for the reads and writes that begin
+    /// after.
+    pub fn set(&self, wait: Duration) {
+        if let Some(f) = &self.0 {
+            patience(f, wait);
+        }
     }
 }
 
@@ -550,6 +573,16 @@ impl Profiles {
     /// each read, none lost or merged, as two changes of a property in
     /// one turn of BlueZ's loop would be).
     pub fn notifications(&self, phone: &str) -> Result<Option<Notifications>> {
+        // Only over low energy. BlueZ shows a phone's characteristics
+        // over the classic link too (an iPhone's are there with its
+        // low-energy bearer down), and takes a subscription to them
+        // there; the phone tells nothing that way, and BlueZ closes the
+        // socket at once (Ben's iPhone, 2026-11-17: opened and closed
+        // 4667 times in twelve minutes). A BlueZ from before it said
+        // which bearer is up (5.80) is taken at its word.
+        if self.low_energy(phone) == Some(false) {
+            return Ok(None);
+        }
         let all = self.characteristics(phone);
         let (Some(source), Some(control), Some(data)) = (all.get(ancs::NOTIFICATION_SOURCE), all.get(ancs::CONTROL_POINT), all.get(ancs::DATA_SOURCE)) else { return Ok(None) };
         let acquire = |path: &str| -> Result<OwnedFd> {
@@ -561,6 +594,14 @@ impl Profiles {
         let data = acquire(data)?;
         let source = acquire(source)?;
         Ok(Some(Notifications { conn: self.conn.clone(), control: control.clone(), source: Some(source), data: Some(data) }))
+    }
+
+    /// Whether `phone` is connected over low energy (none: this BlueZ
+    /// doesn't say, `org.bluez.Bearer.LE1` being newer than it).
+    pub fn low_energy(&self, phone: &str) -> Option<bool> {
+        let got = self.conn.call_method(Some(DEST), phone, Some("org.freedesktop.DBus.Properties"), "Get", &("org.bluez.Bearer.LE1", "Connected")).ok()?;
+        let value: OwnedValue = got.body().deserialize().ok()?;
+        bool::try_from(&*value).ok()
     }
 
     /// What `phone` says it is ("iPhone17,3": its Device Information's
@@ -688,6 +729,9 @@ impl Profiles {
                             music::PLAYER => (&["Status", "Track"], Change::Detail),
                             "org.bluez.MediaControl1" => (&["Player", "Connected"], Change::Detail),
                             "org.bluez.Battery1" => (&["Percentage"], Change::Detail),
+                            // (The low-energy link, which its other
+                            // notifications come over.)
+                            "org.bluez.Bearer.LE1" => (&["Connected"], Change::Link),
                             _ => return None,
                         };
                         props.keys().chain(gone.iter()).any(|k| told.contains(&k.as_str())).then_some(change)

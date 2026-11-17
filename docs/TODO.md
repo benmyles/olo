@@ -17,13 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **The phone "just works": hardened against a flaky link** (Ben,
-  2026-11-17: "for the phone integration, harden it as much as possible
-  so that olo aggressively tries to reconnect and get everything,
-  assume the phone connection is flaky and needs to be constantly
-  monitored try to work around unexpected things etc so that to the
-  user it 'just works'").
-
 - **Colour schemes: Catppuccin and the ten most used editor schemes,
   for Terminal and for Themes ▸ Custom Colors** (Ben, 2026-11-17: "in
   the terminal app bake in support for all the https://catppuccin.com/
@@ -5905,6 +5898,32 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**The phone "just works": hardened against a flaky link**~~ (Ben,
+  2026-11-17: "harden it as much as possible so that olo aggressively
+  tries to reconnect and get everything, assume the phone connection is
+  flaky and needs to be constantly monitored … so that to the user it
+  'just works'"; done the same day). From a night of his iPhone in the
+  service's own log: (1) asleep, it takes the channel and says nothing;
+  the service gave up after 30 s, the phone dropped the link, the next
+  asking paged it back: a minute a round, 71 times. It's now waited for
+  3 minutes while the link stands, and after silence asked again after
+  30 s, 2, 5, then every 15 minutes, at once when it comes by itself.
+  (2) Its other notifications were opened and closed 4667 times in
+  twelve minutes, then never tried again: BlueZ showed their
+  characteristics over the classic link, where the phone tells
+  nothing. They're taken only over low energy, the phone asked to
+  connect that way every 5 minutes, and anything that closes as it
+  opens is tried again further and further apart. (3) A message sent
+  during a drop waits 25 s for the link instead of failing. (4) A
+  phone that doesn't tell of its messages has its inbox read every
+  minute. Nothing asks again at once for ever. All against the
+  stand-in phone, which now does each of these; at rest 0 wakeups a
+  second in every one. **Not known until Ben's iPhone is seen with
+  it**: whether its other notifications (mail, the rest) ever come.
+  Its low-energy link has not once been up (BlueZ says so now); the
+  log says "its other notifications are open" when it is. (HACKING,
+  "The phone": A flaky phone.)
 
 - ~~**Phone: conversations show numbers, not names; long messages cut
   off**~~ (Ben, 2026-11-17: "in the phone app it is just showing

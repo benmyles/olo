@@ -92,9 +92,178 @@ fn wait_for(what: &str, mut ready: impl FnMut() -> bool) {
     }
 }
 
+/// One stand-in BlueZ at a time on the test's bus.
+static BUS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// A phone that misbehaves as Ben's iPhone did (2026-11-17), and the
+/// service with it: asleep (the channel taken, nothing said), its
+/// characteristics shown over the classic link (a subscription closed
+/// at once), a link dropped as a message is sent, a phone that doesn't
+/// tell of its messages. The service's waits are a thirtieth of
+/// themselves here (`OLO_PHONE_PACE`).
+#[test]
+fn a_flaky_phone() {
+    let Ok(address) = std::env::var("OLO_TEST_BUS") else { return };
+    let _one = BUS.lock().unwrap_or_else(|e| e.into_inner());
+    let phone = PathBuf::from(env!("CARGO_BIN_EXE_olo-phone"));
+    let standin = phone.with_file_name("phone-standin");
+    if !standin.exists() {
+        return;
+    }
+    let dir = Path::new("/var/tmp").join(format!("olo-phone-flaky-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("run")).unwrap();
+    let (run, state) = (dir.join("run"), dir.join("state"));
+    let tell = |words: &[&str]| {
+        let out = Command::new(&standin).args(["--address", &address, "--tell"]).args(words).output().unwrap();
+        assert!(out.status.success(), "{words:?}: {}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).trim().to_owned()
+    };
+    let count = |what: &str| tell(&[what]).parse::<u32>().unwrap();
+    let _bluez = Ended(Command::new(&standin).args(["--address", &address]).spawn().unwrap());
+    wait_for("the stand-in never took its name", || {
+        zbus::blocking::connection::Builder::address(address.as_str())
+            .and_then(|b| b.build())
+            .and_then(|c| zbus::blocking::fdo::DBusProxy::new(&c).and_then(|d| Ok(d.name_has_owner("org.bluez".try_into().unwrap())?)))
+            .unwrap_or(false)
+    });
+    tell(&["set", "messages", "no"]);
+    let _service = Ended(
+        Command::new(env!("CARGO_BIN_EXE_olo-phoned"))
+            .env("DBUS_SESSION_BUS_ADDRESS", &address)
+            .env("OLO_PHONE_BLUEZ", &address)
+            .env("OLO_PHONE_DIR", &run)
+            .env("OLO_PHONE_SETTINGS", run.join("phone.json"))
+            .env("OLO_PHONE_PACE", "30")
+            .env("XDG_STATE_HOME", &state)
+            .env_remove("OLO_SCREEN")
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
+    let published = || std::fs::read_to_string(run.join("olo-phone.json")).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).unwrap_or(Value::Null);
+    let olo_phone = |args: &[&str]| {
+        let out = Command::new(&phone).args(args).env("OLO_PHONE_DIR", &run).env_remove("OLO_SCREEN").stderr(Stdio::piped()).output().unwrap();
+        (out.status.success(), String::from_utf8_lossy(&out.stdout).trim().to_owned())
+    };
+    let ready_within = |secs: u64, what: &str| {
+        let start = Instant::now();
+        while published()["link"] != "ready" {
+            assert!(start.elapsed() < Duration::from_secs(secs), "{what}: {}", published());
+            std::thread::sleep(Duration::from_millis(30));
+        }
+    };
+    wait_for("the service never said the phone must allow it", || published()["link"] == "allow");
+    wait_for("the service never advertised for the iPhone's switches", || tell(&["soliciting"]) == "yes");
+    tell(&["set", "messages", "yes"]);
+    ready_within(25, "the service never connected");
+
+    // Asleep a while: the channel is taken and nothing said on it. The
+    // service waits (it doesn't give the channel up and ask again), and
+    // has its messages the moment the phone wakes and answers.
+    tell(&["set", "asleep", "yes"]);
+    tell(&["hang-up"]);
+    wait_for("the state never said the messages had gone", || published()["link"] != "ready");
+    std::thread::sleep(Duration::from_secs(4));
+    let asked = count("asked");
+    assert_ne!(published()["link"], "ready");
+    tell(&["set", "asleep", "no"]);
+    ready_within(3, "a phone that woke and answered wasn't heard");
+    assert_eq!(count("asked"), asked, "the channel it was waited on, not another");
+
+    // Asleep for long: given up on after its first wait (6 s here), and
+    // asked again further and further apart (1 s, 4 s, 10 s after each
+    // silence here; a minute a round all night, before). Said plainly
+    // meanwhile; and there again once it wakes.
+    tell(&["set", "asleep", "yes"]);
+    tell(&["hang-up"]);
+    wait_for("the state never said the messages had gone", || published()["link"] != "ready");
+    let asked = count("asked");
+    std::thread::sleep(Duration::from_secs(16));
+    let more = count("asked") - asked;
+    assert!((1..=3).contains(&more), "asked for {more} times in 16 s of a phone asleep");
+    assert!(published()["trouble"].as_str().is_some_and(|t| t.contains("isn’t answering")), "{}", published());
+    tell(&["set", "asleep", "no"]);
+    ready_within(20, "it never came back to a phone that woke");
+    assert_eq!(published()["trouble"], "");
+
+    // A message sent as the link drops: held for the link, which is
+    // asked for at once, and sent; not "the phone isn't connected".
+    tell(&["hang-up"]);
+    wait_for("the state never said the messages had gone", || published()["link"] != "ready");
+    assert_eq!(olo_phone(&["--send", "+15550100117", "held a moment"]).0, true);
+    assert!(tell(&["sent"]).contains("held a moment"));
+    // Out of reach for good, it fails, said so, after its wait.
+    tell(&["set", "connected", "no"]);
+    wait_for("the state never said the phone had gone", || published()["link"] == "away");
+    let start = Instant::now();
+    assert_eq!(olo_phone(&["--send", "+15550100117", "nobody there"]).0, false);
+    assert!(start.elapsed() < Duration::from_secs(8), "{:?}", start.elapsed());
+    tell(&["set", "connected", "yes"]);
+    ready_within(25, "the service never came back");
+
+    // A phone that doesn't tell of the messages that come: its inbox is
+    // looked in on (every 2 s here), and the message found and told of.
+    tell(&["set", "quiet", "yes"]);
+    let unread = published()["unread"].as_u64().unwrap();
+    tell(&["receive", "", "+15550100190", "Nobody told you of this one."]);
+    wait_for("a message the phone didn't tell of was never found", || published()["unread"].as_u64() == Some(unread + 1));
+    assert!(olo_phone(&["--read", "+15550100190"]).1.contains("Nobody told you of this one."));
+    tell(&["set", "quiet", "no"]);
+
+    // Its notification service shows over the classic link, the
+    // low-energy one down (as BlueZ showed Ben's iPhone's): nothing is
+    // subscribed to there. (It was, the socket closed at once, and it
+    // was subscribed to again: 4667 times in twelve minutes.)
+    tell(&["set", "classic-gatt", "yes"]);
+    std::thread::sleep(Duration::from_secs(2));
+    assert_eq!((count("acquired"), published()["others"].as_bool()), (0, Some(false)));
+    // Over low energy it's taken; and a link that goes after holding is
+    // asked for again, not subscribed to over the classic one.
+    tell(&["set", "notifications", "yes"]);
+    wait_for("its other notifications never came", || published()["others"] == true);
+    assert_eq!(count("acquired"), 2);
+    // The low-energy link drops (out of its reach a moment): the phone
+    // is asked to connect that way again, and they're back.
+    std::thread::sleep(Duration::from_millis(1200));
+    tell(&["set", "low-energy", "no"]);
+    wait_for("its other notifications never came back from a link dropped", || count("acquired") == 4 && published()["others"] == true);
+    // Taken back on the phone: gone, and not subscribed to over the
+    // classic link, where they still show.
+    tell(&["set", "notifications", "no"]);
+    wait_for("the state never said its other notifications had gone", || published()["others"] == false);
+    std::thread::sleep(Duration::from_secs(2));
+    assert_eq!(count("acquired"), 4);
+    // Subscriptions that close at once over low energy too (a phone
+    // that won't tell; a BlueZ that doesn't say which link is up):
+    // tried again further and further apart (0.2, 1, 4, 20 s here), not
+    // at once for ever.
+    tell(&["set", "deaf", "yes"]);
+    tell(&["set", "notifications", "yes"]);
+    let start = Instant::now();
+    while count("acquired") == 4 {
+        assert!(start.elapsed() < Duration::from_secs(20), "the phone was never asked to connect over low energy again");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    std::thread::sleep(Duration::from_secs(4));
+    let tried = (count("acquired") - 4) / 2;
+    assert!((2..=4).contains(&tried), "its notifications were subscribed to {tried} times in 4 s of closing at once");
+    assert_eq!(published()["others"], false);
+    tell(&["set", "deaf", "no"]);
+    let start = Instant::now();
+    while published()["others"] != true {
+        assert!(start.elapsed() < Duration::from_secs(30), "its other notifications never came back: {}", published());
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    // And all the while the service slept between: nothing spins.
+    drop(_service);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn messages_and_a_code_to_the_tab_waiting_for_it() {
     let Ok(address) = std::env::var("OLO_TEST_BUS") else { return };
+    let _one = BUS.lock().unwrap_or_else(|e| e.into_inner());
     let phone = PathBuf::from(env!("CARGO_BIN_EXE_olo-phone"));
     let standin = phone.with_file_name("phone-standin");
     if !standin.exists() {
@@ -239,8 +408,9 @@ fn messages_and_a_code_to_the_tab_waiting_for_it() {
     assert_eq!(olo_phone(&["--contacts", "tomas"], None).1, "Tomas Lind  +15550100117, tomas@example.org");
 
     // The phone goes out of reach: said; back: connected again by itself.
+    // (A message sent meanwhile waits for it, 25 s, before it fails:
+    // `a_flaky_phone`.)
     tell(&["set", "connected", "no"]);
-    assert_eq!(olo_phone(&["--send", "Mira Kovač", "still there?"], None).0, false);
     wait_for("the state never said the phone had gone", || published()["link"] == "away");
     tell(&["set", "connected", "yes"]);
     let start = Instant::now();

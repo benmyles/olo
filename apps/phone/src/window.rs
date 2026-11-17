@@ -565,7 +565,7 @@ impl Phone {
         self.sending = true;
         let said = text.clone();
         cx.work(
-            move || match phone::ask(&Request::Send { to, text }, Duration::from_secs(60)) {
+            move || match phone::ask(&Request::Send { to, text }, Duration::from_secs(90)) {
                 Ok(r) if r.ok => Ok(()),
                 Ok(r) => Err(r.error.unwrap_or_else(|| "The phone didn’t take it.".into())),
                 Err(_) => Err("The phone service isn’t running.".into()),

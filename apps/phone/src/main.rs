@@ -274,7 +274,7 @@ fn on_off(v: &str) -> Option<bool> {
 
 /// Ask the service; its answer, or why not, said plainly.
 fn ask(request: &Request) -> Result<Reply, String> {
-    match phone::ask(request, Duration::from_secs(50)) {
+    match phone::ask(request, Duration::from_secs(90)) {
         Ok(r) if r.ok => Ok(r),
         Ok(r) => Err(r.error.unwrap_or_else(|| "the phone service said no".into())),
         Err(e) => Err(format!("the phone service isn't running ({e})")),
