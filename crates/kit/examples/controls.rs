@@ -64,7 +64,7 @@ impl View for Controls {
             .on_mouse_down(MouseButton::Right, |e, cx| {
                 menu::context_menu(cx, menus().remove(1), e.position, menu::on_command);
             })
-            .child(MenuBar::new(cx, menus()))
+            .child(MenuBar::fixed(cx, menus()))
             .child(content)
     }
 }

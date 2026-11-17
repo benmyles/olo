@@ -444,6 +444,11 @@ pub fn app() -> MutexGuard<'static, Passwords> {
     APP.get().expect("made as it starts").lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// The app, where nothing holds it just now.
+pub fn app_if_free() -> Option<MutexGuard<'static, Passwords>> {
+    APP.get()?.try_lock().ok()
+}
+
 /// Something is due to be looked at on the app's looper (a timer set for
 /// what's next due): asked once until it has been.
 static SCHEDULING: AtomicBool = AtomicBool::new(false);

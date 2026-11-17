@@ -395,7 +395,7 @@ impl View for PanelView {
         // Edit ▸ Undo and Redo for the command palette and agents (the
         // windows have no menu bar).
         let edit = prefs().history.edit_items(olo_kit::Menu::new("Edit"));
-        olo_kit::menu::set_menus(cx, vec![edit]);
+        olo_kit::menu::offer_asked(cx, vec![edit], |_| Some(vec![PREFS.get()?.try_lock().ok()?.history.edit_items(olo_kit::Menu::new("Edit"))]));
         panel::render(self, cx)
     }
 
@@ -484,7 +484,7 @@ impl View for Launcher {
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let edit = prefs().history.edit_items(olo_kit::Menu::new("Edit"));
-        olo_kit::menu::set_menus(cx, vec![edit]);
+        olo_kit::menu::offer_asked(cx, vec![edit], |_| Some(vec![PREFS.get()?.try_lock().ok()?.history.edit_items(olo_kit::Menu::new("Edit"))]));
         let mut grid = div().relative().size_full();
         for (i, panel) in Panel::ALL.iter().copied().enumerate() {
             let (col, row) = (i % LAUNCHER_COLUMNS, i / LAUNCHER_COLUMNS);

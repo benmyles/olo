@@ -1147,11 +1147,18 @@ struct Bar {
     node: Option<NodeRef>,
     /// Its keys are a terminal-style window's ([`MenuBar::raw`]).
     raw: bool,
+    /// The menus as things are now, asked of the window's view
+    /// ([`MenuBar::of`]).
+    now: Option<MenusNow>,
 }
+
+/// A window's menus as its view would say them now (None: the view is
+/// busy or gone).
+type MenusNow = Rc<dyn Fn(&mut WindowCx) -> Option<Vec<Menu>>>;
 
 impl Default for Bar {
     fn default() -> Bar {
-        Bar { menus: Vec::new(), on_command: Rc::new(on_command), open: None, pressed: false, closed: None, shared: Rc::default(), node: None, raw: false }
+        Bar { menus: Vec::new(), on_command: Rc::new(on_command), open: None, pressed: false, closed: None, shared: Rc::default(), node: None, raw: false, now: None }
     }
 }
 
@@ -1176,8 +1183,67 @@ pub struct MenuBar {
 }
 
 impl MenuBar {
-    /// `menus` across the top of the window `cx` is; what's chosen or
+    /// The menus of the window whose view is `view`, across its top:
+    /// `menus` says them from the view, now as its body runs **and again
+    /// whenever they're used** (a key that may be an item's, a menu
+    /// opening, the command palette or an agent asking), as BeOS's
+    /// `MenusBeginning` let a window bring its menus up to date before
+    /// they showed or a shortcut was looked up. So an item's `enabled`,
+    /// its check or its label can go by anything the view can read, a
+    /// child view's state too, and is right when it matters without the
+    /// view having to be told to say its body again. What's chosen or
     /// pressed goes to the window's own view (`View::command`).
+    ///
+    /// **Every window's bar is made so** (the window review says where
+    /// one isn't). A bar from [`MenuBar::new`] had its menus as the
+    /// window's last body left them, and an item that was off then has
+    /// no shortcut: Viewer's Find Again and Find Previous go by what its
+    /// preview, a view of its own, has found, the window's body didn't
+    /// run as that changed, and ⌘G did nothing (Ben, 2026-11-17: "in
+    /// viewer find again and find previous shortcuts don't work").
+    pub fn of<V: olo_interface::View>(view: &mut V, cx: &mut olo_interface::Cx<V>, menus: impl Fn(&mut V, &mut olo_interface::Cx<V>) -> Vec<Menu> + 'static) -> MenuBar {
+        let said = menus(view, cx);
+        Self::said(cx, said, menus, on_command, false)
+    }
+
+    /// [`MenuBar::of`] with the menus as they are now already made
+    /// (`said`: a body that made them for something else too, or that
+    /// holds what `menus` would take), what's chosen going to
+    /// `on_command` in the window ([`on_command`]: its own view); `raw`
+    /// for a terminal-style window ([`MenuBar::raw`]).
+    pub fn said<V: olo_interface::View>(
+        cx: &mut olo_interface::Cx<V>,
+        said: Vec<Menu>,
+        menus: impl Fn(&mut V, &mut olo_interface::Cx<V>) -> Vec<Menu> + 'static,
+        on_command: impl Fn(&str, &mut WindowCx) + 'static,
+        raw: bool,
+    ) -> MenuBar {
+        let ask = cx.asks(move |v: &mut V, _: &(), cx: &mut olo_interface::Cx<V>| menus(v, cx));
+        Self::asked(cx, said, move |cx| ask(&(), cx), on_command, raw)
+    }
+
+    /// [`MenuBar::said`] for a window whose menus aren't its view's to
+    /// say (an app that keeps its windows' state itself, as Terminal):
+    /// `now` says them as things are, or None where it can't just then
+    /// (what it would read is in use), and they stay as last said.
+    pub fn asked(cx: &mut WindowCx, said: Vec<Menu>, now: impl Fn(&mut WindowCx) -> Option<Vec<Menu>> + 'static, on_command: impl Fn(&str, &mut WindowCx) + 'static, raw: bool) -> MenuBar {
+        let bar = Self::with(cx, said, on_command, raw);
+        cx.window_state::<Bar>().now = Some(Rc::new(now));
+        bar
+    }
+
+    /// A bar whose `menus` never change (no item of theirs goes on or
+    /// off, is checked or named by anything): said once, the same
+    /// whenever they're used.
+    pub fn fixed(cx: &mut WindowCx, menus: Vec<Menu>) -> MenuBar {
+        let again = menus.clone();
+        Self::asked(cx, menus, move |_| Some(again.clone()), on_command, false)
+    }
+
+    /// `menus` across the top of the window `cx` is, as they are now and
+    /// until its body runs again ([`MenuBar::of`] keeps them current:
+    /// use that); what's chosen or pressed goes to the window's own view
+    /// (`View::command`).
     pub fn new(cx: &mut WindowCx, menus: Vec<Menu>) -> MenuBar {
         Self::with(cx, menus, on_command, false)
     }
@@ -1198,6 +1264,7 @@ impl MenuBar {
         let bar = cx.window_state::<Bar>();
         bar.menus = menus;
         bar.raw = raw;
+        bar.now = None;
         // (The kit's own first: About, Keyboard Shortcuts, settings.)
         bar.on_command = Rc::new(move |command: &str, cx: &mut WindowCx| {
             if !crate::app_menu::run(command, cx) {
@@ -1217,6 +1284,37 @@ impl MenuBar {
 /// ago (Terminal's Copy, by a selection just made), asking for the
 /// window's body isn't soon enough on a busy computer: say the menus
 /// first, then look. The bar's titles are as they were.
+/// The bar's menus brought up to date, where its window says them on
+/// demand ([`MenuBar::of`]): before a key is looked up in them, one
+/// opens, or they're told to the palette or an agent.
+fn menus_now(cx: &mut WindowCx) {
+    let bar = cx.window_state::<Bar>();
+    if let (Some(now), raw) = (bar.now.clone(), bar.raw)
+        && let Some(mut menus) = now(cx)
+    {
+        resolve(&mut menus, raw);
+        cx.window_state::<Bar>().menus = menus;
+    }
+    // (And what a window offers without a bar: `offer`.)
+    if let Some(now) = cx.window_state::<Offered>().1.clone()
+        && let Some(mut menus) = now(cx)
+    {
+        resolve(&mut menus, false);
+        cx.window_state::<Offered>().0 = menus;
+    }
+}
+
+/// Whether the window keeps its menus current ([`MenuBar::of`],
+/// [`offer`]); true for a window with none. For the window review.
+pub(crate) fn bar_is_current(cx: &mut WindowCx) -> bool {
+    let bar = cx.window_state::<Bar>();
+    if !(bar.menus.is_empty() || bar.now.is_some()) {
+        return false;
+    }
+    let offered = cx.window_state::<Offered>();
+    offered.0.is_empty() || offered.1.is_some()
+}
+
 pub fn menus_beginning(cx: &mut WindowCx, mut menus: Vec<Menu>) {
     let bar = cx.window_state::<Bar>();
     resolve(&mut menus, bar.raw);
@@ -1264,6 +1362,7 @@ fn title_rects(titles: &[(SharedString, f32)], b: Bounds<Pixels>) -> (Vec<Bounds
 /// the command of the menus it offers without one ([`set_menus`]), which
 /// goes to its own view.
 pub(crate) fn bar_shortcut(cx: &mut WindowCx, k: &olo_interface::Keystroke) -> Option<(String, OnChoose)> {
+    menus_now(cx);
     let bar = cx.window_state::<Bar>();
     if let Some(command) = find_shortcut(&bar.menus, k) {
         return Some((command, bar.on_command.clone()));
@@ -1284,12 +1383,14 @@ pub fn shortcut_command(cx: &mut WindowCx, k: &olo_interface::Keystroke) -> Opti
 /// The window's bar's menus, as its last body said them (none without a
 /// bar): what the window review checks (`app_menu::review`).
 pub(crate) fn bar_menus(cx: &mut WindowCx) -> Vec<Menu> {
+    menus_now(cx);
     cx.window_state::<Bar>().menus.clone()
 }
 
 /// The window's menus, for the command palette and agents: its bar's,
 /// else what it offers without one ([`set_menus`]).
 pub(crate) fn window_menus(cx: &mut WindowCx) -> Vec<Menu> {
+    menus_now(cx);
     let bar = cx.window_state::<Bar>().menus.clone();
     if !bar.is_empty() {
         return bar;
@@ -1306,17 +1407,39 @@ pub(crate) fn window_menus(cx: &mut WindowCx) -> Vec<Menu> {
 /// nothing in Tracker's Quick Look, Ben, 2026-11-16).
 pub fn set_menus(cx: &mut WindowCx, mut menus: Vec<Menu>) {
     resolve(&mut menus, false);
-    cx.window_state::<Offered>().0 = menus;
+    *cx.window_state::<Offered>() = Offered(menus, None);
 }
 
-/// What a window offers without a bar ([`set_menus`]).
+/// [`set_menus`], the menus said from the window's view now and again
+/// whenever they're used (a key that may be an item's, the palette or an
+/// agent asking), as [`MenuBar::of`] keeps a bar's: every window that
+/// offers menus without a bar says them so. (Quick Look's Find Again
+/// went by what its preview, a view of its own, had found, and was as
+/// its body last left it.)
+pub fn offer<V: olo_interface::View>(view: &mut V, cx: &mut olo_interface::Cx<V>, menus: impl Fn(&mut V, &mut olo_interface::Cx<V>) -> Vec<Menu> + 'static) {
+    let said = menus(view, cx);
+    let ask = cx.asks(move |v: &mut V, _: &(), cx: &mut olo_interface::Cx<V>| menus(v, cx));
+    offer_asked(cx, said, move |cx| ask(&(), cx));
+}
+
+/// [`offer`] for a window whose menus aren't its view's to say: `said`
+/// now, and `now` when they're used (None: it can't just then, and they
+/// stay as last said), as [`MenuBar::asked`].
+pub fn offer_asked(cx: &mut WindowCx, mut said: Vec<Menu>, now: impl Fn(&mut WindowCx) -> Option<Vec<Menu>> + 'static) {
+    resolve(&mut said, false);
+    *cx.window_state::<Offered>() = Offered(said, Some(Rc::new(now)));
+}
+
+/// What a window offers without a bar ([`set_menus`]), and how to ask
+/// for it again ([`offer`]).
 #[derive(Default)]
-struct Offered(Vec<Menu>);
+struct Offered(Vec<Menu>, Option<MenusNow>);
 
 /// Opens bar menu `i` under its title `title` (in the window), by a
 /// press on it or sliding onto it; the » title's (`more`, the first menu
 /// that didn't fit), the rest of them as its submenus.
 fn open_bar_menu(cx: &mut WindowCx, i: usize, title: Bounds<Pixels>, pressed: bool, more: Option<usize>) {
+    menus_now(cx);
     let bar = cx.window_state::<Bar>();
     let menu = match more {
         Some(first) if i == first => bar.menus[first.min(bar.menus.len())..].iter().fold(Menu::new("More Menus"), |m, sub| m.submenu(sub.clone())),

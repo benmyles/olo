@@ -1332,8 +1332,11 @@ impl Terminal {
                 .inset_0(),
             );
         }
-        let menus = self.menus(id).unwrap_or_default();
-        let bar = MenuBar::raw(cx, menus);
+        // (Asked again when they're used, where Terminal isn't in the
+        // middle of something: it says them itself before it looks a key
+        // up, `menus_beginning`.)
+        let now = move |_: &mut olo_kit::WindowCx| TERMINAL.get().and_then(|t| t.try_lock().ok()).map(|t| t.menus(id).unwrap_or_default());
+        let bar = MenuBar::asked(cx, self.menus(id).unwrap_or_default(), now, olo_kit::menu::on_command, true);
         root.child(strip).child(div().absolute().top_0().left_0().right_0().child(bar))
     }
 

@@ -39,14 +39,6 @@ something nobody here has is in "Blocked", with what it waits for.
   from another, isn't taken; `FolderWin::drop_over` answers none for
   `ViewMode::List`). The icon and column views take both.
 
-- **Viewer: Find Again and Find Previous don't work; what apps have
-  in common belongs in the kit** (Ben, 2026-11-17: "in viewer find
-  again and find previous shortcuts don't work. we really need to
-  standardize all these common capabilities that most apps have into
-  the kit or some common library so that if it works in one place it
-  will work everywhere and work consistently. not just for find but
-  everything that is common across apps").
-
 - **Agent Screens: what real agents tripped on, found in their
   histories and fixed** (Ben, 2026-11-17: "go through the agent screens
   history for a sample of the real agent screens that have run and
@@ -72,6 +64,12 @@ something nobody here has is in "Blocked", with what it waits for.
   was used for the file picker in that app. i know at least in slack
   this doesn't happen and i have to go find it again every time and
   change the sort order every time").
+
+- **Screenshot's screen recording records the display it was started
+  on** (Ben, 2026-11-17: "the screen recording feature in screenshots
+  doesn't seem to record the correct screen in a multi display setup.
+  it showed the recording bar on my main screen where i launched it
+  from but then it recorded my laptop's built in display instead").
 
 ## Done, waiting for Ben to try or confirm
 
@@ -5923,6 +5921,32 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Viewer: Find Again and Find Previous don't work; what apps have
+  in common belongs in the kit**~~ (Ben, 2026-11-17: "in viewer find
+  again and find previous shortcuts don't work. we really need to
+  standardize all these common capabilities that most apps have into
+  the kit ... so that if it works in one place it will work everywhere
+  and work consistently. not just for find but everything that is
+  common across apps"; done the same day). The cause was general: a
+  window's menus were as its last body left them, an item that was off
+  then has no keys, and Viewer's Find Again goes by what its preview (a
+  view of its own) has found, so it stayed off: ⌘G did nothing (and the
+  Edit menu showed it grey, and agents were told it couldn't be
+  chosen). Quick Look's the same. Now **every window's menus are asked
+  of its view whenever they're used** (a key, a menu opening, the
+  palette or an agent asking), BeOS's `MenusBeginning`
+  (`MenuBar::of`, `menu::offer`): all 25 windows with menus moved to
+  it, and the window review fails one that isn't. Find is the kit's:
+  `Menu::find_items` (Find…, Find Again, Find Previous, the review
+  failing a window with half of them), `find_selection`; StyledEdit and
+  Terminal gained Find Previous; ⇧Return in a find bar (the match
+  before) never worked anywhere and is now the bar's own. Tested in
+  Viewer (text, formatted document, PDF), Quick Look, StyledEdit and
+  Terminal. **Still each app's own**: the searching itself (Viewer's
+  three views, StyledEdit and Terminal each have theirs, with their own
+  options), and after Escape the Viewer forgets what was looked for
+  (⌘G then does nothing, where a Mac's would find it again).
 
 - ~~**Tracker: Open With isn't there for every file an app opens**~~
   (Ben, 2026-11-17: "the open with in tracker doesn't seem to

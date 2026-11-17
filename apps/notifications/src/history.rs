@@ -1307,7 +1307,7 @@ impl View for HistoryWindow {
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let p = theme::palette();
-        let bar = MenuBar::new(cx, self.menus());
+        let bar = MenuBar::of(self, cx, |v, _| v.menus());
         let (dnd, quiet, schedule_quiet) = {
             let n = self.shared.lock().unwrap();
             (n.settings.dnd, n.quiet(), !n.settings.dnd)

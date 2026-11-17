@@ -582,7 +582,7 @@ impl View for Doctor {
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let p = theme::palette();
         let ink = style::card_ink(&p);
-        let bar = MenuBar::new(cx, self.menus());
+        let bar = MenuBar::of(self, cx, |v, _| v.menus());
         let (title, detail) = self.summary();
         let counts = self.counts();
         let icon = canvas(|g, b| {

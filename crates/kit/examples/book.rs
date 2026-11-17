@@ -106,7 +106,10 @@ impl View for Primes {
         let counting = self.counting.as_ref().map(|(_, at, _)| *at);
         // (About, Keyboard Shortcuts and the settings to start, Close and
         // Quit to end: every app's first menu, the Olo Book's "Menus".)
-        let menus = vec![Menu::new("File").app_items(&[]).item("Count", "count").key("k").item("Stop", "stop").enabled(counting.is_some()).close_quit()];
+        // The menus are said from the view, now and again whenever
+        // they're used (a key, a menu opening, an agent asking): Stop is
+        // on while it counts, whatever the window last drew.
+        let bar = MenuBar::of(self, cx, |v, _| vec![Menu::new("File").app_items(&[]).item("Count", "count").key("k").item("Stop", "stop").enabled(v.counting.is_some()).close_quit()]);
         let button = match counting {
             Some(_) => Button::new("Stop").on_click(cx.msg(Msg::Stop)),
             None => Button::new("Count").default(true).on_click(cx.msg(Msg::Count)),
@@ -143,7 +146,7 @@ impl View for Primes {
             .child(StatusBar::new(counting.unwrap_or(0.0)).label(if counting.is_some() { "Counting…" } else { "" }))
             .child(chart)
             .child(StringView::new(self.said.clone()).dim(true));
-        div().size_full().flex().flex_col().child(MenuBar::new(cx, menus)).child(content)
+        div().size_full().flex().flex_col().child(bar).child(content)
     }
 
     /// Kept across an upgrade in place: handed back by

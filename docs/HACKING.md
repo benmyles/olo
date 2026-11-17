@@ -969,7 +969,7 @@ impl View for MyApp {
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         div().size_full().flex().flex_col()
-            .child(MenuBar::new(cx, vec![Menu::new("File").item("Quit", "quit").key("q")]))
+            .child(MenuBar::fixed(cx, vec![Menu::new("File").item("Quit", "quit").key("q")]))
             .child(Button::new("OK").default(true).on_click(cx.msg(Msg::Ok)))
     }
 }
@@ -3172,8 +3172,32 @@ it.
   word when it has gone, for what shows its menu open (Deskbar's rows).
   (Still to come: scrolling a menu taller than the screen, and
   press-drag-release choosing from the press that opened it.)
-- `MenuBar::new(menus, on_command)` at the top of a window's view: the
-  BeOS menu bar. A press on a title opens its
+- `MenuBar::of(self, cx, |v, cx| v.menus(cx))` at the top of a window's
+  view: the BeOS menu bar, **its menus asked of the view** at every
+  body and again whenever they're used (a key nothing else took, a menu
+  opening, the palette or an agent asking: `menus_now`), as BeOS's
+  `MenusBeginning`: an item's `enabled`, check and label are right when
+  it's chosen, whatever they go by, a child view's state too. Every
+  window's bar is made so, and the window review fails one that isn't
+  ("menus: … only as its body last said them"): `MenuBar::said` where
+  the body already made them, `MenuBar::asked` for an app that keeps its
+  windows' state itself and may be busy (Terminal, Passwords:
+  `try_lock`, or they stay as said), `MenuBar::fixed` for menus that
+  never change; `menu::offer` and `offer_asked` the same for a window
+  with no bar. (`MenuBar::new` made them once a body: Viewer's Find
+  Again goes by what its preview, a view of its own, has found, the
+  window's body didn't run as that changed, the item stayed off and ⌘G
+  did nothing; Ben, 2026-11-17. Quick Look's the same.) Saying them
+  costs 30 to 90 µs a time (Viewer 29, Tracker 72 with 300 files,
+  StyledEdit 92; release), at each key nothing else in the window took.
+  **Find is the same everywhere**: `Menu::find_items(again)` (Find…,
+  Find Again, Find Previous; the review fails a window with one of the
+  last two and not the other; StyledEdit's and Terminal's Find Previous
+  go the other way from their "Search backwards") and
+  `Menu::find_selection`; a find bar's ⇧Return (the match before) is
+  the bar's own (`widgets::find_bar`: a one-line field lets ⇧Return go
+  on, so the views' "Entered with ⇧" never came).
+  A press on a title opens its
   menu under it; with one open, sliding across the bar opens the
   others; a press on the open title puts it away (one that slid open
   stays for its first press, as on BeOS), and so does a press anywhere

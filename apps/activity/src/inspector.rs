@@ -614,8 +614,10 @@ impl View for Inspector {
         let p = theme::palette();
         let pid = self.pid;
         let proc = self.seen.proc.clone();
-        let nices: Vec<i32> = proc.iter().map(|p| p.nice).collect();
-        let bar = MenuBar::new(cx, crate::menus(&self.shared.settings, &self.shared.sections, self.shared.access, &[pid], &nices, true));
+        let bar = MenuBar::of(self, cx, |v, _| {
+            let nices: Vec<i32> = v.seen.proc.iter().map(|p| p.nice).collect();
+            crate::menus(&v.shared.settings, &v.shared.sections, v.shared.access, &[v.pid], &nices, true)
+        });
         let gone = matches!(self.details, Some(Err(_))) || (proc.is_none() && self.seen.listed);
 
         // The head: its name and how it is doing.

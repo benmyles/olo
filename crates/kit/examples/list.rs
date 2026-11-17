@@ -120,7 +120,7 @@ impl View for Lists {
         .on_open(cx.msg_with(|r: &usize| Msg::Opened(*r)))
         .on_context(cx.msg_with(|(_, at): &(usize, Point<Pixels>)| Msg::Context(*at)));
         let content = div().flex_1().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).child(div().flex_1().child(list)).child(StringView::new(format!("Opened: {}", self.last)).dim(true));
-        div().size_full().flex().flex_col().child(MenuBar::new(cx, self.menus())).child(content)
+        div().size_full().flex().flex_col().child(MenuBar::of(self, cx, |v, _| v.menus())).child(content)
     }
 }
 

@@ -1242,7 +1242,7 @@ impl View for DiskUsage {
     }
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
-        let bar = MenuBar::new(cx, self.menus());
+        let bar = MenuBar::of(self, cx, |v, _| v.menus());
         let content = if self.scan.is_some() { self.scan_view(cx) } else { self.volumes_view(cx) };
         let mut root = div().size_full().flex().flex_col().child(bar).child(div().flex_1().min_h_0().p(px(m::WINDOW_INSET)).child(content));
         // While something is dragged: its name follows the pointer, and

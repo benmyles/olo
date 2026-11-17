@@ -77,7 +77,7 @@ fn hhmm(local: i64) -> String {
 }
 
 pub fn body(w: &mut Weather, cx: &mut Cx<Weather>) -> Element {
-    let bar = MenuBar::new(cx, w.menus());
+    let bar = MenuBar::of(w, cx, |w, _| w.menus());
     let p = theme::palette();
     let e = edge(cx);
     let sidebar = sidebar(w, cx);

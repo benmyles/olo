@@ -248,6 +248,25 @@ impl QuickLook {
     }
 }
 
+impl QuickLook {
+    /// Edit's commands, as what it shows has them now.
+    fn menus(&self, cx: &WindowCx) -> Vec<Menu> {
+        let (text, selected, finding, picture_text) = {
+            let p = self.preview.read(cx);
+            (p.has_text(), p.has_text_selection(cx), p.finding(cx), p.has_picture_text(cx))
+        };
+        let mut edit = Menu::new("Edit").item(if selected { "Copy" } else { "Copy File" }, "copy").key("c");
+        // (The text in a picture, once read: all of it selected too.)
+        if picture_text && !text {
+            edit = edit.item("Select All", "select-all").key("a");
+        }
+        if text {
+            edit = edit.item("Select All", "select-all").key("a").separator().find_items(finding);
+        }
+        vec![edit]
+    }
+}
+
 impl View for QuickLook {
     type Message = QuickMsg;
 
@@ -306,30 +325,7 @@ impl View for QuickLook {
         self.focus.focus_if_none(cx);
         // Edit's commands, with no bar to show them: their keys, the
         // command palette and agents.
-        let (text, selected, finding, picture_text) = {
-            let p = self.preview.read(cx);
-            (p.has_text(), p.has_text_selection(cx), p.finding(cx), p.has_picture_text(cx))
-        };
-        let mut edit = Menu::new("Edit").item(if selected { "Copy" } else { "Copy File" }, "copy").key("c");
-        // (The text in a picture, once read: all of it selected too.)
-        if picture_text && !text {
-            edit = edit.item("Select All", "select-all").key("a");
-        }
-        if text {
-            edit = edit
-                .item("Select All", "select-all")
-                .key("a")
-                .separator()
-                .item("Find…", "find")
-                .key("f")
-                .item("Find Again", "find-again")
-                .key("g")
-                .enabled(finding)
-                .item("Find Previous", "find-previous")
-                .shift_key("g")
-                .enabled(finding);
-        }
-        olo_kit::menu::set_menus(cx, vec![edit]);
+        olo_kit::menu::offer(self, cx, |v, cx| v.menus(cx));
         // The screen stays awake while a video plays.
         let playing = self.preview.read(cx).playing_video();
         if playing != self.awake {

@@ -399,7 +399,7 @@ pub fn menu_bar<V: View>(cx: &mut Cx<V>) -> MenuBar {
     // (The gateway stays running: Close, no Quit. Its settings: whether
     // Olo's AI uses it, and its Deskbar widgets.)
     let menus = vec![Menu::new("Pool").app_items(&["ai", "deskbar"]).item("Read Quota Now", "refresh").key("r").item("Clients", "clients").key("l").close_item(), add_menu()];
-    MenuBar::new(cx, menus)
+    MenuBar::fixed(cx, menus)
 }
 
 /// A command from the menu bar, in either window: Close closes the one

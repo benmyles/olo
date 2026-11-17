@@ -188,9 +188,12 @@ number of your own.
 ```rust
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let counting = self.counting.as_ref().map(|(_, at, _)| *at);
-        let menus = vec![Menu::new("File").app_items(&[]).item("Count", "count").key("k")
-            .item("Stop", "stop").enabled(counting.is_some())
-            .close_quit()];
+        // Said from the view, now and again whenever they're used (a
+        // key, a menu opening, an agent asking).
+        let bar = MenuBar::of(self, cx, |v, _| vec![Menu::new("File").app_items(&[])
+            .item("Count", "count").key("k")
+            .item("Stop", "stop").enabled(v.counting.is_some())
+            .close_quit()]);
         let button = match counting {
             Some(_) => Button::new("Stop").on_click(cx.msg(Msg::Stop)),
             None => Button::new("Count").default(true).on_click(cx.msg(Msg::Count)),
@@ -205,7 +208,7 @@ number of your own.
             .child(StatusBar::new(counting.unwrap_or(0.0)).label(if counting.is_some() { "Counting…" } else { "" }))
             .child(chart)
             .child(StringView::new(self.said.clone()).dim(true));
-        div().size_full().flex().flex_col().child(MenuBar::new(cx, menus)).child(content)
+        div().size_full().flex().flex_col().child(bar).child(content)
     }
 ```
 
@@ -829,7 +832,7 @@ vanished.
 | `BScrollView`, `BScrollBar` | `ScrollView::new(&handle).child(..)` | `.horizontal(true)`, `.auto_hide(true)`, `.sticky(item, height, header)` |
 | `BListView`, `BColumnListView` | `ColumnListView::new(cx, id, &model, columns, rows, cell)` | virtual; sort, type-select, drag, context menus |
 | `BTabView` | `TabView::new(id, tabs, chosen).on_select(..).child(..)` | folder tabs, as `TabStrip`'s (document tabs: Terminal's, with groups led by labels in the look's `Palette::group_colors`) |
-| `BMenuBar`, `BMenu`, `BPopUpMenu` | `MenuBar::new(cx, menus)`, `Menu::new("File").item(label, command).key("s")`, `menu::context_menu` | commands arrive in `View::command`; titles that don't fit a narrow window go under a » at the bar's end |
+| `BMenuBar`, `BMenu`, `BPopUpMenu` | `MenuBar::of(self, cx, \|v, cx\| v.menus(cx))`, `Menu::new("File").item(label, command).key("s")`, `menu::context_menu` | commands arrive in `View::command`; titles that don't fit a narrow window go under a » at the bar's end |
 | `BAlert` | `open_alert(cx, title, icon, message, buttons, on_choose)` | the last button is Return's, the first Escape's |
 | `BFilePanel` | `file_panel::show(..)` | open, save, a folder |
 | Haiku's `BToolTip` | `tip::on(element, key, text)`, `tip::hover_card(cx, key, Rc<Card>, anchor, hovered)` | a popup of its own; a `card::Card` for more than a sentence (Deskbar's widgets): drawings, rows with bars, notes |
@@ -875,7 +878,26 @@ items with the same keys), so `tsession review` and the layout lint
 fail a bar that strays. Windows without a bar (Preferences, DeskCalc,
 whose menu is a right-click's, as BeOS's were) aren't held to it.
 
-A window says its menus at every body, as it says everything it shows,
+**A window's menus are asked of its view** (`MenuBar::of(self, cx,
+|v, cx| v.menus(cx))`; with no bar, `menu::offer`), at every body and
+again whenever they're used: a key that may be an item's, a menu
+opening, the command palette or an agent asking. This is BeOS's
+`MenusBeginning`, where a window brought its menus up to date before
+they showed or a shortcut was looked up. So an item is on or off,
+checked and named as things are when it's chosen, whatever it goes by
+(a child view's state too), and nothing has to remember to say the
+window's body again for the menus' sake. (Made once from a list, a
+bar's menus were as the last body left them, and an item that was off
+then had no keys: Viewer's Find Again, which goes by what its preview
+has found, did nothing.) The window review fails a bar that isn't made
+so; one whose menus never change is `MenuBar::fixed`; an app that
+keeps its windows' state itself (Terminal, Passwords) answers with
+`MenuBar::asked`. Find's items are `Menu::find_items(again)` (Find…,
+Find Again, Find Previous) and `find_selection`; ⇧Return in a find bar
+is the bar's own.
+
+A window says its menus at every body and at every key nothing else
+took (30 to 90 µs, measured: Viewer 29, Tracker 72, StyledEdit 92),
 so saying them must cost next to nothing. A menu's words are
 `SharedString`s: a fixed one (`"Copy"`, `"copy"`) is kept as it's
 given, never copied; one made as it goes is shared from then on. So

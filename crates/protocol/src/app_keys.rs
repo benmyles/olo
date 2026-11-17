@@ -182,6 +182,7 @@ pub const APP_KEYS: &[AppKey] = &[
     k("terminal.select-all", TERMINAL, "select-all", "Select All", &["Cmd+A"], &["Ctrl+Shift+A"], &["Alt+A"]),
     k("terminal.find", TERMINAL, "find", "Find", &["Cmd+F"], &["Ctrl+Shift+F"], &["Alt+F"]),
     k("terminal.find-again", TERMINAL, "find-again", "Find Again", &["Cmd+G"], &["Ctrl+Shift+G"], &["Alt+G"]),
+    k("terminal.find-previous", TERMINAL, "find-previous", "Find Previous", &["Shift+Cmd+G"], &["Shift+F3"], &["Alt+Shift+G"]),
     k("terminal.find-selection", TERMINAL, "find-selection", "Find the selection", &["Cmd+E"], &["Ctrl+Shift+E"], &["Alt+E"]),
     k("terminal.clear", TERMINAL, "clear", "Clear Scrollback", &["Cmd+K"], &["Ctrl+Shift+K"], &["Alt+K"]),
     k("terminal.tile-tabs", TERMINAL, "tile-tabs", "Show All Tabs", &["Cmd+D"], &["Ctrl+Shift+D"], &["Alt+D"]),

@@ -767,7 +767,7 @@ impl View for Phone {
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let p = theme::palette();
-        let bar = MenuBar::new(cx, self.menus());
+        let bar = MenuBar::of(self, cx, |v, _| v.menus());
         let vs = cx.viewport_size();
         let total = f32::from(vs.width);
         let lw = (self.side.shown(total, 360.0) / 2.0).round() * 2.0;

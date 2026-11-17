@@ -407,7 +407,7 @@ impl View for ArchiveWin {
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let p = olo_kit::theme::palette();
-        let bar = MenuBar::new(cx, self.menus());
+        let bar = MenuBar::of(self, cx, |v, _| v.menus());
         let mut place = vec![self.name.clone()];
         place.extend(self.dir.components().map(|c| c.as_os_str().to_string_lossy().into_owned()));
         let head = div()

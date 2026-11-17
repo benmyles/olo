@@ -1369,7 +1369,7 @@ impl View for Activity {
         if !self.sections().contains(&self.settings.section) {
             self.settings.section = Section::Overview;
         }
-        let bar = MenuBar::new(cx, self.menus());
+        let bar = MenuBar::of(self, cx, |v, _| v.menus());
         let width = f32::from(cx.viewport_size().width) - SIDEBAR_WIDTH;
         let content = if self.sources.is_empty() {
             div().into_any_element()

@@ -354,8 +354,7 @@ impl View for DeskCalc {
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         // (The command palette's and agents' way to the menu's commands.)
-        let menu = self.menu(cx);
-        olo_kit::menu::set_menus(cx, vec![menu]);
+        olo_kit::menu::offer(self, cx, |v, cx| vec![v.menu(cx)]);
         let rows = self.settings.keypad.rows();
         let flashing = self.flash.filter(|(_, t)| t.elapsed() < FLASH).map(|(k, _)| k);
         // The display: a sunken well, the expression right-aligned in it.

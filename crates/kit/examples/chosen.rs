@@ -74,7 +74,7 @@ impl View for Example {
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let counts = self.counts();
-        let menus = vec![Menu::new("File").app_items(&[]).item("Start Again", "again").close_quit(), chosen::menu(Menu::new("Fix"), "act", &counts, true)];
+        let bar = MenuBar::of(self, cx, |v, _| vec![Menu::new("File").app_items(&[]).item("Start Again", "again").close_quit(), chosen::menu(Menu::new("Fix"), "act", &v.counts(), true)]);
         let mut list = div().flex().flex_col().gap(px(m::SPACING));
         for &(id, title, kind, does) in self.left() {
             let mark = CheckBox::new(title, self.chosen.is(id, &kind)).id(format!("choose-{id}")).mark_only().height(style::line_row(style::PLAIN_SIZE)).on_toggle(cx.listener(
@@ -101,7 +101,7 @@ impl View for Example {
         if self.left().next().is_none() {
             list = list.child(StringView::new("Everything is done. File ▸ Start Again.").dim(true));
         }
-        div().size_full().flex().flex_col().child(MenuBar::new(cx, menus)).child(div().flex().flex_col().gap(px(m::SECTION)).p(px(m::WINDOW_INSET)).child(list).child(
+        div().size_full().flex().flex_col().child(bar).child(div().flex().flex_col().gap(px(m::SECTION)).p(px(m::WINDOW_INSET)).child(list).child(
             div().flex().child(div().flex_1()).child(chosen::bar(
                 "chosen",
                 &counts,

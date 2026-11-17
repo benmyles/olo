@@ -204,6 +204,17 @@ Each note: what to do, then why (what happened), then how to apply it.
   `udisks_fake`, `dnf_fake`) against an `olo-bus` of your own. The
   phone service's had failed since the day its step went stale
   (2026-11-17), unseen.
+- **Terminal is one program per session, a test session too**: a
+  second `tsession run NAME olo-terminal` hands its window to the one
+  running and exits, so the PID `run` printed is gone and the window is
+  the first one's, built from whatever binary that was (a measurement
+  of a new build read nothing: the old one was still running). Stop the
+  one that has the windows (`list_windows`' `pid`) before starting a
+  new build.
+- **In a test session ⌘ is Ctrl** (`tsession key NAME 29 33` is ⌘F in a
+  kit app; Terminal's are with Shift too), and a text's line is in
+  StyledEdit's status ("Line 10, Column 20"), which says where a find
+  landed without a picture.
 - **The commit hook's layout lint runs over the working tree**, not
   what's staged: committing one thing while another's panel is half
   done fails on that panel (a new Preferences panel needs the settings

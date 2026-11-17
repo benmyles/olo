@@ -1878,8 +1878,7 @@ impl View for Viewer {
     }
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
-        let menus = self.menus(cx);
-        let bar = MenuBar::new(cx, menus);
+        let bar = MenuBar::of(self, cx, |v, cx| v.menus(cx));
         let root = div().size_full().flex().flex_col().child(bar);
         if self.rows.is_empty() {
             let busy = self.busy;

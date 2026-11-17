@@ -927,8 +927,7 @@ impl View for Logs {
     }
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
-        let menus = self.menus();
-        let bar = MenuBar::new(cx, menus);
+        let bar = MenuBar::of(self, cx, |v, _| v.menus());
 
         // The search and the filters' menus: in one row when there's
         // room, else the menus under the search (the kit's search header).

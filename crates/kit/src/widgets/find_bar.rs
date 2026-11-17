@@ -40,7 +40,7 @@ pub const MIN_WIDTH: f32 = 640.0;
 pub fn find_bar(cx: &WindowCx, field: &Child<TextField>, said: String, found: bool, step: impl Fn(&bool, &mut WindowCx) + 'static, close: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
     let step = Rc::new(step);
     let close = Rc::new(close);
-    let (back, next, esc, done) = (step.clone(), step, close.clone(), close);
+    let (back, next, before, esc, done) = (step.clone(), step.clone(), step, close.clone(), close);
     // The tool bar's band: the panel's ground, a line under it.
     let ground = canvas(|g, b| {
         let p = theme::palette();
@@ -69,6 +69,13 @@ pub fn find_bar(cx: &WindowCx, field: &Child<TextField>, said: String, found: bo
         .on_key_down(move |e: &KeyDownEvent, cx| {
             if e.keystroke.key == "escape" {
                 esc(&(), cx);
+                cx.stop_propagation();
+            } else if e.keystroke.key == "enter" && e.keystroke.modifiers.shift {
+                // ⇧Return, which a one-line field lets go on (Return alone
+                // is its `Entered`): the match before. Here, for every
+                // find bar: each view handled `Entered` with ⇧ held,
+                // which never came.
+                before(&true, cx);
                 cx.stop_propagation();
             }
         })

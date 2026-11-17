@@ -976,23 +976,7 @@ impl Doc {
             && prev.read(cx).has_text()
         {
             let prev = prev.read(cx);
-            menus.push(
-                Menu::new("Edit")
-                    .item("Copy", "copy")
-                    .key("c")
-                    .enabled(prev.has_text_selection(cx))
-                    .item("Select All", "select-all")
-                    .key("a")
-                    .separator()
-                    .item("Find…", "find")
-                    .key("f")
-                    .item("Find Again", "find-again")
-                    .key("g")
-                    .enabled(prev.finding(cx))
-                    .item("Find Previous", "find-previous")
-                    .shift_key("g")
-                    .enabled(prev.finding(cx)),
-            );
+            menus.push(Menu::new("Edit").item("Copy", "copy").key("c").enabled(prev.has_text_selection(cx)).item("Select All", "select-all").key("a").separator().find_items(prev.finding(cx)));
         }
         if picture {
             let mut edit = olo_kit::undo::edit_items_named(Menu::new("Edit"), editor.and_then(|e| e.undo_name()), editor.and_then(|e| e.redo_name()));
@@ -1017,14 +1001,7 @@ impl Doc {
                     .item("Delete", "delete")
                     .enabled(v.has_selection())
                     .separator()
-                    .item("Find…", "find")
-                    .key("f")
-                    .item("Find Again", "find-again")
-                    .key("g")
-                    .enabled(v.finding())
-                    .item("Find Previous", "find-previous")
-                    .shift_key("g")
-                    .enabled(v.finding()),
+                    .find_items(v.finding()),
             );
             menus.push(
                 Menu::new("View")
@@ -1966,8 +1943,7 @@ impl View for Doc {
         if matches!(self.content, Content::Pdf(_)) {
             self.update_title(cx);
         }
-        let menus = self.menus(cx);
-        let bar = MenuBar::new(cx, menus);
+        let bar = MenuBar::of(self, cx, |v, cx| v.menus(cx));
         let p = theme::palette();
         let editing = self.video_edit_area(cx);
         let body: Element = match &self.content {

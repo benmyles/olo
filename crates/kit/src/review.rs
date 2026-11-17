@@ -213,6 +213,20 @@ pub(crate) fn review_window(cx: &mut WindowCx, dark: bool) -> (WindowReview, (f3
     let (w, h) = (f32::from(size.width), f32::from(size.height));
     let scale = cx.scale_factor();
     let mut findings = checks::review(&parts, w, h, scale);
+    // Its menus kept current, so an item is on or off as things are
+    // when it's chosen or its keys pressed, not as they were when the
+    // window last said its body.
+    if !crate::menu::bar_is_current(cx) {
+        findings.push(olo_kit_base::review::Finding {
+            level: olo_kit_base::review::Level::Error,
+            kind: "menus".to_owned(),
+            text: "its menu bar's menus are only as its body last said them (MenuBar::of asks again when they're used)".to_owned(),
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+        });
+    }
     // Its menus, as every app's are (the Olo Book, "Menus").
     findings.extend(crate::app_menu::review(&crate::menu::bar_menus(cx)).into_iter().map(|(kind, text)| olo_kit_base::review::Finding {
         level: olo_kit_base::review::Level::Error,

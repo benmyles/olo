@@ -174,6 +174,14 @@ fn saved_file() -> std::path::PathBuf {
 }
 
 impl Speed {
+    fn menus(&self) -> Vec<Menu> {
+        let running = self.running.is_some();
+        vec![
+            Menu::new("File").app_items(&[]).item("Start Test", "start").key("r").enabled(!running && !self.asking).item("Stop", "stop").key(".").enabled(running).close_quit(),
+            Menu::new("Edit").item("Copy", "copy").key("c").enabled(self.results.is_some()),
+        ]
+    }
+
     pub fn new(_: &mut Cx<Speed>) -> Speed {
         let demo = std::env::var_os("OLO_SPEEDTEST_DEMO").is_some();
         let saved: Saved = if demo {
@@ -619,10 +627,7 @@ impl View for Speed {
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let p = olo_kit::theme::palette();
         let running = self.running.is_some();
-        let menus = vec![
-            Menu::new("File").app_items(&[]).item("Start Test", "start").key("r").enabled(!running && !self.asking).item("Stop", "stop").key(".").enabled(running).close_quit(),
-            Menu::new("Edit").item("Copy", "copy").key("c").enabled(self.results.is_some()),
-        ];
+        let bar = MenuBar::of(self, cx, |v, _| v.menus());
         let button = if running { Button::new("Stop").on_click(cx.msg(Msg::Stop)) } else { Button::new("Start Test").default(true).enabled(!self.asking).on_click(cx.msg(Msg::Start)) };
         let (fraction, doing) = self.progress();
         let top = div().flex().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(StatusBar::new(fraction).label(doing))).child(button);
@@ -664,7 +669,7 @@ impl View for Speed {
         let content = div().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).child(top).child(board).child(StringView::new(note).dim(true));
         // (As wide as its window, which is `WIDTH`: a window given
         // another width has its bar and cards across all of it.)
-        div().w_full().flex().flex_col().child(MenuBar::new(cx, menus)).child(content)
+        div().w_full().flex().flex_col().child(bar).child(content)
     }
 }
 

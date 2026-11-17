@@ -2700,6 +2700,8 @@ impl Terminal {
                 .item("Find Again", "find-again")
                 .shift_key("g")
                 .enabled(!self.search.text.is_empty())
+                .item("Find Previous", "find-previous")
+                .enabled(!self.search.text.is_empty())
                 .item("Find Selection", "find-selection")
                 .shift_key("e")
                 .enabled(has_selection)
@@ -2835,6 +2837,12 @@ impl Terminal {
                 }
             }
             "find-again" => self.find_in(cx, window),
+            // The other way from Find's "Search backwards".
+            "find-previous" => {
+                self.search.backwards ^= true;
+                self.find_in(cx, window);
+                self.search.backwards ^= true;
+            }
             "find-selection" => {
                 let text = t.tab().session.term.lock().selection_to_string();
                 if let Some(text) = text {

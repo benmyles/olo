@@ -1535,7 +1535,7 @@ impl View for Tg {
     }
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
-        let bar = MenuBar::new(cx, self.menus());
+        let bar = MenuBar::of(self, cx, |v, _| v.menus());
         let p = theme::palette();
         let vs = cx.viewport_size();
         let scale = cx.scale_factor();

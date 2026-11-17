@@ -813,7 +813,9 @@ impl View for MainView {
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let mut a = app();
         self.take_asks(&mut a, cx);
-        let bar = MenuBar::new(cx, a.menus());
+        // (Said from what's held here now; asked again of the app when
+        // they're used, where it isn't in the middle of something.)
+        let bar = MenuBar::asked(cx, a.menus(), |_| crate::app_if_free().map(|a| a.menus()), olo_kit::menu::on_command, false);
         let body = if a.conn == Conn::Setup {
             self.setup(&mut a, cx)
         } else if a.lock.locked {

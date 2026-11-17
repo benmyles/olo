@@ -1790,11 +1790,7 @@ impl View for FolderWin {
         }
         self.poll_while_loading(cx);
         self.tell_app();
-        let places = crate::places();
-        let can_paste = crate::can_paste();
-        let undo = crate::undo_names();
-        let menus = self.menus(can_paste, &places, &undo);
-        let bar = MenuBar::new(cx, menus);
+        let bar = MenuBar::of(self, cx, |v, _| v.menus(crate::can_paste(), &crate::places(), &crate::undo_names()));
         let body: Element = match (&self.error, self.view) {
             (Some(err), _) => {
                 let err = err.clone();

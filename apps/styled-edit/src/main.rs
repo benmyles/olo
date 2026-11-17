@@ -1379,14 +1379,8 @@ fn doc_menus(app: &Common, d: &DocView, ink: olo_kit::Hsla) -> Vec<Menu> {
         .item("Select All", "select-all")
         .key("a")
         .separator()
-        .item("Find…", "find")
-        .key("f")
-        .item("Find Again", "find-again")
-        .key("g")
-        .enabled(!app.search.find.is_empty())
-        .item("Find Selection", "find-selection")
-        .key("h")
-        .enabled(has_sel)
+        .find_items(!app.search.find.is_empty())
+        .find_selection(has_sel)
         .item("Replace…", "replace")
         .key("r")
         .enabled(editable)
@@ -1721,7 +1715,7 @@ impl View for DocView {
         let source = self.mode.is_source();
         // (Styles are a styled document's: its tool bars and ruler too.)
         let bars = (self.tool_bars && styled).then(|| tool_bars(cx, self, &menus, ink));
-        let bar = MenuBar::new(cx, menus);
+        let bar = MenuBar::said(cx, menus, |v: &mut Self, _| doc_menus(&v.shared.common(), v, style::c(theme::palette().document_text)), olo_kit::menu::on_command, false);
         let editable = !self.read_only && !self.loading;
         // Markdown: the lines the selection is on show their marks.
         if let Mode::Markdown(look) = &mut self.mode {
@@ -2546,7 +2540,14 @@ impl DocView {
 
     /// Find the search text from the selection; false if it isn't there.
     fn find_next(&mut self, cx: &mut Cx<Self>) -> bool {
-        let s = self.shared.common().search.clone();
+        self.find_step(false, cx)
+    }
+
+    /// [`find_next`](Self::find_next), or (`back`) the match the other
+    /// way: Find Previous.
+    fn find_step(&mut self, back: bool, cx: &mut Cx<Self>) -> bool {
+        let mut s = self.shared.common().search.clone();
+        s.backwards ^= back;
         let sel = self.bytes();
         let from = if s.backwards { sel.start } else { sel.end };
         let found = doc::find(self.doc.text(), &s.find, from, s.backwards, s.case, s.wrap);
@@ -2626,6 +2627,10 @@ impl DocView {
             "replace" => self.open_find(true, cx),
             "find-again" => {
                 self.find_next(cx);
+            }
+            // The other way from Find's "Search backwards".
+            "find-previous" => {
+                self.find_step(true, cx);
             }
             "replace-same" => self.replace(cx),
             "find-selection" => {

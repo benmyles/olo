@@ -245,7 +245,7 @@ impl View for Strip {
         } else {
             div().absolute().left_0().right_0().top(px(BAR_HEIGHT)).h(px(STRIP_HEIGHT))
         };
-        div().size_full().relative().child(place.child(strip)).child(div().absolute().top_0().left_0().right_0().child(MenuBar::new(cx, menus)))
+        div().size_full().relative().child(place.child(strip)).child(div().absolute().top_0().left_0().right_0().child(MenuBar::fixed(cx, menus)))
     }
 }
 

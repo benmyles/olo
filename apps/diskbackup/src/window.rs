@@ -717,6 +717,30 @@ fn picture(name: &'static str, size: f32) -> Element {
     .flex_shrink_0()
 }
 
+impl MainWindow {
+    fn menus(&self) -> Vec<Menu> {
+        let set_up = self.settings.target != Target::None;
+        let running = busy_with(&self.state);
+        vec![
+            Menu::new("File")
+                .app_items(&["backup"])
+                .item("Back Up Now", "back-up-now")
+                .key("b")
+                .enabled(set_up && !running)
+                .item("Stop", "stop")
+                .enabled(running)
+                .item("Restore…", "restore")
+                .key("r")
+                .enabled(set_up)
+                .separator()
+                .item("Erase All Backups…", "erase-all")
+                .enabled(set_up && !running)
+                .close_quit(),
+            self.history.edit_items(Menu::new("Edit")),
+        ]
+    }
+}
+
 impl View for MainWindow {
     type Message = WinMsg;
 
@@ -767,26 +791,7 @@ impl View for MainWindow {
         let (s, st) = (self.settings.clone(), self.state.clone());
         let set_up = s.target != Target::None;
         let running = busy_with(&st);
-        let bar = MenuBar::new(
-            cx,
-            vec![
-                Menu::new("File")
-                    .app_items(&["backup"])
-                    .item("Back Up Now", "back-up-now")
-                    .key("b")
-                    .enabled(set_up && !running)
-                    .item("Stop", "stop")
-                    .enabled(running)
-                    .item("Restore…", "restore")
-                    .key("r")
-                    .enabled(set_up)
-                    .separator()
-                    .item("Erase All Backups…", "erase-all")
-                    .enabled(set_up && !running)
-                    .close_quit(),
-                self.history.edit_items(Menu::new("Edit")),
-            ],
-        );
+        let bar = MenuBar::of(self, cx, |w, _| w.menus());
         let p = theme::palette();
         let mut body = div().flex_1().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET));
         if !set_up {

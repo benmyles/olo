@@ -79,6 +79,24 @@ impl Menu {
         m.separator()
     }
 
+    /// Find's items, the same in every window that finds in what it
+    /// shows (a text, a document, a terminal's lines): Find… (`find`,
+    /// ⌘F), Find Again (`find-again`, ⌘G) and Find Previous
+    /// (`find-previous`, ⇧⌘G), the last two while there's something to
+    /// find again (`again`). Their keys are the keyboard profile's. A
+    /// window whose ⌘F only puts the caret in a filter field has Find…
+    /// alone. (The window review holds a window with one of Find Again
+    /// and Find Previous to having both.)
+    pub fn find_items(self, again: bool) -> Menu {
+        self.item("Find…", "find").key("f").item("Find Again", "find-again").key("g").enabled(again).item("Find Previous", "find-previous").shift_key("g").enabled(again)
+    }
+
+    /// Find Selection (`find-selection`, ⌘E), after [`Menu::find_items`]
+    /// where what's selected can be looked for.
+    pub fn find_selection(self, selected: bool) -> Menu {
+        self.item("Find Selection", "find-selection").key("e").enabled(selected)
+    }
+
     /// The first menu's end: a separator, Close (⌘W) and Quit (⌘Q).
     pub fn close_quit(self) -> Menu {
         self.separator().item("Close", "close").key("w").item("Quit", "quit").key("q")
@@ -212,6 +230,12 @@ pub fn review(menus: &[Menu]) -> Vec<(String, String)> {
                 say(format!("{} ▸ {}: say “{label}”", menu.title, a.label));
             }
         }
+    }
+    // Find Again and Find Previous come together: what goes on to the
+    // next goes back to the one before, in every app.
+    let has = |command: &str| menus.iter().any(|m| actions(m).iter().any(|a| a.command == command));
+    if has("find-again") != has("find-previous") {
+        say("Find Again and Find Previous come together (Menu::find_items)".to_owned());
     }
     // No two of a window's items pressed with the same keys.
     let mut seen: Vec<(&str, &str)> = Vec::new();
