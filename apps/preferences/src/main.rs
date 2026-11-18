@@ -21,6 +21,7 @@ mod airpods;
 mod appearance;
 mod backup;
 mod bluetooth;
+mod calendars;
 mod complete;
 mod datetime;
 mod default_apps;

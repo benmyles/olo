@@ -259,7 +259,12 @@ impl Kept {
 
     /// No longer kept (its account removed, or the calendar gone from it).
     pub fn forget(&self, dir: &Path) {
-        let _ = std::fs::remove_file(path(dir, &self.account, &self.href));
+        let file = path(dir, &self.account, &self.href);
+        let _ = std::fs::remove_file(&file);
+        // (Its account's folder with it, once that's empty.)
+        if let Some(folder) = file.parent() {
+            let _ = std::fs::remove_dir(folder);
+        }
     }
 }
 
@@ -397,7 +402,10 @@ mod tests {
         assert_eq!(Kept::load(&dir, &home.account, &home.href), Some(home.clone()));
         assert_eq!(Kept::load_all(&dir), vec![home.clone(), work.clone()]);
         work.forget(&dir);
-        assert_eq!(Kept::load_all(&dir), vec![home]);
+        assert_eq!(Kept::load_all(&dir), vec![home.clone()]);
+        // The last of an account's forgotten: its folder goes too.
+        home.forget(&dir);
+        assert!(std::fs::read_dir(&dir).unwrap().next().is_none());
         assert!(Kept::load_all(&dir.join("nothing-here")).is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }

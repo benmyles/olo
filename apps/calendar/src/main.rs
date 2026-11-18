@@ -166,6 +166,8 @@ pub enum Msg {
     /// A calendar (by its place) shown or not.
     Show(usize, bool),
     Select(Option<Key>),
+    /// The list of accounts changed (Preferences ▸ Integrations).
+    Accounts,
     /// The occurrence opened in the editor (a double-click, Return).
     Open(Key),
     /// A new event, starting then, or all that day (the editor opened
@@ -223,6 +225,8 @@ pub struct Calendar {
     hours_placed: bool,
     pub agenda_scroll: ScrollHandle,
     editor: Option<olo_kit::WindowHandle<editor::Editor>>,
+    /// The accounts' file followed (kept while the window is).
+    _accounts: Option<olo_kit::watch::Watch>,
     waiting: Option<Waiting>,
     /// What's to be written, in order: the calendar's account and
     /// address, and the job. One at a time an account, and never while
@@ -279,12 +283,20 @@ impl Calendar {
             hours_scroll: ScrollHandle::new(),
             hours_placed: false,
             editor: None,
+            _accounts: None,
             waiting: None,
             writes: Default::default(),
             writing: 0,
             agenda_scroll: ScrollHandle::new(),
         };
         v.place_hours(cx);
+        // An account added or removed in Preferences shows here at once.
+        if !demo {
+            let changed = cx.messenger();
+            v._accounts = olo_kit::watch::watch([olo_calendar::account::accounts_path()], move |_| {
+                changed.send(Msg::Accounts);
+            });
+        }
         v.wake_when_due(cx);
         v
     }
@@ -762,6 +774,14 @@ impl View for Calendar {
                     return;
                 }
                 self.selected = key;
+            }
+            Msg::Accounts => {
+                // Read again, as when the window opened (what's kept of
+                // an account that went is let go there; a new one's
+                // calendars come with the asking that follows).
+                let today = self.today;
+                cx.work(move || sync::load(today), |(sources, cals)| Msg::Loaded(sources, cals.into_iter().map(Arc::new).collect()));
+                return;
             }
             Msg::Open(key) => {
                 self.selected = Some(key.clone());

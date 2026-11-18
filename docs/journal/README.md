@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Preferences ▸ Integrations ▸ Calendars: accounts for Calendar
+
+*12:32* — Add an Account… ▸ Google…, Fastmail… or Another CalDAV Server…. Google's is a sign-in in the browser with your own client (the one DiskBackup's Drive set-up made is found by itself; here none is, so its ID and secret are asked for); Fastmail's an app password. What's typed is tried first, then kept in the login keyring; Calendar shows the account's calendars the moment it's added.
+
+![Preferences ▸ Integrations ▸ Calendars: accounts for Calendar](2026-11-18/123237-preferences-integrations-calendars-accounts-for-.png)
+
 ### Calendar: events made, changed and deleted
 
 *12:16* — The event's window (here in the dark): title, where, calendar, all day or from when to when as you'd write it (Nov 20, fri, 2:30pm), how it repeats, a reminder, notes. Changing one of a repeating event asks: only this one, or every one of them. Written to the calendar's server first, and never over a change made somewhere else.

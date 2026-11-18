@@ -4936,5 +4936,11 @@
   "title": "Calendar: events made, changed and deleted",
   "caption": "The event's window (here in the dark): title, where, calendar, all day or from when to when as you'd write it (Nov 20, fri, 2:30pm), how it repeats, a reminder, notes. Changing one of a repeating event asks: only this one, or every one of them. Written to the calendar's server first, and never over a change made somewhere else.",
   "image": "2026-11-18/121641-calendar-events-made-changed-and-deleted.png"
+ },
+ {
+  "time": "2026-11-18T12:32:37",
+  "title": "Preferences \u25b8 Integrations \u25b8 Calendars: accounts for Calendar",
+  "caption": "Add an Account\u2026 \u25b8 Google\u2026, Fastmail\u2026 or Another CalDAV Server\u2026. Google's is a sign-in in the browser with your own client (the one DiskBackup's Drive set-up made is found by itself; here none is, so its ID and secret are asked for); Fastmail's an app password. What's typed is tried first, then kept in the login keyring; Calendar shows the account's calendars the moment it's added.",
+  "image": "2026-11-18/123237-preferences-integrations-calendars-accounts-for-.png"
  }
 ]

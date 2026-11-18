@@ -97,15 +97,22 @@ something nobody here has is in "Blocked", with what it waits for.
   every calendar in its colour, kept in step with its servers; and
   events made, changed and deleted (the event's window; "only this
   one" or all of a repeating event; never over a change made somewhere
-  else), by the menus, a double-click or the keyboard. **Next**:
-  Preferences ▸ Integrations ▸ Calendars (adding Google and Fastmail
-  accounts: until then only the demo has calendars); an icon of its
-  own (Date & Time's stands in); dragging an event to another time,
+  else), by the menus, a double-click or the keyboard. And accounts
+  added in Preferences ▸ Integrations ▸ Calendars: Google's by signing
+  in (the client DiskBackup's Drive set-up made is found, the CalDAV
+  API to be turned on in its project), Fastmail's by an app password,
+  any other CalDAV server's; tried against a stand-in server end to
+  end. **Next**: an icon of its own (Date & Time's stands in);
+  dragging an event to another time,
   Find, Undo of a deletion, invitations (who's coming, answering);
   reminders, the Deskbar widget, the palette, the assistant; in-place
   reload tried; its cost measured.
   **Not tried against Google's and Fastmail's real servers**: that
-  needs Ben's accounts.
+  needs Ben's accounts. **For Ben, to try**: Preferences ▸ Integrations
+  ▸ Calendars ▸ Add an Account… (for Google, first turn on the CalDAV
+  API in the Google Cloud project of DiskBackup's client: the link is
+  in the form; for Fastmail, an app password with access to calendars),
+  then open Calendar.
 
 - **A Mail app, native, every account in one place, and the assistant
   in both Mail and Calendar** (Ben, 2026-11-17: "build a beautiful olo

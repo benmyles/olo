@@ -48,6 +48,7 @@ pub struct State {
     proxy: olo_kit::Proxy,
     pub telegram: crate::telegram::State,
     pub mail: crate::mail::State,
+    pub calendars: crate::calendars::State,
 }
 
 impl State {
@@ -61,7 +62,15 @@ impl State {
                 cx.notify();
             }
         });
-        let mut st = State { github: Arc::default(), token, adding: false, proxy: olo_kit::proxy(), telegram: crate::telegram::State::new(cx), mail: crate::mail::State::new(cx) };
+        let mut st = State {
+            github: Arc::default(),
+            token,
+            adding: false,
+            proxy: olo_kit::proxy(),
+            telegram: crate::telegram::State::new(cx),
+            mail: crate::mail::State::new(cx),
+            calendars: crate::calendars::State::new(cx),
+        };
         // (Tests, the layout lint, never read the keyring.)
         if cfg!(test) {
             *st.github.lock().unwrap() = GitHub::None;
@@ -256,6 +265,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         ui.add(BBox::new("GitHub").children(items));
         crate::mail::ui(ui, &mut st.mail);
     });
-    let right = ui.collect(|ui| crate::telegram::ui(ui, &mut st.telegram));
+    let right = ui.collect(|ui| {
+        crate::telegram::ui(ui, &mut st.telegram);
+        crate::calendars::ui(ui, &mut st.calendars);
+    });
     ui.add_columns(left, right);
 }

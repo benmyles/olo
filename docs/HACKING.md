@@ -5858,6 +5858,13 @@ extra window (swapchain). The Interface Kit's rules keep it there: fonts are map
 not copied (the CJK face is 31 MB), the GPU's allocator works in small
 chunks, and windows share one device, its pipelines and its atlas.
 
+The review's "overflow" finds what runs out of the box or pane it's in:
+past its bottom and right (by where the thing starts) and, since
+2026-11-18, past its left (by where it ends: a row laid out from the
+right with more in it than the box is wide starts outside the box, and
+went unseen: Preferences ▸ Integrations ▸ Calendars' four buttons, the
+first across the box's frame, which only a picture showed).
+
 ## Screenshot journal
 
 `docs/journal/` is Olo's visual history (images in Git LFS). Whenever
@@ -20572,7 +20579,7 @@ stands on, each part tested by itself (`cargo test -p olo-calendar`):
   once more with a new one (an hour can end with the computer asleep,
   when `Instant` doesn't move).
 - **`account`**: `Account {provider, address, server}` in
-  `~/.config/olo/calendar.json` (`OLO_CALENDAR_ACCOUNTS`), its `Secret`
+  `~/.config/olo/calendar-accounts.json` (`OLO_CALENDAR_ACCOUNTS`), its `Secret`
   (an app password; or Google's client and refresh token) in the login
   keyring (`service=calendar`, `account=<Account::id>`). Google is
   `https://apidata.googleusercontent.com/caldav/v2/ADDRESS/user` with
@@ -20682,6 +20689,30 @@ things stand with the servers.
   week, up and down), Escape lets go of what's chosen. A double-click
   on a day makes an event there (in the hours, at the half hour under
   the pointer; in the strip above them, for the whole day).
+- **Accounts** are added in Preferences ▸ Integrations ▸ Calendars
+  (apps/preferences/src/calendars.rs): Add an Account… ▸ Google…
+  (signing in to Google in the browser, `account::google_sign_in`, with
+  a client already on this computer, another calendar account's or
+  DiskBackup's, else one whose ID and secret are typed; the CalDAV API
+  must be on in its project, a link is there), Fastmail… (address and
+  an app password with access to calendars) or Another CalDAV Server….
+  What's typed is tried first (signed in, its calendars listed), then
+  kept: the secret in the login keyring, the account in
+  `calendar-accounts.json`, which Calendar follows (`olo_kit::watch`):
+  an account added or removed shows in its window at once, and what was
+  kept of a removed one's calendars is let go.
+- **Trying it with no account of anyone's**: `cargo run --release -p
+  olo-calendar --example standin [DAY]` is the stand-in server by
+  itself with the demo's calendars; it prints its address. With
+  `OLO_CALENDAR_SERVER=URL` (every account's server),
+  `OLO_CALENDAR_GOOGLE=URL` and `OLO_CALENDAR_CONSENT=self` (Google's
+  sign-in, its consent fetched by the program: nothing opens),
+  `OLO_CALENDAR_ACCOUNTS=FILE` and `OLO_CALENDAR_SECRETS=DIR` (**a
+  test's own keyring: without it an account added in a test session
+  goes in the person's login keyring**, which a test session's programs
+  reach), Preferences and Calendar run the whole of it: both ways of
+  adding were tried so, then Calendar with the two accounts, then one
+  taken off the list.
 - **The demo** (`OLO_CALENDAR_DEMO=1`): the engine's stand-in server
   started in the process with four calendars made for the weeks round
   today, which the app runs against as it does against any server;

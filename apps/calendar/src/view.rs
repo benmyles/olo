@@ -196,10 +196,17 @@ fn sidebar(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
     for (i, cal) in v.book.cals.iter().enumerate() {
         if cal.kept.account != account {
             account = cal.kept.account.clone();
-            let name = v.sources.iter().find(|s| s.account.id() == account).map(|s| s.account.address.clone()).unwrap_or_else(|| account.clone());
-            // (One account: its address says nothing the window doesn't.)
+            // An account's address over its calendars (with who keeps it,
+            // where two accounts have the same address); one account's
+            // says nothing the window doesn't.
+            let source = v.sources.iter().find(|s| s.account.id() == account);
+            let name = match source {
+                Some(s) if v.sources.iter().filter(|o| o.account.address == s.account.address).count() > 1 => format!("{} ({})", s.account.address, s.account.provider.name()),
+                Some(s) => s.account.address.clone(),
+                None => account.clone(),
+            };
             if v.sources.len() > 1 {
-                list = list.child(div().pt(px(m::TIGHT)).child(StringView::new(name).small(true).dim(true).cut(true).height(m::LABEL_ROW)));
+                list = list.child(div().pt(px(m::TIGHT)).pb(px(2.0)).child(StringView::new(name).small(true).dim(true).cut(true).height(m::LABEL_ROW)));
             }
         }
         let shown = !v.settings.choices.hidden.contains(&cal.kept.href);

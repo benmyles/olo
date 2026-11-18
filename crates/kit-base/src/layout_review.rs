@@ -446,9 +446,37 @@ fn overflows_right(p: &Parts, ppp: f32) -> Vec<(String, Rect, f32)> {
     out
 }
 
+/// What runs past the left edge of the box or pane it ends in: a row laid
+/// out from the right with more in it than the box is wide (Preferences ▸
+/// Integrations ▸ Calendars' four buttons, the first across the box's
+/// frame, which the checks that go by where a thing starts never saw:
+/// it starts outside. 2026-11-18).
+fn overflows_left(p: &Parts, ppp: f32) -> Vec<(String, Rect, f32)> {
+    let mut items: Vec<(Rect, String)> = p.texts.iter().map(|t| (caps(t), quote(t))).collect();
+    items.extend(p.controls.iter().filter(|c| c.role != "Window" && c.rect.width() >= 1.0 && !scrolled(p, c.clip)).map(|c| (c.rect, c.said())));
+    let mut out = Vec::new();
+    for (r, name) in items {
+        // The innermost box its right end is in, level with its middle.
+        let end = Pos2 { x: r.max.x - SAME, y: (r.min.y + r.max.y) / 2.0 };
+        let Some(b) = p.containers.iter().filter(|b| b.contains(end)).min_by(|a, b| a.area().total_cmp(&b.area())) else { continue };
+        let d = b.min.x - r.min.x;
+        // (Within the box's height: not something across its top or bottom line.)
+        if d > SAME.max(1.0 / ppp + 0.01) && r.min.y >= b.min.y && r.max.y <= b.max.y {
+            out.push((name, *b, d));
+        }
+    }
+    out
+}
+
 /// What runs out of the bottom of its box or pane (a tab's content under
 /// the panel's Defaults row): the window or the box needs that much more.
 fn overflow(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
+    for (name, b, d) in overflows_left(p, ppp) {
+        push(
+            out,
+            finding(Level::Error, "overflow", format!("{name} runs {d:.1} pt past the left of what it's in (x {:.0}): give the row fewer things, or make that (or the window) wider", b.min.x), b),
+        );
+    }
     for (name, b, d) in overflows(p, ppp) {
         push(out, finding(Level::Error, "overflow", format!("{name} runs {d:.1} pt past the bottom of what it's in (y {:.0}): make that (or the window) taller", b.max.y), b));
     }
