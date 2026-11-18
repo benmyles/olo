@@ -77,6 +77,28 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Done, waiting for Ben to try or confirm
 
+- **The built-in display's brightness, in HDR** (Ben, 2026-11-17: "the
+  brightness settings on my builtin monitor are broken i can't turn
+  them up or down"; "it's like i change it and then it just goes back
+  to what it was"). Found: your panel is in HDR, where its backlight
+  does nothing, and three things each put a brightness back (HACKING,
+  "A display's brightness in HDR is SDR's white"): Preferences ▸
+  Display's Brightness slider (and the IPC) moved the backlight while
+  the keys moved SDR's white; the slider wasn't told the display's new
+  level, so it went back to the old one after 0.6 s; and Preferences'
+  older copy of the settings, given back with any other setting
+  changed, undid what the keys had done. Now a display's brightness in
+  HDR is SDR's white everywhere (keys, slider, agents), every change is
+  told, and it is never taken from a client's copy.
+  `tools/dev/brightness-check` reproduces it headless: 11 failures on
+  the build you were running, none now. **To try**, after the upgrade:
+  the brightness keys and Preferences ▸ Display's Brightness slider
+  both move the built-in display's brightness in HDR and stay where
+  they're put, with Preferences open or not; the bottom is still off.
+  (Until you upgrade: the keys work while Preferences is closed, and
+  "Everything else's brightness" under HDR in Preferences ▸ Display is
+  the slider that works.)
+
 - **Every icon a hand-written drawing (SVG), drawn for the size it's
   shown at** (Ben,
   2026-11-17: "a lot of the icons right now look great when they're big

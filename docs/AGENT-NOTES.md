@@ -247,6 +247,15 @@ Each note: what to do, then why (what happened), then how to apply it.
 - **Anything cargo runs keeps its rendered icons in
   `/var/tmp/olo-test-cache/icons`**, not the person's cache
   (`svg::kept_dir`): safe to delete.
+- **This computer's built-in display is usually in HDR**, where its
+  backlight (`/sys/class/backlight/intel_backlight`) does nothing: a
+  brightness that "doesn't change" there is SDR's white not moving, not
+  logind refusing the write. Never try it on the real panel (it's
+  Ben's screen): `tools/dev/brightness-check` has a headless screen
+  stand in for it, in HDR and out, and a copy of the installed
+  `olo-app-server` in a scratch `CARGO_TARGET_DIR/release` runs the
+  same check on the build Ben is running, to see a report fail there
+  first.
 - **Is a window showing the pixels it was given?** Render what it
   should show yourself and compare with a `tsession shot`, with PIL
   (`/usr/bin/python3 -I`): `ImageChops.difference` and its mean and

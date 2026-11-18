@@ -119,6 +119,35 @@ pub fn off_at(level: f32) -> bool {
     level <= 0.0
 }
 
+/// A display in HDR shows light as it's sent, and a panel's backlight
+/// does nothing there (the ThinkPad's OLED ignored it): its brightness is
+/// where SDR's white is, everything that isn't HDR, on even steps of
+/// light (a log scale from `MIN_SDR_NITS`, level 0, to `MAX_SDR_NITS`,
+/// level 1). The keys, a slider and an agent all move that, and it is
+/// what the display's brightness is said to be (Ben, 2026-11-17: "the
+/// brightness settings on my builtin monitor are broken i can't turn
+/// them up or down ... i change it and then it just goes back to what
+/// it was": in HDR Preferences' slider moved the backlight, which did
+/// nothing, and then showed the level it had before).
+pub fn sdr_level(nits: f32) -> f32 {
+    use olo_protocol::color::{MAX_SDR_NITS, MIN_SDR_NITS};
+    let (lo, hi) = (MIN_SDR_NITS.ln(), MAX_SDR_NITS.ln());
+    ((nits.clamp(MIN_SDR_NITS, MAX_SDR_NITS).ln() - lo) / (hi - lo)).clamp(0.0, 1.0)
+}
+
+/// [`sdr_level`] the other way: SDR's white at brightness `level`, in
+/// whole cd/m².
+pub fn sdr_nits_at(level: f32) -> f32 {
+    use olo_protocol::color::{MAX_SDR_NITS, MIN_SDR_NITS};
+    let (lo, hi) = (MIN_SDR_NITS.ln(), MAX_SDR_NITS.ln());
+    (lo + (hi - lo) * level.clamp(0.0, 1.0)).exp().round()
+}
+
+/// Whether `output` is drawn in HDR now.
+pub fn in_hdr(output: &smithay::output::Output) -> bool {
+    matches!(crate::color::drawing(output), crate::color::Drawing::Hdr { .. })
+}
+
 /// A brightness kept as off isn't how a session starts: nobody should
 /// sit down to a dark screen and not know why. The first step instead.
 pub fn starting_level(kept: f32) -> f32 {
@@ -591,7 +620,10 @@ impl<B: Backend> AnvilState<B> {
     }
 
     pub fn power_status(&self) -> olo_protocol::PowerStatus {
+        // (The built-in display in HDR: its brightness is SDR's white.)
+        let hdr = self.space.outputs().find(|o| is_internal(&o.name()) && in_hdr(o)).map(|o| sdr_level(crate::color::applied(o).sdr_nits));
         olo_protocol::PowerStatus {
+            brightness: hdr.or(self.power.brightness),
             screen_saver: self.saver.running(),
             locked: self.lock.locked(),
             rescue: self.rescue.is_some(),
@@ -659,7 +691,7 @@ impl<B: Backend> AnvilState<B> {
         }
         let internal = self.space.outputs().find(|o| is_internal(&o.name())).cloned();
         match internal {
-            Some(o) if matches!(crate::color::drawing(&o), crate::color::Drawing::Hdr { .. }) => self.step_sdr_white(&o, STEP),
+            Some(o) if in_hdr(&o) => self.step_sdr_white(&o, STEP),
             _ => self.set_brightness(STEP),
         }
     }
@@ -761,18 +793,48 @@ impl<B: Backend> AnvilState<B> {
 
     /// The built-in display's brightness (kept for it).
     pub fn set_brightness(&mut self, level: f32) {
-        let Some(_) = self.power.brightness else { return };
         let level = level.clamp(0.0, 1.0);
+        let internal = self.space.outputs().find(|o| is_internal(&o.name())).cloned();
+        // In HDR its backlight does nothing: SDR's white, as the keys
+        // move ([`sdr_level`]).
+        if let Some(o) = internal.as_ref().filter(|o| in_hdr(o)) {
+            self.set_sdr_level(&o.clone(), level);
+            return;
+        }
+        let Some(_) = self.power.brightness else { return };
         self.power.brightness = Some(level);
         if !self.power.display_asleep {
             self.power.apply_brightness(level);
         }
-        let internal = self.space.outputs().find(|o| is_internal(&o.name())).cloned();
         if let Some(o) = internal {
             self.keep_brightness(&o, level);
         }
         self.set_panel_off(off_at(level));
         self.power_changed();
+        // A display's brightness is part of what's said of the displays
+        // (`OutputInfo::brightness`): whoever shows it is told. (Untold,
+        // Preferences' slider went back to the level it had before.)
+        self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
+    }
+
+    /// The brightness of a display in HDR: SDR's white at `level`
+    /// ([`sdr_nits_at`]), kept for the display; the built-in panel's
+    /// bottom is off here too (in HDR its backlight isn't what's moved,
+    /// and the least of SDR's white is still light).
+    fn set_sdr_level(&mut self, output: &smithay::output::Output, level: f32) {
+        let key = crate::desktop::display_key(output);
+        self.settings.display.config_mut(&key, &output.name()).sdr_nits = Some(sdr_nits_at(level));
+        if let Err(e) = self.apply_color(output) {
+            warn!("SDR's white on {}: {e}", output.name());
+        }
+        // Saved on the next tick (keys repeat, a slider is dragged).
+        self.power.unsaved = true;
+        if is_internal(&output.name()) {
+            self.set_panel_off(off_at(level));
+            self.power_changed();
+        }
+        self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
+        self.remote_displays_changed();
     }
 
     /// The built-in display switched off (its brightness at the bottom),
@@ -787,9 +849,30 @@ impl<B: Backend> AnvilState<B> {
         self.backend_data.set_output_on(&o, !off);
     }
 
+    /// SDR's white was set for `output` in cd/m² (Preferences'
+    /// "Everything else's brightness"): in HDR that is its brightness, so
+    /// the built-in panel, switched off at the bottom of it, is back on
+    /// with any light above the least, and the power status says the
+    /// level.
+    pub fn sdr_white_set(&mut self, output: &smithay::output::Output) {
+        if !is_internal(&output.name()) || !in_hdr(output) {
+            return;
+        }
+        if !off_at(sdr_level(crate::color::applied(output).sdr_nits)) {
+            self.set_panel_off(false);
+        }
+        self.power_changed();
+    }
+
     /// Any display's brightness, by connector (kept for it).
     pub fn set_output_brightness(&mut self, connector: &str, level: f32) -> Result<(), String> {
         let level = level.clamp(0.0, 1.0);
+        // In HDR, any display's is SDR's white: what the keys move.
+        let hdr = self.space.outputs().chain(self.mirrors.iter()).find(|o| o.name() == connector && in_hdr(o)).cloned();
+        if let Some(o) = hdr {
+            self.set_sdr_level(&o, level);
+            return Ok(());
+        }
         if is_internal(connector) {
             self.set_brightness(level);
             return Ok(());
@@ -982,7 +1065,7 @@ impl<B: Backend> AnvilState<B> {
         let pointer = self.pointer.current_location();
         let under_output = self.space.output_under(pointer).next().cloned();
         let internal = self.space.outputs().find(|o| is_internal(&o.name())).cloned();
-        let hdr = |o: &smithay::output::Output| matches!(crate::color::drawing(o), crate::color::Drawing::Hdr { .. });
+        let hdr = in_hdr;
         if let Some(o) = under_output.as_ref().filter(|o| hdr(o)) {
             return self.step_sdr_white(&o.clone(), delta);
         }
@@ -1012,29 +1095,10 @@ impl<B: Backend> AnvilState<B> {
     /// steps of light (a log scale from `MIN_SDR_NITS` to `MAX_SDR_NITS`),
     /// shown on the brightness indicator and kept for the display.
     fn step_sdr_white(&mut self, output: &smithay::output::Output, delta: f32) {
-        use crate::color::{MAX_SDR_NITS, MIN_SDR_NITS};
-        let (lo, hi) = (MIN_SDR_NITS.ln(), MAX_SDR_NITS.ln());
-        let now = crate::color::applied(output).sdr_nits.clamp(MIN_SDR_NITS, MAX_SDR_NITS);
-        let level = (now.ln() - lo) / (hi - lo);
+        let level = sdr_level(crate::color::applied(output).sdr_nits);
         let level = (((level + delta) / STEP).round() * STEP).clamp(0.0, 1.0);
-        let nits = (lo + (hi - lo) * level).exp().round();
-        let key = crate::desktop::display_key(output);
-        self.settings.display.config_mut(&key, &output.name()).sdr_nits = Some(nits);
-        if let Err(e) = self.apply_color(output) {
-            warn!("SDR's white on {}: {e}", output.name());
-        }
-        // Saved on the next tick (keys repeat).
-        self.power.unsaved = true;
-        // (The built-in panel's bottom step is off here too: in HDR its
-        // backlight isn't what's moved, and the least of SDR's white is
-        // still light.)
-        if is_internal(&output.name()) {
-            self.set_panel_off(off_at(level));
-            self.power_changed();
-        }
+        self.set_sdr_level(output, level);
         self.show_indicator(crate::osd::Indicator::Brightness(level));
-        self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
-        self.remote_displays_changed();
     }
 
     fn step_keyboard(&mut self, delta: f32) {
@@ -1113,6 +1177,33 @@ mod tests {
         assert_eq!(starting_level(0.0), STEP);
         assert_eq!(starting_level(0.5), 0.5);
         assert_eq!(starting_level(STEP), STEP);
+    }
+
+    /// In HDR a display's brightness is SDR's white, on even steps of
+    /// light: the bottom its least, the top its most, and a level and
+    /// its light say each other.
+    #[test]
+    fn brightness_in_hdr_is_sdrs_white() {
+        use olo_protocol::color::{MAX_SDR_NITS, MIN_SDR_NITS};
+        assert_eq!((sdr_nits_at(0.0), sdr_nits_at(1.0)), (MIN_SDR_NITS, MAX_SDR_NITS));
+        assert_eq!((sdr_level(MIN_SDR_NITS), sdr_level(MAX_SDR_NITS)), (0.0, 1.0));
+        assert_eq!((sdr_level(1.0), sdr_level(5000.0)), (0.0, 1.0));
+        // Each of the keys' sixteen steps is its own light, more than the
+        // last by the same share, and comes back as the step it was.
+        let mut last = 0.0;
+        for k in 0..=16 {
+            let level = k as f32 * STEP;
+            let nits = sdr_nits_at(level);
+            assert!(nits > last, "step {k}: {nits} after {last}");
+            assert!((sdr_level(nits) - level).abs() < 0.004, "step {k}: {nits} cd/m² is {}", sdr_level(nits));
+            last = nits;
+        }
+        // A slider's 64 steps come back within half a step (cd/m² are whole).
+        for k in 0..=64 {
+            let level = k as f32 / 64.0;
+            assert!((sdr_level(sdr_nits_at(level)) - level).abs() < 0.008, "{level}");
+        }
+        assert!(off_at(sdr_level(MIN_SDR_NITS)) && !off_at(sdr_level(sdr_nits_at(STEP))));
     }
 
     #[test]

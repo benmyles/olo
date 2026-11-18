@@ -8404,6 +8404,35 @@ app in front and can be shortcuts); the brightness keys act on the
 display under the pointer when its brightness can be set, else the
 built-in one.
 
+**A display's brightness in HDR is SDR's white** (Ben, 2026-11-17:
+"the brightness settings on my builtin monitor are broken i can't turn
+them up or down ... it's like i change it and then it just goes back
+to what it was"). In HDR a display shows light as it's sent and a
+panel's backlight does nothing (the ThinkPad's OLED ignores it), so
+its brightness is where SDR's white is, everything that isn't HDR:
+`power::sdr_level` and `sdr_nits_at`, even steps of light on a log
+scale from 80 cd/m² (level 0) to 600 (level 1). Everything that sets
+a brightness sets that for a display in HDR (`set_sdr_level`: the
+keys, `step_sdr_white`; `SetOutputBrightness`, Preferences ▸ Display's
+Brightness slider; `SetBrightness`), and everything that says one says
+it (`OutputInfo::brightness`, `PowerStatus::brightness`); Preferences'
+"Everything else's brightness" is the same thing in cd/m²
+(`ConfigureOutput`'s `sdr_nits`, which brings a panel that was off
+back on: `sdr_white_set`). Three things were wrong, and each alone put
+a brightness back: in HDR the slider and the IPC moved the backlight
+while the keys moved SDR's white; setting the built-in display's
+brightness told subscribers the power status changed but not the
+displays (`OutputsChanged`), so Preferences' slider, which shows the
+display's own level, went back to the one it had after its 600 ms
+hold; and SDR's white, unlike the backlight's level, was taken from a
+client's copy of the settings (`desktop::keep_brightness` kept only
+`brightness`), so Preferences' older copy, given back with any other
+setting changed, undid what the keys had done. `tools/dev/brightness-
+check` holds all of it: a headless session whose screen stands in for
+the built-in panel and does HDR, the slider's request, an agent's, the
+keys, a subscriber's events, an older copy of the settings, the bottom
+and back; it fails eleven ways on the build before.
+
 **The bottom of the built-in display's brightness is off** (Ben,
 2026-11-12: "putting the screen on min brightness should turn the
 screen off: right now it just gets dim but not off"), as a MacBook's.

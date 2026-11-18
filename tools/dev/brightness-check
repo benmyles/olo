@@ -1,0 +1,195 @@
+#!/usr/bin/env python3
+"""A display's brightness, end to end, as a slider, the keys and an agent
+set it and as everyone is told it.
+
+  brightness-check
+
+Starts a headless session of its own ("brightc") whose one screen stands
+in for a laptop's built-in panel (OLO_INTERNAL_OUTPUT) and can do HDR
+(OLO_HEADLESS_COLOR=p3-hdr), with a second connection subscribed to
+app_server's events, as Preferences ▸ Display's is. Then checks:
+
+  Not in HDR (the backlight):
+    set_output_brightness says so in the displays' own state (`outputs`)
+    and in the power status, and tells subscribers the displays changed
+    (untold, Preferences' slider went back to the level it had before:
+    Ben, 2026-11-17, "i change it and then it just goes back to what it
+    was").
+  In HDR (where a panel's backlight does nothing):
+    the display's brightness is where SDR's white is (`power::sdr_level`:
+    even steps of light from 80 to 600 cd/m²): set_output_brightness and
+    set_brightness move SDR's white, the brightness keys step it by a
+    sixteenth, and `outputs`, the power status and the events all say the
+    level; the bottom switches the panel off and any step up brings it
+    back; SDR's white set in cd/m² ("Everything else's brightness") says
+    its level as the brightness too.
+    A client's older copy of the settings, given back with something
+    else changed (Preferences does, on any change), doesn't put the
+    brightness back to what it was.
+
+Build first: `cargo build --release -p app_server -p olo-session`.
+Exits 1 on a mismatch.
+"""
+
+import json
+import math
+import os
+import socket
+import subprocess
+import sys
+import time
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+TSESSION = [sys.executable, os.path.join(ROOT, "tools/dev/tsession")]
+NAME = "brightc"
+SCREEN = "HEADLESS-1"
+MIN_NITS, MAX_NITS = 80.0, 600.0
+KEY_DOWN, KEY_UP = "224", "225"
+
+
+def ts(*args, env=None):
+    e = dict(os.environ, TSESSION_PROFILE="release", **(env or {}))
+    return subprocess.run(TSESSION + list(args), capture_output=True, text=True, env=e)
+
+
+def ipc(request):
+    out = ts("ipc", NAME, json.dumps(request)).stdout.strip()
+    return json.loads(out) if out else {}
+
+
+def nits_at(level):
+    lo, hi = math.log(MIN_NITS), math.log(MAX_NITS)
+    return round(math.exp(lo + (hi - lo) * level))
+
+
+class Events:
+    """A connection subscribed to app_server's events, as an app's is."""
+
+    def __init__(self, path):
+        self.s = socket.socket(socket.AF_UNIX)
+        self.s.connect(path)
+        self.s.sendall(b'{"type":"subscribe"}\n')
+        self.buffer = b""
+        self.since(1.0)  # (its answer)
+
+    def since(self, wait=0.5):
+        """The events that came (waiting `wait` seconds for the last), by
+        type, the last of each."""
+        got = {}
+        self.s.settimeout(wait)
+        while True:
+            try:
+                more = self.s.recv(1 << 20)
+            except (socket.timeout, TimeoutError):
+                break
+            if not more:
+                break
+            self.buffer += more
+        *lines, self.buffer = self.buffer.split(b"\n")
+        for line in lines:
+            try:
+                m = json.loads(line)
+            except ValueError:
+                continue
+            e = m.get("event") or m
+            got[e.get("type")] = e
+        return got
+
+
+def main():
+    failures = []
+
+    def check(ok, what, got=None):
+        print(f"  {'ok ' if ok else 'BAD'} {what}" + ("" if ok or got is None else f": {got}"))
+        if not ok:
+            failures.append(what)
+
+    def screen():
+        return next(o for o in ipc({"type": "outputs"})["outputs"] if o["name"] == SCREEN)
+
+    def power():
+        return ipc({"type": "power_status"})["status"]
+
+    near = lambda a, b, tol=0.01: a is not None and abs(a - b) <= tol
+
+    ts("stop", NAME)
+    ts("start", NAME, "1280x800", env={"OLO_HEADLESS_COLOR": "p3-hdr", "OLO_INTERNAL_OUTPUT": SCREEN})
+    try:
+        env = dict(line.split("=", 1) for line in ts("env", NAME).stdout.replace("export ", "").split() if "=" in line)
+        events = Events(env["OLO_SOCKET"].strip('"'))
+        events.since()
+
+        print("Not in HDR (the backlight):")
+        ipc({"type": "set_output_brightness", "name": SCREEN, "level": 0.5})
+        told = events.since()
+        check(near(screen()["brightness"], 0.5), "the display says its new brightness", screen()["brightness"])
+        check(near(power()["brightness"], 0.5), "the power status says it", power()["brightness"])
+        said = next((o for o in told.get("outputs_changed", {}).get("outputs", []) if o["name"] == SCREEN), None)
+        check(said is not None and near(said["brightness"], 0.5), "subscribers are told the displays changed, with it", sorted(told))
+        check("power_changed" in told, "and that the power status did", sorted(told))
+
+        print("In HDR (SDR's white):")
+        ipc({"type": "configure_output", "name": SCREEN, "config": {"hdr": True}})
+        time.sleep(0.5)
+        events.since()
+        o = screen()
+        check(o.get("hdr") is True, "the display is in HDR", o.get("hdr"))
+        before = o["sdr_nits"]
+        ipc({"type": "set_output_brightness", "name": SCREEN, "level": 0.25})
+        told = events.since()
+        o = screen()
+        check(o["sdr_nits"] == nits_at(0.25) and o["sdr_nits"] != before, f"set_output_brightness moves SDR's white (0.25: {nits_at(0.25)} cd/m²)", o["sdr_nits"])
+        check(near(o["brightness"], 0.25), "the display says the level", o["brightness"])
+        check(near(power()["brightness"], 0.25), "the power status says it", power()["brightness"])
+        said = next((x for x in told.get("outputs_changed", {}).get("outputs", []) if x["name"] == SCREEN), None)
+        check(said is not None and near(said["brightness"], 0.25), "subscribers are told", sorted(told))
+
+        ipc({"type": "set_brightness", "level": 0.75})
+        o = screen()
+        check(o["sdr_nits"] == nits_at(0.75) and near(o["brightness"], 0.75), "set_brightness (an agent's) moves it too", (o["sdr_nits"], o["brightness"]))
+
+        for key, want in ((KEY_UP, 0.8125), (KEY_DOWN, 0.75), (KEY_DOWN, 0.6875)):
+            ts("key", NAME, key)
+            time.sleep(0.3)
+            o = screen()
+            check(near(o["brightness"], want, 0.004) and o["sdr_nits"] == nits_at(want), f"a brightness key steps it a sixteenth ({want})", (o["brightness"], o["sdr_nits"]))
+
+        # A client's copy from before, given back with something else changed.
+        settings = ipc({"type": "get_settings"})["settings"]
+        ipc({"type": "set_output_brightness", "name": SCREEN, "level": 0.4})
+        settings["appearance"]["menu_icons"] = not settings["appearance"]["menu_icons"]
+        ipc({"type": "set_settings", "settings": settings})
+        time.sleep(0.3)
+        o = screen()
+        check(o["sdr_nits"] == nits_at(0.4) and near(o["brightness"], 0.4), "an older copy of the settings given back doesn't put it back", (o["sdr_nits"], o["brightness"]))
+        check(ipc({"type": "get_settings"})["settings"]["appearance"]["menu_icons"] == settings["appearance"]["menu_icons"], "(and what that copy changed is changed)")
+
+        ipc({"type": "set_output_brightness", "name": SCREEN, "level": 0.0})
+        p = power()
+        check(p["panel_off"] is True and near(p["brightness"], 0.0), "the bottom switches the panel off", (p["panel_off"], p["brightness"]))
+        ipc({"type": "set_output_brightness", "name": SCREEN, "level": 0.3})
+        p = power()
+        check(p["panel_off"] is False and near(p["brightness"], 0.3), "raised, it's back on at that level", (p["panel_off"], p["brightness"]))
+
+        ipc({"type": "set_output_brightness", "name": SCREEN, "level": 0.0})
+        ipc({"type": "configure_output", "name": SCREEN, "config": {"sdr_nits": 300.0}})
+        time.sleep(0.3)
+        o, p = screen(), power()
+        level = (math.log(300.0) - math.log(MIN_NITS)) / (math.log(MAX_NITS) - math.log(MIN_NITS))
+        check(o["sdr_nits"] == 300.0 and near(o["brightness"], level), "SDR's white set in cd/m² says its level as the brightness", (o["sdr_nits"], o["brightness"]))
+        check(p["panel_off"] is False, "and brings a panel that was off back on", p["panel_off"])
+
+        print("Out of HDR again (the backlight, where it was):")
+        ipc({"type": "configure_output", "name": SCREEN, "config": {"hdr": False}})
+        time.sleep(0.5)
+        o = screen()
+        check(near(o["brightness"], 0.5), "the display's brightness is its backlight's again", o["brightness"])
+    finally:
+        ts("stop", NAME)
+    if failures:
+        print(f"{len(failures)} failed: " + "; ".join(failures))
+        sys.exit(1)
+    print("all as it should be")
+
+
+main()

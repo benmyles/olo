@@ -467,15 +467,20 @@ fn update_entry(entry: &mut OutputConfig, config: &OutputConfig) {
     }
 }
 
-/// Brightness as it's set (SetOutputBrightness, the keys) in `current`,
-/// not from a client's possibly older copy.
+/// Brightness as it's set (SetOutputBrightness, the keys, a display's
+/// own slider) in `current`, not from a client's possibly older copy:
+/// the backlight's level, and SDR's white, which is the brightness of a
+/// display in HDR (a client's copy from before the keys moved it put it
+/// back with the next setting changed).
 fn keep_brightness(settings: &mut Settings, current: &Settings) {
     for c in settings.display.outputs.values_mut() {
         c.brightness = None;
+        c.sdr_nits = None;
     }
     for (key, c) in &current.display.outputs {
-        if c.brightness.is_some() {
-            settings.display.outputs.entry(key.clone()).or_default().brightness = c.brightness;
+        if c.brightness.is_some() || c.sdr_nits.is_some() {
+            let entry = settings.display.outputs.entry(key.clone()).or_default();
+            (entry.brightness, entry.sdr_nits) = (c.brightness, c.sdr_nits);
         }
     }
 }
@@ -1936,7 +1941,14 @@ impl<B: Backend + 'static> AnvilState<B> {
                     rotation,
                     main: main.as_ref() == Some(o),
                     mirror_of: source.map(|s| s.name()),
-                    brightness: if crate::power::is_internal(&o.name()) { self.power.brightness } else { self.power.display_brightness(&o.name()) },
+                    // (In HDR: where SDR's white is, `power::sdr_level`.)
+                    brightness: if crate::power::in_hdr(o) {
+                        Some(crate::power::sdr_level(crate::color::applied(o).sdr_nits))
+                    } else if crate::power::is_internal(&o.name()) {
+                        self.power.brightness
+                    } else {
+                        self.power.display_brightness(&o.name())
+                    },
                     number: None,
                     panel: Some(panel),
                     vrr: self.backend_data.vrr(o),
@@ -2227,6 +2239,9 @@ impl<B: Backend + 'static> AnvilState<B> {
         let colors = config.color_mode.is_some() || config.hdr.is_some() || config.sdr_nits.is_some();
         if colors {
             self.apply_color(&output)?;
+            if config.sdr_nits.is_some() {
+                self.sdr_white_set(&output);
+            }
         }
         self.apply_output_settings(&output);
         if self.mirrors.contains(&output) || entry_mirrors(&self.settings.display, &output) {
