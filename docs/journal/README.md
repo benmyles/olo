@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Calendar: an event's end is dragged
+
+*15:57* — An event's bottom edge can be dragged to change when it ends: the pointer turns to an up-and-down arrow over the edge, the end follows it by quarter hours with the times shown, and letting go saves it (Undo takes it back).
+
+![Calendar: an event's end is dragged](2026-11-18/155726-calendar-an-event-s-end-is-dragged.png)
+
 ### Calendar: Find
 
 *15:53* — Calendar has a search field (⌘F). What's typed is looked for, as it's typed, in every calendar shown from a year back to two years on: titles, places and notes. What's found is listed by day, starting at today; the arrows step through it, Return (or two clicks) goes to the event in the view, Escape ends the search.

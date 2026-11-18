@@ -188,6 +188,8 @@ pub enum Msg {
     /// The occurrence dragged among the hours, let go: it starts then
     /// (the person's clock), as long as it was.
     Move(Key, jiff::civil::DateTime),
+    /// Its end dragged, let go: it ends then, starting when it did.
+    Stretch(Key, jiff::civil::DateTime),
     /// What a search found (answer `n`).
     Found(u64, model::Found),
     /// One of what was found chosen (a click), or gone to (twice, Return).
@@ -237,6 +239,9 @@ pub struct Drag {
     /// points: a click selects, it doesn't move.
     pub was: (Date, i32),
     pub to: Option<(Date, i32)>,
+    /// Its end is what's dragged (its bottom edge), on this day: `to` is
+    /// then that day and when it would end (minutes of it, up to 1440).
+    pub end: Option<Date>,
 }
 
 /// `--show HREF START` among a launch's arguments: the occurrence to show.
@@ -515,6 +520,22 @@ impl Calendar {
         let (Ok(new_start), Ok(new_end)) = (draft.start.checked_add(by), draft.end.checked_add(by)) else { return };
         (draft.start, draft.end) = (new_start, new_end);
         self.naming = Some(("Move".to_owned(), olo_kit::undo::Purpose::Do));
+        cx.send(Msg::Save(Box::new(editor::Saving { target: opening.target, draft, cal: shown.cal })));
+    }
+
+    /// The occurrence made to end at `end` (the person's clock), starting
+    /// when it did: a change as the editor's Save makes it, as a move is.
+    fn stretch_event(&mut self, key: &Key, end: jiff::civil::DateTime, cx: &mut Cx<Self>) {
+        let Some(shown) = self.shown.iter().find(|s| s.key() == *key).cloned() else { return };
+        let Some(opening) = self.opening_of(key) else { return };
+        let Ok(by) = end.since(shown.end) else { return };
+        if by.is_zero() || end <= shown.start {
+            return;
+        }
+        let mut draft = opening.draft;
+        let Ok(new_end) = draft.end.checked_add(by) else { return };
+        draft.end = new_end;
+        self.naming = Some(("Resize".to_owned(), olo_kit::undo::Purpose::Do));
         cx.send(Msg::Save(Box::new(editor::Saving { target: opening.target, draft, cal: shown.cal })));
     }
 
@@ -1074,6 +1095,7 @@ impl View for Calendar {
                 self.try_reveal();
             }
             Msg::Move(key, start) => return self.move_event(&key, start, cx),
+            Msg::Stretch(key, end) => return self.stretch_event(&key, end, cx),
             Msg::Found(n, found) => {
                 if n != self.finding_n.load(std::sync::atomic::Ordering::Relaxed) {
                     return;

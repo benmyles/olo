@@ -29,6 +29,9 @@ const PAD: f32 = 4.0;
 /// pointer has gone this far from where it pressed.
 const STEP: i32 = 15;
 const DRAG_AFTER: f32 = 4.0;
+/// An event's bottom edge, to drag its end by: this much of it (less of
+/// a short one: a third).
+const GRIP: f32 = 5.0;
 
 #[derive(Debug, Clone, PartialEq)]
 enum Part {
@@ -45,6 +48,9 @@ struct State {
     /// drag: which day and minute the pointer is over).
     cols: Vec<Pixels>,
     first: Option<Date>,
+    /// The events' bottom edges that their ends are dragged by, each
+    /// with its day.
+    grips: Vec<(Bounds<Pixels>, Key, Date)>,
 }
 
 /// The pointer moved with an event pressed: where the event would go
@@ -60,10 +66,15 @@ fn dragged(v: &mut Calendar, e: &MouseMoveEvent, cx: &mut Cx<Calendar>) {
         return;
     }
     let (Some(first), true) = (state.first, state.cols.len() >= 2) else { return };
-    let col = state.cols.windows(2).position(|c| at.x < c[1]).unwrap_or(state.cols.len() - 2);
-    let day = layout::day_of(layout::day_number(first) + col as i32);
     let top = f32::from(at.y - state.origin.y) / HOUR * 60.0 - drag.grab;
-    let start = quarter(top);
+    let (day, start) = match drag.end {
+        // Its end: on its own day, where the pointer is down it.
+        Some(day) => (day, quarter_end(top, if day == drag.was.0 { drag.was.1 } else { 0 })),
+        None => {
+            let col = state.cols.windows(2).position(|c| at.x < c[1]).unwrap_or(state.cols.len() - 2);
+            (layout::day_of(layout::day_number(first) + col as i32), quarter(top))
+        }
+    };
     if drag.to != Some((day, start)) {
         if let Some(d) = &mut v.drag {
             d.to = Some((day, start));
@@ -78,11 +89,29 @@ fn quarter(minutes: f32) -> i32 {
     (((minutes / STEP as f32).round() as i32) * STEP).clamp(0, 24 * 60 - STEP)
 }
 
-/// The button let go: an event dragged somewhere else goes there.
+/// The end a dragged end takes with the pointer `minutes` into its day:
+/// the nearest quarter hour, a quarter hour after `start` (where the
+/// event starts on that day) at the least, midnight at the most.
+fn quarter_end(minutes: f32, start: i32) -> i32 {
+    (((minutes / STEP as f32).round() as i32) * STEP).clamp(start + STEP, 24 * 60)
+}
+
+/// The time `minutes` into `day` (1440: the next day's first).
+fn time_on(day: Date, minutes: i32) -> jiff::civil::DateTime {
+    if minutes >= 24 * 60 { layout::day_of(layout::day_number(day) + 1).at(0, 0, 0, 0) } else { day.at((minutes / 60) as i8, (minutes % 60) as i8, 0, 0) }
+}
+
+/// The button let go: an event dragged somewhere else goes there; one
+/// whose end was dragged ends there.
 fn dropped(v: &mut Calendar, _: &MouseUpEvent, cx: &mut Cx<Calendar>) {
     let Some(drag) = v.drag.take() else { return };
     let Some((day, start)) = drag.to else { return };
     cx.invalidate();
+    if drag.end.is_some() {
+        // (Where it ended already: nothing; `stretch_event` sees to it.)
+        cx.send(Msg::Stretch(drag.key, time_on(day, start)));
+        return;
+    }
     if (day, start) != drag.was {
         cx.send(Msg::Move(drag.key, day.at((start / 60) as i8, (start % 60) as i8, 0, 0)));
     }
@@ -125,7 +154,10 @@ fn select(v: &mut Calendar, e: &MouseDownEvent, hours: bool, cx: &mut Cx<Calenda
     {
         let minutes = |t: jiff::civil::DateTime| t.hour() as i32 * 60 + t.minute() as i32;
         let lasts = s.end.since(s.start).ok().and_then(|d| d.total(jiff::Unit::Minute).ok()).unwrap_or(60.0) as f32;
-        v.drag = Some(Drag { key: key.clone(), from: at, grab: f32::from(at.y - r.top()) / HOUR * 60.0, lasts, was: (s.start.date(), minutes(s.start)), to: None });
+        // (By its bottom edge: its end is dragged, not the event.)
+        let end = state.grips.iter().find(|(grip, k, _)| k == key && grip.contains(&at)).map(|(.., day)| *day);
+        let grab = if end.is_some() { 0.0 } else { f32::from(at.y - r.top()) / HOUR * 60.0 };
+        v.drag = Some(Drag { key: key.clone(), from: at, grab, lasts, was: (s.start.date(), minutes(s.start)), to: None, end });
     }
     match over {
         Some(Part::Event(key)) if e.click_count >= 2 => cx.send(Msg::Open(key)),
@@ -264,6 +296,7 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
             let (first, n) = days(v);
             let xs = columns(g, b, n);
             let mut parts: Vec<(Bounds<Pixels>, Part)> = Vec::new();
+            let mut grips: Vec<(Bounds<Pixels>, Key, Date)> = Vec::new();
             olo_kit::review::own_grid(g, b);
             let y_at = |minutes: f32| b.top() + px(minutes / 60.0 * HOUR);
             for col in 0..n {
@@ -320,7 +353,10 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                     // (Its words are set by its own time, not level with its neighbours'.)
                     olo_kit::review::own_grid(g, r);
                     g.with_content_mask(Some(olo_kit::ContentMask { bounds: r }), |g| {
-                        if tall < 30.0 {
+                        if moving && v.drag.as_ref().is_some_and(|d| d.end.is_some()) {
+                            // (Its end being dragged: how long it was, faint,
+                            // without its words; they're on what it would be.)
+                        } else if tall < 30.0 {
                             // One line, in its middle: its title, then its start.
                             let mid = r.center().y;
                             let t = style::label_fit(g, x, mid, style::Align::Left, s.title.to_string(), style::DETAIL_SIZE, bold.clone(), ink, room);
@@ -340,6 +376,14 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                     let name = format!("{}, {}, {calendar}", s.title, words::when(s.start, s.end, s.all_day, v.h24));
                     g.agent(agent::Node { role: "ListItem", name: Some(name.into()), bounds: r, enabled: true, clickable: true, selected: Some(chosen), ..Default::default() });
                     parts.push((r, Part::Event(s.key())));
+                    // Its bottom edge drags its end, where it ends on this
+                    // day (and its calendar can be written to).
+                    let ends_here = s.end.date() == day || s.end == layout::day_of(layout::day_number(day) + 1).at(0, 0, 0, 0);
+                    if ends_here && v.changeable(&s.key()) {
+                        let grip = Bounds::from_corners(point(r.left(), r.bottom() - px(GRIP.min(tall / 3.0))), r.bottom_right());
+                        g.set_cursor_style(olo_kit::CursorStyle::ResizeUpDown, grip);
+                        grips.push((grip, s.key(), day));
+                    }
                 }
             }
             // An event being dragged: where it would go, the day's whole
@@ -352,14 +396,28 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                 if (0..n as i32).contains(&col) {
                     let col = col as usize;
                     let (left, right) = (xs[col] + px(1.0), xs[col + 1] - px(7.0));
-                    let r = style::snap(g, Bounds::from_corners(point(left, y_at(start as f32) + px(1.0)), point(right - px(1.0), y_at(start as f32 + drag.lasts.max(STEP as f32)))));
+                    // (Its end dragged: from where it starts on that day
+                    // to where it would end; the cursor its edge's, held.)
+                    let (top, bottom) = match drag.end {
+                        Some(_) => (if day == drag.was.0 { drag.was.1 as f32 } else { 0.0 }, start as f32),
+                        None => (start as f32, start as f32 + drag.lasts.max(STEP as f32)),
+                    };
+                    if drag.end.is_some() {
+                        g.set_cursor_style(olo_kit::CursorStyle::ResizeUpDown, b.dilate(px(4096.0)));
+                    }
+                    let r = style::snap(g, Bounds::from_corners(point(left, y_at(top) + px(1.0)), point(right - px(1.0), y_at(bottom))));
                     let fill = p.hue(s.hue);
                     style::fill_rect(g, r, style::c(fill));
                     style::frame_rect(g, r, text);
                     style::frame_rect(g, style::inset(g, r, 1.0), text);
                     let ink = style::c(p.ink_on(fill));
-                    let from = day.at((start / 60) as i8, (start % 60) as i8, 0, 0);
-                    let to = from.checked_add(jiff::Span::new().minutes(drag.lasts as i64)).unwrap_or(from);
+                    let (from, to) = match drag.end {
+                        Some(_) => (s.start, time_on(day, start)),
+                        None => {
+                            let from = day.at((start / 60) as i8, (start % 60) as i8, 0, 0);
+                            (from, from.checked_add(jiff::Span::new().minutes(drag.lasts as i64)).unwrap_or(from))
+                        }
+                    };
                     let (x, room) = (r.left() + px(PAD), (r.size.width - px(2.0 * PAD)).max(px(0.0)));
                     olo_kit::review::own_grid(g, r);
                     g.with_content_mask(Some(olo_kit::ContentMask { bounds: r }), |g| {
@@ -387,7 +445,7 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
             }
             let state = g.node_state::<State>();
             (state.parts, state.origin) = (parts, b.origin);
-            (state.cols, state.first) = (xs, Some(first));
+            (state.cols, state.first, state.grips) = (xs, Some(first), grips);
         })
         .key_by(move |v: &Calendar| style::key((key(v), v.drag.as_ref().and_then(|d| d.to))))
         .w_full()
@@ -420,5 +478,18 @@ mod tests {
         for (minutes, start) in [(600.0, 600), (607.0, 600), (608.0, 615), (622.4, 615), (-40.0, 0), (0.0, 0), (1439.0, 1425), (5000.0, 1425)] {
             assert_eq!(quarter(minutes), start, "{minutes}");
         }
+    }
+
+    /// A dragged end is on the quarter hour nearest the pointer: never
+    /// less than a quarter hour after the start, midnight at the latest
+    /// (the next day's first minute).
+    #[test]
+    fn an_end_dragged_by_quarter_hours() {
+        for (minutes, start, end) in [(660.0, 600, 660), (652.0, 600, 645), (653.0, 600, 660), (600.0, 600, 615), (200.0, 600, 615), (1436.0, 600, 1440), (9000.0, 600, 1440), (5.0, 0, 15)] {
+            assert_eq!(quarter_end(minutes, start), end, "{minutes} from {start}");
+        }
+        let day = jiff::civil::date(2026, 11, 18);
+        assert_eq!(time_on(day, 645), day.at(10, 45, 0, 0));
+        assert_eq!(time_on(day, 1440), jiff::civil::date(2026, 11, 19).at(0, 0, 0, 0));
     }
 }

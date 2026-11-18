@@ -21091,7 +21091,26 @@ twenty steps of a drag drew 19 frames of 0.77 ms on average (the
 slowest 1.96 ms; release, 2×, `tools/dev/cost`). Tried against the
 demo: Dentist from Tuesday 3 PM to Thursday 10 AM; Monday's Standup an
 hour and a half later, only that one. Not yet: the month's days, the
-whole-day strip, an event's end.
+whole-day strip.
+
+**An event's end, dragged** (the same drag, `Drag::end`). An event's
+bottom edge (`GRIP`: five points of it, a third of a short one; the
+pointer an up-and-down arrow over it, `set_cursor_style`, and all
+through the drag) is pressed and dragged to change when it ends, where
+it ends on that day and its calendar can be written to (`State::
+grips`). The end goes by quarter hours to where the pointer is
+(`quarter_end`: a quarter hour after its start at the least, midnight
+at the most), on its own day whatever column the pointer strays to;
+how long it was stays faint, without its words, under what it would
+be, drawn with its times. Let go, it ends there (`Msg::Stretch` →
+`stretch_event`: the editor's draft with its end shifted, saved as a
+move is, so a repeating event asks which, and the step is "Resize
+“Dentist”" in Edit ▸ Undo). Thirty pointer moves over two hours drew 8
+frames (one a quarter hour crossed) of 601 µs on average, the slowest
+711 µs; at rest 0 frames, 0 wakeups/s (release, 2×, `tools/dev/cost`).
+Tried against the demo: Dentist's end from 4 PM to 5:15 PM, undone;
+dragged above its start, it's a quarter hour long. Tested:
+`week::tests::an_end_dragged_by_quarter_hours`.
 
 **Find** (Edit ▸ Find… ⌘F puts the caret in the search field at the
 navigation row's right, the kit's `SearchField`; an agent just sets its

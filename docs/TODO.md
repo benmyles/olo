@@ -106,9 +106,9 @@ something nobody here has is in "Blocked", with what it waits for.
   drawing). An event is dragged among the hours to another time or
   day (HACKING.md, "Calendar"). Undo and Redo of every change (a
   deletion asks nothing now). Find (⌘F: every calendar shown, from a
-  year back to two years on, listed by day from today). **Next**:
-  dragging in the month and the whole-day strip, and an event's end
-  (how long it lasts). **Then**: invitations (who's coming,
+  year back to two years on, listed by day from today). An event's
+  end is dragged by its bottom edge (how long it lasts). **Next**:
+  dragging in the month and the whole-day strip. **Then**: invitations (who's coming,
   answering); the Deskbar widget, the palette, the assistant. Reminders are shown
   (`olo-calendar --service`, a session service; Show goes to the
   event). (Its cost
@@ -302,6 +302,33 @@ something nobody here has is in "Blocked", with what it waits for.
   Snap Layouts, macOS Sequoia's tiling, GNOME, KDE's and Rectangle and
   FancyZones do it, and what BeOS/Haiku's Stack and Tile did; then the
   design; agents drive it by command as people do by hand.
+
+- **Menus tidied into groups, and chords for what's in them** (Ben,
+  2026-11-18: "in the menu from right clicking a window tab (and
+  anywhere else we show it), group the 3 zoom options under a "Zoom ->"
+  parent and the 3 float options under a "Float ->" parent, the move
+  options under a "Move ->" parent, and anything else that makes sense
+  to be grouped to clean things up do that too. and, idk if we support
+  chord keyboard shortcuts yet but let's also make the shortcuts for
+  all those chords, so you do the first part to start Float/Move/etc
+  and then the second part to select the specific option. this chord
+  support must be made native to olo, supported and customizable in
+  keyboard shortcut prefs. similarly clean up the deskbar right click
+  menus and any other menus that are unwieldly. try to make everything
+  follow consistent patterns/groupings where appropriate."). The
+  window menu (a tab's right click, and everywhere else it's shown:
+  Deskbar's entry for a window, the window switcher): Zoom ▸, Float ▸
+  and Move ▸ submenus, and whatever else groups naturally. Chords, a
+  part of Olo itself: a shortcut of two parts (the first starts Float,
+  Move, Zoom…; the second picks which), in the keyboard profiles, the
+  kit's menus (shown beside the item, both parts) and app_server's own
+  shortcuts, set and changed in Preferences ▸ Keyboard ▸ Shortcuts like
+  any other, with something shown while a chord waits for its second
+  part (and Escape, or a moment's wait, letting go of it). Then the
+  same pass over Deskbar's right-click menus and every other menu
+  that's grown unwieldy, to one set of patterns (what's grouped, in
+  what order, named how), written down in HACKING.md and held by the
+  window review where it can be.
 
 - **Last, once everything above that isn't blocked is done: the website,
   the README and the docs refreshed, and a new GitHub release** (Ben,
