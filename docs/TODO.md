@@ -119,6 +119,15 @@ something nobody here has is in "Blocked", with what it waits for.
   asking. Olo's own: notifications, the Inbox widget, the palette, the
   phone, an agents' API, in-place reload, native in Rust.
 
+- **Calendar and Mail in Deskbar: widgets of their own** (Ben,
+  2026-11-17: "both the calendar and email should also integrate with
+  deskbar and provide widgets"). With the two apps above, as Weather's
+  and Notifications' are (`olo_protocol::glance::PROVIDERS`,
+  `olo_kit::glance::serve`): Calendar's, what's next and the day ahead;
+  Mail's, what's unread, by account or together; each with its options
+  in Preferences ▸ Deskbar, and a click that opens the event or the
+  message.
+
 - **Last, once everything above that isn't blocked is done: the website,
   the README and the docs refreshed, and a new GitHub release** (Ben,
   2026-11-17: "when all the other todos that aren't blocked are
