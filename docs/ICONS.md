@@ -173,12 +173,47 @@ screen), outlined in black. Aqua's: after Mac OS X's first Aqua, the
 faces rounder and shinier (`gloss`), the blues Aqua's, the greys cool,
 and a soft deep-blue outline, half there, in place of the black one
 (Ben, 2026-11-17: "generate and add an AmigaOS and Aqua theme + icon
-pack for each"). All keep the brand's ring and other people's marks as
-they are.
+pack for each"). All keep the brand's ring as it is.
+
+**Other people's marks** (Chrome, Slack, Telegram, GitHub) are drawn
+for each set, by `tools/dev/markicons/make.py` (`write`; `sheet
+OUT.png` renders all six sets' at 128, 48, 40, 32, 20 and 16 pixels,
+light and dark, which is how they were looked at). Ben, 2026-11-18, of
+the first ones, which stood in the set's front plane like any badge
+(rising 1 in 4): "the logos just look kinda weird, especially at the
+smallest deskbar size … they don't seem to fit properly with the rest",
+"i think they are too angled"; of a try facing straight forward: "i
+still want the angled 3d effect on the others just not so pronounced";
+and, having changed to Flat: "it didn't change the telegram, slack,
+chrome icons? those app icons also need to be extremely high quality
+hand-built SVGs for each icon set". So:
+
+- A mark is the mark: its own geometry (Chrome's arms each a tangent of
+  its white ring, Telegram's plane, GitHub's cat, Slack's four pieces),
+  its own colours, nothing added to it.
+- What carries it is a thick badge (a tile, for Slack) standing, its
+  edge showing to the left and above, in a front plane that rises **1 in
+  8**, half the set's angle (`LEAN`): enough to stand on the same desk
+  as the rest, little enough that the mark isn't bent. The contact
+  shadow stays level.
+- Each set its manner (`SETS`): the classic set's soft faces, ink
+  outline and shadow; Platinum's ink and lilac greys, a little softer;
+  BeOS's flat faces on its palette and AmigaOS's in a Workbench
+  screen's pens, outlined in black, no shadow (the marks' colours
+  chosen by hand there, `BEOS` and `AMIGA_OF`: the nearest pen made
+  Slack's yellow orange); Aqua's gel, a lens of light over the upper
+  half of the face and a glow from below, its outline soft (under what
+  is printed on Slack's tile, not over it). Flat's: the mark alone,
+  straight on, on its plain disc or tile, GitHub's with a white rim so
+  it shows on a dark ground.
+- Small (`upto32`), Telegram's plane and Slack's mark are a fifth
+  larger.
+- The brand's own ring is one drawing in every set (Ben: "the olo icon
+  was perfect don't change that").
 
 **The Flat set** is the one set of drawings of its own
-(`data/themes/flat/icons/svg/`, 176: every icon but the five marks,
-which stay as they are): Ben, 2026-11-17, "generate and add a modern
+(`data/themes/flat/icons/svg/`, 180: every icon but the brand's ring;
+other people's marks from `tools/dev/markicons`, below): Ben, 2026-11-17, "generate and add a modern
 flat icon pack", and, of a first one made by recolouring the angled
 drawings, "the idea of the flat ones is that they would also be front
 facing not angled". Each thing is seen straight on, in plain faces: no
@@ -196,7 +231,7 @@ corner, a phone's back with its cameras), so pages, screens and the
 sky's twenty are one family; `make.py sheet OUT.png` shows them all at
 64, 32 and 16 pixels, light and dark, which is how each was looked at.
 A drawing is changed there and written again. Its `recolour.txt` is
-for what it has no drawing of (the marks kept; an icon new to the
+for what it has no drawing of (the ring kept; an icon new to the
 classic set flattened until it's drawn).
 
 ```text

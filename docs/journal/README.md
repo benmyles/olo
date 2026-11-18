@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Other people's marks, drawn for every icon set
+
+*09:02* — Chrome, Slack, Telegram and GitHub drawn again: the mark itself, on a badge or tile that leans half as much as the set's other standing things (left: the old ones and the new among Terminal, Tracker, Phone and Passwords at Deskbar's sizes). Each icon set has its own: classic, Platinum, BeOS, AmigaOS, Aqua and, straight on, Flat. Slack's tile no longer loses its mark at 40 pixels (a 2× screen): a size between two steps shows the drawing's small stand-in.
+
+![Other people's marks, drawn for every icon set](2026-11-18/090222-other-people-s-marks-drawn-for-every-icon-set.png)
+
 ### Flat: an icon set of its own drawings, seen straight on
 
 *01:20* — 176 drawings, each thing front-facing in plain flat faces, no outlines or shadows, made from shared forms (tools/dev/flaticons). Chosen for any theme in Preferences ▸ Themes ▸ Customize… ▸ Icons; here on Classic.

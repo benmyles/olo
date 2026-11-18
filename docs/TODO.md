@@ -84,6 +84,39 @@ something nobody here has is in "Blocked", with what it waits for.
   Ben**: the test of firmware 1.17, the same hand-over that failed
   (display unplugged, charger in, while running), with the EC trace on.
 
+- **AirPods' microphone with voice processing, named so in apps** (Ben,
+  2026-11-18, of Teams in Chrome, its microphone list showing "AirPods
+  Pro Microphone" and "AirPods" beside the laptop's "… Microphones
+  (Voice Processing)": "it still doesn't show the airpods device as
+  'Airpods (Voice Processing)' to tell me which one has the voice
+  processing enabled"). Find what names the two AirPods sources as
+  they are (which is the processed one, if either), and name it as the
+  laptop's is.
+
+- **A notification is seen once what it is about has been seen** (Ben,
+  2026-11-18: "if there is an unread/unseen/activity style notification
+  from an app and i go to the app and see the screen/tab that
+  notification references, then that notification should no longer be
+  marked as unread regardless of how i got there (e.g. doesn't matter if
+  it was from clicking the notification or not what matters is i went to
+  the app's window or tab that it was about)"). The app's window brought
+  forward, or its tab chosen (Terminal's tab, Chrome's), by any means:
+  its notifications are read, the dot goes, Deskbar's and the bell's
+  counts with it.
+
+- **Notifications: an archive** (Ben, 2026-11-18: "after a notification
+  has been faded out / dismissed / cleared let's put it in an archived
+  section in the notifications app and have a way to see the archived
+  ones when needed"). What has gone from the list (faded, dismissed,
+  cleared) is kept in an Archived section of the Notifications app,
+  shown when asked for, searchable as the list is, with a limit on how
+  long and how many.
+
+- **Preferences ▸ Notifications: the colour of the bell's badge** (Ben,
+  2026-11-18: "in prefs -> notifications add the ability to customize
+  the color of the notifications badge in the deskbar tray (the one
+  with the bell)"). One of the look's hues, or the look's own.
+
 - **Deskbar: a spacer or divider among the widgets** (Ben, 2026-11-17:
   "a spacing/divider widget (with plenty of visual customization
   options) for the deskbar widget section for when the user wants to
@@ -162,6 +195,32 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Other people's marks, drawn for every icon set** (Ben, 2026-11-18:
+  "the logos just look kinda weird, especially at the smallest deskbar
+  size … i think they are too angled"; "i still want the angled 3d
+  effect on the others just not so pronounced"; "those app icons also
+  need to be extremely high quality hand-built SVGs for each icon set";
+  "the olo icon was perfect don't change that"). Chrome, Slack,
+  Telegram and GitHub drawn again for classic, Platinum, BeOS, AmigaOS,
+  Aqua and Flat (`tools/dev/markicons`; docs/ICONS.md, "Other people's
+  marks"): the mark itself, on a badge or tile leaning half as much as
+  the set's other standing things, straight on in Flat; Olo's ring
+  untouched. And Slack's tile no longer loses its mark at 40 pixels (a
+  2× screen): a size between two steps shows a drawing's small
+  stand-in (`svg::step`). **To try**: Deskbar's rows on each screen,
+  and each icon set in Preferences ▸ Themes.
+
+- **Token Pool no longer stops answering after an upgrade** (Ben,
+  2026-11-18: "token pool service was stuck and i had to just kill and
+  restart it. please root cause and fix"). Two faults that met: the
+  store's lock file waited for with the store held (a renewal and a
+  request waiting on each other for good), and a new copy taking the
+  keeper's pid for a copy still at work, so every request went under
+  that lock for the rest of its life (HACKING, "Upgrades of the pool
+  itself"). Made to happen in a test first; tried with two real
+  processes. **To try**: nothing to do; it should simply not happen
+  again across upgrades.
 
 - **Flat, AmigaOS and Aqua: three more icon sets, two more themes**
   (Ben, 2026-11-17: "please also generate and add a modern flat icon

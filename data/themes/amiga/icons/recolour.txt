@@ -11,4 +11,4 @@ no shadow
 palette 959595 000000 ffffff 3b67a2 7b7b7b afafaf aa907c ffa997 ff8800 eecc44 4a9a4a 22407a 6b4a2a cc3333 8fb4e8 444444
 
 # Other people's marks, and Olo's own, keep their colours.
-keep olo slack github google-chrome telegram
+keep olo

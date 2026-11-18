@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Google Chrome: its mark, facing forward (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<circle cx="32" cy="32" r="27" fill="#ea4335"/>
+<path fill="#fbbc04" d="M32 19.31L55.38 18.5A27 27 0 0 1 32 59L42.99 38.34A12.69 12.69 0 0 0 32 19.31Z"/>
+<path fill="#34a853" d="M42.99 38.34L32 59A27 27 0 0 1 8.62 18.5L21.01 38.34A12.69 12.69 0 0 0 42.99 38.34Z"/>
+<circle cx="32" cy="32" r="12.69" fill="#ffffff"/>
+<circle cx="32" cy="32" r="10.03" fill="#4285f4"/>
+</svg>

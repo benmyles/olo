@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Google Chrome: its mark, facing forward (BeOS: flat faces on its palette). -->
+<style>.o{paint-order:stroke;stroke:#000000;stroke-width:1.2;stroke-linejoin:round}</style>
+<defs>
+<clipPath id="c1"><circle cx="35" cy="34.5" r="24.5" fill="#000"/></clipPath>
+<clipPath id="c2"><path fill="#000" d="M52.32 17.18L48.12 12.98A24.5 24.5 0 0 0 13.48 47.62L17.68 51.82A24.5 24.5 0 0 0 52.32 17.18Z"/></clipPath>
+</defs>
+<g transform="matrix(1 -0.12 0 1 0 4.25)">
+<path class="o" fill="#993333" d="M52.32 17.18L48.12 12.98A24.5 24.5 0 0 0 13.48 47.62L17.68 51.82A24.5 24.5 0 0 0 52.32 17.18Z"/>
+<g clip-path="url(#c2)"><path fill="#336633" d="M-14.5 -6.03L42.07 50.53L-14.5 107.1L-71.07 50.53Z"/></g>
+<circle cx="35" cy="34.5" r="24.5" fill="#ff3333"/>
+<path fill="#ffcc00" d="M35 22.98L56.22 22.25A24.5 24.5 0 0 1 35 59L44.97 40.26A11.51 11.51 0 0 0 35 22.98Z"/>
+<path fill="#339966" d="M44.97 40.26L35 59A24.5 24.5 0 0 1 13.78 22.25L25.03 40.26A11.51 11.51 0 0 0 44.97 40.26Z"/>
+<circle cx="35" cy="34.5" r="11.51" fill="#ffffff"/>
+<circle cx="35" cy="34.5" r="9.1" fill="#3366ff"/>
+</g>
+</svg>

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Slack: its mark on a white tile, facing forward (Aqua: gel). -->
+<style>.o{paint-order:stroke;stroke:#30465f;stroke-width:1.2;stroke-linejoin:round;stroke-opacity:0.55}</style>
+<defs>
+<radialGradient id="g1" cx="34" cy="60.3" r="24.44" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.46) scale(1 .13)"><stop offset="0" stop-opacity=".32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="c2"><path fill="#000" d="M55.57 13.43A10 10 0 0 1 58.5 20.5V47.5A10 10 0 0 1 48.5 57.5H21.5A10 10 0 0 1 14.43 54.57L10.23 50.37A10 10 0 0 1 7.3 43.3V16.3A10 10 0 0 1 17.3 6.3H44.3A10 10 0 0 1 51.37 9.23Z"/></clipPath>
+<linearGradient id="g3" x1="7.3" y1="53.3" x2="54.3" y2="6.3" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#788390"/><stop offset="0.44" stop-color="#a1a9b2"/><stop offset="0.53" stop-color="#e5e7e9"/><stop offset="1" stop-color="#f0f2f3"/></linearGradient>
+<linearGradient id="g4" x1="11.5" y1="10.5" x2="58.5" y2="57.5" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f7f7f8"/><stop offset="1" stop-color="#dcdfe2"/></linearGradient>
+<clipPath id="c5"><path fill="#000" d="M21.5 10.5H48.5A10 10 0 0 1 58.5 20.5V47.5A10 10 0 0 1 48.5 57.5H21.5A10 10 0 0 1 11.5 47.5V20.5A10 10 0 0 1 21.5 10.5Z"/></clipPath>
+<linearGradient id="g6" x1="35" y1="10.5" x2="35" y2="33.53" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff" stop-opacity="0.82"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.08"/></linearGradient>
+<linearGradient id="g7" x1="35" y1="38.7" x2="35" y2="57.5" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff" stop-opacity="0"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.34"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="34" cy="60.3" rx="24.44" ry="3.42" fill="url(#g1)"/>
+<g transform="matrix(1 -0.12 0 1 0 4.25)">
+<path class="o" fill="#a1a9b2" d="M55.57 13.43A10 10 0 0 1 58.5 20.5V47.5A10 10 0 0 1 48.5 57.5H21.5A10 10 0 0 1 14.43 54.57L10.23 50.37A10 10 0 0 1 7.3 43.3V16.3A10 10 0 0 1 17.3 6.3H44.3A10 10 0 0 1 51.37 9.23Z"/>
+<g clip-path="url(#c2)"><rect x="0" y="0" width="64" height="64" fill="url(#g3)"/></g>
+<path fill="url(#g4)" d="M21.5 10.5H48.5A10 10 0 0 1 58.5 20.5V47.5A10 10 0 0 1 48.5 57.5H21.5A10 10 0 0 1 11.5 47.5V20.5A10 10 0 0 1 21.5 10.5Z"/>
+<path class="from48" fill="none" stroke="#fff" stroke-opacity=".8" stroke-width=".6" stroke-linecap="round" d="M11.9 47.5V20.5A9.6 9.6 0 0 1 21.5 10.9H48.5"/>
+<g clip-path="url(#c5)"><rect x="11.5" y="34" width="47" height="23.5" fill="url(#g7)"/><rect x="16.2" y="12.14" width="37.6" height="20.21" rx="7.05" fill="url(#g6)"/></g>
+<g class="from48" transform="translate(19.5 18.5) scale(0.25)"><path fill="#3acbf6" d="M12.9 32.3h32.3a12.9 12.9 0 0 1 0 25.8h-32.3a12.9 12.9 0 0 1 0-25.8zM45.2 25.8h-12.9v-12.9a12.9 12.9 0 1 1 12.9 12.9z"/><path fill="#2cc283" d="M64.7 12.9a12.9 12.9 0 0 1 25.8 0v32.3a12.9 12.9 0 0 1-25.8 0zM97 45.2v-12.9h12.9a12.9 12.9 0 1 1-12.9 12.9z"/><path fill="#f2b832" d="M77.6 64.7h32.3a12.9 12.9 0 0 1 0 25.8h-32.3a12.9 12.9 0 0 1 0-25.8zM77.6 97h12.9v12.9a12.9 12.9 0 1 1-12.9-12.9z"/><path fill="#e8215e" d="M32.3 77.6a12.9 12.9 0 0 1 25.8 0v32.3a12.9 12.9 0 0 1-25.8 0zM25.8 77.6v12.9h-12.9a12.9 12.9 0 1 1 12.9-12.9z"/></g>
+<g class="upto32" transform="translate(17.5 16.5) scale(0.29)"><path fill="#3acbf6" d="M12.9 32.3h32.3a12.9 12.9 0 0 1 0 25.8h-32.3a12.9 12.9 0 0 1 0-25.8zM45.2 25.8h-12.9v-12.9a12.9 12.9 0 1 1 12.9 12.9z"/><path fill="#2cc283" d="M64.7 12.9a12.9 12.9 0 0 1 25.8 0v32.3a12.9 12.9 0 0 1-25.8 0zM97 45.2v-12.9h12.9a12.9 12.9 0 1 1-12.9 12.9z"/><path fill="#f2b832" d="M77.6 64.7h32.3a12.9 12.9 0 0 1 0 25.8h-32.3a12.9 12.9 0 0 1 0-25.8zM77.6 97h12.9v12.9a12.9 12.9 0 1 1-12.9-12.9z"/><path fill="#e8215e" d="M32.3 77.6a12.9 12.9 0 0 1 25.8 0v32.3a12.9 12.9 0 0 1-25.8 0zM25.8 77.6v12.9h-12.9a12.9 12.9 0 1 1 12.9-12.9z"/></g>
+</g>
+</svg>

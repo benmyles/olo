@@ -1,20 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-<!-- Telegram: a thick badge standing, a steel rim, Telegram's paper plane white on blue. -->
-<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<!-- Telegram: its paper plane on its blue, facing forward (the classic set). -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}</style>
 <defs>
-<radialGradient id="shadow" cx="33" cy="60" r="23" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.2) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
-<linearGradient id="rimg" x1="-16" y1="-18" x2="14" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fbfbfd"/><stop offset="0.5" stop-color="#c0c3cc"/><stop offset="1" stop-color="#858994"/></linearGradient>
-<linearGradient id="side" x1="-28" y1="-20" x2="-20" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#9a9ea9"/><stop offset="1" stop-color="#5a5d68"/></linearGradient>
-<linearGradient id="face" x1="-14" y1="-16" x2="12" y2="18" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#5cc0ff"/><stop offset="0.5" stop-color="#2a9bf0"/><stop offset="1" stop-color="#1478d0"/></linearGradient>
+<clipPath id="c1"><circle cx="35" cy="34.5" r="24.5" fill="#000"/></clipPath>
+<radialGradient id="g2" cx="34" cy="60.3" r="23.03" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.46) scale(1 .13)"><stop offset="0" stop-opacity=".32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="c3"><path fill="#000" d="M52.32 17.18L48.12 12.98A24.5 24.5 0 0 0 13.48 47.62L17.68 51.82A24.5 24.5 0 0 0 52.32 17.18Z"/></clipPath>
+<linearGradient id="g4" x1="6.3" y1="45" x2="43.05" y2="5.8" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#000000" stop-opacity="0.26"/><stop offset="0.55" stop-color="#000000" stop-opacity="0"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.2"/></linearGradient>
+<linearGradient id="g5" x1="17.36" y1="16.86" x2="52.64" y2="52.14" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff" stop-opacity="0.3"/><stop offset="0.45" stop-color="#ffffff" stop-opacity="0"/><stop offset="0.55" stop-color="#000000" stop-opacity="0"/><stop offset="1" stop-color="#000000" stop-opacity="0.22"/></linearGradient>
 </defs>
-<ellipse class="from48" cx="33" cy="60" rx="23" ry="3.4" fill="url(#shadow)"/>
-<g transform="matrix(1 -.25 0 1 35.5 34.5)">
-<path class="o" fill="url(#side)" d="M14.4 -19.2A24 24 0 0 1 -14.4 19.2L-19.4 15.45A24 24 0 0 1 9.4 -22.95Z"/>
-<circle cx="0" cy="0" r="24" fill="url(#rimg)"/>
-<path class="h from48" stroke-opacity="0.8" stroke-width=".55" d="M-22.56 4.8A23.4 23.4 0 0 1 6 -22.32"/>
-
-<circle r="20.6" fill="#1b1b1f" fill-opacity=".7"/><circle r="19.8" fill="url(#face)"/>
-<path fill="#fff" stroke="#0b5aa8" stroke-opacity=".7" stroke-width=".6" stroke-linejoin="round" d="M-13 .6L13.4-10.4L8.4 12.4L1.4 6.6L-2.8 10.6L-3.6 4.4Z"/>
-<path class="from32" fill="#c9d6e6" d="M-3.6 4.4L9-6.6L1.4 6.6L-2.8 10.6Z"/>
+<ellipse class="from48" cx="34" cy="60.3" rx="23.03" ry="3.22" fill="url(#g2)"/>
+<g transform="matrix(1 -0.12 0 1 0 4.25)">
+<path class="o" fill="#19678f" d="M52.32 17.18L48.12 12.98A24.5 24.5 0 0 0 13.48 47.62L17.68 51.82A24.5 24.5 0 0 0 52.32 17.18Z"/>
+<g clip-path="url(#c3)"><rect x="0" y="0" width="64" height="64" fill="url(#g4)"/></g>
+<circle cx="35" cy="34.5" r="24.5" fill="#2aabee"/>
+<g class="from48" transform="translate(12.13 9.39) scale(0.2)"><path fill="#ffffff" d="M54.3 118.8c35-15.2 58.3-25.3 70-30.2 33.3-13.9 40.3-16.3 44.8-16.4 1 0 3.2.2 4.7 1.4 1.2 1 1.5 2.3 1.7 3.3s.4 3.1.2 4.7c-1.8 19-9.6 65.1-13.6 86.3-1.7 9-5 12-8.2 12.3-7 .6-12.3-4.6-19-9-10.6-6.9-16.5-11.2-26.8-18-11.9-7.8-4.2-12.1 2.6-19.1 1.8-1.8 32.5-29.8 33.1-32.3.1-.3.1-1.5-.6-2.1-.7-.6-1.7-.4-2.5-.2-1.1.2-17.9 11.4-50.6 33.5-4.8 3.3-9.1 4.9-13 4.8-4.3-.1-12.5-2.4-18.7-4.4-7.5-2.4-13.5-3.7-13-7.9.3-2.2 3.3-4.4 9-6.7z"/></g>
+<g class="upto32" transform="translate(7.56 4.37) scale(0.24)"><path fill="#ffffff" d="M54.3 118.8c35-15.2 58.3-25.3 70-30.2 33.3-13.9 40.3-16.3 44.8-16.4 1 0 3.2.2 4.7 1.4 1.2 1 1.5 2.3 1.7 3.3s.4 3.1.2 4.7c-1.8 19-9.6 65.1-13.6 86.3-1.7 9-5 12-8.2 12.3-7 .6-12.3-4.6-19-9-10.6-6.9-16.5-11.2-26.8-18-11.9-7.8-4.2-12.1 2.6-19.1 1.8-1.8 32.5-29.8 33.1-32.3.1-.3.1-1.5-.6-2.1-.7-.6-1.7-.4-2.5-.2-1.1.2-17.9 11.4-50.6 33.5-4.8 3.3-9.1 4.9-13 4.8-4.3-.1-12.5-2.4-18.7-4.4-7.5-2.4-13.5-3.7-13-7.9.3-2.2 3.3-4.4 9-6.7z"/></g>
+<g clip-path="url(#c1)"><rect x="9.5" y="9" width="51" height="51" fill="url(#g5)"/></g>
+<path class="from48" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width=".6" stroke-linecap="round" d="M11.33 37.83A23.9 23.9 0 0 1 39.97 11.12"/>
 </g>
 </svg>

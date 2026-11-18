@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Google Chrome: its mark, facing forward (Platinum: its ink and lilac greys). -->
+<style>.o{paint-order:stroke;stroke:#0b0b16;stroke-width:1.2;stroke-linejoin:round}</style>
+<defs>
+<clipPath id="c1"><circle cx="35" cy="34.5" r="24.5" fill="#000"/></clipPath>
+<radialGradient id="g2" cx="34" cy="60.3" r="23.03" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.46) scale(1 .13)"><stop offset="0" stop-opacity=".32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="c3"><path fill="#000" d="M52.32 17.18L48.12 12.98A24.5 24.5 0 0 0 13.48 47.62L17.68 51.82A24.5 24.5 0 0 0 52.32 17.18Z"/></clipPath>
+<linearGradient id="g4" x1="6.3" y1="45" x2="43.05" y2="5.8" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#000000" stop-opacity="0.26"/><stop offset="0.55" stop-color="#000000" stop-opacity="0"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.2"/></linearGradient>
+<linearGradient id="g5" x1="17.36" y1="16.86" x2="52.64" y2="52.14" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff" stop-opacity="0.3"/><stop offset="0.45" stop-color="#ffffff" stop-opacity="0"/><stop offset="0.55" stop-color="#000000" stop-opacity="0"/><stop offset="1" stop-color="#000000" stop-opacity="0.22"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="34" cy="60.3" rx="23.03" ry="3.22" fill="url(#g2)"/>
+<g transform="matrix(1 -0.12 0 1 0 4.25)">
+<path class="o" fill="#8b3932" d="M52.32 17.18L48.12 12.98A24.5 24.5 0 0 0 13.48 47.62L17.68 51.82A24.5 24.5 0 0 0 52.32 17.18Z"/>
+<g clip-path="url(#c3)"><path fill="#2b6d3e" d="M-14.5 -6.03L42.07 50.53L-14.5 107.1L-71.07 50.53Z"/><rect x="0" y="0" width="64" height="64" fill="url(#g4)"/></g>
+<circle cx="35" cy="34.5" r="24.5" fill="#e25347"/>
+<path fill="#efb91a" d="M35 22.98L56.22 22.25A24.5 24.5 0 0 1 35 59L44.97 40.26A11.51 11.51 0 0 0 35 22.98Z"/>
+<path fill="#3caa5a" d="M44.97 40.26L35 59A24.5 24.5 0 0 1 13.78 22.25L25.03 40.26A11.51 11.51 0 0 0 44.97 40.26Z"/>
+<circle cx="35" cy="34.5" r="11.51" fill="#ffffff"/>
+<circle cx="35" cy="34.5" r="9.1" fill="#548dec"/>
+<g clip-path="url(#c1)"><rect x="9.5" y="9" width="51" height="51" fill="url(#g5)"/></g>
+<path class="from48" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width=".6" stroke-linecap="round" d="M11.33 37.83A23.9 23.9 0 0 1 39.97 11.12"/>
+</g>
+</svg>

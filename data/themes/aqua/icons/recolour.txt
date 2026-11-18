@@ -13,4 +13,4 @@ turn 196-250 to 212 1.1 +0.04
 turn 0-360 by 0 1.04 +0.03
 
 # Other people's marks, and Olo's own, keep their colours.
-keep olo slack github google-chrome telegram
+keep olo

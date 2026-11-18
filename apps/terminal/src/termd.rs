@@ -974,19 +974,6 @@ fn ring_cells(pixels: &[[u8; 4]], width: usize, beside: &[String]) -> String {
     out
 }
 
-/// What this computer is, in a line: its name, its system and its
-/// kernel ("fedora · Fedora Linux 45 · Linux 7.2").
-fn about_this_computer() -> String {
-    let read = |p: &str| std::fs::read_to_string(p).unwrap_or_default();
-    let host = read("/proc/sys/kernel/hostname").trim().to_owned();
-    let os = read("/etc/os-release");
-    let field = |key: &str| os.lines().find_map(|l| l.strip_prefix(key)?.strip_prefix('=')).map(|v| v.trim_matches('"').to_owned());
-    let system = [field("NAME"), field("VERSION_ID")].into_iter().flatten().collect::<Vec<_>>().join(" ");
-    let kernel = read("/proc/sys/kernel/osrelease");
-    let kernel = kernel.trim().split('-').next().unwrap_or_default().split('.').take(2).collect::<Vec<_>>().join(".");
-    [host, system, if kernel.is_empty() { String::new() } else { format!("Linux {kernel}") }].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ")
-}
-
 #[cfg(test)]
 mod welcome_tests {
     use super::ring_cells;

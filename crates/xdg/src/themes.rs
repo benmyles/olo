@@ -192,6 +192,24 @@ mod tests {
         assert_eq!(rules.apply("olo", &ring), ring);
     }
 
+    /// Other people's marks are drawn for each set (Ben, 2026-11-18, having
+    /// changed to Flat: "it didn't change the telegram, slack, chrome
+    /// icons? those app icons also need to be extremely high quality
+    /// hand-built SVGs for each icon set"); the brand's own ring is the one
+    /// drawing everywhere ("the olo icon was perfect don't change that").
+    #[test]
+    fn each_set_draws_other_peoples_marks_itself() {
+        let data = repo_data();
+        for t in ICON_SETS.iter().filter(|t| t.id != CLASSIC) {
+            for name in ["google-chrome", "slack", "telegram", "github"] {
+                let found = crate::own_icon(t.id, name).unwrap_or_else(|| panic!("{}: no {name}", t.id));
+                assert!(is_its_own(t.id, &found), "{}: {name} is {found:?}, not the set's own", t.id);
+            }
+            let ring = crate::own_icon(t.id, "olo").unwrap();
+            assert_eq!(ring, data.join("icons/svg/olo.svg").canonicalize().unwrap_or(ring.clone()), "{}: a ring of its own", t.id);
+        }
+    }
+
     #[test]
     fn setting_an_icon_set_draws_in_it() {
         // Each in turn, whichever came before (see `index`).

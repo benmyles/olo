@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Slack: its mark on a white tile, facing forward (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="6" y="6" width="52" height="52" rx="13" fill="#ffffff" stroke="#c3ccd9" stroke-width="2"/>
+<g class="from48" transform="translate(15.5 15.5) scale(0.27)"><path fill="#36c5f0" d="M12.9 32.3h32.3a12.9 12.9 0 0 1 0 25.8h-32.3a12.9 12.9 0 0 1 0-25.8zM45.2 25.8h-12.9v-12.9a12.9 12.9 0 1 1 12.9 12.9z"/><path fill="#2eb67d" d="M64.7 12.9a12.9 12.9 0 0 1 25.8 0v32.3a12.9 12.9 0 0 1-25.8 0zM97 45.2v-12.9h12.9a12.9 12.9 0 1 1-12.9 12.9z"/><path fill="#ecb22e" d="M77.6 64.7h32.3a12.9 12.9 0 0 1 0 25.8h-32.3a12.9 12.9 0 0 1 0-25.8zM77.6 97h12.9v12.9a12.9 12.9 0 1 1-12.9-12.9z"/><path fill="#e01e5a" d="M32.3 77.6a12.9 12.9 0 0 1 25.8 0v32.3a12.9 12.9 0 0 1-25.8 0zM25.8 77.6v12.9h-12.9a12.9 12.9 0 1 1 12.9-12.9z"/></g>
+<g class="upto32" transform="translate(13.5 13.5) scale(0.3)"><path fill="#36c5f0" d="M12.9 32.3h32.3a12.9 12.9 0 0 1 0 25.8h-32.3a12.9 12.9 0 0 1 0-25.8zM45.2 25.8h-12.9v-12.9a12.9 12.9 0 1 1 12.9 12.9z"/><path fill="#2eb67d" d="M64.7 12.9a12.9 12.9 0 0 1 25.8 0v32.3a12.9 12.9 0 0 1-25.8 0zM97 45.2v-12.9h12.9a12.9 12.9 0 1 1-12.9 12.9z"/><path fill="#ecb22e" d="M77.6 64.7h32.3a12.9 12.9 0 0 1 0 25.8h-32.3a12.9 12.9 0 0 1 0-25.8zM77.6 97h12.9v12.9a12.9 12.9 0 1 1-12.9-12.9z"/><path fill="#e01e5a" d="M32.3 77.6a12.9 12.9 0 0 1 25.8 0v32.3a12.9 12.9 0 0 1-25.8 0zM25.8 77.6v12.9h-12.9a12.9 12.9 0 1 1 12.9-12.9z"/></g>
+</svg>
