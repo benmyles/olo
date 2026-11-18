@@ -57,7 +57,11 @@ parts on what you touch):
   (tools/dev/tsession, run with /usr/bin/python3; a name beginning
   "codex-"), and stop it when you're done. Never run a GUI program from
   your shell. Never play sound. Reading the person's session is fine
-  (its logs: target/release/olo-logs --print …; read-only IPC).
+  (its logs: target/release/olo-logs --print …; read-only IPC; /proc).
+  Don't attach to its running programs: no perf record, breakpoints,
+  ptrace, gdb, strace or bpftrace on their processes (a stopped or
+  slowed window server is the person's desktop stopped). Reproduce in
+  your own session and trace that.
 - Scratch files go in $dir. Kill only processes you started, by PID
   (never pkill -f / pgrep -f patterns).
 - Don't send the person's name, email or files to any outside service.

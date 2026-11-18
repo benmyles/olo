@@ -354,6 +354,67 @@ impl Session {
         Ok(got)
     }
 
+    /// The account's mailboxes that can be opened: each one's name as
+    /// the server writes it (for [`Session::look_in`]) and what it says
+    /// of it (`\\All`, `\\Archive`, `\\Sent`, `\\Trash`, `\\Junk`,
+    /// `\\Drafts`, where the server marks them).
+    pub fn mailboxes(&mut self) -> Result<Vec<(String, Vec<String>)>, String> {
+        let listed = self.command("LIST \"\" \"*\"")?;
+        let mut out = Vec::new();
+        for l in listed {
+            let Some(rest) = l.text.strip_prefix("* LIST (") else { continue };
+            let Some((flags, rest)) = rest.split_once(')') else { continue };
+            let flags: Vec<String> = flags.split_whitespace().map(str::to_owned).collect();
+            if flags.iter().any(|f| f.eq_ignore_ascii_case("\\Noselect") || f.eq_ignore_ascii_case("\\NonExistent")) {
+                continue;
+            }
+            // (`"/" "Name"`, `"/" Name`, or the name as a literal.)
+            let rest = rest.trim_start();
+            let after_delimiter = match rest.strip_prefix('"') {
+                Some(r) => r.split_once('"').map_or("", |(_, r)| r),
+                None => rest.split_once(' ').map_or("", |(_, r)| r),
+            }
+            .trim();
+            let name = if let Some(raw) = l.literals.first() {
+                String::from_utf8_lossy(raw).into_owned()
+            } else if let Some(q) = after_delimiter.strip_prefix('"') {
+                q.strip_suffix('"').unwrap_or(q).replace("\\\"", "\"").replace("\\\\", "\\")
+            } else {
+                after_delimiter.to_owned()
+            };
+            if !name.is_empty() {
+                out.push((name, flags));
+            }
+        }
+        Ok(out)
+    }
+
+    /// Look in `mailbox` from here on, read only (nothing is marked as
+    /// read, nothing can be changed): how many messages it has.
+    pub fn look_in(&mut self, mailbox: &str) -> Result<u32, String> {
+        let answers = self.command(&format!("EXAMINE {}", quoted(mailbox)))?;
+        self.exists = answers.iter().find_map(|a| a.text.strip_prefix("* ").and_then(|r| r.strip_suffix(" EXISTS")).and_then(|n| n.trim().parse().ok())).unwrap_or(0);
+        self.uid_next = answers.iter().find_map(|a| bracket_number(&a.text, "UIDNEXT")).unwrap_or(0);
+        Ok(self.exists)
+    }
+
+    /// The messages of the mailbox looked in that match `criteria`
+    /// (IMAP's own search keys: `SUBJECT "code" SINCE 1-Jan-2026`), by
+    /// UID, oldest first.
+    pub fn search(&mut self, criteria: &str) -> Result<Vec<u32>, String> {
+        let found = self.command(&format!("UID SEARCH {criteria}"))?;
+        let mut uids: Vec<u32> = found.iter().filter_map(|a| a.text.strip_prefix("* SEARCH")).flat_map(|r| r.split_whitespace().filter_map(|n| n.parse::<u32>().ok())).collect();
+        uids.sort_unstable();
+        uids.dedup();
+        Ok(uids)
+    }
+
+    /// Messages `uids` of the mailbox looked in, read (each up to 64 KB),
+    /// oldest first.
+    pub fn read(&mut self, uids: &[u32]) -> Result<Vec<(u32, Message)>, String> {
+        self.fetch(uids)
+    }
+
     /// Messages `uids`, read.
     fn fetch(&mut self, uids: &[u32]) -> Result<Vec<(u32, Message)>, String> {
         if uids.is_empty() {

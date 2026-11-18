@@ -138,19 +138,27 @@ something nobody here has is in "Blocked", with what it waits for.
   reliably. you can use my olo integration to read my email and look at
   the format it used. also search through my email for all verification
   codes in my archive etc to make sure that what you come up with covers
-  everything"). To do: read that message as it arrived (what the code
-  looks like, where: the text, the link), then every message with a
-  code in the archive, through Olo's own mail integration; make the
-  finder cover them all, with each format a test (the texts made up,
-  never Ben's mail in the repository).
+  everything"). **Looked into** (`cargo run --release -p olo-phone
+  --example mail_codes`: a year of the two accounts' mail, read only):
+  the 254 messages that carry a code all have it found; what wasn't
+  found carries none. Claude's mail ("Your secure link to Claude is
+  here") has no code: it is a button, its address only in the
+  message's HTML, which the mail reader dropped. **To do** (Ben: "the
+  ones that send links -- support that too by having olo passwords
+  extension offer to navigate to the link received"): a message's
+  links kept (`olo_mail::Message`), a sign-in link's message told
+  (`codes::find_link`), and the extension offering it on the page that
+  waits; and codes looked for beyond the inbox's newest five (a rule
+  that files a sender's mail elsewhere hides it).
 - **Go through Olo's logs for other warnings and errors and fix what
   should be fixed** (Ben, 2026-11-18). A first pass done (HACKING.md,
   "What a day's logs showed"): Notifications' history kept apart on
   agent screens, the saver's sibling files, widgets' providers ending
   with Deskbar, the session's language, a program that didn't
-  reconnect, a surface's format, a hidden popup message. **Left**: the
-  "non-existent source" warnings (a Codex helper is on it), and
-  another pass once these are in Ben's session a day.
+  reconnect, a surface's format, a hidden popup message, the
+  "non-existent source" warnings (a display's timer cancelled in the
+  round it came due). **Left**: another pass once these are in Ben's
+  session a day.
 - **Deskbar: other displays' apps collapsed by default, as an option**
   (Ben, 2026-11-18: "add an option in deskbar prefs (disabled by
   default) to default to showing other display's apps collapsed in the

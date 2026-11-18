@@ -718,8 +718,19 @@ message). Each was a fault, not a line to hide:
   app_server by the line number it was logged at, until the number
   changed. Said at `debug` where it's said, in Olo's Smithay; the
   filter is gone. A message is never hidden by where it is in a file.
-- Left, and why: "Received an event for non-existent source" (255;
-  not short IPC connections, tried; being looked into); "slow frame"
+- *"Received an event for non-existent source"* (calloop's, 255 a
+  day): a resting display's timer for its next look (`SurfaceData::
+  retest`) was removed by `wake`, or by a look made sooner, in the very
+  round of the loop in which it had come due: calloop gathers a
+  round's ready descriptors and due timers together, a callback
+  earlier in the round woke the display, and the timer's slot was
+  empty when its turn came. Harmless, and Olo's doing: a look not yet
+  due is removed as before; one already due is disarmed and its slot
+  freed once the round is over (`cancel_look`). Found by the
+  `olo-debug-help` helper (the cancelled token matched to the warning's,
+  122 µs apart; three mock displays with timers due in a round: one to
+  three warnings before, none after).
+- Left, and why: "slow frame"
   (the frame timer's own notes); "Failed to destroy old mode property
   blob" and "Unable to become drm master" (headless and mode changes;
   no effect seen); one pointer motion 266 ms late behind

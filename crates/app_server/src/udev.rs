@@ -660,7 +660,7 @@ impl Backend for UdevData {
                 }
                 s.asleep = false;
                 if let Some(t) = s.retest.take() {
-                    self.loop_handle.remove(t);
+                    cancel_look(&self.loop_handle, t, now);
                 }
                 // A resting display has no frame on its way: it looks now,
                 // but no sooner than a frame after its last look (a storm
@@ -1815,7 +1815,7 @@ struct SurfaceData {
     asleep: bool,
     /// The timer for its next look when no frame is on its way (resting,
     /// woken, or after a frame with nothing new); a look sooner cancels it.
-    retest: Option<RegistrationToken>,
+    retest: Option<(RegistrationToken, Instant)>,
     /// When a frame last couldn't be put on it and its card was looked
     /// at again for that (`frame_finish`): not again for a while, however
     /// many frames fail.
@@ -1852,7 +1852,8 @@ fn schedule_look(
     crtc: crtc::Handle,
     timer: Timer,
     target: Option<Time<Monotonic>>,
-) -> Option<RegistrationToken> {
+) -> Option<(RegistrationToken, Instant)> {
+    let due = timer.current_deadline()?;
     handle
         .insert_source(timer, move |_, _, data| {
             // (Fired: nothing to cancel.)
@@ -1864,6 +1865,17 @@ fn schedule_look(
             TimeoutAction::Drop
         })
         .ok()
+        .map(|token| (token, due))
+}
+
+fn cancel_look(handle: &smithay::reexports::calloop::LoopHandle<'static, AnvilState<UdevData>>, (token, due): (RegistrationToken, Instant), now: Instant) {
+    if due > now {
+        handle.remove(token);
+    } else if handle.disable(&token).is_ok() {
+        // Poll may already have collected this timeout. Disarm it now and
+        // release its slot after dispatch has consumed the ready events.
+        handle.insert_idle(move |state| state.handle.remove(token));
+    }
 }
 
 impl Drop for SurfaceData {
@@ -2927,10 +2939,11 @@ impl AnvilState<UdevData> {
             return;
         };
         // Looking now: a look due later isn't wanted.
+        let now = Instant::now();
         if let Some(t) = surface.retest.take() {
-            self.handle.remove(t);
+            cancel_look(&self.handle, t, now);
         }
-        surface.last_look = Some(Instant::now());
+        surface.last_look = Some(now);
         // (Resting till now, and not woken: its every-so-often look.)
         let was_asleep = std::mem::replace(&mut surface.asleep, false);
         let mut resting = false;
