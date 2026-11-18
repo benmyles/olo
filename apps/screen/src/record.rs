@@ -371,9 +371,23 @@ pub fn prune(dir: &Path, cutoff: u64) {
     }
 }
 
-/// Record screen `name` until it is gone.
+/// Whether a byte waits in `signals` (`restore::upgrade_signal`): the
+/// program's file was replaced. Never waits.
+fn asked(signals: &std::fs::File) -> bool {
+    use std::os::fd::AsRawFd as _;
+    let mut fd = libc::pollfd { fd: signals.as_raw_fd(), events: libc::POLLIN, revents: 0 };
+    // SAFETY: one descriptor of ours, no waiting.
+    unsafe { libc::poll(&mut fd, 1, 0) > 0 && fd.revents & libc::POLLIN != 0 }
+}
+
+/// Record screen `name` until it is gone. One recorder a screen: a
+/// second (two agents acting at once on a screen that had none) finds
+/// the first's lock and leaves.
 pub fn run(name: &str) -> Result<(), String> {
     let screen = screens::get(name)?;
+    // (Held until this process ends or becomes its new version, which
+    // takes it again itself.)
+    let Some(_lock) = screens::take_recorder_lock(name) else { return Ok(()) };
     let picture = screens::dir().join("views").join(format!("record-{name}.rgba"));
     let _ = std::fs::create_dir_all(picture.parent().unwrap());
     let actions = history::dir(name).join("actions.jsonl");
@@ -382,10 +396,24 @@ pub fn run(name: &str) -> Result<(), String> {
     history::prune(max_age);
     let mut w = Writer { dir: history::dir(name), max_bytes, file: None, last: None, last_key: None };
     let mut failures = 0;
+    // When an upgrade replaces this program's file (olo-session's SIGURG),
+    // it becomes the new version between two frames: what it wrote is
+    // whole on disk, and the new version starts a segment of its own.
+    // (It ignored that, so the session stopped it 90 s after every
+    // upgrade as a program still on the old version, and nothing starts
+    // a running screen's recorder again: five screens' frames weren't
+    // kept from an upgrade on. Ben, 2026-11-18.)
+    let mut upgrade = olo_kit::restore::upgrade_signal();
     loop {
         let began = Instant::now();
         if !screen.alive() {
             break;
+        }
+        if upgrade.as_ref().is_some_and(asked) {
+            let e = olo_kit::restore::exec_new_version();
+            tracing::warn!("recording {name}: couldn't become the new version ({e}); going on as this one");
+            // (Asked once: not tried again at every frame.)
+            upgrade = None;
         }
         match screen.picture(&picture, None, true, olo_protocol::ImageFormat::Rgba).and_then(|()| std::fs::read(&picture).map_err(|e| e.to_string())) {
             Ok(bytes) => {

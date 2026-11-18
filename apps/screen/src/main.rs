@@ -210,6 +210,10 @@ fn cli(args: &[String]) -> Option<Result<(), String>> {
             let args = if named.is_some() { rest[1..].to_vec() } else { rest.to_vec() };
             let action = history::Action { at, ms: history::now_ms().saturating_sub(at), kind: command, args, result: answer, error: result.as_ref().err().cloned() };
             history::record(&name, &action);
+            // (Its frames kept too, if what kept them has gone.)
+            if !matches!(action.kind.as_str(), "start" | "stop" | "delete" | "archive") {
+                screens::ensure_recorder(&name);
+            }
         }
     }
     Some(result)

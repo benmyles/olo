@@ -54,6 +54,19 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **A window's tab drawn at the wrong size while it's dragged between
+  displays** (Ben, 2026-11-18, with a picture of Olo Doctor's tab twice
+  its size over its window, part way from one display to another: "when
+  dragging a window from one display to another with different
+  resolution/dpi the title bar doesn't render right when mid drag"). A
+  bug: app_server's decorator draws the tab for one display's scale and
+  it's shown at the other's while the window is on both. Find which
+  scale the tab is drawn at and which it's composited at for a window
+  across two displays (and for the frame, the borders, the shadow), fix
+  it so each display shows it at its own scale, and check it across
+  1×/1.5×/2× pairs in a two-screen test session
+  (`tsession start NAME 2560x1600,1920x1080`), mid-drag.
+
 - **Find what removes dependency build units from `target/release`**
   (2026-11-18: a workspace build failed to link because about 1,040
   unit folders vanished while it ran; docs/AGENT-NOTES.md, "Dependency
@@ -144,6 +157,32 @@ something nobody here has is in "Blocked", with what it waits for.
   are. Olo's own: the palette, an agents' API, in-place reload, native
   in Rust.
 
+- **Windows snap into place as they're dragged** (Ben, 2026-11-18: "add
+  support for window "snapping" when dragging so that e.g. if i drag to
+  different areas of the screen it takes that tile location while
+  dragging but isn't "saved" until i let go, e.g. like if i drag to one
+  of the corners it shows it in that corner, if i drag to the top half
+  in the center area that'd be top half, very top of the screen anywhere
+  should be full screen, over another window should take its place. make
+  it intuitive, look at how other operating systems handle it. windows
+  should smoothly animate when they move not jarringly just redraw
+  somewhere else. also, when dragging, show each hotspot as a
+  semi-transparent overlay with a letter in each. the user can drag to
+  that hotspot and let go, or they can just press the letter and it'll
+  be like they dragged it there."). In app_server, with the tiling it
+  has: while a window is dragged, each place it can snap to shown as a
+  see-through overlay with its letter (halves, corners, the top half in
+  the middle of the top, the whole screen along the very top, another
+  window's place over that window); the window takes the place the
+  pointer is in at once, as a preview, and keeps it only when let go
+  (dragged out again, or Escape, it's as it was); a letter pressed is
+  the same as dropping it there. Every such move animated (the window
+  glides and resizes; nothing jumps), on the display thread's clock,
+  measured against the frame budget. First a study of how Windows 11's
+  Snap Layouts, macOS Sequoia's tiling, GNOME, KDE's and Rectangle and
+  FancyZones do it, and what BeOS/Haiku's Stack and Tile did; then the
+  design; agents drive it by command as people do by hand.
+
 - **Last, once everything above that isn't blocked is done: the website,
   the README and the docs refreshed, and a new GitHub release** (Ben,
   2026-11-17: "when all the other todos that aren't blocked are
@@ -158,6 +197,39 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Olo Doctor's "still running an older version", after an upgrade**
+  (Ben, 2026-11-18, of "sudo (1567566), olo-screen (2156913) … each runs
+  a program file an upgrade has since replaced. Quit Them": "is that
+  because they didn't upgrade properly or they are just in a graceful
+  handover type state and should be left alone? i want to make sure that
+  (a) we don't have an upgrade bug, and (b) it's not offering to
+  terminate legit processes that should continue post upgrade"). Both
+  were so. (b) `sudo` was olo-sudo running a script an agent had started
+  from its shell hours before: a command, which ends by itself and which
+  nothing would start again. olo-session knew to leave such a process
+  (started by another program: "left alone (started by bash…)" in its
+  log); Olo Doctor didn't have the rule, and offered to quit it. Now the
+  rule is one function both go by (`olo_system::procs::
+  started_by_another`), and Doctor says such commands among what's fine,
+  with who started each. (a) The five `olo-screen` were each a running
+  Agent Screen's frame recorder (`olo-screen record NAME`, which keeps
+  the screen's history of frames): it ignored the upgrade's signal, so
+  the session stopped it 90 s after as "still the old version", and
+  nothing starts a running screen's recorder again: after any upgrade,
+  running screens' frames were no longer kept. Now the recorder becomes
+  the new version in place between two frames (the same process, a new
+  segment), and a running screen with no recorder is given one at the
+  agent's next action on it (one a screen, by a lock it holds). Tried
+  on a screen of the agent's own in a runtime folder apart: replaced
+  and signalled, it was the new version a second later and went on
+  recording; stopped by hand, two actions at once started exactly one;
+  it ended with its screen. **For Ben**: after the next upgrade, the
+  screens running now (cx-1 … cx-5, qa-nocrm) get their recorders back
+  at their agents' next action; their frames between 11:39 today and
+  then weren't kept. Doctor's finding goes once this build is installed
+  (the script it named is the agent's watch for the build-units item
+  above, still running on purpose).
 
 - **The embedded controller's event storm: Olo says so, and can keep
   the keys working** (Ben, 2026-11-17, of the two hours his brightness

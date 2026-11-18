@@ -14,6 +14,37 @@ fn read(path: impl AsRef<Path>) -> String {
     std::fs::read_to_string(path).unwrap_or_default()
 }
 
+/// The program that started `pid`, if it isn't one of Olo's (nor the
+/// session's service manager, nor init, which adopt what's started
+/// detached): a coding agent running an MCP server of ours, a browser
+/// its messaging host, a shell a command (`olo-sudo` running someone's
+/// script, an agent's `olo-screen wait`). Such a process isn't the
+/// session's: the session didn't start it and won't start it again, it
+/// ends with what it's doing, and stopping it breaks what that program
+/// had open with it (an agent's tool was gone for the rest of its
+/// session). So an upgrade leaves it on the version it started as
+/// (olo-session's `check_stale`), and Olo Doctor doesn't offer to quit
+/// it (its `stale`): one rule for both, here.
+pub fn started_by_another(pid: i32) -> Option<String> {
+    started_by_another_in(Path::new("/"), pid)
+}
+
+/// [`started_by_another`], with `/proc` under `root` (a test's own).
+pub fn started_by_another_in(root: &Path, pid: i32) -> Option<String> {
+    let proc = root.join("proc");
+    let stat = std::fs::read_to_string(proc.join(pid.to_string()).join("stat")).ok()?;
+    let ppid: i32 = stat.rsplit_once(')')?.1.split_whitespace().nth(1)?.parse().ok()?;
+    if ppid <= 1 {
+        return None;
+    }
+    let parent = proc.join(ppid.to_string());
+    let comm = std::fs::read_to_string(parent.join("comm")).ok()?.trim().to_owned();
+    let exe = std::fs::read_link(parent.join("exe")).ok()?;
+    let name = exe.file_name()?.to_str()?.trim_end_matches(" (deleted)");
+    let ours = name.starts_with("olo-") || name.starts_with("tabula-") || name == "app_server";
+    (!ours && comm != "systemd").then_some(comm)
+}
+
 /// A process's `stat` or `io` into `buf` (kept from file to file), and
 /// how long it is: one read, where `read_to_string` starts with a probe
 /// of 32 bytes and grows, five or six reads for a `stat`. (procfs gives

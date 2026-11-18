@@ -3929,12 +3929,23 @@ without them; `upgrade::leftovers`, none younger than 30 s, none with
 no display in their environment) are asked to end at the first look
 and killed at the second if they didn't (`sweep_leftovers`, by pid and
 start time; only by the person's session). Nor is stopped a program of ours that
-another program started (`upgrade::started_by_another`: its parent is
-neither ours, the session's service manager nor init): a coding agent's
-`olo-terminal --mcp`, a browser's messaging host, a command run from a
-shell. Stopped, what that program had open with it broke and it never
-started it again (Claude Code's tab-title tool was gone for the rest of
-its session, 2026-11-05).
+another program started (`olo_system::procs::started_by_another`: its
+parent is neither ours, the session's service manager nor init): a
+coding agent's `olo-terminal --mcp`, a browser's messaging host, a
+command run from a shell (`olo-sudo` running a script). Stopped, what
+that program had open with it broke and it never started it again
+(Claude Code's tab-title tool was gone for the rest of its session,
+2026-11-05). The rule is in olo-system because Olo Doctor's "still
+running an older version" goes by it too (it didn't, and offered Quit
+Them for a script an agent was running through olo-sudo, 2026-11-18):
+**whoever asks "is this program stale?" asks it the same way**. A
+program of ours that starts detached from what ran it and goes on
+(its parent init: nobody's command any more) must either become the
+new version when told (`olo_kit::restore::upgrade_signal` or
+`exec_on_upgrade`: SIGURG) or be restarted by whoever keeps it; one
+that does neither is stopped here 90 s after an upgrade and stays
+gone (Agent Screens' frame recorder was, at every upgrade, until
+2026-11-18).
 
 Login items (`session/src/autostart.rs`, the freedesktop Autostart
 spec): once a real session's graphical side is up (the environment
@@ -13305,7 +13316,11 @@ What it looks for:
   process, as olo-session leaves it): Quit Them stopped Token Pool's
   copy the session follows while it streamed its last answers after an
   upgrade, which left Token Pool running twice for two days (Ben,
-  2026-11-07).
+  2026-11-07). Nor one another program started
+  (`olo_system::procs::started_by_another`, the session's own rule: a
+  command in a shell, an agent's tool), which ends with what it's doing
+  and which nothing would start again: those are said among what's
+  fine, each with who started it.
 - **Token Pool running twice, or without its gateway** (`token_pool`:
   this session's olo-pool processes on the gateway's port, `OLO_POOL_PORT`
   or 17891, and which of them hold its listening socket, by
@@ -18056,7 +18071,12 @@ to its stop or now, time in use as the actions and the gaps under a
 minute between them, actions by kind, failures, programs run) with
 whether each screen runs now and its windows. Beside it are the frames
 the screen drew (`record.rs`): `olo-screen record NAME`, started with
-each screen in its process group, takes the screen's picture (as the
+each screen in its process group (one a screen: it holds `recorder.lock`
+in the history's folder for its life, `screens::take_recorder_lock`;
+when an upgrade replaces its file it becomes the new version between
+two frames, the same process, and starts a segment of its own; and a
+running screen found with none, at an agent's next action on it, is
+given one, `screens::ensure_recorder`), takes the screen's picture (as the
 viewer does, RGBA) eight times a second for five seconds after each
 action (the history's file changing) and once a second otherwise, and
 keeps the 64-pixel tiles that changed since the frame before,

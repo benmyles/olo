@@ -4044,20 +4044,37 @@ fn finishing(roots: &Roots, pid: i32) -> bool {
 /// Token Pool's copy the session follows while it streamed its last
 /// answers, its successor left to run on alone, and the session, starting
 /// it again, ended up with a second Token Pool with no gateway (Ben,
-/// 2026-11-07).
+/// 2026-11-07). Nor one another program started
+/// (`olo_system::procs::started_by_another`: a command in a shell, an
+/// agent's tool), which isn't the session's to start again and ends with
+/// what it's doing: an upgrade leaves those too, and Quit Them was
+/// offered for a script an agent ran through olo-sudo and five
+/// `olo-screen` commands another agent had waiting (Ben, 2026-11-18: "i
+/// want to make sure that … it's not offering to terminate legit
+/// processes that should continue post upgrade"). Those are said among
+/// what's fine, so it's plain why they're still the old version.
 fn stale(roots: &Roots, procs: &[Proc], r: &mut Report) {
     let me = std::process::id() as i32;
     let bin = roots.bin.to_string_lossy();
-    let old: Vec<&Proc> = procs
+    let (theirs, old): (Vec<(&Proc, Option<String>)>, Vec<(&Proc, Option<String>)>) = procs
         .iter()
         .filter(|p| p.uid == roots.uid && p.pid != me)
         .filter(|p| p.exe.as_deref().is_some_and(|e| e.ends_with(" (deleted)") && e.starts_with(&*bin)))
         .filter(|p| !NEVER_STOPPED.contains(&p.name.as_str()))
         .filter(|p| !on_a_screen(&roots.fs, p.pid))
         .filter(|p| !finishing(roots, p.pid))
-        .collect();
+        .map(|p| (p, olo_system::procs::started_by_another_in(&roots.fs, p.pid)))
+        .partition(|(_, by)| by.is_some());
+    let old: Vec<&Proc> = old.into_iter().map(|(p, _)| p).collect();
     if old.is_empty() {
-        r.fine.push(Fine { title: "Every Olo program runs the installed version".into(), detail: String::new() });
+        let detail = if theirs.is_empty() {
+            String::new()
+        } else {
+            let names: Vec<String> = theirs.iter().map(|(p, by)| format!("{} ({}), started by {}", p.name, p.pid, by.as_deref().unwrap_or_default())).collect();
+            let what = if theirs.len() == 1 { "a command from before the upgrade, which ends with what it's doing" } else { "commands from before the upgrade, which end with what they're doing" };
+            format!("{}: {what}; the next one started is the current version.", names.join("; "))
+        };
+        r.fine.push(Fine { title: "Every Olo program runs the installed version".into(), detail });
         return;
     }
     let names: Vec<String> = old.iter().map(|p| format!("{} ({})", p.name, p.pid)).collect();
@@ -5634,6 +5651,43 @@ mod tests {
         let stale = r.find("stale").unwrap();
         assert!(stale.detail.starts_with("olo-deskbar (900)"));
         assert!(!stale.fix.as_ref().unwrap().root);
+        // A command a shell started (a script run through olo-sudo before
+        // the upgrade) isn't the session's to quit: not among them. The
+        // same program started by the session is.
+        let command = |pid: i32, parent: i32, parent_exe: &str, parent_comm: &str| {
+            for (path, text) in [
+                (format!("proc/{pid}/cmdline"), "sudo\0-n\0/var/tmp/job.sh\0".to_owned()),
+                (format!("proc/{pid}/stat"), format!("{pid} (sudo) S {parent} 1 1 0\n")),
+                (format!("proc/{parent}/comm"), format!("{parent_comm}\n")),
+            ] {
+                let path = fs.join(path);
+                std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                std::fs::write(path, text).unwrap();
+            }
+            let _ = std::fs::remove_file(fs.join(format!("proc/{pid}/exe")));
+            let _ = std::fs::remove_file(fs.join(format!("proc/{parent}/exe")));
+            std::os::unix::fs::symlink(format!("{}/olo-sudo (deleted)", roots.bin.display()), fs.join(format!("proc/{pid}/exe"))).unwrap();
+            std::os::unix::fs::symlink(parent_exe, fs.join(format!("proc/{parent}/exe"))).unwrap();
+        };
+        command(930, 931, "/usr/bin/bash", "bash");
+        let r = scan(&roots);
+        let stale = r.find("stale").unwrap();
+        assert!(!stale.detail.contains("930") && stale.fix.as_ref().unwrap().steps == vec![Step::Signal { pid: 900, signal: libc::SIGTERM }], "{}", stale.detail);
+        command(932, 933, &format!("{}/olo-session", roots.bin.display()), "olo-session");
+        let stale = scan(&roots).find("stale").cloned().unwrap();
+        assert!(stale.detail.contains("(932)") && !stale.detail.contains("(930)"), "{}", stale.detail);
+        // With nothing else old, it's fine, and says whose the command is.
+        std::fs::remove_dir_all(fs.join("proc/932")).unwrap();
+        std::fs::remove_file(fs.join("proc/900/exe")).unwrap();
+        let r = scan(&roots);
+        assert!(r.find("stale").is_none());
+        let fine = r.fine.iter().find(|f| f.title == "Every Olo program runs the installed version").expect("fine");
+        assert!(fine.detail.starts_with("sudo (930), started by bash: a command from before the upgrade, which ends with what it's doing"), "{}", fine.detail);
+        std::os::unix::fs::symlink(format!("{}/olo-deskbar (deleted)", roots.bin.display()), fs.join("proc/900/exe")).unwrap();
+        for pid in [930, 931, 933] {
+            std::fs::remove_dir_all(fs.join(format!("proc/{pid}"))).unwrap();
+        }
+        let r = scan(&roots);
         let foreign = r.find("foreign").unwrap();
         assert!(foreign.detail.contains("GNOME's power daemon (gsd-power, process 901)"));
         let login = r.find("login").unwrap();

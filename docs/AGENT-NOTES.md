@@ -655,3 +655,22 @@ Each note: what to do, then why (what happened), then how to apply it.
   fresh reads its fingerprint and nothing else, which is how those and
   not Olo's own (written by the build) would be the ones to go. Not
   shown yet.
+
+## A long command of yours across the person's upgrade
+
+- A command you leave running (a watcher through `sudo`, which is
+  olo-sudo here; an `olo-screen wait`) is still the old version after the
+  person upgrades Olo: its program file was replaced under it. That's as
+  it should be: olo-session leaves a program another program started
+  (its log says "left alone (started by bash…)"), and since 2026-11-18
+  Olo Doctor does too (it used to list it under "still running an older
+  version" with Quit Them: if the person asks about such a finding from
+  an older build, look at `/proc/PID/exe` and its parent before
+  answering). The session's log is the user journal: `journalctl --user
+  --since "HH:MM" | grep olo-session`.
+- To try something that needs an Agent Screen without it showing in the
+  person's Agent Screens window, give it a runtime folder and home of its
+  own: `env XDG_RUNTIME_DIR=/var/tmp/you/run HOME=/var/tmp/you/home
+  /var/tmp/you/bin/olo-screen start t` (the folder mode 700; a copy of
+  the build under test in `bin`), and find its processes by that
+  `XDG_RUNTIME_DIR` in `/proc/PID/environ`, never by name.

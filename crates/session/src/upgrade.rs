@@ -552,24 +552,10 @@ pub fn start_time(pid: i32) -> Option<u64> {
     stat.rsplit_once(')')?.1.split_whitespace().nth(19)?.parse().ok()
 }
 
-/// The program that started `pid`, if it isn't one of ours (nor the
-/// session's service manager, nor init, which adopt what's started
-/// detached): a coding agent running an MCP server of ours, a browser
-/// its messaging host, a shell a command. Stopping such a process breaks
-/// what that program had open with it, and it won't start it again (an
-/// agent's tool was gone for the rest of its session): left alone.
-pub fn started_by_another(pid: i32) -> Option<String> {
-    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
-    let ppid: i32 = stat.rsplit_once(')')?.1.split_whitespace().nth(1)?.parse().ok()?;
-    if ppid <= 1 {
-        return None;
-    }
-    let comm = std::fs::read_to_string(format!("/proc/{ppid}/comm")).ok()?.trim().to_owned();
-    let exe = std::fs::read_link(format!("/proc/{ppid}/exe")).ok()?;
-    let name = exe.file_name()?.to_str()?.trim_end_matches(" (deleted)");
-    let ours = name.starts_with("olo-") || name.starts_with("tabula-") || name == "app_server";
-    (!ours && comm != "systemd").then_some(comm)
-}
+/// The program that started `pid`, if it isn't one of ours: such a
+/// process is left alone (the rule, and why, in olo-system, which Olo
+/// Doctor goes by too).
+pub use olo_system::procs::started_by_another;
 
 /// Was the program at `exe` (as /proc shows it) one of ours in `dir`
 /// whose file has since been replaced?

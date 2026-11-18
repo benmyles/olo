@@ -661,22 +661,65 @@ pub fn start(name: &str, opts: &Options) -> Result<Screen, String> {
     let tmp = entry(name).with_extension("tmp");
     std::fs::write(&tmp, serde_json::to_vec_pretty(&screen).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, entry(name)).map_err(|e| e.to_string())?;
-    // Its frames, kept beside its history (`record`) for as long as it
-    // runs: in its process group, so it ends with it.
-    if let Ok(exe) = std::env::current_exe() {
-        let mut rec = Command::new(exe);
-        rec.args(["record", name]).process_group(pid).stdin(std::process::Stdio::null());
-        if let Ok(log) = std::fs::File::create(logs_dir(&dir).join(format!("{name}-record.log"))) {
-            if let Ok(out) = log.try_clone() {
-                rec.stdout(out);
-            }
-            rec.stderr(log);
-        }
-        if let Err(e) = rec.spawn() {
-            tracing::warn!("screen {name}'s frames won't be kept: {e}");
-        }
-    }
+    start_recorder(name, pid);
     Ok(screen)
+}
+
+/// Start what keeps screen `name`'s frames beside its history (`record`)
+/// for as long as it runs: in the screen's process group (its session's
+/// pid), so it ends with it.
+fn start_recorder(name: &str, pid: i32) {
+    use std::os::unix::process::CommandExt as _;
+    let Ok(exe) = std::env::current_exe() else { return };
+    // (This program's own file may have been replaced since it started.)
+    let exe = PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)"));
+    let mut rec = Command::new(exe);
+    rec.args(["record", name]).process_group(pid).stdin(std::process::Stdio::null());
+    if let Ok(log) = std::fs::OpenOptions::new().create(true).append(true).open(logs_dir(&dir()).join(format!("{name}-record.log"))) {
+        if let Ok(out) = log.try_clone() {
+            rec.stdout(out);
+        }
+        rec.stderr(log);
+    }
+    if let Err(e) = rec.spawn() {
+        tracing::warn!("screen {name}'s frames won't be kept: {e}");
+    }
+}
+
+/// The file a screen's recorder holds locked for as long as it runs
+/// (`flock`: let go by the kernel however it ends), so anyone can tell
+/// whether its frames are being kept.
+pub fn recorder_lock(name: &str) -> PathBuf {
+    crate::history::dir(name).join("recorder.lock")
+}
+
+/// The lock on screen `name`'s recorder, if nobody has it: the recorder
+/// takes it for its life (and is the only one); anyone else lets it go
+/// at once, having learnt that none runs.
+pub fn take_recorder_lock(name: &str) -> Option<std::fs::File> {
+    use std::os::fd::AsRawFd as _;
+    let path = recorder_lock(name);
+    std::fs::create_dir_all(path.parent()?).ok()?;
+    let file = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(path).ok()?;
+    // SAFETY: flock on a descriptor of ours, never waiting.
+    (unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0).then_some(file)
+}
+
+/// A running screen with no recorder gets one (as an agent acts on it:
+/// nothing looks otherwise). A recorder can end while its screen goes
+/// on: stopped by hand, failed, or stopped as "still the old version"
+/// by an upgrade from before it knew how to become the new one, which
+/// left five running screens with no frames kept (2026-11-18).
+pub fn ensure_recorder(name: &str) {
+    let Ok(screen) = get(name) else { return };
+    if !screen.alive() {
+        return;
+    }
+    if let Some(lock) = take_recorder_lock(name) {
+        drop(lock);
+        tracing::info!("screen {name} had no recorder: starting one");
+        start_recorder(name, screen.pid);
+    }
 }
 
 /// The person's accessibility bus (at-spi's), asked of their session bus
