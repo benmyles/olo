@@ -1,0 +1,9 @@
+[package]
+name = "olo-calendar"
+description = "Calendar's engine: iCalendar read and written back whole, repeating events worked out, calendars on CalDAV servers (Google's, Fastmail's)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+jiff = "0.2"

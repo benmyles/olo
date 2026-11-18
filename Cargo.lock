@@ -7184,6 +7184,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-calendar"
+version = "0.1.0"
+dependencies = [
+ "jiff",
+]
+
+[[package]]
 name = "olo-camera"
 version = "0.1.0"
 dependencies = [

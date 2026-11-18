@@ -82,7 +82,14 @@ something nobody here has is in "Blocked", with what it waits for.
   (CalDAV, or JMAP for Calendars, with an app password kept in
   Passwords). Olo's own: reminders as notifications, a Deskbar widget
   (what's next), the clock's menu, the command palette, the phone, an
-  agents' API, in-place reload, native in Rust.
+  agents' API, in-place reload, native in Rust. **So far**
+  (2026-11-18): the engine's first parts, `crates/calendar`
+  (`olo-calendar`): iCalendar read and written back whole (`ical`),
+  repeating worked out (`rrule`: the RFC's examples are its tests), and
+  events with their zones, exceptions and occurrences (`event`).
+  **Next**: CalDAV (one protocol for both: Fastmail's with an app
+  password, Google's with its sign-in), the accounts in Preferences ▸
+  Integrations, a store kept in step with the servers, then the app.
 
 - **A Mail app, native, every account in one place, and the assistant
   in both Mail and Calendar** (Ben, 2026-11-17: "build a beautiful olo
@@ -119,6 +126,17 @@ something nobody here has is in "Blocked", with what it waits for.
   Mail's, what's unread, by account or together; each with its options
   in Preferences ▸ Deskbar, and a click that opens the event or the
   message.
+
+- **A To-Do app, native** (Ben, 2026-11-18: "a beautiful olo native
+  todo app that supports reminders / due dates / simple kanban style
+  board / attaching links, images, etc. / beautiful styled deskbar
+  widgets"). `olo-todo`: lists of things to do, each with its notes, a
+  due date and reminders (as notifications, and in Calendar once that
+  is there), links, pictures and files attached; a list, and a simple
+  board of columns to drag cards between; Deskbar widgets of its own
+  (what's due, a list's next few), styled as Weather's and the Inbox
+  are. Olo's own: the palette, an agents' API, in-place reload, native
+  in Rust.
 
 - **Last, once everything above that isn't blocked is done: the website,
   the README and the docs refreshed, and a new GitHub release** (Ben,
