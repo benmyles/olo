@@ -1,0 +1,16 @@
+[package]
+name = "olo-google"
+description = "Signing in to Google with a person's own OAuth client (DiskBackup's Drive, Calendar)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+olo-net.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.11"
+getrandom = "0.3"
+base64 = "0.22"
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "platform-verifier"] }

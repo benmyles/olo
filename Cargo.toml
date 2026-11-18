@@ -20,6 +20,7 @@ olo-kit = { path = "crates/kit" }
 olo-net = { path = "crates/net" }
 olo-release = { path = "crates/release" }
 olo-mail = { path = "crates/mail" }
+olo-google = { path = "crates/google" }
 olo-crash = { path = "crates/crash" }
 olo-kmod = { path = "crates/kmod" }
 olo-video = { path = "crates/video" }

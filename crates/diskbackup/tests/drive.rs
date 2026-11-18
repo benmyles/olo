@@ -48,7 +48,7 @@ fn sign_in_then_back_up_restore_and_tidy() {
     let client = Client { id: "123.apps.googleusercontent.com".into(), secret: "GOCSPX-secret".into() };
 
     // Signing in: the browser sent back to our loopback address.
-    let sign_in = SignIn::start(&client, &endpoints).unwrap();
+    let sign_in = SignIn::start(&client, &endpoints, olo_diskbackup::oauth::SCOPES, olo_diskbackup::oauth::APP).unwrap();
     let url = sign_in.url().to_owned();
     assert!(url.contains("code_challenge_method=S256") && url.contains("drive.file") && url.contains("access_type=offline"), "{url}");
     let state = url.split("state=").nth(1).unwrap().split('&').next().unwrap().to_owned();

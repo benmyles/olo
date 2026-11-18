@@ -7189,6 +7189,10 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "jiff",
+ "olo-google",
+ "olo-net",
+ "olo-system",
+ "olo-xdg",
  "roxmltree",
  "rustls",
  "serde",
@@ -7379,6 +7383,7 @@ dependencies = [
  "hmac",
  "libc",
  "md-5",
+ "olo-google",
  "olo-net",
  "rustls",
  "serde",
@@ -7555,6 +7560,20 @@ dependencies = [
  "olo-crash",
  "olo-protocol",
  "serde_json",
+]
+
+[[package]]
+name = "olo-google"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "getrandom 0.3.4",
+ "olo-net",
+ "rustls",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "ureq",
 ]
 
 [[package]]

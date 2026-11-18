@@ -5,7 +5,10 @@
 //!
 //! One protocol for every account: Fastmail's with an app password,
 //! Google's with its sign-in's token. Each call is one or two requests
-//! and blocks: off the UI thread.
+//! and blocks: off the UI thread. The network's changes are Olo's to
+//! handle (`olo_net`): the HTTP client is made again on a new network,
+//! and what only reads is asked again when the network changed under it
+//! (what writes isn't: it may have been done).
 
 use std::time::Duration;
 
@@ -184,48 +187,91 @@ impl Response<'_, '_> {
     }
 }
 
+/// Where a token comes from, each time one is wanted (a sign-in whose
+/// tokens last an hour: Google's). Asked with `true` for one that's new
+/// (the one it gave was refused).
+pub type Tokens = Box<dyn Fn(bool) -> Result<String, Error> + Send + Sync>;
+
+/// How long the network may be away before something that reads gives up.
+const PATIENCE: Duration = Duration::from_secs(20);
+
 /// An account on a server.
 pub struct Server {
-    agent: ureq::Agent,
+    agent: olo_net::PerNetwork<ureq::Agent>,
     auth: Auth,
+    tokens: Option<Tokens>,
+}
+
+fn agent() -> ureq::Agent {
+    // TLS by rustls with the system's certificates, as Olo's other
+    // clients. No status turned into an error by the agent (each is read
+    // here), and WebDAV's own methods let through.
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let tls = ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build();
+    ureq::Agent::config_builder().tls_config(tls).timeout_global(Some(Duration::from_secs(60))).http_status_as_error(false).allow_non_standard_methods(true).max_redirects(4).build().into()
 }
 
 impl Server {
     pub fn new(auth: Auth) -> Server {
-        // TLS by rustls with the system's certificates, as Olo's other
-        // clients. No status turned into an error by the agent (each is
-        // read here), and WebDAV's own methods let through.
-        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
-        let tls = ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build();
-        let config = ureq::Agent::config_builder().tls_config(tls).timeout_global(Some(Duration::from_secs(60))).http_status_as_error(false).allow_non_standard_methods(true).max_redirects(4).build();
-        Server { agent: config.into(), auth }
+        Server { agent: olo_net::PerNetwork::new(agent), auth, tokens: None }
     }
 
-    fn authorization(&self) -> String {
+    /// Signed in with a token asked of `tokens` for each request (which
+    /// keeps the one it has while it's good). A request refused with the
+    /// token it was given is made once more with a new one: a token's
+    /// hour can end without the clock here saying so (the computer
+    /// asleep meanwhile).
+    pub fn with_tokens(tokens: impl Fn(bool) -> Result<String, Error> + Send + Sync + 'static) -> Server {
+        Server { agent: olo_net::PerNetwork::new(agent), auth: Auth::Bearer(String::new()), tokens: Some(Box::new(tokens)) }
+    }
+
+    fn authorization(&self, fresh: bool) -> Result<String, Error> {
         use base64::Engine as _;
-        match &self.auth {
+        if let Some(tokens) = &self.tokens {
+            return Ok(format!("Bearer {}", tokens(fresh)?));
+        }
+        Ok(match &self.auth {
             Auth::Basic { user, password } => format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(format!("{user}:{password}"))),
             Auth::Bearer(token) => format!("Bearer {token}"),
+        })
+    }
+
+    /// One request: its status, its `ETag` and its body. What only reads
+    /// is asked again when the network changed under it.
+    fn ask(&self, method: &str, url: &str, headers: &[(&str, &str)], body: &str) -> Result<(u16, Option<String>, String), Error> {
+        if matches!(method, "PROPFIND" | "REPORT" | "GET") { olo_net::across_changes(PATIENCE, || self.ask_once(method, url, headers, body)) } else { self.ask_once(method, url, headers, body) }
+    }
+
+    fn ask_once(&self, method: &str, url: &str, headers: &[(&str, &str)], body: &str) -> Result<(u16, Option<String>, String), Error> {
+        match self.send(method, url, headers, body, false)? {
+            // (Refused with a token: once more, with a new one.)
+            (401, ..) if self.tokens.is_some() => self.read(self.send(method, url, headers, body, true)?),
+            answer => self.read(answer),
         }
     }
 
-    /// One request: its status, its `ETag` and its body.
-    fn ask(&self, method: &str, url: &str, headers: &[(&str, &str)], body: &str) -> Result<(u16, Option<String>, String), Error> {
-        let mut request = ureq::http::Request::builder().method(method).uri(url).header("Authorization", self.authorization()).header("User-Agent", "Olo-Calendar");
-        for (name, value) in headers {
-            request = request.header(*name, *value);
-        }
-        let request = request.body(body.to_owned()).map_err(|e| Error::Network(e.to_string()))?;
-        let mut answer = self.agent.run(request).map_err(|e| Error::Network(e.to_string()))?;
-        let status = answer.status().as_u16();
-        let etag = answer.headers().get("etag").and_then(|v| v.to_str().ok()).map(str::to_owned);
-        let text = answer.body_mut().read_to_string().map_err(|e| Error::Network(e.to_string()))?;
+    /// An answer as what it means.
+    fn read(&self, (status, etag, text): (u16, Option<String>, String)) -> Result<(u16, Option<String>, String), Error> {
         match status {
             401 | 403 => Err(Error::SignIn),
             404 | 410 => Err(Error::Gone),
             412 => Err(Error::Changed),
             _ => Ok((status, etag, text)),
         }
+    }
+
+    /// A request sent: whatever the server answered.
+    fn send(&self, method: &str, url: &str, headers: &[(&str, &str)], body: &str, fresh: bool) -> Result<(u16, Option<String>, String), Error> {
+        let mut request = ureq::http::Request::builder().method(method).uri(url).header("Authorization", self.authorization(fresh)?).header("User-Agent", "Olo-Calendar");
+        for (name, value) in headers {
+            request = request.header(*name, *value);
+        }
+        let request = request.body(body.to_owned()).map_err(|e| Error::Network(e.to_string()))?;
+        let mut answer = self.agent.get().run(request).map_err(|e| Error::Network(e.to_string()))?;
+        let status = answer.status().as_u16();
+        let etag = answer.headers().get("etag").and_then(|v| v.to_str().ok()).map(str::to_owned);
+        let text = answer.body_mut().read_to_string().map_err(|e| Error::Network(e.to_string()))?;
+        Ok((status, etag, text))
     }
 
     /// A PROPFIND or a REPORT: its multistatus, read by `read`.

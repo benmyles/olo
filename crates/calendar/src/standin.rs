@@ -32,6 +32,11 @@ struct State {
     changes: u64,
     /// Requests answered, as "METHOD path".
     asked: Vec<String>,
+    /// As Google signs in: the refresh token it knows, the access tokens
+    /// it has given that are still good, and how many it has given.
+    refresh: Option<String>,
+    tokens: Vec<String>,
+    given: u64,
 }
 
 /// The server: gone when dropped.
@@ -107,6 +112,22 @@ impl Standin {
 
     pub fn files(&self, folder: &str) -> Vec<String> {
         self.state.lock().unwrap().calendars.get(folder).map(|c| c.items.keys().cloned().collect()).unwrap_or_default()
+    }
+
+    /// Signs in as Google does too: `refresh` is a refresh token it
+    /// knows, for which `POST /token` gives access tokens.
+    pub fn knows_refresh_token(&self, refresh: &str) {
+        self.state.lock().unwrap().refresh = Some(refresh.to_owned());
+    }
+
+    /// Every access token given is no longer good (an hour went by).
+    pub fn expire_tokens(&self) {
+        self.state.lock().unwrap().tokens.clear();
+    }
+
+    /// How many access tokens it has given.
+    pub fn tokens_given(&self) -> u64 {
+        self.state.lock().unwrap().given
     }
 
     /// What was asked since this was last asked, as "METHOD path".
@@ -205,18 +226,33 @@ fn serve(stream: TcpStream, state: &Mutex<State>, auth: &str) {
         return;
     }
     let body = String::from_utf8_lossy(&body).into_owned();
-    let (status, extra, answer) = if headers.get("authorization").map(String::as_str) != Some(auth) {
-        (401, String::new(), String::new())
-    } else {
+    let (status, extra, answer) = {
         let mut s = state.lock().unwrap();
-        s.asked.push(format!("{method} {path}"));
-        answer(&mut s, &method, &path, &headers, &body)
+        let given = headers.get("authorization").map(String::as_str).unwrap_or_default();
+        if method == "POST" && path == "/token" {
+            // Google's token endpoint: an access token for the refresh token it knows.
+            let refresh = body.split('&').find_map(|kv| kv.strip_prefix("refresh_token=")).unwrap_or_default();
+            if s.refresh.as_deref() == Some(refresh) {
+                s.given += 1;
+                let token = format!("access-{}", s.given);
+                s.tokens.push(token.clone());
+                (200, String::new(), format!(r#"{{"access_token":"{token}","expires_in":3600}}"#))
+            } else {
+                (400, String::new(), r#"{"error":"invalid_grant","error_description":"Token has been expired or revoked."}"#.to_owned())
+            }
+        } else if given != auth && !given.strip_prefix("Bearer ").is_some_and(|t| s.tokens.iter().any(|k| k == t)) {
+            (401, String::new(), String::new())
+        } else {
+            s.asked.push(format!("{method} {path}"));
+            answer(&mut s, &method, &path, &headers, &body)
+        }
     };
     let reason = match status {
         200 => "OK",
         201 => "Created",
         204 => "No Content",
         207 => "Multi-Status",
+        400 => "Bad Request",
         401 => "Unauthorized",
         403 => "Forbidden",
         404 => "Not Found",

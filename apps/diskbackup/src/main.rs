@@ -268,7 +268,7 @@ pub(crate) fn set_up_folder(path: &str) -> Result<(), String> {
 pub(crate) fn sign_in(client: &olo_diskbackup::oauth::Client, cancel: &AtomicBool, open: impl FnOnce(&str)) -> Result<olo_diskbackup::oauth::SignedIn, String> {
     client.check()?;
     let client = olo_diskbackup::oauth::Client { id: client.id.trim().to_owned(), secret: client.secret.trim().to_owned() };
-    let s = olo_diskbackup::oauth::SignIn::start(&client, &target::endpoints()).map_err(|e| e.to_string())?;
+    let s = olo_diskbackup::oauth::SignIn::start(&client, &target::endpoints(), olo_diskbackup::oauth::SCOPES, olo_diskbackup::oauth::APP).map_err(|e| e.to_string())?;
     open(s.url());
     s.wait(&olo_diskbackup::oauth::agent(), cancel)
 }

@@ -87,9 +87,15 @@ something nobody here has is in "Blocked", with what it waits for.
   (`olo-calendar`): iCalendar read and written back whole (`ical`),
   repeating worked out (`rrule`: the RFC's examples are its tests), and
   events with their zones, exceptions and occurrences (`event`).
-  **Next**: CalDAV (one protocol for both: Fastmail's with an app
-  password, Google's with its sign-in), the accounts in Preferences ▸
-  Integrations, a store kept in step with the servers, then the app.
+  Then CalDAV for every account (`dav`), the accounts and their
+  sign-ins (`account`: Google's by OAuth with the person's own client,
+  as Drive; Fastmail's by app password), calendars kept on disk in step
+  with their servers (`store`) and a stand-in server to test with
+  (HACKING.md, "Calendar's engine"). **Next**: the app (apps/calendar:
+  month, week, day and agenda, the editor), Preferences ▸ Integrations ▸
+  Calendars, reminders, the Deskbar widget, the palette, the agents'
+  API. **Not tried against Google's and Fastmail's real servers**: that
+  needs Ben's accounts.
 
 - **A Mail app, native, every account in one place, and the assistant
   in both Mail and Calendar** (Ben, 2026-11-17: "build a beautiful olo

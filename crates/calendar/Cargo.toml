@@ -6,6 +6,10 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+olo-net.workspace = true
+olo-google.workspace = true
+olo-system.workspace = true
+olo-xdg.workspace = true
 jiff = "0.2"
 roxmltree = "0.20"
 base64 = "0.22"

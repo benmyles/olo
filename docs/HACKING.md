@@ -819,6 +819,8 @@ long after a way out comes back.
 | `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit: data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`; Olo's icons are drawings rendered for the size and kept, `svg`, a theme's colours over the classic set's, `svg::recolour`: docs/ICONS.md), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; the person's own choice first (`open::set_default`, kept in `~/.config/olo/default-apps.list` in mimeapps.list's form and copied into `olo-mimeapps.list` for other programs; `handler_cached` notices it changed, in any process), then Olo's apps, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`; Open With's few apps for a kind, `open::handlers_for`: as the person set them (`set_offered`, Preferences ▸ Default Apps ▸ Open With), else the one it opens in, Olo's own for it, then those whose entries claim it or a broader kind, by name, eight at most; worked out off the UI thread by `open::warm` (a folder's kinds, as Tracker lists it) and read by menus from `offer_cached`; `open::kind_of` names a kind by the file's name alone; `open::every_app` is every app whose command takes files (`DesktopEntry::takes_files`), Olo's first, and `Handler::icon` its icon; the person's own kinds of file are `mime::own_kinds` (`set_own_kinds`; `mime::type_for_extensions` keeps the type its extensions all share, else makes one of Olo's own, `application/x-olo-kind-EXT`, which `mime::from_name` gives first); desktop entries are kept until an applications folder changes, `desktop_entry::all_cached`; and the same for other programs: `open::for_others` gives the hidden `olo.viewer`, `olo.styled-edit` and `olo.tracker` desktop entries, each listing every type shared-mime-info knows that Olo opens with it, and an `olo-mimeapps.list` making them the defaults, which GIO, `gio open`/xdg-open and xdg-desktop-portal's OpenURI read before `mimeapps.list` while `XDG_CURRENT_DESKTOP` names Olo; olo-session writes them into `~/.local/share/applications` at start, makes that folder's `mimeinfo.cache` again when they change (`open::mime_cache`, as update-desktop-database would: GIO only finds an app for a type through it) and removes ones it wrote that are no longer wanted, `X-Olo-Written=true`; and, once Olo's Chrome is installed, `open::offer_browser` writes `~/.local/share/applications/olo-mimeapps.list` naming it for web pages and links, read after every `mimeapps.list` in the config directories so a browser the person chose wins, but ahead of the system's lists), `find_program`, `spawn_detached` (`spawn_detached_app` and `open::spawn_app` for a desktop entry's program, in a scope of its own: `scope`; Olo's own programs keep the launcher's stderr, the session's journal, so what Deskbar, Tracker or the palette starts logs like the rest; others' goes nowhere). Olo's own icons are drawings (`icons/svg/NAME.svg`), rendered for the size asked and kept once rendered (`svg`: the classes a drawing is drawn for its size by, `own`'s cache in `~/.cache/olo/icons`; docs/ICONS.md, "Drawings"); an icon not yet drawn uses its pre-scaled pictures. |
 | `crates/release` | `olo-release`: Olo's releases on GitHub (the newest, with its checksum file and commit's time; downloaded, checked, unpacked, put in place): Setup's install, and the program an installed Olo's session asks for upgrades (`olo-release latest`, `install`). |
 | `crates/mail` | `olo-mail`: mail accounts read for one-time codes (see "Codes sent by mail"): Gmail and Fastmail over IMAP with an app password kept in the login keyring, natively (rustls with the system's certificates; IMAP: LOGIN, SELECT, SEARCH, FETCH, IDLE; MIME: encoded words, multipart, quoted-printable, base64, charsets, HTML made words); `Watch` an inbox for a while on a thread of its own; `standin`, a stand-in IMAP server for tests. |
+| `crates/calendar` | `olo-calendar`: Calendar's engine (see "Calendar's engine"): iCalendar read and written back whole (`ical`), repeating events worked out (`rrule`), events with their zones, exceptions and occurrences (`event`), CalDAV for every account (`dav`), the accounts and their sign-ins (`account`), calendars kept on disk in step with their servers (`store`), and a stand-in server (`standin`). |
+| `crates/google` | `olo-google`: signing in to Google with a person's own "Desktop app" OAuth client (the consent page in the browser, the answer to a loopback port, PKCE): `SignIn::start(client, endpoints, scopes, app)`, `access_token`, `agent(name)`. DiskBackup's Drive (`olo_diskbackup::oauth` is its scopes over this) and Calendar. |
 | `crates/net` | `olo-net`: the network changing under a program that talks over it (see "The network changing"): connections on a network that went cut at once, what's kept for the network (`PerNetwork`: an HTTP client) made again for the new one, requests tried again across a change (`across_changes`), waits for a network (`wait_online`), and with its `ureq` feature a download that goes on where it broke off (`http::Download`).; and one TCP connection as the kernel keeps it (`tcp_info`: `TCP_INFO`'s every figure, the congestion control read and set, BBR's model of the path, which BBR the kernel's own is). `examples/tcp-flow`: flows to measure a congestion control with (tools/dev/bbr3-check). |
 | `crates/kmod` | `olo-kmod`: one of Olo's kernel modules built for the running kernel and installed (see "BBRv3 for TCP"): what the services that load them share (apps/gpu-memory, apps/bbr3). |
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
@@ -20042,7 +20044,9 @@ in layers; done so far, **the engine** (crates/diskbackup):
   two a page, an upload's first piece cut part way): put, replace, get,
   ranges, list, delete, then a whole repository backed up (a 20 MiB file
   resumably), restored from another `Repo`, and tidied.
-- **Signing in** (`oauth.rs`): each person's own OAuth client (a
+- **Signing in** (`oauth.rs`, DiskBackup's scopes over `olo-google`,
+  crates/google, which Calendar signs in with too): each person's own
+  OAuth client (a
   "Desktop app" in a Google Cloud project of theirs: `Client`, from its
   downloaded JSON or its ID and secret), Google's installed-app flow: the
   consent page in the browser, the answer to `http://127.0.0.1:PORT` (a
@@ -20464,6 +20468,78 @@ written) in 0.22 s. `round_trip` backs up,
 changes (bytes inserted, a file added, one removed), backs up again (1
 changed, 1 new, the rest unchanged, under 4 MiB new), restores both
 versions and checks nothing in the store is readable.
+
+## Calendar's engine (crates/calendar, `olo-calendar`)
+
+Ben, 2026-11-17: "build a beautiful olo native calendar app … any number
+of google calendars (eg from multiple google accounts) as well as any
+number of fastmail calendars … aggregate all the connected calendar
+sources into one unified calendar view, and also support read and write
+actions". The app (apps/calendar) isn't there yet; this is what it
+stands on, each part tested by itself (`cargo test -p olo-calendar`):
+
+- **`ical`**: iCalendar as text. `Line` (name, parameters, value; folded
+  at 75 octets, never inside a character; `Line::text` escapes),
+  `Component` (lines and children; `get`, `all`, `set`, `remove`,
+  `children_named`), `parse`, `Component::write`. **Lossless**: a file
+  read and written is the same file, and one property changed changes
+  nothing else, so what Olo doesn't know of an event (a server's own
+  lines, who's invited) survives its changing one. Never build an
+  event's text from scratch when there's one to change.
+- **`rrule`**: `Rule::parse`/`write`, and `Rule::starts(start, ended)`:
+  the starts on the event's own clock (civil time, so 09:00 stays 09:00
+  through a change of the clocks). DAILY to YEARLY, INTERVAL, COUNT,
+  UNTIL, BYDAY ("the 2nd", "the last"), BYMONTHDAY, BYMONTH, BYSETPOS,
+  WKST. A rule with a part it doesn't work out parses as None, and the
+  event shows once (`Event::repeats` still true, the rule left as
+  written): never guessed at. Its tests are RFC 5545's examples.
+- **`event`**: `When` (`Date`: an all-day event's, the same day wherever
+  it's looked at; `Floating`; `Zoned`), `zone` (TZID as programs write
+  it: tz names, the same behind a prefix, Windows' names), `Event::read`
+  from a `VEVENT` and `Event::write_into` one (only what a person
+  changes; SEQUENCE goes up), and `occurrences(event, overrides, from,
+  to, viewer)`: what touches a span on the viewer's clock, less EXDATEs,
+  plus RDATEs, each occurrence changed by itself (`RECURRENCE-ID`)
+  standing in for the rule's, a cancelled one left out. `Occurrence::id`
+  is what "only this one" names.
+- **`dav`**: CalDAV, one protocol for every account. `Server::calendars`
+  (from a start address: current-user-principal, calendar-home-set, the
+  collections of events), `list`, `changes(token)` (sync-collection;
+  `Error::StaleToken` when the server forgot), `fetch` (multiget, fifty
+  at a time), `put` (new: `If-None-Match: *`; changed: `If-Match`),
+  `delete`. `Error::Changed` (412) means someone else changed it: never
+  write over that. What only reads is asked again across a network
+  change (`olo_net::across_changes`); what writes isn't (it may have
+  been done). `Server::with_tokens`: a token per request from a source
+  that keeps it while good, and a request refused with it (401) made
+  once more with a new one (an hour can end with the computer asleep,
+  when `Instant` doesn't move).
+- **`account`**: `Account {provider, address, server}` in
+  `~/.config/olo/calendar.json` (`OLO_CALENDAR_ACCOUNTS`), its `Secret`
+  (an app password; or Google's client and refresh token) in the login
+  keyring (`service=calendar`, `account=<Account::id>`). Google is
+  `https://apidata.googleusercontent.com/caldav/v2/ADDRESS/user` with
+  OAuth only (scope `…/auth/calendar`; the **CalDAV API** must be on in
+  the client's Google Cloud project; no app passwords: Google's CalDAV
+  refuses Basic); Fastmail is `https://caldav.fastmail.com/dav/
+  principals/user/ADDRESS/` with an app password that has access to
+  calendars; `Other` is any CalDAV server by its address.
+  `known_google_client` finds a client already here (another calendar
+  account's, DiskBackup's). `connect`, `check`.
+- **`store`**: `Kept`, a calendar as it was when last in step with its
+  server, a JSON file each (`Kept::save`/`load_all`). `Kept::sync` asks
+  only for what changed; `create`, `change` (given the whole
+  `VCALENDAR`), `remove` go to the server first, then here; on
+  `Error::Changed` the other change is read in and the error returned,
+  for the person to look again.
+- **`standin`**: one person's calendars in memory on a loopback port,
+  speaking what `dav` asks, Google's token sign-in too
+  (`knows_refresh_token`, `expire_tokens`); another device's changes are
+  `put`/`remove` on it. For tests, and for running the app with no
+  account (`OLO_CALENDAR_SERVER`, `OLO_CALENDAR_SECRET`).
+
+Not tried against the real servers yet: that needs a person's accounts
+(the first sign-in is theirs to make, in Preferences ▸ Integrations).
 
 ## Passwords (apps/passwords, crates/onepassword)
 
