@@ -7,3 +7,7 @@ license.workspace = true
 
 [dependencies]
 jiff = "0.2"
+roxmltree = "0.20"
+base64 = "0.22"
+ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "platform-verifier"] }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std"] }

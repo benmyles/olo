@@ -13,10 +13,18 @@
 //!   `VEVENT` and written back into it, and its occurrences between two
 //!   moments: time zones, all-day events, dates taken out, one
 //!   occurrence changed by itself.
+//! - [`dav`]: CalDAV, the one protocol for every account (Fastmail's
+//!   with an app password, Google's with its sign-in's token): an
+//!   account's calendars, what is in one, what changed since a token,
+//!   and an event put, changed or removed, never over a change made
+//!   somewhere else meanwhile. [`standin`]: a stand-in server, for tests
+//!   and for trying the app with no account.
 //!
 //! Times are `jiff`'s: the system's time zone database, the clock's
 //! changes handled where a wall time meets them.
 
+pub mod dav;
 pub mod event;
 pub mod ical;
 pub mod rrule;
+pub mod standin;

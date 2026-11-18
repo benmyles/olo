@@ -7187,7 +7187,11 @@ dependencies = [
 name = "olo-calendar"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "jiff",
+ "roxmltree",
+ "rustls",
+ "ureq",
 ]
 
 [[package]]
