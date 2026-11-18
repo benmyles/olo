@@ -44,6 +44,10 @@ fn a_browser() {
     if plan["unasked"] == true {
         say(json!({"say": "waiting", "id": null, "tabs": plan["tabs"]}));
     }
+    // (The person's "Check for Codes".)
+    if plan["now"] == true {
+        say(json!({"say": "waiting", "id": null, "tabs": plan["tabs"], "now": true}));
+    }
     let until = Instant::now() + Duration::from_millis(plan["ms"].as_u64().unwrap());
     let mut lines = BufReader::new(&stream);
     loop {
@@ -75,6 +79,14 @@ fn browser(socket: &Path, screen: Option<&str>, tabs: Value, ms: u64, unasked: b
     if let Some(s) = screen {
         c.env("OLO_SCREEN", s);
     }
+    c.spawn().unwrap()
+}
+
+/// A stand-in browser whose person chooses "Check for Codes" at once.
+fn browser_checking(socket: &Path, tabs: Value, ms: u64) -> Child {
+    let plan = json!({"socket": socket, "tabs": tabs, "ms": ms, "unasked": false, "now": true});
+    let mut c = Command::new(std::env::current_exe().unwrap());
+    c.args(["--exact", "a_browser", "--nocapture"]).env("OLO_PHONE_TEST_BROWSER", plan.to_string()).env_remove("OLO_SCREEN").stdout(Stdio::piped());
     c.spawn().unwrap()
 }
 
@@ -149,7 +161,10 @@ fn a_code_from_mail_to_the_tab_waiting_for_it() {
     let mine = browser(&socket, None, page(21, None), 2500, true);
     wait_for("the mail was never looked in again", || said("IDLE") == 2);
     server.deliver("From: GitHub <noreply@github.com>\r\nSubject: [GitHub] Please verify your device\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>Hey there!</p><p>Verification code: <b>482913</b></p>\r\n");
-    assert_eq!(heard(mine), [json!({"say": "any", "id": 1}), json!({"say": "code", "id": 1, "tab": 21, "frame": 0, "code": "482913", "from": "GitHub", "fill": false, "mail": true})]);
+    assert_eq!(
+        heard(mine),
+        [json!({"say": "any", "id": 1}), json!({"say": "code", "id": 1, "tab": 21, "frame": 0, "code": "482913", "from": "GitHub", "fill": false, "mail": true, "account": "me@example.com"})]
+    );
     assert_eq!(said("UID FETCH 2 (UID BODY.PEEK[]<0.65536>)"), 1);
 
     // A page that waits for what a link gives (as Claude's sign-in: "click
@@ -163,8 +178,24 @@ fn a_code_from_mail_to_the_tab_waiting_for_it() {
     server.deliver("From: Acme <login@mail.acme.example>\r\nSubject: Your secure link to Acme is here\r\nContent-Type: multipart/alternative; boundary=b\r\n\r\n--b\r\nContent-Type: text/plain\r\n\r\nSign in to Acme\r\nClick the button below to finish signing in. This link expires in 10 minutes.\r\nSign in\r\n--b\r\nContent-Type: text/html\r\n\r\n<p>Click the button below to finish signing in.</p><a href=\"https://acme.example/magic-link#t0k3n\">Sign in</a> <a href=\"https://acme.example/help\">Help</a>\r\n--b--\r\n");
     assert_eq!(
         heard(theirs),
-        [json!({"say": "any", "id": 2}), json!({"say": "link", "id": 2, "tab": 23, "frame": 0, "url": "https://acme.example/magic-link#t0k3n", "to": "acme.example", "from": "Acme"})]
+        [
+            json!({"say": "any", "id": 2}),
+            json!({"say": "link", "id": 2, "tab": 23, "frame": 0, "url": "https://acme.example/magic-link#t0k3n", "to": "acme.example", "from": "Acme", "account": "me@example.com"})
+        ]
     );
+
+    // A page that says its code is an authenticator app's has the mail
+    // left alone; "Check for Codes" there looks in it all the same, at
+    // once (signed in anew: what came in the last minutes read first).
+    // (The link given, its watch was shut at once.)
+    std::thread::sleep(Duration::from_millis(300));
+    let app = json!([{"tab": 24, "host": "vault.example", "title": "Two-step", "focused": true, "active": true, "front": true, "by_app": true, "age": 2, "digits": 9}]);
+    let before = server.logins().len();
+    assert_eq!(heard(browser(&socket, None, app.clone(), 500, true)), [] as [Value; 0]);
+    assert_eq!(server.logins().len(), before, "an authenticator's page had the mail looked in");
+    let checking = browser_checking(&socket, app, 1200);
+    wait_for("Check for Codes never looked in the mail", || server.logins().len() > before);
+    assert_eq!(heard(checking), [] as [Value; 0]);
 
     // Left out: a page waiting (for four digits: not the code had) has
     // the mail looked in no more.
@@ -461,7 +492,7 @@ fn messages_and_a_code_to_the_tab_waiting_for_it() {
     std::thread::sleep(Duration::from_millis(500));
     tell(&["receive", "", "22395", "Your Acme Bank verification code is 482913. It expires in 10 minutes."]);
     let (mine, agents) = (heard(mine), heard(agents));
-    assert_eq!(agents, [json!({"say": "any", "id": 1}), json!({"say": "code", "id": 1, "tab": 7, "frame": 3, "code": "482913", "from": "Acme Bank", "fill": true, "mail": false})]);
+    assert_eq!(agents, [json!({"say": "any", "id": 1}), json!({"say": "code", "id": 1, "tab": 7, "frame": 3, "code": "482913", "from": "Acme Bank", "fill": true, "mail": false, "account": ""})]);
     assert_eq!(mine, [json!({"say": "any", "id": 1}), json!({"say": "gone", "id": 1})]);
     // It's in the agent screen's history, without the code; and the
     // state says a code came, and nothing of it.
@@ -478,9 +509,12 @@ fn messages_and_a_code_to_the_tab_waiting_for_it() {
     let mine = browser(&socket, None, json!([{"tab": 11, "host": "login.acmebank.example", "title": "Sign in", "focused": true, "active": true, "front": true, "age": 15}]), 2000, false);
     std::thread::sleep(Duration::from_millis(500));
     tell(&["receive", "", "22395", "Your Acme Bank verification code is 771204."]);
-    assert_eq!(heard(mine), [json!({"say": "any", "id": 2}), json!({"say": "code", "id": 2, "tab": 11, "frame": 0, "code": "771204", "from": "Acme Bank", "fill": false, "mail": false})]);
+    assert_eq!(
+        heard(mine),
+        [json!({"say": "any", "id": 2}), json!({"say": "code", "id": 2, "tab": 11, "frame": 0, "code": "771204", "from": "Acme Bank", "fill": false, "mail": false, "account": ""})]
+    );
     let later = browser(&socket, None, json!([{"tab": 12, "host": "acmebank.example", "title": "Verify", "focused": true, "active": true, "front": true}]), 1200, true);
-    assert_eq!(heard(later), [json!({"say": "code", "id": 2, "tab": 12, "frame": 0, "code": "771204", "from": "Acme Bank", "fill": false, "mail": false})]);
+    assert_eq!(heard(later), [json!({"say": "code", "id": 2, "tab": 12, "frame": 0, "code": "771204", "from": "Acme Bank", "fill": false, "mail": false, "account": ""})]);
     // Nothing that isn't a code is offered anywhere.
     let mine = browser(&socket, None, json!([{"tab": 11, "host": "shop.example", "title": "Checkout", "focused": true, "active": true, "front": true, "age": 5}]), 1500, false);
     std::thread::sleep(Duration::from_millis(500));

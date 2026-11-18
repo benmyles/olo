@@ -276,6 +276,9 @@ struct Pending {
     /// Not a code but a link to sign in with, from a mail message
     /// (`code.code` is empty then): offered to the tab it's for.
     link: Option<codes::SignInLink>,
+    /// The mail account it came to (a code or a link by mail): said in
+    /// the offer.
+    account: String,
 }
 
 impl Drop for Pending {
@@ -802,7 +805,7 @@ impl Service {
                 tracing::info!("phone: a browser is listening (process {pid}{})", screen.as_ref().map(|s| format!(", on agent screen {s}")).unwrap_or_default());
                 self.browsers.insert(id, Browser { screen, out });
             }
-            Ev::Said(id, FromBrowser::Waiting { id: asked, tabs }) => self.waiting(id, asked, tabs),
+            Ev::Said(id, FromBrowser::Waiting { id: asked, tabs, now }) => self.waiting(id, asked, tabs, now),
             Ev::Said(id, FromBrowser::Outcome { id: code, outcome }) => self.outcome(id, code, &outcome),
             Ev::Left(id) => {
                 self.browsers.remove(&id);
@@ -1847,7 +1850,17 @@ impl Service {
             self.next_code += 1;
             let from = code.service.clone().unwrap_or_else(|| thread.name.clone());
             let age = Duration::from_secs((now() as i64 - message.at).clamp(0, JUST) as u64);
-            self.codes.push(Pending { id: self.next_code, code, from, until: Instant::now() + CODE_LIFE.saturating_sub(age), round: None, asking: None, given: HashSet::new(), link: None });
+            self.codes.push(Pending {
+                id: self.next_code,
+                code,
+                from,
+                until: Instant::now() + CODE_LIFE.saturating_sub(age),
+                round: None,
+                asking: None,
+                given: HashSet::new(),
+                link: None,
+                account: String::new(),
+            });
             self.state.codes += 1;
             self.state.code_at = Some(now());
             self.next_code
@@ -2065,7 +2078,7 @@ impl Service {
     /// A browser says which of its tabs are waiting: its answer to being
     /// asked about code `asked`, or by itself (a code field has come up:
     /// any code still good may be for it).
-    fn waiting(&mut self, browser: u64, asked: Option<u64>, tabs: Vec<Waiting>) {
+    fn waiting(&mut self, browser: u64, asked: Option<u64>, tabs: Vec<Waiting>, now: bool) {
         match asked {
             Some(id) => {
                 let Some(c) = self.codes.iter_mut().find(|c| c.id == id) else { return };
@@ -2093,8 +2106,15 @@ impl Service {
                     }
                 }
                 // No code had is for it: the mail looked in, for the
-                // minute to come.
-                if by_mail {
+                // minute to come. Asked for by the person ("Check for
+                // Codes"): looked in afresh, at once, whatever the page
+                // says of how its code comes (a watch under way waits
+                // for the server's word of a new message; a new one
+                // reads what came in the last minutes first).
+                if now {
+                    self.mail.clear();
+                    self.watch_mail();
+                } else if by_mail {
                     self.watch_mail();
                 }
             }
@@ -2124,17 +2144,17 @@ impl Service {
     /// A message in a mail account watched: its code, if it has one,
     /// given to the tab waiting for it as a texted one is.
     fn mail_came(&mut self, address: String, uid: u32, m: olo_mail::Message) {
-        if !self.mail_seen.insert((address, uid)) {
+        if !self.mail_seen.insert((address.clone(), uid)) {
             return;
         }
-        let Some(code) = codes::find_mail(&m.subject, &m.text, &m.from) else { return self.mail_link(m) };
+        let Some(code) = codes::find_mail(&m.subject, &m.text, &m.from) else { return self.mail_link(address, m) };
         // (The same code had already, from the phone or another account.)
         if self.codes.iter().any(|c| c.code.code == code.code) {
             return;
         }
         self.next_code += 1;
         let from = code.service.clone().unwrap_or(m.from);
-        self.codes.push(Pending { id: self.next_code, code, from, until: Instant::now() + CODE_LIFE, round: None, asking: None, given: HashSet::new(), link: None });
+        self.codes.push(Pending { id: self.next_code, code, from, until: Instant::now() + CODE_LIFE, round: None, asking: None, given: HashSet::new(), link: None, account: address });
         self.state.codes += 1;
         self.state.code_at = Some(now());
         self.ask_browsers(self.next_code);
@@ -2143,7 +2163,7 @@ impl Service {
     /// A mail message with no code in it: its link to sign in with, if
     /// it carries one (Claude's does: "Click the button below to finish
     /// signing in"), offered to the tab waiting, as a code is.
-    fn mail_link(&mut self, m: olo_mail::Message) {
+    fn mail_link(&mut self, address: String, m: olo_mail::Message) {
         let links: Vec<(String, String)> = m.links.iter().map(|l| (l.text.clone(), l.url.clone())).collect();
         let Some(link) = codes::find_link(&m.subject, &m.text, &links, &m.from) else { return };
         if self.codes.iter().any(|c| c.link.as_ref().is_some_and(|l| l.url == link.url)) {
@@ -2152,7 +2172,7 @@ impl Service {
         self.next_code += 1;
         let from = link.service.clone().unwrap_or(m.from);
         let code = Code { code: String::new(), domain: None, service: link.service.clone(), mail: true };
-        self.codes.push(Pending { id: self.next_code, code, from, until: Instant::now() + CODE_LIFE, round: None, asking: None, given: HashSet::new(), link: Some(link) });
+        self.codes.push(Pending { id: self.next_code, code, from, until: Instant::now() + CODE_LIFE, round: None, asking: None, given: HashSet::new(), link: Some(link), account: address });
         self.ask_browsers(self.next_code);
     }
 
@@ -2215,7 +2235,7 @@ impl Service {
         let Some(c) = self.codes.iter_mut().find(|c| c.id == id) else { return };
         let Some(b) = self.browsers.get(&browser) else { return };
         c.given.insert((browser, tab.tab));
-        let mut message = ToBrowser::Code { id, tab: tab.tab, frame: tab.frame, code: c.code.code.clone(), from: c.from.clone(), fill, mail: c.code.mail };
+        let mut message = ToBrowser::Code { id, tab: tab.tab, frame: tab.frame, code: c.code.code.clone(), from: c.from.clone(), fill, mail: c.code.mail, account: c.account.clone() };
         if !say(&b.out, &message) {
             self.browsers.remove(&browser);
         }
@@ -2230,12 +2250,14 @@ impl Service {
         }
     }
 
+    /// (The offer says the link's site, not its whole host: the end of
+    /// a long host is what tells whose it is, and the first to be cut.)
     fn send_link(&mut self, id: u64, browser: u64, tab: &Waiting, link: &codes::SignInLink) {
         self.mail.clear();
         let Some(c) = self.codes.iter_mut().find(|c| c.id == id) else { return };
         let Some(b) = self.browsers.get(&browser) else { return };
         c.given.insert((browser, tab.tab));
-        let message = ToBrowser::Link { id, tab: tab.tab, frame: tab.frame, url: link.url.clone(), to: link.host.clone(), from: c.from.clone() };
+        let message = ToBrowser::Link { id, tab: tab.tab, frame: tab.frame, url: link.url.clone(), to: codes::site_of(&link.host), from: c.from.clone(), account: c.account.clone() };
         if !say(&b.out, &message) {
             self.browsers.remove(&browser);
         }

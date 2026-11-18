@@ -153,7 +153,9 @@ something nobody here has is in "Blocked", with what it waits for.
   newest five (a rule that files a sender's mail elsewhere hides it);
   the address a sign-in goes to must be one of the accounts set up
   (today's went to a third address, of neither account: nothing could
-  have been found); "Check for Codes" in the extension's menu.
+  have been found). "Check for Codes" is in the field's menu
+  (Passwords ▸ Check for Codes), and a mailed code's offer says "by
+  mail" (extension 1.15.5).
 - **Go through Olo's logs for other warnings and errors and fix what
   should be fixed** (Ben, 2026-11-18). A first pass done (HACKING.md,
   "What a day's logs showed"): Notifications' history kept apart on
@@ -255,36 +257,15 @@ something nobody here has is in "Blocked", with what it waits for.
   are. Olo's own: the palette, an agents' API, in-place reload, native
   in Rust.
 
-- **Passwords' Chrome extension: Open Passwords goes to the login
-  chosen** (Ben, 2026-11-18: "in the olo passwords chrome extension if i
-  click the extension icon and click on one of the login items and then
-  click open passwords it should open or activate the passwords app and
-  take me to that specific login"). The extension's popup, with an item
-  chosen: Open Passwords starts Passwords (or brings its window
-  forward) showing that item, selected in its list, whatever the list
-  was filtered to; with no item chosen, as now. Through the extension's
-  host to the running app (its instance's launch, the item's id
-  handed over, nothing secret in it).
-
-- **A code found in mail says so, and Check for Codes at once** (Ben,
-  2026-11-18, of a sign-in whose code came by mail and was offered as
-  "Fill code 235578 / From Verda Cloud, by text message": "it found my
-  code in my email but it said it was from a text message it should say
-  from <email address> if it's from email. also it took a while to show
-  up, make it so that if i don't want to wait i can right click in the
-  field and in the olo extension menu choose to "Check for OTPs" to make
-  it check immediately"). Two things. A bug: a code read from a mail
-  account is offered with where it came from as it is ("From Verda
-  Cloud, in mail to ADDRESS"), never "by text message" (find where the
-  offer's words are made, in the extension and its host, and what a
-  mailed code is handed over as). And a command in the extension's
-  right-click menu on a field, "Check for Codes" (the words Olo uses
-  elsewhere for one-time codes), which looks at once: the mail accounts
-  asked now rather than at their next look (and why a code waits at all
-  when the server tells of new mail, IDLE: measure from the mail
-  arriving to the offer, and fix what holds it up), the phone's
-  messages too. Tried with the stand-in mail server; agents can ask the
-  same by command.
+- **Done, 2026-11-18** (extension 1.15.5; HACKING.md, "The toolbar
+  button's list", "Check for Codes", "A link to sign in with, sent by
+  mail"): the extension's Open Passwords goes to the login chosen in
+  its list; a mailed code's offer says "From …, in mail to ADDRESS";
+  Passwords ▸ Check for Codes in a field's menu reads the mail afresh
+  at once. **Left of it**: how long a mailed code takes from arriving
+  to being offered isn't measured against a real server (with the
+  stand-in it's offered as it's delivered); the phone's messages
+  aren't asked again by Check for Codes (they come as they're sent).
 
 - **Chrome with several profiles: agents' trees and codes reach one
   profile** (found 2026-11-18, mending links). Chrome's socket for

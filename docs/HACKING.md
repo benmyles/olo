@@ -15153,18 +15153,46 @@ that couldn't be shown may be made again). `ToBrowser::Link { url, to,
 from }` → the host → the extension: background.js keeps the address
 (`linkOffers`; the page is told only the host it goes to) and has the
 page show the offer under the field as a code's is, "Open sign-in
-link / From Acme, by mail · acme.example"; taken (a click, or ↓ and
-Return), the page says so (`link-take`, its id only) and the
-extension takes that tab, and no other, to the address
-(`chrome.tabs.update`). A code's offer says how it came too now
-("From GitHub, by mail"; `ToBrowser::Code::mail`: it said "by text
-message" for both). Extension 1.15.4. Tested: `codes::tests`
+link at acme.example / From Acme, in mail to ada@example.com" (the
+link's site, `codes::site_of`, not its whole host: a long host's end
+is what tells whose it is); taken (a click, or ↓ and Return), the
+page says so (`link-take`, its id only) and the extension takes that
+tab, and no other, to the address (`chrome.tabs.update`). A code's
+offer says how it came too now, and to which account ("From Verda
+Cloud, in mail to ada@example.com"; `ToBrowser::Code::mail` and
+`account`: it said "by text message" for both; Ben: "it should say
+from <email address> if it's from email"). Extension 1.15.5. Tested: `codes::tests`
 (`a_sign_in_link_by_mail`, `whose_tab_a_link_is`), `mime`'s
 `a_messages_links`, the service end to end (the mail test above: a
 page waiting, the message delivered, `{"say": "link", …}` to its
 tab), and in Chrome in a test session (the phone service, `cargo run
 -p olo-mail --example imap_standin` as the mailbox, a page with a code
 field: the offer shown, and taken, the tab at the link's address).
+**Check for Codes** (Ben, 2026-11-18: "if i don't want to wait i can
+right click in the field and in the olo extension menu choose to
+'Check for OTPs' to make it check immediately"): the field's menu,
+Passwords ▸ Check for Codes, on any page (whatever Passwords knows of
+it). The extension says its tab's waiting again with `now`
+(`FromBrowser::Waiting { now: true }`): the service gives a code or
+link it already has that's for the tab, else reads the mail afresh at
+once, whatever the page says of how its code comes (the watches under
+way are ended and begun again: a new one reads what came in the last
+five minutes before it waits; one under way only waits for the
+server's word of a new message). Tested in the service's mail test (a
+page that says "authenticator": the mail left alone; checked: signed
+in to at once).
+
+**The toolbar button's list** (popup.html/js/css): this page's logins,
+one chosen (a click, the arrows; the first to begin with), then Fill
+(the default: Return, or a double click) or Open Passwords, which
+shows that login in Passwords (`popup-open` with its vault and id →
+`Request::Show`, Passwords started first if need be; with no login to
+choose it only brings Passwords forward). Ben: "if i click the
+extension icon and click on one of the login items and then click open
+passwords it should open or activate the passwords app and take me to
+that specific login". (A click used to fill at once, so there was
+nothing to choose and then open.) Extension 1.15.5.
+
 **How well codes are found in real mail**: `cargo run --release -p
 olo-phone --example mail_codes [MONTHS] [--misses]` runs
 `find_mail` over every message of the accounts set up that says it

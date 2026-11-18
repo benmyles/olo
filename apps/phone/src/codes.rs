@@ -648,7 +648,7 @@ pub fn find_link(subject: &str, text: &str, links: &[(String, String)], sender: 
 /// A host's site, roughly: its last two labels ("mail.acme.example" →
 /// "acme.example"), three where the second to last is one of a
 /// country's kinds ("acme.co.uk").
-fn site_of(host: &str) -> String {
+pub fn site_of(host: &str) -> String {
     let labels: Vec<&str> = host.split('.').collect();
     let n = labels.len();
     let kinds = ["co", "com", "org", "net", "ac", "gov", "edu"];

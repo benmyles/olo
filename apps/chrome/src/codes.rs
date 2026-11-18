@@ -74,7 +74,7 @@ impl Codes {
     pub fn from_extension(&self, message: &Value) -> bool {
         let said = if let Some(w) = message.get("code_waiting") {
             let tabs: Vec<Waiting> = w.get("tabs").cloned().and_then(|t| serde_json::from_value(t).ok()).unwrap_or_default();
-            FromBrowser::Waiting { id: w.get("id").and_then(Value::as_u64), tabs }
+            FromBrowser::Waiting { id: w.get("id").and_then(Value::as_u64), tabs, now: w.get("now").and_then(Value::as_bool) == Some(true) }
         } else if let Some(o) = message.get("code_outcome") {
             let Some(id) = o.get("id").and_then(Value::as_u64) else { return true };
             FromBrowser::Outcome { id, outcome: o.get("outcome").and_then(Value::as_str).unwrap_or_default().to_owned() }
@@ -104,8 +104,10 @@ fn connect() -> std::io::Result<UnixStream> {
 fn to_extension(said: ToBrowser) -> Value {
     match said {
         ToBrowser::Any { id } => json!({ "code": { "any": id } }),
-        ToBrowser::Code { id, tab, frame, code, from, fill, mail } => json!({ "code": { "id": id, "tab": tab, "frame": frame, "code": code, "from": from, "fill": fill, "mail": mail } }),
-        ToBrowser::Link { id, tab, frame, url, to, from } => json!({ "code": { "id": id, "tab": tab, "frame": frame, "link": url, "to": to, "from": from } }),
+        ToBrowser::Code { id, tab, frame, code, from, fill, mail, account } => {
+            json!({ "code": { "id": id, "tab": tab, "frame": frame, "code": code, "from": from, "fill": fill, "mail": mail, "account": account } })
+        }
+        ToBrowser::Link { id, tab, frame, url, to, from, account } => json!({ "code": { "id": id, "tab": tab, "frame": frame, "link": url, "to": to, "from": from, "account": account } }),
         ToBrowser::Gone { id } => json!({ "code": { "gone": id } }),
     }
 }
@@ -118,12 +120,12 @@ mod tests {
     fn what_each_says_to_the_other() {
         assert_eq!(to_extension(ToBrowser::Any { id: 4 }), json!({ "code": { "any": 4 } }));
         assert_eq!(
-            to_extension(ToBrowser::Code { id: 4, tab: 12, frame: 3, code: "482913".into(), from: "Acme".into(), fill: true, mail: true }),
-            json!({ "code": { "id": 4, "tab": 12, "frame": 3, "code": "482913", "from": "Acme", "fill": true, "mail": true } })
+            to_extension(ToBrowser::Code { id: 4, tab: 12, frame: 3, code: "482913".into(), from: "Acme".into(), fill: true, mail: true, account: "ada@example.com".into() }),
+            json!({ "code": { "id": 4, "tab": 12, "frame": 3, "code": "482913", "from": "Acme", "fill": true, "mail": true, "account": "ada@example.com" } })
         );
         assert_eq!(
-            to_extension(ToBrowser::Link { id: 5, tab: 12, frame: 0, url: "https://acme.example/magic#t".into(), to: "acme.example".into(), from: "Acme".into() }),
-            json!({ "code": { "id": 5, "tab": 12, "frame": 0, "link": "https://acme.example/magic#t", "to": "acme.example", "from": "Acme" } })
+            to_extension(ToBrowser::Link { id: 5, tab: 12, frame: 0, url: "https://acme.example/magic#t".into(), to: "acme.example".into(), from: "Acme".into(), account: "ada@example.com".into() }),
+            json!({ "code": { "id": 5, "tab": 12, "frame": 0, "link": "https://acme.example/magic#t", "to": "acme.example", "from": "Acme", "account": "ada@example.com" } })
         );
         assert_eq!(to_extension(ToBrowser::Gone { id: 4 }), json!({ "code": { "gone": 4 } }));
         // With no service, what the extension says is taken and goes

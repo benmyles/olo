@@ -304,20 +304,23 @@
         border: 1px solid color-mix(in srgb, CanvasText 32%, Canvas); border-radius: 6px; padding: 7px 12px;
         box-shadow: 0 4px 14px rgb(0 0 0 / .24); }
       button:hover, button.on { background: Highlight; color: HighlightText; }
-      .what { font-weight: 600; white-space: nowrap; }
+      .what { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .from { font-size: 12px; opacity: .72; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }`;
     const button = document.createElement("button");
     button.type = "button";
     const what = document.createElement("div");
     what.className = "what";
-    what.textContent = m.link ? "Open sign-in link" : `Fill code ${m.code}`;
+    what.textContent = m.link ? (m.to ? `Open sign-in link at ${m.to}` : "Open sign-in link") : `Fill code ${m.code}`;
     const from = document.createElement("div");
     from.className = "from";
     // Who it's from and how it came (a text message, or mail), and for
     // a link where it goes.
-    const how = m.mail || m.link ? "by mail" : "by text message";
+    // (Mail: to which of the accounts set up it came.)
+    const how = m.mail || m.link ? (m.account ? `in mail to ${m.account}` : "by mail") : "by text message";
     from.textContent = m.link
-      ? `${m.from ? `From ${m.from}, by mail` : "From your mail"}${m.to ? ` · ${m.to}` : ""}`
+      ? m.from
+        ? `From ${m.from}, ${how}`
+        : `From your mail${m.account ? ` (${m.account})` : ""}`
       : m.passwords
         ? m.from
           ? `From Passwords, for ${m.from}`
@@ -325,12 +328,12 @@
         : m.from
           ? `From ${m.from}, ${how}`
           : m.mail
-            ? "From your mail"
+            ? `From your mail${m.account ? ` (${m.account})` : ""}`
             : "From a text message";
     button.setAttribute(
       "aria-label",
       m.link
-        ? `Open the sign-in link${m.from ? ` from ${m.from}` : ""}, by mail${m.to ? `, at ${m.to}` : ""}`
+        ? `Open the sign-in link${m.to ? ` at ${m.to}` : ""}${m.from ? ` from ${m.from}` : ""}, ${how}`
         : `Fill code ${m.code}${m.passwords ? " from Passwords" : ""}${m.from ? `${m.passwords ? " for" : " from"} ${m.from}` : ""}${m.passwords ? "" : `, ${how}`}`,
     );
     button.append(what, from);

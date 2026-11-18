@@ -630,11 +630,24 @@ pub enum ToBrowser {
         fill: bool,
         #[serde(default)]
         mail: bool,
+        /// The mail account it came to ("ada@example.com"), when by mail.
+        #[serde(default)]
+        account: String,
     },
     /// This browser's tab is offered a link to sign in with, that came
     /// by mail (`to`: the host it goes to, said in the offer): the tab
     /// goes there when the person takes it. Never put in unasked.
-    Link { id: u64, tab: i64, frame: i64, url: String, to: String, from: String },
+    Link {
+        id: u64,
+        tab: i64,
+        frame: i64,
+        url: String,
+        to: String,
+        from: String,
+        /// The mail account it came to.
+        #[serde(default)]
+        account: String,
+    },
     /// It went elsewhere, was taken or is too old: an offer still
     /// showing for it goes.
     Gone { id: u64 },
@@ -647,7 +660,15 @@ pub enum FromBrowser {
     /// The tabs waiting for a code now: the answer to `Any` (its `id`),
     /// or unasked (`id: None`: a code field has just come up or taken
     /// the focus, and a code may have come before it).
-    Waiting { id: Option<u64>, tabs: Vec<Waiting> },
+    /// `now` (unasked only): the person asked for the looking, at once
+    /// (the extension's "Check for Codes"): the mail is read again now,
+    /// whether or not it's being watched.
+    Waiting {
+        id: Option<u64>,
+        tabs: Vec<Waiting>,
+        #[serde(default)]
+        now: bool,
+    },
     /// What came of a `Code`: "filled" (the person took it, or it was
     /// put in), "shown", "dismissed" or "gone" (the tab or its field
     /// went).
@@ -678,15 +699,18 @@ mod tests {
         let text = serde_json::to_string(&r).unwrap();
         assert_eq!(text, r#"{"do":"browser","screen":"agent","pid":7}"#);
         assert_eq!(serde_json::from_str::<Request>(&text).unwrap(), r);
-        let c = ToBrowser::Code { id: 3, tab: 12, frame: 0, code: "482913".into(), from: "Acme".into(), fill: false, mail: false };
-        assert_eq!(serde_json::to_string(&c).unwrap(), r#"{"say":"code","id":3,"tab":12,"frame":0,"code":"482913","from":"Acme","fill":false,"mail":false}"#);
+        let c = ToBrowser::Code { id: 3, tab: 12, frame: 0, code: "482913".into(), from: "Acme".into(), fill: false, mail: false, account: String::new() };
+        assert_eq!(serde_json::to_string(&c).unwrap(), r#"{"say":"code","id":3,"tab":12,"frame":0,"code":"482913","from":"Acme","fill":false,"mail":false,"account":""}"#);
         // (One from a service before `mail`: a text message's.)
         assert_eq!(serde_json::from_str::<ToBrowser>(r#"{"say":"code","id":3,"tab":12,"frame":0,"code":"482913","from":"Acme","fill":false}"#).unwrap(), c);
-        let l = ToBrowser::Link { id: 4, tab: 12, frame: 0, url: "https://acme.example/magic#t".into(), to: "acme.example".into(), from: "Acme".into() };
-        assert_eq!(serde_json::to_string(&l).unwrap(), r#"{"say":"link","id":4,"tab":12,"frame":0,"url":"https://acme.example/magic#t","to":"acme.example","from":"Acme"}"#);
+        let l = ToBrowser::Link { id: 4, tab: 12, frame: 0, url: "https://acme.example/magic#t".into(), to: "acme.example".into(), from: "Acme".into(), account: "ada@example.com".into() };
+        assert_eq!(
+            serde_json::to_string(&l).unwrap(),
+            r#"{"say":"link","id":4,"tab":12,"frame":0,"url":"https://acme.example/magic#t","to":"acme.example","from":"Acme","account":"ada@example.com"}"#
+        );
         // (A browser says only what it knows: the rest is as if not so.)
         let w: FromBrowser = serde_json::from_str(r#"{"say":"waiting","id":null,"tabs":[{"tab":4,"host":"example.com","focused":true}]}"#).unwrap();
-        let FromBrowser::Waiting { id: None, tabs } = w else { panic!() };
+        let FromBrowser::Waiting { id: None, tabs, now: false } = w else { panic!() };
         assert!(tabs[0].focused && !tabs[0].declared && tabs[0].digits.is_none());
     }
 

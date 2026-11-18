@@ -366,6 +366,9 @@ function buildMenu(url, tabId, frameId, card = false) {
     }
     await create({ id: "passwords", title: "Passwords", contexts: ["editable"] });
     const add = (id, title, parentId = "passwords", enabled = true) => create({ id, title, parentId, contexts: ["editable"], enabled });
+    // (Whatever Passwords knows of the page: a code or a sign-in link
+    // that was texted or mailed can be looked for at once.)
+    const check = () => add("check-codes", "Check for Codes");
     // The other passkeys first.
     for (const k of keys.slice(1, MENU_LOGINS)) await add(itemId("passkey", origin, k.vault, k.id), `Sign In with Passkey (${who(k)})`);
     if (keys.length > 1) await create({ id: "passkey-sep", type: "separator", parentId: "passwords", contexts: ["editable"] });
@@ -377,13 +380,16 @@ function buildMenu(url, tabId, frameId, card = false) {
     }
     if (!entry) {
       await add("none", "Not on this page", "passwords", false);
+      await check();
       return;
     }
     if (entry.state === "locked") {
       await add(itemId("unlock", origin), "Unlock Passwords…");
+      await check();
       return;
     }
     if (entry.state !== "logins") {
+      await check();
       await add(itemId("open", origin), "Open Passwords");
       return;
     }
@@ -398,6 +404,7 @@ function buildMenu(url, tabId, frameId, card = false) {
       if (l.otp) await add(itemId("otp", origin, l.vault, l.id), "One-Time Code", parent);
     }
     await create({ id: "sep", type: "separator", parentId: "passwords", contexts: ["editable"] });
+    await check();
     await add(itemId("open", origin), "Open Passwords");
   });
   return building;
@@ -488,6 +495,14 @@ chrome.tabs.onUpdated.addListener((tabId, change) => {
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === "slack-picture") return slackPicture(info.srcUrl);
+  // Check for Codes: the phone service looks for a code or a sign-in
+  // link now (its mail read afresh), for this tab's field.
+  if (info.menuItemId === "check-codes") {
+    if (!port) connect();
+    const tabs = tab ? await codeTabs(tab) : [];
+    port?.postMessage({ code_waiting: { id: null, tabs, now: true } });
+    return;
+  }
   let kind, origin, vault, id;
   try {
     [kind, origin, vault, id] = JSON.parse(info.menuItemId);
@@ -650,7 +665,7 @@ function fromPhone(c) {
     const said = (outcome) => port?.postMessage({ code_outcome: { id: c.id, outcome } });
     if (!/^https:\/\//.test(c.link)) return said("gone");
     linkOffers.set(c.id, { tabId: c.tab, url: c.link });
-    chrome.tabs.sendMessage(c.tab, { type: "code-offer", id: c.id, link: true, to: String(c.to || ""), from: c.from, host: codeHosts.get(`${c.tab}:${c.frame}`) }, { frameId: c.frame }).then(
+    chrome.tabs.sendMessage(c.tab, { type: "code-offer", id: c.id, link: true, to: String(c.to || ""), from: c.from, account: String(c.account || ""), host: codeHosts.get(`${c.tab}:${c.frame}`) }, { frameId: c.frame }).then(
       (r) => {
         const outcome = r?.outcome || "gone";
         if (outcome === "shown") codeOffers.set(c.id, [...(codeOffers.get(c.id) || []), { tabId: c.tab, frameId: c.frame }]);
@@ -664,7 +679,7 @@ function fromPhone(c) {
     );
   } else if (c.code) {
     const said = (outcome) => port?.postMessage({ code_outcome: { id: c.id, outcome } });
-    chrome.tabs.sendMessage(c.tab, { type: "code-offer", id: c.id, code: c.code, from: c.from, mail: !!c.mail, fill: !!c.fill, host: codeHosts.get(`${c.tab}:${c.frame}`) }, { frameId: c.frame }).then(
+    chrome.tabs.sendMessage(c.tab, { type: "code-offer", id: c.id, code: c.code, from: c.from, mail: !!c.mail, account: String(c.account || ""), fill: !!c.fill, host: codeHosts.get(`${c.tab}:${c.frame}`) }, { frameId: c.frame }).then(
       (r) => {
         const outcome = r?.outcome || "gone";
         if (outcome === "shown") codeOffers.set(c.id, [...(codeOffers.get(c.id) || []), { tabId: c.tab, frameId: c.frame }]);
@@ -832,7 +847,10 @@ chrome.runtime.onMessage.addListener((m, sender, reply) => {
     );
     return true;
   } else if (m.type === "popup-open" && !sender.tab) {
-    host({ open: true }).then(() => reply({ ok: true }), (e) => reply({ error: e.message }));
+    // Passwords brought forward: at the login chosen in the popup, if
+    // one was (started first if it isn't running).
+    const shown = typeof m.vault === "string" && typeof m.id === "string" ? ask({ type: "show", vault: m.vault, id: m.id }, true) : host({ open: true });
+    shown.then(() => reply({ ok: true }), (e) => reply({ error: e.message }));
     return true;
   }
 });

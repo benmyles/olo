@@ -4960,5 +4960,11 @@
   "title": "A mailed sign-in link, offered",
   "caption": "Some services mail a button, not a code (Claude's \"Your secure link to Claude is here\"). The Olo extension now offers it under the field of the page that's waiting, as it offers a code: who it's from, that it came by mail, and where it goes. Taking it takes the tab there.",
   "image": "2026-11-18/145743-a-mailed-sign-in-link-offered.png"
+ },
+ {
+  "time": "2026-11-18T15:14:35",
+  "title": "The extension's list: choose, then Fill or Open Passwords",
+  "caption": "The toolbar button's list of this page's logins now has a selection (a click, the arrows): Fill fills it (Return, or a double click), and Open Passwords shows that login in Passwords. A field's menu has Passwords \u25b8 Check for Codes, and a code or sign-in link that came by mail says which account it came to.",
+  "image": "2026-11-18/151435-the-extension-s-list-choose-then-fill-or-open-pa.png"
  }
 ]

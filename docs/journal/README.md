@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### The extension's list: choose, then Fill or Open Passwords
+
+*15:14* — The toolbar button's list of this page's logins now has a selection (a click, the arrows): Fill fills it (Return, or a double click), and Open Passwords shows that login in Passwords. A field's menu has Passwords ▸ Check for Codes, and a code or sign-in link that came by mail says which account it came to.
+
+![The extension's list: choose, then Fill or Open Passwords](2026-11-18/151435-the-extension-s-list-choose-then-fill-or-open-pa.png)
+
 ### A mailed sign-in link, offered
 
 *14:57* — Some services mail a button, not a code (Claude's "Your secure link to Claude is here"). The Olo extension now offers it under the field of the page that's waiting, as it offers a code: who it's from, that it came by mail, and where it goes. Taking it takes the tab there.
