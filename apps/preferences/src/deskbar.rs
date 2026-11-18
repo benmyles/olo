@@ -209,6 +209,11 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         ui.bbox("Applications", |ui| {
             ui.check("A red dot for an app with something unread in it", on, |s, v| s.deskbar.unread_dots = v);
             ui.note("In place of the blue dot of its notifications, for as long as the app says something is unread or waiting in it.");
+            // (With several displays: each Deskbar lists the others'
+            // applications under its own; here, behind an arrow.)
+            let collapsed = ui.s.deskbar.others_collapsed;
+            ui.check("Other displays’ applications start collapsed", collapsed, |s, v| s.deskbar.others_collapsed = v);
+            ui.note("Each other display is one row in a display’s Deskbar, with an arrow that shows its applications and puts them away again.");
         });
     });
     let right = ui.collect(|ui| match selected.and_then(|i| widgets.get(i)) {

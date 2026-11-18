@@ -983,6 +983,22 @@ pub fn latch(g: &mut Painter, r: Bounds<Pixels>, open: bool, color: Hsla) {
     }
 }
 
+/// A small solid triangle centred in `r`, pointing down (what's under
+/// it can be shown) or up (it can be put away): a section's
+/// disclosure, where a row has no room for a button's frame.
+pub fn arrow_down(g: &mut Painter, r: Bounds<Pixels>, up: bool, color: Hsla) {
+    let m = snap_centred(g, r.center(), 8.0, 8.0).center();
+    let at = |x: f32, y: f32| point(m.x + px(x), m.y + px(if up { -y } else { y }));
+    let mut path = olo_interface::PathBuilder::fill();
+    path.move_to(at(-4.0, -2.0));
+    path.line_to(at(0.0, 2.5));
+    path.line_to(at(4.0, -2.0));
+    path.close();
+    if let Ok(path) = path.build() {
+        g.paint_path(path, color);
+    }
+}
+
 /// A small solid triangle centred in `r`, pointing left (back) or right
 /// (on): what steps through months, pages, weeks.
 pub fn arrow(g: &mut Painter, r: Bounds<Pixels>, left: bool, color: Hsla) {

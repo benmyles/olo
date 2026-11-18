@@ -329,6 +329,8 @@ struct Settings {
     unread_dots: bool,
     /// Folded away to the right.
     folded: bool,
+    /// The other displays' applications begin collapsed.
+    others_collapsed: bool,
 }
 
 /// A team: the windows of one application.
@@ -400,6 +402,12 @@ struct Deskbar {
     /// Folded away to the screen's right edge (`DeskbarSettings::folded`):
     /// only its button shows.
     folded: bool,
+    /// The other displays' applications begin collapsed, a row a display
+    /// (`DeskbarSettings::others_collapsed`), and those whose row has
+    /// been opened since (by name; every display's Deskbar alike, until
+    /// Deskbar starts again).
+    others_collapsed: bool,
+    others_shown: std::collections::HashSet<String>,
     /// Approving requests without asking until then (seconds since the
     /// epoch; app_server's approve.rs).
     approve_until: Option<u64>,
@@ -1769,6 +1777,7 @@ impl Deskbar {
                 self.keys = s.keys;
                 self.unread_dots = s.unread_dots;
                 self.folded = s.folded;
+                self.others_collapsed = s.others_collapsed;
                 self.glances.set(&s.widgets, &proxy);
                 self.live.set(s.widgets, &proxy);
                 if seconds {
@@ -1984,6 +1993,7 @@ fn settings_msg(settings: olo_protocol::Settings) -> Msg {
         keys: settings.keyboard.profile,
         unread_dots: settings.deskbar.unread_dots,
         folded: settings.deskbar.folded,
+        others_collapsed: settings.deskbar.others_collapsed,
         widgets: settings.deskbar.widgets,
     })
 }
@@ -3557,8 +3567,26 @@ impl Deskbar {
         // heading (each display's workspaces with windows, and the one it
         // shows)
         let mut y = self.widget_rows(&mut d, olo_protocol::deskbar::Place::Top, TILE_H + tray_height(rows), view, &model);
-        for on in self.displays_from(display.as_deref()) {
+        for (nth, on) in self.displays_from(display.as_deref()).into_iter().enumerate() {
             let on = on.as_deref();
+            // Another display's, where they begin collapsed (Preferences ▸
+            // Deskbar): its row, and what's under only while it's open.
+            if nth > 0
+                && self.others_collapsed
+                && let Some(other) = on
+            {
+                let open = self.others_shown.contains(other);
+                // (How many applications it has: said while they're put away.)
+                let mut workspaces: Vec<u32> = self.windows_on(on).map(|w| w.workspace).collect();
+                workspaces.sort();
+                workspaces.dedup();
+                let apps: usize = workspaces.into_iter().map(|ws| self.teams(on, Some(ws)).len()).sum();
+                self.display_heading(&mut d, rect(0.0, y, WIDTH, HEADING_H), other, open, apps, pointer, view, &model);
+                y += HEADING_H;
+                if !open {
+                    continue;
+                }
+            }
             let current = self.showing(on);
             let mut workspaces: Vec<u32> = self.windows_on(on).map(|w| w.workspace).chain([current]).collect();
             workspaces.sort();
@@ -3599,6 +3627,73 @@ impl Deskbar {
             style::hline_above(g, px(0.0), px(WIDTH), px(bottom), edge);
         });
         (d, y.ceil())
+    }
+
+    /// Another display's row at `r`, where the other displays begin
+    /// collapsed: "Display 1: Studio Display", how many applications are
+    /// on it while they're put away, and at its right end an arrow, down
+    /// to show its workspaces and applications under the row, up to put
+    /// them away. A click anywhere on it does.
+    #[allow(clippy::too_many_arguments)]
+    fn display_heading(&self, d: &mut Drawing, r: Bounds<Pixels>, display: &str, open: bool, apps: usize, pointer: &Pointer, view: &ViewRef<BarView>, model: &Model) {
+        let name = self.outputs.iter().find(|o| o.name == display).map(|o| o.display_name()).unwrap_or_else(|| display.to_owned());
+        let caption = match olo_protocol::display_number(&self.outputs, display) {
+            Some(n) => format!("Display {}: {name}", olo_protocol::display_number_text(n)),
+            None => name,
+        };
+        let count = (!open && apps > 0).then(|| apps.to_string());
+        let arrow_r = rect(f32::from(r.right()) - ICON_INSET - ICON, f32::from(r.center().y) - ICON / 2.0, ICON, ICON);
+        let key = format!("display-row:{display}");
+        let hovered = pointer.hot(&key);
+        let said = match (open, apps) {
+            (true, _) => format!("{caption}. Click to put its applications away."),
+            (false, 0) => format!("{caption}: no applications. Click to show its workspaces."),
+            (false, 1) => format!("{caption}: 1 application. Click to show it."),
+            (false, n) => format!("{caption}: {n} applications. Click to show them."),
+        };
+        {
+            let (caption, said, count) = (caption.clone(), said.clone(), count.clone());
+            d.paint(move |g| {
+                let p = theme::palette();
+                // (A line over it: where one display's ends and the next begins.)
+                style::hline(g, px(0.0), px(WIDTH), r.top(), shade(&p, p.panel_background, 1.18));
+                if hovered {
+                    style::fill_rect(g, rect(0.0, f32::from(r.top()) + 1.0, WIDTH, HEADING_H - 1.0), style::tint(p.panel_background, 0.8));
+                }
+                let ink = if hovered { c(p.panel_text) } else { c(olo_kit::palette::mix(p.panel_text, p.panel_background, 0.45)) };
+                let font = style::ui_font(FontWeight::BOLD);
+                // Its count just left of the arrow, the caption in the room that leaves.
+                let mut room = f32::from(arrow_r.left()) - 4.0 - ICON_INSET;
+                if let Some(count) = &count {
+                    let drawn = style::label(g, arrow_r.left() - px(4.0), r.center().y, Align::Right, count.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), ink);
+                    room -= f32::from(drawn.size.width) + 6.0;
+                }
+                style::label_fit(g, px(ICON_INSET), r.center().y, Align::Left, caption.clone(), style::SMALL_SIZE, font, ink, px(room));
+                style::arrow_down(g, arrow_r, open, ink);
+                agent::record(
+                    g,
+                    agent::Node {
+                        role: "Button",
+                        name: Some(said.clone().into()),
+                        value: Some(if open { "expanded" } else { "collapsed" }.into()),
+                        bounds: r,
+                        enabled: true,
+                        clickable: true,
+                        ..Default::default()
+                    },
+                );
+            });
+        }
+        let (m, dsp) = (model.clone(), display.to_owned());
+        d.hits.push(hit(view, &key, r, Some(said)).on_any_button(move |e, _cx| {
+            if button(e) == MouseButton::Left {
+                m.update(|d| {
+                    if !d.others_shown.remove(&dsp) {
+                        d.others_shown.insert(dsp.clone());
+                    }
+                });
+            }
+        }));
     }
 
     /// Workspace `ws`'s heading at `r`, on `display`'s Deskbar, its
@@ -4337,6 +4432,8 @@ fn main() {
             keys: KeyboardProfile::default(),
             unread_dots: true,
             folded: false,
+            others_collapsed: false,
+            others_shown: Default::default(),
             approve_until: None,
             arrangement: (None, None),
             notes_seen: None,

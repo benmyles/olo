@@ -3671,6 +3671,10 @@ it.
   button with an arrow (`style::arrow`), for stepping through what a
   window shows, in a pair set flush. No words on it, so `name`
   ("Previous Week") is what agents read and its tip.
+  `style::arrow_down(g, r, up, color)` is the same small triangle
+  pointing down (what's under can be shown) or up (it can be put
+  away): a row's disclosure, where there's no room for a button's
+  frame (Deskbar's other displays).
 - `StringView::cut(true).beside(size)`: a line cut to its room sits on
   the baseline of the larger text beside it, as an uncut one does (a
   status after a title: it was half a point off, the layout review's
@@ -19824,6 +19828,26 @@ settings, changes that and writes them), so it stays so across a
 reload, and an agent folds it with `set_settings`; a Deskbar's layer
 surface is anchored at the top right and takes its new width
 (`BarView::width`).
+
+**Other displays' applications, collapsed** (Ben, 2026-11-18: "add an
+option in deskbar prefs (disabled by default) to default to showing
+other display's apps collapsed in the deskbar with an icon button to
+expand them (down) and collapse them again (up)"). A display's Deskbar
+lists its own workspaces and applications, then the other displays'.
+With Preferences ▸ Deskbar ▸ Applications ▸ "Other displays’
+applications start collapsed" (`DeskbarSettings::others_collapsed`,
+`deskbar.others_collapsed`; off unless turned on), each other display
+is one row there (`display_heading`): "Display 1: Studio Display", how
+many applications it has while they're put away, and at its right end
+an arrow, down to show its workspaces and applications under the row
+and up to put them away (`style::arrow_down`); a click anywhere on the
+row does. Which are open is Deskbar's own (`others_shown`, by display,
+every display's Deskbar alike), until Deskbar starts again: they start
+collapsed, as asked. Agents: a Button named with what a click does
+("Display 1: Headless: 2 applications. Click to show them."), its
+value "collapsed" or "expanded". Tried in a test session of two
+displays, both Deskbars, light and dark, the row at 1×, 1.5× and 2×;
+Preferences' pane clean in the review at the three.
 
 The windows follow in app_server. `usable_area` leaves out a Deskbar
 only if it is wider than `DESKBAR_FOLDED` (48): a folded one takes no

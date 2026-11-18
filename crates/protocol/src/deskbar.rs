@@ -35,11 +35,19 @@ pub struct DeskbarSettings {
     /// expand it and when it collapses and expands the windows on the
     /// screen should expand/collapse to fill the space too").
     pub folded: bool,
+    /// The other displays' applications begin collapsed in each
+    /// display's Deskbar: one row a display, with an arrow that shows
+    /// its workspaces and applications (down) and puts them away again
+    /// (up). Off unless turned on (Ben, 2026-11-18: "add an option in
+    /// deskbar prefs (disabled by default) to default to showing other
+    /// display's apps collapsed in the deskbar with an icon button to
+    /// expand them (down) and collapse them again (up)").
+    pub others_collapsed: bool,
 }
 
 impl Default for DeskbarSettings {
     fn default() -> Self {
-        DeskbarSettings { widgets: Vec::new(), unread_dots: true, folded: false }
+        DeskbarSettings { widgets: Vec::new(), unread_dots: true, folded: false, others_collapsed: false }
     }
 }
 

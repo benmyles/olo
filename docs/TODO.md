@@ -165,11 +165,6 @@ something nobody here has is in "Blocked", with what it waits for.
   "non-existent source" warnings (a display's timer cancelled in the
   round it came due). **Left**: another pass once these are in Ben's
   session a day.
-- **Deskbar: other displays' apps collapsed by default, as an option**
-  (Ben, 2026-11-18: "add an option in deskbar prefs (disabled by
-  default) to default to showing other display's apps collapsed in the
-  deskbar with an icon button to expand them (down) and collapse them
-  again (up)").
 - **Desktop icons gone after Deskbar is collapsed and expanded** (Ben,
   2026-11-18: "i tried the new collapse deskbar then expand again. it
   worked but the desktop icons all disappeared and didn't come back").

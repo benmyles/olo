@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Deskbar: other displays, collapsed
+
+*15:25* — An option in Preferences ▸ Deskbar (off unless turned on): each other display is one row in a display's Deskbar, with how many applications it has and an arrow. Down shows its workspaces and applications; up puts them away. Left and middle: Display 1 opened, light and dark; right: Display 0 collapsed, on the other display's Deskbar.
+
+![Deskbar: other displays, collapsed](2026-11-18/152556-deskbar-other-displays-collapsed.png)
+
 ### The extension's list: choose, then Fill or Open Passwords
 
 *15:14* — The toolbar button's list of this page's logins now has a selection (a click, the arrows): Fill fills it (Return, or a double click), and Open Passwords shows that login in Passwords. A field's menu has Passwords ▸ Check for Codes, and a code or sign-in link that came by mail says which account it came to.
