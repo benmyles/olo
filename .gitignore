@@ -2,7 +2,9 @@
 *.png.tmp
 /data/icons/src/
 /data/themes/*/src/
-/.claude/
+/.claude/*
+# (The repository's own skills are kept: .claude/skills/NAME/SKILL.md.)
+!/.claude/skills/
 docs/journal/.cache/
 __pycache__/
 /data/wallpapers/src/
