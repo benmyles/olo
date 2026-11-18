@@ -65,10 +65,42 @@ fn overlays(id: &str) -> impl Iterator<Item = PathBuf> {
     crate::data_dirs().iter().filter(move |_| id != CLASSIC).map(move |d| d.join("themes").join(id))
 }
 
-/// Where theme `id`'s icons are (`<px>/<name>.png`) and then the classic
-/// set's, which fills in for it.
+/// Where theme `id`'s icons are (`svg/<name>.svg`, `<px>/<name>.png`)
+/// and then the classic set's, which fills in for it.
 pub(crate) fn icon_dirs(id: &str) -> impl Iterator<Item = PathBuf> {
     overlays(id).map(|d| d.join("icons")).chain(crate::data_dirs().iter().map(|d| d.join("icons")))
+}
+
+/// How theme `id` colours the classic set's drawings where it has none
+/// of its own (`themes/<id>/icons/recolour.txt`: `svg::recolour`), read
+/// once; none for the classic set, or a theme without rules.
+pub fn recolour(id: &str) -> Option<&'static crate::svg::Recolour> {
+    static RULES: std::sync::OnceLock<Vec<Option<crate::svg::Recolour>>> = std::sync::OnceLock::new();
+    RULES
+        .get_or_init(|| {
+            THEMES
+                .iter()
+                .map(|t| {
+                    let file = overlays(t.id).map(|d| d.join("icons/recolour.txt")).find(|f| f.is_file())?;
+                    match crate::svg::Recolour::parse(&std::fs::read_to_string(&file).ok()?) {
+                        Ok(rules) => Some(rules),
+                        Err(e) => {
+                            tracing::warn!("{}: {e}", file.display());
+                            None
+                        }
+                    }
+                })
+                .collect()
+        })
+        .get(index(id))?
+        .as_ref()
+}
+
+/// Whether `path` (an icon's) is theme `id`'s own, not the classic set's
+/// filling in for it.
+pub(crate) fn is_its_own(id: &str, path: &std::path::Path) -> bool {
+    let id = resolve(id).id;
+    id != CLASSIC && path.ancestors().nth(3).is_some_and(|theme| theme.ends_with(std::path::Path::new("themes").join(id)))
 }
 
 /// Olo's wordmark for a light or a `dark` background
@@ -122,6 +154,40 @@ mod tests {
             let missing: Vec<String> = crate::OWN_SIZES.iter().flat_map(|px| names.iter().map(move |n| format!("{px}/{n}"))).filter(|p| !icons.join(format!("{p}.png")).is_file()).collect();
             assert!(missing.is_empty(), "{} lacks {missing:?}", t.id);
         }
+    }
+
+    /// A theme's rules for the classic set's drawings can be read, and
+    /// Platinum has them: where it has no drawing of its own, the classic
+    /// one shows, in its colours.
+    #[test]
+    fn a_theme_colours_the_classic_drawings() {
+        let data = repo_data();
+        for t in THEMES.iter().filter(|t| t.id != CLASSIC) {
+            let file = data.join("themes").join(t.id).join("icons/recolour.txt");
+            if let Ok(text) = std::fs::read_to_string(&file) {
+                crate::svg::Recolour::parse(&text).unwrap_or_else(|e| panic!("{}: {e}", file.display()));
+            }
+        }
+        assert!(recolour(CLASSIC).is_none());
+        let rules = recolour("platinum").expect("Platinum's rules");
+        let folder = crate::find_icon_in("platinum", "folder", 32).unwrap();
+        assert!(crate::svg::is_own(&folder) && !is_its_own("platinum", &folder), "{folder:?}");
+        assert!(is_its_own("platinum", &data.join("themes/platinum/icons/svg/folder.svg")));
+        let classic = std::fs::read_to_string(&folder).unwrap();
+        let platinum = rules.apply("folder", &classic);
+        // The folder's face, at the middle of the icon: manila in Classic,
+        // lilac blue in Platinum.
+        let face = |svg: &str| {
+            let img = crate::svg::render(svg.as_bytes(), 64, true).unwrap();
+            let i = (40 * 64 + 32) * 4;
+            [img.rgba[i], img.rgba[i + 1], img.rgba[i + 2]]
+        };
+        let (c, p) = (face(&classic), face(&platinum));
+        assert!(c[0] > c[2] + 40, "Classic's folder is manila: {c:?}");
+        assert!(p[2] > p[0] + 20, "Platinum's is lilac blue: {p:?}");
+        // The brand's ring is the brand's in every theme.
+        let ring = std::fs::read_to_string(data.join("icons/svg/olo.svg")).unwrap();
+        assert_eq!(rules.apply("olo", &ring), ring);
     }
 
     #[test]

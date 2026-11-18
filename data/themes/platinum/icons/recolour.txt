@@ -1,0 +1,19 @@
+# Platinum: the classic set's drawings in Mac OS 9's colours (see
+# docs/ICONS.md, "A theme's colours"; the rules: crates/xdg/src/svg/recolour.rs).
+# Platinum grey is a lilac grey, its folders lilac blue, its blues
+# periwinkle, its accents clear but softer than Be's; its outline black.
+
+ink 0b0b16
+grey 240 0.24
+
+# The folder is Platinum's lilac-blue one; the window tabs on the little
+# screens are Platinum's grey-lilac title bars, not Be's yellow tabs.
+turn 25-56 to 232 0.72 +0.12 in folder folder-open tracker
+turn 36-56 to 240 0.34 +0.06 in desktop windows agent-screens
+
+# Blues toward periwinkle; everything else a little softer and lighter.
+turn 196-232 by 10 0.84 +0.07
+turn 0-360 by 0 0.90 +0.02
+
+# Other people's marks, and Olo's own, keep their colours.
+keep olo slack github google-chrome telegram

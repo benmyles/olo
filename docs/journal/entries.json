@@ -4828,5 +4828,17 @@
   "title": "Deskbar: a blue dot for notifications, a red one for what's unread in the app",
   "caption": "No number beside the blue dot any more; left of it, a red dot while the app says something is unread or waiting in it (here Terminal has both, StyledEdit a notification, the Viewer something unread), at 1\u00d7, 1.5\u00d7 and 2\u00d7. Their colours are the look's own.",
   "image": "2026-11-17/111614-deskbar-a-blue-dot-for-notifications-a-red-one-f.png"
+ },
+ {
+  "time": "2026-11-17T18:32:23",
+  "title": "Every icon a drawing",
+  "caption": "Classic's 181 icons are hand-written SVG drawings now, rendered for the exact pixels they're shown at (here 1.5\u00d7): one projection, one outline, the same forms throughout. They replace pictures shrunk from 256 pixels.",
+  "image": "2026-11-17/183223-every-icon-a-drawing.png"
+ },
+ {
+  "time": "2026-11-17T18:32:24",
+  "title": "Platinum's icons: the same drawings, its colours",
+  "caption": "A theme without a drawing of its own shows the classic one in its colours (Platinum: black ink, lilac greys, a lilac-blue folder, periwinkle blues), so an icon has the same angle, size and detail in every theme.",
+  "image": "2026-11-17/183224-platinum-s-icons-the-same-drawings-its-colours.png"
  }
 ]

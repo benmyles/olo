@@ -38,6 +38,11 @@
 //! program to ask, and the next start, reads it back (as fast as the
 //! picture was); a drawing changed (an upgrade) is rendered again and its
 //! old pixels removed.
+//!
+//! **In a theme's colours.** A theme without a drawing of its own for an
+//! icon shows the classic set's in its colours ([`recolour`],
+//! [`own_recoloured`]): one drawing, so every theme's icon has the same
+//! angle, size and detail.
 
 use std::{
     hash::{Hash as _, Hasher as _},
@@ -45,6 +50,9 @@ use std::{
 };
 
 use crate::Image;
+
+pub mod recolour;
+pub use recolour::Recolour;
 
 /// The sizes a drawing's `fromN` and `uptoN` classes can name.
 pub const STEPS: [u32; 9] = [16, 24, 32, 48, 64, 96, 128, 256, 512];
@@ -118,14 +126,22 @@ pub fn render(data: &[u8], px: u32, own: bool) -> Option<Image> {
 const KEPT_VERSION: u32 = 2;
 
 /// Where the pixels of drawing `path` at `px` are kept, and the start of
-/// the names of every keeping of it at that size (an older drawing's).
-fn kept_at(cache: &Path, path: &Path, px: u32) -> Option<(PathBuf, String)> {
+/// the names of every keeping of it at that size (an older drawing's);
+/// `theme`: in that theme's colours (its id, its rules' key).
+fn kept_at(cache: &Path, path: &Path, px: u32, theme: Option<(&str, u64)>) -> Option<(PathBuf, String)> {
     let meta = std::fs::metadata(path).ok()?;
     let changed = meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?;
     let mut h = std::collections::hash_map::DefaultHasher::new();
     path.hash(&mut h);
+    let mut rules = String::new();
+    if let Some((id, key)) = theme {
+        // (The theme is part of which drawing this is; its rules, like
+        // the drawing's date, of which keeping: changed, the old one goes.)
+        id.hash(&mut h);
+        rules = format!("-{key:x}");
+    }
     let stem = format!("{:016x}-{px}-", h.finish());
-    let name = format!("{stem}{:x}-{:x}-{KEPT_VERSION}.rgba", changed.as_nanos(), meta.len());
+    let name = format!("{stem}{:x}-{:x}-{KEPT_VERSION}{rules}.rgba", changed.as_nanos(), meta.len());
     Some((cache.join(name), stem))
 }
 
@@ -137,7 +153,23 @@ pub fn own(path: &Path, px: u32) -> Option<Image> {
 
 /// [`own`], what's rendered kept in folder `cache`.
 pub fn own_in(cache: &Path, path: &Path, px: u32) -> Option<Image> {
-    let kept = kept_at(cache, path, px);
+    kept(cache, path, px, None)
+}
+
+/// The classic set's drawing `path` at `px` device pixels in theme
+/// `theme`'s colours (`rules`: [`crate::themes::recolour`]), kept like
+/// [`own`].
+pub fn own_recoloured(path: &Path, px: u32, theme: &str, rules: &Recolour) -> Option<Image> {
+    own_recoloured_in(&crate::cache_dir().join("icons"), path, px, theme, rules)
+}
+
+/// [`own_recoloured`], what's rendered kept in folder `cache`.
+pub fn own_recoloured_in(cache: &Path, path: &Path, px: u32, theme: &str, rules: &Recolour) -> Option<Image> {
+    kept(cache, path, px, Some((theme, rules)))
+}
+
+fn kept(cache: &Path, path: &Path, px: u32, theme: Option<(&str, &Recolour)>) -> Option<Image> {
+    let kept = kept_at(cache, path, px, theme.map(|(id, rules)| (id, rules.key())));
     let want = (px as usize).pow(2) * 4;
     if let Some((file, _)) = &kept
         && let Ok(rgba) = std::fs::read(file)
@@ -145,7 +177,14 @@ pub fn own_in(cache: &Path, path: &Path, px: u32) -> Option<Image> {
     {
         return Some(Image { width: px, height: px, rgba, premultiplied: true });
     }
-    let image = render(&std::fs::read(path).ok()?, px, true)?;
+    let drawing = std::fs::read(path).ok()?;
+    let image = match theme {
+        Some((_, rules)) => {
+            let name = path.file_stem().unwrap_or_default().to_string_lossy();
+            render(rules.apply(&name, std::str::from_utf8(&drawing).ok()?).as_bytes(), px, true)?
+        }
+        None => render(&drawing, px, true)?,
+    };
     if let Some((file, stem)) = kept
         && let Some(dir) = file.parent()
         && std::fs::create_dir_all(dir).is_ok()
@@ -243,6 +282,16 @@ mod tests {
         let changed = own_in(&cache, &drawing, 32).unwrap();
         assert_eq!(pixel(&changed, 16, 16), [0, 255, 0, 255]);
         assert_eq!(kept().len(), 2, "one a size");
+        // In a theme's colours: kept beside the classic rendering, not in
+        // its place; the theme's rules changed, its old keeping goes.
+        let blue_to_red = Recolour::parse("turn 100-140 to 0 1 0\n").unwrap();
+        let themed = own_recoloured_in(&cache, &drawing, 32, "test", &blue_to_red).unwrap();
+        assert_eq!(pixel(&themed, 16, 16), [255, 0, 0, 255], "the green, as the theme has it");
+        assert_eq!(kept().len(), 3);
+        assert_eq!(own_in(&cache, &drawing, 32).unwrap().rgba, changed.rgba, "the classic rendering is still the classic one");
+        let to_blue = Recolour::parse("turn 100-140 to 240 1 0\n").unwrap();
+        assert_eq!(pixel(&own_recoloured_in(&cache, &drawing, 32, "test", &to_blue).unwrap(), 16, 16), [0, 0, 255, 255]);
+        assert_eq!(kept().len(), 3, "the theme's old keeping went");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

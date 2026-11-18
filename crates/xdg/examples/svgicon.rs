@@ -1,7 +1,8 @@
 //! Render one of Olo's icon drawings as Olo does, to look at it:
 //! `svgicon IN.svg OUT.png SIZE [SIZE…]` writes OUT.png at SIZE device
 //! pixels (several sizes: OUT-SIZE.png each), drawn for the size
-//! (`olo_xdg::svg`); `--plain` first renders it as any other program's.
+//! (`olo_xdg::svg`); `--plain` first renders it as any other program's;
+//! `--theme ID` first, in that theme's colours (its `recolour.txt`).
 //! `svgicon --time NAME…` measures what drawing costs beside decoding.
 
 /// `svgicon --time NAME…`: how long each of Olo's icons NAME takes to be
@@ -22,13 +23,20 @@ fn time(names: &[String]) {
     };
     // (What's kept, kept in scratch: never in the person's cache.)
     let cache = std::path::Path::new("/var/tmp").join(format!("olo-svgicon-{}", std::process::id()));
-    println!("{:<16} {:>6} {:>12} {:>12} {:>12}", "icon", "px", "drawing µs", "kept µs", "picture µs");
+    // (In a theme's colours: Platinum's, the rules applied and the drawing rendered.)
+    let rules = olo_xdg::themes::recolour("platinum");
+    println!("{:<16} {:>6} {:>12} {:>12} {:>12} {:>12}", "icon", "px", "drawing µs", "themed µs", "kept µs", "picture µs");
     for name in names {
         let path = data.join("icons/svg").join(format!("{name}.svg"));
         let svg = std::fs::read(&path).expect("its drawing");
         for px in [16u32, 32, 64, 256] {
             let drawn = median(&|| {
                 olo_xdg::svg::render(&svg, px, true);
+            });
+            let themed = rules.map(|r| {
+                median(&|| {
+                    olo_xdg::svg::render(r.apply(name, &String::from_utf8_lossy(&svg)).as_bytes(), px, true);
+                })
             });
             let kept = median(&|| {
                 olo_xdg::svg::own_in(&cache, &path, px);
@@ -39,7 +47,8 @@ fn time(names: &[String]) {
                     olo_xdg::decode_png(&png);
                 })
             });
-            println!("{name:<16} {px:>6} {drawn:>12.0} {kept:>12.0} {:>12}", decoded.map_or("-".into(), |d| format!("{d:.0}")));
+            let or_none = |v: Option<f64>| v.map_or("-".into(), |d| format!("{d:.0}"));
+            println!("{name:<16} {px:>6} {drawn:>12.0} {:>12} {kept:>12.0} {:>12}", or_none(themed), or_none(decoded));
         }
     }
     let _ = std::fs::remove_dir_all(&cache);
@@ -56,11 +65,23 @@ fn main() {
     } else {
         true
     };
+    let theme = (args.first().is_some_and(|a| a == "--theme") && args.len() > 1).then(|| {
+        args.remove(0);
+        args.remove(0)
+    });
     let [input, output, sizes @ ..] = &args[..] else {
-        eprintln!("usage: svgicon [--plain] IN.svg OUT.png SIZE [SIZE…]");
+        eprintln!("usage: svgicon [--plain | --theme ID] IN.svg OUT.png SIZE [SIZE…]");
         std::process::exit(2);
     };
-    let data = std::fs::read(input).expect("the drawing");
+    let mut data = std::fs::read(input).expect("the drawing");
+    if let Some(theme) = &theme {
+        let Some(rules) = olo_xdg::themes::recolour(theme) else {
+            eprintln!("svgicon: theme {theme} has no colours of its own for the drawings");
+            std::process::exit(1);
+        };
+        let name = std::path::Path::new(input).file_stem().unwrap_or_default().to_string_lossy().into_owned();
+        data = rules.apply(&name, &String::from_utf8_lossy(&data)).into_bytes();
+    }
     for size in sizes {
         let px: u32 = size.parse().expect("a size in pixels");
         let Some(img) = olo_xdg::svg::render(&data, px, own) else {

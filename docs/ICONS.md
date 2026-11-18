@@ -109,7 +109,40 @@ GTK through Olo's icon theme), where it shows whole.
 once and its pixels kept in `~/.cache/olo/icons` (`svg::own`): read
 back in 2 µs (7 at 256), less than decoding the PNG took (10 and 520).
 
+**A theme's colours.** The classic set is the drawings; a theme without
+a drawing of its own for an icon (`data/themes/ID/icons/svg/NAME.svg`)
+shows the classic one in its own colours, by the rules it keeps beside
+its icons, `data/themes/ID/icons/recolour.txt`
+(`olo_xdg::svg::recolour`, `themes::recolour`): so an icon has the same
+angle, size and detail in every theme, and each theme its palette.
+Platinum's: the ink black, greys a lilac grey, the folder lilac blue,
+blues toward periwinkle, everything a little softer; the brand's ring
+and other people's marks kept as they are.
+
+```text
+ink 0b0b16                     # the classic ink (1b1b1f) becomes this
+grey 240 0.24                  # greys take this hue and saturation
+turn 25-56 to 232 0.72 +0.12 in folder folder-open tracker
+                               # hues 25 to 56: to hue 232, 0.72 of the saturation, 0.12 lighter, in those icons
+turn 196-232 by 10 0.84 +0.07  # ... turned by 10 degrees, in every icon
+keep olo slack github          # these stay as they are
+```
+
+A colour is a grey when its channels differ by less than 0.12; any
+other takes the first `turn` that holds it, so the particular come
+first. Look at a theme's set with `svgicon --theme ID IN.svg OUT.png
+SIZE`. The rendering is kept per theme like any other. A theme draws an
+icon of its own only where recolouring can't say it (a different thing,
+not a different colour).
+
 **Writing one.**
+
+The forms most drawings are made of (a box, a sheet standing, a flat
+thing seen from above, a thick disc, the page, the CRT, a chip, a
+drive, a magnifying glass, a padlock, the sky's pieces, a phone) are in
+`tools/dev/iconforms.py`, each giving the SVG for itself: start a
+drawing from them (its doc comment shows how), then it's the drawing
+that's kept and edited.
 
 ```sh
 T=tools/dev/icontrace.py

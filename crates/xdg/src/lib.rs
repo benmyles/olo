@@ -103,14 +103,18 @@ pub fn find_icon_in(theme: &str, name: &str, px: u32) -> Option<PathBuf> {
         let p = PathBuf::from(name);
         return p.is_file().then_some(p);
     }
-    // Ours: its drawing, rendered for the size (a theme's own before the
-    // classic set's); else the smallest pre-scaled size at least as large
-    // as needed.
-    for dir in themes::icon_dirs(theme) {
+    // Ours: its drawing, rendered for the size: the theme's own, else the
+    // classic set's (which `load_icon_in` shows in the theme's colours).
+    // An icon not drawn yet: its picture, the smallest pre-scaled size at
+    // least as large as needed.
+    let dirs: Vec<PathBuf> = themes::icon_dirs(theme).collect();
+    for dir in &dirs {
         let drawn = dir.join("svg").join(format!("{name}.svg"));
         if drawn.is_file() {
             return Some(drawn);
         }
+    }
+    for dir in &dirs {
         let sizes = OWN_SIZES.iter().filter(|&&s| s >= px).chain(OWN_SIZES.iter().rev().filter(|&&s| s < px));
         for s in sizes {
             let p = dir.join(s.to_string()).join(format!("{name}.png"));
@@ -194,8 +198,16 @@ pub fn load_icon(name: &str, px: u32) -> Option<Image> {
 pub fn load_icon_in(theme: &str, name: &str, px: u32) -> Option<Image> {
     let path = find_icon_in(theme, name, px)?;
     if path.extension().is_some_and(|e| e == "svg") {
-        // (Olo's own drawings are drawn for the size, once: `svg::own`.)
-        if svg::is_own(&path) { svg::own(&path, px) } else { svg::render(&std::fs::read(&path).ok()?, px, false) }
+        // (Olo's own drawings are drawn for the size, once: `svg::own`;
+        // the classic set's, filling in for a theme, in the theme's
+        // colours.)
+        if !svg::is_own(&path) {
+            svg::render(&std::fs::read(&path).ok()?, px, false)
+        } else if let Some(rules) = themes::recolour(theme).filter(|_| !themes::is_its_own(theme, &path)) {
+            svg::own_recoloured(&path, px, themes::resolve(theme).id, rules)
+        } else {
+            svg::own(&path, px)
+        }
     } else {
         decode_png(&path)
     }

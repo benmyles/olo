@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### Platinum's icons: the same drawings, its colours
+
+*18:32* — A theme without a drawing of its own shows the classic one in its colours (Platinum: black ink, lilac greys, a lilac-blue folder, periwinkle blues), so an icon has the same angle, size and detail in every theme.
+
+![Platinum's icons: the same drawings, its colours](2026-11-17/183224-platinum-s-icons-the-same-drawings-its-colours.png)
+
+### Every icon a drawing
+
+*18:32* — Classic's 181 icons are hand-written SVG drawings now, rendered for the exact pixels they're shown at (here 1.5×): one projection, one outline, the same forms throughout. They replace pictures shrunk from 256 pixels.
+
+![Every icon a drawing](2026-11-17/183223-every-icon-a-drawing.png)
+
 ### Deskbar: a blue dot for notifications, a red one for what's unread in the app
 
 *11:16* — No number beside the blue dot any more; left of it, a red dot while the app says something is unread or waiting in it (here Terminal has both, StyledEdit a notification, the Viewer something unread), at 1×, 1.5× and 2×. Their colours are the look's own.

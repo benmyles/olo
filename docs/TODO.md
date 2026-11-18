@@ -40,14 +40,20 @@ something nobody here has is in "Blocked", with what it waits for.
   loader draws `icons/svg/NAME.svg` for the size asked, kept once
   rendered (`olo_xdg::svg`); the grid, the one projection, the outline
   and size classes; `tools/dev/icontrace.py`; every one of Classic's 181 is drawn (`data/icons/svg`:
-  the manifest's 143, Weather's skies, the phones). To do: look at the
-  whole set in the apps at every scale and redraw what's weak; then
-  Platinum's set in its own style (163 pictures in
-  `data/themes/platinum/icons`); then the pictures
-  removed (`<px>/NAME.png`, `mkicons.py`, the model's tools), the icon
-  theme other programs get (app_server's `icon_theme.rs`: the drawings
-  as `scalable/`), Olo Setup's embedded icons (`apps/installer/build.rs`),
-  and the tests that count pictures (`themes.rs`). Ben is looking at the
+  the manifest's 143, Weather's skies, the phones), looked at in the
+  apps at 1×, 1.5× and 2×, light and dark; a theme shows the classic
+  drawings in its own colours (`svg::recolour`; Platinum's rules:
+  `data/themes/platinum/icons/recolour.txt`), so Platinum is drawn too;
+  the forms the drawings are made of are `tools/dev/iconforms.py`. To
+  do: the pictures removed (`<px>/NAME.png` in `data/icons` and
+  Platinum's, `manifest.txt`, `mkicons.py`, `genicon.py`,
+  `iconsheet.py`, the references), with what still reads them: the
+  start-up veil and the Plymouth theme (`veil.rs`), the icon theme other
+  programs get (`icon_theme.rs`: Olo's renderings written as PNGs, not
+  links), Olo Setup's embedded icons (`apps/installer/build.rs`), the
+  website's `{{icon}}`, `release.sh`, StyledEdit's and richtext's test
+  picture, and the tests that count pictures (`themes.rs`); then
+  ICONS.md rewritten for drawings alone. Ben is looking at the
   first ones (`/var/tmp/claude-blueferry/icons/deskbar-svg.png`).
 
 - **Themes: one list (Classic, Platinum, BeOS and every scheme), each
