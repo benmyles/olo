@@ -5,8 +5,10 @@
     mkbrand.py --sheet OUT.png # and a contact sheet of it all, on light and dark
 
 The brand (docs/BRAND.md): the Olo mark, a glossy blue and yellow ring
-(drawn by the icon model: docs/brand/olo-mark.png, the master; its icon
-sizes are data/icons/<px>/olo.png), and the wordmark, "Olo" set in Sora
+(a drawing, data/icons/svg/olo.svg: Olo's own `olo` icon, rendered here
+as Olo renders it, for each size it's wanted at; it was written from
+the icon model's picture of the mark, docs/brand/olo-mark.png), and the
+wordmark, "Olo" set in Sora
 ExtraBold with "DESKTOP" under it in Sora SemiBold, tracked wide. The
 lettering is set here from the font (data/fonts/Sora[wght].ttf), never
 drawn by a model: a typeface's letters, exact at any size.
@@ -23,15 +25,19 @@ Writes:
                                          picture
   docs/img/olo-social.png                GitHub's social preview
 
-Run with /usr/bin/python3 (it has PIL).
+Run with /usr/bin/python3 (it has PIL), after
+`cargo build --release -p olo-xdg --example svgicon` (what renders the
+drawing).
 """
-import argparse, os, sys
+import argparse, os, subprocess, sys
 
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 FONT = os.path.join(ROOT, "data", "fonts", "Sora[wght].ttf")
-MARK = os.path.join(ROOT, "docs", "brand", "olo-mark.png")
+DRAWING = os.path.join(ROOT, "data", "icons", "svg", "olo.svg")
+SVGICON = os.path.join(ROOT, "target", "release", "examples", "svgicon")
+SCRATCH = os.path.join("/var/tmp", f"mkbrand-{os.getuid()}")
 KIT = os.path.join(ROOT, "website", "static", "brand")
 
 # The palette (docs/BRAND.md).
@@ -138,10 +144,56 @@ def wordmark(cap, dark, sub=True):
     return im
 
 
+def drawn(px):
+    """The mark's drawing rendered on a canvas `px` pixels a side, as Olo
+    renders its icons (drawn for the size: its outline a pixel at least),
+    without its contact shadow (a logo stands on nothing)."""
+    os.makedirs(SCRATCH, exist_ok=True)
+    svg = open(DRAWING).read()
+    a = svg.index('<ellipse class="from48"')
+    b = svg.index("/>", a) + 2
+    assert "url(#shadow)" in svg[a:b], "the drawing's first large-only ellipse is its shadow"
+    plain, out = os.path.join(SCRATCH, "olo.svg"), os.path.join(SCRATCH, f"olo-{px}.png")
+    open(plain, "w").write(svg[:a] + svg[b:])
+    subprocess.run([SVGICON, plain, out, str(px)], check=True, capture_output=True)
+    return Image.open(out).convert("RGBA")
+
+
+_FILLS = []
+
+
+def fills():
+    """How much of its canvas the drawing's ink takes: (across, down)."""
+    if not _FILLS:
+        x0, y0, x1, y1 = ink(drawn(1024))
+        _FILLS.append(((x1 - x0) / 1024, (y1 - y0) / 1024))
+    return _FILLS[0]
+
+
+def mark_in(w, h):
+    """The mark as large as fits `w` by `h` pixels, drawn for that size.
+    (The square marks and the favicons are used as drawn; a logo is
+    composed large, lettering and mark together, and scaled whole.)"""
+    fw, fh = fills()
+    px = int(min(w / fw, h / fh))
+    m = trimmed(drawn(px))
+    while m.width > w or m.height > h:  # (a pixel over, by rounding)
+        px -= 1
+        m = trimmed(drawn(px))
+    return m
+
+
 def mark(height):
-    m = trimmed(Image.open(MARK).convert("RGBA"))
-    w = round(m.width * height / m.height)
-    return m.convert("RGBa").resize((w, height), Image.LANCZOS).convert("RGBA")
+    return mark_in(10 * height, height)
+
+
+def mark_square(side, frac):
+    """The mark centred in a square `side` pixels, `frac` of it clear all round."""
+    inner = side - 2 * round(side * frac)
+    m = mark_in(inner, inner)
+    out = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    out.alpha_composite(m, ((side - m.width) // 2, (side - m.height) // 2))
+    return out
 
 
 def horizontal(cap, dark):
@@ -227,8 +279,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sheet", help="also draw a contact sheet of it all here")
     a = ap.parse_args()
-    if not os.path.exists(MARK):
-        sys.exit(f"no master mark at {MARK} (see docs/BRAND.md)")
+    if not os.path.exists(SVGICON):
+        sys.exit("build what renders the drawing first: cargo build --release -p olo-xdg --example svgicon")
 
     brand = os.path.join(ROOT, "data", "brand")
     # Olo's UI wordmark: "Olo" alone (DESKTOP can't be read at the
@@ -249,20 +301,19 @@ def main():
         kit[f"olo-wordmark{sfx}.png"] = to_width(padded(wordmark(400, dark)), 1200)
         # "Olo" alone, for small places (the website's header).
         kit[f"olo-name{sfx}.png"] = to_width(wordmark(400, dark, sub=False), 480)
-    kit["olo-mark.png"] = square(trimmed(Image.open(MARK).convert("RGBA")), 1024, 0.04)
+    kit["olo-mark.png"] = mark_square(1024, 0.04)
     for name, im in kit.items():
         save(im, os.path.join(KIT, name))
-    m = trimmed(Image.open(MARK).convert("RGBA"))
     for side, name in [(32, "favicon-32.png"), (180, "apple-touch-icon.png"), (192, "icon-192.png"), (512, "icon-512.png")]:
-        im = square(m, side, 0.04 if side < 64 else 0.08)
+        im = mark_square(side, 0.04 if side < 64 else 0.08)
         if name == "apple-touch-icon.png":  # iOS draws it on black: give it the pale ground.
             bg = ground((side, side), (245, 247, 252), (226, 233, 246))
             bg.alpha_composite(im)
             im = bg.convert("RGB")
         save(im, os.path.join(KIT, name))
-    # favicon.ico: 16, 32 and 48 in one.
-    ico = square(m, 256, 0.02)
-    ico.save(os.path.join(KIT, "favicon.ico"), sizes=[(16, 16), (32, 32), (48, 48)])
+    # favicon.ico: 16, 32 and 48 in one, each drawn for its size.
+    ico = [mark_square(side, 0.02) for side in (48, 32, 16)]
+    ico[0].save(os.path.join(KIT, "favicon.ico"), sizes=[(16, 16), (32, 32), (48, 48)], append_images=ico[1:])
     print("website/static/brand/favicon.ico")
     print(os.path.relpath(social(os.path.join(ROOT, "docs", "img", "olo-social.png")), ROOT))
     og = os.path.join(KIT, "olo-social.png")

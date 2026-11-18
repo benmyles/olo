@@ -115,9 +115,9 @@ something nobody here has is in "Blocked", with what it waits for.
   renders what it shows once, a fraction of a millisecond each): look
   at Deskbar's menus, Preferences, Tracker and the desktop, in Classic
   and in Platinum, and tell me any icon you'd want drawn again: each is
-  one small file, quick to redo. **Left**: the logo (the veil, the
-  website, the brand kit) still shows the ring from its master picture
-  (`docs/brand/olo-mark.png`), not the drawing: `mkbrand.py` next.
+  one small file, quick to redo. The logo (the veil, the website, the brand kit, the
+  favicons) shows the ring from the drawing too (`mkbrand.py` renders
+  it), its yellow a little deeper, as the master picture had it.
 
 - **The phone's other notifications, its music, its conversations
   kept** (2026-11-17; HACKING, "The phone": Its other notifications,
