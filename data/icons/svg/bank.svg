@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Bank: a stone temple, four columns under its pediment, on two steps. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="32" cy="59.6" r="27" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 51.85) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="s1"><path d="M4 42.8Q4 42 4.78 41.81L41.22 32.69Q42 32.5 42.72 32.86L59.28 41.14Q60 41.5 60 42.3L60 44.7Q60 45.5 59.22 45.69L22.78 54.81Q22 55 21.28 54.64L4.72 46.36Q4 46 4 45.2Z"/></clipPath>
+<clipPath id="s2"><path d="M6.7 39.8Q6.7 39.2 7.28 39.05L41.12 30.6Q41.7 30.45 42.24 30.72L56.76 37.98Q57.3 38.25 57.3 38.85L57.3 40.65Q57.3 41.25 56.72 41.4L22.88 49.85Q22.3 50 21.76 49.73L7.24 42.47Q6.7 42.2 6.7 41.6Z"/></clipPath>
+<clipPath id="cella"><path d="M14.6 22.5Q14.6 22.1 14.99 22L45.21 14.45Q45.6 14.35 45.96 14.53L54.24 18.67Q54.6 18.85 54.6 19.25L54.6 38.45Q54.6 38.85 54.21 38.95L23.99 46.5Q23.6 46.6 23.24 46.42L14.96 42.28Q14.6 42.1 14.6 41.7Z"/></clipPath>
+<clipPath id="ent"><path d="M6.4 17.55Q6.4 16.95 6.98 16.8L40.82 8.35Q41.4 8.2 41.94 8.47L56.46 15.73Q57 16 57 16.6L57 19Q57 19.6 56.42 19.75L22.58 28.2Q22 28.35 21.46 28.08L6.94 20.82Q6.4 20.55 6.4 19.95Z"/></clipPath>
+<linearGradient id="col" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fffdf6"/><stop offset="0.45" stop-color="#ece5d5"/><stop offset="1" stop-color="#b9b19e"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="32" cy="59.6" rx="27" ry="3.4" fill="url(#shadow)"/>
+<path class="o" fill="#bdb5a2" d="M4 42.8Q4 42 4.78 41.81L41.22 32.69Q42 32.5 42.72 32.86L59.28 41.14Q60 41.5 60 42.3L60 44.7Q60 45.5 59.22 45.69L22.78 54.81Q22 55 21.28 54.64L4.72 46.36Q4 46 4 45.2Z"/>
+<g clip-path="url(#s1)">
+<path fill="#bdb5a2" d="M1 40.5L22 51L22 58L1 58Z"/>
+<path fill="#f6f1e4" d="M1 40.5L22 51L63 40.75L63 26.5L1 26.5Z"/>
+<g transform="matrix(1 -.25 0 1 22 51)"><path fill="#e2dac8" d="M0 0H39V5H0Z"/></g>
+<path class="h from48" stroke-opacity="0.6" stroke-width=".55" d="M22.6 51.1L59.2 41.95M22.3 52V54"/>
+<path class="h from48" stroke-opacity="0.36" stroke-width=".5" d="M5.6 42.9L21.4 50.9"/>
+</g>
+<path class="o" fill="#bdb5a2" d="M6.7 39.8Q6.7 39.2 7.28 39.05L41.12 30.6Q41.7 30.45 42.24 30.72L56.76 37.98Q57.3 38.25 57.3 38.85L57.3 40.65Q57.3 41.25 56.72 41.4L22.88 49.85Q22.3 50 21.76 49.73L7.24 42.47Q6.7 42.2 6.7 41.6Z"/>
+<g clip-path="url(#s2)">
+<path fill="#bdb5a2" d="M3.7 37.7L22.3 47L22.3 53L3.7 53Z"/>
+<path fill="#f6f1e4" d="M3.7 37.7L22.3 47L60.3 37.5L60.3 24.45L3.7 24.45Z"/>
+<g transform="matrix(1 -.25 0 1 22.3 47)"><path fill="#e2dac8" d="M0 0H36V4H0Z"/></g>
+<path class="h from48" stroke-opacity="0.6" stroke-width=".55" d="M22.9 47.1L56.5 38.7M22.6 48V49"/>
+<path class="h from48" stroke-opacity="0.36" stroke-width=".5" d="M8.3 40.1L21.7 46.9"/>
+</g>
+<path class="o" fill="#7a715e" d="M14.6 22.5Q14.6 22.1 14.99 22L45.21 14.45Q45.6 14.35 45.96 14.53L54.24 18.67Q54.6 18.85 54.6 19.25L54.6 38.45Q54.6 38.85 54.21 38.95L23.99 46.5Q23.6 46.6 23.24 46.42L14.96 42.28Q14.6 42.1 14.6 41.7Z"/>
+<g clip-path="url(#cella)">
+<path fill="#7a715e" d="M11.6 20.6L23.6 26.6L23.6 49.6L11.6 49.6Z"/>
+<path fill="#7a715e" d="M11.6 20.6L23.6 26.6L57.6 18.1L57.6 8.35L11.6 8.35Z"/>
+<g transform="matrix(1 -.25 0 1 23.6 26.6)"><path fill="#6a614f" d="M0 0H32V21H0Z"/></g>
+</g>
+<g transform="matrix(1 -.25 0 1 21.4 46.55)"><path class="o" fill="url(#col)" d="M1.2 -18.5h6v1.7h-.8v15.1h.8v1.7h-6v-1.7h.8v-15.1h-.8z"/><path class="from48" fill="none" stroke="#a79f8c" stroke-width=".4" d="M3.4 -16.4v14.4M5 -16.4v14.4"/><path class="o" fill="url(#col)" d="M10.3 -18.5h6v1.7h-.8v15.1h.8v1.7h-6v-1.7h.8v-15.1h-.8z"/><path class="from48" fill="none" stroke="#a79f8c" stroke-width=".4" d="M12.5 -16.4v14.4M14.1 -16.4v14.4"/><path class="o" fill="url(#col)" d="M19.4 -18.5h6v1.7h-.8v15.1h.8v1.7h-6v-1.7h.8v-15.1h-.8z"/><path class="from48" fill="none" stroke="#a79f8c" stroke-width=".4" d="M21.6 -16.4v14.4M23.2 -16.4v14.4"/><path class="o" fill="url(#col)" d="M28.5 -18.5h6v1.7h-.8v15.1h.8v1.7h-6v-1.7h.8v-15.1h-.8z"/><path class="from48" fill="none" stroke="#a79f8c" stroke-width=".4" d="M30.7 -16.4v14.4M32.3 -16.4v14.4"/></g>
+<path class="o" fill="#bdb5a2" d="M6.4 17.55Q6.4 16.95 6.98 16.8L40.82 8.35Q41.4 8.2 41.94 8.47L56.46 15.73Q57 16 57 16.6L57 19Q57 19.6 56.42 19.75L22.58 28.2Q22 28.35 21.46 28.08L6.94 20.82Q6.4 20.55 6.4 19.95Z"/>
+<g clip-path="url(#ent)">
+<path fill="#bdb5a2" d="M3.4 15.45L22 24.75L22 31.35L3.4 31.35Z"/>
+<path fill="#f6f1e4" d="M3.4 15.45L22 24.75L60 15.25L60 2.2L3.4 2.2Z"/>
+<g transform="matrix(1 -.25 0 1 22 24.75)"><path fill="#e2dac8" d="M0 0H36V4.6H0Z"/></g>
+<path class="h from48" stroke-opacity="0.6" stroke-width=".55" d="M22.6 24.85L56.2 16.45M22.3 25.75V27.35"/>
+<path class="h from48" stroke-opacity="0.36" stroke-width=".5" d="M8 17.85L21.4 24.65"/>
+</g>
+<!-- The pediment: its slope, its gable. -->
+<g transform="matrix(1 -.25 0 1 22 24.75)">
+<path class="o" fill="#bdb5a2" d="M17.5 -8.9L36.2 0L-1.2 0ZM1.9 -20.6L20.6 -11.7L-16.8 -11.7ZM1.9 -20.6L20.6 -11.7L36.2 0L17.5 -8.9ZM36.2 0L-1.2 0L-16.8 -11.7L20.6 -11.7ZM-16.8 -11.7L1.9 -20.6L17.5 -8.9L-1.2 0Z"/>
+<path fill="#f6f1e4" d="M1.9 -20.6L20.6 -11.7L36.2 0L17.5 -8.9ZM-16.8 -11.7L1.9 -20.6L17.5 -8.9L-1.2 0Z"/>
+<path fill="#e2dac8" d="M-1.2 0L36.2 0L17.5 -8.9Z"/>
+<path class="from32" fill="#bdb5a2" stroke="#8f8775" stroke-width=".4" d="M5.4 -1.5L29.6 -1.5L17.5 -7Z"/>
+<path class="h from48" stroke-opacity=".7" stroke-width=".45" d="M-.2 -.5L17.4 -8.5"/>
+</g>
+</svg>

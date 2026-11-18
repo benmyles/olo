@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Internet: the globe, a steel ring round it, a compass needle across it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="32" cy="59.6" r="22" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 51.85) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<radialGradient id="sea" cx="23" cy="20" r="34" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#7cc2ff"/><stop offset="0.5" stop-color="#2380f4"/><stop offset="1" stop-color="#0b3fa6"/></radialGradient>
+<linearGradient id="land" x1="14" y1="10" x2="50" y2="52" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#8be85c"/><stop offset="0.5" stop-color="#3fb83a"/><stop offset="1" stop-color="#1f8a2c"/></linearGradient>
+<linearGradient id="ringg" x1="4" y1="20" x2="60" y2="46" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fbfbfd"/><stop offset="0.5" stop-color="#aeb2bc"/><stop offset="1" stop-color="#f1f2f5"/></linearGradient>
+<clipPath id="globe"><circle cx="32" cy="31" r="22"/></clipPath>
+</defs>
+<ellipse class="from48" cx="32" cy="59.6" rx="22" ry="3.4" fill="url(#shadow)"/>
+<g transform="rotate(-14 32 33)" fill="none" stroke-linecap="round"><path stroke="#1b1b1f" stroke-width="3.6" d="M5 33A27 8.4 0 0 1 59 33"/><path stroke="url(#ringg)" stroke-width="2.2" d="M5 33A27 8.4 0 0 1 59 33"/></g>
+<circle class="o" cx="32" cy="31" r="22" fill="url(#sea)"/>
+<g clip-path="url(#globe)">
+<g fill="url(#land)" stroke="#14701f" stroke-width=".5" stroke-linejoin="round">
+<path d="M16.5 17.5Q21 11.5 28.5 11.5L33 13.5L30.5 17.5L33.5 20.5L29.5 24L27.5 29.5L23.5 28.5L20.5 24.5L15 25.5Q13.5 21 16.5 17.5Z"/>
+<path d="M34.5 10L39.5 9.5L41 13.5L36.5 15.5Z"/>
+<path d="M26.5 33L32.5 33.5L36.5 38.5L34 45.5L30.5 51L28 45L25.5 38.5Z"/>
+<path d="M43.5 15.5L49 14.5L52.5 18.5L50.5 22.5L53.5 26.5L55 34L51 41L47.5 37L46.5 29.5L43 25.5L45.5 21Z"/>
+</g>
+<path class="from48" fill="#fff" fill-opacity=".28" d="M14 22Q20 9 34 9.6Q22 13 16.5 26Z"/>
+<circle cx="32" cy="31" r="22" fill="none" stroke="#062f7e" stroke-opacity=".35" stroke-width="3"/>
+</g>
+<g transform="rotate(-14 32 33)" fill="none" stroke-linecap="round"><path stroke="#1b1b1f" stroke-width="3.6" d="M5 33A27 8.4 0 0 0 59 33"/><path stroke="url(#ringg)" stroke-width="2.2" d="M5 33A27 8.4 0 0 0 59 33"/></g>
+<!-- The needle. -->
+<path class="o" fill="#f03a30" d="M52 19.5L43.4 35.8L38.6 32.2Z"/>
+<path class="from32" fill="#ff8a7c" d="M52 19.5L41 34L38.6 32.2Z"/>
+<path class="o" fill="#f1f2f5" d="M30 48.5L43.4 35.8L38.6 32.2Z"/>
+<path class="from32" fill="#b9bcc6" d="M30 48.5L43.4 35.8L41 34Z"/>
+<circle cx="41" cy="34" r="2.9" fill="#1b1b1f"/><circle cx="41" cy="34" r="2.2" fill="url(#ringg)"/>
+</svg>

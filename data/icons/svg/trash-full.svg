@@ -25,8 +25,8 @@
 <!-- The paper: crumpled balls heaped over the lip. -->
 <path class="o" fill="url(#ball)" d="M16.5 15.5L15 10.5L18.5 6.5L24 5.5L27.5 9L27 14.5L22.5 17.5Z"/>
 <path class="o" fill="url(#ball)" d="M36.5 14.5L36 9L40 5L45.5 5.5L49 9.5L47.5 15L42 17.5Z"/>
-<path class="o" fill="url(#ball)" d="M24.5 12.5L23.5 6.5L27.5 2.8L33.5 2.5L38 6L38 12L33.5 16L28 16Z"/>
+<path class="o" fill="url(#ball)" d="M24.5 12.5L23.5 6.5L27.5 3.4L33.5 3.1L38 6L38 12L33.5 16L28 16Z"/>
 <path class="o" fill="url(#ball)" d="M27 19.5L25.5 14.5L29.5 11.5L35 12L38 15.5L36.5 20L31.5 22Z"/>
-<g class="from48" fill="#b9bdc9" fill-opacity=".8"><path d="M18.5 6.5L20.5 11.5L15 10.5ZM24 5.5L22.8 12L27.5 9ZM40 5L41.5 10.5L36 9ZM45.5 5.5L44 11.5L49 9.5ZM27.5 2.8L29.8 8.5L23.5 6.5ZM33.5 2.5L33 9.5L38 6ZM29.5 11.5L31 16.5L25.5 14.5ZM35 12L34 17L38 15.5Z"/></g>
+<g class="from48" fill="#b9bdc9" fill-opacity=".8"><path d="M18.5 6.5L20.5 11.5L15 10.5ZM24 5.5L22.8 12L27.5 9ZM40 5L41.5 10.5L36 9ZM45.5 5.5L44 11.5L49 9.5ZM27.5 3.4L29.8 8.5L23.5 6.5ZM33.5 3.1L33 9.5L38 6ZM29.5 11.5L31 16.5L25.5 14.5ZM35 12L34 17L38 15.5Z"/></g>
 <g class="from48" fill="none" stroke="#8d92a0" stroke-width=".4" stroke-linejoin="round"><path d="M20.5 11.5L22.5 17.5M22.8 12L27 14.5M41.5 10.5L42 17.5M44 11.5L47.5 15M29.8 8.5L28 16M33 9.5L33.5 16M31 16.5L31.5 22M34 17L36.5 20"/></g>
 </svg>

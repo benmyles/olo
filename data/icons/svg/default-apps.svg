@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Default applications: a document, the application that opens it before it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<linearGradient id="shadow" x1="30" y1="54" x2="31" y2="58.4" gradientUnits="userSpaceOnUse"><stop offset="0" stop-opacity=".3"/><stop offset="1" stop-opacity="0"/></linearGradient>
+<linearGradient id="paper" x1="2" y1="2" x2="34" y2="47" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="0.55" stop-color="#f4f5f9"/><stop offset="1" stop-color="#dfe2ec"/></linearGradient>
+<linearGradient id="fold" x1="26" y1="10" x2="32.5" y2="3.5" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f7f8fb"/><stop offset="1" stop-color="#c4c8d4"/></linearGradient>
+<clipPath id="cube"><path d="M29 39.2Q29 38 30.16 37.71L46.84 33.54Q48 33.25 49.07 33.79L57.93 38.21Q59 38.75 59 39.95L59 54.05Q59 55.25 57.84 55.54L41.16 59.71Q40 60 38.93 59.46L30.07 55.04Q29 54.5 29 53.3Z"/></clipPath>
+<linearGradient id="ctop" x1="30" y1="34" x2="56" y2="44" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#7cc2ff"/><stop offset="1" stop-color="#2f8cf8"/></linearGradient>
+<linearGradient id="cfront" x1="0" y1="0" x2="19" y2="17" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2a86f6"/><stop offset="1" stop-color="#0f5fd8"/></linearGradient>
+<linearGradient id="cside" x1="29" y1="38" x2="40" y2="60" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1668dd"/><stop offset="1" stop-color="#0a44a8"/></linearGradient>
+</defs>
+<path class="from48" fill="url(#shadow)" d="M9 57.5L44 49L60 57L58 61.5L13 61.5Z"/>
+<g transform="matrix(1 -.25 0 1 8 14)">
+<path class="o" fill="url(#paper)" d="M1.2 0H26L36 10V43.8Q36 45 34.8 45H1.2Q0 45 0 43.8V1.2Q0 0 1.2 0Z"/>
+<path class="from48" fill="#1b1b1f" fill-opacity=".14" d="M26 10.6H36V13.2L27 11.6Z"/>
+<path fill="url(#fold)" d="M26 0L36 10H27.2Q26 10 26 8.8Z"/>
+<path class="from32" fill="none" stroke="#1b1b1f" stroke-opacity=".55" stroke-width=".5" stroke-linejoin="round" d="M26 0V8.8Q26 10 27.2 10H36"/>
+<g class="from48" fill="none" stroke="#a3a7b6" stroke-width="2.2" stroke-linecap="round"><path d="M6 17H30M6 23H30M6 29H26M6 35H18"/></g><g class="upto32" fill="none" stroke="#8f94a6" stroke-width="3"><path d="M6 17H30M6 24H30M6 31H18"/></g></g>
+<path class="o" fill="#0a44a8" d="M29 39.2Q29 38 30.16 37.71L46.84 33.54Q48 33.25 49.07 33.79L57.93 38.21Q59 38.75 59 39.95L59 54.05Q59 55.25 57.84 55.54L41.16 59.71Q40 60 38.93 59.46L30.07 55.04Q29 54.5 29 53.3Z"/>
+<g clip-path="url(#cube)">
+<path fill="url(#cside)" d="M26 36.5L40 43.5L40 63L26 63Z"/>
+<path fill="url(#ctop)" d="M26 36.5L40 43.5L62 38L62 27.25L26 27.25Z"/>
+<g transform="matrix(1 -.25 0 1 40 43.5)"><path fill="url(#cfront)" d="M0 0H20V17.5H0Z"/></g>
+<path class="h from48" stroke-opacity="0.5" stroke-width=".55" d="M40.6 43.6L58.2 39.2M40.3 44.5V59"/>
+<path class="h from48" stroke-opacity="0.3" stroke-width=".5" d="M30.6 38.9L39.4 43.4"/>
+</g>
+</svg>

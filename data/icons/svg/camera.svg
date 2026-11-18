@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Camera: a round webcam on its stand, its lens looking our way. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="32" cy="60.2" r="22" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.37) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="foot"><path d="M10 49Q10 48 10.97 47.76L39.03 40.74Q40 40.5 40.89 40.95L53.11 47.05Q54 47.5 54 48.5L54 49.5Q54 50.5 53.03 50.74L24.97 57.76Q24 58 23.11 57.55L10.89 51.45Q10 51 10 50Z"/></clipPath>
+<linearGradient id="steel" x1="10" y1="42" x2="54" y2="54" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fbfbfd"/><stop offset="1" stop-color="#c3c6cf"/></linearGradient>
+<radialGradient id="ball" cx="22" cy="14" r="34" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#8d919c"/><stop offset="0.5" stop-color="#34363f"/><stop offset="1" stop-color="#141519"/></radialGradient>
+<linearGradient id="ringg" x1="-11" y1="-11" x2="11" y2="11" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fbfbfd"/><stop offset="0.5" stop-color="#aeb2bc"/><stop offset="1" stop-color="#6d7280"/></linearGradient>
+<radialGradient id="lens" cx="-2.5" cy="-3" r="9" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#8fc0ff"/><stop offset="0.5" stop-color="#1b3fa0"/><stop offset="1" stop-color="#070a22"/></radialGradient>
+<linearGradient id="neck" x1="26" y1="0" x2="38" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6d7280"/><stop offset="1" stop-color="#25272d"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="32" cy="60.2" rx="22" ry="3.4" fill="url(#shadow)"/>
+<path class="o" fill="#8d919c" d="M10 49Q10 48 10.97 47.76L39.03 40.74Q40 40.5 40.89 40.95L53.11 47.05Q54 47.5 54 48.5L54 49.5Q54 50.5 53.03 50.74L24.97 57.76Q24 58 23.11 57.55L10.89 51.45Q10 51 10 50Z"/>
+<g clip-path="url(#foot)">
+<path fill="#8d919c" d="M7 46.5L24 55L24 61L7 61Z"/>
+<path fill="url(#steel)" d="M7 46.5L24 55L57 46.75L57 34.5L7 34.5Z"/>
+<g transform="matrix(1 -.25 0 1 24 55)"><path fill="#b9bcc6" d="M0 0H31V4H0Z"/></g>
+<path class="h from48" stroke-opacity="0.5" stroke-width=".55" d="M24.6 55.1L53.2 47.95M24.3 56V57"/>
+<path class="h from48" stroke-opacity="0.3" stroke-width=".5" d="M11.6 48.9L23.4 54.9"/>
+</g>
+<path class="o" fill="url(#neck)" d="M26.4 42V48.4A5.6 2 0 0 0 37.6 48.4V42Z"/>
+<circle class="o" cx="31" cy="26" r="21.5" fill="url(#ball)"/>
+<path class="from48" fill="none" stroke="#0b0c0f" stroke-opacity=".6" stroke-width=".6" d="M22.5 6.4Q14 20 20.5 45.6"/>
+<path class="h from48" stroke-opacity=".5" stroke-width=".6" d="M12.4 17.6A21 21 0 0 1 27 5.6"/>
+<circle cx="15.6" cy="31" r="1.9" fill="#1b1b1f"/><circle cx="15.6" cy="31" r="1.3" fill="#46d84a"/>
+<!-- The lens: its ring, its barrel, its glass. -->
+<g transform="matrix(1 -.25 0 1 36 27)">
+<circle r="12.4" fill="#1b1b1f"/><circle r="11.6" fill="url(#ringg)"/>
+<circle r="9.2" fill="#1b1b1f"/><circle r="7.4" fill="url(#lens)"/>
+<path class="from32" fill="#fff" fill-opacity=".75" d="M-4.6-2.6A5.2 5.2 0 0 1-1-5.2A7 7 0 0 0-4.6-2.6Z"/>
+<circle class="from48" cx="2.6" cy="2.8" r="1" fill="#fff" fill-opacity=".35"/>
+</g>
+</svg>

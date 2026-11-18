@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Font: a block of type, a steel A on its face. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="31" cy="60" r="26" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.2) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="block"><path d="M6 16.5Q6 15 7.46 14.64L36.54 7.36Q38 7 39.34 7.67L54.66 15.33Q56 16 56 17.5L56 46.5Q56 48 54.54 48.36L25.46 55.64Q24 56 22.66 55.33L7.34 47.67Q6 47 6 45.5Z"/></clipPath>
+<linearGradient id="top" x1="8" y1="8" x2="52" y2="22" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fbf8ef"/><stop offset="1" stop-color="#e6e0d0"/></linearGradient>
+<linearGradient id="front" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#e9e3d3"/><stop offset="1" stop-color="#cfc8b6"/></linearGradient>
+<linearGradient id="side" x1="6" y1="16" x2="24" y2="56" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#bdb5a2"/><stop offset="1" stop-color="#99917f"/></linearGradient>
+<linearGradient id="ink" x1="4" y1="4" x2="28" y2="28" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6d7280"/><stop offset="0.5" stop-color="#34363f"/><stop offset="1" stop-color="#17181c"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="31" cy="60" rx="26" ry="3.4" fill="url(#shadow)"/>
+<path class="o" fill="#a39c8b" d="M6 16.5Q6 15 7.46 14.64L36.54 7.36Q38 7 39.34 7.67L54.66 15.33Q56 16 56 17.5L56 46.5Q56 48 54.54 48.36L25.46 55.64Q24 56 22.66 55.33L7.34 47.67Q6 47 6 45.5Z"/>
+<g clip-path="url(#block)">
+<path fill="url(#side)" d="M3 13.5L24 24L24 59L3 59Z"/>
+<path fill="url(#top)" d="M3 13.5L24 24L59 15.25L59 1L3 1Z"/>
+<g transform="matrix(1 -.25 0 1 24 24)"><path fill="url(#front)" d="M0 0H33V33H0Z"/><path fill="#fff" fill-opacity=".7" fill-rule="evenodd" transform="translate(.6 .7)" d="M13 4.6H19L27.6 25H29.6V28.4H19.4V25H21.4L20.4 22.2H11.6L10.6 25H12.6V28.4H2.4V25H4.4ZM13 18.4H19L16 10.4Z"/><path fill="url(#ink)" stroke="#1b1b1f" stroke-width=".7" stroke-linejoin="round" fill-rule="evenodd" d="M13 4.6H19L27.6 25H29.6V28.4H19.4V25H21.4L20.4 22.2H11.6L10.6 25H12.6V28.4H2.4V25H4.4ZM13 18.4H19L16 10.4Z"/></g>
+<path class="h from48" stroke-opacity="0.5" stroke-width=".55" d="M24.6 24.1L55.2 16.45M24.3 25V55"/>
+<path class="h from48" stroke-opacity="0.3" stroke-width=".5" d="M7.6 15.9L23.4 23.9"/>
+</g>
+</svg>

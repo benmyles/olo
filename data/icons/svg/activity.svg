@@ -2,34 +2,23 @@
 <!-- Activity Monitor: a processor on its board, a green line climbing out of it. -->
 <style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
 <defs>
-<radialGradient id="shadow" cx="32" cy="59" r="27" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 51.33) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
-<clipPath id="board"><path d="M5 37.2Q5 36 6.16 35.71L35.84 28.29Q37 28 38.07 28.54L57.93 38.46Q59 39 59 40.2L59 41.8Q59 43 57.84 43.29L28.16 50.71Q27 51 25.93 50.46L6.07 40.54Q5 40 5 38.8Z"/></clipPath>
-<clipPath id="lid"><path d="M11.4 35.2Q11.4 34.2 12.37 33.96L34.43 28.44Q35.4 28.2 36.29 28.65L51.71 36.35Q52.6 36.8 52.6 37.8L52.6 37.8Q52.6 38.8 51.63 39.04L29.57 44.56Q28.6 44.8 27.71 44.35L12.29 36.65Q11.4 36.2 11.4 35.2Z"/></clipPath>
+<radialGradient id="shadow" cx="31" cy="60.4" r="23" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.55) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="chip"><path d="M5 27.4Q5 26 6.36 25.66L32.64 19.09Q34 18.75 34.63 20L46.87 44.5Q47.5 45.75 47.5 47.15L47.5 47.75Q47.5 49.15 46.14 49.49L19.86 56.06Q18.5 56.4 17.87 55.15L5.63 30.65Q5 29.4 5 28Z"/></clipPath>
+<linearGradient id="pcb" x1="0" y1="0" x2="29" y2="27" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#58c684"/><stop offset="1" stop-color="#2f9e5c"/></linearGradient>
+<linearGradient id="lidg" x1="5" y1="5" x2="24" y2="22" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fbfbfd"/><stop offset="0.5" stop-color="#d5d8df"/><stop offset="1" stop-color="#aeb2bc"/></linearGradient>
 <linearGradient id="green" x1="0" y1="-24" x2="22" y2="2" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#7beb70"/><stop offset="0.5" stop-color="#3fc640"/><stop offset="1" stop-color="#1d9a29"/></linearGradient>
 </defs>
-<ellipse class="from48" cx="32" cy="59" rx="27" ry="3.4" fill="url(#shadow)"/>
-<path class="o" fill="#125c33" d="M5 37.2Q5 36 6.16 35.71L35.84 28.29Q37 28 38.07 28.54L57.93 38.46Q59 39 59 40.2L59 41.8Q59 43 57.84 43.29L28.16 50.71Q27 51 25.93 50.46L6.07 40.54Q5 40 5 38.8Z"/>
-<g clip-path="url(#board)">
-<path fill="#125c33" d="M2 34.5L27 47L27 54L2 54Z"/>
-<path fill="#3fae6e" d="M2 34.5L27 47L62 38.25L62 22L2 22Z"/>
-<g transform="matrix(1 -.25 0 1 27 47)"><path fill="#1f7d48" d="M0 0H33V5H0Z"/></g>
-<path class="h from48" stroke-opacity="0.5" stroke-width=".55" d="M27.6 47.1L58.2 39.45M27.3 48V50"/>
-<path class="h from48" stroke-opacity="0.3" stroke-width=".5" d="M6.6 36.9L26.4 46.9"/>
-</g>
-<g transform="matrix(1 -.25 0 1 27 47)"><path class="o" fill="#f7c531" d="M2.2 1.4h2.6v5.8h-2.6z"/><path class="from48" fill="#ffe98a" d="M2.5 1.4h.8v5.5h-.8z"/><path class="o" fill="#f7c531" d="M7.2 1.4h2.6v5.8h-2.6z"/><path class="from48" fill="#ffe98a" d="M7.5 1.4h.8v5.5h-.8z"/><path class="o" fill="#f7c531" d="M12.2 1.4h2.6v5.8h-2.6z"/><path class="from48" fill="#ffe98a" d="M12.5 1.4h.8v5.5h-.8z"/><path class="o" fill="#f7c531" d="M17.2 1.4h2.6v5.8h-2.6z"/><path class="from48" fill="#ffe98a" d="M17.5 1.4h.8v5.5h-.8z"/><path class="o" fill="#f7c531" d="M22.2 1.4h2.6v5.8h-2.6z"/><path class="from48" fill="#ffe98a" d="M22.5 1.4h.8v5.5h-.8z"/><path class="o" fill="#f7c531" d="M27.2 1.4h2.6v5.8h-2.6z"/><path class="from48" fill="#ffe98a" d="M27.5 1.4h.8v5.5h-.8z"/></g>
-<g transform="matrix(1 .5 0 1 5 36)"><path class="o" fill="#f7c531" d="M2 1.4h2.6v5.8h-2.6z"/><path class="from48" fill="#ffe98a" d="M2.3 1.4h.8v5.5h-.8z"/><path class="o" fill="#f7c531" d="M7.13 1.4h2.6v5.8h-2.6z"/><path class="from48" fill="#ffe98a" d="M7.43 1.4h.8v5.5h-.8z"/><path class="o" fill="#f7c531" d="M12.27 1.4h2.6v5.8h-2.6z"/><path class="from48" fill="#ffe98a" d="M12.57 1.4h.8v5.5h-.8z"/><path class="o" fill="#f7c531" d="M17.4 1.4h2.6v5.8h-2.6z"/><path class="from48" fill="#ffe98a" d="M17.7 1.4h.8v5.5h-.8z"/></g>
-<path class="o" fill="#8d919c" d="M11.4 35.2Q11.4 34.2 12.37 33.96L34.43 28.44Q35.4 28.2 36.29 28.65L51.71 36.35Q52.6 36.8 52.6 37.8L52.6 37.8Q52.6 38.8 51.63 39.04L29.57 44.56Q28.6 44.8 27.71 44.35L12.29 36.65Q11.4 36.2 11.4 35.2Z"/>
-<g clip-path="url(#lid)">
-<path fill="#8d919c" d="M8.4 32.7L28.6 42.8L28.6 47.8L8.4 47.8Z"/>
-<path fill="#f4f5f8" d="M8.4 32.7L28.6 42.8L55.6 36.05L55.6 22.2L8.4 22.2Z"/>
-<g transform="matrix(1 -.25 0 1 28.6 42.8)"><path fill="#b9bcc6" d="M0 0H25V3H0Z"/></g>
-<path class="h from48" stroke-opacity="0.7" stroke-width=".55" d="M29.2 42.9L51.8 37.25M28.9 43.8V43.8"/>
-<path class="h from48" stroke-opacity="0.42" stroke-width=".5" d="M13 35.1L28 42.7"/>
-</g>
+<ellipse class="from48" cx="31" cy="60.4" rx="23" ry="3.4" fill="url(#shadow)"/>
+<g transform="matrix(1 -.25 .5 1 5 29.1)"><rect class="o" x="-2.7" y="2.6" width="3.4" height="2.1" fill="#f7c531"/><rect class="o" x="-2.7" y="6.54" width="3.4" height="2.1" fill="#f7c531"/><rect class="o" x="-2.7" y="10.48" width="3.4" height="2.1" fill="#f7c531"/><rect class="o" x="-2.7" y="14.42" width="3.4" height="2.1" fill="#f7c531"/><rect class="o" x="-2.7" y="18.36" width="3.4" height="2.1" fill="#f7c531"/><rect class="o" x="-2.7" y="22.3" width="3.4" height="2.1" fill="#f7c531"/><rect class="o" x="2.6" y="26.3" width="2.1" height="3.4" fill="#f7c531"/><rect class="o" x="6.22" y="26.3" width="2.1" height="3.4" fill="#f7c531"/><rect class="o" x="9.83" y="26.3" width="2.1" height="3.4" fill="#f7c531"/><rect class="o" x="13.45" y="26.3" width="2.1" height="3.4" fill="#f7c531"/><rect class="o" x="17.07" y="26.3" width="2.1" height="3.4" fill="#f7c531"/><rect class="o" x="20.68" y="26.3" width="2.1" height="3.4" fill="#f7c531"/><rect class="o" x="24.3" y="26.3" width="2.1" height="3.4" fill="#f7c531"/></g>
+<path class="o" fill="#1f7d48" d="M5 27.4Q5 26 6.36 25.66L32.64 19.09Q34 18.75 34.63 20L46.87 44.5Q47.5 45.75 47.5 47.15L47.5 47.75Q47.5 49.15 46.14 49.49L19.86 56.06Q18.5 56.4 17.87 55.15L5.63 30.65Q5 29.4 5 28Z"/>
+<g clip-path="url(#chip)"><path fill="#125c33" d="M3 22L18.5 53L18.5 58.4L3 31.4Z"/></g>
+<g transform="matrix(1 -.25 .5 1 5 26)"><rect x="0" y="0" width="29" height="27" rx="1.4" fill="url(#pcb)"/><rect x="5" y="5" width="19" height="17" rx="1.6" fill="#8d919c" stroke="#1b1b1f" stroke-width=".7"/><path class="h from48" stroke-opacity="0.8" stroke-width=".45" d="M.8 25.6V1.4Q.8 .8 1.4 .8H27.6"/></g>
+<g transform="matrix(1 -.25 .5 1 5 24.2)"><rect x="5" y="5" width="19" height="17" rx="1.6" fill="url(#lidg)" stroke="#1b1b1f" stroke-width=".5"/><path class="h from48" stroke-opacity=".9" stroke-width=".45" d="M5.9 20.4V7Q5.9 5.9 7 5.9H22.4"/></g>
+<ellipse class="from48" cx="27.25" cy="34.68" rx="5" ry="1.8" fill="#1b1b1f" fill-opacity=".2"/>
 <!-- The line, climbing. -->
-<g transform="matrix(1 -.25 0 1 25 39.5)">
-<path class="o" fill="#14761f" d="M-1.84 -1.38L8.68 -15.41L14.61 -9.98L22.11 -20.81L19.4 -22.69L28.55 -26.08L28.6 -16.31L25.89 -18.19L15.39 -3.02L9.32 -8.59L1.84 1.38ZM-4.84 -3.63L5.68 -17.66L11.61 -12.23L19.11 -23.06L16.4 -24.94L25.55 -28.33L25.6 -18.56L22.89 -20.44L12.39 -5.27L6.32 -10.84L-1.16 -0.87ZM-4.84 -3.63L5.68 -17.66L8.68 -15.41L-1.84 -1.38ZM8.68 -15.41L14.61 -9.98L11.61 -12.23L5.68 -17.66ZM11.61 -12.23L19.11 -23.06L22.11 -20.81L14.61 -9.98ZM22.11 -20.81L19.4 -22.69L16.4 -24.94L19.11 -23.06ZM16.4 -24.94L25.55 -28.33L28.55 -26.08L19.4 -22.69ZM28.55 -26.08L28.6 -16.31L25.6 -18.56L25.55 -28.33ZM28.6 -16.31L25.89 -18.19L22.89 -20.44L25.6 -18.56ZM25.89 -18.19L15.39 -3.02L12.39 -5.27L22.89 -20.44ZM12.39 -5.27L6.32 -10.84L9.32 -8.59L15.39 -3.02ZM9.32 -8.59L1.84 1.38L-1.16 -0.87L6.32 -10.84ZM1.84 1.38L-1.84 -1.38L-4.84 -3.63L-1.16 -0.87Z"/>
-<path fill="#b4f5ab" d="M-4.84 -3.63L5.68 -17.66L8.68 -15.41L-1.84 -1.38ZM11.61 -12.23L19.11 -23.06L22.11 -20.81L14.61 -9.98ZM16.4 -24.94L25.55 -28.33L28.55 -26.08L19.4 -22.69Z"/>
-<path fill="url(#green)" d="M1.84 1.38L9.32 -8.59L15.39 -3.02L25.89 -18.19L28.6 -16.31L28.55 -26.08L19.4 -22.69L22.11 -20.81L14.61 -9.98L8.68 -15.41L-1.84 -1.38Z"/>
+<g transform="matrix(1 -.25 0 1 23.75 34.08)">
+<path class="o" fill="#14761f" d="M-1.71 -1.38L7.35 -12.59L12.5 -7.93L19.45 -17.04L16.99 -18.92L25.69 -21.58L25.41 -12.48L22.95 -14.37L13.1 -1.47L7.85 -6.21L1.71 1.38ZM-4.71 -3.63L4.35 -14.84L9.5 -10.18L16.45 -19.29L13.99 -21.17L22.69 -23.83L22.41 -14.73L19.95 -16.62L10.1 -3.71L4.85 -8.46L-1.29 -0.87ZM-4.71 -3.63L4.35 -14.84L7.35 -12.59L-1.71 -1.38ZM7.35 -12.59L12.5 -7.93L9.5 -10.18L4.35 -14.84ZM9.5 -10.18L16.45 -19.29L19.45 -17.04L12.5 -7.93ZM16.45 -19.29L13.99 -21.17L16.99 -18.92L19.45 -17.04ZM13.99 -21.17L22.69 -23.83L25.69 -21.58L16.99 -18.92ZM25.69 -21.58L25.41 -12.48L22.41 -14.73L22.69 -23.83ZM22.41 -14.73L19.95 -16.62L22.95 -14.37L25.41 -12.48ZM22.95 -14.37L13.1 -1.47L10.1 -3.71L19.95 -16.62ZM10.1 -3.71L4.85 -8.46L7.85 -6.21L13.1 -1.47ZM7.85 -6.21L1.71 1.38L-1.29 -0.87L4.85 -8.46ZM-1.29 -0.87L-4.71 -3.63L-1.71 -1.38L1.71 1.38Z"/>
+<path fill="#b4f5ab" d="M-4.71 -3.63L4.35 -14.84L7.35 -12.59L-1.71 -1.38ZM9.5 -10.18L16.45 -19.29L19.45 -17.04L12.5 -7.93ZM13.99 -21.17L22.69 -23.83L25.69 -21.58L16.99 -18.92Z"/>
+<path fill="url(#green)" d="M1.71 1.38L7.85 -6.21L13.1 -1.47L22.95 -14.36L25.41 -12.48L25.69 -21.58L16.99 -18.92L19.45 -17.04L12.5 -7.93L7.35 -12.59L-1.71 -1.38Z"/>
 </g>
 </svg>

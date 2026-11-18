@@ -29,7 +29,7 @@
 <path class="h from48" stroke-opacity=".6" stroke-width=".5" d="M8.6.6H19.4M8.6.8V12.6M2.4 13.6H8"/>
 </g>
 <!-- The flaps in front: the left one out, the front one down. -->
-<path class="o" fill="url(#flap)" d="M8 27L27 36L21 42L2 33Z"/>
+<path class="o" fill="url(#flap)" d="M8 27L27 36L21.4 42L3.1 33.4Z"/>
 <path class="o" fill="url(#flap)" d="M27 36L53 29.5L57.5 37L31.5 43.5Z"/>
 <path class="h from48" stroke-opacity=".5" stroke-width=".5" d="M27.6 36.5L52.6 30.25M8.8 27.8L26.4 36.2"/>
 </svg>

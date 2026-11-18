@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Fingerprint: a reader tipped up toward us, a print glowing blue on its dark glass. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="34" cy="59.6" r="25" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 51.85) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="frame" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#e6e9f2"/><stop offset="1" stop-color="#8f96ab"/></linearGradient>
+<linearGradient id="glass" x1="4" y1="4" x2="32" y2="32" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1d2740"/><stop offset="1" stop-color="#070a16"/></linearGradient>
+<clipPath id="pane"><rect x="4.6" y="4.6" width="26.8" height="26.8" rx="1.6"/></clipPath>
+</defs>
+<ellipse class="from48" cx="34" cy="59.6" rx="25" ry="3.4" fill="url(#shadow)"/>
+<path class="o" fill="#5a6077" d="M5 19.4Q5 17 7.33 16.42L38.67 8.58Q41 8 42.07 10.15L57.93 41.85Q59 44 59 46.4L59 46.6Q59 49 56.67 49.58L25.33 57.42Q23 58 21.93 55.85L6.07 24.15Q5 22 5 19.6Z"/>
+<g transform="matrix(1 -.25 .5 1 5 17)">
+<rect x="0" y="0" width="36" height="36" rx="2.6" fill="url(#frame)"/>
+<rect x="3.8" y="3.8" width="28.4" height="28.4" rx="2" fill="#1b1b1f"/><rect x="4.6" y="4.6" width="26.8" height="26.8" rx="1.6" fill="url(#glass)"/>
+<g clip-path="url(#pane)" fill="none" stroke-linecap="round">
+<path class="from32" stroke="#2380f4" stroke-opacity=".45" stroke-width="2.6" d="M14.2 23.35V19A1.8 1.8 0 0 1 17.8 19V23.35M11.8 25.15V19A4.2 4.2 0 0 1 20.2 19V25.15M9.4 26.95V19A6.6 6.6 0 0 1 22.6 19V26.95M7 28.75V19A9 9 0 0 1 25 19V28.75M4.6 30.55V19A11.4 11.4 0 0 1 27.4 19V30.55"/>
+<path class="from32" stroke="#5cc8ff" stroke-width="1.1" d="M14.2 23.35V19A1.8 1.8 0 0 1 17.8 19V23.35M11.8 25.15V19A4.2 4.2 0 0 1 20.2 19V25.15M9.4 26.95V19A6.6 6.6 0 0 1 22.6 19V26.95M7 28.75V19A9 9 0 0 1 25 19V28.75M4.6 30.55V19A11.4 11.4 0 0 1 27.4 19V30.55"/>
+<path class="upto24" stroke="#4fc0ff" stroke-width="2.4" d="M13.6 23.8V19A2.4 2.4 0 0 1 18.4 19V23.8M9.6 26.8V19A6.4 6.4 0 0 1 22.4 19V26.8M5.6 29.8V19A10.4 10.4 0 0 1 26.4 19V29.8"/>
+</g>
+<path class="h from48" stroke-opacity=".8" stroke-width=".45" d="M.8 33V2.6Q.8 .8 2.6 .8H33"/>
+</g>
+</svg>

@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Date and time: a clock standing, a calendar leaning before it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="31" cy="59.8" r="26" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.03) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="rimg" x1="-16" y1="-18" x2="14" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fbfbfd"/><stop offset="0.5" stop-color="#c0c3cc"/><stop offset="1" stop-color="#858994"/></linearGradient>
+<linearGradient id="side" x1="-24" y1="-18" x2="-16" y2="18" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#9a9ea9"/><stop offset="1" stop-color="#5a5d68"/></linearGradient>
+<linearGradient id="dial" x1="-12" y1="-14" x2="12" y2="14" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e3e6ee"/></linearGradient>
+<linearGradient id="leaf" x1="0" y1="6" x2="20" y2="22" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e3e6ee"/></linearGradient>
+<linearGradient id="redg" x1="0" y1="0" x2="0" y2="6.4" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff6a5c"/><stop offset="1" stop-color="#d92a22"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="31" cy="59.8" rx="26" ry="3.4" fill="url(#shadow)"/>
+<g transform="matrix(1 -.25 0 1 25.5 26.5)">
+<path class="o" fill="url(#side)" d="M11.1 -14.8A18.5 18.5 0 0 1 -11.1 14.8L-15.1 11.8A18.5 18.5 0 0 1 7.1 -17.8Z"/>
+<circle cx="0" cy="0" r="18.5" fill="url(#rimg)"/>
+<path class="h from48" stroke-opacity="0.8" stroke-width=".55" d="M-17.39 3.7A17.9 17.9 0 0 1 4.62 -17.21"/>
+
+<circle r="15.4" fill="#1b1b1f"/><circle r="14.7" fill="url(#dial)"/>
+<path class="from32" fill="none" stroke="#1b1b1f" stroke-width="1.1" stroke-linecap="round" d="M0 -12.2L0 -14M6.1 -10.57L7 -12.12M10.57 -6.1L12.12 -7M12.2 0L14 0M10.57 6.1L12.12 7M6.1 10.57L7 12.12M0 12.2L0 14M-6.1 10.57L-7 12.12M-10.57 6.1L-12.12 7M-12.2 0L-14 0M-10.57 -6.1L-12.12 -7M-6.1 -10.57L-7 -12.12"/>
+<path fill="none" stroke="#1b1b1f" stroke-width="1.9" stroke-linecap="round" d="M0 0L-6.6-4.6"/>
+<path fill="none" stroke="#1b1b1f" stroke-width="1.4" stroke-linecap="round" d="M0 0L7.4-9"/>
+<circle r="1.7" fill="#1b1b1f"/>
+</g>
+<!-- The calendar. -->
+<path class="o" fill="#3a3d46" d="M37 35.5L32.5 55.5L37 57.5Z"/>
+<g transform="matrix(1 -.25 0 1 37 35)">
+<path class="o" fill="url(#leaf)" d="M0 0H22V22H0Z"/>
+<path fill="url(#redg)" d="M0 0H22V6.4H0Z"/>
+<path fill="none" stroke="#1b1b1f" stroke-width=".4" d="M0 6.4H22"/>
+<g class="from48"><rect x="3.2" y="8.6" width="2.8" height="2.6" fill="#a9adb8"/><rect x="7.4" y="8.6" width="2.8" height="2.6" fill="#a9adb8"/><rect x="11.6" y="8.6" width="2.8" height="2.6" fill="#a9adb8"/><rect x="15.8" y="8.6" width="2.8" height="2.6" fill="#a9adb8"/><rect x="3.2" y="12.6" width="2.8" height="2.6" fill="#a9adb8"/><rect x="7.4" y="12.6" width="2.8" height="2.6" fill="#a9adb8"/><rect x="11.6" y="12.6" width="2.8" height="2.6" fill="#f03a30"/><rect x="15.8" y="12.6" width="2.8" height="2.6" fill="#a9adb8"/><rect x="3.2" y="16.6" width="2.8" height="2.6" fill="#a9adb8"/><rect x="7.4" y="16.6" width="2.8" height="2.6" fill="#a9adb8"/><rect x="11.6" y="16.6" width="2.8" height="2.6" fill="#a9adb8"/><rect x="15.8" y="16.6" width="2.8" height="2.6" fill="#a9adb8"/></g>
+<g class="upto32" fill="#a9adb8"><rect x="3.4" y="9.4" width="15.2" height="3.4"/><rect x="3.4" y="15.4" width="15.2" height="3.4"/></g>
+<g class="from32" fill="none" stroke-linecap="round"><path stroke="#1b1b1f" stroke-width="2.4" d="M6-2.4V2M16-2.4V2"/><path stroke="#d5d8df" stroke-width="1.2" d="M6-2.4V2M16-2.4V2"/></g>
+</g>
+</svg>

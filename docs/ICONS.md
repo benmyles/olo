@@ -28,9 +28,10 @@ drawn. What was tried first and turned down, at true size: the model's
 picture shrunk better, a second picture drawn for small sizes, flat
 drawings, pixel art.
 
-**The grid.** `viewBox="0 0 64 64"`. The object, its outline included,
-keeps within 3 and 61 both ways (a pixel and a half at 32 pixels: room
-for its outline), and fills that square as its neighbours do. Its main
+**The grid.** `viewBox="0 0 64 64"`. The object's paths keep within 3
+and 61 both ways, so that with its outline it's within 2 and 62 (the
+test measures it: what reaches the edge is cut off), and it fills that
+square as its neighbours do. Its main
 verticals and corners are on whole units, even ones where it can be: a
 unit is half a pixel at 32 pixels and a pixel at 64.
 
@@ -53,8 +54,24 @@ unit is half a pixel at 32 pixels and a pixel at 64.
   is its front face pushed back along the side direction
   (`icontrace.py extrude`): the faces that look up lighter, those that
   look sideways darker.
+- A flat thing whose face is its top (a keyboard, a touchpad, a
+  calculator, a chip, a hard drive, a fingerprint reader) is seen from
+  higher up, or its top would be a sliver: its face is drawn in
+  `<g transform="matrix(1 -.25 .5 1 X Y)">` (its near edge rising 1 in
+  4 like any front edge, its sides going back 2 up for 1 across), its
+  thickness straight down from the near and left edges. What stands on
+  it (the line on Activity Monitor's chip, AI's star) stands in the
+  front plane.
+- A thick disc standing (a badge: About, Bluetooth; a clock, a
+  loudspeaker, a ring of shares) is a circle in the front plane, its
+  edge showing to the left and above.
+- A drum or a bin standing is upright, its ends level ellipses.
 - A thing whose own shape tapers or leans (a CRT's housing, a pen, a
   key) keeps its shape, set on the same desk.
+- The same thing is the same drawing wherever it appears: the CRT
+  (Terminal, the desktop, Agent Screens), the page, the open folder
+  (the folder, Tracker), the hard drive (Disk, Backup, Drive Setup),
+  the chip, the magnifying glass, the spanner.
 - Light from the top left: the top lightest, the front next, the side
   darkest; each face a soft gradient, lighter toward the top left.
 
@@ -112,7 +129,8 @@ $T compare data/icons/256/NAME.png data/icons/svg/NAME.svg /var/tmp/…/c.png
 difference, and both at 16 to 64 pixels at true size on the light and
 the dark panel, and as Deskbar shows one. Look at it there, at true
 size: it's the small sizes that have to be right. Then
-`cargo test -p olo-xdg svg` (every drawing is on the grid and renders).
+`cargo test -p olo-xdg svg` (every drawing is on the grid, renders, and
+stays on the canvas).
 Improve as you draw: one projection, one outline, the same optical size
 as its neighbours, nothing that only reads large left to carry the
 small sizes.

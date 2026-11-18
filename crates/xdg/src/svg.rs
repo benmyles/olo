@@ -269,6 +269,32 @@ mod tests {
                     let img = render(&bytes, px, true).unwrap_or_else(|| panic!("{}: can't be drawn", path.display()));
                     let shown = img.rgba.chunks_exact(4).filter(|p| p[3] > 0).count();
                     assert!(shown * 5 > (px * px) as usize, "{} at {px}: nearly nothing drawn", path.display());
+                    if px != 256 {
+                        continue;
+                    }
+                    // The thing itself (its shadow is fainter than this) stays on the
+                    // canvas with two units to spare, outline and all: what touches
+                    // the edge is cut off.
+                    let unit = px as usize / 64;
+                    let solid = |x: usize, y: usize| img.rgba[(y * px as usize + x) * 4 + 3] > 100;
+                    let (mut x0, mut y0, mut x1, mut y1) = (px as usize, px as usize, 0, 0);
+                    for y in 0..px as usize {
+                        for x in 0..px as usize {
+                            if solid(x, y) {
+                                (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x + 1), y1.max(y + 1));
+                            }
+                        }
+                    }
+                    let side = px as usize;
+                    assert!(
+                        x0 + 1 >= 2 * unit && y0 + 1 >= 2 * unit && x1 <= side - 2 * unit + 1 && y1 <= side - 2 * unit + 1,
+                        "{}: drawn outside 2..62 of the grid: {:.1},{:.1} to {:.1},{:.1}",
+                        path.display(),
+                        x0 as f32 / unit as f32,
+                        y0 as f32 / unit as f32,
+                        x1 as f32 / unit as f32,
+                        y1 as f32 / unit as f32
+                    );
                 }
             }
         }

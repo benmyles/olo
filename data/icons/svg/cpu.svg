@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Processor: a processor seen from above, on its green board, gold legs along its edges, a steel lid. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="33" cy="59.4" r="25" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 51.68) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="chip"><path d="M5 17.4Q5 16 6.36 15.66L37.64 7.84Q39 7.5 39.63 8.75L55.37 40.25Q56 41.5 56 42.9L56 43.5Q56 44.9 54.64 45.24L23.36 53.06Q22 53.4 21.37 52.15L5.63 20.65Q5 19.4 5 18Z"/></clipPath>
+<linearGradient id="pcb" x1="0" y1="0" x2="34" y2="34" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#58c684"/><stop offset="1" stop-color="#2f9e5c"/></linearGradient>
+<linearGradient id="lidg" x1="5" y1="5" x2="29" y2="29" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fbfbfd"/><stop offset="0.5" stop-color="#d5d8df"/><stop offset="1" stop-color="#aeb2bc"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="33" cy="59.4" rx="25" ry="3.4" fill="url(#shadow)"/>
+<g transform="matrix(1 -.25 .5 1 5 19.1)"><rect class="o" x="-2.7" y="2.6" width="3.4" height="2.2" fill="#f7c531"/><rect class="o" x="-2.7" y="7.03" width="3.4" height="2.2" fill="#f7c531"/><rect class="o" x="-2.7" y="11.47" width="3.4" height="2.2" fill="#f7c531"/><rect class="o" x="-2.7" y="15.9" width="3.4" height="2.2" fill="#f7c531"/><rect class="o" x="-2.7" y="20.33" width="3.4" height="2.2" fill="#f7c531"/><rect class="o" x="-2.7" y="24.77" width="3.4" height="2.2" fill="#f7c531"/><rect class="o" x="-2.7" y="29.2" width="3.4" height="2.2" fill="#f7c531"/><rect class="o" x="2.6" y="33.3" width="2.2" height="3.4" fill="#f7c531"/><rect class="o" x="6.4" y="33.3" width="2.2" height="3.4" fill="#f7c531"/><rect class="o" x="10.2" y="33.3" width="2.2" height="3.4" fill="#f7c531"/><rect class="o" x="14" y="33.3" width="2.2" height="3.4" fill="#f7c531"/><rect class="o" x="17.8" y="33.3" width="2.2" height="3.4" fill="#f7c531"/><rect class="o" x="21.6" y="33.3" width="2.2" height="3.4" fill="#f7c531"/><rect class="o" x="25.4" y="33.3" width="2.2" height="3.4" fill="#f7c531"/><rect class="o" x="29.2" y="33.3" width="2.2" height="3.4" fill="#f7c531"/></g>
+<path class="o" fill="#1f7d48" d="M5 17.4Q5 16 6.36 15.66L37.64 7.84Q39 7.5 39.63 8.75L55.37 40.25Q56 41.5 56 42.9L56 43.5Q56 44.9 54.64 45.24L23.36 53.06Q22 53.4 21.37 52.15L5.63 20.65Q5 19.4 5 18Z"/>
+<g clip-path="url(#chip)"><path fill="#125c33" d="M3 12L22 50L22 55.4L3 21.4Z"/></g>
+<g transform="matrix(1 -.25 .5 1 5 16)"><rect x="0" y="0" width="34" height="34" rx="1.4" fill="url(#pcb)"/><rect x="5" y="5" width="24" height="24" rx="1.6" fill="#8d919c" stroke="#1b1b1f" stroke-width=".7"/><path class="h from48" stroke-opacity="0.8" stroke-width=".45" d="M.8 32.6V1.4Q.8 .8 1.4 .8H32.6"/></g>
+<g transform="matrix(1 -.25 .5 1 5 14.2)"><rect x="5" y="5" width="24" height="24" rx="1.6" fill="url(#lidg)" stroke="#1b1b1f" stroke-width=".5"/><path class="h from48" stroke-opacity=".9" stroke-width=".45" d="M5.9 27.4V7Q5.9 5.9 7 5.9H27.4"/></g>
+</svg>

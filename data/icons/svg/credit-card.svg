@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Credit card: a blue card standing, its dark stripe, its gold chip. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<linearGradient id="shadow" x1="30" y1="54" x2="31" y2="58.4" gradientUnits="userSpaceOnUse"><stop offset="0" stop-opacity=".3"/><stop offset="1" stop-opacity="0"/></linearGradient>
+<linearGradient id="blue" x1="0" y1="0" x2="46" y2="30" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#5aabff"/><stop offset="0.5" stop-color="#2380f4"/><stop offset="1" stop-color="#0f5ad0"/></linearGradient>
+<linearGradient id="chipg" x1="6" y1="14" x2="15" y2="22" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffe98a"/><stop offset="1" stop-color="#f0b21c"/></linearGradient>
+</defs>
+<path class="from48" fill="url(#shadow)" d="M9 55.5L57 43.5L60 46.5L13 60Z"/>
+<g transform="matrix(1 -.25 0 1 11 24.5)">
+<path class="o" fill="#0b3fa6" d="M3 0H43Q46 0 46 3V27Q46 30 43 30H3Q0 30 0 27V3Q0 0 3 0Z" transform="translate(-2.6 -1.95)"/>
+<path class="o" fill="url(#blue)" d="M3 0H43Q46 0 46 3V27Q46 30 43 30H3Q0 30 0 27V3Q0 0 3 0Z"/>
+<path fill="#1f2229" d="M0 5H46V11H0Z"/>
+<rect class="o" x="5.6" y="15" width="9.4" height="7.6" rx="1.4" fill="url(#chipg)" style="stroke-width:.7"/>
+<path class="from48" fill="none" stroke="#b97a07" stroke-width=".4" d="M5.6 18.8H8.6M12 18.8H15M8.6 15V22.6M12 15V22.6"/>
+<g class="from48" fill="#d7ebff" fill-opacity=".85"><rect x="19" y="17.6" width="5" height="1.6" rx=".5"/><rect x="25.4" y="17.6" width="5" height="1.6" rx=".5"/><rect x="31.8" y="17.6" width="5" height="1.6" rx=".5"/><rect x="5.6" y="25" width="12" height="1.4" rx=".5"/></g>
+<path class="h from48" stroke-opacity=".6" stroke-width=".5" d="M.9 27V3Q.9 .9 3 .9H43"/>
+</g>
+</svg>
