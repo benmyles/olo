@@ -126,6 +126,9 @@ pub struct Notifications {
     /// When `notifications.json` was last read.
     settings_read: Option<SystemTime>,
     pub history: History,
+    /// What has left the history (faded away, dismissed, cleared,
+    /// forgotten): the History window's Archived view.
+    pub archive: History,
     /// Edit ▸ Undo and Redo in the History window: entries forgotten
     /// (Clear All, Forget) put back.
     pub steps: olo_kit::undo::History<Gone>,
@@ -134,6 +137,8 @@ pub struct Notifications {
     pub view: history::HistoryState,
     /// `List`'s answer, shared with the bus thread.
     snapshot: Arc<Mutex<String>>,
+    /// `ListArchived`'s.
+    archived_snapshot: Arc<Mutex<String>>,
     /// What Deskbar was last told.
     told: Option<NotificationState>,
     /// The screen is being shared (`SharingState`).
@@ -149,6 +154,10 @@ pub enum Gone {
     Forgot(Vec<(usize, store::Entry)>),
     /// Put back (Redo forgets them again): each by its id and time.
     Back(Vec<(u32, u64)>),
+    /// Entries deleted from the archive, each with where it was.
+    Deleted(Vec<(usize, store::Entry)>),
+    /// Put back in the archive (Redo deletes them again).
+    Undeleted(Vec<(u32, u64)>),
 }
 
 /// The local time of day, in minutes.
@@ -218,8 +227,59 @@ impl Notifications {
         }
     }
 
+    /// Show the archive in the History window (View ▸ Archived), or the
+    /// history again.
+    pub fn show_archived(&mut self, on: bool) {
+        if self.view.archived != on {
+            self.view.archived = on;
+            self.view.selected = None;
+            self.view.held.clear();
+            self.changed();
+        }
+    }
+
+    /// Delete from the archive, for good but for Undo: those at `at`
+    /// (None: all of it, Empty Archive).
+    pub fn delete_archived(&mut self, at: Option<Vec<usize>>) {
+        let gone = self.archive.take_out(|i, _| at.as_ref().is_some_and(|at| !at.contains(&i)));
+        if gone.is_empty() {
+            return;
+        }
+        if gone.iter().any(|(_, e)| Some(e.id) == self.view.selected) {
+            self.view.selected = None;
+        }
+        self.steps.done(if at.is_some() { "Delete" } else { "Empty Archive" }, Gone::Deleted(gone));
+        self.archive.save();
+        self.archived_changed();
+        self.changed();
+    }
+
+    /// What the History window lists: the history, or the archive
+    /// (its Archived view).
+    pub fn listed(&self) -> &History {
+        if self.view.archived { &self.archive } else { &self.history }
+    }
+
+    /// These have left the history: into the archive, and kept.
+    pub fn to_archive(&mut self, gone: Vec<Entry>) {
+        if self.archive.archive(gone, now_secs()) {
+            self.archive.save();
+            self.archived_changed();
+        }
+    }
+
+    /// The archive changed: `ListArchived`'s answer with it.
+    fn archived_changed(&mut self) {
+        *self.archived_snapshot.lock().unwrap() = serde_json::json!({ "archived": &*self.archive.entries }).to_string();
+    }
+
     /// Tell `List`, Deskbar and the disk what changed.
     fn publish(&mut self, history_changed: bool) {
+        // (What left by itself, pushed out by newer ones or faded away.)
+        let left = self.history.take_left();
+        if !left.is_empty() {
+            self.to_archive(left);
+        }
         if history_changed {
             self.history.save();
         }
@@ -660,6 +720,18 @@ impl Notifications {
             Control::Dismiss(id) => {
                 self.remove(id, Reason::Dismissed);
                 self.set_read(id, true);
+                // Dismissed, it's done with: out of the list, into the
+                // archive (Edit ▸ Undo brings it back). A pinned one
+                // stays put, as it does through everything.
+                let gone = self.history.take_out(|_, e| e.id != id || e.pinned || e.attention.is_some());
+                if !gone.is_empty() {
+                    self.to_archive(gone.iter().map(|(_, e)| e.clone()).collect());
+                    self.steps.done("Dismiss", Gone::Forgot(gone));
+                    if self.view.selected == Some(id) {
+                        self.view.selected = None;
+                    }
+                    self.publish(true);
+                }
             }
             Control::ClearHistory => self.clear_history(),
             Control::ShowHistory => self.open_history(),
@@ -753,6 +825,7 @@ impl Notifications {
         }
         let gone = self.history.take_out(|_, e| kept(e));
         if !gone.is_empty() {
+            self.to_archive(gone.iter().map(|(_, e)| e.clone()).collect());
             self.steps.done("Clear All", Gone::Forgot(gone));
         }
         self.publish(true);
@@ -767,11 +840,33 @@ impl Notifications {
         let purpose = if redo { Purpose::Redo } else { Purpose::Undo };
         let change = match step.change {
             Gone::Forgot(gone) => {
-                let back = gone.iter().map(|(_, e)| (e.id, e.time)).collect();
+                let back: Vec<(u32, u64)> = gone.iter().map(|(_, e)| (e.id, e.time)).collect();
                 self.history.put_back(gone);
+                // (Back in the history: not in the archive too.)
+                if self.archive.unarchive(&back) {
+                    self.archive.save();
+                    self.archived_changed();
+                }
                 Gone::Back(back)
             }
-            Gone::Back(which) => Gone::Forgot(self.history.take_out(|_, e| !which.contains(&(e.id, e.time)))),
+            Gone::Back(which) => {
+                let gone = self.history.take_out(|_, e| !which.contains(&(e.id, e.time)));
+                self.to_archive(gone.iter().map(|(_, e)| e.clone()).collect());
+                Gone::Forgot(gone)
+            }
+            Gone::Deleted(gone) => {
+                let back = gone.iter().map(|(_, e)| (e.id, e.time)).collect();
+                self.archive.put_back(gone);
+                self.archive.save();
+                self.archived_changed();
+                Gone::Undeleted(back)
+            }
+            Gone::Undeleted(which) => {
+                let gone = self.archive.take_out(|_, e| !which.contains(&(e.id, e.time)));
+                self.archive.save();
+                self.archived_changed();
+                Gone::Deleted(gone)
+            }
         };
         self.steps.record(purpose, step.name, change);
         self.publish(true);
@@ -1160,13 +1255,20 @@ fn main() -> std::process::ExitCode {
         let bus = Arc::new(Mutex::new(None));
         let snapshot = Arc::new(Mutex::new(String::new()));
         let history = History::load(Some(History::path()));
-        let first = history.entries.iter().map(|e| e.id).max().unwrap_or(0).wrapping_add(1).max(1);
+        let mut archive = History::load(Some(History::archive_path()));
+        if archive.prune_archive(now_secs()) {
+            archive.save();
+        }
+        History::sweep_pictures(&[&history, &archive]);
+        // (Past the archive's too: an id names one notification, there or here.)
+        let first = history.entries.iter().chain(archive.entries.iter()).map(|e| e.id).max().unwrap_or(0).wrapping_add(1).max(1);
+        let archived_snapshot = Arc::new(Mutex::new(serde_json::json!({ "archived": &*archive.entries }).to_string()));
         let next_id = Arc::new(std::sync::atomic::AtomicU32::new(first));
         let bus_ids = next_id.clone();
         warm_app_icons(history.entries.iter().map(|e| (e.desktop_entry.clone(), e.app.clone())).collect(), || {});
         // Another notification service may have the name (a desktop
         // started before ours): wait for it to go rather than take it.
-        let (slot, to_ui, shared) = (bus.clone(), proxy.clone(), snapshot.clone());
+        let (slot, to_ui, shared) = (bus.clone(), proxy.clone(), (snapshot.clone(), archived_snapshot.clone()));
         std::thread::Builder::new()
             .name("notifications-bus".into())
             .spawn(move || {
@@ -1233,9 +1335,11 @@ fn main() -> std::process::ExitCode {
                 settings: NotificationSettings::default(),
                 settings_read: None,
                 history,
+                archive,
                 history_win: None,
                 view: history::HistoryState::default(),
                 snapshot,
+                archived_snapshot,
                 told: None,
                 sharing: false,
                 _watches: watches,

@@ -93,14 +93,6 @@ something nobody here has is in "Blocked", with what it waits for.
   they are (which is the processed one, if either), and name it as the
   laptop's is.
 
-- **Notifications: an archive** (Ben, 2026-11-18: "after a notification
-  has been faded out / dismissed / cleared let's put it in an archived
-  section in the notifications app and have a way to see the archived
-  ones when needed"). What has gone from the list (faded, dismissed,
-  cleared) is kept in an Archived section of the Notifications app,
-  shown when asked for, searchable as the list is, with a limit on how
-  long and how many.
-
 - **A Calendar app, native, with Google and Fastmail calendars** (Ben,
   2026-11-17: "build a beautiful olo native calendar app. add calendar
   support to prefs -> integrations and support any number of google
@@ -169,6 +161,20 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Notifications: an archive** (Ben, 2026-11-18: "after a
+  notification has been faded out / dismissed / cleared let's put it in
+  an archived section in the notifications app and have a way to see
+  the archived ones when needed"). Whatever leaves the list (faded
+  away, dismissed, cleared, forgotten, pushed out) is kept for 30 days,
+  the last 1000. In the Notifications window: "Archived (n)" at the
+  right of the status bar, or View ▸ Archived (⌘5); search works there;
+  a row opens what it was about; Delete, Empty Archive, and Undo for
+  both. **A change to notice**: dismissing a notification (a banner's
+  ×, a card of Deskbar's widget) now takes it out of the list at once,
+  into the archive, where before it stayed in the list as read until it
+  faded (Edit ▸ Undo brings it back). **To try**: dismiss one, open
+  Notifications, follow the link at the bottom right.
 
 - **The bell's count in a colour of your own** (Ben, 2026-11-18: "in
   prefs -> notifications add the ability to customize the color of the

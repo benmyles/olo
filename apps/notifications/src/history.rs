@@ -28,7 +28,7 @@ use olo_kit::{
     Painter, ParentElement as _, Pixels, Point, ScrollHandle, Styled as _, View, WindowCx, agent, canvas, div, fill, menu, point, px, size,
     style::{self, Align},
     theme,
-    widgets::{Button, CheckBox, SCROLL_BAR, ScrollView, TextControl, TextField, TextFieldEvent, text_field},
+    widgets::{Button, CheckBox, LinkButton, SCROLL_BAR, ScrollView, StringView, TextControl, TextField, TextFieldEvent, text_field},
 };
 use olo_kit_base::{masonry, metrics as m};
 use olo_protocol::NotificationSettings;
@@ -60,8 +60,12 @@ const CARD_DOT: f32 = 11.0;
 const CARD_HEAD_GAP: f32 = 7.0;
 /// A card's action buttons.
 const CARD_BUTTON: f32 = 20.0;
-/// Room for the × at a row's right end.
-const CLOSE_W: f32 = 18.0;
+/// Room for the × at a row's right end: what's beside it (the app and
+/// the time) ends this far in, `TIGHT` and a point clear of the ×
+/// (three points clear before: the review, with the pointer on a row).
+const CLOSE_W: f32 = 22.0;
+/// The middle of that ×, from the row's right end.
+const CLOSE_AT: f32 = 9.0;
 /// The faintest a notification draws, at the very end of its fade: still
 /// legible while it is there to read and click, then gone.
 const FAINTEST: f32 = 0.3;
@@ -86,6 +90,8 @@ pub struct HistoryState {
     pub held: HashSet<u32>,
     /// Bring the selection into view at the next frame.
     reveal: bool,
+    /// Showing the archive (View ▸ Archived), not the history.
+    pub archived: bool,
 }
 
 /// One line of the list.
@@ -107,8 +113,12 @@ enum Item {
     },
 }
 
-/// An entry's menu (a right click on it).
-fn entry_menu(e: &store::Entry) -> Menu {
+/// An entry's menu (a right click on it); `archived`: one in the
+/// archive, which can only be opened or deleted.
+fn entry_menu(e: &store::Entry, archived: bool) -> Menu {
+    if archived {
+        return Menu::new("Notification").item("Open", "open").separator().item("Delete", "forget");
+    }
     let menu = Menu::new("Notification").item("Open", "open").separator().item(if e.unread { "Mark as Read" } else { "Mark as Unread" }, "toggle-read").separator();
     crate::note_menu(menu, Some(e.pinned)).separator().item("Forget", "forget")
 }
@@ -387,6 +397,9 @@ struct ListLaid {
     unread: u32,
     snoozed: usize,
     can_clear: bool,
+    /// How many the other list has (the archive's, or, showing the
+    /// archive, the notifications'): the foot's link says.
+    other: usize,
 }
 
 /// What the list was laid out for, besides the notes.
@@ -468,7 +481,7 @@ fn first_line(laid: &RowLaid, top: Pixels) -> Pixels {
 
 /// A row's × (Forget), in the row `r`.
 fn row_close(laid: &RowLaid, r: Bounds<Pixels>) -> Bounds<Pixels> {
-    Bounds::centered_at(point(r.right() - px(CLOSE_W / 2.0), first_line(laid, r.top())), size(px(12.0), px(12.0)))
+    Bounds::centered_at(point(r.right() - px(CLOSE_AT), first_line(laid, r.top())), size(px(12.0), px(12.0)))
 }
 
 /// A card's first line (whose it is and when), in the card `r`.
@@ -533,8 +546,11 @@ impl HistoryWindow {
         for (v, label, command, key) in VIEWS {
             views = views.item(label, command).key(key).checked(view == v);
         }
+        // (The archive beside the history's views: what has left it.)
+        let archived = n.view.archived;
+        views = views.separator().item("Archived", "archived").key("5").checked(archived);
         let selected = n.selected_unread();
-        let pinned = n.view.selected.and_then(|id| n.history.newest(id)).map(|e| e.pinned);
+        let pinned = n.view.selected.filter(|_| !archived).and_then(|id| n.history.newest(id)).map(|e| e.pinned);
         let edit = n
             .steps
             .edit_items(Menu::new("Edit"))
@@ -546,9 +562,14 @@ impl HistoryWindow {
             .key("u")
             .enabled(selected.is_some())
             .item("Mark All as Read", "read-all")
-            .enabled(n.history.unread() > 0)
+            .enabled(!archived && n.history.unread() > 0)
             .separator();
-        let edit = crate::note_menu(edit, pinned).separator().item("Clear All", "clear").enabled(n.history.entries.iter().any(|e| !e.shown && !e.pinned && !e.snoozed()));
+        let edit = crate::note_menu(edit, pinned).separator();
+        let edit = if archived {
+            edit.item("Empty Archive", "empty-archive").enabled(!n.archive.entries.is_empty())
+        } else {
+            edit.item("Clear All", "clear").enabled(n.history.entries.iter().any(|e| !e.shown && !e.pinned && !e.snoozed()))
+        };
         // (The service stays running: Close, no Quit.)
         vec![Menu::new("File").app_items(&["notifications"]).close_item(), edit, views]
     }
@@ -562,6 +583,11 @@ impl HistoryWindow {
                 cx.close_window();
             }
             "clear" => with(&shared, |n| n.clear_history()),
+            "archived" => with(&shared, |n| {
+                let on = !n.view.archived;
+                n.show_archived(on);
+            }),
+            "empty-archive" => with(&shared, |n| n.delete_archived(None)),
             "undo" => with(&shared, |n| n.undo_redo(false)),
             "redo" => with(&shared, |n| n.undo_redo(true)),
             "find" => self.search.focus(cx),
@@ -575,7 +601,7 @@ impl HistoryWindow {
             }),
             // The selected note's.
             c if c == "pin" || c.starts_with("snooze:") => with(&shared, |n| {
-                if let Some(id) = n.view.selected {
+                if let Some(id) = n.view.selected.filter(|_| !n.view.archived) {
                     n.note_command(id, c);
                 }
             }),
@@ -749,7 +775,7 @@ impl HistoryWindow {
         let shared = self.shared.clone();
         let (selected, entries_ids, by_app): (Option<usize>, Vec<u32>, bool) = {
             let n = shared.lock().unwrap();
-            let ids: Vec<u32> = order.iter().filter_map(|&i| n.history.entries.get(i)).map(|e| e.id).collect();
+            let ids: Vec<u32> = order.iter().filter_map(|&i| n.listed().entries.get(i)).map(|e| e.id).collect();
             (n.view.selected.and_then(|id| ids.iter().position(|&x| x == id)), ids, n.settings.view == HistoryView::Apps)
         };
         // (Forgotten since it was laid out: laid out again first.)
@@ -820,7 +846,7 @@ impl HistoryWindow {
             "enter" => with(&shared, |n| n.open_entry(Some(&**cx), order[s], None)),
             "delete" | "backspace" if !typing => with(&shared, |n| n.forget(vec![order[s]], &order)),
             "left" | "right" if !typing && by_app => with(&shared, |n| {
-                let a = n.history.entries[order[s]].app.clone();
+                let a = n.listed().entries[order[s]].app.clone();
                 let folded = n.view.folded.contains(&a);
                 if (key == "left") != folded {
                     n.fold(a);
@@ -900,7 +926,7 @@ impl HistoryWindow {
         let shared = self.shared.clone();
         with(&shared, |n| match hit {
             Hit::Row(i) => {
-                let Some(id) = n.history.entries.get(i).map(|e| e.id) else { return };
+                let Some(id) = n.listed().entries.get(i).map(|e| e.id) else { return };
                 n.select(id);
                 if e.click_count >= 2 {
                     n.open_entry(Some(&**cx), i, None);
@@ -908,7 +934,7 @@ impl HistoryWindow {
             }
             Hit::Card(i) => {
                 // One click acts, as on a banner; ⌘ or Shift only selects it.
-                let Some(id) = n.history.entries.get(i).map(|e| e.id) else { return };
+                let Some(id) = n.listed().entries.get(i).map(|e| e.id) else { return };
                 if select || e.click_count >= 2 {
                     n.select(id);
                 } else {
@@ -936,10 +962,14 @@ impl HistoryWindow {
             Some(Hit::Row(i) | Hit::Card(i) | Hit::Forget(i)) => i,
             _ => return,
         };
-        let Some(entry) = self.shared.lock().unwrap().history.entries.get(i).cloned() else { return };
+        let (entry, archived) = {
+            let n = self.shared.lock().unwrap();
+            (n.listed().entries.get(i).cloned(), n.view.archived)
+        };
+        let Some(entry) = entry else { return };
         let id = entry.id;
         let chosen = cx.msg_with(move |command: &str| Told::Command(id, command.to_owned()));
-        menu::context_menu(cx, entry_menu(&entry), e.position, chosen);
+        menu::context_menu(cx, entry_menu(&entry, archived), e.position, chosen);
         cx.stop_propagation();
     }
 
@@ -949,18 +979,19 @@ impl HistoryWindow {
         let Some(order) = self.laid.as_ref().map(|(_, l)| l.order.clone()) else { return };
         let shared = self.shared.clone();
         with(&shared, |n| {
-            let Some(i) = n.history.entries.iter().position(|x| x.id == id) else { return };
+            let Some(i) = n.listed().entries.iter().position(|x| x.id == id) else { return };
             match command {
                 "open" => {
                     n.view.selected = Some(id);
                     n.open_entry(Some(&**cx), i, None);
                 }
+                "forget" => n.forget(vec![i], &order),
+                _ if n.view.archived => {}
                 "toggle-read" => {
                     n.view.held.insert(id);
                     let unread = n.history.entries[i].unread;
                     n.set_read(id, unread);
                 }
-                "forget" => n.forget(vec![i], &order),
                 c => n.note_command(id, c),
             }
         });
@@ -972,7 +1003,13 @@ impl HistoryWindow {
         let shared = self.shared.clone();
         let (view, entries, unread_now, selected_id, folded, held, reveal, settings) = {
             let n = shared.lock().unwrap();
-            (n.settings.view, n.history.entries.clone(), n.history.unread(), n.view.selected, n.view.folded.clone(), n.view.held.clone(), n.view.reveal, n.settings.clone())
+            // (In the archive nothing fades: it's all as old as it will get.)
+            let settings = if n.view.archived { NotificationSettings { fade: false, ..n.settings.clone() } } else { n.settings.clone() };
+            (n.settings.view, n.listed().entries.clone(), if n.view.archived { 0 } else { n.history.unread() }, n.view.selected, n.view.folded.clone(), n.view.held.clone(), n.view.reveal, settings)
+        };
+        let other = {
+            let n = shared.lock().unwrap();
+            if n.view.archived { n.history.entries.iter().filter(|e| !e.snoozed()).count() } else { n.archive.entries.len() }
         };
         let search_text = self.search.read(cx).text().to_owned();
         let searching = !search_text.trim().is_empty();
@@ -1078,7 +1115,9 @@ impl HistoryWindow {
         ListLaid {
             generation: self.laid_count,
             settings,
+            // (All of the archive can go: nothing in it is on screen, pinned or snoozed.)
             can_clear: entries.iter().any(|e| !e.shown && !e.pinned && !e.snoozed()),
+            other,
             all: entries.len() - snoozed,
             snoozed,
             shown: shown.len(),
@@ -1275,7 +1314,7 @@ fn paint_row(g: &mut Painter, r: Bounds<Pixels>, e: &store::Entry, laid: &RowLai
         }
         // Forget it: a × while the pointer is over it.
         if !e.shown && hovered {
-            let close = Bounds::centered_at(point(r.right() - px(CLOSE_W / 2.0), line1), size(px(12.0), px(12.0)));
+            let close = Bounds::centered_at(point(r.right() - px(CLOSE_AT), line1), size(px(12.0), px(12.0)));
             style::close_box(g, close, if shown.lit { style::c(fg) } else { dim });
             agent::record(g, agent::Node::button("Forget", close));
         }
@@ -1310,9 +1349,9 @@ impl View for HistoryWindow {
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let p = theme::palette();
         let bar = MenuBar::of(self, cx, |v, _| v.menus());
-        let (dnd, quiet, schedule_quiet) = {
+        let (dnd, quiet, schedule_quiet, archived) = {
             let n = self.shared.lock().unwrap();
-            (n.settings.dnd, n.quiet(), !n.settings.dnd)
+            (n.settings.dnd, n.quiet(), !n.settings.dnd, n.view.archived)
         };
         let now = now_secs();
 
@@ -1499,7 +1538,11 @@ impl View for HistoryWindow {
                 }
             }));
         let shown_list: Element = if list.shown == 0 {
-            let empty = if searching { "Nothing matches" } else { "No notifications" };
+            let empty = match (searching, archived) {
+                (true, _) => "Nothing matches",
+                (false, true) => "Nothing archived",
+                (false, false) => "No notifications",
+            };
             canvas(move |g, b| {
                 let p = theme::palette();
                 g.paint_quad(fill(b, style::c(p.document_background)));
@@ -1507,7 +1550,7 @@ impl View for HistoryWindow {
                 let at = style::label(g, b.center().x, b.center().y, Align::Center, empty, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
                 agent::record(g, agent::Node::label(empty, at));
             })
-            .paint_key(key_of(("empty", searching)))
+            .paint_key(key_of(("empty", searching, archived)))
             .size_full()
         } else {
             let background = if cards_view { style::card_paper(&p).0 } else { p.document_background };
@@ -1527,19 +1570,24 @@ impl View for HistoryWindow {
                 .into_element()
         };
 
-        // The bar: Do Not Disturb, the search, Clear All.
+        // The bar: Do Not Disturb, the search, Clear All (in the archive:
+        // the search and Empty Archive; Do Not Disturb is nothing of the
+        // archive's).
         let dnd_box = CheckBox::new("Do Not Disturb", dnd).height(m::CONTROL_HEIGHT).on_toggle(cx.listener(|h: &mut HistoryWindow, on: &bool, _| with(&h.shared, |n| n.set_quiet(*on, 0))));
-        let clear = Button::new("Clear All").min_width(m::BUTTON_MIN_WIDTH).enabled(list.can_clear).on_click(cx.listener(|h: &mut HistoryWindow, _: &ClickEvent, _| {
-            h.stale = true;
-            with(&h.shared, |n| n.clear_history());
-        }));
-        let bar_row = div()
-            .flex()
-            .items_center()
-            .gap(px(m::SPACING))
-            .h(px(m::CONTROL_HEIGHT + 2.0 * m::SPACING))
-            .px(px(m::SPACING))
-            .child(div().flex_shrink_0().child(dnd_box))
+        let clear = Button::new(if archived { "Empty Archive" } else { "Clear All" }).min_width(m::BUTTON_MIN_WIDTH).enabled(list.can_clear).on_click(cx.listener(
+            move |h: &mut HistoryWindow, _: &ClickEvent, _| {
+                h.stale = true;
+                with(&h.shared, |n| if archived { n.delete_archived(None) } else { n.clear_history() });
+            },
+        ));
+        let mut bar_row = div().flex().items_center().gap(px(m::SPACING)).h(px(m::CONTROL_HEIGHT + 2.0 * m::SPACING)).px(px(m::SPACING));
+        bar_row = if archived {
+            // (Where Do Not Disturb is in the notifications' bar: which list this is.)
+            bar_row.child(div().flex_shrink_0().child(StringView::new("Archived").bold(true)))
+        } else {
+            bar_row.child(div().flex_shrink_0().child(dnd_box))
+        };
+        let bar_row = bar_row
             // The search takes what the rest leave.
             .child(div().flex_1().min_w_0().child(TextControl::new(cx, &self.search)))
             .child(clear);
@@ -1548,6 +1596,9 @@ impl View for HistoryWindow {
         let (snoozed, all, unread_now) = (list.snoozed, list.all, list.unread);
         let mut status = if searching {
             format!("{} of {all}", list.shown)
+        } else if archived {
+            // (What it is, and how long it's kept.)
+            format!("{all} archived · kept for {} days, the last {}", store::ARCHIVE_DAYS, store::ARCHIVE_KEEP)
         } else if all == 1 {
             "1 notification".into()
         } else {
@@ -1559,23 +1610,39 @@ impl View for HistoryWindow {
         if snoozed > 0 && !searching {
             status += &format!(", {snoozed} snoozed");
         }
-        if quiet {
+        if quiet && !archived {
             status += if !schedule_quiet { " · Do Not Disturb" } else { " · Quiet by schedule" };
         }
-        let foot = canvas({
+        // A status bar along the window's foot, as Tracker's count bar:
+        // its own ground, its own insets. In it, the count at the left
+        // and, at the right, the way to the other list: the archive
+        // (what has left the notifications: faded away, dismissed,
+        // cleared), and back (also View ▸ Archived). The two share one
+        // row, so their words are level at every scale.
+        let ground = canvas(|g, b| style::fill_rect(g, b, style::c(theme::palette().panel_background))).paint_key(key_of("foot-ground")).absolute().inset_0();
+        let count = canvas({
             let status = status.clone();
             move |g, b| {
                 let p = theme::palette();
-                // A status bar along the window's foot, as Tracker's count
-                // bar: its own ground, its own insets.
-                style::fill_rect(g, b, style::c(p.panel_background));
-                let at = style::label(g, b.left() + px(m::SPACING), b.center().y, Align::Left, status.clone(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
+                let at = style::label(g, b.left(), b.center().y, Align::Left, status.clone(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
                 agent::record(g, agent::Node::label(status.clone(), at));
             }
         })
         .paint_key(key_of(("foot", &status)))
-        .w_full()
-        .h(px(FOOTER));
+        .flex_1()
+        .h(px(m::LABEL_ROW));
+        let other = if archived { format!("Notifications ({})", list.other) } else { format!("Archived ({})", list.other) };
+        let to_other = LinkButton::new(other).beside(style::DETAIL_SIZE).on_click(cx.listener(move |h: &mut HistoryWindow, _: &ClickEvent, cx| {
+            h.stale = true;
+            with(&h.shared, |n| n.show_archived(!archived));
+            cx.invalidate();
+        }));
+        let foot = div()
+            .relative()
+            .w_full()
+            .h(px(FOOTER))
+            .child(ground)
+            .child(div().absolute().inset_0().flex().flex_row().items_center().gap(px(m::SPACING)).px(px(m::SPACING)).child(count).child(div().flex_shrink_0().child(to_other)));
 
         div()
             .size_full()
@@ -1595,7 +1662,7 @@ impl Notifications {
     /// the window is open).
     pub fn select(&mut self, id: u32) {
         self.view.selected = Some(id);
-        if self.history.entries.iter().any(|e| e.id == id && e.unread) {
+        if !self.view.archived && self.history.entries.iter().any(|e| e.id == id && e.unread) {
             self.view.held.insert(id);
             self.set_read(id, true);
         }
@@ -1616,6 +1683,21 @@ impl Notifications {
         // From the end, so the indices stay good.
         at.sort_unstable();
         at.dedup();
+        // (In the archive: deleted from it.)
+        if self.view.archived {
+            let next = (at.len() == 1)
+                .then(|| order.iter().position(|&i| i == at[0]))
+                .flatten()
+                .and_then(|s| order.get(s + 1).or(s.checked_sub(1).and_then(|s| order.get(s))))
+                .and_then(|&i| self.archive.entries.get(i))
+                .map(|e| e.id);
+            let had = self.view.selected.is_some();
+            self.delete_archived(Some(at));
+            if had {
+                self.view.selected = next;
+            }
+            return;
+        }
         let next = (at.len() == 1)
             .then(|| order.iter().position(|&i| i == at[0]))
             .flatten()
@@ -1629,6 +1711,7 @@ impl Notifications {
             }
         }
         if !gone.is_empty() {
+            self.to_archive(gone.iter().map(|(_, e)| e.clone()).collect());
             self.steps.done("Forget", crate::Gone::Forgot(gone));
         }
         if self.view.selected.is_some() {
@@ -1642,8 +1725,16 @@ impl Notifications {
     /// the app, that is what a click on it does there; otherwise the app
     /// comes forward.
     pub fn open_entry(&mut self, window: Option<&WindowCx>, i: usize, key: Option<String>) {
-        let Some(e) = self.history.entries.get(i).cloned() else { return };
+        let Some(e) = self.listed().entries.get(i).cloned() else { return };
         let key = key.unwrap_or_else(|| "default".into());
+        // One in the archive: what it's about, if it said how to show
+        // that; else its app.
+        if self.view.archived {
+            if !crate::show_what(e.desktop_entry.as_deref(), &e.show) {
+                raise_app(e.desktop_entry.as_deref(), &e.app);
+            }
+            return;
+        }
         if e.unread {
             self.view.held.insert(e.id);
         }
@@ -1665,7 +1756,7 @@ impl Notifications {
 
     /// The selected note read or unread (Edit menu); whether there is one.
     pub fn toggle_read(&mut self) -> bool {
-        let Some(id) = self.view.selected else { return false };
+        let Some(id) = self.view.selected.filter(|_| !self.view.archived) else { return false };
         let Some(unread) = self.history.entries.iter().rev().find(|e| e.id == id).map(|e| e.unread) else { return false };
         self.view.held.insert(id);
         self.set_read(id, unread);
@@ -1674,7 +1765,7 @@ impl Notifications {
 
     /// Whether the selected note is unread (None: nothing selected).
     pub fn selected_unread(&self) -> Option<bool> {
-        let id = self.view.selected?;
+        let id = self.view.selected.filter(|_| !self.view.archived)?;
         self.history.entries.iter().rev().find(|e| e.id == id).map(|e| e.unread)
     }
 

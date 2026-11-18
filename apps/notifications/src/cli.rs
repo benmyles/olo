@@ -3,6 +3,7 @@
 //!
 //! ```text
 //! olo-notifications --list [--json]   what is on screen and in the history
+//! olo-notifications --archived [--json]   what has left it (the archive)
 //! olo-notifications --history         open the History window
 //! olo-notifications --invoke ID [ACTION]
 //! olo-notifications --dismiss ID
@@ -21,7 +22,7 @@ use crate::{server, store::Entry};
 pub fn usage() -> ExitCode {
     eprintln!(
         "usage: olo-notifications [--bus ADDRESS]   (serve; only in a real session)\n       \
-         olo-notifications [--bus ADDRESS] --list [--json] | --history | --invoke ID [ACTION] | --dismiss ID | --read ID|all | --unread ID | --pin ID | --unpin ID | --snooze ID MINUTES | --clear | --dnd on|off|MINUTES"
+         olo-notifications [--bus ADDRESS] --list [--json] | --archived [--json] | --history | --invoke ID [ACTION] | --dismiss ID | --read ID|all | --unread ID | --pin ID | --unpin ID | --snooze ID MINUTES | --clear | --dnd on|off|MINUTES"
     );
     ExitCode::from(2)
 }
@@ -33,6 +34,7 @@ pub fn run(address: Option<&str>, args: &[String]) -> ExitCode {
     let id = || arg(1).and_then(|s| s.parse::<u32>().ok());
     let result = match (arg(0), arg(1)) {
         (Some("--list"), json) if json.is_none() || json == Some("--json") => list(address, json.is_some()),
+        (Some("--archived"), json) if json.is_none() || json == Some("--json") => archived(address, json.is_some()),
         (Some("--history"), None) => server::call(address, "ShowHistory", &()).map(|_| ()),
         (Some("--clear"), None) => server::call(address, "ClearHistory", &()).map(|_| ()),
         (Some("--dismiss"), Some(_)) if id().is_some() => server::call(address, "Dismiss", &(id().unwrap())).map(|_| ()),
@@ -63,6 +65,27 @@ pub fn run(address: Option<&str>, args: &[String]) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// What has left the history, newest first: when it came, who from,
+/// what it said, and when it went.
+fn archived(address: Option<&str>, json: bool) -> zbus::Result<()> {
+    let reply = server::call(address, "ListArchived", &())?;
+    let text: String = reply.body().deserialize()?;
+    if json {
+        println!("{text}");
+        return Ok(());
+    }
+    let v: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+    let entries: Vec<Entry> = serde_json::from_value(v["archived"].clone()).unwrap_or_default();
+    println!("{} archived", entries.len());
+    for e in entries.iter().rev() {
+        println!("{:>5}  {}  {}: {}  [archived {}]", e.id, crate::when(e.time), e.app, e.summary, crate::when(e.archived));
+        if !e.text.is_empty() {
+            println!("       {}", e.text.replace('\n', "\n       "));
+        }
+    }
+    Ok(())
 }
 
 fn list(address: Option<&str>, json: bool) -> zbus::Result<()> {

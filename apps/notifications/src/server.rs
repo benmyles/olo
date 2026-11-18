@@ -191,6 +191,8 @@ impl Service {
 struct Controls {
     /// `List`'s answer, kept current by the UI.
     snapshot: std::sync::Arc<olo_sync::Mutex<String>>,
+    /// `ListArchived`'s.
+    archived: std::sync::Arc<olo_sync::Mutex<String>>,
     to_ui: std::sync::Arc<dyn Fn(In) + Send + Sync>,
 }
 
@@ -203,6 +205,14 @@ impl Controls {
     /// website's browser) and `strength` (how faded: 1 new, 0 gone).
     fn list(&self) -> String {
         self.snapshot.lock().unwrap().clone()
+    }
+
+    /// JSON: `{"archived": [...]}`, oldest first: what has left the
+    /// history (faded away, dismissed, cleared, forgotten), each as
+    /// `List` gives one, with `archived` (when it went, seconds since
+    /// the epoch). Kept for 30 days, the last 1000.
+    fn list_archived(&self) -> String {
+        self.archived.lock().unwrap().clone()
     }
 
     // Each returns once the UI has done it, so a `List` straight after
@@ -430,7 +440,12 @@ impl Bus {
     /// Fails if another notification service has the name.
     /// Ids start at `first` (after the history's, so they stay unique
     /// across a restart).
-    pub fn serve(address: Option<&str>, next: std::sync::Arc<AtomicU32>, snapshot: std::sync::Arc<olo_sync::Mutex<String>>, to_ui: impl Fn(In) + Send + Sync + 'static) -> zbus::Result<Bus> {
+    pub fn serve(
+        address: Option<&str>,
+        next: std::sync::Arc<AtomicU32>,
+        (snapshot, archived): (std::sync::Arc<olo_sync::Mutex<String>>, std::sync::Arc<olo_sync::Mutex<String>>),
+        to_ui: impl Fn(In) + Send + Sync + 'static,
+    ) -> zbus::Result<Bus> {
         let builder = match address {
             Some(a) => zbus::blocking::connection::Builder::address(a)?,
             None => zbus::blocking::connection::Builder::session()?,
@@ -441,7 +456,7 @@ impl Bus {
         let gtk: crate::gtk::Shared = Default::default();
         let ui = to_ui.clone();
         let gtk_service = crate::gtk::Service { next, registry: gtk.clone(), to_ui: Box::new(move |m| ui(m)) };
-        let controls = Controls { snapshot, to_ui };
+        let controls = Controls { snapshot, archived, to_ui };
         let conn = builder.serve_at(PATH, service)?.serve_at(crate::gtk::PATH, gtk_service)?.serve_at(CONTROL_PATH, controls)?.build()?;
         // (The builder's `name` counts "someone else has it" as success.)
         let flags = zbus::fdo::RequestNameFlags::DoNotQueue.into();

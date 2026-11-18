@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Notifications: an archive
+
+*10:04* — What leaves the list (faded away, dismissed, cleared, forgotten) now goes to an archive, kept for 30 days. The link at the status bar's right, Archived (2), shows it, and Notifications (5) there goes back; so does View ▸ Archived. Rows there open what they were about or are deleted; Empty Archive and Undo.
+
+![Notifications: an archive](2026-11-18/100401-notifications-an-archive.png)
+
 ### The bell's count in a colour of your own
 
 *09:47* — Preferences ▸ Notifications ▸ Deskbar ▸ The bell's count in: the look's own red, or any of the look's hues (here blue, yellow, green, purple, grey and orange, in a light and a dark look). The number is white, or near black where white would be lost.

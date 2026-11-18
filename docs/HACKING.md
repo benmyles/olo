@@ -16750,6 +16750,42 @@ its host and not with another's; one of Terminal's about a tab read by
 `SetRead` and `CloseNotification`, not by Terminal's window. At rest
 the service's new threads cost nothing (0 wakeups a second over 6 s).
 
+**The archive** (Ben, 2026-11-18: "after a notification has been faded
+out / dismissed / cleared let's put it in an archived section in the
+notifications app and have a way to see the archived ones when
+needed"). Whatever leaves the history goes to it: what fades away and
+what newer ones push out past the 200 kept (the history hands those on,
+`History::take_left`, as `publish` next runs), what is dismissed (a
+banner's ×, a card of Deskbar's widget, `Dismiss`: out of the list at
+once now, where it stayed as read until it faded; a pinned one stays
+put), cleared (Clear All) and forgotten (a row's ×, Forget). Never what
+an app says is waiting in it, which isn't a notification. It is a list
+like the history, in a file beside it
+(`~/.local/state/olo/notifications/archive.json`,
+`History::archive_path`; the same `History` type, `Notifications::
+archive`), each entry read, closed at its app, neither pinned nor
+snoozed, with when it went (`Entry::archived`), its picture kept until
+it leaves the archive too (`sweep_pictures` at start looks at both
+lists). It keeps 30 days and the last 1000 (`ARCHIVE_DAYS`,
+`ARCHIVE_KEEP`, `prune_archive`: as anything is added, and at start).
+Ids are unique across the two lists (the next id starts past both).
+
+In the Notifications window, the status bar's link at the right,
+"Archived (2)", shows it, and "Notifications (5)" there goes back; so
+does View ▸ Archived (⌘5) (`HistoryState::archived`,
+`Notifications::listed`: the window lays out one list or the other, in
+whichever view, with its search). The archive's bar has its name where
+Do Not Disturb is, and Empty Archive for Clear All; nothing in it
+fades; a row can be opened (what it's about, by what it said shows it,
+else its app) or deleted (its ×, Delete, the menu), and Edit ▸ Undo
+takes back a deletion or Empty Archive (`Gone::Deleted`) as it takes
+back Forget, Clear All and now Dismiss (`Gone::Forgot`: back in the
+history, out of the archive). For agents: `ListArchived` (JSON,
+`{"archived": [...]}`) and `olo-notifications --archived [--json]`.
+tsession review of both views, with the pointer on a row, at 1×, 1.5×
+and 2×: nothing (it found a row's × three points from the app and time
+beside it, in the history's list too: `CLOSE_W`, `CLOSE_AT`).
+
 `olo-notifications` serves `org.freedesktop.Notifications` (spec 1.2)
 on the session bus, so `notify-send`, browsers, chat and mail clients and
 anything else using libnotify reach the user. The real session starts it
@@ -16996,15 +17032,15 @@ or fitted whole), kept, and the windows drawn again as each comes.
   `pinned`, `snoozed_until` and `strength`; `Invoke`, `Dismiss`,
   `SetRead(id, read)`, `MarkAllRead`, `SetPinned(id, pinned)`,
   `Snooze(id, minutes)`, `ClearHistory`, `ShowHistory`,
-  `SetDoNotDisturb`, `VisitedSite(host)`; the names are
+  `SetDoNotDisturb`, `VisitedSite(host)`, `ListArchived`; the names are
   `olo_protocol::notifications::CONTROL`, `CONTROL_PATH`). Each
   returns once the UI has done it (it answers through a oneshot), so a
   `List` straight after sees the change. The same from the command line
   (cli.rs): `olo-notifications [--bus A] --list [--json] | --history |
   --invoke ID [ACTION] | --dismiss ID | --read ID|all | --unread ID |
   --pin ID | --unpin ID | --snooze ID MINUTES | --clear | --dnd
-  on|off|MINUTES`; `--list` says which are pinned and until when each is
-  snoozed.
+  on|off|MINUTES | --archived [--json]`; `--list` says which are pinned
+  and until when each is snoozed.
 
 Test it on a private bus: `busd -a unix:path=/var/tmp/olo-dev/NAME/bus.sock`
 (`cargo install busd`; Aurora's dbus-broker-launch needs systemd), then

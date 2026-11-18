@@ -109,6 +109,9 @@ pub struct Entry {
     /// Snoozed until then (seconds since the epoch): out of sight and
     /// not counted, then back as new, as a banner and unread.
     pub snoozed_until: Option<u64>,
+    /// In the archive: when it went there (seconds since the epoch).
+    #[serde(skip_serializing_if = "is_zero")]
+    pub archived: u64,
 }
 
 impl Entry {
@@ -138,6 +141,7 @@ impl Entry {
             picture: None,
             pinned: false,
             snoozed_until: None,
+            archived: 0,
         }
     }
 
@@ -187,7 +191,15 @@ pub struct History {
     /// while it holds them copies them once (`entries_mut`).
     pub entries: Arc<Vec<Entry>>,
     path: Option<PathBuf>,
+    /// What has left by itself since it was last asked for
+    /// ([`History::take_left`]: faded away, or pushed out by newer ones):
+    /// for the archive.
+    left: Vec<Entry>,
 }
+
+/// How many the archive keeps, and for how many days.
+pub const ARCHIVE_KEEP: usize = 1000;
+pub const ARCHIVE_DAYS: u64 = 30;
 
 fn is_zero(n: &u64) -> bool {
     *n == 0
@@ -429,6 +441,16 @@ impl History {
         olo_xdg::state_dir().join("notifications").join("history.json")
     }
 
+    /// Where the archive is kept: what has left the history (faded away,
+    /// dismissed, cleared, forgotten), for looking back at (Ben,
+    /// 2026-11-18: "after a notification has been faded out / dismissed
+    /// / cleared let's put it in an archived section in the
+    /// notifications app and have a way to see the archived ones when
+    /// needed"). A list like the history, read back the same way.
+    pub fn archive_path() -> PathBuf {
+        olo_xdg::state_dir().join("notifications").join("archive.json")
+    }
+
     /// The history from `path` (None: in memory only, for tests). After a
     /// restart nothing in it is still open at its app, and only what is
     /// pinned is still on screen. Pictures nothing names any more go, off
@@ -439,20 +461,77 @@ impl History {
             e.live = false;
             e.shown &= e.pinned;
         }
-        if let Some(dir) = path.as_ref().and_then(|p| p.parent()).map(|d| d.join("pictures")) {
-            let named: std::collections::HashSet<PathBuf> = entries.iter().filter_map(|e| e.picture.as_ref().map(PathBuf::from)).collect();
-            std::thread::spawn(move || {
-                for f in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
-                    if !named.contains(&f.path()) {
-                        let _ = std::fs::remove_file(f.path());
-                    }
-                }
-            });
-        }
-        History { entries: Arc::new(entries), path }
+        History { entries: Arc::new(entries), path, left: Vec::new() }
     }
 
     /// The entries, to change: copied first if anything else holds them.
+    /// The pictures no entry of `lists` names any more (in the folder
+    /// beside the first one's file) are removed, off this thread: at
+    /// start, for what went while nothing ran.
+    pub fn sweep_pictures(lists: &[&History]) {
+        let Some(dir) = lists.first().and_then(|h| h.path.as_ref()).and_then(|p| p.parent()).map(|d| d.join("pictures")) else { return };
+        let named: std::collections::HashSet<PathBuf> = lists.iter().flat_map(|h| h.entries.iter()).filter_map(|e| e.picture.as_ref().map(PathBuf::from)).collect();
+        std::thread::spawn(move || {
+            for f in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+                if !named.contains(&f.path()) {
+                    let _ = std::fs::remove_file(f.path());
+                }
+            }
+        });
+    }
+
+    /// What has left by itself since this was last asked (faded away,
+    /// pushed out by newer ones): for the archive.
+    pub fn take_left(&mut self) -> Vec<Entry> {
+        std::mem::take(&mut self.left)
+    }
+
+    /// Into the archive (this list is one): `gone`, as they were when
+    /// they left the history, each read, closed at its app and neither
+    /// pinned nor snoozed any more, marked with when (`now`). Never what
+    /// an app says is waiting in it (that isn't a notification). The
+    /// same one archived again (after an Undo) takes its own place. Then
+    /// the oldest go: those archived over `ARCHIVE_DAYS` ago, and those
+    /// past `ARCHIVE_KEEP`. Whether anything changed.
+    pub fn archive(&mut self, gone: impl IntoIterator<Item = Entry>, now: u64) -> bool {
+        let mut changed = false;
+        for mut e in gone.into_iter().filter(|e| e.attention.is_none()) {
+            e.unread = false;
+            e.live = false;
+            e.shown = false;
+            e.pinned = false;
+            e.snoozed_until = None;
+            e.waiting = false;
+            e.archived = now;
+            let entries = self.entries_mut();
+            entries.retain(|x| (x.id, x.time) != (e.id, e.time));
+            entries.push(e);
+            changed = true;
+        }
+        self.prune_archive(now) || changed
+    }
+
+    /// The archive's oldest go (their pictures with them): those
+    /// archived over `ARCHIVE_DAYS` ago, and those past `ARCHIVE_KEEP`.
+    /// Whether any went.
+    pub fn prune_archive(&mut self, now: u64) -> bool {
+        let old = |e: &Entry| now.saturating_sub(e.archived) > ARCHIVE_DAYS * 86400;
+        let over = self.entries.len().saturating_sub(ARCHIVE_KEEP);
+        let aged = self.entries.iter().skip(over).any(old);
+        if over == 0 && !aged {
+            return false;
+        }
+        let gone = self.take_out(|i, e| i >= over && !old(e));
+        gone.iter().for_each(|(_, e)| Self::drop_picture(e));
+        true
+    }
+
+    /// Out of the archive again, as an Undo puts them back in the
+    /// history (`which`: each one's id and time). Their pictures stay.
+    pub fn unarchive(&mut self, which: &[(u32, u64)]) -> bool {
+        !self.take_out(|_, e| !which.contains(&(e.id, e.time))).is_empty()
+    }
+
     pub fn entries_mut(&mut self) -> &mut Vec<Entry> {
         Arc::make_mut(&mut self.entries)
     }
@@ -503,17 +582,20 @@ impl History {
             }
             None => entries.push(e),
         }
-        // The oldest go, but those pinned or snoozed.
+        // The oldest go (to the archive: `take_left`), but those pinned
+        // or snoozed.
         let mut extra = entries.len().saturating_sub(KEEP);
         if extra > 0 {
+            let mut left = Vec::new();
             entries.retain(|e| {
                 let goes = extra > 0 && !e.pinned && !e.snoozed();
                 if goes {
                     extra -= 1;
-                    Self::drop_picture(e);
+                    left.push(e.clone());
                 }
                 !goes
             });
+            self.left.append(&mut left);
         }
         self.mark_waiting();
     }
@@ -632,15 +714,18 @@ impl History {
         self.entries = Arc::new(kept);
     }
 
-    /// Forget what has faded away by `now` (not what is on screen); the
-    /// ones forgotten that were still open at their apps, to tell them.
+    /// What has faded away by `now` (not what is on screen) leaves, for
+    /// the archive (`take_left`); the ones still open at their apps, to
+    /// tell them.
     pub fn fade_out(&mut self, settings: &olo_protocol::NotificationSettings, now: u64) -> Option<Vec<u32>> {
         let faded = |e: &Entry| e.attention.is_none() && !e.shown && !e.pinned && !e.snoozed() && settings.faded(now.saturating_sub(e.time));
         if !self.entries.iter().any(faded) {
             return None;
         }
         let live = self.entries.iter().filter(|e| faded(e) && e.live).map(|e| e.id).collect();
-        self.retain(|e| !faded(e));
+        // (Their pictures stay: they go on to the archive, `take_left`.)
+        let gone = self.take_out(|_, e| !faded(e));
+        self.left.extend(gone.into_iter().map(|(_, e)| e));
         Some(live)
     }
 }
@@ -857,6 +942,68 @@ mod tests {
         let ids = app_ids(None, "Google Chrome");
         assert!(is_app(&ids, "google-chrome") && !is_app(&ids, "chrome-beta"));
         assert!(!is_app(&app_ids(None, ""), "anything") && !is_app(&app_ids(Some(" "), ""), ""));
+    }
+
+    /// What leaves the history goes to the archive (Ben, 2026-11-18:
+    /// "after a notification has been faded out / dismissed / cleared
+    /// let's put it in an archived section"): what fades away and what
+    /// newer ones push out are handed on (`take_left`); in the archive
+    /// each is read, closed, unpinned, and marked with when; an Undo
+    /// takes it out again; and the archive itself lets its oldest go.
+    #[test]
+    fn what_leaves_the_history_is_archived() {
+        let settings = olo_protocol::NotificationSettings { fade: true, fade_minutes: 60, ..Default::default() };
+        let mut h = History::load(None);
+        let mut a = History::load(None);
+        let at = |id: u32, time: u64| Entry { time, ..entry(id, "One") };
+        h.put(at(1, 100));
+        h.put(Entry { pinned: true, ..at(2, 100) });
+        h.put(at(3, 5000));
+        // An hour on, the first has faded away: out of the history, handed on.
+        assert_eq!(h.fade_out(&settings, 4000), Some(vec![1]));
+        let left = h.take_left();
+        assert_eq!(left.iter().map(|e| e.id).collect::<Vec<_>>(), vec![1]);
+        assert!(h.take_left().is_empty(), "handed on once");
+        assert!(a.archive(left, 4000));
+        let e = &a.entries[0];
+        assert_eq!((e.id, e.unread, e.live, e.pinned, e.archived), (1, false, false, false, 4000));
+        // Cleared (or forgotten, or dismissed): taken out and archived;
+        // an Undo puts it back and takes it out of the archive.
+        let gone = h.take_out(|_, e| e.id != 3);
+        assert!(a.archive(gone.iter().map(|(_, e)| e.clone()), 4100));
+        assert_eq!(a.entries.iter().map(|e| e.id).collect::<Vec<_>>(), vec![1, 3]);
+        h.put_back(gone);
+        assert!(a.unarchive(&[(3, 5000)]) && !a.unarchive(&[(3, 5000)]));
+        assert_eq!(a.entries.iter().map(|e| e.id).collect::<Vec<_>>(), vec![1]);
+        // Archived again (a Redo): once, in its own place.
+        let again = h.take_out(|_, e| e.id != 3);
+        assert!(a.archive(again.iter().map(|(_, e)| e.clone()), 4200));
+        assert!(a.archive(again.into_iter().map(|(_, e)| e), 4300));
+        assert_eq!(a.entries.iter().map(|e| (e.id, e.archived)).collect::<Vec<_>>(), vec![(1, 4000), (3, 4300)]);
+        // What an app says is waiting in it is not a notification: never archived.
+        let item = Entry { attention: Some(olo_protocol::notifications::Attention { app: "olo-slack".into(), count: 2, urgent: false }), ..at(9, 4300) };
+        assert!(!a.archive(vec![item], 4400));
+        // Newer ones push the oldest out of the history: handed on too.
+        for id in 10..(10 + KEEP as u32 + 1) {
+            h.put(at(id, 6000));
+        }
+        let pushed: Vec<u32> = h.take_left().iter().map(|e| e.id).collect();
+        assert_eq!(pushed, vec![10, 11], "the oldest two, not the pinned one before them");
+        assert!(h.entries.iter().any(|e| e.id == 2 && e.pinned));
+        // The archive keeps so long and so many.
+        assert!(!a.prune_archive(4000 + ARCHIVE_DAYS * 86400), "thirty days: still there");
+        assert!(a.prune_archive(4000 + ARCHIVE_DAYS * 86400 + 1));
+        assert_eq!(a.entries.iter().map(|e| e.id).collect::<Vec<_>>(), vec![3], "the one archived over thirty days ago went");
+        let many: Vec<Entry> = (100..(100 + ARCHIVE_KEEP as u32 + 5)).map(|id| at(id, 7000)).collect();
+        assert!(a.archive(many, 4300 + 86400));
+        assert_eq!(a.entries.len(), ARCHIVE_KEEP);
+        assert_eq!((a.entries[0].id, a.entries.last().unwrap().id), (105, 100 + ARCHIVE_KEEP as u32 + 4), "the oldest went first (the one there before, and five of these)");
+        // Written with when it was archived; one that isn't says nothing of it.
+        let mut kept = History::load(None);
+        kept.archive(vec![at(1, 100)], 4000);
+        let text = serde_json::to_string(&*kept.entries).unwrap();
+        assert!(text.contains("\"archived\":4000"), "{text}");
+        assert!(!serde_json::to_string(&at(1, 100)).unwrap().contains("archived"), "nothing said of one that isn't");
     }
 
     #[test]

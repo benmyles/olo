@@ -4900,5 +4900,11 @@
   "title": "The bell's count in a colour of your own",
   "caption": "Preferences \u25b8 Notifications \u25b8 Deskbar \u25b8 The bell's count in: the look's own red, or any of the look's hues (here blue, yellow, green, purple, grey and orange, in a light and a dark look). The number is white, or near black where white would be lost.",
   "image": "2026-11-18/094734-the-bell-s-count-in-a-colour-of-your-own.png"
+ },
+ {
+  "time": "2026-11-18T10:04:01",
+  "title": "Notifications: an archive",
+  "caption": "What leaves the list (faded away, dismissed, cleared, forgotten) now goes to an archive, kept for 30 days. The link at the status bar's right, Archived (2), shows it, and Notifications (5) there goes back; so does View \u25b8 Archived. Rows there open what they were about or are deleted; Empty Archive and Undo.",
+  "image": "2026-11-18/100401-notifications-an-archive.png"
  }
 ]
