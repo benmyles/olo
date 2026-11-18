@@ -13608,6 +13608,36 @@ knows.
     hint `og --oneline -3`. The installed `/usr/local/bin/brush` is the
     copy Olo Doctor's suggestion put there, brought up to date by its
     "Update brush".
+
+**A welcome in a new shell** (`welcome`, termd.rs; Ben, 2026-11-17: "olo
+doctor should offer a suggestion to install an olo greeter/welcome
+message for the terminal that shows the olo logo in full color ascii";
+"should also show some slick colorful stats/info etc. like is the trend
+with these greeters in modern OSes"; "have the greeter show a random
+haiku … a loose theme of humans and ai working together but not in your
+face cliche"). On while `~/.config/olo/terminal-welcome` is there
+(`olo_xdg::terminal_welcome_path`): Olo Doctor's suggestion "A welcome
+in Terminal" writes it, and removes it (no shell's files are touched,
+and it shows only in Olo's Terminal). A new shell, not a command nor
+one restored, opens with it as part of what the terminal shows (the
+bytes go to the screen before the shell's own, as a restored shell's
+scrollback does; nothing is typed). **The ring** is Olo's own drawing
+(`olo.svg`, rendered at 192 pixels and averaged down to 24 by 24, a
+pixel a half cell: an upper half block in the upper pixel's colour on
+the lower one's, a pixel under 43% there left the terminal's own
+background; `ring_cells`), not characters shaded to look like it:
+"ASCII" as these greeters are, in the terminal's cells and its full
+colour. **Beside it** (`facts`): who and where, then the system, the
+computer's model, its processor and GPUs (found once a daemon,
+`fixed_facts`: the GPUs' names alone took 4 ms), memory, disk and
+battery as bars (green, amber, red as they fill or empty) with their
+figures, how long it's been up, the shell, and the terminal's sixteen
+colours; names in the terminal's own blue, so each theme colours it.
+**Under it**, one of twenty-four haiku (`HAIKU`), picked by the clock.
+A window too narrow for the facts gets the ring and a line; too small
+for the ring, the line or nothing; too short, no haiku. Measured
+(release, `welcome_costs`): the first 15 ms (the ring rendered, once a
+daemon), then 1.2 ms a shell, most of it the battery's reading.
   - Measured (M2 Max, release, 640 commands): a suggestion 1 µs in the
     daemon, 2 µs at p95 (26 µs round trip from a client); with a shell's
     tail (ThinkPad, 2026-11-05) 2 µs at the median, 3 at p95, as without

@@ -52,8 +52,30 @@ pub fn scan() -> Report {
     brush(&mut r);
     tools(&mut r);
     worktrunk_place(&mut r);
+    terminal_welcome(&mut r, olo_xdg::terminal_welcome_path());
     kept_builds(&mut r, &home(), std::env::current_exe().ok().as_deref());
     r
+}
+
+/// A welcome in Terminal (Ben, 2026-11-17: "olo doctor should offer a
+/// suggestion to install an olo greeter/welcome message for the terminal
+/// that shows the olo logo in full color"): a file's being there turns it
+/// on (`olo_xdg::terminal_welcome_path`; olo-termd looks as each shell
+/// opens), so installing it writes the file and undoing it removes it.
+fn terminal_welcome(r: &mut Report, path: PathBuf) {
+    let title = "A welcome in Terminal";
+    if path.is_file() {
+        r.fine.push(Fine { title: title.into(), detail: "A new shell opens with Olo's ring in colour, what this computer is and how it's doing, and a haiku.".into() });
+        r.undo.push(Undo { id: "undo:terminal-welcome".into(), title: title.into(), fix: Fix { label: "Remove Welcome".into(), root: false, steps: vec![Step::RemoveFile { path }] } });
+    } else {
+        r.findings.push(Finding {
+            id: "terminal-welcome".into(),
+            severity: Severity::Suggestion,
+            title: title.into(),
+            detail: "Open each new shell with Olo's ring in colour, a summary of this computer (its system, processor, memory, disk, battery) and a haiku. Only in Olo's Terminal; nothing is added to your shell's files.".into(),
+            fix: Some(Fix { label: "Install Welcome".into(), root: false, steps: vec![Step::WriteFile { path, content: "Olo Terminal's welcome is on while this file is here.\n".into(), mode: 0o644 }] }),
+        });
+    }
 }
 
 /// The day Olo's own kits replaced GPUI: a kept build from before it runs

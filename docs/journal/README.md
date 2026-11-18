@@ -3,6 +3,14 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-18
+
+### Terminal's welcome: the ring, this computer, a haiku
+
+*00:06* — Olo Doctor suggests it. A new shell opens with Olo's ring drawn in the terminal's cells from its own drawing, what the computer is and how it's doing (memory, disk and battery as bars), the terminal's colours, and one of twenty-four haiku.
+
+![Terminal's welcome: the ring, this computer, a haiku](2026-11-18/000638-terminal-s-welcome-the-ring-this-computer-a-haik.png)
+
 ## 2026-11-17
 
 ### Deskbar's Inbox widget: notifications and what waits in apps, as cards

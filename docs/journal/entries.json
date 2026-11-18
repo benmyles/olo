@@ -4852,5 +4852,11 @@
   "title": "Deskbar's Inbox widget: notifications and what waits in apps, as cards",
   "caption": "A stack of cards to work through, newest on top: its app, a red dot (its app is waiting for you) or a blue one (news), the title and text, and Previous, Next, Snooze and Dismiss. Slack counts three and one of them has its notification in the stack: that card is red too, and this one says the two more.",
   "image": "2026-11-17/235332-deskbar-s-inbox-widget-notifications-and-what-wa.png"
+ },
+ {
+  "time": "2026-11-18T00:06:38",
+  "title": "Terminal's welcome: the ring, this computer, a haiku",
+  "caption": "Olo Doctor suggests it. A new shell opens with Olo's ring drawn in the terminal's cells from its own drawing, what the computer is and how it's doing (memory, disk and battery as bars), the terminal's colours, and one of twenty-four haiku.",
+  "image": "2026-11-18/000638-terminal-s-welcome-the-ring-this-computer-a-haik.png"
  }
 ]

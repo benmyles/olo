@@ -594,7 +594,11 @@ fn handle(st: &St, conn: u64, f: Frame) {
             let env = shell_env(&s.env, f.id, spawn.restore);
             match pty::Pty::spawn(spawn.command.as_deref(), cwd.as_deref(), window_size(spawn.grid), &env) {
                 Ok(p) => {
-                    new_shell(&mut s, f.id, p, spawn.grid, before.as_deref(), None);
+                    // A new shell (not a command, nor one restored): its
+                    // welcome, if the person asked for one.
+                    let welcome = (before.is_none() && spawn.command.is_none() && spawn.restore.is_none() && olo_xdg::terminal_welcome_path().is_file())
+                        .then(|| welcome(spawn.grid.cols, spawn.grid.rows, std::env::var("SHELL").ok().as_deref()));
+                    new_shell(&mut s, f.id, p, spawn.grid, before.as_deref().or(welcome.as_deref()), None);
                     attach(&mut s, conn, f.id, spawn.grid);
                 }
                 Err(e) => {
@@ -651,6 +655,421 @@ fn handle(st: &St, conn: u64, f: Frame) {
             }
         }
         _ => {}
+    }
+}
+
+/// The welcome a new shell opens with, if the person asked for one (Olo
+/// Doctor's suggestion: `olo_xdg::terminal_welcome_path` is there; Ben,
+/// 2026-11-17: "a suggestion to install an olo greeter/welcome message
+/// for the terminal that shows the olo logo in full color", and "should
+/// also show some slick colorful stats/info etc. like is the trend with
+/// these greeters in modern OSes"): Olo's ring, drawn from its own
+/// drawing in the terminal's cells, and beside it who and where, then
+/// what the computer is and how it is now (its system, its model, its
+/// processor and GPUs, memory and disk as bars, the battery, how long
+/// it's been up, the shell), and the terminal's colours. It is part of
+/// what the terminal shows, as scrollback is: nothing is typed into the
+/// shell. The ring is made once a daemon; the facts are read as each
+/// shell opens (files of /proc and /sys, a `statvfs`: `welcome_costs`
+/// times it). A window too narrow for the facts gets the ring and a
+/// line; too small for the ring, the line, or nothing.
+fn welcome(cols: u16, rows: u16, shell: Option<&str>) -> Vec<u8> {
+    let (cols, rows) = (cols as usize, rows as usize);
+    let line = || format!("\x1b[1mWelcome to Olo\x1b[0m\r\n").into_bytes();
+    if cols < RING + 2 || rows < RING / 2 + 3 {
+        return if cols >= 20 && rows >= 3 { line() } else { Vec::new() };
+    }
+    static PIXELS: std::sync::OnceLock<Option<Vec<[u8; 4]>>> = std::sync::OnceLock::new();
+    let Some(pixels) = PIXELS.get_or_init(ring_pixels) else { return line() };
+    let room = cols.saturating_sub(RING + 3);
+    if room < 34 {
+        let mut text = ring_cells(pixels, RING, &[]);
+        text.push_str("\x1b[1mWelcome to Olo\x1b[0m\r\n");
+        return text.into_bytes();
+    }
+    let mut text = ring_cells(pixels, RING, &facts(room, shell));
+    text.push_str("\r\n");
+    // A haiku under it, where there's room to leave the prompt in sight.
+    if rows >= RING / 2 + 9 {
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_nanos() as usize ^ d.as_secs() as usize);
+        text.push_str(&haiku(nanos));
+    }
+    text.into_bytes()
+}
+
+/// Haiku for the welcome (Ben, 2026-11-17: "a random haiku that is kinda
+/// related to olo but also artistic / beautiful maybe a bit of a loose
+/// theme of humans and ai working together but not in your face cliche"):
+/// five, seven and five syllables each, of work shared, of care for small
+/// things, of the desk and the hour; none says what it's about.
+const HAIKU: &[[&str; 3]] = &[
+    ["Two hands on one page:", "the question shapes its answer,", "the answer, the hand."],
+    ["Morning, a blank file.", "Someone thinks; something listens.", "The cursor keeps time."],
+    ["A yellow tab lifts.", "Behind it, a quiet room", "where the work waits, warm."],
+    ["Not mine and not yours:", "the sentence we arrived at", "walking side by side."],
+    ["Rain on the window.", "Inside, a patient machine", "and a cooling cup."],
+    ["Blue ring, golden edge:", "a door that is always round,", "open either way."],
+    ["You ask, and I ask.", "Between the two of our doubts", "something true gets built."],
+    ["Old code, like old snow,", "keeps the footprints of the ones", "who crossed here before."],
+    ["The fan falls silent.", "What was hard an hour ago", "is a single line."],
+    ["Late light on the desk.", "One of us never gets tired;", "one of us knows why."],
+    ["A window, a word,", "a small light that says ready.", "Begin anywhere."],
+    ["Draft after draft falls", "like leaves into the same stream.", "The stream is the work."],
+    ["Nothing wasted here:", "the idle clock holds its breath", "until you return."],
+    ["I held the lantern.", "You knew which way the path went.", "Neither walked alone."],
+    ["Small tools, sharpened well.", "The carpenter and the plane", "both remember wood."],
+    ["First frost on the pane.", "We name the bug together", "and it melts away."],
+    ["Somewhere a kettle.", "Somewhere a thought, half-finished,", "passed from hand to hand."],
+    ["The screen dims at dusk.", "What we made today is small", "and exactly right."],
+    ["A pixel, then two.", "Care is a kind of seeing", "at the smallest scale."],
+    ["Quiet as moss grows,", "the answer forms in the gap", "after your question."],
+    ["Yellow tabs at dawn:", "an old idea, kept alive", "by those who loved it."],
+    ["Two kinds of patience", "lean over the same problem.", "The lamp does not mind."],
+    ["Wind turns the pages.", "I read fast, you read deeply;", "the book needs us both."],
+    ["Dawn, and the list waits.", "Take the first thing. I will hold", "the rest till you ask."],
+];
+
+/// One of the haiku (the `pick`th, round and round), set in from the
+/// left under the ring, quiet and slanted, a blank line after.
+fn haiku(pick: usize) -> String {
+    let lines = HAIKU[pick % HAIKU.len()];
+    format!("  \x1b[2;3m{}\x1b[0m\r\n  \x1b[2;3m{}\x1b[0m\r\n  \x1b[2;3m{}\x1b[0m\r\n\r\n", lines[0], lines[1], lines[2])
+}
+
+/// Olo's ring as `RING` by `RING` pixels: drawn large and averaged down.
+fn ring_pixels() -> Option<Vec<[u8; 4]>> {
+    const OVER: usize = 8;
+    let mark = olo_xdg::svg::render(include_bytes!("../../../data/icons/svg/olo.svg"), (RING * OVER) as u32, false)?;
+    let mut small = vec![[0u8; 4]; RING * RING];
+    for (i, out) in small.iter_mut().enumerate() {
+        let (x0, y0) = (i % RING * OVER, i / RING * OVER);
+        let mut sum = [0u32; 4];
+        for y in y0..y0 + OVER {
+            for x in x0..x0 + OVER {
+                let at = (y * mark.width as usize + x) * 4;
+                let a = u32::from(mark.rgba[at + 3]);
+                // (Weighed by how much of it is there: an edge's colour isn't greyed.)
+                for (s, v) in sum.iter_mut().zip([u32::from(mark.rgba[at]) * a, u32::from(mark.rgba[at + 1]) * a, u32::from(mark.rgba[at + 2]) * a, a]) {
+                    *s += v;
+                }
+            }
+        }
+        let a = sum[3].max(1);
+        *out = [(sum[0] / a) as u8, (sum[1] / a) as u8, (sum[2] / a) as u8, (sum[3] / (OVER * OVER) as u32) as u8];
+    }
+    Some(small)
+}
+
+/// The lines beside the ring, one a row of it (`RING / 2`), none wider
+/// than `room` cells: who and where, a rule, the facts (each its name in
+/// the ring's blue, then what it is; memory and disk with a bar, green
+/// to amber to red as they fill), and the terminal's own colours.
+fn facts(room: usize, shell: Option<&str>) -> Vec<String> {
+    const NAME: usize = 11;
+    let read = |p: &str| std::fs::read_to_string(p).unwrap_or_default().trim().to_owned();
+    let cut = |s: &str, max: usize| if s.chars().count() > max { format!("{}…", s.chars().take(max.saturating_sub(1)).collect::<String>().trim_end()) } else { s.to_owned() };
+    let fact = |name: &str, value: &str| format!("\x1b[1;34m{name:<NAME$}\x1b[0m{}", cut(value, room.saturating_sub(NAME)));
+    // A bar (of 10 cells, 6 where there's little room), as full as `part`
+    // of 1, in `colour`, then its figures.
+    let cells = if room >= 44 { 10 } else { 6 };
+    let bar = |name: &str, part: f64, colour: u8, figures: &str| {
+        let full = ((part.clamp(0.0, 1.0) * cells as f64).round() as usize).min(cells);
+        format!("\x1b[1;34m{name:<NAME$}\x1b[0;{colour}m{}\x1b[0;2m{}\x1b[0m {}", "━".repeat(full), "━".repeat(cells - full), cut(figures, room.saturating_sub(NAME + cells + 1)))
+    };
+    // (As it fills: green, amber, red.)
+    let filling = |part: f64| {
+        if part >= 0.9 {
+            31
+        } else if part >= 0.7 {
+            33
+        } else {
+            32
+        }
+    };
+    let gib = |bytes: f64| if bytes >= 99.5 * GIB { format!("{:.0}", bytes / GIB) } else { format!("{:.1}", bytes / GIB) };
+    let mut lines = Vec::with_capacity(RING / 2);
+
+    let user = std::env::var("USER").or_else(|_| std::env::var("LOGNAME")).unwrap_or_default();
+    let host = read("/proc/sys/kernel/hostname");
+    lines.push(format!("\x1b[1;34m{}\x1b[0;33m@\x1b[1;34m{}\x1b[0m", cut(&user, room / 2), cut(&host, room / 2 - 1)));
+    lines.push(format!("\x1b[2m{}\x1b[0m", "─".repeat((user.chars().count() + 1 + host.chars().count()).clamp(8, room))));
+
+    let os = read("/etc/os-release");
+    let field = |key: &str| os.lines().find_map(|l| l.strip_prefix(key)?.strip_prefix('=')).map(|v| v.trim_matches('"').to_owned());
+    let system = [field("NAME"), field("VERSION_ID")].into_iter().flatten().collect::<Vec<_>>().join(" ");
+    let kernel = read("/proc/sys/kernel/osrelease");
+    let kernel = kernel.split('-').next().unwrap_or_default();
+    lines.push(fact("System", &format!("Olo on {system}, Linux {kernel}")));
+
+    // (What doesn't change while the computer runs: found once. Its
+    // GPUs' names alone took 4 ms.)
+    static FIXED: std::sync::OnceLock<Vec<(&'static str, String)>> = std::sync::OnceLock::new();
+    for (name, value) in FIXED.get_or_init(fixed_facts) {
+        lines.push(fact(name, value));
+    }
+
+    let meminfo = std::fs::read_to_string("/proc/meminfo").unwrap_or_default();
+    let kb = |key: &str| meminfo.lines().find_map(|l| l.strip_prefix(key)?.strip_prefix(':')).and_then(|v| v.trim().trim_end_matches("kB").trim().parse::<f64>().ok()).map(|k| k * 1024.0);
+    if let (Some(total), Some(free)) = (kb("MemTotal"), kb("MemAvailable")) {
+        lines.push(bar("Memory", (total - free) / total, filling((total - free) / total), &format!("{} of {} GB", gib(total - free), gib(total))));
+    }
+
+    let home = std::env::var_os("HOME").unwrap_or_else(|| "/".into());
+    if let Some((total, free)) = space(std::path::Path::new(&home)) {
+        lines.push(bar("Disk", (total - free) / total, filling((total - free) / total), &format!("{} of {} GB", gib(total - free), gib(total))));
+    }
+
+    if let Some(b) = olo_system::battery::battery() {
+        let state = match b.state {
+            olo_system::battery::State::Charging => "charging",
+            olo_system::battery::State::Discharging => "on battery",
+            olo_system::battery::State::Full => "full",
+            _ => "plugged in",
+        };
+        // (As it empties: green, amber, red.)
+        let left = f64::from(b.percent) / 100.0;
+        let colour = if left <= 0.1 {
+            31
+        } else if left <= 0.3 {
+            33
+        } else {
+            32
+        };
+        lines.push(bar("Battery", left, colour, &format!("{}%, {state}", b.percent)));
+    }
+
+    if let Some(up) = read("/proc/uptime").split_whitespace().next().and_then(|s| s.parse::<f64>().ok()) {
+        let minutes = (up / 60.0) as u64;
+        let words = match (minutes / 1440, minutes / 60 % 24, minutes % 60) {
+            (0, 0, m) => format!("{m} min"),
+            (0, h, m) => format!("{h} h {m} min"),
+            (d, h, _) => format!("{d} {} {h} h", if d == 1 { "day" } else { "days" }),
+        };
+        lines.push(fact("Up", &words));
+    }
+
+    if let Some(shell) = shell.map(|s| s.rsplit('/').next().unwrap_or(s)).filter(|s| !s.is_empty()) {
+        lines.push(fact("Shell", shell));
+    }
+
+    // The terminal's eight colours and their bright ones, at the foot.
+    lines.truncate(RING / 2 - 1);
+    while lines.len() < RING / 2 - 1 {
+        lines.push(String::new());
+    }
+    let w = (room / 16).clamp(1, 3);
+    let strip: String = (0..16).map(|c| format!("\x1b[48;5;{c}m{}", " ".repeat(w))).collect();
+    lines.push(format!("{strip}\x1b[0m"));
+    lines
+}
+
+/// What this computer is and always was while it runs: its model, its
+/// processor and its GPUs, each with its name beside the ring.
+fn fixed_facts() -> Vec<(&'static str, String)> {
+    let read = |p: &str| std::fs::read_to_string(p).unwrap_or_default().trim().to_owned();
+    let mut out = Vec::new();
+    let dmi = |f: &str| Some(read(&format!("/sys/class/dmi/id/{f}"))).filter(|s| !s.is_empty() && !s.eq_ignore_ascii_case("none") && !s.contains("O.E.M") && !s.eq_ignore_ascii_case("default string"));
+    if let Some(model) = dmi("product_family").filter(|f| f.contains(' ')).or_else(|| dmi("product_version").filter(|v| v.contains(' '))).or_else(|| dmi("product_name")) {
+        out.push(("Computer", model));
+    }
+
+    let cpuinfo = std::fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
+    if let Some(model) = cpuinfo.lines().find_map(|l| l.strip_prefix("model name")).and_then(|l| l.split_once(':')).map(|(_, v)| v.trim()) {
+        let threads = cpuinfo.lines().filter(|l| l.starts_with("processor")).count();
+        let model = model.replace("(R)", "").replace("(TM)", "").replace(" CPU", "");
+        let model = model.split(" @ ").next().unwrap_or_default().split_whitespace().collect::<Vec<_>>().join(" ");
+        out.push(("Processor", format!("{model}, {threads} threads")));
+    }
+
+    let gpus: Vec<String> = olo_system::gpus::list().iter().map(|g| gpu_words(&g.name)).filter(|n| !n.is_empty()).collect();
+    if !gpus.is_empty() {
+        out.push(("Graphics", gpus.join(" and ")));
+    }
+    out
+}
+
+const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
+
+/// A GPU's name as people say it ("NVIDIA RTX PRO 2000", "Intel Arc"):
+/// without what follows its model.
+fn gpu_words(name: &str) -> String {
+    let name = name.replace("Corporation ", "").replace("(R)", "").replace("(TM)", "");
+    let name = name.split(" Blackwell").next().unwrap_or_default().split(" Generation").next().unwrap_or_default().split(" Laptop GPU").next().unwrap_or_default();
+    name.replace(" Graphics", "").split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The volume `path` is on: its size and what's free for the person, in
+/// bytes.
+fn space(path: &std::path::Path) -> Option<(f64, f64)> {
+    use std::os::unix::ffi::OsStrExt;
+    let path = std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?;
+    let mut v: libc::statvfs = unsafe { std::mem::zeroed() };
+    // SAFETY: `path` is a C string that lives through the call, `v` a statvfs to fill.
+    if unsafe { libc::statvfs(path.as_ptr(), &mut v) } != 0 || v.f_blocks == 0 {
+        return None;
+    }
+    Some((v.f_blocks as f64 * v.f_frsize as f64, v.f_bavail as f64 * v.f_frsize as f64))
+}
+
+/// The ring's width in cells (and its height in half cells).
+const RING: usize = 24;
+
+/// `pixels` (RGBA, `width` a row, an even number of rows) as terminal
+/// cells, two pixels a cell, one over the other (an upper half block in
+/// the upper pixel's colour on the lower one's; a pixel mostly empty
+/// shows the terminal's own background), each row ended; `beside` set to
+/// the right of its middle rows, one a row.
+fn ring_cells(pixels: &[[u8; 4]], width: usize, beside: &[String]) -> String {
+    use std::fmt::Write;
+    const THERE: u8 = 110;
+    let rows = pixels.len() / width / 2;
+    let first = (rows.saturating_sub(beside.len())) / 2;
+    let mut out = String::new();
+    for row in 0..rows {
+        let mut last: Option<(Option<[u8; 3]>, Option<[u8; 3]>)> = None;
+        let mut line = String::new();
+        let mut pending = 0;
+        for x in 0..width {
+            let px = |half: usize| Some(pixels[(row * 2 + half) * width + x]).filter(|p| p[3] >= THERE).map(|p| [p[0], p[1], p[2]]);
+            let (top, bottom) = (px(0), px(1));
+            if top.is_none() && bottom.is_none() {
+                pending += 1;
+                continue;
+            }
+            // (Blank cells written only before something: none trail.)
+            if pending > 0 {
+                if last.is_some() {
+                    line.push_str("\x1b[0m");
+                    last = None;
+                }
+                line.extend(std::iter::repeat_n(' ', pending));
+                pending = 0;
+            }
+            // One half alone: its block in its colour, the other the terminal's.
+            let (glyph, fg, bg) = match (top, bottom) {
+                (Some(t), b) => ('\u{2580}', t, b),
+                (None, Some(b)) => ('\u{2584}', b, None),
+                (None, None) => unreachable!(),
+            };
+            if last != Some((Some(fg), bg)) {
+                let _ = write!(line, "\x1b[0;38;2;{};{};{}", fg[0], fg[1], fg[2]);
+                if let Some(b) = bg {
+                    let _ = write!(line, ";48;2;{};{};{}", b[0], b[1], b[2]);
+                }
+                line.push('m');
+                last = Some((Some(fg), bg));
+            }
+            line.push(glyph);
+        }
+        if last.is_some() {
+            line.push_str("\x1b[0m");
+        }
+        if let Some(words) = row.checked_sub(first).and_then(|i| beside.get(i)) {
+            // (To the column past the ring, wherever its row ended.)
+            let _ = write!(line, "\x1b[{}G{words}", width + 3);
+        }
+        out.push_str(&line);
+        out.push_str("\r\n");
+    }
+    out
+}
+
+/// What this computer is, in a line: its name, its system and its
+/// kernel ("fedora · Fedora Linux 45 · Linux 7.2").
+fn about_this_computer() -> String {
+    let read = |p: &str| std::fs::read_to_string(p).unwrap_or_default();
+    let host = read("/proc/sys/kernel/hostname").trim().to_owned();
+    let os = read("/etc/os-release");
+    let field = |key: &str| os.lines().find_map(|l| l.strip_prefix(key)?.strip_prefix('=')).map(|v| v.trim_matches('"').to_owned());
+    let system = [field("NAME"), field("VERSION_ID")].into_iter().flatten().collect::<Vec<_>>().join(" ");
+    let kernel = read("/proc/sys/kernel/osrelease");
+    let kernel = kernel.trim().split('-').next().unwrap_or_default().split('.').take(2).collect::<Vec<_>>().join(".");
+    [host, system, if kernel.is_empty() { String::new() } else { format!("Linux {kernel}") }].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ")
+}
+
+#[cfg(test)]
+mod welcome_tests {
+    use super::ring_cells;
+
+    /// Two pixels a cell: both there, one, the other, neither; colours
+    /// said once a run; nothing trails; words beside the middle row.
+    #[test]
+    fn a_picture_as_cells() {
+        let (red, blue, none) = ([255, 0, 0, 255], [0, 0, 255, 255], [0, 0, 0, 0]);
+        // Rows of 4: red over blue twice, red over nothing, nothing; then blue under nothing, nothing.
+        let pixels = [red, red, red, none, blue, blue, none, none, none, none, none, none, blue, none, none, none];
+        let text = ring_cells(&pixels, 4, &["hi".to_owned()]);
+        let rows: Vec<&str> = text.split("\r\n").collect();
+        assert_eq!(rows[0], "\x1b[0;38;2;255;0;0;48;2;0;0;255m\u{2580}\u{2580}\x1b[0;38;2;255;0;0m\u{2580}\x1b[0m\x1b[7Ghi");
+        assert_eq!(rows[1], "\x1b[0;38;2;0;0;255m\u{2584}\x1b[0m");
+        assert_eq!(rows.len(), 3);
+        // The ring itself: as wide as said, every row ended, and in colour.
+        let mark = olo_xdg::svg::render(include_bytes!("../../../data/icons/svg/olo.svg"), 24, false).unwrap();
+        let small: Vec<[u8; 4]> = mark.rgba.chunks_exact(4).map(|p| [p[0], p[1], p[2], p[3]]).collect();
+        let ring = ring_cells(&small, 24, &[]);
+        assert_eq!(ring.matches("\r\n").count(), 12);
+        assert!(ring.contains("38;2;") && ring.contains('\u{2580}'));
+    }
+
+    /// The facts beside the ring: a row each, none wider than its room,
+    /// whatever this computer is; a narrow window gets the ring and a
+    /// line, a tiny one nothing.
+    #[test]
+    fn the_welcome_fits_its_window() {
+        let shown = |s: &str| {
+            // (What a cell shows: escapes out.)
+            let mut out = String::new();
+            let mut chars = s.chars();
+            while let Some(c) = chars.next() {
+                if c == '\x1b' {
+                    for e in chars.by_ref() {
+                        if e.is_ascii_alphabetic() {
+                            break;
+                        }
+                    }
+                } else {
+                    out.push(c);
+                }
+            }
+            out
+        };
+        for room in [34, 40, 53, 120] {
+            let lines = super::facts(room, Some("/usr/bin/bash"));
+            assert_eq!(lines.len(), super::RING / 2);
+            for l in &lines {
+                assert!(shown(l).chars().count() <= room, "{room}: {:?}", shown(l));
+            }
+            assert!(shown(&lines[2]).starts_with("System     Olo on "));
+            assert!(lines.iter().any(|l| shown(l) == "Shell      bash"));
+        }
+        assert_eq!(super::gpu_words("NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU"), "NVIDIA RTX PRO 2000");
+        assert_eq!(super::gpu_words("Intel Corporation Arc(TM) Graphics"), "Intel Arc");
+        let wide = String::from_utf8(super::welcome(100, 30, Some("bash"))).unwrap();
+        assert!(wide.contains("Memory") && wide.matches("\r\n").count() == 13 + 4, "its rows, a blank, a haiku and a blank");
+        assert_eq!(String::from_utf8(super::welcome(100, 18, Some("bash"))).unwrap().matches("\r\n").count(), 13, "no room for a haiku");
+        // Every haiku: three lines that fit the narrowest window that shows one.
+        for h in super::HAIKU {
+            assert!(h.iter().all(|l| !l.is_empty() && l.chars().count() <= 36), "{h:?}");
+        }
+        assert!(super::haiku(super::HAIKU.len() + 2).contains(super::HAIKU[2][1]));
+        let narrow = String::from_utf8(super::welcome(40, 30, None)).unwrap();
+        assert!(narrow.contains("Welcome to Olo") && !narrow.contains("Memory"));
+        assert!(super::welcome(10, 30, None).is_empty() && super::welcome(100, 2, None).is_empty());
+    }
+
+    /// What a welcome costs a new shell (release: `cargo test --release
+    /// -p olo-terminal welcome_costs -- --ignored --nocapture`).
+    #[test]
+    #[ignore]
+    fn welcome_costs() {
+        let first = std::time::Instant::now();
+        let _ = super::welcome(120, 40, Some("bash"));
+        let first = first.elapsed();
+        let start = std::time::Instant::now();
+        for _ in 0..200 {
+            let _ = super::welcome(120, 40, Some("bash"));
+        }
+        println!("welcome: the first {:.2} ms (the ring drawn), then {:.0} µs each", first.as_secs_f64() * 1e3, start.elapsed().as_secs_f64() * 1e6 / 200.0);
     }
 }
 

@@ -469,6 +469,11 @@ pub fn config_dir() -> PathBuf {
     std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| home().join(".config")).join("olo")
 }
 
+/// Olo Doctor's opt-in welcome for newly opened interactive Terminal shells.
+pub fn terminal_welcome_path() -> PathBuf {
+    config_dir().join("terminal-welcome")
+}
+
 /// Olo's cache directory (`$XDG_CACHE_HOME/olo`).
 pub fn cache_dir() -> PathBuf {
     let home = || PathBuf::from(std::env::var_os("HOME").unwrap_or_default());

@@ -103,9 +103,6 @@ something nobody here has is in "Blocked", with what it waits for.
   dotted, a row of dots), its inset from the sides, its colour (the
   look's or one of its hues), and the label's words.
 
-- **A Terminal welcome message** (Ben, 2026-11-17). Olo Doctor should
-  offer to install a greeter that shows the Olo logo in full-color ASCII.
-
 - **A Calendar app, native, with Google and Fastmail calendars** (Ben,
   2026-11-17: "build a beautiful olo native calendar app. add calendar
   support to prefs -> integrations and support any number of google
@@ -174,6 +171,21 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **A welcome in Terminal: the ring, this computer, a haiku** (Ben,
+  2026-11-17: "olo doctor should offer a suggestion to install an olo
+  greeter/welcome message for the terminal that shows the olo logo in
+  full color ascii"; of a first one drawn in `#` and `*`: "you
+  butchered that terminal"; "the temrinal greeting should also show
+  some slick colorful stats/info etc. like is the trend with these
+  greeters in modern OSes"; "also have the greeter show a random haiku
+  that is kinda related to olo but also artistic / beautiful maybe a
+  bit of a loose theme of humans and ai working together but not in
+  your face cliche you know"). **Done** (HACKING, "A welcome in a new
+  shell"): Olo Doctor ▸ Suggestions ▸ "A welcome in Terminal". **Left
+  for Ben**: install it and say what he thinks of the ring (drawn in
+  half-cell blocks from the real drawing, not in letters) and of the
+  haiku.
 
 - **A notifications widget in Deskbar: cards to work through, red dots
   and blue dots together, and both in the notifications app** (Ben,
