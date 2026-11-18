@@ -36,6 +36,12 @@ function connect() {
       windowTrees().then((windows) => port?.postMessage({ tree: m.tree, windows }));
       return;
     }
+    // A link Olo opens in the window brought forward for it (Open in
+    // Which Window?, olo-chrome's choose.rs).
+    if (m.open_in_front) {
+      openInFront(m.open_in_front);
+      return;
+    }
     // olo-slack's host, about Slack.
     if (m.slack) {
       fromSlackHost(m.slack);
@@ -516,6 +522,31 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     notify("Passwords", e.message);
   }
 });
+
+// ---- Open in which window ----
+//
+// Olo asked which window a link opens in and brought the one chosen
+// forward ({url, title, width, height}: its title and size as Olo has
+// them): a new tab there, shown. Which window is Chrome's own id, so it's
+// found by its title (its page's, "… - Google Chrome") and size, as Agent
+// Screens pairs them; of two alike, the one Chrome has the focus in, else
+// the one it had it in last. (Chrome's own hand-over of a link opens it
+// in a window of its choosing, not the one in front.) None: a new one.
+async function openInFront(o) {
+  const wins = await chrome.windows.getAll({ populate: true, windowTypes: ["normal"] }).catch(() => []);
+  const page = (w) => (w.tabs || []).find((t) => t.active)?.title || "";
+  const named = (w) => !!o.title && (o.title === `${page(w)} - Google Chrome` || o.title === page(w) || (!!page(w) && o.title.startsWith(page(w))));
+  const sized = (w) => !o.width || (w.width === o.width && w.height === o.height);
+  let alike = wins.filter((w) => named(w) && sized(w));
+  if (!alike.length) alike = wins.filter(named);
+  let w = alike.length === 1 ? alike[0] : alike.find((x) => x.focused);
+  if (!w) w = await chrome.windows.getLastFocused({ windowTypes: ["normal"] }).catch(() => null);
+  if (w && w.id !== chrome.windows.WINDOW_ID_NONE) {
+    await chrome.tabs.create({ windowId: w.id, url: o.url, active: true }).catch(() => chrome.windows.create({ url: o.url, focused: true }));
+  } else {
+    await chrome.windows.create({ url: o.url, focused: true }).catch(() => {});
+  }
+}
 
 // ---- One-time codes texted to the phone, or mailed ----
 //

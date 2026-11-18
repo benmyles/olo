@@ -10,6 +10,7 @@
 //! ([`Capture::lend_frames`]: a recording's encoder on the same GPU).
 
 pub mod live;
+pub mod thumbnails;
 
 use std::{
     os::fd::{AsFd, AsRawFd as _, BorrowedFd, FromRawFd, OwnedFd},

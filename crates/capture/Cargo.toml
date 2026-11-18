@@ -12,6 +12,8 @@ wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 # Olo's own protocol: a workspace as a capture source (protocols/).
 wayland-scanner = "0.31"
 memmap2 = "0.9"
+# Thumbnails shrunk (thumbnails.rs).
+fast_image_resize = "5"
 libc = "0.2"
 gbm = { version = "0.18", default-features = false }
 tracing.workspace = true

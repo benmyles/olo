@@ -17,17 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Opening in an app with several windows asks which window** (Ben,
-  2026-11-17: "when something is opening with the default app, e.g. a
-  url opening in chrome, and that app has > 1 windows open and the url
-  would normally open as a tab in that app, then i want olo to show me a
-  dialog where i can choose which window to open it in -- each window
-  should have a live thumbnail in it to pick from (as well as the window
-  title or some subpart of it) and it should also have a kb shortcut for
-  each one so i can just hit a letter to choose if i want (or click it if
-  i'd rather). right now it just opens in whatever window and it's
-  really annoying").
-
 - **Themes: one list (Classic, Platinum, BeOS and every scheme), each
   perfect, with icons of its own, Customize…, and a wallpaper of its
   own** (Ben, 2026-11-17: "the split between themes and colors doesn't
@@ -50,6 +39,28 @@ something nobody here has is in "Blocked", with what it waits for.
   so much attention to detail on this it's not even funny: every single
   pixel, hue, etc needs to be just absolutely perfect and stunningly
   beautiful").
+
+- **A notifications widget in Deskbar: cards to work through, red dots
+  and blue dots together, and both in the notifications app** (Ben,
+  2026-11-17: "add support for a notifications widget in the deskbar.
+  make it nicely styled -- look at the weather one. i'm thinking
+  something like a stack of cards that you can flip through, with two
+  actions for each one: Dismiss and Snooze. use a small icon button for
+  each. the idea is to be able to rapidly work through them to empty it
+  out. i want it to look really slick. make everything
+  configurable/customizable in the widget settings. and obviously
+  clicking on the card should take you to the relevant app-window-tab.
+  and it should include both the "red dot" ones and the "blue dot" ones.
+  also make sure both the "red dot" and "blue dot" ones show up in the
+  alerts/notifications app. they should be unified -- it's just red
+  signifies something in the app is waiting whereas blue is more
+  notification/informational"). A Deskbar widget styled as Weather's:
+  a stack of cards to flip through, each with small icon buttons
+  Dismiss and Snooze, to empty it fast; a click on a card goes to its
+  app, window and tab; red-dot items (something waiting in an app) and
+  blue-dot ones (notifications) together, told apart by their dot; all
+  of it configurable in the widget's settings; and the notifications app
+  showing the red-dot ones beside the blue, one list.
 
 - **Last, once everything above that isn't blocked is done: the website,
   the README and the docs refreshed, and a new GitHub release** (Ben,
@@ -5914,6 +5925,17 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Opening in an app with several windows asks which window**~~ (Ben,
+  2026-11-17; done the same day). A web link opened in Chrome with two
+  windows or more asks "Open the Link in Which Window?": live pictures of
+  the windows, their pages' titles, a letter each (A, B, …) as a key cap;
+  the letter or a click opens it there, Return in the one in front, New
+  Window, or Escape. Olo's extension (1.15.1) opens it in the window
+  chosen (Chrome's own hand-over ignores which window is in front).
+  Tried with real Chrome windows on agent screens, every way of choosing,
+  at 1×, 1.5× and 2×. Chrome only: Olo's own apps open a document in a
+  window of its own.
 
 - ~~**An element laid over a kit list from outside doesn't show at
   fractional scales**~~ (found 2026-11-17; looked into the same day). It

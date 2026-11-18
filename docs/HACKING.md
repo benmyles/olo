@@ -3551,9 +3551,19 @@ it.
 - `widgets::ThumbnailPicker::new(id, thumbnails, selected)` (pictures
   to pick one from, wrapping in `width`, labelled under each, the chosen
   one on a `style::selection_plate`; a click chooses, a double click
-  opens, the arrows move it; `RadioButton`s to agents; `height_for`
-  sizes it) with `Thumbnail { picture, color, label }` (a picture made at
-  the well's device size). `Cell::icon_text(g, icon, fallback,
+  opens, or a click opens with `.click_opens()`; the arrows move it, and
+  a choice's own key opens it; `RadioButton`s to agents; `height_for`
+  sizes it) with `Thumbnail { picture, color, label, key }` (a picture
+  made at the well's device size; `key`, "A", shown on the picture as a
+  key cap). `style::key_cap(g, top_left, key, palette)` draws a key that
+  chooses something as app_server's keyboard hints and Twitcher do: the
+  focused tab's yellow, its bevel and frame, the key bold, 16 points
+  tall. Live pictures of windows and screens for such a picker:
+  `olo_capture::thumbnails::Live::start(items, send)` (a capture of each
+  on a worker, a picture when one changed and its item's time has come,
+  shrunk to its size in device pixels; `set_size` when the scale
+  changes; stopped when dropped), which Share Screen's picker and Open
+  in Which Window? use. `Cell::icon_text(g, icon, fallback,
   text)`: a list cell's 16-point icon and name, which names its row.
   `image_view::from_bgra` makes a picture of pixels in the kit's own order
   (a captured frame). A `TextControl` whose field is disabled
@@ -18172,7 +18182,8 @@ reproduced on a screen with a page made for it. What was fixed:
   a page's `<select>` menu is the browser's, with no items in any
   tree. The Olo extension now lists a select's options on its node
   (`UiNode::options`, tree.js; extension 1.13.0; 1.14.0 says a page's
-  code was mailed, `by_mail`), the outline shows
+  code was mailed, `by_mail`; 1.15.1 opens a link in the window chosen,
+  `open_in_front`), the outline shows
   them (`options=[…]`), and `select` chooses by the keyboard, by the
   option's words (`find::option_meant`: the same, else the only one
   starting so, else the only one holding them), then checks the value.
@@ -18257,6 +18268,41 @@ in a millisecond and says nothing on the terminal, where a second Chrome
 printed "Opening in existing browser session." and its zygote's
 "Failed sending zygote boot message: Broken pipe" as it went. No Chrome
 running, or no answer: Chrome is started as before.
+
+**Open in which window?** (`choose.rs`; Ben, 2026-11-17: "when something
+is opening with the default app, e.g. a url opening in chrome, and that
+app has > 1 windows open and the url would normally open as a tab in
+that app, then i want olo to show me a dialog where i can choose which
+window to open it in -- each window should have a live thumbnail ... as
+well as the window title ... and it should also have a kb shortcut for
+each one"). A web link (http, https: `link_of`, nothing said of a new
+window) handed to a running Chrome whose browser process has two
+windows or more on this display (app_server's: its own, `google-chrome`,
+not Slack's or another app's, not DevTools or a picture in picture,
+the one in front first) asks first, in a dialog that is olo-chrome's
+only window: "Open the Link in Which Window?", the windows as live
+thumbnails (`olo_capture::thumbnails`, a picture a second when one
+changed) titled by their page (" - Google Chrome" left off), each with
+its letter, A, B, …, as a key cap on its picture (`style::key_cap`,
+keyboard hints' and Twitcher's look). Its letter (wherever the keyboard
+is) or a click on it opens the link there; Return, in the one chosen
+(the one in front at first); New Window, in a new window; Escape or
+Cancel, nowhere. Agents read the windows as radio buttons. The window
+chosen is brought forward (`Request::Activate`, waited for until
+app_server has it focused), then Olo's extension opens the link in a
+new tab of it (`open_in_front`: the host's `open-in-front {url, title,
+width, height}` command on Chrome's socket, `{open_in_front}` to the
+extension, which finds the window by its page's title and its size, as
+Agent Screens pairs them, and of two alike takes the one Chrome has the
+focus in). Chrome's own hand-over won't do: tried on an agent screen,
+it opened every link in the window it had last opened one in, whatever
+was in front, though Chrome's windows API had the one brought forward
+as focused. A file isn't asked about (an extension can't open one in a
+tab); without the extension, Chrome's hand-over as before. Tried on
+agent screens with Chrome's own windows on pages of a loopback server:
+eight links each in the window chosen by its letter (two of them with
+both windows on one page at one size), a click, Return, Escape, New
+Window; reviewed at 1×, 1.5× and 2×.
 
 **A code texted to the phone** is offered in the tab waiting for it
 (see "The phone"): `src/codes.rs` keeps the host connected to the phone

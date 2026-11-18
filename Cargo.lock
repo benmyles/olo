@@ -7196,6 +7196,7 @@ dependencies = [
 name = "olo-capture"
 version = "0.1.0"
 dependencies = [
+ "fast_image_resize",
  "gbm 0.18.0",
  "libc",
  "memmap2",
@@ -7233,6 +7234,7 @@ dependencies = [
  "flate2",
  "getrandom 0.3.4",
  "liblzma",
+ "olo-capture",
  "olo-crash",
  "olo-keychain",
  "olo-kit",

@@ -52,8 +52,10 @@ impl View for Widgets {
         let sidebar = Sidebar::new("sections", rows, self.section).on_choose(cx.msg_with(|i: &usize| Msg::Section(*i))).build(cx);
         let colour = ColorControl::new("accent", self.rgb).on_change(cx.msg_with(|rgb: &[u8; 3]| Msg::Colour(*rgb))).build(cx);
         let [r, g, b] = self.rgb;
-        let thumbs: Vec<Thumbnail> =
-            [("Dawn", 0.08), ("Noon", 0.55), ("Dusk", 0.75)].into_iter().map(|(label, hue)| Thumbnail { picture: None, color: Some(hsla(hue, 0.6, 0.6, 1.0)), label: label.into() }).collect();
+        let thumbs: Vec<Thumbnail> = [("Dawn", 0.08), ("Noon", 0.55), ("Dusk", 0.75)]
+            .into_iter()
+            .map(|(label, hue)| Thumbnail { picture: None, color: Some(hsla(hue, 0.6, 0.6, 1.0)), label: label.into(), key: None })
+            .collect();
         let found = find_said("row", 90, Some(2), None);
         let bar = find_bar(cx, &self.find, found, true, cx.msg_with(|back: &bool| Msg::Step(*back)), cx.msg(Msg::Close));
         let panel = div()

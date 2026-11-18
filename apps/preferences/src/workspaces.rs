@@ -144,7 +144,7 @@ pub fn backgrounds_ui(ui: &mut Ui, st: &mut BackgroundsState) {
         let px_wide = (PREVIEW.0 * ui.cx.scale_factor()).round() as u32;
         // None (just this workspace's colour), the pack (previews in the
         // current mode), and your own.
-        let mut items = vec![Thumbnail { picture: None, color: Some(colour(rgb)), label: "None".into() }];
+        let mut items = vec![Thumbnail { picture: None, color: Some(colour(rgb)), label: "None".into(), key: None }];
         for w in &pack {
             let picture = wallpapers::thumbnail(&w.name, dark).and_then(|p| {
                 pictures::thumbnail_soon(&p, px_wide, {
@@ -152,7 +152,7 @@ pub fn backgrounds_ui(ui: &mut Ui, st: &mut BackgroundsState) {
                     move || again.invalidate()
                 })
             });
-            items.push(Thumbnail { picture, color: None, label: w.label.clone().into() });
+            items.push(Thumbnail { picture, color: None, label: w.label.clone().into(), key: None });
         }
         let own_picture = own.as_deref().and_then(|p| {
             pictures::thumbnail_soon(std::path::Path::new(p), px_wide, {
@@ -160,7 +160,7 @@ pub fn backgrounds_ui(ui: &mut Ui, st: &mut BackgroundsState) {
                 move || again.invalidate()
             })
         });
-        items.push(Thumbnail { picture: own_picture, color: None, label: "Your Own".into() });
+        items.push(Thumbnail { picture: own_picture, color: None, label: "Your Own".into(), key: None });
         // (One in another collection: none of these is.)
         let selected = match s.wallpaper.as_deref() {
             None => Some(0),

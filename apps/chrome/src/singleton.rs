@@ -25,7 +25,7 @@ const PATIENCE: Duration = Duration::from_secs(20);
 
 /// The pid of the Chrome that has profile folder `dir` open on this
 /// computer, if one is running.
-fn holder(dir: &Path) -> Option<u32> {
+pub fn holder(dir: &Path) -> Option<u32> {
     let lock = std::fs::read_link(dir.join("SingletonLock")).ok()?;
     let (host, pid) = lock.to_str()?.rsplit_once('-')?;
     let pid: u32 = pid.parse().ok()?;

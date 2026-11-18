@@ -413,6 +413,27 @@ pub fn label(g: &mut Painter, x: Pixels, center_y: Pixels, align: Align, text: i
     paint_label(g, x, center_y, align, text, font_size, line)
 }
 
+/// A key that chooses something, drawn as app_server's keyboard hints
+/// and Twitcher letter what they offer: a BeOS-yellow key cap (the
+/// focused tab's colours, its bevel and frame), `key` on it in bold, 16
+/// points tall and as wide as it needs (16 at least), its top left at
+/// `at`. Returns where it was drawn.
+pub fn key_cap(g: &mut Painter, at: Point<Pixels>, key: &str, palette: &Palette) -> Bounds<Pixels> {
+    const HEIGHT: f32 = 16.0;
+    const PAD: f32 = 4.0;
+    const FONT: f32 = 11.0;
+    let font = ui_font(FontWeight::BOLD);
+    let width = (f32::from(text_width(key.to_owned(), FONT, font.clone())) + 2.0 * PAD).max(HEIGHT).ceil();
+    let b = snap(g, Bounds { origin: at, size: size(px(width), px(HEIGHT)) });
+    let w = hairline(g);
+    rect(g, b.origin, b.bottom_right(), c(palette.frame_focused[0]));
+    let inner = Bounds::from_corners(point(b.origin.x + w, b.origin.y + w), point(b.right() - w, b.bottom() - w));
+    rect(g, inner.origin, inner.bottom_right(), c(palette.tab_focused));
+    bevel_on_pixels(g, inner, w, c(palette.tab_focused_light), c(palette.tab_focused_shadow));
+    label(g, b.center().x, b.center().y, Align::Center, key.to_owned(), FONT, font, c(palette.tab_text_focused));
+    b
+}
+
 /// [`label`] with `spacing` points more between each character and the
 /// next (letter-spacing, for small bold capitals: a tab group's label).
 #[allow(clippy::too_many_arguments)]

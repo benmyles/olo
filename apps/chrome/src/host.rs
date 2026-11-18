@@ -18,6 +18,10 @@
 //! It also answers agents' questions about Chrome's windows (a kit app's
 //! `tree` socket, for Chrome's process): `{tree: n}` goes to the
 //! extension, which answers `{tree: n, windows}` (background.js, tree.js).
+//! There too, the command `open-in-front URL` (choose.rs: Open in Which
+//! Window?) has the extension open a link in a new tab of the window
+//! Chrome had the focus in last (`{open_in_front: URL}`): Chrome's own
+//! hand-over opens one in a window of its choosing, not the one in front.
 //!
 //! One-time codes texted to the person's phone reach the tab waiting for
 //! one through it (codes.rs): `{code: …}` to the extension, `{code_waiting}`
@@ -174,6 +178,7 @@ pub fn run() {
 /// are found as a kit app's are: each is asked of the extension.
 fn serve_trees(out: Arc<Mutex<std::io::Stdout>>, waiting: Waiting, slack: Option<&Slack>) {
     let chrome = std::os::unix::process::parent_id();
+    let out_for_invoke = out.clone();
     let next = AtomicU64::new(1);
     let trees = move || {
         let n = next.fetch_add(1, Ordering::Relaxed);
@@ -187,7 +192,20 @@ fn serve_trees(out: Arc<Mutex<std::io::Stdout>>, waiting: Waiting, slack: Option
     let served = match slack {
         // Slack's channels and people, Jump To… and Search…, for the palette.
         Some(s) => commands::serve(chrome, commands::Served { app_id: "olo.slack".into(), trees: Box::new(trees), menus: Box::new(s.menus()), invoke: Box::new(s.invoke()) }),
-        None => commands::serve_trees(chrome, "google-chrome", trees),
+        None => {
+            let out = out_for_invoke;
+            // (`open-in-front {url, title, width, height}`: a web link, in
+            // the window so named and sized.)
+            let invoke = move |command: &str| {
+                let Some(ask) = command.strip_prefix("open-in-front ").and_then(|a| serde_json::from_str::<Value>(a).ok()) else { return false };
+                let web = ask["url"].as_str().is_some_and(|u| ["http://", "https://"].iter().any(|p| u.starts_with(p)));
+                if web {
+                    send(&out, &json!({ "open_in_front": ask }));
+                }
+                web
+            };
+            commands::serve(chrome, commands::Served { app_id: "google-chrome".into(), trees: Box::new(trees), menus: Box::new(Vec::new), invoke: Box::new(invoke) })
+        }
     };
     if let Err(e) = served {
         eprintln!("olo-chrome: can't answer for Chrome's widget trees: {e}");

@@ -10,15 +10,7 @@
 //! pixels (drawn one texture pixel to a device pixel) before it reaches
 //! the UI.
 
-use olo_sync::Mutex;
-use std::{
-    collections::HashMap,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use olo_kit::{
     ClickEvent, Cx, Element, InteractiveElement as _, KeyDownEvent, ParentElement as _, RenderImage, ScrollHandle, SharedString, Styled as _, View, WindowHandle, WindowOptions,
@@ -30,7 +22,10 @@ use olo_kit::{
     },
 };
 
-use olo_capture::{Capture, Source};
+use olo_capture::{
+    Source,
+    thumbnails::{self, Live},
+};
 
 use crate::ui::{self, Answer};
 
@@ -172,16 +167,12 @@ pub struct Picker {
     selected: Option<String>,
     column: f32,
     /// The thumbnails' sizes in device pixels (screens', windows'), which
-    /// the worker shrinks to.
-    pixels: Arc<Mutex<((u32, u32), (u32, u32))>>,
-    stop: Arc<AtomicBool>,
+    /// the worker shrinks to (told it again when the scale changes).
+    pixels: ((u32, u32), (u32, u32)),
+    /// The worker making them (`olo_capture::thumbnails`): stopped as
+    /// the picker goes.
+    live: Option<Live>,
     scroll: ScrollHandle,
-}
-
-impl Drop for Picker {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
-    }
 }
 
 /// Opens the picker for `ask`, choosing among `screens` and `windows`
@@ -205,16 +196,17 @@ pub fn open(ask: Ask, mut screens: Vec<Item>, mut windows: Vec<Item>) -> WindowH
             types: ask.types,
             control: ask.control,
             selected: screens.first().or(windows.first()).map(|i| i.key.clone()),
-            pixels: Arc::new(Mutex::new((dev(pic), dev(WINDOW_PICTURE)))),
+            pixels: (dev(pic), dev(WINDOW_PICTURE)),
             screens,
             windows,
             pictures: HashMap::new(),
             column,
-            stop: Arc::new(AtomicBool::new(false)),
+            live: None,
             scroll: ScrollHandle::new(),
         };
         // Each picture as it comes.
-        picker.watch(cx.messenger());
+        let mut picker = picker;
+        picker.live = Some(picker.watch(cx.messenger()));
         picker
     })
 }
@@ -223,73 +215,19 @@ impl Picker {
     /// The worker: a capture of each item, shrunk for its thumbnail as
     /// often as it changes (a screen at most twice a second, a window
     /// every two seconds).
-    fn watch(&self, to_ui: Messenger<Thumb>) {
-        let items: Vec<(String, Source, bool)> =
-            self.screens.iter().map(|s| (s.key.clone(), s.source.clone(), true)).chain(self.windows.iter().map(|w| (w.key.clone(), w.source.clone(), false))).collect();
-        let (pixels, stop) = (self.pixels.clone(), self.stop.clone());
-        let _ = std::thread::Builder::new().name("picker-thumbnails".into()).spawn(move || {
-            let mut captures: Vec<(String, bool, Option<Capture>, Instant)> = items
-                .into_iter()
-                .map(|(key, source, screen)| {
-                    // (In memory: dmabufs read back here came back black.)
-                    let mut c = Capture::new(&source, false).ok().map(Capture::in_memory);
-                    if let Some(cap) = c.as_mut()
-                        && cap.request().is_err()
-                    {
-                        c = None;
-                    }
-                    (key, screen, c, Instant::now())
-                })
-                .collect();
-            let mut shown: HashMap<String, (u32, u32)> = HashMap::new();
-            // A frame's pixels, read into the same buffer each time.
-            let mut frame = Vec::new();
-            while !stop.load(Ordering::Relaxed) {
-                let (screens, windows) = *pixels.lock().unwrap();
-                for (key, screen, capture, next) in captures.iter_mut() {
-                    let want = if *screen { screens } else { windows };
-                    let every = Duration::from_millis(if *screen { 500 } else { 2000 });
-                    let Some(cap) = capture.as_mut() else { continue };
-                    if cap.stopped() {
-                        *capture = None;
-                        continue;
-                    }
-                    match cap.poll() {
-                        Ok(Some(Ok(()))) => {
-                            if let Some(image) = shrink(cap, want, &mut frame) {
-                                shown.insert(key.clone(), want);
-                                to_ui.send(Thumb { key: key.clone(), image });
-                            }
-                            *next = Instant::now() + every;
-                        }
-                        Ok(Some(Err(_))) => *next = Instant::now() + every,
-                        Ok(None) => {}
-                        Err(_) => *capture = None,
-                    }
-                    // The scale changed: this size again, from the last frame.
-                    if shown.get(key).is_some_and(|s| *s != want)
-                        && let Some(cap) = capture.as_ref()
-                        && let Some(image) = shrink(cap, want, &mut frame)
-                    {
-                        shown.insert(key.clone(), want);
-                        to_ui.send(Thumb { key: key.clone(), image });
-                    }
-                    if let Some(cap) = capture.as_mut()
-                        && !cap.waiting()
-                        && Instant::now() >= *next
-                    {
-                        let _ = cap.request();
-                    }
-                }
-                std::thread::sleep(Duration::from_millis(40));
+    fn watch(&self, to_ui: Messenger<Thumb>) -> Live {
+        let (screens, windows) = self.pixels;
+        let items = self
+            .screens
+            .iter()
+            .map(|s| thumbnails::Item { key: s.key.clone(), source: s.source.clone(), every: Duration::from_millis(500), size: screens })
+            .chain(self.windows.iter().map(|w| thumbnails::Item { key: w.key.clone(), source: w.source.clone(), every: Duration::from_secs(2), size: windows }))
+            .collect();
+        Live::start(items, move |p| {
+            if let Some(image) = olo_kit::pictures::from_bgra(p.width, p.height, p.bgra) {
+                to_ui.send(Thumb { key: p.key, image });
             }
-            // A screen's frames (16 MB each at 2560×1600) were this
-            // thread's: its heap goes back, not kept by the allocator
-            // for a thread that's ending.
-            drop((captures, frame));
-            // SAFETY: glibc's malloc_trim takes no pointers.
-            unsafe { libc::malloc_trim(0) };
-        });
+        })
     }
 
     fn chosen(&self) -> Option<Vec<String>> {
@@ -307,7 +245,7 @@ impl Picker {
     }
 
     fn thumbnails(&self, items: &[Item]) -> Vec<Thumbnail> {
-        items.iter().map(|i| Thumbnail { picture: self.pictures.get(&i.key).cloned(), color: None, label: SharedString::from(i.label.clone()) }).collect()
+        items.iter().map(|i| Thumbnail { picture: self.pictures.get(&i.key).cloned(), color: None, label: SharedString::from(i.label.clone()), key: None }).collect()
     }
 
     /// A grid of `items` to choose from: a click chooses, a double click
@@ -345,7 +283,18 @@ impl View for Picker {
         let s = cx.scale_factor();
         let dev = |(w, h): (f32, f32)| ((w * s).round() as u32, (h * s).round() as u32);
         let pic = picture(&self.screens);
-        *self.pixels.lock().unwrap() = (dev(pic), dev(WINDOW_PICTURE));
+        let now = (dev(pic), dev(WINDOW_PICTURE));
+        if now != self.pixels {
+            self.pixels = now;
+            if let Some(live) = &self.live {
+                for s in &self.screens {
+                    live.set_size(&s.key, now.0);
+                }
+                for w in &self.windows {
+                    live.set_size(&w.key, now.1);
+                }
+            }
+        }
         let headed = both(&self.screens, &self.windows);
         let column = self.column;
         let heading = |text: &'static str| div().mb(px(m::TIGHT)).child(StringView::new(text).bold(true).height(m::LABEL_ROW));
@@ -400,29 +349,6 @@ impl View for Picker {
                     .child(button_row().child(cancel).child(share)),
             )
     }
-}
-
-/// The last frame of `cap`, shrunk to fit `(w, h)` device pixels, in
-/// its own proportions, as it's drawn (BGRA: the frame's own order).
-fn shrink(cap: &Capture, (w, h): (u32, u32), frame: &mut Vec<u8>) -> Option<Arc<RenderImage>> {
-    use fast_image_resize::{
-        PixelType, ResizeAlg, ResizeOptions, Resizer,
-        images::{Image, ImageRef},
-    };
-    let (sw, sh) = cap.frame_size()?;
-    frame.resize((sw * sh * 4) as usize, 0);
-    cap.copy_into(frame, sw as usize * 4).ok()?;
-    let fit = (w as f64 / sw as f64).min(h as f64 / sh as f64);
-    let (tw, th) = (((sw as f64 * fit).round() as u32).clamp(1, w), ((sh as f64 * fit).round() as u32).clamp(1, h));
-    let src = ImageRef::new(sw, sh, frame, PixelType::U8x4).ok()?;
-    let mut small = Image::new(tw, th, PixelType::U8x4);
-    Resizer::new().resize(&src, &mut small, &ResizeOptions::new().resize_alg(ResizeAlg::SuperSampling(fast_image_resize::FilterType::Bilinear, 2))).ok()?;
-    // BGRx: opaque.
-    let mut out = small.into_vec();
-    for px in out.chunks_exact_mut(4) {
-        px[3] = 255;
-    }
-    olo_kit::pictures::from_bgra(tw, th, out)
 }
 
 #[cfg(test)]

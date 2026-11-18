@@ -1,9 +1,11 @@
 //! A wrapping grid of pictures to pick one from, labelled underneath (a
-//! screen to share, a wallpaper): each in a sunken frame, the chosen one
-//! and its name on a selection plate. A click chooses, a double click
-//! opens (shares at once); with the keyboard (a click gives it, or Tab)
-//! the arrows move the choice. Agents read each as a `RadioButton`,
-//! selected or not.
+//! screen to share, a wallpaper, a window to open a link in): each in a
+//! sunken frame, the chosen one and its name on a selection plate. A
+//! click chooses, a double click opens (shares at once); with the
+//! keyboard (a click gives it, or Tab) the arrows move the choice, and a
+//! choice's own key (`Thumbnail::key`, shown on its picture as a key
+//! cap) opens it at once. Agents read each as a `RadioButton`, selected
+//! or not.
 
 use std::{rc::Rc, sync::Arc};
 
@@ -24,6 +26,9 @@ pub struct Thumbnail {
     /// What fills the frame without a picture (a plain colour's choice).
     pub color: Option<Hsla>,
     pub label: SharedString,
+    /// A key that opens it at once ("A"), shown on its picture's top left
+    /// as a key cap (`style::key_cap`), or none.
+    pub key: Option<SharedString>,
 }
 
 type ChoiceFn = Rc<dyn Fn(&usize, &mut WindowCx)>;
@@ -36,11 +41,19 @@ pub struct ThumbnailPicker {
     width: f32,
     on_select: Option<ChoiceFn>,
     on_open: Option<ChoiceFn>,
+    click_opens: bool,
 }
 
 impl ThumbnailPicker {
     pub fn new(id: impl Into<SharedString>, items: impl Into<Rc<[Thumbnail]>>, selected: Option<usize>) -> Self {
-        ThumbnailPicker { id: id.into(), items: items.into(), selected, picture: (128.0, 72.0), width: 0.0, on_select: None, on_open: None }
+        ThumbnailPicker { id: id.into(), items: items.into(), selected, picture: (128.0, 72.0), width: 0.0, on_select: None, on_open: None, click_opens: false }
+    }
+
+    /// A click opens what it's on at once, as a double click does
+    /// (choosing where a link opens: nothing more to confirm).
+    pub fn click_opens(mut self) -> Self {
+        self.click_opens = true;
+        self
     }
 
     /// The pictures' size (points; default 128×72, 16:9).
@@ -95,14 +108,17 @@ fn cells(b: Bounds<Pixels>, n: usize, picture: (f32, f32)) -> Vec<Bounds<Pixels>
 
 impl IntoElement for ThumbnailPicker {
     fn into_element(self) -> Element {
-        let ThumbnailPicker { id, items, selected, picture, width, on_select, on_open } = self;
+        let ThumbnailPicker { id, items, selected, picture, width, on_select, on_open, click_opens } = self;
         let width = if width > 0.0 { width } else { cell_size(picture).0 };
         let n = items.len();
         let (select, open, keys) = (on_select.clone(), on_open, on_select);
+        // (The choices' own keys, lower case, for a key pressed.)
+        let own: Vec<Option<String>> = items.iter().map(|t| t.key.as_ref().map(|k| k.to_lowercase())).collect();
+        let open_by_key = open.clone();
         // (Its pictures by what they are, not what they show: one made
         // again is another.)
         let look = style::key((
-            items.iter().map(|t| (t.picture.as_ref().map(|p| Arc::as_ptr(p) as usize), style::ink_key(t.color), t.label.clone())).collect::<Vec<_>>(),
+            items.iter().map(|t| (t.picture.as_ref().map(|p| Arc::as_ptr(p) as usize), style::ink_key(t.color), t.label.clone(), t.key.clone())).collect::<Vec<_>>(),
             selected,
             picture.0.to_bits(),
             picture.1.to_bits(),
@@ -137,6 +153,9 @@ impl IntoElement for ThumbnailPicker {
                 }
                 let inner = style::inset(g, frame, 1.0);
                 style::bevel(g, inner, style::shade(&p, p.panel_background, 1.45), style::c(p.shine));
+                if let Some(key) = &item.key {
+                    style::key_cap(g, point(well.left() + px(4.0), well.top() + px(4.0)), key, &p);
+                }
                 let label_y = frame.bottom() + px(m::TIGHT + m::LABEL_ROW / 2.0);
                 let (weight, ink) = if on { (FontWeight::BOLD, style::c(p.list_selected_item_text)) } else { (FontWeight::NORMAL, style::c(p.panel_text)) };
                 let t = style::label_fit(g, r.center().x, label_y, style::Align::Center, item.label.clone(), style::PLAIN_SIZE, style::ui_font(weight), ink, r.size.width - px(4.0));
@@ -155,7 +174,7 @@ impl IntoElement for ThumbnailPicker {
         .tab_stop()
         .on_mouse_down(MouseButton::Left, move |e, cx| {
             let Some(i) = cells(cx.listener_bounds(), n, picture).iter().position(|r| r.contains(&e.position)) else { return };
-            if e.click_count >= 2 {
+            if e.click_count >= 2 || click_opens {
                 if let Some(f) = &open {
                     f(&i, cx);
                 }
@@ -164,6 +183,16 @@ impl IntoElement for ThumbnailPicker {
             }
         })
         .on_key_down(move |e: &KeyDownEvent, cx| {
+            // A choice's own key: opened at once.
+            let m = &e.keystroke.modifiers;
+            if !(m.control || m.alt || m.platform)
+                && let Some(i) = own.iter().position(|k| k.as_deref() == Some(e.keystroke.key.as_str()))
+                && let Some(f) = &open_by_key
+            {
+                f(&i, cx);
+                cx.stop_propagation();
+                return;
+            }
             let (Some(sel), Some(f)) = (selected, keys.as_ref()) else { return };
             let k = columns_in(f32::from(cx.listener_bounds().size.width), picture) as isize;
             let step = match e.keystroke.key.as_str() {

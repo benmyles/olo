@@ -6,6 +6,7 @@
 //! already running on the profile, the link is handed to it directly
 //! (singleton.rs), with no second Chrome started.
 
+mod choose;
 mod codes;
 mod downloads;
 mod extension;
@@ -276,8 +277,34 @@ fn main() {
         {
             let _ = std::process::Command::new(exe).arg("--olo-update").stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).process_group(0).spawn();
         }
-        let token = activation_token();
         let dir = prefs::user_data_dir(&args);
+        let mut args = args;
+        // A Chrome running on the profile, with two windows or more: which
+        // one opens the link is asked first (choose.rs).
+        if let Some(dir) = &dir
+            && let Some(link) = choose::link_of(&args).map(str::to_owned)
+            && let Some(pid) = singleton::holder(dir)
+        {
+            let windows = choose::windows(Some(pid));
+            if windows.len() >= 2 {
+                match choose::ask(&link, windows.clone()) {
+                    choose::Choice::Cancel => return,
+                    choose::Choice::NewWindow => args.insert(0, "--new-window".to_owned()),
+                    choose::Choice::Window(id) => {
+                        choose::bring_forward(id);
+                        // (Without the extension, Chrome's hand-over below.)
+                        if let Some(w) = windows.iter().find(|w| w.id == id)
+                            && choose::open_in_front(pid, &link, w)
+                        {
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+        // (Taken after the asking: one from before would bring forward
+        // what was in front then.)
+        let token = activation_token();
         // A Chrome running on the profile: the link handed to it.
         if let Some(dir) = &dir {
             let argv: Vec<std::ffi::OsString> = std::iter::once(chrome.clone().into_os_string()).chain(chrome_args(&args).into_iter().map(Into::into)).collect();
