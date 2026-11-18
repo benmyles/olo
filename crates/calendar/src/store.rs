@@ -1,7 +1,9 @@
 //! Calendars kept: what each calendar held when it was last in step with
 //! its server, on disk, so the app opens with everything there at once
 //! and asks its servers only for what changed since; and what a person
-//! changes written to the server first, then here.
+//! changes written to the server first, then here. Only what the server
+//! has: what a person chooses of a calendar (its colour, whether it
+//! shows) is the app's to keep.
 
 use std::{
     collections::BTreeMap,
@@ -31,12 +33,9 @@ pub struct Kept {
     pub account: String,
     pub href: String,
     pub name: String,
-    /// The server's colour for it, and the person's own, if they chose one.
+    /// The server's colour for it ("#RRGGBB"), if it says one.
     pub color: Option<String>,
-    pub own_color: Option<String>,
     pub writable: bool,
-    /// Not shown (the person's choice): still kept in step.
-    pub hidden: bool,
     /// What to tell the server to hear only what changed since.
     pub token: Option<String>,
     /// By address.
@@ -73,13 +72,8 @@ impl Kept {
         Kept { account: account.to_owned(), href: c.href.clone(), name: c.name.clone(), color: c.color.clone(), writable: c.writable, ..Default::default() }
     }
 
-    /// The colour it shows in.
-    pub fn shown_color(&self) -> Option<&str> {
-        self.own_color.as_deref().or(self.color.as_deref())
-    }
-
     /// What the server says of it now (its name, colour, whether it may
-    /// be written to) taken in; what the person chose stays.
+    /// be written to) taken in.
     pub fn describe(&mut self, c: &Collection) {
         (self.name, self.color, self.writable) = (c.name.clone(), c.color.clone(), c.writable);
     }
@@ -134,6 +128,7 @@ impl Kept {
     pub fn create(&mut self, server: &Server, event: &Event) -> Result<String, Error> {
         let mut vevent = Component::default();
         event.write_into(&mut vevent);
+        crate::event::stamp(&mut vevent, jiff::Timestamp::now());
         let mut cal = Component::new("VCALENDAR");
         cal.lines.push(ical::Line::new("VERSION", "2.0"));
         cal.lines.push(ical::Line::new("PRODID", "-//Olo//Calendar//EN"));
@@ -295,7 +290,7 @@ mod tests {
         let server = Server::new(there.auth());
         let found = server.calendars(&there.url()).unwrap();
         let mut kept = Kept::new("ben", &found[0]);
-        assert_eq!((kept.name.as_str(), kept.shown_color(), kept.writable), ("Home", Some("#3366FF"), true));
+        assert_eq!((kept.name.as_str(), kept.color.as_deref(), kept.writable), ("Home", Some("#3366FF"), true));
         there.asked();
         assert_eq!(kept.sync(&server), Ok(Step { added: 2, changed: 0, removed: 0 }));
         assert_eq!(summaries(&kept), ["Dentist", "Lunch"]);
@@ -379,8 +374,7 @@ mod tests {
             account: "ben@example.org".into(),
             href: "https://caldav.example.org/dav/calendars/user/ben@example.org/Work/".into(),
             name: "Work".into(),
-            hidden: true,
-            own_color: Some("#FF0000".into()),
+            color: Some("#FF0000".into()),
             ..Default::default()
         };
         home.save(&dir).unwrap();

@@ -12,6 +12,7 @@ pub mod image_view;
 pub mod key_hint;
 pub mod list;
 pub mod menu_field;
+pub mod month;
 pub mod picture_text;
 pub mod ruler;
 pub mod scroll;
@@ -35,7 +36,7 @@ pub use alert::{
     open_app_alert, open_timed_alert, paragraph, paragraph_height, ways_in,
 };
 pub use banner::{Banner, Tone, banner_back, banner_height, verdict_mark};
-pub use buttons::{Button, CheckBox, LinkButton, PaneSwitch, RadioButton, SMALL_BUTTON_HEIGHT, button_width, check_box_look, link_button_width};
+pub use buttons::{ArrowButton, Button, CheckBox, LinkButton, PaneSwitch, RadioButton, SMALL_BUTTON_HEIGHT, button_width, check_box_look, link_button_width};
 pub use charts::{CellGrid, Graph, GridCell, LegendItem, SPECTRUM_LABELS, Series, Spectrum, SpectrumSeries, legend, legend_height, nice_ceiling};
 pub use color::{ColorControl, ColorWell, color_control_height};
 pub use control::{Control, ControlState, DISABLED_OPACITY, control};
@@ -44,6 +45,7 @@ pub use image_view::{ImageView, image_view};
 pub use key_hint::KeyHint;
 pub use list::{Cell, Column, ColumnListView, HEADER_HEIGHT, ListModel};
 pub use menu_field::{MenuField, NONE_CHOSEN};
+pub use month::MonthGrid;
 pub use picture_text::TextLine;
 pub use scroll::{SCROLL_BAR, ScrollBar, ScrollView};
 pub use side_pane::{SidePane, side_divider};

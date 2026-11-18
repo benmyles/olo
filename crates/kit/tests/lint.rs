@@ -9,7 +9,9 @@
 //! for, keeps what fills it; a list scrolled, hidden and shown again
 //! scrolls from where it was; a list acted on by what's checked
 //! (`chosen`) is clean, its button as wide whatever it counts; text
-//! measured without a window counts what another font draws.
+//! measured without a window counts what another font draws; a month to
+//! pick a day from under a pair of arrow buttons and a title with a cut
+//! status on its line is clean.
 
 use olo_kit::{
     Child, Cx, Element, ParentElement as _, Styled as _, View, WindowOptions, div,
@@ -667,4 +669,45 @@ fn ui_lint_text_measured_without_a_window_counts_every_character() {
     let digits = style::text_width_app("12K 3K", style::SMALL_SIZE, &font);
     let arrows = style::text_width_app("↓12K ↑3K", style::SMALL_SIZE, &font);
     assert!(arrows >= digits + 6.0, "two arrows add {:.1} pt", arrows - digits);
+}
+
+/// A month to pick a day from, under what steps through it: a pair of
+/// arrow buttons, Today, a title and a status cut to what room is left,
+/// on the title's line.
+struct Month;
+
+impl View for Month {
+    type Message = ();
+
+    fn body(&mut self, _: &mut Cx<Self>) -> Element {
+        use olo_kit::{
+            style,
+            widgets::{ArrowButton, MonthGrid, StringView, month::Day},
+        };
+        let nav = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(m::SPACING))
+            .child(div().flex().flex_row().flex_shrink_0().child(ArrowButton::back("Previous Month")).child(ArrowButton::on("Next Month")))
+            .child(Button::new("Today"))
+            .child(div().flex_shrink_0().child(StringView::new("November 2026").size(style::LEAD_SIZE).bold(true).height(m::CONTROL_HEIGHT).beside(style::PLAIN_SIZE)))
+            .child(div().flex_1().min_w_0().child(StringView::new("Updated a long while ago, longer than there is room to say").small(true).dim(true).cut(true).beside(style::PLAIN_SIZE)));
+        let month = MonthGrid::new("Month", 2026, 11, Day::new(2026, 11, 18))
+            .week_start(6)
+            .chosen(Day::new(2026, 11, 15), Day::new(2026, 11, 21))
+            .marked(vec![Day::new(2026, 11, 3), Day::new(2026, 11, 18), Day::new(2026, 11, 20), Day::new(2026, 12, 1)])
+            .on_pick(|_, _| {})
+            .on_turn(|_, _| {});
+        div().size_full().p(px(m::WINDOW_INSET)).flex().flex_col().gap(px(m::SPACING)).child(nav).child(div().flex().child(month))
+    }
+}
+
+#[test]
+fn ui_lint_a_month_and_its_arrows_are_clean() {
+    use olo_kit::widgets::month;
+    let mut lint = Lint::new();
+    let height = 2.0 * m::WINDOW_INSET + m::CONTROL_HEIGHT + m::SPACING + month::HEIGHT;
+    let found = lint.window(&WindowOptions::new("Month", 420.0, height), |_| Month);
+    assert_clean("a month under its arrows", &found);
 }

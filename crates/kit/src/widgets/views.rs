@@ -107,12 +107,17 @@ impl IntoElement for StringView {
         }
         let size = self.size;
         if self.cut {
-            let (text, dim, color) = (self.text, self.dim, self.color);
-            let key = style::key((&text, dim, style::ink_key(color), size.to_bits(), self.bold));
+            let (text, dim, color, beside) = (self.text, self.dim, self.color, self.beside);
+            let key = style::key((&text, dim, style::ink_key(color), size.to_bits(), self.bold, beside.map(f32::to_bits)));
             return canvas(move |g, b| {
                 let p = theme::palette();
                 let ink = color.unwrap_or_else(|| if dim { style::secondary_text(&p) } else { style::c(p.panel_text) });
-                let r = style::label_fit(g, b.left(), b.center().y, style::Align::Left, text.clone(), size, style::ui_font(weight), ink, b.size.width);
+                // (On the line of what it's beside, cut or not: a cut
+                // status beside a title sat half a point off it.)
+                let r = match beside {
+                    Some(of) => style::label_on_baseline_fit(g, b.left(), style::baseline_at(g, b.center().y, of), style::Align::Left, text.clone(), size, style::ui_font(weight), ink, b.size.width),
+                    None => style::label_fit(g, b.left(), b.center().y, style::Align::Left, text.clone(), size, style::ui_font(weight), ink, b.size.width),
+                };
                 g.agent(agent::Node::label(text.clone(), r));
             })
             .paint_key(key)

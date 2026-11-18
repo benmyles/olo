@@ -104,10 +104,18 @@ something nobody here has is in "Blocked", with what it waits for.
   sign-ins (`account`: Google's by OAuth with the person's own client,
   as Drive; Fastmail's by app password), calendars kept on disk in step
   with their servers (`store`) and a stand-in server to test with
-  (HACKING.md, "Calendar's engine"). **Next**: the app (apps/calendar:
-  month, week, day and agenda, the editor), Preferences ▸ Integrations ▸
-  Calendars, reminders, the Deskbar widget, the palette, the agents'
-  API. **Not tried against Google's and Fastmail's real servers**: that
+  (HACKING.md, "Calendar's engine"). Then the app itself
+  (apps/calendar, `olo-calendar`; HACKING.md, "Calendar"): the small
+  month and the calendars at the left, Day, Week, Month and Agenda,
+  every calendar in its colour, kept in step with its servers; it shows
+  and doesn't change anything yet. **Next**: the event editor (New,
+  Edit, Delete, "only this one" or all of a repeating event: `edit.rs`
+  has the operations, tested), double-click and the keyboard, dragging
+  an event to another time, Find; Preferences ▸ Integrations ▸
+  Calendars (adding Google and Fastmail accounts); an icon of its own
+  (Date & Time's stands in); reminders, the Deskbar widget, the
+  palette, the assistant; in-place reload tried; its cost measured.
+  **Not tried against Google's and Fastmail's real servers**: that
   needs Ben's accounts.
 
 - **A Mail app, native, every account in one place, and the assistant

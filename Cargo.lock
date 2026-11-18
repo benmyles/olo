@@ -7188,6 +7188,7 @@ name = "olo-calendar"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "getrandom 0.3.4",
  "jiff",
  "olo-google",
  "olo-net",
@@ -7198,6 +7199,21 @@ dependencies = [
  "serde",
  "serde_json",
  "ureq",
+]
+
+[[package]]
+name = "olo-calendar-app"
+version = "0.1.0"
+dependencies = [
+ "jiff",
+ "olo-calendar",
+ "olo-crash",
+ "olo-kit",
+ "olo-theme",
+ "olo-xdg",
+ "serde",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]

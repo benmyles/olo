@@ -983,6 +983,21 @@ pub fn latch(g: &mut Painter, r: Bounds<Pixels>, open: bool, color: Hsla) {
     }
 }
 
+/// A small solid triangle centred in `r`, pointing left (back) or right
+/// (on): what steps through months, pages, weeks.
+pub fn arrow(g: &mut Painter, r: Bounds<Pixels>, left: bool, color: Hsla) {
+    let m = snap_centred(g, r.center(), 8.0, 8.0).center();
+    let at = |x: f32, y: f32| point(m.x + px(if left { -x } else { x }), m.y + px(y));
+    let mut path = olo_interface::PathBuilder::fill();
+    path.move_to(at(-2.0, -4.0));
+    path.line_to(at(2.5, 0.0));
+    path.line_to(at(-2.0, 4.0));
+    path.close();
+    if let Ok(path) = path.build() {
+        g.paint_path(path, color);
+    }
+}
+
 /// How [`rule`] draws its line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Rule {

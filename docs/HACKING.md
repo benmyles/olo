@@ -3554,6 +3554,27 @@ it.
   `show_in(cx, options, panel, on_done)` open a file panel so;
   olo-print's `panel::view::show(cx, options, pages, on_done)` the Print
   panel.
+- `widgets::MonthGrid::new(name, year, month, today)` (`widgets::month`):
+  a month to pick a day from. Its name and year over six weeks of days
+  (always six, so nothing under it moves as months turn), the days of
+  the months either side dim, today on the look's mark colour, the days
+  `chosen(first, last)` on the list's selection, a dot under each day
+  in `marked(days)` (sorted), weeks from `week_start(0 Monday … 6
+  Sunday)`. It keeps nothing: `on_pick` says a day clicked, `on_turn`
+  the month its arrows ask for, and its owner shows that. `month::Day`
+  is a plain day (`number()` days from 1970, `plus`, `weekday`, `said`:
+  "Wednesday, November 18, 2026"), so the widget ties no app to a date
+  library; `month::turned(year, month, by)`. 168 × 174 points
+  (`month::WIDTH`, `HEIGHT`). Agents: each day a Button named in full.
+  Calendar's small month; `examples/month.rs`.
+- `widgets::ArrowButton::back(name)` / `::on(name)`: a square push
+  button with an arrow (`style::arrow`), for stepping through what a
+  window shows, in a pair set flush. No words on it, so `name`
+  ("Previous Week") is what agents read and its tip.
+- `StringView::cut(true).beside(size)`: a line cut to its room sits on
+  the baseline of the larger text beside it, as an uncut one does (a
+  status after a title: it was half a point off, the layout review's
+  "near-level").
 - `widgets::ColorControl::new(id, rgb)` (BColorControl: grey, red, green
   and blue ramps with markers to click or drag, the lane pressed in
   keeping the drag, and Red/Green/Blue fields following the colour unless
@@ -20560,6 +20581,69 @@ stands on, each part tested by itself (`cargo test -p olo-calendar`):
 
 Not tried against the real servers yet: that needs a person's accounts
 (the first sign-in is theirs to make, in Preferences ▸ Integrations).
+
+## Calendar (apps/calendar, `olo-calendar`)
+
+The app on the engine above. **So far it shows; it doesn't yet change
+anything** (the editor is next: `edit.rs` has what it will use). One
+window: the small month and the calendars down the left (each with its
+colour and a check box to show it), and Day, Week, Month and Agenda as
+tabs under a pair of arrows, Today, the name of what shows and how
+things stand with the servers.
+
+- **`model.rs`**: `Book` (every calendar kept, each an `Arc<Cal>`:
+  `Kept` and its events read; replacing one account's calendars shares
+  the others) and `Book::shown(from, to, zone, me, choices)`: the
+  occurrences on those days on the person's clock, as `Shown`s. A
+  calendar's colour is one of the look's `Hue`s: the person's own
+  (`Choices::hues`), else the nearest to its server's `#RRGGBB`
+  (`hue_of`), so it reads in every look by day and night. `Choices`
+  (hidden calendars, colours) are the app's, in its settings, keyed by
+  the calendar's address; `Kept` is only what the server has.
+- **`layout.rs`**, apart from drawing and tested so: `row` (days side
+  by side: bars across their days in lanes, single events under them,
+  what doesn't fit counted for "+2 more"; the month's weeks and the
+  whole-day strip over a week's hours) and `day` (a day's timed events
+  side by side where they overlap, an event widening over free columns
+  to its right).
+- **`sync.rs`**: `load` (accounts, secrets, what's kept: on a worker as
+  the window opens), `sync` (an account's calendars listed and each
+  asked what changed; None when nothing did, so the window's book stays
+  the very same). The servers are asked as the window opens, every 15
+  minutes while it's open, on coming back to it after two, and on
+  Refresh; one asking an account at a time.
+- **`main.rs`**: the view. The occurrences for what shows are worked
+  out on a worker for the visible days and as much again either side
+  (`look`: stepping to the next week or month is there already), again
+  only when the book, the choices or the days asked for changed
+  (`generation`, `covered`). One timer (`Due`) for the day turning or
+  the next asking; coming back to the window looks too (a timer doesn't
+  run through a sleep).
+- **`month.rs`, `week.rs`, `agenda.rs`**: each a drawing of the view's
+  own (`cx.canvas`, keyed by what it shows), on device pixels, events
+  recorded for agents as ListItems named "Standup, 9:30 AM – 9:45 AM,
+  Work". The week's hours are a tall drawing in a `ScrollView` (scrolled
+  on the display thread) under a fixed strip of the days' names and
+  whole-day events; the present is a line across today, drawn again as
+  the minute turns (`paint_again_within`: only that drawing).
+- **`edit.rs`** (not wired to a window yet): `Draft` (what an editor
+  edits, read from an event and applied back, the event's zone kept),
+  `change_all` / `change_one` / `remove_one` (every occurrence, or only
+  the one: an occurrence of its own with `RECURRENCE-ID`, or an
+  `EXDATE`), and `date` / `time` as typed ("Nov 20", "fri", "2:30pm").
+- **The demo** (`OLO_CALENDAR_DEMO=1`): the engine's stand-in server
+  started in the process with four calendars made for the weeks round
+  today, which the app runs against as it does against any server;
+  `OLO_CALENDAR_NOW=2026-11-18T10:30` fixes "now" so pictures are the
+  same every day. `olo-calendar --print [--from DAY] [--days N]`: what's
+  on, as JSON, with no window.
+- Commands (menus, keys, the palette, agents): `mode:day|week|month|
+  agenda` (⌘1–4), `today` (⌘T), `previous` / `next` (⌘[ / ⌘]),
+  `refresh` (⌘R), `sidebar`, `week-start:N`, `go:2026-11-20`,
+  `show:NAME` / `hide:NAME`.
+
+Checked in a test session at 1×, 1.25×, 1.5×, 1.75× and 2×, light and
+dark, each view: the layout review finds nothing.
 
 ## Passwords (apps/passwords, crates/onepassword)
 

@@ -57,6 +57,9 @@ def apps(home):
         # packages. "@session-bus" is that bus, the fake started on it.)
         ("OS Updates", ["olo-updates"], {"OLO_DNF_BUS": "@session-bus", "OLO_UPDATES_HELPER": "off"}, False),
         # (Made up: never the person's kache, its service or its files.)
+        # (Its demo calendars, on a server of its own in the process, on a
+        # day of its own: no account, the same picture every day.)
+        ("Calendar", ["olo-calendar"], {"OLO_CALENDAR_DEMO": "1", "OLO_CALENDAR_NOW": "2026-11-18T10:30"}, False),
         ("Kache", ["olo-kache"], {"OLO_KACHE_DEMO": "1"}, False),
         # (Made-up results: nothing is connected to.)
         ("Speed Test", ["olo-speedtest"], {"OLO_SPEEDTEST_DEMO": "1"}, False),

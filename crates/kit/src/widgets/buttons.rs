@@ -137,6 +137,62 @@ impl IntoElement for Button {
     }
 }
 
+/// A square push button with an arrow on it, back or on: for stepping
+/// through what a window shows (Calendar's days, weeks and months), set
+/// in a pair. It says what it does to agents and in its tip, having no
+/// words on it.
+pub struct ArrowButton {
+    id: SharedString,
+    name: SharedString,
+    back: bool,
+    enabled: bool,
+    on_click: Option<Handler>,
+}
+
+impl ArrowButton {
+    /// The one that goes back, named `name` ("Previous Week").
+    pub fn back(name: impl Into<SharedString>) -> ArrowButton {
+        let name = name.into();
+        ArrowButton { id: name.clone(), name, back: true, enabled: true, on_click: None }
+    }
+
+    /// The one that goes on ("Next Week").
+    pub fn on(name: impl Into<SharedString>) -> ArrowButton {
+        ArrowButton { back: false, ..ArrowButton::back(name) }
+    }
+
+    pub fn enabled(mut self, on: bool) -> Self {
+        self.enabled = on;
+        self
+    }
+
+    pub fn on_click(mut self, f: impl Fn(&ClickEvent, &mut WindowCx) + 'static) -> Self {
+        self.on_click = Some(Rc::new(f));
+        self
+    }
+}
+
+impl IntoElement for ArrowButton {
+    fn into_element(self) -> Element {
+        let back = self.back;
+        let mut c = control(self.id.clone(), m::CONTROL_HEIGHT, m::CONTROL_HEIGHT, move |g, r, s| {
+            paint_button(g, r, s, "", false, false, style::PLAIN_SIZE);
+            let p = theme::palette();
+            let off = if s.pressed { style::hairline(g) } else { px(0.0) };
+            let at = Bounds { origin: point(r.left() + off, r.top() + off), size: r.size };
+            style::arrow(g, at, back, if s.enabled { style::c(p.control_text) } else { style::disabled_text(&p) });
+        })
+        .look((&self.name, back))
+        .enabled(self.enabled)
+        .focusable()
+        .agent("Button", self.name.clone(), None);
+        if let Some(f) = self.on_click {
+            c = c.on_click(move |event, cx| f(event, cx));
+        }
+        crate::tip::on(c.into_element(), self.id, self.name)
+    }
+}
+
 /// A button that is only its words, in the small font and the link
 /// colour, underlined under the pointer: a small action beside what it
 /// acts on, in a line that has no room for a push button (a box's Reset,

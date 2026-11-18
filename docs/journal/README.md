@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Calendar: every calendar in one, by day, week, month and as an agenda
+
+*11:50* — A new app, olo-calendar, on the engine made this week (iCalendar, repeating events, CalDAV for Google's and Fastmail's accounts). The small month and the calendars at the left, each in one of the look's own colours; Day, Week, Month and Agenda; the present a line across today. It shows and doesn't change anything yet: the editor is next. Seen here with its demo calendars.
+
+![Calendar: every calendar in one, by day, week, month and as an agenda](2026-11-18/115054-calendar-every-calendar-in-one-by-day-week-month.png)
+
 ### Deskbar folds away to the right
 
 *10:38* — A small button at Deskbar's top right (two chevrons) folds it away: only that button stays, at the screen's corner, and zoomed and tiled windows take the room; a click on it brings Deskbar back and the windows make way. Above, Deskbar with a zoomed Tracker beside it; below, folded.

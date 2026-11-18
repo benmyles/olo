@@ -837,6 +837,8 @@ vanished.
 | `BFilePanel` | `file_panel::show(..)` | open, save, a folder |
 | Haiku's `BToolTip` | `tip::on(element, key, text)`, `tip::hover_card(cx, key, Rc<Card>, anchor, hovered)` | a popup of its own; a `card::Card` for more than a sentence (Deskbar's widgets): drawings, rows with bars, notes |
 | `BColorControl` | `ColorControl::new(id, rgb).on_change(..).build(cx)` | |
+| | `MonthGrid::new(name, year, month, today).chosen(a, b).marked(days).on_pick(..).on_turn(..)` | a month to pick a day from; it keeps nothing, you show what it says |
+| | `ArrowButton::back("Previous Week")`, `ArrowButton::on("Next Week")` | a pair, flush, to step through what a window shows |
 | | `Sidebar`, `SidePane`, `ToolBar`, `Banner`, `KeyHint`, `Graph`, `Timeline`, `Spectrum`, `CellGrid`, `ThumbnailPicker`, `find_bar` | what BeOS didn't have |
 
 **If an app needs a widget or behaviour another could use, it goes in

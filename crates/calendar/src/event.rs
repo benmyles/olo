@@ -441,6 +441,26 @@ impl Event {
     }
 }
 
+/// A UID for a new event: random, and Olo's.
+pub fn new_uid() -> String {
+    let mut raw = [0u8; 16];
+    getrandom::fill(&mut raw).expect("the system's random source failed");
+    let hex: String = raw.iter().map(|b| format!("{b:02x}")).collect();
+    format!("{}-{}-{}-{}-{}@olo", &hex[..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..])
+}
+
+/// `vevent` marked as written now (`DTSTAMP`, `LAST-MODIFIED`; `CREATED`
+/// if it has none): what servers and other programs go by to tell the
+/// newer of two.
+pub fn stamp(vevent: &mut Component, now: jiff::Timestamp) {
+    let text = format!("{}Z", civil_text(now.to_zoned(TimeZone::UTC).datetime(), false));
+    vevent.set(Line::new("DTSTAMP", text.clone()));
+    vevent.set(Line::new("LAST-MODIFIED", text.clone()));
+    if vevent.get("CREATED").is_none() {
+        vevent.set(Line::new("CREATED", text));
+    }
+}
+
 /// One time an event happens.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Occurrence {
@@ -456,7 +476,7 @@ pub struct Occurrence {
 }
 
 /// The same moment, whichever zone each is said in (a day against a day).
-fn same(a: &When, b: &When, viewer: &TimeZone) -> bool {
+pub fn same(a: &When, b: &When, viewer: &TimeZone) -> bool {
     match (a, b) {
         (When::Date(x), When::Date(y)) => x == y,
         (When::Date(x), other) | (other, When::Date(x)) => other.local().date() == *x,

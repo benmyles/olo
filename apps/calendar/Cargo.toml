@@ -1,0 +1,21 @@
+[package]
+name = "olo-calendar-app"
+description = "Calendar: every connected calendar (Google's, Fastmail's, any CalDAV server's) in one, by day, week, month and as an agenda"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "olo-calendar"
+path = "src/main.rs"
+
+[dependencies]
+olo-calendar.workspace = true
+olo-crash.workspace = true
+olo-kit.workspace = true
+olo-theme.workspace = true
+olo-xdg.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+jiff = "0.2"
