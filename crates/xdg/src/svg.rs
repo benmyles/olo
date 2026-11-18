@@ -17,9 +17,11 @@
 //! - `o`: a form with its outline: a filled shape whose stroke is painted
 //!   under its fill (`paint-order: stroke`), so only the half outside
 //!   shows and the fill's own edge stays where it was drawn. The outline's
-//!   weight is set for the size: a device pixel up to 100 pixels, then a
-//!   hundredth of the size ([`line`]); `i`, an inner line (a plain
-//!   stroke), three fifths of that.
+//!   weight is set for the size: a device pixel up to 80 pixels, then an
+//!   eightieth of the size ([`line`]: as heavy, large, as the pictures'
+//!   outlines were); `l`, a line of that weight on its
+//!   own (a plain stroke: the edge of a hole seen through); `i`, an inner
+//!   line, three fifths of it.
 //! - `fromN`: shown at N pixels and larger (fine detail: `from48`,
 //!   `from96`); `uptoN`: shown at N pixels and smaller (what stands in
 //!   for it small: `upto32`). N is one of [`STEPS`].
@@ -51,9 +53,9 @@ pub const STEPS: [u32; 9] = [16, 24, 32, 48, 64, 96, 128, 256, 512];
 const GRID: f32 = 64.0;
 
 /// An outline's weight at `px` device pixels, in device pixels: one, up
-/// to 100 pixels; from there a hundredth of the size.
+/// to 80 pixels; from there an eightieth of the size.
 pub fn line(px: u32) -> f32 {
-    (px as f32 / 100.0).max(1.0)
+    (px as f32 / 80.0).max(1.0)
 }
 
 /// Whether `path` is one of Olo's own drawings (in an `icons/svg`
@@ -92,7 +94,7 @@ pub fn sheet(px: u32, grid: f32) -> String {
     let unit = grid / px.max(1) as f32;
     let w = line(px) * unit;
     // (An outline's stroke is twice its weight: half of it is under the fill.)
-    let _ = write!(css, ".o{{stroke-width:{:.3} !important}}.i{{stroke-width:{:.3} !important}}", w * 2.0, w * 0.6);
+    let _ = write!(css, ".o{{stroke-width:{:.3} !important}}.l{{stroke-width:{w:.3} !important}}.i{{stroke-width:{:.3} !important}}", w * 2.0, w * 0.6);
     css
 }
 
@@ -113,7 +115,7 @@ pub fn render(data: &[u8], px: u32, own: bool) -> Option<Image> {
 
 /// What changes when what's kept must be rendered again whatever the
 /// drawing: the style sheet's rules.
-const KEPT_VERSION: u32 = 1;
+const KEPT_VERSION: u32 = 2;
 
 /// Where the pixels of drawing `path` at `px` are kept, and the start of
 /// the names of every keeping of it at that size (an older drawing's).
@@ -203,7 +205,7 @@ mod tests {
         // Not one of Olo's: as it is (both squares, the last drawn over).
         let plain = render(DRAWING.as_bytes(), 64, false).unwrap();
         assert_eq!(pixel(&plain, 32, 32), [0, 0, 255, 255]);
-        assert_eq!((line(16), line(64), line(256)), (1.0, 1.0, 2.56));
+        assert_eq!((line(16), line(64), line(256)), (1.0, 1.0, 3.2));
         assert!(is_own(Path::new("/x/data/icons/svg/folder.svg")) && is_own(Path::new("/x/themes/platinum/icons/svg/folder.svg")));
         assert!(!is_own(Path::new("/usr/share/icons/hicolor/scalable/apps/folder.svg")));
         assert_eq!(grid(DRAWING.as_bytes()), 64.0);

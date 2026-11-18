@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Folder: a manila file folder standing a little open, its tab at the back left. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}</style>
+<defs>
+<linearGradient id="shadow" x1="33" y1="53.4" x2="34.1" y2="57.8" gradientUnits="userSpaceOnUse"><stop offset="0" stop-opacity=".34"/><stop offset="1" stop-opacity="0"/></linearGradient>
+<clipPath id="back"><path d="M3 15.5L3.1 13.05Q3.2 10.6 5.63 10L20.04 6.41Q21.5 6.05 22.59 7.08L25.92 10.25Q26.5 10.8 27.28 10.61L51.06 4.68Q53 4.2 53 6.2L53 30L40 50L6.46 57.67Q5 58 4.93 56.5Z"/></clipPath>
+<linearGradient id="inside" x1="20" y1="8" x2="30" y2="24" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f9c85c"/><stop offset="1" stop-color="#dc9a26"/></linearGradient>
+<linearGradient id="spine" x1="3" y1="14" x2="7" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffc94c"/><stop offset="1" stop-color="#e79f1c"/></linearGradient>
+<linearGradient id="flap" x1="14" y1="20" x2="52" y2="52" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fedd88"/><stop offset=".5" stop-color="#f8ca66"/><stop offset="1" stop-color="#e9ae49"/></linearGradient>
+</defs>
+<path class="from48" fill="url(#shadow)" d="M6 58L57 45.2L60.5 48.8L11 61.8Z"/>
+<!-- The back, with its tab; the fold at the left. -->
+<path class="o" fill="url(#inside)" d="M3 15.5L3.1 13.05Q3.2 10.6 5.63 10L20.04 6.41Q21.5 6.05 22.59 7.08L25.92 10.25Q26.5 10.8 27.28 10.61L51.06 4.68Q53 4.2 53 6.2L53 30L40 50L6.46 57.67Q5 58 4.93 56.5Z"/>
+<g clip-path="url(#back)">
+<path fill="url(#spine)" d="M0 8L8.6 21L5.6 60L0 60Z"/>
+<path class="from48" fill="none" stroke="#ffe7a6" stroke-opacity=".9" stroke-width=".6" stroke-linecap="round" d="M5 11.4L20.2 7.6Q21.3 7.3 22 8L25.4 11.2Q26.3 12 27.4 11.7L51.6 5.7"/>
+</g>
+<!-- The front. -->
+<path class="o" fill="url(#flap)" d="M8.34 24.49Q8.5 22.5 10.44 22.01L58.06 10.09Q60 9.6 59.84 11.59L57.16 44.61Q57 46.6 55.06 47.09L7.44 59.01Q5.5 59.5 5.66 57.51Z"/>
+<path class="from48" fill="none" stroke="#fff3c9" stroke-opacity=".95" stroke-width=".6" stroke-linecap="round" d="M6.4 56.6L9 24.7Q9.1 23.1 10.7 22.7L58 10.85"/>
+</svg>

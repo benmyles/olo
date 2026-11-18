@@ -46,6 +46,13 @@ unit is half a pixel at 32 pixels and a pixel at 64.
   left corner): a rectangle there is the face.
 - A level circle (a lid, a coin lying flat) is an ellipse 0.36 as tall
   as it is wide.
+- A sheet (a page, a card, a folder's flap) stands in the front plane.
+  Every document kind is the same page (36 by 47, its top right corner
+  folded), what tells its kind on it or standing before it.
+- A flat shape with depth (an arrow, a star, a gear, a bar of a chart)
+  is its front face pushed back along the side direction
+  (`icontrace.py extrude`): the faces that look up lighter, those that
+  look sideways darker.
 - A thing whose own shape tapers or leans (a CRT's housing, a pen, a
   key) keeps its shape, set on the same desk.
 - Light from the top left: the top lightest, the front next, the side
@@ -68,7 +75,8 @@ only).
 
 | Class | What |
 |---|---|
-| `o` | A form's outline: a device pixel wide up to 100 pixels, then a hundredth of the size. |
+| `o` | A form's outline: a device pixel wide up to 80 pixels, then an eightieth of the size. |
+| `l` | A line of the outline's weight on its own (a plain stroke: the edge of a hole seen through). |
 | `i` | A line inside a form: three fifths of that. |
 | `fromN` | Shown at N pixels and up: detail (`from48`: highlights, vents, rims, the contact shadow; `from96`: the finest). |
 | `uptoN` | Shown at N pixels and down: what stands in small (`upto32`: the mark alone and larger, a bolder prompt). |
@@ -93,6 +101,9 @@ $T outline data/icons/256/NAME.png                   # its silhouette, in grid u
 $T region data/icons/256/NAME.png 30,20              # one part's polygon and colour
 $T pick data/icons/256/NAME.png 30,20 12,40          # colours
 $T round 6,12.5,1.5 36,5,1.5 53,13.5,1.5 …           # a polygon's path, corners rounded
+$T extrude -3,-1.5 5,0 13,0 13,11 …                  # a flat shape given depth: its solid, its faces
+$T sheet /var/tmp/…/s.png data/icons/256/{a,b,c}.png # several pictures on the grid at once
+$T review /var/tmp/…/r.png NAME NAME …               # pictures beside drawings, every small size
 cargo build --release -p olo-xdg --example svgicon
 $T compare data/icons/256/NAME.png data/icons/svg/NAME.svg /var/tmp/…/c.png
 ```

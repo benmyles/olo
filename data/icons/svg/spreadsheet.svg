@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Spreadsheet: a page with a green table on it, three bars of a chart standing before it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}</style>
+<defs>
+<linearGradient id="shadow" x1="32" y1="56" x2="33" y2="60.2" gradientUnits="userSpaceOnUse"><stop offset="0" stop-opacity=".32"/><stop offset="1" stop-opacity="0"/></linearGradient>
+<linearGradient id="paper" x1="2" y1="2" x2="34" y2="47" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#f4f5f9"/><stop offset="1" stop-color="#dfe2ec"/></linearGradient>
+<linearGradient id="fold" x1="26" y1="10" x2="32.5" y2="3.5" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f7f8fb"/><stop offset="1" stop-color="#c4c8d4"/></linearGradient>
+<linearGradient id="greenbar" x1="0" y1="-21" x2="6" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6fe466"/><stop offset="1" stop-color="#22a22e"/></linearGradient>
+<linearGradient id="bluebar" x1="0" y1="-14" x2="6" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#58acff"/><stop offset="1" stop-color="#1565d8"/></linearGradient>
+</defs>
+<path class="from48" fill="url(#shadow)" d="M14.5 59.5L50 50.6L53.5 53.8L18 63Z"/>
+<!-- The page, in its own plane: 36 wide, 47 tall, rising one in four. -->
+<g transform="matrix(1 -.25 0 1 14 13.5)">
+<path class="o" fill="url(#paper)" d="M1.2 0H26L36 10V45.8Q36 47 34.8 47H1.2Q0 47 0 45.8V1.2Q0 0 1.2 0Z"/>
+<path class="from48" fill="#1b1b1f" fill-opacity=".14" d="M26 10.6H36V13.2L27 11.6Z"/>
+<path fill="url(#fold)" d="M26 0L36 10H27.2Q26 10 26 8.8Z"/>
+<path class="from32" fill="none" stroke="#1b1b1f" stroke-opacity=".55" stroke-width=".5" stroke-linejoin="round" d="M26 0V8.8Q26 10 27.2 10H36"/>
+<path class="from48" fill="none" stroke="#fff" stroke-width=".6" stroke-linecap="round" d="M.7 46V1.4Q.7 .7 1.4 .7H25.6"/>
+<path fill="#f1faf0" d="M5 13H31V41H5Z"/>
+<path fill="#86cf80" d="M5 13H31V17.6H5Z"/>
+<g class="from48" fill="none" stroke="#2d9a3c" stroke-width=".7"><path d="M5 13H31V41H5ZM5 17.6H31M5 22.3H31M5 27H31M5 31.6H31M5 36.3H31M13.7 13V41M22.3 13V41"/></g>
+<g class="upto32" fill="none" stroke="#2d9a3c" stroke-width="1.5"><path d="M5 13H31V41H5ZM5 18.5H31M5 26H31M5 33.5H31M18 13V41"/></g>
+</g>
+<!-- The chart's bars, standing in the front plane. -->
+<g transform="matrix(1 -.25 0 1 37.5 61)">
+<path class="o" fill="#14761f" d="M0 0H6.5V-8L3.5 -10.25H-3V-2.25Z"/><path fill="#a9f3a0" d="M0 -8H6.5L3.5 -10.25H-3Z"/><path fill="url(#greenbar)" d="M0 -8H6.5V0H0Z"/>
+<path class="o" fill="#0e48a6" d="M8 0H14.5V-14L11.5 -16.25H5V-2.25Z"/><path fill="#a6d4ff" d="M8 -14H14.5L11.5 -16.25H5Z"/><path fill="url(#bluebar)" d="M8 -14H14.5V0H8Z"/>
+<path class="o" fill="#14761f" d="M16 0H22.5V-21L19.5 -23.25H13V-2.25Z"/><path fill="#a9f3a0" d="M16 -21H22.5L19.5 -23.25H13Z"/><path fill="url(#greenbar)" d="M16 -21H22.5V0H16Z"/>
+</g>
+</svg>

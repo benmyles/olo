@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Document: a white page standing, its top right corner folded down, lines of text on it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}</style>
+<defs>
+<linearGradient id="shadow" x1="32" y1="56" x2="33" y2="60.2" gradientUnits="userSpaceOnUse"><stop offset="0" stop-opacity=".32"/><stop offset="1" stop-opacity="0"/></linearGradient>
+<linearGradient id="paper" x1="2" y1="2" x2="34" y2="47" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#f4f5f9"/><stop offset="1" stop-color="#dfe2ec"/></linearGradient>
+<linearGradient id="fold" x1="26" y1="10" x2="32.5" y2="3.5" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f7f8fb"/><stop offset="1" stop-color="#c4c8d4"/></linearGradient>
+</defs>
+<path class="from48" fill="url(#shadow)" d="M14.5 59.5L50 50.6L53.5 53.8L18 63Z"/>
+<!-- The page, in its own plane: 36 wide, 47 tall, rising one in four. -->
+<g transform="matrix(1 -.25 0 1 14 13.5)">
+<path class="o" fill="url(#paper)" d="M1.2 0H26L36 10V45.8Q36 47 34.8 47H1.2Q0 47 0 45.8V1.2Q0 0 1.2 0Z"/>
+<path class="from48" fill="#1b1b1f" fill-opacity=".14" d="M26 10.6H36V13.2L27 11.6Z"/>
+<path fill="url(#fold)" d="M26 0L36 10H27.2Q26 10 26 8.8Z"/>
+<path class="from32" fill="none" stroke="#1b1b1f" stroke-opacity=".55" stroke-width=".5" stroke-linejoin="round" d="M26 0V8.8Q26 10 27.2 10H36"/>
+<g class="from48" fill="none" stroke="#a3a7b6" stroke-width="1.8" stroke-linecap="round"><path d="M6 14.5H20M6 20H30M6 25.5H30M6 31H30M6 36.5H30M6 42H21"/></g>
+<g class="upto32" fill="none" stroke="#8f94a6" stroke-width="2.8"><path d="M6 16H21M6 23.5H30M6 31H30M6 38.5H23"/></g>
+<path class="from48" fill="none" stroke="#fff" stroke-width=".6" stroke-linecap="round" d="M.7 46V1.4Q.7 .7 1.4 .7H25.6"/>
+</g>
+</svg>

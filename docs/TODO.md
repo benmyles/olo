@@ -39,8 +39,10 @@ something nobody here has is in "Blocked", with what it waits for.
   turned into an svg"). How: docs/ICONS.md, "Drawings". Done so far: the
   loader draws `icons/svg/NAME.svg` for the size asked, kept once
   rendered (`olo_xdg::svg`); the grid, the one projection, the outline
-  and size classes; `tools/dev/icontrace.py`; Terminal, Slack, Token
-  Pool, Passwords (Classic). To do: every other icon in the manifest
+  and size classes; `tools/dev/icontrace.py`; drawn so far (Classic), 19:
+  what's in `data/icons/svg` (the Olo ring, Terminal, Slack, Token Pool,
+  Passwords, the folders, the document kinds, the cube, the gear, the
+  bin, the archive). To do: every other icon in the manifest
   (143), Weather's skies (18), the phones (20) and the Olo ring, for
   Classic; then Platinum's set in its own style; then the pictures
   removed (`<px>/NAME.png`, `mkicons.py`, the model's tools), the icon
