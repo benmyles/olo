@@ -282,4 +282,37 @@ mod tests {
         assert_eq!(again.cals.iter().map(|c| c.kept.name.as_str()).collect::<Vec<_>>(), ["Other", "Home", "Work"]);
         assert!(Arc::ptr_eq(&again.cals[1], &book.cals[0]));
     }
+
+    /// What working out a view's occurrences costs with a great many
+    /// events (it runs on a worker; this says how long the window shows
+    /// the days before their events). `cargo test --release -p
+    /// olo-calendar-app shown_cost -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn shown_cost() {
+        let zone = TimeZone::get("Europe/Amsterdam").unwrap();
+        let mut cals = Vec::new();
+        for c in 0..4 {
+            let mut events = Vec::new();
+            for i in 0..2500u32 {
+                // Spread over eight years; a third repeat weekly, from their day on.
+                let day = jiff::civil::date(2019, 1, 1).checked_add(jiff::Span::new().days((i as i64 * 7919 + c * 13) % 2900)).unwrap();
+                let (h, rule) = (8 + (i % 10) as i8, if i % 3 == 0 { "\nRRULE:FREQ=WEEKLY" } else { "" });
+                events.push(format!("DTSTART;TZID=Europe/Amsterdam:{}T{h:02}0000\nDTEND;TZID=Europe/Amsterdam:{}T{h:02}4500{rule}\nSUMMARY:Event {i}", day.strftime("%Y%m%d"), day.strftime("%Y%m%d")));
+            }
+            let refs: Vec<&str> = events.iter().map(String::as_str).collect();
+            let t = std::time::Instant::now();
+            let cal = Cal::read(kept(&format!("Cal{c}"), None, &refs));
+            eprintln!("read a calendar of {} events in {:.1} ms", cal.events.len(), t.elapsed().as_secs_f64() * 1e3);
+            cals.push(Arc::new(cal));
+        }
+        let book = Book::new(cals, &["a".to_owned()]);
+        let choices = Choices::default();
+        for (what, from, days) in [("a week", jiff::civil::date(2026, 11, 16), 7), ("a month and as much either side", jiff::civil::date(2026, 9, 21), 126)] {
+            let to = from.checked_add(jiff::Span::new().days(days)).unwrap();
+            let t = std::time::Instant::now();
+            let shown = book.shown(from, to, &zone, &[], &choices);
+            eprintln!("{what}: {} occurrences of 10,000 events in {:.1} ms", shown.len(), t.elapsed().as_secs_f64() * 1e3);
+        }
+    }
 }

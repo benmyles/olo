@@ -527,20 +527,47 @@ pub fn occurrences(event: &Event, overrides: &[Event], from: &Zoned, to: &Zoned,
         true
     };
     let excluded = |start: &When| event.exdates.iter().any(|x| same(x, start, viewer));
+    // The span on the event's own clock, with two days to spare either
+    // side (two clocks are never further apart): what can't touch it is
+    // passed over without a zone asked anything, which is what costs
+    // (ten thousand events, most of them long past, were 145 ms a week).
+    let on_its_clock = |z: &Zoned| match &event.start {
+        When::Zoned(own) => z.with_time_zone(own.time_zone().clone()).datetime(),
+        _ => z.datetime(),
+    };
+    let spare = Span::new().days(2);
+    let (near, far) = (on_its_clock(from).checked_sub(spare).unwrap_or(DateTime::MIN), on_its_clock(to).checked_add(spare).unwrap_or(DateTime::MAX));
+    let lasts = event.end.local().since(event.start.local()).unwrap_or_default();
+    let before = |local: DateTime| local.checked_add(lasts).is_ok_and(|end| end < near);
     match &event.rule {
         None => {
-            put(event.start.clone(), false, &mut out);
+            if !before(event.start.local()) && event.start.local() <= far {
+                put(event.start.clone(), false, &mut out);
+            }
         }
         Some(rule) => {
             let until = rule.until;
             let zone_of = event.start.clone();
+            // An UNTIL said as an instant, on the event's clock, less the
+            // spare: before it, no start is past it.
+            let until_near = match (until, &event.start) {
+                (Some(Until::Instant(secs)), When::Zoned(own)) => jiff::Timestamp::from_second(secs).ok().and_then(|t| t.to_zoned(own.time_zone().clone()).datetime().checked_sub(spare).ok()),
+                _ => None,
+            };
             let ended = |local: DateTime| match until {
                 Some(Until::Date(d)) => local.date() > d,
                 Some(Until::Local(u)) => local > u,
-                Some(Until::Instant(secs)) => zone_of.at(local).moment(viewer).timestamp().as_second() > secs,
+                // (Asked of the zone only near its end.)
+                Some(Until::Instant(secs)) => until_near.is_none_or(|u| local >= u) && zone_of.at(local).moment(viewer).timestamp().as_second() > secs,
                 None => false,
             };
-            for local in rule.starts(event.start.local(), ended) {
+            for local in rule.starts_from(event.start.local(), near, ended) {
+                if before(local) {
+                    continue;
+                }
+                if local > far {
+                    break;
+                }
                 let start = event.start.at(local);
                 if excluded(&start) {
                     // (Past the span: no need to go on.)

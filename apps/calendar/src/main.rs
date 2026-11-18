@@ -632,7 +632,21 @@ impl Calendar {
             return (wrong.join(" · "), true);
         }
         match self.standing.values().filter_map(|s| s.synced).min() {
-            Some(at) => (format!("Updated {}", olo_kit::ago::ago(at, olo_kit::ago::long)), false),
+            // (Said by the minute: a status that counts seconds draws a
+            // frame a second for a minute after every asking.)
+            Some(at) => (
+                format!(
+                    "Updated {}",
+                    olo_kit::ago::ago(at, |age| match age.as_secs() {
+                        s if s < 60 => "just now".into(),
+                        s if s < 120 => "a minute ago".into(),
+                        s if s < 3600 => format!("{} minutes ago", s / 60),
+                        s if s < 7200 => "an hour ago".into(),
+                        s => format!("{} hours ago", s / 3600),
+                    })
+                ),
+                false,
+            ),
             None => (String::new(), false),
         }
     }

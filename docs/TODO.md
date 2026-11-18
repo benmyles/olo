@@ -105,8 +105,8 @@ something nobody here has is in "Blocked", with what it waits for.
   end. Its own icon (a block calendar, in every set; Flat's its own
   drawing). **Next**: dragging an event to another time,
   Find, Undo of a deletion, invitations (who's coming, answering);
-  reminders, the Deskbar widget, the palette, the assistant; in-place
-  reload tried; its cost measured.
+  reminders, the Deskbar widget, the palette, the assistant. (Its cost
+  is measured and in-place reload tried: HACKING.md, "Calendar".)
   **Not tried against Google's and Fastmail's real servers**: that
   needs Ben's accounts. **For Ben, to try**: Preferences ▸ Integrations
   ▸ Calendars ▸ Add an Account… (for Google, first turn on the CalDAV

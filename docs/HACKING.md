@@ -20598,7 +20598,10 @@ stands on, each part tested by itself (`cargo test -p olo-calendar`):
   nothing else, so what Olo doesn't know of an event (a server's own
   lines, who's invited) survives its changing one. Never build an
   event's text from scratch when there's one to change.
-- **`rrule`**: `Rule::parse`/`write`, and `Rule::starts(start, ended)`:
+- **`rrule`**: `Rule::parse`/`write`, and `Rule::starts(start, ended)`
+  (`starts_from(start, not_before, ended)` for whoever wants only those
+  from a day on: the event's first start, then from a period before
+  that day; a rule with COUNT is counted from the first all the same):
   the starts on the event's own clock (civil time, so 09:00 stays 09:00
   through a change of the clocks). DAILY to YEARLY, INTERVAL, COUNT,
   UNTIL, BYDAY ("the 2nd", "the last"), BYMONTHDAY, BYMONTH, BYSETPOS,
@@ -20772,6 +20775,25 @@ things stand with the servers.
   `refresh` (⌘R), `sidebar`, `week-start:N`, `go:2026-11-20`,
   `show:NAME` / `hide:NAME`, `new-event` (⌘N), `new-event:
   2026-11-20T14:00`, `edit-event` (⌘E), `delete-event` (⌘⌫).
+
+**Measured** (release, the demo, a 2× headless screen, `tools/dev/cost`):
+at rest in every view, 0 frames, 0.0% of a core, no wakeups (its
+status is said by the minute: "Updated 12 s ago" drew a frame a second
+for a minute after each asking, and the hours' line for now is drawn
+again once a minute by itself). Stepping through months, a frame of
+0.71 ms (the slowest 0.98); through weeks, 0.77 (1.07); the four views
+in turn, 0.99 (1.5); the hours scrolled, 0.22 (0.48), on the display
+thread. Against a frame's 8.3 ms. Off the window's thread: a calendar
+of 2,500 events read in 9 ms, and the occurrences of 10,000 events (a
+third of them weekly since 2019) for a week worked out in 7 ms, for a
+month and as much either side (60,000 occurrences) in 47 ms
+(`model::tests::shown_cost`, `--ignored --nocapture`). That was 145 ms
+and 166 ms until `event::occurrences` passed over what can't touch the
+span without asking a time zone anything, and a rule began near the
+span (`Rule::starts_from`: not every week since the event began).
+It comes back after the window server restarts under it, and after its
+program is replaced (it re-executes; the same view on the same days:
+`save_state`), both tried (`tsession reload`).
 
 Checked in a test session at 1×, 1.25×, 1.5×, 1.75× and 2×, light and
 dark, each view and the event's window: the layout review finds

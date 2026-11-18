@@ -227,7 +227,32 @@ impl Rule {
     /// whether a start is past the rule's UNTIL, which only the caller
     /// can say of an instant.
     pub fn starts<'a>(&'a self, start: DateTime, ended: impl Fn(DateTime) -> bool + 'a) -> impl Iterator<Item = DateTime> + 'a {
-        let mut period = 0u32;
+        self.starts_from(start, start, ended)
+    }
+
+    /// [`Rule::starts`] for someone who wants only those from
+    /// `not_before` on: `start` itself first, as ever, then from a period
+    /// or so before `not_before` (not every week since the event began,
+    /// to show this one: a weekly event of 2019 was four hundred steps
+    /// to this week). A rule that counts its starts (COUNT) is counted
+    /// from the first, as it must be.
+    pub fn starts_from<'a>(&'a self, start: DateTime, not_before: DateTime, ended: impl Fn(DateTime) -> bool + 'a) -> impl Iterator<Item = DateTime> + 'a {
+        let skipped = if self.count.is_some() || not_before <= start {
+            0
+        } else {
+            let days = not_before.date().since(start.date()).map(|s| s.get_days() as i64).unwrap_or(0);
+            let months = (not_before.year() as i64 * 12 + not_before.month() as i64) - (start.year() as i64 * 12 + start.month() as i64);
+            let interval = self.interval.max(1) as i64;
+            let periods = match self.freq {
+                Freq::Daily => days / interval,
+                Freq::Weekly => days / (7 * interval),
+                Freq::Monthly => months / interval,
+                Freq::Yearly => months / (12 * interval),
+            };
+            // (One before, so that the period holding `not_before` is whole.)
+            u32::try_from((periods - 1).max(0)).unwrap_or(0)
+        };
+        let mut period = skipped;
         let mut pending: std::collections::VecDeque<DateTime> = std::collections::VecDeque::new();
         let mut given = 0u32;
         let mut first = true;
@@ -485,6 +510,39 @@ mod tests {
     }
 
     /// What calendars' editors make of the plain cases, and their corners.
+    /// Begun near a later day, a rule gives the starts it gives from its
+    /// first, less those before: the event's own start first, then
+    /// everything from that day on, nothing missed at the join.
+    #[test]
+    fn begun_near_a_later_day_nothing_is_missed() {
+        let start = civil("20190305T093000").unwrap();
+        for rule in [
+            "FREQ=DAILY",
+            "FREQ=DAILY;INTERVAL=3",
+            "FREQ=WEEKLY",
+            "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,TU,FR",
+            "FREQ=WEEKLY;BYDAY=SU;WKST=SU",
+            "FREQ=MONTHLY",
+            "FREQ=MONTHLY;BYDAY=-1FR",
+            "FREQ=MONTHLY;INTERVAL=5;BYMONTHDAY=31",
+            "FREQ=YEARLY",
+            "FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=29",
+            "FREQ=YEARLY;INTERVAL=3;BYDAY=20MO",
+        ] {
+            let r = Rule::parse(rule).unwrap();
+            for from in ["20190101T000000", "20190305T093000", "20190306T000000", "20240229T120000", "20261116T000000", "20261231T235959"] {
+                let from = civil(from).unwrap();
+                let until = from.checked_add(jiff::Span::new().days(800)).unwrap();
+                let all: Vec<DateTime> = r.starts(start, |_| false).take_while(|d| *d < until).filter(|d| *d == start || *d >= from).collect();
+                let near: Vec<DateTime> = r.starts_from(start, from, |_| false).take_while(|d| *d < until).filter(|d| *d == start || *d >= from).collect();
+                assert_eq!(near, all, "{rule} from {from}");
+            }
+        }
+        // One that counts its starts is counted from the first.
+        let r = Rule::parse("FREQ=WEEKLY;COUNT=5").unwrap();
+        assert_eq!(r.starts_from(start, civil("20190320T000000").unwrap(), |_| false).count(), 5);
+    }
+
     #[test]
     fn plain_rules_and_their_corners() {
         // Monthly on the 31st: only the months that have one.
