@@ -707,6 +707,7 @@ pub fn scan(roots: &Roots) -> Report {
     swappiness(roots, &mut r);
     swap_size(roots, &gpus, &mut r);
     tcp_bbr3(roots, &mut r);
+    ec_storm(roots, &mut r);
     kernel_settings(roots, &mut r);
     intel_video(roots, &gpus, &mut r);
     builtin_sound(roots, &gpus, &mut r);
@@ -3049,6 +3050,16 @@ pub(crate) fn bbr3_steps(roots: &Roots) -> Vec<Step> {
     steps
 }
 
+/// The laptop's embedded controller is flooding the kernel with events,
+/// as the supervisor measures it (`olo_system::ec_storm`; its file,
+/// there while it lasts): said, with what it holds up and what clears
+/// it. Nothing here mends it: only a full power-off does.
+fn ec_storm(roots: &Roots, r: &mut Report) {
+    use olo_protocol::performance::EcStorm;
+    let Some(storm) = EcStorm::load(&EcStorm::path_under(&roots.temp.runtime)) else { return };
+    r.findings.push(Finding { id: "ec-storm".into(), severity: Severity::Critical, title: EcStorm::title().into(), detail: storm.detail(), fix: None });
+}
+
 /// BBRv3 as TCP's congestion control, offered (Ben, 2026-11-16: "i also
 /// want olo doctor to offer to set the tcp congestion control algo to
 /// BBRv3 if it's not. if BBRv3 is not shipped with fedora then vendor
@@ -4378,6 +4389,28 @@ mod tests {
             kernels_bbr: None,
         };
         (fs, roots)
+    }
+
+    /// The embedded controller flooding the kernel is said while the
+    /// supervisor's file says it lasts, with what it holds up and what
+    /// clears it; and not otherwise.
+    #[test]
+    fn an_ec_storm_is_said_while_it_lasts() {
+        use olo_protocol::performance::EcStorm;
+        let (fs, mut roots) = machine("ec-storm");
+        roots.temp.runtime = fs.join("run/user/1000");
+        let found = |roots: &Roots| scan(roots).findings.into_iter().find(|f| f.id == "ec-storm");
+        assert!(found(&roots).is_none());
+        let file = EcStorm::path_under(&roots.temp.runtime);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(&file, serde_json::to_vec(&EcStorm { since: 1, events_per_second: 46.2, waiting: 352 }).unwrap()).unwrap();
+        let f = found(&roots).expect("said");
+        assert_eq!((f.severity, f.fix.is_none()), (Severity::Critical, true));
+        assert!(f.detail.contains("46 power events a second") && f.detail.contains("352 are waiting") && f.detail.contains("Shutting down fully"), "{}", f.detail);
+        std::fs::remove_file(&file).unwrap();
+        assert!(found(&roots).is_none(), "over");
+        std::fs::write(&file, "not json").unwrap();
+        assert!(found(&roots).is_none());
     }
 
     /// Realtime: without the account's leave, Allow Realtime (the account

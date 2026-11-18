@@ -15316,6 +15316,48 @@ the folder's change time, `Owners`; each file in one read) and:
   Stop Process (TERM, then KILL after 3 s). Not asked again after an
   upgrade.
 
+**The embedded controller, watched** (`ecwatch.rs`,
+`olo_system::ec_storm`; always on, whatever Performance says: it isn't
+about the person's programs). Ben, 2026-11-17, his brightness keys dead
+for two hours and the battery running down on its charger: "add
+something to olo's supervisor to do this if an unsustainable backlog
+builds up". A laptop's embedded controller tells the kernel of each
+thing that happens to it with an interrupt, and the kernel queues a
+handler for each without limit; a controller repeating itself (a
+ThinkPad P1 Gen 9's: its charger coming and going 23 times a second)
+fills that queue faster than its handlers run, and the keys' and the
+ports' handlers wait behind (AGENT-NOTES, "The embedded controller's
+event storm"). From outside the kernel a storm is two things at once,
+neither alone: the ACPI interrupt held at 8 a second or more
+(`interrupts`, the `acpi` line of `/proc/interrupts`; the P1's: 46) and
+workers of the EC's query queue standing blocked (`waiting`:
+`kworker/…+kec_query` in state D, six or more; a key or the lid: one,
+for a moment). `judge` takes two readings four seconds apart.
+Measuring means reading every process's `stat`, so it's done only with
+reason: `follow` sleeps until UPower says the power supply changed
+(its `PropertiesChanged`, any of its objects), and looks only when that
+has happened ten times in fifteen seconds (`Watch`: a charger plugged
+in makes a handful, a battery in use one every half minute); a look
+that finds nothing rests two minutes. In a storm it looks every twenty
+seconds, and three looks without one end it. At rest the supervisor,
+this included, is at 0.0% of a core and 0 wakeups a second (20 s, a
+test session).
+
+A storm found, the supervisor says so: a notification that stays
+("The laptop's controller is flooding the system": what may stop
+working, and that a full shut-down clears it; its click opens Olo
+Doctor), and `$XDG_RUNTIME_DIR/olo-state/ec-storm.json`
+(`performance::EcStorm`: since when, events a second, handlers
+waiting) for as long as it lasts, which Olo Doctor reads as a Critical
+finding with the whole account (`checks::ec_storm`). Over, the file
+goes and the notification closes. It says, and mends nothing: dropping
+the stale events takes a kernel module (docs/TODO.md).
+`OLO_EC_STORM_DEMO=SECONDS olo-supervisor` says a made-up one for that
+long, to see it; in a test session give it a runtime folder of its own
+(`XDG_RUNTIME_DIR=/var/tmp/… WAYLAND_DISPLAY=/run/user/UID/wayland-N`,
+the display by its whole path), or the person's own Olo Doctor reads
+the file: test sessions share `/run/user/UID`.
+
 It publishes what it does in `$XDG_RUNTIME_DIR/olo-supervisor.json`
 (`SupervisorState`: on, its pid, what it favours, findings, what it
 lowered and why, the last 50 things it did, memory); a state whose

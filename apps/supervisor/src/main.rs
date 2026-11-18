@@ -21,6 +21,7 @@
 //! ends).
 
 mod detect;
+mod ecwatch;
 mod priority;
 mod sample;
 
@@ -715,6 +716,7 @@ fn main() -> std::process::ExitCode {
     olo_kit::run(APP_ID, move |app| {
         olo_kit::stay_resident();
         instance::listen(APP_ID, olo_kit::proxy());
+        ecwatch::start();
         let settings = Arc::new(Mutex::new(PerformanceSettings::load()));
         let focus = Arc::new(Mutex::new(None));
         let wake = Arc::new((Mutex::new(false), olo_sync::Condvar::new()));

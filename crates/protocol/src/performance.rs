@@ -356,6 +356,56 @@ pub struct SupervisorState {
     pub memory_stall: f32,
 }
 
+/// The laptop's embedded controller is flooding the kernel with events
+/// (`olo_system::ec_storm`): the supervisor's measure of it, in a file
+/// there while it lasts (`EcStorm::path`) for Olo Doctor and whoever
+/// else wants to say so.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EcStorm {
+    /// When it was found (seconds since the epoch).
+    pub since: u64,
+    /// ACPI interrupts a second.
+    pub events_per_second: f32,
+    /// Handlers standing blocked in the kernel.
+    pub waiting: u32,
+}
+
+impl EcStorm {
+    /// Under `runtime` (the runtime folder: `XDG_RUNTIME_DIR`).
+    pub fn path_under(runtime: &std::path::Path) -> std::path::PathBuf {
+        runtime.join("olo-state").join("ec-storm.json")
+    }
+
+    pub fn path() -> std::path::PathBuf {
+        Self::path_under(&std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir))
+    }
+
+    /// The storm going on, if the file at `path` says one is.
+    pub fn load(path: &std::path::Path) -> Option<EcStorm> {
+        serde_json::from_slice(&std::fs::read(path).ok()?).ok()
+    }
+
+    /// In words, for a notification and for Olo Doctor: what is
+    /// happening, what it holds up, and what clears it.
+    pub fn title() -> &'static str {
+        "The laptop’s controller is flooding the system"
+    }
+
+    /// The few words a notification has room for: what to expect, and
+    /// what clears it.
+    pub fn summary() -> &'static str {
+        "The brightness keys and charging may stop working until the computer is shut down fully and started again. Olo Doctor says more."
+    }
+
+    pub fn detail(&self) -> String {
+        format!(
+            "Its embedded controller is reporting about {} power events a second, faster than they can be handled: {} are waiting. Until it stops, the brightness and other top-row keys and news of the charger and the USB-C ports wait behind them, and the battery may not charge though a charger is in. Shutting down fully and starting again clears it (a restart may not); plug the charger in while the computer is off.",
+            self.events_per_second.round() as u32,
+            self.waiting
+        )
+    }
+}
+
 impl SupervisorState {
     pub fn path() -> std::path::PathBuf {
         let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);

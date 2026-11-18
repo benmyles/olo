@@ -1,0 +1,24 @@
+#!/usr/bin/env bpftrace
+// Who removes build units from a cargo target folder (docs/AGENT-NOTES.md,
+// "Dependency build units vanish"): every rmdir of a folder two levels
+// under a `build` folder (target/PROFILE/build/CRATE/HASH, and what
+// kache stages aside beside it), and of a CRATE folder itself, with the
+// process that did it and its parent. Run as root and leave it running
+// until it happens again:
+//
+//   sudo tools/dev/unit-watch >> /var/tmp/NAME/rmdir.log
+//
+// One line a removal: when, pid, comm, the parent's pid and comm, and
+// the folder (PROFILE/build/CRATE/HASH). Nothing is printed while
+// nothing is removed; the probe costs a few hundred nanoseconds a rmdir.
+kprobe:vfs_rmdir
+{
+  $d = (struct dentry *)arg2;
+  $p = $d->d_parent;
+  $gp = $p->d_parent;
+  if (str($gp->d_name.name) == "build" || str($p->d_name.name) == "build") {
+    printf("%s rmdir pid=%d comm=%s ppid=%d pcomm=%s %s/%s/%s/%s\n", strftime("%m-%d %H:%M:%S", nsecs), pid, comm,
+      curtask->real_parent->tgid, curtask->real_parent->comm,
+      str($gp->d_parent->d_name.name), str($gp->d_name.name), str($p->d_name.name), str($d->d_name.name));
+  }
+}

@@ -18,6 +18,7 @@ pub mod cpu_tuning;
 pub mod dconf;
 pub mod disks;
 pub mod dnf;
+pub mod ec_storm;
 pub mod edid;
 pub mod env;
 pub mod face;

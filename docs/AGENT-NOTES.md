@@ -611,6 +611,15 @@ Each note: what to do, then why (what happened), then how to apply it.
   (`olo_ec_storm.c`, tried live with Ben's word: keys back in ten
   seconds) were in /var/tmp/claude-blueferry/{keys,ecstorm}, scratch:
   what matters of them is here and in docs/TODO.md.
+- **Test sessions share the person's runtime folder** (`/run/user/UID`):
+  a program that writes a machine-wide file there (the supervisor's
+  `olo-state/ec-storm.json`, which the person's own Olo Doctor reads)
+  must be given one of its own when tried: `tsession run NAME env
+  XDG_RUNTIME_DIR=/var/tmp/DIR WAYLAND_DISPLAY=/run/user/UID/wayland-N
+  PROGRAM` (the display by its whole path, so it's still found; its
+  notifications still go to the session's own bus). To find such a
+  program again, look in `/proc/PID/environ` for the folder: started
+  through `env`, `ps`'s command line doesn't show Olo's path.
 - **Dependency build units vanish from `target/release` now and then
   (not explained yet).** 2026-11-18 00:37: a `cargo build --release
   --workspace` that had passed nine minutes before failed to link
@@ -628,5 +637,21 @@ Each note: what to do, then why (what happened), then how to apply it.
   has 944 GB free, and a unit armed as kache arms it does show a no-op
   build's read). Still to find: what removes them (kache's fork is
   `~/src/kache`, branch `olo`: `unit_prune.rs`, `target_cleanup.rs`,
-  `target_liveness.rs`), by watching `target/release/build` for
-  removals (an inotify or audit watch that names the process).
+  `target_liveness.rs`). `tools/dev/unit-watch` (bpftrace, as root)
+  names whoever removes a unit folder, one line a removal with its pid,
+  program and parent: leave it running into a log until it happens
+  again (`sudo tools/dev/unit-watch >> /var/tmp/NAME/rmdir.log`; it
+  showed a folder removed by hand at once). What kache's own log adds
+  (`~/.cache/kache/kache.log`, in UTC): three minutes before the links
+  failed, a build's wrapper found the store over its limit and ran its
+  sweep ("store … over the automatic trigger … running LRU eviction",
+  08:34:17Z; "auto-gc: store at 356866656428 after the sweep,
+  125790266679 of it held by target directories that no sweep can
+  free", 08:34:20Z), and nothing is logged of units. kache's unit
+  pruning (`unit_prune::prune`, or `target_liveness::prune` where that
+  is on) removes units no build read for `auto_clean_unused_units_days`
+  (30 by default), a day on a volume under its free-space floor, with
+  Cargo's locks held: a build that only needed a third-party unit to be
+  fresh reads its fingerprint and nothing else, which is how those and
+  not Olo's own (written by the build) would be the ones to go. Not
+  shown yet.

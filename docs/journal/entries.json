@@ -4906,5 +4906,11 @@
   "title": "Notifications: an archive",
   "caption": "What leaves the list (faded away, dismissed, cleared, forgotten) now goes to an archive, kept for 30 days. The link at the status bar's right, Archived (2), shows it, and Notifications (5) there goes back; so does View \u25b8 Archived. Rows there open what they were about or are deleted; Empty Archive and Undo.",
   "image": "2026-11-18/100401-notifications-an-archive.png"
+ },
+ {
+  "time": "2026-11-18T10:17:40",
+  "title": "The supervisor says when the laptop's controller floods the system",
+  "caption": "When the embedded controller reports the same power event over and over (as a ThinkPad P1's did for two hours), the supervisor now notices within seconds and says so in a notification that stays, and Olo Doctor has the whole account as a Critical finding. Shown here with a made-up storm.",
+  "image": "2026-11-18/101740-the-supervisor-says-when-the-laptop-s-controller.png"
  }
 ]

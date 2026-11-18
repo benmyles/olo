@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### The supervisor says when the laptop's controller floods the system
+
+*10:17* — When the embedded controller reports the same power event over and over (as a ThinkPad P1's did for two hours), the supervisor now notices within seconds and says so in a notification that stays, and Olo Doctor has the whole account as a Critical finding. Shown here with a made-up storm.
+
+![The supervisor says when the laptop's controller floods the system](2026-11-18/101740-the-supervisor-says-when-the-laptop-s-controller.png)
+
 ### Notifications: an archive
 
 *10:04* — What leaves the list (faded away, dismissed, cleared, forgotten) now goes to an archive, kept for 30 days. The link at the status bar's right, Archived (2), shows it, and Notifications (5) there goes back; so does View ▸ Archived. Rows there open what they were about or are deleted; Empty Archive and Undo.

@@ -60,7 +60,11 @@ something nobody here has is in "Blocked", with what it waits for.
   build units vanish"). Not root-caused: the build was run again to
   keep going. Watch the folder for removals with something that names
   the process, catch it, and fix it there (kache's fork if it is
-  kache).
+  kache). **So far** (2026-11-18): `tools/dev/unit-watch` names whoever
+  removes a unit folder, and has to be running when it next happens
+  (twice in two days so far); kache's log shows its store sweep ran in
+  a build's wrapper three minutes before the loss, and nothing of
+  units (AGENT-NOTES has the rest).
 
 - **The embedded controller's event storm: Olo says so, and keeps the
   keys working** (Ben, 2026-11-17, of the two hours his brightness keys
@@ -72,10 +76,12 @@ something nobody here has is in "Blocked", with what it waits for.
   must be a bug somewhere"). What happened is in docs/AGENT-NOTES.md
   ("The embedded controller's event storm"). **Done**: the power
   follower no longer sets its plan at every flap (HACKING, "The supply
-  has to hold"). **Left**: (1) the supervisor watching for it (the
-  adapter flag flapping, `kec_query` workers piling up blocked, the
-  battery falling on a charger) and saying so within seconds, in a
-  notification and in Olo Doctor, with what to do; (2) the guard
+  has to hold"); the supervisor watches for it (the supply changing
+  over and over, then the ACPI interrupt held and `kec_query` workers
+  blocked) and says so within seconds, in a notification that stays
+  and as a Critical finding in Olo Doctor, with what clears it
+  (HACKING, "The embedded controller, watched"; seen with a made-up
+  storm, the real thing not since). **Left**: (2) the guard
   itself, as Olo's other kernel pieces are (kernel/, built for each
   kernel by a service, tried in a KVM guest first: `olo_ec_storm`, a
   limit on the EC's queued handlers so stale adapter events are dropped
@@ -92,6 +98,16 @@ something nobody here has is in "Blocked", with what it waits for.
   processing enabled"). Find what names the two AirPods sources as
   they are (which is the processed one, if either), and name it as the
   laptop's is.
+
+- **Deskbar: a button to fold it away to the right, and back** (Ben,
+  2026-11-18: "add a little icon button to the top right of the deskbar
+  to be able to collapse it (collapses to the right) and expand it and
+  when it collapses and expands the windows on the screen should
+  expand/collapse to fill the space too"). A small icon button at
+  Deskbar's top right folds it to a sliver at the screen's right edge
+  and unfolds it; the room it gives up or takes back is the windows'
+  (those tiled or zoomed fill it or make way, as when a screen's work
+  area changes), moving with it. Kept across a reload; for agents too.
 
 - **A Calendar app, native, with Google and Fastmail calendars** (Ben,
   2026-11-17: "build a beautiful olo native calendar app. add calendar
