@@ -6757,6 +6757,18 @@ with the colour's meaning kept:
   `Dot::notes`; two side by side before); Notifications' window lists
   both, each with its dot; Deskbar's Inbox widget (below) stacks both;
   the bell counts both (`History::unread`).
+* **The bell's count in a colour of one's own** (Ben, 2026-11-18: "in
+  prefs -> notifications add the ability to customize the color of the
+  notifications badge in the deskbar tray (the one with the bell)").
+  Preferences ▸ Notifications ▸ Deskbar ▸ "The bell's count in": the
+  look's own (its red) or one of the look's hues
+  (`NotificationSettings::badge`, an `Option<Hue>`; the service passes
+  it on in `NotificationState::badge`, which Deskbar already reads, so
+  it changes as it's chosen). `status::badge` writes the number in
+  white, as ever, or in near black where white would be lost on the
+  fill (a contrast under 2.6: yellow in any look, the lighter greens
+  and oranges of a dark one); the tray's other counts are as they
+  were.
 
 Deskbar hears the counts (it hosts the tray) and tells the notification
 service, which owns the list: `Attention::path`

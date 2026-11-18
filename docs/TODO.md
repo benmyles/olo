@@ -101,11 +101,6 @@ something nobody here has is in "Blocked", with what it waits for.
   shown when asked for, searchable as the list is, with a limit on how
   long and how many.
 
-- **Preferences ▸ Notifications: the colour of the bell's badge** (Ben,
-  2026-11-18: "in prefs -> notifications add the ability to customize
-  the color of the notifications badge in the deskbar tray (the one
-  with the bell)"). One of the look's hues, or the look's own.
-
 - **A Calendar app, native, with Google and Fastmail calendars** (Ben,
   2026-11-17: "build a beautiful olo native calendar app. add calendar
   support to prefs -> integrations and support any number of google
@@ -174,6 +169,12 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **The bell's count in a colour of your own** (Ben, 2026-11-18: "in
+  prefs -> notifications add the ability to customize the color of the
+  notifications badge in the deskbar tray (the one with the bell)").
+  Preferences ▸ Notifications ▸ Deskbar ▸ "The bell's count in": the
+  look's own, or any of its ten hues; it changes as you choose.
 
 - **A notification is read by going to what it is about** (Ben,
   2026-11-18: "what matters is i went to the app's window or tab that

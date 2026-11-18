@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### The bell's count in a colour of your own
+
+*09:47* — Preferences ▸ Notifications ▸ Deskbar ▸ The bell's count in: the look's own red, or any of the look's hues (here blue, yellow, green, purple, grey and orange, in a light and a dark look). The number is white, or near black where white would be lost.
+
+![The bell's count in a colour of your own](2026-11-18/094734-the-bell-s-count-in-a-colour-of-your-own.png)
+
 ### Deskbar: dividers among the widgets
 
 *09:26* — A new kind of widget that shows nothing of the computer: room, a line or a heading, to set groups of widgets apart. Here a heading with an etched line, a thin line, a dotted one edge to edge, a short row of dots, a heading in a hue with a thick line, and room alone. Preferences ▸ Deskbar ▸ Add ▸ Divider.

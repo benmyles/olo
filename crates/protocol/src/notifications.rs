@@ -49,6 +49,12 @@ pub struct NotificationSettings {
     /// and text is still active (a banner up, or unread in the history)
     /// takes its place: the earlier one goes.
     pub one_of_each: bool,
+    /// The colour of the count on Deskbar's bell (None: the look's own,
+    /// its red). Ben, 2026-11-18: "add the ability to customize the
+    /// color of the notifications badge in the deskbar tray (the one
+    /// with the bell)".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub badge: Option<olo_theme::Hue>,
 }
 
 /// The History window's views (its View menu).
@@ -79,6 +85,7 @@ impl Default for NotificationSettings {
             fade: true,
             fade_minutes: 60,
             one_of_each: true,
+            badge: None,
         }
     }
 }
@@ -331,6 +338,9 @@ pub struct NotificationState {
     /// How the history fades (minutes; None: it doesn't), so each dot
     /// drains as its app's notifications fade.
     pub fade_minutes: Option<u32>,
+    /// The colour of the bell's count (`NotificationSettings::badge`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub badge: Option<olo_theme::Hue>,
 }
 
 /// One thing to deal with, as Deskbar's Inbox widget shows it: a
@@ -427,6 +437,21 @@ impl NotificationState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The bell's count is the look's own colour until a hue is chosen,
+    /// and settings from before it read as they were.
+    #[test]
+    fn the_bells_count_in_a_hue() {
+        let s: NotificationSettings = serde_json::from_str("{}").unwrap();
+        assert_eq!(s.badge, None);
+        assert!(!serde_json::to_string(&s).unwrap().contains("badge"), "nothing written while it's the look's own");
+        let s: NotificationSettings = serde_json::from_str(r#"{"badge": "teal"}"#).unwrap();
+        assert_eq!(s.badge, Some(olo_theme::Hue::Teal));
+        let state = NotificationState { unread: 2, badge: s.badge, ..Default::default() };
+        let back: NotificationState = serde_json::from_str(&serde_json::to_string(&state).unwrap()).unwrap();
+        assert_eq!(back.badge, Some(olo_theme::Hue::Teal));
+        assert_eq!(serde_json::from_str::<NotificationState>(r#"{"unread": 1}"#).unwrap().badge, None);
+    }
 
     #[test]
     fn do_not_disturb() {

@@ -223,6 +223,12 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     });
     ui.bbox("Deskbar", |ui| {
         ui.note(if s.fade { "An app's dot drains as its notifications fade." } else { "An app with notifications unread has a dot beside its name." });
+        // The count on the tray's bell: the look's own red, or a hue.
+        let hues = olo_theme::Hue::ALL;
+        let names: Vec<SharedString> = std::iter::once("The look's own").chain(hues.iter().map(|h| h.name())).map(SharedString::from).collect();
+        let at = s.badge.and_then(|b| hues.iter().position(|h| *h == b)).map_or(0, |i| i + 1);
+        let on = set(ui, move |s, i: usize| s.badge = i.checked_sub(1).and_then(|i| hues.get(i).copied()));
+        ui.add(MenuField::new("bell-badge", names, at).label("The bell's count in:").divider(170.0).on_change(on));
     });
     apps_ui(ui, st, &s);
 }
@@ -325,7 +331,9 @@ fn apps_ui(ui: &mut Ui, st: &mut State, s: &NotificationSettings) {
     // All of them at once: each column checked if every app's is, mixed
     // if some are; a click sets the column for every app.
     let all: Vec<[bool; 3]> = apps.iter().map(|a| columns(&s.app(a))).collect();
-    let mut row = div().flex().flex_row().items_center().h(px(m::LIST_ROW)).pl(px(6.0)).child(div().flex_1().child(StringView::new("All Apps").bold(true)));
+    // (In by the view's frame too, as its marks are at the right: its name
+    // over the apps' names. It was two points left of them.)
+    let mut row = div().flex().flex_row().items_center().h(px(m::LIST_ROW)).pl(px(2.0 + 6.0)).child(div().flex_1().child(StringView::new("All Apps").bold(true)));
     for k in 0..NAMES.len() {
         let on = all.iter().filter(|a| a[k]).count();
         let names = apps.clone();

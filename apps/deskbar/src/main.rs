@@ -3409,8 +3409,8 @@ impl Deskbar {
                 (false, 1) => "1 new notification".to_string(),
                 (false, u) => format!("{u} new notifications"),
             };
-            let (unread, quiet) = (n.unread, n.quiet);
-            let (r, h) = tray_item(&mut d, "notifications", tip_text, Box::new(move |g, r| status::draw_bell(g, r, &theme::palette(), unread, quiet)));
+            let (unread, quiet, hue) = (n.unread, n.quiet, n.badge);
+            let (r, h) = tray_item(&mut d, "notifications", tip_text, Box::new(move |g, r| status::draw_bell(g, r, &theme::palette(), unread, quiet, hue)));
             let (m, v) = (model.clone(), view.clone());
             d.hits.push(h.on_any_button(move |e, cx| match button(e) {
                 MouseButton::Left | MouseButton::Right => {

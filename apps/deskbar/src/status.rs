@@ -817,9 +817,9 @@ pub fn draw_upgrade(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, done: Optio
     }
 }
 
-/// A bell, with a count of unread notifications; struck through and dim
-/// while Do Not Disturb is on.
-pub fn draw_bell(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, unread: u32, quiet: bool) {
+/// A bell, with a count of unread notifications (in `badge_hue`, or the
+/// look's red); struck through and dim while Do Not Disturb is on.
+pub fn draw_bell(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, unread: u32, quiet: bool, badge_hue: Option<olo_kit::palette::Hue>) {
     let color = if quiet { dim(p) } else { ink(p) };
     let cx = f32::from(r.center().x) - 0.5;
     // The body: a dome widening to a lip.
@@ -843,12 +843,12 @@ pub fn draw_bell(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, unread: u32, q
         g.paint_segment(a, b, px(1.4), false, ink(p));
     }
     if unread > 0 {
-        badge(g, r, p, unread as usize, c(p.failure));
+        badge(g, r, p, unread as usize, badge_hue.map_or(p.failure, |h| p.hue(h)));
     }
 }
 
 /// A count in a pill on a glyph's top-right corner.
-fn badge(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, n: usize, fill: Hsla) {
+fn badge(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, n: usize, fill: olo_kit::palette::Rgba) {
     let text = if n > 99 { "99+".to_string() } else { n.to_string() };
     let font = style::ui_font(FontWeight::BOLD);
     let w = (f32::from(style::text_width(text.clone(), 8.5, font.clone())) + 4.0).max(10.0);
@@ -857,8 +857,12 @@ fn badge(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, n: usize, fill: Hsla) 
     let ring = style::hairline(g);
     let outer = Bounds::from_corners(point(b.left() - ring, b.top() - ring), point(b.right() + ring, b.bottom() + ring));
     round_rect(g, outer, 5.0 + f32::from(ring), c(p.panel_background));
-    round_rect(g, b, 5.0, fill);
-    style::label(g, b.center().x, b.center().y, style::Align::Center, text, 8.5, font, olo_kit::white());
+    round_rect(g, b, 5.0, c(fill));
+    // White, as ever; near black only where white would be lost on the
+    // fill (a hue a person may choose for the bell's count: yellow above
+    // all, and the lighter greens and oranges of a dark look).
+    let on = if olo_kit::palette::contrast(fill, [255, 255, 255, 255]) < 2.6 { olo_kit::black().opacity(0.85) } else { olo_kit::white() };
+    style::label(g, b.center().x, b.center().y, style::Align::Center, text, 8.5, font, on);
 }
 
 /// A monitor: its screen (`fill` behind a hairline), on a stand on
@@ -886,7 +890,7 @@ pub fn draw_screens(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, count: usiz
     polygon(g, &[(x, y), (x, y + 5.5), (x + 4.2, y + 4.2)], ink(p));
     g.paint_segment(pt(x + 1.8, y + 4.0), pt(x + 3.4, y + 6.6), px(1.3), false, ink(p));
     if count > 1 {
-        badge(g, r, p, count, c(p.keyboard_navigation));
+        badge(g, r, p, count, p.keyboard_navigation);
     }
 }
 
@@ -912,7 +916,7 @@ pub fn draw_gauge(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, on: bool, fin
     g.paint_segment(pt(centre.0, centre.1), pt(tip.0, tip.1), px(1.4), false, line);
     disc(g, centre, 1.4, line);
     if on && findings > 0 {
-        badge(g, r, p, findings, c(if urgent { p.failure } else { p.warning }));
+        badge(g, r, p, findings, if urgent { p.failure } else { p.warning });
     }
 }
 
@@ -973,7 +977,7 @@ pub fn draw_airplay(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, paused: boo
         polygon(g, &[at(side, above), at(side, above + high), at(side + across, above + high / 2.0)], ink(p));
     }
     if count > 1 {
-        badge(g, r, p, count, c(p.success));
+        badge(g, r, p, count, p.success);
     }
 }
 

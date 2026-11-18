@@ -230,6 +230,7 @@ impl Notifications {
             apps: self.history.unread_apps(),
             cards: self.history.inbox(|e| named_icons(e.icon.as_deref(), e.desktop_entry.as_deref(), &e.app), self.settings.fade.then_some(self.settings.fade_minutes)),
             fade_minutes: self.settings.fade.then_some(self.settings.fade_minutes),
+            badge: self.settings.badge,
         };
         if self.told.as_ref() != Some(&state) {
             olo_kit::store::save_bytes(NotificationState::path(), serde_json::to_vec(&state).unwrap_or_default());
