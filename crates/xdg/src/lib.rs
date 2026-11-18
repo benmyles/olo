@@ -1,7 +1,8 @@
 //! Freedesktop plumbing shared by app_server and the kit (which re-exports
 //! it): Olo's data directories, `.desktop` entries, and icon lookup
-//! (Olo's own pre-scaled set in the current [`themes`] theme first, then
-//! freedesktop icon themes) and decoding.
+//! (Olo's own set in the current [`themes`] theme first: an icon's
+//! drawing, `svg/NAME.svg`, rendered for the size asked ([`svg`]), else
+//! its pre-scaled pictures; then freedesktop icon themes) and decoding.
 
 use std::{
     path::{Path, PathBuf},
@@ -19,6 +20,7 @@ pub mod realtime;
 pub mod scope;
 pub mod session;
 pub mod settings;
+pub mod svg;
 pub mod themes;
 pub mod trash;
 pub mod wallpapers;
@@ -101,8 +103,14 @@ pub fn find_icon_in(theme: &str, name: &str, px: u32) -> Option<PathBuf> {
         let p = PathBuf::from(name);
         return p.is_file().then_some(p);
     }
-    // Ours: the smallest pre-scaled size at least as large as needed.
+    // Ours: its drawing, rendered for the size (a theme's own before the
+    // classic set's); else the smallest pre-scaled size at least as large
+    // as needed.
     for dir in themes::icon_dirs(theme) {
+        let drawn = dir.join("svg").join(format!("{name}.svg"));
+        if drawn.is_file() {
+            return Some(drawn);
+        }
         let sizes = OWN_SIZES.iter().filter(|&&s| s >= px).chain(OWN_SIZES.iter().rev().filter(|&&s| s < px));
         for s in sizes {
             let p = dir.join(s.to_string()).join(format!("{name}.png"));
@@ -185,7 +193,12 @@ pub fn load_icon(name: &str, px: u32) -> Option<Image> {
 /// As [`load_icon`], in theme `theme`.
 pub fn load_icon_in(theme: &str, name: &str, px: u32) -> Option<Image> {
     let path = find_icon_in(theme, name, px)?;
-    if path.extension().is_some_and(|e| e == "svg") { render_svg(&path, px) } else { decode_png(&path) }
+    if path.extension().is_some_and(|e| e == "svg") {
+        // (Olo's own drawings are drawn for the size, once: `svg::own`.)
+        if svg::is_own(&path) { svg::own(&path, px) } else { svg::render(&std::fs::read(&path).ok()?, px, false) }
+    } else {
+        decode_png(&path)
+    }
 }
 
 pub fn decode_png(path: &Path) -> Option<Image> {
@@ -207,18 +220,6 @@ pub fn decode_png(path: &Path) -> Option<Image> {
     Some(Image { width: w as u32, height: h as u32, rgba, premultiplied: false })
 }
 
-fn render_svg(path: &Path, px: u32) -> Option<Image> {
-    let data = std::fs::read(path).ok()?;
-    let tree = resvg::usvg::Tree::from_data(&data, &resvg::usvg::Options::default()).ok()?;
-    let size = tree.size();
-    let scale = px as f32 / size.width().max(size.height());
-    let mut pixmap = resvg::tiny_skia::Pixmap::new(px, px)?;
-    let dx = (px as f32 - size.width() * scale) / 2.0;
-    let dy = (px as f32 - size.height() * scale) / 2.0;
-    resvg::render(&tree, resvg::tiny_skia::Transform::from_row(scale, 0.0, 0.0, scale, dx, dy), &mut pixmap.as_mut());
-    Some(Image { width: px, height: px, rgba: pixmap.take(), premultiplied: true })
-}
-
 /// Whether Olo's own set (the Classic one, which every theme draws in
 /// full) has an icon named `name`: our own take on another program's
 /// (`google-chrome`, `slack`). Read once.
@@ -228,8 +229,10 @@ pub fn has_own_icon(name: &str) -> bool {
         .get_or_init(|| {
             let mut names = std::collections::HashSet::new();
             for dir in data_dirs() {
-                if let Ok(rd) = std::fs::read_dir(dir.join("icons/48")) {
-                    names.extend(rd.flatten().filter_map(|f| Some(f.path().file_stem()?.to_string_lossy().into_owned())));
+                for sub in ["icons/48", "icons/svg"] {
+                    if let Ok(rd) = std::fs::read_dir(dir.join(sub)) {
+                        names.extend(rd.flatten().filter_map(|f| Some(f.path().file_stem()?.to_string_lossy().into_owned())));
+                    }
                 }
             }
             names

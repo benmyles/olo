@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 64 64">
+<!-- Slack: a chunky white tile standing on the desk, Slack's mark embossed on its face. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}</style>
+<defs>
+<radialGradient id="shadow" cx="34" cy="60" r="27" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.2) scale(1 .13)"><stop offset="0" stop-opacity=".32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="tile"><path d="M7 18.5Q7 15 10.4 14.15L47.6 4.85Q51 4 54.13 5.57L54.5 5.75Q58 7.5 58 12L58 45Q58 49.5 53.63 50.59L18.37 59.41Q14 60.5 10.5 58.75L10.13 58.57Q7 57 7 53.5Z"/></clipPath>
+<linearGradient id="top" x1="20" y1="8" x2="40" y2="16" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fdfdfb"/><stop offset="1" stop-color="#ebe9e5"/></linearGradient>
+<linearGradient id="side" x1="10" y1="16" x2="11" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#cbcaca"/><stop offset="1" stop-color="#8c8b90"/></linearGradient>
+<linearGradient id="face" x1="18" y1="16" x2="54" y2="56" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f6f5f2"/><stop offset="1" stop-color="#e0deda"/></linearGradient>
+<linearGradient id="blue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#27adf7"/><stop offset="1" stop-color="#038eec"/></linearGradient>
+<linearGradient id="green" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3bcb73"/><stop offset="1" stop-color="#1dab55"/></linearGradient>
+<linearGradient id="yellow" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fdc722"/><stop offset="1" stop-color="#eda20a"/></linearGradient>
+<linearGradient id="red" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f4426a"/><stop offset="1" stop-color="#d91b46"/></linearGradient>
+<!-- Slack's mark, on its own 122.8 grid: a pill and a drop of each colour. -->
+<g id="mark">
+<path fill="url(#blue)" d="M12.9 32.3h32.3a12.9 12.9 0 0 1 0 25.8h-32.3a12.9 12.9 0 0 1 0-25.8zM45.2 25.8h-12.9v-12.9a12.9 12.9 0 1 1 12.9 12.9z" transform="translate(0 0)"/>
+<path fill="url(#green)" d="M64.7 12.9a12.9 12.9 0 0 1 25.8 0v32.3a12.9 12.9 0 0 1-25.8 0zM97 45.2v-12.9h12.9a12.9 12.9 0 1 1-12.9 12.9z"/>
+<path fill="url(#yellow)" d="M77.6 64.7h32.3a12.9 12.9 0 0 1 0 25.8h-32.3a12.9 12.9 0 0 1 0-25.8zM77.6 97h12.9v12.9a12.9 12.9 0 1 1-12.9-12.9z"/>
+<path fill="url(#red)" d="M32.3 77.6a12.9 12.9 0 0 1 25.8 0v32.3a12.9 12.9 0 0 1-25.8 0zM25.8 77.6v12.9h-12.9a12.9 12.9 0 1 1 12.9-12.9z"/>
+</g>
+</defs>
+<ellipse class="from48" cx="34" cy="60" rx="27" ry="3.5" fill="url(#shadow)"/>
+<path class="o" fill="#b3b2b4" d="M7 18.5Q7 15 10.4 14.15L47.6 4.85Q51 4 54.13 5.57L54.5 5.75Q58 7.5 58 12L58 45Q58 49.5 53.63 50.59L18.37 59.41Q14 60.5 10.5 58.75L10.13 58.57Q7 57 7 53.5Z"/>
+<g clip-path="url(#tile)">
+<path fill="url(#side)" d="M0 11.5L14 18.5L14 64L0 64Z"/>
+<path fill="url(#top)" d="M0 11.5L14 18.5L58 7.5L64 6L64 0L0 0Z"/>
+</g>
+<path fill="url(#face)" d="M14 23Q14 18.5 18.37 17.41L53.63 8.59Q58 7.5 58 12L58 45Q58 49.5 53.63 50.59L18.37 59.41Q14 60.5 14 56Z"/>
+<path class="from48" fill="none" stroke="#fff" stroke-opacity=".8" stroke-width=".6" stroke-linecap="round" d="M14.35 55.5L14.35 23Q14.35 18.85 18.45 17.75L53.6 8.95Q56.6 8.2 57.4 10.1"/>
+<!-- The mark, sheared with the face; a dark rim round each piece where there's room for one. -->
+<g class="from48" transform="matrix(.285 -.07125 0 .285 18.5 20.875)">
+<use xlink:href="#mark" href="#mark" stroke="#1b1b1f" stroke-width="4.6" stroke-linejoin="round"/>
+<use xlink:href="#mark" href="#mark"/>
+<g fill="none" stroke="#fff" stroke-opacity=".4" stroke-width="4.2" stroke-linecap="round"><path d="M14 39.5h30M71.6 14v30M79 71.6h30M39.4 79v30"/></g>
+</g>
+<!-- Small: the mark alone, larger on the face. -->
+<g class="upto32" transform="matrix(.32 -.08 0 .32 16.35 19.26)"><use xlink:href="#mark" href="#mark"/></g>
+</svg>

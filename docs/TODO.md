@@ -17,6 +17,38 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Every icon a hand-written SVG, perfect at every size** (Ben,
+  2026-11-17: "a lot of the icons right now look great when they're big
+  but have crappy small versions for e.g. the deskbar ... we need to fix
+  that so they look great at all sizes"; "we need to redo every single
+  icon so that they are consistent for all sizes and across all apps";
+  "this also includes the icons inside apps e.g. all the stylededit
+  button icons and such"; "make sure everything is also aimed a
+  consistent angle like either left or right but not a mix"; "at least a
+  512px version of every icon (if not larger)"; "i actually prefer the
+  current beos isometric style"; then, the model's small pictures, flat
+  drawings and pixel art all turned down ("they still suck", "all these
+  suck"): "i want the isometric but i want it to look right. here's
+  what to try: convert the large high quality one to an SVG and then
+  let's see if it looks better as an SVG and add SVG support to olo for
+  all icons/graphics"; "i want you to just manually look at each icon
+  and then write out a picture perfect SVG for each one"; "we also
+  still want to improve every icon to perfection as part of this -- they
+  must all be consistently angled, sized, styled etc. and fit the
+  respective theme"; "make sure the olo ring icon itself also gets
+  turned into an svg"). How: docs/ICONS.md, "Drawings". Done so far: the
+  loader draws `icons/svg/NAME.svg` for the size asked, kept once
+  rendered (`olo_xdg::svg`); the grid, the one projection, the outline
+  and size classes; `tools/dev/icontrace.py`; Terminal, Slack, Token
+  Pool, Passwords (Classic). To do: every other icon in the manifest
+  (143), Weather's skies (18), the phones (20) and the Olo ring, for
+  Classic; then Platinum's set in its own style; then the pictures
+  removed (`<px>/NAME.png`, `mkicons.py`, the model's tools), the icon
+  theme other programs get (app_server's `icon_theme.rs`: the drawings
+  as `scalable/`), Olo Setup's embedded icons (`apps/installer/build.rs`),
+  and the tests that count pictures (`themes.rs`). Ben is looking at the
+  first ones (`/var/tmp/claude-blueferry/icons/deskbar-svg.png`).
+
 - **Themes: one list (Classic, Platinum, BeOS and every scheme), each
   perfect, with icons of its own, Customize…, and a wallpaper of its
   own** (Ben, 2026-11-17: "the split between themes and colors doesn't

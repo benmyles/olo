@@ -10,6 +10,102 @@ differently from its neighbours is wrong.
 dark and night panel colours, at 64 px with the 16 px rendering beside
 each.*
 
+## Drawings (SVG)
+
+An icon is a drawing: `data/icons/svg/NAME.svg` (a theme's:
+`data/themes/ID/icons/svg/`), written by hand, one icon at a time, from
+looking at the icon (Ben, 2026-11-17: "convert the large high quality
+one to an SVG ... add SVG support to olo for all icons/graphics"; "i
+want you to just manually look at each icon and then write out a picture
+perfect SVG for each one"; "improve every icon to perfection as part of
+this -- they must all be consistently angled, sized, styled etc. and fit
+the respective theme"). Olo renders it for the size it's shown at
+(`olo_xdg::svg`, resvg, in process): 32 pixels are drawn as 32 pixels,
+not a 256-pixel picture shrunk, and 20 and 28 pixels (16 points at
+1.25× and 1.75×) are as exact as 16 and 32. An icon with a drawing uses
+it; one without still uses its pictures (`<px>/NAME.png`) until it's
+drawn. What was tried first and turned down, at true size: the model's
+picture shrunk better, a second picture drawn for small sizes, flat
+drawings, pixel art.
+
+**The grid.** `viewBox="0 0 64 64"`. The object, its outline included,
+keeps within 3 and 61 both ways (a pixel and a half at 32 pixels: room
+for its outline), and fills that square as its neighbours do. Its main
+verticals and corners are on whole units, even ones where it can be: a
+unit is half a pixel at 32 pixels and a pixel at 64.
+
+**The projection**, the same for every icon:
+
+- The front face is on the right and faces the lower right; the left
+  side shows on the left; the top shows above. Never mirrored.
+- Front edges (left to right along the front) rise **1 in 4**. Side
+  edges (front to back) rise **1 in 2** going left. Verticals are
+  vertical. Both slopes fall cleanly on pixels.
+- What's on the front face is drawn in the face's own plane, upright,
+  inside `<g transform="matrix(1 -.25 0 1 X Y)">` (X, Y the face's top
+  left corner): a rectangle there is the face.
+- A level circle (a lid, a coin lying flat) is an ellipse 0.36 as tall
+  as it is wide.
+- A thing whose own shape tapers or leans (a CRT's housing, a pen, a
+  key) keeps its shape, set on the same desk.
+- Light from the top left: the top lightest, the front next, the side
+  darkest; each face a soft gradient, lighter toward the top left.
+
+**Forms and outlines.** Each solid part is a form: a path of class `o`
+(its silhouette, filled with the form's darkest face, its outline
+`#1b1b1f`), then its faces over it, clipped to the silhouette
+(`<clipPath>` of the same path) so a face can be a plain polygon and
+the silhouette's rounded corners are everyone's. `o` strokes are
+painted under their fill (`paint-order:stroke`), so only the half
+outside shows and the fill's edge stays where it's drawn. Forms are
+drawn back to front; the nearer form's outline is the line between
+them. No lines between a form's own faces: their difference in
+lightness is the edge (and a thin light stroke along a lit edge, large
+only).
+
+**Drawn for its size.** The renderer injects a style sheet for the size
+(`svg::sheet`); a drawing uses its classes:
+
+| Class | What |
+|---|---|
+| `o` | A form's outline: a device pixel wide up to 100 pixels, then a hundredth of the size. |
+| `i` | A line inside a form: three fifths of that. |
+| `fromN` | Shown at N pixels and up: detail (`from48`: highlights, vents, rims, the contact shadow; `from96`: the finest). |
+| `uptoN` | Shown at N pixels and down: what stands in small (`upto32`: the mark alone and larger, a bolder prompt). |
+
+N is 16, 24, 32, 48, 64, 96, 128, 256 or 512. At 32 pixels and under an
+icon is its forms, their faces and the one thing that says what it is,
+drawn large; everything else is `from48`. The drawing's own `<style>`
+gives `o` a weight for programs that don't know the classes (a browser,
+GTK through Olo's icon theme), where it shows whole.
+
+**Kept once rendered.** Rendering costs 0.1 to 0.4 ms at 32 pixels and
+2 to 3 ms at 256 (measured: `svgicon --time`), so each size is rendered
+once and its pixels kept in `~/.cache/olo/icons` (`svg::own`): read
+back in 2 µs (7 at 256), less than decoding the PNG took (10 and 520).
+
+**Writing one.**
+
+```sh
+T=tools/dev/icontrace.py
+$T grid data/icons/256/NAME.png /var/tmp/…/g.png     # look at it on the grid
+$T outline data/icons/256/NAME.png                   # its silhouette, in grid units
+$T region data/icons/256/NAME.png 30,20              # one part's polygon and colour
+$T pick data/icons/256/NAME.png 30,20 12,40          # colours
+$T round 6,12.5,1.5 36,5,1.5 53,13.5,1.5 …           # a polygon's path, corners rounded
+cargo build --release -p olo-xdg --example svgicon
+$T compare data/icons/256/NAME.png data/icons/svg/NAME.svg /var/tmp/…/c.png
+```
+
+`compare` shows the picture and the drawing at 256 pixels, their
+difference, and both at 16 to 64 pixels at true size on the light and
+the dark panel, and as Deskbar shows one. Look at it there, at true
+size: it's the small sizes that have to be right. Then
+`cargo test -p olo-xdg svg` (every drawing is on the grid and renders).
+Improve as you draw: one projection, one outline, the same optical size
+as its neighbours, nothing that only reads large left to carry the
+small sizes.
+
 ## Style
 
 The look is classic BeOS (R5's Tracker and Deskbar icons), redrawn for

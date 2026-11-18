@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 64 64">
+<!-- Token Pool: a square blue glass jar with a silver screw lid, full of gold coins; two more stacked in front. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}</style>
+<defs>
+<radialGradient id="shadow" cx="32" cy="60" r="27" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.2) scale(1 .13)"><stop offset="0" stop-opacity=".32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="glass" x1="10" y1="20" x2="46" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#7ccbff"/><stop offset=".5" stop-color="#3299f4"/><stop offset="1" stop-color="#1671db"/></linearGradient>
+<linearGradient id="band" x1="13.4" y1="0" x2="44.6" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#b9bac1"/><stop offset=".2" stop-color="#ececef"/><stop offset=".55" stop-color="#a3a4ac"/><stop offset=".85" stop-color="#787983"/><stop offset="1" stop-color="#94959e"/></linearGradient>
+<linearGradient id="lid" x1="19" y1="4" x2="39" y2="15" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f4f4f6"/><stop offset=".5" stop-color="#d3d4d9"/><stop offset="1" stop-color="#a4a5ae"/></linearGradient>
+<linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe46e"/><stop offset=".55" stop-color="#fbc526"/><stop offset="1" stop-color="#f2ab10"/></linearGradient>
+<linearGradient id="edge" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f3b513"/><stop offset=".5" stop-color="#d98f08"/><stop offset="1" stop-color="#b87206"/></linearGradient>
+<clipPath id="jar"><path d="M7 27.5Q7 26 7.85 24.77L10.93 20.32Q11.5 19.5 12.5 19.5L45.5 19.5Q46.5 19.5 47.07 20.32L50.15 24.77Q51 26 51 27.5L51 53Q51 54.5 49.54 54.86L26.75 60.56Q25 61 23.39 60.2L8.61 52.8Q7 52 7 50.2Z"/></clipPath>
+</defs>
+<ellipse class="from48" cx="32" cy="60" rx="27" ry="3.5" fill="url(#shadow)"/>
+<!-- The jar, and the coins in it, behind its glass. -->
+<path class="o" fill="url(#glass)" d="M7 27.5Q7 26 7.85 24.77L10.93 20.32Q11.5 19.5 12.5 19.5L45.5 19.5Q46.5 19.5 47.07 20.32L50.15 24.77Q51 26 51 27.5L51 53Q51 54.5 49.54 54.86L26.75 60.56Q25 61 23.39 60.2L8.61 52.8Q7 52 7 50.2Z"/>
+<g clip-path="url(#jar)">
+<path fill="#cfeaff" fill-opacity=".4" d="M9.3 27L25 31L48.7 27.5L48.7 51.5L25 57.4L9.3 49.5Z"/>
+<g stroke="#b97a07" stroke-width=".45">
+<ellipse cx="29.5" cy="30.6" rx="6.2" ry="2.6" fill="url(#edge)"/><ellipse cx="29.5" cy="29.4" rx="6.2" ry="2.6" fill="url(#gold)"/>
+<ellipse cx="47" cy="36.6" rx="4.6" ry="5.4" fill="url(#edge)"/>
+<ellipse cx="42.4" cy="45.2" rx="6.6" ry="3.1" fill="url(#edge)"/><ellipse cx="42.4" cy="43.6" rx="6.6" ry="3.1" fill="url(#gold)"/>
+<ellipse cx="20.6" cy="47.9" rx="5.6" ry="2.8" fill="url(#edge)"/><ellipse cx="20.6" cy="46.4" rx="5.6" ry="2.8" fill="url(#gold)"/>
+<ellipse cx="23" cy="53" rx="4.8" ry="2.5" fill="url(#edge)"/><ellipse cx="23" cy="51.6" rx="4.8" ry="2.5" fill="url(#gold)"/>
+<g transform="translate(41.2 33.4) rotate(27)"><ellipse cy="1.7" rx="8.2" ry="5.3" fill="url(#edge)"/><ellipse rx="8.2" ry="5.3" fill="url(#gold)"/><ellipse class="from48" rx="6.2" ry="3.7" fill="none" stroke="#d99a0c" stroke-width=".5"/></g>
+<g transform="translate(16 38.4) rotate(-32)"><ellipse cy="1.7" rx="6.9" ry="5.5" fill="url(#edge)"/><ellipse rx="6.9" ry="5.5" fill="url(#gold)"/><ellipse class="from48" rx="5.1" ry="3.9" fill="none" stroke="#d99a0c" stroke-width=".5"/></g>
+<g transform="translate(28.7 38.4) rotate(-24)"><ellipse cy="1.8" rx="7.7" ry="5.9" fill="url(#edge)"/><ellipse rx="7.7" ry="5.9" fill="url(#gold)"/><ellipse class="from48" rx="5.8" ry="4.2" fill="none" stroke="#d99a0c" stroke-width=".5"/></g>
+<g transform="translate(32.4 49.4) rotate(-12)"><ellipse cx=".9" cy="1.5" rx="7.8" ry="6.9" fill="url(#edge)"/><ellipse rx="7.8" ry="6.9" fill="url(#gold)"/><ellipse class="from48" rx="5.9" ry="5.1" fill="none" stroke="#d99a0c" stroke-width=".5"/></g>
+</g>
+<!-- The glass over them: its tint, its thick base, the light on it. -->
+<path fill="#2a8ef0" fill-opacity=".07" d="M0 0H64V64H0Z"/>
+<path fill="none" stroke="#2389ee" stroke-opacity=".55" stroke-width="4.4" stroke-linejoin="round" d="M7 27.5Q7 26 7.85 24.77L10.93 20.32Q11.5 19.5 12.5 19.5L45.5 19.5Q46.5 19.5 47.07 20.32L50.15 24.77Q51 26 51 27.5L51 53Q51 54.5 49.54 54.86L26.75 60.56Q25 61 23.39 60.2L8.61 52.8Q7 52 7 50.2Z"/>
+<path fill="#1160c9" fill-opacity=".5" d="M7 48.5L25 57.5L51 51L51 55L25 62L7 53Z"/>
+<path class="from48" fill="#fff" fill-opacity=".5" d="M9.6 26.2L14.2 25.4L23.2 33.2L19.4 34.6Z"/>
+<path class="from48" fill="#fff" fill-opacity=".3" d="M15.6 25.2L17.6 24.9L25.4 31.6L24.2 32.4Z"/>
+<path class="from48" fill="#fff" fill-opacity=".28" d="M8.8 29.5L10.2 30.4L10.2 47.4L8.8 46.5Z"/>
+<path class="from48" fill="none" stroke="#fff" stroke-opacity=".4" stroke-width=".5" stroke-linecap="round" d="M25 31.5L25 59.4"/>
+<path class="from48" fill="none" stroke="#0f5bbf" stroke-opacity=".7" stroke-width=".5" d="M8.4 24.9L25 29.2L49.6 24.9"/>
+</g>
+<!-- The lid: its rim, its ridged band, its top. -->
+<path class="o" fill="#a9aab1" d="M13.4 9.5A15.6 5.6 0 0 1 44.6 9.5L44.6 15.8L45.4 17.3A16.4 5.9 0 0 1 12.6 17.3L13.4 15.8Z"/>
+<path fill="#c3c4ca" d="M12.6 17.3A16.4 5.9 0 0 0 45.4 17.3L44.6 15.8A15.6 5.6 0 0 1 13.4 15.8Z"/>
+<path fill="url(#band)" d="M13.4 9.5L13.4 15.8A15.6 5.6 0 0 0 44.6 15.8L44.6 9.5A15.6 5.6 0 0 1 13.4 9.5Z"/>
+<path class="from48" fill="none" stroke="#6f7079" stroke-opacity=".75" stroke-width=".7" stroke-linecap="round" d="M15 13.1V17.3M17.4 14.4V18.6M20 15.2V19.4M22.8 15.8V20M25.8 16.1V20.3M29 16.2V20.4M32.2 16.1V20.3M35.2 15.8V20M38 15.2V19.4M40.6 14.4V18.6M43 13.1V17.3"/>
+<ellipse cx="29" cy="9.5" rx="15.6" ry="5.6" fill="url(#lid)"/>
+<ellipse class="from48" cx="29" cy="9.5" rx="13.5" ry="4.5" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width=".5"/>
+<path class="from48" fill="none" stroke="#fff" stroke-opacity=".75" stroke-width=".5" d="M13.7 10.8A15.6 5.6 0 0 0 44.3 10.8"/>
+<!-- Two coins stacked in front. -->
+<path class="o" fill="url(#edge)" d="M33.9 54.6A8.6 3.1 0 0 1 51.1 54.6L51.1 57.9A8.6 3.1 0 0 1 33.9 57.9Z"/>
+<ellipse cx="42.5" cy="54.6" rx="8.6" ry="3.1" fill="url(#gold)"/>
+<ellipse class="from48" cx="42.5" cy="54.6" rx="6.6" ry="2.1" fill="none" stroke="#d99a0c" stroke-width=".5"/>
+<path class="o" fill="url(#edge)" d="M39.9 49.4A8.3 3 0 0 1 56.5 49.4L56.5 52.6A8.3 3 0 0 1 39.9 52.6Z"/>
+<ellipse cx="48.2" cy="49.4" rx="8.3" ry="3" fill="url(#gold)"/>
+<ellipse class="from48" cx="48.2" cy="49.4" rx="6.4" ry="2" fill="none" stroke="#d99a0c" stroke-width=".5"/>
+<path class="from48" fill="none" stroke="#fff3b0" stroke-opacity=".9" stroke-width=".45" d="M40.2 50.4A8.3 3 0 0 0 56.2 50.4M34.2 55.6A8.6 3.1 0 0 0 39.6 57.7"/>
+</svg>
