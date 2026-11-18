@@ -117,13 +117,19 @@ are universal and non-negotiable:
   outside the repository.
 - **No forks or subagents.** Do all the work yourself, in this session:
   never spawn a fork, subagent or background agent for any part of a task.
-  The one exception: a bug you have really tried to root-cause and
-  can't. Then get a second investigator with the `olo-debug-help` skill
+  The one exception, and use it freely: a second investigator for
+  debugging and root-causing, with the `olo-debug-help` skill
   (`tools/dev/codex-help BRIEF.md`: a headless Codex, gpt-6.2-astra at
-  its highest effort, approving its own steps), which looks and reports
-  while you go on; you check what it found and do the work.
-- **Root-cause every problem; never work around it.** (Stuck on a
-  cause? The `olo-debug-help` skill.) Whenever something
+  its highest effort, approving its own steps). Whenever you're unsure
+  of a cause, or a problem is complex (it spans several programs, it
+  only happens on the person's real session, your first theories
+  didn't hold), write the brief and start it early, and keep working
+  on your own line meanwhile: two brains are better than one. It looks
+  and reports; you check what it found and do the work.
+- **Root-cause every problem; never work around it.** (Unsure of a
+  cause, or it's a hard one? Start the `olo-debug-help` skill's helper
+  alongside your own digging: it found in an hour what a day of
+  reading hadn't, 2026-11-18.) Whenever something
   goes wrong (a hang, a crash, a slow step, a flaky test, a tool that
   misbehaves), find why it happened and fix that, so it can't happen
   again: in Olo, in its tools, or in the tool itself (fork it if need

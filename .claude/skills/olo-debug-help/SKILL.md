@@ -1,24 +1,37 @@
 ---
 name: olo-debug-help
-description: Get a second investigator on a bug in Olo you can't root-cause - start a headless Codex (gpt-6.2-astra at its highest reasoning effort, approving its own steps) with a written brief, let it dig while you go on, then check what it found. Use when you have really tried to find why something goes wrong (a hang, a crash, a wrong pixel, a flaky test, a tool that misbehaves) and the cause still isn't shown, or when a bug only happens on the person's real session and you need more theories to test. Not for doing the work itself, and not before you've tried.
+description: Get a second investigator on a bug or a hard problem in Olo - start a headless Codex (gpt-6.2-astra at its highest reasoning effort, approving its own steps) with a written brief, let it dig in parallel while you go on, then check what it found. Use it freely, two brains are better than one - whenever you're unsure why something goes wrong (a hang, a crash, a wrong pixel, a flaky test, a tool that misbehaves), when a problem is complex (several programs, protocols or threads between cause and symptom), when your first theories didn't hold, or when a bug only happens on the person's real session. For finding causes and checking reasoning, not for doing the work itself.
 ---
 
 # A second investigator: Codex, for a cause you can't find
 
 Olo's rule is that every problem is root-caused, never worked around.
-When you've looked properly and the cause still isn't shown, don't
-settle for a guess and don't keep circling: hand the question to a
-second investigator and keep working. It is Ben's own suggestion
-(2026-11-18), and the one exception to "no forks or subagents" in
-CLAUDE.md: the helper investigates and reports; the work stays yours.
+Two brains are better than one (Ben, 2026-11-18): whenever you're
+unsure of a cause, or the problem is a complex one, put a second
+investigator on it and keep working on your own line meanwhile. Don't
+wait until you've circled for hours, and never settle for a guess. It
+is the one exception to "no forks or subagents" in CLAUDE.md: the
+helper investigates and reports; the work stays yours.
+
+The first time it was used, it found in an hour what a day's reading
+hadn't: a pointer that vanished in Chrome was the Wayland proxy
+dropping cursor shapes after a restart, a program nobody had been
+looking at, with a reproduction and a patch that checked out.
 
 ## When
 
-- You've reproduced what you can, read the code on the path, and tried
-  the likely causes, and it still isn't explained.
+- You're unsure why something goes wrong, and a first look (the logs,
+  the code on the path) hasn't shown it.
+- The problem is complex: several programs, protocols or threads lie
+  between the cause and what's seen; or your first theories didn't hold.
 - It happens only on the person's real session (their hardware, their
   apps) and you need better theories, or a way to catch it in the act.
-- Not for a first look, not to write the fix, not to review your diff.
+- You have a cause but aren't sure of it: have it argued with.
+- Start it early and in parallel. Even a short brief is worth it, as
+  long as it says what you've seen and ruled out (a helper told
+  nothing does your first hour over again).
+- Not to write the fix or do the task, and not for what a minute's
+  reading would answer.
 
 ## How
 
