@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Calendar: Undo and Redo
+
+*15:42* — Every change in Calendar can be taken back and made again: Edit ▸ Undo and Redo, named for the step. Above: Dentist deleted, the deletion undone, redone, then (undone again) dragged to Thursday, and the move undone. Deleting an event no longer asks first.
+
+![Calendar: Undo and Redo](2026-11-18/154226-calendar-undo-and-redo.png)
+
 ### Calendar: an event dragged to another time
 
 *15:37* — Among the week's or the day's hours an event is pressed and dragged: it goes by quarter hours to the day under the pointer, drawn there with the times it would have while where it was goes faint (left). Let go, it's there (right). A repeating one asks whether only that one moves.

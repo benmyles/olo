@@ -190,6 +190,27 @@ pub enum Msg {
     Move(Key, jiff::civil::DateTime),
 }
 
+/// What takes a change back (Edit ▸ Undo and Redo: `olo_kit::undo`, as
+/// every app's): the event's text as it was before, put back at its
+/// address, or an event taken out again.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Change {
+    /// The calendar's address.
+    calendar: String,
+    back: Back,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum Back {
+    /// The event at this address, as it was (its whole text).
+    Put(String, String),
+    /// The event at this address, gone again.
+    Remove(String),
+    /// The new event with this UID, gone again (its address isn't known
+    /// until it's written).
+    RemoveNew(String),
+}
+
 /// An event being dragged among the hours (the week's, the day's).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Drag {
@@ -219,8 +240,6 @@ enum Waiting {
     Save(editor::Saving),
     /// A repeating event's occurrence: only it, or all.
     DeleteWhich(editor::Target),
-    /// One event: sure?
-    Delete(editor::Target),
 }
 
 pub struct Calendar {
@@ -251,6 +270,11 @@ pub struct Calendar {
     reveal: Option<(String, jiff::civil::DateTime)>,
     /// An event pressed among the hours, dragged to another time or day.
     pub drag: Option<Drag>,
+    /// The changes made here, to take back and make again.
+    pub history: olo_kit::undo::History<Change>,
+    /// What the change being made is called and is for, where it isn't
+    /// what its job says (a drag's "Move"; an undo's or redo's own step).
+    naming: Option<(String, olo_kit::undo::Purpose)>,
     pub standing: HashMap<String, Standing>,
     /// Nothing's been read from disk yet.
     pub loading: bool,
@@ -314,6 +338,8 @@ impl Calendar {
             selected: None,
             reveal: None,
             drag: None,
+            history: Default::default(),
+            naming: None,
             standing: HashMap::new(),
             loading: true,
             last_sync: None,
@@ -425,6 +451,7 @@ impl Calendar {
         let mut draft = opening.draft;
         let (Ok(new_start), Ok(new_end)) = (draft.start.checked_add(by), draft.end.checked_add(by)) else { return };
         (draft.start, draft.end) = (new_start, new_end);
+        self.naming = Some(("Move".to_owned(), olo_kit::undo::Purpose::Do));
         cx.send(Msg::Save(Box::new(editor::Saving { target: opening.target, draft, cal: shown.cal })));
     }
 
@@ -465,8 +492,57 @@ impl Calendar {
     /// A job for calendar `cal` put in line, and the line looked at.
     fn write(&mut self, cal: usize, job: sync::Job, cx: &mut Cx<Self>) {
         let Some(c) = self.book.cals.get(cal) else { return };
+        // What would take it back: the event as it is now, before it's
+        // written, named for what's done to it ("Delete “Dentist”").
+        let was = |href: &String| c.kept.items.get(href).map(|item| item.ics.clone());
+        let title = |href: &String| c.events.iter().find(|s| s.href == *href).map(|s| s.event.summary.trim().to_owned()).unwrap_or_default();
+        let (verb, about) = match &job {
+            sync::Job::Create(event) => ("New Event", event.summary.trim().to_owned()),
+            sync::Job::Remove(href) => ("Delete", title(href)),
+            sync::Job::Change(href, _) | sync::Job::PutBack(href, _) => ("Change", title(href)),
+        };
+        let back = match &job {
+            sync::Job::Create(event) => Some(Back::RemoveNew(event.uid.clone())),
+            sync::Job::Change(href, _) | sync::Job::Remove(href) => was(href).map(|ics| Back::Put(href.clone(), ics)),
+            sync::Job::PutBack(href, _) => Some(was(href).map_or_else(|| Back::Remove(href.clone()), |ics| Back::Put(href.clone(), ics))),
+        };
+        let (name, purpose) = match self.naming.take() {
+            // (A step undone or redone keeps its name.)
+            Some((name, purpose)) if purpose != olo_kit::undo::Purpose::Do => (name, purpose),
+            named => {
+                let verb = named.map_or(verb.to_owned(), |(verb, _)| verb);
+                (if about.is_empty() { verb } else { format!("{verb} “{about}”") }, olo_kit::undo::Purpose::Do)
+            }
+        };
+        if let Some(back) = back {
+            self.history.record(purpose, name, Change { calendar: c.kept.href.clone(), back });
+        }
         self.writes.push_back((c.kept.account.clone(), c.kept.href.clone(), job));
         self.run_writes(cx);
+    }
+
+    /// The last change taken back (`redo`: one taken back, made again):
+    /// what the event was is put where it was, or one that was made is
+    /// taken out. Itself a change, written as any is, and recorded as
+    /// the step that goes the other way. Not while a change is still
+    /// being written (what it would put back is from before that one).
+    fn undo(&mut self, redo: bool, cx: &mut Cx<Self>) {
+        if self.writing > 0 || !self.writes.is_empty() {
+            return;
+        }
+        let Some(step) = (if redo { self.history.take_redo() } else { self.history.take_undo() }) else { return };
+        let Some(cal) = self.book.cals.iter().position(|c| c.kept.href == step.change.calendar) else { return };
+        let job = match step.change.back {
+            Back::Put(href, ics) => sync::Job::PutBack(href, ics),
+            Back::Remove(href) => sync::Job::Remove(href),
+            Back::RemoveNew(uid) => match self.book.cals[cal].events.iter().find(|s| s.event.uid == uid) {
+                Some(stored) => sync::Job::Remove(stored.href.clone()),
+                None => return,
+            },
+        };
+        self.selected = None;
+        self.naming = Some((step.name, if redo { olo_kit::undo::Purpose::Redo } else { olo_kit::undo::Purpose::Undo }));
+        self.write(cal, job, cx);
     }
 
     /// The first job in line whose account is free is done, on a worker.
@@ -528,9 +604,9 @@ impl Calendar {
         Some((editor::Target::Existing { cal: shown.cal, href: shown.href.to_string(), id: shown.id.clone(), from: shown.start, repeats: shown.repeats }, shown.title.to_string()))
     }
 
-    /// Delete what `target` names, once the person has said which of it
-    /// (a repeating event's occurrence: only it, or all) or that they're
-    /// sure (nothing brings an event back).
+    /// Delete what `target` names: a repeating event's occurrence once
+    /// the person has said which of it (only it, or all); anything else
+    /// at once, with no asking (Edit ▸ Undo brings it back).
     fn ask_delete(&mut self, target: editor::Target, title: &str, cx: &mut Cx<Self>) {
         let editor::Target::Existing { id, repeats, .. } = &target else { return };
         let asked = cx.msg_with(|choice: &Option<usize>| Msg::Asked(*choice));
@@ -538,8 +614,7 @@ impl Calendar {
             self.waiting = Some(Waiting::DeleteWhich(target));
             olo_kit::widgets::open_alert(cx, "Calendar", "warning", &format!("“{title}” repeats. Delete only this one, or every one of them?"), &["Cancel", "All of Them", "Only This One"], asked);
         } else {
-            self.waiting = Some(Waiting::Delete(target));
-            olo_kit::widgets::open_alert(cx, "Calendar", "warning", &format!("Delete “{title}”? It’s deleted from its calendar everywhere, and can’t be brought back."), &["Cancel", "Delete"], asked);
+            self.delete_event(target, false, cx);
         }
     }
 
@@ -770,7 +845,15 @@ impl Calendar {
                 .key("r")
                 .enabled(!self.sources.is_empty())
                 .close_quit(),
-            Menu::new("Edit").item("Edit Event…", "edit-event").key("e").enabled(self.selected.is_some()).item("Delete Event", "delete-event").key("backspace").enabled(self.selected.is_some()),
+            self.history
+                .edit_items(Menu::new("Edit"))
+                .separator()
+                .item("Edit Event…", "edit-event")
+                .key("e")
+                .enabled(self.selected.is_some())
+                .item("Delete Event", "delete-event")
+                .key("backspace")
+                .enabled(self.selected.is_some()),
             Menu::new("View")
                 .item("Day", "mode:day")
                 .key("1")
@@ -927,7 +1010,6 @@ impl View for Calendar {
                 (Some(Waiting::Save(saving)), Some(1)) => self.save_event(saving, false, cx),
                 (Some(Waiting::DeleteWhich(target)), Some(2)) => self.delete_event(target, true, cx),
                 (Some(Waiting::DeleteWhich(target)), Some(1)) => self.delete_event(target, false, cx),
-                (Some(Waiting::Delete(target)), Some(1)) => self.delete_event(target, false, cx),
                 _ => return,
             },
             Msg::Wrote(account, cal, result) => {
@@ -940,6 +1022,11 @@ impl View for Calendar {
                 cals.push(cal);
                 self.book = Arc::new(Book::new(cals, &order));
                 self.changed(cx);
+                // (A change that didn't go through: what the steps would
+                // put back is no longer what's there.)
+                if result.is_err() {
+                    self.history.clear();
+                }
                 match result {
                     Ok(()) => {}
                     Err(dav::Error::Changed) => {
@@ -978,6 +1065,8 @@ impl View for Calendar {
                 let Some((target, title)) = self.selected_target() else { return false };
                 self.ask_delete(target, &title, cx);
             }
+            "undo" => self.undo(false, cx),
+            "redo" => self.undo(true, cx),
             // (An agent's: a new event at a time, as 2026-11-20T14:00.)
             c if c.starts_with("new-event:") => match c[10..].parse::<jiff::civil::DateTime>() {
                 Ok(start) => self.open_new(start, false, cx),

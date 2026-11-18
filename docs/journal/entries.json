@@ -4978,5 +4978,11 @@
   "title": "Calendar: an event dragged to another time",
   "caption": "Among the week's or the day's hours an event is pressed and dragged: it goes by quarter hours to the day under the pointer, drawn there with the times it would have while where it was goes faint (left). Let go, it's there (right). A repeating one asks whether only that one moves.",
   "image": "2026-11-18/153753-calendar-an-event-dragged-to-another-time.png"
+ },
+ {
+  "time": "2026-11-18T15:42:26",
+  "title": "Calendar: Undo and Redo",
+  "caption": "Every change in Calendar can be taken back and made again: Edit \u25b8 Undo and Redo, named for the step. Above: Dentist deleted, the deletion undone, redone, then (undone again) dragged to Thursday, and the move undone. Deleting an event no longer asks first.",
+  "image": "2026-11-18/154226-calendar-undo-and-redo.png"
  }
 ]

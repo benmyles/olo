@@ -126,6 +126,9 @@ pub enum Job {
     Change(String, Box<dyn FnOnce(&mut olo_calendar::ical::Component) -> Result<(), &'static str> + Send>),
     /// The event at this address removed.
     Remove(String),
+    /// The event at this address put (back) as this text has it: what
+    /// undoes a change or a removal.
+    PutBack(String, String),
 }
 
 /// `job` done on `kept`'s server, then here: the calendar as it is after
@@ -139,6 +142,7 @@ pub fn write(source: &Source, mut kept: Kept, job: Job) -> (Cal, Result<(), dav:
         Job::Create(event) => kept.create(&server, &event).map(|_| ()),
         Job::Change(href, change) => kept.change(&server, &href, |cal| change(cal).map_err(|e| dav::Error::Answer(e.into()))),
         Job::Remove(href) => kept.remove(&server, &href),
+        Job::PutBack(href, ics) => kept.put_back(&server, &href, &ics),
     };
     if let Some(dir) = store_dir()
         && let Err(e) = kept.save(&dir)

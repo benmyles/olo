@@ -164,6 +164,22 @@ impl Kept {
         }
     }
 
+    /// The event at `href` put on the server as `ics` has it, then kept:
+    /// what undoes a change (over what's there now) or a removal (anew,
+    /// at the address it had). Changed somewhere else meanwhile, or
+    /// something else put there: as [`Kept::change`], nothing written.
+    pub fn put_back(&mut self, server: &Server, href: &str, ics: &str) -> Result<(), Error> {
+        let now = self.items.get(href).map(|item| item.etag.clone());
+        match server.put(href, ics, now.as_deref()) {
+            Ok(etag) => self.keep(server, href, ics.to_owned(), etag),
+            Err(Error::Changed) | Err(Error::Status(412)) => {
+                let _ = self.sync(server);
+                Err(Error::Changed)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     /// The event at `href` removed from the server, then from here.
     /// Changed somewhere else meanwhile: as [`Kept::change`].
     pub fn remove(&mut self, server: &Server, href: &str) -> Result<(), Error> {
@@ -372,6 +388,50 @@ mod tests {
         assert_eq!(kept.remove(&server, &a), Err(Error::Changed));
         assert_eq!(summaries(&kept), ["Changed again"]);
         assert_eq!(kept.remove(&server, "http://nowhere/x.ics"), Err(Error::Gone));
+    }
+
+    /// What undoes a change: the event's text as it was, put back over
+    /// what it became, or anew at its address after it was removed; never
+    /// over what another device changed meanwhile.
+    #[test]
+    fn an_event_put_back_as_it_was() {
+        let there = Standin::start("ben@example.org", "pw");
+        there.add_calendar("home", "Home", None);
+        there.put("home", "a.ics", &ics("a", "Lunch"));
+        let server = Server::new(there.auth());
+        let mut kept = Kept::new("ben", &server.calendars(&there.url()).unwrap()[0]);
+        kept.sync(&server).unwrap();
+        let a = kept.items.keys().next().cloned().unwrap();
+        let was = kept.items[&a].ics.clone();
+        // Changed, then put back: on the server and here as it was.
+        kept.change(&server, &a, |cal| {
+            cal.children[0].set(Line::text("SUMMARY", "Lunch at one"));
+            Ok(())
+        })
+        .unwrap();
+        let became = kept.items[&a].ics.clone();
+        kept.put_back(&server, &a, &was).unwrap();
+        let on_server = there.get("home", "a.ics").unwrap();
+        assert!(on_server.contains("SUMMARY:Lunch") && !on_server.contains("Lunch at one"), "{on_server}");
+        assert_eq!(summaries(&kept), ["Lunch"]);
+        // (And forward again: a redo.)
+        kept.put_back(&server, &a, &became).unwrap();
+        assert_eq!(summaries(&kept), ["Lunch at one"]);
+        // Removed, then put back: there again, at its address.
+        kept.remove(&server, &a).unwrap();
+        assert!(there.files("home").is_empty() && summaries(&kept).is_empty());
+        kept.put_back(&server, &a, &was).unwrap();
+        assert_eq!((there.files("home"), summaries(&kept)), (vec!["a.ics".to_owned()], vec!["Lunch".to_owned()]));
+        assert_eq!(kept.sync(&server), Ok(Step::default()));
+        // Changed elsewhere meanwhile: not written over; theirs comes in.
+        there.put("home", "a.ics", &ics("a", "Moved by Dana"));
+        assert_eq!(kept.put_back(&server, &a, &became), Err(Error::Changed));
+        assert_eq!(summaries(&kept), ["Moved by Dana"]);
+        // Removed here, and something else put there since: left alone.
+        kept.remove(&server, &a).unwrap();
+        there.put("home", "a.ics", &ics("a", "Another's"));
+        assert_eq!(kept.put_back(&server, &a, &was), Err(Error::Changed));
+        assert!(there.get("home", "a.ics").unwrap().contains("Another's"));
     }
 
     /// Kept on disk as it is, a file a calendar, and read back; a

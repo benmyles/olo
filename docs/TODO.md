@@ -105,8 +105,9 @@ something nobody here has is in "Blocked", with what it waits for.
   end. Its own icon (a block calendar, in every set; Flat's its own
   drawing). An event is dragged among the hours to another time or
   day (HACKING.md, "Calendar"). **Next**: dragging in the month and
-  the whole-day strip, and an event's end (how long it lasts);
-  Find, Undo of a deletion, invitations (who's coming, answering);
+  the whole-day strip, and an event's end (how long it lasts). Undo
+  and Redo of every change (a deletion asks nothing now). **Then**:
+  Find, invitations (who's coming, answering);
   the Deskbar widget, the palette, the assistant. Reminders are shown
   (`olo-calendar --service`, a session service; Show goes to the
   event). (Its cost

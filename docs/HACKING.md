@@ -21093,6 +21093,28 @@ demo: Dentist from Tuesday 3 PM to Thursday 10 AM; Monday's Standup an
 hour and a half later, only that one. Not yet: the month's days, the
 whole-day strip, an event's end.
 
+**Undo and Redo** (`Calendar::history`, the kit's `olo_kit::undo` as
+every app's; Edit ▸ Undo ⌘Z and Redo ⇧⌘Z, named for their step: "Undo
+Delete “Dentist”", "Redo Move “Dentist”"). Every change made here is a
+step: a new event, a change, a move, a deletion, of one occurrence or
+of all. A step holds what takes it back (`Change`): the event's whole
+text as it was before the change, to be put back at its address
+(`Back::Put` → `sync::Job::PutBack` → `Kept::put_back`: over what's
+there now, with its etag, or anew where it was removed), or a new
+event to be taken out again (`Back::RemoveNew`, by its UID). `write`
+records it as the job is put in line, from what's kept of the event
+then; taking a step back is itself a job, recorded as the step that
+goes the other way (`History::record` with `Purpose::Undo` or `Redo`),
+so steps go back and forth as often as wanted. Nothing is undone while
+a change is still being written; a change that fails (the server
+refusing, the event changed somewhere else meanwhile: never written
+over) forgets the steps, as what they'd put back is no longer what's
+there. With Undo there, deleting an event asks nothing (a repeating
+one still asks which: only this one, or all). Tested: `store::tests::
+an_event_put_back_as_it_was` (after a change, after a removal, a
+redo, and never over another device's change); tried against the
+demo: Delete, Undo, Redo, a drag to Thursday, Undo.
+
 **Reminders** (`apps/calendar/src/service.rs`): `olo-calendar
 --service` is one of a real session's services (`REAL_SHELL`), with no
 window. It shows each reminder an event has (its `VALARM`s, as
