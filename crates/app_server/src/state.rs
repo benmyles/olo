@@ -133,6 +133,11 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     // desktop
     pub space: Space<WindowElement>,
     pub popups: PopupManager,
+    /// Each display's room for windows as it was when its Deskbar last
+    /// drew (`usable_area`, by the display's name): Deskbar folding away,
+    /// or back, changes it, and windows arranged in it follow
+    /// (`deskbar_drew`).
+    pub usable_was: std::collections::HashMap<String, Rectangle<i32, Logical>>,
     /// What had the keyboard as a menu's popup grab began, for when the
     /// menu goes (the grab itself remembers only the menu's parent).
     pub keyboard_before_popup: Option<crate::focus::KeyboardFocusTarget>,
@@ -1242,6 +1247,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             handle,
             space: Space::default(),
             popups: PopupManager::default(),
+            usable_was: Default::default(),
             keyboard_before_popup: None,
             menu_gone: None,
             pacer: Default::default(),

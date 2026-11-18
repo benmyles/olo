@@ -28,11 +28,18 @@ pub struct DeskbarSettings {
     /// count, or that it wants attention), left of the blue dot of its
     /// notifications. On unless turned off.
     pub unread_dots: bool,
+    /// Folded away to the screen's right edge: only the little button
+    /// that unfolds it shows, and the windows have its room (Ben,
+    /// 2026-11-18: "add a little icon button to the top right of the
+    /// deskbar to be able to collapse it (collapses to the right) and
+    /// expand it and when it collapses and expands the windows on the
+    /// screen should expand/collapse to fill the space too").
+    pub folded: bool,
 }
 
 impl Default for DeskbarSettings {
     fn default() -> Self {
-        DeskbarSettings { widgets: Vec::new(), unread_dots: true }
+        DeskbarSettings { widgets: Vec::new(), unread_dots: true, folded: false }
     }
 }
 
@@ -559,6 +566,9 @@ mod tests {
     fn widgets_read_whatever_is_left_out() {
         let s: DeskbarSettings = serde_json::from_str("{}").unwrap();
         assert!(s.widgets.is_empty());
+        // (Deskbar shows unless it's said to be folded away.)
+        assert!(!s.folded && s.unread_dots);
+        assert!(serde_json::from_str::<DeskbarSettings>(r#"{"folded": true}"#).unwrap().folded);
         let w: Widget = serde_json::from_str(r#"{"id": 3, "measure": {"kind": "network", "interface": null, "down": true, "up": false}, "place": "tray"}"#).unwrap();
         assert_eq!((w.id, w.place, w.every_ms, w.look), (3, Place::Tray, 1000, Look::Graph));
         assert_eq!(w.measure, Measure::Network { interface: None, down: true, up: false });

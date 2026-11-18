@@ -62,6 +62,13 @@ use olo_xdg::{
 /// Logical width of the vertical Deskbar.
 const WIDTH: f32 = olo_kit::metrics::DESKBAR_WIDTH;
 const TILE_H: f32 = 30.0;
+/// The little button at the top right that folds Deskbar away to the
+/// right, and, folded, all there is of it: unfolds it.
+const FOLD_W: f32 = 18.0;
+/// Folded: as wide as its button with its frame, and no taller than a
+/// window's tab, so it sits in the row of tabs, over no window's content.
+const FOLDED_W: f32 = 22.0;
+const FOLDED_H: f32 = 20.0;
 /// The Olo mark's side in the tile (a size the set has at 1× and 2×).
 const TILE_MARK: f32 = 24.0;
 /// How long a gone application keeps its place in the order.
@@ -320,6 +327,8 @@ struct Settings {
     widgets: Vec<olo_protocol::deskbar::Widget>,
     /// A red dot beside an app with something unread in it.
     unread_dots: bool,
+    /// Folded away to the right.
+    folded: bool,
 }
 
 /// A team: the windows of one application.
@@ -388,6 +397,9 @@ struct Deskbar {
     /// A red dot beside an app with something unread in it (Preferences ▸
     /// Deskbar).
     unread_dots: bool,
+    /// Folded away to the screen's right edge (`DeskbarSettings::folded`):
+    /// only its button shows.
+    folded: bool,
     /// Approving requests without asking until then (seconds since the
     /// epoch; app_server's approve.rs).
     approve_until: Option<u64>,
@@ -505,6 +517,34 @@ fn team_key(w: &WindowInfo) -> String {
 /// Send `req` to app_server off the UI thread.
 fn request(req: Request) {
     requests(vec![req]);
+}
+
+/// Fold Deskbar away to the right, or unfold it: kept in the settings
+/// (`deskbar.folded`), so every display's does, it stays so, and an
+/// agent can do it too.
+fn set_folded(on: bool) {
+    std::thread::spawn(move || {
+        if let Ok(mut c) = Client::connect()
+            && let Ok(Reply::Settings { mut settings }) = c.request(&Request::GetSettings)
+            && settings.deskbar.folded != on
+        {
+            settings.deskbar.folded = on;
+            let _ = c.request(&Request::SetSettings { settings });
+        }
+    });
+}
+
+/// The fold button's mark in `r`: two chevrons, pointing right (fold
+/// away) or left (unfold).
+fn paint_fold(g: &mut Painter, r: Bounds<Pixels>, left: bool, color: olo_kit::Hsla) {
+    let (cx, cy) = (f32::from(r.center().x), f32::from(r.center().y));
+    let dir = if left { -1.0 } else { 1.0 };
+    for dx in [-2.5_f32, 1.5] {
+        let x = cx + dx * dir;
+        let tip = point(px(x + 2.0 * dir), px(cy));
+        g.paint_segment(point(px(x - 1.0 * dir), px(cy - 3.0)), tip, px(1.4), true, color);
+        g.paint_segment(tip, point(px(x - 1.0 * dir), px(cy + 3.0)), px(1.4), true, color);
+    }
 }
 
 /// Ask app_server for each of `reqs`, in turn.
@@ -1728,6 +1768,7 @@ impl Deskbar {
                 self.tiling = s.tiling;
                 self.keys = s.keys;
                 self.unread_dots = s.unread_dots;
+                self.folded = s.folded;
                 self.glances.set(&s.widgets, &proxy);
                 self.live.set(s.widgets, &proxy);
                 if seconds {
@@ -1942,6 +1983,7 @@ fn settings_msg(settings: olo_protocol::Settings) -> Msg {
         tiling: settings.tiling,
         keys: settings.keyboard.profile,
         unread_dots: settings.deskbar.unread_dots,
+        folded: settings.deskbar.folded,
         widgets: settings.deskbar.widgets,
     })
 }
@@ -2440,7 +2482,7 @@ fn open_bar(model: Model, output: Option<String>) -> WindowHandle<BarView> {
     olo_kit::open_window(options, move |cx| {
         let shelf = widgets::Shelf::default();
         let layer = cx.new_view(|_| widgets::Layer::new(shelf.clone(), model.clone()));
-        BarView { model, output, hot: None, open: None, press: None, height, scroll: 0.0, fading: false, shelf, layer, confirm: None, upgrade_ask: None }
+        BarView { model, output, hot: None, open: None, press: None, height, width: WIDTH, scroll: 0.0, fading: false, shelf, layer, confirm: None, upgrade_ask: None }
     })
 }
 
@@ -2466,6 +2508,8 @@ struct BarView {
     press: Option<Press>,
     /// Its height, as last asked of the compositor.
     height: f32,
+    /// Its width: Deskbar's, or its button's when folded away.
+    width: f32,
     /// Wheel movement over the volume, towards the next 5% step.
     scroll: f32,
     /// Drawn again once a dot has had time to drain a device pixel (one
@@ -2806,11 +2850,13 @@ impl View for BarView {
         let (output, model) = (self.output.clone(), self.model.clone());
         let (mut drawing, height) = model.read().draw_bar(output.as_deref(), &pointer, &view, &model, cx);
         self.shelf.set(std::mem::take(&mut drawing.placed));
-        // Its height follows what it shows (the compositor sizes a layer
-        // surface).
-        if (height - self.height).abs() > 0.5 {
-            self.height = height;
-            cx.resize_window(size(px(WIDTH), px(height)));
+        // Its size follows what it shows (the compositor sizes a layer
+        // surface): its height by its rows, its width by whether it's
+        // folded away (anchored at the right: it folds to the right).
+        let width = if model.read().folded { FOLDED_W } else { WIDTH };
+        if (height - self.height).abs() > 0.5 || (width - self.width).abs() > 0.5 {
+            (self.height, self.width) = (height, width);
+            cx.resize_window(size(px(width), px(height)));
         }
         // (A dot shaking: drawn again next frame.)
         if drawing.animating {
@@ -2823,7 +2869,7 @@ impl View for BarView {
         let paint = drawing.paint;
         div()
             .relative()
-            .w(px(WIDTH))
+            .w(px(width))
             .h(px(height))
             .child(
                 canvas(move |g, _| {
@@ -2848,6 +2894,25 @@ impl Deskbar {
         let display = self.shown_on(output);
         self.drawing_for = display.clone();
         let mut d = Drawing { paint: Vec::new(), hits: Vec::new(), animating: false, fading: false, placed: Vec::new() };
+
+        // ---- folded away: only the button that unfolds it
+        if self.folded {
+            let tile = rect(0.0, 0.0, FOLDED_W, FOLDED_H);
+            let hot = pointer.hot("fold");
+            d.paint(move |g| {
+                let p = theme::palette();
+                style::vgradient(g, tile, style::tint(p.panel_background, if hot { 0.75 } else { 0.85 }), shade(&p, p.panel_background, 1.04));
+                section_bevel(g, tile, &p);
+                paint_fold(g, tile, true, c(p.panel_text));
+                agent::record(g, agent::Node { role: "Button", name: Some("Show Deskbar".into()), bounds: tile, enabled: true, clickable: true, ..Default::default() });
+            });
+            d.hits.push(hit(view, "fold", tile, Some("Show Deskbar".into())).on_any_button(|e, _| {
+                if button(e) == MouseButton::Left {
+                    set_folded(false);
+                }
+            }));
+            return (d, FOLDED_H);
+        }
 
         // ---- the Olo tile
         let tile = rect(0.0, 0.0, WIDTH, TILE_H);
@@ -2881,6 +2946,28 @@ impl Deskbar {
                 });
                 let m2 = m.clone();
                 open_menu(cx, &v, "tile", tile, menu, move |cmd, cx| run(&m2, cmd, cx));
+            }));
+        }
+
+        // At the tile's top right, the little button that folds Deskbar
+        // away to the right (the windows take its room): quiet until the
+        // pointer is on it.
+        {
+            let fold = rect(WIDTH - FOLD_W - 2.0, 2.0, FOLD_W, TILE_H - 4.0);
+            let hot = pointer.hot("fold");
+            d.paint(move |g| {
+                let p = theme::palette();
+                if hot {
+                    style::fill_rect(g, style::snap(g, fold), c(p.panel_text).opacity(0.10));
+                }
+                paint_fold(g, fold, false, if hot { c(p.panel_text) } else { style::disabled_text(&p) });
+                agent::record(g, agent::Node { role: "Button", name: Some("Hide Deskbar".into()), bounds: fold, enabled: true, clickable: true, ..Default::default() });
+            });
+            d.hits.push(hit(view, "fold", fold, Some("Hide Deskbar".into())).on_any_button(|e, cx| {
+                if button(e) == MouseButton::Left {
+                    set_folded(true);
+                    cx.stop_propagation();
+                }
             }));
         }
 
@@ -4249,6 +4336,7 @@ fn main() {
             menu_workspace: None,
             keys: KeyboardProfile::default(),
             unread_dots: true,
+            folded: false,
             approve_until: None,
             arrangement: (None, None),
             notes_seen: None,

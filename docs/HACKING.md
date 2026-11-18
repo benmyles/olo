@@ -19368,6 +19368,36 @@ looked at: Tracker showed each with its icon, and run from any of them
 Deskbar listed it as DBDelve with its icon and the window menu said
 "Quit DBDelve", at 1×, 1.25×, 1.5×, 1.75× and 2×, light and dark.
 
+### Folded away (the button at its top right)
+
+Ben, 2026-11-18: "add a little icon button to the top right of the
+deskbar to be able to collapse it (collapses to the right) and expand
+it and when it collapses and expands the windows on the screen should
+expand/collapse to fill the space too". At the Olo tile's right end, a
+small button of two chevrons (`paint_fold`; quiet until the pointer is
+on it, "Hide Deskbar") folds every display's Deskbar away to the right;
+folded, a Deskbar is that button alone (22 × 20 points at the screen's
+top right corner, "Show Deskbar"), no taller than a window's tab, so
+it sits in the row of tabs over no window's content. It is a setting
+(`DeskbarSettings::folded`, `deskbar.folded`; `set_folded` reads the
+settings, changes that and writes them), so it stays so across a
+reload, and an agent folds it with `set_settings`; a Deskbar's layer
+surface is anchored at the top right and takes its new width
+(`BarView::width`).
+
+The windows follow in app_server. `usable_area` leaves out a Deskbar
+only if it is wider than `DESKBAR_FOLDED` (48): a folded one takes no
+room. And whenever a Deskbar's surface draws, `deskbar_drew` (called
+from every commit; 3.6 µs on average, most of them not a layer's and
+answered at once) compares the room beside it with what it was
+(`usable_was`, by display); if it changed, `tiling_space_changed` has
+the zoomed and tiled windows of the workspace take their places again
+in it (the others as they come back, `welcome_back`), as when the
+space around windows is changed in Preferences. Tried in a test
+session: a zoomed Tracker 1088 points wide beside Deskbar, 1264 with
+it folded, back and forth by the button and by `set_settings`; the
+button looked at in light and dark at 1×, 1.5× and 2×.
+
 ### Live widgets (widgets.rs, Preferences ▸ Deskbar)
 
 Ben, 2026-11-07: "add a preferences app for the deskbar and in it

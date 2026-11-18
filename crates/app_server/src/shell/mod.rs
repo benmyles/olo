@@ -300,6 +300,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
 
         let rounds = self.drag_in_rounds();
         ensure_initial_configure(surface, &self.space, &mut self.popups, rounds);
+        self.deskbar_drew(surface);
         self.focus_shown_layer(surface);
     }
 

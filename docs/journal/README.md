@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Deskbar folds away to the right
+
+*10:38* — A small button at Deskbar's top right (two chevrons) folds it away: only that button stays, at the screen's corner, and zoomed and tiled windows take the room; a click on it brings Deskbar back and the windows make way. Above, Deskbar with a zoomed Tracker beside it; below, folded.
+
+![Deskbar folds away to the right](2026-11-18/103858-deskbar-folds-away-to-the-right.png)
+
 ### The supervisor says when the laptop's controller floods the system
 
 *10:17* — When the embedded controller reports the same power event over and over (as a ThinkPad P1's did for two hours), the supervisor now notices within seconds and says so in a notification that stays, and Olo Doctor has the whole account as a Critical finding. Shown here with a made-up storm.

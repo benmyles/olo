@@ -35,6 +35,9 @@ const BTN_RIGHT: u32 = 0x111;
 
 /// Space left between a zoomed window and Deskbar.
 const DESKBAR_GAP: i32 = 4;
+/// A Deskbar no wider than this is folded away (`DeskbarSettings::folded`:
+/// its button alone, 22 points): it takes no room from the windows.
+const DESKBAR_FOLDED: i32 = 48;
 
 /// The element rectangle a window had before it was zoomed or tiled.
 #[derive(Default)]
@@ -401,8 +404,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let mut area = Rectangle::new(geo.loc + zone.loc, zone.size);
         // Stop beside Deskbar, as BeOS does (it sits in a corner and
         // reserves no edge, so the zone above doesn't leave it out).
-        // (One that is there: drawn, so with a size.)
-        let bar = map.layers().filter(|l| l.namespace() == "deskbar").filter_map(|l| map.layer_geometry(l)).find(|g| g.size.w > 0 && g.size.h > 0);
+        // (One that is there: drawn, so with a size. And not folded away:
+        // then it is only its button, in the row of the windows' tabs,
+        // and the windows have its room.)
+        let bar = map.layers().filter(|l| l.namespace() == "deskbar").filter_map(|l| map.layer_geometry(l)).find(|g| g.size.w > DESKBAR_FOLDED && g.size.h > 0);
         if let Some(bar) = bar.map(|b| Rectangle::new(geo.loc + b.loc, b.size)) {
             if bar.loc.x + bar.size.w / 2 >= area.loc.x + area.size.w / 2 {
                 let right = bar.loc.x - DESKBAR_GAP;
@@ -414,6 +419,27 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             }
         }
         Some(area)
+    }
+
+    /// A layer surface drew. If it is a Deskbar and the room beside it
+    /// is another than when it last did (it folded away to the right, or
+    /// came back), the windows arranged in that room, zoomed or tiled,
+    /// take their places again in it (Ben, 2026-11-18: "when it collapses
+    /// and expands the windows on the screen should expand/collapse to
+    /// fill the space too"). Asked at every surface's commit: 3.6 µs
+    /// each on average (500 of them, a test session with Deskbar's
+    /// meters drawing), most of them not a layer's and answered at once.
+    pub fn deskbar_drew(&mut self, surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) {
+        use smithay::{desktop::WindowSurfaceType, wayland::shell::wlr_layer::LAYER_SURFACE_ROLE};
+        if smithay::wayland::compositor::get_role(surface) != Some(LAYER_SURFACE_ROLE) {
+            return;
+        }
+        let of = |o: &smithay::output::Output| layer_map_for_output(o).layer_for_surface(surface, WindowSurfaceType::TOPLEVEL).is_some_and(|l| l.namespace() == "deskbar");
+        let Some(output) = self.space.outputs().find(|o| of(o)).cloned() else { return };
+        let Some(area) = self.usable_area(&output) else { return };
+        if self.usable_was.insert(output.name(), area).is_some_and(|was| was != area) {
+            self.tiling_space_changed();
+        }
     }
 
     /// Zoom (maximize) a window into the tiling area, frame included.

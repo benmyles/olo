@@ -99,16 +99,6 @@ something nobody here has is in "Blocked", with what it waits for.
   they are (which is the processed one, if either), and name it as the
   laptop's is.
 
-- **Deskbar: a button to fold it away to the right, and back** (Ben,
-  2026-11-18: "add a little icon button to the top right of the deskbar
-  to be able to collapse it (collapses to the right) and expand it and
-  when it collapses and expands the windows on the screen should
-  expand/collapse to fill the space too"). A small icon button at
-  Deskbar's top right folds it to a sliver at the screen's right edge
-  and unfolds it; the room it gives up or takes back is the windows'
-  (those tiled or zoomed fill it or make way, as when a screen's work
-  area changes), moving with it. Kept across a reload; for agents too.
-
 - **A Calendar app, native, with Google and Fastmail calendars** (Ben,
   2026-11-17: "build a beautiful olo native calendar app. add calendar
   support to prefs -> integrations and support any number of google
@@ -177,6 +167,16 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Deskbar: a button to fold it away to the right, and back** (Ben,
+  2026-11-18: "add a little icon button to the top right of the deskbar
+  to be able to collapse it (collapses to the right) and expand it and
+  when it collapses and expands the windows on the screen should
+  expand/collapse to fill the space too"). The two chevrons at the Olo
+  tile's right end fold it; folded, it is that button alone at the
+  screen's top right corner, and zoomed and tiled windows take its
+  room, and give it back when it unfolds (HACKING, "Folded away").
+  Instant for now: no slide. **To try**: click it with a window zoomed.
 
 - **Notifications: an archive** (Ben, 2026-11-18: "after a
   notification has been faded out / dismissed / cleared let's put it in
