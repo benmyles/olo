@@ -94,7 +94,6 @@ fn main() {
     // SAFETY: fcntl on our own descriptor.
     unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) };
     listener.as_ref().unwrap().set_nonblocking(true).expect("non-blocking listener");
-    raise_fd_limit();
     // SAFETY: the handler only stores to an atomic; no SA_RESTART, so it
     // interrupts the poll.
     unsafe {
@@ -112,6 +111,7 @@ fn main() {
     let screen = std::env::var_os("OLO_SCREEN").is_some();
 
     let mut clients: Vec<Client> = Vec::new();
+    let mut reserve = olo_system::fds::Reserve::default();
     loop {
         if RETIRE.load(Ordering::Relaxed) && listener.take().is_some() {
             log(format!("a newer proxy has the socket; serving {} program(s) until they close", clients.len()));
@@ -205,6 +205,8 @@ fn main() {
                         }
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                    // (No descriptor free: refused, not spun on.)
+                    Err(e) if reserve.refuse(&e, || listener.accept()) => {}
                     Err(e) => {
                         log(format!("accept: {e}"));
                         break;
@@ -289,16 +291,4 @@ fn peer(s: &UnixStream) -> (i32, u32) {
     // SAFETY: getsockopt into a ucred of the right size.
     unsafe { libc::getsockopt(s.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, (&mut cred as *mut libc::ucred).cast(), &mut len) };
     (cred.pid, cred.uid)
-}
-
-/// Buffers' descriptors are kept to make them again: allow plenty.
-fn raise_fd_limit() {
-    let mut lim = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
-    // SAFETY: get/setrlimit on our own process.
-    unsafe {
-        if libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) == 0 {
-            lim.rlim_cur = lim.rlim_max;
-            libc::setrlimit(libc::RLIMIT_NOFILE, &lim);
-        }
-    }
 }

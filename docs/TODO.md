@@ -116,6 +116,20 @@ something nobody here has is in "Blocked", with what it waits for.
   in the form; for Fastmail, an app password with access to calendars),
   then open Calendar.
 
+- **A sign-in's mailed code is found every time** (Ben, 2026-11-18,
+  signing in at claude.ai, which mails a link and takes a "verification
+  code" in its place: "i tried to login to claude and it didn't manage
+  to find the verification code in my email. we need that to work more
+  reliably. you can use my olo integration to read my email and look at
+  the format it used. also search through my email for all verification
+  codes in my archive etc to make sure that what you come up with covers
+  everything"). To do: read that message as it arrived (what the code
+  looks like, where: the text, the link), then every message with a
+  code in the archive, through Olo's own mail integration; make the
+  finder cover them all, with each format a test (the texts made up,
+  never Ben's mail in the repository).
+- **Go through Olo's logs for other warnings and errors and fix what
+  should be fixed** (Ben, 2026-11-18).
 - **Deskbar: other displays' apps collapsed by default, as an option**
   (Ben, 2026-11-18: "add an option in deskbar prefs (disabled by
   default) to default to showing other display's apps collapsed in the
@@ -124,9 +138,17 @@ something nobody here has is in "Blocked", with what it waits for.
 - **Desktop icons gone after Deskbar is collapsed and expanded** (Ben,
   2026-11-18: "i tried the new collapse deskbar then expand again. it
   worked but the desktop icons all disappeared and didn't come back").
-  To find out: whether Tracker's desktop loses its icons when the work
-  area changes twice, or Tracker had gone down (the text-recognition
-  crash fixed the same day; Tracker draws the desktop).
+  **Found and fixed**: neither Deskbar nor Tracker, but app_server out
+  of file descriptors (696 open of a limit of 1,024; the fold made
+  every window draw anew): the kernel dropped what Terminal and
+  Tracker sent and both were disconnected, 13:16:26. Every Olo program
+  raises its limit as it starts now, and Olo Doctor raises it for
+  those running (HACKING.md, "Open files"). **Still to find**: why
+  Tracker, unlike Terminal, didn't re-execute and reconnect when its
+  connection went (no "the compositor's connection is gone" in its
+  log; it had had a worker's panic fourteen minutes before, the
+  text-recognition crash fixed the same day; in a test session Tracker
+  reconnects as it should).
 - **The pointer vanishes over a video in Chrome and Chrome-based apps**
   (Ben, 2026-11-18: "sometimes when a cursor goes over a video on
   chrome or a chrome based app like slack then the cursor doesn't show

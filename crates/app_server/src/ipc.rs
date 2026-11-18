@@ -220,12 +220,14 @@ pub fn init<B: Backend + 'static>(handle: &LoopHandle<'static, AnvilState<B>>, w
     unsafe { std::env::set_var(olo_protocol::SOCKET_ENV, &path) };
     info!(path = %path.display(), "IPC listening");
 
+    let mut reserve = olo_system::fds::Reserve::default();
     handle
-        .insert_source(Generic::new(listener, Interest::READ, Mode::Level), |_, listener, state| {
+        .insert_source(Generic::new(listener, Interest::READ, Mode::Level), move |_, listener, state| {
             loop {
                 match listener.accept() {
                     Ok((stream, _)) => accept(state, stream),
                     Err(e) if e.kind() == ErrorKind::WouldBlock => break,
+                    Err(e) if reserve.refuse(&e, || listener.accept()) => {}
                     Err(e) => {
                         warn!(?e, "IPC accept failed");
                         break;

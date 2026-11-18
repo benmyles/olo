@@ -1095,8 +1095,9 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             // olo-session owns the socket, so it outlives us: clients
             // stay connected-to-be across an in-place restart.
             listener.set_nonblocking(true).expect("nonblocking socket");
+            let mut reserve = olo_system::fds::Reserve::default();
             handle
-                .insert_source(Generic::new(listener, Interest::READ, Mode::Level), |_, listener, data| {
+                .insert_source(Generic::new(listener, Interest::READ, Mode::Level), move |_, listener, data| {
                     loop {
                         match listener.accept() {
                             Ok((stream, _)) => {
@@ -1105,6 +1106,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                                 }
                             }
                             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                            // (No descriptor free: refused, not spun on.)
+                            Err(e) if reserve.refuse(&e, || listener.accept()) => {}
                             Err(e) => {
                                 warn!(?e, "accept failed");
                                 break;
@@ -1124,6 +1127,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             let crate::sockfile::Wayland { name: socket_name, listener, _lock, _files } = crate::sockfile::bind_wayland().expect("Failed to create a wayland socket");
             listener.set_nonblocking(true).expect("nonblocking socket");
             let files = (_lock, _files);
+            let mut reserve = olo_system::fds::Reserve::default();
             handle
                 .insert_source(Generic::new(listener, Interest::READ, Mode::Level), move |_, listener, data| {
                     let _ = &files;
@@ -1135,6 +1139,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                                 }
                             }
                             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                            Err(e) if reserve.refuse(&e, || listener.accept()) => {}
                             Err(e) => {
                                 warn!(?e, "accept failed");
                                 break;
@@ -1870,11 +1875,14 @@ fn proxied_wayland_socket<BackendData: Backend + 'static>(handle: &LoopHandle<'s
     // SAFETY: called during single-threaded start-up.
     unsafe { std::env::remove_var("OLO_WAYLAND_PROXY_FD") };
     listener.set_nonblocking(true).expect("nonblocking socket");
-    let accept = handle.insert_source(Generic::new(listener, Interest::READ, Mode::Level), |_, listener, data| {
+    let mut reserve = olo_system::fds::Reserve::default();
+    let accept = handle.insert_source(Generic::new(listener, Interest::READ, Mode::Level), move |_, listener, data| {
         loop {
             let stream = match listener.accept() {
                 Ok((stream, _)) => stream,
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                // (No descriptor free: refused, not spun on.)
+                Err(e) if reserve.refuse(&e, || listener.accept()) => continue,
                 Err(e) => {
                     warn!(?e, "accept failed");
                     break;

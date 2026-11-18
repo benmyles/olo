@@ -528,6 +528,16 @@ Each note: what to do, then why (what happened), then how to apply it.
   never reclaimed (`memory.min`), which is where PipeWire and
   WirePlumber run; Olo's own programs are in the login's
   `session-N.scope`, which has none: they lock their own memory.
+- **A running program's limits can be changed from outside**
+  (`prlimit --pid PID --nofile=SOFT:HARD`): how app_server running out
+  of file descriptors was reproduced in a test session. Its own count:
+  `ls /proc/PID/fd | wc -l`; what they are: `ls -l /proc/PID/fd`.
+  `tsession start NAME --session` runs olo-session, the proxy and
+  app_server only: no Deskbar or Tracker until you run them.
+- **Test sessions don't show a low limit on open files by themselves**:
+  they inherit this terminal's, raised. Start one from a held shell to
+  see what a login gives: `bash -c 'ulimit -Sn 1024; exec
+  /usr/bin/python3 tools/dev/tsession start …'`.
 - **Is the pointer drawn?** `tsession shot NAME OUT.png X Y W H
   --pointer` draws it in; the same shot without doesn't: compare the
   two (strong black or white where they differ, if a video plays

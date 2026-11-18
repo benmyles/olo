@@ -112,12 +112,63 @@ fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }
 
-/// Be ready for a crash: the report's hook and handlers, and stderr to
-/// the journal when it goes nowhere. Once; the first thing `main` does.
+/// How many files a program may keep open below which it is held too
+/// tight (Olo Doctor says so): a login's 1,024 is, 65,536 isn't.
+pub const OPEN_FILES_ENOUGH: u64 = 65_536;
+
+/// This program may keep as many files open as its account is allowed:
+/// the limit it starts with (RLIMIT_NOFILE's soft limit, 1,024 from a
+/// login, kept so low for programs that still use `select`) raised to
+/// the most it may be (the hard limit: 524,288 on Fedora). Its old and
+/// new value; None where it can't be read.
+///
+/// Every Olo program does this as it starts (`install`), and what it
+/// starts inherits it. A window server's every client, buffer and
+/// sync object is a file; app_server with three displays' windows had
+/// 696 open of its 1,024 when Deskbar's folding made every window draw
+/// anew, and past the limit the kernel drops the descriptors programs
+/// send: Terminal and Tracker lost their windows ("file descriptor
+/// expected", 2026-11-18). A terminal's shells and a file manager's
+/// folders are files too.
+pub fn raise_open_files() -> Option<(u64, u64)> {
+    let mut limit = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+    // SAFETY: getrlimit writes `limit`.
+    if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) } != 0 {
+        return None;
+    }
+    let was = limit.rlim_cur;
+    // ("Unlimited" isn't given for files: the kernel's own ceiling then.)
+    let most = if limit.rlim_max == libc::RLIM_INFINITY { std::fs::read_to_string("/proc/sys/fs/nr_open").ok().and_then(|n| n.trim().parse().ok()).unwrap_or(1_048_576) } else { limit.rlim_max };
+    if was >= most {
+        return Some((was, was));
+    }
+    limit.rlim_cur = most;
+    // SAFETY: setrlimit reads `limit`; a soft limit up to the hard one needs no privilege.
+    if unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &limit) } != 0 {
+        return Some((was, was));
+    }
+    Some((was, most))
+}
+
+static OPEN_FILES: OnceLock<Option<(u64, u64)>> = OnceLock::new();
+
+/// What `install` found and made of this program's limit on open files
+/// (`raise_open_files`: what it was, what it is), for a program that
+/// says so in its log.
+pub fn open_files() -> Option<(u64, u64)> {
+    OPEN_FILES.get().copied().flatten()
+}
+
+/// What every Olo program does first: it may keep the files it needs
+/// open (`raise_open_files`), and is ready for a crash: the report's
+/// hook and handlers, and stderr to the journal when it goes nowhere.
+/// Once; the first thing `main` does (`tests/every_program.rs` holds
+/// every program to it).
 pub fn install() {
     if SETUP.get().is_some() {
         return;
     }
+    let _ = OPEN_FILES.set(raise_open_files());
     let exe = std::env::current_exe().unwrap_or_default();
     let program = program_name(&exe);
     let exe = exe.to_string_lossy().trim_end_matches(" (deleted)").to_owned();

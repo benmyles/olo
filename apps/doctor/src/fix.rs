@@ -269,6 +269,16 @@ pub enum Step {
     LetSessionLockMemory {
         uid: u32,
     },
+    /// Let every running Olo program of account `uid` keep as many files
+    /// open as it may (RLIMIT_NOFILE's soft limit raised to its hard one,
+    /// `prlimit(2)` on each; run as root, a hard limit under `hard` is
+    /// raised to it first): what each does by itself as it starts, from
+    /// the build that does (`olo_crash::raise_open_files`), given now to
+    /// those started before. Until each ends.
+    LetOloOpenFiles {
+        uid: u32,
+        hard: u64,
+    },
 }
 
 impl Step {
@@ -322,6 +332,7 @@ impl Step {
             Step::SwapOff => "Turning swap off".into(),
             Step::FstabSwapOff => "Taking swap out of /etc/fstab".into(),
             Step::LetSessionLockMemory { .. } => "Letting the programs running now keep their memory in RAM".into(),
+            Step::LetOloOpenFiles { .. } => "Letting Olo's programs running now keep more files open".into(),
             Step::RemakeZramSwap { device } => format!("Making the swap on /dev/{device} again at its new size"),
             Step::KeepOffCores { kept, on } => {
                 let list = olo_system::cores::format_list(kept);
@@ -447,6 +458,7 @@ impl Step {
             Step::SwapOff => swap_off(Path::new("/proc/swaps")).map_err(|e| format!("{}: {e}", self.describe())),
             Step::FstabSwapOff => fstab_swap_off(Path::new("/etc/fstab")).map_err(failed),
             Step::LetSessionLockMemory { uid } => let_lock_memory(Path::new("/proc"), *uid).map_err(|e| format!("{}: {e}", self.describe())),
+            Step::LetOloOpenFiles { uid, hard } => let_open_files(Path::new("/proc"), *uid, *hard).map_err(|e| format!("{}: {e}", self.describe())),
             Step::RemakeZramSwap { device } => {
                 let start = |unit: &str| olo_system::systemd::start_afresh(unit, std::time::Duration::from_secs(30)).map_err(|e| e.to_string());
                 remake_zram_swap(Path::new("/"), device, std::time::Duration::from_secs(10), &start).map_err(|e| format!("{}: {e}", self.describe()))
@@ -738,7 +750,13 @@ impl Step {
             Step::RemakeZramSwap { .. } => Inverse::default(),
             // What changes nothing that stays: a process ended, hardware
             // started again, a program run.
-            Step::Signal { .. } | Step::RestartGpu { .. } | Step::RestartBluetooth { .. } | Step::TryShell { .. } | Step::StartProgram { .. } | Step::LetSessionLockMemory { .. } => Inverse::default(),
+            Step::Signal { .. }
+            | Step::RestartGpu { .. }
+            | Step::RestartBluetooth { .. }
+            | Step::TryShell { .. }
+            | Step::StartProgram { .. }
+            | Step::LetSessionLockMemory { .. }
+            | Step::LetOloOpenFiles { .. } => Inverse::default(),
         }
     }
 }
@@ -1123,6 +1141,48 @@ fn let_lock_memory(proc: &Path, uid: u32) -> Result<(), String> {
     for pid in processes_of(proc, uid) {
         // SAFETY: prlimit64(2) reads `all`; no old limit is asked for.
         if unsafe { libc::prlimit64(pid, libc::RLIMIT_MEMLOCK, &all, std::ptr::null_mut()) } == 0 {
+            changed += 1;
+        } else {
+            let e = std::io::Error::last_os_error();
+            if e.raw_os_error() != Some(libc::ESRCH) {
+                refused.get_or_insert(e.to_string());
+            }
+        }
+    }
+    match refused {
+        Some(e) if changed == 0 => Err(e),
+        _ => Ok(()),
+    }
+}
+
+/// Every running Olo program of `uid` (by its name: "olo-…") let keep
+/// as many files open as it may: its soft limit raised to its hard one,
+/// and, where this runs as root, a hard limit under `hard` raised to it
+/// first. Those that have ended meanwhile are passed over; the error is
+/// the first other refusal, when none could be changed.
+fn let_open_files(proc: &Path, uid: u32, hard: u64) -> Result<(), String> {
+    // SAFETY: geteuid(2) only reads.
+    let root = unsafe { libc::geteuid() } == 0;
+    let (mut changed, mut refused) = (0, None);
+    for pid in processes_of(proc, uid) {
+        let name = std::fs::read_to_string(proc.join(format!("{pid}/comm"))).unwrap_or_default();
+        if !name.starts_with("olo-") {
+            continue;
+        }
+        let mut limit = libc::rlimit64 { rlim_cur: 0, rlim_max: 0 };
+        // SAFETY: prlimit64(2) writes `limit`; nothing is set.
+        if unsafe { libc::prlimit64(pid, libc::RLIMIT_NOFILE, std::ptr::null(), &mut limit) } != 0 {
+            continue;
+        }
+        if root && limit.rlim_max != libc::RLIM64_INFINITY && limit.rlim_max < hard {
+            limit.rlim_max = hard;
+        }
+        if limit.rlim_cur >= limit.rlim_max {
+            continue;
+        }
+        limit.rlim_cur = limit.rlim_max;
+        // SAFETY: prlimit64(2) reads `limit`; no old limit is asked for.
+        if unsafe { libc::prlimit64(pid, libc::RLIMIT_NOFILE, &limit, std::ptr::null_mut()) } == 0 {
             changed += 1;
         } else {
             let e = std::io::Error::last_os_error();
@@ -1630,6 +1690,7 @@ mod tests {
             }
         }
         assert_eq!(Step::LetSessionLockMemory { uid: 1000 }.describe(), "Letting the programs running now keep their memory in RAM");
+        assert_eq!(Step::LetOloOpenFiles { uid: 1000, hard: 524_288 }.describe(), "Letting Olo's programs running now keep more files open");
     }
 
     /// Turning swap off where none is on does nothing, and says so

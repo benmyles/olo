@@ -704,6 +704,7 @@ pub fn scan(roots: &Roots) -> Report {
     gpu_driver(roots, &gpus, &mut r);
     graphics_swap(roots, &gpus, &mut r);
     memory_kept(roots, &procs, &mut r);
+    open_files(roots, &procs, &mut r);
     swappiness(roots, &mut r);
     swap_size(roots, &gpus, &mut r);
     tcp_bbr3(roots, &mut r);
@@ -1769,6 +1770,121 @@ fn rtkit(roots: &Roots, r: &mut Report) {
 /// Where Olo Doctor's Allow Realtime gives the account its leave to make
 /// threads realtime (the login's limits, pam_limits).
 pub const REALTIME_LIMITS_CONF: &str = "etc/security/limits.d/80-olo-realtime.conf";
+
+/// Where an account's hard limit on open files is raised, when it's
+/// under what Olo needs: the login's (PAM) and systemd's own, for the
+/// system's services and each account's.
+pub const OPEN_FILES_LIMITS_CONF: &str = "etc/security/limits.d/80-olo-open-files.conf";
+pub const OPEN_FILES_SYSTEMD_CONFS: [&str; 2] = ["etc/systemd/system.conf.d/80-olo-open-files.conf", "etc/systemd/user.conf.d/80-olo-open-files.conf"];
+/// The hard limit given (what systemd and Fedora give: a program asks
+/// for it, none starts with it).
+pub const OPEN_FILES_HARD: u64 = 524_288;
+
+fn open_files_limits_conf(uid: u32) -> String {
+    format!(
+        "# Olo: account {uid}'s programs may keep this many files open, when they ask (Olo's do as they start: a window\n# server's every window, buffer and connection is one).\n{uid}:{uid} hard nofile {OPEN_FILES_HARD}\n"
+    )
+}
+
+fn open_files_systemd_conf() -> String {
+    format!("# Olo: programs may keep this many files open, when they ask (they start with 1024).\n[Manager]\nDefaultLimitNOFILE=1024:{OPEN_FILES_HARD}\n")
+}
+
+/// A program's limits on open files (soft, hard) and how many it has
+/// open (None: not ours to count), from `/proc/PID`.
+fn open_files_of(fs: &Path, pid: i32) -> Option<(u64, u64, Option<usize>)> {
+    let limits = read(&fs.join(format!("proc/{pid}/limits")))?;
+    let line = limits.lines().find(|l| l.starts_with("Max open files"))?;
+    let mut words = line["Max open files".len()..].split_whitespace();
+    let number = |w: Option<&str>| match w? {
+        "unlimited" => Some(u64::MAX),
+        n => n.parse::<u64>().ok(),
+    };
+    let (soft, hard) = (number(words.next())?, number(words.next())?);
+    let open = std::fs::read_dir(fs.join(format!("proc/{pid}/fd"))).ok().map(|d| d.count());
+    Some((soft, hard, open))
+}
+
+/// Olo's programs may keep the files they need open (Ben, 2026-11-18:
+/// "why is there a 1024 soft limit? the file limits should be huuuuge or
+/// even unlimited … if that's something olo doctor needs to be able to
+/// fix for me then add that to olo doctor"). A program starts with the
+/// login's soft limit, 1,024, and may raise it to the hard one
+/// (524,288 on Fedora); every Olo program does as it starts
+/// (`olo_crash::raise_open_files`), since app_server ran out with
+/// three displays' windows (696 open of 1,024, and Deskbar's folding
+/// making every window draw anew: Terminal and Tracker lost their
+/// windows). This finds those that haven't: started by a build from
+/// before, or on a system whose hard limit is itself low. The fix
+/// raises the running ones in place (`Step::LetOloOpenFiles`, no
+/// password where the hard limit allows it), and, for a low hard
+/// limit, writes the login's and systemd's limits for the next login
+/// and raises the running programs' as root.
+fn open_files(roots: &Roots, procs: &[Proc], r: &mut Report) {
+    let fs = &roots.fs;
+    let enough = olo_crash::OPEN_FILES_ENOUGH;
+    let ours: Vec<(&Proc, (u64, u64, Option<usize>))> = procs.iter().filter(|p| p.uid == roots.uid && p.name.starts_with("olo-")).filter_map(|p| Some((p, open_files_of(fs, p.pid)?))).collect();
+    let low: Vec<&(&Proc, (u64, u64, Option<usize>))> = ours.iter().filter(|(_, (soft, _, _))| *soft < enough).collect();
+    if low.is_empty() {
+        if let Some((_, (soft, _, _))) = ours.iter().find(|(p, _)| p.name == "olo-app-server") {
+            r.fine.push(Fine {
+                title: "Olo's programs may keep the files they need open".into(),
+                detail: format!("The window server may keep {} open, and has {}.", if *soft == u64::MAX { "any number".to_owned() } else { thousands(*soft) }, open_now(&ours)),
+            });
+        }
+        return;
+    }
+    // The hard limit: what a program may raise itself to.
+    let hard_low = low.iter().any(|(_, (_, hard, _))| *hard < enough);
+    // The one that matters most, and how near it is: the window server
+    // (this session's first), else whichever is nearest its limit.
+    let server = low.iter().filter(|(p, _)| p.name == "olo-app-server").max_by_key(|(p, (_, _, open))| (p.scope == roots.scope && roots.scope.is_some(), open.unwrap_or(0)));
+    let nearest = server.or_else(|| low.iter().max_by_key(|(_, (soft, _, open))| open.unwrap_or(0) as u64 * 1000 / (*soft).max(1)));
+    let Some((who, (soft, _, open))) = nearest.map(|x| **x) else { return };
+    let name = if who.name == "olo-app-server" { "Olo's window server".to_owned() } else { who.name.clone() };
+    let near = open.is_some_and(|n| n as u64 * 2 >= soft);
+    let mut steps = Vec::new();
+    if hard_low {
+        steps.push(Step::WriteFile { path: PathBuf::from("/").join(OPEN_FILES_LIMITS_CONF), content: open_files_limits_conf(roots.uid), mode: 0o644 });
+        steps.extend(OPEN_FILES_SYSTEMD_CONFS.iter().map(|p| Step::WriteFile { path: PathBuf::from("/").join(p), content: open_files_systemd_conf(), mode: 0o644 }));
+    }
+    steps.push(Step::LetOloOpenFiles { uid: roots.uid, hard: OPEN_FILES_HARD });
+    let has = open.map_or(String::new(), |n| format!(" It has {} open now.", thousands(n as u64)));
+    let others = low.len() - 1;
+    let more = match others {
+        0 => String::new(),
+        1 => " One other Olo program is held the same.".to_owned(),
+        n => format!(" {n} other Olo programs are held the same."),
+    };
+    r.findings.push(Finding {
+        id: "open-files".into(),
+        severity: if near { Severity::Problem } else { Severity::Advice },
+        title: format!("{name} may keep only {} files open", thousands(soft)),
+        detail: format!(
+            "Every window's pictures, every program's connection and every buffer shared with the screen is an open file to the window server, and a terminal's shells and a folder's files are to their programs.{has} Past the limit, programs lose their windows (what they send is dropped on the way), or can't open what they're asked to.{more} Olo's programs raise this limit themselves as they start, from the build that does; the fix raises it now for those already running{}.",
+            if hard_low { ", and for the account from its next login (this system's own limit is low)" } else { "" }
+        ),
+        fix: Some(Fix { label: "Raise the Limit".into(), root: hard_low, steps }),
+    });
+}
+
+/// How many files the window server has open, in words.
+fn open_now(ours: &[(&Proc, (u64, u64, Option<usize>))]) -> String {
+    ours.iter().find(|(p, _)| p.name == "olo-app-server").and_then(|(_, (_, _, open))| *open).map_or("some".to_owned(), |n| thousands(n as u64))
+}
+
+/// 1024 → "1,024".
+fn thousands(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
 
 /// The limits file for account `uid`: realtime up to Olo's most, and no
 /// limit on how long a realtime thread runs (Olo's own guard ends one
@@ -4710,6 +4826,81 @@ mod tests {
         w("proc/950/status", "Name:\tolo-app-server\nVmLck:\t  295820 kB\nVmRSS:\t  295820 kB\n");
         let r = look(&roots);
         assert!(r.findings.is_empty() && r.fine.iter().any(|f| f.title == "The desktop's core stays in memory"));
+    }
+
+    /// Open files: an Olo program held to a login's 1,024 is found, the
+    /// window server first, a Problem once it's half way there; the fix
+    /// raises the running ones (no password), and where the account's
+    /// own limit is low writes the limits too (with one). Raised: fine.
+    #[test]
+    fn olos_programs_may_keep_their_files_open() {
+        let (fs, roots) = machine("open-files");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        let program = |pid: u32, name: &str, soft: &str, hard: &str, open: usize| {
+            w(&format!("proc/{pid}/cmdline"), &format!("/home/me/.local/bin/{name}\0"));
+            w(&format!("proc/{pid}/cgroup"), "0::/user.slice/user-1000.slice/session-2.scope\n");
+            w(&format!("proc/{pid}/status"), &format!("Name:\t{name}\n"));
+            w(
+                &format!("proc/{pid}/limits"),
+                &format!("Limit                     Soft Limit           Hard Limit           Units     \nMax open files            {soft}                 {hard}               files     \n"),
+            );
+            let _ = std::fs::remove_dir_all(fs.join(format!("proc/{pid}/fd")));
+            for n in 0..open {
+                w(&format!("proc/{pid}/fd/{n}"), "");
+            }
+        };
+        let look = |roots: &Roots| {
+            let (mut r, procs) = (Report::default(), processes(&roots.fs));
+            open_files(roots, &procs, &mut r);
+            r
+        };
+        // No Olo program to be seen: nothing said.
+        assert!(look(&roots).findings.is_empty() && look(&roots).fine.is_empty());
+        program(950, "olo-app-server", "1024", "524288", 40);
+        program(951, "olo-tracker", "1024", "524288", 30);
+        // (Someone else's program, held the same: not Olo's to raise.)
+        program(952, "bash", "1024", "524288", 4);
+        // (The test's files are the test's user's: the account's.)
+        let roots = Roots { uid: std::fs::metadata(fs.join("proc/950")).map(|m| std::os::unix::fs::MetadataExt::uid(&m)).unwrap(), ..roots };
+        let r = look(&roots);
+        let f = r.find("open-files").unwrap();
+        assert_eq!((f.severity, f.title.as_str()), (Severity::Advice, "Olo's window server may keep only 1,024 files open"));
+        assert!(f.detail.contains("It has 40 open now.") && f.detail.contains("One other Olo program is held the same."), "{}", f.detail);
+        let fix = f.fix.as_ref().unwrap();
+        assert!(!fix.root && fix.label == "Raise the Limit");
+        assert_eq!(fix.steps, [Step::LetOloOpenFiles { uid: roots.uid, hard: 524_288 }]);
+        // Half way to the limit (three displays' windows): a problem.
+        program(950, "olo-app-server", "1024", "524288", 696);
+        let f = look(&roots).find("open-files").cloned().unwrap();
+        assert!(f.severity == Severity::Problem && f.detail.contains("It has 696 open now."), "{f:?}");
+        // The account's own limit low: its limits written too, as root.
+        program(950, "olo-app-server", "1024", "4096", 40);
+        let f = look(&roots).find("open-files").cloned().unwrap();
+        let fix = f.fix.as_ref().unwrap();
+        assert!(fix.root && f.detail.contains("this system's own limit is low"));
+        assert_eq!(
+            fix.steps.iter().map(Step::describe).collect::<Vec<_>>(),
+            [
+                "Writing /etc/security/limits.d/80-olo-open-files.conf",
+                "Writing /etc/systemd/system.conf.d/80-olo-open-files.conf",
+                "Writing /etc/systemd/user.conf.d/80-olo-open-files.conf",
+                "Letting Olo's programs running now keep more files open",
+            ]
+        );
+        let Step::WriteFile { content, .. } = &fix.steps[0] else { panic!("not a file") };
+        assert!(content.ends_with(&format!("{u}:{u} hard nofile 524288\n", u = roots.uid)), "{content}");
+        assert!(open_files_systemd_conf().ends_with("[Manager]\nDefaultLimitNOFILE=1024:524288\n"));
+        // Raised (what each does as it starts, and what the fix does): fine.
+        program(950, "olo-app-server", "524288", "524288", 696);
+        program(951, "olo-tracker", "524288", "524288", 30);
+        let r = look(&roots);
+        assert!(r.findings.is_empty(), "{:?}", r.findings);
+        assert!(r.fine.iter().any(|f| f.title == "Olo's programs may keep the files they need open" && f.detail == "The window server may keep 524,288 open, and has 696."), "{:?}", r.fine);
+        assert_eq!((thousands(7), thousands(1024), thousands(1_048_576)), ("7".into(), "1,024".into(), "1,048,576".into()));
     }
 
     /// Swappiness: with swap on and the kernel's 60, set to 1 now and at

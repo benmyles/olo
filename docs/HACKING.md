@@ -677,6 +677,46 @@ How Olo keeps it (do the same):
 
 ## Crash reports (crates/crash, applies to every program)
 
+**Open files** (Ben, 2026-11-18: "why is there a 1024 soft limit? the
+file limits should be huuuuge … make sure all our apps will raise it as
+needed not just app_server"). A program starts with a login's soft
+limit on open files, 1,024 (kept low by systemd for programs that
+still use `select`), and may raise itself to the hard one (524,288 on
+Fedora; "unlimited" isn't given for files). Every Olo program does, as
+the first thing it does: `olo_crash::install()` calls
+`olo_crash::raise_open_files()` (the same test that holds every
+`main` to `install` holds it to this), and what a program starts
+inherits it: olo-session first, so its whole session. Why it matters
+most to app_server: every client's connection, every window's buffer
+(a dmabuf each) and every sync object is a file to it. On three
+displays it had 696 open of its 1,024 (295 dmabufs, 166 sync objects,
+131 sockets); Deskbar's folding made every tiled window draw anew,
+each new swapchain bringing more, and past the limit the kernel drops
+the descriptors a program sends: app_server logged "file descriptor
+expected … import_timeline" and the program was gone (Terminal and
+Tracker, the desktop's icons with it). Reproduced in a test session
+(`prlimit --pid APP_SERVER --nofile=N:524288`, N a few over what it
+has, then more apps opened). With none left at all, three things
+happened and two are mended: a listening socket with a connection it
+couldn't take woke the loop for ever (171,619 "accept failed" in a
+second and a half; `olo_system::fds::Reserve` now takes the connection
+with a descriptor held back and closes it: app_server's three
+listeners, its IPC socket and the proxy's), and the GPU driver aborts
+when it can't make a descriptor (`DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD ioctl
+failed (24)`, SIGABRT), which is the driver's and why the limit is to
+be never reached. A session started from a shell held to 1,024 now has
+olo-session, the proxy, app_server and what they start at 524,288
+(app_server's log: "the most files this may keep open"). Olo Doctor
+(`open_files`, finding `open-files`) finds Olo's programs still held
+under 65,536 (`olo_crash::OPEN_FILES_ENOUGH`: started by a build from
+before, or on a system whose hard limit is low; a Problem when the
+window server is half way to its limit), and "Raise the Limit" raises
+the running ones in place (`Step::LetOloOpenFiles`, `prlimit` on each
+`olo-…` of the account, no password), writing the login's and
+systemd's limits first where the hard limit itself is low
+(`/etc/security/limits.d/80-olo-open-files.conf`,
+`/etc/systemd/{system,user}.conf.d/80-olo-open-files.conf`, with one).
+
 **Every Olo program leaves what's needed to look into its crash.**
 `olo_crash::install()` is the first thing each program's `main` does
 (`olo_kit::run` does it again, harmlessly; `crates/crash/tests/

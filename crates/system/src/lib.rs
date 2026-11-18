@@ -23,6 +23,7 @@ pub mod edid;
 pub mod env;
 pub mod face;
 pub mod fans;
+pub mod fds;
 pub mod fingerprint;
 pub mod github;
 pub mod gpu_load;

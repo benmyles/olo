@@ -51,6 +51,10 @@ fn main() {
     // everything else (olo_protocol::performance::tier). Only the
     // person's own: a headless one (an agent's screen, a test session) is
     // background work beside it, and stays at its nice.
+    // (Raised as every Olo program's is, first thing: `olo_crash::install`.)
+    if let Some((was, now)) = olo_crash::open_files() {
+        tracing::info!(files = now, was, "the most files this may keep open (every window's buffers and every program's connection are files)");
+    }
     let headless = ::std::env::args().nth(1).as_deref() == Some("--headless");
     if headless {
         tracing::info!("the main thread stays at its nice: headless, beside the person's desktop");
