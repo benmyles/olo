@@ -231,6 +231,16 @@ pub fn describe(measure: &Measure, sources: &Sources) -> String {
             Some(k) => format!("{}, {}", k.menu, k.said(options)),
             None => format!("{app}: {glance}"),
         },
+        // "Divider: an etched line, as wide as the widgets".
+        Measure::Divider { line, reach } => {
+            let line_words = line.name();
+            let line_words = format!("{}{}", line_words[..1].to_lowercase(), &line_words[1..]);
+            if *line == olo_protocol::deskbar::DividerLine::None {
+                return format!("Divider: {line_words}");
+            }
+            let reach_words = reach.name();
+            format!("Divider: {line_words}, {}{}", reach_words[..1].to_lowercase(), &reach_words[1..])
+        }
     }
 }
 
@@ -527,8 +537,9 @@ impl Reader {
                 let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
                 Some(pool_reading(PoolMeters::load().as_ref(), measure, now))
             }
-            // (What an app gives isn't read: `olo_protocol::glance`.)
-            Measure::App { .. } => None,
+            // (What an app gives isn't read: `olo_protocol::glance`; a
+            // divider shows nothing.)
+            Measure::App { .. } | Measure::Divider { .. } => None,
             Measure::Power => {
                 let Some(bat) = battery_dir() else { return Some(Reading::missing(Unit::Watts, "no battery")) };
                 let status = read(bat.join("status"));
@@ -805,6 +816,15 @@ mod tests {
         // Not running.
         let r = pool_reading(None, &measure, now);
         assert!(r.values.is_empty() && r.note.as_deref() == Some("Token Pool isn't running"));
+    }
+
+    /// A divider is said by what it draws, not by a reading: it has none.
+    #[test]
+    fn a_divider_in_words() {
+        use olo_protocol::deskbar::{DividerLine, DividerReach};
+        let sources = Sources::default();
+        assert_eq!(describe(&Measure::Divider { line: DividerLine::Etched, reach: DividerReach::Inset }, &sources), "Divider: an etched line, as wide as the widgets");
+        assert_eq!(describe(&Measure::Divider { line: DividerLine::None, reach: DividerReach::Full }, &sources), "Divider: space only");
     }
 
     #[test]

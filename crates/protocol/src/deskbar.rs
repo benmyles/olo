@@ -105,7 +105,9 @@ impl Widget {
         // (A quota moves over minutes and hours: read each minute, as
         // well as whenever the pool says it changed, its graph an hour.)
         let (every_ms, span_s) = if matches!(measure, Measure::Pool { .. }) { (60_000, 3600) } else { (1000, 60) };
-        Widget { id, hue: Some(measure.hue()), measure, place: Place::Top, look, size: Size::Medium, label: true, value: true, every_ms, span_s, beside: false, name: None }
+        // (A divider in the look's own line, unless given a hue.)
+        let hue = (!measure.is_divider()).then(|| measure.hue());
+        Widget { id, hue, measure, place: Place::Top, look, size: Size::Medium, label: true, value: true, every_ms, span_s, beside: false, name: None }
     }
 
     /// The name the person gave it, if any (not blank).
@@ -127,6 +129,8 @@ impl Widget {
             Measure::Pool { provider, quotas, .. } if quotas.is_empty() => crate::pool::provider_name(provider),
             Measure::Pool { provider, quotas, .. } => format!("{} {}", crate::pool::provider_name(provider), quotas.join(", ")),
             Measure::App { app, .. } => crate::glance::provider(app).map_or_else(|| app.clone(), |p| p.name.to_owned()),
+            // (A divider says nothing unless it's named: a heading.)
+            Measure::Divider { .. } => String::new(),
             m => m.kind_name().into(),
         }
     }
@@ -150,7 +154,7 @@ impl Widget {
                 let name = crate::pool::provider_name(provider);
                 if quotas.is_empty() { name } else { format!("{name} {}", quotas.iter().map(|q| short_quota(q)).collect::<Vec<_>>().join("/")) }
             }
-            Measure::App { .. } => self.default_label(),
+            Measure::App { .. } | Measure::Divider { .. } => self.default_label(),
         }
     }
 
@@ -237,6 +241,78 @@ pub enum Measure {
         #[serde(default)]
         options: std::collections::BTreeMap<String, String>,
     },
+    /// Nothing of the computer: room, a line, or a heading (the widget's
+    /// own name), to set groups of widgets apart (Ben, 2026-11-17: "a
+    /// spacing/divider widget (with plenty of visual customization
+    /// options) for the deskbar widget section for when the user wants
+    /// to break stuff up"). A row of its own, as tall as the widget's
+    /// size says, in the widget's hue (none: the look's own line).
+    Divider {
+        #[serde(default)]
+        line: DividerLine,
+        #[serde(default)]
+        reach: DividerReach,
+    },
+}
+
+/// What a divider draws across its row.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DividerLine {
+    /// Room only.
+    None,
+    /// A line a device pixel thick.
+    Hairline,
+    /// A dark line over a light one, cut into the panel (BeOS's
+    /// separators).
+    #[default]
+    Etched,
+    /// The same, twice as strong: two points.
+    Bold,
+    /// A line of dots a device pixel each.
+    Dotted,
+    /// A row of round dots.
+    Dots,
+}
+
+impl DividerLine {
+    pub const ALL: [DividerLine; 6] = [DividerLine::None, DividerLine::Hairline, DividerLine::Etched, DividerLine::Bold, DividerLine::Dotted, DividerLine::Dots];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            DividerLine::None => "Space only",
+            DividerLine::Hairline => "A thin line",
+            DividerLine::Etched => "An etched line",
+            DividerLine::Bold => "A thick line",
+            DividerLine::Dotted => "A dotted line",
+            DividerLine::Dots => "A row of dots",
+        }
+    }
+}
+
+/// How far across its row a divider's line goes.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DividerReach {
+    /// Edge to edge.
+    Full,
+    /// As far as the widgets' own words and drawings.
+    #[default]
+    Inset,
+    /// The middle third.
+    Short,
+}
+
+impl DividerReach {
+    pub const ALL: [DividerReach; 3] = [DividerReach::Full, DividerReach::Inset, DividerReach::Short];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            DividerReach::Full => "Edge to edge",
+            DividerReach::Inset => "As wide as the widgets",
+            DividerReach::Short => "Short, in the middle",
+        }
+    }
 }
 
 fn yes() -> bool {
@@ -315,7 +391,13 @@ impl Measure {
             Measure::Power => "Power",
             Measure::Pool { .. } => "Token Pool",
             Measure::App { app, glance, .. } => crate::glance::kind(app, glance).map_or("App", |k| k.menu),
+            Measure::Divider { .. } => "Divider",
         }
+    }
+
+    /// Whether it shows nothing of the computer: a divider.
+    pub fn is_divider(&self) -> bool {
+        matches!(self, Measure::Divider { .. })
     }
 
     /// The hue a new widget of it gets.
@@ -331,7 +413,7 @@ impl Measure {
             Measure::Power => Hue::Yellow,
             Measure::Pool { provider, .. } if provider == "codex" => Hue::Teal,
             Measure::Pool { .. } => Hue::Brown,
-            Measure::App { .. } => Hue::Blue,
+            Measure::App { .. } | Measure::Divider { .. } => Hue::Blue,
         }
     }
 
@@ -350,6 +432,7 @@ impl Measure {
         ]
         .into_iter()
         .chain(crate::glance::PROVIDERS.iter().flat_map(|p| p.kinds.iter().map(|k| Measure::app(p.app, k.id))))
+        .chain([Measure::Divider { line: DividerLine::default(), reach: DividerReach::default() }])
         .collect()
     }
 }
@@ -440,6 +523,35 @@ impl Size {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A divider shows nothing of the computer: a kind like the others in
+    /// the list, read with whatever is left out (an etched line as wide
+    /// as the widgets), with no words and no colour of its own until
+    /// it's given them.
+    #[test]
+    fn a_divider_is_a_widget_of_its_own_kind() {
+        let w: Widget = serde_json::from_str(r#"{"id": 9, "measure": {"kind": "divider"}}"#).unwrap();
+        assert_eq!(w.measure, Measure::Divider { line: DividerLine::Etched, reach: DividerReach::Inset });
+        assert!(w.measure.is_divider() && !Measure::Cpu { cores: false }.is_divider());
+        assert_eq!((w.measure.kind_name(), w.label().as_str()), ("Divider", ""));
+        let all = Measure::kinds();
+        assert_eq!(all.iter().filter(|k| k.is_divider()).count(), 1, "offered once");
+        let made = Widget::new(4, all.iter().find(|k| k.is_divider()).unwrap().clone());
+        assert_eq!(made.hue, None, "the look's own line");
+        assert!(Widget::new(5, Measure::Cpu { cores: false }).hue.is_some());
+        // Every line and reach has its words, and comes back as it was written.
+        for line in DividerLine::ALL {
+            for reach in DividerReach::ALL {
+                let m = Measure::Divider { line, reach };
+                let json = serde_json::to_string(&m).unwrap();
+                assert_eq!(serde_json::from_str::<Measure>(&json).unwrap(), m, "{json}");
+                assert!(!line.name().is_empty() && !reach.name().is_empty());
+            }
+        }
+        // Named, it is a heading.
+        let named = Widget { name: Some("Network".into()), ..made };
+        assert_eq!(named.label(), "Network");
+    }
 
     /// Settings from before widgets, or from an agent naming only what it
     /// wants, read whole.

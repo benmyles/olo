@@ -473,7 +473,7 @@ impl Live {
     fn tell(&mut self, proxy: &olo_kit::Proxy) {
         // (An app's widgets aren't read: what the app gives is drawn,
         // `crate::glances`.)
-        let wanted: Vec<Widget> = if self.paused { Vec::new() } else { self.widgets.iter().filter(|w| !matches!(w.measure, Measure::App { .. })).cloned().collect() };
+        let wanted: Vec<Widget> = if self.paused { Vec::new() } else { self.widgets.iter().filter(|w| !matches!(w.measure, Measure::App { .. } | Measure::Divider { .. })).cloned().collect() };
         if !wanted.iter().any(|w| matches!(w.measure, Measure::Pool { .. })) {
             self.pool_watch = None;
         }
@@ -747,7 +747,8 @@ pub fn rows(widgets: &[Widget]) -> Vec<Vec<Widget>> {
     let mut rows: Vec<Vec<Widget>> = Vec::new();
     for w in widgets {
         match rows.last_mut() {
-            Some(row) if w.beside => row.push(w.clone()),
+            // (A divider is a row of its own, and nothing is beside one.)
+            Some(row) if w.beside && !w.measure.is_divider() && !row.last().is_some_and(|l| l.measure.is_divider()) => row.push(w.clone()),
             _ => rows.push(vec![w.clone()]),
         }
     }
@@ -761,6 +762,9 @@ pub fn row_height(row: &[Widget], app: &dyn Fn(&Widget) -> f32) -> f32 {
     if let [w] = row {
         if matches!(w.measure, Measure::App { .. }) {
             return app(w);
+        }
+        if w.measure.is_divider() {
+            return divider_height(w);
         }
         return match (w.size, w.look == Look::Number) {
             (Size::Small, _) => 24.0,
@@ -777,6 +781,74 @@ pub fn row_height(row: &[Widget], app: &dyn Fn(&Widget) -> f32) -> f32 {
             Size::Large => 52.0,
         })
         .fold(0.0, f32::max)
+}
+
+/// A divider's row: as tall as its size says (room, mostly), and tall
+/// enough for its heading if it has one.
+fn divider_height(w: &Widget) -> f32 {
+    let room: f32 = match w.size {
+        Size::Small => 7.0,
+        Size::Medium => 13.0,
+        Size::Large => 25.0,
+    };
+    if w.own_name().is_some() { room.max(DIVIDER_HEADING) } else { room }
+}
+
+/// A divider's row with a heading in it.
+const DIVIDER_HEADING: f32 = 19.0;
+
+/// A divider in row `r`: its line across as far as it reaches (in the
+/// widget's hue, or the look's own line), after its heading if it's
+/// named (the name, small, at the left, the line going on from it).
+pub fn paint_divider(g: &mut Painter, r: Bounds<Pixels>, w: &Widget, p: &Palette, inset: f32) {
+    use olo_kit::style::{Align, Rule};
+    use olo_protocol::deskbar::{DividerLine, DividerReach};
+    let Measure::Divider { line, reach } = &w.measure else { return };
+    let (mut x0, mut x1) = match reach {
+        DividerReach::Full => (r.left(), r.right()),
+        DividerReach::Inset => (r.left() + px(inset), r.right() - px(inset)),
+        DividerReach::Short => (r.left() + r.size.width / 3.0, r.right() - r.size.width / 3.0),
+    };
+    let y = r.center().y;
+    // The look's own line: cut into the panel where it's etched (the
+    // panel's shade over its shine, as its other separators); otherwise
+    // the words' grey, half there, which shows on a dark panel as on a
+    // light one (the shade is near black there: dots of it were lost).
+    let own = || {
+        if *line == DividerLine::Etched {
+            return olo_kit::style::shade(p, p.panel_background, 1.3);
+        }
+        let mut grey = olo_kit::style::secondary_text(p);
+        grey.a *= 0.55;
+        grey
+    };
+    let color = w.hue.map_or_else(own, |h| olo_kit::style::c(p.hue(h)));
+    let mut said = String::new();
+    if let Some(name) = w.own_name() {
+        // (Its words where the widgets' own are, whatever the line's reach.)
+        let left = r.left() + px(inset);
+        let ink = w.hue.map_or_else(|| olo_kit::style::secondary_text(p), |h| olo_kit::style::c(p.hue(h)));
+        let b = olo_kit::style::label_fit(g, left, y, Align::Left, name.to_owned(), olo_kit::style::DETAIL_SIZE, olo_kit::style::ui_font(olo_kit::FontWeight::BOLD), ink, r.right() - px(inset) - left);
+        said = name.to_owned();
+        x0 = x0.max(b.right() + px(m::TIGHT));
+        if *reach == DividerReach::Short {
+            // (A short line beside a heading: what's left of the row, to its inset.)
+            x1 = r.right() - px(inset);
+        }
+    }
+    let how = match line {
+        DividerLine::None => None,
+        DividerLine::Hairline => Some(Rule::Hairline),
+        DividerLine::Etched => Some(Rule::Etched),
+        DividerLine::Bold => Some(Rule::Bold),
+        DividerLine::Dotted => Some(Rule::Dotted),
+        DividerLine::Dots => Some(Rule::Dots),
+    };
+    if let Some(how) = how {
+        olo_kit::style::rule(g, x0, x1, y, how, color, p);
+    }
+    // For agents: a separator, its heading if it has one.
+    agent::record(g, agent::Node { role: "Separator", name: (!said.is_empty()).then(|| said.into()), bounds: r, enabled: true, ..Default::default() });
 }
 
 /// The cells of a row of `n` widgets side by side across `r`, inset
@@ -1112,6 +1184,13 @@ impl View for Layer {
                     );
                     continue;
                 }
+                // A divider: its line and heading, nothing read.
+                if widget.measure.is_divider() {
+                    if let Spot::Row(r) = spot {
+                        paint_divider(g, r, &widget, &p, crate::TRAY_TEXT);
+                    }
+                    continue;
+                }
                 let s = model.read().live.shown(&widget);
                 let r = match spot {
                     Spot::Tray(r) => {
@@ -1143,6 +1222,36 @@ mod tests {
         let mut widget = Widget::new(1, Measure::Cpu { cores: true });
         widget.every_ms = every_ms;
         Shown { widget, series: Vec::new(), now: vec![now], was: vec![was], at: Some(10.0), value: String::new(), shorter: Vec::new(), short: String::new(), latest: None }
+    }
+
+    /// A divider is a row of its own whatever is said to be beside what,
+    /// as tall as its size says (room, mostly), and tall enough for its
+    /// heading when it has one.
+    #[test]
+    fn a_divider_is_a_row_of_its_own() {
+        use olo_protocol::deskbar::{DividerLine, DividerReach};
+        let divider = |id: u32| Widget::new(id, Measure::Divider { line: DividerLine::Etched, reach: DividerReach::Inset });
+        let beside = |mut w: Widget| {
+            w.beside = true;
+            w
+        };
+        let list = [Widget::new(1, Measure::Cpu { cores: false }), beside(divider(2)), beside(Widget::new(3, Measure::Memory { swap: false })), beside(Widget::new(4, Measure::Cpu { cores: true }))];
+        let got: Vec<Vec<u32>> = rows(&list).iter().map(|r| r.iter().map(|w| w.id).collect()).collect();
+        assert_eq!(got, vec![vec![1], vec![2], vec![3, 4]], "nothing beside a divider, a divider beside nothing");
+        let height = |w: &Widget| row_height(std::slice::from_ref(w), &|_| 0.0);
+        let mut d = divider(5);
+        let sizes: Vec<f32> = [Size::Small, Size::Medium, Size::Large]
+            .into_iter()
+            .map(|size| {
+                d.size = size;
+                height(&d)
+            })
+            .collect();
+        assert_eq!(sizes, vec![7.0, 13.0, 25.0]);
+        assert!(sizes[2] < height(&Widget::new(6, Measure::Cpu { cores: false })), "less than a meter's row");
+        d.size = Size::Small;
+        d.name = Some("Network".into());
+        assert_eq!(height(&d), DIVIDER_HEADING, "room for its heading");
     }
 
     /// Read every second, a level is on its way all that second: from

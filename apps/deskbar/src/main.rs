@@ -1803,6 +1803,10 @@ impl Deskbar {
     /// Widget `id`'s tip, a card (`widgets::Live::card`).
     fn card(&self, id: u32) -> Option<std::rc::Rc<olo_kit::card::Card>> {
         let w = self.live.widgets.iter().find(|w| w.id == id)?;
+        // (A divider says nothing: no card.)
+        if w.measure.is_divider() {
+            return None;
+        }
         if matches!(w.measure, olo_protocol::deskbar::Measure::App { .. }) {
             return Some(std::rc::Rc::new(self.glances.card(w)));
         }
@@ -1811,6 +1815,9 @@ impl Deskbar {
 
     /// Widget `w`'s tip in words: an app's from what it gives.
     fn widget_tip(&self, w: &olo_protocol::deskbar::Widget) -> String {
+        if w.measure.is_divider() {
+            return String::new();
+        }
         if matches!(w.measure, olo_protocol::deskbar::Measure::App { .. }) { self.glances.tip(w) } else { self.live.tip(w, &self.sources) }
     }
 
@@ -3940,8 +3947,16 @@ impl Deskbar {
             }
             _ => h,
         };
+        // (A divider opens nothing: its menu has Deskbar's settings alone.)
+        let divider = widget.is_some_and(|w| w.measure.is_divider());
         h.on_any_button(move |e, cx| match button(e) {
+            MouseButton::Left if divider => {}
             MouseButton::Left => run(&m, &opens, cx),
+            MouseButton::Right if divider => {
+                let menu = Menu::new("Widget").item(olo_kit::app_menu::settings_label("deskbar"), "pref:deskbar");
+                let mm = m.clone();
+                open_menu(cx, &v, &key, r, menu, move |cmd, cx| run(&mm, cmd, cx));
+            }
             MouseButton::Right => {
                 let mut menu = Menu::new("Widget").item(name, opens.clone());
                 if let Some((widget, Some(id), minutes, len)) = inbox {

@@ -983,6 +983,61 @@ pub fn latch(g: &mut Painter, r: Bounds<Pixels>, open: bool, color: Hsla) {
     }
 }
 
+/// How [`rule`] draws its line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Rule {
+    /// A device pixel thick.
+    Hairline,
+    /// A dark line over a light one, cut into the ground (BeOS's
+    /// separators): `color` over the palette's shine.
+    Etched,
+    /// Two points thick.
+    Bold,
+    /// A device pixel in three.
+    Dotted,
+    /// Round dots two points across, six apart.
+    Dots,
+}
+
+/// A rule from `x0` to `x1` with its middle at `y`, in `color` (a
+/// divider among widgets, a heading's line), every part on whole device
+/// pixels at any scale.
+pub fn rule(g: &mut Painter, x0: Pixels, x1: Pixels, y: Pixels, how: Rule, color: Hsla, palette: &Palette) {
+    let scale = g.scale_factor();
+    let one = hairline(g);
+    let snap = |v: Pixels| px((f32::from(v) * scale).round() / scale);
+    let (x0, x1, y) = (snap(x0), snap(x1), snap(y));
+    if x1 <= x0 {
+        return;
+    }
+    match how {
+        Rule::Hairline => hline(g, x0, x1, y, color),
+        Rule::Etched => {
+            hline(g, x0, x1, y - one, color);
+            hline(g, x0, x1, y, c(palette.shine));
+        }
+        Rule::Bold => fill_rect(g, Bounds::from_corners(point(x0, y - px(1.0)), point(x1, y + px(1.0))), color),
+        Rule::Dotted => {
+            let step = one * 3.0;
+            let mut x = x0;
+            while x < x1 {
+                fill_rect(g, Bounds::new(point(x, y), size(one, one)), color);
+                x += step;
+            }
+        }
+        Rule::Dots => {
+            let (r, gap) = (1.25, 6.0);
+            let n = ((f32::from(x1 - x0) + gap - 2.0 * r) / gap).floor().max(1.0) as usize;
+            // (Centred in the reach, so both ends are alike.)
+            let start = f32::from(x0) + (f32::from(x1 - x0) - (n - 1) as f32 * gap) / 2.0;
+            for i in 0..n {
+                let centre = snap_centred(g, point(px(start + i as f32 * gap), y), 2.0 * r, 2.0 * r).center();
+                g.paint_sector(centre, px(0.0), px(r), 0.0, std::f32::consts::TAU, color);
+            }
+        }
+    }
+}
+
 /// A dot of something that goes with time (an unread notification
 /// fading away: Deskbar's dot beside an app, the dot on a card of
 /// Notifications' widget): `left` of it filled from its left (1: whole;

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Deskbar: dividers among the widgets
+
+*09:26* — A new kind of widget that shows nothing of the computer: room, a line or a heading, to set groups of widgets apart. Here a heading with an etched line, a thin line, a dotted one edge to edge, a short row of dots, a heading in a hue with a thick line, and room alone. Preferences ▸ Deskbar ▸ Add ▸ Divider.
+
+![Deskbar: dividers among the widgets](2026-11-18/092617-deskbar-dividers-among-the-widgets.png)
+
 ### Other people's marks, drawn for every icon set
 
 *09:02* — Chrome, Slack, Telegram and GitHub drawn again: the mark itself, on a badge or tile that leans half as much as the set's other standing things (left: the old ones and the new among Terminal, Tracker, Phone and Passwords at Deskbar's sizes). Each icon set has its own: classic, Platinum, BeOS, AmigaOS, Aqua and, straight on, Flat. Slack's tile no longer loses its mark at 40 pixels (a 2× screen): a size between two steps shows the drawing's small stand-in.

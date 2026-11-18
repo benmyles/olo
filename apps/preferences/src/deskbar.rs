@@ -92,6 +92,15 @@ fn summary(w: &Widget, shares: bool, sources: &Sources) -> String {
     let beside = if shares { ", beside the one before" } else { "" };
     // (Its own name first: "Build box: CPU, a graph under the tray".)
     let named = w.own_name().map(|n| format!("{n}: ")).unwrap_or_default();
+    // ("Divider: an etched line under the tray"; named, "Tools: a heading
+    // under the tray". Short: how far it reaches is in its settings.)
+    if let Measure::Divider { line, .. } = &w.measure {
+        if !named.is_empty() {
+            return format!("{named}a heading {place}");
+        }
+        let words = line.name();
+        return format!("Divider: {}{} {place}", words[..1].to_lowercase(), &words[1..]);
+    }
     if app {
         return format!("{named}{}, {place}{beside}", meters::describe(&w.measure, sources));
     }
@@ -193,13 +202,13 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 ),
         );
         ui.note("Each shows in the Deskbar as it changes. Click one there for Activity Monitor (a Token Pool one, Token Pool; an app's, its app).");
-        // Beside each application's name: the blue dot of its
-        // notifications is always there (it drains as they fade); the
-        // red one, for what the app itself says is unread or waiting.
+        // Beside each application's name, one dot: blue for its
+        // notifications (it drains as they fade); red in its place
+        // while the app itself says something is unread or waiting.
         let on = ui.s.deskbar.unread_dots;
         ui.bbox("Applications", |ui| {
             ui.check("A red dot for an app with something unread in it", on, |s, v| s.deskbar.unread_dots = v);
-            ui.note("Left of the blue dot of its notifications. It stays while there's something unread or waiting in the app.");
+            ui.note("In place of the blue dot of its notifications, for as long as the app says something is unread or waiting in it.");
         });
     });
     let right = ui.collect(|ui| match selected.and_then(|i| widgets.get(i)) {
@@ -236,7 +245,8 @@ fn editor(ui: &mut Ui, w: &Widget, after: bool, sources: &Sources) {
                     && let Some(k) = Measure::kinds().into_iter().nth(i)
                     && !k.same_kind(&w.measure)
                 {
-                    w.hue = Some(k.hue());
+                    // (A divider in the look's own line, unless given a hue.)
+                    w.hue = (!k.is_divider()).then(|| k.hue());
                     w.measure = k;
                 }
             },
@@ -260,6 +270,25 @@ fn editor(ui: &mut Ui, w: &Widget, after: bool, sources: &Sources) {
         let name = ui.control_of(&field_id).label("Name:").divider(DIVIDER);
         ui.add(name);
         ui.choose("widget-place", &Place::ALL.map(|p| (p, p.name())), &w.place, |f| f.label("Where:").divider(DIVIDER), move |s, v| change(id, move |w| w.place = v)(s));
+        // A divider: where, how much room, and its colour.
+        if w.measure.is_divider() {
+            ui.choose(
+                "widget-size",
+                &[(Size::Small, "A little room"), (Size::Medium, "Some room"), (Size::Large, "A lot of room")],
+                &w.size,
+                |f| f.label("Room:").divider(DIVIDER),
+                move |s, v| change(id, move |w| w.size = v)(s),
+            );
+            let mut hues: Vec<(Option<Hue>, &str)> = vec![(None, "The look's own")];
+            hues.extend(Hue::ALL.iter().map(|h| (Some(*h), h.name())));
+            ui.choose("widget-hue", &hues, &w.hue, |f| f.label("Colour:").divider(DIVIDER), move |s, v| change(id, move |w| w.hue = v)(s));
+            ui.note(if w.place == Place::Tray {
+                "A divider shows among the widgets, not in the tray: choose where."
+            } else {
+                "Named, it's a heading: its name at the left, the line going on from it."
+            });
+            return;
+        }
         // (An app's widget looks as its app made it: where and how big.)
         let app = matches!(w.measure, Measure::App { .. });
         if !app {
@@ -390,6 +419,34 @@ fn measure_options(ui: &mut Ui, w: &Widget, sources: &Sources, divider: f32) {
             pool_options(ui, id, provider, quotas, *view, [*used, *count_off, *warn, *notify], w.look == Look::Heatmap, sources, divider)
         }
         Measure::App { app, glance, options } => app_options(ui, id, app, glance, options, divider),
+        Measure::Divider { line, reach } => {
+            use olo_protocol::deskbar::{DividerLine, DividerReach};
+            ui.choose("widget-line", &DividerLine::ALL.map(|l| (l, l.name())), line, |f| f.label("Line:").divider(divider), {
+                let set = set.clone();
+                move |s, v| {
+                    set(Box::new(move |m| {
+                        if let Measure::Divider { line, .. } = m {
+                            *line = v
+                        }
+                    }))(s)
+                }
+            });
+            ui.enabled_if(*line != DividerLine::None, |ui| {
+                ui.choose(
+                    "widget-reach",
+                    &DividerReach::ALL.map(|r| (r, r.name())),
+                    reach,
+                    |f| f.label("Reaches:").divider(divider),
+                    move |s, v| {
+                        set(Box::new(move |m| {
+                            if let Measure::Divider { reach, .. } = m {
+                                *reach = v
+                            }
+                        }))(s)
+                    },
+                );
+            });
+        }
     }
 }
 

@@ -19434,6 +19434,32 @@ ProcessController put their bars in its tray.
   one name (`pool::quotas` merges names that differ only in case),
   and `seven_day_breakdown`, which is no limit, isn't a quota.
 
+**A divider** (`Measure::Divider { line, reach }`; Ben, 2026-11-17: "a
+spacing/divider widget (with plenty of visual customization options)
+for the deskbar widget section for when the user wants to break stuff
+up") is a widget that shows nothing of the computer: room, a line, or
+a heading, to set groups of widgets apart. It is a row of its own
+(`rows`: nothing is beside one), as tall as its size says (`Room:` in
+Preferences: 7, 13 or 25 points; 19 at least with a heading), read
+nothing (it isn't in the readings, so a Deskbar with only dividers is
+at rest: 2 frames in 8 s), and has no tip, no card and no click (its
+menu has only Deskbar Settings…). `paint_divider` draws it with the
+kit's `style::rule(g, x0, x1, y, Rule, color, palette)` (every part on
+whole device pixels at any scale: `Hairline`, a device pixel; `Etched`,
+the panel's shade over its shine, as BeOS's separators; `Bold`, two
+points; `Dotted`, a device pixel in three; `Dots`, round ones two
+points across, centred in the reach), or nothing (`DividerLine::None`:
+room only), as far as its reach says (edge to edge, as wide as the
+widgets' own words and drawings, or the middle third). Its colour is
+the widget's hue, or with none the look's own: the panel's shade where
+it's etched, else the secondary text's grey at 0.55 (the shade is near
+black on a dark panel: dots of it were lost there). Given a name, it
+is a heading: the name small and bold at the left, where the widgets'
+labels start, the line going on from it. For agents it is a
+`Separator`, named by its heading. Seven meters with six dividers
+among them cost what the meters alone do (0.6% of a core against
+0.7%; a frame 417 µs against 394).
+
 Preferences ▸ Deskbar (`deskbar.rs`) lists the widgets in order (Add
 one of a kind after the chosen one, Remove, Move Up, Move Down; a named
 one's row starts with its name, "Build box: CPU, a graph under the
@@ -19441,7 +19467,10 @@ tray") beside the chosen one's settings (what it shows and which of it,
 its Name: a field whose hint is its name by what it measures, emptied
 to go back to that; where, look, size, name and value shown, beside
 the one before it, how often, how far back, colour), each changing the
-Deskbar at once; Defaults has none.
+Deskbar at once; Defaults has none. A divider's settings are its own:
+Line, Reaches, Name, Where, Room and Colour ("The look's own" first);
+its row in the list says "Divider: a dotted line under the tray", or,
+named, "Tools: a heading under the tray".
 
 ### An app's widgets (glances.rs; olo_protocol::glance, olo_kit::glance)
 

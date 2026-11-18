@@ -117,16 +117,6 @@ something nobody here has is in "Blocked", with what it waits for.
   the color of the notifications badge in the deskbar tray (the one
   with the bell)"). One of the look's hues, or the look's own.
 
-- **Deskbar: a spacer or divider among the widgets** (Ben, 2026-11-17:
-  "a spacing/divider widget (with plenty of visual customization
-  options) for the deskbar widget section for when the user wants to
-  break stuff up"). A widget that shows nothing of the computer: room,
-  a line, or a heading, to set groups of widgets apart. Its options in
-  Preferences ▸ Deskbar: its kind (space, a line, a line with a label),
-  its height, the line's style (hairline, etched as BeOS's separators,
-  dotted, a row of dots), its inset from the sides, its colour (the
-  look's or one of its hues), and the label's words.
-
 - **A Calendar app, native, with Google and Fastmail calendars** (Ben,
   2026-11-17: "build a beautiful olo native calendar app. add calendar
   support to prefs -> integrations and support any number of google
@@ -195,6 +185,16 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Deskbar: a divider among the widgets** (Ben, 2026-11-17: "a
+  spacing/divider widget (with plenty of visual customization options)
+  for the deskbar widget section for when the user wants to break stuff
+  up"). Preferences ▸ Deskbar ▸ Add ▸ Divider: room only, a thin line,
+  an etched one, a thick one, a dotted one or a row of dots; edge to
+  edge, as wide as the widgets, or short in the middle; a little, some
+  or a lot of room; the look's own colour or any hue; and, given a
+  name, a heading with the line going on from it (HACKING, "Live
+  widgets"). **To try**: add a few among your widgets.
 
 - **Other people's marks, drawn for every icon set** (Ben, 2026-11-18:
   "the logos just look kinda weird, especially at the smallest deskbar
