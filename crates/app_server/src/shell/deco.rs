@@ -113,7 +113,7 @@ pub struct Decoration {
     /// Which decoration it is, to the tab worker (`tab_worker`), and the
     /// look it was last asked to draw.
     id: u64,
-    asked: Option<TabKey>,
+    asked: Vec<TabKey>,
     frame_ids: Vec<Id>,
     frame_commit: CommitCounter,
     frame_key: Option<(bool, u64, bool)>,
@@ -162,17 +162,18 @@ fn tab_worker() -> &'static TabWorker {
         let out = done.clone();
         let _ = std::thread::Builder::new().name("tabs".into()).spawn(move || {
             while let Ok(job) = todo.recv() {
-                // Only each decoration's latest look.
+                // Only each decoration's latest look at each scale (a
+                // window on two displays has a tab for each).
                 let mut latest: Vec<TabJob> = Vec::new();
                 for job in std::iter::once(job).chain(todo.try_iter()) {
-                    latest.retain(|j| j.0 != job.0);
+                    latest.retain(|j| !(j.0 == job.0 && j.1.same_scale(&job.1)));
                     latest.push(job);
                 }
                 for (id, key, tab, s, palette) in latest {
                     let pixmap = draw_tab(&palette, &key, &tab, s);
                     let mut done = out.lock().unwrap();
-                    // (One waiting per decoration: the latest.)
-                    done.retain(|d: &(u64, TabKey, Pixmap)| d.0 != id);
+                    // (One waiting per decoration and scale: the latest.)
+                    done.retain(|d: &(u64, TabKey, Pixmap)| !(d.0 == id && d.1.same_scale(&key)));
                     done.push((id, key, pixmap));
                 }
             }
@@ -197,6 +198,26 @@ struct TabKey {
     zoom: bool,
     /// It has room for the red dot (`Decoration::dot`).
     dot: bool,
+}
+
+impl TabKey {
+    /// Drawn for the same scale: tabs as tall in device pixels.
+    fn same_scale(&self, other: &TabKey) -> bool {
+        self.phys.1 == other.phys.1
+    }
+}
+
+/// Which of the looks kept (the latest first) shows for `key`: that very
+/// look, else the latest drawn for the same scale (the tab as it was,
+/// until the worker has the new look), and never one drawn for another
+/// scale. A window part way from one display to another of another
+/// scale is drawn for each in turn; shown "the tab as it was" whatever
+/// it was drawn for, the display at 1× showed the tab made for 2×, twice
+/// its size (Ben, 2026-11-18: "when dragging a window from one display
+/// to another with different resolution/dpi the title bar doesn't
+/// render right when mid drag").
+fn look_for<'a>(kept: impl Iterator<Item = &'a TabKey> + Clone, key: &TabKey) -> Option<usize> {
+    kept.clone().position(|k| k == key).or_else(|| kept.clone().position(|k| k.same_scale(key)))
 }
 
 pub const DOUBLE_CLICK: Duration = Duration::from_millis(400);
@@ -355,7 +376,7 @@ impl Default for Decoration {
             title_width: None,
             tabs: Vec::new(),
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
-            asked: None,
+            asked: Vec::new(),
             frame_ids: (0..16).map(|_| Id::new()).collect(),
             frame_commit: CommitCounter::default(),
             frame_key: None,
@@ -564,6 +585,36 @@ impl Decoration {
         (frame, (tx(tab.x), tx(tab.x + tab.width), frame_top))
     }
 
+    /// A look drawn (`pixmap`, for `key`) kept, the latest: in a buffer
+    /// of its size already made, if any (the oldest look kept, or a
+    /// spare), its texture written again rather than one made
+    /// (`SPARE_TABS`).
+    fn keep_look(&mut self, key: TabKey, pixmap: &Pixmap) {
+        let bsize = tab_buffer_size(key.phys);
+        let oldest = (self.tabs.len() >= TAB_LOOKS && self.tabs.last().is_some_and(|t| t.2 == bsize)).then(|| self.tabs.pop()).flatten().map(|t| t.1);
+        let buffer = match oldest.or_else(|| spare_tab(bsize)) {
+            Some(mut buffer) => {
+                let _ = buffer.render().draw(|mem| {
+                    copy_tab(mem, bsize.0, pixmap);
+                    // (Whole: see `tab_buffer_size`.)
+                    Ok::<_, ()>(vec![Rectangle::from_size(bsize.into())])
+                });
+                buffer
+            }
+            None => {
+                let mut mem = vec![0u8; bsize.0 as usize * bsize.1 as usize * 4];
+                copy_tab(&mut mem, bsize.0, pixmap);
+                let size: Size<i32, Buffer> = bsize.into();
+                MemoryRenderBuffer::from_slice(&mem, Fourcc::Abgr8888, size, 1, Transform::Normal, Some(vec![Rectangle::from_size(size)]))
+            }
+        };
+        self.tabs.insert(0, (key, buffer, bsize));
+        while self.tabs.len() > TAB_LOOKS {
+            let (_, buffer, size) = self.tabs.pop().expect("a look");
+            keep_spare(size, buffer);
+        }
+    }
+
     pub fn render_elements<R>(
         &mut self,
         renderer: &mut R,
@@ -615,65 +666,62 @@ impl Decoration {
         };
         warm_tabs(renderer, phys.1);
         // A look drawn before, or done by the worker, is shown at once; a
-        // new one is asked of the worker (the first is drawn here: there
-        // is nothing to show meanwhile).
-        let done = {
+        // new one is asked of the worker, and the latest look of the same
+        // scale shows meanwhile. Where there's none of this scale (the
+        // window's first frame, or its first on a display of another
+        // scale), it's drawn here: there is nothing to show meanwhile.
+        //
+        // What the worker finished is kept whichever display this frame is
+        // for: a frame is drawn for one display at a time, and a look done
+        // for the other was dropped here, never asked for again (it was
+        // still "the one asked for"), and the other display kept the
+        // stand-in.
+        let done: Vec<(TabKey, Pixmap)> = {
             let mut done = tab_worker().done.lock().unwrap();
-            done.iter().position(|d| d.0 == self.id).map(|i| done.remove(i))
+            let mut mine = Vec::new();
+            let mut i = 0;
+            while i < done.len() {
+                if done[i].0 == self.id {
+                    let (_, look, pixmap) = done.remove(i);
+                    mine.push((look, pixmap));
+                } else {
+                    i += 1;
+                }
+            }
+            mine
         };
-        let mut pixmap = None;
-        if let Some((_, look, p)) = done
-            && look == key
-        {
-            pixmap = Some(p);
-            self.asked = None;
+        for (look, pixmap) in done {
+            // (One no longer asked for was overtaken: let go.)
+            if let Some(i) = self.asked.iter().position(|k| *k == look) {
+                self.asked.remove(i);
+                self.keep_look(look, &pixmap);
+            }
         }
         if let Some(i) = self.tabs.iter().position(|(k, ..)| *k == key) {
             let looked = self.tabs.remove(i);
             self.tabs.insert(0, looked);
-        } else if phys.0 > 0 && phys.1 > 0 && pixmap.is_none() && !self.tabs.is_empty() {
-            if self.asked.as_ref() != Some(&key) {
-                self.asked = Some(key.clone());
-                let _ = tab_worker().jobs.lock().unwrap().send((self.id, key.clone(), tab, s, palette.clone()));
-            }
         } else if phys.0 > 0 && phys.1 > 0 {
-            let pixmap = pixmap.unwrap_or_else(|| draw_tab(&palette, &key, &tab, s));
-            let bsize = tab_buffer_size(phys);
-            // A buffer of its size already made, if any (the oldest look
-            // kept, or a spare), takes the new look: its texture written
-            // again rather than one made (`SPARE_TABS`).
-            let oldest = (self.tabs.len() >= TAB_LOOKS && self.tabs.last().is_some_and(|t| t.2 == bsize)).then(|| self.tabs.pop()).flatten().map(|t| t.1);
-            let buffer = match oldest.or_else(|| spare_tab(bsize)) {
-                Some(mut buffer) => {
-                    let _ = buffer.render().draw(|mem| {
-                        copy_tab(mem, bsize.0, &pixmap);
-                        // (Whole: see `tab_buffer_size`.)
-                        Ok::<_, ()>(vec![Rectangle::from_size(bsize.into())])
-                    });
-                    buffer
+            if self.tabs.iter().any(|(k, ..)| k.same_scale(&key)) {
+                if !self.asked.contains(&key) {
+                    self.asked.retain(|k| !k.same_scale(&key));
+                    self.asked.push(key.clone());
+                    let _ = tab_worker().jobs.lock().unwrap().send((self.id, key.clone(), tab, s, palette.clone()));
                 }
-                None => {
-                    let mut mem = vec![0u8; bsize.0 as usize * bsize.1 as usize * 4];
-                    copy_tab(&mut mem, bsize.0, &pixmap);
-                    let size: Size<i32, Buffer> = bsize.into();
-                    MemoryRenderBuffer::from_slice(&mem, Fourcc::Abgr8888, size, 1, Transform::Normal, Some(vec![Rectangle::from_size(size)]))
-                }
-            };
-            self.tabs.insert(0, (key, buffer, bsize));
-            while self.tabs.len() > TAB_LOOKS {
-                let (_, buffer, size) = self.tabs.pop().expect("a look");
-                keep_spare(size, buffer);
+            } else {
+                self.asked.retain(|k| !k.same_scale(&key));
+                let pixmap = draw_tab(&palette, &key, &tab, s);
+                self.keep_look(key.clone(), &pixmap);
             }
         }
         let mut tabs = Vec::new();
-        if let Some((key, buffer, _)) = self.tabs.first() {
+        if let Some((shown, buffer, _)) = look_for(self.tabs.iter().map(|(k, ..)| k), &key).and_then(|i| self.tabs.get(i)) {
             let at = location + Point::<i32, Physical>::from((tx(tab.x), 0));
-            let rect = Rectangle::new(at, key.phys.into());
+            let rect = Rectangle::new(at, shown.phys.into());
             let (t, used) = (std::time::Instant::now(), crate::render::ThreadUse::now());
-            tabs.extend(crate::render::exact(renderer, rect, buffer, key.phys, Some(alpha), Kind::Unspecified));
+            tabs.extend(crate::render::exact(renderer, rect, buffer, shown.phys, Some(alpha), Kind::Unspecified));
             if t.elapsed() > Duration::from_millis(2) {
                 let used = crate::render::ThreadUse::now().since(&used);
-                tracing::info!("slow tab: {:.1} ms putting its {}×{} look on the GPU; {used}", t.elapsed().as_secs_f64() * 1e3, key.phys.0, key.phys.1);
+                tracing::info!("slow tab: {:.1} ms putting its {}×{} look on the GPU; {used}", t.elapsed().as_secs_f64() * 1e3, shown.phys.0, shown.phys.1);
             }
         }
 
@@ -1068,5 +1116,38 @@ mod line_tests {
         assert_eq!(bands(2.0), [2, 2, 4, 2]);
         assert_eq!(bands(2.5), [2, 3, 5, 3]);
         assert_eq!(bands(3.0), [3, 3, 6, 3]);
+    }
+}
+
+#[cfg(test)]
+mod look_tests {
+    use super::*;
+
+    fn key(title: &str, focused: bool, phys: (i32, i32)) -> TabKey {
+        TabKey { title: title.into(), focused, hover: Part::None, pressed: Part::None, width: phys.0, phys, generation: 1, target: false, closed: false, zoom: true, dot: false }
+    }
+
+    /// A window on two displays of different scales has a tab drawn for
+    /// each. What shows on a display is the look for its scale: the very
+    /// one wanted, else the latest drawn for that scale while the new one
+    /// is made, and never the other display's (twice the size, or half).
+    #[test]
+    fn a_tab_shows_at_its_displays_own_scale() {
+        // At 2x a tab is 42 pixels high; at 1x, 21.
+        let (big, small) = (key("Olo Doctor", true, (240, 42)), key("Olo Doctor", true, (120, 21)));
+        // Only the 2x look drawn so far: nothing to show at 1x (it's drawn there and then).
+        assert_eq!(look_for([&big].into_iter(), &small), None);
+        assert_eq!(look_for([&big].into_iter(), &big), Some(0));
+        // Both drawn, the 2x one the latest: each display its own.
+        assert_eq!((look_for([&big, &small].into_iter(), &small), look_for([&big, &small].into_iter(), &big)), (Some(1), Some(0)));
+        // The window loses the keyboard: until the new looks are drawn, each display shows its own old one.
+        let (big_dim, small_dim) = (key("Olo Doctor", false, (240, 42)), key("Olo Doctor", false, (120, 21)));
+        assert_eq!((look_for([&big, &small].into_iter(), &small_dim), look_for([&big, &small].into_iter(), &big_dim)), (Some(1), Some(0)));
+        // The new look for one display drawn: it shows there, the other keeps its own.
+        assert_eq!((look_for([&small_dim, &big, &small].into_iter(), &small_dim), look_for([&small_dim, &big, &small].into_iter(), &big_dim)), (Some(0), Some(1)));
+        // A title that changed makes the tab wider: still the same scale's.
+        assert_eq!(look_for([&big, &small].into_iter(), &key("Olo Doctor: 2 recommendations", true, (300, 21))), Some(1));
+        // The worker keeps one job waiting a scale, not one a window.
+        assert!(big.same_scale(&big_dim) && !big.same_scale(&small));
     }
 }

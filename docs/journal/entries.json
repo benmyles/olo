@@ -4924,5 +4924,11 @@
   "title": "Calendar: every calendar in one, by day, week, month and as an agenda",
   "caption": "A new app, olo-calendar, on the engine made this week (iCalendar, repeating events, CalDAV for Google's and Fastmail's accounts). The small month and the calendars at the left, each in one of the look's own colours; Day, Week, Month and Agenda; the present a line across today. It shows and doesn't change anything yet: the editor is next. Seen here with its demo calendars.",
   "image": "2026-11-18/115054-calendar-every-calendar-in-one-by-day-week-month.png"
+ },
+ {
+  "time": "2026-11-18T12:08:53",
+  "title": "A window's tab at each display's own size, part way between two",
+  "caption": "Dragged from a display to one of another scale, a window's tab showed at the first display's size on the second (twice as big from 2\u00d7 to 1\u00d7). app_server kept one look of the tab and showed it whatever it was drawn for; now it keeps a look a scale. Here a window held across a 1.5\u00d7 screen and a 2\u00d7 one, each side enlarged to the same size: the tab runs straight across the seam.",
+  "image": "2026-11-18/120853-a-window-s-tab-at-each-display-s-own-size-part-w.png"
  }
 ]

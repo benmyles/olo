@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### A window's tab at each display's own size, part way between two
+
+*12:08* — Dragged from a display to one of another scale, a window's tab showed at the first display's size on the second (twice as big from 2× to 1×). app_server kept one look of the tab and showed it whatever it was drawn for; now it keeps a look a scale. Here a window held across a 1.5× screen and a 2× one, each side enlarged to the same size: the tab runs straight across the seam.
+
+![A window's tab at each display's own size, part way between two](2026-11-18/120853-a-window-s-tab-at-each-display-s-own-size-part-w.png)
+
 ### Calendar: every calendar in one, by day, week, month and as an agenda
 
 *11:50* — A new app, olo-calendar, on the engine made this week (iCalendar, repeating events, CalDAV for Google's and Fastmail's accounts). The small month and the calendars at the left, each in one of the look's own colours; Day, Week, Month and Agenda; the present a line across today. It shows and doesn't change anything yet: the editor is next. Seen here with its demo calendars.

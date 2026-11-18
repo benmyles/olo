@@ -54,19 +54,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **A window's tab drawn at the wrong size while it's dragged between
-  displays** (Ben, 2026-11-18, with a picture of Olo Doctor's tab twice
-  its size over its window, part way from one display to another: "when
-  dragging a window from one display to another with different
-  resolution/dpi the title bar doesn't render right when mid drag"). A
-  bug: app_server's decorator draws the tab for one display's scale and
-  it's shown at the other's while the window is on both. Find which
-  scale the tab is drawn at and which it's composited at for a window
-  across two displays (and for the frame, the borders, the shadow), fix
-  it so each display shows it at its own scale, and check it across
-  1×/1.5×/2× pairs in a two-screen test session
-  (`tsession start NAME 2560x1600,1920x1080`), mid-drag.
-
 - **Find what removes dependency build units from `target/release`**
   (2026-11-18: a workspace build failed to link because about 1,040
   unit folders vanished while it ran; docs/AGENT-NOTES.md, "Dependency
@@ -165,6 +152,17 @@ something nobody here has is in "Blocked", with what it waits for.
   are. Olo's own: the palette, an agents' API, in-place reload, native
   in Rust.
 
+- **Passwords' Chrome extension: Open Passwords goes to the login
+  chosen** (Ben, 2026-11-18: "in the olo passwords chrome extension if i
+  click the extension icon and click on one of the login items and then
+  click open passwords it should open or activate the passwords app and
+  take me to that specific login"). The extension's popup, with an item
+  chosen: Open Passwords starts Passwords (or brings its window
+  forward) showing that item, selected in its list, whatever the list
+  was filtered to; with no item chosen, as now. Through the extension's
+  host to the running app (its instance's launch, the item's id
+  handed over, nothing secret in it).
+
 - **Windows snap into place as they're dragged** (Ben, 2026-11-18: "add
   support for window "snapping" when dragging so that e.g. if i drag to
   different areas of the screen it takes that tile location while
@@ -205,6 +203,23 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **A window's tab at the right size on each display while it's dragged
+  between them** (Ben, 2026-11-18, with a picture of Olo Doctor's tab
+  twice its size over its window: "when dragging a window from one
+  display to another with different resolution/dpi the title bar
+  doesn't render right when mid drag"). app_server draws a window that
+  is on two displays for each in turn, and showed "the tab as it was"
+  while a new look was drawn, whatever scale that was for: the 2×
+  display's tab on the 1× one, twice the size; and the look drawn for
+  the second display was dropped by a frame for the first, never asked
+  for again, so it stayed. Now a tab's looks are kept per scale and
+  only one of the display's own scale shows there. Reproduced in a
+  two-screen test session (2× beside 1×: the tab doubled on the second)
+  and gone with the fix at 2×/1×, 1×/2×, 1.5×/2×, 2×/1.25× and
+  1×/1.75×, the seam looked at in each; a drag on one screen costs what
+  it did (a frame 0.18–0.20 ms either way). **For Ben**: to see on the
+  real displays after the next upgrade.
 
 - **Olo Doctor's "still running an older version", after an upgrade**
   (Ben, 2026-11-18, of "sudo (1567566), olo-screen (2156913) … each runs

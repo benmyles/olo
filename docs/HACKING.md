@@ -6359,7 +6359,23 @@ lint at a time).
   frame held it up 20 ms. Window tabs likewise: a tab whose look changes
   is drawn on a worker (`deco.rs`, `tab_worker`: cosmic-text's shaping
   and glyphs took 4–13 ms at times) and the old one shown till it's
-  done; a window's first tab is drawn at once. A frame over a 120 Hz
+  done; a window's first tab is drawn at once. **A tab's looks are a
+  scale's**: a window on two displays of different scales is drawn for
+  each in turn, so it keeps a look for each (`TabKey::phys`, its device
+  size), and what shows meanwhile is the latest look *of that scale*
+  (`look_for`), drawn at once if there's none (the window's first frame
+  on a display of another scale); the worker keeps one job and one
+  finished look a decoration and scale, and a finished look is kept
+  whichever display the frame at hand is for. (Shown "the tab as it
+  was" whatever scale that was for, a window dragged from a 2× display
+  to a 1× one had its tab twice the size there, for good: the look done
+  for the other display was dropped by a frame for this one and never
+  asked for again. 2026-11-18.) Whatever app_server keeps drawn for a
+  window in device pixels is kept per scale, since a window can be on
+  two at once. Checked by holding a window across two screens
+  (`TSESSION_SETTINGS` with `display.outputs.HEADLESS-2.scale`,
+  `tsession start NAME 2560x1600,2560x1600`, `down`, `move`, `shot
+  --output HEADLESS-2`). A frame over a 120 Hz
   frame's time logs where its time went (gathering or drawing, and the
   window, layer or wallpaper that took it; the elements new to it, the
   area drawn, and the thread's CPU time, waits, preemptions and page
