@@ -27,6 +27,16 @@ static ENV: Mutex<()> = Mutex::new(());
 /// The sign-ins the fake saw, in order.
 type Seen = Arc<Mutex<Vec<String>>>;
 
+/// The copy `old` hands over to, made by `make` with the pipe by which it
+/// knows `old` is still finishing (as `ui::hand_over` starts one; here in
+/// one process, so the descriptor named is the new copy's own from then).
+fn successor(old: &Shared, make: impl FnOnce() -> Arc<Shared>) -> Arc<Shared> {
+    let fd = old.drain.finishing().expect("a pipe");
+    // SAFETY: the tests that use the variable hold ENV.
+    unsafe { std::env::set_var(olo_token_pool::drain::FINISHING_ENV, std::os::fd::IntoRawFd::into_raw_fd(fd).to_string()) };
+    make()
+}
+
 /// A provider whose answers stream for `slow`.
 fn fake(seen: Seen, slow: Duration) -> Router {
     Router::new().route(
@@ -302,10 +312,9 @@ async fn two_copies_renew_a_sign_in_once() {
 
     let old = Shared::new(saved.clone(), Some(Store::open_at(path.clone()).unwrap().0), up.clone(), || {});
     old.drain.retire();
-    // The new copy, told the old (here, this process) may still be at work.
-    // SAFETY: this test alone uses the variable.
-    unsafe { std::env::set_var(olo_token_pool::drain::PREDECESSOR_ENV, std::process::id().to_string()) };
-    let new = Shared::new(saved, Some(Store::open_at(path.clone()).unwrap().0), up, || {});
+    // The new copy, handed the pipe by which it knows the old is still at
+    // work.
+    let new = successor(&old, || Shared::new(saved, Some(Store::open_at(path.clone()).unwrap().0), up, || {}));
     assert!(new.drain.overlapping() && old.drain.overlapping());
 
     // (Each its own task, as two processes' requests are.)
@@ -324,5 +333,155 @@ async fn two_copies_renew_a_sign_in_once() {
     new.touch();
     tokio::time::sleep(Duration::from_millis(700)).await;
     assert_eq!(store.read().unwrap().credentials["claude-a"].access, "fresh-1");
+    // The old copy done (whatever becomes of its pid: olo-session's stays
+    // for good, as the keeper), the new one is alone with the store.
+    old.drain.finished();
+    assert!(!new.drain.overlapping(), "the new copy still takes the old for one at work");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A copy from before the pipe names its pid: still known as one at work
+/// while that process lives (the time it may take to finish at most).
+#[test]
+fn a_predecessor_from_before_the_pipe_is_known_by_its_pid() {
+    let _env = ENV.lock().unwrap();
+    // SAFETY: the tests that use the variable hold ENV.
+    unsafe { std::env::set_var(olo_token_pool::drain::PREDECESSOR_ENV, std::process::id().to_string()) };
+    assert!(olo_token_pool::drain::Drain::default().overlapping());
+    assert!(std::env::var_os(olo_token_pool::drain::PREDECESSOR_ENV).is_none(), "left for the programs it starts");
+    // One that is gone, or a name that says nothing: nobody.
+    unsafe { std::env::set_var(olo_token_pool::drain::PREDECESSOR_ENV, "0") };
+    assert!(!olo_token_pool::drain::Drain::default().overlapping());
+    // A descriptor that isn't a pipe isn't taken for one (nor taken).
+    let file = std::fs::File::open("/proc/self/stat").unwrap();
+    unsafe { std::env::set_var(olo_token_pool::drain::FINISHING_ENV, std::os::fd::AsRawFd::as_raw_fd(&file).to_string()) };
+    assert!(!olo_token_pool::drain::Drain::default().overlapping());
+    assert!(file.metadata().is_ok(), "the descriptor was closed");
+    assert!(std::env::var_os(olo_token_pool::drain::FINISHING_ENV).is_none());
+}
+
+/// The store's lock is waited for only so long: a copy stuck holding it
+/// doesn't stick the others.
+#[test]
+fn the_stores_lock_is_given_up_on() {
+    use olo_token_pool::store::lock_within;
+    let dir = tempfile::tempdir().unwrap();
+    let at = dir.path().join("pool.lock");
+    let held = lock_within(&at, Duration::from_secs(1)).expect("free: taken at once");
+    let t = std::time::Instant::now();
+    assert!(lock_within(&at, Duration::from_millis(200)).is_none(), "held by another");
+    assert!((200..1500).contains(&t.elapsed().as_millis()), "{:?}", t.elapsed());
+    // Let go while another waits: that one has it, soon.
+    let waiter = std::thread::spawn({
+        let at = at.clone();
+        move || (lock_within(&at, Duration::from_secs(20)).is_some(), std::time::Instant::now())
+    });
+    std::thread::sleep(Duration::from_millis(150));
+    let let_go = std::time::Instant::now();
+    drop(held);
+    let (got, when) = waiter.join().unwrap();
+    assert!(got && when.duration_since(let_go) < Duration::from_millis(200), "{:?}", when.duration_since(let_go));
+}
+
+/// While two copies overlap, sign-ins coming due together and the pool's
+/// own saves never wait on each other for good. They did (Ben's pool,
+/// 2026-11-18 02:00: every request hung until it was killed six hours
+/// later): a renewal held the store's file lock and then wanted the
+/// store itself, while a save or another request held the store and
+/// waited for the file lock.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn renewals_and_saves_while_two_copies_overlap_dont_lock_each_other_out() {
+    let _env = ENV.lock().unwrap();
+    use olo_token_pool::store::Store;
+    let renewals: Arc<Mutex<Vec<String>>> = Default::default();
+    let app = Router::new().route(
+        "/oauth",
+        post({
+            let renewals = renewals.clone();
+            move |body: axum::Json<serde_json::Value>| {
+                let renewals = renewals.clone();
+                async move {
+                    let token = body["refresh_token"].as_str().unwrap_or("").to_owned();
+                    renewals.lock().unwrap().push(token.clone());
+                    // (As long as a provider takes: saves and the other
+                    // accounts' renewals come meanwhile.)
+                    tokio::time::sleep(Duration::from_millis(300)).await;
+                    Response::builder().body(Body::from(json!({"access_token": format!("fresh-{token}"), "refresh_token": format!("{token}-next"), "expires_in": 3600}).to_string())).unwrap()
+                }
+            }
+        }),
+    );
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let up = l.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+
+    let dir = std::path::PathBuf::from(format!("/var/tmp/olo-pool-overlap-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // SAFETY: the tests that use the variable hold ENV.
+    unsafe { std::env::set_var("OLO_POOL_KEYFILE", dir.join("key")) };
+    let path = dir.join("pool.vault");
+    let (store, mut saved) = Store::open_at(path.clone()).unwrap();
+    let ids = ["claude-a", "claude-b", "claude-c", "claude-d"];
+    for (i, id) in ids.iter().enumerate() {
+        let mut a = Account::new((*id).into(), (*id).into(), Provider::Claude);
+        a.created = 1 + i as i64;
+        saved.accounts.push(a);
+        saved.credentials.insert((*id).into(), Credential { access: "old".into(), refresh: Some(format!("r-{id}")), expires_at: Some(now() + 30), account_id: None });
+    }
+    store.save(&saved).unwrap();
+    // The new copy, the one it took over from still finishing.
+    let old = olo_token_pool::drain::Drain::default();
+    old.retire();
+    let new = {
+        let fd = old.finishing().expect("a pipe");
+        // SAFETY: the tests that use the variable hold ENV.
+        unsafe { std::env::set_var(olo_token_pool::drain::FINISHING_ENV, std::os::fd::IntoRawFd::into_raw_fd(fd).to_string()) };
+        Shared::new(saved, Some(Store::open_at(path.clone()).unwrap().0), Upstreams::fake(&format!("http://{up}")), || {})
+    };
+    assert!(new.drain.overlapping());
+
+    // Every account due at once (their sign-ins were made together), and
+    // the pool saving as it does after every request.
+    let renewing: Vec<_> = ids
+        .iter()
+        .map(|id| {
+            let (n, id) = (new.clone(), (*id).to_owned());
+            tokio::spawn(async move { n.renewed(&id, Provider::Claude).await })
+        })
+        .collect();
+    let saving = {
+        let n = new.clone();
+        tokio::task::spawn_blocking(move || {
+            // (A flush is a save now: no waiting for more to come.)
+            for _ in 0..40 {
+                n.flush();
+                std::thread::sleep(Duration::from_millis(25));
+            }
+        })
+    };
+    let all = tokio::time::timeout(Duration::from_secs(30), async {
+        let mut got = Vec::new();
+        for r in renewing {
+            got.push(r.await.unwrap());
+        }
+        saving.await.unwrap();
+        got
+    })
+    .await
+    .expect("renewals and saves locked each other out");
+    for (id, got) in ids.iter().zip(all) {
+        assert_eq!(got.expect("a renewal failed").access, format!("fresh-r-{id}"));
+    }
+    assert_eq!(renewals.lock().unwrap().len(), ids.len(), "each renewed once");
+    // And what was renewed is what's kept.
+    new.flush();
+    let disk = store.read().unwrap();
+    for id in ids {
+        assert_eq!(disk.credentials[id].access, format!("fresh-r-{id}"), "{id}");
+    }
+    // A request after it all is answered like any other.
+    let again = tokio::time::timeout(Duration::from_secs(5), new.renewed("claude-a", Provider::Claude)).await.expect("the pool was left locked");
+    assert_eq!(again.unwrap().access, "fresh-r-claude-a");
     let _ = std::fs::remove_dir_all(&dir);
 }

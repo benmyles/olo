@@ -940,11 +940,14 @@ fn hand_over(shared: &Arc<Shared>, open: &Open, proxy: &Proxy) -> bool {
     let Ok(exe) = std::env::current_exe() else { return false };
     let exe = std::path::PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)"));
     let mut cmd = std::process::Command::new(&exe);
-    cmd.args(std::env::args_os().skip(1))
-        .env(olo_token_pool::drain::LISTENERS_ENV, listeners)
-        .env(olo_token_pool::drain::PREDECESSOR_ENV, std::process::id().to_string())
-        .env(olo_xdg::NEW_INSTANCE, "1")
-        .env(KEPT_ENV, "1");
+    cmd.args(std::env::args_os().skip(1)).env(olo_token_pool::drain::LISTENERS_ENV, listeners).env(olo_xdg::NEW_INSTANCE, "1").env(KEPT_ENV, "1");
+    // How the copy knows this one is still finishing (and, the moment it
+    // has, that it's alone with the store): a pipe this one holds till then.
+    let finishing = shared.drain.finishing();
+    match &finishing {
+        Some(fd) => cmd.env(olo_token_pool::drain::FINISHING_ENV, std::os::fd::AsRawFd::as_raw_fd(fd).to_string()),
+        None => cmd.env(olo_token_pool::drain::PREDECESSOR_ENV, std::process::id().to_string()),
+    };
     olo_kit::restore::hand_over(&mut cmd, Some(&state));
     // Launches go to the copy from now on (it listens as it starts).
     olo_kit::instance::close();
@@ -952,10 +955,12 @@ fn hand_over(shared: &Arc<Shared>, open: &Open, proxy: &Proxy) -> bool {
     // starts, and a request's bookkeeping waits up to `USAGE_EVERY`.)
     shared.flush();
     let started = cmd.spawn();
+    drop(finishing);
     shared.drain.sealed();
     let child = match started {
         Ok(c) => c,
         Err(e) => {
+            shared.drain.finished();
             tracing::warn!("pool: couldn’t start the new version beside this one ({e}); upgrading the old way");
             olo_kit::instance::listen(crate::APP_ID, proxy.clone());
             return false;
@@ -980,6 +985,11 @@ fn hand_over(shared: &Arc<Shared>, open: &Open, proxy: &Proxy) -> bool {
             }
         }
         olo_kit::restore::mark_waiting(false);
+        // (Said to the new copy now, not only by ending or becoming the
+        // keeper, which close the pipe too.)
+        if let Some(s) = weak.upgrade() {
+            s.drain.finished();
+        }
         if kept {
             tracing::info!("pool: finished; the new version has it all");
             olo_kit::restore::mark_waiting(false);

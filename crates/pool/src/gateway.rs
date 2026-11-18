@@ -574,15 +574,21 @@ impl Shared {
         self.fresh(id, provider, false, 600).await
     }
 
-    /// The store's lock (see `Store::lock`), and whether the file had a
-    /// newer sign-in for `id` than this copy's, taken in (the other copy
-    /// renewed it). Blocks.
+    /// The store's lock (`store::lock_at`), waited for with the store itself
+    /// let go: its holder takes the store next, so the two are only ever
+    /// taken in that order. Blocks.
+    fn store_lock(&self) -> Option<std::fs::File> {
+        let at = self.store.lock().unwrap().as_ref().map(Store::lock_path)?;
+        crate::store::lock_at(&at)
+    }
+
+    /// The store's lock, and whether the file had a newer sign-in for `id`
+    /// than this copy's, taken in (the other copy renewed it). Blocks.
     fn store_lock_and_adopt(&self, id: &str) -> Option<(std::fs::File, bool)> {
-        let store = self.store.lock().unwrap();
-        let st = store.as_ref()?;
-        let held = st.lock()?;
-        let adopted = match st.read() {
-            Ok(disk) => {
+        let held = self.store_lock()?;
+        let disk = self.store.lock().unwrap().as_ref().map(Store::read);
+        let adopted = match disk {
+            Some(Ok(disk)) => {
                 let mut p = self.pool.lock().unwrap();
                 match (disk.credentials.get(id), p.saved.credentials.get(id)) {
                     (Some(theirs), Some(ours)) if newer(theirs, ours) => {
@@ -592,10 +598,11 @@ impl Shared {
                     _ => false,
                 }
             }
-            Err(e) => {
+            Some(Err(e)) => {
                 tracing::warn!("pool: {e}");
                 false
             }
+            None => false,
         };
         Some((held, adopted))
     }
@@ -1485,19 +1492,16 @@ fn save_once(s: &Shared) {
         }
         p.saved.clone()
     };
+    // The copy this one took over from still finishing: a sign-in it
+    // renewed meanwhile is kept, not written over. (The store's lock
+    // first, then the store: `store_lock`.)
+    let held = if s.drain.overlapping() { s.store_lock() } else { None };
     let mut store = s.store.lock().unwrap();
-    // The copy this one took over from still finishing: a
-    // sign-in it renewed meanwhile is kept, not written over.
-    let _held = match store.as_ref().filter(|_| s.drain.overlapping()) {
-        Some(st) => {
-            let held = st.lock();
-            if let Ok(disk) = st.read() {
-                s.adopt_newer(&disk, &mut snapshot);
-            }
-            held
-        }
-        None => None,
-    };
+    if held.is_some()
+        && let Some(Ok(disk)) = store.as_ref().map(Store::read)
+    {
+        s.adopt_newer(&disk, &mut snapshot);
+    }
     // The first account made: the sealed file (and its key) now.
     if store.is_none() && s.lazy {
         match Store::open() {

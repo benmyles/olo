@@ -376,6 +376,25 @@ Each note: what to do, then why (what happened), then how to apply it.
   program and `tsession key` still types into the first: activate the
   new window (`tsession ipc NAME '{"type":"activate","id":N}'`, the id
   from `list_windows`), or end the first, before sending keys.
+- **Token Pool in a test session**: `tsession run NAME env
+  OLO_POOL_PORT=27891 olo-pool --service` (a port of its own: 17891 is
+  the person's pool; the proxy's port stays theirs, so it has no proxy).
+  `curl http://127.0.0.1:27891/pool/status` says its `drain` (`beside`:
+  another copy at work beside it). `tsession reload NAME` makes it hand
+  over to a copy of itself, changed binary or not, in about half a
+  second: the copy is a child of the one handing over (found in
+  `/proc/PID/task/*/children`: the file lists what that one *thread*
+  started, so `task/PID/children` alone misses it), then of the first
+  one, which stays as the keeper (`olo-pool` with no arguments). To
+  hold a copy mid hand-over, `SIGSTOP` it as its child appears. End
+  them with SIGTERM to the keeper's pid.
+- **A hung program's stacks before it's killed**: `gdb -p PID -batch -ex
+  "thread apply all bt 14"` (a second or two, and the program runs on).
+  Token Pool hung for six hours (2026-11-18) and was killed with nothing
+  to read; the cause had to be found from the code and made to happen
+  again in a test. `flock` holders are per opening of the file, so two
+  threads of one program wait on each other through it like two
+  programs, and olo-sync's cycle check doesn't see it.
 - **A kit program's tree lists what was painted, not only what shows**:
   a scrolled drawing's nodes outside the view are there too, with a
   `y` above or below it (the scroll view's band). Filter by the

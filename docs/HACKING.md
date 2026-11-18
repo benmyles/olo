@@ -20849,7 +20849,9 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   named in `OLO_POOL_LISTENERS`, `PORT=FD`), the windows' state (the
   kit's `restore::hand_over`; its own windows close and the copy opens
   them), its launches (`instance::close`, then the copy listens:
-  `OLO_NEW_INSTANCE=1`) and its pid (`OLO_POOL_PREDECESSOR`). The kernel
+  `OLO_NEW_INSTANCE=1`) and the read end of a pipe (`Drain::finishing`,
+  `OLO_POOL_FINISHING`) whose other end it keeps until it has finished.
+  The kernel
   gives each new connection to whichever process accepts on the shared
   socket, and the old one stops (`Drain::retire`), so the copy answers
   every new request at once. The old one finishes what it has under way
@@ -20858,13 +20860,39 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   alike), closes connections as they fall idle (a client's next request
   opens one to the copy), and saves nothing (no quota reads, no activity,
   no whole-file writes: the copy owns the file). A sign-in either renews
-  meanwhile goes under the store's lock file (`Store::lock`), after
+  meanwhile goes under the store's lock file (`store::lock_at`), after
   reading the file again for one the other renewed (`newer`: another
   token lasting longer), so it's renewed once; the old writes only that
   sign-in in (`Store::put_credential`), and the copy's saves keep a newer
-  one from the file (`adopt_newer`) while its predecessor lives
-  (`Drain::overlapping`). Claude rotates refresh tokens: renewing twice
-  would sign the account out. Once nothing is under way (20 minutes at
+  one from the file (`adopt_newer`) while its predecessor is still
+  finishing (`Drain::overlapping`). Claude rotates refresh tokens:
+  renewing twice would sign the account out. Two rules there, each
+  learnt from a pool that stopped answering for six hours until it was
+  killed (Ben, 2026-11-18; every agent's request "timed out"). **The
+  lock file is taken before the pool's `store`, never with it held**
+  (`Shared::store_lock`): its holder takes the store next (to read the
+  file, to write it), and each opening of the file is a holder of its
+  own, two tasks of one copy as much as two copies, so a renewal holding
+  the lock and wanting the store to save, with a request holding the
+  store and wanting the lock, waited on each other for good, and every
+  request after behind them (olo-sync's cycle check doesn't see a lock
+  file; `renewals_and_saves_while_two_copies_overlap_dont_lock_each_
+  other_out` in `tests/drain.rs` does, hanging on the old order). The
+  lock is waited for 60 s at most (`store::LOCK_WAIT`, twice a renewal's
+  own limit; said in the log, then on without it). **And a predecessor
+  is one at work only until it has finished, not while its pid lives**:
+  the copy olo-session started stays for good as the keeper (below),
+  same pid, same start time, and the copy that knew it by those ran
+  every request under the lock file, reading the sealed file again each
+  time, for the rest of its life, which is what gave the two above hours
+  to meet. The pipe closes as the old copy finishes
+  (`Drain::finished`), ends or becomes the keeper (close-on-exec), and
+  the new one sees it hung up (`poll`, not waiting) the next time it
+  asks; a copy from before the pipe still names its pid, believed for
+  the 20 minutes it can take at most. `/pool/status` says it (`drain.
+  beside`). Tried with two real processes in a test session (the old
+  one stopped mid hand-over: `beside` true; let go: false half a second
+  on, its pid there or not). Once nothing is under way (20 minutes at
   most: past the provider's read timeout), the old one goes: the
   olo-pool olo-session started becomes the **keeper** in place (same pid:
   `OLO_POOL_KEEPER`, `main`'s `keeper`), a subreaper (`PR_SET_CHILD_

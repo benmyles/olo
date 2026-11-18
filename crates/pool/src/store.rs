@@ -9,6 +9,7 @@
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 use chacha20poly1305::{
@@ -196,15 +197,62 @@ impl Store {
         self.save(&saved)
     }
 
-    /// Held while a sign-in is renewed or written: two copies of the pool
-    /// live at once (an upgrade handing over) never renew one twice, which
-    /// would sign it out where the provider rotates its refresh token.
-    /// Blocks: off the async threads.
-    pub fn lock(&self) -> Option<std::fs::File> {
-        use std::os::fd::AsRawFd as _;
-        let f = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(self.path.with_extension("lock")).ok()?;
+    /// Where the store's lock is ([`lock_at`]): asked of the store, then
+    /// waited for without it.
+    pub fn lock_path(&self) -> PathBuf {
+        self.path.with_extension("lock")
+    }
+}
+
+/// The longest the store's lock is waited for: twice what a renewal under
+/// it may take (`upstream::refresh`'s own limit). Whoever holds it longer
+/// is stuck, and waiting on would stick this copy with it.
+pub const LOCK_WAIT: Duration = Duration::from_secs(60);
+
+/// The store's lock, held while a sign-in is renewed or written: two
+/// copies of the pool live at once (an upgrade handing over) never renew
+/// one twice, which would sign it out where the provider rotates its
+/// refresh token. Each opening of the file is a holder of its own, two
+/// tasks of one copy as much as two copies. Blocks (off the async
+/// threads), for `LOCK_WAIT` at most: `None` then, as when the file can't
+/// be opened, and the work goes on without it.
+///
+/// Never waited for with the pool's `store` held: whoever holds the lock
+/// takes the store next (to read the file, to write it), so the two would
+/// wait on each other for good. That hung Ben's pool (2026-11-18: a
+/// renewal held the lock and wanted the store to save, a request held the
+/// store and wanted the lock; every request after waited behind them).
+pub fn lock_at(path: &Path) -> Option<std::fs::File> {
+    lock_within(path, LOCK_WAIT)
+}
+
+/// [`lock_at`], waiting `wait` at most.
+pub fn lock_within(path: &Path, wait: Duration) -> Option<std::fs::File> {
+    use std::os::fd::AsRawFd as _;
+    let f = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(path).ok()?;
+    let began = std::time::Instant::now();
+    let mut nap = Duration::from_millis(1);
+    loop {
         // SAFETY: flock on a file we hold open.
-        (unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX) } == 0).then_some(f)
+        if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            return Some(f);
+        }
+        let e = std::io::Error::last_os_error();
+        match e.kind() {
+            // Held: a renewal under way, which answers within seconds.
+            std::io::ErrorKind::WouldBlock => {}
+            std::io::ErrorKind::Interrupted => continue,
+            _ => {
+                tracing::warn!("pool: the store's lock can't be taken ({e}); going on without it");
+                return None;
+            }
+        }
+        if began.elapsed() >= wait {
+            tracing::warn!("pool: the store's lock was held for {:?}: whoever holds it is stuck; going on without it", began.elapsed());
+            return None;
+        }
+        std::thread::sleep(nap);
+        nap = (nap * 2).min(Duration::from_millis(40));
     }
 }
 

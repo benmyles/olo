@@ -50,9 +50,22 @@ pub struct Drain {
     /// This copy handed over to a new one (`retire`): it only finishes
     /// what it has, saving nothing but a sign-in it had to renew.
     retired: AtomicBool,
-    /// The copy this one took over from, while it may still be finishing
-    /// (pid and start time: `PREDECESSOR_ENV`).
-    predecessor: Mutex<Option<(i32, u64)>>,
+    /// The copy this one took over from, while it's still finishing.
+    predecessor: Mutex<Option<Predecessor>>,
+    /// Retired: the end of the pipe this copy keeps until it has finished
+    /// (`finishing`), which is how the new copy knows it's still at work.
+    finishing: Mutex<Option<OwnedFd>>,
+}
+
+/// The copy a new one took over from.
+enum Predecessor {
+    /// The pipe it holds the other end of until it has finished
+    /// ([`Drain::finishing`]).
+    Pipe(OwnedFd),
+    /// A copy from before the pipe (it named its pid: `PREDECESSOR_ENV`):
+    /// its pid, when that started, and when this copy did. It finishes
+    /// within `MAX_RETIRED`; its pid may stay for good after (the keeper).
+    Pid(i32, u64, Instant),
 }
 
 impl Default for Drain {
@@ -68,12 +81,18 @@ impl Default for Drain {
             listeners: Mutex::new(Vec::new()),
             retired: AtomicBool::new(false),
             predecessor: Mutex::new(predecessor_from_env()),
+            finishing: Mutex::new(None),
         }
     }
 }
 
-/// The environment variable naming the copy a new one took over from (its
-/// pid): it may still be finishing what it had.
+/// The environment variable naming, to a new copy, the descriptor by which
+/// it knows the copy it took over from is still finishing: the read end
+/// of a pipe ([`Drain::finishing`]).
+pub const FINISHING_ENV: &str = "OLO_POOL_FINISHING";
+
+/// The environment variable by which copies from before `FINISHING_ENV`
+/// named themselves (their pid) to the copy they handed over to.
 pub const PREDECESSOR_ENV: &str = "OLO_POOL_PREDECESSOR";
 
 /// When process `pid` started (clock ticks after boot), to know it again.
@@ -83,13 +102,38 @@ fn started(pid: i32) -> Option<u64> {
 }
 
 /// The predecessor named in the environment (taken out of it, so the
-/// programs this one starts don't inherit it), if it's still running.
-fn predecessor_from_env() -> Option<(i32, u64)> {
-    let pid: i32 = std::env::var(PREDECESSOR_ENV).ok()?.parse().ok()?;
+/// programs this one starts don't inherit it), if it's still at work.
+fn predecessor_from_env() -> Option<Predecessor> {
+    let (pipe, pid) = (std::env::var(FINISHING_ENV).ok(), std::env::var(PREDECESSOR_ENV).ok());
     // SAFETY: read once, as the gateway is made at start-up, before the
     // threads that read the environment.
-    unsafe { std::env::remove_var(PREDECESSOR_ENV) };
-    Some((pid, started(pid)?))
+    unsafe {
+        std::env::remove_var(FINISHING_ENV);
+        std::env::remove_var(PREDECESSOR_ENV);
+    }
+    if let Some(fd) = pipe.and_then(|p| p.parse::<RawFd>().ok()) {
+        // SAFETY: fstat and fcntl on a descriptor number; it's taken as
+        // ours only if it is the pipe handed to us (named once, to this
+        // process, and forgotten above).
+        unsafe {
+            let mut st: libc::stat = std::mem::zeroed();
+            if fd > 2 && libc::fstat(fd, &mut st) == 0 && st.st_mode & libc::S_IFMT == libc::S_IFIFO {
+                // (Its own children mustn't hold it.)
+                libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC);
+                return Some(Predecessor::Pipe(OwnedFd::from_raw_fd(fd)));
+            }
+        }
+    }
+    let pid: i32 = pid?.parse().ok()?;
+    Some(Predecessor::Pid(pid, started(pid)?, Instant::now()))
+}
+
+/// Whether the other end of pipe `fd` is closed: nobody holds it any more.
+fn hung_up(fd: &OwnedFd) -> bool {
+    let mut p = libc::pollfd { fd: fd.as_raw_fd(), events: libc::POLLIN, revents: 0 };
+    // SAFETY: poll on one descriptor we own, not waiting.
+    let n = unsafe { libc::poll(&mut p, 1, 0) };
+    n > 0 && p.revents & (libc::POLLHUP | libc::POLLERR | libc::POLLNVAL) != 0
 }
 
 impl Drain {
@@ -120,21 +164,57 @@ impl Drain {
         self.retired.load(Ordering::SeqCst)
     }
 
-    /// Whether another copy of the pool may be at work beside this one: the
-    /// one it handed over to (retired), or the one it took over from, still
-    /// finishing. Sign-ins are then renewed under the store's lock and read
-    /// again first, and saves keep the other's renewed ones.
+    /// Whether another copy of the pool is at work beside this one: the one
+    /// it handed over to (retired), or the one it took over from, until
+    /// that has finished. Sign-ins are then renewed under the store's lock
+    /// and read again first, and saves keep the other's renewed ones.
+    ///
+    /// Not for as long as the predecessor's pid lives: the copy olo-session
+    /// started stays for good once it has finished, as the keeper, and a
+    /// pool that took that for a copy at work ran every request under the
+    /// store's lock for the rest of its life (Ben's, 2026-11-18).
     pub fn overlapping(&self) -> bool {
         if self.retired() {
             return true;
         }
         let mut p = self.predecessor.lock().unwrap();
-        if let Some((pid, start)) = *p
-            && started(pid) != Some(start)
-        {
+        let still = match &*p {
+            None => return false,
+            Some(Predecessor::Pipe(fd)) => !hung_up(fd),
+            Some(Predecessor::Pid(pid, start, since)) => since.elapsed() < MAX_RETIRED + Duration::from_secs(60) && started(*pid) == Some(*start),
+        };
+        if !still {
             *p = None;
         }
-        p.is_some()
+        still
+    }
+
+    /// Retiring: the descriptor to hand the copy started now (inherited by
+    /// it, named to it in `FINISHING_ENV`, and let go here once it has
+    /// started), by which it knows this copy is still finishing: the read
+    /// end of a pipe whose other end is kept here until [`Drain::finished`],
+    /// or until this process ends or becomes another program (the keeper).
+    pub fn finishing(&self) -> Option<OwnedFd> {
+        let mut fds = [0; 2];
+        // SAFETY: pipe2 into two ints, each then owned once; fcntl on one.
+        let (r, w) = unsafe {
+            if libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) != 0 {
+                return None;
+            }
+            (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1]))
+        };
+        // SAFETY: as above.
+        if unsafe { libc::fcntl(r.as_raw_fd(), libc::F_SETFD, 0) } != 0 {
+            return None;
+        }
+        *self.finishing.lock().unwrap() = Some(w);
+        Some(r)
+    }
+
+    /// This copy, retired, has finished (or never handed over after all):
+    /// the copy it handed over to has the store to itself.
+    pub fn finished(&self) {
+        self.finishing.lock().unwrap().take();
     }
 
     /// The listening sockets, made inheritable, as `LISTENERS_ENV` names
@@ -268,7 +348,8 @@ impl Drain {
 
     pub fn status(&self) -> Value {
         let (requests, tunnel) = self.under_way();
-        json!({ "draining": self.draining(), "retired": self.retired(), "requests": requests, "tunnel": tunnel })
+        // (`beside`: another copy is at work beside this one, `overlapping`.)
+        json!({ "draining": self.draining(), "retired": self.retired(), "beside": self.overlapping(), "requests": requests, "tunnel": tunnel })
     }
 }
 
