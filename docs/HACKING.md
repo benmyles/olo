@@ -16692,6 +16692,52 @@ answered, and after the centre was ended and started again, each
 brought the second window forward with that tab selected (before:
 nothing moved).
 
+**Read by going there** (Ben, 2026-11-18: "if there is an
+unread/unseen/activity style notification from an app and i go to the
+app and see the screen/tab that notification references, then that
+notification should no longer be marked as unread regardless of how i
+got there (e.g. doesn't matter if it was from clicking the notification
+or not what matters is i went to the app's window or tab that it was
+about)"). Three ways, by what the notification is about:
+
+- **An app as a whole**: its window comes to the front and stays there
+  a moment (`follow_visits`: app_server's `Focus` events, one a change
+  of focus, the thread asleep between them; `VISIT_DWELL`, 0.9 s, so
+  passing over a window on the way to another reads nothing). Then
+  `History::visited_app(app_id)` reads the unread notifications of that
+  app (`store::app_ids` and `is_app`: its desktop entry, as written and
+  without a `.desktop` at its end, which may be the app's own id's
+  ending, as Telegram's "org.telegram.desktop" is; or its name), and
+  what waits in the app (its red item) has been seen, as much as there
+  was (`acknowledge`: unread again only for more).
+- **One place within its app** (it says what shows it, `x-olo-show`: a
+  tab of Terminal's): not read by its app's window, which may be
+  showing another tab. Its app says when that place is the one being
+  looked at, `Notifier::seen(id)` (the kit: `SetRead` at Olo's
+  interface, then `CloseNotification`, so it's read in the history and
+  off the screen; elsewhere it only closes). Terminal says it as the
+  tab is drawn in the window in front (`ui.rs`, beside `Tab::look_at`).
+- **A website's, through its browser** (`via`): not read by the
+  browser's window, whatever page it shows. Olo's Chrome extension
+  (1.15.2, `tellShown`) tells its host the host name of the tab showing
+  in the window in front as that changes (another tab, another window,
+  another address in the tab, Chrome coming forward again), the host
+  passes it on (`host.rs`'s `visited`: `VisitedSite(host)` at Olo's
+  interface, sent with no reply awaited and never starting a service),
+  and `History::visited_site` reads that site's notifications: the
+  note's own host (`look.source`, or its name where it is named by its
+  host) or one under it. Only the host name leaves Chrome, never the
+  page.
+
+Read this way, a card on screen leaves it (`Notifications::seen`),
+saying nothing to its app: it's still open there, so its actions still
+run from the history. Tried in a test session on a private bus:
+Tracker's note unread half a second after its window came forward and
+read at two; Telegram's untouched; a site's read by `VisitedSite` with
+its host and not with another's; one of Terminal's about a tab read by
+`SetRead` and `CloseNotification`, not by Terminal's window. At rest
+the service's new threads cost nothing (0 wakeups a second over 6 s).
+
 `olo-notifications` serves `org.freedesktop.Notifications` (spec 1.2)
 on the session bus, so `notify-send`, browsers, chat and mail clients and
 anything else using libnotify reach the user. The real session starts it
@@ -16938,7 +16984,8 @@ or fitted whole), kept, and the windows drawn again as each comes.
   `pinned`, `snoozed_until` and `strength`; `Invoke`, `Dismiss`,
   `SetRead(id, read)`, `MarkAllRead`, `SetPinned(id, pinned)`,
   `Snooze(id, minutes)`, `ClearHistory`, `ShowHistory`,
-  `SetDoNotDisturb`). Each
+  `SetDoNotDisturb`, `VisitedSite(host)`; the names are
+  `olo_protocol::notifications::CONTROL`, `CONTROL_PATH`). Each
   returns once the UI has done it (it answers through a oneshot), so a
   `List` straight after sees the change. The same from the command line
   (cli.rs): `olo-notifications [--bus A] --list [--json] | --history |

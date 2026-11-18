@@ -93,17 +93,6 @@ something nobody here has is in "Blocked", with what it waits for.
   they are (which is the processed one, if either), and name it as the
   laptop's is.
 
-- **A notification is seen once what it is about has been seen** (Ben,
-  2026-11-18: "if there is an unread/unseen/activity style notification
-  from an app and i go to the app and see the screen/tab that
-  notification references, then that notification should no longer be
-  marked as unread regardless of how i got there (e.g. doesn't matter if
-  it was from clicking the notification or not what matters is i went to
-  the app's window or tab that it was about)"). The app's window brought
-  forward, or its tab chosen (Terminal's tab, Chrome's), by any means:
-  its notifications are read, the dot goes, Deskbar's and the bell's
-  counts with it.
-
 - **Notifications: an archive** (Ben, 2026-11-18: "after a notification
   has been faded out / dismissed / cleared let's put it in an archived
   section in the notifications app and have a way to see the archived
@@ -185,6 +174,19 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **A notification is read by going to what it is about** (Ben,
+  2026-11-18: "what matters is i went to the app's window or tab that
+  it was about"). An app's notifications are read when its window has
+  been in front a moment, however you got there, and what waits in it
+  counts as seen; one about a tab of Terminal's when that tab is the one
+  showing in the window in front; a website's when its page is the tab
+  showing in Chrome's window in front (Olo's extension 1.15.2 says
+  which site, only its host name). HACKING, "Read by going there".
+  **To try**: let an agent finish in a background Terminal tab and go to
+  the tab by hand: the bell's count and the tab's notification should
+  clear; the same for Slack or Telegram by clicking their Deskbar row.
+  (Chrome picks the new extension up when it next starts.)
 
 - **Deskbar: a divider among the widgets** (Ben, 2026-11-17: "a
   spacing/divider widget (with plenty of visual customization options)

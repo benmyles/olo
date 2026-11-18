@@ -67,6 +67,9 @@ const TOKEN_WAIT: Duration = Duration::from_millis(500);
 enum Msg {
     In(In),
     Attention(Vec<olo_protocol::notifications::Attention>),
+    /// The person has been at a window of this app for a moment
+    /// (`follow_visits`).
+    Visited(String),
     /// Something may have expired (or Do Not Disturb begun or ended, or
     /// the settings or a share changed).
     Tick,
@@ -579,6 +582,31 @@ impl Notifications {
         }
     }
 
+    /// These were read by going to what they are about: their cards
+    /// leave the screen (saying nothing to their apps: they are still
+    /// open there), and everyone showing counts hears.
+    fn seen(&mut self, ids: &[u32]) {
+        if ids.is_empty() {
+            return;
+        }
+        for &id in ids {
+            if self.take(id)
+                && let Some(e) = self.history.get_mut(id)
+            {
+                e.shown = false;
+            }
+        }
+        self.publish(true);
+        self.changed();
+    }
+
+    /// The person is looking at a page of `host` in a browser: that
+    /// site's notifications are read.
+    pub fn visited_site(&mut self, host: &str) {
+        let read = self.history.visited_site(host);
+        self.seen(&read);
+    }
+
     pub fn mark_all_read(&mut self) {
         if self.history.mark_read() {
             self.publish(true);
@@ -639,6 +667,7 @@ impl Notifications {
             Control::MarkAllRead => self.mark_all_read(),
             Control::Pin(id, on) => self.set_pinned(id, on),
             Control::Snooze(id, minutes) => self.snooze(id, now_secs() + minutes as u64 * 60),
+            Control::VisitedSite(host) => return self.visited_site(&host),
         }
         self.changed();
     }
@@ -772,6 +801,10 @@ impl Notifications {
                     self.changed();
                 }
             }
+            Msg::Visited(app_id) => {
+                let read = self.history.visited_app(&app_id);
+                self.seen(&read);
+            }
             Msg::In(In::Show(note)) => self.show(*note),
             Msg::In(In::Close(id)) => self.remove(id, Reason::Closed),
             Msg::In(In::Control(c, done)) => {
@@ -859,29 +892,64 @@ pub fn show_what(desktop_entry: Option<&str>, show: &[String]) -> bool {
     }
 }
 
+/// How long a window is in front before the person is taken to have
+/// gone to it: passing over it on the way to another (the window
+/// switcher, a pointer crossing it where focus follows the pointer)
+/// reads nothing.
+const VISIT_DWELL: Duration = Duration::from_millis(900);
+
+/// Tell the UI of each window the person goes to (`Msg::Visited`, its
+/// app): from app_server's focus events, one a change of focus, asleep
+/// between them. A notification is read by going to what it is about,
+/// however one gets there.
+fn follow_visits(proxy: olo_kit::Proxy) {
+    use olo_protocol::{Client, Event, EventKind};
+    let (tx, rx) = std::sync::mpsc::channel::<Option<String>>();
+    let _ = std::thread::Builder::new().name("notes-focus".into()).spawn(move || {
+        loop {
+            if let Ok(client) = Client::connect()
+                && let Ok(events) = client.into_events_of(&[EventKind::Focus])
+            {
+                for e in events {
+                    let Ok(e) = e else { break };
+                    if let Event::WindowsChanged { windows } = e
+                        && tx.send(windows.iter().find(|w| w.focused).map(|w| w.app_id.clone())).is_err()
+                    {
+                        return;
+                    }
+                }
+            }
+            // app_server restarting: again shortly.
+            std::thread::sleep(Duration::from_secs(2));
+        }
+    });
+    let _ = std::thread::Builder::new().name("notes-visits".into()).spawn(move || {
+        while let Ok(mut at) = rx.recv() {
+            // Still there after a moment: gone to. (Another window in
+            // front meanwhile starts the moment again, for that one.)
+            loop {
+                match rx.recv_timeout(VISIT_DWELL) {
+                    Ok(next) => at = next,
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => break,
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+                }
+            }
+            if let Some(app_id) = at.filter(|a| !a.is_empty()) {
+                proxy.send(Msg::Visited(app_id));
+            }
+        }
+    });
+}
+
 /// Bring forward a window of the app with this desktop entry or name (a
 /// click on a note with no default action), off the UI thread.
 pub fn raise_app(desktop_entry: Option<&str>, app_name: &str) {
-    let mut ids: Vec<String> = desktop_entry.iter().map(|e| e.trim_end_matches(".desktop").to_lowercase()).collect();
-    if !app_name.is_empty() {
-        ids.push(app_name.to_lowercase());
-        ids.push(app_name.to_lowercase().replace(' ', "-"));
-        // Ours by name ("StyledEdit" is olo.styled-edit).
-        for (bin, name, _) in olo_xdg::apps::OUR_APPS {
-            if name.eq_ignore_ascii_case(app_name) {
-                ids.push(bin.replacen("olo-", "olo.", 1));
-            }
-        }
-    }
+    let ids = store::app_ids(desktop_entry, app_name);
     std::thread::spawn(move || {
         use olo_protocol::{Client, Reply, Request};
         let Ok(mut client) = Client::connect() else { return };
         let Ok(Reply::Windows { windows }) = client.request(&Request::ListWindows) else { return };
-        let matches = |app_id: &str| {
-            let a = app_id.to_lowercase();
-            ids.iter().any(|i| *i == a || a.rsplit('.').next() == Some(i.as_str()) || i.rsplit('.').next() == Some(a.as_str()))
-        };
-        if let Some(w) = windows.iter().find(|w| matches(&w.app_id)) {
+        if let Some(w) = windows.iter().find(|w| store::is_app(&ids, &w.app_id)) {
             let _ = client.request(&Request::Activate { id: w.id });
         }
     });
@@ -1142,6 +1210,7 @@ fn main() -> std::process::ExitCode {
         let initial = attention.clone();
         watches.extend(olo_kit_base::watch::watch([path], move |_| attention()));
         initial();
+        follow_visits(proxy.clone());
         for path in [NotificationSettings::path(), olo_protocol::sharing::SharingState::path(), olo_protocol::recording::path_for(&olo_protocol::recording::this_display())] {
             let ticker = proxy.clone();
             watches.extend(olo_kit_base::watch::watch([path], move |_| ticker.send(Msg::Tick)));

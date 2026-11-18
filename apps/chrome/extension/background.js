@@ -960,6 +960,35 @@ function tellHost(message) {
   port?.postMessage(message);
 }
 
+// The site the person is looking at: the host of the tab showing in the
+// window in front, told as it changes ({shown: host}), so a site's
+// notifications are read by going to its page, however one got there
+// (Olo's notifications: VisitedSite). Only the host, never the page; and
+// said again on coming back to Chrome, as what came meanwhile is seen
+// then.
+let shownHost = "";
+async function tellShown() {
+  let host = "";
+  try {
+    const w = await chrome.windows.getLastFocused();
+    if (w?.focused) {
+      const [tab] = await chrome.tabs.query({ active: true, windowId: w.id });
+      const u = tab?.url ? new URL(tab.url) : null;
+      if (u && (u.protocol === "https:" || u.protocol === "http:")) host = u.hostname;
+    }
+  } catch {
+    // (No window, or a page with no address: nothing is being looked at.)
+  }
+  if (host === shownHost) return;
+  shownHost = host;
+  if (host) tellHost({ shown: host });
+}
+chrome.tabs.onActivated.addListener(() => tellShown());
+chrome.windows.onFocusChanged.addListener(() => tellShown());
+chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
+  if (change.url && tab.active) tellShown();
+});
+
 async function tellDownloads() {
   const going = (await chrome.downloads.search({ state: "in_progress" })).filter((d) => d.filename);
   // (Nothing to say, and nobody listening yet: no need to start the host.)

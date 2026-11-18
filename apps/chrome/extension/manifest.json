@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Olo",
-  "version": "1.15.1",
+  "version": "1.15.2",
   "description": "Fills logins, one-time codes and credit cards from Olo's Passwords, offers a code texted to your phone in the tab waiting for it, signs in with its passkeys, offers to save the logins and passkeys you make and the one-time code a page shows to set up, shows agents what is on the page, and joins olo-slack's Slack to Olo.",
   "minimum_chrome_version": "120",
   "permissions": ["contextMenus", "downloads", "nativeMessaging", "notifications", "scripting", "storage"],

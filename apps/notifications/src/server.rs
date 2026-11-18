@@ -17,9 +17,8 @@ use crate::markup::{self, Span};
 pub const NAME: &str = "org.freedesktop.Notifications";
 pub const PATH: &str = "/org/freedesktop/Notifications";
 /// Ours, beside the standard one: the history and Do Not Disturb, for the
-/// command line, Deskbar and agents.
-pub const CONTROL: &str = "com.olodesktop.Notifications1";
-pub const CONTROL_PATH: &str = "/com/olodesktop/Notifications";
+/// command line, Deskbar and agents (and what apps say has been seen).
+pub use olo_protocol::notifications::{CONTROL, CONTROL_PATH};
 
 /// How long a notification stays when its sender leaves it to us.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(6);
@@ -125,6 +124,8 @@ pub enum Control {
     Pin(u32, bool),
     /// Out of sight for so many minutes, then back as new.
     Snooze(u32, u32),
+    /// The person is looking at a page of this host in a browser.
+    VisitedSite(String),
 }
 
 /// Why a notification went (the spec's reasons).
@@ -245,6 +246,14 @@ impl Controls {
     /// Put one away for `minutes`; then it comes back as new.
     async fn snooze(&self, id: u32, minutes: u32) {
         self.ask(Control::Snooze(id, minutes)).await
+    }
+
+    /// The person is looking at a page of `host` in a browser (its tab
+    /// showing, its window in front: Olo's Chrome says so as it
+    /// happens): that site's notifications are read, as an app's are
+    /// when its window is gone to.
+    async fn visited_site(&self, host: String) {
+        self.ask(Control::VisitedSite(host)).await
     }
 }
 

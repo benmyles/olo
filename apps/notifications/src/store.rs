@@ -203,6 +203,49 @@ fn of_app(e: &Entry, item: &Entry) -> bool {
     e.id == item.id || e.desktop_entry.as_deref().is_some_and(|d| norm(d) == app) || norm(&e.app) == app || (!item.app.is_empty() && norm(&e.app) == norm(&item.app))
 }
 
+/// The names a window's app may go by (`WindowInfo::app_id`) for the app
+/// a notification is from, by its desktop entry and its name: lower case.
+pub fn app_ids(desktop_entry: Option<&str>, app_name: &str) -> Vec<String> {
+    // (As it's written, and without a `.desktop` at its end: that may be
+    // the file's ending, or the end of the app's own id, as Telegram's
+    // "org.telegram.desktop" is.)
+    let mut ids: Vec<String> = Vec::new();
+    for e in desktop_entry.iter().map(|e| e.trim().to_lowercase()).filter(|e| !e.is_empty()) {
+        if let Some(short) = e.strip_suffix(".desktop").filter(|s| !s.is_empty()) {
+            ids.push(short.to_owned());
+        }
+        ids.push(e);
+    }
+    if !app_name.is_empty() {
+        ids.push(app_name.to_lowercase());
+        ids.push(app_name.to_lowercase().replace(' ', "-"));
+        // Ours by name ("StyledEdit" is olo.styled-edit).
+        for (bin, name, _) in olo_xdg::apps::OUR_APPS {
+            if name.eq_ignore_ascii_case(app_name) {
+                ids.push(bin.replacen("olo-", "olo.", 1));
+            }
+        }
+    }
+    ids
+}
+
+/// Whether a window of app `app_id` is one of the app's that goes by
+/// `ids` ([`app_ids`]): the same, or the same after its last dot
+/// ("org.telegram.desktop" and "desktop" aside, `olo.terminal` is
+/// `olo-terminal`'s, `com.slack.Slack` is `slack`'s).
+pub fn is_app(ids: &[String], app_id: &str) -> bool {
+    let a = app_id.to_lowercase();
+    let dashed = a.replace('.', "-");
+    ids.iter().any(|i| *i == a || *i == dashed || a.rsplit('.').next() == Some(i.as_str()) || i.rsplit('.').next() == Some(a.as_str()))
+}
+
+/// The host a site's notification is from, as `visited_site` is told it:
+/// lower case, without `www.`.
+fn bare_host(host: &str) -> String {
+    let h = host.trim().trim_end_matches('.').to_lowercase();
+    h.strip_prefix("www.").map(str::to_owned).unwrap_or(h)
+}
+
 /// What waits in an app, in words: "3 waiting", "2 more waiting" (beside
 /// what was seen or said already), or, with no count, that it wants
 /// attention.
@@ -313,6 +356,45 @@ impl History {
         if let Some(a) = &s.attention {
             (s.seen, s.seen_urgent, s.unread) = (a.count, a.urgent, false);
         }
+    }
+
+    /// The person went to a window of app `app_id`, however they got
+    /// there (a click on its Deskbar row, a key, a notification, the
+    /// window itself): what it said is read, and what waits in it has
+    /// been seen (Ben, 2026-11-18: "what matters is i went to the app's
+    /// window or tab that it was about"). Not what is about one place in
+    /// the app that may not be the one showing: a notification that says
+    /// what shows it (`Entry::show`: a tab of Terminal's; its app says
+    /// when that has been looked at), or a website's through its browser
+    /// (`Entry::via`: [`History::visited_site`]). The ids read.
+    pub fn visited_app(&mut self, app_id: &str) -> Vec<u32> {
+        let ids: Vec<u32> = self
+            .entries
+            .iter()
+            .filter(|e| e.unread && !e.snoozed() && e.via.is_none() && e.show.is_empty())
+            .filter(|e| is_app(&app_ids(e.desktop_entry.as_deref(), &e.app), app_id))
+            .map(|e| e.id)
+            .collect();
+        ids.into_iter().filter(|&id| self.set_read(id, true)).collect()
+    }
+
+    /// The person is looking at a page of `host` in a browser (its tab
+    /// showing, in the window in front): that site's notifications are
+    /// read. A site's own host or one under it ("mail.google.com" for
+    /// Gmail's; "app.slack.com" for slack.com's). The ids read.
+    pub fn visited_site(&mut self, host: &str) -> Vec<u32> {
+        let host = bare_host(host);
+        if host.is_empty() {
+            return Vec::new();
+        }
+        let of = |e: &Entry| {
+            // (A site we know is named for itself, its host beside it as
+            // its source; another is named by its host.)
+            let from = e.look.source.as_deref().map(bare_host).unwrap_or_else(|| bare_host(&e.app));
+            !from.is_empty() && from.contains('.') && (host == from || host.ends_with(&format!(".{from}")))
+        };
+        let ids: Vec<u32> = self.entries.iter().filter(|e| e.unread && !e.snoozed() && e.via.is_some() && of(e)).map(|e| e.id).collect();
+        ids.into_iter().filter(|&id| self.set_read(id, true)).collect()
     }
 
     /// What is unread and not snoozed, newest first, as Deskbar's Inbox
@@ -694,6 +776,87 @@ mod tests {
         assert!(cards(&h).iter().any(|c| c.1 == "Wants your attention" && c.2));
         h.put(note(5, "Terminal", "olo-terminal", "Claude needs you"));
         assert_eq!(cards(&h).iter().filter(|c| c.2).map(|c| c.1.as_str()).collect::<Vec<_>>(), ["Claude needs you"]);
+    }
+
+    /// A notification is read by going to what it is about, however one
+    /// gets there (Ben, 2026-11-18: "doesn't matter if it was from
+    /// clicking the notification or not what matters is i went to the
+    /// app's window or tab that it was about"): an app's by its window
+    /// coming to the front; one about a place within its app (a tab of
+    /// Terminal's) only when the app says that was looked at; a website's
+    /// by its page showing in the browser, not by the browser's window.
+    #[test]
+    fn going_to_what_it_is_about_reads_it() {
+        use olo_protocol::notifications::Attention;
+        let mut h = History::load(None);
+        let from = |id: u32, app: &str, entry: Option<&str>| Entry { app: app.into(), desktop_entry: entry.map(str::to_owned), ..entry_of(id) };
+        fn entry_of(id: u32) -> Entry {
+            Entry { id, summary: "News".into(), unread: true, live: true, ..Default::default() }
+        }
+        h.put(from(1, "Telegram", Some("org.telegram.desktop")));
+        h.put(from(2, "Slack", Some("olo-slack")));
+        h.put(Entry { show: vec!["--show-shell".into(), "17".into()], ..from(3, "Terminal", Some("olo-terminal")) });
+        h.put(from(4, "Terminal", Some("olo-terminal")));
+        h.put(Entry { via: Some("Google Chrome".into()), look: NoteLook { source: Some("teams.microsoft.com".into()), ..Default::default() }, ..from(5, "Microsoft Teams", Some("google-chrome")) });
+        h.put(Entry { via: Some("Google Chrome".into()), ..from(6, "news.example.org", Some("google-chrome")) });
+        h.put(Entry { snoozed_until: Some(u64::MAX), ..from(7, "Telegram", Some("org.telegram.desktop")) });
+        let unread = |h: &History| h.entries.iter().filter(|e| e.unread).map(|e| e.id).collect::<Vec<_>>();
+
+        // Another app's window: nothing of these.
+        assert!(h.visited_app("olo.tracker").is_empty());
+        // Telegram's window: its notification, not the one put away till later.
+        assert_eq!(h.visited_app("org.telegram.desktop"), vec![1]);
+        assert_eq!(unread(&h), vec![2, 3, 4, 5, 6, 7]);
+        // Terminal's window, whatever tab it shows: what it said of itself,
+        // not what it said of a tab (Terminal says when that is looked at).
+        assert_eq!(h.visited_app("olo.terminal"), vec![4]);
+        // Chrome's window: no site's notifications, whatever page it shows.
+        assert!(h.visited_app("google-chrome").is_empty());
+        // The site's page showing: its own, by its host or one under it.
+        assert!(h.visited_site("example.org").is_empty(), "a host above the site's isn't the site");
+        assert_eq!(h.visited_site("www.teams.microsoft.com"), vec![5]);
+        assert_eq!(h.visited_site("news.example.org"), vec![6]);
+        assert!(h.visited_site("").is_empty() && h.visited_site("teams.microsoft.com").is_empty(), "read once");
+        // Slack's own window, by the name its window goes by.
+        assert_eq!(h.visited_app("olo-slack"), vec![2]);
+        assert_eq!(unread(&h), vec![3, 7]);
+
+        // What waits in an app has been seen by going to it, as much as
+        // there was: unread again only for more.
+        let wait = |h: &mut History, count: u64| {
+            let mut next = 200;
+            h.update_attention(
+                &[Attention { app: "org.telegram.desktop".into(), count, urgent: false }],
+                50,
+                |_| "Telegram".into(),
+                || {
+                    next += 1;
+                    next
+                },
+            );
+        };
+        wait(&mut h, 3);
+        let item = |h: &History| h.entries.iter().find(|e| e.attention.is_some()).cloned().unwrap();
+        assert!(item(&h).unread);
+        assert_eq!(h.visited_app("org.telegram.desktop"), vec![item(&h).id]);
+        assert_eq!((item(&h).unread, item(&h).seen), (false, 3));
+        wait(&mut h, 3);
+        assert!(!item(&h).unread, "nothing new");
+        wait(&mut h, 5);
+        assert!(item(&h).unread, "two more");
+    }
+
+    /// A window's app is a notification's by its desktop entry or its
+    /// name, as each side writes it.
+    #[test]
+    fn a_windows_app_and_a_notifications() {
+        let ids = app_ids(Some("olo-terminal.desktop"), "Terminal");
+        assert!(is_app(&ids, "olo.terminal") && is_app(&ids, "olo-terminal") && !is_app(&ids, "olo.tracker"));
+        let ids = app_ids(Some("com.slack.Slack"), "Slack");
+        assert!(is_app(&ids, "Slack") && is_app(&ids, "com.slack.Slack") && !is_app(&ids, "slackware"));
+        let ids = app_ids(None, "Google Chrome");
+        assert!(is_app(&ids, "google-chrome") && !is_app(&ids, "chrome-beta"));
+        assert!(!is_app(&app_ids(None, ""), "anything") && !is_app(&app_ids(Some(" "), ""), ""));
     }
 
     #[test]

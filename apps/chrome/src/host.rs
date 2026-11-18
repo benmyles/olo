@@ -94,6 +94,8 @@ pub fn run() {
     let max_in = if slack.is_some() { MAX_IN_SLACK } else { MAX_IN };
     // (Made when Chrome first tells of a download.)
     let mut downloads: Option<Downloads> = None;
+    // (Made when Chrome first says what's being looked at.)
+    let mut bus: Option<zbus::blocking::Connection> = None;
     let mut input = std::io::stdin().lock();
     loop {
         let mut len = [0u8; 4];
@@ -134,6 +136,21 @@ pub fn run() {
             && let Some(sm) = m.get("slack")
         {
             s.message(sm);
+            continue;
+        }
+        // The site the person is looking at: its notifications are read.
+        if let Ok(m) = &message
+            && let Some(host) = m.get("shown").and_then(Value::as_str)
+        {
+            if bus.is_none() {
+                bus = zbus::blocking::Connection::session().ok();
+            }
+            if let Some(c) = &bus
+                && let Err(e) = visited(c, host)
+            {
+                eprintln!("olo-chrome: couldn't tell Olo's notifications what's being looked at: {e}");
+                bus = None;
+            }
             continue;
         }
         // Chrome's downloads (downloads.rs).
@@ -318,6 +335,17 @@ fn ask(request: &Request, start: bool, n: Option<u64>) -> Result<Response, CallE
         result = olo_keychain::call(request);
     }
     result
+}
+
+/// Tell Olo's notifications the person is looking at a page of `host`
+/// (`com.olodesktop.Notifications1.VisitedSite`): the site's
+/// notifications are read. Said and not waited for, and never starting
+/// a notification service that isn't running.
+fn visited(bus: &zbus::blocking::Connection, host: &str) -> zbus::Result<()> {
+    use olo_protocol::notifications::{CONTROL, CONTROL_BUS, CONTROL_PATH};
+    use zbus::message::{Flags, Message};
+    let call = Message::method_call(CONTROL_PATH, "VisitedSite")?.destination(CONTROL_BUS)?.interface(CONTROL)?.with_flags(Flags::NoReplyExpected)?.with_flags(Flags::NoAutoStart)?.build(&(host,))?;
+    bus.send(&call)
 }
 
 #[cfg(test)]

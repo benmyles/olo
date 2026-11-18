@@ -10,6 +10,13 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+/// Olo's notifications' own interface, beside the desktop's: on the bus
+/// name `org.freedesktop.Notifications` (`CONTROL_BUS`), at `CONTROL_PATH`:
+/// `List`, `SetRead`, `VisitedSite`… (olo-notifications' `server.rs`).
+pub const CONTROL_BUS: &str = "org.freedesktop.Notifications";
+pub const CONTROL_PATH: &str = "/com/olodesktop/Notifications";
+pub const CONTROL: &str = "com.olodesktop.Notifications1";
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct NotificationSettings {

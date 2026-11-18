@@ -193,6 +193,7 @@ pub enum NoteEvent {
 enum Ask {
     Show(NoteId, Box<Note>),
     Close(NoteId),
+    Seen(NoteId),
     Badge(u32),
 }
 
@@ -230,6 +231,16 @@ impl Notifier {
 
     pub fn close(&self, id: NoteId) {
         let _ = self.to.send(Ask::Close(id));
+    }
+
+    /// The person has seen what `id` is about, in the app itself (the
+    /// tab it names is the one showing, in the window in front): it's
+    /// read, and leaves the screen. An app says this for a notification
+    /// about one place within it; one about the app as a whole is read
+    /// by its window being gone to, with nothing said. (Where the
+    /// notifications aren't Olo's, it only closes.)
+    pub fn seen(&self, id: NoteId) {
+        let _ = self.to.send(Ask::Seen(id));
     }
 
     /// How many things are unread in the app (0: none): Deskbar lights
@@ -331,6 +342,15 @@ fn run(from: mpsc::Receiver<Ask>, proxy: Events, app: String, entry: String) {
             // (The map let go before the call: the signals' thread uses it.)
             Ask::Close(id) => match { ids.lock().unwrap().server.get(&id).copied() } {
                 Some(server) => c.call_method(Some(NAME), PATH, Some(NAME), "CloseNotification", &(server,)).map(|_| ()),
+                None => Ok(()),
+            },
+            Ask::Seen(id) => match { ids.lock().unwrap().server.get(&id).copied() } {
+                Some(server) => {
+                    // (Read first: closed, it's no longer open at its app,
+                    // but stays in the history, and must be read there.)
+                    let _ = c.call_method(Some(NAME), olo_protocol::notifications::CONTROL_PATH, Some(olo_protocol::notifications::CONTROL), "SetRead", &(server, true));
+                    c.call_method(Some(NAME), PATH, Some(NAME), "CloseNotification", &(server,)).map(|_| ())
+                }
                 None => Ok(()),
             },
             Ask::Badge(count) => {

@@ -1153,6 +1153,15 @@ impl Terminal {
             }
             if focused {
                 t.tab_mut().look_at();
+                // Its notification has been seen with it, however the
+                // person came to the tab (Ben, 2026-11-18: "what matters
+                // is i went to the app's window or tab that it was
+                // about"): read, and off the screen.
+                if !self.notes.is_empty()
+                    && let Some(note) = self.notes.remove(&t.tab().session.id)
+                {
+                    self.notifier.seen(note);
+                }
             }
             // Its window's red dot: while a tab of it wants attention; let
             // go (fading, with the tab's) once none does.
