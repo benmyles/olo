@@ -59,6 +59,79 @@ const MAX_IN_SLACK: usize = slack::MAX_PICTURE / 3 * 4 + (64 << 10);
 /// Tree questions waiting for the extension's answer, by number.
 type Waiting = Arc<Mutex<HashMap<u64, mpsc::Sender<Vec<WindowTree>>>>>;
 
+/// Links the extension was asked to open in a window of its profile's
+/// (`open_in_window`), waiting for whether it did, by number.
+type Opening = Arc<Mutex<HashMap<u64, mpsc::Sender<bool>>>>;
+
+/// How long the extension has to say whether it opened a link.
+const OPEN_WAIT: Duration = Duration::from_millis(800);
+
+/// Where the hosts of a Chrome's profiles listen for links to open
+/// (`open_in_window`): a socket a host, named for Chrome's process and
+/// the host's own, in a folder of theirs under the runtime folder.
+pub fn hosts_dir() -> std::path::PathBuf {
+    olo_xdg::runtime_dir().join("olo-chrome-hosts")
+}
+
+/// Take links to open in a window of this host's profile, once its
+/// extension says it can (`{can: ["open_in_window"]}`: an older one
+/// opens the link whatever it's asked and never answers, so it isn't
+/// asked this way). Each asking is a line of JSON (`{url, title, width,
+/// height, must_match, focused}`, as the extension takes it) on this
+/// host's own socket, answered `{"ok": true}` if the extension opened it.
+///
+/// A socket a host, not the one Chrome's process has for agents
+/// (`commands::serve`, which the host started last takes over): a Chrome
+/// with several profiles open has a host for each, and a window is one
+/// profile's, so whoever opens a link asks each in turn.
+fn open_in_window(out: Arc<Mutex<std::io::Stdout>>, opening: Opening) {
+    let (chrome, me) = (std::os::unix::process::parent_id(), std::process::id());
+    let dir = hosts_dir();
+    let path = dir.join(format!("{chrome}-{me}.sock"));
+    let listening = std::fs::create_dir_all(&dir).and_then(|()| {
+        // (Sockets of Chromes that have gone, left by hosts that ended
+        // with them: swept as a host starts.)
+        for old in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let name = old.file_name().to_string_lossy().into_owned();
+            let gone = name.split('-').next().and_then(|pid| pid.parse::<u32>().ok()).is_some_and(|pid| !std::path::Path::new(&format!("/proc/{pid}")).exists());
+            if gone {
+                let _ = std::fs::remove_file(old.path());
+            }
+        }
+        let _ = std::fs::remove_file(&path);
+        std::os::unix::net::UnixListener::bind(&path)
+    });
+    let listener = match listening {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("olo-chrome: can't take links to open in this profile's windows: {e}");
+            return;
+        }
+    };
+    let next = AtomicU64::new(1);
+    let _ = std::thread::Builder::new().name("open-in-window".into()).spawn(move || {
+        for s in listener.incoming().flatten() {
+            let _ = s.set_read_timeout(Some(Duration::from_secs(2)));
+            let mut line = String::new();
+            if std::io::BufRead::read_line(&mut std::io::BufReader::new(&s), &mut line).is_err() {
+                continue;
+            }
+            let Ok(ask) = serde_json::from_str::<Value>(&line) else { continue };
+            let web = ask["url"].as_str().is_some_and(|u| ["http://", "https://"].iter().any(|p| u.starts_with(p)));
+            let ok = web && {
+                let n = next.fetch_add(1, Ordering::Relaxed);
+                let (tx, rx) = mpsc::channel();
+                opening.lock().unwrap_or_else(|e| e.into_inner()).insert(n, tx);
+                send(&out, &json!({ "open_in_front": ask, "n": n }));
+                let ok = rx.recv_timeout(OPEN_WAIT).unwrap_or(false);
+                opening.lock().unwrap_or_else(|e| e.into_inner()).remove(&n);
+                ok
+            };
+            let _ = (&s).write_all(format!("{}\n", json!({ "ok": ok })).as_bytes());
+        }
+    });
+}
+
 /// Requests waiting for Passwords' answer, by the extension's id: their
 /// connections, to end on `{cancel}`.
 static ASKING: Mutex<Option<HashMap<u64, std::os::unix::net::UnixStream>>> = Mutex::new(None);
@@ -85,6 +158,8 @@ pub fn run() {
     });
     let out = Arc::new(Mutex::new(std::io::stdout()));
     let trees: Waiting = Arc::default();
+    let opening: Opening = Arc::default();
+    let mut listening_for_links = false;
     let mut slack = slack_here.map(|here| Slack::new(here, out.clone()));
     serve_trees(out.clone(), trees.clone(), slack.as_ref());
     if let Some(s) = &slack {
@@ -114,6 +189,25 @@ pub fn run() {
         }
         let message: Result<Value, _> = serde_json::from_slice(&buf);
         buf.zeroize();
+        // What the extension can be asked (a newer one's first words).
+        if let Ok(m) = &message
+            && let Some(can) = m.get("can").and_then(Value::as_array)
+        {
+            if can.iter().any(|c| c == "open_in_window") && slack.is_none() && !listening_for_links {
+                listening_for_links = true;
+                open_in_window(out.clone(), opening.clone());
+            }
+            continue;
+        }
+        // Whether the extension opened a link it was asked to.
+        if let Ok(m) = &message
+            && let Some(n) = m.get("opened_in_front").and_then(Value::as_u64)
+        {
+            if let Some(tx) = opening.lock().unwrap_or_else(|e| e.into_inner()).remove(&n) {
+                let _ = tx.send(m.get("ok").and_then(Value::as_bool).unwrap_or(false));
+            }
+            continue;
+        }
         // The extension's answer to a tree question.
         if let Ok(m) = &message
             && let Some(n) = m.get("tree").and_then(Value::as_u64)

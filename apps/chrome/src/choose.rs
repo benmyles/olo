@@ -145,6 +145,60 @@ pub fn open_in_front(pid: u32, link: &str, window: &WindowInfo) -> bool {
     olo_kit_base::commands::invoke(pid, &format!("open-in-front {ask}"))
 }
 
+/// Have Chrome (its browser process `pid`) open `link` in a new tab of
+/// `window`, whichever of its profiles the window is of: each profile's
+/// extension is asked, through its host's own socket (`host::hosts_dir`),
+/// to open it only if the window is its own, and says whether it did.
+/// First only where Chrome has the focus in it (`focused_first`: after
+/// the window was brought forward, two profiles' windows that are alike
+/// are told apart so), then wherever it's found. False: none did (no
+/// extension that can be asked so, or the window is none of theirs, a
+/// private one), and nothing was opened.
+pub fn open_in_window(pid: u32, link: &str, window: &WindowInfo, focused_first: bool) -> bool {
+    open_in_window_at(&crate::host::hosts_dir(), pid, link, window, focused_first)
+}
+
+fn open_in_window_at(dir: &std::path::Path, pid: u32, link: &str, window: &WindowInfo, focused_first: bool) -> bool {
+    use std::io::{BufRead as _, Write as _};
+    let (width, height) = window.content.as_ref().map_or((0, 0), |c| (c.width, c.height));
+    let prefix = format!("{pid}-");
+    let mut hosts: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with(&prefix) && n.ends_with(".sock")))
+        .collect();
+    hosts.sort();
+    let passes: &[bool] = if focused_first { &[true, false] } else { &[false] };
+    for &focused in passes {
+        for host in &hosts {
+            let Ok(mut s) = std::os::unix::net::UnixStream::connect(host) else {
+                // (A host that has gone: its socket with it.)
+                let _ = std::fs::remove_file(host);
+                continue;
+            };
+            let _ = s.set_read_timeout(Some(Duration::from_secs(2)));
+            let ask = serde_json::json!({ "url": link, "title": window.title, "width": width, "height": height, "must_match": true, "focused": focused });
+            if s.write_all(format!("{ask}\n").as_bytes()).is_err() {
+                continue;
+            }
+            let mut answer = String::new();
+            if std::io::BufReader::new(&s).read_line(&mut answer).is_ok() && serde_json::from_str::<serde_json::Value>(&answer).is_ok_and(|a| a["ok"] == true) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Bring window `id` forward, without waiting for it.
+pub fn activate(id: u64) {
+    if let Ok(mut c) = Client::connect() {
+        let _ = c.request(&Request::Activate { id });
+    }
+}
+
 /// Ask which of `windows` to open `link` in, in a dialog that's this
 /// program's only window: the answer once it's gone.
 pub fn ask(link: &str, windows: Vec<WindowInfo>) -> Choice {
@@ -310,6 +364,53 @@ mod tests {
 
     fn window(id: u64, app_id: &str, title: &str, pid: i32, stack: Option<u32>) -> WindowInfo {
         serde_json::from_value(serde_json::json!({"id": id, "app_id": app_id, "title": title, "pid": pid, "workspace": 0, "minimized": false, "focused": false, "stack": stack})).unwrap()
+    }
+
+    /// Each profile's host is asked in turn, first for the window Chrome
+    /// has the focus in, then for the window wherever it is; the first
+    /// that says it opened the link ends it; another Chrome's hosts
+    /// aren't asked, and a socket nobody answers is cleared away.
+    #[test]
+    fn each_profiles_host_is_asked_until_one_opens_it() {
+        use std::io::{BufRead as _, Write as _};
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-chrome-hosts-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let asked: Arc<Mutex<Vec<String>>> = Arc::default();
+        // A host: answers each asking by `opens(focused)`, noting it.
+        let host = |name: &str, opens: fn(bool) -> bool| {
+            let listener = std::os::unix::net::UnixListener::bind(dir.join(name)).unwrap();
+            let (asked, name) = (asked.clone(), name.to_owned());
+            std::thread::spawn(move || {
+                for s in listener.incoming().flatten() {
+                    let mut line = String::new();
+                    std::io::BufReader::new(&s).read_line(&mut line).unwrap();
+                    let ask: serde_json::Value = serde_json::from_str(&line).unwrap();
+                    assert_eq!((ask["url"].as_str(), ask["title"].as_str(), ask["must_match"].as_bool()), (Some("https://example.org/a"), Some("Inbox - Google Chrome"), Some(true)));
+                    let focused = ask["focused"].as_bool().unwrap();
+                    asked.lock().unwrap().push(format!("{name} focused={focused}"));
+                    let _ = (&s).write_all(format!("{}\n", serde_json::json!({ "ok": opens(focused) })).as_bytes());
+                }
+            });
+        };
+        host("700-1.sock", |_| false);
+        // (The window is this profile's, but Chrome hasn't the focus in it.)
+        host("700-2.sock", |focused| !focused);
+        host("900-1.sock", |_| true);
+        // A host that ended: its socket left, nobody behind it.
+        drop(std::os::unix::net::UnixListener::bind(dir.join("700-3.sock")).unwrap());
+        let window = window(1, "google-chrome", "Inbox - Google Chrome", 700, None);
+        assert!(open_in_window_at(&dir, 700, "https://example.org/a", &window, true));
+        assert_eq!(*asked.lock().unwrap(), ["700-1.sock focused=true", "700-2.sock focused=true", "700-1.sock focused=false", "700-2.sock focused=false"]);
+        assert!(!dir.join("700-3.sock").exists());
+        // One window in all: asked once each, wherever the focus is.
+        asked.lock().unwrap().clear();
+        assert!(open_in_window_at(&dir, 700, "https://example.org/a", &window, false));
+        assert_eq!(*asked.lock().unwrap(), ["700-1.sock focused=false", "700-2.sock focused=false"]);
+        // No host for that Chrome (an older extension): nothing opened, said so.
+        assert!(!open_in_window_at(&dir, 701, "https://example.org/a", &window, false));
+        assert!(!open_in_window_at(&dir.join("none"), 700, "https://example.org/a", &window, true));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

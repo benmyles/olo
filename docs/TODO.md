@@ -192,6 +192,17 @@ something nobody here has is in "Blocked", with what it waits for.
   messages too. Tried with the stand-in mail server; agents can ask the
   same by command.
 
+- **Chrome with several profiles: agents' trees and codes reach one
+  profile** (found 2026-11-18, mending links). Chrome's socket for
+  agents (`commands::serve` for its pid: widget trees, Slack's
+  commands) is one, taken over by the extension's host that started
+  last, so `olo-screen tree` of a Chrome with two profiles' windows
+  reads only one profile's, and whatever else goes through that socket
+  reaches one profile. Links no longer do (a socket a host). The same
+  for the rest: each host's own socket asked and the answers put
+  together (the trees), or the one whose it is (a code for the tab
+  that's waiting).
+
 - **Windows snap into place as they're dragged** (Ben, 2026-11-18: "add
   support for window "snapping" when dragging so that e.g. if i drag to
   different areas of the screen it takes that tile location while
@@ -232,6 +243,22 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **A link opens in the Chrome window that's there, not a new one**
+  (Ben, 2026-11-18, of a link clicked in Terminal: "it's not opening in
+  my existing single chrome window it is opening a new chrome window.
+  if there is one existing chrome window it should always open in that,
+  and if more than one it should show the picker"). Chrome has four
+  profiles here; a running Chrome opens a handed-over link in the
+  profile it used last, and makes a window for it when that profile has
+  none (its window was closed): reproduced in a test session (a second
+  profile's window opened, used, closed; a link: a new window). With
+  one window, Olo now has the window's own profile open the link (its
+  extension, asked through its own host) and brings the window forward;
+  the picker reaches the right profile too, where it reached whichever
+  profile's host had started last. **For Ben**: after the next upgrade,
+  Chrome takes the new extension (1.15.3) when it's next started; until
+  then links open as before.
 
 - **A window's tab at the right size on each display while it's dragged
   between them** (Ben, 2026-11-18, with a picture of Olo Doctor's tab

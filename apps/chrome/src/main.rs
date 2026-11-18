@@ -286,15 +286,37 @@ fn main() {
             && let Some(pid) = singleton::holder(dir)
         {
             let windows = choose::windows(Some(pid));
+            // One browser window: the link goes to it, in a tab ("if there
+            // is one existing chrome window it should always open in
+            // that": Ben, 2026-11-18). Left to itself, a running Chrome
+            // opens a handed-over link in the profile it used last, and
+            // makes a window for it if that profile has none (one of its
+            // windows was open, and has been closed): a second window,
+            // with one there. So the window's own profile is asked to
+            // open it (its extension, whichever profile that is), and the
+            // window brought forward; failing that (no extension that can
+            // be asked: a private window, an older extension), it's
+            // Chrome's hand-over, as before. (Chrome's own record of
+            // which profiles have windows, `Local State`, is written when
+            // it suits Chrome: in the trial it named the profile whose
+            // window had gone.)
+            if let [only] = windows.as_slice()
+                && choose::open_in_window(pid, &link, only, false)
+            {
+                choose::activate(only.id);
+                return;
+            }
             if windows.len() >= 2 {
                 match choose::ask(&link, windows.clone()) {
                     choose::Choice::Cancel => return,
                     choose::Choice::NewWindow => args.insert(0, "--new-window".to_owned()),
                     choose::Choice::Window(id) => {
                         choose::bring_forward(id);
-                        // (Without the extension, Chrome's hand-over below.)
+                        // (Its own profile's extension; an older extension,
+                        // the one that answers for Chrome's process; with
+                        // none, Chrome's hand-over below.)
                         if let Some(w) = windows.iter().find(|w| w.id == id)
-                            && choose::open_in_front(pid, &link, w)
+                            && (choose::open_in_window(pid, &link, w, true) || choose::open_in_front(pid, &link, w))
                         {
                             return;
                         }

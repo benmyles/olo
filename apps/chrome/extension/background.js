@@ -30,6 +30,10 @@ const waiting = new Map();
 
 function connect() {
   port = chrome.runtime.connectNative(HOST);
+  // What this version can be asked that an older one couldn't (the host
+  // asks only what it's told of): a link opened in a window of this
+  // profile's, or not at all, and answered.
+  port.postMessage({ can: ["open_in_window"] });
   port.onMessage.addListener((m) => {
     // The host asking for the windows' widget trees (for agents).
     if (m.tree !== undefined) {
@@ -39,7 +43,9 @@ function connect() {
     // A link Olo opens in the window brought forward for it (Open in
     // Which Window?, olo-chrome's choose.rs).
     if (m.open_in_front) {
-      openInFront(m.open_in_front);
+      openInFront(m.open_in_front).then((ok) => {
+        if (m.n !== undefined) port?.postMessage({ opened_in_front: m.n, ok });
+      });
       return;
     }
     // olo-slack's host, about Slack.
@@ -532,6 +538,15 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 // Screens pairs them; of two alike, the one Chrome has the focus in, else
 // the one it had it in last. (Chrome's own hand-over of a link opens it
 // in a window of its choosing, not the one in front.) None: a new one.
+//
+// Chrome can have several profiles open, each with this extension and a
+// host of its own, and a window is one profile's: so Olo asks each
+// profile's (`must_match`) to open the link only if the window is its
+// own, and says whether it did; first only where Chrome has the focus
+// in it (`focused`: two profiles' windows can be alike), then wherever
+// it's found. Nothing is opened anywhere else, and no window made.
+// (Left to Chrome, a link goes to the profile used last, which makes a
+// window if it has none: one more, beside the one that was there.)
 async function openInFront(o) {
   const wins = await chrome.windows.getAll({ populate: true, windowTypes: ["normal"] }).catch(() => []);
   const page = (w) => (w.tabs || []).find((t) => t.active)?.title || "";
@@ -539,6 +554,14 @@ async function openInFront(o) {
   const sized = (w) => !o.width || (w.width === o.width && w.height === o.height);
   let alike = wins.filter((w) => named(w) && sized(w));
   if (!alike.length) alike = wins.filter(named);
+  if (o.must_match) {
+    const mine = o.focused ? alike.find((x) => x.focused) : alike.find((x) => x.focused) || alike[0];
+    if (!mine) return false;
+    return chrome.tabs.create({ windowId: mine.id, url: o.url, active: true }).then(
+      () => true,
+      () => false
+    );
+  }
   let w = alike.length === 1 ? alike[0] : alike.find((x) => x.focused);
   if (!w) w = await chrome.windows.getLastFocused({ windowTypes: ["normal"] }).catch(() => null);
   if (w && w.id !== chrome.windows.WINDOW_ID_NONE) {
@@ -546,6 +569,7 @@ async function openInFront(o) {
   } else {
     await chrome.windows.create({ url: o.url, focused: true }).catch(() => {});
   }
+  return true;
 }
 
 // ---- One-time codes texted to the phone, or mailed ----

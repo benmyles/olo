@@ -674,3 +674,15 @@ Each note: what to do, then why (what happened), then how to apply it.
   /var/tmp/you/bin/olo-screen start t` (the folder mode 700; a copy of
   the build under test in `bin`), and find its processes by that
   `XDG_RUNTIME_DIR` in `/proc/PID/environ`, never by name.
+
+## Pushing in the background
+
+- Run the push so that the command's own exit is the push's, and read
+  its last lines when it ends: `git push origin main > LOG 2>&1; rc=$?;
+  echo "push exit $rc" >> LOG; exit $rc`. With a trailing `echo` as the
+  last command the task "completed (exit code 0)" though the hook had
+  refused (2026-11-18: an hour's work thought pushed that wasn't).
+- The pre-push hook refuses when anything is uncommitted. After adding a
+  dependency, `Cargo.lock` at the repository's root has changed: a
+  `git add` of `apps crates docs` leaves it behind. `git status --short`
+  before pushing; it must print nothing.

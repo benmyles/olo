@@ -18765,6 +18765,54 @@ eight links each in the window chosen by its letter (two of them with
 both windows on one page at one size), a click, Return, Escape, New
 Window; reviewed at 1×, 1.5× and 2×.
 
+**One window: the link goes to it. And a window is a profile's.** (Ben,
+2026-11-18: "it's not opening in my existing single chrome window it is
+opening a new chrome window. if there is one existing chrome window it
+should always open in that, and if more than one it should show the
+picker".) With one browser window the link was handed to Chrome, and
+**a running Chrome opens a handed-over link in the profile it used
+last, making a window for it if that profile has none** (one of its
+windows was open and has been closed since): a second window beside
+the one that was there. Reproduced in a test session with a Chrome and
+a profile of its own in scratch: a window of "Profile 1" opened, used
+and closed, then a link: a new window, with Default's window sitting
+there. (Which display or workspace the window is on, and whether it's
+minimized, made no difference: each tried.) So with one window Olo no
+longer leaves it to Chrome: the window's own profile is asked to open
+the link (`choose::open_in_window`), then the window is brought
+forward.
+
+A Chrome with several profiles open has Olo's extension, and a host,
+for each, and a window is one profile's: its extension is the only one
+that can put a tab in it. The socket agents ask Chrome's trees on
+(`commands::serve` for Chrome's pid) is one, taken over by the host
+started last, so a link sent there reached whichever profile that was
+(the picker too, with windows of two profiles). Each host now also
+listens on a socket of its own (`host::hosts_dir()`:
+`$XDG_RUNTIME_DIR/olo-chrome-hosts/CHROMEPID-HOSTPID.sock`; a host
+sweeps those of Chromes that have gone as it starts), once its
+extension says it can be asked so (`{can: ["open_in_window"]}`: an
+older extension opens a link whatever it's asked and never answers).
+`open_in_window` asks each host of that Chrome in turn `{url, title,
+width, height, must_match, focused}`; the extension opens the link only
+in a window of its own that matches, makes none, and answers
+`{opened_in_front: n, ok}`. After the picker (the window brought
+forward) the hosts are asked first for the window Chrome has the focus
+in, then for it wherever it is; with one window, once. None did (a
+private window, an older extension until Chrome is started again and
+takes the new one, 1.15.3): the picker's old way, then Chrome's
+hand-over. Chrome's own record of which profiles have windows (`Local
+State`, `profile.last_active_profiles`) was tried as a way to tell
+Chrome the profile (`--profile-directory`) and dropped: Chrome writes
+it when it suits it, and in the trial it named the profile whose window
+had gone. Tried in the test session: the failing state made again, the
+link in the one window; then windows of two profiles, the picker, each
+window chosen in turn by its letter, each link in the window chosen.
+To try Chrome in a test session: its own copy of Chrome
+(`cp -r --reflink=auto ~/.local/share/olo/chrome/VERSION` into the
+session's home, with `current` and a fresh `.checked`), a
+`--user-data-dir` in scratch, pages from a loopback server.
+
 **A code texted to the phone** is offered in the tab waiting for it
 (see "The phone"): `src/codes.rs` keeps the host connected to the phone
 service, `background.js`'s `codeTabs` asks every tab's frames, and
