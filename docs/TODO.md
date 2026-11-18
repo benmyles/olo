@@ -104,11 +104,12 @@ something nobody here has is in "Blocked", with what it waits for.
   any other CalDAV server's; tried against a stand-in server end to
   end. Its own icon (a block calendar, in every set; Flat's its own
   drawing). An event is dragged among the hours to another time or
-  day (HACKING.md, "Calendar"). **Next**: dragging in the month and
-  the whole-day strip, and an event's end (how long it lasts). Undo
-  and Redo of every change (a deletion asks nothing now). **Then**:
-  Find, invitations (who's coming, answering);
-  the Deskbar widget, the palette, the assistant. Reminders are shown
+  day (HACKING.md, "Calendar"). Undo and Redo of every change (a
+  deletion asks nothing now). Find (⌘F: every calendar shown, from a
+  year back to two years on, listed by day from today). **Next**:
+  dragging in the month and the whole-day strip, and an event's end
+  (how long it lasts). **Then**: invitations (who's coming,
+  answering); the Deskbar widget, the palette, the assistant. Reminders are shown
   (`olo-calendar --service`, a session service; Show goes to the
   event). (Its cost
   is measured and in-place reload tried: HACKING.md, "Calendar".)

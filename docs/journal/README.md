@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Calendar: Find
+
+*15:53* — Calendar has a search field (⌘F). What's typed is looked for, as it's typed, in every calendar shown from a year back to two years on: titles, places and notes. What's found is listed by day, starting at today; the arrows step through it, Return (or two clicks) goes to the event in the view, Escape ends the search.
+
+![Calendar: Find](2026-11-18/155347-calendar-find.png)
+
 ### Calendar: Undo and Redo
 
 *15:42* — Every change in Calendar can be taken back and made again: Edit ▸ Undo and Redo, named for the step. Above: Dentist deleted, the deletion undone, redone, then (undone again) dragged to Thursday, and the move undone. Deleting an event no longer asks first.

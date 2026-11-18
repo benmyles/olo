@@ -4984,5 +4984,11 @@
   "title": "Calendar: Undo and Redo",
   "caption": "Every change in Calendar can be taken back and made again: Edit \u25b8 Undo and Redo, named for the step. Above: Dentist deleted, the deletion undone, redone, then (undone again) dragged to Thursday, and the move undone. Deleting an event no longer asks first.",
   "image": "2026-11-18/154226-calendar-undo-and-redo.png"
+ },
+ {
+  "time": "2026-11-18T15:53:47",
+  "title": "Calendar: Find",
+  "caption": "Calendar has a search field (\u2318F). What's typed is looked for, as it's typed, in every calendar shown from a year back to two years on: titles, places and notes. What's found is listed by day, starting at today; the arrows step through it, Return (or two clicks) goes to the event in the view, Escape ends the search.",
+  "image": "2026-11-18/155347-calendar-find.png"
  }
 ]

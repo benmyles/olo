@@ -137,6 +137,26 @@ pub struct Book {
     pub cals: Vec<Arc<Cal>>,
 }
 
+/// What an occurrence shows of the event it's of.
+#[derive(Clone)]
+struct Said {
+    title: Arc<str>,
+    location: Arc<str>,
+    tentative: bool,
+    unanswered: bool,
+    free: bool,
+}
+
+/// What a search found: the occurrences listed, in order; how many
+/// there were in all; and which of the list is the first from today on
+/// (its length: none is).
+#[derive(Debug, Default, Clone)]
+pub struct Found {
+    pub list: Arc<Vec<Shown>>,
+    pub total: usize,
+    pub upcoming: usize,
+}
+
 impl Book {
     /// `cals`, with the accounts in `order` (their ids).
     pub fn new(mut cals: Vec<Arc<Cal>>, order: &[String]) -> Book {
@@ -162,6 +182,35 @@ impl Book {
     /// The occurrences on the days from `from` to `to` (not `to` itself)
     /// of every calendar shown, in order: by start, the longer first.
     pub fn shown(&self, from: Date, to: Date, zone: &TimeZone, me: &[String], choices: &Choices) -> Vec<Shown> {
+        self.shown_where(from, to, zone, me, choices, |_| true, || false)
+    }
+
+    /// What a search finds (Find): the occurrences from `from` to `to`
+    /// of the calendars shown whose title, place or notes have every
+    /// word of `query`, in order; an occurrence changed by itself by its
+    /// own words. Of more than `most` (the most that's any use to list),
+    /// the ones round `today`: a quarter before it, the rest from it on.
+    /// Given up (nothing found) as soon as `stop` says so: a search the
+    /// next letter typed has overtaken.
+    pub fn find(&self, query: &olo_kit::search::Query, span: (Date, Date), today: Date, zone: &TimeZone, me: &[String], choices: &Choices, most: usize, stop: impl Fn() -> bool) -> Found {
+        let mut list = self.shown_where(span.0, span.1, zone, me, choices, |e| query.words_in(&[&e.summary, &e.location, &e.description]), stop);
+        let total = list.len();
+        let now = today.at(0, 0, 0, 0);
+        let mut upcoming = list.partition_point(|s| s.start < now);
+        if total > most {
+            let end = (upcoming.saturating_sub(most / 4) + most).min(total);
+            let start = end - most;
+            list.truncate(end);
+            list.drain(..start);
+            upcoming -= start;
+        }
+        Found { list: Arc::new(list), total, upcoming }
+    }
+
+    /// [`Book::shown`], of the events (or the occurrences changed by
+    /// themselves) that `keep` keeps: one none of whose forms it keeps
+    /// has no occurrence worked out at all.
+    fn shown_where(&self, from: Date, to: Date, zone: &TimeZone, me: &[String], choices: &Choices, keep: impl Fn(&Event) -> bool, stop: impl Fn() -> bool) -> Vec<Shown> {
         let (Ok(a), Ok(b)) = (from.at(0, 0, 0, 0).to_zoned(zone.clone()), to.at(0, 0, 0, 0).to_zoned(zone.clone())) else { return Vec::new() };
         let mut out = Vec::new();
         for (i, cal) in self.cals.iter().enumerate() {
@@ -173,24 +222,51 @@ impl Book {
                 if stored.event.status == Status::Cancelled {
                     continue;
                 }
+                if !keep(&stored.event) && !stored.overrides.iter().any(&keep) {
+                    continue;
+                }
+                if stop() {
+                    return Vec::new();
+                }
                 let href: Arc<str> = Arc::from(stored.href.as_str());
-                for o in event::occurrences(&stored.event, &stored.overrides, &a, &b, zone) {
-                    let e: &Event = o.changed.and_then(|i| stored.overrides.get(i)).unwrap_or(&stored.event);
+                // What an occurrence says of its event: worked out once
+                // for the event's own (every occurrence not changed by
+                // itself), not anew for each.
+                let said = |e: &Event| -> Option<Said> {
+                    if !keep(e) {
+                        return None;
+                    }
                     let mine = e.attendees.iter().find(|p| me.iter().any(|m| m.eq_ignore_ascii_case(&p.address)));
+                    Some(Said {
+                        title: Arc::from(if e.summary.trim().is_empty() { "(No title)" } else { e.summary.trim() }),
+                        location: Arc::from(e.location.trim()),
+                        tentative: e.status == Status::Tentative,
+                        unanswered: mine.is_some_and(|p| p.answer == olo_calendar::event::Answer::NotYet),
+                        free: e.free,
+                    })
+                };
+                let mut own: Option<Option<Said>> = None;
+                let repeats = stored.event.repeats || !stored.event.rdates.is_empty();
+                for o in event::occurrences(&stored.event, &stored.overrides, &a, &b, zone) {
+                    let it = match o.changed.and_then(|i| stored.overrides.get(i)) {
+                        Some(e) => said(e),
+                        None => own.get_or_insert_with(|| said(&stored.event)).clone(),
+                    };
+                    let Some(it) = it else { continue };
                     out.push(Shown {
                         cal: i,
                         href: href.clone(),
-                        title: Arc::from(if e.summary.trim().is_empty() { "(No title)" } else { e.summary.trim() }),
-                        location: Arc::from(e.location.trim()),
+                        title: it.title,
+                        location: it.location,
                         start: o.start.datetime(),
                         end: o.end.datetime(),
                         all_day: o.all_day,
                         hue,
                         id: o.id,
-                        repeats: stored.event.repeats || !stored.event.rdates.is_empty(),
-                        tentative: e.status == Status::Tentative,
-                        unanswered: mine.is_some_and(|p| p.answer == olo_calendar::event::Answer::NotYet),
-                        free: e.free,
+                        repeats,
+                        tentative: it.tentative,
+                        unanswered: it.unanswered,
+                        free: it.free,
                     });
                 }
             }
@@ -209,6 +285,53 @@ impl Book {
 mod tests {
     use super::*;
     use olo_calendar::store::Item;
+
+    /// Find: every word, in the title, the place or the notes, whatever
+    /// its case (the kit's search, as every app's); a hidden calendar's
+    /// not found; no more than asked for.
+    #[test]
+    fn what_a_search_finds() {
+        let zone = TimeZone::get("Europe/Amsterdam").unwrap();
+        let work = kept(
+            "Work",
+            None,
+            &[
+                "DTSTART;TZID=Europe/Amsterdam:20261118T140000\nDTEND;TZID=Europe/Amsterdam:20261118T153000\nSUMMARY:Design review\nLOCATION:Room 2\nDESCRIPTION:The new month view",
+                "DTSTART;TZID=Europe/Amsterdam:20261116T093000\nDTEND;TZID=Europe/Amsterdam:20261116T094500\nRRULE:FREQ=DAILY;COUNT=5\nSUMMARY:Standup",
+                "DTSTART;TZID=Europe/Amsterdam:20261120T120000\nDTEND;TZID=Europe/Amsterdam:20261120T130000\nSUMMARY:Déjeuner avec Kim\nLOCATION:Café Review",
+            ],
+        );
+        let book = Book::new(vec![Arc::new(Cal::read(work))], &["a".to_owned()]);
+        let (from, to) = (jiff::civil::date(2026, 1, 1), jiff::civil::date(2027, 12, 31));
+        let today = jiff::civil::date(2026, 11, 18);
+        let find = |text: &str, choices: &Choices| -> Vec<String> {
+            let q = olo_kit::search::Query::parse(text, &[]);
+            book.find(&q, (from, to), today, &zone, &[], choices, 100, || false).list.iter().map(|s| format!("{} {}", s.start.strftime("%d"), s.title)).collect()
+        };
+        let all = Choices::default();
+        assert_eq!(find("review", &all), ["18 Design review", "20 Déjeuner avec Kim"]);
+        assert_eq!(find("month view", &all), ["18 Design review"]);
+        assert_eq!(find("KIM café", &all), ["20 Déjeuner avec Kim"]);
+        assert_eq!(find("standup", &all).len(), 5);
+        assert_eq!(find("review nothing", &all), [] as [String; 0]);
+        let mut hidden = Choices::default();
+        hidden.hidden.insert(book.cals[0].kept.href.clone());
+        assert!(find("review", &hidden).is_empty());
+        // Of more than there's room to list: the ones round today (a
+        // quarter of them before it), and how many there were.
+        let q = olo_kit::search::Query::parse("standup", &[]);
+        let some = book.find(&q, (from, to), today, &zone, &[], &all, 4, || false);
+        let days: Vec<i8> = some.list.iter().map(|s| s.start.day()).collect();
+        assert_eq!((days, some.total, some.upcoming), (vec![17, 18, 19, 20], 5, 1));
+        // (All of them: the first from today on is the third.)
+        let every = book.find(&q, (from, to), today, &zone, &[], &all, 100, || false);
+        assert_eq!((every.list.len(), every.total, every.upcoming), (5, 5, 2));
+        // (With none left to come: the last ones.)
+        let late = book.find(&q, (from, to), jiff::civil::date(2027, 1, 1), &zone, &[], &all, 2, || false);
+        assert_eq!((late.list.iter().map(|s| s.start.day()).collect::<Vec<_>>(), late.upcoming), (vec![19, 20], 2));
+        // Overtaken: given up.
+        assert!(book.find(&q, (from, to), today, &zone, &[], &all, 100, || true).list.is_empty());
+    }
 
     #[test]
     fn a_servers_colour_is_the_looks_nearest() {
@@ -313,6 +436,15 @@ mod tests {
             let t = std::time::Instant::now();
             let shown = book.shown(from, to, &zone, &[], &choices);
             eprintln!("{what}: {} occurrences of 10,000 events in {:.1} ms", shown.len(), t.elapsed().as_secs_f64() * 1e3);
+        }
+        // Find, across three years: a word few have, one a tenth have,
+        // one they all have (listed: the first 500).
+        let (from, to) = (jiff::civil::date(2025, 11, 17), jiff::civil::date(2028, 11, 19));
+        for text in ["1234", "event 7", "event"] {
+            let q = olo_kit::search::Query::parse(text, &[]);
+            let t = std::time::Instant::now();
+            let found = book.find(&q, (from, to), jiff::civil::date(2026, 11, 18), &zone, &[], &choices, 500, || false);
+            eprintln!("find “{text}” in three years: {} of {} listed in {:.1} ms", found.list.len(), found.total, t.elapsed().as_secs_f64() * 1e3);
         }
     }
 }

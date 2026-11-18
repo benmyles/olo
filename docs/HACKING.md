@@ -21093,6 +21093,41 @@ demo: Dentist from Tuesday 3 PM to Thursday 10 AM; Monday's Standup an
 hour and a half later, only that one. Not yet: the month's days, the
 whole-day strip, an event's end.
 
+**Find** (Edit ▸ Find… ⌘F puts the caret in the search field at the
+navigation row's right, the kit's `SearchField`; an agent just sets its
+text). What's typed is looked for as it's typed, in every calendar
+shown, from a year back to two years on (`FIND_BACK`, `FIND_ON`): the
+occurrences whose title, place or notes have every word
+(`Book::find`, the kit's `Query::words_in`, as every app's search; an
+occurrence changed by itself is found by its own words). What's found
+takes the views' place (`agenda::found`, the agenda's rows: each
+occurrence under its day, another year's day saying its year) and the
+title says how many ("12 Events Found", "500 of 531 Events Found",
+"Nothing Found"). The list starts at today: the first to come at the
+top, what's been above it (`ScrollHandle::set_offset_once_laid_out`,
+once for each new search; the same words found again as the calendars
+change stay put). Of more than `FOUND_MOST` (500) the ones round today
+are listed, a quarter of them before it. A click chooses one; two, or
+Return, go to it: the search ends and the view goes to its day with it
+chosen (`Msg::Reveal`, as a reminder's Show). Up and Down step through
+them from the field or the list (`step_found`: from the first to come,
+with none chosen; brought into view with its day's heading); Escape
+ends the search. The search runs on a worker (`look_for`), again
+whenever what's kept or shown changes, and one the next letter has
+overtaken gives up between events (`finding_n`, an atomic the worker
+reads) and its answer is left. What's being looked for is kept across
+an upgrade in place (`Saved::finding`). An event's title, place and
+whether it matches are worked out once for the event, not for each
+occurrence (`Said`), which is the views' gain too. Measured (release;
+`shown_cost`, 10,000 events of which a third repeat weekly): a word
+none has 0.4 ms; one 1,111 events have (129,603 occurrences in three
+years) 71 ms; one all have (511,970) 300 ms, was 412 ms before `Said`;
+a month and as much either side 35 ms, was 53 ms. Live
+(`tools/dev/cost`): at rest with results showing 0 frames, 0 wakeups/s;
+typing a search, a frame 414 µs mean, 966 µs slowest; stepping through
+40 results, 533 µs mean, 709 µs slowest. Tested:
+`model::tests::what_a_search_finds`.
+
 **Undo and Redo** (`Calendar::history`, the kit's `olo_kit::undo` as
 every app's; Edit ▸ Undo ⌘Z and Redo ⇧⌘Z, named for their step: "Undo
 Delete “Dentist”", "Redo Move “Dentist”"). Every change made here is a

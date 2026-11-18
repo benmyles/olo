@@ -12,6 +12,8 @@ use olo_kit::{
 
 use crate::{Calendar, Mode, Msg, agenda, hue_of, layout, month, week, words};
 
+/// The search field's width.
+const SEARCH: f32 = 190.0;
 /// The calendars' column: the small month and a little room round it.
 const SIDEBAR: f32 = mini::WIDTH + 2.0 * m::TIGHT + 4.0;
 /// The least the views need: seven days across, each wide enough for a
@@ -73,6 +75,26 @@ pub fn body(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
             let to = layout::day_of(layout::day_number(v.cursor) + days);
             v.go(to, cx);
         };
+        // Find, while it shows what it found: the arrows step through
+        // it, Return goes to the one chosen, Escape ends the search.
+        if !v.finding.is_empty() {
+            match e.keystroke.key.as_str() {
+                "up" => v.step_found(true, cx),
+                "down" => v.step_found(false, cx),
+                "enter" => {
+                    if let Some(i) = v.found_chosen {
+                        cx.send(Msg::FoundOpen(i));
+                    }
+                }
+                "escape" => {
+                    v.search.update(cx, |f, cx| f.set_text("", cx));
+                    v.find(String::new(), cx);
+                }
+                _ => return,
+            }
+            cx.stop_propagation();
+            return;
+        }
         match e.keystroke.key.as_str() {
             "enter" if v.selected.is_some() => {
                 v.command("edit-event", cx);
@@ -94,11 +116,34 @@ pub fn body(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
         }
         cx.stop_propagation();
     });
-    div().size_full().flex().flex_col().bg(style::c(p.panel_background)).on_window_key_down(keys).child(bar).child(row.child(main)).into_element()
+    // (With the caret in the search field, Up and Down are the list's
+    // all the same: taken before the field has them.)
+    let in_field = cx.listener(|v: &mut Calendar, e: &olo_kit::KeyDownEvent, cx| {
+        let up = match e.keystroke.key.as_str() {
+            "up" => true,
+            "down" => false,
+            _ => return,
+        };
+        if e.keystroke.modifiers.modified() || v.finding.is_empty() || !v.search.read(cx).is_focused(cx) {
+            return;
+        }
+        v.step_found(up, cx);
+        cx.stop_propagation();
+    });
+    div().size_full().flex().flex_col().bg(style::c(p.panel_background)).on_window_key_down(keys).capture_key_down(in_field).child(bar).child(row.child(main)).into_element()
 }
 
 /// What the view shows, in words: the month, the week's days, the day.
 pub fn title(v: &Calendar) -> String {
+    // (Find: how many were found.)
+    if !v.finding.is_empty() {
+        return match (v.found.len(), v.found_total) {
+            (0, _) => "Nothing Found".to_owned(),
+            (1, 1) => "1 Event Found".to_owned(),
+            (n, all) if all > n => format!("{} of {} Events Found", style::thousands(n), style::thousands(all)),
+            (n, _) => format!("{n} Events Found"),
+        };
+    }
     let (first, after) = v.visible();
     let last = layout::day_of(layout::day_number(after) - 1);
     match v.settings.mode {
@@ -141,6 +186,8 @@ fn nav(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
         })))
         .child(div().flex_shrink_0().child(StringView::new(title(v)).size(style::LEAD_SIZE).bold(true).height(m::CONTROL_HEIGHT).beside(style::PLAIN_SIZE)))
         .child(div().flex_1().min_w_0().flex().justify_end().child(said))
+        // Find: what's typed here is looked for in every calendar shown.
+        .child(div().w(px(SEARCH)).flex_shrink_0().child(&v.search))
         .into_element()
 }
 
@@ -156,6 +203,9 @@ fn views(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
             .detail("Connect a Google or Fastmail account (or any CalDAV server) in Preferences, and its calendars show here, all together.")
             .action("Add an Account…", |_: &ClickEvent, _| olo_kit::app_menu::open_settings("integrations"))
             .into_element()
+    } else if !v.finding.is_empty() {
+        // Find: what was found, in the views' place while it's looked for.
+        agenda::found(v, cx)
     } else {
         match v.settings.mode {
             Mode::Month => month::view(cx),

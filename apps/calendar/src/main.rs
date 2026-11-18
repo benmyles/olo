@@ -188,7 +188,18 @@ pub enum Msg {
     /// The occurrence dragged among the hours, let go: it starts then
     /// (the person's clock), as long as it was.
     Move(Key, jiff::civil::DateTime),
+    /// What a search found (answer `n`).
+    Found(u64, model::Found),
+    /// One of what was found chosen (a click), or gone to (twice, Return).
+    FoundChoose(usize),
+    FoundOpen(usize),
 }
+
+/// How far a search looks, from today: back, and on (days).
+const FIND_BACK: i32 = 366;
+const FIND_ON: i32 = 2 * 366;
+/// The most it lists.
+pub const FOUND_MOST: usize = 500;
 
 /// What takes a change back (Edit ▸ Undo and Redo: `olo_kit::undo`, as
 /// every app's): the event's text as it was before, put back at its
@@ -272,6 +283,22 @@ pub struct Calendar {
     pub drag: Option<Drag>,
     /// The changes made here, to take back and make again.
     pub history: olo_kit::undo::History<Change>,
+    /// Find: the search field, what's being looked for (empty: nothing),
+    /// what was found for it, and which of that is chosen.
+    pub search: olo_kit::Child<olo_kit::search::SearchField>,
+    pub finding: String,
+    pub found: Arc<Vec<Shown>>,
+    /// How many there were in all (what's listed may be fewer), and
+    /// which of the list is the first from today on.
+    pub found_total: usize,
+    found_upcoming: usize,
+    pub found_version: u64,
+    /// The search asked last (one overtaken gives up, and its answer is
+    /// left), and what the answer showing was for.
+    finding_n: Arc<std::sync::atomic::AtomicU64>,
+    found_for: String,
+    pub found_chosen: Option<usize>,
+    pub found_scroll: ScrollHandle,
     /// What the change being made is called and is for, where it isn't
     /// what its job says (a drag's "Move"; an undo's or redo's own step).
     naming: Option<(String, olo_kit::undo::Purpose)>,
@@ -301,6 +328,9 @@ pub struct Calendar {
 struct Saved {
     cursor: String,
     mode: Mode,
+    /// What was being looked for (Find).
+    #[serde(default)]
+    finding: String,
 }
 
 impl Calendar {
@@ -310,15 +340,38 @@ impl Calendar {
         let zone = TimeZone::system();
         let today = now(&zone).date();
         let mut cursor = today;
+        let mut finding = String::new();
         if let Some(saved) = olo_kit::restored_state().and_then(|s| serde_json::from_str::<Saved>(&s).ok()) {
             settings.mode = saved.mode;
             cursor = saved.cursor.parse().unwrap_or(today);
+            finding = saved.finding;
         }
         let clock = cx.messenger();
         olo_kit::settings::watch(move |s| {
             clock.send(Msg::Clock(s.clock.twenty_four_hour));
         });
         cx.work(move || sync::load(today), |(sources, cals)| Msg::Loaded(sources, cals.into_iter().map(Arc::new).collect()));
+        // Find: what's typed is looked for as it's typed; Return goes to
+        // the one chosen (the first, with none).
+        let search = olo_kit::search::search_field(cx, "Search");
+        cx.subscribe(&search, |v: &mut Calendar, e: &olo_kit::search::SearchEvent, cx| match e {
+            olo_kit::search::SearchEvent::Changed => {
+                let text = v.search.read(cx).text(cx).to_owned();
+                v.find(text, cx);
+            }
+            olo_kit::search::SearchEvent::Entered => {
+                // (With none chosen: the first to come, the list's top.)
+                if !v.found.is_empty() {
+                    cx.send(Msg::FoundOpen(v.found_chosen.unwrap_or(v.found_upcoming.min(v.found.len() - 1))));
+                }
+            }
+        });
+        // (A search under way before an upgrade: looked for again as the
+        // calendars are read.)
+        if !finding.is_empty() {
+            let text = finding.clone();
+            search.update(cx, |f, cx| f.set_text(text, cx));
+        }
         let mut v = Calendar {
             settings,
             demo,
@@ -339,6 +392,16 @@ impl Calendar {
             reveal: None,
             drag: None,
             history: Default::default(),
+            search,
+            finding,
+            found: Arc::new(Vec::new()),
+            found_total: 0,
+            found_upcoming: 0,
+            found_version: 0,
+            finding_n: Default::default(),
+            found_for: String::new(),
+            found_chosen: None,
+            found_scroll: ScrollHandle::new(),
             naming: None,
             standing: HashMap::new(),
             loading: true,
@@ -677,6 +740,81 @@ impl Calendar {
     fn changed(&mut self, cx: &mut Cx<Self>) {
         self.generation += 1;
         self.look(cx);
+        self.look_for(cx);
+    }
+
+    /// Find: `text` looked for from now on (nothing: the search is over).
+    pub fn find(&mut self, text: String, cx: &mut Cx<Self>) {
+        let text = text.trim().to_owned();
+        if text == self.finding {
+            return;
+        }
+        self.finding = text;
+        self.found_chosen = None;
+        if self.finding.is_empty() {
+            // (An answer still on its way is for nothing now.)
+            self.finding_n.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.found = Arc::new(Vec::new());
+            (self.found_total, self.found_for) = (0, String::new());
+            self.found_version += 1;
+            cx.invalidate();
+        } else {
+            self.look_for(cx);
+        }
+    }
+
+    /// What's being looked for, looked for (on a worker: every calendar
+    /// shown, from a year back to two years on), again whenever what's
+    /// kept or shown changes.
+    fn look_for(&mut self, cx: &mut Cx<Self>) {
+        if self.finding.is_empty() {
+            return;
+        }
+        use std::sync::atomic::Ordering::Relaxed;
+        let n = self.finding_n.fetch_add(1, Relaxed) + 1;
+        let (latest, today) = (self.finding_n.clone(), self.today);
+        let (book, zone, choices, text) = (self.book.clone(), self.zone.clone(), self.settings.choices.clone(), self.finding.clone());
+        let me: Vec<String> = self.sources.iter().map(|s| s.account.address.clone()).collect();
+        let (from, to) = (layout::day_of(layout::day_number(self.today) - FIND_BACK), layout::day_of(layout::day_number(self.today) + FIND_ON));
+        cx.work(
+            move || {
+                let query = olo_kit::search::Query::parse(&text, &[]);
+                book.find(&query, (from, to), today, &zone, &me, &choices, FOUND_MOST, || latest.load(Relaxed) != n)
+            },
+            move |found| Msg::Found(n, found),
+        );
+    }
+
+    /// The next of what was found chosen (or the one before, `up`), from
+    /// the keyboard; with none chosen, the first to come (the last there
+    /// was, where nothing is to come); brought into view.
+    pub fn step_found(&mut self, up: bool, cx: &mut Cx<Self>) {
+        if self.found.is_empty() {
+            return;
+        }
+        let last = self.found.len() - 1;
+        let to = match self.found_chosen {
+            None => self.found_upcoming.min(last),
+            Some(i) if up => i.saturating_sub(1),
+            Some(i) => (i + 1).min(last),
+        };
+        if self.found_chosen != Some(to) {
+            self.found_chosen = Some(to);
+            cx.invalidate();
+        }
+        if let Some((top, bottom)) = agenda::found_span(self, to) {
+            self.found_scroll.reveal_span(olo_kit::px(top), olo_kit::px(bottom));
+            cx.invalidate();
+        }
+    }
+
+    /// One of what was found gone to: the search is over, and the view
+    /// goes to its day with it chosen.
+    fn open_found(&mut self, i: usize, cx: &mut Cx<Self>) {
+        let Some(s) = self.found.get(i).cloned() else { return };
+        self.search.update(cx, |f, cx| f.set_text("", cx));
+        self.find(String::new(), cx);
+        cx.send(Msg::Reveal(s.href.to_string(), s.start));
     }
 
     /// Ask an account's server what changed, on a worker (one asking an
@@ -848,6 +986,8 @@ impl Calendar {
             self.history
                 .edit_items(Menu::new("Edit"))
                 .separator()
+                .find_items(false)
+                .separator()
                 .item("Edit Event…", "edit-event")
                 .key("e")
                 .enabled(self.selected.is_some())
@@ -934,6 +1074,34 @@ impl View for Calendar {
                 self.try_reveal();
             }
             Msg::Move(key, start) => return self.move_event(&key, start, cx),
+            Msg::Found(n, found) => {
+                if n != self.finding_n.load(std::sync::atomic::Ordering::Relaxed) {
+                    return;
+                }
+                // (The one chosen, if it's still among them.)
+                let chosen = self.found_chosen.and_then(|i| self.found.get(i)).map(|s| s.key());
+                self.found_chosen = chosen.and_then(|key| found.list.iter().position(|s| s.key() == key));
+                (self.found, self.found_total, self.found_upcoming) = (found.list, found.total, found.upcoming);
+                self.found_version += 1;
+                // What's found for other words starts at today: the first
+                // to come at the top, what's been above it. (The same
+                // words found again, as the calendars change, stay put.)
+                if self.found_for != self.finding {
+                    self.found_for = self.finding.clone();
+                    let top = match agenda::found_span(self, found.upcoming) {
+                        Some((top, _)) => top,
+                        None => f32::MAX,
+                    };
+                    self.found_scroll.set_offset_once_laid_out(cx, olo_kit::point(olo_kit::px(0.0), olo_kit::px(-top)));
+                }
+            }
+            Msg::FoundChoose(i) => {
+                if self.found_chosen == Some(i) {
+                    return;
+                }
+                self.found_chosen = Some(i);
+            }
+            Msg::FoundOpen(i) => return self.open_found(i, cx),
             Msg::Reveal(href, start) => {
                 self.reveal = Some((href, start));
                 self.go(start.date(), cx);
@@ -1065,6 +1233,8 @@ impl View for Calendar {
                 let Some((target, title)) = self.selected_target() else { return false };
                 self.ask_delete(target, &title, cx);
             }
+            // (⌘F: the caret in the search field.)
+            "find" => self.search.update(cx, |f, cx| f.focus(cx)),
             "undo" => self.undo(false, cx),
             "redo" => self.undo(true, cx),
             // (An agent's: a new event at a time, as 2026-11-20T14:00.)
@@ -1126,7 +1296,7 @@ impl View for Calendar {
     }
 
     fn save_state(&mut self, _: &mut Cx<Self>) -> Option<String> {
-        serde_json::to_string(&Saved { cursor: self.cursor.to_string(), mode: self.settings.mode }).ok()
+        serde_json::to_string(&Saved { cursor: self.cursor.to_string(), mode: self.settings.mode, finding: self.finding.clone() }).ok()
     }
 }
 
