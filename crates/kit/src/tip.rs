@@ -25,6 +25,20 @@
 //! bar), and widgets the pointer crosses on its way there show theirs
 //! only if it rests on them ([`SWITCH`]); others take over at once.
 //!
+//! Things with tips may be inside one another (a widget with a card, and
+//! in it a label cut short, whose whole text is its tip): the pointer is
+//! on both at once, and a single tip shows. Every one the pointer is on
+//! is remembered ([`Tips::over`]) until it leaves it. A card of what's
+//! around stands for all of it: words of something inside it don't take
+//! its place, showing or waiting. And when the pointer leaves the inner
+//! thing while still on the outer, the outer's tip waits to show again
+//! (`resume`). It didn't: Deskbar's Token Pool widgets, whose names are
+//! cut short, showed no card when the pointer came down across the name
+//! (the name's tip took the card's wait, the pointer moved off the name
+//! onto the bars under it, and nothing was waiting any more: Ben,
+//! 2026-11-17, "sometimes when i hover over the widgets … the popover
+//! doesn't appear and i have to like move the mouse away and back").
+//!
 //! A tip the compositor put away (its popup gone) is forgotten the next
 //! time the pointer comes: it would otherwise stand for one still
 //! showing, and the widget's tip never show again until a press.
@@ -175,6 +189,29 @@ struct Tips {
     lingering: Option<TimerId>,
     /// The pointer is on the card showing.
     on_card: bool,
+    /// What the pointer is on that has a tip: each from its `hover` until
+    /// it leaves it, the innermost last.
+    over: Vec<Over>,
+}
+
+/// Something the pointer is on, and the tip it would show.
+struct Over {
+    window: WindowId,
+    key: SharedString,
+    body: Body,
+    anchor: Bounds<Pixels>,
+    place: Place,
+}
+
+/// The most things with tips the pointer is taken to be on at once (one
+/// that never said it was left can't hold a place for good).
+const OVER_MOST: usize = 8;
+
+/// Whether `inner` lies within `outer` (to a point): a thing inside
+/// another.
+fn within(outer: Bounds<Pixels>, inner: Bounds<Pixels>) -> bool {
+    let slack = px(1.0);
+    inner.left() >= outer.left() - slack && inner.right() <= outer.right() + slack && inner.top() >= outer.top() - slack && inner.bottom() <= outer.bottom() + slack
 }
 
 /// A card stays this long after the pointer leaves its widget: time to
@@ -265,6 +302,7 @@ fn hover_body(cx: &mut WindowCx, key: SharedString, text: Body, anchor: Bounds<P
     forget_gone(cx);
     if !hovered {
         let tips = tips(cx);
+        tips.over.retain(|o| !(o.window == parent && o.key == key));
         let waiting = tips.waiting.take_if(|w| w.window == parent && w.key == key).map(|w| w.timer);
         if tips.pressed.as_ref().is_some_and(|(w, k)| *w == parent && *k == key) {
             tips.pressed = None;
@@ -279,9 +317,18 @@ fn hover_body(cx: &mut WindowCx, key: SharedString, text: Body, anchor: Bounds<P
             Some(false) => hide(cx),
             None => {}
         }
+        resume(cx, parent, shown == Some(false));
         return;
     }
     let tips_now = tips(cx);
+    // The pointer is on it from now, whatever shows.
+    if !text.is_empty() {
+        tips_now.over.retain(|o| !(o.window == parent && o.key == key));
+        if tips_now.over.len() == OVER_MOST {
+            tips_now.over.remove(0);
+        }
+        tips_now.over.push(Over { window: parent, key: key.clone(), body: text.clone(), anchor, place });
+    }
     // Back on the widget whose tip shows: it stays.
     if tips_now.shown.as_ref().is_some_and(|s| s.window == parent && s.key == key) {
         if let Some(timer) = tips_now.lingering.take() {
@@ -291,6 +338,16 @@ fn hover_body(cx: &mut WindowCx, key: SharedString, text: Body, anchor: Bounds<P
     }
     if text.is_empty() {
         return;
+    }
+    // Words of something inside what a card is about (showing, or
+    // waiting to) while the pointer is still on that: the card stands.
+    if matches!(text, Body::Text(_)) {
+        let still_on = |k: &SharedString| tips_now.over.iter().any(|o| o.window == parent && o.key == *k);
+        let around_shown = tips_now.shown.as_ref().is_some_and(|s| s.card && s.window == parent && tips_now.lingering.is_none() && within(s.anchor, anchor) && still_on(&s.key));
+        let around_waiting = tips_now.waiting.as_ref().is_some_and(|w| matches!(w.body, Body::Card(_)) && w.window == parent && within(w.anchor, anchor) && still_on(&w.key));
+        if around_shown || around_waiting {
+            return;
+        }
     }
     // A card lingering, this widget on the pointer's way to it: this
     // one's shows only if the pointer rests here.
@@ -303,11 +360,37 @@ fn hover_body(cx: &mut WindowCx, key: SharedString, text: Body, anchor: Bounds<P
         show(cx, key, text, anchor, place);
         return;
     }
+    wait(cx, parent, key, text, anchor, place, if passing { SWITCH } else { DELAY });
+}
+
+/// The pointer left something of `parent` and no tip shows or waits:
+/// the innermost thing it is still on there waits to show its own (at
+/// once if the one left was showing, `was_showing`, or one was a moment
+/// ago).
+fn resume(cx: &mut WindowCx, parent: WindowId, was_showing: bool) {
+    let tips_now = tips(cx);
+    if tips_now.shown.is_some() || tips_now.waiting.is_some() {
+        return;
+    }
+    let Some(o) = tips_now.over.iter().rev().find(|o| o.window == parent) else { return };
+    let (key, body, anchor, place) = (o.key.clone(), o.body.clone(), o.anchor, o.place);
+    if tips_now.pressed.as_ref().is_some_and(|(w, k)| *w == parent && *k == key) {
+        return;
+    }
+    if was_showing || tips_now.hidden_at.is_some_and(|t| t.elapsed() < AGAIN) {
+        show(cx, key, body, anchor, place);
+        return;
+    }
+    wait(cx, parent, key, body, anchor, place, DELAY);
+}
+
+/// `key`'s tip shows in `after`, unless the pointer leaves it first.
+fn wait(cx: &mut WindowCx, parent: WindowId, key: SharedString, body: Body, anchor: Bounds<Pixels>, place: Place, after: Duration) {
     if let Some(w) = tips(cx).waiting.take() {
         cx.looper().cancel(w.timer);
     }
     let k = key.clone();
-    let timer = cx.looper().after(if passing { SWITCH } else { DELAY }, move |looper| {
+    let timer = cx.looper().after(after, move |looper| {
         let waiting = looper.state_mut::<Tips>().and_then(|tips| tips.waiting.take_if(|w| w.window == parent && w.key == k));
         if let Some(w) = waiting {
             olo_interface::with_window_on(looper, parent, |cx| {
@@ -316,7 +399,7 @@ fn hover_body(cx: &mut WindowCx, key: SharedString, text: Body, anchor: Bounds<P
             });
         }
     });
-    tips(cx).waiting = Some(Waiting { window: parent, key, timer, body: text, anchor, place });
+    tips(cx).waiting = Some(Waiting { window: parent, key, timer, body, anchor, place });
 }
 
 /// The card showing goes in `after`, unless the pointer comes onto it
@@ -397,6 +480,9 @@ fn rebody(cx: &mut WindowCx, key: SharedString, text: Body) {
     let parent = cx.window_id();
     forget_gone(cx);
     let tips_now = tips(cx);
+    if let Some(o) = tips_now.over.iter_mut().find(|o| o.window == parent && o.key == key) {
+        o.body = text.clone();
+    }
     if let Some(w) = tips_now.waiting.as_mut().filter(|w| w.window == parent && w.key == key) {
         w.body = text;
         return;
@@ -526,6 +612,18 @@ fn tip_size(text: &str) -> (f32, f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A thing inside another, to a point: a widget's name in its widget.
+    #[test]
+    fn a_thing_within_another() {
+        let b = |x: f32, y: f32, w: f32, h: f32| Bounds { origin: olo_interface::point(px(x), px(y)), size: size(px(w), px(h)) };
+        let widget = b(8.0, 182.0, 52.0, 36.0);
+        assert!(within(widget, b(8.0, 184.0, 52.0, 12.0)), "its name, as wide as it is");
+        assert!(within(widget, b(7.5, 182.0, 53.0, 12.0)), "to a point");
+        assert!(!within(widget, b(62.0, 182.0, 52.0, 36.0)), "the widget beside it");
+        assert!(!within(widget, b(8.0, 160.0, 164.0, 22.0)), "the row above");
+        assert!(within(widget, widget));
+    }
 
     #[test]
     fn a_tip_says_only_so_much() {

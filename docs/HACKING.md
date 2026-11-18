@@ -1589,6 +1589,21 @@ if there's no room, slid to stay on screen (`TipPlace` is
 pointer crosses on its way there (between the widget and the card's
 side) shows its own only if the pointer rests on it 300 ms; any
 other takes over at once (Disk to the Token Pool widget under it).
+**Things with tips inside one another** (a widget with a card, and in
+it a name cut short, whose whole text is its tip: `cut`): the pointer
+is on both, and one tip shows. `tip.rs` remembers every thing with a
+tip the pointer is on (`Tips::over`, from its `hover(true)` to its
+`hover(false)`). A card of what's around stands for all of it: words of
+something inside it (`within` its anchor) don't take its place, showing
+or waiting. And when the pointer leaves the inner thing while still on
+the outer, the outer's tip waits to show again (`resume`; at once if
+the inner one's was showing). Before, the one waiting slot went to
+whichever said `hover` last and nothing gave it back: Deskbar's Token
+Pool widgets ("Claude…") showed no card when the pointer came down
+across the name and went on to the bars under it, until it left and
+came back. To try such things: widgets in a test session's Deskbar,
+`synthetic` moves from every side and across each part, a picture of
+the strip beside the bar after each against one with no card.
 `tip::shown(cx)` / `tip::shown_anywhere(cx)` say which widget's tip
 shows (in the window, on the looper): Deskbar keeps a card's readings
 coming while the pointer is on the card, and stops looking at the

@@ -84,24 +84,6 @@ something nobody here has is in "Blocked", with what it waits for.
   Ben**: the test of firmware 1.17, the same hand-over that failed
   (display unplugged, charger in, while running), with the EC trace on.
 
-- **Deskbar: a widget's popover sometimes doesn't come under the
-  pointer** (Ben, 2026-11-17: "there's still a hover bug with the
-  deskbar where sometimes when i hover over the widgets each the token
-  pool quota one the popover doesn't appear and i have to like move the
-  mouse away and back or something"). Seen on the Token Pool's quota
-  widgets, moving from one widget to the next: reproduce it in a test
-  session (`tsession move` across the widgets, a card up or not),
-  find which hover is lost (`BarView::set_hot`, `tip::shown`,
-  `Live::hover`), and fix that.
-
-- **Deskbar: a click on the active app hides its windows, another
-  shows them** (Ben, 2026-11-17: "clicking an app in the deskbar that
-  is already selected and active should hide that app's windows and
-  then clicking again shows them again"). As BeOS's Deskbar and every
-  taskbar since: the app's row clicked while it is the active one
-  minimizes its windows (all of them, in the workspace showing); clicked
-  again, they come back as they were, the one that was active on top.
-
 - **Deskbar: a spacer or divider among the widgets** (Ben, 2026-11-17:
   "a spacing/divider widget (with plenty of visual customization
   options) for the deskbar widget section for when the user wants to
@@ -6160,6 +6142,28 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Deskbar: a widget's popover sometimes didn't come under the
+  pointer**~~ (done 2026-11-18, the commit after 35e02b3ff; Ben,
+  2026-11-17: "there's still a hover bug with the deskbar where
+  sometimes when i hover over the widgets each the token pool quota one
+  the popover doesn't appear and i have to like move the mouse away and
+  back or something"). The widget's name was cut short ("Claude…"), and
+  cut text has a tip of its own: the pointer coming down across the
+  name gave the name's tip the card's wait, then moved onto the bars
+  under it, and nothing waited any more. The kit's tips now know every
+  thing the pointer is on, a card of what's around stands for what's in
+  it, and the outer tip waits again when the pointer leaves an inner
+  one (HACKING, the kit's tips; `tip.rs`). Reproduced in a test session
+  with his three widgets fed a copy of his pool's figures: every move
+  ending on a widget now shows its card, the ones that failed too
+  (straight down from an app's row; resting on the name).
+
+- ~~**Deskbar: a click on the active app hides its windows, another
+  shows them**~~ (done 2026-11-18, 35e02b3ff; Ben, 2026-11-17: "clicking
+  an app in the deskbar that is already selected and active should hide
+  that app's windows and then clicking again shows them again").
+  `row_click` (HACKING, Deskbar).
 
 - ~~**Opening in an app with several windows asks which window**~~ (Ben,
   2026-11-17; done the same day). A web link opened in Chrome with two
