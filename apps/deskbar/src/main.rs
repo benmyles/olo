@@ -461,6 +461,32 @@ fn same_app(n: &NoteApp, app_id: &str, entry: Option<&DesktopEntry>, name: &str)
     !n.name.is_empty() && n.name.eq_ignore_ascii_case(name)
 }
 
+/// What a click on an application's row does.
+#[derive(Debug, PartialEq, Eq)]
+enum RowClick {
+    /// Its windows brought forward together.
+    Show(Vec<u64>),
+    /// Its windows hidden: it was the active one.
+    Hide(Vec<u64>),
+}
+
+/// What a click on the row of the application whose windows are `team`
+/// does, for workspace `at` (`showing`: the one on screen). Active (one
+/// of its windows there has the keyboard, and the workspace is showing):
+/// those of its windows there that show are hidden. Otherwise its
+/// windows there are shown, or, with none there, its newest.
+fn row_click(team: &[&WindowInfo], at: u32, showing: bool) -> RowClick {
+    let here = || team.iter().filter(|w| w.workspace == at);
+    if showing && here().any(|w| w.focused && !w.minimized) {
+        return RowClick::Hide(here().filter(|w| !w.minimized).map(|w| w.id).collect());
+    }
+    let mut ids: Vec<u64> = here().map(|w| w.id).collect();
+    if ids.is_empty() {
+        ids.extend(team.last().map(|w| w.id));
+    }
+    RowClick::Show(ids)
+}
+
 /// Where a launcher badge's dot shake is kept (beside notifications').
 fn badge_key(app: &str) -> String {
     format!("badge:{app}")
@@ -1545,20 +1571,22 @@ impl Deskbar {
         if self.lit(display, ws) { style::lit_ground(pal, pal.panel_background) } else { pal.panel_background }
     }
 
-    /// Show an application's windows on this workspace together
-    /// (minimized ones too), the one it used last in front; with none
-    /// here, go to its newest.
+    /// A click on an application's row (Ben, 2026-11-17: "clicking an app
+    /// in the deskbar that is already selected and active should hide
+    /// that app's windows and then clicking again shows them again"; as
+    /// BeOS's Deskbar and every taskbar since): the active application's
+    /// windows on this workspace are hidden (minimized); any other's are
+    /// shown together (minimized ones too), the one it used last in
+    /// front; with none here, go to its newest.
     fn bring_forward(&self, team_key_: &str, on: Option<&str>, ws: Option<u32>) {
         let team: Vec<&WindowInfo> = self.windows_on(on).filter(|w| team_key_ == team_key(w) && ws.is_none_or(|ws| w.workspace == ws)).collect();
         // Under another workspace's heading: its windows there (and so
         // to that workspace).
         let at = ws.unwrap_or_else(|| self.showing(on));
-        let mut ids: Vec<u64> = team.iter().filter(|w| w.workspace == at).map(|w| w.id).collect();
-        if ids.is_empty() {
-            ids.extend(team.last().map(|w| w.id));
-        }
-        if !ids.is_empty() {
-            request(Request::ActivateAll { ids });
+        match row_click(&team, at, at == self.showing(on)) {
+            RowClick::Hide(ids) => ids.into_iter().for_each(|id| request(Request::Minimize { id })),
+            RowClick::Show(ids) if !ids.is_empty() => request(Request::ActivateAll { ids }),
+            RowClick::Show(_) => {}
         }
     }
 
@@ -4265,6 +4293,33 @@ mod tests {
         // Else by name, a website's by its browser's.
         assert!(same_app(&note(None, "Google Chrome"), "google-chrome", None, "Google Chrome"));
         assert!(!same_app(&note(Some("org.gnome.Calendar"), "Calendar"), "olo.deskcalc", None, "DeskCalc"));
+    }
+
+    /// A click on the active application's row hides its windows; the
+    /// next shows them; any other application's are shown.
+    #[test]
+    fn a_click_on_the_active_application_hides_it() {
+        let win = |id: u64, workspace: u32, focused: bool, minimized: bool| -> WindowInfo {
+            serde_json::from_value(serde_json::json!({"id": id, "app_id": "olo.terminal", "title": "t", "pid": 1, "workspace": workspace, "minimized": minimized, "focused": focused})).unwrap()
+        };
+        let (a, b, elsewhere) = (win(1, 0, false, false), win(2, 0, true, false), win(3, 1, false, false));
+        // Active here: its windows here go, not the one on another workspace.
+        assert_eq!(row_click(&[&a, &b, &elsewhere], 0, true), RowClick::Hide(vec![1, 2]));
+        // Hidden: the next click shows them (the compositor brings them back together).
+        let (a, b) = (win(1, 0, false, true), win(2, 0, false, true));
+        assert_eq!(row_click(&[&a, &b, &elsewhere], 0, true), RowClick::Show(vec![1, 2]));
+        // Not the active one: shown.
+        let (a, b) = (win(1, 0, false, false), win(2, 0, false, true));
+        assert_eq!(row_click(&[&a, &b], 0, true), RowClick::Show(vec![1, 2]));
+        // One of its windows hidden already and another active: the rest go.
+        let (a, b) = (win(1, 0, true, false), win(2, 0, false, true));
+        assert_eq!(row_click(&[&a, &b], 0, true), RowClick::Hide(vec![1]));
+        // Under another workspace's heading: gone to, never hidden.
+        let there = win(3, 1, true, false);
+        assert_eq!(row_click(&[&there], 1, false), RowClick::Show(vec![3]));
+        // None on the workspace: its newest.
+        assert_eq!(row_click(&[&elsewhere], 0, true), RowClick::Show(vec![3]));
+        assert_eq!(row_click(&[], 0, true), RowClick::Show(vec![]));
     }
 
     #[test]

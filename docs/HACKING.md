@@ -6835,8 +6835,15 @@ with it): red, blue, at 1×,
 1.5× and 2×, light and dark, in Dracula and SynthWave's colours and in
 Platinum, and with the red one turned off.
 
-Clicking an app's row in Deskbar brings it forward with every window it
-has there, as a Mac's Dock does (BeOS's brought one forward):
+Clicking the active app's row hides its windows on the workspace
+showing, and the next click shows them again (`row_click`; Ben,
+2026-11-17: "clicking an app in the deskbar that is already selected
+and active should hide that app's windows and then clicking again shows
+them again"; BeOS's Deskbar hid and showed a team from its menu, every
+taskbar since by the click). Active: one of its windows there has the
+keyboard. Under another workspace's heading a click goes there, never
+hides. Clicking any other app's row brings it forward with every window
+it has there, as a Mac's Dock does (BeOS's brought one forward):
 `bring_forward` sends `Request::ActivateAll`, which brings them back
 (minimized ones too, going to their workspace) in the order they were
 used, so the one used last ends in front with the focus. The row's
