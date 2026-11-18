@@ -19,6 +19,7 @@
 
 mod agenda;
 mod edit;
+mod editor;
 mod layout;
 mod model;
 mod month;
@@ -87,11 +88,13 @@ pub struct Settings {
     pub week_start: Option<u8>,
     pub sidebar: bool,
     pub choices: Choices,
+    /// The calendar the last new event went in (its address).
+    pub calendar: Option<String>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { mode: Mode::Month, week_start: None, sidebar: true, choices: Choices::default() }
+        Settings { mode: Mode::Month, week_start: None, sidebar: true, choices: Choices::default(), calendar: None }
     }
 }
 
@@ -110,6 +113,14 @@ fn regions_week_start() -> u8 {
         "AE" | "EG" | "IR" | "AF" | "DZ" | "BH" | "IQ" | "JO" | "KW" | "LY" | "OM" | "QA" | "SY" => 5,
         _ => 0,
     }
+}
+
+/// Whether the person's region writes the month before the day (3/4 is
+/// March 4th): the United States and a few others.
+fn month_first() -> bool {
+    let locale = ["LC_ALL", "LC_TIME", "LANG"].iter().find_map(|v| std::env::var(v).ok().filter(|s| !s.is_empty())).unwrap_or_default();
+    let region = locale.split(['.', '@']).next().unwrap_or_default().rsplit('_').next().unwrap_or_default().to_ascii_uppercase();
+    matches!(region.as_str(), "US" | "PH" | "FM" | "PW" | "MH")
 }
 
 /// Now, on the person's clock (`OLO_CALENDAR_NOW=2026-11-18T10:30`: a
@@ -155,6 +166,29 @@ pub enum Msg {
     /// A calendar (by its place) shown or not.
     Show(usize, bool),
     Select(Option<Key>),
+    /// The occurrence opened in the editor (a double-click, Return).
+    Open(Key),
+    /// A new event, starting then, or all that day (the editor opened
+    /// for it).
+    New(jiff::civil::DateTime, bool),
+    /// The editor's Save, and its Delete.
+    Save(Box<editor::Saving>),
+    Delete(Box<editor::Target>),
+    /// The answer to "only this one, or all?" (or "delete it?").
+    Asked(Option<usize>),
+    /// Something written to a calendar's server (its account, the
+    /// calendar as it is now), and how it went.
+    Wrote(String, Arc<Cal>, Result<(), dav::Error>),
+}
+
+/// A change waiting for the person's answer: which occurrences of a
+/// repeating event it's for, or whether to delete at all.
+enum Waiting {
+    Save(editor::Saving),
+    /// A repeating event's occurrence: only it, or all.
+    DeleteWhich(editor::Target),
+    /// One event: sure?
+    Delete(editor::Target),
 }
 
 pub struct Calendar {
@@ -188,6 +222,14 @@ pub struct Calendar {
     pub hours_scroll: ScrollHandle,
     hours_placed: bool,
     pub agenda_scroll: ScrollHandle,
+    editor: Option<olo_kit::WindowHandle<editor::Editor>>,
+    waiting: Option<Waiting>,
+    /// What's to be written, in order: the calendar's account and
+    /// address, and the job. One at a time an account, and never while
+    /// it's being asked what changed.
+    writes: std::collections::VecDeque<(String, String, sync::Job)>,
+    /// How many are being written now.
+    pub writing: usize,
 }
 
 /// What's kept across an upgrade in place.
@@ -236,6 +278,10 @@ impl Calendar {
             calendars_scroll: ScrollHandle::new(),
             hours_scroll: ScrollHandle::new(),
             hours_placed: false,
+            editor: None,
+            waiting: None,
+            writes: Default::default(),
+            writing: 0,
             agenda_scroll: ScrollHandle::new(),
         };
         v.place_hours(cx);
@@ -253,6 +299,150 @@ impl Calendar {
         self.hours_placed = true;
         let hour = now(&self.zone).hour();
         self.hours_scroll.set_offset_once_laid_out(cx, olo_kit::point(olo_kit::px(0.0), olo_kit::px(-week::starting_offset(hour))));
+    }
+
+    /// The calendars a new event can go in: those shown that may be
+    /// written to, by their place in the book.
+    fn writable(&self) -> Vec<(usize, String)> {
+        self.book.cals.iter().enumerate().filter(|(_, c)| c.kept.writable && !self.settings.choices.hidden.contains(&c.kept.href)).map(|(i, c)| (i, c.kept.name.clone())).collect()
+    }
+
+    /// The editor, for a new event starting at `start`.
+    pub fn open_new(&mut self, start: jiff::civil::DateTime, all_day: bool, cx: &mut Cx<Self>) {
+        let calendars = self.writable();
+        if calendars.is_empty() {
+            let why =
+                if self.book.cals.is_empty() { "There's no calendar to put it in yet: connect an account in Preferences ▸ Integrations." } else { "None of the calendars shown can be written to." };
+            olo_kit::widgets::open_alert(cx, "Calendar", "warning", why, &["OK"], |_, _| {});
+            return;
+        }
+        // The calendar the last one went in, if it's still there.
+        let calendar = self.settings.calendar.as_ref().and_then(|href| calendars.iter().position(|(i, _)| self.book.cals[*i].kept.href == *href)).unwrap_or(0);
+        let opening =
+            editor::Opening { target: editor::Target::New, draft: edit::Draft::new(start, all_day), calendars, calendar, today: self.today, h24: self.h24, month_first: month_first(), clock: None };
+        self.open_editor(opening, cx);
+    }
+
+    /// When a new event starts by default: on the day shown, at the next
+    /// whole hour if that's today, else at nine.
+    pub fn new_start(&self) -> jiff::civil::DateTime {
+        let now = now(&self.zone);
+        if self.cursor == self.today && now.hour() < 23 { self.cursor.at(now.hour() + 1, 0, 0, 0) } else { self.cursor.at(9, 0, 0, 0) }
+    }
+
+    /// The editor, for the occurrence `key`.
+    pub fn open_event(&mut self, key: &Key, cx: &mut Cx<Self>) {
+        let Some(shown) = self.shown.iter().find(|s| s.key() == *key).cloned() else { return };
+        let Some(stored) = self.book.stored(&shown) else { return };
+        // The occurrence's own text, if it was changed by itself; else the event's.
+        let event = shown.id.as_ref().and_then(|id| stored.overrides.iter().find(|o| o.recurrence_id.as_ref().is_some_and(|r| olo_calendar::event::same(r, id, &self.zone)))).unwrap_or(&stored.event);
+        // Its times on its own clock (another zone's, said).
+        let (zone, viewer) = (self.zone.clone(), self.zone.clone());
+        let its = |t: jiff::civil::DateTime| match &event.start {
+            olo_calendar::event::When::Zoned(z) => t.to_zoned(viewer.clone()).map(|v| v.with_time_zone(z.time_zone().clone()).datetime()).unwrap_or(t),
+            _ => t,
+        };
+        let clock = match &event.start {
+            olo_calendar::event::When::Zoned(z) if z.time_zone().iana_name() != zone.iana_name() => z.time_zone().iana_name().map(|n| n.rsplit('/').next().unwrap_or(n).replace('_', " ")),
+            _ => None,
+        };
+        let (start, end) = (its(shown.start), its(shown.end));
+        let name = self.book.cals.get(shown.cal).map(|c| c.kept.name.clone()).unwrap_or_default();
+        let target = editor::Target::Existing { cal: shown.cal, href: shown.href.to_string(), id: shown.id.clone(), from: start, repeats: shown.repeats };
+        // (How it repeats is the event's own, whichever occurrence is opened.)
+        let series = edit::Draft::of(&stored.event, start, end);
+        let draft = edit::Draft { repeat: series.repeat, until: series.until, ..edit::Draft::of(event, start, end) };
+        let opening = editor::Opening { target, draft, calendars: vec![(shown.cal, name)], calendar: 0, today: self.today, h24: self.h24, month_first: month_first(), clock };
+        self.open_editor(opening, cx);
+    }
+
+    fn open_editor(&mut self, opening: editor::Opening, cx: &mut Cx<Self>) {
+        // (One at a time: another event opened takes its place.)
+        if let Some(open) = self.editor.take() {
+            open.close();
+        }
+        self.editor = Some(editor::Editor::open(opening, cx.messenger()));
+    }
+
+    /// A job for calendar `cal` put in line, and the line looked at.
+    fn write(&mut self, cal: usize, job: sync::Job, cx: &mut Cx<Self>) {
+        let Some(c) = self.book.cals.get(cal) else { return };
+        self.writes.push_back((c.kept.account.clone(), c.kept.href.clone(), job));
+        self.run_writes(cx);
+    }
+
+    /// The first job in line whose account is free is done, on a worker.
+    fn run_writes(&mut self, cx: &mut Cx<Self>) {
+        let Some(at) = self.writes.iter().position(|(account, ..)| !self.standing.get(account).is_some_and(|s| s.syncing)) else { return };
+        let Some((account, href, job)) = self.writes.remove(at) else { return };
+        let (Some(source), Some(kept)) = (self.sources.iter().find(|s| s.account.id() == account).cloned(), self.book.cals.iter().find(|c| c.kept.href == href).map(|c| c.kept.clone())) else {
+            return;
+        };
+        self.standing.entry(account.clone()).or_default().syncing = true;
+        self.writing += 1;
+        cx.work(move || sync::write(&source, kept, job), move |(cal, result)| Msg::Wrote(account, Arc::new(cal), result));
+        cx.invalidate();
+    }
+
+    /// A change to an event, done: to every occurrence, or only the one
+    /// it was made on.
+    fn save_event(&mut self, saving: editor::Saving, only_this: bool, cx: &mut Cx<Self>) {
+        let zone = self.zone.clone();
+        let draft = saving.draft;
+        match saving.target {
+            editor::Target::New => {
+                // (Its times take their kind from the draft: a day's, or a time in the person's zone.)
+                let day = olo_calendar::event::When::Date(draft.start.date());
+                let mut event = olo_calendar::event::Event::new(&olo_calendar::event::new_uid(), "", day.clone(), day);
+                draft.apply(&mut event, draft.start, draft.end, &zone);
+                if let Some(c) = self.book.cals.get(saving.cal) {
+                    self.settings.calendar = Some(c.kept.href.clone());
+                    self.save();
+                }
+                self.write(saving.cal, sync::Job::Create(Box::new(event)), cx);
+            }
+            editor::Target::Existing { cal, href, id, from, .. } => {
+                let which = id.clone();
+                let job = match id.filter(|_| only_this) {
+                    Some(id) => sync::Job::Change(href, Box::new(move |c| edit::change_one(c, &id, &draft, &zone))),
+                    None => sync::Job::Change(href, Box::new(move |c| edit::change_all(c, &draft, from, which.as_ref(), &zone))),
+                };
+                self.write(cal, job, cx);
+            }
+        }
+    }
+
+    fn delete_event(&mut self, target: editor::Target, only_this: bool, cx: &mut Cx<Self>) {
+        let editor::Target::Existing { cal, href, id, .. } = target else { return };
+        let zone = self.zone.clone();
+        let job = match id.filter(|_| only_this) {
+            Some(id) => sync::Job::Change(href, Box::new(move |c| edit::remove_one(c, &id, &zone))),
+            None => sync::Job::Remove(href),
+        };
+        self.selected = None;
+        self.write(cal, job, cx);
+    }
+
+    /// The occurrence selected, as the editor's target.
+    fn selected_target(&self) -> Option<(editor::Target, String)> {
+        let key = self.selected.as_ref()?;
+        let shown = self.shown.iter().find(|s| s.key() == *key)?;
+        Some((editor::Target::Existing { cal: shown.cal, href: shown.href.to_string(), id: shown.id.clone(), from: shown.start, repeats: shown.repeats }, shown.title.to_string()))
+    }
+
+    /// Delete what `target` names, once the person has said which of it
+    /// (a repeating event's occurrence: only it, or all) or that they're
+    /// sure (nothing brings an event back).
+    fn ask_delete(&mut self, target: editor::Target, title: &str, cx: &mut Cx<Self>) {
+        let editor::Target::Existing { id, repeats, .. } = &target else { return };
+        let asked = cx.msg_with(|choice: &Option<usize>| Msg::Asked(*choice));
+        if *repeats && id.is_some() {
+            self.waiting = Some(Waiting::DeleteWhich(target));
+            olo_kit::widgets::open_alert(cx, "Calendar", "warning", &format!("“{title}” repeats. Delete only this one, or every one of them?"), &["Cancel", "All of Them", "Only This One"], asked);
+        } else {
+            self.waiting = Some(Waiting::Delete(target));
+            olo_kit::widgets::open_alert(cx, "Calendar", "warning", &format!("Delete “{title}”? It’s deleted from its calendar everywhere, and can’t be brought back."), &["Cancel", "Delete"], asked);
+        }
     }
 
     fn save(&self) {
@@ -409,6 +599,9 @@ impl Calendar {
         if self.loading {
             return ("Opening…".into(), false);
         }
+        if self.writing > 0 || !self.writes.is_empty() {
+            return ("Saving…".into(), false);
+        }
         if self.standing.values().any(|s| s.syncing) {
             return ("Updating…".into(), false);
         }
@@ -456,7 +649,16 @@ impl Calendar {
         };
         let _ = step;
         vec![
-            Menu::new("File").app_items(&["integrations"]).item("Refresh", "refresh").key("r").enabled(!self.sources.is_empty()).close_quit(),
+            Menu::new("File")
+                .app_items(&["integrations"])
+                .item("New Event…", "new-event")
+                .key("n")
+                .enabled(!self.loading)
+                .item("Refresh", "refresh")
+                .key("r")
+                .enabled(!self.sources.is_empty())
+                .close_quit(),
+            Menu::new("Edit").item("Edit Event…", "edit-event").key("e").enabled(self.selected.is_some()).item("Delete Event", "delete-event").key("backspace").enabled(self.selected.is_some()),
             Menu::new("View")
                 .item("Day", "mode:day")
                 .key("1")
@@ -517,6 +719,8 @@ impl View for Calendar {
                     self.book = Arc::new(Book::new(others.chain(cals).collect(), &order));
                     self.changed(cx);
                 }
+                // (What waited for the asking to end.)
+                self.run_writes(cx);
             }
             Msg::Shown(n, from, to, shown) => {
                 if n != self.asking {
@@ -559,6 +763,74 @@ impl View for Calendar {
                 }
                 self.selected = key;
             }
+            Msg::Open(key) => {
+                self.selected = Some(key.clone());
+                self.open_event(&key, cx);
+            }
+            Msg::New(start, all_day) => self.open_new(start, all_day, cx),
+            Msg::Save(saving) => match &saving.target {
+                // A repeating event's occurrence: only it, or all of them?
+                editor::Target::Existing { id: Some(_), repeats: true, .. } => {
+                    let title = if saving.draft.title.trim().is_empty() { "This event".to_owned() } else { format!("“{}”", saving.draft.title.trim()) };
+                    self.waiting = Some(Waiting::Save(*saving));
+                    let asked = cx.msg_with(|choice: &Option<usize>| Msg::Asked(*choice));
+                    olo_kit::widgets::open_alert(
+                        cx,
+                        "Calendar",
+                        "warning",
+                        &format!("{title} repeats. Change only this one, or every one of them?"),
+                        &["Cancel", "All of Them", "Only This One"],
+                        asked,
+                    );
+                }
+                _ => self.save_event(*saving, false, cx),
+            },
+            Msg::Delete(target) => {
+                let title = match &*target {
+                    editor::Target::Existing { cal, href, .. } => self.book.cals.get(*cal).and_then(|c| c.events.iter().find(|s| s.href == *href)).map(|s| s.event.summary.clone()).unwrap_or_default(),
+                    editor::Target::New => return,
+                };
+                let title = if title.trim().is_empty() { "this event".to_owned() } else { title };
+                self.ask_delete(*target, &title, cx);
+            }
+            Msg::Asked(choice) => match (self.waiting.take(), choice) {
+                // (Only This One is Return's: the smaller change.)
+                (Some(Waiting::Save(saving)), Some(2)) => self.save_event(saving, true, cx),
+                (Some(Waiting::Save(saving)), Some(1)) => self.save_event(saving, false, cx),
+                (Some(Waiting::DeleteWhich(target)), Some(2)) => self.delete_event(target, true, cx),
+                (Some(Waiting::DeleteWhich(target)), Some(1)) => self.delete_event(target, false, cx),
+                (Some(Waiting::Delete(target)), Some(1)) => self.delete_event(target, false, cx),
+                _ => return,
+            },
+            Msg::Wrote(account, cal, result) => {
+                let order: Vec<String> = self.sources.iter().map(|s| s.account.id()).collect();
+                self.standing.entry(account).or_default().syncing = false;
+                self.writing = self.writing.saturating_sub(1);
+                // The calendar as it is now: with the change, or, changed
+                // somewhere else meanwhile, with that one.
+                let mut cals: Vec<Arc<Cal>> = self.book.cals.iter().filter(|c| c.kept.href != cal.kept.href).cloned().collect();
+                cals.push(cal);
+                self.book = Arc::new(Book::new(cals, &order));
+                self.changed(cx);
+                match result {
+                    Ok(()) => {}
+                    Err(dav::Error::Changed) => {
+                        olo_kit::widgets::open_alert(
+                            cx,
+                            "Calendar",
+                            "warning",
+                            "That event was changed somewhere else meanwhile, so nothing was written over it. It shows now as it is there: make your change again if it’s still wanted.",
+                            &["OK"],
+                            |_, _| {},
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!("calendar: a change couldn't be made: {e}");
+                        olo_kit::widgets::open_alert(cx, "Calendar", "stop", &format!("The change couldn’t be made: {e}."), &["OK"], |_, _| {});
+                    }
+                }
+                self.run_writes(cx);
+            }
         }
         cx.invalidate();
     }
@@ -566,6 +838,23 @@ impl View for Calendar {
     fn command(&mut self, command: &str, cx: &mut Cx<Self>) -> bool {
         match command {
             "refresh" => self.sync_all(cx),
+            "new-event" => {
+                let start = self.new_start();
+                self.open_new(start, false, cx);
+            }
+            "edit-event" => {
+                let Some(key) = self.selected.clone() else { return false };
+                self.open_event(&key, cx);
+            }
+            "delete-event" => {
+                let Some((target, title)) = self.selected_target() else { return false };
+                self.ask_delete(target, &title, cx);
+            }
+            // (An agent's: a new event at a time, as 2026-11-20T14:00.)
+            c if c.starts_with("new-event:") => match c[10..].parse::<jiff::civil::DateTime>() {
+                Ok(start) => self.open_new(start, false, cx),
+                Err(_) => return false,
+            },
             "today" => {
                 let today = self.today;
                 self.go(today, cx);

@@ -34,6 +34,8 @@ enum Part {
 #[derive(Default)]
 struct State {
     parts: Vec<(Bounds<Pixels>, Part)>,
+    /// Where the drawing's corner was when they were noted.
+    origin: olo_kit::Point<Pixels>,
 }
 
 /// The days it shows: the first, and how many.
@@ -51,10 +53,27 @@ fn columns(g: &olo_kit::Painter, b: Bounds<Pixels>, n: usize) -> Vec<Pixels> {
     (0..=n).map(|i| style::snap_coord(g, left + px(w * i as f32 / n as f32))).collect()
 }
 
-fn select(v: &mut Calendar, e: &MouseDownEvent, cx: &mut Cx<Calendar>) {
-    let over = cx.node_state::<State>().parts.iter().rev().find(|(r, _)| r.contains(&e.position)).map(|(_, part)| part.clone());
+/// A press on the days' names and whole-day strip (`hours` false) or
+/// among the hours: an event selected, or opened (twice); a day gone to,
+/// or (twice) a new event made on it, at the half hour under the
+/// pointer among the hours, for the whole day above them.
+fn select(v: &mut Calendar, e: &MouseDownEvent, hours: bool, cx: &mut Cx<Calendar>) {
+    let now = cx.listener_bounds();
+    let state = cx.node_state::<State>();
+    let at = crate::view::in_drawing(e.position, state.origin, now);
+    let over = state.parts.iter().rev().find(|(r, _)| r.contains(&at)).map(|(_, part)| part.clone());
     match over {
+        Some(Part::Event(key)) if e.click_count >= 2 => cx.send(Msg::Open(key)),
         Some(Part::Event(key)) => cx.send(Msg::Select(Some(key))),
+        Some(Part::Day(day)) if e.click_count >= 2 => {
+            if hours {
+                let down = f32::from(e.position.y - now.top()).max(0.0);
+                let half_hours = ((down / HOUR * 2.0).floor() as i8).clamp(0, 47);
+                cx.send(Msg::New(day.at(half_hours / 2, (half_hours % 2) * 30, 0, 0), false));
+            } else {
+                cx.send(Msg::New(day.at(0, 0, 0, 0), true));
+            }
+        }
         Some(Part::Day(day)) => {
             cx.send(Msg::Select(None));
             v.go(day, cx);
@@ -160,13 +179,14 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
             }
             // A line under it all, heavier: the hours start here.
             style::hline_above(g, b.left(), b.right(), b.bottom(), style::c(olo_theme::mix(p.document_text, p.document_background, 0.7)));
-            g.node_state::<State>().parts = parts;
+            let state = g.node_state::<State>();
+            (state.parts, state.origin) = (parts, b.origin);
         })
         .key_by(key)
         .w_full()
         .h(px(head))
         .flex_shrink_0()
-        .on_mouse_down(MouseButton::Left, cx.listener(select));
+        .on_mouse_down(MouseButton::Left, cx.listener(|v: &mut Calendar, e: &MouseDownEvent, cx| select(v, e, false, cx)));
     // The hours.
     let hours = cx
         .canvas(|v: &Calendar, g, b| {
@@ -262,13 +282,14 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                 g.paint_quad(olo_kit::fill(dot, mark).corner_radii(px(3.5)));
                 g.paint_again_within((60 - now.second() as i64).max(1) as f64);
             }
-            g.node_state::<State>().parts = parts;
+            let state = g.node_state::<State>();
+            (state.parts, state.origin) = (parts, b.origin);
         })
         .key_by(key)
         .w_full()
         .h(px(24.0 * HOUR))
         .flex_shrink_0()
-        .on_mouse_down(MouseButton::Left, cx.listener(select));
+        .on_mouse_down(MouseButton::Left, cx.listener(|v: &mut Calendar, e: &MouseDownEvent, cx| select(v, e, true, cx)));
     let p = theme::palette();
     div().size_full().flex().flex_col().child(top).child(div().flex_1().min_h_0().child(ScrollView::new(&v.hours_scroll).border(false).background(p.document_background).child(hours))).into_element()
 }

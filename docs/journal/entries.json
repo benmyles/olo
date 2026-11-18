@@ -4930,5 +4930,11 @@
   "title": "A window's tab at each display's own size, part way between two",
   "caption": "Dragged from a display to one of another scale, a window's tab showed at the first display's size on the second (twice as big from 2\u00d7 to 1\u00d7). app_server kept one look of the tab and showed it whatever it was drawn for; now it keeps a look a scale. Here a window held across a 1.5\u00d7 screen and a 2\u00d7 one, each side enlarged to the same size: the tab runs straight across the seam.",
   "image": "2026-11-18/120853-a-window-s-tab-at-each-display-s-own-size-part-w.png"
+ },
+ {
+  "time": "2026-11-18T12:16:41",
+  "title": "Calendar: events made, changed and deleted",
+  "caption": "The event's window (here in the dark): title, where, calendar, all day or from when to when as you'd write it (Nov 20, fri, 2:30pm), how it repeats, a reminder, notes. Changing one of a repeating event asks: only this one, or every one of them. Written to the calendar's server first, and never over a change made somewhere else.",
+  "image": "2026-11-18/121641-calendar-events-made-changed-and-deleted.png"
  }
 ]

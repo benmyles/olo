@@ -94,14 +94,16 @@ something nobody here has is in "Blocked", with what it waits for.
   (HACKING.md, "Calendar's engine"). Then the app itself
   (apps/calendar, `olo-calendar`; HACKING.md, "Calendar"): the small
   month and the calendars at the left, Day, Week, Month and Agenda,
-  every calendar in its colour, kept in step with its servers; it shows
-  and doesn't change anything yet. **Next**: the event editor (New,
-  Edit, Delete, "only this one" or all of a repeating event: `edit.rs`
-  has the operations, tested), double-click and the keyboard, dragging
-  an event to another time, Find; Preferences ▸ Integrations ▸
-  Calendars (adding Google and Fastmail accounts); an icon of its own
-  (Date & Time's stands in); reminders, the Deskbar widget, the
-  palette, the assistant; in-place reload tried; its cost measured.
+  every calendar in its colour, kept in step with its servers; and
+  events made, changed and deleted (the event's window; "only this
+  one" or all of a repeating event; never over a change made somewhere
+  else), by the menus, a double-click or the keyboard. **Next**:
+  Preferences ▸ Integrations ▸ Calendars (adding Google and Fastmail
+  accounts: until then only the demo has calendars); an icon of its
+  own (Date & Time's stands in); dragging an event to another time,
+  Find, Undo of a deletion, invitations (who's coming, answering);
+  reminders, the Deskbar widget, the palette, the assistant; in-place
+  reload tried; its cost measured.
   **Not tried against Google's and Fastmail's real servers**: that
   needs Ben's accounts.
 
@@ -162,6 +164,26 @@ something nobody here has is in "Blocked", with what it waits for.
   was filtered to; with no item chosen, as now. Through the extension's
   host to the running app (its instance's launch, the item's id
   handed over, nothing secret in it).
+
+- **A code found in mail says so, and Check for Codes at once** (Ben,
+  2026-11-18, of a sign-in whose code came by mail and was offered as
+  "Fill code 235578 / From Verda Cloud, by text message": "it found my
+  code in my email but it said it was from a text message it should say
+  from <email address> if it's from email. also it took a while to show
+  up, make it so that if i don't want to wait i can right click in the
+  field and in the olo extension menu choose to "Check for OTPs" to make
+  it check immediately"). Two things. A bug: a code read from a mail
+  account is offered with where it came from as it is ("From Verda
+  Cloud, in mail to ADDRESS"), never "by text message" (find where the
+  offer's words are made, in the extension and its host, and what a
+  mailed code is handed over as). And a command in the extension's
+  right-click menu on a field, "Check for Codes" (the words Olo uses
+  elsewhere for one-time codes), which looks at once: the mail accounts
+  asked now rather than at their next look (and why a code waits at all
+  when the server tells of new mail, IDLE: measure from the mail
+  arriving to the offer, and fix what holds it up), the phone's
+  messages too. Tried with the stand-in mail server; agents can ask the
+  same by command.
 
 - **Windows snap into place as they're dragged** (Ben, 2026-11-18: "add
   support for window "snapping" when dragging so that e.g. if i drag to

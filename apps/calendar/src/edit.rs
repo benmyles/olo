@@ -5,9 +5,6 @@
 //! [`remove_one`]: every occurrence, or only the one); and days and times
 //! as a person types them ([`date`], [`time`]).
 
-// (Until the editor's window uses it: the next thing made.)
-#![allow(dead_code)]
-
 use jiff::{
     Span,
     civil::{Date, DateTime, Time},
@@ -247,18 +244,47 @@ fn override_of(cal: &Component, id: &When, zone: &TimeZone) -> Option<usize> {
 /// occurrence the draft was made of: the event itself moves as far as
 /// the draft moved from there (every Monday's standup dragged from 9 to
 /// 10 on one Monday is at 10 every Monday), and lasts as long as the
-/// draft does.
-pub fn change_all(cal: &mut Component, draft: &Draft, from: DateTime, zone: &TimeZone) -> Result<(), &'static str> {
+/// draft does. What names its occurrences by their starts moves with
+/// it: the dates taken out, and each occurrence changed by itself
+/// (left behind, those would be events of their own beside the ones
+/// they stood for). And if the occurrence the change was made on
+/// (`id`) has a text of its own, what was typed is that one's too: it's
+/// what the person was looking at.
+pub fn change_all(cal: &mut Component, draft: &Draft, from: DateTime, id: Option<&When>, zone: &TimeZone) -> Result<(), &'static str> {
     let at = main_event(cal).ok_or("the event isn't there")?;
     let mut event = Event::read(&cal.children[at]).ok_or("the event can't be read")?;
     let own = event.start.local();
     let moved = draft.start.since(from).unwrap_or_default();
+    let later = |w: &When| w.at(w.local().checked_add(moved).unwrap_or(w.local()));
     let start = own.checked_add(moved).unwrap_or(own);
     let lasts = draft.end.since(draft.start).unwrap_or_default();
     let end = start.checked_add(lasts).unwrap_or(start);
+    if !moved.is_zero() {
+        event.exdates = event.exdates.iter().map(later).collect();
+    }
     draft.apply(&mut event, start, end, zone);
     event.write_into(&mut cal.children[at]);
     event::stamp(&mut cal.children[at], jiff::Timestamp::now());
+    if !moved.is_zero() {
+        for (i, child) in cal.children.iter_mut().enumerate() {
+            if i != at
+                && child.name.eq_ignore_ascii_case("VEVENT")
+                && let Some(which) = child.get("RECURRENCE-ID").and_then(When::read)
+            {
+                child.set(later(&which).line("RECURRENCE-ID"));
+            }
+        }
+    }
+    if let Some(id) = id.map(later)
+        && let Some(own) = override_of(cal, &id, zone)
+        && let Some(mut event) = Event::read(&cal.children[own])
+    {
+        let draft = Draft { repeat: Repeat::Never, until: None, ..draft.clone() };
+        draft.apply(&mut event, draft.start, draft.end, zone);
+        event.recurrence_id = Some(id);
+        event.write_into(&mut cal.children[own]);
+        event::stamp(&mut cal.children[own], jiff::Timestamp::now());
+    }
     Ok(())
 }
 
@@ -533,7 +559,7 @@ END:VCALENDAR
         assert_eq!((draft.title.as_str(), draft.all_day, &draft.repeat, draft.until, draft.reminder), ("Standup", false, &Repeat::Weekly, None, Some(600)));
         assert_eq!(draft.wrong(), None);
         // Nothing changed, saved for every occurrence: the event as it was (but for its stamps).
-        change_all(&mut cal, &draft, at, &zone()).unwrap();
+        change_all(&mut cal, &draft, at, None, &zone()).unwrap();
         let (after, _) = read(&cal);
         assert_eq!((&after.start, &after.end, &after.rule, &after.alarms, after.attendees.len()), (&event.start, &event.end, &event.rule, &event.alarms, 1));
         assert!(cal.write().contains("X-SERVER:kept") && cal.write().contains("SEQUENCE:1"));
@@ -590,7 +616,7 @@ END:VCALENDAR
         draft.title = "Standup, later".into();
         // All of them: from the first, at ten, an hour.
         let mut all = ical::parse(STANDUP).remove(0);
-        change_all(&mut all, &draft, from, &zone()).unwrap();
+        change_all(&mut all, &draft, from, Some(&id), &zone()).unwrap();
         assert_eq!(starts(&all, 15, 31), ["16 10:00 Standup, later", "23 10:00 Standup, later", "30 10:00 Standup, later"]);
         assert_eq!(read(&all).0.end.local(), day(2026, 11, 16).at(11, 0, 0, 0));
         // Only that one.
@@ -613,5 +639,25 @@ END:VCALENDAR
         assert_eq!((one.children_named("VEVENT").count(), one.write().matches("EXDATE").count()), (1, 1));
         // The whole thing reads back as iCalendar.
         assert_eq!(ical::parse(&one.write()).len(), 1);
+        // An occurrence changed by itself, one taken out, and then all of
+        // them changed from the changed one (as the editor does: its
+        // draft says how the event repeats, not how that one does): the
+        // event still repeats, under its new name, the changed one too;
+        // moved an hour, every occurrence is, the one taken out stays
+        // out, and nothing shows twice.
+        let mut both = ical::parse(STANDUP).remove(0);
+        let mut own = Draft::of(&event, from, day(2026, 11, 23).at(9, 30, 0, 0));
+        own.title = "Standup (short)".into();
+        change_one(&mut both, &id, &own, &zone()).unwrap();
+        remove_one(&mut both, &When::Zoned(day(2026, 11, 30).at(9, 0, 0, 0).to_zoned(zone()).unwrap()), &zone()).unwrap();
+        assert_eq!(starts(&both, 15, 38), ["16 09:00 Standup", "23 09:00 Standup (short)", "07 09:00 Standup"]);
+        let mut all = Draft { title: "Daily".into(), ..own.clone() };
+        all.start = day(2026, 11, 23).at(10, 0, 0, 0);
+        all.end = day(2026, 11, 23).at(10, 30, 0, 0);
+        assert_eq!(all.repeat, Repeat::Weekly);
+        change_all(&mut both, &all, from, Some(&id), &zone()).unwrap();
+        assert_eq!(starts(&both, 15, 38), ["16 10:00 Daily", "23 10:00 Daily", "07 10:00 Daily"]);
+        let text = both.write();
+        assert!(text.contains("RECURRENCE-ID;TZID=Europe/Amsterdam:20261123T100000") && text.contains("EXDATE;TZID=Europe/Amsterdam:20261130T100000"), "{text}");
     }
 }

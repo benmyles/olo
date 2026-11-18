@@ -35,6 +35,8 @@ enum Part {
 #[derive(Default)]
 struct State {
     parts: Vec<(Bounds<Pixels>, Part)>,
+    /// Where the drawing's corner was when they were noted.
+    origin: olo_kit::Point<Pixels>,
 }
 
 pub fn view(cx: &mut Cx<Calendar>) -> Element {
@@ -162,16 +164,24 @@ pub fn view(cx: &mut Cx<Calendar>) -> Element {
                 parts.push((r, Part::More(day)));
             }
         }
-        g.node_state::<State>().parts = parts;
+        let state = g.node_state::<State>();
+        (state.parts, state.origin) = (parts, b.origin);
     })
     .key_by(|v: &Calendar| style::key((v.cursor, v.today, v.week_start(), v.shown_version, &v.selected, v.h24)))
     .size_full()
     .on_mouse_down(
         MouseButton::Left,
         cx.listener(|v: &mut Calendar, e: &MouseDownEvent, cx| {
-            let over = cx.node_state::<State>().parts.iter().rev().find(|(r, _)| r.contains(&e.position)).map(|(_, part)| part.clone());
+            let now = cx.listener_bounds();
+            let state = cx.node_state::<State>();
+            let at = crate::view::in_drawing(e.position, state.origin, now);
+            let over = state.parts.iter().rev().find(|(r, _)| r.contains(&at)).map(|(_, part)| part.clone());
             match over {
+                // (Twice: opened.)
+                Some(Part::Event(key)) if e.click_count >= 2 => cx.send(Msg::Open(key)),
                 Some(Part::Event(key)) => cx.send(Msg::Select(Some(key))),
+                // (A day clicked twice: a new event on it.)
+                Some(Part::Day(day)) if e.click_count >= 2 => cx.send(Msg::New(day.at(9, 0, 0, 0), false)),
                 Some(Part::More(day)) => {
                     v.go(day, cx);
                     v.set_mode(Mode::Day, cx);

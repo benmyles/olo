@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Calendar: events made, changed and deleted
+
+*12:16* — The event's window (here in the dark): title, where, calendar, all day or from when to when as you'd write it (Nov 20, fri, 2:30pm), how it repeats, a reminder, notes. Changing one of a repeating event asks: only this one, or every one of them. Written to the calendar's server first, and never over a change made somewhere else.
+
+![Calendar: events made, changed and deleted](2026-11-18/121641-calendar-events-made-changed-and-deleted.png)
+
 ### A window's tab at each display's own size, part way between two
 
 *12:08* — Dragged from a display to one of another scale, a window's tab showed at the first display's size on the second (twice as big from 2× to 1×). app_server kept one look of the tab and showed it whatever it was drawn for; now it keeps a look a scale. Here a window held across a 1.5× screen and a 2× one, each side enlarged to the same size: the tab runs straight across the seam.

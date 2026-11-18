@@ -27,6 +27,17 @@ fn edge(cx: &olo_kit::WindowCx) -> f32 {
     style::line_pixels(s) * 2.0 / s
 }
 
+/// Where a pointer at `at` is in a drawing as it was painted (its
+/// origin then, `painted`), given where the drawing is now (`now`:
+/// `cx.listener_bounds()`). A drawing in a scroll view is painted once
+/// and moved by the display thread: what it kept of where things are is
+/// where they were painted, not where they show. (The week's hours,
+/// scrolled, took a click on an event for one on the empty day behind
+/// it.)
+pub fn in_drawing(at: olo_kit::Point<olo_kit::Pixels>, painted: olo_kit::Point<olo_kit::Pixels>, now: olo_kit::Bounds<olo_kit::Pixels>) -> olo_kit::Point<olo_kit::Pixels> {
+    olo_kit::point(at.x - (now.left() - painted.x), at.y - (now.top() - painted.y))
+}
+
 /// A sunken well of `ground` with `content` inside its lines.
 fn well(e: f32, ground: Hsla, content: impl olo_kit::IntoElement) -> Element {
     let back = canvas(move |g, b| {
@@ -49,7 +60,36 @@ pub fn body(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
         row = row.child(div().w(px(SIDEBAR)).flex_shrink_0().h_full().child(sidebar(v, cx)));
     }
     let main = div().flex_1().min_w(px(MAIN_MIN)).h_full().flex().flex_col().gap(px(m::TIGHT)).child(nav(v, cx)).child(div().flex_1().min_h_0().child(views(v, cx)));
-    div().size_full().flex().flex_col().bg(style::c(p.panel_background)).child(bar).child(row.child(main)).into_element()
+    // Keys, where nothing that's typed in has the keyboard: Return opens
+    // the event chosen, Delete (or Backspace) deletes it, the arrows step
+    // through the days (a week up or down), Escape lets go of what's
+    // chosen.
+    let keys = cx.listener(|v: &mut Calendar, e: &olo_kit::KeyDownEvent, cx| {
+        use olo_kit::View as _;
+        if e.keystroke.modifiers.modified() {
+            return;
+        }
+        let step = |v: &mut Calendar, days: i32, cx: &mut Cx<Calendar>| {
+            let to = layout::day_of(layout::day_number(v.cursor) + days);
+            v.go(to, cx);
+        };
+        match e.keystroke.key.as_str() {
+            "enter" if v.selected.is_some() => {
+                v.command("edit-event", cx);
+            }
+            "delete" | "backspace" if v.selected.is_some() => {
+                v.command("delete-event", cx);
+            }
+            "escape" if v.selected.is_some() => cx.send(Msg::Select(None)),
+            "left" => step(v, -1, cx),
+            "right" => step(v, 1, cx),
+            "up" => step(v, -7, cx),
+            "down" => step(v, 7, cx),
+            _ => return,
+        }
+        cx.stop_propagation();
+    });
+    div().size_full().flex().flex_col().bg(style::c(p.panel_background)).on_window_key_down(keys).child(bar).child(row.child(main)).into_element()
 }
 
 /// What the view shows, in words: the month, the week's days, the day.

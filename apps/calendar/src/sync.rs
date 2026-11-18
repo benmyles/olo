@@ -118,6 +118,36 @@ fn sync_kept(source: &Source, mut known: Vec<Kept>) -> (Vec<Kept>, bool, Result<
     (out, changed, wrong)
 }
 
+/// Something to write to a calendar's server.
+pub enum Job {
+    /// A new event.
+    Create(Box<olo_calendar::event::Event>),
+    /// The event at this address changed (given its whole `VCALENDAR`).
+    Change(String, Box<dyn FnOnce(&mut olo_calendar::ical::Component) -> Result<(), &'static str> + Send>),
+    /// The event at this address removed.
+    Remove(String),
+}
+
+/// `job` done on `kept`'s server, then here: the calendar as it is after
+/// (saved), and how it went. Changed somewhere else meanwhile, nothing
+/// was written and the calendar is as that change left it
+/// (`dav::Error::Changed`). Blocking.
+pub fn write(source: &Source, mut kept: Kept, job: Job) -> (Cal, Result<(), dav::Error>) {
+    let Some(secret) = &source.secret else { return (Cal::read(kept), Err(dav::Error::SignIn)) };
+    let server = account::connect(&source.account, secret);
+    let result = match job {
+        Job::Create(event) => kept.create(&server, &event).map(|_| ()),
+        Job::Change(href, change) => kept.change(&server, &href, |cal| change(cal).map_err(|e| dav::Error::Answer(e.into()))),
+        Job::Remove(href) => kept.remove(&server, &href),
+    };
+    if let Some(dir) = store_dir()
+        && let Err(e) = kept.save(&dir)
+    {
+        tracing::warn!("calendar: keeping {}: {e}", kept.name);
+    }
+    (Cal::read(kept), result)
+}
+
 static DEMO: OnceLock<Standin> = OnceLock::new();
 
 /// The demo's account: a server in this process, started once, with

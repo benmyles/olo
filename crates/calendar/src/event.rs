@@ -137,7 +137,7 @@ impl When {
 
     /// The same kind of time (a day, floating, in the same zone) at
     /// `local` on its clock.
-    fn at(&self, local: DateTime) -> When {
+    pub fn at(&self, local: DateTime) -> When {
         match self {
             When::Date(_) => When::Date(local.date()),
             When::Floating(_) => When::Floating(local),

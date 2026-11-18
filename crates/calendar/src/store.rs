@@ -146,11 +146,13 @@ impl Kept {
     /// `VCALENDAR`, to change what it will) and put back on the server
     /// as it was read here, then kept. If it was changed somewhere else
     /// meanwhile nothing is written: that change is read in, and the
-    /// error says so, for the person to look again.
-    pub fn change(&mut self, server: &Server, href: &str, change: impl FnOnce(&mut Component)) -> Result<(), Error> {
+    /// error says so, for the person to look again. Nor is anything
+    /// written if `change` finds it can't be made (its error is the
+    /// answer).
+    pub fn change(&mut self, server: &Server, href: &str, change: impl FnOnce(&mut Component) -> Result<(), Error>) -> Result<(), Error> {
         let item = self.items.get(href).ok_or(Error::Gone)?;
         let mut cal = ical::parse(&item.ics).into_iter().next().ok_or_else(|| Error::Answer("what's kept of it can't be read".into()))?;
-        change(&mut cal);
+        change(&mut cal)?;
         let ics = cal.write();
         match server.put(href, &ics, Some(&item.etag)) {
             Ok(etag) => self.keep(server, href, ics, etag),
@@ -336,14 +338,26 @@ mod tests {
         assert_eq!(summaries(&kept), ["Holiday", "Lunch"]);
         // Changed: its title; the server's own line stays.
         let a = kept.items.keys().find(|h| h.ends_with("a.ics")).cloned().unwrap();
-        kept.change(&server, &a, |cal| cal.children[0].set(Line::text("SUMMARY", "Lunch at one"))).unwrap();
+        kept.change(&server, &a, |cal| {
+            cal.children[0].set(Line::text("SUMMARY", "Lunch at one"));
+            Ok(())
+        })
+        .unwrap();
         let on_server = there.get("home", "a.ics").unwrap();
         assert!(on_server.contains("SUMMARY:Lunch at one") && on_server.contains("X-KEPT:as it is"));
         // In step: nothing to fetch (our own changes are what we have).
         assert_eq!(kept.sync(&server), Ok(Step::default()));
         // Changed on another device meanwhile: ours isn't written; theirs comes in.
         there.put("home", "a.ics", &ics("a", "Lunch moved by Dana"));
-        assert_eq!(kept.change(&server, &a, |cal| cal.children[0].set(Line::text("SUMMARY", "Mine"))), Err(Error::Changed));
+        let mine = kept.change(&server, &a, |cal| {
+            cal.children[0].set(Line::text("SUMMARY", "Mine"));
+            Ok(())
+        });
+        assert_eq!(mine, Err(Error::Changed));
+        // A change that finds it can't be made: nothing asked of the server.
+        there.asked();
+        assert_eq!(kept.change(&server, &a, |_| Err(Error::Answer("no".into()))), Err(Error::Answer("no".into())));
+        assert!(there.asked().is_empty());
         assert!(there.get("home", "a.ics").unwrap().contains("Lunch moved by Dana"));
         assert_eq!(summaries(&kept), ["Holiday", "Lunch moved by Dana"]);
         // Removed; and one changed elsewhere meanwhile isn't removed.

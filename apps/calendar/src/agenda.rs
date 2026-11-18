@@ -35,6 +35,8 @@ impl Line {
 #[derive(Default)]
 struct State {
     parts: Vec<(Bounds<Pixels>, Key)>,
+    /// Where the drawing's corner was when they were noted.
+    origin: olo_kit::Point<Pixels>,
 }
 
 /// The agenda's lines from the day the view is at: each day with
@@ -149,7 +151,8 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                     }
                 }
             }
-            g.node_state::<State>().parts = parts;
+            let state = g.node_state::<State>();
+            (state.parts, state.origin) = (parts, b.origin);
         })
         .key_by(|v: &Calendar| style::key((v.cursor, v.today, v.shown_version, &v.selected, v.h24)))
         .w_full()
@@ -158,8 +161,14 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
         .on_mouse_down(
             MouseButton::Left,
             cx.listener(|_: &mut Calendar, e: &MouseDownEvent, cx| {
-                let over = cx.node_state::<State>().parts.iter().find(|(r, _)| r.contains(&e.position)).map(|(_, key)| key.clone());
-                cx.send(Msg::Select(over));
+                let now = cx.listener_bounds();
+                let state = cx.node_state::<State>();
+                let at = crate::view::in_drawing(e.position, state.origin, now);
+                let over = state.parts.iter().find(|(r, _)| r.contains(&at)).map(|(_, key)| key.clone());
+                match over {
+                    Some(key) if e.click_count >= 2 => cx.send(Msg::Open(key)),
+                    over => cx.send(Msg::Select(over)),
+                }
             }),
         );
     let p = theme::palette();

@@ -20600,8 +20600,7 @@ Not tried against the real servers yet: that needs a person's accounts
 
 ## Calendar (apps/calendar, `olo-calendar`)
 
-The app on the engine above. **So far it shows; it doesn't yet change
-anything** (the editor is next: `edit.rs` has what it will use). One
+The app on the engine above. One
 window: the small month and the calendars down the left (each with its
 colour and a check box to show it), and Day, Week, Month and Agenda as
 tabs under a pair of arrows, Today, the name of what shows and how
@@ -20642,11 +20641,47 @@ things stand with the servers.
   on the display thread) under a fixed strip of the days' names and
   whole-day events; the present is a line across today, drawn again as
   the minute turns (`paint_again_within`: only that drawing).
-- **`edit.rs`** (not wired to a window yet): `Draft` (what an editor
-  edits, read from an event and applied back, the event's zone kept),
-  `change_all` / `change_one` / `remove_one` (every occurrence, or only
-  the one: an occurrence of its own with `RECURRENCE-ID`, or an
+- **`edit.rs`**, apart from any window and tested so: `Draft` (what the
+  editor edits, read from an event and applied back, the event's zone
+  kept), `change_all` / `change_one` / `remove_one` (every occurrence,
+  or only the one: an occurrence of its own with `RECURRENCE-ID`, or an
   `EXDATE`), and `date` / `time` as typed ("Nov 20", "fri", "2:30pm").
+  `change_all` moves the event as far as the draft moved from the
+  occurrence it was made on, and what names occurrences by their starts
+  moves with it (every `RECURRENCE-ID`, every `EXDATE`: left behind,
+  they'd be events beside the ones they stood for); the occurrence the
+  change was made on, if it has a text of its own, takes what was typed
+  too. A draft made from an occurrence says how the *event* repeats
+  (made from the occurrence's own text, "Never", saving for all of them
+  ended the series: found by trying it).
+- **`editor.rs`**: the event's window (New Event…, ⌘N; an event
+  double-clicked, or Return, or ⌘E): title, where, calendar (a new
+  event's; one there stays in its own), All day, starts and ends as
+  typed, Repeats (the usual ways; another way is said and left as it
+  is) and Until, a reminder, notes. Moving the start moves the end.
+  Save hands the main window a `Saving`; for an occurrence of a
+  repeating event the main window asks "only this one, or every one of
+  them?" (Only This One is Return's: the smaller change). Delete asks
+  the same, or for a single event whether to (nothing brings it back:
+  no undo yet).
+- **Writes** (`sync::Job`, `sync::write`): Create, Change (given the
+  event's whole `VCALENDAR`) or Remove, done on a worker against the
+  server first and kept after (`Kept::create` / `change` / `remove`),
+  one at a time an account and never while it's being asked what
+  changed (the same flag; what waits is in `Calendar::writes`). Changed
+  somewhere else meanwhile, nothing is written, the calendar shows that
+  change and an alert says so.
+- **Where things were drawn is where they were painted**: each view
+  keeps what it drew (events, days) with the drawing's origin, and a
+  pointer is put in the drawing as it is now (`view::in_drawing` with
+  `cx.listener_bounds()`): the hours scroll under the display thread
+  without being painted again, and a click on an event there was taken
+  for the empty day behind it.
+- Keys with nothing typed in: Return opens the event chosen, Delete or
+  Backspace deletes it (⌘⌫ from the menu), the arrows step a day (a
+  week, up and down), Escape lets go of what's chosen. A double-click
+  on a day makes an event there (in the hours, at the half hour under
+  the pointer; in the strip above them, for the whole day).
 - **The demo** (`OLO_CALENDAR_DEMO=1`): the engine's stand-in server
   started in the process with four calendars made for the weeks round
   today, which the app runs against as it does against any server;
@@ -20656,10 +20691,14 @@ things stand with the servers.
 - Commands (menus, keys, the palette, agents): `mode:day|week|month|
   agenda` (⌘1–4), `today` (⌘T), `previous` / `next` (⌘[ / ⌘]),
   `refresh` (⌘R), `sidebar`, `week-start:N`, `go:2026-11-20`,
-  `show:NAME` / `hide:NAME`.
+  `show:NAME` / `hide:NAME`, `new-event` (⌘N), `new-event:
+  2026-11-20T14:00`, `edit-event` (⌘E), `delete-event` (⌘⌫).
 
 Checked in a test session at 1×, 1.25×, 1.5×, 1.75× and 2×, light and
-dark, each view: the layout review finds nothing.
+dark, each view and the event's window: the layout review finds
+nothing. The editing was tried there against the demo's server: one
+occurrence of a repeating event renamed, then all of them from it, an
+event deleted, one made by a double-click among the hours.
 
 ## Passwords (apps/passwords, crates/onepassword)
 
