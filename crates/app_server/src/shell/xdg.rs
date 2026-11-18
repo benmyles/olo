@@ -219,6 +219,8 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
     }
 
     fn fullscreen_request(&mut self, surface: ToplevelSurface, mut wl_output: Option<wl_output::WlOutput>) {
+        // (A pointer its program hid while it rested: hidden only in full screen.)
+        self.handle.insert_idle(|state| state.pointer_hide_apply());
         // NOTE: This is only one part of the solution. We can set the
         // location and configure size here, but the surface should be rendered fullscreen
         // independently from its buffer size
@@ -294,6 +296,8 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
     }
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
+        // (A pointer its program hid while it rested: hidden only in full screen.)
+        self.handle.insert_idle(|state| state.pointer_hide_apply());
         // Back where it was and as big, as it went full screen.
         let window = self.all_windows().into_iter().find(|w| w.wl_surface().as_deref() == Some(surface.wl_surface()));
         let before = window.as_ref().and_then(|w| w.meta().before_fullscreen.take());

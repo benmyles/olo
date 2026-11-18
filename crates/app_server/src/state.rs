@@ -287,6 +287,9 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub hints: crate::hints::Hints,
     pub wallpaper: crate::wallpaper::Loader,
     pub cursor_status: CursorImageStatus,
+    /// What the program under the pointer asked of its look, where that
+    /// isn't what's shown (`pointer_hide`).
+    pub pointer_hide: crate::pointer_hide::Hide,
     /// The pointer's last reports, to draw it where it will be at the
     /// frame's vblank (`cursor::Track`).
     /// Clicks, scrolls, gestures and keys a minute back (Activity
@@ -532,7 +535,8 @@ impl<BackendData: Backend> SeatHandler for AnvilState<BackendData> {
         }
     }
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
-        self.cursor_status = image;
+        // (A program's wish to hide the pointer is weighed: `pointer_hide`.)
+        self.client_cursor(image);
     }
 
     fn led_state_changed(&mut self, _seat: &Seat<Self>, led_state: LedState) {
@@ -1323,6 +1327,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             hints: Default::default(),
             wallpaper: Default::default(),
             cursor_status: CursorImageStatus::default_named(),
+            pointer_hide: Default::default(),
             pointer_track: Default::default(),
             input_counts: Default::default(),
             last_wheel: None,

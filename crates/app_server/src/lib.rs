@@ -50,6 +50,7 @@ pub mod osd;
 pub mod overview;
 pub mod pace;
 pub mod plymouth;
+pub mod pointer_hide;
 pub mod power;
 pub mod power_button;
 pub mod private;

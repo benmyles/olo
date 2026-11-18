@@ -599,6 +599,32 @@ where
         .as_ref()
         .is_some_and(|last_serial| *last_serial == serial)
     {
+        // (Olo) Said when the asker is the client the pointer is over:
+        // a program with the pointer whose cursor is refused keeps the
+        // cursor it had (hidden, if it had hidden it) until the pointer
+        // leaves and comes back, and nothing else tells of it. Once an
+        // enter (a client behind by an enter asks again at once).
+        let last = *handle.arc.wl_pointer.last_enter.lock().unwrap();
+        let focused = handle
+            .arc
+            .inner
+            .lock()
+            .unwrap()
+            .focus
+            .as_ref()
+            .is_some_and(|(focus, _)| focus.same_client_as(object_id));
+        if focused {
+            static SAID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(u32::MAX);
+            let key = last.map_or(0, u32::from);
+            if SAID.swap(key, std::sync::atomic::Ordering::Relaxed) != key {
+                tracing::info!(
+                    target: "cursor",
+                    asked_with = u32::from(serial),
+                    last_enter = ?last.map(u32::from),
+                    "a cursor from the program under the pointer was refused: its serial isn't the last enter's"
+                );
+            }
+        }
         return false; // Ignore mismatches in serial
     }
 

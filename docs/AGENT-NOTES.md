@@ -528,6 +528,24 @@ Each note: what to do, then why (what happened), then how to apply it.
   never reclaimed (`memory.min`), which is where PipeWire and
   WirePlumber run; Olo's own programs are in the login's
   `session-N.scope`, which has none: they lock their own memory.
+- **Is the pointer drawn?** `tsession shot NAME OUT.png X Y W H
+  --pointer` draws it in; the same shot without doesn't: compare the
+  two (strong black or white where they differ, if a video plays
+  underneath). A plain shot never shows the pointer.
+- **Killing by a `/proc` scan matches your own shell too**, as `pgrep
+  -f` does: a loop over `/proc/*/cmdline` for a pattern that is also in
+  the loop's own command line killed the shell running it (exit 144,
+  2026-11-18). Match on `readlink /proc/PID/exe` first (the program),
+  then on its arguments.
+- **Chrome in a scratch profile** (`olo-chrome --user-data-dir=DIR`)
+  opens on its terms of service the first time: start it with
+  `--no-first-run`, don't click Accept for the person. `WAYLAND_DEBUG=1`
+  in its environment (`tsession run NAME WAYLAND_DEBUG=1 …`) puts every
+  request and event in the session's `olo-chrome.log`.
+- **A second investigator for a cause you can't find**: the
+  `olo-debug-help` skill (`tools/dev/codex-help BRIEF.md`, a headless
+  Codex in the background; its log's first lines say the model, the
+  effort and the sandbox it got).
 - **Notifications in a test session**: `tsession start NAME --session`
   has no notification service; run `olo-notifications --bus
   "$DBUS_SESSION_BUS_ADDRESS"` in it (`tsession run`). They show at the

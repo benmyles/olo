@@ -116,6 +116,17 @@ something nobody here has is in "Blocked", with what it waits for.
   in the form; for Fastmail, an app password with access to calendars),
   then open Calendar.
 
+- **Deskbar: other displays' apps collapsed by default, as an option**
+  (Ben, 2026-11-18: "add an option in deskbar prefs (disabled by
+  default) to default to showing other display's apps collapsed in the
+  deskbar with an icon button to expand them (down) and collapse them
+  again (up)").
+- **Desktop icons gone after Deskbar is collapsed and expanded** (Ben,
+  2026-11-18: "i tried the new collapse deskbar then expand again. it
+  worked but the desktop icons all disappeared and didn't come back").
+  To find out: whether Tracker's desktop loses its icons when the work
+  area changes twice, or Tracker had gone down (the text-recognition
+  crash fixed the same day; Tracker draws the desktop).
 - **The pointer vanishes over a video in Chrome and Chrome-based apps**
   (Ben, 2026-11-18: "sometimes when a cursor goes over a video on
   chrome or a chrome based app like slack then the cursor doesn't show
@@ -123,6 +134,13 @@ something nobody here has is in "Blocked", with what it waits for.
   the cursor shouldn't disappear when over a video at all, it should
   only ever disappear if in full screen and hasn't moved for 5s and then
   come back if it moves again"). Tried before, still there.
+  **Done so far**: Olo holds that rule itself now (`pointer_hide`,
+  HACKING.md "A program hiding the pointer"), so a rested pointer comes
+  back on the first move whatever the program does. **Still to find**:
+  why Chrome's pointer stayed gone (not reproduced in a test session;
+  a Codex helper is on it, `olo-debug-help`; Olo's Smithay now logs a
+  cursor refused from the program under the pointer: look for "was
+  refused" in the logs after it's seen again).
 - **One account for Mail and Calendar** (Ben, 2026-11-18: "can the
   calendar and mail just use the same integration connection so we
   don't have to set it up twice? like can it just be Mail & Calendar").

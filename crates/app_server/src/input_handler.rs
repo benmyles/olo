@@ -1769,6 +1769,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             }
             S::Move { x, y } => {
                 let pos: Point<f64, Logical> = (x, y).into();
+                self.pointer_moved();
                 let under = self.surface_under(pos);
                 pointer.motion(self, under, &MotionEvent { location: pos, serial, time });
                 pointer.frame(self);
@@ -2075,6 +2076,7 @@ impl AnvilState<UdevData> {
         self.stop_glide();
         // (A mouse or a touchpad: the pointer shows again.)
         self.touch_hides_pointer = false;
+        self.pointer_moved();
         let mut pointer_location = self.pointer.current_location();
         let serial = SCOUNTER.next_serial();
 
@@ -2174,6 +2176,7 @@ impl AnvilState<UdevData> {
 
     fn on_pointer_move_absolute<B: InputBackend>(&mut self, _dh: &DisplayHandle, evt: B::PointerMotionAbsoluteEvent) {
         self.touch_hides_pointer = false;
+        self.pointer_moved();
         let serial = SCOUNTER.next_serial();
 
         // An absolute device (a tablet, a VM's pointer) spans every screen.

@@ -8738,6 +8738,47 @@ displays turning off ends it. app_server hides the pointer while it runs
 saver's own `CursorIcon::None` only counts once the pointer is on its
 surface, which takes a move, and a move ends it.
 
+**A program hiding the pointer** (`crates/app_server/src/pointer_hide.rs`;
+Ben, 2026-11-18: "the cursor shouldn't disappear when over a video at
+all, it should only ever disappear if in full screen and hasn't moved
+for 5s and then come back if it moves again"). A program may ask for
+no pointer; app_server weighs it (`SeatHandler::cursor_image` →
+`client_cursor`; `AnvilState::cursor_status` is what's shown,
+`pointer_hide` what was asked):
+- hidden **while it rested** (the program had shown one since the
+  pointer came to it, and it hadn't moved for a second,
+  `Kind::Resting`: a video's player): shown all the same in a window;
+  over a full-screen window hidden once it has been still five seconds
+  (`STILL`; one timer, set when it's asked), and shown again the moment
+  it moves (`pointer_moved`, from every motion: a clock read and a
+  compare), whatever the program then says or doesn't;
+- hidden **as it came in or while it moved** (`Kind::Own`: the program
+  draws its own): hidden, as asked;
+- **held** by its window (locked or confined: a game): hidden, as asked.
+The look shown in place of "none" is the last the program asked for
+(the arrow if its cursor surface has gone). The reason for the second
+part of the first rule: in Chrome and Slack a pointer hidden over a
+video sometimes stayed gone until it left the window and came back
+(Chrome sends a cursor only when it changes or the pointer enters, so
+one request refused or lost leaves it wrong till then). **Its cause
+isn't found**: in a test session Chrome asks with the right serial and
+is obeyed in every case tried (a click, the wheel, a key, a context
+menu, full screen and back, a window opening over the still pointer).
+Olo's Smithay now says when it refuses a cursor from the very program
+the pointer is over (`allow_setting_cursor`: log target `cursor`, "a
+cursor from the program under the pointer was refused", with both
+serials, once an enter): `olo-logs --print --find "was refused"` after
+it's seen again. Measured (release, 20,000 synthetic moves over the
+desktop, `perf stat --no-scale -e instructions:u`, three rounds each):
+206.6–206.8 M instructions before, 207.2–208.1 M after (25 to 70 a
+move), 1.30–1.46 µs → 1.32–1.36 µs of app_server's CPU a move.
+Tried with Chrome on a test page (a looping video whose player hides a
+rested pointer; `tsession shot --pointer` against a plain shot says
+whether the pointer is drawn): in a window the pointer stays; in full
+screen it goes at 5 s and is back on a move, again and again; a page
+that never asks for it back gets it back; a box with `cursor: none`
+keeps it hidden.
+
 Test headless: `tsession ipc NAME '{"type":"start_screen_saver"}'`, or set
 `screen_saver.module` with get/set_settings first.
 
@@ -18396,6 +18437,23 @@ root). The README and the website's install page say how to ask for it
 tested on few computers. **When a kind of hardware gets a new home in
 Olo (a new section here, a new place per-machine data lives), say so in
 that skill**: it is the map a stranger's agent follows.
+
+**The `olo-debug-help` skill** (`.claude/skills/olo-debug-help/SKILL.md`,
+the repository's own, for whoever works on Olo; Ben, 2026-11-18: "if
+you need help root-causing a bug like this you can launch in a subshell
+a codex instance running gpt-6.2-astra on max effort in headless mode
+with auto approve -- actually add a skill for doing that in this repo")
+is for a cause that won't be found: a written brief (the symptom, the
+evidence, what was tried and ruled out, the code on the path, how far
+it reproduces) goes to `tools/dev/codex-help BRIEF.md`, which runs
+`codex exec -m gpt-6.2-astra -c model_reasoning_effort="max"
+--approve-for-me` in the repository with the rules in front (the
+working tree unchanged, no commits, the person's session left alone,
+headless tests under a `codex-` name, scratch in the brief's folder,
+no helper of its own), in the background, and writes `answer.md` and
+`log.txt` beside the brief. What it says is a lead: checked, then
+fixed by whoever asked. It is the one exception to "no forks or
+subagents" (CLAUDE.md). `.claude/` is ignored but for `.claude/skills/`.
 
 While the person controls a screen (Take Control), the viewer writes
 `NAME.control` (its pid) in the screens' folder, and `olo-screen`
