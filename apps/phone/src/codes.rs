@@ -534,6 +534,159 @@ pub fn find_mail(subject: &str, text: &str, sender: &str) -> Option<Code> {
     Some(code)
 }
 
+/// A link to sign in with, found in a mail message (Ben, 2026-11-18:
+/// "the ones that send links -- support that too by having olo passwords
+/// extension offer to navigate to the link received"). Claude's sign-in
+/// mail is one: "Click the button below to finish signing in", a button,
+/// no code.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignInLink {
+    pub url: String,
+    /// Where it goes, lower case ("claude.ai").
+    pub host: String,
+    /// The name the message is sent under ("Anthropic").
+    pub service: Option<String>,
+}
+
+/// What a message that carries a link to sign in with says.
+const LINK_SAYS: &[&str] = &[
+    "secure link",
+    "magic link",
+    "sign-in link",
+    "sign in link",
+    "signin link",
+    "login link",
+    "log-in link",
+    "log in link",
+    "link to sign in",
+    "link to log in",
+    "link to login",
+    "link below to sign in",
+    "link below to log in",
+    "finish signing in",
+    "finish logging in",
+    "below to sign in",
+    "below to log in",
+    "below to finish",
+    "click here to sign in",
+    "click here to log in",
+    "use this link to sign in",
+    "use this link to log in",
+    "sign in with this link",
+    "log in with this link",
+    "confirm your sign in",
+    "confirm your sign-in",
+    "confirm your login",
+];
+
+/// What the link to sign in with is shown as (what its button says).
+const LINK_DOES: &[&str] = &[
+    "sign in",
+    "sign-in",
+    "signin",
+    "log in",
+    "log-in",
+    "login",
+    "continue",
+    "confirm",
+    "verify",
+    "authenticate",
+    "finish signing in",
+    "open",
+    "magic link",
+    "click here to sign in",
+    "click here to log in",
+];
+
+/// What another link of such a message is shown as.
+const LINK_NOT: &[&str] = &["unsubscribe", "privacy", "help", "support", "terms", "contact", "preferences", "browser", "report", "didn't", "did not", "not you", "learn", "faq", "settings", "policy"];
+
+/// An address's host, lower case (None: not an `https` address with one).
+pub fn host_of(url: &str) -> Option<String> {
+    let rest = url.strip_prefix("https://")?;
+    let host = rest.split(['/', '?', '#']).next()?.rsplit('@').next()?.split(':').next()?.to_lowercase();
+    (host.contains('.') && host.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')).then_some(host)
+}
+
+/// The link to sign in with that a mail message carries, if it says it
+/// carries one: its subject or words say so ("Your secure link to Acme
+/// is here", "Click the button below to finish signing in"), and one of
+/// its links is shown as the signing in ("Sign in", "Log in to Acme");
+/// failing that, its only link that isn't something else (help, privacy,
+/// unsubscribing). `links`: what each is shown as, and where it goes.
+/// A notice of a sign-in ("New sign-in to your account") is not one.
+pub fn find_link(subject: &str, text: &str, links: &[(String, String)], sender: &str) -> Option<SignInLink> {
+    let said: String = format!("{subject}\n{}", text.chars().take(2 * MOST).collect::<String>()).to_lowercase().replace('\u{2019}', "'");
+    if !LINK_SAYS.iter().any(|w| said.contains(w)) {
+        return None;
+    }
+    let shown = |text: &str| text.to_lowercase().replace('\u{2019}', "'").trim_matches(|c: char| !c.is_alphanumeric()).to_owned();
+    let other = |text: &str| LINK_NOT.iter().any(|w| text.contains(w));
+    let mut ours = links.iter().filter(|(_, url)| host_of(url).is_some());
+    let by_its_words = ours.clone().find(|(text, _)| {
+        let t = shown(text);
+        !other(&t) && LINK_DOES.iter().any(|w| t == *w || t.strip_prefix(w).is_some_and(|rest| rest.starts_with(' ')))
+    });
+    let url = match by_its_words {
+        Some((_, url)) => url.clone(),
+        None => {
+            // The one link that isn't something else (the same address
+            // twice, a picture and its words, is one).
+            let mut rest: Vec<&String> = ours.by_ref().filter(|(text, _)| !other(&shown(text))).map(|(_, url)| url).collect();
+            rest.dedup();
+            match rest.as_slice() {
+                [only] => (*only).clone(),
+                _ => return None,
+            }
+        }
+    };
+    let host = host_of(&url)?;
+    let service = Some(sender.trim().to_owned()).filter(|s| !s.is_empty());
+    Some(SignInLink { url, host, service })
+}
+
+/// A host's site, roughly: its last two labels ("mail.acme.example" →
+/// "acme.example"), three where the second to last is one of a
+/// country's kinds ("acme.co.uk").
+fn site_of(host: &str) -> String {
+    let labels: Vec<&str> = host.split('.').collect();
+    let n = labels.len();
+    let kinds = ["co", "com", "org", "net", "ac", "gov", "edu"];
+    let take = if n >= 3 && labels[n - 1].len() == 2 && kinds.contains(&labels[n - 2]) { 3 } else { 2 };
+    labels[n.saturating_sub(take)..].join(".")
+}
+
+/// Which of the tabs waiting for a code a mailed sign-in link is for:
+/// one of the person's own (never an agent's screen: a link signs
+/// whoever opens it in), at the link's own site, or of the service the
+/// message is from, or whose page says its code or link was mailed and
+/// came up in the last ten minutes. The best fit; of two as good, the
+/// one in front. None: nobody's.
+pub fn choose_link(link: &SignInLink, tabs: &[(Option<String>, Waiting)]) -> Option<usize> {
+    let named = Code { code: String::new(), domain: None, service: link.service.clone(), mail: true };
+    let site = site_of(&link.host);
+    tabs.iter()
+        .enumerate()
+        .filter(|(_, (screen, _))| screen.is_none())
+        .filter_map(|(i, (_, tab))| {
+            let there = under(&tab.host.to_lowercase(), &site);
+            let of_it = names(&named, tab);
+            let mailed = tab.by_mail && tab.age <= 600;
+            if !(there || of_it || mailed) {
+                return None;
+            }
+            let s = if there { 100 } else { 0 }
+                + if of_it { 50 } else { 0 }
+                + if mailed { 20 } else { 0 }
+                + if tab.front { 6 } else { 0 }
+                + if tab.active { 4 } else { 0 }
+                + if tab.focused { 2 } else { 0 };
+            Some((s, std::cmp::Reverse(tab.age), i))
+        })
+        .max()
+        .map(|best| best.2)
+}
+
 /// "482913 is your code", "482913 ist Ihr Code": the number, then what
 /// it is.
 fn is_your_code(text: &[char], end: usize) -> bool {
@@ -821,6 +974,74 @@ mod tests {
 
     fn code(text: &str) -> Option<String> {
         find(text).map(|c| c.code)
+    }
+
+    fn links(of: &[(&str, &str)]) -> Vec<(String, String)> {
+        of.iter().map(|(text, url)| ((*text).to_owned(), (*url).to_owned())).collect()
+    }
+
+    /// A message that says it carries a link to sign in with gives the
+    /// link its button goes to; a notice, a newsletter or a message with
+    /// several links that could be it gives none.
+    #[test]
+    fn a_sign_in_link_by_mail() {
+        // As Claude's is: a button, with help and privacy below.
+        let acme = links(&[
+            ("Sign in", "https://acme.example/magic-link#abc.def"),
+            ("Contact Acme Support", "https://support.acme.example/"),
+            ("Help", "https://acme.example/help"),
+            ("Privacy", "https://acme.example/privacy"),
+        ]);
+        let found = find_link("Your secure link to Acme is here", "Sign in to Acme\nClick the button below to finish signing in. This link expires in 10 minutes.\nSign in", &acme, " Acme ").unwrap();
+        assert_eq!(found, SignInLink { url: "https://acme.example/magic-link#abc.def".into(), host: "acme.example".into(), service: Some("Acme".into()) });
+        // Other wordings; the button's words in capitals, or with the name.
+        for (subject, text, shown) in [
+            ("Log in to Bolt", "Here is your magic link. It can be used once.", "LOG IN TO BOLT"),
+            ("Sign in to Dune", "Click the link below to sign in to your account.", "Sign in to Dune →"),
+            ("Your login link", "Use this link to log in. It expires in 15 minutes.", "Continue"),
+            ("Confirm your sign-in", "Someone is signing in as you. If it’s you, confirm:", "Confirm"),
+        ] {
+            let l = links(&[("View in browser", "https://mail.bolt.example/v/1"), (shown, "https://app.bolt.example/auth/verify?token=1"), ("Unsubscribe", "https://mail.bolt.example/u/1")]);
+            assert_eq!(find_link(subject, text, &l, "Bolt").map(|f| f.host), Some("app.bolt.example".to_owned()), "{subject}");
+        }
+        // No link shown as the signing in, but one that isn't something else.
+        let one = links(&[("https://auth.dune.example/l/9f3", "https://auth.dune.example/l/9f3"), ("Privacy Policy", "https://dune.example/privacy")]);
+        assert_eq!(find_link("Your magic link", "Open this link to sign in:", &one, "").map(|f| (f.host, f.service)), Some(("auth.dune.example".to_owned(), None)));
+        // Two that could be: neither.
+        let two = links(&[("iPhone", "https://dune.example/a"), ("Android", "https://dune.example/b")]);
+        assert_eq!(find_link("Your magic link", "Open this link to sign in:", &two, "Dune"), None);
+        // A notice of a sign-in, a receipt, a newsletter: not links to sign in with.
+        let notice = links(&[("Review activity", "https://accounts.acme.example/activity"), ("Sign in", "https://acme.example/login")]);
+        assert_eq!(find_link("New sign-in to your account", "We noticed a new sign-in to your Acme account on a Linux device. If this was you, you don't need to do anything.", &notice, "Acme"), None);
+        assert_eq!(find_link("Your receipt from Acme", "Thanks for your purchase. Log in to see your orders.", &notice, "Acme"), None);
+        // Only https, with a real host.
+        let bad = links(&[("Sign in", "http://acme.example/magic"), ("Sign in", "https://localhost/x"), ("Sign in", "javascript:alert(1)")]);
+        assert_eq!(find_link("Your magic link", "Click below to sign in", &bad, "Acme"), None);
+        assert_eq!((host_of("https://User@Acme.Example:8443/a?b#c").as_deref(), host_of("https:///x"), host_of("ftp://acme.example")), (Some("acme.example"), None, None));
+    }
+
+    /// Whose tab a mailed link is: the person's own at the link's site,
+    /// or of its service, or one that says it mailed something and has
+    /// just come up; never an agent's screen.
+    #[test]
+    fn whose_tab_a_link_is() {
+        let tab = |host: &str, title: &str| Waiting { tab: 1, host: host.into(), title: title.into(), age: 30, ..Default::default() };
+        let link = SignInLink { url: "https://claude.example/magic-link#t".into(), host: "claude.example".into(), service: Some("Anthropic".into()) };
+        let mine = |t: Waiting| (None, t);
+        // At the link's own site.
+        assert_eq!(choose_link(&link, &[mine(tab("news.example", "News")), mine(tab("claude.example", "Sign in"))]), Some(1));
+        assert_eq!(choose_link(&link, &[mine(tab("app.claude.example", "Sign in"))]), Some(0));
+        // Elsewhere, and nothing says mail: nobody's.
+        assert_eq!(choose_link(&link, &[mine(tab("bank.example", "Sign in"))]), None);
+        // A link through the sender's own mail host: the tab its service names, or one that says it mailed.
+        let tracked = SignInLink { url: "https://links.mail.acme.example/ls/click?x=1".into(), host: "links.mail.acme.example".into(), service: Some("Bolt".into()) };
+        assert_eq!(choose_link(&tracked, &[mine(tab("bank.example", "Bank")), mine(tab("bolt.example", "Bolt: sign in"))]), Some(1));
+        let mailed = Waiting { by_mail: true, ..tab("dune.example", "Check your inbox") };
+        assert_eq!(choose_link(&tracked, &[mine(tab("bank.example", "Bank")), mine(mailed.clone())]), Some(1));
+        assert_eq!(choose_link(&tracked, &[mine(Waiting { age: 3600, ..mailed.clone() })]), None);
+        // An agent's screen never gets one.
+        assert_eq!(choose_link(&link, &[(Some("agent".to_owned()), tab("claude.example", "Sign in"))]), None);
+        assert_eq!((site_of("mail.acme.example"), site_of("acme.co.uk"), site_of("claude.ai")), ("acme.example".into(), "acme.co.uk".into(), "claude.ai".into()));
     }
 
     #[test]

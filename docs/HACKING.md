@@ -15125,6 +15125,56 @@ service against `olo_mail::standin`, an IMAP server of the test's own
 reached through `OLO_MAIL_IMAP`, and a stand-in browser) and on the
 mail of eleven services that are codes and three that aren't.
 
+**A link to sign in with, sent by mail** (Ben, 2026-11-18: "i tried to
+login to claude and it didn't manage to find the verification code in
+my email", then "the ones that send links -- support that too by
+having olo passwords extension offer to navigate to the link
+received"). Some services mail no code but a button: Claude's "Your
+secure link to Claude is here", "Click the button below to finish
+signing in", whose page meanwhile shows a field for the code the link
+gives when opened elsewhere. The button's address is only in the
+message's HTML, so `olo_mail::Message` keeps a message's links
+(`links`: what each is shown as and where it goes, `https` only:
+`mime::html_links`; the addresses written out in a plain message
+otherwise). A message with no code is looked at for one
+(`codes::find_link`): it must say it carries a link to sign in with
+(`LINK_SAYS`: "secure link", "magic link", "finish signing in", "link
+to log in", …; a notice of a sign-in doesn't), and the link is the one
+shown as the signing in ("Sign in", "Log in to Acme", "Continue":
+`LINK_DOES`), else its only link that isn't something else (help,
+privacy, unsubscribing: `LINK_NOT`). It becomes a pending offer as a
+code does (`mail_link`; `Pending::link`) and goes to the tab it's for
+(`codes::choose_link`): one of the person's own browsers, never an
+agent's screen (a link signs whoever opens it in), at the link's own
+site, or of the service the message is from, or whose page says
+something was mailed and came up in the last ten minutes; once (it's
+for the page that asked, not for whichever page waits next; an offer
+that couldn't be shown may be made again). `ToBrowser::Link { url, to,
+from }` → the host → the extension: background.js keeps the address
+(`linkOffers`; the page is told only the host it goes to) and has the
+page show the offer under the field as a code's is, "Open sign-in
+link / From Acme, by mail · acme.example"; taken (a click, or ↓ and
+Return), the page says so (`link-take`, its id only) and the
+extension takes that tab, and no other, to the address
+(`chrome.tabs.update`). A code's offer says how it came too now
+("From GitHub, by mail"; `ToBrowser::Code::mail`: it said "by text
+message" for both). Extension 1.15.4. Tested: `codes::tests`
+(`a_sign_in_link_by_mail`, `whose_tab_a_link_is`), `mime`'s
+`a_messages_links`, the service end to end (the mail test above: a
+page waiting, the message delivered, `{"say": "link", …}` to its
+tab), and in Chrome in a test session (the phone service, `cargo run
+-p olo-mail --example imap_standin` as the mailbox, a page with a code
+field: the offer shown, and taken, the tab at the link's address).
+**How well codes are found in real mail**: `cargo run --release -p
+olo-phone --example mail_codes [MONTHS] [--misses]` runs
+`find_mail` over every message of the accounts set up that says it
+carries a code (any mailbox, read only: `Session::mailboxes`,
+`look_in`, `search`, `read`), and prints counts by sender's domain
+and, for a miss, its subject and the sentence that says so. On a year
+of two accounts: 254 found; what wasn't found carried no code. Still
+only the inbox's newest five are watched as mail comes: a rule that
+files a sender's mail elsewhere hides it (to do).
+
 **What's looked in, and where codes go, is Security ▸ Passwords'**
 One-Time Codes box (`phone::codes`; Ben: "move the phone prefs
 one-time codes stuff into prefs -> security -> passwords and change it

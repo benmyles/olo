@@ -143,13 +143,17 @@ something nobody here has is in "Blocked", with what it waits for.
   the 254 messages that carry a code all have it found; what wasn't
   found carries none. Claude's mail ("Your secure link to Claude is
   here") has no code: it is a button, its address only in the
-  message's HTML, which the mail reader dropped. **To do** (Ben: "the
+  message's HTML, which the mail reader dropped. **Done** (Ben: "the
   ones that send links -- support that too by having olo passwords
-  extension offer to navigate to the link received"): a message's
-  links kept (`olo_mail::Message`), a sign-in link's message told
-  (`codes::find_link`), and the extension offering it on the page that
-  waits; and codes looked for beyond the inbox's newest five (a rule
-  that files a sender's mail elsewhere hides it).
+  extension offer to navigate to the link received"): the extension
+  offers "Open sign-in link" under the field of the page that waits,
+  and takes the tab there (HACKING.md, "A link to sign in with, sent
+  by mail"; extension 1.15.4, which a running Chrome takes when it's
+  next started, twice). **Left**: mail watched beyond the inbox's
+  newest five (a rule that files a sender's mail elsewhere hides it);
+  the address a sign-in goes to must be one of the accounts set up
+  (today's went to a third address, of neither account: nothing could
+  have been found); "Check for Codes" in the extension's menu.
 - **Go through Olo's logs for other warnings and errors and fix what
   should be fixed** (Ben, 2026-11-18). A first pass done (HACKING.md,
   "What a day's logs showed"): Notifications' history kept apart on

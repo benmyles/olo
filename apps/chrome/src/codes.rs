@@ -104,7 +104,8 @@ fn connect() -> std::io::Result<UnixStream> {
 fn to_extension(said: ToBrowser) -> Value {
     match said {
         ToBrowser::Any { id } => json!({ "code": { "any": id } }),
-        ToBrowser::Code { id, tab, frame, code, from, fill } => json!({ "code": { "id": id, "tab": tab, "frame": frame, "code": code, "from": from, "fill": fill } }),
+        ToBrowser::Code { id, tab, frame, code, from, fill, mail } => json!({ "code": { "id": id, "tab": tab, "frame": frame, "code": code, "from": from, "fill": fill, "mail": mail } }),
+        ToBrowser::Link { id, tab, frame, url, to, from } => json!({ "code": { "id": id, "tab": tab, "frame": frame, "link": url, "to": to, "from": from } }),
         ToBrowser::Gone { id } => json!({ "code": { "gone": id } }),
     }
 }
@@ -117,8 +118,12 @@ mod tests {
     fn what_each_says_to_the_other() {
         assert_eq!(to_extension(ToBrowser::Any { id: 4 }), json!({ "code": { "any": 4 } }));
         assert_eq!(
-            to_extension(ToBrowser::Code { id: 4, tab: 12, frame: 3, code: "482913".into(), from: "Acme".into(), fill: true }),
-            json!({ "code": { "id": 4, "tab": 12, "frame": 3, "code": "482913", "from": "Acme", "fill": true } })
+            to_extension(ToBrowser::Code { id: 4, tab: 12, frame: 3, code: "482913".into(), from: "Acme".into(), fill: true, mail: true }),
+            json!({ "code": { "id": 4, "tab": 12, "frame": 3, "code": "482913", "from": "Acme", "fill": true, "mail": true } })
+        );
+        assert_eq!(
+            to_extension(ToBrowser::Link { id: 5, tab: 12, frame: 0, url: "https://acme.example/magic#t".into(), to: "acme.example".into(), from: "Acme".into() }),
+            json!({ "code": { "id": 5, "tab": 12, "frame": 0, "link": "https://acme.example/magic#t", "to": "acme.example", "from": "Acme" } })
         );
         assert_eq!(to_extension(ToBrowser::Gone { id: 4 }), json!({ "code": { "gone": 4 } }));
         // With no service, what the extension says is taken and goes

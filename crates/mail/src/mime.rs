@@ -19,7 +19,22 @@ pub struct Message {
     /// Its words: its plain text part, else (none, or one with no digit
     /// in it: "view this in a browser") its HTML part's.
     pub text: String,
+    /// Its links (those of its HTML part, where a button's address is
+    /// and nowhere else; else the addresses written out in its plain
+    /// text): what each is shown as, and where it goes. Only `https`.
+    pub links: Vec<Link>,
 }
+
+/// A link in a message: the words it's shown as ("Sign in"), and where
+/// it goes.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Link {
+    pub text: String,
+    pub url: String,
+}
+
+/// The most links kept of a message.
+const MOST_LINKS: usize = 200;
 
 /// The deepest multipart nesting followed.
 const DEEPEST: usize = 8;
@@ -34,8 +49,59 @@ pub fn parse(raw: &[u8]) -> Message {
     let mut parts = Parts::default();
     walk(&headers, body, &mut parts, 0);
     let plain = parts.plain.unwrap_or_default();
+    let mut links = parts.html.as_deref().map(html_links).unwrap_or_default();
+    if links.is_empty() {
+        links = plain_links(&plain);
+    }
     let text = if plain.chars().any(|c| c.is_ascii_digit()) || parts.html.is_none() { plain } else { html_text(&parts.html.unwrap_or_default()) };
-    Message { from: if name.is_empty() { address.clone() } else { name }, address, subject, text: text.trim().to_owned() }
+    Message { from: if name.is_empty() { address.clone() } else { name }, address, subject, text: text.trim().to_owned(), links }
+}
+
+/// An HTML part's links: each `<a href>` that goes to an `https`
+/// address, with the words it's shown as (an image's alt text among
+/// them: a button drawn as a picture).
+pub fn html_links(html: &str) -> Vec<Link> {
+    // (Lower case of the same length: ASCII's only.)
+    let lower = html.to_ascii_lowercase();
+    let mut out = Vec::new();
+    let mut at = 0;
+    while let Some(i) = lower[at..].find("<a") {
+        let start = at + i;
+        if !lower.as_bytes().get(start + 2).is_some_and(u8::is_ascii_whitespace) {
+            at = start + 2;
+            continue;
+        }
+        let close = tag_end(html.as_bytes(), start);
+        let tag = &html[start + 1..close.saturating_sub(1).max(start + 1)];
+        let end = lower[close..].find("</a").map_or(html.len(), |e| close + e);
+        if let Some(href) = attribute(tag, "href") {
+            let url = entities(href.trim());
+            if url.starts_with("https://") && !url.contains(char::is_whitespace) {
+                out.push(Link { text: html_text(&html[close..end]).split_whitespace().collect::<Vec<_>>().join(" "), url });
+                if out.len() == MOST_LINKS {
+                    break;
+                }
+            }
+        }
+        at = end.max(start + 2);
+    }
+    out
+}
+
+/// The `https` addresses written out in a plain text part, each with
+/// the rest of its line as what it's shown as.
+fn plain_links(text: &str) -> Vec<Link> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        for word in line.split(|c: char| c.is_whitespace() || matches!(c, '<' | '>' | '(' | ')' | '[' | ']' | '"')) {
+            if word.starts_with("https://") && word.len() > 12 && out.len() < MOST_LINKS {
+                let url = word.trim_end_matches(['.', ',', ';']).to_owned();
+                let shown: Vec<&str> = line.split_whitespace().filter(|w| !w.contains("://")).collect();
+                out.push(Link { text: shown.join(" "), url });
+            }
+        }
+    }
+    out
 }
 
 /// The text parts found, the first of each kind.
@@ -649,6 +715,20 @@ mod tests {
         let m = parse(raw.as_bytes());
         assert_eq!(m.from, "GitHub");
         assert_eq!(m.text, "Verification code: 482913");
+    }
+
+    /// A button's address is only in the HTML part: kept, with what the
+    /// button says, whichever part gives the words.
+    #[test]
+    fn a_messages_links() {
+        let raw = b"From: Acme <login@mail.acme.example>\r\nSubject: Your secure link to Acme is here\r\nContent-Type: multipart/alternative; boundary=b\r\n\r\n--b\r\nContent-Type: text/plain\r\n\r\nSign in to Acme\r\nClick the button below to finish signing in. This link expires in 10 minutes.\r\nSign in\r\n--b\r\nContent-Type: text/html\r\n\r\n<html><body><p>Click the button below to finish signing in.</p><A class=\"btn\"\r\n HREF=\"https://acme.example/magic-link?t=abc&amp;u=7#x\"><span>Sign&nbsp;in</span></A> <a href='http://acme.example/plain'>old</a> <a href=\"https://acme.example/help\"><img alt=\"Help\" src=\"x.png\"></a><abbr title=\"x\">not a link</abbr></body></html>\r\n--b--\r\n";
+        let m = parse(raw);
+        assert!(m.text.starts_with("Sign in to Acme"));
+        assert_eq!(m.links, [Link { text: "Sign in".into(), url: "https://acme.example/magic-link?t=abc&u=7#x".into() }, Link { text: "Help".into(), url: "https://acme.example/help".into() }]);
+        // Plain text alone: the addresses written out.
+        let m = parse(b"From: a@b.example\r\nSubject: Sign in\r\n\r\nUse this link to sign in: https://acme.example/l/abc123def.\r\nNothing else.\r\n");
+        assert_eq!(m.links, [Link { text: "Use this link to sign in:".into(), url: "https://acme.example/l/abc123def".into() }]);
+        assert!(parse(b"Subject: hi\r\n\r\nno links\r\n").links.is_empty());
     }
 
     #[test]

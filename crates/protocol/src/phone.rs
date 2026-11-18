@@ -619,8 +619,22 @@ pub enum ToBrowser {
     /// waiting for one? Answered with [`FromBrowser::Waiting`].
     Any { id: u64 },
     /// This browser's tab gets it: shown under the field for the person
-    /// to take, or (`fill`: an agent's screen) put in at once.
-    Code { id: u64, tab: i64, frame: i64, code: String, from: String, fill: bool },
+    /// to take, or (`fill`: an agent's screen) put in at once. `mail`:
+    /// it came by mail, not in a text message (what the offer says).
+    Code {
+        id: u64,
+        tab: i64,
+        frame: i64,
+        code: String,
+        from: String,
+        fill: bool,
+        #[serde(default)]
+        mail: bool,
+    },
+    /// This browser's tab is offered a link to sign in with, that came
+    /// by mail (`to`: the host it goes to, said in the offer): the tab
+    /// goes there when the person takes it. Never put in unasked.
+    Link { id: u64, tab: i64, frame: i64, url: String, to: String, from: String },
     /// It went elsewhere, was taken or is too old: an offer still
     /// showing for it goes.
     Gone { id: u64 },
@@ -664,8 +678,12 @@ mod tests {
         let text = serde_json::to_string(&r).unwrap();
         assert_eq!(text, r#"{"do":"browser","screen":"agent","pid":7}"#);
         assert_eq!(serde_json::from_str::<Request>(&text).unwrap(), r);
-        let c = ToBrowser::Code { id: 3, tab: 12, frame: 0, code: "482913".into(), from: "Acme".into(), fill: false };
-        assert_eq!(serde_json::to_string(&c).unwrap(), r#"{"say":"code","id":3,"tab":12,"frame":0,"code":"482913","from":"Acme","fill":false}"#);
+        let c = ToBrowser::Code { id: 3, tab: 12, frame: 0, code: "482913".into(), from: "Acme".into(), fill: false, mail: false };
+        assert_eq!(serde_json::to_string(&c).unwrap(), r#"{"say":"code","id":3,"tab":12,"frame":0,"code":"482913","from":"Acme","fill":false,"mail":false}"#);
+        // (One from a service before `mail`: a text message's.)
+        assert_eq!(serde_json::from_str::<ToBrowser>(r#"{"say":"code","id":3,"tab":12,"frame":0,"code":"482913","from":"Acme","fill":false}"#).unwrap(), c);
+        let l = ToBrowser::Link { id: 4, tab: 12, frame: 0, url: "https://acme.example/magic#t".into(), to: "acme.example".into(), from: "Acme".into() };
+        assert_eq!(serde_json::to_string(&l).unwrap(), r#"{"say":"link","id":4,"tab":12,"frame":0,"url":"https://acme.example/magic#t","to":"acme.example","from":"Acme"}"#);
         // (A browser says only what it knows: the rest is as if not so.)
         let w: FromBrowser = serde_json::from_str(r#"{"say":"waiting","id":null,"tabs":[{"tab":4,"host":"example.com","focused":true}]}"#).unwrap();
         let FromBrowser::Waiting { id: None, tabs } = w else { panic!() };

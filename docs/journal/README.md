@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### A mailed sign-in link, offered
+
+*14:57* — Some services mail a button, not a code (Claude's "Your secure link to Claude is here"). The Olo extension now offers it under the field of the page that's waiting, as it offers a code: who it's from, that it came by mail, and where it goes. Taking it takes the tab there.
+
+![A mailed sign-in link, offered](2026-11-18/145743-a-mailed-sign-in-link-offered.png)
+
 ### Calendar's reminders
 
 *13:10* — An event's reminders show at their time, from a service the session keeps (no window needed): the title, its calendar, how far off it is and when, where. Show opens Calendar on the day with the event selected. One missed while the computer slept still shows while its event isn't over.

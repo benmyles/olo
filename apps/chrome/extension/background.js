@@ -588,6 +588,9 @@ async function openInFront(o) {
 
 // Where each code is being offered: id → [{tabId, frameId}].
 const codeOffers = new Map();
+// Sign-in links offered (by the service's id): the tab offered it and the
+// address, which never goes to the page.
+const linkOffers = new Map();
 // The host each waiting frame was at: `tab:frame` → host. A code goes
 // only to a frame still there.
 const codeHosts = new Map();
@@ -639,9 +642,29 @@ function fromPhone(c) {
   } else if (c.gone !== undefined) {
     for (const o of codeOffers.get(c.gone) || []) send(o.tabId, o.frameId, { type: "code-gone", id: c.gone });
     codeOffers.delete(c.gone);
+    linkOffers.delete(c.gone);
+  } else if (c.link) {
+    // A link to sign in with, that came by mail: offered under the
+    // field; the address itself stays here (the page is told only where
+    // it goes), and the tab goes there when the person takes it.
+    const said = (outcome) => port?.postMessage({ code_outcome: { id: c.id, outcome } });
+    if (!/^https:\/\//.test(c.link)) return said("gone");
+    linkOffers.set(c.id, { tabId: c.tab, url: c.link });
+    chrome.tabs.sendMessage(c.tab, { type: "code-offer", id: c.id, link: true, to: String(c.to || ""), from: c.from, host: codeHosts.get(`${c.tab}:${c.frame}`) }, { frameId: c.frame }).then(
+      (r) => {
+        const outcome = r?.outcome || "gone";
+        if (outcome === "shown") codeOffers.set(c.id, [...(codeOffers.get(c.id) || []), { tabId: c.tab, frameId: c.frame }]);
+        else linkOffers.delete(c.id);
+        said(outcome);
+      },
+      () => {
+        linkOffers.delete(c.id);
+        said("gone");
+      },
+    );
   } else if (c.code) {
     const said = (outcome) => port?.postMessage({ code_outcome: { id: c.id, outcome } });
-    chrome.tabs.sendMessage(c.tab, { type: "code-offer", id: c.id, code: c.code, from: c.from, fill: !!c.fill, host: codeHosts.get(`${c.tab}:${c.frame}`) }, { frameId: c.frame }).then(
+    chrome.tabs.sendMessage(c.tab, { type: "code-offer", id: c.id, code: c.code, from: c.from, mail: !!c.mail, fill: !!c.fill, host: codeHosts.get(`${c.tab}:${c.frame}`) }, { frameId: c.frame }).then(
       (r) => {
         const outcome = r?.outcome || "gone";
         if (outcome === "shown") codeOffers.set(c.id, [...(codeOffers.get(c.id) || []), { tabId: c.tab, frameId: c.frame }]);
@@ -748,9 +771,21 @@ chrome.runtime.onMessage.addListener((m, sender, reply) => {
     if (o && m.outcome === "dismissed") passwordCodesAway.set(`${o.tabId}:${o.site}`, Date.now());
   } else if (m.type === "qr-shown" && fromPage && web(sender.url)) {
     otpShown(sender.tab);
+  } else if (m.type === "link-take" && fromPage) {
+    // The person took a sign-in link's offer: the tab that was offered
+    // it goes there (only that tab, only to the address the service
+    // gave for it, once).
+    const o = linkOffers.get(m.id);
+    linkOffers.delete(m.id);
+    codeOffers.delete(m.id);
+    if (o && o.tabId === sender.tab.id) {
+      chrome.tabs.update(o.tabId, { url: o.url }).catch(() => {});
+      port?.postMessage({ code_outcome: { id: m.id, outcome: "filled" } });
+    }
   } else if (m.type === "code-outcome" && fromPage) {
     // The person took the offer (or sent it away).
     if (m.outcome === "filled") codeOffers.delete(m.id);
+    if (m.outcome !== "shown") linkOffers.delete(m.id);
     port?.postMessage({ code_outcome: { id: m.id, outcome: String(m.outcome || "") } });
   } else if (m.type === "focus" && fromPage) {
     buildMenu(sender.url, sender.tab.id, sender.frameId, !!m.card);

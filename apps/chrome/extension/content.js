@@ -258,6 +258,14 @@
 
   function takeOffer() {
     if (!offer) return;
+    // A link to sign in with: the extension takes the tab there (it has
+    // the address; the page never does).
+    if (offer.link) {
+      const id = offer.id;
+      dropOffer();
+      tell({ type: "link-take", id });
+      return;
+    }
     const { field, code } = offer;
     // One of Passwords' own (an authenticator's): the code as it is now,
     // not as it was when offered (it changes every half minute).
@@ -302,17 +310,29 @@
     button.type = "button";
     const what = document.createElement("div");
     what.className = "what";
-    what.textContent = `Fill code ${m.code}`;
+    what.textContent = m.link ? "Open sign-in link" : `Fill code ${m.code}`;
     const from = document.createElement("div");
     from.className = "from";
-    from.textContent = m.passwords
-      ? m.from
-        ? `From Passwords, for ${m.from}`
-        : "From Passwords"
-      : m.from
-        ? `From ${m.from}, by text message`
-        : "From a text message";
-    button.setAttribute("aria-label", `Fill code ${m.code}${m.passwords ? " from Passwords" : ""}${m.from ? `${m.passwords ? " for" : " from"} ${m.from}` : ""}`);
+    // Who it's from and how it came (a text message, or mail), and for
+    // a link where it goes.
+    const how = m.mail || m.link ? "by mail" : "by text message";
+    from.textContent = m.link
+      ? `${m.from ? `From ${m.from}, by mail` : "From your mail"}${m.to ? ` · ${m.to}` : ""}`
+      : m.passwords
+        ? m.from
+          ? `From Passwords, for ${m.from}`
+          : "From Passwords"
+        : m.from
+          ? `From ${m.from}, ${how}`
+          : m.mail
+            ? "From your mail"
+            : "From a text message";
+    button.setAttribute(
+      "aria-label",
+      m.link
+        ? `Open the sign-in link${m.from ? ` from ${m.from}` : ""}, by mail${m.to ? `, at ${m.to}` : ""}`
+        : `Fill code ${m.code}${m.passwords ? " from Passwords" : ""}${m.from ? `${m.passwords ? " for" : " from"} ${m.from}` : ""}${m.passwords ? "" : `, ${how}`}`,
+    );
     button.append(what, from);
     root.append(style, button);
     const place = () => {
@@ -351,6 +371,7 @@
       id: m.id,
       field,
       code: m.code,
+      link: !!m.link,
       fresh: !!m.passwords,
       stop() {
         clearTimeout(timer);
@@ -375,7 +396,8 @@
     if (m.host && m.host !== location.hostname) return { outcome: "gone" };
     const field = otpField();
     if (!field || !codeWaiting()) return { outcome: "gone" };
-    if (m.fill) {
+    // (A link is only ever offered.)
+    if (m.fill && !m.link) {
       setOtp(field, m.code);
       return { outcome: "filled" };
     }

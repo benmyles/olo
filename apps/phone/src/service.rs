@@ -273,6 +273,9 @@ struct Pending {
     asking: Option<(NoteId, u64, Waiting)>,
     /// Tabs it's been shown or put in (browser, tab): not again.
     given: HashSet<(u64, i64)>,
+    /// Not a code but a link to sign in with, from a mail message
+    /// (`code.code` is empty then): offered to the tab it's for.
+    link: Option<codes::SignInLink>,
 }
 
 impl Drop for Pending {
@@ -1844,7 +1847,7 @@ impl Service {
             self.next_code += 1;
             let from = code.service.clone().unwrap_or_else(|| thread.name.clone());
             let age = Duration::from_secs((now() as i64 - message.at).clamp(0, JUST) as u64);
-            self.codes.push(Pending { id: self.next_code, code, from, until: Instant::now() + CODE_LIFE.saturating_sub(age), round: None, asking: None, given: HashSet::new() });
+            self.codes.push(Pending { id: self.next_code, code, from, until: Instant::now() + CODE_LIFE.saturating_sub(age), round: None, asking: None, given: HashSet::new(), link: None });
             self.state.codes += 1;
             self.state.code_at = Some(now());
             self.next_code
@@ -2124,16 +2127,32 @@ impl Service {
         if !self.mail_seen.insert((address, uid)) {
             return;
         }
-        let Some(code) = codes::find_mail(&m.subject, &m.text, &m.from) else { return };
+        let Some(code) = codes::find_mail(&m.subject, &m.text, &m.from) else { return self.mail_link(m) };
         // (The same code had already, from the phone or another account.)
         if self.codes.iter().any(|c| c.code.code == code.code) {
             return;
         }
         self.next_code += 1;
         let from = code.service.clone().unwrap_or(m.from);
-        self.codes.push(Pending { id: self.next_code, code, from, until: Instant::now() + CODE_LIFE, round: None, asking: None, given: HashSet::new() });
+        self.codes.push(Pending { id: self.next_code, code, from, until: Instant::now() + CODE_LIFE, round: None, asking: None, given: HashSet::new(), link: None });
         self.state.codes += 1;
         self.state.code_at = Some(now());
+        self.ask_browsers(self.next_code);
+    }
+
+    /// A mail message with no code in it: its link to sign in with, if
+    /// it carries one (Claude's does: "Click the button below to finish
+    /// signing in"), offered to the tab waiting, as a code is.
+    fn mail_link(&mut self, m: olo_mail::Message) {
+        let links: Vec<(String, String)> = m.links.iter().map(|l| (l.text.clone(), l.url.clone())).collect();
+        let Some(link) = codes::find_link(&m.subject, &m.text, &links, &m.from) else { return };
+        if self.codes.iter().any(|c| c.link.as_ref().is_some_and(|l| l.url == link.url)) {
+            return;
+        }
+        self.next_code += 1;
+        let from = link.service.clone().unwrap_or(m.from);
+        let code = Code { code: String::new(), domain: None, service: link.service.clone(), mail: true };
+        self.codes.push(Pending { id: self.next_code, code, from, until: Instant::now() + CODE_LIFE, round: None, asking: None, given: HashSet::new(), link: Some(link) });
         self.ask_browsers(self.next_code);
     }
 
@@ -2151,6 +2170,19 @@ impl Service {
         let Some(c) = self.codes.iter().find(|c| c.id == id) else { return false };
         let tabs: Vec<(u64, Waiting)> = tabs.iter().filter(|(b, t)| self.browsers.contains_key(b) && !c.given.contains(&(*b, t.tab))).cloned().collect();
         let with_screens: Vec<(Option<String>, Waiting)> = tabs.iter().map(|(b, t)| (self.browsers[b].screen.clone(), t.clone())).collect();
+        // A link to sign in with: offered to the person's own tab it's
+        // for, never put in, never an agent's.
+        if let Some(link) = c.link.clone() {
+            // (Offered once: it's for the page that asked for it, not for
+            // whichever page waits for something mailed next.)
+            if !c.given.is_empty() {
+                return false;
+            }
+            let Some(i) = codes::choose_link(&link, &with_screens) else { return false };
+            let (browser, tab) = tabs[i].clone();
+            self.send_link(id, browser, &tab, &link);
+            return true;
+        }
         let Some((i, how)) = codes::choose(&c.code, &with_screens, self.settings.agent_screens) else { return false };
         let (browser, tab) = tabs[i].clone();
         match how {
@@ -2183,7 +2215,7 @@ impl Service {
         let Some(c) = self.codes.iter_mut().find(|c| c.id == id) else { return };
         let Some(b) = self.browsers.get(&browser) else { return };
         c.given.insert((browser, tab.tab));
-        let mut message = ToBrowser::Code { id, tab: tab.tab, frame: tab.frame, code: c.code.code.clone(), from: c.from.clone(), fill };
+        let mut message = ToBrowser::Code { id, tab: tab.tab, frame: tab.frame, code: c.code.code.clone(), from: c.from.clone(), fill, mail: c.code.mail };
         if !say(&b.out, &message) {
             self.browsers.remove(&browser);
         }
@@ -2198,19 +2230,38 @@ impl Service {
         }
     }
 
+    fn send_link(&mut self, id: u64, browser: u64, tab: &Waiting, link: &codes::SignInLink) {
+        self.mail.clear();
+        let Some(c) = self.codes.iter_mut().find(|c| c.id == id) else { return };
+        let Some(b) = self.browsers.get(&browser) else { return };
+        c.given.insert((browser, tab.tab));
+        let message = ToBrowser::Link { id, tab: tab.tab, frame: tab.frame, url: link.url.clone(), to: link.host.clone(), from: c.from.clone() };
+        if !say(&b.out, &message) {
+            self.browsers.remove(&browser);
+        }
+    }
+
     /// No tab is waiting for code `id` (yet): copied, if that's wanted.
     /// It stays, for a field that comes up while it's still good.
     fn no_tab(&mut self, id: u64) {
         if !self.settings.copy_codes {
             return;
         }
-        if let Some(c) = self.codes.iter().find(|c| c.id == id) {
+        // (A link isn't copied: it's for a page that asked for it.)
+        if let Some(c) = self.codes.iter().find(|c| c.id == id && c.link.is_none()) {
             copy(c.code.code.clone());
         }
     }
 
     /// What came of a code given to a browser.
     fn outcome(&mut self, browser: u64, id: u64, outcome: &str) {
+        // (A link's offer that couldn't be shown, its tab or field gone:
+        // it may be offered again, to the page that asks next.)
+        if outcome == "gone"
+            && let Some(c) = self.codes.iter_mut().find(|c| c.id == id && c.link.is_some())
+        {
+            c.given.clear();
+        }
         if outcome != "filled" {
             return;
         }
