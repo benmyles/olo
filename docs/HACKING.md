@@ -11922,7 +11922,13 @@ Look for 350 ms (`READ_TEXT_AFTER`: stepping through pictures reads
 none of those passed) has its text read on a worker, once
 (`olo_ocr::read`, the picture over white, so text on a see-through
 ground reads as on a page): the lines from the top, each with its
-characters and their boxes. `ImageView::set_text` takes them (in the
+characters and their boxes (put in rows first, those level with a
+row's highest line, then each row from the left: `in_reading_order`.
+One comparison that looked at x for lines that were level and at y for
+the rest was no order, "level" not being transitive, and the sort
+panics when it sees the contradiction: Tracker went down showing
+pictures. A comparison given to a sort is an order, or the things are
+grouped first). `ImageView::set_text` takes them (in the
 pixels of the picture that was read): a drag over the text selects it
 as text is (a double click a word, a triple click a line; anywhere
 else the picture pans or is dragged out as before, and what was

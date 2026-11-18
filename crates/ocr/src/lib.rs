@@ -96,14 +96,47 @@ impl Engine {
             .map(|line| Line { chars: line.chars().iter().map(|c| Char { ch: c.char, rect: [c.rect.left() as f32, c.rect.top() as f32, c.rect.width() as f32, c.rect.height() as f32] }).collect() })
             .filter(|l: &Line| !l.text().trim().is_empty())
             .collect();
-        // (From the top; lines level with each other, from the left.)
-        out.sort_by(|a, b| {
-            let (ra, rb) = (a.rect(), b.rect());
-            let level = (ra[1] + ra[3] / 2.0 - (rb[1] + rb[3] / 2.0)).abs() < ra[3].min(rb[3]) / 2.0;
-            if level { ra[0].total_cmp(&rb[0]) } else { ra[1].total_cmp(&rb[1]) }
-        });
-        Ok(out)
+        Ok(in_reading_order(out))
     }
+}
+
+/// Lines as they're read: from the top, those level with each other
+/// (two columns' lines, a label and its value) from the left.
+///
+/// Done by putting the lines in rows first and ordering those, never by
+/// one comparison that looks at x for lines that are level and at y for
+/// the rest: "level" isn't transitive (A with B, B with C, A not with
+/// C), so that was no order at all, and the sort panics when it sees
+/// the contradiction ("user-provided comparison function does not
+/// correctly implement a total order": Tracker went down with it,
+/// showing a picture, five times on 2026-11-17 and 18).
+fn in_reading_order(lines: Vec<Line>) -> Vec<Line> {
+    // (Box, middle.)
+    let mut boxed: Vec<([f32; 4], f32, Line)> = lines
+        .into_iter()
+        .map(|l| {
+            let r = l.rect();
+            (r, r[1] + r[3] / 2.0, l)
+        })
+        .collect();
+    // By their middles, from the top (ties from the left: the same
+    // answer whatever order they came in).
+    boxed.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0[0].total_cmp(&b.0[0])));
+    // A row: its first line (the highest), and those level with it,
+    // their middles within half the height of the lower of the two.
+    let mut rows: Vec<Vec<([f32; 4], f32, Line)>> = Vec::new();
+    for line in boxed {
+        match rows.last_mut() {
+            Some(row) if (line.1 - row[0].1).abs() < line.0[3].min(row[0].0[3]) / 2.0 => row.push(line),
+            _ => rows.push(vec![line]),
+        }
+    }
+    let mut out = Vec::new();
+    for mut row in rows {
+        row.sort_by(|a, b| a.0[0].total_cmp(&b.0[0]));
+        out.extend(row.into_iter().map(|(_, _, line)| line));
+    }
+    out
 }
 
 /// The recogniser the process shares, while it's loaded.
@@ -191,4 +224,72 @@ pub fn init() {
 /// Whether text can be read here (the models are installed).
 pub fn available() -> bool {
     models().is_some()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn line(name: char, x: f32, y: f32, w: f32, h: f32) -> Line {
+        Line { chars: vec![Char { ch: name, rect: [x, y, w, h] }] }
+    }
+
+    fn names(lines: Vec<Line>) -> String {
+        in_reading_order(lines).iter().map(Line::text).collect()
+    }
+
+    /// From the top, lines level with each other from the left, whatever
+    /// order they were found in.
+    #[test]
+    fn rows_from_the_top_each_from_the_left() {
+        // Two columns, the right one's lines a few pixels lower.
+        let page = || {
+            vec![line('d', 300.0, 44.0, 200.0, 20.0), line('a', 10.0, 10.0, 200.0, 20.0), line('c', 10.0, 40.0, 200.0, 20.0), line('b', 300.0, 14.0, 200.0, 20.0), line('e', 10.0, 70.0, 200.0, 20.0)]
+        };
+        assert_eq!(names(page()), "abcde");
+        let mut turned = page();
+        turned.reverse();
+        assert_eq!(names(turned), "abcde");
+        assert_eq!(names(Vec::new()), "");
+    }
+
+    /// Lines each level with the next but not with the one after (a
+    /// staircase, as a slanted photograph's are): what the old single
+    /// comparison contradicted itself over (a before b and b before c
+    /// by their left edges, c before a by its top). Now an order, and
+    /// the same one from every arrangement.
+    #[test]
+    fn a_staircase_is_put_in_order() {
+        let stairs = || vec![line('a', 200.0, 0.0, 50.0, 20.0), line('b', 100.0, 8.0, 50.0, 20.0), line('c', 0.0, 16.0, 50.0, 20.0)];
+        // (a's row takes b, level with it; c, not level with a, starts the next.)
+        assert_eq!(names(stairs()), "bac");
+        for order in [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]] {
+            let s = stairs();
+            assert_eq!(names(order.iter().map(|&i| s[i].clone()).collect()), "bac", "{order:?}");
+        }
+    }
+
+    /// Any boxes at all are sorted without a panic, every line kept:
+    /// thousands of pages of boxes scattered as a screenshot's are
+    /// (the sort's own check for a contradiction is what brought
+    /// Tracker down; with enough lines it ran on most pages).
+    #[test]
+    fn any_boxes_are_sorted_and_all_kept() {
+        let mut seed = 0x2545_F491_4F6C_DD1Du64;
+        let mut next = move |below: f32| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed % 10_000) as f32 / 10_000.0 * below
+        };
+        for page in 0..2000 {
+            let count = 2 + (page % 120);
+            let lines: Vec<Line> = (0..count).map(|i| line(char::from_u32(0x4E00 + i as u32).unwrap(), next(1800.0), next(1200.0), 20.0 + next(400.0), 8.0 + next(40.0))).collect();
+            let mut before: Vec<char> = lines.iter().map(|l| l.chars[0].ch).collect();
+            let sorted = in_reading_order(lines);
+            let mut after: Vec<char> = sorted.iter().map(|l| l.chars[0].ch).collect();
+            (before.sort(), after.sort());
+            assert_eq!(before, after, "page {page}");
+        }
+    }
 }

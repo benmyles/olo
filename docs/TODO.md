@@ -114,6 +114,24 @@ something nobody here has is in "Blocked", with what it waits for.
   in the form; for Fastmail, an app password with access to calendars),
   then open Calendar.
 
+- **The pointer vanishes over a video in Chrome and Chrome-based apps**
+  (Ben, 2026-11-18: "sometimes when a cursor goes over a video on
+  chrome or a chrome based app like slack then the cursor doesn't show
+  again until i move the mouse completely out of the window and back.
+  the cursor shouldn't disappear when over a video at all, it should
+  only ever disappear if in full screen and hasn't moved for 5s and then
+  come back if it moves again"). Tried before, still there.
+- **One account for Mail and Calendar** (Ben, 2026-11-18: "can the
+  calendar and mail just use the same integration connection so we
+  don't have to set it up twice? like can it just be Mail & Calendar").
+  Yes: the first step of Mail. Preferences ▸ Integrations ▸ Mail &
+  Calendar, one list of accounts, each signed in once (Google: one
+  consent with the mail and the calendar scopes; Fastmail: one app
+  password, good for both) with a switch each for Mail and for
+  Calendars. The accounts move out of Calendar's engine
+  (`olo_calendar::account`) into a crate of their own that both apps
+  read; an account added before this (`calendar-accounts.json`) is
+  carried over.
 - **A Mail app, native, every account in one place, and the assistant
   in both Mail and Calendar** (Ben, 2026-11-17: "build a beautiful olo
   native email app. use/extend the email integration support in prefs ->
