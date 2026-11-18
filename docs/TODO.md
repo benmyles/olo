@@ -90,15 +90,6 @@ something nobody here has is in "Blocked", with what it waits for.
   Ben**: the test of firmware 1.17, the same hand-over that failed
   (display unplugged, charger in, while running), with the EC trace on.
 
-- **AirPods' microphone with voice processing, named so in apps** (Ben,
-  2026-11-18, of Teams in Chrome, its microphone list showing "AirPods
-  Pro Microphone" and "AirPods" beside the laptop's "… Microphones
-  (Voice Processing)": "it still doesn't show the airpods device as
-  'Airpods (Voice Processing)' to tell me which one has the voice
-  processing enabled"). Find what names the two AirPods sources as
-  they are (which is the processed one, if either), and name it as the
-  laptop's is.
-
 - **A Calendar app, native, with Google and Fastmail calendars** (Ben,
   2026-11-17: "build a beautiful olo native calendar app. add calendar
   support to prefs -> integrations and support any number of google
@@ -167,6 +158,26 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **AirPods' microphone with voice processing, named so in apps** (Ben,
+  2026-11-18, of Teams in Chrome: "it still doesn't show the airpods
+  device as 'Airpods (Voice Processing)' to tell me which one has the
+  voice processing enabled"). What was wrong: your choice in
+  Preferences ▸ Sound, "With AirPods: AirPods (Call Quality)", was
+  kept and never acted on, so the computer's microphones went on being
+  recorded from, and the processed microphone was (rightly) named for
+  them. The AirPods service now makes the microphone you chose the
+  input, as a pair connects and at once when the choice is changed;
+  the processed microphone follows it and is named for it ("AirPods …
+  (Voice Processing)"). Decided in code and tested there; **not tried
+  with your AirPods** (you were on a call, and Olo's tests never
+  connect a device). **To know before upgrading**: with that choice
+  still set, the next time your AirPods connect (or the service starts
+  with them connected) the input becomes their headset microphone, and
+  their sound drops to call quality while something records. "AirPods
+  (High Quality)" keeps music quality and uses their own microphone
+  stream. **To try**: after an upgrade, look at the microphone list in
+  Teams with AirPods in.
 
 - **Deskbar: a button to fold it away to the right, and back** (Ben,
   2026-11-18: "add a little icon button to the top right of the deskbar

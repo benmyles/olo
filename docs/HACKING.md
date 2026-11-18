@@ -14354,6 +14354,27 @@ every change, and answers `Request`s (JSON lines) on
 starts again as the new binary. Idle it is asleep on BlueZ's signals,
 the sound server's events and the channels: nothing is polled.
 
+**Where recording comes from** with a pair connected is the person's
+choice (`MicrophoneChoice`, Preferences ▸ Sound and ▸ AirPods: This
+Computer's Microphones, AirPods (High Quality): their own stream's
+source below, AirPods (Call Quality): Bluetooth's headset input). The
+service makes that the input: as the pair's source or headset input
+comes (`sound_changed`, once: the person may choose otherwise after),
+and at once when the choice is changed while a pair is connected
+(`follow_settings`, `input_for`: theirs if it's there and not the one
+in use already; back to the computer's, the one last in use, only when
+theirs is in use). It was only kept before, to be acted on when a
+device next came or went, and the headset choice never was: with
+"AirPods (Call Quality)" chosen the computer's microphones went on
+being recorded from, and the voice service's processed microphone,
+named for what it listens to, read "Core Ultra … Microphones (Voice
+Processing)" beside two unprocessed AirPods ones (Ben, 2026-11-18, of
+Teams in Chrome: "it still doesn't show the airpods device as 'Airpods
+(Voice Processing)'"). The voice service follows whichever real
+microphone is made the default input and puts its own source back in
+front of it (`olo-voice`, "The person (or something) chose a
+microphone"), so the processed one is then the AirPods', named so.
+
 **Their own microphone** (`mic.rs`): while a pair's channel is open,
 the service has a PipeWire source for it ("… Microphone",
 `airpods_mic.ADDRESS`, made in process with pipewire-rs on a thread of

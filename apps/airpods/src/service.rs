@@ -675,10 +675,17 @@ fn sound_changed(devices: Option<audio::Devices>) {
             let input = devices.inputs.iter().filter(ours).find(|d| Some(&d.name) != mic_node.as_ref());
             let microphone = devices.inputs.iter().find(|d| Some(&d.name) == mic_node.as_ref());
             let bt = out.or(input).and_then(|d| d.bluetooth.clone()).unwrap_or_default();
-            if inner.settings.microphone == MicrophoneChoice::AirPods
-                && let Some(m) = microphone
+            // Theirs, if the person chose it (their own stream's, or the
+            // headset's): made the input as it comes (once; the person
+            // may choose otherwise after).
+            let (theirs, had) = match inner.settings.microphone {
+                MicrophoneChoice::AirPods => (microphone, inner.devices.get(addr).map(|d| d.info.sound.microphone.clone())),
+                MicrophoneChoice::AirPodsHeadset => (input, inner.devices.get(addr).map(|d| d.info.sound.input.clone())),
+                MicrophoneChoice::Computer => (None, None),
+            };
+            if let Some(m) = theirs
                 && !m.is_default
-                && inner.devices.get(addr).is_some_and(|d| d.info.sound.microphone != m.name)
+                && had.is_some_and(|had| had != m.name)
             {
                 use_input = Some(m.name.clone());
             }
@@ -717,7 +724,7 @@ fn sound_changed(devices: Option<audio::Devices>) {
         publish(&mut inner);
     }
     if let Some(name) = use_input {
-        tracing::info!("airpods: recording from their own microphone ({name})");
+        tracing::info!("airpods: recording from their microphone ({name})");
         if let Err(e) = audio::set_default(audio::Kind::Input, &name) {
             tracing::warn!("airpods: {e}");
         }
@@ -778,13 +785,56 @@ fn set_quality(addr: &str, high: bool) -> Result<(), String> {
 
 // ---- settings and requests ------------------------------------------------------
 
+/// The input to make the default so that recording is where `choice`
+/// says, with these pairs connected (`pairs`: each one's headset input
+/// and its own microphone's source, "" where it has none) and these
+/// inputs there (name, whether it's the one in use, whether it's a
+/// Bluetooth device's); `computer`: the computer's input last in use.
+/// None: it's there already, or there is nothing of the kind to choose.
+fn input_for(choice: MicrophoneChoice, pairs: &[(&str, &str)], inputs: &[(&str, bool, bool)], computer: Option<&str>) -> Option<String> {
+    let in_use = inputs.iter().find(|i| i.1).map(|i| i.0);
+    let there = |name: &str| !name.is_empty() && inputs.iter().any(|i| i.0 == name);
+    let theirs = |name: &str| pairs.iter().any(|(headset, own)| *headset == name || *own == name);
+    let wanted = match choice {
+        MicrophoneChoice::AirPods => pairs.iter().map(|p| p.1).find(|n| there(n)),
+        MicrophoneChoice::AirPodsHeadset => pairs.iter().map(|p| p.0).find(|n| there(n)),
+        // (Only away from theirs: any of the computer's the person chose stays.)
+        MicrophoneChoice::Computer => match in_use {
+            Some(now) if theirs(now) => computer.filter(|c| there(c) && !theirs(c)).or_else(|| inputs.iter().find(|i| !i.2 && !theirs(i.0)).map(|i| i.0)),
+            _ => None,
+        },
+    };
+    wanted.filter(|w| Some(*w) != in_use).map(str::to_owned)
+}
+
 fn follow_settings() {
     let w = olo_kit_base::watch::watch([AirPodsSettings::path()], |_| {
         let new = AirPodsSettings::load();
         let mut inner = service().inner.lock().unwrap();
         if inner.settings != new {
             tracing::info!("airpods: settings changed");
+            // Where to record from, changed while a pair is connected:
+            // done now, not when a device next comes or goes. (It was
+            // only kept: "AirPods (Call Quality)" chosen, the computer's
+            // microphones went on being recorded from, and the processed
+            // one named for them; Ben, 2026-11-18.)
+            let choose = (inner.settings.microphone != new.microphone).then_some(new.microphone);
             inner.settings = new;
+            if let Some(choice) = choose {
+                let pairs: Vec<(String, String)> = inner.devices.values().map(|d| (d.info.sound.input.clone(), d.info.sound.microphone.clone())).collect();
+                let computer = inner.computer_input.clone();
+                drop(inner);
+                // (Off this thread's lock: it asks the sound server.)
+                let Ok(devices) = audio::devices() else { return };
+                let inputs: Vec<(&str, bool, bool)> = devices.inputs.iter().map(|d| (d.name.as_str(), d.is_default, d.bluetooth.is_some())).collect();
+                let pairs: Vec<(&str, &str)> = pairs.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+                if let Some(name) = input_for(choice, &pairs, &inputs, computer.as_deref()) {
+                    tracing::info!("airpods: recording from {name} now, as chosen");
+                    if let Err(e) = audio::set_default(audio::Kind::Input, &name) {
+                        tracing::warn!("airpods: {e}");
+                    }
+                }
+            }
         }
     });
     // For as long as the service runs.
@@ -1055,6 +1105,34 @@ mod tests {
 
     fn ago(s: u64) -> Option<Instant> {
         Instant::now().checked_sub(Duration::from_secs(s))
+    }
+
+    /// Where to record from, chosen while a pair is connected, is made
+    /// so at once: their own microphone's source, their headset's input,
+    /// or back to the computer's (the one last in use), and nothing where
+    /// it's that already or there is none of the kind.
+    #[test]
+    fn the_microphone_chosen_is_the_input() {
+        use MicrophoneChoice::{AirPods, AirPodsHeadset, Computer};
+        let pairs = [("bluez_input.AA", "olo_airpods_mic.AA")];
+        let inputs = |in_use: &str| -> Vec<(&'static str, bool, bool)> {
+            [("alsa_input.built-in", false), ("alsa_input.usb", false), ("bluez_input.AA", true), ("olo_airpods_mic.AA", false)].into_iter().map(|(n, bt)| (n, n == in_use, bt)).collect()
+        };
+        let built_in = inputs("alsa_input.built-in");
+        assert_eq!(input_for(AirPodsHeadset, &pairs, &built_in, None).as_deref(), Some("bluez_input.AA"));
+        assert_eq!(input_for(AirPods, &pairs, &built_in, None).as_deref(), Some("olo_airpods_mic.AA"));
+        assert_eq!(input_for(Computer, &pairs, &built_in, None), None, "the computer's already");
+        assert_eq!(input_for(Computer, &pairs, &inputs("alsa_input.usb"), Some("alsa_input.built-in")), None, "whichever of the computer's the person chose");
+        // From theirs back to the computer's: the one last in use, else any of its own.
+        let headset = inputs("bluez_input.AA");
+        assert_eq!(input_for(AirPodsHeadset, &pairs, &headset, None), None, "theirs already");
+        assert_eq!(input_for(AirPods, &pairs, &headset, None).as_deref(), Some("olo_airpods_mic.AA"));
+        assert_eq!(input_for(Computer, &pairs, &headset, Some("alsa_input.usb")).as_deref(), Some("alsa_input.usb"));
+        assert_eq!(input_for(Computer, &pairs, &headset, Some("gone")).as_deref(), Some("alsa_input.built-in"));
+        // A pair with no microphone of its own streaming yet, or none connected: nothing to choose.
+        assert_eq!(input_for(AirPods, &[("bluez_input.AA", "")], &built_in, None), None);
+        assert_eq!(input_for(AirPodsHeadset, &[], &built_in, None), None);
+        assert_eq!(input_for(AirPodsHeadset, &[("bluez_input.BB", "")], &built_in, None), None, "its input isn't there");
     }
 
     #[test]
