@@ -78,6 +78,8 @@ pub const ICON_SETS: &[IconSet] = &[
     IconSet { id: CLASSIC, name: "Classic", about: "After BeOS: glossy, bright and friendly." },
     IconSet { id: "platinum", name: "Platinum", about: "After Mac OS 9: black outlines, lilac greys." },
     IconSet { id: "beos", name: "BeOS", about: "As BeOS R5 drew its icons: flat faces in its 8-bit colours, black outlines." },
+    IconSet { id: "amiga", name: "AmigaOS", about: "As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines." },
+    IconSet { id: "aqua", name: "Aqua", about: "After Mac OS X's Aqua: shinier and bluer, with soft outlines." },
 ];
 
 /// Icon set `id`, or the classic one if there is none by that name.
@@ -269,6 +271,89 @@ pub const THEMES: &[Theme] = &[
         // (Be's desktop was one blue, 51 102 152: Olo's own Be Blue.)
         wallpaper: "be-blue",
         colors: Colors::Beos,
+    },
+    Theme {
+        id: "amiga",
+        name: "AmigaOS",
+        about: "After Workbench 3: its grey, black, white and blue, flat and square, and icons in a screen's sixteen pens.",
+        icons: "amiga",
+        // (The Boing ball on Workbench's own blue.)
+        wallpaper: "amiga-boing-blue",
+        colors: Colors::Own(&Pair {
+            light: Seeds {
+                panel: hex(0xaaaaaa),
+                ink: hex(0x000000),
+                document: hex(0xffffff),
+                control: hex(0xbcbcbc),
+                highlight: hex(0x3b67a2),
+                navigation: hex(0x22407a),
+                tab: hex(0x6688bb),
+                on_tab: hex(0x000000),
+                tooltip: hex(0xffffff),
+                status: hex(0x3b67a2),
+                failure: hex(0xb02020),
+                unread: Some(hex(0xc82222)),
+                gloss: 0,
+                ..LIGHT
+            },
+            dark: Seeds {
+                panel: hex(0x3a3a42),
+                ink: hex(0xe8e8e8),
+                document: hex(0x232328),
+                control: hex(0x4a4a54),
+                highlight: hex(0x4f79b4),
+                navigation: hex(0x8fb4e8),
+                tab: hex(0x6688bb),
+                on_tab: hex(0x000000),
+                tooltip: hex(0x3c3c44),
+                status: hex(0x5a84c0),
+                unread: Some(hex(0xff6a5a)),
+                gloss: 0,
+                ..DARK
+            },
+        }),
+    },
+    Theme {
+        id: "aqua",
+        name: "Aqua",
+        about: "After Mac OS X's first Aqua: bright white panels, gel blue, deep gloss, and icons shinier and bluer.",
+        icons: "aqua",
+        // (Cheetah's own desktop, the first Aqua blue.)
+        wallpaper: "macosx-cheetah-aqua-blue",
+        colors: Colors::Own(&Pair {
+            light: Seeds {
+                panel: hex(0xececec),
+                ink: hex(0x000000),
+                document: hex(0xffffff),
+                control: hex(0xf8f8f8),
+                highlight: hex(0x3875d7),
+                navigation: hex(0x2a66c8),
+                tab: hex(0xbcd7f7),
+                on_tab: hex(0x0c1420),
+                tooltip: hex(0xffffc7),
+                status: hex(0x3f8ef0),
+                success: hex(0x1f8a3c),
+                failure: hex(0xd0342c),
+                unread: Some(hex(0xe0443e)),
+                gloss: 150,
+                ..LIGHT
+            },
+            dark: Seeds {
+                panel: hex(0x2a2d33),
+                ink: hex(0xe8ecf2),
+                document: hex(0x1b1d22),
+                control: hex(0x3a3e46),
+                highlight: hex(0x2f6fd0),
+                navigation: hex(0x6fb0ff),
+                tab: hex(0x4a78b8),
+                on_tab: hex(0xffffff),
+                tooltip: hex(0x3a3a2c),
+                status: hex(0x4a9df8),
+                unread: Some(hex(0xff6a5f)),
+                gloss: 90,
+                ..DARK
+            },
+        }),
     },
     // catppuccin-mocha: Catppuccin's mauve, soft.
     scheme(&SCHEMES[0], "macosx-flow-1"),
@@ -919,12 +1004,12 @@ mod tests {
         }
         assert!(get(DEFAULT).is_some() && get(CLASSIC).is_some());
         assert_eq!(resolve("no-such-theme").id, DEFAULT);
-        // One list: Olo's three first, then every scheme, each once.
-        assert_eq!(THEMES.iter().take(3).map(|t| t.id).collect::<Vec<_>>(), ["classic", "platinum", "beos"]);
+        // One list: Olo's own five first, then every scheme, each once.
+        assert_eq!(THEMES.iter().take(5).map(|t| t.id).collect::<Vec<_>>(), ["classic", "platinum", "beos", "amiga", "aqua"]);
         for s in SCHEMES {
             assert!(matches!(get(s.id).map(|t| t.colors), Some(Colors::Scheme(x)) if x.id == s.id), "{} isn't a theme", s.id);
         }
-        assert_eq!(THEMES.len(), 3 + SCHEMES.len());
+        assert_eq!(THEMES.len(), 5 + SCHEMES.len());
         assert_eq!(icon_set("nope").id, CLASSIC);
         // Roles are told apart, and every one is a seed's.
         let seeds = resolve(DEFAULT).seeds(ThemeMode::Light);
@@ -1128,8 +1213,8 @@ mod tests {
         // The theme's own, then every other theme's in the themes' order
         // (Catppuccin's Latte once, though three flavours have it by day).
         let (light, dark) = (names(ThemeMode::Light), names(ThemeMode::Dark));
-        assert_eq!(light[..5], ["platinum-light", "classic-light", "beos-light", "catppuccin-latte", "github-light"]);
-        assert_eq!(dark[..6], ["platinum-dark", "classic-dark", "beos-dark", "catppuccin-mocha-dark", "catppuccin-macchiato-dark", "catppuccin-frappe-dark"]);
+        assert_eq!(light[..7], ["platinum-light", "classic-light", "beos-light", "amiga-light", "aqua-light", "catppuccin-latte", "github-light"]);
+        assert_eq!(dark[..7], ["platinum-dark", "classic-dark", "beos-dark", "amiga-dark", "aqua-dark", "catppuccin-mocha-dark", "catppuccin-macchiato-dark"]);
         assert_eq!((light.len(), dark.len()), (THEMES.len() - 2, THEMES.len()));
         // Each is found again by its id, and named as its makers name it.
         for t in terminals("classic", ThemeMode::Light).into_iter().chain(terminals("classic", ThemeMode::Dark)) {

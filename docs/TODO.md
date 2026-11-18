@@ -43,7 +43,8 @@ something nobody here has is in "Blocked", with what it waits for.
   shown everywhere as it's changed); a BeOS icon set (the drawings as
   R5 drew its icons: flat faces in its 8-bit palette, black outlines);
   ten more themes (Solarized, Gruvbox, Nord, Rosé Pine, Everforest,
-  Kanagawa, Tomorrow, Zenburn, Cobalt2, Oceanic Next: 26 in all); each
+  Kanagawa, Tomorrow, Zenburn, Cobalt2, Oceanic Next); AmigaOS and
+  Aqua, each a theme with an icon set of its own (28 in all); each
   theme's wallpaper chosen by eye from the whole pack. **Left**: the
   study itself, theme by theme (Classic, then BeOS, then Platinum,
   then the rest): every app, Terminal, light and dark, at 1×, 1.5× and
@@ -52,6 +53,28 @@ something nobody here has is in "Blocked", with what it waits for.
 
 
 ## Not started (highest priority first)
+
+- **Find what removes dependency build units from `target/release`**
+  (2026-11-18: a workspace build failed to link because about 1,040
+  unit folders vanished while it ran; docs/AGENT-NOTES.md, "Dependency
+  build units vanish"). Not root-caused: the build was run again to
+  keep going. Watch the folder for removals with something that names
+  the process, catch it, and fix it there (kache's fork if it is
+  kache).
+
+- **A modern flat icon set, drawn front-facing** (Ben, 2026-11-17:
+  "please also generate and add a modern flat icon pack and also
+  generate and add an AmigaOS and Aqua theme + icon pack for each";
+  and, of a flat set made by recolouring the angled drawings: "the idea
+  of the flat ones is that they would also be front facing not
+  angled"). AmigaOS and Aqua are done (themes and sets, by rules over
+  the classic drawings). **Left**: Flat, a set of its own drawings
+  (`data/themes/flat/icons/svg/NAME.svg`, every one of the 181): each
+  thing seen straight on, plain flat faces, no outlines or soft
+  shadows, a few clear colours, on the 64 grid and legible at 16;
+  shared forms first (a page, a folder, a screen, a window, a gear, a
+  cloud: `tools/dev/iconforms.py` grows a flat family), each drawing
+  looked at, at every size, light and dark, before it's kept.
 
 - **The embedded controller's event storm: Olo says so, and keeps the
   keys working** (Ben, 2026-11-17, of the two hours his brightness keys

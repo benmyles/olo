@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Aqua: a theme after Mac OS X's first Aqua, its icons shinier and bluer
+
+*00:32* — Bright white panels, gel blue and deep gloss; the same drawings with rounder, shinier faces, Aqua's blues, and soft deep-blue outlines in place of black.
+
+![Aqua: a theme after Mac OS X's first Aqua, its icons shinier and bluer](2026-11-18/003252-aqua-a-theme-after-mac-os-x-s-first-aqua-its-ico.png)
+
+### AmigaOS: a theme after Workbench 3, its icons in sixteen pens
+
+*00:32* — Workbench's grey, black, white and blue, flat and square; the same drawings as every set, each face flat and in one of a Workbench screen's sixteen pens, outlined in black.
+
+![AmigaOS: a theme after Workbench 3, its icons in sixteen pens](2026-11-18/003245-amigaos-a-theme-after-workbench-3-its-icons-in-s.png)
+
 ### Themes: one list, a preview with the theme's own icons, Customize…
 
 *00:20* — Classic, Platinum, BeOS and every scheme are themes in one list (26), each with its colours, its icon set and its wallpaper. The preview shows the theme's window, its icons and its wallpaper; Customize… changes any colour, the icon set and the wallpaper.

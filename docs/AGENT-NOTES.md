@@ -592,3 +592,22 @@ Each note: what to do, then why (what happened), then how to apply it.
   (`olo_ec_storm.c`, tried live with Ben's word: keys back in ten
   seconds) were in /var/tmp/claude-blueferry/{keys,ecstorm}, scratch:
   what matters of them is here and in docs/TODO.md.
+- **Dependency build units vanish from `target/release` now and then
+  (not explained yet).** 2026-11-18 00:37: a `cargo build --release
+  --workspace` that had passed nine minutes before failed to link
+  (`mold: fatal: cannot open …/build/arrayref/HASH/out/libarrayref-HASH.rlib`,
+  the same for a dozen programs): about 1,040 of the 1,110 unit folders
+  under `target/release/build` (every crate from outside the workspace;
+  Olo's own stayed) had gone while the build ran, and the next cargo
+  made them again (kache's events: `local_hit` for each; the same
+  crates were restored once before, 2026-11-17 18:45). Running the
+  build again is all it needs, and costs seven minutes. What it isn't:
+  the compiler or the settings changed (they didn't); kache's daily
+  sweep, which ran at 00:34 and freed nothing (`~/.cache/kache/gc_stats.json`:
+  0 evicted; its store is over its 300 GiB limit, most of it held by
+  target folders); kache's unit pruning under disk pressure (the volume
+  has 944 GB free, and a unit armed as kache arms it does show a no-op
+  build's read). Still to find: what removes them (kache's fork is
+  `~/src/kache`, branch `olo`: `unit_prune.rs`, `target_cleanup.rs`,
+  `target_liveness.rs`), by watching `target/release/build` for
+  removals (an inotify or audit watch that names the process).

@@ -21,6 +21,11 @@
 //! levels 0 51 102 152 203 255    a colour's red, green and blue each take the nearest of these
 //! greys 8                        a grey is a multiple of this
 //! no shadow                      the soft shadow under a thing isn't drawn
+//! palette 959595 000000 ffffff   every colour takes the nearest of these (a system's few pens)
+//! gloss 0.1                      a gradient's first stop this much lighter, its last darker by
+//!                                six tenths of it: faces more rounded, shinier
+//! outline 30465f 0.55            outlines in this colour, this much there (1 if not said)
+//! outline none                   no outlines
 //! keep olo slack                 these drawings stay as they are (brands' marks)
 //! ```
 //!
@@ -31,7 +36,10 @@
 //! `flat`, `levels` and `greys` together are a system's own way with
 //! colour (BeOS R5's icons: flat faces in its 8-bit palette, a six-level
 //! cube and 32 greys); they come after the others: a colour is turned,
-//! then set on the levels.
+//! then set on the levels. `palette` comes last of all (AmigaOS's
+//! Workbench drew its icons with the screen's sixteen pens), and
+//! `outline` is the outlines' alone: the ink of a drawing's details and
+//! dark fills is `ink`'s still.
 
 use std::hash::{Hash as _, Hasher as _};
 
@@ -67,6 +75,10 @@ pub struct Recolour {
     levels: Vec<u8>,
     greys: Option<u8>,
     no_shadow: bool,
+    palette: Vec<[u8; 3]>,
+    gloss: Option<f32>,
+    /// The outlines': a colour (None: no outlines) and how much there.
+    outline: Option<(Option<[u8; 3]>, f32)>,
     key: u64,
 }
 
@@ -146,6 +158,13 @@ impl Recolour {
                 ["levels", ref levels @ ..] if levels.len() >= 2 => {
                     rules.levels = levels.iter().map(|l| l.parse::<u8>().map_err(|_| bad("a level is 0 to 255"))).collect::<Result<_, _>>()?;
                 }
+                ["palette", ref colours @ ..] if colours.len() >= 2 => {
+                    rules.palette = colours.iter().map(|c| hex(c).ok_or_else(|| bad("not a colour"))).collect::<Result<_, _>>()?;
+                }
+                ["gloss", amount] => rules.gloss = Some(number(amount)?),
+                ["outline", "none"] => rules.outline = Some((None, 0.0)),
+                ["outline", colour] => rules.outline = Some((Some(hex(colour).ok_or_else(|| bad("not a colour"))?), 1.0)),
+                ["outline", colour, opacity] => rules.outline = Some((Some(hex(colour).ok_or_else(|| bad("not a colour"))?), number(opacity)?.clamp(0.0, 1.0))),
                 ["greys", step] => rules.greys = Some(step.parse::<u8>().ok().filter(|s| *s > 0).ok_or_else(|| bad("a step is 1 to 255"))?),
                 _ => return Err(bad("not a rule")),
             }
@@ -169,6 +188,21 @@ impl Recolour {
         {
             return ink;
         }
+        let c = self.turned(name, rgb_in);
+        if self.palette.is_empty() {
+            return c;
+        }
+        // (The nearest pen: by eye more than by number, green counting most.)
+        let far = |p: &[u8; 3]| {
+            let d = |i: usize| i32::from(p[i]) - i32::from(c[i]);
+            2 * d(0) * d(0) + 4 * d(1) * d(1) + 3 * d(2) * d(2)
+        };
+        self.palette.iter().copied().min_by_key(far).unwrap_or(c)
+    }
+
+    /// [`Recolour::colour`] before the palette: tinted or turned, and on
+    /// the levels.
+    fn turned(&self, name: &str, rgb_in: [u8; 3]) -> [u8; 3] {
         let (h, s, l) = hsl(rgb_in);
         let spread = f32::from(rgb_in.iter().copied().max().unwrap_or(0) - rgb_in.iter().copied().min().unwrap_or(0)) / 255.0;
         if spread < GREY {
@@ -208,7 +242,7 @@ impl Recolour {
             return svg.to_owned();
         }
         let prepared;
-        let svg = if self.flat || self.no_shadow {
+        let svg = if self.flat || self.no_shadow || self.gloss.is_some() {
             prepared = self.prepare(svg);
             prepared.as_str()
         } else {
@@ -233,10 +267,30 @@ impl Recolour {
             from = copied;
         }
         out.push_str(&svg[copied..]);
-        out
+        self.outlined(out)
     }
 
-    /// `svg` with what `flat` and `no shadow` take from it: each
+    /// `svg` with its outlines as `outline` has them: the stroke of its
+    /// outlines' own style (`.o{…}`, the first in the drawing) in the
+    /// rule's colour and as much there, or none. After the colours, so
+    /// the outline is the rule's own and not turned again.
+    fn outlined(&self, mut svg: String) -> String {
+        let Some((colour, opacity)) = self.outline else { return svg };
+        const STROKE: &str = "stroke:#";
+        let Some(rule) = svg.find(".o{") else { return svg };
+        let Some(end) = svg[rule..].find('}').map(|k| rule + k) else { return svg };
+        let Some(at) = svg[rule..end].find(STROKE).map(|k| rule + k) else { return svg };
+        let digits = svg[at + STROKE.len()..end].bytes().take_while(u8::is_ascii_hexdigit).count();
+        let with = match colour {
+            None => "stroke:none".to_owned(),
+            Some([r, g, b]) if opacity >= 1.0 => format!("stroke:#{r:02x}{g:02x}{b:02x}"),
+            Some([r, g, b]) => format!("stroke:#{r:02x}{g:02x}{b:02x};stroke-opacity:{opacity}"),
+        };
+        svg.replace_range(at..at + STROKE.len() + digits, &with);
+        svg
+    }
+
+    /// `svg` with what `flat`, `gloss` and `no shadow` take from it: each
     /// gradient's stops one colour (their mean: a face flat, its opacity
     /// as it was), and what's filled with the gradient named `shadow`
     /// (the soft shadow under a thing) gone.
@@ -244,7 +298,7 @@ impl Recolour {
         use std::fmt::Write as _;
         let mut out = String::with_capacity(svg.len());
         let mut rest = svg;
-        if self.flat {
+        if self.flat || self.gloss.is_some() {
             while let Some(at) = rest.find("Gradient ") {
                 // (`<linearGradient …>` to its `</linearGradient>`.)
                 let Some(open) = rest[..at].rfind('<') else { break };
@@ -260,8 +314,17 @@ impl Recolour {
                     let mean: [u32; 3] = std::array::from_fn(|i| (colours.iter().map(|c| u32::from(c[i])).sum::<u32>() + n / 2) / n);
                     let mut parts = block.split(STOP);
                     out.push_str(parts.next().unwrap_or_default());
-                    for after in parts {
-                        let _ = write!(out, "{STOP}{:02x}{:02x}{:02x}", mean[0], mean[1], mean[2]);
+                    for (k, after) in parts.enumerate() {
+                        let stop = match self.gloss.filter(|_| !self.flat) {
+                            // (Lighter where it begins, darker where it ends.)
+                            Some(gloss) => {
+                                let t = k as f32 / (colours.len() - 1) as f32;
+                                let (h, s, l) = hsl(colours[k.min(colours.len() - 1)]);
+                                rgb(h, s, (l + gloss * (1.0 - 2.0 * t) * if t < 0.5 { 1.0 } else { 0.6 }).clamp(0.0, 1.0))
+                            }
+                            None => mean.map(|v| v as u8),
+                        };
+                        let _ = write!(out, "{STOP}{:02x}{:02x}{:02x}", stop[0], stop[1], stop[2]);
                         out.push_str(&after[after.find('"').unwrap_or(0)..]);
                     }
                 } else {
@@ -310,6 +373,36 @@ mod tests {
         for (bad, line) in [("ink\n", 1), ("grey 240 0.2\nturn 10 by 5 1 0\n", 2), ("paint it black\n", 1), ("turn 1-2 by 5 1 0 folder\n", 1), ("ink zzzzzz\n", 1)] {
             let e = Recolour::parse(bad).unwrap_err();
             assert!(e.starts_with(&format!("line {line}:")), "{bad:?}: {e}");
+        }
+    }
+
+    /// A system's pens, shinier faces, and outlines of the rules' own
+    /// (AmigaOS's, Aqua's and the flat set's).
+    #[test]
+    fn pens_gloss_and_outlines() {
+        let svg = r##"<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2}</style>
+<linearGradient id="face"><stop offset="0" stop-color="#808080"/><stop offset="1" stop-color="#808080"/></linearGradient>
+<path class="o" fill="#f8ca66" d="M0 0"/><path fill="#1b1b1f" d="M1 1"/>"##;
+        // Sixteen pens: each colour its nearest; the ink is the rule's.
+        let amiga = Recolour::parse("ink 000000\nflat\npalette 959595 000000 ffffff 3b67a2 eecc44 cc3333\n").unwrap();
+        assert_eq!(amiga.colour("x", [0xf8, 0xca, 0x66]), [0xee, 0xcc, 0x44]);
+        assert_eq!(amiga.colour("x", [0x23, 0x60, 0xb0]), [0x3b, 0x67, 0xa2]);
+        assert_eq!(amiga.colour("x", [0xf0, 0xf0, 0xf4]), [255, 255, 255]);
+        let out = amiga.apply("x", svg);
+        assert!(out.contains("stroke:#000000") && out.contains("fill=\"#eecc44\"") && out.contains("stop-color=\"#959595\""), "{out}");
+        // Outlines of their own: a colour partly there, or none; the
+        // drawing's other ink is `ink`'s.
+        let aqua = Recolour::parse("ink 23303f\noutline 30465f 0.55\ngloss 0.1\n").unwrap();
+        let out = aqua.apply("x", svg);
+        assert!(out.contains(".o{paint-order:stroke;stroke:#30465f;stroke-opacity:0.55;stroke-width:1.2}"), "{out}");
+        assert!(out.contains("fill=\"#23303f\""), "{out}");
+        // (Mid grey: a tenth lighter where the gradient begins, six hundredths darker where it ends.)
+        assert!(out.contains("stop-color=\"#9a9a9a\"") && out.contains("stop-color=\"#717171\""), "{out}");
+        let flat = Recolour::parse("outline none\n").unwrap();
+        assert!(flat.apply("x", svg).contains(".o{paint-order:stroke;stroke:none;stroke-width:1.2}"));
+        assert_ne!(aqua.key(), flat.key());
+        for bad in ["palette 000000\n", "outline\n", "outline zz\n", "gloss much\n"] {
+            assert!(Recolour::parse(bad).is_err(), "{bad:?}");
         }
     }
 

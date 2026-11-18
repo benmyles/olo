@@ -6429,10 +6429,12 @@ lint at a time).
   of sense. let's just have Classic, Platinum and BeOS as their own
   themes (as well as all the other themes)"). A theme is the whole
   look: its colours (light and dark), its icons (an icon set,
-  `looks::ICON_SETS`) and its wallpaper. Olo's three first (Classic,
+  `looks::ICON_SETS`) and its wallpaper. Olo's five first (Classic,
   Platinum, BeOS: R5's palette as shipped, `Palette::light`, and Olo's
-  dark version of it), then the schemes from elsewhere, each a theme
-  with the classic icons. The panel: the themes down the left (a
+  dark version of it; AmigaOS, after Workbench 3: its grey, black,
+  white and blue, flat, no gloss; Aqua, after Mac OS X's first: white
+  panels, gel blue, deep gloss), then the schemes from elsewhere, each
+  a theme with the classic icons. The panel: the themes down the left (a
   `ColumnListView`, each row its colours at a glance, light beside
   dark, `paint_glance`, then its name, ", customized" after one the
   person has changed), and the chosen one at the right, drawn in
@@ -6498,8 +6500,9 @@ lint at a time).
   Water, Rosé Pine Lotus, Everforest Garden, Kanagawa Zen Garden,
   Tomorrow Lines Blue, Zenburn Stones, Cobalt2 Olo's Ribbons, Oceanic
   Next Tranquil Surface.
-  **Each theme's icons**: Classic's the drawings as written; Platinum's
-  and BeOS's the same drawings each its own way (`ICON_SETS`,
+  **Each theme's icons**: Classic's the drawings as written;
+  Platinum's, BeOS's, AmigaOS's and Aqua's the same drawings each its
+  own way (`ICON_SETS`,
   docs/ICONS.md "An icon set's colours": BeOS's as R5 drew its icons,
   flat faces in its 8-bit palette, black outlines; Ben: "create a
   complete custom icon set for BeOS"); the schemes' the classic set.

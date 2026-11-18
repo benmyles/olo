@@ -1,0 +1,14 @@
+# AmigaOS: the classic set's drawings as Workbench drew its icons (see
+# docs/ICONS.md, "A theme's colours"; the rules: crates/xdg/src/svg/recolour.rs).
+# A Workbench screen had a few pens: Workbench 3's four (grey, black,
+# white, blue), MagicWB's four more (two greys, tan, pink), and eight for
+# a sixteen-colour screen (orange, yellow, green, navy, brown, red, sky,
+# charcoal). Every face is flat and in one of them, outlined in black.
+
+ink 000000
+flat
+no shadow
+palette 959595 000000 ffffff 3b67a2 7b7b7b afafaf aa907c ffa997 ff8800 eecc44 4a9a4a 22407a 6b4a2a cc3333 8fb4e8 444444
+
+# Other people's marks, and Olo's own, keep their colours.
+keep olo slack github google-chrome telegram

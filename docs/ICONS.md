@@ -159,8 +159,19 @@ every set, and each set its palette. Platinum's: the ink black, greys
 a lilac grey, the folder lilac blue, blues toward periwinkle,
 everything a little softer. BeOS's: as R5 drew its icons, each face
 one flat colour from its 8-bit palette (a cube of six levels a
-channel and 32 greys), a black outline, no soft shadow. Both keep the
-brand's ring and other people's marks as they are.
+channel and 32 greys), a black outline, no soft shadow. AmigaOS's: as
+Workbench drew its icons, each face flat and in one of a Workbench
+screen's sixteen pens (Workbench 3's grey, black, white and blue,
+MagicWB's two greys, tan and pink, and eight more for a sixteen-colour
+screen), outlined in black. Aqua's: after Mac OS X's first Aqua, the
+faces rounder and shinier (`gloss`), the blues Aqua's, the greys cool,
+and a soft deep-blue outline, half there, in place of the black one
+(Ben, 2026-11-17: "generate and add an AmigaOS and Aqua theme + icon
+pack for each"). All keep the brand's ring and other people's marks as
+they are. (A flat set recoloured from these drawings was tried and
+taken out: Ben, "the idea of the flat ones is that they would also be
+front facing not angled". It is to be drawings of its own:
+docs/TODO.md.)
 
 ```text
 ink 0b0b16                     # the classic ink (1b1b1f) becomes this
@@ -172,13 +183,17 @@ flat                           # each face one colour: a gradient's stops take t
 levels 0 51 102 152 203 255    # a colour's red, green and blue each take the nearest of these
 greys 8                        # a grey is a multiple of this
 no shadow                      # the soft shadow under a thing isn't drawn
+palette 959595 000000 ffffff   # every colour takes the nearest of these (a system's few pens)
+gloss 0.1                      # a gradient's first stop this much lighter, its last darker
+outline 30465f 0.55            # outlines in this colour, this much there; `outline none`: none
 keep olo slack github          # these stay as they are
 ```
 
 A colour is a grey when its channels differ by less than 0.12; any
 other takes the first `turn` that holds it, so the particular come
 first; `flat`, `levels` and `greys` come after them (a colour is
-turned, then set on the levels). Look at a set with `svgicon --theme ID
+turned, then set on the levels), `palette` last of all; `outline` is
+the outlines' alone (a drawing's other ink is `ink`'s). Look at a set with `svgicon --theme ID
 IN.svg OUT.png SIZE`. The rendering is kept per set like any other. A
 set draws an icon of its own only where its rules can't say it (a
 different thing, not a different colour).

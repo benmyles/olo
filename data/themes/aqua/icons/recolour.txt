@@ -1,0 +1,16 @@
+# Aqua: the classic set's drawings as Mac OS X's first Aqua drew its icons
+# (see docs/ICONS.md, "A theme's colours"; the rules:
+# crates/xdg/src/svg/recolour.rs). Shinier, rounder faces; the blues
+# Aqua's own; greys cool; and in place of the black outline a soft deep
+# blue one, half there, over the shadow each thing keeps.
+
+ink 23303f
+gloss 0.10
+outline 30465f 0.55
+
+grey 212 0.10
+turn 196-250 to 212 1.1 +0.04
+turn 0-360 by 0 1.04 +0.03
+
+# Other people's marks, and Olo's own, keep their colours.
+keep olo slack github google-chrome telegram
