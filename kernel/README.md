@@ -49,3 +49,20 @@ settings' side.
   (apps/bbr3). [bbr3/README.md](bbr3/README.md): what it is made of, how
   it was shown to be BBRv3, what it measures. docs/HACKING.md, "BBRv3
   for TCP".
+- `ec-storm/`: `olo_ec_storm`, a guard for the embedded controller's
+  events: a handler of its own in front of each of the firmware's (the
+  ACPI EC driver's own way for a module to, `acpi_ec_add_query_handler`),
+  so that of one event arriving over and over one runs the firmware's
+  method and the rest are counted for it to run again for, eight at
+  most, and a flood of one event can't hold up the others. No structure
+  of the driver's is read. Built and loaded at each start by
+  `olo-ec-storm` (apps/ec-storm), only on a kernel series listed in
+  [ec-storm/CHECKED](ec-storm/CHECKED): the driver's two functions it
+  calls are declared in the driver's own header, so nothing at build
+  time says if they changed; `tools/dev/ec-storm-check --series vX.Y`
+  compares that series' driver with the one it was written against
+  (`driver.checked`), and checks its counting (`check.c`), its build
+  and its refusal where there is no controller (a guest). What it does
+  with a real controller's events can be seen only on a computer that
+  has one: not tried yet (2026-11-18). docs/HACKING.md, "The embedded
+  controller, watched".

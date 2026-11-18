@@ -1,0 +1,33 @@
+# olo-ec-storm: a flood of one embedded-controller event doesn't hold up
+# the others (apps/ec-storm). A laptop's controller that reports the same
+# thing over and over fills the kernel's queue of its events faster than
+# the firmware's handlers run, and the brightness keys' and the USB-C
+# ports' wait behind. At each start this builds Olo's guard
+# (kernel/ec-storm, olo_ec_storm) for the running kernel where it hasn't
+# yet, and loads it: of one event arriving over and over, one runs its
+# handler and the rest are counted. Installed by Olo Doctor ("Guard the
+# Keys").
+# To go back:
+#   sudo systemctl disable --now olo-ec-storm.service
+[Unit]
+Description=Olo: a flood of embedded-controller events doesn't hold up the keys (a guard in the running kernel)
+ConditionPathIsDirectory=/sys/firmware/acpi
+After=local-fs.target systemd-modules-load.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/libexec/olo/olo-ec-storm
+ExecStop=/usr/local/libexec/olo/olo-ec-storm --remove
+StateDirectory=olo-ec-storm
+# (How it went, for Olo Doctor: there while it's in, and after a failure.)
+RuntimeDirectory=olo-ec-storm
+RuntimeDirectoryPreserve=yes
+# (A new kernel's first start builds the guard for it: a few seconds.)
+TimeoutStartSec=300
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateNetwork=yes
+
+[Install]
+WantedBy=multi-user.target

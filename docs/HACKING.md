@@ -15371,13 +15371,46 @@ Doctor), and `$XDG_RUNTIME_DIR/olo-state/ec-storm.json`
 (`performance::EcStorm`: since when, events a second, handlers
 waiting) for as long as it lasts, which Olo Doctor reads as a Critical
 finding with the whole account (`checks::ec_storm`). Over, the file
-goes and the notification closes. It says, and mends nothing: dropping
-the stale events takes a kernel module (docs/TODO.md).
+goes and the notification closes. It says, and mends nothing: keeping
+the queue short is the guard's, below.
 `OLO_EC_STORM_DEMO=SECONDS olo-supervisor` says a made-up one for that
 long, to see it; in a test session give it a runtime folder of its own
 (`XDG_RUNTIME_DIR=/var/tmp/… WAYLAND_DISPLAY=/run/user/UID/wayland-N`,
 the display by its whole path), or the person's own Olo Doctor reads
 the file: test sessions share `/run/user/UID`.
+
+**The guard** (kernel/ec-storm, `olo_ec_storm`; apps/ec-storm; Olo
+Doctor's "Guard the Keys", a suggestion on a computer with an embedded
+controller). The kernel's EC driver looks up a query's handler in a
+list, and a handler a module adds (`acpi_ec_add_query_handler`,
+exported) goes first in it, before the firmware's own for the same
+query. The module walks the controller's ACPI methods as the driver
+does, and for each `_Qxx` adds a handler that counts
+(`olo_ec_storm_count.h`): the first event of a kind to come runs the
+firmware's method; one that comes while that runs is only counted, up
+to eight owed, and the one running runs the method again for each. An
+event carries nothing but its number, and its method reads what is so
+now, so nothing is lost but repetitions; a flood of one event costs a
+counter's change a time and one worker running its method back to
+back, the queue never grows, and the keys' handlers run as they come.
+Nothing of the driver's is read (no structure, no probe: the first try,
+by hand on the night, read three private structures by their offsets).
+It prevents a backlog; one already there (handlers queued before it
+was loaded) it doesn't shorten, so it is loaded at every start
+(`olo-ec-storm.service`, as Olo's other kernel services: built for the
+running kernel by `olo_kmod`, said in `/run/olo-ec-storm/status`),
+and only on a kernel series in `kernel/ec-storm/CHECKED` (the driver's
+functions are declared in its own header: nothing at build time says
+if they changed; `tools/dev/ec-storm-check --series vX.Y` compares the
+driver with the one it was written against, 7.2 and 7.3 the same).
+`/sys/module/olo_ec_storm/parameters/stats` says what it has done
+("guarding 64 ran 812 counted 0"), which Olo Doctor shows. Checked:
+its counting from sixteen threads (32,000 events of a flood: 2,111
+runs, never two at once, a run after the last event; 5,000 one at a
+time: 5,000 runs; five in a burst: five), its build for 7.2.15, and in
+a KVM guest (no controller: refused, "No such device", the kernel none
+the worse). **Not tried with a real controller's events**: that takes
+a computer with one and its owner's word.
 
 It publishes what it does in `$XDG_RUNTIME_DIR/olo-supervisor.json`
 (`SupervisorState`: on, its pid, what it favours, findings, what it

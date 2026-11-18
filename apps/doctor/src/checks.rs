@@ -708,6 +708,7 @@ pub fn scan(roots: &Roots) -> Report {
     swap_size(roots, &gpus, &mut r);
     tcp_bbr3(roots, &mut r);
     ec_storm(roots, &mut r);
+    ec_guard(roots, &mut r);
     kernel_settings(roots, &mut r);
     intel_video(roots, &gpus, &mut r);
     builtin_sound(roots, &gpus, &mut r);
@@ -3050,6 +3051,106 @@ pub(crate) fn bbr3_steps(roots: &Roots) -> Vec<Step> {
     steps
 }
 
+/// Olo's guard against a flood of the embedded controller's events
+/// (kernel/ec-storm, `olo_ec_storm`): the service that builds it for the
+/// running kernel and loads it at each start (apps/ec-storm), its
+/// program beside ours and where root's copy and its unit go, where the
+/// kernel lists the module once it's in, and where the service says how
+/// it went.
+pub const EC_STORM_UNIT: &str = include_str!("../../../data/systemd/olo-ec-storm.service");
+pub const EC_STORM_SERVICE: &str = "olo-ec-storm.service";
+pub const EC_STORM_PROGRAM: &str = "olo-ec-storm";
+const EC_STORM_PROGRAM_PATH: &str = "usr/local/libexec/olo/olo-ec-storm";
+const EC_STORM_UNIT_PATH: &str = "etc/systemd/system/olo-ec-storm.service";
+const EC_STORM_MODULE: &str = "sys/module/olo_ec_storm";
+/// The kernel series its way into the driver was checked on.
+const EC_STORM_CHECKED: &str = include_str!("../../../kernel/ec-storm/CHECKED");
+
+/// The steps that put the guard's service in place, from the
+/// `olo-ec-storm` beside ours: only what isn't so already (as
+/// `graphics_memory_steps`).
+pub(crate) fn ec_guard_steps(roots: &Roots) -> Vec<Step> {
+    let fs = &roots.fs;
+    let mut steps = Vec::new();
+    let release = read(&fs.join("proc/sys/kernel/osrelease")).map(|r| r.trim().to_owned()).unwrap_or_default();
+    let can_build = fs.join("lib/modules").join(&release).join("build/Makefile").is_file() && fs.join("usr/bin/make").is_file() && fs.join("usr/bin/gcc").is_file();
+    if !can_build {
+        steps.push(Step::InstallPackages { names: KERNEL_BUILD_PACKAGES.iter().map(|n| (*n).to_owned()).collect() });
+    }
+    let (from, program, unit) = (roots.bin.join(EC_STORM_PROGRAM), PathBuf::from("/").join(EC_STORM_PROGRAM_PATH), PathBuf::from("/").join(EC_STORM_UNIT_PATH));
+    let mut changed = false;
+    if !same_contents(&from, &fs.join(EC_STORM_PROGRAM_PATH)) {
+        steps.push(Step::CopyFile { from, to: program.clone(), mode: 0o755 });
+        steps.push(Step::SelinuxLabels { rules: Vec::new(), restore: vec![program] });
+        changed = true;
+    }
+    if std::fs::read_to_string(fs.join(EC_STORM_UNIT_PATH)).ok().as_deref() != Some(EC_STORM_UNIT) {
+        steps.push(Step::WriteFile { path: unit, content: EC_STORM_UNIT.into(), mode: 0o644 });
+        changed = true;
+    }
+    if changed {
+        steps.push(Step::Unit { name: EC_STORM_SERVICE.into(), action: UnitAction::Reload });
+    }
+    let state = (roots.units)(EC_STORM_SERVICE).ok();
+    if changed || !state.as_ref().is_some_and(|s| s.enabled) {
+        steps.push(Step::Unit { name: EC_STORM_SERVICE.into(), action: UnitAction::Enable });
+    }
+    if changed || !can_build || !fs.join(EC_STORM_MODULE).is_dir() || !state.as_ref().is_some_and(|s| s.active) {
+        steps.push(Step::Unit { name: EC_STORM_SERVICE.into(), action: UnitAction::Restart });
+    }
+    steps
+}
+
+/// A laptop's embedded controller can flood the kernel with one event
+/// over and over, and the kernel queues the firmware's slow handler for
+/// each without limit: the brightness keys' and the ports' wait behind
+/// (a ThinkPad P1 Gen 9, 2026-11-17: two hours, 195,778 in line). Olo's
+/// guard (`ec_guard_steps`) keeps the queue short whatever the
+/// controller does. Suggested where there is a controller, the kernel
+/// can take the module (no Secure Boot) and its series is one the
+/// driver was checked in; said fine once it's in and kept.
+fn ec_guard(roots: &Roots, r: &mut Report) {
+    let fs = &roots.fs;
+    let controller = std::fs::read_dir(fs.join("sys/bus/acpi/devices")).is_ok_and(|d| d.flatten().any(|e| e.file_name().to_string_lossy().starts_with("PNP0C09:")));
+    if !controller {
+        return;
+    }
+    let title = "A flood of controller events can’t hold up the keys";
+    let ours = roots.bin.join(EC_STORM_PROGRAM).is_file();
+    let loaded = fs.join(EC_STORM_MODULE).is_dir();
+    let steps = if ours { ec_guard_steps(roots) } else { Vec::new() };
+    if loaded && steps.is_empty() {
+        let stats = read(&fs.join(EC_STORM_MODULE).join("parameters/stats")).map(|s| format!(" ({})", s.trim())).unwrap_or_default();
+        r.fine.push(Fine {
+            title: title.into(),
+            detail: format!("Olo's guard (olo_ec_storm) is in the kernel: of one event of the embedded controller's arriving over and over, one runs its handler and the rest are counted{stats}."),
+        });
+        return;
+    }
+    let release = read(&fs.join("proc/sys/kernel/osrelease")).map(|r| r.trim().to_owned()).unwrap_or_default();
+    let series = release.split('.').take(2).collect::<Vec<_>>().join(".");
+    let checked = EC_STORM_CHECKED.lines().map(str::trim).any(|l| !l.starts_with('#') && l == series);
+    let secure_boot = read_bytes(&fs.join(SECURE_BOOT_VAR)).is_some_and(|b| b.last() == Some(&1));
+    // (Nothing to offer: no program to install it from, a kernel that
+    // loads only signed modules, or a series the driver wasn't checked in.)
+    if !ours || secure_boot || !checked {
+        return;
+    }
+    // How the service's last try went, where it has tried.
+    let failed = read(&fs.join("run/olo-ec-storm/status")).and_then(|s| s.trim().strip_prefix("failed: ").map(str::to_owned));
+    let tried = failed.filter(|why| !why.contains("headers aren't installed") && !why.contains("make couldn't be run")).map(|why| format!(" Its service's last try: {why}.")).unwrap_or_default();
+    r.findings.push(Finding {
+        id: "ec-guard".into(),
+        severity: Severity::Suggestion,
+        title: "Guard the keys against a flood of controller events".into(),
+        detail: format!(
+            "A laptop's embedded controller tells the system of each thing that happens to it (a key of the top row, the lid, the charger), and the kernel lines up a handler for each without limit. A controller that repeats itself, as a ThinkPad P1's did with its charger 23 times a second, fills that line faster than it empties, and the brightness keys and news of the charger and the USB-C ports wait behind for as long as it lasts. The fix puts Olo's guard in the kernel (olo_ec_storm, a module built for this kernel{} and loaded at every start): of one event arriving over and over, one runs its handler and the rest are only counted, so the others run as they come. It changes nothing while the controller behaves.{tried}",
+            if steps.iter().any(|s| matches!(s, Step::InstallPackages { .. })) { "; what building it needs (the kernel's headers, the compiler, make) is installed first" } else { "" }
+        ),
+        fix: Some(Fix { label: "Guard the Keys".into(), root: true, steps }),
+    });
+}
+
 /// The laptop's embedded controller is flooding the kernel with events,
 /// as the supervisor measures it (`olo_system::ec_storm`; its file,
 /// there while it lasts): said, with what it holds up and what clears
@@ -4389,6 +4490,65 @@ mod tests {
             kernels_bbr: None,
         };
         (fs, roots)
+    }
+
+    /// Olo's guard for the embedded controller's events is suggested where
+    /// there is a controller and the kernel can take it (what building
+    /// it needs installed first, where missing); fine once it's in and
+    /// its service kept; and not offered with no controller, on a kernel
+    /// series the driver wasn't checked in, or without its program.
+    #[test]
+    fn the_ec_guard_is_suggested_then_fine() {
+        let (fs, roots) = machine("ec-guard");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        w("proc/sys/kernel/osrelease", "7.2.15-300.fc45.x86_64\n");
+        std::fs::write(roots.bin.join("olo-ec-storm"), "the service").unwrap();
+        // No embedded controller (a desktop): nothing said.
+        assert!(scan(&roots).find("ec-guard").is_none());
+        std::fs::create_dir_all(fs.join("sys/bus/acpi/devices/PNP0C09:00")).unwrap();
+        let f = scan(&roots).find("ec-guard").unwrap().clone();
+        assert_eq!((f.severity, f.fix.as_ref().unwrap().label.as_str(), f.fix.as_ref().unwrap().root), (Severity::Suggestion, "Guard the Keys", true));
+        let said: Vec<String> = f.fix.as_ref().unwrap().steps.iter().map(Step::describe).collect();
+        assert_eq!(
+            said,
+            [
+                "Installing kernel-devel-matched, gcc, make",
+                "Installing /usr/local/libexec/olo/olo-ec-storm",
+                "Labelling /usr/local/libexec/olo/olo-ec-storm for SELinux",
+                "Writing /etc/systemd/system/olo-ec-storm.service",
+                "Reloading systemd for olo-ec-storm.service",
+                "Enabling olo-ec-storm.service",
+                "Restarting olo-ec-storm.service",
+            ]
+        );
+        // A kernel series the driver wasn't checked in: not offered.
+        w("proc/sys/kernel/osrelease", "9.9.1-100.fc50.x86_64\n");
+        assert!(scan(&roots).find("ec-guard").is_none());
+        w("proc/sys/kernel/osrelease", "7.2.15-300.fc45.x86_64\n");
+        // In, its service this build's, enabled and run: fine.
+        w("lib/modules/7.2.15-300.fc45.x86_64/build/Makefile", "");
+        w("usr/bin/make", "");
+        w("usr/bin/gcc", "");
+        w("sys/module/olo_ec_storm/parameters/stats", "guarding 64 ran 12 counted 0\n");
+        w("usr/local/libexec/olo/olo-ec-storm", "the service");
+        w("etc/systemd/system/olo-ec-storm.service", EC_STORM_UNIT);
+        let kept = |name: &str| -> Result<UnitState, String> { if name == EC_STORM_SERVICE { Ok(UnitState { loaded: true, active: true, enabled: true, path: None }) } else { Err("none".into()) } };
+        let roots = Roots { units: Box::new(kept), ..roots };
+        let r = scan(&roots);
+        assert!(r.find("ec-guard").is_none());
+        assert!(
+            r.fine.iter().any(|f| f.title.starts_with("A flood of controller events") && f.detail.contains("guarding 64 ran 12 counted 0")),
+            "{:?}",
+            r.fine.iter().map(|f| &f.title).collect::<Vec<_>>()
+        );
+        // Without its program beside ours (an Olo from before it): nothing to offer.
+        std::fs::remove_dir_all(fs.join("sys/module/olo_ec_storm")).unwrap();
+        std::fs::remove_file(roots.bin.join("olo-ec-storm")).unwrap();
+        assert!(scan(&roots).find("ec-guard").is_none());
     }
 
     /// The embedded controller flooding the kernel is said while the

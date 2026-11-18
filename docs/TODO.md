@@ -66,30 +66,6 @@ something nobody here has is in "Blocked", with what it waits for.
   a build's wrapper three minutes before the loss, and nothing of
   units (AGENT-NOTES has the rest).
 
-- **The embedded controller's event storm: Olo says so, and keeps the
-  keys working** (Ben, 2026-11-17, of the two hours his brightness keys
-  were dead and the laptop ran down on its charger: "i don't just want
-  to restart i want this root caused"; and, the stale events dropped by
-  hand and the keys back: "works now. so let's do two things: 1. add
-  something to olo's supervisor to do this if an unsustainable backlog
-  builds up, and 2. root cause and fix whatever happened here. there
-  must be a bug somewhere"). What happened is in docs/AGENT-NOTES.md
-  ("The embedded controller's event storm"). **Done**: the power
-  follower no longer sets its plan at every flap (HACKING, "The supply
-  has to hold"); the supervisor watches for it (the supply changing
-  over and over, then the ACPI interrupt held and `kec_query` workers
-  blocked) and says so within seconds, in a notification that stays
-  and as a Critical finding in Olo Doctor, with what clears it
-  (HACKING, "The embedded controller, watched"; seen with a made-up
-  storm, the real thing not since). **Left**: (2) the guard
-  itself, as Olo's other kernel pieces are (kernel/, built for each
-  kernel by a service, tried in a KVM guest first: `olo_ec_storm`, a
-  limit on the EC's queued handlers so stale adapter events are dropped
-  and keys run), offered by Olo Doctor; (3) the report upstream (ACPI
-  EC: the query backlog has no bound) and to Lenovo. **Waiting for
-  Ben**: the test of firmware 1.17, the same hand-over that failed
-  (display unplugged, charger in, while running), with the EC trace on.
-
 - **A Calendar app, native, with Google and Fastmail calendars** (Ben,
   2026-11-17: "build a beautiful olo native calendar app. add calendar
   support to prefs -> integrations and support any number of google
@@ -158,6 +134,35 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **The embedded controller's event storm: Olo says so, and can keep
+  the keys working** (Ben, 2026-11-17, of the two hours his brightness
+  keys were dead and the laptop ran down on its charger: "i don't just
+  want to restart i want this root caused"; "works now. so let's do two
+  things: 1. add something to olo's supervisor to do this if an
+  unsustainable backlog builds up, and 2. root cause and fix whatever
+  happened here. there must be a bug somewhere"). What happened is in
+  docs/AGENT-NOTES.md ("The embedded controller's event storm"). Done:
+  the power follower no longer sets its plan at every flap; the
+  supervisor watches for a storm and says so within seconds (a
+  notification that stays, a Critical finding in Olo Doctor); and the
+  guard is written as one of Olo's kernel modules (`olo_ec_storm`,
+  HACKING, "The guard"): a handler in front of each of the firmware's,
+  through the driver's own interface, so a flood of one event can't
+  hold up the others. Olo Doctor suggests it ("Guard the Keys").
+  **Waiting for Ben**: (1) installing the guard is yours to do, from
+  Olo Doctor: it is checked as far as it can be without a controller
+  that floods (its counting, its build, its refusal in a guest), and
+  **has not run against your controller's real events**; after
+  installing, the brightness keys, the lid and plugging the charger in
+  and out are the things to try, and
+  `cat /sys/module/olo_ec_storm/parameters/stats` says what it did.
+  (2) The test of firmware 1.17: the same hand-over that failed
+  (display unplugged, charger in, while running). (3) The reports, to
+  the kernel's ACPI list (the EC driver queues query handlers without
+  bound) and to Lenovo (the P1 Gen 9's controller reporting its adapter
+  23 times a second): drafted in docs/reports/ec-query-backlog.md,
+  yours to send or not.
 
 - **AirPods' microphone with voice processing, named so in apps** (Ben,
   2026-11-18, of Teams in Chrome: "it still doesn't show the airpods

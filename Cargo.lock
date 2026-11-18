@@ -7443,6 +7443,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-ec-storm"
+version = "0.1.0"
+dependencies = [
+ "olo-crash",
+ "olo-kmod",
+]
+
+[[package]]
 name = "olo-eld"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,11 @@
+# The kernel series whose ACPI EC driver (drivers/acpi/ec.c) was read and
+# found to take a module's query handlers as olo_ec_storm needs: put
+# first in the list (acpi_ec_add_query_handler: list_add), found first
+# (acpi_ec_get_query_handler_by_value), called with their data
+# (acpi_ec_event_processor: handler->func(handler->data)), and the only
+# ones taken out again (acpi_ec_remove_query_handlers: those with a
+# func). One a line. For a new series: read those four functions and
+# drivers/acpi/internal.h's declarations (repeated in the module), then
+# its line here; olo-ec-storm loads the module on no other.
+7.2
+7.3
