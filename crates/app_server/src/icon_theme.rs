@@ -3,14 +3,14 @@
 //! platform theme) and anything reading `icon-theme` take their folder,
 //! file-kind, device and application icons from, in the look in use, and
 //! the rest from Adwaita and hicolor, which it inherits. Its pictures are
-//! links to Olo's own (`data/icons`, or the look's `data/themes/*/icons`),
-//! remade when the look changes. The theme's `cursors` are
-//! `xcursor.rs`'s.
+//! Olo's own drawings rendered at each size as Olo shows them, in the
+//! look's colours (`olo_xdg::render_own_icon`), written as PNGs: other
+//! programs' renderers don't know a drawing's sizes' classes, and would
+//! show its large detail and its small stand-ins at once. Made again when
+//! the look or a drawing changes (on `toolkits::publish`'s thread, never
+//! the compositor's). The theme's `cursors` are `xcursor.rs`'s.
 
-use std::{
-    io,
-    path::{Path, PathBuf},
-};
+use std::{io, path::Path};
 
 /// The theme's name (the cursors' too).
 pub const THEME: &str = olo_xdg::CURSOR_THEME;
@@ -103,15 +103,17 @@ const ICONS: &[(&str, &str, &str)] = &[
 const CONTEXTS: [(&str, &str); 6] = [("places", "Places"), ("mimetypes", "MimeTypes"), ("devices", "Devices"), ("apps", "Applications"), ("status", "Status"), ("actions", "Actions")];
 
 /// The theme's `index.theme` for look `look`: every size and context, and
-/// what it was written from (the look, Olo's data folder, the cursors'
-/// version: it is written again only when one changes).
+/// what it was written from (the look, Olo's data folder, the drawings as
+/// they are, the cursors' version: it is written again only when one
+/// changes).
 fn index(look: &str) -> String {
     let dirs: Vec<String> = olo_xdg::ICON_SIZES.iter().flat_map(|px| CONTEXTS.iter().map(move |(c, _)| format!("{px}x{px}/{c}"))).collect();
     // (Where Olo's pictures are, too: an install elsewhere is linked to
     // afresh.)
     let from = olo_xdg::data_dirs().first().map(|d| d.display().to_string()).unwrap_or_default();
+    let drawn = olo_xdg::own_icons_stamp(look, ICONS.iter().map(|(_, _, ours)| *ours));
     let mut text = format!(
-        "[Icon Theme]\nName={THEME}\nComment=Olo's icons and pointer, written by Olo\nInherits=Adwaita,hicolor\nDirectories={}\nX-Olo-Look={look}\nX-Olo-Data={from}\nX-Olo-Cursors={}\n",
+        "[Icon Theme]\nName={THEME}\nComment=Olo's icons and pointer, written by Olo\nInherits=Adwaita,hicolor\nDirectories={}\nX-Olo-Look={look}\nX-Olo-Data={from}\nX-Olo-Drawn={drawn:x}\nX-Olo-Cursors={}\n",
         dirs.join(","),
         crate::xcursor::VERSION
     );
@@ -139,12 +141,14 @@ pub fn write(icons: &Path, look: &str) -> io::Result<()> {
         crate::xcursor::write_cursors(&dir.join("cursors"))?;
     }
     for px in olo_xdg::ICON_SIZES {
+        // (One of Olo's icons goes by several names: rendered once.)
+        let mut rendered: std::collections::HashMap<&str, Option<Vec<u8>>> = std::collections::HashMap::new();
         for (name, context, ours) in ICONS {
-            let link = dir.join(format!("{px}x{px}")).join(context).join(format!("{name}.png"));
-            match olo_xdg::own_icon_exact(look, ours, *px) {
-                Some(target) => point(&link, &target)?,
+            let file = dir.join(format!("{px}x{px}")).join(context).join(format!("{name}.png"));
+            match rendered.entry(ours).or_insert_with(|| olo_xdg::render_own_icon(look, ours, *px).and_then(|img| img.to_png())) {
+                Some(png) => put(&file, png)?,
                 None => {
-                    let _ = std::fs::remove_file(&link);
+                    let _ = std::fs::remove_file(&file);
                 }
             }
         }
@@ -155,16 +159,17 @@ pub fn write(icons: &Path, look: &str) -> io::Result<()> {
     std::fs::rename(&tmp, &index_path)
 }
 
-/// `link` pointing at `target` (made, or moved to it).
-fn point(link: &Path, target: &PathBuf) -> io::Result<()> {
-    if std::fs::read_link(link).ok().as_ref() == Some(target) {
-        return Ok(());
-    }
-    if let Some(parent) = link.parent() {
+/// `file` holding `bytes`: written beside and named into place, whole or
+/// not there, and in place of what was (a link to one of Olo's pictures,
+/// from when the theme was links, is replaced, never written through).
+fn put(file: &Path, bytes: &[u8]) -> io::Result<()> {
+    if let Some(parent) = file.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let _ = std::fs::remove_file(link);
-    std::os::unix::fs::symlink(target, link)
+    let tmp = file.with_extension("new");
+    let _ = std::fs::remove_file(&tmp);
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(&tmp, file)
 }
 
 #[cfg(test)]
@@ -173,31 +178,50 @@ mod tests {
 
     #[test]
     fn every_icon_is_olos() {
-        // Each names an icon Olo has, at every size.
+        // Each names an icon Olo has drawn.
         for (name, context, ours) in ICONS {
             assert!(CONTEXTS.iter().any(|(c, _)| c == context), "{name}: no context {context}");
-            for px in olo_xdg::ICON_SIZES {
-                assert!(olo_xdg::own_icon_exact(olo_xdg::themes::CLASSIC, ours, *px).is_some(), "{name}: Olo has no {ours} at {px}");
-            }
+            assert!(olo_xdg::own_icon(olo_xdg::themes::CLASSIC, ours).is_some(), "{name}: Olo has no {ours}");
         }
     }
 
     #[test]
     fn writes_the_theme_for_the_look() {
-        let dir = std::env::temp_dir().join(format!("olo-icon-theme-{}", std::process::id()));
+        // (On disk: /tmp is memory here.)
+        let dir = Path::new("/var/tmp").join(format!("olo-icon-theme-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        write(&dir, olo_xdg::themes::CLASSIC).unwrap();
         let theme = dir.join(THEME);
+        // What was there was a link to one of Olo's pictures: replaced,
+        // and what it pointed at left as it is.
+        let old = dir.join("old-folder.png");
+        std::fs::create_dir_all(theme.join("48x48/places")).unwrap();
+        std::fs::write(&old, "a picture").unwrap();
+        std::os::unix::fs::symlink(&old, theme.join("48x48/places/folder.png")).unwrap();
+        let t = std::time::Instant::now();
+        write(&dir, olo_xdg::themes::CLASSIC).unwrap();
+        println!("the icon theme written in {:.0} ms", t.elapsed().as_secs_f64() * 1e3);
+        assert_eq!(std::fs::read_to_string(&old).unwrap(), "a picture");
         let index = std::fs::read_to_string(theme.join("index.theme")).unwrap();
         assert!(index.contains("Inherits=Adwaita,hicolor") && index.contains("\n[48x48/places]\nSize=48\nContext=Places\nType=Fixed\n"));
-        let folder = std::fs::read_link(theme.join("48x48/places/folder.png")).unwrap();
-        assert!(folder.ends_with("icons/48/folder.png"), "{folder:?}");
+        // A picture of its size, drawn by Olo: a PNG, 48 pixels a side.
+        let file = theme.join("48x48/places/folder.png");
+        assert!(!file.is_symlink());
+        let classic = std::fs::read(&file).unwrap();
+        let folder = olo_xdg::decode_png(&file).unwrap();
+        assert_eq!((folder.width, folder.height), (48, 48));
+        assert!(theme.join("256x256/apps/utilities-terminal.png").is_file());
         assert!(theme.join("cursors/default").is_file());
-        // Another look: its own pictures where it has them.
+        // As it would be: left alone.
+        let t = std::time::Instant::now();
+        let written = std::fs::metadata(&file).unwrap().modified().unwrap();
+        write(&dir, olo_xdg::themes::CLASSIC).unwrap();
+        println!("found as it would be in {:.2} ms", t.elapsed().as_secs_f64() * 1e3);
+        assert_eq!(std::fs::metadata(&file).unwrap().modified().unwrap(), written);
+        // Another look: the same drawings in its colours.
         let other = olo_xdg::themes::THEMES.iter().find(|t| t.id != olo_xdg::themes::CLASSIC).unwrap().id;
         write(&dir, other).unwrap();
         assert!(std::fs::read_to_string(theme.join("index.theme")).unwrap().contains(&format!("X-Olo-Look={other}\n")));
-        assert_eq!(std::fs::read_link(theme.join("48x48/places/folder.png")).unwrap(), olo_xdg::own_icon_exact(other, "folder", 48).unwrap());
+        assert_ne!(std::fs::read(&file).unwrap(), classic, "{other}'s folder is the classic one");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

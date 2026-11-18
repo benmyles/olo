@@ -61,7 +61,7 @@ pub enum Why {
     Starting,
 }
 
-/// The stages' icons (`data/icons`), lit in turn, and what each stage
+/// The stages' icons (Olo's own, drawn for the size), lit in turn, and what each stage
 /// says while it's the one going on.
 fn stages(why: Why) -> ([&'static str; 4], [&'static str; 4]) {
     match why {
@@ -239,6 +239,12 @@ fn fitting(sizes: &[u32], want: u32) -> u32 {
     sizes.iter().copied().filter(|&s| s <= want).max().unwrap_or(sizes[0])
 }
 
+/// Olo's icon `name` drawn at `px` device pixels.
+fn icon(name: &str, px: u32) -> Option<Pixmap> {
+    let img = olo_xdg::load_icon(name, px)?.into_premultiplied();
+    Pixmap::from_vec(img.rgba, tiny_skia::IntSize::from_wh(img.width, img.height)?)
+}
+
 fn load(path: PathBuf) -> Option<Pixmap> {
     let img = image::open(path).ok()?.to_rgba8();
     let (w, h) = img.dimensions();
@@ -293,8 +299,8 @@ pub(crate) fn drawn_as(why: Why, scale: f64, stage: usize, line: Option<&str>, p
     let logo_w = fitting(&[256, 320, 384, 448, 512], px(LOGO));
     let logo = load(data(&format!("brand/sizes/olo-logo-on-dark-{logo_w}.png"))?)?;
     let icon_slot = px(ICON);
-    let icon_px = fitting(&[16, 24, 32, 48, 64, 96, 128, 256], icon_slot);
-    let icons: Vec<Pixmap> = icon_names.iter().filter_map(|n| load(data(&format!("icons/{icon_px}/{n}.png"))?)).collect();
+    // (Each drawn for the slot's own pixels, at any scale.)
+    let icons: Vec<Pixmap> = icon_names.iter().filter_map(|n| icon(n, icon_slot)).collect();
     let gap = px(GAP);
     let row_w = icon_slot * icon_names.len() as u32 + gap * (icon_names.len() as u32 - 1);
     let text_size = (TEXT as f64 * scale) as f32;
@@ -360,8 +366,14 @@ mod tests {
     #[test]
     fn sizes_fit_without_resampling() {
         assert_eq!(fitting(&[256, 320, 384, 448, 512], 384), 384);
-        assert_eq!(fitting(&[16, 24, 32, 48, 64, 96, 128, 256], 80), 64);
-        assert_eq!(fitting(&[16, 24, 32, 48, 64, 96, 128, 256], 112), 96);
+        assert_eq!(fitting(&[256, 320, 384, 448, 512], 300), 256);
+        // The icons are drawn for their slot, whatever the scale: 64
+        // points is 80 pixels at 1.25×, and 80 pixels is what's drawn.
+        for (scale, side) in [(1.0, 64), (1.25, 80), (1.5, 96), (1.75, 112), (2.0, 128)] {
+            let drawn = drawn_as(Why::Starting, scale, 2, None, Parts::All).unwrap();
+            assert_eq!(drawn.icon_slot, side);
+            assert_eq!(icon("desktop", drawn.icon_slot).map(|p| (p.width(), p.height())), Some((side, side)), "at {scale}×");
+        }
     }
 
     /// `OLO_VEIL_SHEET=/var/tmp/veil.png cargo test -p app_server veil_sheet`:

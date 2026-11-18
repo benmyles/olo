@@ -91,7 +91,9 @@ for name in olo-login olo-greeter olo-session olo-app-server olo-wlproxy; do
     as_root install -m 755 "target/release/$name" "$LIBEXEC/.$name.new"
     as_root mv -f "$LIBEXEC/.$name.new" "$LIBEXEC/$name"
 done
-as_root cp -r data/icons data/brand data/fonts data/wallpapers "$SHARE/"
+as_root cp -r data/brand data/fonts data/wallpapers "$SHARE/"
+as_root mkdir -p "$SHARE/icons"
+as_root cp -r data/icons/svg "$SHARE/icons/"
 for theme in data/themes/*/; do
     theme=${theme%/}
     as_root mkdir -p "$SHARE/themes/${theme##*/}"

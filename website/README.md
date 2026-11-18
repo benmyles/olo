@@ -38,7 +38,7 @@ In a page:
   It is a link to itself at its largest: a click shows it as large as
   the window has room for, over the page (a `<dialog>`: Escape, a click
   or Close puts it away); with no script the link opens the picture.
-- `{{icon NAME [PX]}}`: an icon from `data/icons`, PX CSS pixels (64),
+- `{{icon NAME [PX]}}`: an icon from `data/icons/svg`, drawn for PX CSS pixels (64),
   sharp at 1× and 2×.
 - `{{wallpaper NAME | LABEL}}`: a picture from the wallpaper pack
   (`data/wallpapers/4k`), with its dark version when it has one.

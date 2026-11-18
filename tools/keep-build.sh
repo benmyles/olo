@@ -80,7 +80,7 @@ TREE=$(cd "${3:?the tree it was built from}" && pwd -P)
 RELEASE=$(cd "${4:?where its programs are}" && pwd -P)
 case "$NAME" in */* | .* | *" "*) echo "a name is one word: $NAME" >&2; exit 1 ;; esac
 [ -x "$RELEASE/olo-session" ] && [ -x "$RELEASE/olo-app-server" ] || { echo "no olo-session and olo-app-server in $RELEASE: build it first (cargo build --release --workspace)" >&2; exit 1; }
-[ -d "$TREE/data/icons" ] || { echo "no data/icons in $TREE" >&2; exit 1; }
+[ -d "$TREE/data/icons/svg" ] || { echo "no data/icons/svg in $TREE" >&2; exit 1; }
 
 P="$KEPT/$NAME"
 mkdir -p "$P/bin" "$P/share/olo"
@@ -96,7 +96,9 @@ for b in "$RELEASE"/olo-*; do
     mv -f "$P/bin/.$name.new" "$P/bin/$name"
     n=$((n + 1))
 done
-cp -r --reflink=auto "$TREE/data/icons" "$TREE/data/brand" "$TREE/data/fonts" "$P/share/olo/"
+cp -r --reflink=auto "$TREE/data/brand" "$TREE/data/fonts" "$P/share/olo/"
+mkdir -p "$P/share/olo/icons"
+cp -r --reflink=auto "$TREE/data/icons/svg" "$P/share/olo/icons/"
 for theme in "$TREE"/data/themes/*/; do
     theme=${theme%/}
     mkdir -p "$P/share/olo/themes/${theme##*/}"

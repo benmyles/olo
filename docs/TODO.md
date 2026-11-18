@@ -17,45 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Every icon a hand-written SVG, perfect at every size** (Ben,
-  2026-11-17: "a lot of the icons right now look great when they're big
-  but have crappy small versions for e.g. the deskbar ... we need to fix
-  that so they look great at all sizes"; "we need to redo every single
-  icon so that they are consistent for all sizes and across all apps";
-  "this also includes the icons inside apps e.g. all the stylededit
-  button icons and such"; "make sure everything is also aimed a
-  consistent angle like either left or right but not a mix"; "at least a
-  512px version of every icon (if not larger)"; "i actually prefer the
-  current beos isometric style"; then, the model's small pictures, flat
-  drawings and pixel art all turned down ("they still suck", "all these
-  suck"): "i want the isometric but i want it to look right. here's
-  what to try: convert the large high quality one to an SVG and then
-  let's see if it looks better as an SVG and add SVG support to olo for
-  all icons/graphics"; "i want you to just manually look at each icon
-  and then write out a picture perfect SVG for each one"; "we also
-  still want to improve every icon to perfection as part of this -- they
-  must all be consistently angled, sized, styled etc. and fit the
-  respective theme"; "make sure the olo ring icon itself also gets
-  turned into an svg"). How: docs/ICONS.md, "Drawings". Done so far: the
-  loader draws `icons/svg/NAME.svg` for the size asked, kept once
-  rendered (`olo_xdg::svg`); the grid, the one projection, the outline
-  and size classes; `tools/dev/icontrace.py`; every one of Classic's 181 is drawn (`data/icons/svg`:
-  the manifest's 143, Weather's skies, the phones), looked at in the
-  apps at 1×, 1.5× and 2×, light and dark; a theme shows the classic
-  drawings in its own colours (`svg::recolour`; Platinum's rules:
-  `data/themes/platinum/icons/recolour.txt`), so Platinum is drawn too;
-  the forms the drawings are made of are `tools/dev/iconforms.py`. To
-  do: the pictures removed (`<px>/NAME.png` in `data/icons` and
-  Platinum's, `manifest.txt`, `mkicons.py`, `genicon.py`,
-  `iconsheet.py`, the references), with what still reads them: the
-  start-up veil and the Plymouth theme (`veil.rs`), the icon theme other
-  programs get (`icon_theme.rs`: Olo's renderings written as PNGs, not
-  links), Olo Setup's embedded icons (`apps/installer/build.rs`), the
-  website's `{{icon}}`, `release.sh`, StyledEdit's and richtext's test
-  picture, and the tests that count pictures (`themes.rs`); then
-  ICONS.md rewritten for drawings alone. Ben is looking at the
-  first ones (`/var/tmp/claude-blueferry/icons/deskbar-svg.png`).
-
 - **Themes: one list (Classic, Platinum, BeOS and every scheme), each
   perfect, with icons of its own, Customize…, and a wallpaper of its
   own** (Ben, 2026-11-17: "the split between themes and colors doesn't
@@ -115,6 +76,48 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Every icon a hand-written drawing (SVG), drawn for the size it's
+  shown at** (Ben,
+  2026-11-17: "a lot of the icons right now look great when they're big
+  but have crappy small versions for e.g. the deskbar ... we need to fix
+  that so they look great at all sizes"; "we need to redo every single
+  icon so that they are consistent for all sizes and across all apps";
+  "this also includes the icons inside apps e.g. all the stylededit
+  button icons and such"; "make sure everything is also aimed a
+  consistent angle like either left or right but not a mix"; "at least a
+  512px version of every icon (if not larger)"; "i actually prefer the
+  current beos isometric style"; then, the model's small pictures, flat
+  drawings and pixel art all turned down ("they still suck", "all these
+  suck"): "i want the isometric but i want it to look right. here's
+  what to try: convert the large high quality one to an SVG and then
+  let's see if it looks better as an SVG and add SVG support to olo for
+  all icons/graphics"; "i want you to just manually look at each icon
+  and then write out a picture perfect SVG for each one"; "we also
+  still want to improve every icon to perfection as part of this -- they
+  must all be consistently angled, sized, styled etc. and fit the
+  respective theme"; "make sure the olo ring icon itself also gets
+  turned into an svg").
+  How: docs/ICONS.md. **Done** (2026-11-17): all 181 of Olo's icons
+  (the 143 apps', panels', kinds' and toolbar's, Weather's 18 skies,
+  the 20 phones, the Olo ring) are drawings in `data/icons/svg`, each
+  written from looking at its picture, on one projection, with one
+  outline, the same forms throughout (`tools/dev/iconforms.py`), and
+  what only reads large left out small. Olo renders one for the exact
+  device pixels it's shown at (so yes: at 2× a 16-point icon is drawn as
+  32 pixels, and 1.25× and 1.75× are exact too) and keeps the result. A
+  theme shows the same drawings in its own colours (Platinum: black
+  ink, lilac greys, a lilac-blue folder, periwinkle blues). The
+  pictures, their eight sizes for two themes and the tools that made
+  them are gone; the start-up veil, the Plymouth theme, Olo Setup, the
+  website and the icon theme other programs get all draw from the
+  drawings. **To try**, after the upgrade (the first start after it
+  renders what it shows once, a fraction of a millisecond each): look
+  at Deskbar's menus, Preferences, Tracker and the desktop, in Classic
+  and in Platinum, and tell me any icon you'd want drawn again: each is
+  one small file, quick to redo. **Left**: the logo (the veil, the
+  website, the brand kit) still shows the ring from its master picture
+  (`docs/brand/olo-mark.png`), not the drawing: `mkbrand.py` next.
 
 - **The phone's other notifications, its music, its conversations
   kept** (2026-11-17; HACKING, "The phone": Its other notifications,

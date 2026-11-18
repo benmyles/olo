@@ -25,14 +25,43 @@ pub mod themes;
 pub mod trash;
 pub mod wallpapers;
 
-/// Device-pixel sizes shipped in data/icons.
-const OWN_SIZES: &[u32] = &[16, 24, 32, 48, 64, 96, 128, 256];
-pub const ICON_SIZES: &[u32] = OWN_SIZES;
+/// The device-pixel sizes Olo's icons are given to other programs at
+/// (the icon theme app_server writes: a drawing is rendered at any size,
+/// a freedesktop theme holds a few).
+pub const ICON_SIZES: &[u32] = &[16, 24, 32, 48, 64, 96, 128, 256];
 
-/// Olo's icon `name` drawn at exactly `px` in theme `theme` (the theme's
-/// own, else the classic one), if there is one.
-pub fn own_icon_exact(theme: &str, name: &str, px: u32) -> Option<PathBuf> {
-    themes::icon_dirs(theme).map(|d| d.join(px.to_string()).join(format!("{name}.png"))).find(|p| p.is_file())
+/// Olo's own drawing of icon `name` for theme `theme` (the theme's own,
+/// else the classic set's, which the theme shows in its colours), if
+/// Olo has one.
+pub fn own_icon(theme: &str, name: &str) -> Option<PathBuf> {
+    themes::icon_dirs(theme).map(|d| d.join("svg").join(format!("{name}.svg"))).find(|p| p.is_file())
+}
+
+/// Olo's own icon `name` rendered at `px` device pixels in theme
+/// `theme`, as Olo shows it, and not kept: for what's written somewhere
+/// of its own (the icon theme other programs read, a web page).
+pub fn render_own_icon(theme: &str, name: &str, px: u32) -> Option<Image> {
+    let path = own_icon(theme, name)?;
+    let drawing = std::fs::read(&path).ok()?;
+    match themes::recolour(theme).filter(|_| !themes::is_its_own(theme, &path)) {
+        Some(rules) => svg::render(rules.apply(name, std::str::from_utf8(&drawing).ok()?).as_bytes(), px, true),
+        None => svg::render(&drawing, px, true),
+    }
+}
+
+/// What changes when any of Olo's icons `names` would be drawn
+/// differently in theme `theme`: the drawings' files (which, changed
+/// when, how long) and the theme's rules for them.
+pub fn own_icons_stamp<'a>(theme: &str, names: impl Iterator<Item = &'a str>) -> u64 {
+    use std::hash::{Hash as _, Hasher as _};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    themes::recolour(theme).map(svg::Recolour::key).hash(&mut h);
+    for name in names {
+        let path = own_icon(theme, name);
+        let meta = path.as_ref().and_then(|p| std::fs::metadata(p).ok());
+        (path, meta.as_ref().map(std::fs::Metadata::len), meta.and_then(|m| m.modified().ok())).hash(&mut h);
+    }
+    h.finish()
 }
 
 /// Directories holding Olo's data (icons/, backgrounds/, ...).
@@ -105,23 +134,8 @@ pub fn find_icon_in(theme: &str, name: &str, px: u32) -> Option<PathBuf> {
     }
     // Ours: its drawing, rendered for the size: the theme's own, else the
     // classic set's (which `load_icon_in` shows in the theme's colours).
-    // An icon not drawn yet: its picture, the smallest pre-scaled size at
-    // least as large as needed.
-    let dirs: Vec<PathBuf> = themes::icon_dirs(theme).collect();
-    for dir in &dirs {
-        let drawn = dir.join("svg").join(format!("{name}.svg"));
-        if drawn.is_file() {
-            return Some(drawn);
-        }
-    }
-    for dir in &dirs {
-        let sizes = OWN_SIZES.iter().filter(|&&s| s >= px).chain(OWN_SIZES.iter().rev().filter(|&&s| s < px));
-        for s in sizes {
-            let p = dir.join(s.to_string()).join(format!("{name}.png"));
-            if p.is_file() {
-                return Some(p);
-            }
-        }
+    if let Some(drawn) = own_icon(theme, name) {
+        return Some(drawn);
     }
     // Freedesktop themes.
     for base in xdg_data_dirs() {
@@ -188,8 +202,9 @@ impl Image {
     }
 }
 
-/// Icon `name` (ours, a theme name, or an absolute path) decoded for `px`
-/// device pixels: the best pre-scaled PNG, or an SVG rendered at `px`.
+/// Icon `name` (ours, a theme name, or an absolute path) for `px` device
+/// pixels: Olo's own drawing rendered at `px` (any SVG is), or another
+/// program's best pre-scaled PNG.
 pub fn load_icon(name: &str, px: u32) -> Option<Image> {
     load_icon_in(themes::current().id, name, px)
 }
@@ -210,6 +225,31 @@ pub fn load_icon_in(theme: &str, name: &str, px: u32) -> Option<Image> {
         }
     } else {
         decode_png(&path)
+    }
+}
+
+impl Image {
+    /// The picture as a PNG file's bytes (straight alpha, as PNG has it).
+    pub fn to_png(&self) -> Option<Vec<u8>> {
+        let mut rgba = self.rgba.clone();
+        if self.premultiplied {
+            for p in rgba.as_chunks_mut::<4>().0 {
+                let a = u32::from(p[3]);
+                if a > 0 && a < 255 {
+                    for c in &mut p[..3] {
+                        *c = ((u32::from(*c) * 255 + a / 2) / a).min(255) as u8;
+                    }
+                }
+            }
+        }
+        let mut out = Vec::new();
+        let mut encoder = png::Encoder::new(&mut out, self.width, self.height);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().ok()?;
+        writer.write_image_data(&rgba).ok()?;
+        writer.finish().ok()?;
+        Some(out)
     }
 }
 
@@ -241,10 +281,8 @@ pub fn has_own_icon(name: &str) -> bool {
         .get_or_init(|| {
             let mut names = std::collections::HashSet::new();
             for dir in data_dirs() {
-                for sub in ["icons/48", "icons/svg"] {
-                    if let Ok(rd) = std::fs::read_dir(dir.join(sub)) {
-                        names.extend(rd.flatten().filter_map(|f| Some(f.path().file_stem()?.to_string_lossy().into_owned())));
-                    }
+                if let Ok(rd) = std::fs::read_dir(dir.join("icons/svg")) {
+                    names.extend(rd.flatten().filter_map(|f| Some(f.path().file_stem()?.to_string_lossy().into_owned())));
                 }
             }
             names

@@ -433,7 +433,7 @@ mod tests {
     /// A document using everything the model has.
     /// A picture: a 16-pixel icon, set at 48 points.
     pub(crate) fn printer() -> Picture {
-        Picture { data: include_bytes!("../../../data/icons/16/printer.png").to_vec(), width: 48.0, height: 48.0, alt: "A printer".into() }
+        Picture { data: include_bytes!("../testdata/printer.png").to_vec(), width: 48.0, height: 48.0, alt: "A printer".into() }
     }
 
     #[test]

@@ -128,7 +128,7 @@ impl MusicAction {
 }
 
 /// The paired phone's own picture: the nearest of the phones drawn
-/// (`data/icons/phones.txt`: the ten commonest iPhones and the ten
+/// (`data/icons/svg/phone-*.svg`: the ten commonest iPhones and the ten
 /// commonest Android phones) to what the phone says it is, as an icon's
 /// name; `phone` for one that matches none (Ben, 2026-11-16: "show the
 /// closest matching icon for a paired phone based on what it is").
@@ -715,16 +715,19 @@ mod tests {
         assert_eq!(other("Nothing Phone (3)"), "phone");
         assert_eq!(other("moto g power"), "phone");
         assert_eq!(other(""), "phone");
-        // (Every picture named is one drawn.)
-        let drawn = include_str!("../../../data/icons/phones.txt");
+        // (Every picture named is one drawn: `data/icons/svg`.)
+        let drawings = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/icons/svg");
+        let drawn: Vec<String> =
+            std::fs::read_dir(&drawings).unwrap().flatten().filter_map(|f| Some(f.path().file_stem()?.to_string_lossy().into_owned())).filter(|n| n.starts_with("phone-")).collect();
         for name in ["iPhone18,1", "iPhone18,2", "iPhone18,3", "iPhone18,4", "iPhone18,5", "iPhone17,1", "iPhone17,2", "iPhone17,3", "iPhone17,5", "iPhone15,4"]
             .map(iphone)
             .into_iter()
             .chain(["Galaxy S26 Ultra", "Galaxy S25 Ultra", "Galaxy S26", "Galaxy A56", "Galaxy A17", "Galaxy A07", "Pixel 10", "Pixel 10 Pro", "Redmi A5", "Redmi Note 14"].map(other))
         {
-            assert!(drawn.lines().any(|l| l.split('|').next() == Some(name)), "{name} isn't drawn");
+            assert!(drawn.iter().any(|d| d == name), "{name} isn't drawn");
         }
-        assert_eq!(drawn.lines().filter(|l| !l.starts_with('#') && !l.is_empty()).count(), 20);
+        assert_eq!(drawn.len(), 20);
+        assert!(drawings.join("phone.svg").is_file(), "the phone that's none of them");
     }
 
     #[test]

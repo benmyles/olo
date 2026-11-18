@@ -64,20 +64,17 @@ strip -o "$STAGE/olo/bin/libpam_olo_face.so" target/release/libpam_olo_face.so
 # not in the repository), which went into the bundle and made it 4.7 GB
 # (2026-11-17; GitHub takes 2 GiB a file).
 SHARE="$STAGE/olo/share/olo"
-# An icon set's sizes (16, 24, …) and lists; not its sources or references.
-sizes() {
+# An icon set's drawings (svg/), and a theme's colours for the classic
+# set's (recolour.txt); not its sources.
+drawings() {
     mkdir -p "$2"
-    for d in "$1"/*/; do
-        d=${d%/}
-        case "${d##*/}" in *[!0-9]*) continue ;; esac
-        cp -r "$d" "$2/"
-    done
+    if [ -d "$1/svg" ]; then cp -r "$1/svg" "$2/"; fi
+    if [ -f "$1/recolour.txt" ]; then cp "$1/recolour.txt" "$2/"; fi
 }
-sizes data/icons "$SHARE/icons"
-cp data/icons/manifest.txt "$SHARE/icons/"
+drawings data/icons "$SHARE/icons"
 for theme in data/themes/*/; do
     theme=${theme%/}
-    [ -d "$theme/icons" ] && sizes "$theme/icons" "$SHARE/themes/${theme##*/}/icons"
+    if [ -d "$theme/icons" ]; then drawings "$theme/icons" "$SHARE/themes/${theme##*/}/icons"; fi
 done
 # The brand's pictures, the fonts, the models that read the text in
 # pictures and that know a face (both were left out: a released Olo

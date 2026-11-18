@@ -148,7 +148,14 @@ fn kept_at(cache: &Path, path: &Path, px: u32, theme: Option<(&str, u64)>) -> Op
 /// One of Olo's own drawings at `px` device pixels: read back if it was
 /// rendered before (by any program), else rendered and kept.
 pub fn own(path: &Path, px: u32) -> Option<Image> {
-    own_in(&crate::cache_dir().join("icons"), path, px)
+    own_in(&kept_dir(), path, px)
+}
+
+/// Where renderings are kept: the person's cache. A test's (anything
+/// cargo runs: it sets `CARGO_MANIFEST_DIR`) are kept in scratch on
+/// disk instead: a test never writes in the person's folders.
+fn kept_dir() -> PathBuf {
+    if std::env::var_os("CARGO_MANIFEST_DIR").is_some() { PathBuf::from("/var/tmp/olo-test-cache/icons") } else { crate::cache_dir().join("icons") }
 }
 
 /// [`own`], what's rendered kept in folder `cache`.
@@ -160,7 +167,7 @@ pub fn own_in(cache: &Path, path: &Path, px: u32) -> Option<Image> {
 /// `theme`'s colours (`rules`: [`crate::themes::recolour`]), kept like
 /// [`own`].
 pub fn own_recoloured(path: &Path, px: u32, theme: &str, rules: &Recolour) -> Option<Image> {
-    own_recoloured_in(&crate::cache_dir().join("icons"), path, px, theme, rules)
+    own_recoloured_in(&kept_dir(), path, px, theme, rules)
 }
 
 /// [`own_recoloured`], what's rendered kept in folder `cache`.

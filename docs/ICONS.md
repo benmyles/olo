@@ -1,14 +1,52 @@
-# Icons: style guide and generation
+# Icons: Olo's drawings
 
 Every Olo icon belongs to one set that looks as if one artist drew it in
 one sitting. That is the bar. An icon that is pretty on its own but sits
 differently from its neighbours is wrong.
 
-![Reference set](img/icon-reference.png)
+![The set's forms](img/icon-reference.png)
 
-*The canonical reference icons (`data/icons/reference/`) on the light,
-dark and night panel colours, at 64 px with the 16 px rendering beside
-each.*
+*Some of the set (the folder, the application, home, the archive, the
+calculator, the installer, the disk and Terminal) on the light, dark
+and night panel colours, at 64 px with the 16 px rendering beside each.*
+
+Every icon is a drawing, an SVG written by hand (`data/icons/svg`), that
+Olo renders for the exact pixels it's shown at. This guide is the
+style, how a drawing is made and judged, how a theme colours the set,
+and how code shows an icon.
+
+## Style
+
+The look is classic BeOS (R5's Tracker and Deskbar icons), redrawn for
+high-resolution displays.
+
+| Aspect | Rule |
+|---|---|
+| View | Isometric, from slightly above, as if the object sits on a desk: one projection for every icon ("The projection", below). **Never straight-on.** Badges and symbols (About, Bluetooth, Restart) are thick discs standing, not flat. |
+| Outline | One crisp dark outline around each form's silhouette, of the same weight on every icon (the renderer sets it for the size). No outline on interior detail. |
+| Colour | Bold, saturated, friendly: folder manila, Be blue (the application cube), BeOS tab yellow, signal green (the installer's arrow), alert red (home's roof), and neutral greys from silver to charcoal. Don't add a new dominant hue without reason. |
+| Shading | Flat-shaded faces, each with a soft gradient. One light, from the top left: the top faces lightest, the front next, the side darkest. |
+| Shadow | A soft contact shadow beneath the object, large sizes only. No long drop shadows. |
+| Proportion | Slightly chunky and tactile. Detail must still read at 32 px, and the silhouette at 16 px: a drawing says what shows at which size. |
+| Content | No text, letters or numerals, except when the glyph *is* the symbol (the "i" of About, StyledEdit's B). No brand logos except the marks Olo draws its own take on (below). |
+| Themes | One drawing in every theme; the theme gives the colours ("A theme's colours"). Check every icon on the light, dark and night panel colours. Dark-grey objects (the trash, System, a black phone) need their outline and highlights to separate them from dark panels. |
+
+Composite icons (a document with a tick, a folder with a magnifier) put
+the primary object at the back left and the modifier in front at the
+lower right, overlapping it by about a third.
+
+Things that come as a set are drawn from one set of pieces, so they
+agree: the document kinds (one page), the skies (one sun, moon, cloud,
+drop, flake), the phones (one phone seen from behind, each model its
+colour and its cameras), the toolbar's letters and alignments.
+
+Other programs (Chrome, Slack, Telegram) and the services in
+Preferences ▸ Integrations (GitHub) get Olo's own take on their mark:
+the logo made an Olo object (a thick badge or tile standing on the
+desk), drawn like any other icon, in every theme. One named as a
+program's desktop entry (`google-chrome`, `slack`) replaces the icon
+the program ships wherever Olo shows it (`olo_xdg::has_own_icon`, in
+`desktop_entry::parse`), even one the entry names by path.
 
 ## Drawings (SVG)
 
@@ -22,11 +60,13 @@ this -- they must all be consistently angled, sized, styled etc. and fit
 the respective theme"). Olo renders it for the size it's shown at
 (`olo_xdg::svg`, resvg, in process): 32 pixels are drawn as 32 pixels,
 not a 256-pixel picture shrunk, and 20 and 28 pixels (16 points at
-1.25× and 1.75×) are as exact as 16 and 32. An icon with a drawing uses
-it; one without still uses its pictures (`<px>/NAME.png`) until it's
-drawn. What was tried first and turned down, at true size: the model's
-picture shrunk better, a second picture drawn for small sizes, flat
-drawings, pixel art.
+1.25× and 1.75×) are as exact as 16 and 32. Until November 2026 the
+icons were pictures from an image model, shrunk to eight sizes
+(`<px>/NAME.png`): fine large, a blur small. What was tried first and
+turned down, at true size: the picture shrunk better, a second picture
+drawn for small sizes, flat drawings, pixel art. The pictures and their
+tools are gone (they're in the repository's history; the 181 drawings
+were each written from looking at its picture).
 
 **The grid.** `viewBox="0 0 64 64"`. The object's paths keep within 3
 and 61 both ways, so that with its outline it's within 2 and 62 (the
@@ -146,244 +186,103 @@ that's kept and edited.
 
 ```sh
 T=tools/dev/icontrace.py
-$T grid data/icons/256/NAME.png /var/tmp/…/g.png     # look at it on the grid
-$T outline data/icons/256/NAME.png                   # its silhouette, in grid units
-$T region data/icons/256/NAME.png 30,20              # one part's polygon and colour
-$T pick data/icons/256/NAME.png 30,20 12,40          # colours
+cargo build --release -p olo-xdg --example svgicon   # what the tools render with
+$T review /var/tmp/…/r.png NAME NAME …               # each drawing at 128 and at every small size, light and dark
 $T round 6,12.5,1.5 36,5,1.5 53,13.5,1.5 …           # a polygon's path, corners rounded
 $T extrude -3,-1.5 5,0 13,0 13,11 …                  # a flat shape given depth: its solid, its faces
-$T sheet /var/tmp/…/s.png data/icons/256/{a,b,c}.png # several pictures on the grid at once
-$T review /var/tmp/…/r.png NAME NAME …               # pictures beside drawings, every small size
-cargo build --release -p olo-xdg --example svgicon
-$T compare data/icons/256/NAME.png data/icons/svg/NAME.svg /var/tmp/…/c.png
+# Drawing from a picture of the thing (a photograph, a sketch, any square PNG):
+$T grid PICTURE.png /var/tmp/…/g.png                 # look at it on the grid
+$T sheet /var/tmp/…/s.png A.png B.png C.png          # several on the grid at once
+$T outline PICTURE.png                               # its silhouette, in grid units
+$T region PICTURE.png 30,20                          # one part's polygon and colour
+$T pick PICTURE.png 30,20 12,40                      # colours
+$T compare PICTURE.png data/icons/svg/NAME.svg /var/tmp/…/c.png
 ```
 
-`compare` shows the picture and the drawing at 256 pixels, their
-difference, and both at 16 to 64 pixels at true size on the light and
-the dark panel, and as Deskbar shows one. Look at it there, at true
-size: it's the small sizes that have to be right. Then
+`review` is where a drawing is judged: at true size, on the light and
+the dark panel, beside its neighbours (name a few of them too): it's
+the small sizes that have to be right. `compare` shows a picture and
+the drawing at 256 pixels, their difference, and both small. Then look
+at it in the apps, in a test session at 1×, 1.5× and 2×, light and
+dark. Then
 `cargo test -p olo-xdg svg` (every drawing is on the grid, renders, and
 stays on the canvas).
 Improve as you draw: one projection, one outline, the same optical size
 as its neighbours, nothing that only reads large left to carry the
 small sizes.
 
-## Style
+## Review checklist
 
-The look is classic BeOS (R5's Tracker and Deskbar icons), redrawn for
-high-resolution displays.
+On `icontrace.py review`'s sheet and then in the apps, at 64 px and 16
+px, on all three panel colours:
 
-| Aspect | Rule |
-|---|---|
-| View | Three-quarter isometric from slightly above, as if the object sits on a desk. **Never straight-on.** Badges and symbols (about, bluetooth) are thick coins or tiles standing in 3/4 view, not flat discs. |
-| Outline | One crisp dark outline around the silhouette, of the same visual weight on every icon. No outline on interior detail. |
-| Colour | Bold, saturated, friendly, taken from the reference set: folder tan, Be blue (application cube), BeOS tab yellow, signal green (installer arrow), alert red (home roof), and neutral greys from silver to charcoal. Don't add a new dominant hue without reason. |
-| Shading | Flat-shaded faces, each with a soft gradient. One light source from the top left. The top faces are lightest and the right faces darkest. |
-| Shadow | A subtle soft contact shadow beneath the object. No long drop shadows. |
-| Proportion | Slightly chunky and tactile. Detail must still read at 32 px, and the silhouette must still read at 16 px. |
-| Content | No text, letters or numerals, except when the glyph *is* the symbol (the "i" of About). No brand logos except protocol marks (Bluetooth). No watermarks. |
-| Canvas | 1024² with a transparent background and generous padding. `mkicons.py` trims and re-pads every icon to the same 3% margin, so how much empty space the model leaves doesn't matter. |
-| Themes | Icons are the same in light, dark and night themes. Check every one on all three panel colours. Dark-grey objects (trash, system, disk) need the outline and their highlights to separate them from dark panels. |
-
-Composite icons (a document with a pencil, a folder with a magnifier) put
-the primary object at the back left and the modifier in front at the lower
-right, overlapping it by about a third.
-
-Other programs (Chrome, Slack) and the services in Preferences ▸
-Integrations (GitHub) get Olo's own take on their mark: the logo made an
-Olo object (a chunky coin or tile standing on the desk), drawn like any
-other icon, in every theme. One named as a program's desktop entry
-(`google-chrome`, `slack`) replaces the icon the program ships wherever
-Olo shows it (`olo_xdg::has_own_icon`, in `desktop_entry::parse`), even
-one the entry names by path.
-
-## Requirements
-
-* **Model: `gpt-image-2.6-sunburst`, quality `high` (the maximum), 1024²,
-  transparent background.** `tools/genicon.py` hard-codes these. Don't
-  generate icons any other way. Don't hand-draw, use another model, or
-  lower the quality to save time.
-* **Always generate against the reference set.** `genicon.py` sends every
-  image in `data/icons/reference/` to the edits endpoint as a style
-  reference. This is what makes the set consistent. A text prompt alone
-  drifts (that is how the old flat `about` and `bluetooth` badges came
-  about). `--no-ref` exists only for bootstrapping a new reference set.
-* **Generate candidates and pick one.** For any new or replacement icon,
-  use `--variants 2` (or 3). Compare the candidates against their
-  neighbours on a contact sheet and promote the best. Never ship an icon
-  you haven't looked at next to the rest of the set.
-* The API key is read from `OPENAI_API_KEY` or `~ben/.env`. Never print,
-  log or commit it.
-
-## Writing a subject (template)
-
-`data/icons/manifest.txt` has one line per icon: `name|subject`. The
-subject describes **only the object**. `genicon.py` supplies the style.
-Template:
-
-```
-<name>|<article> <object>, <material and colour from the reference hues>, <one or two distinguishing details>[, <pose if not obvious: "seen in three-quarter view…">]
-```
-
-Good:
-
-```
-calculator|a chunky desk calculator with a small green LCD, grey body and coloured buttons
-trash-full|a dark grey metal waste bin with a ribbed side, seen in three-quarter view from slightly above, overflowing with crumpled white paper
-```
-
-Avoid:
-
-* Style words ("icon", "isometric", "glossy 3D render", "BeOS"). They are
-  already in the style prompt, and repeating them skews the result.
-* Several unrelated objects. One object, plus at most one modifier.
-* Scenes, people or backgrounds.
-* Flat symbols without a pose ("a blue circle with…"). Give the symbol a
-  body: a coin, a tile, a badge standing on the desk.
-
-## Workflow
-
-```sh
-# 1. Add or edit the line in data/icons/manifest.txt, then generate candidates
-python3 tools/genicon.py NAME "subject from the manifest" --variants 2
-#    (tools/genicons.sh NAME… regenerates manifest entries in one go; it
-#     produces one image each and skips existing ones unless named)
-
-# 2. Compare candidates in place, next to the reference set and neighbours
-python3 tools/iconsheet.py /tmp/sheet.png NAME data/icons/src/candidates/NAME-*.png \
-    folder application home archive calculator disk
-
-# 3. Promote the winner and render the shipped sizes
-mv -f data/icons/src/candidates/NAME-2.png  data/icons/src/NAME.png
-mv -f data/icons/src/candidates/NAME-2.json data/icons/src/NAME.json
-rm -f data/icons/src/candidates/NAME-*
-python3 tools/mkicons.py NAME          # → data/icons/{16,24,…,256}/NAME.png
-
-# 4. Review the whole set once more, then commit data/icons/<px>/ and the manifest
-python3 tools/iconsheet.py /tmp/all.png
-```
-
-Review checklist (on the contact sheet, at 64 px and 16 px, on all three
-backgrounds):
-
-1. Same angle as the references: you can see the top face.
-2. Same outline weight. There is no outline-less "photo" look.
-3. Lit from the top left, with a contact shadow and no long shadow.
-4. Similar optical size to its neighbours. If it looks big or small, the
-   silhouette is wrong; fix the subject wording rather than the padding.
-5. Legible at 16 px. The silhouette alone identifies it.
-6. No stray text, artefacts, or halo around the edges.
-
-Raw images (`data/icons/src/`) are gitignored. Their `.json` sidecars
-record the model, quality, full prompt and references, so any icon can be
-reproduced. The processed sizes and the manifest are committed.
-
-## The reference set
-
-`data/icons/reference/` holds 512 px copies of the icons that define the
-style: folder, application, home, archive, calculator, installer, disk and
-terminal. They cover a warm material, a cool primary-coloured solid, a
-small scene, a cardboard texture, a device with buttons, a composite, a
-metallic object and a screen. Change the reference set only on purpose,
-because doing so changes every icon generated afterwards. To swap a
-reference, replace the file and regenerate `docs/img/icon-reference.png`:
-
-```sh
-python3 tools/iconsheet.py docs/img/icon-reference.png \
-    $(ls data/icons/reference | sed 's/\.png$//')
-```
+1. The one projection: the front on the right, the top showing, nothing
+   mirrored; a flat thing seen from above like its kin.
+2. The same outline weight as its neighbours; forms' faces told apart by
+   lightness, not lines.
+3. Lit from the top left, a contact shadow, no long shadow.
+4. The same optical size as its neighbours, within the canvas (the test
+   measures that: 2 to 62 of the grid).
+5. Legible at 16 px: the silhouette alone identifies it, and what only
+   reads large is `from48`.
+6. The same thing drawn the same way as wherever else it appears.
 
 ## Themes
 
-The whole set, the `olo` mark included, comes in two looks, chosen
-in Preferences ▸ Themes (`Appearance::icon_theme`; new users get
-Classic). Every app follows the choice at once.
+The whole set comes in each theme's colours, chosen in Preferences ▸
+Themes (`Appearance::icon_theme`; new users get Classic). Every app
+follows the choice at once.
 
-| Id | Name | Medium |
+| Id | Name | Its icons |
 |---|---|---|
-| `classic` | Classic (the default) | After BeOS: this guide's glossy set, `data/icons` and `data/brand` themselves. |
-| `platinum` | Platinum | After Mac OS 9: friendly black-outlined icons, lilac folders, gentle isometric devices. |
-
-Platinum draws the same subjects in its own medium and keeps the Be
-grammar: a three-quarter view from the upper left, flat things lying on
-the desk, chunky shapes that read at 16 px, a soft cast shadow to the
-lower right, and Be blue and BeOS tab yellow as the brand colours.
-(There were ten themes until November 2026; the other eight went, and a
-setting naming one draws Classic.)
+| `classic` | Classic (the default) | After BeOS: the drawings as they're written, `data/icons/svg`. |
+| `platinum` | Platinum | After Mac OS 9: the same drawings with a black outline, lilac greys, a lilac-blue folder, periwinkle blues and softer accents (`data/themes/platinum/icons/recolour.txt`). |
 
 A theme lives in `data/themes/<id>/`:
 
 | Path | What |
 |---|---|
-| `style.txt` | Its style prompt, used in place of the house style. |
-| `subjects.txt` | Optional: `name|subject` lines, a subject of its own for an icon where the manifest's names what it draws otherwise (Platinum's lilac folder). |
-| `reference/` | Its reference icons, 512 px: folder, application, disk, terminal and home. |
-| `src/` | Raw 1024² renders and their sidecars (gitignored). |
-| `icons/<px>/<name>.png` | The shipped sizes, laid out as in `data/icons`. |
+| `icons/recolour.txt` | Its colours for the classic set's drawings ("A theme's colours", above). |
+| `icons/svg/<name>.svg` | A drawing of its own for an icon, where a different colour doesn't say it (none yet). |
 
 Rules:
 
-* **A theme draws every icon in the manifest**, `olo` and `themes`
-  included, at every size, and no wordmark of its own (the wordmark is
-  the brand's lettering, the same in every theme: [BRAND.md](BRAND.md)). `cargo test -p olo-xdg`
-  checks this (`themes::tests::every_theme_is_complete`). At run time a
-  missing icon falls back to the Classic one, but never ship a theme with
-  gaps.
-* **A new manifest icon is generated for every theme**, against that
-  theme's references. `genicon.py --theme ID` uses the theme's
-  `style.txt` and `reference/`, drops "glossy" from the subject (the
-  manifest is written for Classic) and writes to `data/themes/ID/src/`.
-* **Pictures that aren't a thing's icon stay out of the manifest.**
-  Weather's 18 skies (`data/icons/weather.txt`, `name|subject` lines as
-  in the manifest) are drawn for Classic with the same tools
-  (`genicon.py NAME "subject"`, `mkicons.py NAME`) and shown in every
-  theme, so the theme test doesn't ask for them: a forecast's symbols
-  are a language of their own. Check them at 16 px (the places list)
-  and 48 px (the forecast) next to each other: one sun, one cloud, the
-  same drops, so they read as a set.
-* **A paired phone's own picture** is one of twenty
-  (`data/icons/phones.txt`: the ten commonest iPhones and the ten
-  commonest Android phones of 2026, `phone-iphone-17-pro`,
-  `phone-galaxy-s26-ultra`, `phone-pixel-10`, …), the nearest to what
-  the phone says it is (`olo_protocol::phone::picture`; `phone` for one
-  that matches none). Each is the phone seen from behind, where one
-  differs from another (its colour, its cameras), with no maker's mark.
-  Pictures like the skies, outside the manifest, but drawn for both
-  themes (`genicon.py NAME "subject"` and again with `--theme
-  platinum`; `mkicons.py [--theme platinum] NAME`). Check them at 16 px
-  (Preferences ▸ Phone's list) and 48 px (its panel) in a row: the
-  same pose, the same size, told apart by colour and cameras.
-* The theme sets were first drawn one image per icon (about 500), not as
-  two candidates each, and then reviewed on a contact sheet per theme.
-  Redraw any icon that drifts with `--variants 2` as usual.
-* **16 and 24 px are drawn for their size** (`mkicons.py`'s `small`),
-  as BeOS R5's mini icons were: sharpened a touch after resampling, and
-  a contour a pixel wide round the silhouette, dark and part
-  see-through (0.6 at 16 px, 0.4 at 24; none from 32 up), so a light
-  thing (a page, a keyboard, a white case, a ruler) reads on a light
-  panel instead of fading into it; on a dark one it costs nothing.
-  `mkicons.py --small [--theme ID]` draws just those two sizes again
-  from each icon's 256-pixel picture.
-* The PNGs are in Git LFS (`.gitattributes`). Install and upgrade copy
-  each theme's `icons/` and `brand/` to `~/.local/share/olo/themes/`.
-
-```sh
-# A new icon NAME, in every theme (one image each; skips ones already drawn)
-tools/genicons.sh --theme platinum NAME
-# …or candidates
-python3 tools/genicon.py --theme platinum NAME "subject" --variants 2
-# Review, then render the sizes
-python3 tools/mkicons.py --theme platinum NAME
-python3 tools/iconsheet.py /var/tmp/sheets/platinum.png --theme platinum
-```
+* **A theme has every icon**: the classic drawing in its colours, or its
+  own. Nothing to generate for a new icon: draw it once, look at it in
+  each theme (`svgicon --theme ID`, and the apps).
+* **No wordmark of its own**: the wordmark is the brand's lettering, the
+  same in every theme ([BRAND.md](BRAND.md)), and so is the Olo ring
+  (`keep olo` in a theme's rules).
+* **Weather's 18 skies** (`weather-*.svg`) are a language of their own:
+  one sun, one cloud, the same drops, so they read as a set. Check them
+  at 16 px (the places list) and 48 px (the forecast) next to each
+  other. A new one is made from the same pieces (`iconforms.Sky`).
+* **A paired phone's own picture** is one of twenty (`phone-*.svg`: the
+  ten commonest iPhones and the ten commonest Android phones of 2026,
+  `phone-iphone-17-pro`, `phone-galaxy-s26-ultra`, `phone-pixel-10`,
+  …), the nearest to what the phone says it is
+  (`olo_protocol::phone::picture`; `phone` for one that matches none).
+  Each is the phone seen from behind, where one differs from another
+  (its colour, its cameras), with no maker's mark; a new model is
+  `iconforms.phone(...)`. Check them at 16 px (Preferences ▸ Phone's
+  list) and 48 px (its panel) in a row: the same pose, the same size,
+  told apart by colour and cameras.
+* Install and upgrade copy the drawings and each theme's `icons/` to
+  `~/.local/share/olo/` (`upgrade.rs`, `sync_data`), and take away the
+  pictures an older Olo kept there.
+* **Other programs** (GTK, Qt) get Olo's icons as a freedesktop icon
+  theme app_server writes (`icon_theme.rs`): each icon rendered by Olo
+  at each size in the theme's colours, as PNGs. Never hand another
+  program a drawing itself: its renderer doesn't know the size classes
+  and would show the large detail and the small stand-ins at once.
 
 ### The wordmark
 
 Themes had wordmarks of their own (Olo's o, l, o in each theme's
 material, drawn by the model) until November 2026. The wordmark is now
 the brand's, "Olo" set in Sora by `tools/mkbrand.py`, the same in every
-theme: see [BRAND.md](BRAND.md). The Olo mark is still a theme's own, as
-its `olo` icon.
+theme: see [BRAND.md](BRAND.md). So is the Olo mark: one drawing,
+`olo.svg`, which every theme's rules keep as it is.
 
 ### Theme wallpapers and the retro collection
 
@@ -598,13 +497,16 @@ photographs are three times their JPEGs.
 
 ## Using icons in code
 
-`olo_ui::icons::paint(window, bounds, "name")`. Names come from the
-manifest; freedesktop icon names and absolute paths also work. The kit
-picks the smallest pre-scaled size that covers the rect in device pixels,
-in the current theme (`olo_xdg::themes::current()`); to show another
-theme, as Preferences does, use `icons::paint_in(window, bounds, theme,
-name)` (the wordmark, `brand::wordmark_centred`, is the same in every
-theme). Use these sizes: 16 for lists, menus and
-the Deskbar; 32 for Tracker mini icons and dialogs; 48 to 64 for the
-Tracker icon view and desktop; 128 for About boxes. Don't tint, recolour
-or scale icons up beyond 256 px.
+`olo_ui::icons::paint(window, bounds, "name")`. Names are the drawings'
+(`data/icons/svg/NAME.svg`); freedesktop icon names and absolute paths
+also work. The kit has the icon drawn for exactly the rect's device
+pixels, in the current theme (`olo_xdg::themes::current()`); to show
+another theme, as Preferences does, use `icons::paint_in(window,
+bounds, theme, name)` (the wordmark, `brand::wordmark_centred`, is the
+same in every theme). Use these sizes: 16 for lists, menus and the
+Deskbar; 32 for Tracker mini icons and dialogs; 48 to 64 for the
+Tracker icon view and desktop; 128 for About boxes. Don't tint or
+recolour an icon in code: colours are the drawing's and the theme's.
+Outside the kit: `olo_xdg::load_icon(name, px)` (kept once rendered),
+`olo_xdg::render_own_icon(theme, name, px)` for what's written
+elsewhere (a PNG: `Image::to_png`).

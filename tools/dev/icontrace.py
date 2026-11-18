@@ -1,7 +1,8 @@
 #!/usr/bin/python3
 """Help for writing an icon's SVG by hand (docs/ICONS.md, "Drawings"):
-looking at its picture on the drawing's 64-unit grid, measuring it, and
-comparing the drawing with it.
+looking at the drawing at every size, and, when drawing from a picture
+of the thing, looking at the picture on the drawing's 64-unit grid,
+measuring it, and comparing the drawing with it.
 
     icontrace.py grid PICTURE OUT.png [x0,y0,x1,y1]
         The picture with the 64 by 64 grid over it (a line every 4 units,
@@ -29,15 +30,17 @@ comparing the drawing with it.
         The polygon itself is the front face.
     icontrace.py review OUT.png NAME [NAME...] [--set DIR]
         A row for each icon NAME of the set in DIR (data/icons by
-        default): its picture and its drawing at 128 pixels, then the
-        drawing at 64, 48, 32, 24, 20 and 16 at true size on the light
-        and on the dark panel, the picture's 32 and 16 after each.
+        default): its drawing at 128 pixels, then at 64, 48, 32, 24, 20
+        and 16 at true size on the light and on the dark panel. (A set
+        that still has pictures of its icons, DIR/<px>/NAME.png, shows
+        the picture first and its 32 and 16 after each: the classic
+        set's are gone, drawn.)
     icontrace.py compare PICTURE DRAWING.svg OUT.png [--theme-dir DIR]
         The picture beside the drawing at 256 pixels, their difference,
         and both at 16 to 64 pixels at true size on the light and the dark
         panel. (Renders with target/release/examples/svgicon.)
 
-A picture is its 256-pixel size (or any square one); coordinates are the
+A picture is any square one; coordinates are the
 drawing's: 0 to 64, x right, y down.
 """
 import os, subprocess, sys

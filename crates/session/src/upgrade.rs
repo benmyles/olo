@@ -709,20 +709,16 @@ fn newer(from: &Path, to: &Path) -> Option<Vec<String>> {
     Some(out)
 }
 
-/// Copy the build tree's icons (`data/icons`: the sizes and the manifest,
-/// found above `from`, the build's output directory) into `to` where
-/// they're new or newer; how many.
+/// Copy the build tree's icons (`data/icons/svg`: the drawings, found
+/// above `from`, the build's output directory) into `to` where they're
+/// new or newer, and take away what an older Olo kept there (its icons
+/// as pictures at each size, and their list); how many changed.
 fn sync_icons(from: &Path, to: &Path) -> std::io::Result<usize> {
-    let Some(src) = from.ancestors().skip(1).take(4).map(|d| d.join("data/icons")).find(|d| d.join("manifest.txt").is_file()) else {
+    let Some(src) = from.ancestors().skip(1).take(4).map(|d| d.join("data/icons")).find(|d| d.join("svg").is_dir()) else {
         return Ok(0);
     };
     std::fs::create_dir_all(to)?;
-    let mut n = 0;
-    if is_newer(&src.join("manifest.txt"), &to.join("manifest.txt")) {
-        std::fs::copy(src.join("manifest.txt"), to.join("manifest.txt"))?;
-        n += 1;
-    }
-    Ok(n + sync_sizes(&src, to)?)
+    Ok(sync_drawings(&src, to)? + drop_pictures(to)?)
 }
 
 /// Whether `a` was changed after `b`, or `b` is missing.
@@ -731,15 +727,60 @@ fn is_newer(a: &Path, b: &Path) -> bool {
     m(b).is_none_or(|b| m(a).is_some_and(|a| a > b))
 }
 
-/// Copy an icon set's pre-scaled sizes (`src/16`, `src/24`, …; not its
-/// raw sources) into `to` where new or newer; how many.
-fn sync_sizes(src: &Path, to: &Path) -> std::io::Result<usize> {
+/// Copy an icon set's drawings (`src/svg/*.svg`) and, a theme's, its
+/// rules for the classic set's (`src/recolour.txt`) into `to` where new
+/// or newer, and take away the drawings and rules it no longer has; how
+/// many changed. (Not its sources or anything else beside them.)
+fn sync_drawings(src: &Path, to: &Path) -> std::io::Result<usize> {
     let mut n = 0;
-    for e in std::fs::read_dir(src)?.flatten() {
-        let name = e.file_name();
-        if name.to_str().is_some_and(|n| n.parse::<u32>().is_ok()) && e.path().is_dir() {
-            n += sync_pngs(&e.path(), &to.join(&name))?;
+    let (drawings, dest) = (src.join("svg"), to.join("svg"));
+    if drawings.is_dir() {
+        std::fs::create_dir_all(&dest)?;
+        for e in std::fs::read_dir(&drawings)?.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name.ends_with(".svg") && is_newer(&e.path(), &dest.join(&name)) {
+                install(&e.path(), &dest, &name)?;
+                std::fs::set_permissions(dest.join(&name), std::fs::Permissions::from_mode(0o644))?;
+                n += 1;
+            }
         }
+    }
+    for e in std::fs::read_dir(&dest).into_iter().flatten().flatten() {
+        if !drawings.join(e.file_name()).is_file() {
+            std::fs::remove_file(e.path())?;
+            n += 1;
+        }
+    }
+    let rules = src.join("recolour.txt");
+    if rules.is_file() {
+        if is_newer(&rules, &to.join("recolour.txt")) {
+            std::fs::create_dir_all(to)?;
+            install(&rules, to, "recolour.txt")?;
+            std::fs::set_permissions(to.join("recolour.txt"), std::fs::Permissions::from_mode(0o644))?;
+            n += 1;
+        }
+    } else if to.join("recolour.txt").exists() {
+        std::fs::remove_file(to.join("recolour.txt"))?;
+        n += 1;
+    }
+    Ok(n)
+}
+
+/// Take away an icon set's pictures at each size (`16/`, `24/`, …) and
+/// their list, from when icons were pictures: nothing reads them, and
+/// they were most of what an install held; how many folders and files
+/// went.
+fn drop_pictures(set: &Path) -> std::io::Result<usize> {
+    let mut n = 0;
+    for e in std::fs::read_dir(set).into_iter().flatten().flatten() {
+        if e.file_name().to_str().is_some_and(|name| name.parse::<u32>().is_ok()) && e.path().is_dir() {
+            std::fs::remove_dir_all(e.path())?;
+            n += 1;
+        }
+    }
+    if set.join("manifest.txt").is_file() {
+        std::fs::remove_file(set.join("manifest.txt"))?;
+        n += 1;
     }
     Ok(n)
 }
@@ -809,8 +850,9 @@ fn sync_fonts(from: &Path, to: &Path) -> std::io::Result<usize> {
     Ok(n)
 }
 
-/// Copy the build tree's themes (`data/themes/<id>`: each one's sizes,
-/// not its sources or references) into `to` where new or newer, and take
+/// Copy the build tree's themes (`data/themes/<id>`: each one's own
+/// drawings and its colours for the classic set's, `sync_drawings`) into
+/// `to` where new or newer, and take
 /// away the ones it no longer has (the themes there were before Classic
 /// and Platinum) and a theme's own wordmark (`brand/`: the wordmark is the
 /// brand's since November 2026, the same in every theme); how many
@@ -823,7 +865,7 @@ fn sync_themes(from: &Path, to: &Path) -> std::io::Result<usize> {
     for e in std::fs::read_dir(&src)?.flatten() {
         let (theme, dest) = (e.path(), to.join(e.file_name()));
         if theme.join("icons").is_dir() {
-            n += sync_sizes(&theme.join("icons"), &dest.join("icons"))?;
+            n += sync_drawings(&theme.join("icons"), &dest.join("icons"))? + drop_pictures(&dest.join("icons"))?;
         }
         if dest.join("brand").is_dir() {
             std::fs::remove_dir_all(dest.join("brand"))?;
@@ -1197,14 +1239,21 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
         let build = base.join("repo/target/release");
         std::fs::create_dir_all(&build).unwrap();
-        std::fs::create_dir_all(base.join("repo/data/icons/16")).unwrap();
+        std::fs::create_dir_all(base.join("repo/data/icons/svg")).unwrap();
         std::fs::create_dir_all(base.join("repo/data/icons/src")).unwrap();
-        std::fs::write(base.join("repo/data/icons/manifest.txt"), "lock|a padlock\n").unwrap();
-        std::fs::write(base.join("repo/data/icons/16/lock.png"), "png").unwrap();
+        std::fs::write(base.join("repo/data/icons/svg/lock.svg"), "<svg/>").unwrap();
         std::fs::write(base.join("repo/data/icons/src/lock.png"), "raw").unwrap();
+        // What an older Olo installed: pictures at each size, their list,
+        // and a drawing there no longer is.
         let to = base.join("prefix/share/olo/icons");
-        assert_eq!(sync_icons(&build, &to).unwrap(), 2);
-        assert!(to.join("16/lock.png").is_file() && !to.join("src").exists());
+        std::fs::create_dir_all(to.join("16")).unwrap();
+        std::fs::create_dir_all(to.join("svg")).unwrap();
+        std::fs::write(to.join("16/lock.png"), "png").unwrap();
+        std::fs::write(to.join("manifest.txt"), "lock|a padlock\n").unwrap();
+        std::fs::write(to.join("svg/gone.svg"), "<svg/>").unwrap();
+        assert_eq!(sync_icons(&build, &to).unwrap(), 4);
+        assert_eq!(std::fs::read_to_string(to.join("svg/lock.svg")).unwrap(), "<svg/>");
+        assert!(!to.join("src").exists() && !to.join("16").exists() && !to.join("manifest.txt").exists() && !to.join("svg/gone.svg").exists());
         // Nothing new: nothing copied.
         assert_eq!(sync_icons(&build, &to).unwrap(), 0);
         let _ = std::fs::remove_dir_all(&base);
@@ -1217,26 +1266,33 @@ mod tests {
         let build = base.join("repo/target/release");
         let theme = base.join("repo/data/themes/platinum");
         std::fs::create_dir_all(&build).unwrap();
-        for dir in ["icons/16", "src", "reference"] {
+        for dir in ["icons/svg", "src"] {
             std::fs::create_dir_all(theme.join(dir)).unwrap();
         }
-        std::fs::write(theme.join("icons/16/lock.png"), "png").unwrap();
+        std::fs::write(theme.join("icons/svg/lock.svg"), "<svg/>").unwrap();
+        std::fs::write(theme.join("icons/recolour.txt"), "ink 000000\n").unwrap();
         std::fs::write(theme.join("src/lock.png"), "raw").unwrap();
-        std::fs::write(theme.join("reference/lock.png"), "ref").unwrap();
-        std::fs::write(theme.join("style.txt"), "clay").unwrap();
         let to = base.join("prefix/share/olo/themes");
         // A theme there was once, installed before.
         std::fs::create_dir_all(to.join("soft-be/icons/16")).unwrap();
         std::fs::write(to.join("soft-be/icons/16/lock.png"), "png").unwrap();
-        // The theme's own wordmark, from before the brand's was everyone's.
+        // The theme's own wordmark, from before the brand's was everyone's,
+        // and its icons as pictures.
         std::fs::create_dir_all(to.join("platinum/brand")).unwrap();
         std::fs::write(to.join("platinum/brand/olo-wordmark.png"), "png").unwrap();
-        assert_eq!(sync_themes(&build, &to).unwrap(), 3);
+        std::fs::create_dir_all(to.join("platinum/icons/16")).unwrap();
+        std::fs::write(to.join("platinum/icons/16/lock.png"), "png").unwrap();
+        assert_eq!(sync_themes(&build, &to).unwrap(), 5);
         let ours = to.join("platinum");
-        assert!(ours.join("icons/16/lock.png").is_file() && !ours.join("brand").exists());
-        assert!(!ours.join("src").exists() && !ours.join("reference").exists() && !ours.join("style.txt").exists());
+        assert!(ours.join("icons/svg/lock.svg").is_file() && !ours.join("brand").exists() && !ours.join("icons/16").exists());
+        assert_eq!(std::fs::read_to_string(ours.join("icons/recolour.txt")).unwrap(), "ink 000000\n");
+        assert!(!ours.join("src").exists());
         assert!(!to.join("soft-be").exists(), "a theme that went stayed");
         assert_eq!(sync_themes(&build, &to).unwrap(), 0);
+        // The theme's rules gone from the tree: gone from the install.
+        std::fs::remove_file(theme.join("icons/recolour.txt")).unwrap();
+        assert_eq!(sync_themes(&build, &to).unwrap(), 1);
+        assert!(!ours.join("icons/recolour.txt").exists());
         let _ = std::fs::remove_dir_all(&base);
     }
 

@@ -656,13 +656,12 @@ mod tests {
             "bin/olo-faced",
             "bin/libpam_olo_face.so",
             "bin/pam_olo_keyring.so",
-            "share/olo/icons/manifest.txt",
-            "share/olo/icons/16",
+            "share/olo/icons/svg/olo.svg",
             "share/olo/brand",
             "share/olo/fonts",
             "share/olo/ocr/text-detection.onnx",
             "share/olo/face/sface.onnx",
-            "share/olo/themes/platinum/icons/16",
+            "share/olo/themes/platinum/icons/recolour.txt",
             "share/olo/wallpapers/pack.txt",
             "share/olo/wallpapers/4k",
             "share/olo/wallpapers/tiles",
@@ -671,7 +670,7 @@ mod tests {
         ] {
             assert!(olo.join(needed).exists(), "{needed} is missing");
         }
-        for sources in ["share/olo/icons/src", "share/olo/wallpapers/src", "share/olo/icons/reference"] {
+        for sources in ["share/olo/icons/src", "share/olo/wallpapers/src", "share/olo/icons/reference", "share/olo/icons/16", "share/olo/themes/platinum/icons/16"] {
             assert!(!olo.join(sources).exists(), "{sources} isn't for a release");
         }
         std::fs::remove_dir_all(&stage).unwrap();

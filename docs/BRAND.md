@@ -11,7 +11,7 @@ branding in this image"):
 
 | Part | What | Made by | Files |
 |---|---|---|---|
-| **The mark** | One glossy ring, a fat torus leaning back: its face Olo blue, its thick side and the wall of its hole Olo yellow, a crisp dark outline. | The icon model (`gpt-image-2.6-sunburst`, quality high) against the sheet's mark (`docs/brand/sheet-mark.png`) and the icon references, as any icon (ICONS.md): the `olo` line of `data/icons/manifest.txt`. | `docs/brand/olo-mark.png` (the master: the 1024² render trimmed, its sidecar `olo-mark.json` beside it); `data/icons/<px>/olo.png` (its sizes, `mkicons.py olo`) |
+| **The mark** | One glossy ring, a fat torus leaning back: its face Olo blue, its thick side and the wall of its hole Olo yellow, a crisp dark outline. | First the icon model (`gpt-image-2.6-sunburst`, quality high) against the sheet's mark (`docs/brand/sheet-mark.png`): the master picture. Then drawn from it by hand, as every icon is (ICONS.md, "Drawings"): its ellipses fitted to the master's. | `docs/brand/olo-mark.png` (the master: the 1024² render trimmed, its sidecar `olo-mark.json` beside it: what `mkbrand.py` makes the logos from); `data/icons/svg/olo.svg` (the drawing: the `olo` icon everywhere in Olo, rendered for the size, the same in every theme) |
 | **The wordmark** | "Olo" in Sora ExtraBold, a little tight (−0.03 em), its l a plain bar (Sora's stem without its flag: neither Sora's l nor its alternate, which has a foot, is the sheet's); under it "DESKTOP" in Sora SemiBold, tracked 0.32 em (320), as wide as "Olo". | `tools/mkbrand.py`, from the font: set, never drawn by a model. | `data/brand/olo-wordmark.png`, `olo-wordmark-on-dark.png` ("Olo" alone: the UI's) |
 | **The horizontal logo** (primary) | The mark, a thin grey rule, the wordmark with DESKTOP. | `tools/mkbrand.py` | `data/brand/sizes/olo-logo-on-dark-W.png` (the veil and boot splash, W = 256 to 512 px); `website/static/brand/olo-logo*.png` |
 | **The stacked logo** | The mark over the wordmark. | `tools/mkbrand.py` | `website/static/brand/olo-logo-stacked*.png` |
@@ -61,12 +61,13 @@ carries it as a Latin subset (`website/static/fonts/sora.woff2`).
 ## Making them again
 
 ```sh
-# The mark (only to redraw it): candidates against the sheet's mark
-python3 tools/genicon.py olo "$(grep '^olo|' data/icons/manifest.txt | cut -d'|' -f2-)" \
-    --variants 3 --ref docs/brand/sheet-mark.png
-# …compare them with the sheet, promote one (ICONS.md), then
-/usr/bin/python3 tools/mkicons.py olo
-# and copy its trimmed 1024 px render to docs/brand/olo-mark.png.
+# The mark's icon is a drawing, data/icons/svg/olo.svg: edit it by hand
+# (ICONS.md, "Drawings") and look at it at every size:
+cargo build --release -p olo-xdg --example svgicon
+/usr/bin/python3 tools/dev/icontrace.py review /var/tmp/me/olo.png olo
+# (The master picture, docs/brand/olo-mark.png, was drawn by the icon
+# model against the sheet's mark, docs/brand/sheet-mark.png; the tool
+# that asked for it went with the icons' pictures, November 2026.)
 
 # Everything else, from the mark and Sora (after any change to either):
 /usr/bin/python3 tools/mkbrand.py --sheet /var/tmp/me/brand-sheet.png

@@ -1030,7 +1030,7 @@ mod tests {
 
     /// A document with a picture between two lines of text.
     fn with_picture() -> (String, Vec<Run>, Vec<Para>, String) {
-        let file = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/icons/16/printer.png").to_owned();
+        let file = concat!(env!("CARGO_MANIFEST_DIR"), "/../../crates/richtext/testdata/printer.png").to_owned();
         let pic = crate::doc::Picture { path: file.clone(), width: 48.0, height: 48.0, alt: "A printer".into() };
         let text = "Above\n\u{FFFC}\nBelow".to_owned();
         let runs = vec![Run { len: 6, style: Style::default() }, Run { len: 3, style: Style { picture: Some(pic), ..Style::default() } }, Run { len: 6, style: Style::default() }];

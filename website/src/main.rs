@@ -12,7 +12,7 @@
 //!   in `templates/layout.html`, its shortcodes expanded:
 //!   `{{shot NAME | ALT [| eager]}}` a screenshot from `docs/img/NAME.png`
 //!   (and `NAME-dark.png`, shown in dark mode when there is one),
-//!   `{{icon NAME [PX]}}` an icon from `data/icons`, `{{wallpaper NAME |
+//!   `{{icon NAME [PX]}}` an icon from `data/icons/svg`, `{{wallpaper NAME |
 //!   LABEL}}` a picture from the wallpaper pack (with its dark version);
 //! - screenshots and wallpapers are made at the widths the site shows,
 //!   as lossless WebP (no compression artifacts, on a page that shows
@@ -288,20 +288,24 @@ fn shot(name: &str, alt: &str, eager: bool, b: &mut Build) -> Result<String, Str
     Ok(html)
 }
 
-/// An icon from Olo's set, `size` CSS pixels, sharp at 1× and 2×.
+/// An icon from Olo's set, `size` CSS pixels: its drawing rendered as
+/// Olo renders it, for exactly `size` pixels and for twice that.
 fn icon(name: &str, size: u32, b: &mut Build) -> Result<String, String> {
-    let icons = repo().join("data/icons");
-    let mut pick = |px: u32| -> Result<String, String> {
-        let px = [16, 24, 32, 48, 64, 96, 128, 256].into_iter().find(|&s| s >= px).unwrap_or(256);
-        let src = icons.join(px.to_string()).join(format!("{name}.png"));
-        if !src.is_file() {
-            return Err(format!("no icon {name} at {px}"));
-        }
+    let drawing = repo().join("data/icons/svg").join(format!("{name}.svg"));
+    if !drawing.is_file() {
+        return Err(format!("no icon {name}"));
+    }
+    let mut draw = |px: u32| -> Result<String, String> {
         let rel = format!("img/icons/{px}/{name}.png");
-        b.copies.insert(dist().join(&rel), src);
+        let to = dist().join(&rel);
+        if newer(&drawing, &to) {
+            let png = fs::read(&drawing).ok().and_then(|svg| olo_xdg::svg::render(&svg, px, true)).and_then(|img| img.to_png()).ok_or_else(|| format!("icon {name} can't be drawn at {px}"))?;
+            write(&to, &png)?;
+        }
+        b.made.insert(to);
         Ok(format!("/{rel}"))
     };
-    let (one, two) = (pick(size)?, pick(size * 2)?);
+    let (one, two) = (draw(size)?, draw(size * 2)?);
     Ok(format!("<img class=\"icon\" src=\"{one}\" srcset=\"{one} 1x, {two} 2x\" width=\"{size}\" height=\"{size}\" alt=\"\" loading=\"lazy\">"))
 }
 

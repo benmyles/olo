@@ -382,7 +382,7 @@ mod tests {
 
     #[test]
     fn pictures_on_pages() {
-        let file = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/icons/16/printer.png");
+        let file = concat!(env!("CARGO_MANIFEST_DIR"), "/../../crates/richtext/testdata/printer.png");
         let pic = crate::doc::Picture { path: file.into(), width: 48.0, height: 36.0, alt: String::new() };
         let text = "A \u{FFFC} b";
         let mut i = input(text);

@@ -1,11 +1,12 @@
-//! Icons: Olo's own set (data/icons/<px>/<name>.png, pre-scaled to device
-//! sizes, in the theme chosen in Preferences ▸ Themes), with a
-//! freedesktop theme's for other programs and file types. Each is drawn
-//! from a bitmap made for exactly the device size it's shown at, a
-//! texture pixel to a device pixel, never resampled by the GPU: a size
-//! the set lacks (20 at 1.25×) is averaged down once from the next one
-//! up. Decoded once per process, off the UI thread (a worker), the
-//! what drew its place drawn again as each arrives.
+//! Icons: Olo's own set (drawings, `data/icons/svg/<name>.svg`, rendered
+//! for exactly the device size asked, in the theme chosen in Preferences
+//! ▸ Themes: `olo_xdg::svg`), with a freedesktop theme's for other
+//! programs and file types. Each is drawn from a bitmap made for exactly
+//! the device size it's shown at, a texture pixel to a device pixel,
+//! never resampled by the GPU: one of Olo's is rendered at that size
+//! (20 at 1.25× as exactly as 16 or 32); another program's picture that
+//! comes larger is averaged down once. Had once per process, off the UI
+//! thread (a worker), what drew its place drawn again as each arrives.
 
 use olo_sync::Mutex;
 use std::{

@@ -1,7 +1,8 @@
 //! Themes: whole looks for Olo's icons, chosen in Preferences ▸ Themes
 //! (`Appearance::icon_theme`). A theme lives in `<data>/themes/<id>/`
-//! (`icons/<px>/<name>.png` like `<data>/icons`) and overlays the classic
-//! set in `<data>/icons`, which fills in anything it lacks. The wordmark
+//! (`icons/svg/<name>.svg` like `<data>/icons`, and `icons/recolour.txt`)
+//! and overlays the classic set in `<data>/icons`, which fills in
+//! anything it lacks, in the theme's colours ([`recolour`]). The wordmark
 //! is the brand's, the same in every theme ([`wordmark_file`]).
 //!
 //! Each process draws in one theme at a time, [`current`]: the kit and
@@ -65,8 +66,8 @@ fn overlays(id: &str) -> impl Iterator<Item = PathBuf> {
     crate::data_dirs().iter().filter(move |_| id != CLASSIC).map(move |d| d.join("themes").join(id))
 }
 
-/// Where theme `id`'s icons are (`svg/<name>.svg`, `<px>/<name>.png`)
-/// and then the classic set's, which fills in for it.
+/// Where theme `id`'s icons are (`svg/<name>.svg`) and then the classic
+/// set's, which fills in for it.
 pub(crate) fn icon_dirs(id: &str) -> impl Iterator<Item = PathBuf> {
     overlays(id).map(|d| d.join("icons")).chain(crate::data_dirs().iter().map(|d| d.join("icons")))
 }
@@ -121,38 +122,27 @@ mod tests {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data")
     }
 
-    fn manifest() -> Vec<String> {
-        std::fs::read_to_string(repo_data().join("icons/manifest.txt")).unwrap().lines().filter(|l| !l.is_empty() && !l.starts_with('#')).map(|l| l.split('|').next().unwrap().to_owned()).collect()
-    }
-
+    /// The classic set is the drawings (`icons/svg`); no theme, and not
+    /// the classic set, keeps pictures of an icon at sizes any more, or a
+    /// wordmark of its own (the brand's is the same in every theme).
     #[test]
-    fn every_theme_is_complete() {
-        // Each theme draws every icon in the manifest at every size: none
-        // falls back to the classic set. (The wordmark is the brand's, the
-        // same in every theme: none has its own.)
+    fn icons_are_drawings() {
         let data = repo_data();
-        let names = manifest();
-        for t in THEMES.iter().filter(|t| t.id != CLASSIC) {
-            let dir = data.join("themes").join(t.id);
-            let missing: Vec<String> =
-                crate::OWN_SIZES.iter().flat_map(|px| names.iter().map(move |n| format!("{px}/{n}"))).filter(|p| !dir.join("icons").join(format!("{p}.png")).is_file()).collect();
-            assert!(missing.is_empty(), "{} lacks {missing:?}", t.id);
-            assert!(!dir.join("brand").exists(), "{} has a wordmark of its own", t.id);
+        let drawn = std::fs::read_dir(data.join("icons/svg")).unwrap().flatten().filter(|f| f.path().extension().is_some_and(|e| e == "svg")).count();
+        assert!(drawn >= 181, "{drawn} drawings");
+        let mut sets = vec![data.join("icons")];
+        sets.extend(THEMES.iter().filter(|t| t.id != CLASSIC).map(|t| data.join("themes").join(t.id).join("icons")));
+        for set in sets {
+            for px in crate::ICON_SIZES {
+                assert!(!set.join(px.to_string()).exists(), "{}/{px}: pictures of icons at a size", set.display());
+            }
         }
-    }
-
-    /// The phones' pictures (`data/icons/phones.txt`, outside the
-    /// manifest) are drawn for every theme too, at every size.
-    #[test]
-    fn every_theme_has_the_phones_pictures() {
-        let data = repo_data();
-        let list = std::fs::read_to_string(data.join("icons/phones.txt")).unwrap();
-        let names: Vec<&str> = list.lines().filter(|l| !l.starts_with('#') && !l.is_empty()).filter_map(|l| l.split('|').next()).collect();
-        assert_eq!(names.len(), 20);
-        for t in THEMES {
-            let icons = if t.id == CLASSIC { data.join("icons") } else { data.join("themes").join(t.id).join("icons") };
-            let missing: Vec<String> = crate::OWN_SIZES.iter().flat_map(|px| names.iter().map(move |n| format!("{px}/{n}"))).filter(|p| !icons.join(format!("{p}.png")).is_file()).collect();
-            assert!(missing.is_empty(), "{} lacks {missing:?}", t.id);
+        for t in THEMES.iter().filter(|t| t.id != CLASSIC) {
+            assert!(!data.join("themes").join(t.id).join("brand").exists(), "{} has a wordmark of its own", t.id);
+            // Every icon a theme is asked for is a drawing: its own, or the classic one.
+            for name in ["folder", "olo", "themes", "phone-iphone-17", "weather-rain"] {
+                assert!(crate::own_icon(t.id, name).is_some(), "{}: no {name}", t.id);
+            }
         }
     }
 
@@ -247,16 +237,6 @@ mod tests {
             assert!(webp_size(&dir.join(sub).join(format!("{}.webp", w.name))).is_some(), "{sub}/{}", w.name);
             for old in ["png", "jpg"] {
                 assert!(!dir.join(sub).join(format!("{}.{old}", w.name)).exists(), "{sub}/{}.{old} is still there", w.name);
-            }
-        }
-    }
-
-    #[test]
-    fn the_classic_set_is_complete() {
-        let icons = repo_data().join("icons");
-        for px in crate::OWN_SIZES {
-            for n in manifest() {
-                assert!(icons.join(format!("{px}/{n}.png")).is_file(), "classic lacks {px}/{n}");
             }
         }
     }

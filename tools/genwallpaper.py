@@ -31,9 +31,9 @@ Reads OPENAI_API_KEY from the environment or ~ben/.env. Never print it.
 import argparse, base64, json, os, sys, time, urllib.error, urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import genicon  # noqa: E402  (its key and multipart, and the model)
+import imagemodel  # noqa: E402  (its key and multipart, and the model)
 
-MODEL, QUALITY = genicon.MODEL, genicon.QUALITY
+MODEL, QUALITY = imagemodel.MODEL, imagemodel.QUALITY
 SIZE = (3840, 2160)
 ULTRAWIDE_H = 1648
 THUMB = (320, 180)
@@ -174,12 +174,12 @@ def generate(prompt, images, n):
     fields = {"model": MODEL, "prompt": prompt, "size": f"{SIZE[0]}x{SIZE[1]}", "quality": QUALITY,
               "background": "opaque", "output_format": "png", "n": str(n)}
     if images:
-        body, ctype = genicon.multipart(fields, [("image[]", p) for p in images])
+        body, ctype = imagemodel.multipart(fields, [("image[]", p) for p in images])
         url = "https://api.openai.com/v1/images/edits"
     else:
         body, ctype = json.dumps({**fields, "n": n}).encode(), "application/json"
         url = "https://api.openai.com/v1/images/generations"
-    req = urllib.request.Request(url, body, {"Authorization": "Bearer " + genicon.key(), "Content-Type": ctype})
+    req = urllib.request.Request(url, body, {"Authorization": "Bearer " + imagemodel.key(), "Content-Type": ctype})
     for attempt in range(4):
         try:
             return [base64.b64decode(d["b64_json"]) for d in json.load(urllib.request.urlopen(req, timeout=1800))["data"]]

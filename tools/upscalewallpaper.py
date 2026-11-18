@@ -26,7 +26,7 @@ Reads OPENAI_API_KEY from the environment or ~ben/.env. Never print it.
 import argparse, base64, json, os, sys, time, urllib.error, urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import genicon  # noqa: E402  (the key, multipart and the model)
+import imagemodel  # noqa: E402  (the key, multipart and the model)
 import genwallpaper  # noqa: E402  (promote)
 
 SRC = os.path.join(genwallpaper.WALLPAPERS, "src")
@@ -94,11 +94,11 @@ def grid(w, h):
 
 
 def edit(prompt, image, size):
-    fields = {"model": genicon.MODEL, "prompt": prompt, "size": size, "quality": genicon.QUALITY,
+    fields = {"model": imagemodel.MODEL, "prompt": prompt, "size": size, "quality": imagemodel.QUALITY,
               "background": "opaque", "output_format": "png", "n": "1"}
-    body, ctype = genicon.multipart(fields, [("image[]", image)])
+    body, ctype = imagemodel.multipart(fields, [("image[]", image)])
     req = urllib.request.Request("https://api.openai.com/v1/images/edits", body,
-                                 {"Authorization": "Bearer " + genicon.key(), "Content-Type": ctype})
+                                 {"Authorization": "Bearer " + imagemodel.key(), "Content-Type": ctype})
     for attempt in range(4):
         try:
             return base64.b64decode(json.load(urllib.request.urlopen(req, timeout=1800))["data"][0]["b64_json"])
@@ -173,7 +173,7 @@ def draw_tile(src, name):
             p, q = px[x, y], bp[x, y]
             px[x, y] = tuple(round(q[i] * (1 - a) + p[i] * a) for i in range(3))
     tile.save(out)
-    json.dump({"model": genicon.MODEL, "quality": genicon.QUALITY, "size": size, "source": os.path.basename(src),
+    json.dump({"model": imagemodel.MODEL, "quality": imagemodel.QUALITY, "size": size, "source": os.path.basename(src),
                "tile": [w, h], "prompt": prompt, "created": time.strftime("%Y-%m-%dT%H:%M:%S")},
               open(out[:-4] + ".json", "w"), indent=1)
     print(out, f"tile:{w}")
@@ -220,11 +220,11 @@ def draw(src, name, dark):
     tmp = out + ".in.png"
     Image.open(src).convert("RGB").save(tmp)
     prompt = DARK if dark else UPSCALE
-    fields = {"model": genicon.MODEL, "prompt": prompt, "size": "3840x2160", "quality": genicon.QUALITY,
+    fields = {"model": imagemodel.MODEL, "prompt": prompt, "size": "3840x2160", "quality": imagemodel.QUALITY,
               "background": "opaque", "output_format": "png", "n": "1"}
-    body, ctype = genicon.multipart(fields, [("image[]", tmp)])
+    body, ctype = imagemodel.multipart(fields, [("image[]", tmp)])
     req = urllib.request.Request("https://api.openai.com/v1/images/edits", body,
-                                 {"Authorization": "Bearer " + genicon.key(), "Content-Type": ctype})
+                                 {"Authorization": "Bearer " + imagemodel.key(), "Content-Type": ctype})
     try:
         for attempt in range(4):
             try:
@@ -240,14 +240,14 @@ def draw(src, name, dark):
     finally:
         os.remove(tmp)
     open(out, "wb").write(base64.b64decode(data))
-    json.dump({"model": genicon.MODEL, "quality": genicon.QUALITY, "size": "3840x2160", "source": os.path.basename(src),
+    json.dump({"model": imagemodel.MODEL, "quality": imagemodel.QUALITY, "size": "3840x2160", "source": os.path.basename(src),
                "prompt": prompt, "created": time.strftime("%Y-%m-%dT%H:%M:%S")}, open(out[:-4] + ".json", "w"), indent=1)
     print(out)
 
 
 def main():
-    if os.environ.get("OLO_IMAGE_MODEL") not in (None, genicon.MODEL):
-        sys.exit(f"wallpapers must be made with {genicon.MODEL} (see docs/ICONS.md)")
+    if os.environ.get("OLO_IMAGE_MODEL") not in (None, imagemodel.MODEL):
+        sys.exit(f"wallpapers must be made with {imagemodel.MODEL} (see docs/ICONS.md)")
     ap = argparse.ArgumentParser()
     ap.add_argument("src", nargs="?")
     ap.add_argument("name", nargs="?")

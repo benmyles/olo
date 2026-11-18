@@ -228,12 +228,25 @@ Each note: what to do, then why (what happened), then how to apply it.
   done fails on that panel (a new Preferences panel needs the settings
   index made again first: `OLO_WRITE_SETTINGS=1 cargo test -p
   olo-preferences --features olo-kit/lint ui_lint_settings_index`).
-- **`tools/iconsheet.py` has no `--help`**: its first argument is the
-  sheet to write (`iconsheet.py /var/tmp/ME/sheet.png NAME
-  data/icons/src/candidates/NAME-*.png NEIGHBOUR…`). A theme's
-  candidates are in `data/themes/ID/src/candidates/`; they look small
-  beside shipped icons only until `mkicons.py --theme ID NAME` trims
-  them.
+- **Icons are drawings; the tools that look at them need `svgicon`
+  built** (`cargo build --release -p olo-xdg --example svgicon`:
+  `icontrace.py review` and `compare` render with it, and show a blank
+  where it's missing or stale). `review OUT.png NAME…` is the sheet to
+  judge a drawing on (128 px and every small size, light and dark);
+  `svgicon --theme platinum IN.svg OUT.png SIZE` shows it in a theme's
+  colours. A drawing is checked by `cargo test -p olo-xdg svg` (on the
+  grid, renders, within 2 to 62 of the canvas: what reaches the edge is
+  cut off, as Activity Monitor's arrow was).
+- **Start a drawing from `tools/dev/iconforms.py`**, not from nothing:
+  a box, a plate, a badge, the page, the CRT and the rest are there,
+  and every drawing made of them agrees with the set. In a plane's
+  group (`FRONT`, `PLATE`) a stroke is scaled with the plane, so an
+  outline (`class="o"`) there is uneven: outline a form in screen
+  coordinates (`rounded`, `slab`) and draw only its faces in the plane.
+  A shape `extrude`d and then mirrored needs its points reversed.
+- **Anything cargo runs keeps its rendered icons in
+  `/var/tmp/olo-test-cache/icons`**, not the person's cache
+  (`svg::kept_dir`): safe to delete.
 - **Is a window showing the pixels it was given?** Render what it
   should show yourself and compare with a `tsession shot`, with PIL
   (`/usr/bin/python3 -I`): `ImageChops.difference` and its mean and

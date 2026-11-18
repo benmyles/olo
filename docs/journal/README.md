@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### The start-up veil's icons are drawn for their size
+
+*18:51* — The veil and the boot splash show Olo's drawings, rendered for the slot's own pixels at 1×, 1.5× and 2× (they were the nearest pre-scaled picture no bigger than the slot).
+
+![The start-up veil's icons are drawn for their size](2026-11-17/185124-the-start-up-veil-s-icons-are-drawn-for-their-si.png)
+
 ### Platinum's icons: the same drawings, its colours
 
 *18:32* — A theme without a drawing of its own shows the classic one in its colours (Platinum: black ink, lilac greys, a lilac-blue folder, periwinkle blues), so an icon has the same angle, size and detail in every theme.

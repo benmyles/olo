@@ -6,8 +6,9 @@
 //! `svgicon --time NAME…` measures what drawing costs beside decoding.
 
 /// `svgicon --time NAME…`: how long each of Olo's icons NAME takes to be
-/// had at 16, 32, 64 and 256 pixels, its drawing rendered and (where it
-/// still has them) its pre-scaled picture decoded: the median of 200.
+/// had at 16, 32, 64 and 256 pixels: its drawing rendered, rendered in
+/// Platinum's colours, read back kept, and a picture of that size
+/// decoded (what the pre-scaled pictures cost): the median of 200.
 fn time(names: &[String]) {
     let data = olo_xdg::data_dirs().first().cloned().expect("Olo's data");
     let median = |f: &dyn Fn()| {
@@ -41,8 +42,9 @@ fn time(names: &[String]) {
             let kept = median(&|| {
                 olo_xdg::svg::own_in(&cache, &path, px);
             });
-            let png = data.join("icons").join(px.to_string()).join(format!("{name}.png"));
-            let decoded = png.is_file().then(|| {
+            // (What a picture of that size takes to decode: the drawing's own, as a PNG.)
+            let png = cache.join(format!("{name}-{px}.png"));
+            let decoded = olo_xdg::svg::render(&svg, px, true).and_then(|i| i.to_png()).and_then(|bytes| std::fs::create_dir_all(&cache).and_then(|()| std::fs::write(&png, bytes)).ok()).map(|()| {
                 median(&|| {
                     olo_xdg::decode_png(&png);
                 })
@@ -88,20 +90,7 @@ fn main() {
             eprintln!("svgicon: {input} isn't an SVG that can be drawn");
             std::process::exit(1);
         };
-        // Straight alpha, as PNG has it.
-        let mut rgba = img.rgba;
-        for p in rgba.chunks_exact_mut(4) {
-            let a = u32::from(p[3]);
-            if a > 0 && a < 255 {
-                for c in &mut p[..3] {
-                    *c = ((u32::from(*c) * 255 + a / 2) / a).min(255) as u8;
-                }
-            }
-        }
         let path = if sizes.len() > 1 { output.replace(".png", &format!("-{px}.png")) } else { output.clone() };
-        let mut encoder = png::Encoder::new(std::io::BufWriter::new(std::fs::File::create(&path).expect("the picture's file")), px, px);
-        encoder.set_color(png::ColorType::Rgba);
-        encoder.set_depth(png::BitDepth::Eight);
-        encoder.write_header().and_then(|mut w| w.write_image_data(&rgba)).expect("the picture written");
+        std::fs::write(&path, img.to_png().expect("the picture as a PNG")).expect("the picture written");
     }
 }
