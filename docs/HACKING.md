@@ -21072,6 +21072,27 @@ things stand with the servers.
   `show:NAME` / `hide:NAME`, `new-event` (⌘N), `new-event:
   2026-11-20T14:00`, `edit-event` (⌘E), `delete-event` (⌘⌫).
 
+**Dragging an event** (`week.rs`: `select`, `dragged`, `dropped`;
+`Calendar::drag`). Among the hours of the week or the day, an event of
+a calendar that can be written to is pressed and dragged to another
+time or day: once the pointer has gone four points (a click still only
+selects), it goes by quarter hours (`quarter`: its top's nearest), in
+the day under the pointer; where it was is drawn faint, and where it
+would go across that day's whole width with the times it would have.
+Let go, it's moved there as long as it was (`Msg::Move` →
+`move_event`: the editor's own draft with its start and end shifted,
+sent as its Save is, so a repeating event asks "only this one, or
+every one of them?" and the change is written the same way); let go
+where it was, or Escape, and nothing changes. The drag is followed by
+`on_drag_move` (the window is woken for it only while a button is
+held) and ended by `on_window_mouse_up`; the hours' drawing is keyed
+by where the event would go, so it's drawn again only as that changes:
+twenty steps of a drag drew 19 frames of 0.77 ms on average (the
+slowest 1.96 ms; release, 2×, `tools/dev/cost`). Tried against the
+demo: Dentist from Tuesday 3 PM to Thursday 10 AM; Monday's Standup an
+hour and a half later, only that one. Not yet: the month's days, the
+whole-day strip, an event's end.
+
 **Reminders** (`apps/calendar/src/service.rs`): `olo-calendar
 --service` is one of a real session's services (`REAL_SHELL`), with no
 window. It shows each reminder an event has (its `VALARM`s, as

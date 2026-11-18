@@ -185,6 +185,26 @@ pub enum Msg {
     /// Show this occurrence (its event's address, its start on the
     /// person's clock): a reminder's Show.
     Reveal(String, jiff::civil::DateTime),
+    /// The occurrence dragged among the hours, let go: it starts then
+    /// (the person's clock), as long as it was.
+    Move(Key, jiff::civil::DateTime),
+}
+
+/// An event being dragged among the hours (the week's, the day's).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Drag {
+    pub key: Key,
+    /// Where the press was, in the hours' drawing.
+    pub from: olo_kit::Point<olo_kit::Pixels>,
+    /// How far under the event's top the press was, and how long the
+    /// event is (minutes).
+    pub grab: f32,
+    pub lasts: f32,
+    /// Where it is, and where it would go: a day and a start (minutes of
+    /// the day, by quarter hours). None until the pointer has gone a few
+    /// points: a click selects, it doesn't move.
+    pub was: (Date, i32),
+    pub to: Option<(Date, i32)>,
 }
 
 /// `--show HREF START` among a launch's arguments: the occurrence to show.
@@ -229,6 +249,8 @@ pub struct Calendar {
     pub selected: Option<Key>,
     /// An occurrence to select once it's among those shown ([`Msg::Reveal`]).
     reveal: Option<(String, jiff::civil::DateTime)>,
+    /// An event pressed among the hours, dragged to another time or day.
+    pub drag: Option<Drag>,
     pub standing: HashMap<String, Standing>,
     /// Nothing's been read from disk yet.
     pub loading: bool,
@@ -291,6 +313,7 @@ impl Calendar {
             asking: 0,
             selected: None,
             reveal: None,
+            drag: None,
             standing: HashMap::new(),
             loading: true,
             last_sync: None,
@@ -378,8 +401,38 @@ impl Calendar {
 
     /// The editor, for the occurrence `key`.
     pub fn open_event(&mut self, key: &Key, cx: &mut Cx<Self>) {
+        if let Some(opening) = self.opening_of(key) {
+            self.open_editor(opening, cx);
+        }
+    }
+
+    /// Whether the occurrence may be changed: its calendar can be
+    /// written to.
+    pub fn changeable(&self, key: &Key) -> bool {
+        self.book.cals.get(key.0).is_some_and(|c| c.kept.writable)
+    }
+
+    /// The occurrence moved to start at `start` (the person's clock), as
+    /// long as it was: a change as the editor's Save makes it (a
+    /// repeating event's asks: only this one, or all).
+    fn move_event(&mut self, key: &Key, start: jiff::civil::DateTime, cx: &mut Cx<Self>) {
         let Some(shown) = self.shown.iter().find(|s| s.key() == *key).cloned() else { return };
-        let Some(stored) = self.book.stored(&shown) else { return };
+        let Some(opening) = self.opening_of(key) else { return };
+        let Ok(by) = start.since(shown.start) else { return };
+        if by.is_zero() {
+            return;
+        }
+        let mut draft = opening.draft;
+        let (Ok(new_start), Ok(new_end)) = (draft.start.checked_add(by), draft.end.checked_add(by)) else { return };
+        (draft.start, draft.end) = (new_start, new_end);
+        cx.send(Msg::Save(Box::new(editor::Saving { target: opening.target, draft, cal: shown.cal })));
+    }
+
+    /// What the editor is opened with for the occurrence `key`: what it
+    /// is in its calendar, and its words and times as a draft.
+    fn opening_of(&self, key: &Key) -> Option<editor::Opening> {
+        let shown = self.shown.iter().find(|s| s.key() == *key).cloned()?;
+        let stored = self.book.stored(&shown)?;
         // The occurrence's own text, if it was changed by itself; else the event's.
         let event = shown.id.as_ref().and_then(|id| stored.overrides.iter().find(|o| o.recurrence_id.as_ref().is_some_and(|r| olo_calendar::event::same(r, id, &self.zone)))).unwrap_or(&stored.event);
         // Its times on its own clock (another zone's, said).
@@ -398,8 +451,7 @@ impl Calendar {
         // (How it repeats is the event's own, whichever occurrence is opened.)
         let series = edit::Draft::of(&stored.event, start, end);
         let draft = edit::Draft { repeat: series.repeat, until: series.until, ..edit::Draft::of(event, start, end) };
-        let opening = editor::Opening { target, draft, calendars: vec![(shown.cal, name)], calendar: 0, today: self.today, h24: self.h24, month_first: month_first(), clock };
-        self.open_editor(opening, cx);
+        Some(editor::Opening { target, draft, calendars: vec![(shown.cal, name)], calendar: 0, today: self.today, h24: self.h24, month_first: month_first(), clock })
     }
 
     fn open_editor(&mut self, opening: editor::Opening, cx: &mut Cx<Self>) {
@@ -798,6 +850,7 @@ impl View for Calendar {
                 }
                 self.try_reveal();
             }
+            Msg::Move(key, start) => return self.move_event(&key, start, cx),
             Msg::Reveal(href, start) => {
                 self.reveal = Some((href, start));
                 self.go(start.date(), cx);

@@ -4972,5 +4972,11 @@
   "title": "Deskbar: other displays, collapsed",
   "caption": "An option in Preferences \u25b8 Deskbar (off unless turned on): each other display is one row in a display's Deskbar, with how many applications it has and an arrow. Down shows its workspaces and applications; up puts them away. Left and middle: Display 1 opened, light and dark; right: Display 0 collapsed, on the other display's Deskbar.",
   "image": "2026-11-18/152556-deskbar-other-displays-collapsed.png"
+ },
+ {
+  "time": "2026-11-18T15:37:53",
+  "title": "Calendar: an event dragged to another time",
+  "caption": "Among the week's or the day's hours an event is pressed and dragged: it goes by quarter hours to the day under the pointer, drawn there with the times it would have while where it was goes faint (left). Let go, it's there (right). A repeating one asks whether only that one moves.",
+  "image": "2026-11-18/153753-calendar-an-event-dragged-to-another-time.png"
  }
 ]

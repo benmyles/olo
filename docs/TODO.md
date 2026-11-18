@@ -103,7 +103,9 @@ something nobody here has is in "Blocked", with what it waits for.
   API to be turned on in its project), Fastmail's by an app password,
   any other CalDAV server's; tried against a stand-in server end to
   end. Its own icon (a block calendar, in every set; Flat's its own
-  drawing). **Next**: dragging an event to another time,
+  drawing). An event is dragged among the hours to another time or
+  day (HACKING.md, "Calendar"). **Next**: dragging in the month and
+  the whole-day strip, and an event's end (how long it lasts);
   Find, Undo of a deletion, invitations (who's coming, answering);
   the Deskbar widget, the palette, the assistant. Reminders are shown
   (`olo-calendar --service`, a session service; Show goes to the

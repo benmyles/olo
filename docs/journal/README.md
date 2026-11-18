@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Calendar: an event dragged to another time
+
+*15:37* — Among the week's or the day's hours an event is pressed and dragged: it goes by quarter hours to the day under the pointer, drawn there with the times it would have while where it was goes faint (left). Let go, it's there (right). A repeating one asks whether only that one moves.
+
+![Calendar: an event dragged to another time](2026-11-18/153753-calendar-an-event-dragged-to-another-time.png)
+
 ### Deskbar: other displays, collapsed
 
 *15:25* — An option in Preferences ▸ Deskbar (off unless turned on): each other display is one row in a display's Deskbar, with how many applications it has and an arrow. Down shows its workspaces and applications; up puts them away. Left and middle: Display 1 opened, light and dark; right: Display 0 collapsed, on the other display's Deskbar.

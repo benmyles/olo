@@ -5,11 +5,12 @@
 
 use jiff::civil::Date;
 use olo_kit::{
-    Bounds, Cx, Element, FontWeight, InteractiveElement as _, IntoElement as _, MouseButton, MouseDownEvent, ParentElement as _, Pixels, Styled as _, agent, div, point, px, size, style, theme,
+    Bounds, Cx, Element, FontWeight, InteractiveElement as _, IntoElement as _, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Styled as _, agent, div, point,
+    px, size, style, theme,
     widgets::{ScrollView, scroll::SCROLL_BAR},
 };
 
-use crate::{Calendar, Key, Mode, Msg, layout, words};
+use crate::{Calendar, Drag, Key, Mode, Msg, layout, words};
 
 /// An hour's height.
 pub const HOUR: f32 = 48.0;
@@ -24,6 +25,10 @@ const BAR: f32 = 15.0;
 const MOST: usize = 4;
 const EDGE: f32 = 3.0;
 const PAD: f32 = 4.0;
+/// An event dragged among the hours goes by quarter hours, once the
+/// pointer has gone this far from where it pressed.
+const STEP: i32 = 15;
+const DRAG_AFTER: f32 = 4.0;
 
 #[derive(Debug, Clone, PartialEq)]
 enum Part {
@@ -36,6 +41,51 @@ struct State {
     parts: Vec<(Bounds<Pixels>, Part)>,
     /// Where the drawing's corner was when they were noted.
     origin: olo_kit::Point<Pixels>,
+    /// The hours' days: the columns' edges, and the first day (for a
+    /// drag: which day and minute the pointer is over).
+    cols: Vec<Pixels>,
+    first: Option<Date>,
+}
+
+/// The pointer moved with an event pressed: where the event would go
+/// now (the day under the pointer, the quarter hour its top is nearest),
+/// drawn again only when that changes.
+fn dragged(v: &mut Calendar, e: &MouseMoveEvent, cx: &mut Cx<Calendar>) {
+    let Some(drag) = &v.drag else { return };
+    let now = cx.listener_bounds();
+    let state = cx.node_state::<State>();
+    let at = crate::view::in_drawing(e.position, state.origin, now);
+    let far = f32::from(at.x - drag.from.x).abs().max(f32::from(at.y - drag.from.y).abs()) >= DRAG_AFTER;
+    if drag.to.is_none() && !far {
+        return;
+    }
+    let (Some(first), true) = (state.first, state.cols.len() >= 2) else { return };
+    let col = state.cols.windows(2).position(|c| at.x < c[1]).unwrap_or(state.cols.len() - 2);
+    let day = layout::day_of(layout::day_number(first) + col as i32);
+    let top = f32::from(at.y - state.origin.y) / HOUR * 60.0 - drag.grab;
+    let start = quarter(top);
+    if drag.to != Some((day, start)) {
+        if let Some(d) = &mut v.drag {
+            d.to = Some((day, start));
+        }
+        cx.invalidate();
+    }
+}
+
+/// The start a dragged event takes with its top `minutes` into the day:
+/// the nearest quarter hour, within the day.
+fn quarter(minutes: f32) -> i32 {
+    (((minutes / STEP as f32).round() as i32) * STEP).clamp(0, 24 * 60 - STEP)
+}
+
+/// The button let go: an event dragged somewhere else goes there.
+fn dropped(v: &mut Calendar, _: &MouseUpEvent, cx: &mut Cx<Calendar>) {
+    let Some(drag) = v.drag.take() else { return };
+    let Some((day, start)) = drag.to else { return };
+    cx.invalidate();
+    if (day, start) != drag.was {
+        cx.send(Msg::Move(drag.key, day.at((start / 60) as i8, (start % 60) as i8, 0, 0)));
+    }
 }
 
 /// The days it shows: the first, and how many.
@@ -62,6 +112,21 @@ fn select(v: &mut Calendar, e: &MouseDownEvent, hours: bool, cx: &mut Cx<Calenda
     let state = cx.node_state::<State>();
     let at = crate::view::in_drawing(e.position, state.origin, now);
     let over = state.parts.iter().rev().find(|(r, _)| r.contains(&at)).map(|(_, part)| part.clone());
+    // An event pressed among the hours may be dragged to another time
+    // or day (one in a calendar that can be written to).
+    let pressed = match &over {
+        Some(Part::Event(key)) if hours && e.click_count == 1 && v.changeable(key) => {
+            state.parts.iter().rev().find(|(r, part)| r.contains(&at) && matches!(part, Part::Event(k) if k == key)).map(|(r, _)| *r)
+        }
+        _ => None,
+    };
+    if let (Some(r), Some(Part::Event(key))) = (pressed, &over)
+        && let Some(s) = v.shown.iter().find(|s| s.key() == *key)
+    {
+        let minutes = |t: jiff::civil::DateTime| t.hour() as i32 * 60 + t.minute() as i32;
+        let lasts = s.end.since(s.start).ok().and_then(|d| d.total(jiff::Unit::Minute).ok()).unwrap_or(60.0) as f32;
+        v.drag = Some(Drag { key: key.clone(), from: at, grab: f32::from(at.y - r.top()) / HOUR * 60.0, lasts, was: (s.start.date(), minutes(s.start)), to: None });
+    }
     match over {
         Some(Part::Event(key)) if e.click_count >= 2 => cx.send(Msg::Open(key)),
         Some(Part::Event(key)) => cx.send(Msg::Select(Some(key))),
@@ -232,9 +297,17 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                     let r = style::snap(g, Bounds::from_corners(point(left + px(width * slot.left), y_at(slot.from) + px(1.0)), point(left + px(width * slot.right) - px(1.0), y_at(slot.to))));
                     let chosen = v.selected.as_ref().is_some_and(|key| *key == s.key());
                     let hue = p.hue(s.hue);
-                    let fill = if (s.free || s.tentative) && !chosen { olo_theme::mix(hue, p.document_background, 0.45) } else { hue };
+                    // (Being dragged elsewhere: where it was, faint.)
+                    let moving = v.drag.as_ref().is_some_and(|d| d.to.is_some() && d.key == s.key());
+                    let fill = if moving {
+                        olo_theme::mix(hue, p.document_background, 0.7)
+                    } else if (s.free || s.tentative) && !chosen {
+                        olo_theme::mix(hue, p.document_background, 0.45)
+                    } else {
+                        hue
+                    };
                     style::fill_rect(g, r, style::c(fill));
-                    if chosen {
+                    if chosen && !moving {
                         style::frame_rect(g, r, text);
                         style::frame_rect(g, style::inset(g, r, 1.0), text);
                     }
@@ -269,6 +342,36 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                     parts.push((r, Part::Event(s.key())));
                 }
             }
+            // An event being dragged: where it would go, the day's whole
+            // width, with the times it would have.
+            if let Some(drag) = &v.drag
+                && let Some((day, start)) = drag.to
+                && let Some(s) = v.shown.iter().find(|s| s.key() == drag.key)
+            {
+                let col = layout::day_number(day) - layout::day_number(first);
+                if (0..n as i32).contains(&col) {
+                    let col = col as usize;
+                    let (left, right) = (xs[col] + px(1.0), xs[col + 1] - px(7.0));
+                    let r = style::snap(g, Bounds::from_corners(point(left, y_at(start as f32) + px(1.0)), point(right - px(1.0), y_at(start as f32 + drag.lasts.max(STEP as f32)))));
+                    let fill = p.hue(s.hue);
+                    style::fill_rect(g, r, style::c(fill));
+                    style::frame_rect(g, r, text);
+                    style::frame_rect(g, style::inset(g, r, 1.0), text);
+                    let ink = style::c(p.ink_on(fill));
+                    let from = day.at((start / 60) as i8, (start % 60) as i8, 0, 0);
+                    let to = from.checked_add(jiff::Span::new().minutes(drag.lasts as i64)).unwrap_or(from);
+                    let (x, room) = (r.left() + px(PAD), (r.size.width - px(2.0 * PAD)).max(px(0.0)));
+                    olo_kit::review::own_grid(g, r);
+                    g.with_content_mask(Some(olo_kit::ContentMask { bounds: r }), |g| {
+                        if f32::from(r.size.height) < 30.0 {
+                            style::label_fit(g, x, r.center().y, style::Align::Left, format!("{}  {}", s.title, words::time(from.time(), v.h24)), style::DETAIL_SIZE, bold.clone(), ink, room);
+                        } else {
+                            style::label_fit(g, x, r.top() + px(9.0), style::Align::Left, s.title.to_string(), style::DETAIL_SIZE, bold.clone(), ink, room);
+                            style::label_fit(g, x, r.top() + px(9.0 + 14.0), style::Align::Left, words::when(from, to, false, v.h24), style::SMALL_SIZE, regular.clone(), ink, room);
+                        }
+                    });
+                }
+            }
             // Now: a line across today, drawn again as the minute turns.
             let now = crate::now(&v.zone);
             let today = layout::day_number(now.date()) - layout::day_number(first);
@@ -284,12 +387,17 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
             }
             let state = g.node_state::<State>();
             (state.parts, state.origin) = (parts, b.origin);
+            (state.cols, state.first) = (xs, Some(first));
         })
-        .key_by(key)
+        .key_by(move |v: &Calendar| style::key((key(v), v.drag.as_ref().and_then(|d| d.to))))
         .w_full()
         .h(px(24.0 * HOUR))
         .flex_shrink_0()
-        .on_mouse_down(MouseButton::Left, cx.listener(|v: &mut Calendar, e: &MouseDownEvent, cx| select(v, e, true, cx)));
+        .on_mouse_down(MouseButton::Left, cx.listener(|v: &mut Calendar, e: &MouseDownEvent, cx| select(v, e, true, cx)))
+        // An event pressed is dragged to another time or day (followed
+        // out of the hours too), and goes there when the button is let go.
+        .on_drag_move(cx.listener(dragged))
+        .on_window_mouse_up(cx.listener(dropped));
     let p = theme::palette();
     div().size_full().flex().flex_col().child(top).child(div().flex_1().min_h_0().child(ScrollView::new(&v.hours_scroll).border(false).background(p.document_background).child(hours))).into_element()
 }
@@ -299,4 +407,18 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
 pub fn starting_offset(now_hour: i8) -> f32 {
     // (Its first hour's name whole under the days' names.)
     ((now_hour.min(8) as f32 - 1.0) * HOUR - 12.0).max(0.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A dragged event starts on the quarter hour nearest its top, never
+    /// before the day begins nor so late that it starts the next.
+    #[test]
+    fn dragged_by_quarter_hours() {
+        for (minutes, start) in [(600.0, 600), (607.0, 600), (608.0, 615), (622.4, 615), (-40.0, 0), (0.0, 0), (1439.0, 1425), (5000.0, 1425)] {
+            assert_eq!(quarter(minutes), start, "{minutes}");
+        }
+    }
 }

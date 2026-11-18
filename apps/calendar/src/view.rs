@@ -80,6 +80,11 @@ pub fn body(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
             "delete" | "backspace" if v.selected.is_some() => {
                 v.command("delete-event", cx);
             }
+            // (A drag under way is let go of first: the event stays.)
+            "escape" if v.drag.is_some() => {
+                v.drag = None;
+                cx.invalidate();
+            }
             "escape" if v.selected.is_some() => cx.send(Msg::Select(None)),
             "left" => step(v, -1, cx),
             "right" => step(v, 1, cx),
