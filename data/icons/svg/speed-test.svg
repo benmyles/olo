@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Speed test: a stopwatch, a network cable and its plug before it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="31" cy="60.2" r="25" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.37) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="plug"><path d="M32 45.9Q32 45 32.87 44.78L44.13 41.97Q45 41.75 45.8 42.15L52.2 45.35Q53 45.75 53 46.65L53 52.85Q53 53.75 52.13 53.97L40.87 56.78Q40 57 39.2 56.6L32.8 53.4Q32 53 32 52.1Z"/></clipPath>
+<linearGradient id="rimg" x1="-16" y1="-18" x2="14" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fbfbfd"/><stop offset="0.5" stop-color="#c0c3cc"/><stop offset="1" stop-color="#858994"/></linearGradient>
+<linearGradient id="side" x1="-24" y1="-18" x2="-16" y2="18" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#9a9ea9"/><stop offset="1" stop-color="#5a5d68"/></linearGradient>
+<linearGradient id="dial" x1="-12" y1="-14" x2="12" y2="14" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e3e6ee"/></linearGradient>
+<linearGradient id="crown" x1="22" y1="0" x2="34" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#8d919c"/><stop offset="0.35" stop-color="#fbfbfd"/><stop offset="1" stop-color="#6d7280"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="31" cy="60.2" rx="25" ry="3.4" fill="url(#shadow)"/>
+<g transform="translate(0 4.2)"><path class="o" fill="url(#crown)" d="M24.4 9.4L29.6 8.1V13L24.4 14.3Z"/>
+<path class="o" fill="url(#crown)" d="M21.4 4.9A6 2.2 -14 0 1 32.6 2.1V7.1A6 2.2 -14 0 1 21.4 9.9Z"/></g>
+<g transform="matrix(1 -.25 0 1 27.5 34.6)">
+<path class="o" fill="url(#side)" d="M10.56 -14.08A17.6 17.6 0 0 1 -10.56 14.08L-14.56 11.08A17.6 17.6 0 0 1 6.56 -17.08Z"/>
+<circle cx="0" cy="0" r="17.6" fill="url(#rimg)"/>
+<path class="h from48" stroke-opacity="0.8" stroke-width=".55" d="M-16.54 3.52A17 17 0 0 1 4.4 -16.37"/>
+
+<circle r="14" fill="#1b1b1f"/><circle r="13.3" fill="url(#dial)"/>
+<path class="from32" fill="none" stroke="#1b1b1f" stroke-width="1.1" stroke-linecap="round" d="M0 -9.8L0 -12M4.9 -8.49L6 -10.39M8.49 -4.9L10.39 -6M9.8 0L12 0M8.49 4.9L10.39 6M4.9 8.49L6 10.39M0 9.8L0 12M-4.9 8.49L-6 10.39M-8.49 4.9L-10.39 6M-9.8 0L-12 0M-8.49 -4.9L-10.39 -6M-4.9 -8.49L-6 -10.39"/>
+<path class="o" fill="#f03a30" d="M-1.5 1L8.2-9.2L1.5 2.4Z"/>
+<circle r="2" fill="#f03a30" stroke="#1b1b1f" stroke-width=".5"/>
+</g>
+<!-- The cable and its plug. -->
+<g fill="none" stroke-linecap="round"><path stroke="#1b1b1f" stroke-width="5.6" d="M43 46Q43 40 50 39.6Q58.6 39 58 31Q57.6 26.4 50 28.4"/><path stroke="#2380f4" stroke-width="3.4" d="M43 46Q43 40 50 39.6Q58.6 39 58 31Q57.6 26.4 50 28.4"/><path class="from48" stroke="#8fc6ff" stroke-width=".8" d="M44.6 41.6Q46.4 40.4 50 40.4"/></g>
+<path class="o" fill="#2f7ad8" d="M32 45.9Q32 45 32.87 44.78L44.13 41.97Q45 41.75 45.8 42.15L52.2 45.35Q53 45.75 53 46.65L53 52.85Q53 53.75 52.13 53.97L40.87 56.78Q40 57 39.2 56.6L32.8 53.4Q32 53 32 52.1Z"/>
+<g clip-path="url(#plug)">
+<path fill="#5aa2ee" d="M29 43.5L40 49L40 60L29 60Z"/>
+<path fill="#d9ecff" d="M29 43.5L40 49L56 45L56 35.75L29 35.75Z"/>
+<g transform="matrix(1 -.25 0 1 40 49)"><path fill="#a9d3ff" d="M0 0H14V9H0Z"/><g class="from32" fill="#f7c531" stroke="#1b1b1f" stroke-width=".25"><rect x="2" y="1.4" width="1.3" height="4"/><rect x="4.4" y="1.4" width="1.3" height="4"/><rect x="6.8" y="1.4" width="1.3" height="4"/><rect x="9.2" y="1.4" width="1.3" height="4"/></g></g>
+<path class="h from48" stroke-opacity="0.5" stroke-width=".55" d="M40.6 49.1L52.2 46.2M40.3 50V56"/>
+<path class="h from48" stroke-opacity="0.3" stroke-width=".5" d="M33.6 45.9L39.4 48.9"/>
+</g>
+</svg>

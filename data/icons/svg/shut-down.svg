@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Shut down: a thick red badge standing, the white power mark on it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="33" cy="60" r="23" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.2) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="face" x1="-16" y1="-18" x2="14" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff6a5c"/><stop offset="0.5" stop-color="#ee2f2a"/><stop offset="1" stop-color="#b61818"/></linearGradient>
+<linearGradient id="side" x1="-28" y1="-20" x2="-20" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#c41818"/><stop offset="1" stop-color="#7a0f0f"/></linearGradient>
+<linearGradient id="white" x1="-14" y1="-16" x2="14" y2="16" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e3d9d9"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="33" cy="60" rx="23" ry="3.4" fill="url(#shadow)"/>
+<g transform="matrix(1 -.25 0 1 35.5 34.5)">
+<path class="o" fill="url(#side)" d="M14.4 -19.2A24 24 0 0 1 -14.4 19.2L-19.4 15.45A24 24 0 0 1 9.4 -22.95Z"/>
+<circle cx="0" cy="0" r="24" fill="url(#face)"/>
+<path class="h from48" stroke-opacity="0.55" stroke-width=".55" d="M-22.56 4.8A23.4 23.4 0 0 1 6 -22.32"/>
+
+<g class="from32" fill="url(#white)" stroke="#7a0f0f" stroke-width="2" stroke-linejoin="round" style="paint-order:stroke"><path d="M6.85 -12.89L9.99 -10.64L12.44 -7.65L14.01 -4.12L14.6 -0.31L14.17 3.53L12.74 7.12L10.43 10.22L7.39 12.59L3.83 14.09L0 14.6L-3.83 14.09L-7.39 12.59L-10.43 10.22L-12.74 7.12L-14.17 3.53L-14.6 -0.31L-14.01 -4.12L-12.44 -7.65L-9.99 -10.64L-6.85 -12.89L-4.32 -8.12L-6.3 -6.71L-7.84 -4.82L-8.83 -2.6L-9.2 -0.19L-8.93 2.23L-8.03 4.49L-6.57 6.44L-4.66 7.94L-2.41 8.88L0 9.2L2.41 8.88L4.66 7.94L6.57 6.44L8.03 4.49L8.93 2.23L9.2 -0.19L8.83 -2.6L7.84 -4.82L6.3 -6.71L4.32 -8.12Z"/><path d="M-3-17.4H3V-1.6Q3 0 1.4 0H-1.4Q-3 0-3-1.6Z"/></g>
+<g class="upto24" fill="#fff" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"><path d="M6.85 -12.89L9.99 -10.64L12.44 -7.65L14.01 -4.12L14.6 -0.31L14.17 3.53L12.74 7.12L10.43 10.22L7.39 12.59L3.83 14.09L0 14.6L-3.83 14.09L-7.39 12.59L-10.43 10.22L-12.74 7.12L-14.17 3.53L-14.6 -0.31L-14.01 -4.12L-12.44 -7.65L-9.99 -10.64L-6.85 -12.89L-4.32 -8.12L-6.3 -6.71L-7.84 -4.82L-8.83 -2.6L-9.2 -0.19L-8.93 2.23L-8.03 4.49L-6.57 6.44L-4.66 7.94L-2.41 8.88L0 9.2L2.41 8.88L4.66 7.94L6.57 6.44L8.03 4.49L8.93 2.23L9.2 -0.19L8.83 -2.6L7.84 -4.82L6.3 -6.71L4.32 -8.12Z"/><path d="M-3-17.4H3V-1.6Q3 0 1.4 0H-1.4Q-3 0-3-1.6Z"/></g>
+</g>
+</svg>

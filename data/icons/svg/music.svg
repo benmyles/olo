@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Music: a pair of headphones, black cushions, steel cups. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="32" cy="60.4" r="23" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.55) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<radialGradient id="cush" cx="17" cy="38" r="13" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#4b4e58"/><stop offset="0.5" stop-color="#1d1e23"/><stop offset="1" stop-color="#0b0c0f"/></radialGradient>
+<linearGradient id="steel" x1="34" y1="30" x2="56" y2="60" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fbfbfd"/><stop offset="0.5" stop-color="#aeb2bc"/><stop offset="1" stop-color="#6d7280"/></linearGradient>
+<radialGradient id="capg" cx="43" cy="42" r="12" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#5a5f6b"/><stop offset="0.5" stop-color="#25272d"/><stop offset="1" stop-color="#111216"/></radialGradient>
+</defs>
+<ellipse class="from48" cx="32" cy="60.4" rx="23" ry="3.4" fill="url(#shadow)"/>
+<!-- The band. -->
+<g fill="none" stroke-linecap="round"><path stroke="#1b1b1f" stroke-width="7.6" d="M13.5 31C11 5 51 3 51.5 31"/><path stroke="#2a2c33" stroke-width="5.2" d="M13.5 31C11 5 51 3 51.5 31"/><path class="from48" stroke="#fff" stroke-opacity=".35" stroke-width=".8" d="M16 22C19 10 30 6.6 38 8"/></g>
+<path class="o" fill="url(#steel)" d="M10.6 27.4H16.6V35H10.6Z"/><path class="o" fill="url(#steel)" d="M48.4 27.4H54.4V35H48.4Z"/>
+<!-- The far cup, its cushion toward us; the near cup, its steel back. -->
+<ellipse class="o" cx="19" cy="44" rx="10.4" ry="14.4" transform="rotate(-8 19 44)" fill="url(#cush)"/>
+<ellipse class="from32" cx="20.4" cy="44.4" rx="4.6" ry="8.4" transform="rotate(-8 19 44)" fill="#0b0c0f" stroke="#4b4e58" stroke-width=".5"/>
+<ellipse class="o" cx="42" cy="45.4" rx="6" ry="14" transform="rotate(8 42 45.4)" fill="#17181c"/>
+<ellipse class="o" cx="47" cy="45" rx="10.6" ry="14.6" transform="rotate(8 47 45)" fill="url(#steel)"/>
+<ellipse cx="47.6" cy="45.2" rx="7.4" ry="10.8" transform="rotate(8 47 45)" fill="#1b1b1f"/>
+<ellipse cx="47.9" cy="45.3" rx="6.6" ry="10" transform="rotate(8 47 45)" fill="url(#capg)"/>
+<path class="h from48" stroke-opacity=".8" stroke-width=".6" d="M38.6 39A10.6 14.6 8 0 1 45.4 31"/>
+</svg>

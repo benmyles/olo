@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Image: a picture in a wooden frame, standing on its strut: sky, sun, green hills. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<linearGradient id="shadow" x1="30" y1="54" x2="31" y2="58.4" gradientUnits="userSpaceOnUse"><stop offset="0" stop-opacity=".2"/><stop offset="1" stop-opacity="0"/></linearGradient>
+<linearGradient id="wood" x1="0" y1="0" x2="36" y2="40" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#e9a659"/><stop offset="0.5" stop-color="#c9793a"/><stop offset="1" stop-color="#a85c22"/></linearGradient>
+<linearGradient id="sky" x1="0" y1="4" x2="0" y2="26" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2f8cf8"/><stop offset="1" stop-color="#bfe3ff"/></linearGradient>
+<linearGradient id="hill" x1="4" y1="22" x2="32" y2="36" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#8fdc4a"/><stop offset="1" stop-color="#3fa832"/></linearGradient>
+<clipPath id="view"><rect x="4.4" y="4.4" width="27.2" height="31.2"/></clipPath>
+</defs>
+<path class="from48" fill="url(#shadow)" d="M12 58.5L52 48.6L56 52L17 62.4Z"/>
+<path class="o" fill="#7a4418" d="M17 40L8 58L17 57Z"/>
+<g transform="matrix(1 -.25 0 1 16 17)">
+<path class="o" fill="#8a4c1c" d="M1.4 0H34.6Q36 0 36 1.4V38.6Q36 40 34.6 40H1.4Q0 40 0 38.6V1.4Q0 0 1.4 0Z" transform="translate(-2.6 -1.95)"/>
+<path class="o" fill="url(#wood)" d="M1.4 0H34.6Q36 0 36 1.4V38.6Q36 40 34.6 40H1.4Q0 40 0 38.6V1.4Q0 0 1.4 0Z"/>
+<rect x="3.6" y="3.6" width="28.8" height="32.8" fill="#1b1b1f" fill-opacity=".7"/>
+<g clip-path="url(#view)">
+<rect x="4.4" y="4.4" width="27.2" height="31.2" fill="url(#sky)"/>
+<circle cx="25.4" cy="10.4" r="3.1" fill="#ffd92a"/>
+<path class="from48" fill="#fff" d="M7.6 14.6Q7.6 12.6 9.6 12.6Q10.2 10.4 12.6 10.6Q14.6 10.8 14.8 12.8Q16.8 12.8 16.8 14.6Z"/>
+<path fill="#5d8fd9" d="M4.4 24L12 18L19 23L26.4 17.4L31.6 21.4V29H4.4Z"/>
+<path fill="url(#hill)" d="M4.4 26.4Q13 20.4 21.4 26Q27 22 31.6 24.4V36H4.4Z"/>
+<path class="from32" fill="#2f8f2f" d="M4.4 31.4Q16 27 31.6 33.4V36H4.4Z"/>
+</g>
+<path class="h from48" stroke="#ffd9a8" stroke-opacity=".9" stroke-width=".5" d="M.9 38V1.4Q.9 .9 1.4 .9H34.6"/>
+</g>
+</svg>

@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Network: three computers joined through a hub by blue cable. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="32" cy="60.6" r="27" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.72) scale(1 .13)"><stop offset="0" stop-opacity="0.24"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="pc1"><path d="M21.5 7.4Q21.5 6.5 22.37 6.28L33.63 3.47Q34.5 3.25 35.3 3.65L39.7 5.85Q40.5 6.25 40.5 7.15L40.5 16.85Q40.5 17.75 39.63 17.97L28.37 20.78Q27.5 21 26.7 20.6L22.3 18.4Q21.5 18 21.5 17.1Z"/></clipPath>
+<clipPath id="pc2"><path d="M4 37.4Q4 36.5 4.87 36.28L16.13 33.47Q17 33.25 17.8 33.65L22.2 35.85Q23 36.25 23 37.15L23 46.85Q23 47.75 22.13 47.97L10.87 50.78Q10 51 9.2 50.6L4.8 48.4Q4 48 4 47.1Z"/></clipPath>
+<clipPath id="pc3"><path d="M41.5 36.4Q41.5 35.5 42.37 35.28L53.63 32.47Q54.5 32.25 55.3 32.65L59.7 34.85Q60.5 35.25 60.5 36.15L60.5 45.85Q60.5 46.75 59.63 46.97L48.37 49.78Q47.5 50 46.7 49.6L42.3 47.4Q41.5 47 41.5 46.1Z"/></clipPath>
+<clipPath id="hub"><path d="M23 31.3Q23 30.5 23.78 30.31L32.22 28.19Q33 28 33.72 28.36L38.28 30.64Q39 31 39 31.8L39 34.6Q39 35.4 38.22 35.59L29.78 37.71Q29 37.9 28.28 37.54L23.72 35.26Q23 34.9 23 34.1Z"/></clipPath>
+<linearGradient id="sb" x1="2" y1="2" x2="10" y2="8" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#62b1ff"/><stop offset="1" stop-color="#1259d0"/></linearGradient>
+<linearGradient id="sg" x1="2" y1="2" x2="10" y2="8" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#7beb70"/><stop offset="1" stop-color="#1d9a29"/></linearGradient>
+<linearGradient id="sr" x1="2" y1="2" x2="10" y2="8" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff8274"/><stop offset="1" stop-color="#c81e1e"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="32" cy="60.6" rx="27" ry="3.4" fill="url(#shadow)"/>
+<g fill="none" stroke-linecap="round"><path stroke="#1b1b1f" stroke-width="3" d="M31 24V30.5M27 36.5Q21 37 19 41.5M39 34.5Q46 35 47.5 40"/><path stroke="#3d8cf5" stroke-width="1.6" d="M31 24V30.5M27 36.5Q21 37 19 41.5M39 34.5Q46 35 47.5 40"/></g>
+<path class="o" fill="#b4b0a9" d="M23.1 20.7Q23.1 20.1 23.69 19.98L37.51 17.22Q38.1 17.1 38.62 17.4L39.98 18.2Q40.5 18.5 40.5 19.1L40.5 19.9Q40.5 20.5 39.92 20.64L26.68 23.76Q26.1 23.9 25.57 23.62L23.63 22.58Q23.1 22.3 23.1 21.7Z"/>
+<path class="o" fill="#b4b0a9" d="M21.5 7.4Q21.5 6.5 22.37 6.28L33.63 3.47Q34.5 3.25 35.3 3.65L39.7 5.85Q40.5 6.25 40.5 7.15L40.5 16.85Q40.5 17.75 39.63 17.97L28.37 20.78Q27.5 21 26.7 20.6L22.3 18.4Q21.5 18 21.5 17.1Z"/>
+<g clip-path="url(#pc1)">
+<path fill="#96938e" d="M18.5 5L27.5 9.5L27.5 24L18.5 24Z"/>
+<path fill="#f2efe9" d="M18.5 5L27.5 9.5L43.5 5.5L43.5 -2.75L18.5 -2.75Z"/>
+<g transform="matrix(1 -.25 0 1 27.5 9.5)"><path fill="#cfcbc4" d="M0 0H14V12.5H0Z"/><rect x="1.3" y="1.4" width="10" height="8" rx=".6" fill="#1b1b1f"/><rect x="2" y="2.1" width="8.6" height="6.6" rx=".3" fill="url(#sb)"/></g>
+</g>
+<path class="o" fill="#34415c" d="M23 31.3Q23 30.5 23.78 30.31L32.22 28.19Q33 28 33.72 28.36L38.28 30.64Q39 31 39 31.8L39 34.6Q39 35.4 38.22 35.59L29.78 37.71Q29 37.9 28.28 37.54L23.72 35.26Q23 34.9 23 34.1Z"/>
+<g clip-path="url(#hub)">
+<path fill="#34415c" d="M20 29L29 33.5L29 40.9L20 40.9Z"/>
+<path fill="#8a9bc0" d="M20 29L29 33.5L42 30.25L42 22L20 22Z"/>
+<g transform="matrix(1 -.25 0 1 29 33.5)"><path fill="#5a6a8c" d="M0 0H11V5.4H0Z"/><g class="from48" fill="#46d84a"><circle cx="2.6" cy="2.2" r=".7"/><circle cx="5" cy="2.2" r=".7"/><circle cx="7.4" cy="2.2" r=".7"/></g></g>
+</g>
+<path class="o" fill="#b4b0a9" d="M5.6 50.7Q5.6 50.1 6.19 49.98L20.01 47.22Q20.6 47.1 21.12 47.4L22.48 48.2Q23 48.5 23 49.1L23 49.9Q23 50.5 22.42 50.64L9.18 53.76Q8.6 53.9 8.07 53.62L6.13 52.58Q5.6 52.3 5.6 51.7Z"/>
+<path class="o" fill="#b4b0a9" d="M4 37.4Q4 36.5 4.87 36.28L16.13 33.47Q17 33.25 17.8 33.65L22.2 35.85Q23 36.25 23 37.15L23 46.85Q23 47.75 22.13 47.97L10.87 50.78Q10 51 9.2 50.6L4.8 48.4Q4 48 4 47.1Z"/>
+<g clip-path="url(#pc2)">
+<path fill="#96938e" d="M1 35L10 39.5L10 54L1 54Z"/>
+<path fill="#f2efe9" d="M1 35L10 39.5L26 35.5L26 27.25L1 27.25Z"/>
+<g transform="matrix(1 -.25 0 1 10 39.5)"><path fill="#cfcbc4" d="M0 0H14V12.5H0Z"/><rect x="1.3" y="1.4" width="10" height="8" rx=".6" fill="#1b1b1f"/><rect x="2" y="2.1" width="8.6" height="6.6" rx=".3" fill="url(#sg)"/></g>
+</g>
+<path class="o" fill="#b4b0a9" d="M43.1 49.7Q43.1 49.1 43.69 48.98L57.51 46.22Q58.1 46.1 58.62 46.4L59.98 47.2Q60.5 47.5 60.5 48.1L60.5 48.9Q60.5 49.5 59.92 49.64L46.68 52.76Q46.1 52.9 45.57 52.62L43.63 51.58Q43.1 51.3 43.1 50.7Z"/>
+<path class="o" fill="#b4b0a9" d="M41.5 36.4Q41.5 35.5 42.37 35.28L53.63 32.47Q54.5 32.25 55.3 32.65L59.7 34.85Q60.5 35.25 60.5 36.15L60.5 45.85Q60.5 46.75 59.63 46.97L48.37 49.78Q47.5 50 46.7 49.6L42.3 47.4Q41.5 47 41.5 46.1Z"/>
+<g clip-path="url(#pc3)">
+<path fill="#96938e" d="M38.5 34L47.5 38.5L47.5 53L38.5 53Z"/>
+<path fill="#f2efe9" d="M38.5 34L47.5 38.5L63.5 34.5L63.5 26.25L38.5 26.25Z"/>
+<g transform="matrix(1 -.25 0 1 47.5 38.5)"><path fill="#cfcbc4" d="M0 0H14V12.5H0Z"/><rect x="1.3" y="1.4" width="10" height="8" rx=".6" fill="#1b1b1f"/><rect x="2" y="2.1" width="8.6" height="6.6" rx=".3" fill="url(#sr)"/></g>
+</g>
+</svg>

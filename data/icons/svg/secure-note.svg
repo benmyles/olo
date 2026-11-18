@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Secure note: a yellow pad of notes, a steel padlock before it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="31" cy="59.6" r="26" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 51.85) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="pad"><path d="M5 18.7Q5 17.5 6.16 17.21L35.84 9.79Q37 9.5 37.54 10.57L50.96 37.43Q51.5 38.5 51.5 39.7L51.5 44.3Q51.5 45.5 50.34 45.79L20.66 53.21Q19.5 53.5 18.96 52.43L5.54 25.57Q5 24.5 5 23.3Z"/></clipPath>
+<clipPath id="lock"><path d="M34 41.3Q34 39.5 35.75 39.06L47.75 36.06Q49.5 35.62 51.11 36.43L53.89 37.82Q55.5 38.62 55.5 40.42L55.5 50.33Q55.5 52.12 53.75 52.56L41.75 55.56Q40 56 38.39 55.2L35.61 53.8Q34 53 34 51.2Z"/></clipPath>
+<linearGradient id="lockt" x1="34" y1="35.62" x2="55.5" y2="42.5" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fbfbfd"/><stop offset="1" stop-color="#d5d8df"/></linearGradient>
+<linearGradient id="lockf" x1="0" y1="0" x2="15.5" y2="13.5" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#d5d8df"/><stop offset="1" stop-color="#a3a7b1"/></linearGradient>
+<linearGradient id="locks" x1="34" y1="39.5" x2="40" y2="56" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#9a9ea9"/><stop offset="1" stop-color="#6d7280"/></linearGradient>
+<linearGradient id="lockk" x1="1.66" y1="-10.52" x2="13.84" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f6f7f9"/><stop offset="0.5" stop-color="#c3c6cf"/><stop offset="1" stop-color="#8b8f9b"/></linearGradient>
+<linearGradient id="note" x1="0" y1="0" x2="32" y2="29" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff6b0"/><stop offset="1" stop-color="#ffe45a"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="31" cy="59.6" rx="26" ry="3.4" fill="url(#shadow)"/>
+<path class="o" fill="#f0c22a" d="M5 18.7Q5 17.5 6.16 17.21L35.84 9.79Q37 9.5 37.54 10.57L50.96 37.43Q51.5 38.5 51.5 39.7L51.5 44.3Q51.5 45.5 50.34 45.79L20.66 53.21Q19.5 53.5 18.96 52.43L5.54 25.57Q5 24.5 5 23.3Z"/>
+<g clip-path="url(#pad)"><path fill="#d9a40c" d="M3 13.5L19.5 46.5L19.5 55.5L3 26.5Z"/></g>
+<g transform="matrix(1 -.25 .5 1 5 17.5)"><rect x="0" y="0" width="32" height="29" rx="1.2" fill="url(#note)"/><g class="from32" fill="none" stroke="#b9972a" stroke-opacity=".8" stroke-width=".8" stroke-linecap="round"><path d="M5 7H27M5 12H27M5 17H27M5 22H19"/></g><path class="h from48" stroke-opacity="0.8" stroke-width=".45" d="M.8 27.8V1.2Q.8 .8 1.2 .8H30.8"/></g>
+<g class="from48" fill="none" stroke="#b98a0a" stroke-width=".4"><path d="M20 49L52 41M20 51.4L52 43.4"/></g>
+<path class="o" fill="#6d7280" d="M34 41.3Q34 39.5 35.75 39.06L47.75 36.06Q49.5 35.62 51.11 36.43L53.89 37.82Q55.5 38.62 55.5 40.42L55.5 50.33Q55.5 52.12 53.75 52.56L41.75 55.56Q40 56 38.39 55.2L35.61 53.8Q34 53 34 51.2Z"/>
+<g clip-path="url(#lock)">
+<path fill="url(#locks)" d="M31 38L40 42.5L40 59L31 59Z"/>
+<path fill="url(#lockt)" d="M31 38L40 42.5L58.5 37.88L58.5 29.62L31 29.62Z"/>
+<g transform="matrix(1 -.25 0 1 40 42.5)"><path fill="url(#lockf)" d="M0 0H16.5V14.5H0Z"/><circle cx="7.75" cy="5.4" r="1.88" fill="#1b1b1f"/><path fill="#1b1b1f" d="M6.92 6.18L6.31 10.16H9.19L8.58 6.18Z"/></g>
+<path class="h from48" stroke-opacity="0.5" stroke-width=".55" d="M40.6 42.6L54.7 39.08M40.3 43.5V55"/>
+<path class="h from48" stroke-opacity="0.3" stroke-width=".5" d="M35.6 40.4L39.4 42.4"/>
+</g>
+<g transform="matrix(1 -.25 0 1 37 41)">
+<path class="o" fill="url(#lockk)" d="M1.88 0V-5.2A5.87 5.87 0 0 1 13.62 -5.2V0H10.74V-5.2A2.99 2.99 0 0 0 4.76 -5.2V0Z"/>
+<path class="h from48" stroke-opacity=".8" stroke-width=".6" d="M3.28 -2V-5.2A4.47 4.47 0 0 1 7.75 -9.67"/>
+</g>
+</svg>

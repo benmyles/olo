@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Chrome: a thick disc standing, Chrome's red, green and yellow round its blue middle. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="33" cy="60" r="23" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.2) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="side" x1="-28" y1="-20" x2="-20" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#b3241c"/><stop offset="1" stop-color="#1b7a34"/></linearGradient>
+<linearGradient id="redg" x1="-10" y1="-24" x2="14" y2="-4" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff6a5c"/><stop offset="1" stop-color="#e33b2e"/></linearGradient>
+<linearGradient id="greeng" x1="-22" y1="-6" x2="-4" y2="22" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#4cc264"/><stop offset="1" stop-color="#1f9a3e"/></linearGradient>
+<linearGradient id="yellowg" x1="4" y1="-8" x2="18" y2="22" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffe066"/><stop offset="1" stop-color="#f9b90c"/></linearGradient>
+<radialGradient id="blueg" cx="-2.4" cy="-3" r="10" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#8fc2ff"/><stop offset="0.5" stop-color="#2f7af0"/><stop offset="1" stop-color="#1a56c8"/></radialGradient>
+</defs>
+<ellipse class="from48" cx="33" cy="60" rx="23" ry="3.4" fill="url(#shadow)"/>
+<g transform="matrix(1 -.25 0 1 35.5 34.5)">
+<path class="o" fill="url(#side)" d="M14.4 -19.2A24 24 0 0 1 -14.4 19.2L-19.4 15.45A24 24 0 0 1 9.4 -22.95Z"/>
+<circle cx="0" cy="0" r="24" fill="#e33b2e"/>
+<path class="h from48" stroke-opacity="0" stroke-width=".55" d="M-22.56 4.8A23.4 23.4 0 0 1 6 -22.32"/>
+
+<g stroke="#1b1b1f" stroke-opacity=".5" stroke-width=".5" stroke-linejoin="round"><path fill="url(#redg)" d="M0 -11.4L21.12 -11.4A24.0 24.0 0 0 0 -20.43 -12.59L-9.87 5.7A11.4 11.4 0 0 1 0 -11.4Z"/><path fill="url(#greeng)" d="M-9.87 5.7L-20.43 -12.59A24.0 24.0 0 0 0 -0.69 23.99L9.87 5.7A11.4 11.4 0 0 1 -9.87 5.7Z"/><path fill="url(#yellowg)" d="M9.87 5.7L-0.69 23.99A24.0 24.0 0 0 0 21.12 -11.4L0 -11.4A11.4 11.4 0 0 1 9.87 5.7Z"/></g>
+<circle r="11.4" fill="#1b1b1f" fill-opacity=".55"/><circle r="10.8" fill="#f4f5f8"/>
+<circle r="8.8" fill="url(#blueg)" stroke="#1b1b1f" stroke-opacity=".5" stroke-width=".5"/>
+<path class="h from48" stroke-opacity=".5" stroke-width=".6" d="M-22.6 4.8A23.2 23.2 0 0 1 6 -22.4"/>
+</g>
+</svg>

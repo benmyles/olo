@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Security: a brass padlock, its steel shackle closed. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="31" cy="60" r="25" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.2) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="lock"><path d="M9 28.3Q9 26.5 10.75 26.06L39.25 18.94Q41 18.5 42.61 19.3L51.39 23.7Q53 24.5 53 26.3L53 46.2Q53 48 51.25 48.44L22.75 55.56Q21 56 19.39 55.2L10.61 50.8Q9 50 9 48.2Z"/></clipPath>
+<linearGradient id="lockt" x1="9" y1="18.5" x2="53" y2="32.5" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffe98a"/><stop offset="1" stop-color="#fbc93a"/></linearGradient>
+<linearGradient id="lockf" x1="0" y1="0" x2="32" y2="23.5" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fbc93a"/><stop offset="1" stop-color="#e9a116"/></linearGradient>
+<linearGradient id="locks" x1="9" y1="26.5" x2="21" y2="56" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#e3a11a"/><stop offset="1" stop-color="#b97a07"/></linearGradient>
+<linearGradient id="lockk" x1="3.43" y1="-21.71" x2="28.57" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f6f7f9"/><stop offset="0.5" stop-color="#c3c6cf"/><stop offset="1" stop-color="#8b8f9b"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="31" cy="60" rx="25" ry="3.4" fill="url(#shadow)"/>
+<path class="o" fill="#b97a07" d="M9 28.3Q9 26.5 10.75 26.06L39.25 18.94Q41 18.5 42.61 19.3L51.39 23.7Q53 24.5 53 26.3L53 46.2Q53 48 51.25 48.44L22.75 55.56Q21 56 19.39 55.2L10.61 50.8Q9 50 9 48.2Z"/>
+<g clip-path="url(#lock)">
+<path fill="url(#locks)" d="M6 25L21 32.5L21 59L6 59Z"/>
+<path fill="url(#lockt)" d="M6 25L21 32.5L56 23.75L56 12.5L6 12.5Z"/>
+<g transform="matrix(1 -.25 0 1 21 32.5)"><path fill="url(#lockf)" d="M0 0H33V24.5H0Z"/><circle cx="16" cy="9.4" r="3.89" fill="#1b1b1f"/><path fill="#1b1b1f" d="M14.29 11L13.03 19.23H18.97L17.71 11Z"/></g>
+<path class="h from48" stroke-opacity="0.5" stroke-width=".55" d="M21.6 32.6L52.2 24.95M21.3 33.5V55"/>
+<path class="h from48" stroke-opacity="0.3" stroke-width=".5" d="M10.6 27.4L20.4 32.4"/>
+</g>
+<g transform="matrix(1 -.25 0 1 15 29.5)">
+<path class="o" fill="url(#lockk)" d="M3.89 0V-7.31A12.11 12.11 0 0 1 28.11 -7.31V0H22.17V-7.31A6.17 6.17 0 0 0 9.83 -7.31V0Z"/>
+<path class="h from48" stroke-opacity=".8" stroke-width=".6" d="M5.29 -2V-7.31A10.71 10.71 0 0 1 16 -18.03"/>
+</g>
+</svg>

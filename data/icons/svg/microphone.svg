@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Microphone: a steel microphone on its stand, its grille up and to the right. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="32" cy="60" r="20" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.2) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="base" x1="12" y1="46" x2="52" y2="60" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6d7280"/><stop offset="1" stop-color="#25272d"/></linearGradient>
+<linearGradient id="body" x1="-8.5" y1="0" x2="8.5" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#8d919c"/><stop offset="0.3" stop-color="#fbfbfd"/><stop offset="0.65" stop-color="#c3c6cf"/><stop offset="1" stop-color="#6d7280"/></linearGradient>
+<linearGradient id="grille" x1="-10" y1="-20" x2="10" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f1f2f5"/><stop offset="0.5" stop-color="#9a9ea9"/><stop offset="1" stop-color="#5a5f6b"/></linearGradient>
+<clipPath id="head"><path d="M-9.6 0V-9.6A9.6 9.6 0 0 1 9.6 -9.6V0Z"/></clipPath>
+</defs>
+<ellipse class="from48" cx="32" cy="60" rx="20" ry="3.4" fill="url(#shadow)"/>
+<!-- The foot and the stem. -->
+<path class="o" fill="#25272d" d="M15 52.4A17 5.4 0 0 1 49 52.4V55A17 5.4 0 0 1 15 55Z"/>
+<ellipse cx="32" cy="52.4" rx="17" ry="5.4" fill="url(#base)"/>
+<path class="o" fill="#4b4e58" d="M29.6 40H34.4V52.6Q32 53.6 29.6 52.6Z"/>
+<path class="o" fill="#8d919c" d="M22.5 31.5L26 30.5L31.5 41.5H34.5L44.5 33L47.5 35L36 45H29.5Z"/>
+<!-- The microphone: its body, its band, its grille. -->
+<g transform="translate(36.5 26) rotate(24)">
+<path class="o" fill="url(#body)" d="M-8.4 0H8.4V12Q8.4 19 0 19Q-8.4 19 -8.4 12Z"/>
+<path class="o" fill="url(#grille)" d="M-9.6 0V-9.6A9.6 9.6 0 0 1 9.6 -9.6V0Z"/>
+<g class="from48" clip-path="url(#head)" fill="none" stroke="#1b1b1f" stroke-opacity=".45" stroke-width=".5"><path d="M-17.2 -22L-8.2 2M-14.8 -22L-5.800000000000001 2M-12.4 -22L-3.4000000000000004 2M-10.0 -22L-1.0 2M-7.6 -22L1.4000000000000004 2M-5.2 -22L3.8 2M-2.8000000000000007 -22L6.199999999999999 2M-0.40000000000000036 -22L8.6 2M2.0 -22L11.0 2M4.399999999999999 -22L13.399999999999999 2M6.800000000000001 -22L15.8 2M9.2 -22L18.2 2M17.2 -22L8.2 2M14.8 -22L5.800000000000001 2M12.4 -22L3.4000000000000004 2M10.0 -22L1.0 2M7.6 -22L-1.4000000000000004 2M5.2 -22L-3.8 2M2.8000000000000007 -22L-6.199999999999999 2M0.40000000000000036 -22L-8.6 2M-2.0 -22L-11.0 2M-4.399999999999999 -22L-13.399999999999999 2M-6.800000000000001 -22L-15.8 2M-9.2 -22L-18.2 2"/></g>
+<rect class="o" x="-9.8" y="-1.4" width="19.6" height="3" rx=".8" fill="#4b4e58"/>
+<path class="h from48" stroke-opacity=".8" stroke-width=".7" d="M-5.4 4V13"/>
+</g>
+<circle class="from32" cx="45.6" cy="34" r="2.6" fill="#d5d8df" stroke="#1b1b1f" stroke-width=".7"/>
+</svg>

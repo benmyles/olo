@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Insert a table: a sheet seen from above, ruled in rows and columns, its top row blue. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="33" cy="58" r="25" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 50.46) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="table"><path d="M5 20.7Q5 19.5 6.16 19.21L39.84 10.79Q41 10.5 41.54 11.57L55.46 39.43Q56 40.5 56 41.7L56 42.3Q56 43.5 54.84 43.79L21.16 52.21Q20 52.5 19.46 51.43L5.54 23.57Q5 22.5 5 21.3Z"/></clipPath>
+<linearGradient id="sheet" x1="0" y1="0" x2="36" y2="30" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f6f7f9"/><stop offset="1" stop-color="#d5d8df"/></linearGradient>
+<linearGradient id="head" x1="2" y1="2" x2="34" y2="11" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#62b1ff"/><stop offset="1" stop-color="#1f6fe8"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="33" cy="58" rx="25" ry="3.4" fill="url(#shadow)"/>
+<path class="o" fill="#9a9ea9" d="M5 20.7Q5 19.5 6.16 19.21L39.84 10.79Q41 10.5 41.54 11.57L55.46 39.43Q56 40.5 56 41.7L56 42.3Q56 43.5 54.84 43.79L21.16 52.21Q20 52.5 19.46 51.43L5.54 23.57Q5 22.5 5 21.3Z"/>
+<g clip-path="url(#table)"><path fill="#7d828e" d="M3 15.5L20 49.5L20 54.5L3 24.5Z"/></g>
+<g transform="matrix(1 -.25 .5 1 5 19.5)"><rect x="0" y="0" width="36" height="30" rx="1.2" fill="url(#sheet)"/><rect x="2.6" y="2.6" width="30.8" height="24.8" fill="#fff"/><rect x="2.6" y="2.6" width="30.8" height="8.2" fill="url(#head)"/>
+<path fill="none" stroke="#1b1b1f" stroke-width=".9" d="M2.6 2.6H33.4V27.4H2.6ZM2.6 10.8H33.4M2.6 19.1H33.4M12.9 2.6V27.4M23.1 2.6V27.4"/><path class="h from48" stroke-opacity="0.8" stroke-width=".45" d="M.8 28.8V1.2Q.8 .8 1.2 .8H34.8"/></g>
+</svg>

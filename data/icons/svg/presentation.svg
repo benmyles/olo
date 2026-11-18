@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Presentation: a board on an easel, a chart in three shares on it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="32" cy="60.4" r="22" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.55) scale(1 .13)"><stop offset="0" stop-opacity="0.26"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="wood" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f0b468"/><stop offset="1" stop-color="#c98a3e"/></linearGradient>
+<linearGradient id="board" x1="0" y1="0" x2="36" y2="27" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e3e6ee"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="32" cy="60.4" rx="22" ry="3.4" fill="url(#shadow)"/>
+<!-- The easel: its back leg, its front legs, its block. -->
+<path class="o" fill="#a8702c" d="M27 44L22 58.6H25.6L30.6 44Z"/>
+<path class="o" fill="url(#wood)" d="M17.6 50L13 60H16.8L21.4 50ZM46.6 43L50 55.4H53.6L50.2 43Z"/>
+<path class="o" fill="url(#wood)" d="M28.6 8.4L33.4 7.2L34.2 13.6L29.4 14.8Z"/>
+<g transform="matrix(1 -.25 0 1 12.5 18.5)">
+<path class="o" fill="#b97a34" d="M0 0H37V28H0Z" transform="translate(-2.4 -1.8)"/>
+<path class="o" fill="url(#board)" d="M0 0H37V28H0Z"/>
+<g transform="translate(18.5 13.6)" stroke="#1b1b1f" stroke-opacity=".6" stroke-width=".5" stroke-linejoin="round"><path fill="#2380f4" d="M0 0L1.67 9.45A9.6 9.6 0 1 1 0 -9.6Z"/><path fill="#f03a30" d="M0 0L0 -9.6A9.6 9.6 0 0 1 9.45 -1.67Z" transform="translate(.9 -.9)"/><path fill="#ffc21a" d="M0 0L9.45 -1.67A9.6 9.6 0 0 1 1.67 9.45Z" transform="translate(.8 .4)"/></g>
+<path class="o" fill="url(#wood)" d="M-2 28H39V31.4H-2Z"/>
+</g>
+</svg>

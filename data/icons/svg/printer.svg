@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Printer: a printer, a sheet standing in its feed, its tray out in front. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="31" cy="60" r="27" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.2) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="printer"><path d="M4 25.8Q4 24 5.75 23.56L38.25 15.44Q40 15 41.61 15.8L56.39 23.2Q58 24 58 25.8L58 41.2Q58 43 56.25 43.44L23.75 51.56Q22 52 20.39 51.2L5.61 43.8Q4 43 4 41.2Z"/></clipPath>
+<linearGradient id="ptop" x1="6" y1="16" x2="56" y2="34" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#7c9bf0"/><stop offset="1" stop-color="#3a5fd0"/></linearGradient>
+<linearGradient id="pfront" x1="0" y1="0" x2="36" y2="19" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f1efe9"/><stop offset="1" stop-color="#cfcbc4"/></linearGradient>
+<linearGradient id="pside" x1="4" y1="24" x2="22" y2="52" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#b6b3ad"/><stop offset="1" stop-color="#8f8c86"/></linearGradient>
+<linearGradient id="sheet" x1="0" y1="-16" x2="22" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dfe2ec"/></linearGradient>
+<linearGradient id="tray" x1="26" y1="44" x2="54" y2="56" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#b9bcc6"/><stop offset="1" stop-color="#8d919c"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="31" cy="60" rx="27" ry="3.4" fill="url(#shadow)"/>
+<path class="o" fill="#4b4e58" d="M13 26L18 21.4L44.6 14.8L47.6 17.6L47.6 21L15.6 29Z"/>
+<g transform="matrix(1 -.25 0 1 17 27)"><path class="o" fill="url(#sheet)" d="M4 0L5.6-16.6Q14-18.6 26-17.4L27 0Z"/></g>
+<path class="o" fill="#7d828e" d="M4 25.8Q4 24 5.75 23.56L38.25 15.44Q40 15 41.61 15.8L56.39 23.2Q58 24 58 25.8L58 41.2Q58 43 56.25 43.44L23.75 51.56Q22 52 20.39 51.2L5.61 43.8Q4 43 4 41.2Z"/>
+<g clip-path="url(#printer)">
+<path fill="url(#pside)" d="M1 22.5L22 33L22 55L1 55Z"/>
+<path fill="url(#ptop)" d="M1 22.5L22 33L61 23.25L61 9L1 9Z"/>
+<g transform="matrix(1 -.25 0 1 22 33)"><path fill="url(#pfront)" d="M0 0H37V20H0Z"/><path fill="#5a5d68" d="M0 13.6H37V20H0Z"/><rect x="4" y="8.4" width="23" height="4.4" rx=".6" fill="#1b1b1f"/>
+<circle cx="31.4" cy="9.4" r="1.7" fill="#1b1b1f"/><circle cx="31.4" cy="9.4" r="1.15" fill="#46d84a"/></g>
+<path class="h from48" stroke-opacity="0.5" stroke-width=".55" d="M22.6 33.1L57.2 24.45M22.3 34V51"/>
+<path class="h from48" stroke-opacity="0.3" stroke-width=".5" d="M5.6 24.9L21.4 32.9"/>
+</g>
+<!-- The tray. -->
+<path class="o" fill="url(#tray)" d="M26 45.6L49 39.85L53.8 43.45L30.8 49.2Z"/>
+</svg>

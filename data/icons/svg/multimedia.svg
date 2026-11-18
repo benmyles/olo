@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Multimedia: a clapperboard, its arm up, a black note standing beside it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="31" cy="60" r="25" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.2) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="slate" x1="0" y1="0" x2="27" y2="21" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#4b4e58"/><stop offset="1" stop-color="#25272d"/></linearGradient>
+<linearGradient id="gloss" x1="36" y1="40" x2="50" y2="60" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#5a5d68"/><stop offset="0.5" stop-color="#17181c"/><stop offset="1" stop-color="#0b0c0f"/></linearGradient>
+<clipPath id="bar"><rect x="0" y="-5" width="27" height="5"/></clipPath><clipPath id="arm"><rect x="0" y="-5" width="27" height="5"/></clipPath>
+</defs>
+<ellipse class="from48" cx="31" cy="60" rx="25" ry="3.4" fill="url(#shadow)"/>
+<g transform="matrix(1 -.25 0 1 6.5 35)">
+<path class="o" fill="#17181c" d="M0 -5H27V21H0Z" transform="translate(-2.6 -1.95)"/>
+<path class="o" fill="url(#slate)" d="M0 0H27V21H0Z"/>
+<g class="from32" fill="none" stroke="#e6e8ed" stroke-width=".7"><path d="M3 6H24M3 11H24M3 16H24M13.5 11V16"/></g>
+<path class="o" fill="#f4f5f8" d="M0 -5H27V0H0Z"/>
+<g clip-path="url(#bar)" fill="#25272d"><path d="M-2 0L2 -5H6L2 0Z"/><path d="M6 0L10 -5H14L10 0Z"/><path d="M14 0L18 -5H22L18 0Z"/><path d="M22 0L26 -5H30L26 0Z"/></g>
+<g transform="translate(0 -5.6) rotate(-16)">
+<path class="o" fill="#f4f5f8" d="M0 -5H27V0H0Z"/>
+<g clip-path="url(#arm)" fill="#25272d"><path d="M-2 0L2 -5H6L2 0Z"/><path d="M6 0L10 -5H14L10 0Z"/><path d="M14 0L18 -5H22L18 0Z"/><path d="M22 0L26 -5H30L26 0Z"/></g>
+</g>
+<circle class="from32" cx="1.8" cy="-5.2" r="1.5" fill="#9a9ea9" stroke="#1b1b1f" stroke-width=".5"/>
+</g>
+<!-- The note. -->
+<path class="o" fill="url(#gloss)" d="M46.4 15.5L49.8 14.6Q51.4 20.6 56.6 23.4Q62.4 27 60 35.4Q58.6 28.4 49.8 26.2L49.8 51.5A7.4 5.6 -20 1 1 46.4 46.6Z"/>
+<path class="h from48" stroke-opacity=".55" stroke-width=".6" d="M47.2 17V45M37.4 50.6Q39.4 47.6 43.4 47.4"/>
+</svg>

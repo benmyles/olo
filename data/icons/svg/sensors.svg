@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Sensors: a thermometer standing on its foot, its red column part way up. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="32" cy="60.4" r="18" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.55) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="foot" x1="18" y1="48" x2="46" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fbfbfd"/><stop offset="1" stop-color="#aeb2bc"/></linearGradient>
+<linearGradient id="tube" x1="26" y1="0" x2="38" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#c3c6cf"/><stop offset="0.3" stop-color="#ffffff"/><stop offset="0.7" stop-color="#e3e6ee"/><stop offset="1" stop-color="#9a9ea9"/></linearGradient>
+<radialGradient id="bulb" cx="29.6" cy="41" r="9" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff9a8c"/><stop offset="0.5" stop-color="#f03a30"/><stop offset="1" stop-color="#b61818"/></radialGradient>
+<linearGradient id="col" x1="29" y1="0" x2="35" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff8274"/><stop offset="1" stop-color="#d92a22"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="32" cy="60.4" rx="18" ry="3.4" fill="url(#shadow)"/>
+<path class="o" fill="#7d828e" d="M18 52.6A14 4.8 0 0 1 46 52.6V55.4A14 4.8 0 0 1 18 55.4Z"/>
+<ellipse cx="32" cy="52.6" rx="14" ry="4.8" fill="url(#foot)"/>
+<path class="o" fill="url(#tube)" d="M26.4 9.6A5.6 5.6 0 0 1 37.6 9.6V37.4A8.6 8.6 0 1 1 26.4 37.4Z"/>
+<circle cx="32" cy="43.6" r="6.4" fill="url(#bulb)" stroke="#1b1b1f" stroke-opacity=".5" stroke-width=".4"/>
+<path fill="url(#col)" stroke="#1b1b1f" stroke-opacity=".5" stroke-width=".4" d="M29.6 22A2.4 2.4 0 0 1 34.4 22V39H29.6Z"/>
+<g class="from32" fill="none" stroke="#1b1b1f" stroke-opacity=".7" stroke-width=".7" stroke-linecap="round"><path d="M35.2 13H37.2M35.2 17.4H37.2M35.2 21.8H37.2M35.2 26.2H37.2M35.2 30.6H37.2"/></g>
+<path class="h from48" stroke-opacity=".9" stroke-width=".7" d="M28.4 10V34M28.6 42A4.4 4.4 0 0 1 30.6 39.6"/>
+</svg>

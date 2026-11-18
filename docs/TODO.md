@@ -40,7 +40,7 @@ something nobody here has is in "Blocked", with what it waits for.
   loader draws `icons/svg/NAME.svg` for the size asked, kept once
   rendered (`olo_xdg::svg`); the grid, the one projection, the outline
   and size classes; `tools/dev/icontrace.py`; drawn so far (Classic): what's
-  in `data/icons/svg`, 58 of 181 (`comm -13` of its names against
+  in `data/icons/svg`, 103 of 181 (`comm -13` of its names against
   `data/icons/256` lists what's left). To do: every other icon in the
   manifest (143 in all), Weather's skies (18) and the phones (20), for
   Classic; then Platinum's set in its own style; then the pictures

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Memory: a memory module standing on its gold edge, four chips on its green board. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<linearGradient id="shadow" x1="30" y1="54" x2="31" y2="58.4" gradientUnits="userSpaceOnUse"><stop offset="0" stop-opacity=".2"/><stop offset="1" stop-opacity="0"/></linearGradient>
+<linearGradient id="pcb" x1="0" y1="0" x2="50" y2="21" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#58c684"/><stop offset="0.5" stop-color="#2f9e5c"/><stop offset="1" stop-color="#1f7d48"/></linearGradient>
+<linearGradient id="chipg" x1="0" y1="3" x2="8" y2="14" ><stop offset="0" stop-color="#4b4e58"/><stop offset="1" stop-color="#1d1e23"/></linearGradient>
+</defs>
+<path class="from48" fill="url(#shadow)" d="M6 54.6L56 42L59 45L10 58.6Z"/>
+<g transform="matrix(1 -.25 0 1 6.5 32.5)">
+<path class="o" fill="#125c33" d="M1 0H49Q50 0 50 1V21H27V19.4H24.6V21H0V1Q0 0 1 0Z" transform="translate(-2.4 -1.8)"/>
+<path class="o" fill="url(#pcb)" d="M1 0H49Q50 0 50 1V21H27V19.4H24.6V21H0V1Q0 0 1 0Z"/>
+<path fill="#f7c531" d="M2 16.4H24.2V21H2ZM27.4 16.4H48V21H27.4Z"/>
+<path class="from48" fill="none" stroke="#b97a07" stroke-width=".4" d="M3.6 16.4V21M5.3 16.4V21M7 16.4V21M8.7 16.4V21M10.4 16.4V21M12.1 16.4V21M13.8 16.4V21M15.5 16.4V21M17.2 16.4V21M18.9 16.4V21M20.6 16.4V21M22.3 16.4V21M29 16.4V21M30.7 16.4V21M32.4 16.4V21M34.1 16.4V21M35.8 16.4V21M37.5 16.4V21M39.2 16.4V21M40.9 16.4V21M42.6 16.4V21M44.3 16.4V21M46 16.4V21"/>
+<rect x="4.6" y="3" width="8.4" height="10.6" rx=".6" fill="#1b1b1f"/><rect x="5.199999999999999" y="3.6" width="7.2" height="9.4" rx=".3" fill="url(#chipg)"/><rect x="15.6" y="3" width="8.4" height="10.6" rx=".6" fill="#1b1b1f"/><rect x="16.2" y="3.6" width="7.2" height="9.4" rx=".3" fill="url(#chipg)"/><rect x="27.4" y="3" width="8.4" height="10.6" rx=".6" fill="#1b1b1f"/><rect x="28.0" y="3.6" width="7.2" height="9.4" rx=".3" fill="url(#chipg)"/><rect x="38.4" y="3" width="8.4" height="10.6" rx=".6" fill="#1b1b1f"/><rect x="39.0" y="3.6" width="7.2" height="9.4" rx=".3" fill="url(#chipg)"/>
+<g class="from48" fill="#f7c531"><circle cx="2.4" cy="2.4" r=".7"/><circle cx="47.6" cy="2.4" r=".7"/></g>
+<path class="h from48" stroke-opacity=".5" stroke-width=".45" d="M.8 15V1.4Q.8 .8 1.4 .8H49"/>
+</g>
+</svg>

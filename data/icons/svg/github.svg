@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- GitHub: a thick dark badge standing, a steel rim, GitHub's cat white on it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="33" cy="60" r="23" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.2) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="rimg" x1="-16" y1="-18" x2="14" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f1f2f5"/><stop offset="0.5" stop-color="#aeb2bc"/><stop offset="1" stop-color="#6d7280"/></linearGradient>
+<linearGradient id="side" x1="-28" y1="-20" x2="-20" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#5a5d68"/><stop offset="1" stop-color="#25272d"/></linearGradient>
+<linearGradient id="white" x1="-8" y1="-12" x2="8" y2="12" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#d9dce3"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="33" cy="60" rx="23" ry="3.4" fill="url(#shadow)"/>
+<g transform="matrix(1 -.25 0 1 35.5 34.5)">
+<path class="o" fill="url(#side)" d="M14.4 -19.2A24 24 0 0 1 -14.4 19.2L-19.4 15.45A24 24 0 0 1 9.4 -22.95Z"/>
+<circle cx="0" cy="0" r="24" fill="url(#rimg)"/>
+<path class="h from48" stroke-opacity="0.7" stroke-width=".55" d="M-22.56 4.8A23.4 23.4 0 0 1 6 -22.32"/>
+
+<circle r="20" fill="#1b1b1f"/><circle r="19.2" fill="#24262d"/>
+<path class="from32" fill="url(#white)" d="M-9.5-3.4Q-10.6-8.6-8.4-13.4L-4.4-10.6Q0-11.8 4.4-10.6L8.4-13.4Q10.6-8.6 9.5-3.4Q10.8 2.4 5.2 5.6V12.6H1.7V9H-1.7V12.6H-5.2V8.4Q-8.2 9-9.8 6.4Q-10.8 4.8-12.4 4.4Q-10.2 3-8.6 4.8Q-7.4 6.4-5.2 5.8V5.6Q-10.8 2.4-9.5-3.4Z"/>
+<path class="upto24" fill="#fff" stroke="#fff" stroke-width="1.2" stroke-linejoin="round" d="M-9.5-3.4Q-10.6-8.6-8.4-13.4L-4.4-10.6Q0-11.8 4.4-10.6L8.4-13.4Q10.6-8.6 9.5-3.4Q10.8 2.4 5.2 5.6V12.6H1.7V9H-1.7V12.6H-5.2V8.4Q-8.2 9-9.8 6.4Q-10.8 4.8-12.4 4.4Q-10.2 3-8.6 4.8Q-7.4 6.4-5.2 5.8V5.6Q-10.8 2.4-9.5-3.4Z"/>
+</g>
+</svg>
