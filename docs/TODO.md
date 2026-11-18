@@ -17,13 +17,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **An element laid over a kit list from outside doesn't show at
-  fractional scales** (found 2026-11-17: a canvas, absolute over a
-  `ColumnListView` in the same box, drew its frame at 1× and 2× and
-  nothing at 1.25×, 1.5× and 1.75×, while the list's own overlay, its
-  band, shows at all of them). Why isn't known yet; Tracker's drop mark
-  goes through the list (`ListModel::mark_drop`) instead.
-
 - **Opening in an app with several windows asks which window** (Ben,
   2026-11-17: "when something is opening with the default app, e.g. a
   url opening in chrome, and that app has > 1 windows open and the url
@@ -5921,6 +5914,17 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**An element laid over a kit list from outside doesn't show at
+  fractional scales**~~ (found 2026-11-17; looked into the same day). It
+  doesn't reproduce in the kit: `crates/kit/examples/overlay.rs`, a
+  frame drawn in an absolute canvas over a `ColumnListView` in the same
+  box (inside it, or at its edges; there from the first paint, or
+  coming a second later as a drag's mark does), shows at 1×, 1.25×,
+  1.5×, 1.75× and 2× in a test session, a fresh window each. What was
+  seen was the first try at Tracker's drop mark, drawn while a drag went
+  over the list, and that code wasn't kept (the mark is drawn through
+  the list: `ListModel::mark_drop`); the example stays, to look again.
 
 - ~~**The phone back in reach is connected again by itself**~~ (Ben,
   2026-11-17: "after leaving the room and coming back it says my phone

@@ -2795,9 +2795,15 @@ it.
   framed, or the rows outlined), which the list draws over its rows
   with its band, at every scale (Tracker's list view: onto a folder's
   row, or into the folder shown; it took no drops at all before
-  2026-11-17). Draw such a mark through the list, not as an element of
-  your own over it: one laid over the list from outside showed at 1×
-  and 2× and not at 1.25×, 1.5× or 1.75×;
+  2026-11-17). A mark drawn through the list moves with its rows. (One
+  laid over the list from outside was seen at 1× and 2× and not at
+  1.25×, 1.5× or 1.75× that day, in Tracker's list view while a drag
+  went over it; that code wasn't kept, and the kit draws such an
+  element at every scale: `crates/kit/examples/overlay.rs`, a frame in
+  an absolute canvas over a `ColumnListView` in the same box, inside
+  it or at its edges, there from the first paint or coming a second
+  after (`OVERLAY_EDGE`, `OVERLAY_LATER`), shows at 1×, 1.25×, 1.5×,
+  1.75× and 2×, each window fresh: so it was that code's.)
   double click or Return opens (`on_open`; **a double click opens at
   its release, where it wasn't dragged**: the second press of two quick
   ones that moves is a drag or a band, as any press is. It opened at
