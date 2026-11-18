@@ -136,9 +136,15 @@ only).
 | `l` | A line of the outline's weight on its own (a plain stroke: the edge of a hole seen through). |
 | `i` | A line inside a form: three fifths of that. |
 | `fromN` | Shown at N pixels and up: detail (`from48`: highlights, vents, rims, the contact shadow; `from96`: the finest). |
-| `uptoN` | Shown at N pixels and down: what stands in small (`upto32`: the mark alone and larger, a bolder prompt). |
+| `uptoN` | Shown up to the step after N: what stands in small (`upto32`: the mark alone and larger, a bolder prompt; shown to 47 pixels, where `from48` takes over). |
 
-N is 16, 24, 32, 48, 64, 96, 128, 256 or 512. At 32 pixels and under an
+N is 16, 24, 32, 48, 64, 96, 128, 256 or 512, and a size between two of
+those is drawn as the lower (`svg::step`: 40 pixels as 32, 30 as 24),
+so a stand-in and the detail it stands for (`upto32` and `from48`,
+`upto24` and `from32`) cover every size between them. They once left
+the sizes between uncovered, each class compared with the size itself:
+a 20 point icon is 40 pixels on a 2× screen, and Slack's tile had no
+mark there, on that screen alone (Ben, 2026-11-18). At 32 pixels and under an
 icon is its forms, their faces and the one thing that says what it is,
 drawn large; everything else is `from48`. The drawing's own `<style>`
 gives `o` a weight for programs that don't know the classes (a browser,

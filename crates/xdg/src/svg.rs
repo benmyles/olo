@@ -23,8 +23,10 @@
 //!   own (a plain stroke: the edge of a hole seen through); `i`, an inner
 //!   line, three fifths of it.
 //! - `fromN`: shown at N pixels and larger (fine detail: `from48`,
-//!   `from96`); `uptoN`: shown at N pixels and smaller (what stands in
-//!   for it small: `upto32`). N is one of [`STEPS`].
+//!   `from96`); `uptoN`: shown up to the step after N (what stands in
+//!   for it small: `upto32`, to 47 pixels, where `from48` takes over).
+//!   N is one of [`STEPS`], and a size between two is drawn as the
+//!   lower ([`step`]).
 //!
 //! In a program that knows nothing of this (a browser, GTK through the
 //! icon theme) the drawing shows whole, with the weights its own `<style>`
@@ -85,17 +87,29 @@ fn grid(data: &[u8]) -> f32 {
     }
 }
 
+/// The step a size of `px` device pixels is drawn as: the largest of
+/// [`STEPS`] it reaches (the smallest, under that). What a drawing shows
+/// changes only at a step, so `upto32` and `from48` between them cover
+/// every size, 40 pixels too. They didn't: the classes were compared
+/// with the size itself, and from 33 to 47 pixels a drawing showed
+/// neither (a 20 point icon on a 2× screen is 40: Slack's tile with no
+/// mark on it in Deskbar, on that screen alone; Ben, 2026-11-18).
+pub fn step(px: u32) -> u32 {
+    STEPS.iter().rev().copied().find(|&n| n <= px).unwrap_or(STEPS[0])
+}
+
 /// The style sheet for one of Olo's drawings (on a grid `grid` units a
 /// side) rendered at `px` device pixels: what its size leaves out, and
 /// its lines' weights.
 pub fn sheet(px: u32, grid: f32) -> String {
     use std::fmt::Write as _;
     let mut css = String::new();
+    let at = step(px);
     for n in STEPS {
-        if px < n {
+        if at < n {
             let _ = write!(css, ".from{n}{{display:none !important}}");
         }
-        if px > n {
+        if at > n {
             let _ = write!(css, ".upto{n}{{display:none !important}}");
         }
     }
@@ -123,7 +137,7 @@ pub fn render(data: &[u8], px: u32, own: bool) -> Option<Image> {
 
 /// What changes when what's kept must be rendered again whatever the
 /// drawing: the style sheet's rules.
-const KEPT_VERSION: u32 = 2;
+const KEPT_VERSION: u32 = 3;
 
 /// Where the pixels of drawing `path` at `px` are kept, and the start of
 /// the names of every keeping of it at that size (an older drawing's);
@@ -238,6 +252,15 @@ mod tests {
         assert_eq!(pixel(&small, 16, 16), [0, 0, 255, 255], "the small stand-in at 32");
         let large = render(DRAWING.as_bytes(), 64, true).unwrap();
         assert_eq!(pixel(&large, 32, 32), [255, 0, 0, 255], "the detail at 64");
+        // Every size shows one or the other, the sizes between two steps
+        // too (20 points at 2× is 40 pixels, at 1.5× 30): the stand-in up
+        // to 47, the detail from 48.
+        for px in 16..=130 {
+            let img = render(DRAWING.as_bytes(), px, true).unwrap();
+            let want = if px < 48 { [0, 0, 255, 255] } else { [255, 0, 0, 255] };
+            assert_eq!(pixel(&img, px / 2, px / 2), want, "at {px} pixels");
+        }
+        assert_eq!((step(1), step(16), step(31), step(40), step(48), step(600)), (16, 16, 24, 32, 48, 512));
         // The outline, outside the rect's edge at 8 units (2 pixels at
         // 16): the one pixel beside it, whole, at each side; the rect's
         // own first pixel is its fill's.
