@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Thunderstorm: a dark cloud, a bolt of lightning. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<linearGradient id="cloud1" x1="6.5" y1="5" x2="13.34" y2="34.64" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#9096a6"/><stop offset="0.5" stop-color="#575c6c"/><stop offset="1" stop-color="#2e313c"/></linearGradient>
+<linearGradient id="bolt" x1="23.32" y1="29.5" x2="41.24" y2="60.22" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff3a0"/><stop offset="0.5" stop-color="#ffd21a"/><stop offset="1" stop-color="#f2a000"/></linearGradient>
+</defs>
+<path class="o" fill="url(#cloud1)" d="M17.44 34.64Q7.64 34.64 7.64 25.98Q7.64 18.68 14.94 17.31Q16.08 10.7 22.46 9.79Q25.42 9.56 27.48 10.93Q31.12 5 38.42 5.23Q46.86 5.91 48.45 14.35Q56.2 15.26 56.2 23.92Q56.2 34.64 46.17 34.64Z"/>
+<path class="from48" fill="#2e313c" fill-opacity=".45" d="M9.92 26.66Q19.04 31.9 31.58 31.45Q45.26 30.99 55.29 25.06Q56.66 34.64 46.17 34.64L17.44 34.64Q8.32 34.64 9.92 26.66Z"/>
+<path class="h from48" stroke-opacity=".9" stroke-width="0.91" d="M29.76 12.52Q32.72 7.96 37.96 7.74M10.38 23.92Q10.6 20.5 14.48 19.36M17.67 15.72Q18.58 12.52 22 12.07"/>
+<path class="o" fill="url(#bolt)" d="M39.19 29.5L25.37 44.86L32.28 44.86L26.65 60.22L43.29 40.25L35.86 40.25L42.01 29.5Z"/>
+<path class="from48" fill="#d98a06" fill-opacity=".5" d="M32.28 44.86L26.65 60.22L43.29 40.25L35.86 40.25Z"/>
+</svg>

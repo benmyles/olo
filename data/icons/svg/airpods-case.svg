@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- AirPods' case: a white case, closed, a green light on its front. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="32" cy="60.2" r="26" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.37) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="case"><path d="M7 24.5Q7 18.5 12.82 17.04L38.18 10.71Q44 9.25 49.37 11.93L52.63 13.57Q58 16.25 58 22.25L58 40.25Q58 46.25 52.18 47.71L26.82 54.04Q21 55.5 15.63 52.82L12.37 51.18Q7 48.5 7 42.5Z"/></clipPath>
+<linearGradient id="ctop" x1="8" y1="10" x2="56" y2="26" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#eceef2"/></linearGradient>
+<linearGradient id="cfront" x1="0" y1="0" x2="37" y2="30" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f6f7f9"/><stop offset="1" stop-color="#d5d8df"/></linearGradient>
+<linearGradient id="cside" x1="7" y1="20" x2="21" y2="56" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#d5d8df"/><stop offset="1" stop-color="#aeb2bc"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="32" cy="60.2" rx="26" ry="3.4" fill="url(#shadow)"/>
+<path class="o" fill="#b9bcc6" d="M7 24.5Q7 18.5 12.82 17.04L38.18 10.71Q44 9.25 49.37 11.93L52.63 13.57Q58 16.25 58 22.25L58 40.25Q58 46.25 52.18 47.71L26.82 54.04Q21 55.5 15.63 52.82L12.37 51.18Q7 48.5 7 42.5Z"/>
+<g clip-path="url(#case)">
+<path fill="url(#cside)" d="M4 17L21 25.5L21 58.5L4 58.5Z"/>
+<path fill="url(#ctop)" d="M4 17L21 25.5L61 15.5L61 3.25L4 3.25Z"/>
+<g transform="matrix(1 -.25 0 1 21 25.5)"><path fill="url(#cfront)" d="M0 0H38V31H0Z"/><path class="from32" fill="none" stroke="#9a9ea9" stroke-width=".7" d="M0 10H38"/><circle cx="18.5" cy="15.6" r="1.6" fill="#1b1b1f" fill-opacity=".6"/><circle cx="18.5" cy="15.6" r="1.1" fill="#46d84a"/></g>
+<path class="from32" fill="none" stroke="#9a9ea9" stroke-width=".7" d="M7 28.5L21 35.5"/><path class="from48" fill="#fff" d="M12 20L38 13.5L52 20.5L26 27Z" fill-opacity=".6"/></g>
+</svg>

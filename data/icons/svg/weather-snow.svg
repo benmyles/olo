@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Snow: a grey cloud, snowflakes. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<linearGradient id="cloud1" x1="7" y1="5" x2="13.72" y2="34.12" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#e6e9f0"/><stop offset="0.5" stop-color="#b4b9c6"/><stop offset="1" stop-color="#7a8194"/></linearGradient>
+</defs>
+<path class="o" fill="url(#cloud1)" d="M17.75 34.12Q8.12 34.12 8.12 25.61Q8.12 18.44 15.29 17.1Q16.41 10.6 22.68 9.7Q25.59 9.48 27.61 10.82Q31.19 5 38.36 5.22Q46.65 5.9 48.22 14.18Q55.83 15.08 55.83 23.59Q55.83 34.12 45.98 34.12Z"/>
+<path class="from48" fill="#7a8194" fill-opacity=".45" d="M10.36 26.28Q19.32 31.43 31.64 30.98Q45.08 30.54 54.94 24.71Q56.28 34.12 45.98 34.12L17.75 34.12Q8.79 34.12 10.36 26.28Z"/>
+<path class="h from48" stroke-opacity=".9" stroke-width="0.9" d="M29.85 12.39Q32.76 7.91 37.91 7.69M10.81 23.59Q11.03 20.23 14.84 19.11M17.98 15.53Q18.87 12.39 22.23 11.94"/>
+<g fill="none" stroke-linecap="round"><path stroke="#1b1b1f" stroke-width="3.1" d="M12.43 42.15L20.57 46.85M16.5 39.8L16.5 49.2M20.57 42.15L12.43 46.85"/><path stroke="#f4f8ff" stroke-width="1.6" d="M12.43 42.15L20.57 46.85M16.5 39.8L16.5 49.2M20.57 42.15L12.43 46.85"/><path class="from48" stroke="#a9b6cc" stroke-width="0.48" d="M12.43 42.15L20.57 46.85M16.5 39.8L16.5 49.2M20.57 42.15L12.43 46.85"/></g>
+<g fill="none" stroke-linecap="round"><path stroke="#1b1b1f" stroke-width="3.1" d="M25.93 50.15L34.07 54.85M30 47.8L30 57.2M34.07 50.15L25.93 54.85"/><path stroke="#f4f8ff" stroke-width="1.6" d="M25.93 50.15L34.07 54.85M30 47.8L30 57.2M34.07 50.15L25.93 54.85"/><path class="from48" stroke="#a9b6cc" stroke-width="0.48" d="M25.93 50.15L34.07 54.85M30 47.8L30 57.2M34.07 50.15L25.93 54.85"/></g>
+<g fill="none" stroke-linecap="round"><path stroke="#1b1b1f" stroke-width="3.1" d="M39.93 42.15L48.07 46.85M44 39.8L44 49.2M48.07 42.15L39.93 46.85"/><path stroke="#f4f8ff" stroke-width="1.6" d="M39.93 42.15L48.07 46.85M44 39.8L44 49.2M48.07 42.15L39.93 46.85"/><path class="from48" stroke="#a9b6cc" stroke-width="0.48" d="M39.93 42.15L48.07 46.85M44 39.8L44 49.2M48.07 42.15L39.93 46.85"/></g>
+<g fill="none" stroke-linecap="round"><path stroke="#1b1b1f" stroke-width="3.1" d="M44.43 52.85L52.57 57.55M48.5 50.5L48.5 59.9M52.57 52.85L44.43 57.55"/><path stroke="#f4f8ff" stroke-width="1.6" d="M44.43 52.85L52.57 57.55M48.5 50.5L48.5 59.9M52.57 52.85L44.43 57.55"/><path class="from48" stroke="#a9b6cc" stroke-width="0.48" d="M44.43 52.85L52.57 57.55M48.5 50.5L48.5 59.9M52.57 52.85L44.43 57.55"/></g>
+</svg>

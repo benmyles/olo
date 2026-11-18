@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Flurries: a pale cloud, two snowflakes. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<linearGradient id="cloud1" x1="8" y1="6" x2="14.48" y2="34.08" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f8f9fb"/><stop offset="0.5" stop-color="#dadee7"/><stop offset="1" stop-color="#a4abba"/></linearGradient>
+</defs>
+<path class="o" fill="url(#cloud1)" d="M18.37 34.08Q9.08 34.08 9.08 25.87Q9.08 18.96 15.99 17.66Q17.07 11.4 23.12 10.54Q25.93 10.32 27.87 11.62Q31.33 6 38.24 6.22Q46.23 6.86 47.74 14.86Q55.09 15.72 55.09 23.93Q55.09 34.08 45.58 34.08Z"/>
+<path class="from48" fill="#a4abba" fill-opacity=".45" d="M11.24 26.52Q19.88 31.49 31.76 31.06Q44.72 30.62 54.22 25.01Q55.52 34.08 45.58 34.08L18.37 34.08Q9.73 34.08 11.24 26.52Z"/>
+<path class="h from48" stroke-opacity=".9" stroke-width="0.86" d="M30.03 13.13Q32.84 8.81 37.81 8.59M11.67 23.93Q11.89 20.69 15.56 19.61M18.58 16.15Q19.45 13.13 22.69 12.7"/>
+<g fill="none" stroke-linecap="round"><path stroke="#1b1b1f" stroke-width="3.54" d="M17.8 44.5L28.2 50.5M23 41.5L23 53.5M28.2 44.5L17.8 50.5"/><path stroke="#f4f8ff" stroke-width="2.04" d="M17.8 44.5L28.2 50.5M23 41.5L23 53.5M28.2 44.5L17.8 50.5"/><path class="from48" stroke="#a9b6cc" stroke-width="0.61" d="M17.8 44.5L28.2 50.5M23 41.5L23 53.5M28.2 44.5L17.8 50.5"/></g>
+<g fill="none" stroke-linecap="round"><path stroke="#1b1b1f" stroke-width="3.54" d="M35.8 49.5L46.2 55.5M41 46.5L41 58.5M46.2 49.5L35.8 55.5"/><path stroke="#f4f8ff" stroke-width="2.04" d="M35.8 49.5L46.2 55.5M41 46.5L41 58.5M46.2 49.5L35.8 55.5"/><path class="from48" stroke="#a9b6cc" stroke-width="0.61" d="M35.8 49.5L46.2 55.5M41 46.5L41 58.5M46.2 49.5L35.8 55.5"/></g>
+</svg>

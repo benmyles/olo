@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Underline: a steel U standing on a blue bar. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="33" cy="60.2" r="21" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.37) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="steel" x1="-12" y1="-20" x2="12" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f6f7f9"/><stop offset="0.5" stop-color="#c3c6cf"/><stop offset="1" stop-color="#8b8f9b"/></linearGradient>
+<linearGradient id="blue" x1="-16" y1="18" x2="16" y2="24" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#62b1ff"/><stop offset="1" stop-color="#1f6fe8"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="33" cy="60.2" rx="21" ry="3.4" fill="url(#shadow)"/>
+<g transform="matrix(1 -.25 0 1 35.5 31.5)">
+<path class="o" fill="#6d7280" d="M-5.6 -18L-5.6 2.31L-3.84 7L-1.36 8.8L1.36 8.8L3.84 7L5.6 2.31L5.6 -18L13.2 -18L13.2 3.69L10.16 11.8L3.84 16.4L-3.84 16.4L-10.16 11.8L-13.2 3.69L-13.2 -18ZM-10.6 -21.75L-10.6 -1.44L-8.84 3.25L-6.36 5.05L-3.64 5.05L-1.16 3.25L0.6 -1.44L0.6 -21.75L8.2 -21.75L8.2 -0.06L5.16 8.05L-1.16 12.65L-8.84 12.65L-15.16 8.05L-18.2 -0.06L-18.2 -21.75ZM-5.6 -18L-5.6 2.31L-10.6 -1.44L-10.6 -21.75ZM-5.6 2.31L-3.84 7L-8.84 3.25L-10.6 -1.44ZM-8.84 3.25L-6.36 5.05L-1.36 8.8L-3.84 7ZM-6.36 5.05L-3.64 5.05L1.36 8.8L-1.36 8.8ZM-3.64 5.05L-1.16 3.25L3.84 7L1.36 8.8ZM-1.16 3.25L0.6 -1.44L5.6 2.31L3.84 7ZM0.6 -1.44L0.6 -21.75L5.6 -18L5.6 2.31ZM0.6 -21.75L8.2 -21.75L13.2 -18L5.6 -18ZM13.2 -18L13.2 3.69L8.2 -0.06L8.2 -21.75ZM13.2 3.69L10.16 11.8L5.16 8.05L8.2 -0.06ZM10.16 11.8L3.84 16.4L-1.16 12.65L5.16 8.05ZM3.84 16.4L-3.84 16.4L-8.84 12.65L-1.16 12.65ZM-3.84 16.4L-10.16 11.8L-15.16 8.05L-8.84 12.65ZM-15.16 8.05L-18.2 -0.06L-13.2 3.69L-10.16 11.8ZM-18.2 -0.06L-18.2 -21.75L-13.2 -18L-13.2 3.69ZM-18.2 -21.75L-10.6 -21.75L-5.6 -18L-13.2 -18Z"/>
+<path fill="#ffffff" d="M-8.84 3.25L-6.36 5.05L-1.36 8.8L-3.84 7ZM-6.36 5.05L-3.64 5.05L1.36 8.8L-1.36 8.8ZM-3.64 5.05L-1.16 3.25L3.84 7L1.36 8.8ZM0.6 -21.75L8.2 -21.75L13.2 -18L5.6 -18ZM-18.2 -21.75L-10.6 -21.75L-5.6 -18L-13.2 -18Z"/>
+<path fill="url(#steel)" d="M-13.2 -18L-13.2 3.69L-10.16 11.8L-3.84 16.4L3.84 16.4L10.16 11.8L13.2 3.69L13.2 -18L5.6 -18L5.6 2.31L3.84 7L1.36 8.8L-1.36 8.8L-3.84 7L-5.6 2.31L-5.6 -18Z"/>
+<path class="o" fill="#0b3a8f" d="M-16 18.4L16 18.4L16 23.4L-16 23.4ZM-21 14.65L11 14.65L11 19.65L-21 19.65ZM-21 14.65L11 14.65L16 18.4L-16 18.4ZM16 18.4L16 23.4L11 19.65L11 14.65ZM16 23.4L-16 23.4L-21 19.65L11 19.65ZM-21 19.65L-21 14.65L-16 18.4L-16 23.4Z"/><path fill="#c4e2ff" d="M-21 14.65L11 14.65L16 18.4L-16 18.4Z"/><path fill="url(#blue)" d="M-16 18.4L16 18.4L16 23.4L-16 23.4Z"/></g>
+</svg>

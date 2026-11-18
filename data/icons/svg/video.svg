@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Video: a clapperboard, its arm up, a blue film strip round it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="32" cy="60.6" r="26" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.72) scale(1 .13)"><stop offset="0" stop-opacity="0.24"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="slate" x1="0" y1="0" x2="31" y2="22" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#4b4e58"/><stop offset="1" stop-color="#25272d"/></linearGradient>
+<linearGradient id="frame" x1="8" y1="40" x2="56" y2="52" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#62b1ff"/><stop offset="1" stop-color="#1f6fe8"/></linearGradient>
+<clipPath id="bar"><rect x="0" y="-5.4" width="31" height="5.4"/></clipPath>
+</defs>
+<ellipse class="from48" cx="32" cy="60.6" rx="26" ry="3.4" fill="url(#shadow)"/>
+<g transform="matrix(1 -.25 0 1 17.5 29.4)">
+<path class="o" fill="#17181c" d="M0 -5.4H31V22H0Z" transform="translate(-2.6 -1.95)"/>
+<path class="o" fill="url(#slate)" d="M0 0H31V22H0Z"/>
+<g class="from32" fill="none" stroke="#e6e8ed" stroke-width=".7"><path d="M3 6H28M3 11H28M15.5 6V11"/></g>
+<path class="o" fill="#f4f5f8" d="M0 -5.4H31V0H0Z"/>
+<g clip-path="url(#bar)" fill="#25272d"><path d="M-2 0L2.4000000000000004 -5.4H6.800000000000001L2.4000000000000004 0Z"/><path d="M6.8 0L11.2 -5.4H15.600000000000001L11.2 0Z"/><path d="M15.6 0L20.0 -5.4H24.4L20.0 0Z"/><path d="M24.4 0L28.799999999999997 -5.4H33.2L28.799999999999997 0Z"/></g>
+<g transform="translate(0 -6) rotate(-13)">
+<path class="o" fill="#f4f5f8" d="M0 -5.4H31V0H0Z"/>
+<g clip-path="url(#bar)" fill="#25272d"><path d="M-2 0L2.4000000000000004 -5.4H6.800000000000001L2.4000000000000004 0Z"/><path d="M6.8 0L11.2 -5.4H15.600000000000001L11.2 0Z"/><path d="M15.6 0L20.0 -5.4H24.4L20.0 0Z"/><path d="M24.4 0L28.799999999999997 -5.4H33.2L28.799999999999997 0Z"/></g>
+</g>
+<circle class="from32" cx="2" cy="-5.6" r="1.6" fill="#9a9ea9" stroke="#1b1b1f" stroke-width=".5"/>
+</g>
+<!-- The film, round its foot. -->
+<g fill="none"><path stroke="#1b1b1f" stroke-width="12.2" d="M8.6 33A23.4 18 0 0 0 55.4 33"/><path stroke="#2a2c33" stroke-width="10.4" d="M8.6 33A23.4 18 0 0 0 55.4 33"/>
+<path stroke="url(#frame)" stroke-width="5.4" stroke-dasharray="8.6 2.2" d="M8.6 33A23.4 18 0 0 0 55.4 33"/>
+<g class="from48" stroke="#e6e8ed" stroke-width="1.2" stroke-dasharray="1.2 2.4"><path d="M4.8 33A27.2 21.8 0 0 0 59.2 33"/><path d="M12.4 33A19.6 14.2 0 0 0 51.6 33"/></g></g>
+</svg>

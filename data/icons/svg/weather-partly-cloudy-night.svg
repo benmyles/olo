@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Partly cloudy, by night: the moon behind a cloud. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<linearGradient id="moon" x1="6.5" y1="7" x2="31.3" y2="38" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff3a0"/><stop offset="0.5" stop-color="#fcc522"/><stop offset="1" stop-color="#e99a08"/></linearGradient>
+<linearGradient id="cloud1" x1="10.5" y1="26" x2="17.1" y2="54.6" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="0.5" stop-color="#f1f3f8"/><stop offset="1" stop-color="#c9d0de"/></linearGradient>
+</defs>
+<path class="o" fill="url(#moon)" d="M19.37 7.23A15.5 15.5 0 1 0 36.76 27.23A13.33 13.33 0 0 1 19.37 7.23Z"/>
+<path class="h from48" stroke="#fffbe0" stroke-opacity=".9" stroke-width=".8" d="M8.67 25.6A13.95 13.95 0 0 1 18.9 9.17"/>
+<path class="o" fill="url(#cloud1)" d="M21.06 54.6Q11.6 54.6 11.6 46.24Q11.6 39.2 18.64 37.88Q19.74 31.5 25.9 30.62Q28.76 30.4 30.74 31.72Q34.26 26 41.3 26.22Q49.44 26.88 50.98 35.02Q58.46 35.9 58.46 44.26Q58.46 54.6 48.78 54.6Z"/>
+<path class="from48" fill="#c9d0de" fill-opacity=".45" d="M13.8 46.9Q22.6 51.96 34.7 51.52Q47.9 51.08 57.58 45.36Q58.9 54.6 48.78 54.6L21.06 54.6Q12.26 54.6 13.8 46.9Z"/>
+<path class="h from48" stroke-opacity=".9" stroke-width="0.88" d="M32.94 33.26Q35.8 28.86 40.86 28.64M14.24 44.26Q14.46 40.96 18.2 39.86M21.28 36.34Q22.16 33.26 25.46 32.82"/>
+</svg>

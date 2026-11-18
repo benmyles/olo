@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Stop: a thick red eight-sided sign standing, a white exclamation mark on it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="33" cy="60" r="23" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.2) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="face" x1="-16" y1="-18" x2="14" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff6a5c"/><stop offset="0.5" stop-color="#ee2f2a"/><stop offset="1" stop-color="#b61818"/></linearGradient>
+<linearGradient id="white" x1="-4" y1="-15" x2="4" y2="14" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e9dede"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="33" cy="60" rx="23" ry="3.4" fill="url(#shadow)"/>
+<g transform="matrix(1 -.25 0 1 35.5 34.5)">
+<path class="o" fill="#8f1414" d="M22.17 9.18L9.18 22.17L-9.18 22.17L-22.17 9.18L-22.17 -9.18L-9.18 -22.17L9.18 -22.17L22.17 -9.18ZM17.17 5.43L4.18 18.42L-14.18 18.42L-27.17 5.43L-27.17 -12.93L-14.18 -25.92L4.18 -25.92L17.17 -12.93ZM22.17 9.18L9.18 22.17L4.18 18.42L17.17 5.43ZM9.18 22.17L-9.18 22.17L-14.18 18.42L4.18 18.42ZM-14.18 18.42L-27.17 5.43L-22.17 9.18L-9.18 22.17ZM-27.17 5.43L-27.17 -12.93L-22.17 -9.18L-22.17 9.18ZM-27.17 -12.93L-14.18 -25.92L-9.18 -22.17L-22.17 -9.18ZM-14.18 -25.92L4.18 -25.92L9.18 -22.17L-9.18 -22.17ZM9.18 -22.17L22.17 -9.18L17.17 -12.93L4.18 -25.92ZM22.17 -9.18L22.17 9.18L17.17 5.43L17.17 -12.93Z"/>
+<path fill="#ff8a7c" d="M-27.17 -12.93L-14.18 -25.92L-9.18 -22.17L-22.17 -9.18ZM-14.18 -25.92L4.18 -25.92L9.18 -22.17L-9.18 -22.17Z"/>
+<path fill="url(#face)" d="M22.17 9.18L9.18 22.17L-9.18 22.17L-22.17 9.18L-22.17 -9.18L-9.18 -22.17L9.18 -22.17L22.17 -9.18Z"/>
+<path class="from32" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round" d="M18.85 7.81L7.81 18.85L-7.81 18.85L-18.85 7.81L-18.85 -7.81L-7.81 -18.85L7.81 -18.85L18.85 -7.81Z"/>
+<g class="from32" fill="url(#white)" stroke="#7a0f0f" stroke-width="1.8" stroke-linejoin="round" style="paint-order:stroke"><path d="M-3.2-13.4Q-3.2-15 -1.6-15H1.6Q3.2-15 3.2-13.4L2 3.4H-2Z"/><circle cx="0" cy="10.4" r="3.5"/></g>
+<g class="upto24" fill="#fff"><path d="M-4-15.6H4L2.6 4H-2.6Z"/><circle cx="0" cy="11" r="4.2"/></g>
+</g>
+</svg>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Paste: a clipboard seen from above, a written sheet under its steel clip. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="31" cy="60.6" r="24" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.72) scale(1 .13)"><stop offset="0" stop-opacity="0.24"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="board"><path d="M5 22.8Q5 21.5 6.94 21.01L33.06 14.49Q35 14 35.89 15.79L51.61 47.21Q52.5 49 52.5 50.3L52.5 50.3Q52.5 51.6 50.56 52.09L24.44 58.61Q22.5 59.1 21.61 57.31L5.89 25.89Q5 24.1 5 22.8Z"/></clipPath>
+<linearGradient id="wood" x1="0" y1="0" x2="30" y2="35" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f0b468"/><stop offset="1" stop-color="#c98a3e"/></linearGradient>
+<linearGradient id="paper" x1="3" y1="3" x2="27" y2="32" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e6e9f2"/></linearGradient>
+<linearGradient id="clip" x1="8" y1="-3" x2="22" y2="6" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fbfbfd"/><stop offset="1" stop-color="#9a9ea9"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="31" cy="60.6" rx="24" ry="3.4" fill="url(#shadow)"/>
+<path class="o" fill="#a8702c" d="M5 22.8Q5 21.5 6.94 21.01L33.06 14.49Q35 14 35.89 15.79L51.61 47.21Q52.5 49 52.5 50.3L52.5 50.3Q52.5 51.6 50.56 52.09L24.44 58.61Q22.5 59.1 21.61 57.31L5.89 25.89Q5 24.1 5 22.8Z"/>
+<g clip-path="url(#board)"><path fill="#8a5a22" d="M3 17.5L22.5 56.5L22.5 61.1L3 26.1Z"/></g>
+<g transform="matrix(1 -.25 .5 1 5 21.5)"><rect x="0" y="0" width="30" height="35" rx="2" fill="url(#wood)"/><rect x="3" y="3.4" width="24" height="28.6" fill="#1b1b1f" fill-opacity=".35"/><rect x="3" y="3" width="24" height="28.6" fill="url(#paper)"/><g class="from48" fill="none" stroke="#a3a7b6" stroke-width="1.5" stroke-linecap="round"><path d="M6 11H18M6 14.6H24M6 18.2H24M6 21.8H24M6 25.4H19"/></g><g class="upto32" fill="none" stroke="#8f94a6" stroke-width="2.6"><path d="M6 12H24M6 18.5H24M6 25H18"/></g><path fill="url(#clip)" stroke="#1b1b1f" stroke-width=".8" stroke-linejoin="round" d="M8.6 5.6V2.4Q8.6 1 10 1H12.4Q12.4 -2.6 15 -2.6Q17.6 -2.6 17.6 1H20Q21.4 1 21.4 2.4V5.6Z"/><circle class="from32" cx="15" cy="-.4" r="1" fill="#1b1b1f"/><path class="h from48" stroke-opacity="0.6" stroke-width=".45" d="M.8 33V2Q.8 .8 2 .8H28"/></g>
+</svg>

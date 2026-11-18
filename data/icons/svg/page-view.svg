@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Page view: two pages lying side by side, seen from above. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="32" cy="57.6" r="26" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 50.11) scale(1 .13)"><stop offset="0" stop-opacity="0.24"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="leaf1"><path d="M3.5 27.3Q3.5 26.5 4.28 26.31L22.72 21.69Q23.5 21.5 23.86 22.22L36.64 47.78Q37 48.5 37 49.3L37 49.3Q37 50.1 36.22 50.29L17.78 54.91Q17 55.1 16.64 54.38L3.86 28.82Q3.5 28.1 3.5 27.3Z"/></clipPath>
+<clipPath id="leaf2"><path d="M25 21.2Q25 20.4 25.78 20.21L44.22 15.59Q45 15.4 45.36 16.12L58.14 41.68Q58.5 42.4 58.5 43.2L58.5 43.2Q58.5 44 57.72 44.19L39.28 48.81Q38.5 49 38.14 48.28L25.36 22.72Q25 22 25 21.2Z"/></clipPath>
+<linearGradient id="paper" x1="0" y1="0" x2="20" y2="27" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e6e9f2"/></linearGradient>
+<linearGradient id="fold" x1="14" y1="6" x2="18" y2="2" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f7f8fb"/><stop offset="1" stop-color="#c4c8d4"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="32" cy="57.6" rx="26" ry="3.4" fill="url(#shadow)"/>
+<path class="o" fill="#b9bcc6" d="M25 21.2Q25 20.4 25.78 20.21L44.22 15.59Q45 15.4 45.36 16.12L58.14 41.68Q58.5 42.4 58.5 43.2L58.5 43.2Q58.5 44 57.72 44.19L39.28 48.81Q38.5 49 38.14 48.28L25.36 22.72Q25 22 25 21.2Z"/>
+<g clip-path="url(#leaf2)"><path fill="#9a9ea9" d="M23 16.4L38.5 47.4L38.5 51L23 24Z"/></g>
+<g transform="matrix(1 -.25 .5 1 25 20.4)"><rect x="0" y="0" width="20" height="27" rx="0.8" fill="url(#paper)"/><path class="from48" fill="none" stroke="#a3a7b6" stroke-width="1.5" stroke-linecap="round" d="M3 6H17M3 9.4H17M3 12.8H17M3 16.2H17M3 19.6H17M3 23H11"/><path class="upto32" fill="none" stroke="#8f94a6" stroke-width="2.6" d="M3 7H17M3 13.4H17M3 19.8H17"/><path class="from32" fill="url(#fold)" stroke="#1b1b1f" stroke-opacity=".5" stroke-width=".4" stroke-linejoin="round" d="M14 0L20 6H15Q14 6 14 5Z"/></g>
+<path class="o" fill="#b9bcc6" d="M3.5 27.3Q3.5 26.5 4.28 26.31L22.72 21.69Q23.5 21.5 23.86 22.22L36.64 47.78Q37 48.5 37 49.3L37 49.3Q37 50.1 36.22 50.29L17.78 54.91Q17 55.1 16.64 54.38L3.86 28.82Q3.5 28.1 3.5 27.3Z"/>
+<g clip-path="url(#leaf1)"><path fill="#9a9ea9" d="M1.5 22.5L17 53.5L17 57.1L1.5 30.1Z"/></g>
+<g transform="matrix(1 -.25 .5 1 3.5 26.5)"><rect x="0" y="0" width="20" height="27" rx="0.8" fill="url(#paper)"/><path class="from48" fill="none" stroke="#a3a7b6" stroke-width="1.5" stroke-linecap="round" d="M3 6H17M3 9.4H17M3 12.8H17M3 16.2H17M3 19.6H17M3 23H11"/><path class="upto32" fill="none" stroke="#8f94a6" stroke-width="2.6" d="M3 7H17M3 13.4H17M3 19.8H17"/><path class="from32" fill="url(#fold)" stroke="#1b1b1f" stroke-opacity=".5" stroke-width=".4" stroke-linejoin="round" d="M14 0L20 6H15Q14 6 14 5Z"/></g>
+</svg>

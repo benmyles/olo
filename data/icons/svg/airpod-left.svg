@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- AirPod, the left one: a white earbud, its grey tip, its stem down. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="33" cy="60.2" r="16" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.37) scale(1 .13)"><stop offset="0" stop-opacity="0.24"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="white" x1="14" y1="4" x2="56" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="0.5" stop-color="#f1f2f6"/><stop offset="1" stop-color="#cfd3dd"/></linearGradient>
+<linearGradient id="tip" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f1f2f5"/><stop offset="0.5" stop-color="#b9bcc6"/><stop offset="1" stop-color="#7d828e"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="33" cy="60.2" rx="16" ry="3.4" fill="url(#shadow)"/>
+<path class="o" fill="url(#white)" d="M28.6 30L38.4 30L38.4 53Q38.4 57.6 33.5 57.6Q28.6 57.6 28.6 53Z"/>
+<path class="o" fill="url(#white)" d="M24 22C22 10 34 3.6 44 6.4C54 9.4 57 20 52 28C48 34.6 40 37 33 35.4C28 34.4 25 30 24 22Z"/>
+<ellipse cx="19.4" cy="30.4" rx="9" ry="10.4" transform="rotate(-12 19.4 30.4)" class="o" fill="url(#tip)"/>
+<ellipse cx="15.8" cy="31" rx="3.3" ry="5" transform="rotate(-12 15.8 31)" fill="#1b1b1f" fill-opacity=".85"/>
+<g class="from32"><ellipse cx="45" cy="14" rx="4.8" ry="2.3" transform="rotate(-30 45 14)" fill="#1b1b1f" /><ellipse cx="33.6" cy="50.6" rx="1.1" ry="2.8" transform="rotate(0 33.6 50.6)" fill="#1b1b1f" fill-opacity=".7" /></g>
+<path class="h from48" stroke-opacity=".95" stroke-width="1.1" d="M29 12Q33 8 39 8M30.6 38L30.6 52"/>
+</svg>

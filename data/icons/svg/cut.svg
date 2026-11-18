@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Cut: a pair of scissors, red handles, steel blades open. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="30" cy="59.6" r="22" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 51.85) scale(1 .13)"><stop offset="0" stop-opacity="0.22"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="steel" x1="4" y1="28" x2="34" y2="54" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fbfbfd"/><stop offset="0.5" stop-color="#c9ccd4"/><stop offset="1" stop-color="#8b8f9b"/></linearGradient>
+<linearGradient id="red" x1="28" y1="6" x2="58" y2="42" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff7a6c"/><stop offset="0.5" stop-color="#ee2f2a"/><stop offset="1" stop-color="#c41818"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="30" cy="59.6" rx="22" ry="3.4" fill="url(#shadow)"/>
+<!-- The blades. -->
+<path class="o" fill="url(#steel)" d="M33 26.4L5 35.4Q3.4 37 5.6 37.6L35 33.4Z"/>
+<path class="o" fill="url(#steel)" d="M28 27.6L14.6 53.4Q14.6 55.4 16.6 54.6L35 32.6Z"/>
+<path class="from48" fill="none" stroke="#fff" stroke-opacity=".8" stroke-width=".5" stroke-linecap="round" d="M8 35.6L31 28.4M17.4 50.4L29 30"/>
+<!-- The handles. -->
+<g fill="none" stroke-linecap="round"><path stroke="#1b1b1f" stroke-width="6.6" d="M32 28L34.4 23.4M35 31.4L41.6 33.4"/><path stroke="url(#red)" stroke-width="4.8" d="M32 28L34.4 23.4M35 31.4L41.6 33.4"/></g>
+<g transform="rotate(14 36 14.4)" fill="none"><ellipse cx="36" cy="14.4" rx="6" ry="8.4" stroke="#1b1b1f" stroke-width="6.6"/><ellipse cx="36" cy="14.4" rx="6" ry="8.4" stroke="url(#red)" stroke-width="4.8"/><path class="h from48" stroke="#ffc4bc" stroke-opacity=".9" stroke-width=".7" d="M30.6 10.2A6 8.4 0 0 1 34.8 5"/></g>
+<g transform="rotate(8 49.6 35.6)" fill="none"><ellipse cx="49.6" cy="35.6" rx="8.4" ry="5.8" stroke="#1b1b1f" stroke-width="6.6"/><ellipse cx="49.6" cy="35.6" rx="8.4" ry="5.8" stroke="url(#red)" stroke-width="4.8"/><path class="h from48" stroke="#ffc4bc" stroke-opacity=".9" stroke-width=".7" d="M42.04 32.7A8.4 5.8 0 0 1 47.92 28.8"/></g>
+<circle cx="31.6" cy="30.6" r="2.3" fill="#1b1b1f"/><circle cx="31.6" cy="30.6" r="1.6" fill="#d5d8df"/>
+</svg>

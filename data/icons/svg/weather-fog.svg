@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Fog: a cloud, bars of mist across it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<linearGradient id="cloud1" x1="8.5" y1="7" x2="14.98" y2="35.08" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f8f9fb"/><stop offset="0.5" stop-color="#dadee7"/><stop offset="1" stop-color="#a4abba"/></linearGradient>
+<linearGradient id="fog" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f1f3f8"/><stop offset="1" stop-color="#aeb4c2"/></linearGradient>
+</defs>
+<path class="o" fill="url(#cloud1)" d="M18.87 35.08Q9.58 35.08 9.58 26.87Q9.58 19.96 16.49 18.66Q17.57 12.4 23.62 11.54Q26.43 11.32 28.37 12.62Q31.83 7 38.74 7.22Q46.73 7.86 48.24 15.86Q55.59 16.72 55.59 24.93Q55.59 35.08 46.08 35.08Z"/>
+<path class="from48" fill="#a4abba" fill-opacity=".45" d="M11.74 27.52Q20.38 32.49 32.26 32.06Q45.22 31.62 54.72 26.01Q56.02 35.08 46.08 35.08L18.87 35.08Q10.23 35.08 11.74 27.52Z"/>
+<path class="h from48" stroke-opacity=".9" stroke-width="0.86" d="M30.53 14.13Q33.34 9.81 38.31 9.59M12.17 24.93Q12.39 21.69 16.06 20.61M19.08 17.15Q19.95 14.13 23.19 13.7"/>
+<rect class="o" x="5" y="32.5" width="28" height="5.6" rx="2.8" fill="url(#fog)"/><path class="h from48" stroke-opacity=".9" stroke-width=".6" d="M8 34.0H30"/>
+<rect class="o" x="13" y="41" width="37" height="5.6" rx="2.8" fill="url(#fog)"/><path class="h from48" stroke-opacity=".9" stroke-width=".6" d="M16 42.5H47"/>
+<rect class="o" x="8" y="49.5" width="27" height="5.6" rx="2.8" fill="url(#fog)"/><path class="h from48" stroke-opacity=".9" stroke-width=".6" d="M11 51.0H32"/>
+</svg>

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Stay awake: a cup of coffee on its saucer, steam rising. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="32" cy="60" r="26" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.2) scale(1 .13)"><stop offset="0" stop-opacity="0.24"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="china" x1="12" y1="20" x2="50" y2="50" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="0.5" stop-color="#eceef2"/><stop offset="1" stop-color="#c3c6cf"/></linearGradient>
+<linearGradient id="saucer" x1="6" y1="40" x2="58" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#d5d8df"/></linearGradient>
+<radialGradient id="coffee" cx="27" cy="23" r="16" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#8a5a36"/><stop offset="0.5" stop-color="#4a2a14"/><stop offset="1" stop-color="#2a1608"/></radialGradient>
+</defs>
+<ellipse class="from48" cx="32" cy="60" rx="26" ry="3.4" fill="url(#shadow)"/>
+<path class="o" fill="#b9bcc6" d="M6 48.6A26 9 0 0 1 58 48.6V50.4A26 9 0 0 1 6 50.4Z"/>
+<ellipse cx="32" cy="48.6" rx="26" ry="9" fill="url(#saucer)"/>
+<ellipse class="from48" cx="31" cy="48.4" rx="15" ry="4.8" fill="#1b1b1f" fill-opacity=".14"/>
+<!-- The cup: its handle, its body, the coffee in it. -->
+<g fill="none" stroke-linecap="round"><path stroke="#1b1b1f" stroke-width="5.6" d="M45.6 28Q56.6 27.4 55.4 34.4Q54.2 40.4 43.6 40.4"/><path stroke="#f4f5f8" stroke-width="3.4" d="M45.6 28Q56.6 27.4 55.4 34.4Q54.2 40.4 43.6 40.4"/></g>
+<path class="o" fill="url(#china)" d="M14.6 24A16.4 6 0 0 1 47.4 24C47.4 38 42.4 46.4 39.4 47.4A8.6 3 0 0 1 22.6 47.4C19.6 46.4 14.6 38 14.6 24Z"/>
+<ellipse cx="31" cy="24" rx="16.4" ry="6" fill="#fff" stroke="#1b1b1f" stroke-opacity=".35" stroke-width=".4"/>
+<ellipse cx="31" cy="24.6" rx="13.8" ry="4.6" fill="#1b1b1f"/><ellipse cx="31" cy="24.9" rx="13.2" ry="4.2" fill="url(#coffee)"/>
+<path class="h from48" stroke-opacity=".9" stroke-width=".7" d="M18.6 30Q19.6 38 23 43.6"/>
+<g class="from48" fill="none" stroke="#b9bcc6" stroke-opacity=".9" stroke-width="1.5" stroke-linecap="round"><path d="M28 19Q25 15 28.4 11.6Q31.6 8.4 29 4.6M35 18.4Q33 15.6 35.4 13Q37.6 10.6 36 8"/></g>
+</svg>

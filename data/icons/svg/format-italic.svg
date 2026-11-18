@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Italic: a steel I standing, slanted. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="33" cy="60.2" r="21" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.37) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="steel" x1="-12" y1="-20" x2="12" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f6f7f9"/><stop offset="0.5" stop-color="#c3c6cf"/><stop offset="1" stop-color="#8b8f9b"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="33" cy="60.2" rx="21" ry="3.4" fill="url(#shadow)"/>
+<g transform="matrix(1 -.25 0 1 35.5 34)">
+<path class="o" fill="#6d7280" d="M-2.6 -18L13.4 -18L11.9 -13L7.4 -13L-0.4 13L4.1 13L2.6 18L-13.4 18L-11.9 13L-7.4 13L0.4 -13L-4.1 -13ZM-7.6 -21.75L8.4 -21.75L6.9 -16.75L2.4 -16.75L-5.4 9.25L-0.9 9.25L-2.4 14.25L-18.4 14.25L-16.9 9.25L-12.4 9.25L-4.6 -16.75L-9.1 -16.75ZM-7.6 -21.75L8.4 -21.75L13.4 -18L-2.6 -18ZM13.4 -18L11.9 -13L6.9 -16.75L8.4 -21.75ZM11.9 -13L7.4 -13L2.4 -16.75L6.9 -16.75ZM7.4 -13L-0.4 13L-5.4 9.25L2.4 -16.75ZM-5.4 9.25L-0.9 9.25L4.1 13L-0.4 13ZM4.1 13L2.6 18L-2.4 14.25L-0.9 9.25ZM2.6 18L-13.4 18L-18.4 14.25L-2.4 14.25ZM-18.4 14.25L-16.9 9.25L-11.9 13L-13.4 18ZM-16.9 9.25L-12.4 9.25L-7.4 13L-11.9 13ZM-12.4 9.25L-4.6 -16.75L0.4 -13L-7.4 13ZM0.4 -13L-4.1 -13L-9.1 -16.75L-4.6 -16.75ZM-9.1 -16.75L-7.6 -21.75L-2.6 -18L-4.1 -13Z"/>
+<path fill="#ffffff" d="M-7.6 -21.75L8.4 -21.75L13.4 -18L-2.6 -18ZM-5.4 9.25L-0.9 9.25L4.1 13L-0.4 13ZM-16.9 9.25L-12.4 9.25L-7.4 13L-11.9 13Z"/>
+<path fill="url(#steel)" d="M-2.6 -18L13.4 -18L11.9 -13L7.4 -13L-0.4 13L4.1 13L2.6 18L-13.4 18L-11.9 13L-7.4 13L0.4 -13L-4.1 -13Z"/>
+</g>
+</svg>

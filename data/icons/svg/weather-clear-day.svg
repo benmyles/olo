@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Clear, by day: the sun. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="sun" cx="27.24" cy="26.56" r="20.4" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff6b0"/><stop offset="0.5" stop-color="#ffd21a"/><stop offset="1" stop-color="#f2a000"/></radialGradient>
+<linearGradient id="ray" x1="8.88" y1="8.88" x2="55.12" y2="55.12" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffe98a"/><stop offset="1" stop-color="#f7b21a"/></linearGradient>
+</defs>
+<path class="o" fill="url(#ray)" d="M28.42 20.29L32 8.34L35.58 20.29Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M32 19.76L32 8.34L35.58 20.29Z"/><path class="o" fill="url(#ray)" d="M37.75 21.19L48.73 15.27L42.81 26.25Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M40.65 23.35L48.73 15.27L42.81 26.25Z"/><path class="o" fill="url(#ray)" d="M43.71 28.42L55.66 32L43.71 35.58Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M44.24 32L55.66 32L43.71 35.58Z"/><path class="o" fill="url(#ray)" d="M42.81 37.75L48.73 48.73L37.75 42.81Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M40.65 40.65L48.73 48.73L37.75 42.81Z"/><path class="o" fill="url(#ray)" d="M35.58 43.71L32 55.66L28.42 43.71Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M32 44.24L32 55.66L28.42 43.71Z"/><path class="o" fill="url(#ray)" d="M26.25 42.81L15.27 48.73L21.19 37.75Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M23.35 40.65L15.27 48.73L21.19 37.75Z"/><path class="o" fill="url(#ray)" d="M20.29 35.58L8.34 32L20.29 28.42Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M19.76 32L8.34 32L20.29 28.42Z"/><path class="o" fill="url(#ray)" d="M21.19 26.25L15.27 15.27L26.25 21.19Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M23.35 23.35L15.27 15.27L26.25 21.19Z"/>
+<circle class="o" cx="32" cy="32" r="13.6" fill="url(#sun)"/>
+<path class="from48" fill="#fff" fill-opacity=".6" d="M21.94 29.28A10.88 10.88 0 0 1 30.64 21.39A13.6 13.6 0 0 0 21.94 29.28Z"/>
+</svg>

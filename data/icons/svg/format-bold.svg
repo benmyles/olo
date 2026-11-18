@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Bold: a heavy steel B standing. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="33" cy="60.2" r="21" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.37) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="steel" x1="-12" y1="-20" x2="12" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f6f7f9"/><stop offset="0.5" stop-color="#c3c6cf"/><stop offset="1" stop-color="#8b8f9b"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="33" cy="60.2" rx="21" ry="3.4" fill="url(#shadow)"/>
+<g transform="matrix(1 -.25 0 1 35 34.5)">
+<path class="o" fill="#6d7280" d="M-13 -19.8L3.9 -19.8L10.4 -18.15L13.78 -13.75L13.78 -8.25L10.4 -3.74L7.15 -1.98L12.22 0L15.6 4.4L15.6 11.55L12.48 16.5L5.72 19.14L-13 19.14ZM-18 -23.55L-1.1 -23.55L5.4 -21.9L8.78 -17.5L8.78 -12L5.4 -7.49L2.15 -5.73L7.22 -3.75L10.6 0.65L10.6 7.8L7.48 12.75L0.72 15.39L-18 15.39ZM-18 -23.55L-1.1 -23.55L3.9 -19.8L-13 -19.8ZM-1.1 -23.55L5.4 -21.9L10.4 -18.15L3.9 -19.8ZM10.4 -18.15L13.78 -13.75L8.78 -17.5L5.4 -21.9ZM13.78 -13.75L13.78 -8.25L8.78 -12L8.78 -17.5ZM13.78 -8.25L10.4 -3.74L5.4 -7.49L8.78 -12ZM10.4 -3.74L7.15 -1.98L2.15 -5.73L5.4 -7.49ZM2.15 -5.73L7.22 -3.75L12.22 0L7.15 -1.98ZM12.22 0L15.6 4.4L10.6 0.65L7.22 -3.75ZM15.6 4.4L15.6 11.55L10.6 7.8L10.6 0.65ZM15.6 11.55L12.48 16.5L7.48 12.75L10.6 7.8ZM12.48 16.5L5.72 19.14L0.72 15.39L7.48 12.75ZM5.72 19.14L-13 19.14L-18 15.39L0.72 15.39ZM-18 15.39L-18 -23.55L-13 -19.8L-13 19.14Z"/>
+<path fill="#ffffff" d="M-18 -23.55L-1.1 -23.55L3.9 -19.8L-13 -19.8ZM-1.1 -23.55L5.4 -21.9L10.4 -18.15L3.9 -19.8ZM2.15 -5.73L7.22 -3.75L12.22 0L7.15 -1.98Z"/>
+<path fill="url(#steel)" d="M-13 -19.8L3.9 -19.8L10.4 -18.15L13.78 -13.75L13.78 -8.25L10.4 -3.74L7.15 -1.98L12.22 0L15.6 4.4L15.6 11.55L12.48 16.5L5.72 19.14L-13 19.14Z"/>
+<path fill="#6d7280" stroke="#1b1b1f" stroke-width=".6" stroke-linejoin="round" d="M-3.9 -13.2L2.6 -13.2L5.2 -11.66L5.2 -8.14L2.6 -6.6L-3.9 -6.6Z"/><path class="from32" fill="#1b1b1f" fill-opacity=".5" d="M-2.3 -11.9L2.6 -11.9L5.2 -10.36L5.2 -8.14L2.6 -6.6L-2.3 -6.6Z"/><path fill="#6d7280" stroke="#1b1b1f" stroke-width=".6" stroke-linejoin="round" d="M-3.9 1.76L3.9 1.76L6.76 3.96L6.76 10.34L3.9 12.54L-3.9 12.54Z"/><path class="from32" fill="#1b1b1f" fill-opacity=".5" d="M-2.3 3.06L3.9 3.06L6.76 5.26L6.76 10.34L3.9 12.54L-2.3 12.54Z"/></g>
+</svg>

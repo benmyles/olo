@@ -39,11 +39,11 @@ something nobody here has is in "Blocked", with what it waits for.
   turned into an svg"). How: docs/ICONS.md, "Drawings". Done so far: the
   loader draws `icons/svg/NAME.svg` for the size asked, kept once
   rendered (`olo_xdg::svg`); the grid, the one projection, the outline
-  and size classes; `tools/dev/icontrace.py`; drawn so far (Classic): what's
-  in `data/icons/svg`, 103 of 181 (`comm -13` of its names against
-  `data/icons/256` lists what's left). To do: every other icon in the
-  manifest (143 in all), Weather's skies (18) and the phones (20), for
-  Classic; then Platinum's set in its own style; then the pictures
+  and size classes; `tools/dev/icontrace.py`; every one of Classic's 181 is drawn (`data/icons/svg`:
+  the manifest's 143, Weather's skies, the phones). To do: look at the
+  whole set in the apps at every scale and redraw what's weak; then
+  Platinum's set in its own style (163 pictures in
+  `data/themes/platinum/icons`); then the pictures
   removed (`<px>/NAME.png`, `mkicons.py`, the model's tools), the icon
   theme other programs get (app_server's `icon_theme.rs`: the drawings
   as `scalable/`), Olo Setup's embedded icons (`apps/installer/build.rs`),

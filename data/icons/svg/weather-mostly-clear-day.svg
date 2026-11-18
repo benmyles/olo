@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Mostly clear, by day: the sun, a small cloud before it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="sun" cx="22.44" cy="21.36" r="17.4" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff6b0"/><stop offset="0.5" stop-color="#ffd21a"/><stop offset="1" stop-color="#f2a000"/></radialGradient>
+<linearGradient id="ray" x1="6.78" y1="6.28" x2="46.22" y2="45.72" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffe98a"/><stop offset="1" stop-color="#f7b21a"/></linearGradient>
+<linearGradient id="cloud1" x1="27.5" y1="36" x2="31.82" y2="54.72" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="0.5" stop-color="#f1f3f8"/><stop offset="1" stop-color="#c9d0de"/></linearGradient>
+</defs>
+<path class="o" fill="url(#ray)" d="M23.45 16.02L26.5 5.82L29.55 16.02Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M26.5 15.56L26.5 5.82L29.55 16.02Z"/><path class="o" fill="url(#ray)" d="M31.4 16.78L40.77 11.73L35.72 21.1Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M33.88 18.62L40.77 11.73L35.72 21.1Z"/><path class="o" fill="url(#ray)" d="M36.48 22.95L46.68 26L36.48 29.05Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M36.94 26L46.68 26L36.48 29.05Z"/><path class="o" fill="url(#ray)" d="M35.72 30.9L40.77 40.27L31.4 35.22Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M33.88 33.38L40.77 40.27L31.4 35.22Z"/><path class="o" fill="url(#ray)" d="M29.55 35.98L26.5 46.18L23.45 35.98Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M26.5 36.44L26.5 46.18L23.45 35.98Z"/><path class="o" fill="url(#ray)" d="M21.6 35.22L12.23 40.27L17.28 30.9Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M19.12 33.38L12.23 40.27L17.28 30.9Z"/><path class="o" fill="url(#ray)" d="M16.52 29.05L6.32 26L16.52 22.95Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M16.06 26L6.32 26L16.52 22.95Z"/><path class="o" fill="url(#ray)" d="M17.28 21.1L12.23 11.73L21.6 16.78Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M19.12 18.62L12.23 11.73L21.6 16.78Z"/>
+<circle class="o" cx="26.5" cy="26" r="11.6" fill="url(#sun)"/>
+<path class="from48" fill="#fff" fill-opacity=".6" d="M17.92 23.68A9.28 9.28 0 0 1 25.34 16.95A11.6 11.6 0 0 0 17.92 23.68Z"/>
+<path class="o" fill="url(#cloud1)" d="M34.41 54.72Q28.22 54.72 28.22 49.25Q28.22 44.64 32.83 43.78Q33.55 39.6 37.58 39.02Q39.45 38.88 40.75 39.74Q43.05 36 47.66 36.14Q52.99 36.58 54 41.9Q58.89 42.48 58.89 47.95Q58.89 54.72 52.56 54.72Z"/>
+<path class="from48" fill="#c9d0de" fill-opacity=".45" d="M29.66 49.68Q35.42 52.99 43.34 52.7Q51.98 52.42 58.32 48.67Q59.18 54.72 52.56 54.72L34.41 54.72Q28.65 54.72 29.66 49.68Z"/>
+<path class="h from48" stroke-opacity=".9" stroke-width="0.58" d="M42.19 40.75Q44.06 37.87 47.37 37.73M29.95 47.95Q30.09 45.79 32.54 45.07M34.56 42.77Q35.13 40.75 37.29 40.46"/>
+</svg>

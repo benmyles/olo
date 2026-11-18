@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Partly cloudy, by day: the sun behind a cloud. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="sun" cx="18.86" cy="17.34" r="15.6" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff6b0"/><stop offset="0.5" stop-color="#ffd21a"/><stop offset="1" stop-color="#f2a000"/></radialGradient>
+<linearGradient id="ray" x1="4.82" y1="3.82" x2="40.18" y2="39.18" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffe98a"/><stop offset="1" stop-color="#f7b21a"/></linearGradient>
+<linearGradient id="cloud1" x1="12" y1="25.5" x2="18.42" y2="53.32" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="0.5" stop-color="#f1f3f8"/><stop offset="1" stop-color="#c9d0de"/></linearGradient>
+</defs>
+<path class="o" fill="url(#ray)" d="M19.76 12.55L22.5 3.4L25.24 12.55Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M22.5 12.14L22.5 3.4L25.24 12.55Z"/><path class="o" fill="url(#ray)" d="M26.89 13.24L35.3 8.7L30.76 17.11Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M29.12 14.88L35.3 8.7L30.76 17.11Z"/><path class="o" fill="url(#ray)" d="M31.45 18.76L40.6 21.5L31.45 24.24Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M31.86 21.5L40.6 21.5L31.45 24.24Z"/><path class="o" fill="url(#ray)" d="M30.76 25.89L35.3 34.3L26.89 29.76Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M29.12 28.12L35.3 34.3L26.89 29.76Z"/><path class="o" fill="url(#ray)" d="M25.24 30.45L22.5 39.6L19.76 30.45Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M22.5 30.86L22.5 39.6L19.76 30.45Z"/><path class="o" fill="url(#ray)" d="M18.11 29.76L9.7 34.3L14.24 25.89Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M15.88 28.12L9.7 34.3L14.24 25.89Z"/><path class="o" fill="url(#ray)" d="M13.55 24.24L4.4 21.5L13.55 18.76Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M13.14 21.5L4.4 21.5L13.55 18.76Z"/><path class="o" fill="url(#ray)" d="M14.24 17.11L9.7 8.7L18.11 13.24Z"/><path class="from32" fill="#d98a06" fill-opacity=".55" d="M15.88 14.88L9.7 8.7L18.11 13.24Z"/>
+<circle class="o" cx="22.5" cy="21.5" r="10.4" fill="url(#sun)"/>
+<path class="from48" fill="#fff" fill-opacity=".6" d="M14.8 19.42A8.32 8.32 0 0 1 21.46 13.39A10.4 10.4 0 0 0 14.8 19.42Z"/>
+<path class="o" fill="url(#cloud1)" d="M22.27 53.32Q13.07 53.32 13.07 45.19Q13.07 38.34 19.92 37.06Q20.99 30.85 26.98 29.99Q29.76 29.78 31.69 31.06Q35.11 25.5 41.96 25.71Q49.88 26.36 51.38 34.27Q58.65 35.13 58.65 43.26Q58.65 53.32 49.24 53.32Z"/>
+<path class="from48" fill="#c9d0de" fill-opacity=".45" d="M15.21 45.83Q23.77 50.75 35.54 50.32Q48.38 49.9 57.8 44.33Q59.08 53.32 49.24 53.32L22.27 53.32Q13.71 53.32 15.21 45.83Z"/>
+<path class="h from48" stroke-opacity=".9" stroke-width="0.86" d="M33.83 32.56Q36.61 28.28 41.53 28.07M15.64 43.26Q15.85 40.05 19.49 38.98M22.49 35.56Q23.34 32.56 26.55 32.13"/>
+</svg>

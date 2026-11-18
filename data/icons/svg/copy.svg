@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Copy: a page, and a second the same before it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<linearGradient id="shadow" x1="26" y1="56" x2="27" y2="60.4" gradientUnits="userSpaceOnUse"><stop offset="0" stop-opacity=".2"/><stop offset="1" stop-opacity="0"/></linearGradient>
+<linearGradient id="paper" x1="2" y1="2" x2="34" y2="47" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="0.55" stop-color="#f4f5f9"/><stop offset="1" stop-color="#dfe2ec"/></linearGradient>
+<linearGradient id="fold" x1="26" y1="10" x2="32.5" y2="3.5" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f7f8fb"/><stop offset="1" stop-color="#c4c8d4"/></linearGradient>
+</defs>
+<path class="from48" fill="url(#shadow)" d="M9 60L44 51.2L47 54.2L13 62.8Z"/>
+<g transform="matrix(1 -.25 0 1 21 12)">
+<path class="o" fill="url(#paper)" d="M1.2 0H26L36 10V38.8Q36 40 34.8 40H1.2Q0 40 0 38.8V1.2Q0 0 1.2 0Z"/>
+<path class="from48" fill="#1b1b1f" fill-opacity=".14" d="M26 10.6H36V13.2L27 11.6Z"/>
+<path fill="url(#fold)" d="M26 0L36 10H27.2Q26 10 26 8.8Z"/>
+<path class="from32" fill="none" stroke="#1b1b1f" stroke-opacity=".55" stroke-width=".5" stroke-linejoin="round" d="M26 0V8.8Q26 10 27.2 10H36"/>
+<g class="from48" fill="none" stroke="#a3a7b6" stroke-width="1.8" stroke-linecap="round"><path d="M6 15H22M6 20H30M6 25H30M6 30H26M6 35H18"/></g><g class="upto32" fill="none" stroke="#8f94a6" stroke-width="2.8"><path d="M6 17H30M6 24H30M6 31H20"/></g></g>
+<g transform="matrix(1 -.25 0 1 8 19)">
+<path class="o" fill="url(#paper)" d="M1.2 0H26L36 10V38.8Q36 40 34.8 40H1.2Q0 40 0 38.8V1.2Q0 0 1.2 0Z"/>
+<path class="from48" fill="#1b1b1f" fill-opacity=".14" d="M26 10.6H36V13.2L27 11.6Z"/>
+<path fill="url(#fold)" d="M26 0L36 10H27.2Q26 10 26 8.8Z"/>
+<path class="from32" fill="none" stroke="#1b1b1f" stroke-opacity=".55" stroke-width=".5" stroke-linejoin="round" d="M26 0V8.8Q26 10 27.2 10H36"/>
+<g class="from48" fill="none" stroke="#a3a7b6" stroke-width="1.8" stroke-linecap="round"><path d="M6 15H22M6 20H30M6 25H30M6 30H26M6 35H18"/></g><g class="upto32" fill="none" stroke="#8f94a6" stroke-width="2.8"><path d="M6 17H30M6 24H30M6 31H20"/></g></g>
+</svg>

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Suggestions: a wooden box with a slot, a card with a blue star going in. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="32" cy="60.2" r="26" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.37) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="urn"><path d="M7 22.4Q7 21 8.36 20.66L35.64 13.84Q37 13.5 38.25 14.13L55.75 22.87Q57 23.5 57 24.9L57 47.1Q57 48.5 55.64 48.84L28.36 55.66Q27 56 25.75 55.37L8.25 46.63Q7 46 7 44.6Z"/></clipPath>
+<linearGradient id="top" x1="8" y1="12" x2="56" y2="30" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f7d49a"/><stop offset="1" stop-color="#e6ad63"/></linearGradient>
+<linearGradient id="front" x1="0" y1="0" x2="30" y2="25" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#dda258"/><stop offset="1" stop-color="#b97a36"/></linearGradient>
+<linearGradient id="side" x1="7" y1="22" x2="27" y2="56" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#b98040"/><stop offset="1" stop-color="#95602a"/></linearGradient>
+<linearGradient id="cardg" x1="0" y1="-14" x2="14" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e3e6ee"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="32" cy="60.2" rx="26" ry="3.4" fill="url(#shadow)"/>
+<path class="o" fill="#95602a" d="M7 22.4Q7 21 8.36 20.66L35.64 13.84Q37 13.5 38.25 14.13L55.75 22.87Q57 23.5 57 24.9L57 47.1Q57 48.5 55.64 48.84L28.36 55.66Q27 56 25.75 55.37L8.25 46.63Q7 46 7 44.6Z"/>
+<g clip-path="url(#urn)">
+<path fill="url(#side)" d="M4 19.5L27 31L27 59L4 59Z"/>
+<path fill="url(#top)" d="M4 19.5L27 31L60 22.75L60 7.5L4 7.5Z"/>
+<g transform="matrix(1 -.25 0 1 27 31)"><path fill="url(#front)" d="M0 0H31V26H0Z"/><path class="from48" fill="none" stroke="#a8702c" stroke-width=".5" d="M0 5H30"/></g>
+<path class="h from48" stroke-opacity="0.5" stroke-width=".55" d="M27.6 31.1L56.2 23.95M27.3 32V55"/>
+<path class="h from48" stroke-opacity="0.3" stroke-width=".5" d="M8.6 21.9L26.4 30.9"/>
+</g>
+<path fill="#3a2410" stroke="#1b1b1f" stroke-width=".5" stroke-linejoin="round" d="M24.8 26.15L44.8 21.15L40 18.75L20 23.75Z"/>
+<!-- The card, going in. -->
+<g transform="matrix(1 -.25 0 1 24.8 23.85)">
+<path class="o" fill="url(#cardg)" d="M1 -14H14L15.6 0H0Z"/>
+<path fill="#2380f4" stroke="#0b3fa6" stroke-width=".4" stroke-linejoin="round" transform="translate(7.8 -7.4)" d="M0 -4.6L1.12 -1.54L4.37 -1.42L1.81 0.59L2.7 3.72L0 1.9L-2.7 3.72L-1.81 0.59L-4.37 -1.42L-1.12 -1.54Z"/>
+</g>
+<path fill="#3a2410" d="M24.8 26.15L44.8 21.15L44.08 20.79L24.08 25.79Z"/>
+</svg>
