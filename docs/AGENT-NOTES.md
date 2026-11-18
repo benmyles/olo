@@ -568,3 +568,27 @@ Each note: what to do, then why (what happened), then how to apply it.
   olo-phoned` for "busy" lines, and look (only) at
   `busctl --system get-property org.bluez PATH org.bluez.Device1
   Connected`; never connect or disconnect the person's phone yourself.
+- **The embedded controller's event storm (ThinkPad P1 Gen 9,
+  2026-11-17).** Nine seconds after the Lenovo 140 W charger went in
+  (the Studio Display, which had powered the laptop, unplugged two
+  minutes before; BIOS/EC 1.09, PD firmware 1.04), the EC began
+  reporting its adapter attached and detached 23 times a second (EC
+  0x46 bit 4, a steady 42.9 ms period), charger in or out, on any port,
+  whatever the kernel or Olo did; the port held a 28 V, 5 A contract
+  and the battery supplied everything (77% to 14% in two hours). The
+  kernel queues a handler for every EC event without limit
+  (drivers/acpi/ec.c: 195,778 queued; Lenovo's adapter handler sleeps
+  0.6 s under a firmware mutex, ten a second at most), so brightness
+  keys and USB-C notifications, events in the same queue, never ran,
+  and the load average read 270 (blocked kernel workers, no CPU). Only
+  a full power-off cleared it. Ben then installed Lenovo's firmware
+  1.17 (BIOS/EC 1.10, PD 1.05; fwupd's catalog stopped at 1.15, the
+  capsule came from Lenovo's ISO): whether that cures it isn't known,
+  the test is the same hand-over, display out and charger in, while
+  running. Signs to look for: `cat /sys/class/power_supply/AC/online`
+  flipping, hundreds of `kec_query` kernel workers in state D
+  (`ps -eo stat,comm`), "Not charging" on a charger. The traces, the
+  DSDT and a kprobe module that drops the stale handlers
+  (`olo_ec_storm.c`, tried live with Ben's word: keys back in ten
+  seconds) were in /var/tmp/claude-blueferry/{keys,ecstorm}, scratch:
+  what matters of them is here and in docs/TODO.md.

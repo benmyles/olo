@@ -56,8 +56,10 @@ pub const FOLLOWER_RULE: &str =
 /// date (Olo Doctor, Preferences ▸ Power). 2: the processors' top speed
 /// (Balanced's 75%) and Balanced leaning to saving on battery. 3: NVMe
 /// drives' power states, and set again after a resume. 4: SATA SSDs'
-/// link power (`sata_power`), kept per drive.
-pub const FOLLOWER_VERSION: u32 = 4;
+/// link power (`sata_power`), kept per drive. 5: a change of supply
+/// counts once it has held two seconds, and a supply that keeps changing
+/// is planned for as the battery (`Supply`, gpu_tune.rs).
+pub const FOLLOWER_VERSION: u32 = 5;
 
 /// What the follower last did, written by it after each change to
 /// `/run/olo-gpu-follow.json` (readable by all): which version it is,

@@ -22,7 +22,10 @@
 //! running a program the person's account could change would run
 //! anything as root. Preferences runs `set` through polkit.
 
-use std::io::{Read, Write};
+use std::{
+    io::{Read, Write},
+    time::{Duration, Instant},
+};
 
 use olo_system::{
     battery, cpu_tuning,
@@ -290,6 +293,79 @@ fn start_following(new: bool) -> olo_system::Result<()> {
     if new { systemd::restart(SERVICE_NAME) } else { systemd::start_stop(SERVICE_NAME, true) }
 }
 
+/// The power supply as the follower acts on it: a change counts once it
+/// has held for `SETTLE` (a plug put in twice, a cable moved to another
+/// port), and a supply that keeps changing (`UNSTEADY` times within
+/// `WINDOW`) is taken as the battery, the careful plan, set once, until it
+/// has been steady for `WINDOW`. A ThinkPad P1's controller reported its
+/// adapter coming and going 23 times a second for two hours, charger in
+/// or out (2026-11-17): every change UPower told of had the whole plan
+/// set again, 610 times in the first hour, each waking NVIDIA's GPU and
+/// calling the firmware for its profile.
+struct Supply {
+    /// What the plan in force was set for.
+    battery: bool,
+    /// The last reading.
+    seen: bool,
+    /// When the reading changed, lately.
+    changes: std::collections::VecDeque<Instant>,
+    unsteady: bool,
+}
+
+impl Supply {
+    const SETTLE: Duration = Duration::from_secs(2);
+    const WINDOW: Duration = Duration::from_secs(30);
+    const UNSTEADY: usize = 4;
+
+    fn new(battery: bool) -> Self {
+        Supply { battery, seen: battery, changes: Default::default(), unsteady: false }
+    }
+
+    /// A reading of the supply.
+    fn observe(&mut self, battery: bool, now: Instant) {
+        if battery != self.seen {
+            self.seen = battery;
+            self.changes.push_back(now);
+        }
+        while self.changes.len() > Self::UNSTEADY {
+            self.changes.pop_front();
+        }
+        if self.changes.len() == Self::UNSTEADY && self.changes.front().is_some_and(|t| now.duration_since(*t) <= Self::WINDOW) {
+            self.unsteady = true;
+        }
+    }
+
+    /// The supply to plan for at `now`.
+    fn battery(&mut self, now: Instant) -> bool {
+        let since = self.changes.back().map(|t| now.saturating_duration_since(*t));
+        if self.unsteady {
+            if since.is_some_and(|d| d < Self::WINDOW) {
+                self.battery = true;
+                return true;
+            }
+            self.unsteady = false;
+            self.changes.clear();
+        }
+        if self.seen != self.battery && since.is_none_or(|d| d >= Self::SETTLE) {
+            self.battery = self.seen;
+        }
+        self.battery
+    }
+
+    /// When to ask again without a reading: a change settling, or an
+    /// unsteady supply come to rest.
+    fn deadline(&self) -> Option<Instant> {
+        let last = *self.changes.back()?;
+        if self.unsteady {
+            Some(last + Self::WINDOW)
+        } else if self.seen != self.battery {
+            Some(last + Self::SETTLE)
+        } else {
+            None
+        }
+    }
+}
+
 /// `follow` (root, olo-gpu-follow.service): once there's a power profiles
 /// daemon, the processors and every GPU (integrated and discrete) on the
 /// plan's presets for the mode and the power supply (Preferences ▸ Power:
@@ -307,6 +383,7 @@ fn follow() -> i32 {
     enum Change {
         Mode(Option<power_profile::Mode>),
         Supply,
+        Settled,
         /// Back from sleep: a drive's controller reset on the way puts it
         /// back on its highest state.
         Woke,
@@ -327,19 +404,32 @@ fn follow() -> i32 {
     });
     // (Its first change opens NVML, held from then on, which keeps NVIDIA's
     // GPU's lock: `gpu_tuning::nvml`.)
-    let (mut mode, mut on_battery) = (None, !battery::on_ac());
+    let mut mode = None;
+    let mut supply = Supply::new(!battery::on_ac());
     let mut last = None;
-    for change in rx.iter() {
+    let mut unsteady = false;
+    loop {
+        let change = match supply.deadline() {
+            Some(end) => match rx.recv_timeout(end.saturating_duration_since(Instant::now())) {
+                Ok(change) => change,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Change::Settled,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            },
+            None => match rx.recv() {
+                Ok(change) => change,
+                Err(_) => break,
+            },
+        };
         match change {
             Change::Mode(Some(m)) => mode = Some(m),
             Change::Mode(None) => continue,
-            Change::Supply => on_battery = !battery::on_ac(),
+            Change::Supply | Change::Settled => supply.observe(!battery::on_ac(), Instant::now()),
             Change::Woke => {
                 // Only the drives: the rest keeps across a sleep (and
                 // NVIDIA's GPU isn't woken for it).
                 if let Some(m) = mode {
                     let mut followed = gpu_tuning::Followed::load(std::path::Path::new("/")).unwrap_or_default();
-                    let (done, drives, limited, sata_found) = follow_drives(&Tuning::load().plan, m, on_battery, &followed);
+                    let (done, drives, limited, sata_found) = follow_drives(&Tuning::load().plan, m, supply.battery(Instant::now()), &followed);
                     if !done.is_empty() {
                         println!("woke: the drives set again");
                         followed.failed.retain(|f| !f.contains("(nvme") && !f.contains("(sd"));
@@ -353,7 +443,17 @@ fn follow() -> i32 {
             }
         }
         let Some(m) = mode else { continue };
-        if last == Some((m, on_battery)) && matches!(change, Change::Supply) {
+        let on_battery = supply.battery(Instant::now());
+        if supply.unsteady != unsteady {
+            unsteady = supply.unsteady;
+            if unsteady {
+                println!("the power supply keeps changing ({} times in {} s): planned for as the battery until it's steady", Supply::UNSTEADY, Supply::WINDOW.as_secs());
+            } else {
+                println!("the power supply is steady again");
+            }
+        }
+        // (The mode said again is set again: the daemon set its own first.)
+        if last == Some((m, on_battery)) && !matches!(change, Change::Mode(_)) {
             continue;
         }
         last = Some((m, on_battery));
@@ -362,6 +462,61 @@ fn follow() -> i32 {
     }
     // (The daemon's watch ended: systemd starts this again.)
     1
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ms(n: u64) -> Duration {
+        Duration::from_millis(n)
+    }
+
+    #[test]
+    fn a_change_of_supply_counts_once_it_has_held() {
+        let t = Instant::now();
+        let mut s = Supply::new(false);
+        assert_eq!((s.battery(t), s.deadline()), (false, None));
+        // Unplugged: the battery's plan two seconds on, not before.
+        s.observe(true, t);
+        assert_eq!((s.battery(t + ms(100)), s.deadline()), (false, Some(t + Supply::SETTLE)));
+        assert!(s.battery(t + Supply::SETTLE));
+        assert_eq!(s.deadline(), None);
+        // A cable moved to another port, out and in within the two seconds: nothing.
+        let t = t + Duration::from_secs(100);
+        s.observe(false, t);
+        assert!(!s.battery(t + Supply::SETTLE));
+        let t = t + Duration::from_secs(100);
+        s.observe(true, t);
+        s.observe(false, t + ms(900));
+        assert_eq!((s.battery(t + ms(950)), s.deadline()), (false, None));
+        assert!(!s.battery(t + Duration::from_secs(5)) && !s.unsteady);
+    }
+
+    /// The P1's storm: on 30 ms, off 13, for minutes, then at rest.
+    #[test]
+    fn a_supply_that_keeps_changing_is_the_battery_until_it_is_steady() {
+        let start = Instant::now();
+        let mut s = Supply::new(false);
+        let (mut plans, mut last) = (0, false);
+        let mut t = start;
+        for i in 0..4000u64 {
+            t = start + ms(43 * i);
+            s.observe(true, t);
+            s.observe(false, t + ms(13));
+            let now = s.battery(t + ms(13));
+            plans += usize::from(now != last);
+            last = now;
+        }
+        assert!(s.unsteady && last, "planned for as the battery");
+        assert_eq!(plans, 1, "set once in three minutes of it");
+        // At rest on the adapter: the adapter's plan when it has been steady a while.
+        let rest = t + ms(13);
+        assert_eq!(s.deadline(), Some(rest + Supply::WINDOW));
+        assert!(s.battery(rest + Supply::WINDOW - ms(1)));
+        assert!(!s.battery(rest + Supply::WINDOW) && !s.unsteady);
+        assert_eq!(s.deadline(), None);
+    }
 }
 
 fn apply(card: Option<&str>) -> i32 {

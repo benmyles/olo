@@ -10009,7 +10009,17 @@ changes (`power_profile::watch`, its `PropertiesChanged`) and UPower's
 `set` does (`follow_now`: a sleeping NVIDIA GPU asked, waking it a
 moment, as applying its preset does anyway; the processors' preset
 after the daemon's own). It's woken by nothing else: idle, it costs
-nothing. It holds NVIDIA's GPU open (NVML, opened at its first change
+nothing. **The supply has to hold** (`Supply`, gpu_tune.rs): a change
+counts once it has lasted two seconds (a plug put in twice, a cable
+moved to another port set the plan twice), and a supply that changes
+four times within half a minute is unsteady: planned for as the battery,
+the careful plan, set once, until it has been steady half a minute; it
+says so in its log. On 2026-11-17 the P1's embedded controller reported
+its adapter coming and going 23 times a second for two hours (see
+docs/AGENT-NOTES.md, "The embedded controller's event storm"), and
+every change UPower told of had the whole plan set again: 610 times in
+the first hour, each waking NVIDIA's GPU and calling the firmware for
+its profile. It holds NVIDIA's GPU open (NVML, opened at its first change
 and never closed: `gpu_tuning::nvml`), and that is what keeps the GPU's
 clock lock: with persistence off, NVIDIA's driver shuts a GPU down
 whole when the last program holding it closes it, its lock and power

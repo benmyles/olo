@@ -53,6 +53,28 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **The embedded controller's event storm: Olo says so, and keeps the
+  keys working** (Ben, 2026-11-17, of the two hours his brightness keys
+  were dead and the laptop ran down on its charger: "i don't just want
+  to restart i want this root caused"; and, the stale events dropped by
+  hand and the keys back: "works now. so let's do two things: 1. add
+  something to olo's supervisor to do this if an unsustainable backlog
+  builds up, and 2. root cause and fix whatever happened here. there
+  must be a bug somewhere"). What happened is in docs/AGENT-NOTES.md
+  ("The embedded controller's event storm"). **Done**: the power
+  follower no longer sets its plan at every flap (HACKING, "The supply
+  has to hold"). **Left**: (1) the supervisor watching for it (the
+  adapter flag flapping, `kec_query` workers piling up blocked, the
+  battery falling on a charger) and saying so within seconds, in a
+  notification and in Olo Doctor, with what to do; (2) the guard
+  itself, as Olo's other kernel pieces are (kernel/, built for each
+  kernel by a service, tried in a KVM guest first: `olo_ec_storm`, a
+  limit on the EC's queued handlers so stale adapter events are dropped
+  and keys run), offered by Olo Doctor; (3) the report upstream (ACPI
+  EC: the query backlog has no bound) and to Lenovo. **Waiting for
+  Ben**: the test of firmware 1.17, the same hand-over that failed
+  (display unplugged, charger in, while running), with the EC trace on.
+
 - **Deskbar: a widget's popover sometimes doesn't come under the
   pointer** (Ben, 2026-11-17: "there's still a hover bug with the
   deskbar where sometimes when i hover over the widgets each the token
@@ -70,6 +92,16 @@ something nobody here has is in "Blocked", with what it waits for.
   taskbar since: the app's row clicked while it is the active one
   minimizes its windows (all of them, in the workspace showing); clicked
   again, they come back as they were, the one that was active on top.
+
+- **Deskbar: a spacer or divider among the widgets** (Ben, 2026-11-17:
+  "a spacing/divider widget (with plenty of visual customization
+  options) for the deskbar widget section for when the user wants to
+  break stuff up"). A widget that shows nothing of the computer: room,
+  a line, or a heading, to set groups of widgets apart. Its options in
+  Preferences ▸ Deskbar: its kind (space, a line, a line with a label),
+  its height, the line's style (hairline, etched as BeOS's separators,
+  dotted, a row of dots), its inset from the sides, its colour (the
+  look's or one of its hues), and the label's words.
 
 - **A Terminal welcome message** (Ben, 2026-11-17). Olo Doctor should
   offer to install a greeter that shows the Olo logo in full-color ASCII.
