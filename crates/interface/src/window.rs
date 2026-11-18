@@ -269,8 +269,12 @@ pub(crate) struct WindowCore {
     pub(crate) pace: Arc<crate::stage::FramePace>,
     /// When what moves with time is drawn again.
     pub(crate) clock: Clock,
-    /// The pointer's shape, as last asked for.
-    pub(crate) cursor: crate::CursorStyle,
+    /// The pointer's shape, as last asked for since the pointer came
+    /// in (None: not since, so what the compositor shows is whatever the
+    /// window it came from asked for: a terminal's I-beam stayed over a
+    /// new Deskbar, whose every part wants the arrow the kit took for
+    /// granted, 2026-11-17).
+    pub(crate) cursor: Option<crate::CursorStyle>,
     /// Scenes let go of, to record into again.
     pub(crate) recycled: Vec<crate::Scene>,
     /// What the kit keeps with the window, one of each type.
@@ -654,7 +658,7 @@ impl WindowCore {
             held_since: None,
             pace: opened.pace,
             clock: Clock::new(),
-            cursor: crate::CursorStyle::Arrow,
+            cursor: None,
             recycled: Vec::new(),
             kept: HashMap::new(),
             keyed: HashMap::new(),

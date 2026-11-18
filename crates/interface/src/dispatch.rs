@@ -446,6 +446,9 @@ impl WindowCx<'_> {
 
     /// The pointer left the window: it's over nothing.
     pub(crate) fn pointer_left(&mut self) {
+        // (Its shape is said again as it comes back: meanwhile another
+        // window's was shown.)
+        self.core.cursor = None;
         for id in std::mem::take(&mut self.core.hovered) {
             self.set_hovered(id, false);
         }
@@ -453,10 +456,10 @@ impl WindowCx<'_> {
 
     /// The pointer's shape, as the display thread shows it.
     fn set_cursor(&mut self, cursor: crate::CursorStyle) {
-        if self.core.cursor == cursor {
+        if self.core.cursor == Some(cursor) {
             return;
         }
-        self.core.cursor = cursor;
+        self.core.cursor = Some(cursor);
         crate::display::display().post(move |on| {
             if let Some(client) = on.client.wayland() {
                 crate::LinuxClient::set_cursor_style(client, cursor);
