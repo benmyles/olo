@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Clear night (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="#fde68a" d="M35 12 A20 20 0 1 0 50 39 A16.4 16.4 0 0 1 35 12Z"/>
+<circle class="from24" cx="49" cy="15" r="2.2" fill="#fde68a"/>
+<circle class="from24" cx="54" cy="27" r="1.6" fill="#fde68a"/>
+</svg>

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Galaxy S26 Ultra (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="15" y="4" width="34" height="56" rx="3.5" fill="#2c3038"/>
+<rect x="19" y="8" width="9" height="25" rx="4.5" fill="#3b4049"/>
+<circle cx="23.5" cy="12.5" r="3.3" fill="#64748b"/>
+<circle class="from24" cx="23.5" cy="12.5" r="1.48" fill="#1e293b"/>
+<circle cx="23.5" cy="20.5" r="3.3" fill="#64748b"/>
+<circle class="from24" cx="23.5" cy="20.5" r="1.48" fill="#1e293b"/>
+<circle cx="23.5" cy="28.5" r="3.3" fill="#64748b"/>
+<circle class="from24" cx="23.5" cy="28.5" r="1.48" fill="#1e293b"/>
+<circle cx="32" cy="16.5" r="2.4" fill="#64748b"/>
+<circle class="from24" cx="32" cy="16.5" r="1.08" fill="#1e293b"/>
+<circle cx="32" cy="24.5" r="2.4" fill="#64748b"/>
+<circle class="from24" cx="32" cy="24.5" r="1.08" fill="#1e293b"/>
+</svg>

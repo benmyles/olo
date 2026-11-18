@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Notifications (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="#f59e0b" d="M32 6Q46 6 46 22V34Q46 40 52 45Q54 48 50 48H14Q10 48 12 45Q18 40 18 34V22Q18 6 32 6Z"/>
+<rect x="28" y="2.5" width="8" height="7" rx="3.5" fill="#f59e0b"/>
+<path fill="#f97316" d="M25 51H39Q39 58.5 32 58.5Q25 58.5 25 51Z"/>
+</svg>

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Header and footer (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="none" stroke="#c3ccd9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 5H53L53 5V56Q53 59 50 59H14Q11 59 11 56V8Q11 5 14 5Z"/>
+<path fill="#f8fafc" d="M14 5H53L53 5V56Q53 59 50 59H14Q11 59 11 56V8Q11 5 14 5Z"/>
+<path fill="#cbd5e1" d="M53 5V3Q53 5 55 5H53Z"/>
+<rect x="11" y="5" width="42" height="11" rx="3" fill="#93c5fd"/>
+<rect x="11" y="48" width="42" height="11" rx="3" fill="#93c5fd"/>
+<path fill="none" stroke="#2563eb" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M17 10.5L34 10.5"/>
+<path fill="none" stroke="#2563eb" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M17 53.5L28 53.5"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M17 24L47 24"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M17 31.5L47 31.5"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M17 39L35.6 39"/>
+</svg>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Video (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="6" y="24" width="52" height="34" rx="4" fill="#1e293b"/>
+<g transform="rotate(-8 6 24)"><rect x="6" y="12" width="49" height="11" rx="2" fill="#334155"/><path fill="#f8fafc" d="M21.5 12L28 12L23.5 23L17 23Z"/><path fill="#f8fafc" d="M33 12L39.5 12L35 23L28.5 23Z"/><path fill="#f8fafc" d="M44.5 12L51 12L46.5 23L40 23Z"/><path fill="#f8fafc" d="M56 12L62.5 12L58 23L51.5 23Z"/></g>
+<path fill="#ffffff" d="M27 33L27 50L41 41.5Z"/>
+</svg>

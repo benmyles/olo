@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Restart (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<circle cx="32" cy="32" r="26" fill="#3b82f6"/>
+<path fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" d="M40.36 22.04A13 13 0 1 1 23.64 22.04"/>
+<path fill="#ffffff" d="M32 9.5L42.5 19L29.5 23.5Z"/>
+</svg>

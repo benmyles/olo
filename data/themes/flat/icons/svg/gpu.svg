@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Graphics card (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="4" y="15" width="56" height="30" rx="4" fill="#334155"/>
+<rect x="8" y="45" width="26" height="6" rx="1" fill="#fbbf24"/>
+<rect x="4" y="12" width="4" height="40" rx="1.5" fill="#94a3b8"/>
+<circle cx="24" cy="30" r="10" fill="#64748b"/>
+<circle cx="24" cy="30" r="3" fill="#cbd5e1"/>
+<circle cx="46" cy="30" r="10" fill="#64748b"/>
+<circle cx="46" cy="30" r="3" fill="#cbd5e1"/>
+<path class="from32" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M24 30L24 23"/>
+<path class="from32" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M24 30L30.06 33.5"/>
+<path class="from32" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M24 30L17.94 33.5"/>
+<path class="from32" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M46 30L52.06 26.5"/>
+<path class="from32" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M46 30L46 37"/>
+<path class="from32" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M46 30L39.94 26.5"/>
+</svg>

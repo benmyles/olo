@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Document (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="none" stroke="#c3ccd9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M16 5H40L51 16V56Q51 59 48 59H16Q13 59 13 56V8Q13 5 16 5Z"/>
+<path fill="#f8fafc" d="M16 5H40L51 16V56Q51 59 48 59H16Q13 59 13 56V8Q13 5 16 5Z"/>
+<path fill="#cbd5e1" d="M40 5V14Q40 16 42 16H51Z"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M20 24L44 24"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M20 31L44 31"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M20 38L44 38"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M20 45L34.88 45"/>
+</svg>

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Games (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="#475569" d="M18 16H46Q58 16 60 30L62 44Q62 52 55 52Q50 52 46 46L44 43H20L18 46Q14 52 9 52Q2 52 2 44L4 30Q6 16 18 16Z"/>
+<rect x="13.5" y="27" width="13" height="4.6" rx="1.5" fill="#e2e8f0"/>
+<rect x="17.7" y="22.8" width="4.6" height="13" rx="1.5" fill="#e2e8f0"/>
+<circle cx="42" cy="33" r="3.2" fill="#3b82f6"/>
+<circle cx="49" cy="27" r="3.2" fill="#ef4444"/>
+<circle class="from24" cx="49" cy="39" r="3.2" fill="#86efac"/>
+<circle class="from24" cx="56" cy="33" r="3.2" fill="#fbbf24"/>
+</svg>

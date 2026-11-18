@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- iPhone 17 Pro (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="15" y="4" width="34" height="56" rx="7" fill="#f08a3c"/>
+<rect x="15" y="4" width="34" height="20" rx="7" fill="#de7527"/>
+<rect x="15" y="16" width="34" height="8" fill="#de7527"/>
+<circle cx="23" cy="10.5" r="3.3" fill="#1e293b"/>
+<circle class="from24" cx="23" cy="10.5" r="1.48" fill="#64748b"/>
+<circle cx="23" cy="18" r="3.3" fill="#1e293b"/>
+<circle class="from24" cx="23" cy="18" r="1.48" fill="#64748b"/>
+<circle cx="30.5" cy="14.2" r="3.3" fill="#1e293b"/>
+<circle class="from24" cx="30.5" cy="14.2" r="1.48" fill="#64748b"/>
+<circle class="from32" cx="43" cy="11" r="1.4" fill="#ffffff"/>
+</svg>

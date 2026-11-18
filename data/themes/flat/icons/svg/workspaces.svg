@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Workspaces (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="5" y="7" width="25" height="23" rx="4" fill="#3b82f6"/>
+<rect x="34" y="7" width="25" height="23" rx="4" fill="#22c55e"/>
+<rect x="5" y="34" width="25" height="23" rx="4" fill="#f59e0b"/>
+<rect x="34" y="34" width="25" height="23" rx="4" fill="#8b5cf6"/>
+<rect class="from32" x="9" y="11" width="9" height="7" rx="1.5" fill="#ffffff"/>
+<rect class="from32" x="38" y="11" width="9" height="7" rx="1.5" fill="#ffffff"/>
+<rect class="from32" x="9" y="38" width="9" height="7" rx="1.5" fill="#ffffff"/>
+<rect class="from32" x="38" y="38" width="9" height="7" rx="1.5" fill="#ffffff"/>
+</svg>

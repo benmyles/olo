@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Microphone (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="22" y="4" width="20" height="34" rx="10" fill="#64748b"/>
+<path class="from24" fill="none" stroke="#cbd5e1" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M26 14L38 14"/>
+<path class="from24" fill="none" stroke="#cbd5e1" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M26 20L38 20"/>
+<path class="from24" fill="none" stroke="#cbd5e1" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M26 26L38 26"/>
+<path fill="none" stroke="#334155" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round" d="M14 28V30Q14 46 32 46Q50 46 50 30V28"/>
+<path fill="none" stroke="#334155" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round" d="M32 46L32 55"/>
+<path fill="none" stroke="#334155" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round" d="M21 57L43 57"/>
+</svg>

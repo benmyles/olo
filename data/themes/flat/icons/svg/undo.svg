@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Undo (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="none" stroke="#3b82f6" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" d="M22 27H38Q51 27 51 39Q51 51 38 51H20"/>
+<path fill="#3b82f6" d="M26 11L6 27L26 43Z"/>
+</svg>

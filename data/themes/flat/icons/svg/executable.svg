@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Program (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="none" stroke="#c3ccd9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M16 5H40L51 16V56Q51 59 48 59H16Q13 59 13 56V8Q13 5 16 5Z"/>
+<path fill="#f8fafc" d="M16 5H40L51 16V56Q51 59 48 59H16Q13 59 13 56V8Q13 5 16 5Z"/>
+<path fill="#cbd5e1" d="M40 5V14Q40 16 42 16H51Z"/>
+<rect x="29.9" y="23.2" width="4.2" height="6" rx="1.05" fill="#3b82f6" transform="rotate(0 32 36)"/>
+<rect x="29.9" y="23.2" width="4.2" height="6" rx="1.05" fill="#3b82f6" transform="rotate(45 32 36)"/>
+<rect x="29.9" y="23.2" width="4.2" height="6" rx="1.05" fill="#3b82f6" transform="rotate(90 32 36)"/>
+<rect x="29.9" y="23.2" width="4.2" height="6" rx="1.05" fill="#3b82f6" transform="rotate(135 32 36)"/>
+<rect x="29.9" y="23.2" width="4.2" height="6" rx="1.05" fill="#3b82f6" transform="rotate(180 32 36)"/>
+<rect x="29.9" y="23.2" width="4.2" height="6" rx="1.05" fill="#3b82f6" transform="rotate(225 32 36)"/>
+<rect x="29.9" y="23.2" width="4.2" height="6" rx="1.05" fill="#3b82f6" transform="rotate(270 32 36)"/>
+<rect x="29.9" y="23.2" width="4.2" height="6" rx="1.05" fill="#3b82f6" transform="rotate(315 32 36)"/>
+<circle cx="32" cy="36" r="10" fill="#3b82f6"/>
+<circle cx="32" cy="36" r="4.2" fill="#f8fafc"/>
+</svg>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- ID card (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="4" y="12" width="56" height="40" rx="6" fill="#f8fafc" stroke="#c3ccd9" stroke-width="2"/>
+<rect x="4" y="12" width="56" height="9" rx="6" fill="#3b82f6"/>
+<rect x="4" y="17" width="56" height="4" fill="#3b82f6"/>
+<circle cx="19" cy="31" r="5.5" fill="#94a3b8"/>
+<path fill="#94a3b8" d="M9 46Q9 38 19 38Q29 38 29 46Z"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M35 29L53 29"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M35 35.5L53 35.5"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M35 42L46.16 42"/>
+</svg>

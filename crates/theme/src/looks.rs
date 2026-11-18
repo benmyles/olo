@@ -80,6 +80,7 @@ pub const ICON_SETS: &[IconSet] = &[
     IconSet { id: "beos", name: "BeOS", about: "As BeOS R5 drew its icons: flat faces in its 8-bit colours, black outlines." },
     IconSet { id: "amiga", name: "AmigaOS", about: "As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines." },
     IconSet { id: "aqua", name: "Aqua", about: "After Mac OS X's Aqua: shinier and bluer, with soft outlines." },
+    IconSet { id: "flat", name: "Flat", about: "Modern and flat: each thing seen straight on, in plain faces, no outlines." },
 ];
 
 /// Icon set `id`, or the classic one if there is none by that name.

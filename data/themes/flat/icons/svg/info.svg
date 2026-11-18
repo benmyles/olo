@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Information (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="6" y="6" width="52" height="52" rx="13" fill="#60a5fa"/>
+<circle cx="32" cy="20" r="4" fill="#ffffff"/>
+<rect x="28.5" y="28" width="7" height="20" rx="3.5" fill="#ffffff"/>
+</svg>

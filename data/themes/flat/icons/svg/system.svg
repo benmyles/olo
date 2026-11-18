@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- System (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="13" y="4" width="38" height="56" rx="5" fill="#334155"/>
+<rect x="18" y="10" width="28" height="5" rx="1.5" fill="#64748b"/>
+<rect x="18" y="18" width="28" height="5" rx="1.5" fill="#64748b"/>
+<rect class="from24" x="18" y="26" width="28" height="5" rx="1.5" fill="#64748b"/>
+<circle cx="32" cy="46" r="5.5" fill="#64748b"/>
+<circle cx="32" cy="46" r="2.4" fill="#86efac"/>
+</svg>

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Appearance (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="#fdf1d8" d="M32 6Q58 6 58 28Q58 40 46 40H42Q37 40 37 45Q37 47 38.5 49Q41 53 37 56Q35 58 31 58Q6 56 6 31Q6 6 32 6Z" stroke="#d9a877" stroke-width="2"/>
+<circle cx="19" cy="30" r="5" fill="#ef4444"/>
+<circle cx="26" cy="17" r="5" fill="#fbbf24"/>
+<circle cx="41" cy="15" r="5" fill="#22c55e"/>
+<circle cx="49" cy="27" r="5" fill="#3b82f6"/>
+<circle cx="22" cy="44" r="5" fill="#8b5cf6"/>
+</svg>

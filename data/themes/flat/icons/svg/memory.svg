@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Memory (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="3" y="16" width="58" height="26" rx="3" fill="#16a34a"/>
+<rect x="8" y="21" width="9.5" height="13" rx="1.5" fill="#1e293b"/>
+<rect x="20.6" y="21" width="9.5" height="13" rx="1.5" fill="#1e293b"/>
+<rect x="33.2" y="21" width="9.5" height="13" rx="1.5" fill="#1e293b"/>
+<rect x="45.8" y="21" width="9.5" height="13" rx="1.5" fill="#1e293b"/>
+<rect class="from24" x="6" y="42" width="2.6" height="6" rx="0.6" fill="#fbbf24"/>
+<rect class="from24" x="10.4" y="42" width="2.6" height="6" rx="0.6" fill="#fbbf24"/>
+<rect class="from24" x="14.8" y="42" width="2.6" height="6" rx="0.6" fill="#fbbf24"/>
+<rect class="from24" x="19.2" y="42" width="2.6" height="6" rx="0.6" fill="#fbbf24"/>
+<rect class="from24" x="23.6" y="42" width="2.6" height="6" rx="0.6" fill="#fbbf24"/>
+<rect class="from24" x="28" y="42" width="2.6" height="6" rx="0.6" fill="#fbbf24"/>
+<rect class="from24" x="36.8" y="42" width="2.6" height="6" rx="0.6" fill="#fbbf24"/>
+<rect class="from24" x="41.2" y="42" width="2.6" height="6" rx="0.6" fill="#fbbf24"/>
+<rect class="from24" x="45.6" y="42" width="2.6" height="6" rx="0.6" fill="#fbbf24"/>
+<rect class="from24" x="50" y="42" width="2.6" height="6" rx="0.6" fill="#fbbf24"/>
+<rect class="from24" x="54.4" y="42" width="2.6" height="6" rx="0.6" fill="#fbbf24"/>
+</svg>

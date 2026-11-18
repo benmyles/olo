@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Terminal (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="5" y="8" width="54" height="48" rx="7" fill="#1e293b"/>
+<rect x="5" y="8" width="54" height="10" rx="7" fill="#334155"/>
+<rect x="5" y="14" width="54" height="4" fill="#334155"/>
+<circle class="from32" cx="11.5" cy="13" r="1.8" fill="#ef4444"/>
+<circle class="from32" cx="17" cy="13" r="1.8" fill="#fbbf24"/>
+<circle class="from32" cx="22.5" cy="13" r="1.8" fill="#22c55e"/>
+<path fill="none" stroke="#22c55e" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" d="M14 28L22 35L14 42"/>
+<path fill="none" stroke="#e2e8f0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" d="M27 43L38 43"/>
+</svg>

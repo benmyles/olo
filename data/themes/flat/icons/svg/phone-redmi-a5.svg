@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Redmi A5 (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="15" y="4" width="34" height="56" rx="7" fill="#8fc7e8"/>
+<circle cx="27" cy="16" r="10" fill="#78b5d9"/>
+<circle cx="27" cy="12" r="3" fill="#1e293b"/>
+<circle class="from24" cx="27" cy="12" r="1.35" fill="#64748b"/>
+<circle cx="23" cy="19" r="3" fill="#1e293b"/>
+<circle class="from24" cx="23" cy="19" r="1.35" fill="#64748b"/>
+<circle class="from32" cx="31.5" cy="19" r="1.4" fill="#fde68a"/>
+</svg>

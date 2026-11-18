@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Authentication (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="none" stroke="#94a3b8" stroke-width="7" stroke-linecap="butt" stroke-linejoin="round" d="M20.62 27.12V17.38A11.38 11.38 0 0 1 43.38 17.38V27.12"/>
+<rect x="12.75" y="26.12" width="38.5" height="29.75" rx="5.25" fill="#f59e0b"/>
+<circle cx="32" cy="39.25" r="4.55" fill="#1e293b"/>
+<rect x="30.07" y="41" width="3.85" height="8.75" rx="1" fill="#1e293b"/>
+</svg>

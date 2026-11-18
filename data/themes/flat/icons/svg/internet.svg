@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Internet (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<circle cx="30" cy="30" r="24" fill="#3b82f6"/>
+<path fill="#22c55e" d="M14 18Q22 14 26 20Q30 24 24 28Q18 30 18 36Q14 34 10 30Q9 23 14 18Z"/>
+<path fill="#22c55e" d="M34 12Q44 12 48 20Q44 24 40 22Q34 20 34 12Z"/>
+<path fill="#22c55e" d="M32 36Q40 32 46 38Q46 46 38 50Q32 46 32 36Z"/>
+<path fill="#ffffff" d="M40 36L40 60L46.5 54L51 62L56 59.5L51.5 51.5L60 51.5Z"/>
+<path fill="#1e293b" d="M42.4 41L42.4 55L47 51L52 59L53.4 58.3L48.5 49.6L55 49.6Z"/>
+</svg>

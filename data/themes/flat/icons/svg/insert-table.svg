@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Insert table (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="5" y="9" width="54" height="46" rx="4" fill="#f8fafc" stroke="#c3ccd9" stroke-width="2"/>
+<rect x="5" y="9" width="54" height="12" rx="4" fill="#3b82f6"/>
+<rect x="5" y="15" width="54" height="6" fill="#3b82f6"/>
+<path fill="none" stroke="#c3ccd9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M5 32L59 32"/>
+<path fill="none" stroke="#c3ccd9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M5 43.5L59 43.5"/>
+<path fill="none" stroke="#c3ccd9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M23 21L23 55"/>
+<path fill="none" stroke="#c3ccd9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M41 21L41 55"/>
+<circle cx="48" cy="46" r="12.5" fill="#ffffff"/>
+<circle cx="48" cy="46" r="10.5" fill="#22c55e"/>
+<path fill="none" stroke="#ffffff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" d="M43 46H53M48 41V51"/>
+</svg>

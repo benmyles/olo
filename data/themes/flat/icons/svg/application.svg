@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Application (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="5" y="8" width="54" height="48" rx="7" fill="#f8fafc" stroke="#c3ccd9" stroke-width="2"/>
+<rect x="5" y="8" width="54" height="13" rx="7" fill="#3b82f6"/>
+<rect x="5" y="15" width="54" height="6" fill="#3b82f6"/>
+<circle class="from24" cx="12.5" cy="14.5" r="2.2" fill="#ffffff"/>
+<circle class="from24" cx="19" cy="14.5" r="2.2" fill="#93c5fd"/>
+<rect x="12" y="28" width="18" height="21" rx="2" fill="#93c5fd"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M35 31L52 31"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M35 38.5L52 38.5"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M35 46L46 46"/>
+</svg>

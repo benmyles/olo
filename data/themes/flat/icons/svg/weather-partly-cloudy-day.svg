@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Partly cloudy (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="none" stroke="#f59e0b" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" d="M22 8.5L22 4"/>
+<path fill="none" stroke="#f59e0b" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" d="M31.55 12.45L34.73 9.27"/>
+<path fill="none" stroke="#f59e0b" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" d="M35.5 22L40 22"/>
+<path fill="none" stroke="#f59e0b" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" d="M31.55 31.55L34.73 34.73"/>
+<path fill="none" stroke="#f59e0b" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" d="M22 35.5L22 40"/>
+<path fill="none" stroke="#f59e0b" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" d="M12.45 31.55L9.27 34.73"/>
+<path fill="none" stroke="#f59e0b" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" d="M8.5 22L4 22"/>
+<path fill="none" stroke="#f59e0b" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" d="M12.45 12.45L9.27 9.27"/>
+<circle cx="22" cy="22" r="10" fill="#fbbf24"/>
+<path fill="none" stroke="#c3ccd9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M22.2 51.5 a9.2 9.2 0 0 1 1.38 -18.29 a12.65 12.65 0 0 1 23.57 -3.91 a9.89 9.89 0 0 1 4.94 22.2 H22.2 a0 0 0 0 1 0 0Z"/>
+<path fill="#f8fafc" d="M22.2 51.5 a9.2 9.2 0 0 1 1.38 -18.29 a12.65 12.65 0 0 1 23.57 -3.91 a9.89 9.89 0 0 1 4.94 22.2 H22.2 a0 0 0 0 1 0 0Z"/>
+</svg>

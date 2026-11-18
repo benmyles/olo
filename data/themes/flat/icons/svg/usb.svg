@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- USB stick (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="22" y="4" width="20" height="16" rx="2" fill="#cbd5e1"/>
+<rect class="from24" x="26" y="9" width="4.5" height="5" rx="0.8" fill="#475569"/>
+<rect class="from24" x="33.5" y="9" width="4.5" height="5" rx="0.8" fill="#475569"/>
+<rect x="16" y="18" width="32" height="42" rx="6" fill="#3b82f6"/>
+<rect class="from24" x="27" y="46" width="10" height="6" rx="3" fill="#93c5fd"/>
+</svg>

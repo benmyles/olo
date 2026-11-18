@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Security (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="#3b82f6" d="M32 4L56 12V30Q56 49 32 60Q8 49 8 30V12Z"/>
+<path fill="#2563eb" d="M32 4L56 12V30Q56 49 32 60Z"/>
+<path fill="none" stroke="#ffffff" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" d="M22 32L29 39L42 25"/>
+</svg>

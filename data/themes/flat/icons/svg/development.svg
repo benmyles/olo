@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Development (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="5" y="8" width="54" height="48" rx="7" fill="#1e293b"/>
+<path fill="none" stroke="#60a5fa" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round" d="M24 22L13 32L24 42"/>
+<path fill="none" stroke="#60a5fa" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round" d="M40 22L51 32L40 42"/>
+<path fill="none" stroke="#86efac" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" d="M35 18L29 46"/>
+</svg>

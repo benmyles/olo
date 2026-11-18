@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Pixel 10 Pro (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="15" y="4" width="34" height="56" rx="7" fill="#d9d4c7"/>
+<rect x="19" y="10" width="26" height="10" rx="5" fill="#1e293b"/>
+<circle cx="24" cy="15" r="2.8" fill="#475569"/>
+<circle class="from24" cx="24" cy="15" r="1.26" fill="#60a5fa"/>
+<circle cx="30.5" cy="15" r="2.8" fill="#475569"/>
+<circle class="from24" cx="30.5" cy="15" r="1.26" fill="#60a5fa"/>
+<circle cx="37" cy="15" r="2.8" fill="#475569"/>
+<circle class="from24" cx="37" cy="15" r="1.26" fill="#60a5fa"/>
+<circle class="from32" cx="42" cy="15" r="1.1" fill="#fde68a"/>
+</svg>

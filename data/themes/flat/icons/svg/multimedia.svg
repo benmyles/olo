@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Multimedia (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="4" y="9" width="42" height="34" rx="5" fill="#1e293b"/>
+<path fill="#ffffff" d="M19 17L19 35L34 26Z"/>
+<rect class="from24" x="4" y="45" width="42" height="4" rx="2" fill="#94a3b8"/>
+<circle cx="42" cy="50" r="6.5" fill="#ec4899"/>
+<circle cx="55" cy="46" r="6" fill="#ec4899"/>
+<path fill="none" stroke="#ec4899" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round" d="M46 50V30L59 27V46"/>
+</svg>

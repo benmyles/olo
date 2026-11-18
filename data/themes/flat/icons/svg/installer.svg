@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Installer (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="8" y="32" width="48" height="26" rx="3" fill="#b98155"/>
+<rect x="4" y="26" width="56" height="9" rx="3" fill="#94623d"/>
+<rect class="from24" x="28" y="26" width="8" height="16" fill="#fdf1d8"/>
+<path fill="none" stroke="#16a34a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" d="M32 6.5L32 21"/>
+<path fill="none" stroke="#16a34a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" d="M27.41 14.45L32 21L36.59 14.45"/>
+</svg>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Numbered list (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="none" stroke="#c3ccd9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 5H53L53 5V56Q53 59 50 59H14Q11 59 11 56V8Q11 5 14 5Z"/>
+<path fill="#f8fafc" d="M14 5H53L53 5V56Q53 59 50 59H14Q11 59 11 56V8Q11 5 14 5Z"/>
+<path fill="#cbd5e1" d="M53 5V3Q53 5 55 5H53Z"/>
+<rect x="17" y="12.8" width="2.6" height="6.4" rx="1.2" fill="#3b82f6"/>
+<path fill="none" stroke="#64748b" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" d="M28 16L46 16"/>
+<rect x="17" y="23.8" width="4.2" height="6.4" rx="1.2" fill="#3b82f6"/>
+<path fill="none" stroke="#64748b" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" d="M28 27L46 27"/>
+<rect x="17" y="34.8" width="5.8" height="6.4" rx="1.2" fill="#3b82f6"/>
+<path fill="none" stroke="#64748b" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" d="M28 38L46 38"/>
+<rect x="17" y="45.8" width="7.4" height="6.4" rx="1.2" fill="#3b82f6"/>
+<path fill="none" stroke="#64748b" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" d="M28 49L46 49"/>
+</svg>

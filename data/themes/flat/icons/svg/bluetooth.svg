@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Bluetooth (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="13" y="4" width="38" height="56" rx="19" fill="#3b82f6"/>
+<path fill="none" stroke="#ffffff" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" d="M22 22L42 42L32 51V13L42 22L22 42"/>
+</svg>

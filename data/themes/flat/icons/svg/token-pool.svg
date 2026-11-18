@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Token Pool (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="8" y="47" width="34" height="9" fill="#f59e0b"/>
+<ellipse cx="25" cy="56" rx="17" ry="4.5" fill="#f59e0b"/>
+<ellipse cx="25" cy="47" rx="17" ry="4.5" fill="#fbbf24"/>
+<rect x="8" y="37" width="34" height="9" fill="#f59e0b"/>
+<ellipse cx="25" cy="46" rx="17" ry="4.5" fill="#f59e0b"/>
+<ellipse cx="25" cy="37" rx="17" ry="4.5" fill="#fbbf24"/>
+<rect x="8" y="27" width="34" height="9" fill="#f59e0b"/>
+<ellipse cx="25" cy="36" rx="17" ry="4.5" fill="#f59e0b"/>
+<ellipse cx="25" cy="27" rx="17" ry="4.5" fill="#fbbf24"/>
+<circle cx="46" cy="24" r="13" fill="#fbbf24"/>
+<circle cx="46" cy="24" r="9" fill="#f59e0b"/>
+<rect x="44" y="18" width="4" height="12" rx="1.5" fill="#fde68a"/>
+</svg>

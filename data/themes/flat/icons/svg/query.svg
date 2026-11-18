@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Find (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="none" stroke="#c3ccd9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 5H36L47 16V56Q47 59 44 59H12Q9 59 9 56V8Q9 5 12 5Z"/>
+<path fill="#f8fafc" d="M12 5H36L47 16V56Q47 59 44 59H12Q9 59 9 56V8Q9 5 12 5Z"/>
+<path fill="#cbd5e1" d="M36 5V14Q36 16 38 16H47Z"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M16 22L36 22"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M16 29L36 29"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M16 36L28.4 36"/>
+<path fill="none" stroke="#475569" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" d="M47.2 47.2L56.7 56.7"/>
+<circle cx="40" cy="40" r="10" fill="#475569"/>
+<circle cx="40" cy="40" r="7.6" fill="#dbeafe"/>
+</svg>

@@ -1,0 +1,13 @@
+# Flat: a set of its own drawings (svg/, made by tools/dev/flaticons: Olo's
+# icons seen straight on, in plain flat faces; docs/ICONS.md, "The Flat
+# set"). These rules are for what it has no drawing of: other people's
+# marks and Olo's own, which stay as they are, and any icon added to the
+# classic set before it is drawn here, which is flattened meanwhile.
+
+ink 37474f
+flat
+no shadow
+outline 566578 0.5
+grey 210 0.12
+
+keep olo slack github google-chrome telegram

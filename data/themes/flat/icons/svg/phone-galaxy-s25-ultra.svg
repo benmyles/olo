@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Galaxy S25 Ultra (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="15" y="4" width="34" height="56" rx="3.5" fill="#8d939c"/>
+<circle cx="23.5" cy="12.5" r="3.5" fill="#1e293b"/>
+<circle class="from24" cx="23.5" cy="12.5" r="1.57" fill="#475569"/>
+<circle cx="23.5" cy="20.5" r="3.5" fill="#1e293b"/>
+<circle class="from24" cx="23.5" cy="20.5" r="1.57" fill="#475569"/>
+<circle cx="23.5" cy="28.5" r="3.5" fill="#1e293b"/>
+<circle class="from24" cx="23.5" cy="28.5" r="1.57" fill="#475569"/>
+<circle cx="31.5" cy="16.5" r="2.6" fill="#1e293b"/>
+<circle class="from24" cx="31.5" cy="16.5" r="1.17" fill="#475569"/>
+<circle cx="31.5" cy="24.5" r="2.6" fill="#1e293b"/>
+<circle class="from24" cx="31.5" cy="24.5" r="1.17" fill="#475569"/>
+</svg>

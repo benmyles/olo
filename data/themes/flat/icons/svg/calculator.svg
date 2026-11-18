@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Calculator (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="11" y="4" width="42" height="56" rx="6" fill="#475569"/>
+<rect x="16" y="9" width="32" height="12" rx="2" fill="#86efac"/>
+<rect class="from24" x="16" y="25" width="6.6" height="6" rx="1.5" fill="#94a3b8"/>
+<rect class="from24" x="24.4" y="25" width="6.6" height="6" rx="1.5" fill="#94a3b8"/>
+<rect class="from24" x="32.8" y="25" width="6.6" height="6" rx="1.5" fill="#94a3b8"/>
+<rect class="from24" x="41.2" y="25" width="6.6" height="6" rx="1.5" fill="#f97316"/>
+<rect class="from24" x="16" y="32.8" width="6.6" height="6" rx="1.5" fill="#cbd5e1"/>
+<rect class="from24" x="24.4" y="32.8" width="6.6" height="6" rx="1.5" fill="#cbd5e1"/>
+<rect class="from24" x="32.8" y="32.8" width="6.6" height="6" rx="1.5" fill="#cbd5e1"/>
+<rect class="from24" x="41.2" y="32.8" width="6.6" height="6" rx="1.5" fill="#f97316"/>
+<rect class="from24" x="16" y="40.6" width="6.6" height="6" rx="1.5" fill="#cbd5e1"/>
+<rect class="from24" x="24.4" y="40.6" width="6.6" height="6" rx="1.5" fill="#cbd5e1"/>
+<rect class="from24" x="32.8" y="40.6" width="6.6" height="6" rx="1.5" fill="#cbd5e1"/>
+<rect class="from24" x="41.2" y="40.6" width="6.6" height="6" rx="1.5" fill="#f97316"/>
+<rect class="from24" x="16" y="48.4" width="6.6" height="6" rx="1.5" fill="#cbd5e1"/>
+<rect class="from24" x="24.4" y="48.4" width="6.6" height="6" rx="1.5" fill="#cbd5e1"/>
+<rect class="from24" x="32.8" y="48.4" width="6.6" height="6" rx="1.5" fill="#cbd5e1"/>
+<rect class="from24" x="41.2" y="48.4" width="6.6" height="6" rx="1.5" fill="#f97316"/>
+</svg>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Kache (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="10" y="22" width="44" height="34" rx="3" fill="#b98155"/>
+<rect x="6" y="14" width="52" height="11" rx="3" fill="#94623d"/>
+<path fill="#fbbf24" d="M35.2 24.6L24 40.6L31.2 40.6L28 53.4L40 35.8L32.8 35.8Z"/>
+</svg>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Spreadsheet (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="none" stroke="#c3ccd9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M16 5H40L51 16V56Q51 59 48 59H16Q13 59 13 56V8Q13 5 16 5Z"/>
+<path fill="#f8fafc" d="M16 5H40L51 16V56Q51 59 48 59H16Q13 59 13 56V8Q13 5 16 5Z"/>
+<path fill="#cbd5e1" d="M40 5V14Q40 16 42 16H51Z"/>
+<rect x="19" y="22" width="26" height="28" rx="1.5" fill="#86efac"/>
+<rect x="19" y="22" width="26" height="7" rx="1.5" fill="#22c55e"/>
+<path class="from24" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M19 36L45 36"/>
+<path class="from24" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M19 43L45 43"/>
+<path class="from24" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M28 22L28 50"/>
+<path class="from24" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M36.5 22L36.5 50"/>
+</svg>

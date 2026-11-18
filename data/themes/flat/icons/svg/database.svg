@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Database (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="9" y="39" width="46" height="14" fill="#2563eb"/>
+<ellipse cx="32" cy="53" rx="23" ry="6" fill="#2563eb"/>
+<ellipse cx="32" cy="39" rx="23" ry="6" fill="#3b82f6"/>
+<rect x="9" y="24.5" width="46" height="14" fill="#3b82f6"/>
+<ellipse cx="32" cy="38.5" rx="23" ry="6" fill="#3b82f6"/>
+<ellipse cx="32" cy="24.5" rx="23" ry="6" fill="#60a5fa"/>
+<rect x="9" y="10" width="46" height="14" fill="#60a5fa"/>
+<ellipse cx="32" cy="24" rx="23" ry="6" fill="#60a5fa"/>
+<ellipse cx="32" cy="10" rx="23" ry="6" fill="#93c5fd"/>
+</svg>

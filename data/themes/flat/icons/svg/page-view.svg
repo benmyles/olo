@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Page view (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="none" stroke="#c3ccd9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M7 10H31L31 10V51Q31 54 28 54H7Q4 54 4 51V13Q4 10 7 10Z"/>
+<path fill="#f8fafc" d="M7 10H31L31 10V51Q31 54 28 54H7Q4 54 4 51V13Q4 10 7 10Z"/>
+<path fill="#cbd5e1" d="M31 10V8Q31 10 33 10H31Z"/>
+<path fill="none" stroke="#c3ccd9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M36 10H60L60 10V51Q60 54 57 54H36Q33 54 33 51V13Q33 10 36 10Z"/>
+<path fill="#f8fafc" d="M36 10H60L60 10V51Q60 54 57 54H36Q33 54 33 51V13Q33 10 36 10Z"/>
+<path fill="#cbd5e1" d="M60 10V8Q60 10 62 10H60Z"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M9 19L26 19"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M9 26.5L26 26.5"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M9 34L26 34"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M9 41.5L19.54 41.5"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M38 19L55 19"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M38 26.5L55 26.5"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M38 34L55 34"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M38 41.5L48.54 41.5"/>
+</svg>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Stop (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="#ef4444" d="M21 5L43 5L59 21L59 43L43 59L21 59L5 43L5 21Z"/>
+<rect x="29" y="16" width="6" height="20" rx="3" fill="#ffffff"/>
+<circle cx="32" cy="44" r="3.8" fill="#ffffff"/>
+</svg>

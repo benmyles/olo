@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Phone (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="15" y="4" width="34" height="56" rx="7" fill="#1e293b"/>
+<rect x="18" y="8" width="28" height="46" rx="3" fill="#60a5fa"/>
+<rect class="from24" x="27" y="5.6" width="10" height="1.8" rx="0.9" fill="#475569"/>
+<path class="from24" fill="#3b82f6" d="M18 54L30 36L38 46L42 42L46 48L46 54Z"/>
+</svg>

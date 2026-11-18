@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Copy (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="none" stroke="#c3ccd9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M11 4H31L40 13V45Q40 48 37 48H11Q8 48 8 45V7Q8 4 11 4Z"/>
+<path fill="#f8fafc" d="M11 4H31L40 13V45Q40 48 37 48H11Q8 48 8 45V7Q8 4 11 4Z"/>
+<path fill="#cbd5e1" d="M31 4V11Q31 13 33 13H40Z"/>
+<path fill="none" stroke="#c3ccd9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M27 16H47L56 25V57Q56 60 53 60H27Q24 60 24 57V19Q24 16 27 16Z"/>
+<path fill="#f8fafc" d="M27 16H47L56 25V57Q56 60 53 60H27Q24 60 24 57V19Q24 16 27 16Z"/>
+<path fill="#cbd5e1" d="M47 16V23Q47 25 49 25H56Z"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M30 32L50 32"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M30 38.5L50 38.5"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M30 45L42.4 45"/>
+</svg>

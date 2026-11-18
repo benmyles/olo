@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Redmi Note 14 (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="15" y="4" width="34" height="56" rx="7" fill="#b9a2e6"/>
+<rect x="18.5" y="7.5" width="19" height="19" rx="6" fill="#1e293b"/>
+<circle cx="24" cy="13" r="3" fill="#475569"/>
+<circle class="from24" cx="24" cy="13" r="1.35" fill="#60a5fa"/>
+<circle cx="32" cy="13" r="3" fill="#475569"/>
+<circle class="from24" cx="32" cy="13" r="1.35" fill="#60a5fa"/>
+<circle cx="24" cy="21" r="3" fill="#475569"/>
+<circle class="from24" cx="24" cy="21" r="1.35" fill="#60a5fa"/>
+<circle class="from32" cx="32" cy="21" r="1.6" fill="#fde68a"/>
+</svg>

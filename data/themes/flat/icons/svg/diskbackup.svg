@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- DiskBackup (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="4" y="10" width="50" height="34" rx="6" fill="#94a3b8"/>
+<rect x="4" y="30" width="50" height="14" rx="6" fill="#64748b"/>
+<rect x="4" y="30" width="50" height="6" fill="#64748b"/>
+<path class="from24" fill="none" stroke="#cbd5e1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M10 37L26 37"/>
+<circle class="from24" cx="21" cy="20" r="6.5" fill="#e2e8f0"/>
+<circle cx="45" cy="44" r="14" fill="#ffffff"/>
+<circle cx="45" cy="44" r="12" fill="#22c55e"/>
+<path fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M49.98 39.82A6.5 6.5 0 1 1 41.75 38.37"/>
+<path fill="#ffffff" d="M45 33.5L51 38.5L44 41Z"/>
+</svg>

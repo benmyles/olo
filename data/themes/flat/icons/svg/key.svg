@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Key (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<g transform="rotate(-35 32 32)"><circle cx="20" cy="32" r="15" fill="#f59e0b"/><circle cx="17" cy="32" r="5" fill="#ffffff"/><rect x="31" y="28" width="28" height="8" rx="2" fill="#f59e0b"/><rect x="45" y="34" width="6" height="10" rx="1.5" fill="#f59e0b"/><rect x="53" y="34" width="6" height="7" rx="1.5" fill="#f59e0b"/></g>
+</svg>

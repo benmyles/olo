@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Left AirPod (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<circle cx="32" cy="32" r="26" fill="#dbeafe"/>
+<g transform="translate(0 0) scale(1 1) translate(6 -1)"><path fill="#f8fafc" d="M20 8Q34 6 38 18Q41 28 33 32V54Q33 59 28.5 59Q24 59 24 54V32Q14 30 13 20Q12 10 20 8Z" stroke="#c3ccd9" stroke-width="2"/><ellipse cx="22" cy="20" rx="4" ry="7" fill="#334155"/><rect class="from24" x="26.5" y="50" width="4" height="5" rx="2" fill="#94a3b8"/></g>
+</svg>

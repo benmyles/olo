@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Default apps (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="5" y="5" width="25" height="25" rx="6" fill="#3b82f6"/>
+<rect x="34" y="5" width="25" height="25" rx="6" fill="#f97316"/>
+<rect x="5" y="34" width="25" height="25" rx="6" fill="#8b5cf6"/>
+<rect x="34" y="34" width="25" height="25" rx="6" fill="#22c55e"/>
+<path fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" d="M40 47L44.55 51.55L53 42.45"/>
+</svg>

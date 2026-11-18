@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Suggestions (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="#f8fafc" d="M24 26L26 4L44 7L40 26Z" stroke="#c3ccd9" stroke-width="2"/>
+<rect x="8" y="24" width="48" height="32" rx="4" fill="#3b82f6"/>
+<rect x="18" y="22" width="28" height="5" rx="2.5" fill="#1e293b"/>
+<path fill="#fbbf24" d="M32 33L34.6 39L41 39.5L36 43.6L37.7 50L32 46.4L26.3 50L28 43.6L23 39.5L29.4 39Z"/>
+</svg>

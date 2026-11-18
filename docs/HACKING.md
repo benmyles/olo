@@ -6502,7 +6502,8 @@ lint at a time).
   Next Tranquil Surface.
   **Each theme's icons**: Classic's the drawings as written;
   Platinum's, BeOS's, AmigaOS's and Aqua's the same drawings each its
-  own way (`ICON_SETS`,
+  own way; and Flat, a set of its own drawings, seen straight on,
+  chosen for any theme in Customize… (`ICON_SETS`,
   docs/ICONS.md "An icon set's colours": BeOS's as R5 drew its icons,
   flat faces in its 8-bit palette, black outlines; Ben: "create a
   complete custom icon set for BeOS"); the schemes' the classic set.

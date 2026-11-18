@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Power (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="25" y="4" width="14" height="7" rx="2" fill="#64748b"/>
+<rect x="14" y="9" width="36" height="51" rx="7" fill="#475569"/>
+<rect x="18" y="13" width="28" height="43" rx="4" fill="#1e293b"/>
+<rect x="18" y="27" width="28" height="29" rx="4" fill="#22c55e"/>
+<rect x="18" y="27" width="28" height="6" fill="#22c55e"/>
+<path fill="#ffffff" d="M34.6 25.3L25.5 38.3L31.35 38.3L28.75 48.7L38.5 34.4L32.65 34.4Z"/>
+</svg>

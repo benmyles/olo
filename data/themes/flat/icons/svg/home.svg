@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Home (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="42" y="10" width="6" height="14" rx="1" fill="#94623d"/>
+<rect x="13" y="28" width="38" height="28" rx="2" fill="#fdf1d8"/>
+<path fill="#ef4444" d="M32 6L59 31L5 31Z"/>
+<rect x="27" y="39" width="10" height="17" rx="1.5" fill="#b98155"/>
+<rect class="from24" x="17" y="36" width="7" height="7" rx="1" fill="#60a5fa"/>
+<rect class="from24" x="40" y="36" width="7" height="7" rx="1" fill="#60a5fa"/>
+</svg>

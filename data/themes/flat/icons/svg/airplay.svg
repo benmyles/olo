@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- AirPlay (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="5" y="9" width="54" height="37" rx="5" fill="#334155"/>
+<rect x="9" y="13" width="46" height="29" rx="2" fill="#60a5fa"/>
+<path fill="#2563eb" d="M32 36L48 58L16 58Z"/>
+<path fill="none" d="M32 36L48 58L16 58Z"/>
+</svg>

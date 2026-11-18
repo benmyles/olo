@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Browser (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<circle cx="32" cy="32" r="26" fill="#3b82f6"/>
+<circle cx="32" cy="32" r="26" fill="none" stroke="#3b82f6" stroke-width="0"/>
+<ellipse cx="32" cy="32" rx="11" ry="26" fill="none"/>
+<path fill="none" stroke="#93c5fd" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M32 6V58M6 32H58M10 19Q32 27 54 19M10 45Q32 37 54 45"/>
+<ellipse cx="32" cy="32" rx="12" ry="26" fill="none" stroke="#93c5fd" stroke-width="3"/>
+</svg>

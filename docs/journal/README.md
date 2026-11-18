@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Flat: an icon set of its own drawings, seen straight on
+
+*01:20* — 176 drawings, each thing front-facing in plain flat faces, no outlines or shadows, made from shared forms (tools/dev/flaticons). Chosen for any theme in Preferences ▸ Themes ▸ Customize… ▸ Icons; here on Classic.
+
+![Flat: an icon set of its own drawings, seen straight on](2026-11-18/012042-flat-an-icon-set-of-its-own-drawings-seen-straig.png)
+
 ### Aqua: a theme after Mac OS X's first Aqua, its icons shinier and bluer
 
 *00:32* — Bright white panels, gel blue and deep gloss; the same drawings with rounder, shinier faces, Aqua's blues, and soft deep-blue outlines in place of black.

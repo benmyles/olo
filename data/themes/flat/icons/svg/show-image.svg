@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Show picture (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="5" y="9" width="48" height="40" rx="5" fill="#f8fafc" stroke="#c3ccd9" stroke-width="2"/>
+<rect x="10" y="14" width="38" height="30" rx="2" fill="#60a5fa"/>
+<circle cx="19" cy="23" r="4.4" fill="#fbbf24"/>
+<path fill="#16a34a" d="M10 44L24 28L34 40L40 34L48 43L48 44Z"/>
+<path fill="none" stroke="#475569" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" d="M50.2 50.2L59.7 59.7"/>
+<circle cx="43" cy="43" r="10" fill="#475569"/>
+<circle cx="43" cy="43" r="7.6" fill="#dbeafe"/>
+</svg>

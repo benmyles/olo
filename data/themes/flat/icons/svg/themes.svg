@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Themes (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="25" y="12" width="14" height="40" rx="4" fill="#ef4444" transform="rotate(-36 32 53)"/>
+<rect x="25" y="12" width="14" height="40" rx="4" fill="#f59e0b" transform="rotate(-12 32 53)"/>
+<rect x="25" y="12" width="14" height="40" rx="4" fill="#22c55e" transform="rotate(12 32 53)"/>
+<rect x="25" y="12" width="14" height="40" rx="4" fill="#3b82f6" transform="rotate(36 32 53)"/>
+<circle cx="32" cy="52" r="2.8" fill="#ffffff"/>
+</svg>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Stay awake (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M23 5q-4 4 0 8M33 5q-4 4 0 8"/>
+<path fill="#f8fafc" d="M9 20H47V38Q47 54 31 54H25Q9 54 9 38Z" stroke="#c3ccd9" stroke-width="2"/>
+<rect x="12" y="23" width="32" height="6" rx="2" fill="#b98155"/>
+<circle cx="49" cy="31" r="7" fill="none" stroke="#c3ccd9" stroke-width="4.4"/>
+<rect x="5" y="55" width="46" height="4" rx="2" fill="#94a3b8"/>
+</svg>

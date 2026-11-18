@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- PDF (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="none" stroke="#c3ccd9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M16 5H40L51 16V56Q51 59 48 59H16Q13 59 13 56V8Q13 5 16 5Z"/>
+<path fill="#f8fafc" d="M16 5H40L51 16V56Q51 59 48 59H16Q13 59 13 56V8Q13 5 16 5Z"/>
+<path fill="#cbd5e1" d="M40 5V14Q40 16 42 16H51Z"/>
+<rect x="8" y="30" width="40" height="18" rx="3" fill="#ef4444"/>
+<path fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M14 44V35H17.5Q21 35 21 38Q21 41 17.5 41H14"/>
+<path fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M25.5 44V35H28Q33 35 33 39.5Q33 44 28 44Z"/>
+<path fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M37.5 44V35H43.5M37.5 39.7H42"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M20 15L34 15"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M20 21.5L28.68 21.5"/>
+</svg>

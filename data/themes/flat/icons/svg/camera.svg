@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Camera (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="22" y="9" width="20" height="8" rx="3" fill="#475569"/>
+<rect x="5" y="14" width="54" height="40" rx="7" fill="#334155"/>
+<circle cx="32" cy="34" r="13" fill="#cbd5e1"/>
+<circle cx="32" cy="34" r="9" fill="#1e293b"/>
+<circle cx="32" cy="34" r="4.5" fill="#60a5fa"/>
+<circle class="from24" cx="49" cy="22" r="2.5" fill="#fca5a5"/>
+</svg>

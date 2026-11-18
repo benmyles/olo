@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Paste (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="9" y="9" width="46" height="50" rx="5" fill="#b98155"/>
+<rect x="15" y="16" width="34" height="38" rx="2" fill="#f8fafc"/>
+<rect x="22" y="4" width="20" height="11" rx="3" fill="#64748b"/>
+<rect class="from32" x="27" y="7" width="10" height="4" rx="2" fill="#cbd5e1"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M21 25L43 25"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M21 31.5L43 31.5"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M21 38L43 38"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M21 44.5L34.64 44.5"/>
+</svg>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Trash, full (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="#e2e8f0" d="M15 16L20 6L30 10L27 18Z" stroke="#c3ccd9" stroke-width="2"/>
+<path fill="#cbd5e1" d="M28 17L36 5L46 9.5L43.5 18Z" stroke="#c3ccd9" stroke-width="2"/>
+<path fill="#f8fafc" d="M21 16L26 9L36 11.5L34 18Z" stroke="#c3ccd9" stroke-width="2"/>
+<rect x="9" y="14" width="46" height="7" rx="3" fill="#64748b"/>
+<path fill="#94a3b8" d="M13 23H51L48 55Q47.6 59 43.6 59H20.4Q16.4 59 16 55Z"/>
+<path class="from24" fill="none" stroke="#64748b" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M24 29L25 51"/>
+<path class="from24" fill="none" stroke="#64748b" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M32 29L32 51"/>
+<path class="from24" fill="none" stroke="#64748b" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M40 29L39 51"/>
+</svg>

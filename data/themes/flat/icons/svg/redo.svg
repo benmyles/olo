@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Redo (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="none" stroke="#3b82f6" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" d="M42 27H26Q13 27 13 39Q13 51 26 51H44"/>
+<path fill="#3b82f6" d="M38 11L58 27L38 43Z"/>
+</svg>

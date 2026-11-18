@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Fingerprint (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="6" y="6" width="52" height="52" rx="13" fill="#1e293b"/>
+<path fill="none" stroke="#60a5fa" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" d="M16.03 30.19A17 17 0 0 1 47.97 30.19"/>
+<path fill="none" stroke="#60a5fa" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" d="M20.54 35A11.5 11.5 0 0 1 43.46 35"/>
+<path fill="none" stroke="#60a5fa" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" d="M26.02 36.52A6 6 0 1 1 37.98 36.52"/>
+<path fill="none" stroke="#60a5fa" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" d="M15.5 41L15.5 47"/>
+<path fill="none" stroke="#60a5fa" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" d="M48.5 41L48.5 47"/>
+<path class="from24" fill="none" stroke="#60a5fa" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" d="M20.5 37L20.5 49"/>
+<path class="from24" fill="none" stroke="#60a5fa" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" d="M43.5 37L43.5 49"/>
+<path fill="none" stroke="#60a5fa" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" d="M26 37L26 50"/>
+<path fill="none" stroke="#60a5fa" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" d="M38 37L38 50"/>
+<path fill="none" stroke="#60a5fa" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" d="M32 36L32 50"/>
+</svg>

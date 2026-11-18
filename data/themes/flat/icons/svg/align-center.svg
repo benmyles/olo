@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Align center (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="none" stroke="#c3ccd9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 5H53L53 5V56Q53 59 50 59H14Q11 59 11 56V8Q11 5 14 5Z"/>
+<path fill="#f8fafc" d="M14 5H53L53 5V56Q53 59 50 59H14Q11 59 11 56V8Q11 5 14 5Z"/>
+<path fill="#cbd5e1" d="M53 5V3Q53 5 55 5H53Z"/>
+<path fill="none" stroke="#3b82f6" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" d="M17 14L47 14"/>
+<path fill="none" stroke="#64748b" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" d="M22 22.6L42 22.6"/>
+<path fill="none" stroke="#64748b" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" d="M17 31.2L47 31.2"/>
+<path fill="none" stroke="#64748b" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" d="M24 39.8L40 39.8"/>
+<path fill="none" stroke="#64748b" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" d="M19 48.4L45 48.4"/>
+</svg>

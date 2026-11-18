@@ -62,20 +62,6 @@ something nobody here has is in "Blocked", with what it waits for.
   the process, catch it, and fix it there (kache's fork if it is
   kache).
 
-- **A modern flat icon set, drawn front-facing** (Ben, 2026-11-17:
-  "please also generate and add a modern flat icon pack and also
-  generate and add an AmigaOS and Aqua theme + icon pack for each";
-  and, of a flat set made by recolouring the angled drawings: "the idea
-  of the flat ones is that they would also be front facing not
-  angled"). AmigaOS and Aqua are done (themes and sets, by rules over
-  the classic drawings). **Left**: Flat, a set of its own drawings
-  (`data/themes/flat/icons/svg/NAME.svg`, every one of the 181): each
-  thing seen straight on, plain flat faces, no outlines or soft
-  shadows, a few clear colours, on the 64 grid and legible at 16;
-  shared forms first (a page, a folder, a screen, a window, a gear, a
-  cloud: `tools/dev/iconforms.py` grows a flat family), each drawing
-  looked at, at every size, light and dark, before it's kept.
-
 - **The embedded controller's event storm: Olo says so, and keeps the
   keys working** (Ben, 2026-11-17, of the two hours his brightness keys
   were dead and the laptop ran down on its charger: "i don't just want
@@ -194,6 +180,19 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Flat, AmigaOS and Aqua: three more icon sets, two more themes**
+  (Ben, 2026-11-17: "please also generate and add a modern flat icon
+  pack and also generate and add an AmigaOS and Aqua theme + icon pack
+  for each"; and, of a flat set made by recolouring the angled
+  drawings: "the idea of the flat ones is that they would also be front
+  facing not angled"). **Done** (docs/ICONS.md, "The Flat set" and "A
+  theme's colours"; HACKING, "Themes"): AmigaOS and Aqua, each a theme
+  with its own set (the classic drawings by new rules: a system's pens,
+  gloss, outlines of the set's own); Flat, 176 drawings of its own,
+  every icon seen straight on in plain faces, chosen for any theme in
+  Preferences ▸ Themes ▸ Customize… ▸ Icons. **Left for Ben**: look at
+  them; say whether Flat should be some theme's own set, and which.
 
 - **A welcome in Terminal: the ring, this computer, a haiku** (Ben,
   2026-11-17: "olo doctor should offer a suggestion to install an olo

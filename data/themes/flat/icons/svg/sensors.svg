@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Sensors (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="#f8fafc" d="M26 10A6 6 0 0 1 38 10V34A12.5 12.5 0 1 1 26 34Z" stroke="#c3ccd9" stroke-width="2"/>
+<circle cx="32" cy="44.5" r="8" fill="#ef4444"/>
+<rect x="29.5" y="20" width="5" height="24" rx="2.5" fill="#ef4444"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M43 13L49 13"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M43 21L47 21"/>
+<path class="from24" fill="none" stroke="#94a3b8" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M43 29L49 29"/>
+</svg>

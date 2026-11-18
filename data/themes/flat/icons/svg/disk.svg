@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Disk (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="6" y="14" width="52" height="36" rx="6" fill="#94a3b8"/>
+<rect x="6" y="36" width="52" height="14" rx="6" fill="#64748b"/>
+<rect x="6" y="36" width="52" height="6" fill="#64748b"/>
+<circle cx="47" cy="43" r="3" fill="#86efac"/>
+<path class="from24" fill="none" stroke="#cbd5e1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M13 43L30 43"/>
+<circle class="from24" cx="24" cy="25" r="7.5" fill="#e2e8f0"/>
+<circle class="from32" cx="24" cy="25" r="2.2" fill="#64748b"/>
+</svg>

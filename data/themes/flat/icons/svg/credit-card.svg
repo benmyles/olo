@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Credit card (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="4" y="12" width="56" height="40" rx="6" fill="#3b82f6"/>
+<rect x="4" y="20" width="56" height="8" fill="#1e293b"/>
+<rect x="10" y="35" width="12" height="9" rx="2" fill="#fbbf24"/>
+<path class="from24" fill="none" stroke="#93c5fd" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M30 43L52 43"/>
+</svg>

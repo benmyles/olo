@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Tracker (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="#f59e0b" d="M6 14 Q6 10 10 10 H24 Q26 10 27.5 11.5 L30 14.5 Q31 16 33 16 H54 Q58 16 58 20 V50 Q58 54 54 54 H10 Q6 54 6 50Z"/>
+<rect x="6" y="22" width="52" height="34" rx="4" fill="#fbbf24"/>
+<path fill="none" stroke="#475569" stroke-width="4.62" stroke-linecap="round" stroke-linejoin="round" d="M45.92 43.92L56.37 54.37"/>
+<circle cx="38" cy="36" r="11" fill="#475569"/>
+<circle cx="38" cy="36" r="8.36" fill="#dbeafe"/>
+</svg>

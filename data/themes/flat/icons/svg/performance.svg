@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Performance (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<circle cx="32" cy="34" r="26" fill="#334155"/>
+<path fill="none" stroke="#22c55e" stroke-width="5" stroke-linecap="butt" stroke-linejoin="round" d="M14.15 40.5A19 19 0 0 1 19.79 19.45"/>
+<path fill="none" stroke="#fbbf24" stroke-width="5" stroke-linecap="butt" stroke-linejoin="round" d="M21.1 18.44A19 19 0 0 1 42.9 18.44"/>
+<path fill="none" stroke="#ef4444" stroke-width="5" stroke-linecap="butt" stroke-linejoin="round" d="M44.21 19.45A19 19 0 0 1 49.85 40.5"/>
+<path fill="none" stroke="#ffffff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" d="M32 34L44 22"/>
+<circle cx="32" cy="34" r="4" fill="#ffffff"/>
+</svg>

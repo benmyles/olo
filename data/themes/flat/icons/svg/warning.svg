@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Warning (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="#fbbf24" d="M28.2 9.5Q32 3 35.8 9.5L58.6 48.5Q62 55 55 55H9Q2 55 5.4 48.5Z"/>
+<rect x="29" y="21" width="6" height="18" rx="3" fill="#1e293b"/>
+<circle cx="32" cy="46" r="3.6" fill="#1e293b"/>
+</svg>

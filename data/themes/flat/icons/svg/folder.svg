@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Folder (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="#f59e0b" d="M6 14 Q6 10 10 10 H24 Q26 10 27.5 11.5 L30 14.5 Q31 16 33 16 H54 Q58 16 58 20 V50 Q58 54 54 54 H10 Q6 54 6 50Z"/>
+<rect x="6" y="22" width="52" height="34" rx="4" fill="#fbbf24"/>
+<rect class="from32" x="6" y="22" width="52" height="3" fill="#fde68a"/>
+</svg>

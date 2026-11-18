@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Integrations (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="#3b82f6" d="M5 18Q5 14 9 14H19A7 7 0 1 1 33 14H43Q47 14 47 18V28A7 7 0 1 1 47 42V52Q47 56 43 56H33A7 7 0 1 0 19 56H9Q5 56 5 52Z"/>
+</svg>

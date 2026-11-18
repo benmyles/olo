@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Mostly clear (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="none" stroke="#f59e0b" stroke-width="3.36" stroke-linecap="round" stroke-linejoin="round" d="M28 10.8L28 5.4"/>
+<path fill="none" stroke="#f59e0b" stroke-width="3.36" stroke-linecap="round" stroke-linejoin="round" d="M39.46 15.54L43.27 11.73"/>
+<path fill="none" stroke="#f59e0b" stroke-width="3.36" stroke-linecap="round" stroke-linejoin="round" d="M44.2 27L49.6 27"/>
+<path fill="none" stroke="#f59e0b" stroke-width="3.36" stroke-linecap="round" stroke-linejoin="round" d="M39.46 38.46L43.27 42.27"/>
+<path fill="none" stroke="#f59e0b" stroke-width="3.36" stroke-linecap="round" stroke-linejoin="round" d="M28 43.2L28 48.6"/>
+<path fill="none" stroke="#f59e0b" stroke-width="3.36" stroke-linecap="round" stroke-linejoin="round" d="M16.54 38.46L12.73 42.27"/>
+<path fill="none" stroke="#f59e0b" stroke-width="3.36" stroke-linecap="round" stroke-linejoin="round" d="M11.8 27L6.4 27"/>
+<path fill="none" stroke="#f59e0b" stroke-width="3.36" stroke-linecap="round" stroke-linejoin="round" d="M16.54 15.54L12.73 11.73"/>
+<circle cx="28" cy="27" r="12" fill="#fbbf24"/>
+<path fill="none" stroke="#c3ccd9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M33.6 53 a5.6 5.6 0 0 1 0.84 -11.13 a7.7 7.7 0 0 1 14.35 -2.38 a6.02 6.02 0 0 1 3.01 13.51 H33.6 a0 0 0 0 1 0 0Z"/>
+<path fill="#f8fafc" d="M33.6 53 a5.6 5.6 0 0 1 0.84 -11.13 a7.7 7.7 0 0 1 14.35 -2.38 a6.02 6.02 0 0 1 3.01 13.51 H33.6 a0 0 0 0 1 0 0Z"/>
+</svg>

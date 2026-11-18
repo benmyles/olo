@@ -168,10 +168,30 @@ faces rounder and shinier (`gloss`), the blues Aqua's, the greys cool,
 and a soft deep-blue outline, half there, in place of the black one
 (Ben, 2026-11-17: "generate and add an AmigaOS and Aqua theme + icon
 pack for each"). All keep the brand's ring and other people's marks as
-they are. (A flat set recoloured from these drawings was tried and
-taken out: Ben, "the idea of the flat ones is that they would also be
-front facing not angled". It is to be drawings of its own:
-docs/TODO.md.)
+they are.
+
+**The Flat set** is the one set of drawings of its own
+(`data/themes/flat/icons/svg/`, 176: every icon but the five marks,
+which stay as they are): Ben, 2026-11-17, "generate and add a modern
+flat icon pack", and, of a first one made by recolouring the angled
+drawings, "the idea of the flat ones is that they would also be front
+facing not angled". Each thing is seen straight on, in plain faces: no
+outlines, no gradients, no soft shadow; a few clear colours from one
+small palette (`forms.py`'s: blue, red, amber, green, purple and a
+slate grey in steps); corners rounded; a white thing (a page, a cloud,
+a white phone) with a thin grey rim so it shows on a white window. The
+same rules as every drawing hold: the 64 grid, the thing within 2 to
+62, a fifth of the canvas covered at 16 pixels, detail that a size
+can't show left out there (`from24`, `from32`). They are made by
+`tools/dev/flaticons` (`make.py write`), from forms shared across the
+set (a page with its folded corner, a folder, a screen on its stand, a
+cloud, a sun, a gear, a padlock, a magnifying glass, a badge at a
+corner, a phone's back with its cameras), so pages, screens and the
+sky's twenty are one family; `make.py sheet OUT.png` shows them all at
+64, 32 and 16 pixels, light and dark, which is how each was looked at.
+A drawing is changed there and written again. Its `recolour.txt` is
+for what it has no drawing of (the marks kept; an icon new to the
+classic set flattened until it's drawn).
 
 ```text
 ink 0b0b16                     # the classic ink (1b1b1f) becomes this

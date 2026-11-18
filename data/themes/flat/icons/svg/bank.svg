@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Bank (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="#64748b" d="M32 5L59 21L5 21Z"/>
+<rect x="7" y="21" width="50" height="5" rx="1" fill="#94a3b8"/>
+<rect x="7" y="49" width="50" height="4" rx="1" fill="#94a3b8"/>
+<rect x="4" y="53" width="56" height="6" rx="2" fill="#64748b"/>
+<rect x="11" y="28" width="6" height="20" rx="1.5" fill="#cbd5e1"/>
+<rect x="23" y="28" width="6" height="20" rx="1.5" fill="#cbd5e1"/>
+<rect x="35" y="28" width="6" height="20" rx="1.5" fill="#cbd5e1"/>
+<rect x="47" y="28" width="6" height="20" rx="1.5" fill="#cbd5e1"/>
+<circle class="from24" cx="32" cy="15.5" r="3" fill="#e2e8f0"/>
+</svg>

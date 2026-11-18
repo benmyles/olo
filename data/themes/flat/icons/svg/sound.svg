@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Sound (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<path fill="#475569" d="M6 24Q6 22 8 22H18L32 9Q34 7.5 34 10V54Q34 56.5 32 55L18 42H8Q6 42 6 40Z"/>
+<path fill="none" stroke="#3b82f6" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round" d="M39.79 25.11A9 9 0 0 1 39.79 38.89"/>
+<path fill="none" stroke="#3b82f6" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round" d="M45.57 18.21A18 18 0 0 1 45.57 45.79"/>
+</svg>

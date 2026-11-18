@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Mail (Flat: seen straight on, plain faces). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<rect x="5" y="13" width="54" height="38" rx="5" fill="#f8fafc" stroke="#c3ccd9" stroke-width="2"/>
+<path fill="none" d="M7 16L32 36L57 16" stroke="#3b82f6" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+<path class="from32" fill="none" stroke="#cbd5e1" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M8 48L23 34"/>
+<path class="from32" fill="none" stroke="#cbd5e1" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M56 48L41 34"/>
+</svg>
