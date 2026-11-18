@@ -7191,6 +7191,8 @@ dependencies = [
  "jiff",
  "roxmltree",
  "rustls",
+ "serde",
+ "serde_json",
  "ureq",
 ]
 

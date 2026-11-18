@@ -21,6 +21,8 @@ pub struct Calendar {
     pub items: BTreeMap<String, (String, String)>,
     /// What changed, in order: the change's number, the file, gone or not.
     log: Vec<(u64, String, bool)>,
+    /// Tokens from before this change are no longer known.
+    floor: u64,
 }
 
 #[derive(Debug, Default)]
@@ -114,8 +116,12 @@ impl Standin {
 
     /// Forget what changed when: tokens from before are no longer known.
     pub fn forget_changes(&self) {
-        for c in self.state.lock().unwrap().calendars.values_mut() {
+        let mut s = self.state.lock().unwrap();
+        s.changes += 1;
+        let floor = s.changes;
+        for c in s.calendars.values_mut() {
             c.log.clear();
+            c.floor = floor;
         }
     }
 }
@@ -281,7 +287,7 @@ fn answer(s: &mut State, method: &str, path: &str, headers: &BTreeMap<String, St
                 let token = between(body, "sync-token").first().copied().unwrap_or_default().to_owned();
                 let since = match token.strip_prefix('t').map(str::parse::<u64>) {
                     None if token.is_empty() => None,
-                    Some(Ok(n)) if c.log.is_empty() && n > 0 && !c.items.is_empty() => return (403, String::new(), "<d:error xmlns:d=\"DAV:\"><d:valid-sync-token/></d:error>".into()),
+                    Some(Ok(n)) if n < c.floor => return (403, String::new(), "<d:error xmlns:d=\"DAV:\"><d:valid-sync-token/></d:error>".into()),
                     Some(Ok(n)) => Some(n),
                     _ => return (403, String::new(), "<d:error xmlns:d=\"DAV:\"><d:valid-sync-token/></d:error>".into()),
                 };

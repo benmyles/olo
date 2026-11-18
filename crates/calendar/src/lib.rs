@@ -19,6 +19,9 @@
 //!   and an event put, changed or removed, never over a change made
 //!   somewhere else meanwhile. [`standin`]: a stand-in server, for tests
 //!   and for trying the app with no account.
+//! - [`store`]: calendars kept on disk as they were when last in step
+//!   with their servers, brought in step by asking only for what
+//!   changed; what a person changes goes to the server first, then here.
 //!
 //! Times are `jiff`'s: the system's time zone database, the clock's
 //! changes handled where a wall time meets them.
@@ -28,3 +31,4 @@ pub mod event;
 pub mod ical;
 pub mod rrule;
 pub mod standin;
+pub mod store;
