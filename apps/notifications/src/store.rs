@@ -58,6 +58,19 @@ impl From<Kind> for KindName {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct Entry {
+    /// Not a notification: what its app says is waiting in it (its count
+    /// and urgency), one such item an app ([`History::update_attention`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention: Option<olo_protocol::notifications::Attention>,
+    /// Of an app's item, how much has been seen (read, dismissed, or one
+    /// of its notifications was): unread again past that.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub seen: u64,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub seen_urgent: bool,
+    /// Red, for drawing ([`History::mark_waiting`]); not kept.
+    #[serde(skip)]
+    pub waiting: bool,
     pub id: u32,
     pub app: String,
     pub desktop_entry: Option<String>,
@@ -101,6 +114,10 @@ pub struct Entry {
 impl Entry {
     pub fn from_note(n: &Note, unread: bool) -> Entry {
         Entry {
+            attention: None,
+            seen: 0,
+            seen_urgent: false,
+            waiting: false,
             id: n.id,
             app: n.app_name.clone(),
             desktop_entry: n.desktop_entry.clone(),
@@ -172,7 +189,160 @@ pub struct History {
     path: Option<PathBuf>,
 }
 
+fn is_zero(n: &u64) -> bool {
+    *n == 0
+}
+
+/// Whether `e` is of the app that `item` is the waiting item of (`item`'s
+/// attention names its desktop entry, as launcher badges do; its `app`
+/// is the app's name): by the entry `e` names, else by its name.
+fn of_app(e: &Entry, item: &Entry) -> bool {
+    let norm = |s: &str| s.trim().trim_end_matches(".desktop").to_ascii_lowercase();
+    let Some(a) = &item.attention else { return false };
+    let app = norm(&a.app);
+    e.id == item.id || e.desktop_entry.as_deref().is_some_and(|d| norm(d) == app) || norm(&e.app) == app || (!item.app.is_empty() && norm(&e.app) == norm(&item.app))
+}
+
+/// What waits in an app, in words: "3 waiting", "2 more waiting" (beside
+/// what was seen or said already), or, with no count, that it wants
+/// attention.
+fn waiting_words(count: u64, more: bool) -> String {
+    match (count, more) {
+        (0, _) => "Wants your attention".to_owned(),
+        (n, false) => format!("{n} waiting"),
+        (n, true) => format!("{n} more waiting"),
+    }
+}
+
 impl History {
+    /// What apps say is waiting in them (`badges`: each app's count and
+    /// urgency on its Deskbar row), kept as one item an app, beside its
+    /// notifications: there while the app says so, gone when it stops.
+    /// What of it has been seen stays seen (`Entry::seen`): the item is
+    /// unread again only for more than that, or for turning urgent.
+    /// Whether anything changed.
+    pub fn update_attention(&mut self, badges: &[olo_protocol::notifications::Attention], now: u64, name: impl Fn(&str) -> String, mut id: impl FnMut() -> u32) -> bool {
+        let mut changed = false;
+        if self.entries.iter().any(|e| e.attention.as_ref().is_some_and(|a| !badges.iter().any(|b| b.app == a.app))) {
+            self.entries_mut().retain(|e| e.attention.as_ref().is_none_or(|a| badges.iter().any(|b| b.app == a.app)));
+            changed = true;
+        }
+        for badge in badges {
+            let at = self.entries.iter().position(|e| e.attention.as_ref().is_some_and(|a| a.app == badge.app));
+            if at.is_some_and(|i| self.entries[i].attention.as_ref() == Some(badge)) {
+                continue;
+            }
+            let title = waiting_words(badge.count, false);
+            if let Some(i) = at {
+                let e = &mut self.entries_mut()[i];
+                e.seen = e.seen.min(badge.count);
+                e.seen_urgent &= badge.urgent;
+                let unread = badge.count > e.seen || (badge.urgent && !e.seen_urgent);
+                if unread && !e.unread {
+                    e.time = now;
+                }
+                e.unread = unread;
+                e.summary = title;
+                e.attention = Some(badge.clone());
+            } else {
+                self.put(Entry {
+                    id: id(),
+                    app: name(&badge.app),
+                    desktop_entry: Some(badge.app.clone()),
+                    summary: title,
+                    time: now,
+                    unread: true,
+                    attention: Some(badge.clone()),
+                    ..Default::default()
+                });
+            }
+            changed = true;
+        }
+        self.mark_waiting();
+        changed
+    }
+
+    /// Whether `e` is red: its app says something is waiting in it (the
+    /// app's own item, and its notifications while it does). Blue
+    /// otherwise: news.
+    pub fn waiting(&self, e: &Entry) -> bool {
+        e.attention.is_some() || self.entries.iter().any(|s| of_app(e, s))
+    }
+
+    /// Every entry marked red or not ([`History::waiting`], kept in
+    /// `Entry::waiting` for drawing): as the apps that wait change, and
+    /// as a notification comes. (Nothing written where nothing differs:
+    /// the entries are shared with the windows drawing them.)
+    pub fn mark_waiting(&mut self) {
+        let items: Vec<Entry> = self.entries.iter().filter(|e| e.attention.is_some()).cloned().collect();
+        let red = |e: &Entry| e.attention.is_some() || items.iter().any(|s| of_app(e, s));
+        if self.entries.iter().any(|e| e.waiting != red(e)) {
+            for e in self.entries_mut() {
+                e.waiting = red(e);
+            }
+        }
+    }
+
+    /// How much of what waits in an app (its item `s`) its unread
+    /// notifications don't already say: the count past what was seen,
+    /// less those notifications (each is one of the things waiting).
+    /// None: nothing more, the item is covered by them.
+    fn more(&self, s: &Entry) -> Option<(u64, bool)> {
+        let a = s.attention.as_ref()?;
+        let notes = self.entries.iter().filter(|e| e.attention.is_none() && e.unread && !e.snoozed() && of_app(e, s)).count() as u64;
+        let fresh = a.count.saturating_sub(s.seen);
+        if fresh > notes {
+            return Some((fresh - notes, notes > 0 || s.seen > 0));
+        }
+        // (Waiting without a count: said unless a notification says it.)
+        (a.count == 0 && a.urgent && !s.seen_urgent && notes == 0).then_some((0, false))
+    }
+
+    /// Whether `e` counts as unread and in sight: not snoozed, and not an
+    /// app's item its notifications cover.
+    fn in_inbox(&self, e: &Entry) -> bool {
+        e.unread && !e.snoozed() && (e.attention.is_none() || self.more(e).is_some())
+    }
+
+    /// `id` was read: what waits in its app has been seen, as much as
+    /// there is now (it is unread again only for more).
+    pub fn acknowledge(&mut self, id: u32) {
+        let Some(e) = self.entries.iter().find(|e| e.id == id) else { return };
+        let Some(at) = self.entries.iter().position(|s| if e.attention.is_some() { s.id == id } else { of_app(e, s) }) else { return };
+        let s = &mut self.entries_mut()[at];
+        if let Some(a) = &s.attention {
+            (s.seen, s.seen_urgent, s.unread) = (a.count, a.urgent, false);
+        }
+    }
+
+    /// What is unread and not snoozed, newest first, as Deskbar's Inbox
+    /// widget shows it (`icons`: the names an entry's icon may have;
+    /// `fade_minutes`: how long a notification takes to fade away).
+    pub fn inbox(&self, icons: impl Fn(&Entry) -> Vec<String>, fade_minutes: Option<u32>) -> Vec<olo_protocol::notifications::InboxCard> {
+        let mut entries: Vec<_> = self.entries.iter().filter(|e| self.in_inbox(e)).collect();
+        entries.sort_by_key(|e| std::cmp::Reverse((e.time, e.id)));
+        entries
+            .into_iter()
+            .map(|e| {
+                let (title, detail) = match self.more(e) {
+                    Some((n, more)) => (waiting_words(n, more), format!("Open {} to see {}.", e.app, if n == 1 { "it" } else { "them" })),
+                    // (One line: a card has no room for paragraphs.)
+                    None => (e.summary.clone(), e.text.split_whitespace().collect::<Vec<_>>().join(" ")),
+                };
+                olo_protocol::notifications::InboxCard {
+                    id: e.id,
+                    app: e.app.clone(),
+                    icons: icons(e),
+                    title,
+                    detail,
+                    attention: self.waiting(e),
+                    time: e.time,
+                    fade_minutes: fade_minutes.filter(|_| e.attention.is_none() && !e.pinned),
+                }
+            })
+            .collect()
+    }
+
     pub fn path() -> PathBuf {
         olo_xdg::state_dir().join("notifications").join("history.json")
     }
@@ -263,6 +433,7 @@ impl History {
                 !goes
             });
         }
+        self.mark_waiting();
     }
 
     pub fn get_mut(&mut self, id: u32) -> Option<&mut Entry> {
@@ -283,14 +454,14 @@ impl History {
 
     /// Unread and in sight (not snoozed).
     pub fn unread(&self) -> u32 {
-        self.entries.iter().filter(|e| e.unread && !e.snoozed()).count() as u32
+        self.entries.iter().filter(|e| self.in_inbox(e)).count() as u32
     }
 
     /// The apps with notes unread and in sight, each with its newest
     /// (a website's are its browser's), in the order they last had one.
     pub fn unread_apps(&self) -> Vec<olo_protocol::NoteApp> {
         let mut apps: Vec<olo_protocol::NoteApp> = Vec::new();
-        for e in self.entries.iter().filter(|e| e.unread && !e.snoozed()) {
+        for e in self.entries.iter().filter(|e| e.unread && !e.snoozed() && e.attention.is_none()) {
             let name = e.via.clone().unwrap_or_else(|| e.app.clone());
             let newest = (e.time, e.id);
             let a = match apps.iter().position(|a| a.desktop_entry == e.desktop_entry && a.name == name) {
@@ -326,7 +497,15 @@ impl History {
     pub fn set_read(&mut self, id: u32, read: bool) -> bool {
         match self.entries.iter().rposition(|e| e.id == id) {
             Some(at) if self.entries[at].unread == read => {
-                self.entries_mut()[at].unread = !read;
+                let e = &mut self.entries_mut()[at];
+                e.unread = !read;
+                // (An app's item made unread again: all of it.)
+                if !read {
+                    (e.seen, e.seen_urgent) = (0, false);
+                }
+                if read {
+                    self.acknowledge(id);
+                }
                 true
             }
             _ => false,
@@ -374,7 +553,7 @@ impl History {
     /// Forget what has faded away by `now` (not what is on screen); the
     /// ones forgotten that were still open at their apps, to tell them.
     pub fn fade_out(&mut self, settings: &olo_protocol::NotificationSettings, now: u64) -> Option<Vec<u32>> {
-        let faded = |e: &Entry| !e.shown && !e.pinned && !e.snoozed() && settings.faded(now.saturating_sub(e.time));
+        let faded = |e: &Entry| e.attention.is_none() && !e.shown && !e.pinned && !e.snoozed() && settings.faded(now.saturating_sub(e.time));
         if !self.entries.iter().any(faded) {
             return None;
         }
@@ -424,6 +603,97 @@ mod tests {
         assert!(Arc::ptr_eq(&held, &h.entries));
         drop(held);
         assert_eq!(Arc::as_ptr(&h.entries), at);
+    }
+
+    /// Red and blue are one list (Ben, 2026-11-17: "we also need to unify
+    /// the red/activity type notifications and the info/blue type ones"):
+    /// an app that says something is waiting has its items red; what its
+    /// notifications already say isn't said twice; what was seen stays
+    /// seen until there is more.
+    #[test]
+    fn what_waits_in_an_app_and_its_notifications_are_one_list() {
+        use olo_protocol::notifications::Attention;
+        let mut h = History::load(None);
+        let mut next = 100;
+        let mut wait = |h: &mut History, badges: &[(&str, u64, bool)]| {
+            let badges: Vec<Attention> = badges.iter().map(|(app, count, urgent)| Attention { app: (*app).into(), count: *count, urgent: *urgent }).collect();
+            h.update_attention(
+                &badges,
+                50,
+                |app| if app == "olo-slack" { "Slack".into() } else { app.to_owned() },
+                || {
+                    next += 1;
+                    next
+                },
+            )
+        };
+        let cards = |h: &History| h.inbox(|_| Vec::new(), Some(30)).into_iter().map(|c| (c.app, c.title, c.attention, c.fade_minutes.is_some())).collect::<Vec<_>>();
+        let note = |id: u32, app: &str, entry: &str, summary: &str| Entry {
+            id,
+            app: app.into(),
+            desktop_entry: Some(entry.into()),
+            summary: summary.into(),
+            unread: true,
+            live: true,
+            time: 60 + id as u64,
+            ..Default::default()
+        };
+        let (red, blue) = (true, false);
+
+        // News alone: blue, and it fades.
+        h.put(note(1, "Mail", "olo-mail", "Invoice"));
+        assert_eq!(cards(&h), [("Mail".into(), "Invoice".into(), blue, true)]);
+        assert!(!h.entries[0].waiting);
+
+        // Slack says two wait, with no notification of its own: one red
+        // item says so, and doesn't fade.
+        assert!(wait(&mut h, &[("olo-slack", 2, false)]));
+        assert_eq!(cards(&h), [("Mail".into(), "Invoice".into(), blue, true), ("Slack".into(), "2 waiting".into(), red, false)]);
+        assert_eq!(h.unread(), 2);
+
+        // A notification of one of them: red too (its app is waiting),
+        // and the item says only what it doesn't.
+        h.put(note(2, "Slack", "olo-slack", "Dana: lunch?"));
+        assert_eq!(cards(&h)[0], ("Slack".into(), "Dana: lunch?".into(), red, true));
+        assert!(cards(&h).contains(&("Slack".into(), "1 more waiting".into(), red, false)));
+        assert!(h.entries.iter().find(|e| e.id == 2).unwrap().waiting);
+        // And of the other: both are said, the item not at all.
+        h.put(note(3, "Slack", "olo-slack", "Sam: ok"));
+        assert_eq!(cards(&h).iter().filter(|c| c.0 == "Slack").map(|c| c.1.as_str()).collect::<Vec<_>>(), ["Sam: ok", "Dana: lunch?"]);
+        assert_eq!(h.unread(), 3, "Mail's and Slack's two");
+
+        // One dismissed: seen, and Slack's item doesn't come back for it,
+        // though Slack still counts two.
+        assert!(h.set_read(3, true));
+        assert_eq!(cards(&h).iter().filter(|c| c.0 == "Slack").map(|c| c.1.as_str()).collect::<Vec<_>>(), ["Dana: lunch?"]);
+        assert!(h.set_read(2, true));
+        assert_eq!(cards(&h).iter().filter(|c| c.0 == "Slack").count(), 0);
+        // (The same count said again changes nothing.)
+        assert!(!wait(&mut h, &[("olo-slack", 2, false)]));
+        // A third, with no notification: one more.
+        assert!(wait(&mut h, &[("olo-slack", 3, false)]));
+        assert!(cards(&h).contains(&("Slack".into(), "1 more waiting".into(), red, false)));
+        // Fewer, then as many again: that one is new.
+        let item = h.entries.iter().find(|e| e.attention.is_some()).unwrap().id;
+        assert!(h.set_read(item, true));
+        assert!(wait(&mut h, &[("olo-slack", 1, false)]));
+        assert_eq!(cards(&h).iter().filter(|c| c.0 == "Slack").count(), 0);
+        assert!(wait(&mut h, &[("olo-slack", 2, false)]));
+        assert!(cards(&h).contains(&("Slack".into(), "1 more waiting".into(), red, false)));
+
+        // Slack dealt with in Slack: its item goes, and news of it is blue.
+        h.put(note(4, "Slack", "olo-slack", "Reminder"));
+        assert!(h.entries.iter().find(|e| e.id == 4).unwrap().waiting);
+        assert!(wait(&mut h, &[]));
+        assert_eq!(cards(&h), [("Slack".into(), "Reminder".into(), blue, true), ("Mail".into(), "Invoice".into(), blue, true)]);
+        assert!(h.entries.iter().all(|e| !e.waiting));
+
+        // An app that only wants attention (no count): said once, unless
+        // a notification says it.
+        assert!(wait(&mut h, &[("olo-terminal", 0, true)]));
+        assert!(cards(&h).iter().any(|c| c.1 == "Wants your attention" && c.2));
+        h.put(note(5, "Terminal", "olo-terminal", "Claude needs you"));
+        assert_eq!(cards(&h).iter().filter(|c| c.2).map(|c| c.1.as_str()).collect::<Vec<_>>(), ["Claude needs you"]);
     }
 
     #[test]

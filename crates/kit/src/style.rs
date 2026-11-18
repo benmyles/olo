@@ -983,6 +983,28 @@ pub fn latch(g: &mut Painter, r: Bounds<Pixels>, open: bool, color: Hsla) {
     }
 }
 
+/// A dot of something that goes with time (an unread notification
+/// fading away: Deskbar's dot beside an app, the dot on a card of
+/// Notifications' widget): `left` of it filled from its left (1: whole;
+/// never under `DOT_FLOOR`, so it still reads as a dot), the rest a faint
+/// well of its colour. The edge on a whole device pixel.
+pub fn draining_dot(g: &mut Painter, centre: Point<Pixels>, radius: f32, left: f32, color: Hsla) {
+    const DOT_FLOOR: f32 = 0.3;
+    const DOT_WELL: f32 = 0.28;
+    let tau = std::f32::consts::TAU;
+    let scale = g.scale_factor();
+    let fill = DOT_FLOOR + (1.0 - DOT_FLOOR) * left.clamp(0.0, 1.0);
+    let cx = f32::from(centre.x);
+    let edge = ((cx - radius + fill * 2.0 * radius) * scale).round() / scale;
+    if edge >= cx + radius - 0.5 / scale {
+        g.paint_sector(centre, px(0.0), px(radius), 0.0, tau, color);
+    } else {
+        g.paint_sector(centre, px(0.0), px(radius), 0.0, tau, color.opacity(DOT_WELL));
+        let part = Bounds::from_corners(point(px(cx - radius - 1.0), centre.y - px(radius + 1.0)), point(px(edge), centre.y + px(radius + 1.0)));
+        g.with_content_mask(Some(olo_interface::ContentMask { bounds: part }), |g| g.paint_sector(centre, px(0.0), px(radius), 0.0, tau, color));
+    }
+}
+
 /// A small × filling `r` (a close box on a card or a row).
 pub fn close_box(g: &mut Painter, r: Bounds<Pixels>, color: Hsla) {
     let k = Bounds::from_corners(r.origin + point(px(3.0), px(3.0)), r.bottom_right() - point(px(3.0), px(3.0)));

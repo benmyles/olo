@@ -21,6 +21,9 @@ use olo_protocol::{
 
 /// The least time between two starts of one app's provider.
 const RESTART: Duration = Duration::from_secs(60);
+/// How long a card dealt with here stays out of sight with no word from
+/// its app (the notification service not running: it shows again).
+const GONE: Duration = Duration::from_secs(3);
 
 #[derive(Default)]
 pub struct Glances {
@@ -33,6 +36,18 @@ pub struct Glances {
     /// Each widget's timeline, and the entry it showed last (its time).
     timelines: HashMap<u32, Timeline>,
     showing: HashMap<u32, i64>,
+    /// An inbox's card on top, by its item (None: the first), and the
+    /// part of an inbox the pointer is on.
+    selected: HashMap<u32, (u32, usize)>,
+    hot: Option<(u32, Option<olo_kit::glance::InboxPart>)>,
+    /// Inbox cards dismissed or snoozed here that their app hasn't taken
+    /// away yet (the item, when): not shown meanwhile, so a click answers
+    /// at once (the service's answer comes a quarter of a second later).
+    gone: HashMap<u32, Vec<(u32, Instant)>>,
+    /// The cards each inbox had when last read: one that comes after goes
+    /// on top (Ben, 2026-11-17: "if newer ones arrive they should be
+    /// added on top of the card stack too, not the bottom").
+    had: HashMap<u32, Vec<u32>>,
     watch: Option<olo_kit::watch::Watch>,
 }
 
@@ -50,6 +65,9 @@ impl Glances {
     /// its provider started if it isn't running; none, the folder
     /// unwatched and the providers told so (they end).
     pub fn set(&mut self, widgets: &[Widget], proxy: &olo_kit::Proxy) {
+        self.selected.retain(|id, _| widgets.iter().any(|w| w.id == *id));
+        self.gone.retain(|id, _| widgets.iter().any(|w| w.id == *id));
+        self.had.retain(|id, _| widgets.iter().any(|w| w.id == *id));
         let mut wanted: HashMap<&'static str, Requests> = HashMap::new();
         for w in widgets {
             if let Measure::App { app, glance, options } = &w.measure
@@ -169,6 +187,25 @@ impl Glances {
         }
         if changed {
             self.turned();
+            // A card that has just come goes on top, whichever was chosen
+            // (the newest of them, in whichever order they're shown).
+            for (id, t) in &self.timelines {
+                let Some(Body::Inbox { cards, .. }) = t.at(now()).and_then(|gl| gl.body.as_ref()) else { continue };
+                let now_ids: Vec<u32> = cards.iter().map(|c| c.id).collect();
+                if let Some(had) = self.had.get(id)
+                    && let Some((at, new)) = cards.iter().enumerate().filter(|(_, c)| !had.contains(&c.id)).max_by_key(|(_, c)| (c.time, c.id))
+                {
+                    self.selected.insert(*id, (new.id, at));
+                }
+                self.had.insert(*id, now_ids);
+            }
+            // (What was dealt with here and is gone there too.)
+            let timelines = &self.timelines;
+            self.gone.retain(|id, items| {
+                let there = |item: u32| timelines.get(id).is_some_and(|t| t.entries.iter().any(|e| matches!(&e.glance.body, Some(Body::Inbox { cards, .. }) if cards.iter().any(|c| c.id == item))));
+                items.retain(|(item, _)| there(*item));
+                !items.is_empty()
+            });
         }
         changed
     }
@@ -192,9 +229,81 @@ impl Glances {
         self.timelines.get(&id).and_then(|t| t.at(now()))
     }
 
+    /// Widget `id`'s inbox, if it shows one: its cards, which is on top
+    /// (the one chosen while it is still there, else the first), how
+    /// long Snooze snoozes, and whether cards show their text.
+    pub fn inbox(&self, id: u32) -> Option<(Vec<olo_protocol::notifications::InboxCard>, usize, u32, bool)> {
+        let Body::Inbox { cards, snooze_minutes, preview } = self.now(id)?.body.as_ref()? else { return None };
+        let gone = self.gone.get(&id).map(|items| items.iter().filter(|(_, at)| at.elapsed() < GONE).map(|(item, _)| *item).collect::<Vec<_>>()).unwrap_or_default();
+        // (And not what has faded away, should its app be late to say so.)
+        let secs = now().max(0) as u64;
+        let cards: Vec<_> = cards.iter().filter(|c| !gone.contains(&c.id) && c.strength(secs) > 0.0).cloned().collect();
+        // The card chosen while it is there; gone, the one that took its
+        // place (the next comes up under the pointer).
+        let at = match self.selected.get(&id) {
+            Some((item, was)) => cards.iter().position(|c| c.id == *item).unwrap_or((*was).min(cards.len().saturating_sub(1))),
+            None => 0,
+        };
+        Some((cards, at, *snooze_minutes, *preview))
+    }
+
+    /// What widget `id` shows now, as it's drawn: an inbox less the cards
+    /// dealt with here.
+    pub fn shown(&self, id: u32) -> Option<std::borrow::Cow<'_, Glance>> {
+        let gl = self.now(id)?;
+        let secs = now().max(0) as u64;
+        let whole = |gl: &Glance| !matches!(&gl.body, Some(Body::Inbox { cards, .. }) if cards.iter().any(|c| c.strength(secs) <= 0.0));
+        if !self.gone.contains_key(&id) && whole(gl) {
+            return Some(std::borrow::Cow::Borrowed(gl));
+        }
+        let (cards, _, snooze_minutes, preview) = self.inbox(id)?;
+        Some(std::borrow::Cow::Owned(Glance { body: Some(Body::Inbox { cards, snooze_minutes, preview }), ..gl.clone() }))
+    }
+
+    /// Whether a card on top of an inbox is fading away (its dot drains:
+    /// drawn again as it does).
+    pub fn fading(&self) -> bool {
+        let secs = now().max(0) as u64;
+        self.timelines.keys().any(|id| self.inbox(*id).is_some_and(|(cards, at, ..)| cards.get(at).is_some_and(|c| c.strength(secs) < 1.0 || c.fade_minutes.is_some())))
+    }
+
+    /// Card `item` of widget `id` was dismissed or snoozed here: gone at
+    /// once, the card after it in its place.
+    pub fn dealt_with(&mut self, id: u32, item: u32) {
+        if let Some((cards, at, ..)) = self.inbox(id) {
+            match cards.get(at + 1).or_else(|| at.checked_sub(1).and_then(|i| cards.get(i))) {
+                // (Where the one after it will be once this one is gone.)
+                Some(next) => self.selected.insert(id, (next.id, at.min(cards.len().saturating_sub(2)))),
+                None => self.selected.remove(&id),
+            };
+        }
+        self.gone.entry(id).or_default().push((item, Instant::now()));
+    }
+
+    /// The next card on top (`previous`: the one before), round and
+    /// round. Whether it changed.
+    pub fn turn_card(&mut self, id: u32, previous: bool) -> bool {
+        let Some((cards, at, ..)) = self.inbox(id).filter(|(cards, ..)| cards.len() > 1) else { return false };
+        let at = (at + if previous { cards.len() - 1 } else { 1 }) % cards.len();
+        self.selected.insert(id, (cards[at].id, at));
+        true
+    }
+
+    /// How widget `id`'s inbox is drawn now.
+    pub fn inbox_shown(&self, id: u32) -> olo_kit::glance::Inbox {
+        let hot = self.hot.filter(|(w, _)| *w == id);
+        olo_kit::glance::Inbox { selected: self.inbox(id).map_or(0, |(_, at, ..)| at), over: hot.is_some(), hot: hot.and_then(|(_, part)| part) }
+    }
+
+    /// The pointer came onto an inbox (`part`: one of its buttons) or
+    /// left them all. Whether anything changed.
+    pub fn inbox_hot(&mut self, hot: Option<(u32, Option<olo_kit::glance::InboxPart>)>) -> bool {
+        std::mem::replace(&mut self.hot, hot) != hot
+    }
+
     /// How tall widget `w`'s row is on its own.
     pub fn height(&self, w: &Widget) -> f32 {
-        olo_kit::glance::height(self.now(w.id), w.size)
+        olo_kit::glance::height(self.shown(w.id).as_deref(), w.size)
     }
 
     /// Its tip in words.
@@ -209,6 +318,13 @@ impl Glances {
         let caption = [gl.title.as_str(), gl.detail.as_str()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ");
         let mut card = Card::new(w.label()).caption(caption).value(gl.value.clone(), None);
         match &gl.body {
+            Some(Body::Inbox { .. }) => {
+                if let Some((cards, at, ..)) = self.inbox(w.id)
+                    && let Some(item) = cards.get(at)
+                {
+                    card = card.part(Part::Notes(vec![format!("{} · {}", item.app, item.title).into()]));
+                }
+            }
             Some(Body::Slots { slots, .. }) => {
                 let rows = slots.iter().map(|s| Row { level: s.level, ..Row::new(s.label.clone(), s.value.clone()) }).collect();
                 card = card.part(Part::Rows { heading: None, rows });

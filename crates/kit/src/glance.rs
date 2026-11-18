@@ -59,6 +59,9 @@ fn head(size: Size) -> f32 {
 
 /// How tall `glance` is drawn at `size` (one not come yet: its headline's).
 pub fn height(glance: Option<&Glance>, size: Size) -> f32 {
+    if let Some(Body::Inbox { preview, cards, .. }) = glance.and_then(|gl| gl.body.as_ref()) {
+        return inbox_height(cards.len(), *preview, size);
+    }
     if size == Size::Small {
         return LINE;
     }
@@ -70,7 +73,7 @@ pub fn height(glance: Option<&Glance>, size: Size) -> f32 {
     match &gl.body {
         Some(Body::Slots { slots, .. }) => h += slots_height(slots),
         Some(Body::Spans { spans, .. }) => h += 2.0 + spans.len() as f32 * SPAN,
-        None => {}
+        Some(Body::Inbox { .. }) | None => {}
     }
     h + PAD
 }
@@ -88,10 +91,14 @@ fn said(g: &mut Painter, text: &str, bounds: Bounds<Pixels>) {
 }
 
 /// Paint `glance` at `size` in row `r`, its words `inset` from each side.
-pub fn paint(g: &mut Painter, r: Bounds<Pixels>, glance: &Glance, size: Size, inset: f32) {
+pub fn paint(g: &mut Painter, r: Bounds<Pixels>, glance: &Glance, size: Size, inset: f32, inbox: Inbox) {
     let p = theme::palette();
     let (left, right) = (f32::from(r.left()) + inset, f32::from(r.right()) - inset);
     g.with_content_mask(Some(ContentMask { bounds: r }), |g| {
+        if let Some(Body::Inbox { cards, preview, .. }) = &glance.body {
+            paint_inbox(g, r, cards, *preview, size, inset, inbox, &p);
+            return;
+        }
         if size == Size::Small {
             paint_line(g, left, right, f32::from(r.center().y), glance, &p);
             return;
@@ -108,13 +115,289 @@ pub fn paint(g: &mut Painter, r: Bounds<Pixels>, glance: &Glance, size: Size, in
         match &glance.body {
             Some(Body::Slots { slots, hue }) => paint_slots(g, left, right, y, slots, *hue, size, &p),
             Some(Body::Spans { spans, min, max }) => paint_spans(g, left, right, y + 2.0, spans, *min, *max, &p),
-            None => {}
+            Some(Body::Inbox { .. }) | None => {}
         }
     });
 }
 
-/// The headline: its icon, its value big and its title after it, its
-/// detail under them.
+/// An inbox (`Body::Inbox`: Notifications' widget, Ben, 2026-11-17: "a
+/// stack of cards that you can flip through, with two actions for each
+/// one: Dismiss and Snooze ... to rapidly work through them to empty it
+/// out"): the card on top is the one to deal with, the edges of two more
+/// show under it while there are more; on it, whose it is (its app's
+/// icon and name) and which of how many, a dot in the colour of its kind
+/// (red: something waiting in an app; blue: a notification), its title
+/// and, if asked for, its text; under them, Previous and Next at the
+/// left, Snooze and Dismiss at the right, small marks that light under
+/// the pointer. Small, it is one line: the dot, the title, Snooze and
+/// Dismiss. Empty, it says so in a line.
+///
+/// Around the stack.
+const INBOX_PAD: f32 = 4.0;
+/// Inside a card, at its sides and top.
+const INBOX_IN: f32 = 7.0;
+/// Its lines: whose, the title, each line of text, the buttons.
+const INBOX_HEAD: f32 = 16.0;
+const INBOX_TITLE: f32 = 19.0;
+const INBOX_TEXT: f32 = 15.0;
+const INBOX_BAR: f32 = 24.0;
+/// A button on it.
+const INBOX_BUTTON: (f32, f32) = (22.0, 20.0);
+/// The cards under the top one: how many show, how much of each, and how
+/// much narrower each is at either side.
+const INBOX_UNDER: usize = 2;
+const INBOX_PEEK: f32 = 3.0;
+const INBOX_NARROWER: f32 = 4.0;
+/// Small: its one card's height.
+const INBOX_SMALL: f32 = 26.0;
+/// The app's icon on a card, and the dot of its kind.
+const INBOX_ICON: f32 = 16.0;
+const INBOX_DOT: f32 = 3.5;
+
+/// How an inbox is shown: which card is on top, what the pointer is on.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Inbox {
+    pub selected: usize,
+    /// The pointer is on the widget.
+    pub over: bool,
+    pub hot: Option<InboxPart>,
+}
+
+/// A button on an inbox's card.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum InboxPart {
+    Previous,
+    Next,
+    Snooze,
+    Dismiss,
+}
+
+impl InboxPart {
+    pub fn name(self) -> &'static str {
+        match self {
+            InboxPart::Previous => "Previous",
+            InboxPart::Next => "Next",
+            InboxPart::Snooze => "Snooze",
+            InboxPart::Dismiss => "Dismiss",
+        }
+    }
+
+    pub fn named(name: &str) -> Option<InboxPart> {
+        [InboxPart::Previous, InboxPart::Next, InboxPart::Snooze, InboxPart::Dismiss].into_iter().find(|p| p.name() == name)
+    }
+}
+
+/// Lines of a card's text at `size`, if it shows any.
+fn inbox_lines(preview: bool, size: Size) -> usize {
+    match (preview, size) {
+        (false, _) | (_, Size::Small) => 0,
+        (true, Size::Large) => 2,
+        (true, Size::Medium) => 1,
+    }
+}
+
+/// The top card's height.
+fn inbox_card_height(preview: bool, size: Size) -> f32 {
+    if size == Size::Small {
+        return INBOX_SMALL;
+    }
+    INBOX_IN + INBOX_HEAD + INBOX_TITLE + inbox_lines(preview, size) as f32 * INBOX_TEXT + INBOX_BAR + 3.0
+}
+
+/// An inbox's height: the same however many cards (room for the ones
+/// under is kept, so the bar doesn't move as they go), but empty.
+fn inbox_height(cards: usize, preview: bool, size: Size) -> f32 {
+    if cards == 0 {
+        return LINE + PAD;
+    }
+    let under = if size == Size::Small { 0.0 } else { INBOX_UNDER as f32 * INBOX_PEEK };
+    INBOX_PAD + inbox_card_height(preview, size) + under + INBOX_PAD + 2.0
+}
+
+/// Where an inbox's top card and its buttons are in row `r` (what's
+/// painted, and what Deskbar's clicks land on); None with no card.
+pub fn inbox_laid(r: Bounds<Pixels>, cards: usize, preview: bool, size: Size, inset: f32) -> Option<(Bounds<Pixels>, Vec<(InboxPart, Bounds<Pixels>)>)> {
+    if cards == 0 {
+        return None;
+    }
+    // (The card's sides half way between the row's and its words': room
+    // for its edge and shadow, its own words in line with the bar's.)
+    let side = (inset / 2.0).max(4.0);
+    let card = Bounds::new(point(r.left() + px(side), r.top() + px(INBOX_PAD)), olo_interface::size(r.size.width - px(side * 2.0), px(inbox_card_height(preview, size))));
+    let (bw, bh) = INBOX_BUTTON;
+    let button = |x: Pixels, cy: Pixels| Bounds::new(point(x, cy - px(bh / 2.0)), olo_interface::size(px(bw), px(bh)));
+    let mut buttons = Vec::with_capacity(4);
+    if size == Size::Small {
+        let cy = card.center().y;
+        buttons.push((InboxPart::Snooze, button(card.right() - px(3.0 + bw * 2.0), cy)));
+        buttons.push((InboxPart::Dismiss, button(card.right() - px(3.0 + bw), cy)));
+    } else {
+        let cy = card.bottom() - px(3.0 + INBOX_BAR / 2.0);
+        if cards > 1 {
+            buttons.push((InboxPart::Previous, button(card.left() + px(3.0), cy)));
+            buttons.push((InboxPart::Next, button(card.left() + px(3.0 + bw), cy)));
+        }
+        buttons.push((InboxPart::Snooze, button(card.right() - px(3.0 + bw * 2.0), cy)));
+        buttons.push((InboxPart::Dismiss, button(card.right() - px(3.0 + bw), cy)));
+    }
+    Some((card, buttons))
+}
+
+/// `text` as at most `lines` lines no wider than `width`, broken between
+/// words, the last cut short with "…" where it must be.
+fn inbox_wrap(g: &mut Painter, text: &str, lines: usize, width: f32, font: &olo_interface::Font, font_size: f32) -> Vec<SharedString> {
+    let mut out: Vec<SharedString> = Vec::new();
+    let mut rest = text.trim();
+    while !rest.is_empty() && out.len() < lines {
+        if out.len() + 1 == lines {
+            out.push(style::fit(g, SharedString::from(rest.to_owned()), font_size, font, px(width)));
+            break;
+        }
+        // As many whole words as fit.
+        let mut end = 0;
+        for (i, _) in rest.match_indices(' ').chain(std::iter::once((rest.len(), ""))) {
+            if f32::from(style::text_width(rest[..i].to_owned(), font_size, font.clone())) > width {
+                break;
+            }
+            end = i;
+        }
+        if end == 0 {
+            out.push(style::fit(g, SharedString::from(rest.to_owned()), font_size, font, px(width)));
+            break;
+        }
+        out.push(SharedString::from(rest[..end].to_owned()));
+        rest = rest[end..].trim_start();
+    }
+    out
+}
+
+/// A button's mark on a card, in its box `b`: lines a little over a
+/// device pixel wide, on the pixel grid.
+fn inbox_mark(g: &mut Painter, part: InboxPart, b: Bounds<Pixels>, color: Hsla) {
+    let c = style::snap_centred(g, b.center(), 12.0, 12.0).center();
+    let w = px(1.4);
+    let at = |dx: f32, dy: f32| point(c.x + px(dx), c.y + px(dy));
+    match part {
+        InboxPart::Previous => g.paint_segments(&[(at(1.75, -4.0), at(-2.25, 0.0)), (at(-2.25, 0.0), at(1.75, 4.0))], w, true, color),
+        InboxPart::Next => g.paint_segments(&[(at(-1.75, -4.0), at(2.25, 0.0)), (at(2.25, 0.0), at(-1.75, 4.0))], w, true, color),
+        // A clock: later.
+        InboxPart::Snooze => {
+            g.paint_sector(c, px(4.05), px(5.4), 0.0, std::f32::consts::TAU, color);
+            g.paint_segments(&[(at(0.0, -2.6), at(0.0, 0.0)), (at(0.0, 0.0), at(2.0, 1.2))], w, true, color);
+        }
+        InboxPart::Dismiss => g.paint_segments(&[(at(-3.5, -3.5), at(3.5, 3.5)), (at(3.5, -3.5), at(-3.5, 3.5))], w, true, color),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn paint_inbox(g: &mut Painter, r: Bounds<Pixels>, cards: &[olo_protocol::notifications::InboxCard], preview: bool, size: Size, inset: f32, shown: Inbox, p: &Palette) {
+    let Some((face, buttons)) = inbox_laid(r, cards.len(), preview, size, inset) else {
+        // Nothing to deal with: said quietly, where a headline would be.
+        let (_, dim) = inks(p);
+        let left = f32::from(r.left()) + inset;
+        let icon = style::snap_centred(g, point(px(left + INBOX_ICON / 2.0), r.center().y), INBOX_ICON, INBOX_ICON);
+        icons::paint_faded(g, icon, "notifications", 0.55);
+        let b = style::label_fit(
+            g,
+            icon.right() + px(6.0),
+            r.center().y,
+            Align::Left,
+            "Nothing new",
+            style::PLAIN_SIZE,
+            style::ui_font(FontWeight::NORMAL),
+            dim,
+            r.right() - px(inset) - icon.right() - px(6.0),
+        );
+        said(g, "Nothing new", b);
+        return;
+    };
+    let at = shown.selected.min(cards.len() - 1);
+    let card = &cards[at];
+    let face = style::snap(g, face);
+    let ink = style::card_ink(p);
+    // The cards under it, the furthest first: an edge of each.
+    if size != Size::Small {
+        for k in (1..=INBOX_UNDER.min(cards.len() - 1)).rev() {
+            let k = k as f32;
+            let under =
+                Bounds::new(point(face.left() + px(INBOX_NARROWER * k), face.top() + px(INBOX_PEEK * k)), olo_interface::size(face.size.width - px(INBOX_NARROWER * 2.0 * k), face.size.height));
+            // (Each a shade further from the top one's paper, so the
+            // stack reads on a panel as light as its cards.)
+            let paper = olo_theme::mix(style::card_paper(p).1, p.document_text, 0.05 * k);
+            let under = style::snap(g, under);
+            g.paint_quad(fill(under, style::c(paper)).corner_radii(px(crate::metrics::CARD_RADIUS)).border_widths(style::hairline(g)).border_color(ink.edge));
+        }
+    }
+    style::card(g, face, p, shown.over && shown.hot.is_none(), false);
+    let (left, right) = (face.left() + px(INBOX_IN), face.right() - px(INBOX_IN));
+    let dot = style::c(if card.attention { p.unread } else { p.keyboard_navigation });
+    let kind = if card.attention { "waiting in its app" } else { "a notification" };
+    // (A notification that fades away: its dot drains as it goes, as
+    // Deskbar's beside its app does. The card itself stays whole.)
+    let fresh = card.strength(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()));
+    let bold = style::ui_font(FontWeight::BOLD);
+    let plain = style::ui_font(FontWeight::NORMAL);
+    let who = if card.app.trim().is_empty() { "Notification" } else { card.app.trim() };
+    if size == Size::Small {
+        // One line: the dot, the title, Snooze and Dismiss.
+        let cy = face.center().y;
+        style::draining_dot(g, style::snap_centred(g, point(left + px(INBOX_DOT), cy), INBOX_DOT * 2.0, INBOX_DOT * 2.0).center(), INBOX_DOT, fresh, dot);
+        let x = left + px(INBOX_DOT * 2.0 + 5.0);
+        let room = buttons[0].1.left() - px(crate::metrics::TIGHT) - x;
+        style::label_fit(g, x, cy, Align::Left, card.title.clone(), style::PLAIN_SIZE, bold, ink.text, room);
+    } else {
+        // Whose it is, and which of how many.
+        let mut y = face.top() + px(INBOX_IN);
+        let cy = y + px(INBOX_HEAD / 2.0);
+        let icon = style::snap_centred(g, point(left + px(INBOX_ICON / 2.0), cy), INBOX_ICON, INBOX_ICON);
+        if !card.icons.iter().any(|n| icons::paint(g, icon, n)) {
+            icons::paint(g, icon, "application");
+        }
+        // (Its words level with the icon where that landed on the pixels.)
+        let cy = icon.center().y;
+        let mut name_right = right;
+        if cards.len() > 1 {
+            let count = format!("{} of {}", at + 1, cards.len());
+            let b = style::label(g, right, cy, Align::Right, count, style::DETAIL_SIZE, plain.clone(), ink.dim);
+            name_right = b.left() - px(6.0);
+        }
+        let x = icon.right() + px(5.0);
+        style::label_fit(g, x, cy, Align::Left, who.to_owned(), style::DETAIL_SIZE, bold.clone(), ink.dim, name_right - x);
+        y += px(INBOX_HEAD);
+        // What it is.
+        let cy = y + px(INBOX_TITLE / 2.0 + 1.0);
+        style::draining_dot(g, style::snap_centred(g, point(left + px(INBOX_DOT), cy), INBOX_DOT * 2.0, INBOX_DOT * 2.0).center(), INBOX_DOT, fresh, dot);
+        let x = left + px(INBOX_DOT * 2.0 + 5.0);
+        style::label_fit(g, x, cy, Align::Left, card.title.clone(), style::PLAIN_SIZE, bold, ink.text, right - x);
+        y += px(INBOX_TITLE);
+        for (i, line) in inbox_wrap(g, &card.detail, inbox_lines(preview, size), f32::from(right - left), &plain, style::SMALL_SIZE).into_iter().enumerate() {
+            style::label(g, left, y + px(INBOX_TEXT * (i as f32 + 0.5)), Align::Left, line, style::SMALL_SIZE, plain.clone(), ink.dim);
+        }
+    }
+    // For agents: the card as one item, its buttons after.
+    let words = [who, card.title.as_str(), card.detail.as_str()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(": ");
+    agent::record(
+        g,
+        agent::Node {
+            role: "ListItem",
+            name: Some(SharedString::from(words)),
+            value: Some(SharedString::from(format!("{} of {}, {kind}", at + 1, cards.len()))),
+            bounds: face,
+            enabled: true,
+            ..Default::default()
+        },
+    );
+    for (part, b) in buttons {
+        let hot = shown.hot == Some(part);
+        if hot {
+            let plate = style::snap(g, b);
+            g.paint_quad(fill(plate, ink.well).corner_radii(px(4.0)));
+        }
+        inbox_mark(g, part, b, if hot { ink.text } else { ink.dim });
+        agent::record(g, agent::Node::button(part.name(), b));
+    }
+}
+
 fn paint_head(g: &mut Painter, left: f32, right: f32, top: f32, gl: &Glance, size: Size, p: &Palette) {
     let (ink, dim) = (inks(p).0, inks(p).1);
     let (icon_size, value_size) = if size == Size::Large { (40.0, 26.0) } else { (32.0, 21.0) };

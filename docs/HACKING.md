@@ -6627,20 +6627,54 @@ as the row's value. To try it, run a throwaway Slack in a test session
 (sandbox HOME and `--user-data-dir`, `--proxy-server=127.0.0.1:9` so it
 reaches nothing): its icon and whole menu show.
 
-**Two dots beside an application** (Ben, 2026-11-17: "i love the blue
-dot but the count itself makes it look more like an unread badge count
-for an app … keep the fading blue dot for notifications but remove the
-number … for apps that support it … a red dot to the left of the blue
-dot [for] unread/pending items in the app itself. red dot doesn't fade
-it's either there or not"). The **blue** one is its notifications'
-(`Dot::notes`); the **red** one, at the row's right end where the blue
-one goes, and left of the blue one when there are both
-(`UNREAD_DOT_GAP`; alone it sat a dot in from the right, to line the
-red ones up: "if there is no blue dot then the red dot should still be
-right aligned", Ben, the same day), is what the app says is unread or
-waiting in it (`Dot::unread`: its launcher entry's count above none, or
-its wish for attention), whole while there is anything and gone when
-there isn't; Preferences ▸ Deskbar ▸ Applications turns it off
+**One dot beside an application, red or blue, and one list of both**
+(Ben, 2026-11-17: "i love the blue dot but the count itself makes it
+look more like an unread badge count for an app … keep the fading blue
+dot for notifications but remove the number … for apps that support it
+… a red dot … [for] unread/pending items in the app itself. red dot
+doesn't fade it's either there or not"; and, later the same day: "we
+also need to unify the red/activity type notifications and the
+info/blue type ones... how do other desktops handle that? right now we
+treat them totally different and thta doesn't feel right … use your
+best judgement/taste"). Elsewhere: a Mac's Dock badge, Windows' taskbar
+badge and Plasma's are the app's own number, kept apart from the
+notification list (what Olo had: two things, two places); Android's dot
+on an app's icon *is* its notifications, one thing; GNOME turns a
+window wanting attention into a notification. Olo's is Android's idea
+with the colour's meaning kept:
+
+* **Every item is of an app, and an app is waiting or it isn't.** Red:
+  the app says something is waiting in it for the person (its launcher
+  entry's count above none, or its wish for attention). Blue: news from
+  it, not read yet. An app that is waiting has *its* items red: its
+  notifications are the things waiting, or news beside them
+  (`History::waiting`, `Entry::waiting`).
+* **Nothing said twice.** The app's own item ("3 waiting") says only
+  what its unread notifications don't: Slack counting 2 with both
+  messages' notifications there has two red cards and no third; with
+  one, "1 more waiting" (`History::more`).
+* **Seen is seen.** A card read or dismissed acknowledges what waits in
+  its app as much as there is then (`History::acknowledge`,
+  `Entry::seen`): the app still counting 2 brings nothing back; a third
+  does ("1 more waiting"), and so does its turning urgent.
+* **Red stays, blue fades.** The app's own item is there while the app
+  says so and never fades; a notification fades as it always did, red
+  or blue.
+* **The same in every place**: one dot on the app's Deskbar row, red
+  while it waits, else blue, at the row's right end (`Dot::unread`,
+  `Dot::notes`; two side by side before); Notifications' window lists
+  both, each with its dot; Deskbar's Inbox widget (below) stacks both;
+  the bell counts both (`History::unread`).
+
+Deskbar hears the counts (it hosts the tray) and tells the notification
+service, which owns the list: `Attention::path`
+(`$XDG_RUNTIME_DIR/olo-state/attention-DISPLAY.json`, written as they
+change, watched there: `Msg::Attention`, `History::update_attention`).
+`what_waits_in_an_app_and_its_notifications_are_one_list` (store.rs)
+walks it. The row's red dot is what the app says is unread or
+waiting in it
+(its launcher entry's count above none, or its wish for
+attention), whole while there is anything and gone when there isn't; Preferences ▸ Deskbar ▸ Applications turns it off
 (`DeskbarSettings::unread_dots`, on by default). No number is drawn
 beside either (the setting that drew one, `deskbar_count`, is gone):
 how many is the history's to say, and agents read it in the row's
@@ -6709,16 +6743,18 @@ goes (`SHAKE`), unless Do Not Disturb is on. As the app's notifications
 fade (the history's fade setting) the dot drains from its right: it is
 filled from its left to how fresh they are together
 (`NoteApp::freshness`: each counts 1/n, its `fade_strength`; a pinned
-one stays whole), never below `NOTE_DOT_FLOOR` (0.3) so it still reads
-as a dot, the rest a faint well of its colour (`NOTE_DOT_WELL`), its
-edge on a device pixel; repainted every 20 s while it isn't full.
+one stays whole), never below 0.3 so it still reads as a dot, the rest
+a faint well of its colour, its edge on a device pixel
+(`style::draining_dot`, which a card of the Inbox widget draws its own
+with); repainted every 20 s while it isn't full.
 olo-notifications puts in `NotificationState` each app's `count` and
 when each of its fading ones came (`fading`), and the fade's length.
 Agents read the row's value, "3 unread, has notifications (2, the dot
 60% full)". Looked at in a headless session with test counts and
 notifications sent on its own bus (`gdbus emit … LauncherEntry.Update`,
 `Notify` with a `desktop-entry` hint; olo-notifications started with
-`--bus`): red and blue, blue alone, red alone in its column, at 1×,
+`--bus`; a count needs a sender that stays on the bus, its badge goes
+with it): red, blue, at 1×,
 1.5× and 2×, light and dark, in Dracula and SynthWave's colours and in
 Platinum, and with the red one turned off.
 
@@ -19331,6 +19367,44 @@ app only to make what's next.
   (`Glances::card`: its title and detail, its value, the body as rows,
   the note); a click opens its app (`glances::opens`); the other
   button, its app and Deskbar Preferences.
+* **An inbox** (`Body::Inbox`, Notifications' "Inbox": Ben,
+  2026-11-17, "a notifications widget in the deskbar … a stack of cards
+  that you can flip through, with two actions for each one: Dismiss and
+  Snooze. use a small icon button for each. the idea is to be able to
+  rapidly work through them to empty it out … clicking on the card
+  should take you to the relevant app-window-tab. and it should include
+  both the "red dot" ones and the "blue dot" ones"). The card on top is
+  the one to deal with, the edges of two more under it while there are
+  more (`style::card`'s paper; each under one a shade darker and 4
+  points narrower a side, 3 lower). On it: its app's icon and name and
+  "2 of 5"; a dot of its kind, red or blue, draining as a notification
+  fades (the card itself stays whole); its title; its text, a line
+  (two, large; none if the widget's Text is "Title only"); then
+  Previous and Next at the left and Snooze and Dismiss at the right,
+  drawn marks (`inbox_mark`) on a plate under the pointer. Small: one
+  line, the dot, the title, Snooze and Dismiss. Empty: "Nothing new".
+  Its height doesn't change with how many there are (the room for the
+  cards under is kept), so the buttons stay under the pointer as cards
+  go. `glance::inbox_laid` is where the card and each button are, for
+  the painting and for Deskbar's hits both. In Deskbar
+  (`Glances::inbox`, `inbox_shown`): a click on the card opens the item
+  (`olo-notifications --invoke ID`: its action at its app, or what it
+  said shows it, or its app brought forward), the wheel or the arrows
+  turn the cards; Dismiss and Snooze take the card away at once
+  (`Glances::dealt_with`: the service's answer comes a quarter of a
+  second later, and the next card is under the pointer meanwhile) and
+  ask the service (`--dismiss`, `--snooze ID MINUTES`); one that
+  arrives goes on top, whichever was chosen ("if newer ones arrive
+  they should be added on top of the card stack too, not the bottom");
+  one that has faded away leaves ("cards that time out should leave the
+  stack, and the dot should animate to show it timing out like we do in
+  deskbar"). Its options: what it shows (everything, red, blue), the
+  order, how long Snooze snoozes, and whether cards show their text.
+  Agents read the top card as a list item ("Slack: Dana: lunch?", "2 of
+  5, waiting in its app") and each button by name. The layer over the
+  bar is drawn again when a widget's data changes
+  (`Taken::Widgets`: it showed a card dismissed elsewhere until the
+  pointer moved).
 * **Preferences ▸ Deskbar**: the Add menu has each app's kinds ("Weather:
   Next Hours"); an app widget's settings are what it shows, its kind's
   line about it, a menu for each of its options, its name, where, its

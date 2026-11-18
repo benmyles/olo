@@ -353,7 +353,30 @@ fn run(conn: Connection, rx: mpsc::Receiver<Event>, tx: mpsc::Sender<Event>, reg
     let mut known: Vec<Known> = Vec::new();
     let mut badges: Vec<Badge> = Vec::new();
     let mut serial = 0u64;
-    let publish = |known: &[Known], badges: &[Badge]| changed(Tray { items: known.iter().map(|k| k.item.clone()).collect(), badges: badges.to_vec() });
+    // What apps say is waiting in them (a count, or urgency), told to the
+    // notification service too, which keeps it with their notifications
+    // (`Attention::path`, written as it changes; none at the start: what
+    // a Deskbar before this one wrote is no longer known to be so).
+    let mut waiting = None;
+    let mut tell_waiting = |badges: &[Badge]| {
+        use olo_protocol::notifications::Attention;
+        let now: Vec<Attention> = badges
+            .iter()
+            .filter_map(|b| {
+                let count = b.count.unwrap_or(0).max(0) as u64;
+                (count > 0 || b.urgent).then(|| Attention { app: b.app.clone(), count, urgent: b.urgent })
+            })
+            .collect();
+        if waiting.as_ref() != Some(&now) {
+            olo_kit::store::save_bytes(Attention::path(), serde_json::to_vec(&now).unwrap_or_default());
+            waiting = Some(now);
+        }
+    };
+    tell_waiting(&badges);
+    let mut publish = |known: &[Known], badges: &[Badge]| {
+        tell_waiting(badges);
+        changed(Tray { items: known.iter().map(|k| k.item.clone()).collect(), badges: badges.to_vec() });
+    };
     for event in rx {
         match event {
             Event::Registered { bus, path } => read(&conn, &tx, bus, path),

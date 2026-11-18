@@ -27,6 +27,7 @@
 
 mod banners;
 mod cli;
+mod glance;
 mod gtk;
 mod history;
 mod look;
@@ -65,6 +66,7 @@ const TOKEN_WAIT: Duration = Duration::from_millis(500);
 
 enum Msg {
     In(In),
+    Attention(Vec<olo_protocol::notifications::Attention>),
     /// Something may have expired (or Do Not Disturb begun or ended, or
     /// the settings or a share changed).
     Tick,
@@ -97,6 +99,7 @@ struct Pending {
 }
 
 pub struct Notifications {
+    next_id: Arc<std::sync::atomic::AtomicU32>,
     bus: Arc<Mutex<Option<Bus>>>,
     /// The model itself, for the windows it opens.
     me: std::sync::Weak<Mutex<Notifications>>,
@@ -218,7 +221,13 @@ impl Notifications {
             self.history.save();
         }
         let quiet = self.quiet();
-        let state = NotificationState { unread: self.history.unread(), quiet, apps: self.history.unread_apps(), fade_minutes: self.settings.fade.then_some(self.settings.fade_minutes) };
+        let state = NotificationState {
+            unread: self.history.unread(),
+            quiet,
+            apps: self.history.unread_apps(),
+            cards: self.history.inbox(|e| named_icons(e.icon.as_deref(), e.desktop_entry.as_deref(), &e.app), self.settings.fade.then_some(self.settings.fade_minutes)),
+            fade_minutes: self.settings.fade.then_some(self.settings.fade_minutes),
+        };
         if self.told.as_ref() != Some(&state) {
             olo_kit::store::save_bytes(NotificationState::path(), serde_json::to_vec(&state).unwrap_or_default());
             self.told = Some(state.clone());
@@ -495,6 +504,8 @@ impl Notifications {
             }
             None => self.send(pending, None),
         }
+        // (Read: and what waits in its app seen.)
+        self.history.acknowledge(id);
         if let Some(e) = self.history.get_mut(id) {
             e.unread = false;
             if !resident {
@@ -617,7 +628,10 @@ impl Notifications {
                     self.invoke(None, id, key);
                 }
             }
-            Control::Dismiss(id) => self.remove(id, Reason::Dismissed),
+            Control::Dismiss(id) => {
+                self.remove(id, Reason::Dismissed);
+                self.set_read(id, true);
+            }
             Control::ClearHistory => self.clear_history(),
             Control::ShowHistory => self.open_history(),
             Control::DoNotDisturb(on, minutes) => self.set_quiet(on, minutes),
@@ -688,7 +702,7 @@ impl Notifications {
             e.snoozed_until = None;
             e.unread = true;
             e.time = now;
-            let banner = self.settings.app_via(&e.app, e.via.as_deref()).banners && !quiet && !never;
+            let banner = e.attention.is_none() && self.settings.app_via(&e.app, e.via.as_deref()).banners && !quiet && !never;
             e.shown = banner;
             let note = e.to_note(Some(time));
             if banner {
@@ -750,6 +764,14 @@ impl Notifications {
 
     fn message(&mut self, msg: Msg) {
         match msg {
+            Msg::Attention(badges) => {
+                // (An app's name: Olo's own by its program, another's by its desktop entry.)
+                let name = |id: &str| olo_xdg::apps::OUR_APPS.iter().find(|(bin, ..)| *bin == id).map_or_else(|| gtk::app_name(id), |(_, name, _)| (*name).to_owned());
+                if self.history.update_attention(&badges, now_secs(), name, || self.next_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed)) {
+                    self.publish(true);
+                    self.changed();
+                }
+            }
             Msg::In(In::Show(note)) => self.show(*note),
             Msg::In(In::Close(id)) => self.remove(id, Reason::Closed),
             Msg::In(In::Control(c, done)) => {
@@ -767,6 +789,8 @@ impl Notifications {
             // (What each note's mark is drawn from is in its key: `icons_made`.)
             Msg::Refresh => {
                 ICONS_MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                // (The inbox's cards name their icons: told again with them.)
+                self.publish(false);
             }
             Msg::Expire(at) => {
                 if self.expiry == Some(at) {
@@ -954,7 +978,10 @@ fn warm_app_icons(apps: Vec<AppKey>, done: impl FnOnce() + Send + 'static) {
 fn look_up_app_icons(desktop_entry: Option<&str>, app: &str) -> Vec<String> {
     let mut names = Vec::new();
     if let Some(e) = desktop_entry {
-        names.extend(olo_xdg::icon_for_app(e.trim_end_matches(".desktop")));
+        let e = e.trim_end_matches(".desktop");
+        names.extend(olo_xdg::icon_for_app(e));
+        // (Olo's own by its program's name, entry or none.)
+        names.extend(olo_xdg::apps::OUR_APPS.iter().find(|(bin, ..)| *bin == e).map(|(_, _, icon)| (*icon).to_owned()));
     }
     let app = app.to_lowercase().replace(' ', "-");
     if !app.is_empty() {
@@ -1044,6 +1071,9 @@ fn main() -> std::process::ExitCode {
         return std::process::ExitCode::from(startup::say_level() as u8);
     }
     // Anything else is a command for the running service.
+    if args.first().is_some_and(|arg| arg == "--glance") {
+        return glance::serve();
+    }
     if !args.is_empty() {
         return cli::run(address.as_deref(), &args);
     }
@@ -1061,7 +1091,9 @@ fn main() -> std::process::ExitCode {
         let bus = Arc::new(Mutex::new(None));
         let snapshot = Arc::new(Mutex::new(String::new()));
         let history = History::load(Some(History::path()));
-        let first = history.entries.iter().map(|e| e.id).max().unwrap_or(0).wrapping_add(1);
+        let first = history.entries.iter().map(|e| e.id).max().unwrap_or(0).wrapping_add(1).max(1);
+        let next_id = Arc::new(std::sync::atomic::AtomicU32::new(first));
+        let bus_ids = next_id.clone();
         warm_app_icons(history.entries.iter().map(|e| (e.desktop_entry.clone(), e.app.clone())).collect(), || {});
         // Another notification service may have the name (a desktop
         // started before ours): wait for it to go rather than take it.
@@ -1072,7 +1104,7 @@ fn main() -> std::process::ExitCode {
                 let mut said = false;
                 loop {
                     let to_ui = to_ui.clone();
-                    match Bus::serve(address.as_deref(), first, shared.clone(), move |m| {
+                    match Bus::serve(address.as_deref(), bus_ids.clone(), shared.clone(), move |m| {
                         // Its app's icons, by the time it shows.
                         if let In::Show(n) = &m {
                             warm_app_icons(vec![(n.desktop_entry.clone(), n.app_name.clone())], || {});
@@ -1097,12 +1129,26 @@ fn main() -> std::process::ExitCode {
         // a share or a recording starting or ending is news too: all
         // watched (nothing read while nothing changes).
         let mut watches = Vec::new();
+        let path = olo_protocol::notifications::Attention::path();
+        let attention = {
+            let proxy = proxy.clone();
+            let path = path.clone();
+            move || {
+                if let Some(badges) = std::fs::read(&path).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()) {
+                    proxy.send(Msg::Attention(badges));
+                }
+            }
+        };
+        let initial = attention.clone();
+        watches.extend(olo_kit_base::watch::watch([path], move |_| attention()));
+        initial();
         for path in [NotificationSettings::path(), olo_protocol::sharing::SharingState::path(), olo_protocol::recording::path_for(&olo_protocol::recording::this_display())] {
             let ticker = proxy.clone();
             watches.extend(olo_kit_base::watch::watch([path], move |_| ticker.send(Msg::Tick)));
         }
         let shared: Shared = Arc::new_cyclic(|me| {
             Mutex::new(Notifications {
+                next_id,
                 bus,
                 me: me.clone(),
                 dirty: false,

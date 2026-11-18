@@ -72,6 +72,24 @@ pub struct Opt {
 /// gives is its own to draw from: `Timeline`.)
 pub const PROVIDERS: &[Provider] = &[
     Provider {
+        app: "notifications",
+        name: "Notifications",
+        program: "olo-notifications",
+        arg: "--glance",
+        icon: "notifications",
+        kinds: &[Kind {
+            id: "inbox",
+            menu: "Notifications: Inbox",
+            about: "What's unread and what waits in apps, as cards to work through.",
+            options: &[
+                Opt { id: "source", label: "Show:", values: &[("both", "Everything"), ("attention", "What's waiting (red)"), ("messages", "News (blue)")] },
+                Opt { id: "order", label: "Order:", values: &[("new", "Newest first"), ("old", "Oldest first")] },
+                Opt { id: "snooze", label: "Snooze for:", values: &[("15", "15 minutes"), ("5", "5 minutes"), ("60", "1 hour"), ("240", "4 hours")] },
+                Opt { id: "detail", label: "Text:", values: &[("full", "Title and preview"), ("title", "Title only")] },
+            ],
+        }],
+    },
+    Provider {
         app: "weather",
         name: "Weather",
         program: "olo-weather",
@@ -200,6 +218,11 @@ pub struct Glance {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case", tag = "kind")]
 pub enum Body {
+    /// Things to deal with, one at a time: a stack of cards, the one on
+    /// top with its app, title and (`preview`) text, turned, snoozed (for
+    /// `snooze_minutes`) or dismissed where it's shown (Notifications'
+    /// Inbox).
+    Inbox { cards: Vec<crate::notifications::InboxCard>, snooze_minutes: u32, preview: bool },
     /// Times across (the next hours): each a label over an icon over a
     /// value, and a level under it (a chance, a share) drawn as a bar in
     /// `hue` (none: the accent).

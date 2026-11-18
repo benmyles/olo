@@ -13,10 +13,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-(Nothing: see the first of "Not started".)
-
-## Not started (highest priority first)
-
 - **Themes: one list (Classic, Platinum, BeOS and every scheme), each
   perfect, with icons of its own, Customize…, and a wallpaper of its
   own** (Ben, 2026-11-17: "the split between themes and colors doesn't
@@ -39,6 +35,104 @@ something nobody here has is in "Blocked", with what it waits for.
   so much attention to detail on this it's not even funny: every single
   pixel, hue, etc needs to be just absolutely perfect and stunningly
   beautiful").
+  **Done so far** (HACKING, "Themes"; docs/ICONS.md): one list
+  (`looks::THEMES`: Classic, Platinum, BeOS, then every scheme, each a
+  theme with its colours, its icon set and its wallpaper; settings from
+  before read as the theme they were); Customize… (any colour by role,
+  light and dark apart; the icon set; the wallpaper; kept by theme,
+  shown everywhere as it's changed); a BeOS icon set (the drawings as
+  R5 drew its icons: flat faces in its 8-bit palette, black outlines);
+  ten more themes (Solarized, Gruvbox, Nord, Rosé Pine, Everforest,
+  Kanagawa, Tomorrow, Zenburn, Cobalt2, Oceanic Next: 26 in all); each
+  theme's wallpaper chosen by eye from the whole pack. **Left**: the
+  study itself, theme by theme (Classic, then BeOS, then Platinum,
+  then the rest): every app, Terminal, light and dark, at 1×, 1.5× and
+  2× and zoomed in, and whatever it finds put right
+  (`tools/dev/scheme-shots` pictures every theme).
+
+
+## Not started (highest priority first)
+
+- **Deskbar: a widget's popover sometimes doesn't come under the
+  pointer** (Ben, 2026-11-17: "there's still a hover bug with the
+  deskbar where sometimes when i hover over the widgets each the token
+  pool quota one the popover doesn't appear and i have to like move the
+  mouse away and back or something"). Seen on the Token Pool's quota
+  widgets, moving from one widget to the next: reproduce it in a test
+  session (`tsession move` across the widgets, a card up or not),
+  find which hover is lost (`BarView::set_hot`, `tip::shown`,
+  `Live::hover`), and fix that.
+
+- **Deskbar: a click on the active app hides its windows, another
+  shows them** (Ben, 2026-11-17: "clicking an app in the deskbar that
+  is already selected and active should hide that app's windows and
+  then clicking again shows them again"). As BeOS's Deskbar and every
+  taskbar since: the app's row clicked while it is the active one
+  minimizes its windows (all of them, in the workspace showing); clicked
+  again, they come back as they were, the one that was active on top.
+
+- **A Terminal welcome message** (Ben, 2026-11-17). Olo Doctor should
+  offer to install a greeter that shows the Olo logo in full-color ASCII.
+
+- **A Calendar app, native, with Google and Fastmail calendars** (Ben,
+  2026-11-17: "build a beautiful olo native calendar app. add calendar
+  support to prefs -> integrations and support any number of google
+  calendars (eg from multiple google accounts) as well as any number of
+  fastmail calendars. make sure it is full features, integrates with all
+  the olo stuff, looks beautiful. it should be able to aggregate all the
+  connected calendar sources into one unified calendar view, and also
+  support read and write actions"). `olo-calendar`: day, week, month and
+  agenda views of every connected calendar together, each in its colour,
+  shown or hidden; events made, changed, moved and deleted, repeating
+  ones and invitations too, written back to where they live.
+  Preferences ▸ Integrations ▸ Calendars: any number of Google accounts
+  (Google Calendar's API, signed in as Drive is) and of Fastmail ones
+  (CalDAV, or JMAP for Calendars, with an app password kept in
+  Passwords). Olo's own: reminders as notifications, a Deskbar widget
+  (what's next), the clock's menu, the command palette, the phone, an
+  agents' API, in-place reload, native in Rust.
+
+- **A Mail app, native, every account in one place, and the assistant
+  in both Mail and Calendar** (Ben, 2026-11-17: "build a beautiful olo
+  native email app. use/extend the email integration support in prefs ->
+  mail supporting multiple google/gmail and fastmail accounts. make sure
+  it is full featured, integrates with all the olo stuff, looks
+  beautiful. it should also aggregate all the connected email accounts
+  into one unified place, and support read and write/send actions etc...
+  study up the most loved email apps by people in 2026 and use their
+  approaches and features as inspiration. also make sure both the email
+  app and calendar app integrate with the AI -- i like how you did it
+  with weather app so channel that. and similar to the weather app ai
+  the ai should be able to take actions like moving you to specific
+  events/emails, and it should also be able to be multi-turn and make
+  changes but should always ask for approval before making a change or
+  taking a non-read-only action"). `olo-mail`: any number of Gmail and
+  Fastmail accounts (Preferences ▸ Mail, extended), one unified inbox
+  and each account's own; reading, searching, threads, labels and
+  folders, archive, snooze, drafts, writing and sending, attachments.
+  First a study of the mail apps people love most in 2026, and what
+  each does best, kept in the docs. The assistant, as Weather's is, in
+  Mail and in Calendar: it answers from what's there, takes the person
+  to a message or an event, holds a conversation over several turns,
+  and proposes changes (a reply, a move, a new event) that are made
+  only once the person approves each: nothing but reading without
+  asking. Olo's own: notifications, the Inbox widget, the palette, the
+  phone, an agents' API, in-place reload, native in Rust.
+
+- **Last, once everything above that isn't blocked is done: the website,
+  the README and the docs refreshed, and a new GitHub release** (Ben,
+  2026-11-17: "when all the other todos that aren't blocked are
+  completed, please refresh the website with fresh
+  screenshots/apps/callouts etc and also the README.md and any other
+  docs that need updating and make a new github release"). With it, on
+  the website (Ben, 2026-11-17: "i want every app and preferences pane
+  shown on the site in a big grid and when you click one it takes you on
+  a screenshot/visual walkthrough through the screens and functionality
+  for it, e.g. a carousel type thing with captions"): every app and every
+  Preferences panel in one big grid, each opening a walkthrough of its
+  screens and what it does, a carousel of screenshots with captions.
+
+## Done, waiting for Ben to try or confirm
 
 - **A notifications widget in Deskbar: cards to work through, red dots
   and blue dots together, and both in the notifications app** (Ben,
@@ -61,21 +155,23 @@ something nobody here has is in "Blocked", with what it waits for.
   blue-dot ones (notifications) together, told apart by their dot; all
   of it configurable in the widget's settings; and the notifications app
   showing the red-dot ones beside the blue, one list.
-
-- **Last, once everything above that isn't blocked is done: the website,
-  the README and the docs refreshed, and a new GitHub release** (Ben,
-  2026-11-17: "when all the other todos that aren't blocked are
-  completed, please refresh the website with fresh
-  screenshots/apps/callouts etc and also the README.md and any other
-  docs that need updating and make a new github release"). With it, on
-  the website (Ben, 2026-11-17: "i want every app and preferences pane
-  shown on the site in a big grid and when you click one it takes you on
-  a screenshot/visual walkthrough through the screens and functionality
-  for it, e.g. a carousel type thing with captions"): every app and every
-  Preferences panel in one big grid, each opening a walkthrough of its
-  screens and what it does, a carousel of screenshots with captions.
-
-## Done, waiting for Ben to try or confirm
+  **Done** (HACKING, Deskbar: "One dot beside an application, red or
+  blue, and one list of both", and "An inbox" under "An app's widgets";
+  Ben, the same evening, of a first version: "its notification widget
+  is ugly you can do way better"; "if newer ones arrive they should be
+  added on top of the card stack too, not the bottom"; "cards that time
+  out should leave the stack, and the dot should animate to show it
+  timing out like we do in deskbar (but don't make the card go
+  transparent that would look weird)"; "we also need to unify the
+  red/activity type notifications and the info/blue type ones... do
+  some thinking/research and use your best judgement/taste on how to
+  unify/handle them"): the Inbox widget (Preferences ▸ Deskbar ▸ Add ▸
+  Notifications: Inbox), and red and blue as one list: an app that says
+  something is waiting has its items red, nothing is said twice, what
+  was seen stays seen until there is more, one dot an app in Deskbar.
+  **Left for Ben**: add the widget and live with it; say whether one
+  dot an app (red while it waits, else blue) is right, or the two side
+  by side should come back.
 
 - **The built-in display's brightness, in HDR** (Ben, 2026-11-17: "the
   brightness settings on my builtin monitor are broken i can't turn

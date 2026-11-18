@@ -318,9 +318,58 @@ pub struct NotificationState {
     pub quiet: bool,
     /// The apps with notifications unread (Deskbar's dots).
     pub apps: Vec<NoteApp>,
+    /// Unread, unsnoozed items, newest first. Their IDs address the
+    /// notification service's existing Invoke, Dismiss and Snooze calls.
+    pub cards: Vec<InboxCard>,
     /// How the history fades (minutes; None: it doesn't), so each dot
     /// drains as its app's notifications fade.
     pub fade_minutes: Option<u32>,
+}
+
+/// One thing to deal with, as Deskbar's Inbox widget shows it: a
+/// notification not yet read (blue), or something waiting in an app
+/// (red, `attention`: the app's own count on its Deskbar row).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InboxCard {
+    pub id: u32,
+    pub app: String,
+    /// Names its icon may have, the likeliest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub icons: Vec<String>,
+    pub title: String,
+    pub detail: String,
+    pub attention: bool,
+    /// When it came, in seconds since 1970.
+    #[serde(default)]
+    pub time: u64,
+    /// It fades away over this many minutes from when it came (None: it
+    /// stays: pinned, waiting in its app, or fading is off).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fade_minutes: Option<u32>,
+}
+
+impl InboxCard {
+    /// How much of it is left at `now` ([`fade_strength`]): 1 new, 0 gone.
+    pub fn strength(&self, now: u64) -> f32 {
+        fade_strength(self.fade_minutes, now.saturating_sub(self.time))
+    }
+}
+
+/// What an app says is waiting in it (its count and urgency on its
+/// Deskbar row), apart from its notifications: Deskbar writes them
+/// ([`Attention::path`]), the notification service keeps one red item
+/// for each.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Attention {
+    pub app: String,
+    pub count: u64,
+    pub urgent: bool,
+}
+
+impl Attention {
+    pub fn path() -> std::path::PathBuf {
+        olo_xdg::state_runtime_dir().join(format!("attention-{}.json", olo_xdg::display_name()))
+    }
 }
 
 /// An app with notifications unread, as Deskbar finds it among its

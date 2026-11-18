@@ -421,14 +421,13 @@ impl Bus {
     /// Fails if another notification service has the name.
     /// Ids start at `first` (after the history's, so they stay unique
     /// across a restart).
-    pub fn serve(address: Option<&str>, first: u32, snapshot: std::sync::Arc<olo_sync::Mutex<String>>, to_ui: impl Fn(In) + Send + Sync + 'static) -> zbus::Result<Bus> {
+    pub fn serve(address: Option<&str>, next: std::sync::Arc<AtomicU32>, snapshot: std::sync::Arc<olo_sync::Mutex<String>>, to_ui: impl Fn(In) + Send + Sync + 'static) -> zbus::Result<Bus> {
         let builder = match address {
             Some(a) => zbus::blocking::connection::Builder::address(a)?,
             None => zbus::blocking::connection::Builder::session()?,
         };
         let to_ui: std::sync::Arc<dyn Fn(In) + Send + Sync> = std::sync::Arc::new(to_ui);
         let ui = to_ui.clone();
-        let next = std::sync::Arc::new(AtomicU32::new(first.max(1)));
         let service = Service { next: next.clone(), tags: Default::default(), to_ui: Box::new(move |m| ui(m)) };
         let gtk: crate::gtk::Shared = Default::default();
         let ui = to_ui.clone();

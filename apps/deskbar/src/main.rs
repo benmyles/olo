@@ -43,9 +43,9 @@ use std::{
 };
 
 use olo_kit::{
-    Bounds, Child, ClickEvent, ContentMask, Corner, Cx, Element, ExternalPaths, FontWeight, InteractiveElement as _, LayerKeyboard, LayerShellLayer, LocalWindow, Menu, MenuItem, MouseButton,
-    MouseDownEvent, MouseMoveEvent, Painter, ParentElement as _, Pixels, Point, RenderImage, ScrollWheelEvent, SharedString, Styled as _, View, ViewRef, WindowCx, WindowHandle, WindowOptions, agent,
-    canvas, div, dnd, icons, menu,
+    Bounds, Child, ClickEvent, Corner, Cx, Element, ExternalPaths, FontWeight, InteractiveElement as _, LayerKeyboard, LayerShellLayer, LocalWindow, Menu, MenuItem, MouseButton, MouseDownEvent,
+    MouseMoveEvent, Painter, ParentElement as _, Pixels, Point, RenderImage, ScrollWheelEvent, SharedString, Styled as _, View, ViewRef, WindowCx, WindowHandle, WindowOptions, agent, canvas, div,
+    dnd, icons, menu,
     palette::{Palette, Rgba},
     point, px, size,
     style::{self, Align, c, shade},
@@ -76,16 +76,14 @@ const ICON: f32 = 16.0;
 const NOTE_DOT: f32 = 7.0;
 const NOTE_DOT_INSET: f32 = 6.0;
 const NOTE_DOT_GAP: f32 = 5.0;
-/// The dot drains from its right as the app's notifications fade: never
-/// below this much filled, so it still reads as a dot; the rest is a
-/// faint well of its colour, this strong.
-const NOTE_DOT_FLOOR: f32 = 0.3;
-const NOTE_DOT_WELL: f32 = 0.28;
+/// The dot drains from its right as the app's notifications fade
+/// (`style::draining_dot`, as a card's in Notifications' widget does).
 /// Something unread or waiting in the application itself (what it says:
-/// a launcher entry's count, or its wish for attention): a red dot, this
-/// far left of where the blue one goes (there or not, so the red ones
-/// line up down the Deskbar). It doesn't drain: there, or not.
-const UNREAD_DOT_GAP: f32 = 4.0;
+/// a launcher entry's count, or its wish for attention) makes the dot
+/// red, and whole: there, or not. One dot an app, red or blue (Ben,
+/// 2026-11-17: "we also need to unify the red/activity type
+/// notifications and the info/blue type ones"): red, its app is waiting
+/// for the person; blue, news from it.
 /// One arriving shakes the dot side to side: this long, this far, this
 /// many times, settling as it goes.
 const SHAKE: Duration = Duration::from_millis(600);
@@ -1206,6 +1204,27 @@ impl Deskbar {
 
     fn run_command(&mut self, cmd: &str) {
         match cmd.split_once(':') {
+            // An inbox's card put under, the next (or the one before) on top.
+            Some((direction @ ("inbox-prev" | "inbox-next"), id)) => {
+                // (Drawn on the layer over the bar, as readings are.)
+                if id.parse().is_ok_and(|id| self.glances.turn_card(id, direction == "inbox-prev")) {
+                    tell(Msg::Meters(Vec::new()));
+                }
+            }
+            // An inbox's card dismissed or snoozed ("WIDGET:ITEM[:MINUTES]"):
+            // gone here at once, and asked of the notification service,
+            // which owns what is read and snoozed.
+            Some((action @ ("inbox-dismiss" | "inbox-snooze"), rest)) => {
+                let mut parts = rest.split(':').map(|p| p.parse::<u32>().ok());
+                if let (Some(Some(widget)), Some(Some(item))) = (parts.next(), parts.next()) {
+                    self.glances.dealt_with(widget, item);
+                    tell(Msg::Meters(Vec::new()));
+                    match parts.next().flatten() {
+                        Some(minutes) if action == "inbox-snooze" => self.run_command(&format!("run:olo-notifications --snooze {item} {minutes}")),
+                        _ => self.run_command(&format!("run:olo-notifications --dismiss {item}")),
+                    }
+                }
+            }
             // One of Olo's apps (with ⌘ held, a copy of its own beside one
             // running).
             Some(("run", bin)) if CHOSEN_WITH_COMMAND.with(|c| c.get()) => {
@@ -1720,6 +1739,7 @@ impl Deskbar {
                 if !self.glances.reread() {
                     return Taken::Nothing;
                 }
+                return Taken::Widgets;
             }
             Msg::GlanceEnded(app) => {
                 self.glances.ended(app, &proxy);
@@ -1843,6 +1863,11 @@ enum Taken {
     Meters(Option<u32>),
     /// That tip alone.
     Retip(Option<u32>),
+    /// What a widget shows changed, and maybe its height: the bars laid
+    /// out and their widgets drawn again (the layer over a bar is drawn
+    /// apart from it: an inbox went on showing a card dismissed
+    /// elsewhere until the pointer moved).
+    Widgets,
     /// Nothing to draw.
     Nothing,
 }
@@ -2451,6 +2476,11 @@ impl BarView {
             // left for its card (which lingers), still looked at while
             // the card shows (`retip` lets it go after).
             let (was, now) = (self.hot.as_ref().and_then(|k| widget_of(k)), hot.as_ref().and_then(|k| widget_of(k)));
+            // (An inbox's card and its buttons light under the pointer.)
+            let inbox = hot.as_ref().and_then(|k| inbox_of(k)).or_else(|| now.map(|id| (id, None)));
+            if self.model.read().glances.inbox_hot(inbox) {
+                self.layer.update(cx, |_, cx| cx.invalidate());
+            }
             if was != now {
                 let card_up = now.is_none() && was.is_some() && tip::shown(cx).is_some_and(|k| widget_of(&k) == was);
                 let mut m = self.model.read();
@@ -2539,6 +2569,12 @@ impl BarView {
 }
 
 /// The live widget a bar's element is ("widget:3", "tray:widget:3").
+/// The inbox (its widget) and the button on it that hit `key` is.
+fn inbox_of(key: &str) -> Option<(u32, Option<olo_kit::glance::InboxPart>)> {
+    let (id, part) = key.strip_prefix("inbox:")?.split_once(':')?;
+    Some((id.parse().ok()?, olo_kit::glance::InboxPart::named(part)))
+}
+
 fn widget_of(key: &str) -> Option<u32> {
     key.strip_prefix("tray:").unwrap_or(key).strip_prefix("widget:")?.parse().ok()
 }
@@ -2717,6 +2753,8 @@ impl View for BarView {
             BarMsg::Faded => {
                 self.fading = false;
                 cx.invalidate();
+                // (An inbox's card's dot drains on the layer over the bar.)
+                self.layer.update(cx, |_, cx| cx.invalidate());
             }
         }
     }
@@ -3637,15 +3675,10 @@ impl Deskbar {
                 c(p.panel_text)
             };
             let font = style::ui_font(if focused { FontWeight::BOLD } else { FontWeight::NORMAL });
-            // The room the dots take at the row's right end: one dot's
-            // place, and the red one's left of the blue when there are
-            // both.
+            // The room the dot takes at the row's right end (one, red or
+            // blue).
             let dots = notes.unwrap_or_default();
-            let dot_room = match (dots.notes.is_some(), dots.unread) {
-                (true, true) => 2.0 * NOTE_DOT + UNREAD_DOT_GAP + NOTE_DOT_GAP,
-                (true, false) | (false, true) => NOTE_DOT + NOTE_DOT_GAP,
-                (false, false) => 0.0,
-            };
+            let dot_room = if dots.notes.is_some() || dots.unread { NOTE_DOT + NOTE_DOT_GAP } else { 0.0 };
             let text_x = f32::from(icon_r.right()) + 8.0;
             let max_w = f32::from(r.right()) - text_x - 6.0 - dot_room;
             style::label_fit(g, px(text_x), r.center().y, Align::Left, name.clone(), style::PLAIN_SIZE, font, text_color, px(max_w));
@@ -3659,21 +3692,14 @@ impl Deskbar {
             // one just in shakes it a moment. As they fade it drains from
             // its right, to a floor (the rest a faint well of its colour).
             // No number beside it: how many is the history's to say.
-            if let Some((fresh, _)) = dots.notes {
+            // One dot an app: red where it says something is waiting
+            // in it (its notifications are that, or news beside it), else
+            // this one, blue, for news alone.
+            if let Some((fresh, _)) = dots.notes.filter(|_| !dots.unread) {
                 let at = style::snap_centred(g, point(r.right() - px(NOTE_DOT_INSET + NOTE_DOT / 2.0), r.center().y), NOTE_DOT, NOTE_DOT);
                 let color = if lit { text_color } else { c(p.notice) };
                 let centre = point(at.center().x + px(shaken(dots.notes_shake)), at.center().y);
-                let radius = f32::from(at.size.width) / 2.0;
-                let fill = NOTE_DOT_FLOOR + (1.0 - NOTE_DOT_FLOOR) * fresh.clamp(0.0, 1.0);
-                let cx_ = f32::from(centre.x);
-                let edge = ((cx_ - radius + fill * 2.0 * radius) * scale).round() / scale;
-                if edge >= cx_ + radius - 0.5 / scale {
-                    g.paint_sector(centre, px(0.0), px(radius), 0.0, tau, color);
-                } else {
-                    g.paint_sector(centre, px(0.0), px(radius), 0.0, tau, color.opacity(NOTE_DOT_WELL));
-                    let left = Bounds::from_corners(point(px(cx_ - radius - 1.0), centre.y - px(radius + 1.0)), point(px(edge), centre.y + px(radius + 1.0)));
-                    g.with_content_mask(Some(ContentMask { bounds: left }), |g| g.paint_sector(centre, px(0.0), px(radius), 0.0, tau, color));
-                }
+                style::draining_dot(g, centre, f32::from(at.size.width) / 2.0, fresh, color);
             }
             // Something unread or waiting in the app itself: a red dot,
             // whole while there is anything: at the right end, where the
@@ -3684,8 +3710,7 @@ impl Deskbar {
             // be lost on the highlight: ringed in the row's text colour
             // there.)
             if dots.unread {
-                let beside = if dots.notes.is_some() { NOTE_DOT + UNREAD_DOT_GAP } else { 0.0 };
-                let x = r.right() - px(NOTE_DOT_INSET + beside + NOTE_DOT / 2.0);
+                let x = r.right() - px(NOTE_DOT_INSET + NOTE_DOT / 2.0);
                 let at = style::snap_centred(g, point(x, r.center().y), NOTE_DOT, NOTE_DOT);
                 let centre = point(at.center().x + px(shaken(dots.unread_shake)), at.center().y);
                 let radius = f32::from(at.size.width) / 2.0;
@@ -3827,6 +3852,31 @@ impl Deskbar {
                 };
                 let h = hit(view, &key, at, Some(tip_text));
                 d.hits.push(self.widget_hit(h, &key, at, view, model));
+                if self.glances.fading() {
+                    d.fading = true;
+                }
+                // An inbox's buttons, over its card (which opens the item).
+                if matches!(spot, widgets::Spot::Row(_))
+                    && let Some((cards, index, minutes, preview)) = self.glances.inbox(w.id)
+                    && let Some(card) = cards.get(index)
+                    && let Some((_, buttons)) = olo_kit::glance::inbox_laid(at, cards.len(), preview, w.size, TRAY_TEXT)
+                {
+                    for (part, bounds) in buttons {
+                        let cmd = inbox_command(part.name(), w.id, card.id, minutes);
+                        let m = model.clone();
+                        let tip = match part {
+                            olo_kit::glance::InboxPart::Snooze => format!("Snooze for {}", snooze_words(minutes)),
+                            part => part.name().to_owned(),
+                        };
+                        // (Its own: the card under it isn't clicked too.)
+                        let action = hit(view, &format!("inbox:{}:{}", w.id, part.name()), bounds, Some(tip)).occlude();
+                        d.hits.push(action.on_click(move |e: &ClickEvent, cx| {
+                            if e.standard_click() {
+                                run(&m, &cmd, cx);
+                            }
+                        }));
+                    }
+                }
                 d.placed.push(widgets::Placed { widget: w, spot });
             }
         }
@@ -3841,20 +3891,64 @@ impl Deskbar {
         let widget = key.strip_prefix("widget:").or_else(|| key.strip_prefix("tray:widget:")).and_then(|id| id.parse::<u32>().ok()).and_then(|id| self.live.widgets.iter().find(|w| w.id == id));
         let pool = widget.is_some_and(|w| matches!(w.measure, olo_protocol::deskbar::Measure::Pool { .. }));
         // (An app's widget opens its app.)
-        let (opens, name) = match widget.and_then(glances::opens) {
-            Some((opens, name)) => (opens, name),
-            None if pool => ("run:olo-pool".to_owned(), "Token Pool"),
-            None => ("run:olo-activity".to_owned(), "Activity Monitor"),
+        let inbox = widget.and_then(|w| self.glances.inbox(w.id).map(|(cards, at, mins, _)| (w.id, cards.get(at).map(|c| c.id), mins, cards.len())));
+        let (opens, name) = match (inbox, widget.and_then(glances::opens)) {
+            (Some((_, Some(id), _, _)), _) => (format!("run:olo-notifications --invoke {id}"), "Open item"),
+            (Some(_), _) => ("run:olo-notifications --history".to_owned(), "Open Notifications"),
+            (_, Some((opens, name))) => (opens, name),
+            (_, None) if pool => ("run:olo-pool".to_owned(), "Token Pool"),
+            (_, None) => ("run:olo-activity".to_owned(), "Activity Monitor"),
+        };
+        // (An inbox's cards turn with the wheel: a notch, a card.)
+        let h = match inbox {
+            Some((id, _, _, len)) if len > 1 => {
+                let m = model.clone();
+                h.on_scroll_wheel(move |e: &ScrollWheelEvent, cx| {
+                    let dy = f32::from(e.delta.pixel_delta(px(20.0)).y);
+                    if dy.abs() >= 10.0 && !matches!(e.touch_phase, olo_kit::TouchPhase::Ended) {
+                        run(&m, &format!("inbox-{}:{id}", if dy > 0.0 { "prev" } else { "next" }), cx);
+                    }
+                })
+            }
+            _ => h,
         };
         h.on_any_button(move |e, cx| match button(e) {
             MouseButton::Left => run(&m, &opens, cx),
             MouseButton::Right => {
-                let menu = Menu::new("Widget").item(name, opens.clone()).separator().item(olo_kit::app_menu::settings_label("deskbar"), "pref:deskbar");
+                let mut menu = Menu::new("Widget").item(name, opens.clone());
+                if let Some((widget, Some(id), minutes, len)) = inbox {
+                    for action in ["Previous", "Next", "Snooze", "Dismiss"] {
+                        menu = menu.item(action, inbox_command(action, widget, id, minutes)).enabled(len > 1 || matches!(action, "Snooze" | "Dismiss"));
+                    }
+                    menu = menu.item("Open Notifications", "run:olo-notifications --history");
+                }
+                let menu = menu.separator().item(olo_kit::app_menu::settings_label("deskbar"), "pref:deskbar");
                 let mm = m.clone();
                 open_menu(cx, &v, &key, r, menu, move |cmd, cx| run(&mm, cmd, cx));
             }
             _ => {}
         })
+    }
+}
+
+/// How long a snooze is, in words ("15 minutes", "1 hour").
+fn snooze_words(minutes: u32) -> String {
+    match minutes {
+        60 => "1 hour".to_owned(),
+        m if m % 60 == 0 => format!("{} hours", m / 60),
+        1 => "1 minute".to_owned(),
+        m => format!("{m} minutes"),
+    }
+}
+
+/// What an inbox's action does: a card turned here, the rest asked of
+/// the notification service (which owns what is read and snoozed).
+fn inbox_command(action: &str, widget: u32, note: u32, minutes: u32) -> String {
+    match action {
+        "Previous" => format!("inbox-prev:{widget}"),
+        "Next" => format!("inbox-next:{widget}"),
+        "Snooze" => format!("inbox-snooze:{widget}:{note}:{minutes}"),
+        _ => format!("inbox-dismiss:{widget}:{note}"),
     }
 }
 
@@ -4024,6 +4118,10 @@ impl Hub {
                     }
                     Taken::Meters(tip_now) => self.tell_bars(|| BarMsg::Meters(tip_now.clone())),
                     Taken::Retip(tip_now) => self.tell_bars(|| BarMsg::Retip(tip_now.clone())),
+                    Taken::Widgets => {
+                        self.tell_bars(|| BarMsg::Changed);
+                        self.tell_bars(|| BarMsg::Meters(None));
+                    }
                     Taken::Nothing => {}
                 }
             }

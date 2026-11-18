@@ -287,8 +287,10 @@ fn paint_icon(g: &mut Painter, r: Bounds<Pixels>, e: &store::Entry, person: bool
 /// The mark of what is unread: a dot in the colour of what the keyboard
 /// is on (not the tab's yellow, which would repeat the window's own on
 /// every note).
-fn unread_dot(g: &mut Painter, center: Point<Pixels>, p: &olo_theme::Palette) {
-    g.paint_sector(center, px(0.0), px(3.5), 0.0, std::f32::consts::TAU, style::c(p.keyboard_navigation));
+/// Red (`waiting`) where its app says something is waiting in it; blue,
+/// news (as Deskbar's dot beside the app, and its Inbox widget's cards).
+fn unread_dot(g: &mut Painter, center: Point<Pixels>, p: &olo_theme::Palette, waiting: bool) {
+    g.paint_sector(center, px(0.0), px(3.5), 0.0, std::f32::consts::TAU, style::c(if waiting { p.unread } else { p.keyboard_navigation }));
 }
 
 /// A row laid out.
@@ -1143,7 +1145,7 @@ fn paint_card(g: &mut Painter, r: Bounds<Pixels>, e: &store::Entry, laid: &CardL
         if !forgettable {
             style::label_on_baseline(g, head.right(), baseline, Align::Right, time.clone(), style::DETAIL_SIZE, small.clone(), ink.dim);
             if e.unread {
-                unread_dot(g, point(head.right() - px(time_w + CARD_DOT / 2.0 + 1.0), head.center().y), &p);
+                unread_dot(g, point(head.right() - px(time_w + CARD_DOT / 2.0 + 1.0), head.center().y), &p, e.waiting);
             }
         } else {
             style::close_box(g, close, if lit { ink.text } else { ink.dim });
@@ -1237,7 +1239,7 @@ fn paint_row(g: &mut Painter, r: Bounds<Pixels>, e: &store::Entry, laid: &RowLai
         let baseline = laid.title.baseline(title_top);
         let line1 = baseline - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
         if e.unread {
-            unread_dot(g, point(r.left() + px(x0 + 9.0), line1), &p);
+            unread_dot(g, point(r.left() + px(x0 + 9.0), line1), &p, e.waiting);
         }
         paint_icon(g, Bounds::centered_at(point(r.left() + px(x0 + ICON_X + SMALL_ICON / 2.0), line1), size(px(SMALL_ICON), px(SMALL_ICON))), e, true);
         laid.title.paint(g, point(x, title_top));

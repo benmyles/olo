@@ -1090,14 +1090,15 @@ impl View for Layer {
                 // An app's: what it gives, drawn by the kit.
                 if matches!(widget.measure, Measure::App { .. }) {
                     let m = model.read();
-                    let Some(gl) = m.glances.now(widget.id) else { continue };
+                    let Some(gl) = m.glances.shown(widget.id) else { continue };
+                    let gl = &*gl;
                     let r = match spot {
                         Spot::Tray(r) => {
                             olo_kit::glance::paint_tray(g, r, gl);
                             r
                         }
                         Spot::Row(r) => {
-                            olo_kit::glance::paint(g, r, gl, widget.size, crate::TRAY_TEXT);
+                            olo_kit::glance::paint(g, r, gl, widget.size, crate::TRAY_TEXT, m.glances.inbox_shown(widget.id));
                             r
                         }
                         Spot::Cell(r) => {

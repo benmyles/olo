@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-17
 
+### Deskbar's Inbox widget: notifications and what waits in apps, as cards
+
+*23:53* — A stack of cards to work through, newest on top: its app, a red dot (its app is waiting for you) or a blue one (news), the title and text, and Previous, Next, Snooze and Dismiss. Slack counts three and one of them has its notification in the stack: that card is red too, and this one says the two more.
+
+![Deskbar's Inbox widget: notifications and what waits in apps, as cards](2026-11-17/235332-deskbar-s-inbox-widget-notifications-and-what-wa.png)
+
 ### The start-up veil's icons are drawn for their size
 
 *18:51* — The veil and the boot splash show Olo's drawings, rendered for the slot's own pixels at 1×, 1.5× and 2× (they were the nearest pre-scaled picture no bigger than the slot).
