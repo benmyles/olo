@@ -44,8 +44,8 @@ fn resolve(program: &OsStr) -> Option<PathBuf> {
 /// Where Electron programs keep their config on the agent screen this
 /// process is on (None: not on one).
 pub fn screen_config() -> Option<PathBuf> {
-    let screen = std::env::var_os("OLO_SCREEN").filter(|s| !s.is_empty())?;
-    Some(crate::state_dir().join("screens").join(screen).join("config"))
+    crate::screen()?;
+    Some(crate::session_state_dir().join("config"))
 }
 
 /// Give `cmd` (starting `program`) the screen's config folder, if it's an

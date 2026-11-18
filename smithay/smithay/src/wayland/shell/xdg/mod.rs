@@ -137,7 +137,7 @@ use olo_sync::Mutex;
 use std::cmp::min;
 use std::{collections::HashSet, fmt::Debug};
 
-use tracing::{error, trace, trace_span};
+use tracing::{debug, error, trace, trace_span};
 use wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1;
 use wayland_protocols::xdg::shell::server::xdg_positioner::{Anchor, ConstraintAdjustment, Gravity};
 use wayland_protocols::xdg::shell::server::xdg_surface;
@@ -2063,7 +2063,14 @@ impl PopupSurface {
                         .unwrap();
                     data.xdg_surface.post_error(error, msg);
                 } else {
-                    error!("surface missing from known popups");
+                    // (Olo) This hook still runs for a surface whose
+                    // popup the client has destroyed (GTK commits it
+                    // once more, as it may): no parent is found, and
+                    // there's no popup left to post the error on.
+                    // Nothing is wrong: not an error in the log (60 a
+                    // day; app_server hid it by this line's number
+                    // until the number changed).
+                    debug!("a destroyed popup's surface was committed once more");
                 }
             }
         }

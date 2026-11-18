@@ -705,6 +705,7 @@ pub fn scan(roots: &Roots) -> Report {
     graphics_swap(roots, &gpus, &mut r);
     memory_kept(roots, &procs, &mut r);
     open_files(roots, &procs, &mut r);
+    language(roots, &procs, &mut r);
     swappiness(roots, &mut r);
     swap_size(roots, &gpus, &mut r);
     tcp_bbr3(roots, &mut r);
@@ -1788,6 +1789,63 @@ fn open_files_limits_conf(uid: u32) -> String {
 
 fn open_files_systemd_conf() -> String {
     format!("# Olo: programs may keep this many files open, when they ask (they start with 1024).\n[Manager]\nDefaultLimitNOFILE=1024:{OPEN_FILES_HARD}\n")
+}
+
+/// The session's programs know the system's language (Ben, 2026-11-18:
+/// "maybe we should have olo doctor offer to set the LANG properly?").
+/// A session from Olo's own login had no `LANG` at all (a display
+/// manager gives it; Olo's didn't), so its programs ran in the "C"
+/// locale: C's sorting and dates, and ASCII for programs that take
+/// their text's encoding from it. The session sets it itself now
+/// (`olo_xdg::locale`, from `/etc/locale.conf` and the person's
+/// `~/.config/locale.conf`), and each Olo program takes it as it
+/// re-executes; this finds a session still without (Deskbar, which
+/// starts the person's programs, has neither `LANG` nor `LC_ALL`), and
+/// a computer with none set at all. The fix gives it to what's started
+/// on demand now (`Step::SetSessionEnvironment`), and where the
+/// computer has none writes `/etc/locale.conf` (US English where its
+/// locale is installed, else `C.UTF-8`: UTF-8 text at least).
+fn language(roots: &Roots, procs: &[Proc], r: &mut Report) {
+    let fs = &roots.fs;
+    let system = olo_xdg::locale::read(&read(&fs.join(olo_xdg::locale::SYSTEM_CONF)).unwrap_or_default());
+    let set = system.iter().find(|(name, _)| *name == "LANG").map(|(_, v)| v.clone());
+    // The program that starts the person's programs here.
+    let Some(deskbar) = procs.iter().find(|p| p.uid == roots.uid && p.name == "olo-deskbar" && p.scope == roots.scope && roots.scope.is_some()) else { return };
+    let Ok(environ) = std::fs::read(fs.join(format!("proc/{}/environ", deskbar.pid))) else { return };
+    let known = |name: &str| {
+        environ.split(|b| *b == 0).find_map(|kv| kv.strip_prefix(name.as_bytes()).and_then(|rest| rest.strip_prefix(b"=")).filter(|v| !v.is_empty()).map(|v| String::from_utf8_lossy(v).into_owned()))
+    };
+    if let Some(which) = known("LC_ALL").or_else(|| known("LANG")) {
+        r.fine.push(Fine { title: "Programs know their language".into(), detail: format!("They start with {which}.") });
+        return;
+    }
+    let (lang, steps, root, how) = match set {
+        Some(lang) => {
+            let vars: Vec<(String, String)> = system.iter().map(|(k, v)| ((*k).to_owned(), v.clone())).collect();
+            (lang, vec![Step::SetSessionEnvironment { vars }], false, "This computer's is set (/etc/locale.conf), but a session from Olo's login didn't take it.")
+        }
+        None => {
+            // US English where the computer has it; UTF-8 at the least.
+            let installed = ["usr/lib/locale/en_US.utf8", "usr/lib/locale/en_US.UTF-8"].iter().any(|p| fs.join(p).exists())
+                || std::fs::read(fs.join("usr/lib/locale/locale-archive")).is_ok_and(|a| a.windows(10).any(|w| w == b"en_US.utf8"));
+            let lang = if installed { "en_US.UTF-8" } else { "C.UTF-8" }.to_owned();
+            let content = format!("# Olo Doctor: this computer's language and formats (locale.conf(5)).\nLANG={lang}\n");
+            let steps = vec![
+                Step::WriteFile { path: PathBuf::from("/").join(olo_xdg::locale::SYSTEM_CONF), content, mode: 0o644 },
+                Step::SetSessionEnvironment { vars: vec![("LANG".to_owned(), lang.clone())] },
+            ];
+            (lang, steps, true, "This computer has none set (no LANG in /etc/locale.conf).")
+        }
+    };
+    r.findings.push(Finding {
+        id: "language".into(),
+        severity: Severity::Advice,
+        title: "Programs here don't know their language".into(),
+        detail: format!(
+            "Programs started in this session have no LANG: they sort, write dates and numbers as the bare \"C\" locale does, and those that take their text's encoding from it take ASCII. {how} The fix gives {lang} to what's started on demand from now on; Olo's own programs take it at their next upgrade or start, and everything from the next login."
+        ),
+        fix: Some(Fix { label: "Set the Language".into(), root, steps }),
+    });
 }
 
 /// A program's limits on open files (soft, hard) and how many it has
@@ -4901,6 +4959,52 @@ mod tests {
         assert!(r.findings.is_empty(), "{:?}", r.findings);
         assert!(r.fine.iter().any(|f| f.title == "Olo's programs may keep the files they need open" && f.detail == "The window server may keep 524,288 open, and has 696."), "{:?}", r.fine);
         assert_eq!((thousands(7), thousands(1024), thousands(1_048_576)), ("7".into(), "1,024".into(), "1,048,576".into()));
+    }
+
+    /// Language: a session whose Deskbar has no LANG is found; with the
+    /// computer's set, it's given to the session (no password); with
+    /// none, /etc/locale.conf is written too. Set: fine.
+    #[test]
+    fn programs_know_their_language() {
+        let (fs, roots) = machine("language");
+        let w = |p: &str, c: &[u8]| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        let look = |roots: &Roots| {
+            let (mut r, procs) = (Report::default(), processes(&roots.fs));
+            language(roots, &procs, &mut r);
+            r
+        };
+        // No Deskbar of this session to judge by: nothing said.
+        assert!(look(&roots).findings.is_empty() && look(&roots).fine.is_empty());
+        w("proc/960/cmdline", b"/home/me/.local/bin/olo-deskbar\0");
+        w("proc/960/cgroup", b"0::/user.slice/user-1000.slice/session-2.scope\n");
+        w("proc/960/status", b"Name:\tolo-deskbar\n");
+        w("proc/960/environ", b"HOME=/home/me\0WAYLAND_DISPLAY=wayland-1\0LANGUAGE=en\0");
+        let roots = Roots { uid: std::fs::metadata(fs.join("proc/960")).map(|m| std::os::unix::fs::MetadataExt::uid(&m)).unwrap(), ..roots };
+        // The computer's is set, the session didn't take it.
+        w("etc/locale.conf", b"LANG=\"en_GB.UTF-8\"\nLC_TIME=nl_NL.UTF-8\n");
+        let f = look(&roots).find("language").cloned().unwrap();
+        assert_eq!((f.severity, f.title.as_str()), (Severity::Advice, "Programs here don't know their language"));
+        let fix = f.fix.as_ref().unwrap();
+        assert!(!fix.root && fix.label == "Set the Language" && f.detail.contains("The fix gives en_GB.UTF-8"), "{f:?}");
+        assert_eq!(fix.steps, [Step::SetSessionEnvironment { vars: vec![("LANG".into(), "en_GB.UTF-8".into()), ("LC_TIME".into(), "nl_NL.UTF-8".into())] }]);
+        // None set on the computer: written, US English where it's installed.
+        std::fs::remove_file(fs.join("etc/locale.conf")).unwrap();
+        let f = look(&roots).find("language").cloned().unwrap();
+        let fix = f.fix.as_ref().unwrap();
+        assert!(fix.root && f.detail.contains("The fix gives C.UTF-8"));
+        assert!(matches!(&fix.steps[0], Step::WriteFile { path, content, .. } if path.ends_with("etc/locale.conf") && content.ends_with("LANG=C.UTF-8\n")));
+        std::fs::create_dir_all(fs.join("usr/lib/locale/en_US.utf8")).unwrap();
+        let f = look(&roots).find("language").cloned().unwrap();
+        assert!(matches!(&f.fix.as_ref().unwrap().steps[0], Step::WriteFile { content, .. } if content.ends_with("LANG=en_US.UTF-8\n")));
+        assert_eq!(f.fix.as_ref().unwrap().steps[1], Step::SetSessionEnvironment { vars: vec![("LANG".into(), "en_US.UTF-8".into())] });
+        // The session has it: fine.
+        w("proc/960/environ", b"HOME=/home/me\0LANG=en_US.UTF-8\0");
+        let r = look(&roots);
+        assert!(r.findings.is_empty() && r.fine.iter().any(|f| f.title == "Programs know their language" && f.detail == "They start with en_US.UTF-8."), "{:?}", r.fine);
     }
 
     /// Swappiness: with swap on and the kernel's 60, set to 1 now and at

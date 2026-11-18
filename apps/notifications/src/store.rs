@@ -437,8 +437,10 @@ impl History {
             .collect()
     }
 
+    /// (The session's own: an agent screen's centre keeps its history
+    /// in the screen's folder, never in the person's.)
     pub fn path() -> PathBuf {
-        olo_xdg::state_dir().join("notifications").join("history.json")
+        olo_xdg::session_state_dir().join("notifications").join("history.json")
     }
 
     /// Where the archive is kept: what has left the history (faded away,
@@ -448,7 +450,7 @@ impl History {
     /// notifications app and have a way to see the archived ones when
     /// needed"). A list like the history, read back the same way.
     pub fn archive_path() -> PathBuf {
-        olo_xdg::state_dir().join("notifications").join("archive.json")
+        olo_xdg::session_state_dir().join("notifications").join("archive.json")
     }
 
     /// The history from `path` (None: in memory only, for tests). After a

@@ -1542,6 +1542,9 @@ fn bind_wayland() -> std::io::Result<(String, UnixListener, std::fs::File)> {
 }
 
 fn set_session_env(display: &str, ipc: &Path) {
+    // The system's language and formats, where the login gave none
+    // (Olo's own login doesn't: `locale`).
+    olo_xdg::locale::set();
     let vars = [
         ("WAYLAND_DISPLAY", display.to_owned()),
         ("OLO_SOCKET", ipc.display().to_string()),
@@ -1591,6 +1594,7 @@ fn set_session_env(display: &str, ipc: &Path) {
 fn export_environment() {
     let vars: Vec<(&str, String)> = ["WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE", "OLO_SOCKET", "XCURSOR_THEME", "XCURSOR_SIZE", "SSH_AUTH_SOCK"]
         .into_iter()
+        .chain(olo_xdg::locale::EXPORTED)
         .filter_map(|k| Some((k, std::env::var(k).ok()?)))
         .collect();
     // D-Bus calls can stall if a bus is slow to answer; don't hold up start-up.

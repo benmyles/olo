@@ -1,6 +1,6 @@
 //! An app's own files: its settings (in the config folder) and what it
 //! remembers (in the state folder), as JSON. Read whole or not at all;
-//! written beside the file (`.NAME.saving`, which backups leave out) and
+//! written beside the file (`.NAME.saving.PID.N`, the writer's own) and
 //! renamed over it, so neither a reader nor a crash halfway through ever
 //! sees half a file. A file made new is the person's alone (0600); one
 //! there already keeps its permissions.
@@ -31,7 +31,12 @@ pub fn write(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let name = path.file_name().ok_or_else(|| io::Error::other(format!("{}: no file name", path.display())))?;
     let dir = path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
     std::fs::create_dir_all(dir)?;
-    let tmp = dir.join(format!(".{}.saving", name.to_string_lossy()));
+    // A sibling of this writer's own: two programs keeping the same file
+    // (a window and its service; every agent screen's notification
+    // centre, until 2026-11-18) wrote through one ".NAME.saving", each
+    // over the other's bytes, and the second rename found nothing.
+    static WRITES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let tmp = dir.join(format!(".{}.saving.{}.{}", name.to_string_lossy(), std::process::id(), WRITES.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
     let mode = std::fs::metadata(path).map_or(0o600, |m| m.permissions().mode() & 0o7777);
     let written = (|| {
         let mut f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(mode).open(&tmp)?;
@@ -106,6 +111,39 @@ fn writer() -> &'static mpsc::Sender<Job> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Two writers of one file (two programs keeping the same file, as
+    /// every agent screen's notification centre did the person's
+    /// history): neither fails, the file is always the whole of one's,
+    /// and nothing is left beside it.
+    #[test]
+    fn two_writers_of_one_file_never_mix() {
+        let dir = Path::new("/var/tmp").join(format!("olo-store-two-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("history.json");
+        let (a, b) = (vec![b'a'; 200_000], vec![b'b'; 150_000]);
+        let writers: Vec<_> = [a.clone(), b.clone()]
+            .into_iter()
+            .map(|bytes| {
+                let path = path.clone();
+                std::thread::spawn(move || (0..150).map(|_| write(&path, &bytes)).filter(Result::is_err).count())
+            })
+            .collect();
+        let mut read = 0;
+        while writers.iter().any(|w| !w.is_finished()) {
+            if let Ok(got) = std::fs::read(&path) {
+                assert!(got == a || got == b, "a file of {} bytes, neither writer's", got.len());
+                read += 1;
+            }
+        }
+        for w in writers {
+            assert_eq!(w.join().unwrap(), 0, "a write failed");
+        }
+        assert!(read > 0);
+        let left: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name()).collect();
+        assert_eq!(left, [std::ffi::OsString::from("history.json")]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn written_whole_and_private() {

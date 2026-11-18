@@ -812,10 +812,18 @@ impl BladeRenderer {
         self.resting = false;
         self.gpu.reconfigure_surface(&mut surface, self.surface_config);
         self.images.clear();
-        if surface.info().format != format {
-            log::warn!("the window's new surface is {:?}, its pipelines {format:?}", surface.info().format);
-        }
+        let other = surface.info().format != format;
         self.surface = surface;
+        // Olo: a new surface of another format (the compositor that came
+        // back offers its formats in another order: Tracker's came back
+        // Rgba8Unorm for Bgra8Unorm, 2026-11-17) is drawn with pipelines
+        // made for it; the old ones would draw red for blue, or not at all.
+        if other {
+            log::info!("the window's new surface is {:?} where it was {format:?}: its pipelines too", self.surface.info().format);
+            self.pipelines = shared_pipelines(&self.gpu, &self.pipeline_cache, self.surface.info(), self.rendering_parameters.path_sample_count);
+            self.subpixel_sprites = None;
+            self.destroy_path_targets();
+        }
         log::info!("the window's surface was lost: made again");
     }
 

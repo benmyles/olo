@@ -677,6 +677,55 @@ How Olo keeps it (do the same):
 
 ## Crash reports (crates/crash, applies to every program)
 
+**What a day's logs showed** (Ben, 2026-11-18: "look through the olo
+logs for other warnings/errors and fix anything that should be fixed";
+`olo-logs --print --since 1d --level warning`, grouped by program and
+message). Each was a fault, not a line to hide:
+- *Notifications: "keeping …/history.json: No such file"*, 16 times, on
+  the minute. An agent screen is the person's account and home, so
+  every screen's notification centre kept its history in the person's
+  file, each saving over the others'. A program that serves a session
+  keeps its files in `olo_xdg::session_state_dir()` (a screen's own
+  folder, `state_dir()/screens/NAME`, on a screen), and the kit's saver
+  writes through a sibling of the writer's own (`.NAME.saving.PID.N`:
+  two programs keeping one file wrote through the same sibling, each
+  over the other's bytes; `store::tests::two_writers_of_one_file_never_mix`).
+- *A widget's provider left running* (`olo-notifications --glance`,
+  three on agent screens whose Deskbar had gone): Deskbar's providers
+  end with it (`PR_SET_PDEATHSIG` as they're started, `glances.rs`).
+- *A session with no language*: app_server's "failed to get system
+  locale" was the whole session having no `LANG` (a display manager
+  gives it; Olo's login didn't): Terminal's shells and everything
+  started there ran in the "C" locale. olo-session sets what's missing
+  from `/etc/locale.conf` and `~/.config/locale.conf`
+  (`olo_xdg::locale`, exported to what's started on demand), every Olo
+  program takes it as it re-executes (`olo_xdg::upgrade_env`), and Olo
+  Doctor finds a session still without, or a computer with none set
+  (`language`: "Set the Language").
+- *A program that didn't reconnect*: a kit app whose event loop ends in
+  an error has lost its connection for certain
+  (`compositor_lost_check(…, ended)`). Asked of the socket instead, an
+  error on the display object (no protocol error for libwayland to
+  show) with the compositor's hanging up a moment late read as "not
+  lost", and with the loop over nothing asked again: Tracker sat so a
+  quarter of an hour. And a connection going is said once, as a
+  warning: every upgrade wrote two errors for every program.
+- *"the window's new surface is Rgba8Unorm, its pipelines Bgra8Unorm"*:
+  a surface made again in another format gets pipelines made for it
+  (`remake_surface`), as a change of colour space does.
+- *"surface missing from known popups"*, 60 errors a day: harmless (a
+  destroyed popup's surface committed once more), and hidden by
+  app_server by the line number it was logged at, until the number
+  changed. Said at `debug` where it's said, in Olo's Smithay; the
+  filter is gone. A message is never hidden by where it is in a file.
+- Left, and why: "Received an event for non-existent source" (255;
+  not short IPC connections, tried; being looked into); "slow frame"
+  (the frame timer's own notes); "Failed to destroy old mode property
+  blob" and "Unable to become drm master" (headless and mode changes;
+  no effect seen); one pointer motion 266 ms late behind
+  `set_output_brightness` a day before (not seen since: its writes are
+  on a worker).
+
 **Open files** (Ben, 2026-11-18: "why is there a 1024 soft limit? the
 file limits should be huuuuge … make sure all our apps will raise it as
 needed not just app_server"). A program starts with a login's soft

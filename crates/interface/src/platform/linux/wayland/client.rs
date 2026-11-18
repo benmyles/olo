@@ -1076,23 +1076,42 @@ impl LinuxClient for WaylandClient {
     fn run(&self) {
         let mut event_loop = self.0.borrow_mut().event_loop.take().expect("App is already running");
 
-        event_loop
-            .run(None, &mut WaylandClientStatePtr(Rc::downgrade(&self.0)), |ptr| {
-                // Olo: the compositor gone (restarted in place, or
-                // the connection in error) ends nothing by itself:
-                // calloop drops the failing source and the loop
-                // sleeps on with nothing to wake it, windows gone
-                // (Deskbar, 2026-11-01), or spins on a stored
-                // protocol error (Notifications). Seen here, after
-                // each turn, the program hands over to whoever asked
-                // (olo-kit: re-execute with the state saved, and
-                // reconnect), or stops its loop.
-                let Some(state) = ptr.0.upgrade() else { return };
-                compositor_lost_check(&state);
-            })
-            .log_err();
-        // (The loop may end on the error itself, before a turn's check.)
-        compositor_lost_check(&self.0);
+        let ended = event_loop.run(None, &mut WaylandClientStatePtr(Rc::downgrade(&self.0)), |ptr| {
+            // Olo: the compositor gone (restarted in place, or
+            // the connection in error) ends nothing by itself:
+            // calloop drops the failing source and the loop
+            // sleeps on with nothing to wake it, windows gone
+            // (Deskbar, 2026-11-01), or spins on a stored
+            // protocol error (Notifications). Seen here, after
+            // each turn, the program hands over to whoever asked
+            // (olo-kit: re-execute with the state saved, and
+            // reconnect), or stops its loop.
+            let Some(state) = ptr.0.upgrade() else { return };
+            compositor_lost_check(&state, false);
+        });
+        // (The loop may end on the error itself, before a turn's check.
+        // An error from a connection that has gone is that going, said
+        // once below, not an error of its own: every upgrade wrote
+        // "OtherError(IoError(BrokenPipe))" for every program.)
+        //
+        // Olo: and a loop that ended in an error has lost its connection,
+        // whatever the socket says at this instant. An error on the
+        // display object itself ("wl_display#1: error 1: invalid
+        // arguments for …") leaves libwayland no protocol error to
+        // show, and the compositor's hanging up may come a moment
+        // after: asked then, "not lost" was the answer, and with the
+        // loop over nothing asked again. Tracker sat so for a quarter
+        // of an hour, the desktop's icons gone, while Terminal, a
+        // half millisecond luckier, reconnected (2026-11-18).
+        match ended {
+            Err(e) => {
+                if !self.0.borrow().lost {
+                    log::warn!("the event loop ended: {e:?}");
+                }
+                compositor_lost_check(&self.0, true);
+            }
+            Ok(()) => compositor_lost_check(&self.0, false),
+        }
         // Olo: what the last turn asked (the windows quitting destroyed)
         // reaches the compositor now: a program that carries on after its
         // loop (Screenshot holding the clipboard) leaves nothing behind
@@ -2629,11 +2648,12 @@ fn connect() -> Result<Connection, wayland_client::ConnectError> {
 /// come of the connection again, and its socket, readable for ever,
 /// would wake the loop at once each turn (a program outside a session,
 /// where nobody re-executes, spun printing the error, 2026-11-01).
-fn compositor_lost_check(state: &Rc<RefCell<WaylandClientState>>) {
+fn compositor_lost_check(state: &Rc<RefCell<WaylandClientState>>, ended: bool) {
     let (dead, gpu) = {
         let st = state.borrow();
         let gpu = crate::gpu_device_lost();
-        (!st.lost && (gpu || st.connection.protocol_error().is_some() || hung_up(&st.connection)), gpu)
+        // (`ended`: the loop is over, in an error: lost for certain.)
+        (!st.lost && (ended || gpu || st.connection.protocol_error().is_some() || hung_up(&st.connection)), gpu)
     };
     if !dead {
         return;
@@ -2649,7 +2669,7 @@ fn compositor_lost_check(state: &Rc<RefCell<WaylandClientState>>) {
         // program starts anew as it does for the compositor gone.)
         log::error!("the GPU device is lost");
     } else {
-        log::error!("the compositor's connection is gone");
+        log::warn!("the compositor's connection is gone");
     }
     let callback = state.borrow_mut().common.callbacks.compositor_lost.take();
     if let Some(mut f) = callback {

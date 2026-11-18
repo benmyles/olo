@@ -139,6 +139,25 @@ impl Glances {
             }
             let mut cmd = std::process::Command::new(p.program);
             cmd.arg(p.arg).env(g::DIR_ENV, &dir).stdin(std::process::Stdio::null());
+            // It ends with this Deskbar (its screen stopped, a crash):
+            // left to itself it ran on, a widget's provider for nobody
+            // (three on agent screens, 2026-11-18; one since the morning).
+            // (An upgrade's new Deskbar ends the old one's by its lock,
+            // as above, and this thread ending does it too.)
+            let deskbar = std::process::id();
+            // SAFETY: prctl and getppid are async-signal-safe; nothing
+            // else runs between fork and exec.
+            unsafe {
+                use std::os::unix::process::CommandExt as _;
+                cmd.pre_exec(move || {
+                    libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM as libc::c_ulong, 0, 0, 0);
+                    // (Gone already, before the wish was made.)
+                    if libc::getppid() as u32 != deskbar {
+                        return Err(std::io::Error::other("Deskbar has gone"));
+                    }
+                    Ok(())
+                });
+            }
             match cmd.spawn() {
                 Ok(mut child) => {
                     let _ = child.wait();

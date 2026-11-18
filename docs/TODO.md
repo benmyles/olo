@@ -116,6 +116,21 @@ something nobody here has is in "Blocked", with what it waits for.
   in the form; for Fastmail, an app password with access to calendars),
   then open Calendar.
 
+- **A Language setting, and Olo in every major language** (Ben,
+  2026-11-18: "we should add a language setting and also let's translate
+  all olo apps and prefs and ux to support all the major languages
+  (defaulting to us english)"). A project of its own: Preferences ▸
+  Language & Region (the language, and formats: dates, numbers, the
+  week's first day), written as the person's `~/.config/locale.conf`
+  (which the session already reads: `olo_xdg::locale`) and applied
+  without a new login; a kit layer for an app's words (every string
+  through it, plurals and order of words as each language has them,
+  right-to-left laid out); every app's, Preferences' and app_server's
+  strings gathered; translations for the major languages (to settle:
+  which; Spanish, French, German, Portuguese, Italian, Dutch, Japanese,
+  Korean, Chinese simplified and traditional, Arabic, Hindi, Russian
+  at least), each checked in the layout lint at every scale (words
+  are longer in German: nothing cut).
 - **A sign-in's mailed code is found every time** (Ben, 2026-11-18,
   signing in at claude.ai, which mails a link and takes a "verification
   code" in its place: "i tried to login to claude and it didn't manage
@@ -129,7 +144,13 @@ something nobody here has is in "Blocked", with what it waits for.
   finder cover them all, with each format a test (the texts made up,
   never Ben's mail in the repository).
 - **Go through Olo's logs for other warnings and errors and fix what
-  should be fixed** (Ben, 2026-11-18).
+  should be fixed** (Ben, 2026-11-18). A first pass done (HACKING.md,
+  "What a day's logs showed"): Notifications' history kept apart on
+  agent screens, the saver's sibling files, widgets' providers ending
+  with Deskbar, the session's language, a program that didn't
+  reconnect, a surface's format, a hidden popup message. **Left**: the
+  "non-existent source" warnings (a Codex helper is on it), and
+  another pass once these are in Ben's session a day.
 - **Deskbar: other displays' apps collapsed by default, as an option**
   (Ben, 2026-11-18: "add an option in deskbar prefs (disabled by
   default) to default to showing other display's apps collapsed in the
@@ -145,10 +166,9 @@ something nobody here has is in "Blocked", with what it waits for.
   raises its limit as it starts now, and Olo Doctor raises it for
   those running (HACKING.md, "Open files"). **Still to find**: why
   Tracker, unlike Terminal, didn't re-execute and reconnect when its
-  connection went (no "the compositor's connection is gone" in its
-  log; it had had a worker's panic fourteen minutes before, the
-  text-recognition crash fixed the same day; in a test session Tracker
-  reconnects as it should).
+  connection went: **found and fixed** too (a loop ended in an error
+  was asked whether its socket had hung up yet; HACKING.md, "What a
+  day's logs showed").
 - **The pointer vanishes over a video in Chrome and Chrome-based apps**
   (Ben, 2026-11-18: "sometimes when a cursor goes over a video on
   chrome or a chrome based app like slack then the cursor doesn't show

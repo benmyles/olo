@@ -13,6 +13,7 @@ pub mod apps;
 pub mod desktop_entry;
 pub mod electron;
 pub mod legacy;
+pub mod locale;
 pub mod mime;
 pub mod open;
 pub mod quirks;
@@ -340,6 +341,12 @@ pub fn upgrade_env(cmd: &mut std::process::Command) {
                 cmd.env(k, v);
             }
         }
+        // (A session from Olo's own login had no language at all:
+        // `locale`. Each program takes the system's as it re-executes,
+        // and what it starts from then on has it.)
+        for (k, v) in locale::missing_here() {
+            cmd.env(k, v);
+        }
     }
 }
 
@@ -485,6 +492,26 @@ pub fn cache_dir() -> PathBuf {
 pub fn state_dir() -> PathBuf {
     let home = || PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
     std::env::var_os("XDG_STATE_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| home().join(".local/state")).join("olo")
+}
+
+/// The agent screen this process is on (`OLO_SCREEN`; None: the person's
+/// own session, or a test's).
+pub fn screen() -> Option<String> {
+    std::env::var("OLO_SCREEN").ok().filter(|s| !s.is_empty() && !s.contains('/'))
+}
+
+/// Where a program keeps what belongs to the session it serves, not to
+/// the person's programs wherever they show: a screen's own folder on an
+/// agent screen (`state_dir()/screens/NAME`), the state directory
+/// itself otherwise. An agent screen is the person's account and home,
+/// so its services would otherwise write the person's own files: every
+/// screen's notification centre kept its history in the person's, each
+/// saving over the others' (2026-11-18).
+pub fn session_state_dir() -> PathBuf {
+    match screen() {
+        Some(name) => state_dir().join("screens").join(name),
+        None => state_dir(),
+    }
 }
 
 /// A nameless file on disk to gather bytes in rather than memory (not in
