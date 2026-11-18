@@ -4069,6 +4069,32 @@ for a 3-second `sleep`.
   change (a destroy of a remapped offer went up under the program's id,
   one app_server never made, and the program was cut off with "invalid
   object": GTK's editor at its first selection after a restart).
+  An object is made again from what it was made from, and where that
+  has gone, from another of its kind (`replay_parent`: the same binding
+  if it lives, else the global bound for the length of the recipe). A
+  **cursor-shape device** outlives the `wl_pointer` it was made from:
+  Chrome and Electron (Slack) release their pointer and take a new one
+  whenever the seat says what it has, and keep setting shapes on the
+  old device, as the protocol lets them. The proxy records the device's
+  seat (`Extra::PointerShape`) and, at a replay where its pointer is
+  gone or its id another's, takes a pointer from that seat for the
+  recipe and lets it go after. Until 2026-11-18 it gave up on the
+  device and dropped every `set_shape` from then on, with no word:
+  Chrome hides the pointer and names a shape whenever the shape
+  changes (over a video's player, a link), the hiding went through and
+  the shape didn't, and the pointer was gone until it left the window
+  (Ben: "the cursor doesn't show again until i move the mouse
+  completely out of the window and back"; after any upgrade, in a
+  Chrome or Slack that lived through it). `tools/dev/cursor-replay-check`
+  does it: Chrome over a video in a session of its own, app_server
+  restarted twice under it, the pointer's pixels counted and both
+  sides' cursor requests listed ("After two reloads: video=128, after
+  motion=128, crosshair=100, outside=82"; video=0, after motion=0,
+  crosshair=0 before). A recipe that can't be sent gives its reserved
+  ids back (`abandon_recipe`: the next object made mustn't leave a gap
+  in the ids libwayland expects). **A program stays on the proxy that
+  took its connection**: one already running gets a mended proxy when
+  it's next started, not at the upgrade.
 * The proxy shows programs only the globals it can decode
   (`wlproxy/src/interfaces.rs`); add a protocol there before an outside
   program can use it. That is every global app_server has for programs
@@ -8801,14 +8827,18 @@ part of the first rule: in Chrome and Slack a pointer hidden over a
 video sometimes stayed gone until it left the window and came back
 (Chrome sends a cursor only when it changes or the pointer enters, so
 one request refused or lost leaves it wrong till then). **Its cause
-isn't found**: in a test session Chrome asks with the right serial and
-is obeyed in every case tried (a click, the wheel, a key, a context
-menu, full screen and back, a window opening over the still pointer).
-Olo's Smithay now says when it refuses a cursor from the very program
-the pointer is over (`allow_setting_cursor`: log target `cursor`, "a
-cursor from the program under the pointer was refused", with both
-serials, once an enter): `olo-logs --print --find "was refused"` after
-it's seen again. Measured (release, 20,000 synthetic moves over the
+was the proxy's**, found with the `olo-debug-help` skill the same day:
+after app_server restarts (every upgrade), olo-wlproxy dropped the
+cursor shapes of a Chrome or Slack that had lived through it ("An
+object is made again…", under the proxy above). In a test session
+without a restart Chrome asks with the right serial and is obeyed in
+every case tried (a click, the wheel, a key, a context menu, full
+screen and back, a window opening over the still pointer), which is
+why it wasn't seen there. Olo's Smithay also says when it refuses a
+cursor from the very program the pointer is over
+(`allow_setting_cursor`: log target `cursor`, "a cursor from the
+program under the pointer was refused", with both serials, once an
+enter). Measured (release, 20,000 synthetic moves over the
 desktop, `perf stat --no-scale -e instructions:u`, three rounds each):
 206.6–206.8 M instructions before, 207.2–208.1 M after (25 to 70 a
 move), 1.30–1.46 µs → 1.32–1.36 µs of app_server's CPU a move.

@@ -1,0 +1,173 @@
+#!/usr/bin/python3 -I
+"""A program's pointer after app_server has restarted under it (olo-wlproxy's replay).
+
+Chrome, with a profile of the check's own, plays a small video beside a
+box with a crosshair, in a headless session of the check's own (a
+runtime folder of its own too: nothing of the person's session is
+touched, no network is used). app_server is restarted twice under the
+same Chrome (SIGHUP to the check's olo-session), and after each the
+pointer is moved onto the box, the video, within it, and back: how many
+pixels of pointer are drawn there (a screenshot with the pointer
+against one without), and which cursor requests Chrome sent and
+app_server received (WAYLAND_DEBUG on both sides).
+
+    /usr/bin/python3 -I tools/dev/cursor-replay-check [OLO-WLPROXY]
+
+from the checkout, on release builds (`cargo build --release
+--workspace`); OLO-WLPROXY: another proxy to try in place of
+target/release's. It needs the Chrome Olo installed
+(~/.local/share/olo/chrome/current). Its last line says it all:
+
+    After two reloads: video=128, after motion=128, crosshair=100, outside=82
+
+A 0 there is a pointer that isn't drawn: until 2026-11-18 the proxy
+couldn't make Chrome's cursor-shape device again once the wl_pointer it
+was made from had been released, and dropped every set_shape after
+(video=0, after motion=0, crosshair=0).
+"""
+import json
+import os
+from pathlib import Path
+import re
+import runpy
+import signal
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+
+from PIL import Image, ImageChops
+
+ROOT = Path.cwd()
+RELEASE = ROOT / "target/release"
+NAME = "cursor-replay-check"
+CHROME = (Path.home() / ".local/share/olo/chrome/current").resolve(strict=True)
+WIRE = re.compile(rb"(?:wp_cursor_shape_device_v1[#@]\d+\.set_shape|wl_pointer[#@]\d+\.(?:set_cursor|enter|leave|release))\([^\n\0)]{0,120}\)")
+PAGE = """<!doctype html><meta charset=utf-8><style>
+body {margin:0} video {position:absolute;left:45px;top:30px;width:440px;height:280px}
+aside {position:absolute;top:70px;left:490px;width:65px;height:200px;background:#777;cursor:crosshair}
+</style><video controls muted loop autoplay id=v></video><aside></aside><script>
+const c=document.createElement('canvas'); c.width=440;c.height=280;let i=0;
+const ctx=c.getContext('2d'), stream=c.captureStream(12), chunks=[];
+function draw(){ctx.fillStyle='#303030';ctx.fillRect(0,0,440,280);
+ctx.fillStyle='#575757';ctx.fillRect(++i%400,235,20,30)}
+draw();const clock=setInterval(draw,70), rec=new MediaRecorder(stream,{mimeType:'video/webm'});
+rec.ondataavailable=e=>chunks.push(e.data);
+rec.onstop=()=>{clearInterval(clock);v.src=URL.createObjectURL(new Blob(chunks,{type:'video/webm'}));
+v.play().then(()=>document.title='cursor replay playing')};
+rec.start();setTimeout(()=>rec.stop(),1300);
+</script>"""
+
+
+def until(read, seconds, waiting):
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        try:
+            result = read()
+            if result:
+                return result
+        except (FileNotFoundError, ConnectionError, TimeoutError):
+            pass
+        time.sleep(.08)
+    raise RuntimeError("Timed out waiting for " + waiting)
+
+
+def run(d, new_proxy):
+    home, runtime, base, tmp = (d / name for name in ("home", "r", "s", "tmp"))
+    for directory in (home, runtime, base, tmp):
+        directory.mkdir(mode=0o700)
+    for key in ("WAYLAND_DISPLAY", "WAYLAND_SOCKET", "DISPLAY", "OLO_SOCKET", "OLO_WAYLAND_FD",
+                "OLO_REAL_SESSION", "OLO_SESSION", "OLO_SESSION_PID", "OLO_SCREEN", "OLO_UPGRADE_FROM",
+                "OLO_NO_WAYLAND_PROXY", "OLO_HEADLESS_TOUCH", "OLO_HEADLESS_TABLET", "CARGO_TARGET_DIR",
+                "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_ACTIVATION_TOKEN", "AT_SPI_BUS_ADDRESS", "TSESSION_SESSION_EXE"):
+        os.environ.pop(key, None)
+    os.environ.update(TSESSION_PROFILE="release", TMPDIR=str(tmp), XDG_RUNTIME_DIR=str(runtime),
+                      XDG_STATE_HOME=str(d / "state"), XDG_CACHE_HOME=str(d / "cache"), WAYLAND_DEBUG="server",
+                      OLO_WLPROXY_DEBUG="1", NO_AT_BRIDGE="1", GTK_A11Y="none", OLO_ACTIVITY_HELPER="off")
+    if new_proxy:
+        binaries = d / "bin"
+        binaries.mkdir()
+        subprocess.run(["cp", "--reflink=always", RELEASE / "olo-session", binaries / "olo-session"], check=True)
+        (binaries / "olo-wlproxy").symlink_to(new_proxy)
+        (binaries / "olo-app-server").symlink_to(RELEASE / "olo-app-server")
+        os.environ["TSESSION_SESSION_EXE"] = str(binaries / "olo-session")
+    install = home / ".local/share/olo/chrome"
+    install.mkdir(parents=True)
+    (install / "current").symlink_to(CHROME)
+    (install / ".checked").touch()
+    page = d / "native.html"
+    page.write_text(PAGE)
+    ts = runpy.run_path(str(ROOT / "tools/dev/tsession"))["start"].__globals__
+    ts.update(BASE=str(base), RUNTIME=str(runtime), OLD_BASES=[])
+    server, client = (base / NAME / name for name in ("app_server.log", "olo-chrome.log"))
+
+    def ipc(request):
+        with socket.socket(socket.AF_UNIX) as sock:
+            sock.settimeout(3)
+            sock.connect(ts["load_env"](NAME, check=False)["OLO_SOCKET"])
+            sock.sendall((json.dumps(request) + "\n").encode())
+            return json.loads(sock.makefile().readline())
+
+    def window():
+        return next((w for w in ipc({"type": "list_windows"})["windows"] if "cursor replay playing" in w["title"]), None)
+
+    def tail(path, start):
+        with path.open("rb") as f:
+            f.seek(start)
+            return f.read()
+
+    def sample(label, x, y):
+        cm, sm = client.stat().st_size, server.stat().st_size
+        ipc({"type": "synthetic", "events": [{"type": "move", "x": x, "y": y}]})
+        time.sleep(.40)
+        crop = (x - 18, y - 18, x + 30, y + 30)
+        images = []
+        for pointer in (False, True):
+            shot = str(d / "sample.png")
+            reply = ipc({"type": "screenshot", "path": shot, "pointer": pointer})
+            if reply["type"] != "ok":
+                raise RuntimeError(str(reply))
+            with Image.open(shot) as image:
+                images.append(image.convert("RGB").crop(crop))
+        diff = ImageChops.difference(*images)
+        pixels = sum(max(p) > 48 for p in diff.get_flattened_data())
+        wire = [[r.decode() for r in WIRE.findall(tail(path, pos))] for path, pos in ((client, cm), (server, sm))]
+        print(f"{label}: cursor_pixels={pixels}, Chrome={wire[0]}, app_server={wire[1]}", flush=True)
+        return pixels
+
+    try:
+        ts["start"](NAME, ["1400x900", "--scale", "1", "--session", "--home", str(home)])
+        ts["run"](NAME, ["WAYLAND_DEBUG=client", str(RELEASE / "olo-chrome"),
+                         "--user-data-dir=" + str(d / "profile"), "--no-first-run", "--no-default-browser-check",
+                         "--disable-background-networking", "--disable-component-update", "--disable-sync",
+                         "--disable-extensions", "--host-resolver-rules=MAP * ~NOTFOUND", "--password-store=basic",
+                         "--app=" + page.as_uri()])
+        first = until(window, 25, "Chrome to play the local video")
+        w = first
+        for i in range(3):
+            if i:
+                start = server.stat().st_size
+                os.kill(int(ts["load_env"](NAME)["OLO_SESSION_PID"]), signal.SIGHUP)
+                until(lambda: b"IPC listening" in tail(server, start), 15, "the private app_server to restart")
+                w = until(window, 20, "the video window to be replayed")
+                assert w["pid"] == first["pid"], "Chrome restarted"
+                sample(f"reload {i} outside", 12, 12)
+            x, y = w["content"]["x"], w["content"]["y"]
+            sample(f"reload {i} crosshair on entry", x + 520, y + 150)
+            shown = sample(f"reload {i} native video", x + 123, y + 130)
+            moving = sample(f"reload {i} move inside video", x + 137, y + 141)
+            hand = sample(f"reload {i} crosshair inside window", x + 521, y + 153)
+        left = sample("leave window", 12, 12)
+        print(f"After two reloads: video={shown}, after motion={moving}, crosshair={hand}, outside={left}")
+    finally:
+        ts["stop"](NAME)
+
+
+if __name__ == "__main__":
+    proxy = Path(sys.argv[1]).resolve(strict=True) if len(sys.argv) == 2 else None
+    # (On disk, never /tmp: a Chrome profile and screenshots.)
+    scratch = Path("/var/tmp") / f"olo-cursor-replay-{os.getuid()}"
+    scratch.mkdir(mode=0o700, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="cr-", dir=scratch) as directory:
+        run(Path(directory), proxy)

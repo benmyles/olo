@@ -158,11 +158,13 @@ something nobody here has is in "Blocked", with what it waits for.
   come back if it moves again"). Tried before, still there.
   **Done so far**: Olo holds that rule itself now (`pointer_hide`,
   HACKING.md "A program hiding the pointer"), so a rested pointer comes
-  back on the first move whatever the program does. **Still to find**:
-  why Chrome's pointer stayed gone (not reproduced in a test session;
-  a Codex helper is on it, `olo-debug-help`; Olo's Smithay now logs a
-  cursor refused from the program under the pointer: look for "was
-  refused" in the logs after it's seen again).
+  back on the first move whatever the program does. **The cause, found
+  and fixed** (by the Codex helper, `olo-debug-help`, checked and
+  applied): olo-wlproxy couldn't make Chrome's cursor-shape device
+  again after app_server restarted, and dropped every shape from then
+  on (HACKING.md, the proxy's "An object is made again…";
+  `tools/dev/cursor-replay-check`). A Chrome or Slack already running
+  gets the mended proxy when it's next started.
 - **One account for Mail and Calendar** (Ben, 2026-11-18: "can the
   calendar and mail just use the same integration connection so we
   don't have to set it up twice? like can it just be Mail & Calendar").

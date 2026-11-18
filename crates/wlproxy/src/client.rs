@@ -120,6 +120,11 @@ enum Extra {
         surface: u32,
         parent: u32,
     },
+    /// The wl_seat of a pointer shape device. The client may release the
+    /// wl_pointer it used to create the device and keep setting shapes.
+    PointerShape {
+        seat: Parent,
+    },
     Token {
         done: bool,
     },
@@ -486,6 +491,7 @@ impl Client {
                 }
                 "xdg_activation_token_v1" => Extra::Token { done: false },
                 "wl_buffer" => self.buffer_recipe(msg),
+                "wp_cursor_shape_device_v1" if name == "get_pointer" => self.objs.get(&msg.uint(1)).and_then(|pointer| pointer.parent).map_or(Extra::None, |seat| Extra::PointerShape { seat }),
                 _ => Extra::None,
             };
             self.objs.get_mut(&new).unwrap().x = x;
@@ -1397,6 +1403,7 @@ impl Client {
             self.zombify(id);
             return;
         };
+        let first_temp = self.next_temp;
         let mut temps = Vec::new();
         if recipe.iter().any(|m| m.args.iter().any(|a| matches!(a, Arg::NewId(TEMP)))) {
             temps.push(self.next_temp);
@@ -1414,30 +1421,16 @@ impl Client {
                 }
             }
         }
-        // What it was made from: still there, or another of its kind.
-        let registry = self.registries().into_iter().next();
+        // A shape device survives its original wl_pointer. Rebuild it
+        // using a temporary pointer of the same seat if the old id is gone.
+        let shape_seat = match self.objs[&id].x {
+            Extra::PointerShape { seat } if self.objs.get(&recipe[0].uint(1)).is_none_or(|p| !p.live() || p.seq > self.objs[&id].seq) => Some(seat),
+            _ => None,
+        };
         let mut before = Vec::new();
         let mut after = Vec::new();
-        let same = self.objs.get(&parent.id).is_some_and(|p| p.live() && p.seq == parent.seq);
-        let target = if parent.iface.name == "wl_registry" {
-            registry
-        } else if same {
-            Some(parent.id)
-        } else if let (Some(g), Some(r), Some(destroy)) = (parent.global, registry, parent.iface.requests.iter().position(|d| d.is_destructor && d.signature.is_empty())) {
-            let t = self.next_temp;
-            self.next_temp += 1;
-            temps.push(t);
-            let reg = self.objs[&r].iface;
-            before.push(Msg::new(r, request(reg, "bind"), vec![Arg::Uint(g), Arg::Str(Some(parent.iface.name.as_bytes().to_vec())), Arg::Uint(parent.version), Arg::NewId(t)]));
-            after.push(Msg::new(t, destroy as u16, vec![]));
-            self.temps.insert(t, (parent.iface, Temp::Other));
-            Some(t)
-        } else {
-            None
-        };
-        let Some(target) = target else {
-            self.zombify(id);
-            return;
+        let Some(target) = self.replay_parent(parent, &mut before, &mut after, &mut temps) else {
+            return self.abandon_recipe(id, first_temp);
         };
         if recipe[0].id == parent.id {
             recipe[0].id = target;
@@ -1449,24 +1442,59 @@ impl Client {
             // The recipe's pool or params, freed by its last step.
             self.temps.insert(t, (iface, Temp::Other));
         }
+        if let Some(seat) = shape_seat {
+            let Some(seat_id) = self.replay_parent(seat, &mut before, &mut after, &mut temps) else {
+                return self.abandon_recipe(id, first_temp);
+            };
+            let get = request(seat.iface, "get_pointer");
+            let iface = seat.iface.requests[get as usize].child_interface.unwrap();
+            let pointer = self.temp(iface, Temp::Other);
+            temps.push(pointer);
+            before.push(Msg::new(seat_id, get, vec![Arg::NewId(pointer)]));
+            recipe[0].args[1] = Arg::Object(pointer);
+            after.insert(0, Msg::new(pointer, request(iface, "release"), vec![]));
+        }
         // Check every step before sending any.
         let made = self.objs[&id].seq;
         let mut out = Vec::new();
         for m in before.into_iter().chain(recipe).chain(after) {
             match self.prepare(m, &temps, Some(made)) {
                 Some(m) => out.push(m),
-                None => {
-                    for t in &temps {
-                        self.temps.remove(t);
-                    }
-                    self.zombify(id);
-                    return;
-                }
+                None => return self.abandon_recipe(id, first_temp),
             }
         }
         for m in out {
             self.send_up(m);
         }
+    }
+
+    /// No request in this recipe went upstream. Return its reserved ids
+    /// so the next object sent to libwayland does not leave a gap.
+    fn abandon_recipe(&mut self, id: u32, first_temp: u32) {
+        for t in first_temp..self.next_temp {
+            self.temps.remove(&t);
+        }
+        self.next_temp = first_temp;
+        self.zombify(id);
+    }
+
+    /// The original binding if it still exists, otherwise a temporary
+    /// binding of the same global for the duration of this recipe.
+    fn replay_parent(&mut self, parent: Parent, before: &mut Vec<Msg>, after: &mut Vec<Msg>, temps: &mut Vec<u32>) -> Option<u32> {
+        if parent.iface.name == "wl_registry" {
+            return self.registries().into_iter().next();
+        }
+        if self.objs.get(&parent.id).is_some_and(|p| p.live() && p.seq == parent.seq) {
+            return Some(parent.id);
+        }
+        let g = parent.global?;
+        let r = self.registries().into_iter().next()?;
+        let destroy = parent.iface.requests.iter().position(|d| d.is_destructor && d.signature.is_empty() && d.since <= parent.version)?;
+        let t = self.temp(parent.iface, Temp::Other);
+        temps.push(t);
+        before.push(Msg::new(r, request(self.objs[&r].iface, "bind"), vec![Arg::Uint(g), Arg::Str(Some(parent.iface.name.as_bytes().to_vec())), Arg::Uint(parent.version), Arg::NewId(t)]));
+        after.push(Msg::new(t, destroy as u16, vec![]));
+        Some(t)
     }
 
     /// A recorded request made fit for the new app_server: globals renamed,
