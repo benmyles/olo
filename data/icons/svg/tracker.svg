@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Tracker: a folder of files, a magnifying glass before it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<linearGradient id="shadow" x1="33" y1="53.4" x2="34.1" y2="57.8" gradientUnits="userSpaceOnUse"><stop offset="0" stop-opacity=".34"/><stop offset="1" stop-opacity="0"/></linearGradient>
+<clipPath id="back"><path d="M3 15.5L3.1 13.05Q3.2 10.6 5.63 10L20.04 6.41Q21.5 6.05 22.59 7.08L25.92 10.25Q26.5 10.8 27.28 10.61L51.06 4.68Q53 4.2 53 6.2L53 30L40 50L6.46 57.67Q5 58 4.93 56.5Z"/></clipPath>
+<linearGradient id="inside" x1="20" y1="8" x2="30" y2="24" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f9c85c"/><stop offset="1" stop-color="#dc9a26"/></linearGradient>
+<linearGradient id="spine" x1="3" y1="14" x2="7" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffc94c"/><stop offset="1" stop-color="#e79f1c"/></linearGradient>
+<linearGradient id="flap" x1="16" y1="26" x2="54" y2="54" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fedd88"/><stop offset=".5" stop-color="#f8ca66"/><stop offset="1" stop-color="#e9ae49"/></linearGradient>
+<linearGradient id="paper" x1="10" y1="12" x2="50" y2="40" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dfe2ec"/></linearGradient>
+<linearGradient id="ring1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fafbfc"/><stop offset=".5" stop-color="#c3c6cf"/><stop offset="1" stop-color="#8b8f9b"/></linearGradient>
+<linearGradient id="lens1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d9f0ff"/><stop offset=".5" stop-color="#8fcbff"/><stop offset="1" stop-color="#4f9df0"/></linearGradient>
+<linearGradient id="grip1" x1="0" y1="-3.4" x2="0" y2="3.4" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#4f9bff"/><stop offset="1" stop-color="#1552c4"/></linearGradient>
+</defs>
+<path class="from48" fill="url(#shadow)" d="M6 58L57 45.2L60.5 48.8L11 61.8Z"/>
+<!-- The folder: its back with the tab, the papers in it, its front opened toward us. -->
+<path class="o" fill="url(#inside)" d="M3 15.5L3.1 13.05Q3.2 10.6 5.63 10L20.04 6.41Q21.5 6.05 22.59 7.08L25.92 10.25Q26.5 10.8 27.28 10.61L51.06 4.68Q53 4.2 53 6.2L53 30L40 50L6.46 57.67Q5 58 4.93 56.5Z"/>
+<g clip-path="url(#back)"><path fill="url(#spine)" d="M0 8L8.6 21L5.6 60L0 60Z"/></g>
+<path class="o" fill="url(#paper)" d="M7.5 19.5L53.5 8L54.5 40L8.5 52Z"/>
+<path class="o" fill="url(#paper)" d="M9.5 23.5L56 11.9L57 43L10.5 55Z"/>
+<path class="o" fill="url(#flap)" d="M11.3 30.5Q11.5 28.6 13.4 28.1L59.1 16.5Q61 16 60.7 18L57.3 44.7Q57 46.6 55.06 47.09L7.44 59.01Q5.5 59.5 5.8 57.5Z"/>
+<path class="h from48" stroke="#fff3c9" stroke-opacity=".95" stroke-width=".6" d="M6.6 56.6L11.9 30.8Q12.1 29.2 13.7 28.8L59 17.3"/>
+<!-- The glass. -->
+<g transform="translate(33 33) rotate(48)">
+<rect class="o" x="11.9" y="-1.7" width="6.4" height="3.4" fill="#b9bcc6"/>
+<rect class="o" x="16.9" y="-3.4" width="13.6" height="6.8" rx="3.2" fill="url(#grip1)"/>
+<path class="h from48" stroke-opacity=".55" stroke-width=".6" d="M19.0 -2H28.1"/>
+</g>
+<circle class="o" cx="33" cy="33" r="12.5" fill="url(#ring1)"/>
+<circle cx="33" cy="33" r="9.9" fill="#1b1b1f" fill-opacity=".75"/>
+<circle cx="33" cy="33" r="9.4" fill="url(#lens1)"/>
+<path class="from48" fill="#fff" fill-opacity=".65" d="M26.522 30.63A7.9 7.9 0 0 1 32.21 25.732A9.5 9.5 0 0 0 26.522 30.63Z"/>
+</svg>

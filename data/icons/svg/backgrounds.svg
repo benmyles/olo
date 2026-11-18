@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Backgrounds: three photographs standing fanned, a mountain lake on the front one. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<linearGradient id="shadow" x1="30" y1="54" x2="31" y2="58.5" gradientUnits="userSpaceOnUse"><stop offset="0" stop-opacity=".3"/><stop offset="1" stop-opacity="0"/></linearGradient>
+<linearGradient id="paper" x1="0" y1="0" x2="34" y2="32" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e3e6ee"/></linearGradient>
+<linearGradient id="sky" x1="0" y1="2" x2="0" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2f8cf8"/><stop offset="1" stop-color="#bfe3ff"/></linearGradient>
+<linearGradient id="lake" x1="0" y1="19" x2="0" y2="26" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1f6fe8"/><stop offset="1" stop-color="#7fc0ff"/></linearGradient>
+<linearGradient id="canyon" x1="0" y1="4" x2="0" y2="30" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#69b7ff"/><stop offset="0.35" stop-color="#ffb05a"/><stop offset="1" stop-color="#c24a1a"/></linearGradient>
+<linearGradient id="dusk" x1="0" y1="4" x2="0" y2="30" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#5a4fa8"/><stop offset="0.55" stop-color="#ff8a4a"/><stop offset="1" stop-color="#ffd15a"/></linearGradient>
+<clipPath id="view"><rect x="2.4" y="2.4" width="31.2" height="24"/></clipPath>
+</defs>
+<path class="from48" fill="url(#shadow)" d="M5 56.5L47 46L56 55.5L10 61.5Z"/>
+<!-- The two behind. -->
+<g transform="matrix(1 -.25 0 1 33 20) rotate(16)"><rect class="o" x="0" y="0" width="26" height="36" rx=".8" fill="url(#paper)"/><rect x="2.4" y="2.4" width="21.2" height="29" fill="url(#dusk)"/><circle class="from48" cx="17" cy="20" r="2.6" fill="#ffe98a"/></g>
+<g transform="matrix(1 -.25 0 1 21.5 13) rotate(8)"><rect class="o" x="0" y="0" width="30" height="38" rx=".8" fill="url(#paper)"/><rect x="2.4" y="2.4" width="25.2" height="31" fill="url(#canyon)"/><path class="from48" fill="#a8380f" d="M2.4 22L9 14L13 19L19 11L27.6 21V33.4H2.4Z"/></g>
+<!-- The front one: sky, sun, mountains, lake, pines. -->
+<g transform="matrix(1 -.25 0 1 4.5 25)">
+<rect class="o" x="0" y="0" width="36" height="31" rx=".8" fill="url(#paper)"/>
+<g clip-path="url(#view)">
+<rect x="2.4" y="2.4" width="31.2" height="24" fill="url(#sky)"/>
+<circle cx="10.6" cy="8.4" r="2.9" fill="#ffe066"/>
+<path fill="#4f74b3" d="M2.4 20L9.5 12.5L14 16.5L20.5 8.6L28 17L33.6 13.5V27H2.4Z"/>
+<path class="from48" fill="#fff" d="M20.5 8.6L23.2 11.6L21.2 11.2L19.6 12.8L18 11.6ZM9.5 12.5L11.4 14.2L9.6 14L8 14.2Z"/>
+<path class="from48" fill="#3a5c96" d="M20.5 8.6L22 14L20 19.5H26L24.4 13Z" fill-opacity=".5"/>
+<rect x="2.4" y="19.6" width="31.2" height="7" fill="url(#lake)"/>
+<path class="from48" fill="#fff" fill-opacity=".5" d="M8 21.4H16V22H8ZM11 23.4H21V24H11Z"/>
+<path fill="#1d5c38" d="M25 26.4L27.2 18.4L28.6 22L30.4 16.4L32 21.4L33.6 19V26.4Z"/>
+</g>
+<path class="h from48" stroke-opacity=".9" stroke-width=".4" d="M.7 30V.7H35"/>
+</g>
+</svg>

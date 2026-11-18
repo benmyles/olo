@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Network: a router with two aerials, its signal above it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="32" cy="59" r="27" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 51.33) scale(1 .13)"><stop offset="0" stop-opacity=".32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="box"><path d="M5 43Q5 41.8 6.2 41.5L43.8 32.1Q45 31.8 46.1 32.35L57.9 38.25Q59 38.8 59 40L59 48.2Q59 49.4 57.8 49.7L20.2 59.1Q19 59.4 17.9 58.85L6.1 52.95Q5 52.4 5 51.2Z"/></clipPath>
+<linearGradient id="top" x1="10" y1="34" x2="50" y2="46" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f1f2f5"/><stop offset="1" stop-color="#c4c7d0"/></linearGradient>
+<linearGradient id="front" x1="0" y1="0" x2="0" y2="12" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#4b4e58"/><stop offset="1" stop-color="#2a2c33"/></linearGradient>
+<linearGradient id="rod" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#666a74"/><stop offset="1" stop-color="#25272d"/></linearGradient>
+<linearGradient id="blue" x1="16" y1="8" x2="44" y2="26" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#62b1ff"/><stop offset="1" stop-color="#1563dc"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="32" cy="59" rx="27" ry="3.4" fill="url(#shadow)"/>
+<!-- The aerials. -->
+<path class="o" fill="url(#rod)" d="M10.2 42.5L6 8.4Q5.8 6.4 7.6 6.2Q9.4 6 9.8 8L14.6 41.5Z"/>
+<path class="o" fill="url(#rod)" d="M49.4 33L53.2 6.4Q53.6 4.4 55.4 4.6Q57.2 4.9 57 6.9L53.8 34Z"/>
+<!-- The box: its side, its top, its front with its lights. -->
+<path class="o" fill="#2a2c33" d="M5 43Q5 41.8 6.2 41.5L43.8 32.1Q45 31.8 46.1 32.35L57.9 38.25Q59 38.8 59 40L59 48.2Q59 49.4 57.8 49.7L20.2 59.1Q19 59.4 17.9 58.85L6.1 52.95Q5 52.4 5 51.2Z"/>
+<g clip-path="url(#box)">
+<path fill="#383b44" d="M0 38.5L19 48L19 64L0 64Z"/>
+<path fill="url(#top)" d="M0 38.5L19 48L64 36.75L64 0L0 0Z"/>
+<g transform="matrix(1 -.25 0 1 19 48)">
+<path fill="url(#front)" d="M0 0H42V12H0Z"/>
+<circle cx="24.5" cy="5.2" r="1.9" fill="#1b1b1f"/><circle cx="24.5" cy="5.2" r="1.35" fill="#46d84a"/>
+<circle cx="29.5" cy="5.2" r="1.9" fill="#1b1b1f"/><circle cx="29.5" cy="5.2" r="1.35" fill="#ffb21e"/>
+<circle cx="34.5" cy="5.2" r="1.9" fill="#1b1b1f"/><circle cx="34.5" cy="5.2" r="1.35" fill="#3d9bff"/>
+</g>
+<g class="from48" fill="#17181c"><circle cx="8" cy="46.6" r=".55"/><circle cx="10.4" cy="47.8" r=".55"/><circle cx="12.8" cy="49" r=".55"/><circle cx="15.2" cy="50.2" r=".55"/><circle cx="8" cy="49.2" r=".55"/><circle cx="10.4" cy="50.4" r=".55"/><circle cx="12.8" cy="51.6" r=".55"/><circle cx="15.2" cy="52.8" r=".55"/></g>
+<path class="h from48" stroke-opacity=".6" stroke-width=".5" d="M19.6 48.1L58.2 38.45"/>
+</g>
+<!-- The signal. -->
+<g fill="none" stroke-linecap="round"><path class="from32" stroke="#1b1b1f" stroke-width="5.6" d="M24.31 20.68A8.5 8.5 0 0 1 35.69 20.68M19.63 15.48A15.5 15.5 0 0 1 40.37 15.48"/><path stroke="url(#blue)" stroke-width="3.8" d="M24.31 20.68A8.5 8.5 0 0 1 35.69 20.68M19.63 15.48A15.5 15.5 0 0 1 40.37 15.48"/></g>
+<circle class="o" cx="30" cy="25.6" r="2.6" fill="url(#blue)"/>
+</svg>

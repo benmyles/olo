@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Accessories: a red pocket knife, its blade, screwdriver, opener and scissors out. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="32" cy="60.4" r="24" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.55) scale(1 .13)"><stop offset="0" stop-opacity="0.26"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="steel" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fbfbfd"/><stop offset="0.5" stop-color="#cfd2d9"/><stop offset="1" stop-color="#9a9ea9"/></linearGradient>
+<linearGradient id="red" x1="0" y1="-6" x2="0" y2="6" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff6a5c"/><stop offset="0.5" stop-color="#ee2f2a"/><stop offset="1" stop-color="#c41818"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="32" cy="60.4" rx="24" ry="3.4" fill="url(#shadow)"/>
+<!-- The tools: the blade, the opener, the screwdriver, the scissors. -->
+<path class="o" fill="url(#steel)" d="M27.5 4.5C35 9.5 45 20.5 49.5 33.5L41.5 39.5L36 31Q29 18 27.5 4.5Z"/>
+<path class="from48" fill="none" stroke="#7d828e" stroke-width=".6" stroke-linecap="round" d="M31.4 11.5Q33.8 17.4 37 22.6"/>
+<path class="o" fill="url(#steel)" d="M46.5 31.5L54.5 16.5Q57.5 13 59.6 16.5L59 23.4Q56.4 23.6 56 26.5L53.5 39Z"/>
+<path class="o" fill="url(#steel)" d="M22 20.5L8 31.2L3.6 34.8L3.6 38.4L7.2 39L11.2 36L25.5 27Z"/>
+<path class="o" fill="url(#steel)" d="M19 33L23.6 44.5L11.6 59.6Q9 60.6 9.5 57.6L17.4 44.6L15 35Z"/>
+<path class="o" fill="url(#steel)" d="M22.5 33L26.4 45L22.6 61Q21.2 62.4 20.2 60.6L20.6 46.6L19.4 36Z"/>
+<circle class="from32" cx="21.4" cy="45.4" r="1.5" fill="#6d7280"/>
+<!-- The ring. -->
+<g class="from32" fill="none"><circle cx="55.6" cy="52.4" r="3.2" stroke="#1b1b1f" stroke-width="2.6"/><circle cx="55.6" cy="52.4" r="3.2" stroke="#c3c6cf" stroke-width="1.3"/></g>
+<!-- The handle: its steel back, its red scale, its rivets. -->
+<g transform="translate(34 35.2) rotate(37.5)">
+<rect class="o" x="-24.4" y="-3.4" width="48.8" height="12" rx="6" fill="#8f939d"/>
+<rect class="o" x="-24.9" y="-6.6" width="49.8" height="12" rx="6" fill="url(#red)"/>
+<path class="h from48" stroke-opacity=".6" stroke-width=".7" d="M-19-4.6H17"/>
+<g class="from32"><circle cx="-18" cy="-.8" r="1.7" fill="#1b1b1f"/><circle cx="-18" cy="-.8" r="1.2" fill="#e3e5ea"/><circle cx="18" cy="-.8" r="1.7" fill="#1b1b1f"/><circle cx="18" cy="-.8" r="1.2" fill="#e3e5ea"/></g>
+</g>
+</svg>

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Audio: a loudspeaker, a black note standing before it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="31" cy="60" r="25" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.2) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="rimg" x1="-16" y1="-18" x2="14" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f8f9fb"/><stop offset="0.5" stop-color="#c0c3cc"/><stop offset="1" stop-color="#858994"/></linearGradient>
+<linearGradient id="side" x1="-26" y1="-20" x2="-18" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#4b4e58"/><stop offset="1" stop-color="#25272d"/></linearGradient>
+<radialGradient id="coneg" cx="-3" cy="-4" r="15" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffe98a"/><stop offset="0.5" stop-color="#fbc526"/><stop offset="1" stop-color="#d18d06"/></radialGradient>
+<radialGradient id="capg" cx="-2" cy="-2.4" r="6.5" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#8d919c"/><stop offset="0.5" stop-color="#25272d"/><stop offset="1" stop-color="#111216"/></radialGradient>
+<linearGradient id="gloss" x1="36" y1="40" x2="50" y2="60" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#5a5d68"/><stop offset="0.5" stop-color="#17181c"/><stop offset="1" stop-color="#0b0c0f"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="31" cy="60" rx="25" ry="3.4" fill="url(#shadow)"/>
+<g transform="matrix(1 -.25 0 1 28 29)">
+<path class="o" fill="url(#side)" d="M12 -16A20 20 0 0 1 -12 16L-17 12.25A20 20 0 0 1 7 -19.75Z"/>
+<circle cx="0" cy="0" r="20" fill="url(#rimg)"/>
+<path class="h from48" stroke-opacity="0.7" stroke-width=".55" d="M-18.8 4A19.4 19.4 0 0 1 5 -18.6"/>
+
+<circle r="16.4" fill="#1b1b1f"/><circle r="15.2" fill="#2e3038"/>
+<circle r="12.6" fill="#1b1b1f"/><circle r="12" fill="url(#coneg)"/>
+<circle cx="-.4" cy="-.2" r="5.6" fill="#1b1b1f"/><circle cx="-.4" cy="-.2" r="5" fill="url(#capg)"/>
+<g class="from48" fill="#6d7280" stroke="#1b1b1f" stroke-width=".3"><circle cx="-12.9" cy="-12.9" r="1"/><circle cx="12.9" cy="-12.9" r="1"/><circle cx="-12.9" cy="12.9" r="1"/><circle cx="12.9" cy="12.9" r="1"/></g>
+</g>
+<!-- The note. -->
+<path class="o" fill="url(#gloss)" d="M46.4 23.5L49.8 22.6Q51.4 28.6 56.6 31.4Q62.4 35 60 43.4Q58.6 36.4 49.8 34.2L49.8 52.5A7.4 5.6 -20 1 1 46.4 47.6Z"/>
+<path class="h from48" stroke-opacity=".55" stroke-width=".6" d="M47.2 25V46M37.4 51.6Q39.4 48.6 43.4 48.4"/>
+</svg>

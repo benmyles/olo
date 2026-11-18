@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Authentication: a brass padlock, its steel shackle closed, a key lying before it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="30" cy="59.6" r="25" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 51.85) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="lock"><path d="M7 26.8Q7 25 8.75 24.56L33.25 18.44Q35 18 36.61 18.8L43.39 22.2Q45 23 45 24.8L45 45.2Q45 47 43.25 47.44L18.75 53.56Q17 54 15.39 53.2L8.61 49.8Q7 49 7 47.2Z"/></clipPath>
+<linearGradient id="top" x1="8" y1="20" x2="40" y2="28" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffe98a"/><stop offset="1" stop-color="#fbc93a"/></linearGradient>
+<linearGradient id="front" x1="0" y1="0" x2="26" y2="24" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fcc93a"/><stop offset="1" stop-color="#e9a116"/></linearGradient>
+<linearGradient id="side" x1="7" y1="26" x2="16" y2="54" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#e3a11a"/><stop offset="1" stop-color="#b97a07"/></linearGradient>
+<linearGradient id="steel" x1="3" y1="-19" x2="25" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f6f7f9"/><stop offset="0.5" stop-color="#c3c6cf"/><stop offset="1" stop-color="#8b8f9b"/></linearGradient>
+<linearGradient id="keyg" x1="-24" y1="6" x2="8" y2="-8" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#c9ccd4"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="30" cy="59.6" rx="25" ry="3.4" fill="url(#shadow)"/>
+<path class="o" fill="#b97a07" d="M7 26.8Q7 25 8.75 24.56L33.25 18.44Q35 18 36.61 18.8L43.39 22.2Q45 23 45 24.8L45 45.2Q45 47 43.25 47.44L18.75 53.56Q17 54 15.39 53.2L8.61 49.8Q7 49 7 47.2Z"/>
+<g clip-path="url(#lock)">
+<path fill="url(#side)" d="M4 23.5L17 30L17 57L4 57Z"/>
+<path fill="url(#top)" d="M4 23.5L17 30L48 22.25L48 12L4 12Z"/>
+<g transform="matrix(1 -.25 0 1 17 30)"><path fill="url(#front)" d="M0 0H29V25H0Z"/><circle cx="14" cy="9.6" r="3.4" fill="#1b1b1f"/><path fill="#1b1b1f" d="M12.5 11L11.4 18.2H16.6L15.5 11Z"/>
+<path class="from48" fill="none" stroke="#ffe9a0" stroke-opacity=".8" stroke-width=".45" d="M16.9 11.4A3.4 3.4 0 0 0 15 6.4M16.9 18.5H11.2"/></g>
+<path class="h from48" stroke-opacity="0.5" stroke-width=".55" d="M17.6 30.1L44.2 23.45M17.3 31V53"/>
+<path class="h from48" stroke-opacity="0.3" stroke-width=".5" d="M8.6 25.9L16.4 29.9"/>
+</g>
+<!-- The shackle, through the top. -->
+<g transform="matrix(1 -.25 0 1 12 27.5)">
+<path class="o" fill="url(#steel)" d="M3.4 0V-9.4A10.6 10.6 0 0 1 24.6-9.4V0H19.4V-9.4A5.4 5.4 0 0 0 8.6-9.4V0Z"/>
+<path class="h from48" stroke-opacity=".8" stroke-width=".6" d="M4.8-2V-9.4A9.2 9.2 0 0 1 14-18.6"/>
+</g>
+<!-- The key, lying. -->
+<g transform="matrix(1 -.25 -.6 -.3 51 51.2)" fill="#6d7280" stroke="#1b1b1f" stroke-width="1.5" stroke-linejoin="round"><path d="M-6.6 2.4H-27V-2.4H-25.4V-7.4H-22.2V-2.4H-20V-5.8H-17V-2.4H-6.6Z"/><path fill-rule="evenodd" d="M-7.6 0A7.6 7.6 0 1 1 7.6 0A7.6 7.6 0 1 1-7.6 0ZM-3.4 0A3.2 3.2 0 1 0 3 0A3.2 3.2 0 1 0-3.4 0Z"/></g>
+<g transform="matrix(1 -.25 -.6 -.3 51 49.9)" fill="url(#keyg)"><path d="M-6.6 2.4H-27V-2.4H-25.4V-7.4H-22.2V-2.4H-20V-5.8H-17V-2.4H-6.6Z"/><path fill-rule="evenodd" d="M-7.6 0A7.6 7.6 0 1 1 7.6 0A7.6 7.6 0 1 1-7.6 0ZM-3.4 0A3.2 3.2 0 1 0 3 0A3.2 3.2 0 1 0-3.4 0Z"/></g>
+<g class="from48" transform="matrix(1 -.25 -.6 -.3 51 49.9)"><path class="h" stroke-opacity=".9" stroke-width=".7" d="M-25 1.2H-8"/></g>
+</svg>

@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Installer: an open cardboard box, a green arrow going down into it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="31" cy="59.8" r="25" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.03) scale(1 .13)"><stop offset="0" stop-opacity=".32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="box"><path d="M8 27Q8 25.5 9.45 25.14L32.55 19.36Q34 19 35.34 19.67L51.66 27.83Q53 28.5 53 30L53 51Q53 52.5 51.55 52.86L28.45 58.64Q27 59 25.66 58.33L9.34 50.17Q8 49.5 8 48Z"/></clipPath>
+<linearGradient id="front" x1="0" y1="0" x2="26" y2="24" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#d59a54"/><stop offset="1" stop-color="#b77a36"/></linearGradient>
+<linearGradient id="side" x1="9" y1="28" x2="24" y2="56" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#b98040"/><stop offset="1" stop-color="#95602a"/></linearGradient>
+<linearGradient id="hollow" x1="14" y1="22" x2="44" y2="34" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#5b3a17"/><stop offset="1" stop-color="#8a5d2a"/></linearGradient>
+<linearGradient id="flap" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f0c388"/><stop offset="1" stop-color="#d8a05c"/></linearGradient>
+<linearGradient id="green" x1="4" y1="0" x2="22" y2="26" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#7beb70"/><stop offset=".5" stop-color="#3fc640"/><stop offset="1" stop-color="#1d9a29"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="31" cy="59.8" rx="25" ry="3.4" fill="url(#shadow)"/>
+<!-- The flaps at the back: the back one up, the right one out. -->
+<path class="o" fill="url(#flap)" d="M9 27L34 20.5L31.5 11L6.5 17.5Z"/>
+<path class="o" fill="#c98f4c" d="M34 20.5L53 30L61 26L42 16.5Z"/>
+<!-- The box: its side, its hollow, its front. -->
+<path class="o" fill="#95602a" d="M8 27Q8 25.5 9.45 25.14L32.55 19.36Q34 19 35.34 19.67L51.66 27.83Q53 28.5 53 30L53 51Q53 52.5 51.55 52.86L28.45 58.64Q27 59 25.66 58.33L9.34 50.17Q8 49.5 8 48Z"/>
+<g clip-path="url(#box)">
+<path fill="url(#side)" d="M0 22.5L27 36L27 64L0 64Z"/>
+<path fill="url(#hollow)" d="M0 22.5L27 36L64 26.75L64 0L0 0Z"/>
+<g transform="matrix(1 -.25 0 1 27 36)"><path fill="url(#front)" d="M0 0H28V26H0Z"/></g>
+</g>
+<!-- The arrow, going in. -->
+<g transform="matrix(1 -.25 0 1 15.5 10.5)">
+<path class="o" fill="#14761f" d="M8 0L20 0L20 13L27 13L14 27L1 13L8 13ZM5 -2.25L17 -2.25L17 10.75L24 10.75L11 24.75L-2 10.75L5 10.75ZM5 -2.25L17 -2.25L20 0L8 0ZM20 0L20 13L17 10.75L17 -2.25ZM17 10.75L24 10.75L27 13L20 13ZM27 13L14 27L11 24.75L24 10.75ZM11 24.75L-2 10.75L1 13L14 27ZM-2 10.75L5 10.75L8 13L1 13ZM5 10.75L5 -2.25L8 0L8 13Z"/>
+<path fill="#b4f5ab" d="M5 -2.25L17 -2.25L20 0L8 0ZM17 10.75L24 10.75L27 13L20 13ZM-2 10.75L5 10.75L8 13L1 13Z"/>
+<path fill="url(#green)" d="M8 0L20 0L20 13L27 13L14 27L1 13L8 13Z"/>
+<path class="h from48" stroke-opacity=".6" stroke-width=".5" d="M8.6.6H19.4M8.6.8V12.6M2.4 13.6H8"/>
+</g>
+<!-- The flaps in front: the left one out, the front one down. -->
+<path class="o" fill="url(#flap)" d="M8 27L27 36L21 42L2 33Z"/>
+<path class="o" fill="url(#flap)" d="M27 36L53 29.5L57.5 37L31.5 43.5Z"/>
+<path class="h from48" stroke-opacity=".5" stroke-width=".5" d="M27.6 36.5L52.6 30.25M8.8 27.8L26.4 36.2"/>
+</svg>

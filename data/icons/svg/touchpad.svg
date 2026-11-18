@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Touchpad: a silver pad tipped up toward us, a finger on it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="32" cy="58.8" r="27" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 51.16) scale(1 .13)"><stop offset="0" stop-opacity=".32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="pad" x1="0" y1="0" x2="44" y2="24" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#eceef2"/><stop offset="1" stop-color="#b9bcc6"/></linearGradient>
+<linearGradient id="skin" x1="0" y1="-6" x2="0" y2="6" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffd9bb"/><stop offset=".55" stop-color="#f7b48d"/><stop offset="1" stop-color="#dc8e64"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="32" cy="58.8" rx="27" ry="3.4" fill="url(#shadow)"/>
+<!-- The pad: its thickness, its face in its own plane (44 by 24). -->
+<path class="o" fill="#8a8e99" d="M4 32.6Q3.4 31.4 4.7 31.1L46.9 20.5Q48.2 20.2 48.8 21.4L60.3 44.4Q60.6 45 60.6 45.6L60.6 47.4Q60.6 48.6 59.3 48.9L17.1 59.5Q15.8 59.8 15.2 58.6L4.3 36.8Q4 36.2 4 35.6Z"/>
+<g transform="matrix(1 -.25 .5 1 4 32)">
+<rect x="0" y="0" width="44" height="24" rx="1.6" fill="url(#pad)"/>
+<rect class="from32" x="2.4" y="2.2" width="39.2" height="19.6" rx="1" fill="none" stroke="#8a8e99" stroke-width=".6"/>
+<path class="h from48" stroke-opacity=".7" stroke-width=".45" d="M.8 22.8V1.6Q.8 .8 1.6 .8H42.6"/>
+</g>
+<!-- The finger, along its own axis, its tip on the pad. -->
+<ellipse class="from48" cx="34.5" cy="41.4" rx="7" ry="2.7" fill="#1b1b1f" fill-opacity=".2"/>
+<g transform="translate(34 37) rotate(-50.8)">
+<path class="o" fill="url(#skin)" d="M32-6.4L15-5.9Q13-6.5 11-5.6L2-5.2A5.2 5.2 0 0 0 2 5.2L32 6.4Q33.4 0 32-6.4Z"/>
+<rect class="from32" x="-2.7" y="-4" width="8" height="6.2" rx="2.7" fill="#ffeee6" stroke="#c98a6a" stroke-width=".45"/>
+<path class="from48" fill="#fff" fill-opacity=".8" d="M-1.4-2.6Q1-3.4 3.6-3L3.4-2Q1-2.4-1-1.6Z"/>
+<path class="from48" fill="none" stroke="#c98a6a" stroke-width=".5" stroke-linecap="round" d="M12.4-4.6Q13.6-1.8 12.8.6M14.6-4.8Q15.8-2 15 .4M23-5.2Q24-2.6 23.4-.6"/>
+<path class="h from48" stroke-opacity=".55" stroke-width=".5" d="M8-4.5L30-5.4"/>
+</g>
+</svg>

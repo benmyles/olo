@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- AI: a chip, a blue four-pointed star standing on it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="32" cy="59" r="27" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 51.33) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="board"><path d="M6 36.7Q6 35.5 7.16 35.21L34.84 28.29Q36 28 37.07 28.54L56.93 38.46Q58 39 58 40.2L58 42.8Q58 44 56.84 44.29L29.16 51.21Q28 51.5 26.93 50.96L7.07 41.04Q6 40.5 6 39.3Z"/></clipPath>
+<clipPath id="lid"><path d="M12.4 35Q12.4 34.3 13.37 34.06L33.43 29.04Q34.4 28.8 35.29 29.25L50.71 36.95Q51.6 37.4 51.6 38.1L51.6 38.1Q51.6 38.8 50.63 39.04L30.57 44.06Q29.6 44.3 28.71 43.85L13.29 36.15Q12.4 35.7 12.4 35Z"/></clipPath>
+</defs>
+<ellipse class="from48" cx="32" cy="59" rx="27" ry="3.4" fill="url(#shadow)"/>
+<path class="o" fill="#6b6e79" d="M6 36.7Q6 35.5 7.16 35.21L34.84 28.29Q36 28 37.07 28.54L56.93 38.46Q58 39 58 40.2L58 42.8Q58 44 56.84 44.29L29.16 51.21Q28 51.5 26.93 50.96L7.07 41.04Q6 40.5 6 39.3Z"/>
+<g clip-path="url(#board)">
+<path fill="#6b6e79" d="M3 34L28 46.5L28 54.5L3 54.5Z"/>
+<path fill="#d9dbe1" d="M3 34L28 46.5L61 38.25L61 22L3 22Z"/>
+<g transform="matrix(1 -.25 0 1 28 46.5)"><path fill="#9a9da8" d="M0 0H31V6H0Z"/></g>
+<path class="h from48" stroke-opacity="0.5" stroke-width=".55" d="M28.6 46.6L57.2 39.45M28.3 47.5V50.5"/>
+<path class="h from48" stroke-opacity="0.3" stroke-width=".5" d="M7.6 36.4L27.4 46.4"/>
+</g>
+<g transform="matrix(1 -.25 0 1 28 46.5)"><path class="o" fill="#f7c531" d="M2.2 1.4h2.6v6.8h-2.6z"/><path class="from48" fill="#ffe98a" d="M2.5 1.4h.8v6.5h-.8z"/><path class="o" fill="#f7c531" d="M7.95 1.4h2.6v6.8h-2.6z"/><path class="from48" fill="#ffe98a" d="M8.25 1.4h.8v6.5h-.8z"/><path class="o" fill="#f7c531" d="M13.7 1.4h2.6v6.8h-2.6z"/><path class="from48" fill="#ffe98a" d="M14 1.4h.8v6.5h-.8z"/><path class="o" fill="#f7c531" d="M19.45 1.4h2.6v6.8h-2.6z"/><path class="from48" fill="#ffe98a" d="M19.75 1.4h.8v6.5h-.8z"/><path class="o" fill="#f7c531" d="M25.2 1.4h2.6v6.8h-2.6z"/><path class="from48" fill="#ffe98a" d="M25.5 1.4h.8v6.5h-.8z"/></g>
+<g transform="matrix(1 .5 0 1 6 35.5)"><path class="o" fill="#f7c531" d="M2 1.4h2.6v6.8h-2.6z"/><path class="from48" fill="#ffe98a" d="M2.3 1.4h.8v6.5h-.8z"/><path class="o" fill="#f7c531" d="M7.13 1.4h2.6v6.8h-2.6z"/><path class="from48" fill="#ffe98a" d="M7.43 1.4h.8v6.5h-.8z"/><path class="o" fill="#f7c531" d="M12.27 1.4h2.6v6.8h-2.6z"/><path class="from48" fill="#ffe98a" d="M12.57 1.4h.8v6.5h-.8z"/><path class="o" fill="#f7c531" d="M17.4 1.4h2.6v6.8h-2.6z"/><path class="from48" fill="#ffe98a" d="M17.7 1.4h.8v6.5h-.8z"/></g>
+<path class="o" fill="#8d919c" d="M12.4 35Q12.4 34.3 13.37 34.06L33.43 29.04Q34.4 28.8 35.29 29.25L50.71 36.95Q51.6 37.4 51.6 38.1L51.6 38.1Q51.6 38.8 50.63 39.04L30.57 44.06Q29.6 44.3 28.71 43.85L13.29 36.15Q12.4 35.7 12.4 35Z"/>
+<g clip-path="url(#lid)">
+<path fill="#8d919c" d="M9.4 32.8L29.6 42.9L29.6 47.3L9.4 47.3Z"/>
+<path fill="#eceef2" d="M9.4 32.8L29.6 42.9L54.6 36.65L54.6 22.8L9.4 22.8Z"/>
+<g transform="matrix(1 -.25 0 1 29.6 42.9)"><path fill="#b4b7c1" d="M0 0H23V2.4H0Z"/></g>
+<path class="h from48" stroke-opacity="0.7" stroke-width=".55" d="M30.2 43L50.8 37.85M29.9 43.9V43.3"/>
+<path class="h from48" stroke-opacity="0.42" stroke-width=".5" d="M14 35.2L29 42.8"/>
+</g>
+<ellipse class="from48" cx="32" cy="36.45" rx="6" ry="2" fill="#1b1b1f" fill-opacity=".22"/>
+<!-- The star, cut like a gem. -->
+<g transform="matrix(1 -.25 0 1 32 21.35)">
+<path class="o" fill="#2380f4" d="M0 -17.5L3.9 -3.9L13.5 0L3.9 3.5L0 14L-3.9 3.5L-13.5 0L-3.9 -3.9Z"/>
+<path fill="#a9dbff" d="M0-17.5L0-.2L-13.5 0L-3.9-3.9Z"/>
+<path fill="#4ea4ff" d="M0-17.5L3.9-3.9L13.5 0L0-.2Z"/>
+<path fill="#2c84f2" d="M-13.5 0L0-.2L0 14L-3.9 3.5Z"/>
+<path fill="#0f5ad0" d="M13.5 0L3.9 3.5L0 14L0-.2Z"/>
+<path class="h from48" stroke-opacity=".8" stroke-width=".45" d="M-.7-14.5L-4.2-4.3L-11-.6"/>
+</g>
+</svg>

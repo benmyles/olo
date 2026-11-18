@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Bluetooth: a thick blue badge standing, its rune white on it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="33" cy="60" r="23" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.2) scale(1 .13)"><stop offset="0" stop-opacity=".32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="face" x1="-16" y1="-18" x2="14" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#4c9dff"/><stop offset=".5" stop-color="#1f70ee"/><stop offset="1" stop-color="#0b4cc0"/></linearGradient>
+<linearGradient id="side" x1="-28" y1="-20" x2="-20" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1558cc"/><stop offset="1" stop-color="#083a98"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="33" cy="60" rx="23" ry="3.4" fill="url(#shadow)"/>
+<g transform="matrix(1 -.25 0 1 35.5 34.5)">
+<path class="o" fill="url(#side)" d="M14.4 -19.2A24 24 0 0 1 -14.4 19.2L-19.4 15.45A24 24 0 0 1 9.4 -22.95Z"/>
+<circle cx="0" cy="0" r="24" fill="url(#face)"/>
+<path class="h from48" stroke-opacity=".55" stroke-width=".55" d="M-22.56 4.8A23.4 23.4 0 0 1 6 -22.32"/>
+<g fill="none" stroke-linejoin="round" stroke-linecap="round"><path class="from48" stroke="#062f7e" stroke-width="5.4" d="M-7.5-7L7.5 7L0 14V-14L7.5-7L-7.5 7"/><path class="from48" stroke="#fff" stroke-width="3.4" d="M-7.5-7L7.5 7L0 14V-14L7.5-7L-7.5 7"/><path class="upto32" stroke="#fff" stroke-width="4.4" d="M-7.5-7L7.5 7L0 14V-14L7.5-7L-7.5 7"/></g>
+</g>
+</svg>

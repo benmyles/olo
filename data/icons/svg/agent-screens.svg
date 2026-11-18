@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Agent Screens: a CRT monitor, a window on its screen and two pointers, the person's white and the agent's green. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="36" cy="59.5" r="26" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 51.5) scale(1 .135)"><stop offset="0" stop-opacity=".34"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<clipPath id="body"><path d="M12 13.5Q12 12 13.4 11.46L32.6 4.04Q34 3.5 35.48 3.73L58.02 7.2Q60 7.5 60 9.5L60 42.5Q60 45 57.57 45.61L23.46 54.14Q22 54.5 20.77 53.64L13.23 48.36Q12 47.5 12 46Z"/></clipPath>
+<linearGradient id="top" x1="20" y1="6" x2="44" y2="14" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f2efe9"/><stop offset="1" stop-color="#dedad3"/></linearGradient>
+<linearGradient id="front" x1="0" y1="0" x2="38" y2="38" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#d6d2cb"/><stop offset="1" stop-color="#b4b0a9"/></linearGradient>
+<linearGradient id="left" x1="12" y1="14" x2="22" y2="52" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#b6b3ad"/><stop offset="1" stop-color="#96938e"/></linearGradient>
+<linearGradient id="tube" x1="4" y1="19" x2="11" y2="43" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#928f8a"/><stop offset="1" stop-color="#6f6c68"/></linearGradient>
+<linearGradient id="shine" x1="6" y1="8" x2="16" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity=".3"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<linearGradient id="plate" x1="40" y1="49.6" x2="41" y2="53.6" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6b6864"/><stop offset=".4" stop-color="#b9b5ae"/><stop offset="1" stop-color="#dad6cf"/></linearGradient>
+<linearGradient id="platefront" x1="40" y1="53.5" x2="40.8" y2="57.5" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#c2beb7"/><stop offset="1" stop-color="#a39f98"/></linearGradient>
+<linearGradient id="glass" x1="5" y1="6" x2="32" y2="30" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#4f9bff"/><stop offset="0.5" stop-color="#1f6fe8"/><stop offset="1" stop-color="#1552c4"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="36" cy="59.5" rx="26" ry="3.5" fill="url(#shadow)"/>
+<!-- The stand. -->
+<path class="o" fill="#8f8c86" d="M13 50L56 46L56 48.9Q56 49.5 56 50.1L56 51.3Q56 52.8 54.54 53.16L25.16 60.51Q24 60.8 22.93 60.26L14.07 55.84Q13 55.3 13 54.1Z"/>
+<path fill="url(#plate)" d="M13 52L24 57.5L56 49.5L56 44L13 46Z"/>
+<path fill="url(#platefront)" d="M24 57.5L56 49.5L56 51.3Q56 52.8 54.54 53.16L25.16 60.51Q24 60.8 24 59.8Z"/>
+<path class="h from48" stroke-opacity=".55" stroke-width=".5" d="M24.3 57.65L55.7 49.8"/>
+<!-- The tube's housing, behind. -->
+<path class="o" fill="url(#tube)" d="M13 14.2L5.2 18.4Q4 19 4 20.4L4 37Q4 38.4 5 39.2L13 46.2Z"/>
+<path class="from32" fill="#aeaba5" d="M13 14.2L5.2 18.4Q4.2 18.9 4.05 20L13 15.9Z"/>
+<g class="from48" stroke="#3f3d3a" stroke-width=".95" stroke-linecap="round"><path d="M6.4 27.4L10.6 29.6M6.4 30L10.6 32.2M6.4 32.6L10.6 34.8M6.4 35.2L10.6 37.4M6.4 37.8L10.6 40"/></g>
+<!-- The body: its left side, its top, its front. -->
+<path class="o" fill="#c4c0b9" d="M12 13.5Q12 12 13.4 11.46L32.6 4.04Q34 3.5 35.48 3.73L58.02 7.2Q60 7.5 60 9.5L60 42.5Q60 45 57.57 45.61L23.46 54.14Q22 54.5 20.77 53.64L13.23 48.36Q12 47.5 12 46Z"/>
+<g clip-path="url(#body)">
+<path fill="url(#left)" d="M0 6L22 17L22 64L0 64Z"/>
+<path fill="url(#top)" d="M0 6L22 17L64 6.5L64 0L0 0Z"/>
+<!-- The front, in its own plane: 38 wide, rising one in four. -->
+<g transform="matrix(1 -.25 0 1 22 17)">
+<path fill="url(#front)" d="M0 0H42V40H0Z"/>
+<!-- The screen: its recess (the walls seen: right and bottom), its dark frame, its glass. -->
+<path fill="#e6e1d8" d="M2.8 4.4H35.8V32H2.8Z"/>
+<path class="from48" fill="none" stroke="#8a8782" stroke-width=".5" d="M35.8 4.4H2.8V32"/>
+<rect x="3.3" y="4.9" width="30.4" height="26" rx="1.5" fill="#13161a"/>
+<rect x="4.8" y="6.5" width="27.6" height="22.9" rx="2.6" fill="url(#glass)"/>
+<!-- A window on it, and two pointers: the person's, and the agent's. -->
+<g class="from48"><path fill="#ffcb12" stroke="#1b1b1f" stroke-opacity=".6" stroke-width=".35" d="M8.4 9.6H17V12.6H8.4Z"/><path fill="#f6f7fa" stroke="#1b1b1f" stroke-opacity=".6" stroke-width=".35" d="M8.4 12.4H27V23.4H8.4Z"/>
+<path transform="translate(15.4 15.6) scale(.86)" fill="#fff" stroke="#1b1b1f" stroke-width=".6" stroke-linejoin="round" d="M0 0V8.4L2.2 6.4L3.8 9.8L5.4 9L3.9 5.8H6.8Z"/>
+<path transform="translate(21.6 17.8) scale(.98)" fill="#3fd24a" stroke="#1b1b1f" stroke-width=".6" stroke-linejoin="round" d="M0 0V8.4L2.2 6.4L3.8 9.8L5.4 9L3.9 5.8H6.8Z"/></g>
+<g class="upto32"><path fill="#ffcb12" d="M7.6 9H18V13H7.6Z"/><path fill="#f6f7fa" d="M7.6 13H24V22H7.6Z"/><path transform="translate(17 13.6) scale(1.7)" fill="#49e054" stroke="#1b1b1f" stroke-width=".7" stroke-linejoin="round" d="M0 0V8.4L2.2 6.4L3.8 9.8L5.4 9L3.9 5.8H6.8Z"/></g>
+<path class="from48" fill="url(#shine)" d="M5.5 9.3Q5.5 7.2 7.6 7.2H22Q11 11.5 6 23Z"/>
+<!-- The power light. -->
+<g class="from48"><rect x="33.3" y="34.2" width="3" height="1.7" fill="#35c93c" stroke="#14501a" stroke-width=".35"/><path class="h" stroke="#b9ffbd" stroke-opacity=".8" stroke-width=".3" d="M33.8 34.7H35.8"/></g>
+<rect class="upto32" x="32" y="33.4" width="4" height="2.6" fill="#3ddc45"/>
+</g>
+<path class="h from48" stroke-opacity=".6" stroke-width=".55" d="M22.6 17.1L59.2 7.95M22.25 18L22.25 53"/>
+<path class="h from48" stroke-opacity=".35" stroke-width=".5" d="M13.6 12.7L21.4 16.6"/>
+</g>
+</svg>
