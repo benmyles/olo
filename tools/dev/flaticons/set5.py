@@ -37,3 +37,14 @@ def _():
 def _(): return [P("M15 16L20 6L30 10L27 18Z", G200, extra=RIMMED), P("M28 17L36 5L46 9.5L43.5 18Z", G300, extra=RIMMED), P("M21 16L26 9L36 11.5L34 18Z", PAPER, extra=RIMMED), R(9, 14, 46, 7, 3, G500), P("M13 23H51L48 55Q47.6 59 43.6 59H20.4Q16.4 59 16 55Z", G400), L(24, 29, 25, 51, G500, 2.6, "from24"), L(32, 29, 32, 51, G500, 2.6, "from24"), L(40, 29, 39, 51, G500, 2.6, "from24")]
 @icon("video", "Video")
 def _(): return [R(6, 24, 52, 34, 4, G800), G([R(6, 12, 49, 11, 2, G700)] + [poly([(10 + i * 11.5, 12), (16.5 + i * 11.5, 12), (12 + i * 11.5, 23), (5.5 + i * 11.5, 23)], PAPER) for i in range(1, 5)], "rotate(-8 6 24)"), poly([(27, 33), (27, 50), (41, 41.5)], WHITE)]
+@icon("calendar", "Calendar")
+def _():
+    out = [R(7, 10, 50, 48, 7, PAPER, extra=RIMMED), P("M7 25V17A7 7 0 0 1 14 10H50A7 7 0 0 1 57 17V25Z", RED)]
+    out += [R(18, 5, 5, 11, 2.5, G600, "from24"), R(41, 5, 5, 11, 2.5, G600, "from24")]
+    for r in range(3):
+        for c in range(4):
+            out.append(R(12.5 + c * 10, 30 + r * 8.5, 7, 6, 1.5, BLUE if (r, c) == (1, 2) else G300, "from32"))
+    for r in range(2):
+        for c in range(2):
+            out.append(R(13 + c * 20, 30 + r * 13, 18, 10, 2, BLUE if (r, c) == (1, 1) else G300, "upto24"))
+    return out

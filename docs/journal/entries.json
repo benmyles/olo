@@ -4942,5 +4942,11 @@
   "title": "Preferences \u25b8 Integrations \u25b8 Calendars: accounts for Calendar",
   "caption": "Add an Account\u2026 \u25b8 Google\u2026, Fastmail\u2026 or Another CalDAV Server\u2026. Google's is a sign-in in the browser with your own client (the one DiskBackup's Drive set-up made is found by itself; here none is, so its ID and secret are asked for); Fastmail's an app password. What's typed is tried first, then kept in the login keyring; Calendar shows the account's calendars the moment it's added.",
   "image": "2026-11-18/123237-preferences-integrations-calendars-accounts-for-.png"
+ },
+ {
+  "time": "2026-11-18T12:52:13",
+  "title": "Calendar's icon",
+  "caption": "A block calendar standing: a red binding over a leaf of days, one of them today. Drawn for each size (at 16 pixels, four days; at 32, six; the whole month from 48), in the set's projection and light; below it in Platinum's, BeOS's, AmigaOS's and Aqua's colours, and the Flat set's own drawing, straight on.",
+  "image": "2026-11-18/125213-calendar-s-icon.png"
  }
 ]

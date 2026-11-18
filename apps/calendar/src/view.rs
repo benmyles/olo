@@ -147,7 +147,7 @@ fn views(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
     let e = edge(cx);
     let content = if !v.loading && v.sources.is_empty() {
         EmptyState::new("No calendars yet")
-            .icon("datetime")
+            .icon("calendar")
             .detail("Connect a Google or Fastmail account (or any CalDAV server) in Preferences, and its calendars show here, all together.")
             .action("Add an Account…", |_: &ClickEvent, _| olo_kit::app_menu::open_settings("integrations"))
             .into_element()

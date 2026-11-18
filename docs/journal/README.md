@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Calendar's icon
+
+*12:52* — A block calendar standing: a red binding over a leaf of days, one of them today. Drawn for each size (at 16 pixels, four days; at 32, six; the whole month from 48), in the set's projection and light; below it in Platinum's, BeOS's, AmigaOS's and Aqua's colours, and the Flat set's own drawing, straight on.
+
+![Calendar's icon](2026-11-18/125213-calendar-s-icon.png)
+
 ### Preferences ▸ Integrations ▸ Calendars: accounts for Calendar
 
 *12:32* — Add an Account… ▸ Google…, Fastmail… or Another CalDAV Server…. Google's is a sign-in in the browser with your own client (the one DiskBackup's Drive set-up made is found by itself; here none is, so its ID and secret are asked for); Fastmail's an app password. What's typed is tried first, then kept in the login keyring; Calendar shows the account's calendars the moment it's added.

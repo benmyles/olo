@@ -60,7 +60,7 @@ fn lines(v: &Calendar) -> Vec<Line> {
 pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
     let all = lines(v);
     if all.is_empty() {
-        return EmptyState::new("Nothing on").icon("datetime").detail(format!("Nothing in the {} weeks from {}.", crate::view::AGENDA_DAYS / 7, words::long_day(v.cursor))).into_element();
+        return EmptyState::new("Nothing on").icon("calendar").detail(format!("Nothing in the {} weeks from {}.", crate::view::AGENDA_DAYS / 7, words::long_day(v.cursor))).into_element();
     }
     let height: f32 = all.iter().map(|l| l.tall()).sum::<f32>() + m::TIGHT;
     let list = cx

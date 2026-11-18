@@ -343,7 +343,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         },
     };
     let mut items: Vec<Element> =
-        vec![service("datetime", "Calendar shows these accounts’ calendars together, each in its colour, and writes what you change back to where it lives.", status).into_element()];
+        vec![service("calendar", "Calendar shows these accounts’ calendars together, each in its colour, and writes what you change back to where it lives.", status).into_element()];
     for (account, stands) in listed.iter().flatten() {
         let how = match stands {
             Stands::Checking => "checking…".to_owned(),

@@ -27,8 +27,7 @@ pub const OUR_APPS: &[(&str, &str, &str)] = &[
     ("olo-weather", "Weather", "weather"),
     ("olo-speedtest", "Speed Test", "speed-test"),
     ("olo-kache", "Kache", "kache"),
-    // (Date & Time's icon until it has one of its own.)
-    ("olo-calendar", "Calendar", "datetime"),
+    ("olo-calendar", "Calendar", "calendar"),
 ];
 
 /// Our apps that are a web app in Olo's Chrome (olo-slack): the Wayland

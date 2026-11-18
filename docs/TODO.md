@@ -102,8 +102,8 @@ something nobody here has is in "Blocked", with what it waits for.
   in (the client DiskBackup's Drive set-up made is found, the CalDAV
   API to be turned on in its project), Fastmail's by an app password,
   any other CalDAV server's; tried against a stand-in server end to
-  end. **Next**: an icon of its own (Date & Time's stands in);
-  dragging an event to another time,
+  end. Its own icon (a block calendar, in every set; Flat's its own
+  drawing). **Next**: dragging an event to another time,
   Find, Undo of a deletion, invitations (who's coming, answering);
   reminders, the Deskbar widget, the palette, the assistant; in-place
   reload tried; its cost measured.

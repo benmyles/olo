@@ -66,7 +66,10 @@ icons were pictures from an image model, shrunk to eight sizes
 turned down, at true size: the picture shrunk better, a second picture
 drawn for small sizes, flat drawings, pixel art. The pictures and their
 tools are gone (they're in the repository's history; the 181 drawings
-were each written from looking at its picture).
+were each written from looking at its picture; icons since, Calendar's
+the first, are drawn as drawings from the start: looked at on
+`icontrace.py review`'s sheet beside their neighbours, in every set
+(`svgicon --theme ID`), and at 16 to 40 pixels enlarged).
 
 **The grid.** `viewBox="0 0 64 64"`. The object's paths keep within 3
 and 61 both ways, so that with its outline it's within 2 and 62 (the
@@ -212,7 +215,7 @@ hand-built SVGs for each icon set". So:
   was perfect don't change that").
 
 **The Flat set** is the one set of drawings of its own
-(`data/themes/flat/icons/svg/`, 180: every icon but the brand's ring;
+(`data/themes/flat/icons/svg/`, 181: every icon but the brand's ring;
 other people's marks from `tools/dev/markicons`, below): Ben, 2026-11-17, "generate and add a modern
 flat icon pack", and, of a first one made by recolouring the angled
 drawings, "the idea of the flat ones is that they would also be front
