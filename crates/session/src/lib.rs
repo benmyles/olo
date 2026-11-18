@@ -68,7 +68,8 @@ const SHELL: &[&[&str]] = &[&["olo-deskbar"], &["olo-tracker", "--desktop"]];
 /// to the browsers; olo-secrets answers
 /// for the login keyring (nothing of GNOME's); Terminal's tab
 /// title service for coding agents listens on another loopback port;
-/// DiskBackup backs up this computer's disk (only the logged-in session's).
+/// DiskBackup backs up this computer's disk (only the logged-in session's);
+/// Calendar's service reminds of the person's events.
 const REAL_SHELL: &[&[&str]] = &[
     &["olo-polkit-agent"],
     &["olo-notifications"],
@@ -84,6 +85,9 @@ const REAL_SHELL: &[&[&str]] = &[
     // DiskBackup's service: asleep until a backup is due (nothing at all
     // until it's set up).
     &["olo-diskbackup", "--service"],
+    // Calendar's reminders: asleep until one is due or its servers are
+    // to be asked again (with no account, until one is added).
+    &["olo-calendar", "--service"],
     // The SSH agent (Passwords without a window; it exits, not wanted,
     // with the agent turned off).
     &["olo-passwords", "--agent"],

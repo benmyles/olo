@@ -156,17 +156,19 @@ impl Standin {
         s.add_calendar("holidays", "Holidays", Some("#8E24AA"));
         s.set_read_only("holidays", true);
         put("personal", timed(at(-7, 7, 0), at(-7, 7, 45), "Run", "RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR"));
-        put("personal", timed(at(1, 15, 0), at(1, 16, 0), "Dentist", "LOCATION:Tandartspraktijk Centrum"));
+        // (Reminders, as a DISPLAY alarm so long before.)
+        let remind = |before: &str| format!("BEGIN:VALARM\nACTION:DISPLAY\nDESCRIPTION:Reminder\nTRIGGER:-{before}\nEND:VALARM");
+        put("personal", timed(at(1, 15, 0), at(1, 16, 0), "Dentist", &format!("LOCATION:Tandartspraktijk Centrum\n{}", remind("PT1H"))));
         put("personal", timed(at(4, 19, 30), at(4, 22, 0), "Dinner with Dana", "LOCATION:De Kas"));
         put("personal", days(date(5), date(7), "Weekend on Texel", ""));
         put("personal", days(date(3), date(4), "Sam’s birthday", "RRULE:FREQ=YEARLY"));
         put("personal", timed(at(2, 20, 0), at(2, 21, 30), "Choir", "RRULE:FREQ=WEEKLY"));
-        put("personal", timed(at(9, 18, 10), at(9, 20, 25), "Flight to Lisbon", "LOCATION:AMS → LIS"));
-        put("work", timed(at(-7, 9, 30), at(-7, 9, 45), "Standup", "RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"));
+        put("personal", timed(at(9, 18, 10), at(9, 20, 25), "Flight to Lisbon", &format!("LOCATION:AMS → LIS\n{}\n{}", remind("P1D"), remind("PT3H"))));
+        put("work", timed(at(-7, 9, 30), at(-7, 9, 45), "Standup", &format!("RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR\n{}", remind("PT5M"))));
         put("work", timed(at(0, 13, 0), at(0, 15, 0), "Planning", "LOCATION:Room 4"));
         put("work", timed(at(0, 14, 0), at(0, 15, 0), "Budget call", ""));
         put("work", timed(at(1, 11, 0), at(1, 11, 30), "1:1 with Kim", "RRULE:FREQ=WEEKLY"));
-        put("work", timed(at(2, 14, 0), at(2, 15, 30), "Design review", "LOCATION:Room 2\nDESCRIPTION:The new month view\\, and what’s left of the week’s."));
+        put("work", timed(at(2, 14, 0), at(2, 15, 30), "Design review", &format!("LOCATION:Room 2\nDESCRIPTION:The new month view\\, and what’s left of the week’s.\n{}", remind("PT15M"))));
         put("work", timed(at(2, 15, 0), at(2, 15, 45), "Interview", ""));
         put("work", timed(at(2, 15, 30), at(2, 16, 30), "Retro", ""));
         put("work", days(date(3), date(4), "Release 2.4", ""));

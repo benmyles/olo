@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Calendar's reminders
+
+*13:10* — An event's reminders show at their time, from a service the session keeps (no window needed): the title, its calendar, how far off it is and when, where. Show opens Calendar on the day with the event selected. One missed while the computer slept still shows while its event isn't over.
+
+![Calendar's reminders](2026-11-18/131026-calendar-s-reminders.png)
+
 ### Calendar's icon
 
 *12:52* — A block calendar standing: a red binding over a leaf of days, one of them today. Drawn for each size (at 16 pixels, four days; at 32, six; the whole month from 48), in the set's projection and light; below it in Platinum's, BeOS's, AmigaOS's and Aqua's colours, and the Flat set's own drawing, straight on.

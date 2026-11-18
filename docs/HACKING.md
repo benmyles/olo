@@ -20782,6 +20782,54 @@ things stand with the servers.
   `show:NAME` / `hide:NAME`, `new-event` (⌘N), `new-event:
   2026-11-20T14:00`, `edit-event` (⌘E), `delete-event` (⌘⌫).
 
+**Reminders** (`apps/calendar/src/service.rs`): `olo-calendar
+--service` is one of a real session's services (`REAL_SHELL`), with no
+window. It shows each reminder an event has (its `VALARM`s, as
+`Event::alarms`: seconds before the start) at its time, as a
+notification that stays until it's dismissed: the event's title, its
+calendar (the card's subtitle, and its colour the card's accent), and
+"In 15 minutes · 2 PM – 3:30 PM · Room 2" (`service::said`; each part
+kept whole where the card wraps). Show, or a click on it, starts
+`olo-calendar --show HREF START`, which the window running takes as a
+launch (`Msg::Reveal`): it goes to the day and selects the occurrence
+once it's among those worked out; the same from Notifications' history
+later (`Note::shows`). The service also keeps the calendars in step
+with their servers every quarter of an hour while the window is shut
+(the same `sync::sync`, saved to the same folder: each save is a whole
+calendar with the token it was read at, so the window's and the
+service's never mix). `service::reminders(book, choices, from, zone)`
+is the list: every reminder of every occurrence in the two days from
+now, of the calendars shown (a hidden calendar reminds of nothing, a
+cancelled event neither), soonest first; one that fell due while the
+computer was off or asleep is still shown while its event isn't over
+(not one begun more than twelve hours ago). Which were shown is kept
+(`~/.local/state/olo/calendar/reminded.json`, by event, occurrence and
+how long before), so a restart or an upgrade shows none twice. It
+sleeps on the kit's `clock::Alarm` until the next is due or the
+servers are, woken when the accounts, the choices (`calendar.json`) or
+what's kept change (`olo_kit::watch`); the calendars are read from
+disk at each waking and let go, so asleep it holds nothing of them.
+Measured (release, two events with reminders on a stand-in server):
+waiting, 0.0% of a core and 0 wakeups a second, 19 MB resident; the
+reminder set for 13:07:10 shown within the second. Tried in a test
+session with `olo-notifications --bus` on the session's own bus (see
+AGENT-NOTES, "Notifications in a test session"), the accounts and
+keyring a test's own (`OLO_CALENDAR_ACCOUNTS`, `OLO_CALENDAR_SECRETS`)
+and `XDG_CACHE_HOME`, `XDG_STATE_HOME` in scratch. Not known yet:
+whether Google's CalDAV gives the calendar's default reminders as
+`VALARM`s (an event with its own does).
+
+**A wait for a time on the clock** (`olo_kit::clock::Alarm`,
+kit-base): `Alarm::new()`, `wait(Some(unix_seconds))` or `wait(None)`,
+`waker().wake()` from any thread; it answers `Woke::Due`, `Woken` or
+`ClockSet` (the clock was set: look at the time again). For a program
+with a loop of its own that must do something at an hour: the kernel's
+timer on the real-time clock (`timerfd`, `TFD_TIMER_ABSTIME`,
+`TFD_TIMER_CANCEL_ON_SET`), so it's on time after the computer slept
+(a `sleep` or a condition's timeout counts running time only: late by
+the length of the sleep) and nothing ticks meanwhile. A view uses its
+`Cx`'s timers; this is for services.
+
 **Measured** (release, the demo, a 2× headless screen, `tools/dev/cost`):
 at rest in every view, 0 frames, 0.0% of a core, no wakeups (its
 status is said by the minute: "Updated 12 s ago" drew a frame a second

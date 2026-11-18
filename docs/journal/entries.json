@@ -4948,5 +4948,11 @@
   "title": "Calendar's icon",
   "caption": "A block calendar standing: a red binding over a leaf of days, one of them today. Drawn for each size (at 16 pixels, four days; at 32, six; the whole month from 48), in the set's projection and light; below it in Platinum's, BeOS's, AmigaOS's and Aqua's colours, and the Flat set's own drawing, straight on.",
   "image": "2026-11-18/125213-calendar-s-icon.png"
+ },
+ {
+  "time": "2026-11-18T13:10:26",
+  "title": "Calendar's reminders",
+  "caption": "An event's reminders show at their time, from a service the session keeps (no window needed): the title, its calendar, how far off it is and when, where. Show opens Calendar on the day with the event selected. One missed while the computer slept still shows while its event isn't over.",
+  "image": "2026-11-18/131026-calendar-s-reminders.png"
  }
 ]

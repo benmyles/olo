@@ -23,6 +23,7 @@ mod editor;
 mod layout;
 mod model;
 mod month;
+mod service;
 mod sync;
 mod view;
 mod week;
@@ -98,7 +99,7 @@ impl Default for Settings {
     }
 }
 
-fn settings_path() -> std::path::PathBuf {
+pub(crate) fn settings_path() -> std::path::PathBuf {
     olo_kit::config_dir().join("calendar.json")
 }
 
@@ -181,6 +182,15 @@ pub enum Msg {
     /// Something written to a calendar's server (its account, the
     /// calendar as it is now), and how it went.
     Wrote(String, Arc<Cal>, Result<(), dav::Error>),
+    /// Show this occurrence (its event's address, its start on the
+    /// person's clock): a reminder's Show.
+    Reveal(String, jiff::civil::DateTime),
+}
+
+/// `--show HREF START` among a launch's arguments: the occurrence to show.
+fn to_reveal(args: &[String]) -> Option<(String, jiff::civil::DateTime)> {
+    let at = args.iter().position(|a| a == "--show")?;
+    Some((args.get(at + 1)?.clone(), args.get(at + 2)?.parse().ok()?))
 }
 
 /// A change waiting for the person's answer: which occurrences of a
@@ -213,8 +223,12 @@ pub struct Calendar {
     /// Goes up whenever `shown` is another list.
     pub shown_version: u64,
     covered: Option<(Date, Date, u64)>,
+    /// The generation `shown` was worked out for.
+    shown_for: u64,
     asking: u64,
     pub selected: Option<Key>,
+    /// An occurrence to select once it's among those shown ([`Msg::Reveal`]).
+    reveal: Option<(String, jiff::civil::DateTime)>,
     pub standing: HashMap<String, Standing>,
     /// Nothing's been read from disk yet.
     pub loading: bool,
@@ -273,8 +287,10 @@ impl Calendar {
             shown: Arc::new(Vec::new()),
             shown_version: 0,
             covered: None,
+            shown_for: 0,
             asking: 0,
             selected: None,
+            reveal: None,
             standing: HashMap::new(),
             loading: true,
             last_sync: None,
@@ -298,7 +314,25 @@ impl Calendar {
             });
         }
         v.wake_when_due(cx);
+        // Started to show something (a reminder's Show, the window shut).
+        if let Some((href, start)) = to_reveal(&std::env::args().skip(1).collect::<Vec<_>>()) {
+            v.reveal = Some((href, start));
+            v.go(start.date(), cx);
+        }
         v
+    }
+
+    /// The occurrence asked for is selected, once it's among those
+    /// shown; asked for and not there (deleted meanwhile, its calendar
+    /// hidden), it's let go when its day has been worked out.
+    fn try_reveal(&mut self) {
+        let Some((href, start)) = &self.reveal else { return };
+        if let Some(s) = self.shown.iter().find(|s| &*s.href == href.as_str() && s.start == *start) {
+            self.selected = Some(s.key());
+            self.reveal = None;
+        } else if !self.loading && self.covered.is_some_and(|(from, to, generation)| generation == self.generation && from <= start.date() && start.date() <= to) && self.shown_for == self.generation {
+            self.reveal = None;
+        }
     }
 
     /// The hours, the first time they show, start a little before the
@@ -755,12 +789,19 @@ impl View for Calendar {
                 self.covered = Some((from, to, self.generation));
                 self.shown = shown;
                 self.shown_version += 1;
+                self.shown_for = self.generation;
                 // (What was selected and is no longer there isn't selected.)
                 if let Some(key) = &self.selected
                     && !self.shown.iter().any(|s| s.key() == *key)
                 {
                     self.selected = None;
                 }
+                self.try_reveal();
+            }
+            Msg::Reveal(href, start) => {
+                self.reveal = Some((href, start));
+                self.go(start.date(), cx);
+                self.try_reveal();
             }
             Msg::Clock(h24) => {
                 if self.h24 == h24 {
@@ -992,6 +1033,12 @@ fn main() -> std::process::ExitCode {
     if args.first().is_some_and(|a| a == "--print") {
         return print(&args);
     }
+    // The reminders service (the session's; no window).
+    if args.first().is_some_and(|a| a == "--service") {
+        let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+        let _ = tracing_subscriber::fmt().with_env_filter(filter).with_writer(std::io::stderr).try_init();
+        return service::run();
+    }
     if instance::forward(APP_ID, &args) {
         return std::process::ExitCode::SUCCESS;
     }
@@ -999,8 +1046,11 @@ fn main() -> std::process::ExitCode {
         let window = olo_kit::open_window(WindowOptions::new("Calendar", 1080.0, 720.0).min_size(view::MIN_WIDTH, view::MIN_HEIGHT).keep_size("main"), Calendar::new);
         instance::listen(APP_ID, olo_kit::proxy());
         olo_kit::message_handler(app, move |message, _| {
-            if message.is::<Launch>() {
+            if let Ok(launch) = message.downcast::<Launch>() {
                 olo_kit::raise(Some(&window));
+                if let Some((href, start)) = to_reveal(&launch.args) {
+                    window.messenger().send(Msg::Reveal(href, start));
+                }
             }
         });
     });
