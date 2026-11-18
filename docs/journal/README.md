@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Themes: one list, a preview with the theme's own icons, Customize…
+
+*00:20* — Classic, Platinum, BeOS and every scheme are themes in one list (26), each with its colours, its icon set and its wallpaper. The preview shows the theme's window, its icons and its wallpaper; Customize… changes any colour, the icon set and the wallpaper.
+
+![Themes: one list, a preview with the theme's own icons, Customize…](2026-11-18/002016-themes-one-list-a-preview-with-the-theme-s-own-i.png)
+
 ### Terminal's welcome: the ring, this computer, a haiku
 
 *00:06* — Olo Doctor suggests it. A new shell opens with Olo's ring drawn in the terminal's cells from its own drawing, what the computer is and how it's doing (memory, disk and battery as bars), the terminal's colours, and one of twenty-four haiku.

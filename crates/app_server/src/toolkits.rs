@@ -20,7 +20,8 @@
 
 use std::path::{Path, PathBuf};
 
-use olo_theme::{ThemeMode, looks, toolkit};
+use olo_protocol::Appearance;
+use olo_theme::{ThemeMode, toolkit};
 use tracing::warn;
 
 /// The stylesheet GTK 4 imports, while the session runs.
@@ -55,15 +56,16 @@ fn with_import(existing: &str, css: &Path) -> Option<String> {
     Some(format!("/* Olo's colours while an Olo session runs (written by Olo). */\n{line}\n{existing}"))
 }
 
-/// The GTK themes for theme `theme` in colour set `colors`: (name,
-/// palette), light then dark.
-fn gtk_themes(theme: &str, colors: &str) -> [(String, olo_theme::Palette); 2] {
-    [ThemeMode::Light, ThemeMode::Dark].map(|m| (toolkit::gtk_theme_name(theme, colors, m), looks::palette(theme, colors, m)))
+/// The GTK themes for the look `a` has (its theme, as the person has
+/// it): (name, palette), light then dark.
+fn gtk_themes(a: &Appearance) -> [(String, olo_theme::Palette); 2] {
+    let custom = a.custom_key();
+    [ThemeMode::Light, ThemeMode::Dark].map(|m| (toolkit::gtk_theme_name(&a.look, &custom, m), a.palette_of(&a.look, m)))
 }
 
 /// The files: the look's GTK 3 themes, GTK 4's stylesheet and its import.
-pub fn write_files(data: &Path, config: &Path, runtime_css: &Path, theme: &str, colors: &str) -> std::io::Result<()> {
-    let [light, dark] = gtk_themes(theme, colors);
+pub fn write_files(data: &Path, config: &Path, runtime_css: &Path, a: &Appearance) -> std::io::Result<()> {
+    let [light, dark] = gtk_themes(a);
     for (name, p) in [&light, &dark] {
         let dir = data.join("themes").join(name);
         put(&dir.join("index.theme"), &toolkit::gtk_index(name))?;
@@ -81,8 +83,8 @@ pub fn write_files(data: &Path, config: &Path, runtime_css: &Path, theme: &str, 
 
 /// Clear away the GTK themes Olo wrote for other looks (known by their
 /// `index.theme`; the `Olo` and `Olo-dark` of before too).
-pub fn clear_old_themes(data: &Path, theme: &str, colors: &str) {
-    let keep = gtk_themes(theme, colors).map(|(n, _)| n);
+pub fn clear_old_themes(data: &Path, a: &Appearance) {
+    let keep = gtk_themes(a).map(|(n, _)| n);
     let Ok(dir) = std::fs::read_dir(data.join("themes")) else { return };
     for entry in dir.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
@@ -93,25 +95,56 @@ pub fn clear_old_themes(data: &Path, theme: &str, colors: &str) {
     }
 }
 
-/// Publish theme `theme` in colour set `colors`, in `mode` (off the
-/// compositor thread: dconf and the files can be slow).
-pub fn publish(theme: String, colors: String, mode: ThemeMode) {
-    std::thread::spawn(move || {
+/// Publish the look `a` has, in the mode in effect: its theme as the
+/// person has it (their colours, their icon set). Off the compositor
+/// thread (dconf and the files can be slow), one at a time, the latest
+/// asked for: a colour dragged in Customize asks many times a second, and
+/// two at once would each clear the other's themes away.
+pub fn publish(a: Appearance) {
+    use std::sync::{Condvar, Mutex, OnceLock};
+    static NEXT: Mutex<Option<Appearance>> = Mutex::new(None);
+    static ASKED: Condvar = Condvar::new();
+    static WORKER: OnceLock<()> = OnceLock::new();
+    *NEXT.lock().unwrap_or_else(|e| e.into_inner()) = Some(a);
+    ASKED.notify_one();
+    // (Asleep until asked: it costs nothing between.)
+    WORKER.get_or_init(|| {
+        let made = std::thread::Builder::new().name("toolkits".into()).spawn(|| {
+            loop {
+                let mut next = NEXT.lock().unwrap_or_else(|e| e.into_inner());
+                let a = loop {
+                    match next.take() {
+                        Some(a) => break a,
+                        None => next = ASKED.wait(next).unwrap_or_else(|e| e.into_inner()),
+                    }
+                };
+                drop(next);
+                publish_now(&a);
+            }
+        });
+        if let Err(e) = made {
+            warn!("no thread to tell other toolkits the look: {e}");
+        }
+    });
+}
+
+fn publish_now(a: &Appearance) {
+    {
         let dirs = (home_dir("XDG_DATA_HOME", ".local/share"), home_dir("XDG_CONFIG_HOME", ".config"), gtk4_runtime_css());
         if let (Some(data), Some(config), Some(css)) = &dirs
-            && let Err(e) = write_files(data, config, css, &theme, &colors)
+            && let Err(e) = write_files(data, config, css, a)
         {
             warn!("could not write the GTK themes: {e}");
         }
-        // Olo's icons in the look, and its pointer for programs that
-        // draw their own (icon_theme.rs, xcursor.rs).
+        // Olo's icons in the look's icon set, and its pointer for
+        // programs that draw their own (icon_theme.rs, xcursor.rs).
         if let Some(data) = &dirs.0
-            && let Err(e) = crate::icon_theme::write(&data.join("icons"), &theme)
+            && let Err(e) = crate::icon_theme::write(&data.join("icons"), a.icons())
         {
             warn!("could not write the icon theme: {e}");
         }
         // (The same olo-portal serves through the portal's Settings.)
-        let settings = toolkit::desktop_settings(&theme, &colors, mode, crate::icon_theme::THEME, crate::xcursor::SIZE);
+        let settings = toolkit::desktop_settings(&a.look, &a.custom_key(), a.effective_theme, crate::icon_theme::THEME, crate::xcursor::SIZE);
         let paths: Vec<String> = settings.iter().map(|s| s.path()).collect();
         use olo_system::dconf::Setting::{Int, Str};
         let keys: Vec<(&str, olo_system::dconf::Setting<'_>)> = settings
@@ -130,12 +163,12 @@ pub fn publish(theme: String, colors: String, mode: ThemeMode) {
         match olo_system::dconf::set(&keys) {
             Ok(()) => {
                 if let Some(data) = &dirs.0 {
-                    clear_old_themes(data, &theme, &colors);
+                    clear_old_themes(data, a);
                 }
             }
             Err(e) => warn!("could not set the toolkit settings: {e}"),
         }
-    });
+    }
 }
 
 #[cfg(test)]
@@ -150,23 +183,38 @@ mod tests {
         std::fs::create_dir_all(config.join("gtk-4.0")).unwrap();
         std::fs::write(config.join("gtk-4.0/gtk.css"), "label { color: red; }\n").unwrap();
         // An old look's theme, and someone else's that looks like Olo's.
-        for (name, index) in [("Olo-dark", toolkit::gtk_index("Olo-dark")), ("Olo-enamel-beos", toolkit::gtk_index("x")), ("Olo-mine", "[Desktop Entry]\n".into())] {
+        for (name, index) in
+            [("Olo-dark", toolkit::gtk_index("Olo-dark")), ("Olo-enamel-beos", toolkit::gtk_index("x")), ("Olo-platinum-beos-dark", toolkit::gtk_index("x")), ("Olo-mine", "[Desktop Entry]\n".into())]
+        {
             std::fs::create_dir_all(data.join("themes").join(name)).unwrap();
             std::fs::write(data.join("themes").join(name).join("index.theme"), index).unwrap();
         }
-        write_files(&data, &config, &css, "platinum", "beos").unwrap();
-        write_files(&data, &config, &css, "platinum", "beos").unwrap();
+        let look = Appearance { look: "beos".into(), ..Appearance::default() };
+        write_files(&data, &config, &css, &look).unwrap();
+        write_files(&data, &config, &css, &look).unwrap();
         let user = std::fs::read_to_string(config.join("gtk-4.0/gtk.css")).unwrap();
         assert_eq!(user.matches("@import").count(), 1, "{user}");
         assert!(user.lines().nth(1).unwrap().starts_with("@import") && user.ends_with("label { color: red; }\n"));
-        assert!(data.join("themes/Olo-platinum-beos-dark/gtk-3.0/gtk.css").exists() && css.exists());
-        let g3 = std::fs::read_to_string(data.join("themes/Olo-platinum-beos-dark/gtk-3.0/gtk.css")).unwrap();
+        assert!(data.join("themes/Olo-beos-dark/gtk-3.0/gtk.css").exists() && css.exists());
+        let g3 = std::fs::read_to_string(data.join("themes/Olo-beos-dark/gtk-3.0/gtk.css")).unwrap();
         assert!(g3.contains("@define-color theme_bg_color #2b2b2b;"), "BeOS's dark panel");
-        clear_old_themes(&data, "platinum", "beos");
-        let left: Vec<String> = std::fs::read_dir(data.join("themes")).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
-        let mut left = left;
-        left.sort();
-        assert_eq!(left, ["Olo-mine", "Olo-platinum-beos", "Olo-platinum-beos-dark"]);
+        clear_old_themes(&data, &look);
+        let left = |data: &Path| {
+            let mut left: Vec<String> = std::fs::read_dir(data.join("themes")).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+            left.sort();
+            left
+        };
+        assert_eq!(left(&data), ["Olo-beos", "Olo-beos-dark", "Olo-mine"]);
+        // The person changes a colour of the theme: themes of another
+        // name, with it, and the theme's own cleared away.
+        let mut mine = look.clone();
+        mine.custom.entry("beos".into()).or_default().dark.insert("panel".into(), "#202840".into());
+        let key = mine.custom_key();
+        write_files(&data, &config, &css, &mine).unwrap();
+        clear_old_themes(&data, &mine);
+        assert_eq!(left(&data), [format!("Olo-beos-{key}"), format!("Olo-beos-{key}-dark"), "Olo-mine".to_owned()]);
+        let g3 = std::fs::read_to_string(data.join(format!("themes/Olo-beos-{key}-dark/gtk-3.0/gtk.css"))).unwrap();
+        assert!(g3.contains("@define-color theme_bg_color #202840;"), "the panel as the person has it");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

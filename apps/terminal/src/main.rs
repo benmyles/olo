@@ -180,7 +180,8 @@ struct Settings {
     light_colors: Option<String>,
     #[serde(default)]
     dark_colors: Option<String>,
-    /// The look (theme, colour set) they last followed.
+    /// The look (its theme, and what tells the person's changes to its
+    /// colours: `Palette::custom`) they last followed.
     #[serde(default)]
     look: Option<(String, String)>,
     /// Tabs down the left side rather than along the top, and how wide
@@ -1054,18 +1055,18 @@ impl Terminal {
             ThemeMode::Light => &self.settings.light_colors,
             ThemeMode::Dark => &self.settings.dark_colors,
         };
-        chosen.as_deref().and_then(looks::terminal).unwrap_or_else(|| looks::palette(&self.look.theme, &self.look.colors, mode).terminal)
+        chosen.as_deref().and_then(looks::terminal).unwrap_or_else(|| self.look.terminal_in(mode).clone())
     }
 
     /// Follow the desktop's look: Terminal's colours are the look's own
-    /// (the theme's, or the colour scheme chosen in Preferences ▸
-    /// Themes) wherever none was chosen here. Colours chosen here stay
+    /// (the theme chosen in Preferences ▸ Themes, as the person has it)
+    /// wherever none was chosen here. Colours chosen here stay
     /// through a change of look (Ben, 2026-11-17: "we want to support
     /// the terminal being set independently as well b/c some users have
     /// strong preferences for terminal colors"; a new look used to put
     /// both back to its own).
     fn follow(&mut self, palette: &Arc<Palette>) {
-        let look = (palette.theme.clone(), palette.colors.clone());
+        let look = (palette.theme.clone(), palette.custom.clone());
         if self.settings.look.as_ref() != Some(&look) {
             self.settings.look = Some(look);
             self.settings.save();
@@ -2634,9 +2635,9 @@ impl Terminal {
         }
         // For each mode: the look's own (whatever Preferences ▸ Themes
         // has, followed as it changes), or one chosen here, which stays:
-        // the theme's, BeOS's, and the schemes'.
+        // any theme's.
         let pick = |title: &str, mode: ThemeMode| {
-            let own = looks::palette(&self.look.theme, &self.look.colors, mode).terminal;
+            let own = self.look.terminal_in(mode).clone();
             let chosen = match mode {
                 ThemeMode::Light => self.settings.light_colors.as_deref(),
                 ThemeMode::Dark => self.settings.dark_colors.as_deref(),

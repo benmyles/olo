@@ -1,0 +1,14 @@
+# BeOS: the classic set's drawings as BeOS R5 drew its icons (see
+# docs/ICONS.md, "A theme's colours"; the rules: crates/xdg/src/svg/recolour.rs).
+# R5's icons were drawn in its 8-bit palette (a cube of six levels a
+# channel, 0 51 102 152 203 255, and 32 greys), each face one flat
+# colour, with a black outline and no soft shadow.
+
+ink 000000
+flat
+levels 0 51 102 152 203 255
+greys 8
+no shadow
+
+# Other people's marks, and Olo's own, keep their colours.
+keep olo slack github google-chrome telegram

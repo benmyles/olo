@@ -161,7 +161,7 @@ where
 {
     let Pending { shot, readback, cursor } = pending;
     let captured = readback.and_then(|r| crate::render::offscreen_finish(renderer, r)).map(|img| (img, cursor));
-    save(ipc, shot, captured);
+    save(ipc, shot, captured, None);
 }
 
 /// Render one window, alone over transparency: its tab and border too
@@ -195,11 +195,13 @@ type Captured = (image::RgbaImage, Option<(Point<f64, smithay::utils::Physical>,
 /// Draw the pointer in, encode and write on a thread; answer when done.
 /// A picture already taken (headless's screen as it is), saved and
 /// answered as a screenshot is.
-pub fn save_taken(ipc: &mut IpcState, shot: Shot, img: Result<image::RgbaImage, String>) {
-    save(ipc, shot, img.map(|i| (i, None)));
+pub fn save_taken(ipc: &mut IpcState, shot: Shot, img: Result<image::RgbaImage, String>, gains: Option<[f64; 3]>, hdr: bool) {
+    // A headless output has no CRTC to apply the scan-out ramps. Only an
+    // explicit picture of the display signal includes them.
+    save(ipc, shot, img.map(|i| (i, None)), gains.filter(|g| *g != [1.0; 3]).map(|g| (g, hdr)));
 }
 
-fn save(ipc: &mut IpcState, shot: Shot, captured: Result<Captured, String>) {
+fn save(ipc: &mut IpcState, shot: Shot, captured: Result<Captured, String>, scanout: Option<([f64; 3], bool)>) {
     let (mut img, cursor) = match captured {
         Ok(c) => c,
         Err(message) => {
@@ -219,6 +221,14 @@ fn save(ipc: &mut IpcState, shot: Shot, captured: Result<Captured, String>) {
                 draw_cursor(&mut img, at, scale, shape);
             }
             unpremultiply(&mut img);
+            if let Some((gains, hdr)) = scanout {
+                let ramps = if hdr { crate::night::ramps_pq(256, gains) } else { crate::night::ramps(256, gains) };
+                for pixel in img.pixels_mut() {
+                    for (v, ramp) in pixel.0.iter_mut().zip(&ramps) {
+                        *v = ((u32::from(ramp[*v as usize]) + 128) / 257) as u8;
+                    }
+                }
+            }
             let mut part = path.clone().into_os_string();
             part.push(".part");
             let part = PathBuf::from(part);

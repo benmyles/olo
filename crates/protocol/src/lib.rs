@@ -7,6 +7,7 @@
 //! [`Reply`] line. After [`Request::Subscribe`] the connection also receives
 //! unsolicited [`Reply::Event`] lines.
 
+use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
@@ -237,17 +238,17 @@ pub enum Request {
     /// display is composed by its own GPU.
     Gpus,
     GetSettings,
-    /// Every theme and its colour sets, and the palette in use: what
-    /// Preferences ▸ Themes offers. Choose with `SetSettings`
-    /// (`appearance.icon_theme`, `appearance.colors`).
+    /// Every theme, the icon sets, the colours of a theme that can be
+    /// changed, and the palette in use: what Preferences ▸ Themes offers.
+    /// Choose with `SetSettings` (`appearance.look`; what's changed of a
+    /// theme, `appearance.custom`).
     Looks,
-    /// One look's palette: every colour, `#rrggbb`. Each part left out is
+    /// One theme's palette, as the person has it (their changes to its
+    /// colours with it): every colour, `#rrggbb`. Each part left out is
     /// the one in use.
     Palette {
         #[serde(default)]
         theme: Option<String>,
-        #[serde(default)]
-        colors: Option<String>,
         #[serde(default)]
         mode: Option<olo_theme::ThemeMode>,
     },
@@ -843,10 +844,15 @@ pub enum Reply {
     Settings {
         settings: Settings,
     },
-    /// [`Request::Looks`]' answer: the themes in Preferences' order, and
-    /// the palette in use.
+    /// [`Request::Looks`]' answer: the themes in Preferences' order, the
+    /// icon sets a theme can be given, the colours of one that can be
+    /// changed (`appearance.custom`'s keys), and the palette in use.
     Looks {
         themes: Vec<LookInfo>,
+        #[serde(default)]
+        icon_sets: Vec<IconSetInfo>,
+        #[serde(default)]
+        roles: Vec<RoleInfo>,
         palette: olo_theme::Palette,
     },
     Palette {
@@ -2377,13 +2383,21 @@ pub struct Appearance {
     /// Deskbar's menu shows each item's icon: applications, preferences,
     /// commands.
     pub menu_icons: bool,
-    /// The theme every icon and the wordmark are drawn in (an id from
-    /// `olo_theme::looks::THEMES`; unknown ids draw the default).
-    pub icon_theme: String,
-    /// Which of the theme's colour sets everything is drawn in: `theme`
-    /// (its own) or `beos` (`olo_theme::looks::ColorSet`; unknown ids,
-    /// Catppuccin's among them, are the theme's own). [`Request::Looks`]
-    /// lists them.
+    /// The theme everything is drawn in: its colours, its icons, its
+    /// wallpaper (an id from `olo_theme::looks::THEMES`; unknown ids draw
+    /// the default). [`Request::Looks`] lists them. (`icon_theme`, in
+    /// settings from before the themes were one list.)
+    #[serde(alias = "icon_theme")]
+    pub look: String,
+    /// What the person changed of each theme, by its id (Preferences ▸
+    /// Themes ▸ Customize…): colours, its icons, its wallpaper.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub custom: BTreeMap<String, olo_theme::looks::Custom>,
+    /// From before the themes were one list: the theme's colour set
+    /// (`theme`, `beos`, a scheme's id). Read from old settings and
+    /// folded into `look` by app_server (`olo_theme::looks::migrate`);
+    /// never written.
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub colors: String,
     /// A new window glows for a moment, to draw the eye to it.
     pub glow_new_windows: bool,
@@ -2394,7 +2408,71 @@ pub struct Appearance {
 impl Appearance {
     /// The palette everything draws with now.
     pub fn palette(&self) -> olo_theme::Palette {
-        olo_theme::looks::palette(&self.icon_theme, &self.colors, self.effective_theme)
+        self.palette_of(&self.look, self.effective_theme)
+    }
+
+    /// Theme `theme`'s palette in `mode`, as the person has it (their
+    /// changes to its colours with it).
+    pub fn palette_of(&self, theme: &str, mode: olo_theme::ThemeMode) -> olo_theme::Palette {
+        use olo_theme::looks;
+        match self.custom_of(theme) {
+            Some(custom) => looks::customized(theme, custom, mode),
+            None => looks::palette(theme, mode),
+        }
+    }
+
+    /// What the person changed of theme `theme`, if anything.
+    pub fn custom_of(&self, theme: &str) -> Option<&olo_theme::looks::Custom> {
+        self.custom.get(olo_theme::looks::resolve(theme).id).filter(|c| !c.is_empty())
+    }
+
+    /// What tells the look in use's colours from its theme's own
+    /// (`Palette::custom`): empty when none is changed.
+    pub fn custom_key(&self) -> String {
+        self.custom_of(&self.look).map(|c| c.key()).unwrap_or_default()
+    }
+
+    /// The icon set in use (an `olo_theme::looks::IconSet`'s id): the
+    /// theme's, or the one the person gave it.
+    pub fn icons(&self) -> &'static str {
+        self.icons_of(&self.look)
+    }
+
+    /// Theme `theme`'s icon set, as the person has it.
+    pub fn icons_of(&self, theme: &str) -> &'static str {
+        use olo_theme::looks;
+        match self.custom_of(theme).and_then(|c| c.icons.as_deref()) {
+            Some(set) => looks::icon_set(set).id,
+            None => looks::resolve(theme).icons,
+        }
+    }
+
+    /// Theme `theme`'s wallpaper, as the wallpaper setting holds one: the
+    /// one the person gave it, else the pack's picture the theme names.
+    pub fn wallpaper_of(&self, theme: &str) -> String {
+        match self.custom_of(theme).and_then(|c| c.wallpaper.clone()) {
+            Some(own) => own,
+            None => format!("pack:{}", olo_theme::looks::resolve(theme).wallpaper),
+        }
+    }
+
+    /// Settings from before the themes were one list, made a theme (and
+    /// an unknown theme, the default): `look` and `colors` as
+    /// `olo_theme::looks::migrate` reads them. True if that changed
+    /// anything.
+    pub fn keep_current(&mut self) -> bool {
+        use olo_theme::looks;
+        let (theme, icons) = looks::migrate(&self.look, &self.colors);
+        let changed = self.look != theme || !self.colors.is_empty();
+        if let Some(icons) = icons {
+            self.custom.entry(theme.to_owned()).or_default().icons.get_or_insert_with(|| icons.to_owned());
+        }
+        self.look = theme.to_owned();
+        self.colors.clear();
+        // (Nothing kept of a theme there no longer is, or with nothing changed.)
+        let before = self.custom.len();
+        self.custom.retain(|id, c| looks::get(id).is_some() && !c.is_empty());
+        changed || self.custom.len() != before
     }
 }
 
@@ -2441,8 +2519,9 @@ impl Default for Appearance {
             effective_theme: olo_theme::ThemeMode::Light,
             night_light_active: false,
             menu_icons: true,
-            icon_theme: olo_theme::looks::DEFAULT.into(),
-            colors: olo_theme::looks::ColorSet::Theme.id().into(),
+            look: olo_theme::looks::DEFAULT.into(),
+            custom: BTreeMap::new(),
+            colors: String::new(),
             glow_new_windows: false,
             glow_seconds: 5,
         }
@@ -2452,27 +2531,41 @@ impl Default for Appearance {
 /// A theme, as [`Reply::Looks`] lists it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LookInfo {
-    /// What `Appearance::icon_theme` holds.
+    /// What `Appearance::look` holds.
     pub id: String,
     pub name: String,
     pub about: String,
-    pub colors: Vec<ColorSetInfo>,
-}
-
-/// One of a theme's colour sets.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ColorSetInfo {
-    /// What `Appearance::colors` holds.
-    pub id: String,
-    pub name: String,
-    pub about: String,
+    /// Its icon set (an [`IconSetInfo`]'s id), and its wallpaper as the
+    /// wallpaper setting holds one: each as the person has it.
+    pub icons: String,
+    pub wallpaper: String,
     /// Its terminal colours' ids, light and dark (Terminal's settings).
     pub terminal_light: String,
     pub terminal_dark: String,
+    /// The person has changed something of it (`Appearance::custom`).
+    pub customized: bool,
+}
+
+/// A set of icons a theme can be given.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct IconSetInfo {
+    pub id: String,
+    pub name: String,
+    pub about: String,
+}
+
+/// A colour of a theme that can be changed: `appearance.custom[THEME]
+/// .light[ID]` (or `.dark`) holds it, `#rrggbb`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RoleInfo {
+    pub id: String,
+    pub name: String,
+    pub about: String,
 }
 
 impl LookInfo {
-    pub fn all() -> Vec<LookInfo> {
+    /// Every theme, as `a` has them.
+    pub fn all(a: &Appearance) -> Vec<LookInfo> {
         use olo_theme::{ThemeMode, looks};
         looks::THEMES
             .iter()
@@ -2480,18 +2573,25 @@ impl LookInfo {
                 id: t.id.into(),
                 name: t.name.into(),
                 about: t.about.into(),
-                colors: looks::ColorSet::all()
-                    .into_iter()
-                    .map(|c| ColorSetInfo {
-                        id: c.id().into(),
-                        name: c.name(t).into(),
-                        about: c.about(t),
-                        terminal_light: looks::palette(t.id, c.id(), ThemeMode::Light).terminal.id,
-                        terminal_dark: looks::palette(t.id, c.id(), ThemeMode::Dark).terminal.id,
-                    })
-                    .collect(),
+                icons: a.icons_of(t.id).into(),
+                wallpaper: a.wallpaper_of(t.id),
+                terminal_light: looks::palette(t.id, ThemeMode::Light).terminal.id,
+                terminal_dark: looks::palette(t.id, ThemeMode::Dark).terminal.id,
+                customized: a.custom_of(t.id).is_some(),
             })
             .collect()
+    }
+}
+
+impl IconSetInfo {
+    pub fn all() -> Vec<IconSetInfo> {
+        olo_theme::looks::ICON_SETS.iter().map(|s| IconSetInfo { id: s.id.into(), name: s.name.into(), about: s.about.into() }).collect()
+    }
+}
+
+impl RoleInfo {
+    pub fn all() -> Vec<RoleInfo> {
+        olo_theme::looks::ROLES.iter().map(|r| RoleInfo { id: r.id.into(), name: r.name.into(), about: r.about.into() }).collect()
     }
 }
 

@@ -473,7 +473,8 @@ pub fn run_headless(size_arg: Option<&str>) {
                         Some(screen) => read_target(&mut data.renderer, &mut screen.target),
                         None => Err("no such screen".into()),
                     };
-                    crate::screenshot::save_taken(&mut state.ipc, shot, img);
+                    let hdr = matches!(crate::color::drawing(output), crate::color::Drawing::Hdr { .. });
+                    crate::screenshot::save_taken(&mut state.ipc, shot, img, state.white_point, hdr);
                     continue;
                 }
                 let color = state.desktop_color(output);

@@ -1,6 +1,6 @@
 //! The Olo look: every colour the desktop draws with ([`Palette`]), in
-//! whole looks ([`looks`]: each theme's own colours and BeOS's, light
-//! and dark), BeOS's tint helpers and metrics.
+//! whole looks ([`looks`]: the themes, each light and dark), BeOS's tint
+//! helpers and metrics.
 //!
 //! Both app_server (window tabs and frames) and the Interface Kit (every
 //! widget) draw from [`Palette`], so a change of look changes everything
@@ -166,16 +166,45 @@ fn unread_before() -> Rgba {
     [214, 28, 28, 255]
 }
 
+/// A palette written before it had its other mode's terminal: BeOS's
+/// dark one.
+fn terminal_before() -> Terminal {
+    beos_terminal(ThemeMode::Dark)
+}
+
+/// The BeOS theme's terminal in `mode`: paper white by day (as R5's
+/// Terminal: beside white documents an off-white looked like a mistake),
+/// near black at night.
+fn beos_terminal(mode: ThemeMode) -> Terminal {
+    match mode {
+        ThemeMode::Light => Terminal {
+            id: "beos-light".into(),
+            name: "BeOS Light".into(),
+            mode,
+            foreground: hex(0x26292e),
+            background: hex(0xffffff),
+            cursor: hex(0x2f6fdb),
+            selection: hex(0xc9dcf7),
+            ansi: ANSI_LIGHT,
+        },
+        ThemeMode::Dark => {
+            Terminal { id: "beos-dark".into(), name: "BeOS Dark".into(), mode, foreground: hex(0xd9dce1), background: hex(0x1d2025), cursor: hex(0x7cb4ff), selection: hex(0x2f405a), ansi: ANSI_DARK }
+        }
+    }
+}
+
 /// Every colour the desktop draws with. Names follow the Haiku/BeOS
 /// `color_which` constants where one exists. A palette is one look in
 /// one mode: [`looks::palette`] makes them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Palette {
     pub mode: ThemeMode,
-    /// The look it is: a theme's id ([`looks::THEMES`]) and its colour
-    /// set's ([`looks::ColorSet::id`]).
+    /// The look it is: a theme's id ([`looks::THEMES`]), and what tells
+    /// the person's changes to its colours from the theme's own and from
+    /// any other changes ([`looks::Custom::key`]; empty: the theme's own).
     pub theme: String,
-    pub colors: String,
+    #[serde(default)]
+    pub custom: String,
     // Interface Kit (B_PANEL_BACKGROUND_COLOR and friends)
     #[serde(with = "hex_color")]
     pub panel_background: Rgba,
@@ -290,6 +319,10 @@ pub struct Palette {
     pub hues: Hues,
     /// Terminal's colours in this look.
     pub terminal: Terminal,
+    /// And in this look's other mode (a Terminal kept light, or dark,
+    /// whatever the desktop is).
+    #[serde(default = "terminal_before")]
+    pub other_terminal: Terminal,
 }
 
 /// Olo's hues on light grounds: vivid enough for fills and lines.
@@ -378,13 +411,13 @@ impl Palette {
         mix(self.list_selected_background, self.control_highlight, 0.6)
     }
 
-    /// BeOS R5 as shipped (the BeOS colours of every theme, in light
-    /// mode), with a paper-white terminal.
+    /// BeOS R5 as shipped (the BeOS theme, in light mode), with a
+    /// paper-white terminal.
     pub fn light() -> Palette {
         Palette {
             mode: ThemeMode::Light,
-            theme: looks::DEFAULT.into(),
-            colors: looks::ColorSet::Beos.id().into(),
+            theme: "beos".into(),
+            custom: String::new(),
             panel_background: rgb(216, 216, 216),
             panel_text: rgb(0, 0, 0),
             document_background: rgb(255, 255, 255),
@@ -432,18 +465,8 @@ impl Palette {
             frame_focused: [rgb(108, 108, 108), rgb(255, 255, 255), rgb(216, 216, 216), rgb(216, 216, 216), rgb(152, 152, 152), rgb(108, 108, 108)],
             frame_unfocused: [rgb(136, 136, 136), rgb(250, 250, 250), rgb(224, 224, 224), rgb(224, 224, 224), rgb(168, 168, 168), rgb(136, 136, 136)],
             hues: HUES_LIGHT,
-            terminal: Terminal {
-                id: "beos-light".into(),
-                name: "BeOS Light".into(),
-                mode: ThemeMode::Light,
-                foreground: hex(0x26292e),
-                // (White, as R5's Terminal: beside white documents an
-                // off-white looked like a mistake.)
-                background: hex(0xffffff),
-                cursor: hex(0x2f6fdb),
-                selection: hex(0xc9dcf7),
-                ansi: ANSI_LIGHT,
-            },
+            terminal: beos_terminal(ThemeMode::Light),
+            other_terminal: beos_terminal(ThemeMode::Dark),
         }
     }
 
@@ -452,8 +475,8 @@ impl Palette {
     pub fn dark() -> Palette {
         Palette {
             mode: ThemeMode::Dark,
-            theme: looks::DEFAULT.into(),
-            colors: looks::ColorSet::Beos.id().into(),
+            theme: "beos".into(),
+            custom: String::new(),
             panel_background: rgb(43, 43, 43),
             panel_text: rgb(224, 224, 224),
             document_background: rgb(28, 28, 28),
@@ -501,21 +524,19 @@ impl Palette {
             frame_focused: [rgb(10, 10, 10), rgb(96, 96, 96), rgb(58, 58, 58), rgb(58, 58, 58), rgb(30, 30, 30), rgb(10, 10, 10)],
             frame_unfocused: [rgb(16, 16, 16), rgb(80, 80, 80), rgb(50, 50, 50), rgb(50, 50, 50), rgb(32, 32, 32), rgb(16, 16, 16)],
             hues: HUES_DARK,
-            terminal: Terminal {
-                id: "beos-dark".into(),
-                name: "BeOS Dark".into(),
-                mode: ThemeMode::Dark,
-                foreground: hex(0xd9dce1),
-                background: hex(0x1d2025),
-                cursor: hex(0x7cb4ff),
-                selection: hex(0x2f405a),
-                ansi: ANSI_DARK,
-            },
+            terminal: beos_terminal(ThemeMode::Dark),
+            other_terminal: beos_terminal(ThemeMode::Light),
         }
     }
 
     pub fn is_dark(&self) -> bool {
         self.mode == ThemeMode::Dark
+    }
+
+    /// Terminal's colours in this look in `mode`: this palette's mode's,
+    /// or the other's.
+    pub fn terminal_in(&self, mode: ThemeMode) -> &Terminal {
+        if mode == self.mode { &self.terminal } else { &self.other_terminal }
     }
 
     pub fn hue(&self, hue: Hue) -> Rgba {

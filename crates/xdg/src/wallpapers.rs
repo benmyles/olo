@@ -121,7 +121,7 @@ fn moved_in(dir: &Path, setting: &str) -> Option<String> {
     if listed.lines().map(str::trim).filter(|l| !l.starts_with('#')).any(|l| l.split('|').next().map(str::trim) == Some(name)) {
         return None;
     }
-    let instead = crate::themes::resolve(name).wallpaper;
+    let instead = olo_theme::looks::resolve(name).wallpaper;
     here(instead).then(|| format!("{PACK}{instead}"))
 }
 
@@ -137,7 +137,7 @@ fn resolve_in(dir: &Path, setting: &str, size: (u32, u32), dark: bool) -> Option
     let in_dir = |sub: &str, n: &str| find(&dir.join(sub), n);
     let file = |n: &str| in_dir(shape, n).or_else(|| in_dir("4k", n));
     let pick = |name: &str| dark.then(|| file(&format!("{name}-dark"))).flatten().or_else(|| file(name));
-    pick(name).or_else(|| pick(crate::themes::resolve(name).wallpaper))
+    pick(name).or_else(|| pick(olo_theme::looks::resolve(name).wallpaper))
 }
 
 /// How many points on a side the tile `setting` names is drawn, if it's
@@ -207,7 +207,7 @@ mod tests {
         assert_eq!(resolve_in(&dir, "pack:dusk", (100, 100), true), Some(dir.join("4k/dusk-dark.png")));
         assert_eq!(resolve_in(&dir, "pack:blue", (300, 100), true), Some(dir.join("ultrawide/blue.png")));
         // One that's gone: the theme's it's named for, else the default's.
-        let (default, platinum) = (crate::themes::resolve(crate::themes::DEFAULT).wallpaper, crate::themes::resolve("platinum").wallpaper);
+        let (default, platinum) = (olo_theme::looks::resolve(crate::themes::DEFAULT).wallpaper, olo_theme::looks::resolve("platinum").wallpaper);
         for d in ["4k", "ultrawide"] {
             for n in [default, platinum] {
                 std::fs::write(dir.join(d).join(format!("{n}.png")), "png").unwrap();

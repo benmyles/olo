@@ -159,13 +159,15 @@ def type_text(text):
     screen("type", text)
 
 
-def look(theme="light", icons="classic", colors="theme", wallpaper=None):
+def look(theme="light", icons="classic", wallpaper=None):
+    """Light or dark (`theme`), in the theme `icons` names (its id:
+    classic, platinum, beos, dracula, …), on `wallpaper` (else the
+    theme's own)."""
     def change(s):
         a = s["appearance"]
         a["theme"] = theme
-        a["icon_theme"] = icons
-        a["colors"] = colors
-        s["wallpaper"] = wallpaper or {"classic": "pack:blueberry-oxygen", "platinum": "pack:quantum-foam"}.get(icons)
+        a["look"] = icons
+        s["wallpaper"] = wallpaper or next((t["wallpaper"] for t in ipc({"type": "looks"}).get("themes", []) if t["id"] == icons), None)
 
     settings(change)
     time.sleep(2.5)

@@ -17,6 +17,10 @@
 //!                                colours with a hue of 25 to 55 degrees take hue 233,
 //!                                0.6 of their saturation, 0.1 more lightness, in those icons
 //! turn 195-240 by 14 0.85 +0.02  ... turned by 14 degrees, in every icon
+//! flat                           each face one colour: a gradient's stops take their mean
+//! levels 0 51 102 152 203 255    a colour's red, green and blue each take the nearest of these
+//! greys 8                        a grey is a multiple of this
+//! no shadow                      the soft shadow under a thing isn't drawn
 //! keep olo slack                 these drawings stay as they are (brands' marks)
 //! ```
 //!
@@ -24,6 +28,10 @@
 //! any other takes the first `turn` whose hues hold it (and whose icons,
 //! if it names any, include this one), so the particular come before the
 //! general. Hues are HSL's, in degrees; saturation and lightness, 0 to 1.
+//! `flat`, `levels` and `greys` together are a system's own way with
+//! colour (BeOS R5's icons: flat faces in its 8-bit palette, a six-level
+//! cube and 32 greys); they come after the others: a colour is turned,
+//! then set on the levels.
 
 use std::hash::{Hash as _, Hasher as _};
 
@@ -55,6 +63,10 @@ pub struct Recolour {
     grey: Option<(f32, f32)>,
     turns: Vec<Turn>,
     keep: Vec<String>,
+    flat: bool,
+    levels: Vec<u8>,
+    greys: Option<u8>,
+    no_shadow: bool,
     key: u64,
 }
 
@@ -129,6 +141,12 @@ impl Recolour {
                     rules.turns.push(Turn { from: (number(lo)?, number(hi)?), hue, saturation: number(saturation)?, lightness: number(lightness)?, only });
                 }
                 ["keep", ref names @ ..] if !names.is_empty() => rules.keep.extend(names.iter().map(|&s| s.to_owned())),
+                ["flat"] => rules.flat = true,
+                ["no", "shadow"] => rules.no_shadow = true,
+                ["levels", ref levels @ ..] if levels.len() >= 2 => {
+                    rules.levels = levels.iter().map(|l| l.parse::<u8>().map_err(|_| bad("a level is 0 to 255"))).collect::<Result<_, _>>()?;
+                }
+                ["greys", step] => rules.greys = Some(step.parse::<u8>().ok().filter(|s| *s > 0).ok_or_else(|| bad("a step is 1 to 255"))?),
                 _ => return Err(bad("not a rule")),
             }
         }
@@ -154,8 +172,18 @@ impl Recolour {
         let (h, s, l) = hsl(rgb_in);
         let spread = f32::from(rgb_in.iter().copied().max().unwrap_or(0) - rgb_in.iter().copied().min().unwrap_or(0)) / 255.0;
         if spread < GREY {
-            return self.grey.map_or(rgb_in, |(hue, saturation)| rgb(hue, saturation, l));
+            let [r, g, b] = self.grey.map_or(rgb_in, |(hue, saturation)| rgb(hue, saturation, l));
+            return match self.greys {
+                // (A grey of the system's: the nearest step, all three alike.)
+                Some(step) => {
+                    let mean = (u32::from(r) + u32::from(g) + u32::from(b) + 1) / 3;
+                    let v = ((mean + u32::from(step) / 2) / u32::from(step) * u32::from(step)).min(255) as u8;
+                    [v, v, v]
+                }
+                None => [r, g, b],
+            };
         }
+        let mut out = rgb_in;
         for t in &self.turns {
             let here = t.only.is_empty() || t.only.iter().any(|n| n == name);
             let (lo, hi) = t.from;
@@ -165,10 +193,11 @@ impl Recolour {
                     Hue::By(d) => h + d,
                     Hue::To(to) => to,
                 };
-                return rgb(hue, (s * t.saturation).clamp(0.0, 1.0), (l + t.lightness).clamp(0.0, 1.0));
+                out = rgb(hue, (s * t.saturation).clamp(0.0, 1.0), (l + t.lightness).clamp(0.0, 1.0));
+                break;
             }
         }
-        rgb_in
+        if self.levels.is_empty() { out } else { out.map(|c| self.levels.iter().copied().min_by_key(|l| l.abs_diff(c)).unwrap_or(c)) }
     }
 
     /// Drawing `svg` (icon `name`) with every colour in it as these rules
@@ -178,6 +207,13 @@ impl Recolour {
         if self.keep.iter().any(|k| k == name) {
             return svg.to_owned();
         }
+        let prepared;
+        let svg = if self.flat || self.no_shadow {
+            prepared = self.prepare(svg);
+            prepared.as_str()
+        } else {
+            svg
+        };
         let bytes = svg.as_bytes();
         let mut out = String::with_capacity(svg.len() + 64);
         let (mut from, mut copied) = (0, 0);
@@ -197,6 +233,51 @@ impl Recolour {
             from = copied;
         }
         out.push_str(&svg[copied..]);
+        out
+    }
+
+    /// `svg` with what `flat` and `no shadow` take from it: each
+    /// gradient's stops one colour (their mean: a face flat, its opacity
+    /// as it was), and what's filled with the gradient named `shadow`
+    /// (the soft shadow under a thing) gone.
+    fn prepare(&self, svg: &str) -> String {
+        use std::fmt::Write as _;
+        let mut out = String::with_capacity(svg.len());
+        let mut rest = svg;
+        if self.flat {
+            while let Some(at) = rest.find("Gradient ") {
+                // (`<linearGradient …>` to its `</linearGradient>`.)
+                let Some(open) = rest[..at].rfind('<') else { break };
+                let tag = &rest[open + 1..at + "Gradient".len()];
+                let close = format!("</{tag}>");
+                let Some(end) = rest[open..].find(&close).map(|k| open + k + close.len()) else { break };
+                let block = &rest[open..end];
+                const STOP: &str = "stop-color=\"#";
+                let colours: Vec<[u8; 3]> = block.split(STOP).skip(1).filter_map(|after| hex(after.split('"').next()?)).collect();
+                out.push_str(&rest[..open]);
+                if colours.len() >= 2 {
+                    let n = colours.len() as u32;
+                    let mean: [u32; 3] = std::array::from_fn(|i| (colours.iter().map(|c| u32::from(c[i])).sum::<u32>() + n / 2) / n);
+                    let mut parts = block.split(STOP);
+                    out.push_str(parts.next().unwrap_or_default());
+                    for after in parts {
+                        let _ = write!(out, "{STOP}{:02x}{:02x}{:02x}", mean[0], mean[1], mean[2]);
+                        out.push_str(&after[after.find('"').unwrap_or(0)..]);
+                    }
+                } else {
+                    out.push_str(block);
+                }
+                rest = &rest[end..];
+            }
+        }
+        out.push_str(rest);
+        if self.no_shadow {
+            const SHADOW: &str = "fill=\"url(#shadow)\"";
+            while let Some(at) = out.find(SHADOW) {
+                let (Some(open), Some(close)) = (out[..at].rfind('<'), out[at..].find("/>").map(|k| at + k + 2)) else { break };
+                out.replace_range(open..close, "");
+            }
+        }
         out
     }
 }
@@ -229,6 +310,34 @@ mod tests {
         for (bad, line) in [("ink\n", 1), ("grey 240 0.2\nturn 10 by 5 1 0\n", 2), ("paint it black\n", 1), ("turn 1-2 by 5 1 0 folder\n", 1), ("ink zzzzzz\n", 1)] {
             let e = Recolour::parse(bad).unwrap_err();
             assert!(e.starts_with(&format!("line {line}:")), "{bad:?}: {e}");
+        }
+    }
+
+    /// A system's own way with colour: flat faces, on its levels, its
+    /// greys on their step, no soft shadow (BeOS R5's icons).
+    #[test]
+    fn flat_and_on_the_systems_palette() {
+        let r = Recolour::parse("ink 000000\nflat\nlevels 0 51 102 152 203 255\ngreys 8\nno shadow\n").unwrap();
+        assert!(r.flat && r.no_shadow && r.levels.len() == 6 && r.greys == Some(8));
+        // A colour on the cube; a grey on its step, all three alike; ink.
+        assert_eq!(r.colour("x", [0xf8, 0xca, 0x66]), [255, 203, 102]);
+        assert_eq!(r.colour("x", [0xdf, 0xe2, 0xec]), [232, 232, 232]);
+        assert_eq!(r.colour("x", [0xfe, 0xfe, 0xff]), [255, 255, 255]);
+        assert_eq!(r.colour("x", INK), [0, 0, 0]);
+        let svg = r##"<defs><radialGradient id="shadow"><stop offset="0" stop-opacity=".3"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<linearGradient id="face" x1="0" y1="0"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#990000"/></linearGradient>
+<linearGradient id="shine"><stop offset="0" stop-color="#fff" stop-opacity=".3"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
+<ellipse class="from48" cx="1" fill="url(#shadow)"/>
+<path class="o" fill="url(#face)" stroke="#1b1b1f"/>"##;
+        let flat = r.apply("x", svg);
+        // The face one colour (the stops' mean, on the cube), the shine's
+        // opacity kept, the shadow's ellipse gone, the outline black.
+        assert_eq!(flat.matches(r##"stop-color="#cb0000""##).count(), 2, "{flat}");
+        assert_eq!(flat.matches(r##"stop-color="#ffffff" stop-opacity"##).count(), 2, "{flat}");
+        assert!(!flat.contains("<ellipse") && flat.contains(r##"<radialGradient id="shadow">"##), "{flat}");
+        assert!(flat.contains(r##"<path class="o" fill="url(#face)" stroke="#000000"/>"##), "{flat}");
+        for (bad, line) in [("levels 0\n", 1), ("greys 0\n", 1), ("flat out\n", 1), ("levels 0 300\n", 1)] {
+            assert!(Recolour::parse(bad).unwrap_err().starts_with(&format!("line {line}:")), "{bad:?}");
         }
     }
 

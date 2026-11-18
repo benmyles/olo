@@ -353,8 +353,8 @@ impl Panel {
             Panel::Security => settings.security = from.security.clone(),
             Panel::Ai => settings.ai = from.ai.clone(),
             Panel::Themes => {
-                settings.appearance.icon_theme = from.appearance.icon_theme.clone();
-                settings.appearance.colors = from.appearance.colors.clone();
+                settings.appearance.look = from.appearance.look.clone();
+                settings.appearance.custom = from.appearance.custom.clone();
                 settings.wallpaper = from.wallpaper.clone();
             }
             Panel::Display
@@ -398,6 +398,7 @@ pub enum State {
     About(about::State),
     Integrations(Box<integrations::State>),
     Security(Box<security::State>),
+    Themes(Box<themes::State>),
 }
 
 impl State {
@@ -410,6 +411,7 @@ impl State {
             Panel::DateTime => State::DateTime(Box::new(datetime::State::new(cx))),
             Panel::DefaultApps => State::DefaultApps(Box::new(default_apps::State::new(cx))),
             Panel::Deskbar => State::Deskbar(Box::new(deskbar::State::new(cx))),
+            Panel::Themes => State::Themes(Box::new(themes::State::new())),
             Panel::Network => State::Network(Box::new(network::State::new(cx))),
             Panel::Notifications => State::Notifications(Box::new(notifications::State::new(cx))),
             Panel::Performance => State::Performance(Box::new(performance::State::new(cx))),
@@ -474,7 +476,7 @@ pub fn render(v: &mut PanelView, cx: &mut Cx<PanelView>) -> Element {
             (Panel::Sound, State::Sound(st)) => sound::ui(&mut ui, st),
             (Panel::Security, State::Security(st)) => security::ui(&mut ui, st),
             (Panel::Ai, _) => ai::ui(&mut ui),
-            (Panel::Themes, _) => themes::ui(&mut ui),
+            (Panel::Themes, State::Themes(st)) => themes::ui(&mut ui, st),
             (Panel::DateTime, State::DateTime(st)) => datetime::ui(&mut ui, st),
             (Panel::DefaultApps, State::DefaultApps(st)) => default_apps::ui(&mut ui, st),
             (Panel::Deskbar, State::Deskbar(st)) => deskbar::ui(&mut ui, st),

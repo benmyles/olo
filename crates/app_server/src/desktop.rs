@@ -371,21 +371,16 @@ pub fn load_settings() -> Settings {
     settings
 }
 
-/// A theme, colour set or wallpaper that has gone, named in `settings`,
-/// as what's drawn instead: the eight themes before Classic and Platinum
-/// draw Classic, Catppuccin's colours the theme's own, their wallpapers
-/// and the themes' own of then (`pack:classic`) the themes' pictures now. Kept so, every reader of the settings
-/// (Backgrounds, Themes, agents) sees what's on the screen.
+/// A theme or wallpaper that has gone, named in `settings`, as what's
+/// drawn instead: a theme in one of its colour sets, from before the
+/// themes were one list, is the theme that set is now (BeOS's colours:
+/// BeOS; a scheme's: the scheme; `Appearance::keep_current`); the themes
+/// before Classic and Platinum draw Classic; their wallpapers and the
+/// themes' own of then (`pack:classic`) are the themes' pictures now.
+/// Kept so, every reader of the settings (Backgrounds, Themes, agents)
+/// sees what's on the screen.
 fn keep_looks_current(settings: &mut Settings) {
-    let theme = olo_xdg::themes::resolve(&settings.appearance.icon_theme).id;
-    if settings.appearance.icon_theme != theme {
-        settings.appearance.icon_theme = theme.to_owned();
-    }
-    // (Catppuccin's colours went too: the theme's own.)
-    let colors = olo_theme::looks::ColorSet::resolve(&settings.appearance.colors).id();
-    if settings.appearance.colors != colors {
-        settings.appearance.colors = colors.to_owned();
-    }
+    settings.appearance.keep_current();
     if let Some(now) = settings.wallpaper.as_deref().and_then(olo_xdg::wallpapers::moved) {
         settings.wallpaper = Some(now);
     }
@@ -2363,8 +2358,10 @@ impl<B: Backend + 'static> AnvilState<B> {
         settings.appearance.night_light_active = self.settings.appearance.night_light_active;
         // Tabs are laid out and drawn again (their cache keys on the cut title).
         crate::shell::deco::set_title_chars(settings.tab_title_chars);
-        // Twitcher looks its icons up again, in the new theme.
-        if olo_xdg::themes::set(&settings.appearance.icon_theme) {
+        // Twitcher looks its icons up again, in the new icon set; other
+        // programs' icon theme is written in it (below: `update_appearance`).
+        let icons_changed = olo_xdg::themes::set(settings.appearance.icons());
+        if icons_changed {
             crate::twitcher::theme_changed();
         }
         if settings.tiling.default_mode != self.settings.tiling.default_mode
@@ -2447,7 +2444,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.settings.appearance.night_light_active = night;
         let a = &self.settings.appearance;
         if (theme::set(a.palette()) || force) && B::IS_SESSION {
-            crate::toolkits::publish(a.icon_theme.clone(), a.colors.clone(), theme);
+            crate::toolkits::publish(a.clone());
         }
         // A scheduled night shifting gradually: its warmth so far, and its
         // next step in a while (only while it shifts: no timer otherwise).

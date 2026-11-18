@@ -228,11 +228,14 @@ def gone(exe, home, within=5.0):
     time.sleep(0.2)
 
 
-def set_look(name, theme, scale):
+def set_look(name, theme, scale, look=None):
     """The session's look and scale, at once (as `tsession theme` and
     `scale` do, without their waits)."""
     st = ipc(name, {"type": "get_settings"})["settings"]
-    st["appearance"]["theme"] = theme
+    st["appearance"]["theme"] = "dark" if theme == "night" else theme
+    if look is not None:
+        st["appearance"]["look"] = look
+        st["appearance"]["night_light"]["mode"] = "on" if theme == "night" else "off"
     st["display"]["scale"] = scale
     for o in st["display"].get("outputs", {}).values():
         o.pop("scale", None)
@@ -306,7 +309,7 @@ def chosen(pid, tab, within=3.0):
     return False
 
 
-def lint_one(spec, slot, master, screen, scales, show_review, work):
+def lint_one(spec, slot, master, screen, scales, show_review, work, all_themes=False):
     """One app, in a headless session of its own (a copy of the made-up
     home, its own sound server): what it found, as (errors, reviews, lines
     to print)."""
@@ -375,18 +378,23 @@ def lint_one(spec, slot, master, screen, scales, show_review, work):
             return 1, 0, lines
         # Each finding once, with the looks it came up in.
         seen = {}
-        for theme in ("light", "dark"):
+        theme_ids = [None]
+        if all_themes:
+            theme_ids = [item["id"] for item in ipc(name, {"type": "looks"})["themes"]]
+        for look, theme in ((look, mode) for look in theme_ids for mode in (("light", "dark", "night") if all_themes else ("light", "dark"))):
             for scale in scales:
-                set_look(name, theme, scale)
-                looks = [(None, drawn(pid, layers, scale, theme == "dark") or [])]
+                set_look(name, theme, scale, look)
+                looks = [(None, drawn(pid, layers, scale, theme != "light"))]
                 for title, tab, x, y in tabs(name, pid):
                     click(name, x, y)
                     chosen(pid, tab)
-                    looks.append((tab, drawn(pid, layers, scale, theme == "dark") or []))
+                    looks.append((tab, drawn(pid, layers, scale, theme != "light")))
                 for tab, found in looks:
+                    if found is None:
+                        raise RuntimeError(f"{look or 'default'} {theme} {scale:g}×: no review returned")
                     for window, f in found:
                         key = (f["level"], window, tab, f["kind"], f["text"])
-                        seen.setdefault(key, []).append(f"{theme} {scale:g}×")
+                        seen.setdefault(key, []).append(f"{look + ' ' if look else ''}{theme} {scale:g}×")
         app_errors = [k for k in seen if k[0].lower() == "error"]
         app_reviews = [k for k in seen if k[0].lower() != "error"]
         lines.append(f"{app}: {len(app_errors)} errors" + (f", {len(app_reviews)} to look at" if show_review else ""))
@@ -439,7 +447,8 @@ def main():
             print("ui-lint: none of those has a window to lint")
             return 0
     # Those whose build and lint are as when they came out clean: not again.
-    cache = load_cache() if use_cache else {}
+    all_themes = "--all-themes" in a
+    cache = load_cache() if use_cache and not all_themes else {}
     sigs = {s[0]: signature(s[1][0], screen, ",".join(f"{x:g}" for x in scales), show_review) for s in specs}
     fresh = [s for s in specs if cache.get(s[0], {}).get("sig") == sigs[s[0]] and cache[s[0]].get("errors") == 0]
     for s in fresh:
@@ -465,7 +474,7 @@ def main():
     slots = list(range(len(specs)))
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(jobs, len(specs))) as pool:
-            futures = {pool.submit(lint_one, spec, slot, master, screen, scales, show_review, work): spec for spec, slot in zip(specs, slots)}
+            futures = {pool.submit(lint_one, spec, slot, master, screen, scales, show_review, work, all_themes): spec for spec, slot in zip(specs, slots)}
             for done in concurrent.futures.as_completed(futures):
                 spec = futures[done]
                 try:

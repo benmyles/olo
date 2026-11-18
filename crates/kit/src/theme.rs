@@ -1,11 +1,12 @@
-//! Following app_server's look: the palette (theme, colour set, light or
-//! dark) every window draws from, the keyboard profile (for menus'
+//! Following app_server's look: the palette (the theme as the person
+//! has it, light or dark) every window draws from, its icon set, the keyboard profile (for menus'
 //! keys, `olo_kit_base::keys`), and the person's choice of how text is
 //! drawn on each display (Preferences ▸ Display,
 //! `olo_protocol::panels`). A thread listens for app_server's events (it
 //! sleeps until one comes); when the look changes, every window draws
 //! itself again. Outside Olo (no `$OLO_SOCKET`), the default look, or
-//! the one `$OLO_COLORS` and `$OLO_THEME` (`light`, `dark`) name.
+//! the one `$OLO_LOOK` (a theme's id) and `$OLO_THEME` (`light`, `dark`)
+//! name.
 
 use std::{sync::Arc, time::Duration};
 
@@ -58,7 +59,8 @@ fn initial() -> Appearance {
     if let Some(s) = &settings {
         olo_kit_base::keys::set(&s.keyboard.profile);
     }
-    let mut a = settings.map(|s| s.appearance).unwrap_or_else(|| Appearance { colors: env("OLO_COLORS").unwrap_or_default(), ..Appearance::default() });
+    // (Outside Olo, for tests and screenshots: `$OLO_LOOK` names the theme.)
+    let mut a = settings.map(|s| s.appearance).unwrap_or_else(|| Appearance { look: env("OLO_LOOK").unwrap_or_else(|| olo_theme::looks::DEFAULT.into()), ..Appearance::default() });
     if let Some(mode) = env("OLO_THEME") {
         a.effective_theme = if mode == "dark" { ThemeMode::Dark } else { ThemeMode::Light };
     }
@@ -68,7 +70,7 @@ fn initial() -> Appearance {
 /// Sets the look up and follows app_server's.
 pub(crate) fn init() {
     let appearance = initial();
-    olo_xdg::themes::set(&appearance.icon_theme);
+    olo_xdg::themes::set(appearance.icons());
     set_palette(Arc::new(appearance.palette()));
     if let Some(outputs) = olo_protocol::socket_path().and_then(|_| outputs()) {
         apply_outputs(&outputs);
@@ -120,8 +122,10 @@ fn look(settings: olo_protocol::Settings) {
     olo_kit_base::keys::set(&settings.keyboard.profile);
     let a = settings.appearance;
     tracing::debug!("look: {:?}", a.effective_theme);
-    if set_palette(Arc::new(a.palette())) {
-        olo_xdg::themes::set(&a.icon_theme);
+    // (The icons can change with the colours as they are: the person
+    // gave the theme another set.)
+    let (colours, icons) = (set_palette(Arc::new(a.palette())), olo_xdg::themes::set(a.icons()));
+    if colours || icons {
         olo_interface::refresh_all_windows();
     }
 }

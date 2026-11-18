@@ -18,7 +18,7 @@ pub fn palette() -> Arc<Palette> {
         return p.clone();
     }
     let mut slot = PALETTE.write().unwrap();
-    slot.get_or_insert_with(|| Arc::new(looks::palette(looks::DEFAULT, "", ThemeMode::Light))).clone()
+    slot.get_or_insert_with(|| Arc::new(looks::palette(looks::DEFAULT, ThemeMode::Light))).clone()
 }
 
 pub fn mode() -> ThemeMode {

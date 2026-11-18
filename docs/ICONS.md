@@ -149,15 +149,18 @@ GTK through Olo's icon theme), where it shows whole.
 once and its pixels kept in `~/.cache/olo/icons` (`svg::own`): read
 back in 2 µs (7 at 256), less than decoding the PNG took (10 and 520).
 
-**A theme's colours.** The classic set is the drawings; a theme without
-a drawing of its own for an icon (`data/themes/ID/icons/svg/NAME.svg`)
-shows the classic one in its own colours, by the rules it keeps beside
-its icons, `data/themes/ID/icons/recolour.txt`
-(`olo_xdg::svg::recolour`, `themes::recolour`): so an icon has the same
-angle, size and detail in every theme, and each theme its palette.
-Platinum's: the ink black, greys a lilac grey, the folder lilac blue,
-blues toward periwinkle, everything a little softer; the brand's ring
-and other people's marks kept as they are.
+**An icon set's colours.** The classic set is the drawings; another
+icon set (`olo_theme::looks::ICON_SETS`: Platinum's, BeOS's) without a
+drawing of its own for an icon (`data/themes/ID/icons/svg/NAME.svg`)
+shows the classic one its own way, by the rules it keeps beside its
+icons, `data/themes/ID/icons/recolour.txt` (`olo_xdg::svg::recolour`,
+`themes::recolour`): so an icon has the same angle, size and detail in
+every set, and each set its palette. Platinum's: the ink black, greys
+a lilac grey, the folder lilac blue, blues toward periwinkle,
+everything a little softer. BeOS's: as R5 drew its icons, each face
+one flat colour from its 8-bit palette (a cube of six levels a
+channel and 32 greys), a black outline, no soft shadow. Both keep the
+brand's ring and other people's marks as they are.
 
 ```text
 ink 0b0b16                     # the classic ink (1b1b1f) becomes this
@@ -165,15 +168,20 @@ grey 240 0.24                  # greys take this hue and saturation
 turn 25-56 to 232 0.72 +0.12 in folder folder-open tracker
                                # hues 25 to 56: to hue 232, 0.72 of the saturation, 0.12 lighter, in those icons
 turn 196-232 by 10 0.84 +0.07  # ... turned by 10 degrees, in every icon
+flat                           # each face one colour: a gradient's stops take their mean
+levels 0 51 102 152 203 255    # a colour's red, green and blue each take the nearest of these
+greys 8                        # a grey is a multiple of this
+no shadow                      # the soft shadow under a thing isn't drawn
 keep olo slack github          # these stay as they are
 ```
 
 A colour is a grey when its channels differ by less than 0.12; any
 other takes the first `turn` that holds it, so the particular come
-first. Look at a theme's set with `svgicon --theme ID IN.svg OUT.png
-SIZE`. The rendering is kept per theme like any other. A theme draws an
-icon of its own only where recolouring can't say it (a different thing,
-not a different colour).
+first; `flat`, `levels` and `greys` come after them (a colour is
+turned, then set on the levels). Look at a set with `svgicon --theme ID
+IN.svg OUT.png SIZE`. The rendering is kept per set like any other. A
+set draws an icon of its own only where its rules can't say it (a
+different thing, not a different colour).
 
 **Writing one.**
 
@@ -229,27 +237,29 @@ px, on all three panel colours:
 
 ## Themes
 
-The whole set comes in each theme's colours, chosen in Preferences ▸
-Themes (`Appearance::icon_theme`; new users get Classic). Every app
-follows the choice at once.
+A theme (Preferences ▸ Themes; `olo_theme::looks::THEMES`: Classic,
+Platinum, BeOS and the colour schemes from elsewhere) has an icon set,
+and the person can give it another (Customize… ▸ Icons;
+`Appearance::icons`). Every app follows at once.
 
-| Id | Name | Its icons |
-|---|---|---|
-| `classic` | Classic (the default) | After BeOS: the drawings as they're written, `data/icons/svg`. |
-| `platinum` | Platinum | After Mac OS 9: the same drawings with a black outline, lilac greys, a lilac-blue folder, periwinkle blues and softer accents (`data/themes/platinum/icons/recolour.txt`). |
+| Id | Name | Its icons | Whose |
+|---|---|---|---|
+| `classic` | Classic (the default) | After BeOS, glossy and bright: the drawings as they're written, `data/icons/svg`. | Classic's, and every scheme's. |
+| `platinum` | Platinum | After Mac OS 9: the same drawings with a black outline, lilac greys, a lilac-blue folder, periwinkle blues and softer accents. | Platinum's. |
+| `beos` | BeOS | As BeOS R5 drew its icons: each face one flat colour of its 8-bit palette, black outlines, no soft shadow. | BeOS's. |
 
-A theme lives in `data/themes/<id>/`:
+An icon set other than the classic one lives in `data/themes/<id>/`:
 
 | Path | What |
 |---|---|
-| `icons/recolour.txt` | Its colours for the classic set's drawings ("A theme's colours", above). |
+| `icons/recolour.txt` | Its way with the classic set's drawings ("An icon set's colours", above). |
 | `icons/svg/<name>.svg` | A drawing of its own for an icon, where a different colour doesn't say it (none yet). |
 
 Rules:
 
-* **A theme has every icon**: the classic drawing in its colours, or its
-  own. Nothing to generate for a new icon: draw it once, look at it in
-  each theme (`svgicon --theme ID`, and the apps).
+* **A set has every icon**: the classic drawing its way, or its own.
+  Nothing to generate for a new icon: draw it once, look at it in each
+  set (`svgicon --theme ID`, and the apps).
 * **No wordmark of its own**: the wordmark is the brand's lettering, the
   same in every theme ([BRAND.md](BRAND.md)), and so is the Olo ring
   (`keep olo` in a theme's rules).

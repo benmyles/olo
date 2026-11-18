@@ -185,6 +185,38 @@ fn ui_lint_deskbar_widgets() {
     assert_clean("Deskbar's widgets", &found);
 }
 
+/// Themes ▸ Customize… (beside the list the panel lint sees): each of its
+/// tabs, the chosen theme with something of each changed.
+#[test]
+fn ui_lint_themes_customize() {
+    let mut lint = Lint::new();
+    fresh();
+    let mut settings = Settings::default();
+    settings.appearance.look = "catppuccin-macchiato".into();
+    let custom = settings.appearance.custom.entry("catppuccin-macchiato".into()).or_default();
+    custom.light.insert("tab".into(), "#ff0080".into());
+    custom.dark.insert("panel".into(), "#202840".into());
+    custom.icons = Some("platinum".into());
+    custom.wallpaper = Some("pack:macosx-abstract-5".into());
+    let (w, h) = Panel::Themes.size();
+    let options = WindowOptions::new(Panel::Themes.title(), w as f32, h as f32).fits_content();
+    let mut found = Vec::new();
+    for (tab, name) in ["Colors", "Icons", "Wallpaper"].into_iter().enumerate() {
+        crate::set_for_tests(Prefs { settings: Some(settings.clone()), ..fresh_prefs() });
+        let s = settings.clone();
+        for f in lint.window(&options, move |cx| {
+            let mut view = PanelView::new(Panel::Themes, s.clone(), cx);
+            if let crate::panel::State::Themes(st) = &mut view.state {
+                crate::themes::for_lint(st, tab);
+            }
+            view
+        }) {
+            found.push(olo_kit::lint::Found { text: format!("{name}: {}", f.text), ..f });
+        }
+    }
+    assert_clean("Themes ▸ Customize", &found);
+}
+
 /// Display's Colour tab (beside the Panel tab the panel lint sees): a
 /// wide HDR display with HDR on, its tallest.
 #[test]

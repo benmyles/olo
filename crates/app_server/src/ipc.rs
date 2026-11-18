@@ -908,11 +908,15 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Err(message) => Reply::Error { message },
             },
             Request::GetSettings => Reply::Settings { settings: self.told_settings() },
-            Request::Looks => Reply::Looks { themes: olo_protocol::LookInfo::all(), palette: (*crate::theme::palette()).clone() },
-            Request::Palette { theme, colors, mode } => {
+            Request::Looks => Reply::Looks {
+                themes: olo_protocol::LookInfo::all(&self.settings.appearance),
+                icon_sets: olo_protocol::IconSetInfo::all(),
+                roles: olo_protocol::RoleInfo::all(),
+                palette: (*crate::theme::palette()).clone(),
+            },
+            Request::Palette { theme, mode } => {
                 let a = &self.settings.appearance;
-                let palette = olo_theme::looks::palette(theme.as_deref().unwrap_or(&a.icon_theme), colors.as_deref().unwrap_or(&a.colors), mode.unwrap_or(a.effective_theme));
-                Reply::Palette { palette }
+                Reply::Palette { palette: a.palette_of(theme.as_deref().unwrap_or(&a.look), mode.unwrap_or(a.effective_theme)) }
             }
             Request::Hints => Reply::Hints { hints: self.hints.infos() },
             Request::Overview { show } => {

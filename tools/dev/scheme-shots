@@ -1,12 +1,12 @@
 #!/usr/bin/python3
-"""Every colour set at a look: one headless session, a few apps in it
+"""Every theme at a look: one headless session, a few apps in it
 (Tracker on a sample home, Terminal showing its sixteen colours and some
-text, Preferences ▸ Themes), and a picture of the screen in each colour
-set (`olo_theme::looks::ColorSet`: the themes' own, BeOS's, the schemes),
-light and dark, in each theme. The pictures go in OUT (THEME-SET-MODE.png), with sheets of them at half
-size, three sets a sheet (sheet-THEME-N.png).
+text, Preferences ▸ Themes), and a picture of the screen in each theme
+(`olo_theme::looks::THEMES`), light and dark. The pictures go in OUT
+(THEME-MODE.png), with sheets of them at half size, three themes a
+sheet (sheet-N.png).
 
-  tools/dev/scheme-shots OUT [--scale N] [--only ID[,ID…]] [--theme classic|platinum]
+  tools/dev/scheme-shots OUT [--scale N] [--only ID[,ID…]]
 
 Needs a release build. Its session is its own (`tsession`), ended after.
 """
@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 T = ["/usr/bin/python3", os.path.join(ROOT, "tools/dev/tsession")]
-NAME = "schemes"
+NAME = f"schemes-{os.getpid()}"
 ENV = dict(os.environ, TSESSION_PROFILE="release")
 
 # What Terminal shows: the sixteen as text and as grounds, a prompt, a
@@ -39,23 +39,26 @@ def t(*args, check=False):
 
 
 def ipc(msg):
-    return json.loads(t("ipc", NAME, json.dumps(msg)) or "{}")
+    reply = json.loads(t("ipc", NAME, json.dumps(msg), check=True))
+    if reply.get("type") == "error":
+        raise RuntimeError(reply["message"])
+    return reply
 
 
 def main():
     a = sys.argv[1:]
     if not a or a[0].startswith("-"):
         sys.exit(__doc__)
-    out = a.pop(0)
+    out = os.path.abspath(a.pop(0))
     opt = lambda k, d=None: a[a.index(k) + 1] if k in a else d
-    scale, only, one_theme = opt("--scale", "1"), opt("--only"), opt("--theme")
+    scale, only = opt("--scale", "1"), opt("--only")
     os.makedirs(out, exist_ok=True)
     home = os.path.join(out, "home")
     subprocess.run([os.path.join(ROOT, "tools/dev/fixture-home"), home], check=True, capture_output=True)
     show = os.path.join(out, "show.sh")
     open(show, "w").write(SHOW)
-    t("stop", NAME)
-    t("start", NAME, "1500x860", "--scale", scale, "--home", home)
+    s = float(scale)
+    t("start", NAME, f"{round(1600*s)}x{round(900*s)}", "--scale", scale, "--home", home, check=True)
     time.sleep(2)
     try:
         t("run", NAME, "target/release/olo-tracker", home)
@@ -64,46 +67,51 @@ def main():
         time.sleep(3)
         t("run", NAME, "target/release/olo-preferences", "themes")
         time.sleep(3.5)
-        s = float(scale)
         place = {"olo.tracker": (20, 30, 420, 300), "olo.terminal": (20, 380, 660, 400), "olo.preferences": (700, 30, 0, 0)}
-        for w in ipc({"type": "list_windows"}).get("windows", []):
-            x, y, ww, hh = place.get(w.get("app_id"), (0, 0, 0, 0))
+        windows = ipc({"type": "list_windows"})["windows"]
+        missing = place.keys() - {w.get("app_id") for w in windows}
+        if missing:
+            raise RuntimeError(f"Missing sample windows: {sorted(missing)}")
+        for w in windows:
+            if w.get("app_id") not in place:
+                continue
+            x, y, ww, hh = place[w["app_id"]]
             f = w["frame"]
             ipc({"type": "place", "id": w["id"], "frame": {"x": x, "y": y, "width": ww or f["width"], "height": hh or f["height"]}})
         time.sleep(1.5)
-        looks = ipc({"type": "looks"}).get("themes") or []
+        looks = ipc({"type": "looks"})["themes"]
         settings = ipc({"type": "get_settings"})["settings"]
-        sets = [c["id"] for c in (looks[0]["colors"] if looks else [])] or ["theme", "beos"]
+        themes = list(dict.fromkeys(["classic", "beos", "platinum"] + [t["id"] for t in looks]))
         if only:
-            sets = [c for c in sets if c in only.split(",")]
-        themes = [one_theme] if one_theme else ["classic", "platinum"]
+            themes = [t for t in themes if t in only.split(",")]
+        rows = []
         for theme in themes:
-            rows = []
-            for colors in sets:
-                row = []
-                for mode in ("light", "dark"):
-                    settings["appearance"].update({"icon_theme": theme, "colors": colors, "theme": mode})
-                    ipc({"type": "set_settings", "settings": settings})
-                    time.sleep(2.2)
-                    shot = os.path.join(out, f"{theme}-{colors}-{mode}.png")
-                    t("shot", NAME, shot)
-                    row.append(Image.open(shot).convert("RGB"))
-                rows.append((colors, row))
-                print(f"{theme} {colors}", flush=True)
-            # Sheets: a set a row, light and dark side by side, halved;
-            # three sets a sheet.
-            for page in range(0, len(rows), 3):
-                some = rows[page:page + 3]
-                w, h = some[0][1][0].size
-                tw, th = int(w * 0.5 / s), int(h * 0.5 / s)
-                sheet = Image.new("RGB", (2 * tw + 12, len(some) * (th + 26) + 4), "white")
-                d = ImageDraw.Draw(sheet)
-                for i, (colors, row) in enumerate(some):
-                    y = i * (th + 26) + 4
-                    d.text((6, y), f"{theme} / {colors}", fill="black")
-                    for j, im in enumerate(row):
-                        sheet.paste(im.resize((tw, th), Image.LANCZOS), (4 + j * (tw + 4), y + 16))
-                sheet.save(os.path.join(out, f"sheet-{theme}-{page // 3 + 1}.png"))
+            row = []
+            for mode in ("light", "dark", "night"):
+                settings["appearance"].update({"look": theme, "theme": "dark" if mode == "night" else mode})
+                settings["appearance"]["night_light"]["mode"] = "on" if mode == "night" else "off"
+                settings["wallpaper"] = next((t["wallpaper"] for t in looks if t["id"] == theme), settings.get("wallpaper"))
+                ipc({"type": "set_settings", "settings": settings})
+                time.sleep(2.2)
+                shot = os.path.join(out, f"{theme}-{mode}.png")
+                ipc({"type": "screenshot", "path": shot, "as_shown": True})
+                with Image.open(shot) as im:
+                    row.append(im.convert("RGB").resize((800, 450), Image.Resampling.LANCZOS))
+            rows.append((theme, row))
+            print(theme, flush=True)
+        # Sheets: a theme a row, light and dark side by side, halved;
+        # three themes a sheet.
+        for page in range(0, len(rows), 3):
+            some = rows[page:page + 3]
+            tw, th = some[0][1][0].size
+            sheet = Image.new("RGB", (3 * (tw + 4) + 4, len(some) * (th + 26) + 4), "white")
+            d = ImageDraw.Draw(sheet)
+            for i, (theme, row) in enumerate(some):
+                y = i * (th + 26) + 4
+                d.text((6, y), theme, fill="black")
+                for j, im in enumerate(row):
+                    sheet.paste(im, (4 + j * (tw + 4), y + 16))
+            sheet.save(os.path.join(out, f"sheet-{page // 3 + 1}.png"))
     finally:
         t("stop", NAME)
 

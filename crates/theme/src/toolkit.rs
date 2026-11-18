@@ -17,13 +17,15 @@ use crate::{Palette, Rgba, tint};
 /// What every GTK theme Olo writes is called, then the look.
 pub const GTK_THEME_PREFIX: &str = "Olo-";
 
-/// The GTK theme for theme `theme` in colour set `colors`, in `mode`
-/// (ids as the settings hold them): `Olo-classic-theme`,
-/// `Olo-platinum-beos-dark`.
-pub fn gtk_theme_name(theme: &str, colors: &str, mode: crate::ThemeMode) -> String {
+/// The GTK theme for theme `theme` (its id, as the settings hold it) in
+/// `mode`, its colours changed as `custom` says (`looks::Custom::key`:
+/// empty for the theme's own): `Olo-classic`, `Olo-dracula-dark`,
+/// `Olo-beos-3fa91c02-dark` (a name of its own for each change, so
+/// programs take the new colours).
+pub fn gtk_theme_name(theme: &str, custom: &str, mode: crate::ThemeMode) -> String {
     let t = crate::looks::resolve(theme).id;
-    let c = crate::looks::ColorSet::resolve(colors).id();
-    format!("{GTK_THEME_PREFIX}{t}-{c}{}", if mode == crate::ThemeMode::Dark { "-dark" } else { "" })
+    let c = if custom.is_empty() { String::new() } else { format!("-{custom}") };
+    format!("{GTK_THEME_PREFIX}{t}{c}{}", if mode == crate::ThemeMode::Dark { "-dark" } else { "" })
 }
 
 /// A desktop setting other toolkits read, as GNOME names it: GTK, Qt's
@@ -57,12 +59,13 @@ impl DesktopSetting {
 /// accent: red, green and blue from 0 to 1.
 pub const ACCENT_BLUE: (f64, f64, f64) = (0x35 as f64 / 255.0, 0x84 as f64 / 255.0, 0xe4 as f64 / 255.0);
 
-/// What Olo tells other toolkits for theme `theme` in colour set
-/// `colors`, in `mode`, with Olo's icon and pointer theme `icons` (the
+/// What Olo tells other toolkits for theme `theme` (its colours changed
+/// as `custom` says: [`gtk_theme_name`]) in `mode`, with Olo's icon and
+/// pointer theme `icons` (the
 /// pointer `cursor_size` at 1×): the colour scheme, the GTK theme, the
 /// accent, Olo's fonts hinted as the kit hints them, the icons and the
 /// pointer, and BeOS's close-left, zoom-right title buttons.
-pub fn desktop_settings(theme: &str, colors: &str, mode: crate::ThemeMode, icons: &str, cursor_size: u32) -> Vec<DesktopSetting> {
+pub fn desktop_settings(theme: &str, custom: &str, mode: crate::ThemeMode, icons: &str, cursor_size: u32) -> Vec<DesktopSetting> {
     use DesktopValue::{Int, Str};
     let scheme = match mode {
         crate::ThemeMode::Light => "default",
@@ -74,7 +77,7 @@ pub fn desktop_settings(theme: &str, colors: &str, mode: crate::ThemeMode, icons
     let interface = |key, value| DesktopSetting { schema: "org.gnome.desktop.interface", key, value };
     vec![
         interface("color-scheme", Str(scheme.into())),
-        interface("gtk-theme", Str(gtk_theme_name(theme, colors, mode))),
+        interface("gtk-theme", Str(gtk_theme_name(theme, custom, mode))),
         interface("accent-color", Str("blue".into())),
         interface("font-name", Str(ui.clone())),
         interface("document-font-name", Str(ui)),
@@ -337,8 +340,9 @@ mod tests {
     #[test]
     fn a_name_per_look() {
         use crate::ThemeMode::*;
-        assert_eq!(gtk_theme_name("platinum", "beos", Dark), "Olo-platinum-beos-dark");
-        assert_eq!(gtk_theme_name("nope", "catppuccin", Light), "Olo-classic-theme");
+        assert_eq!(gtk_theme_name("platinum", "", Dark), "Olo-platinum-dark");
+        assert_eq!(gtk_theme_name("beos", "3fa91c02", Dark), "Olo-beos-3fa91c02-dark");
+        assert_eq!(gtk_theme_name("nope", "", Light), "Olo-classic");
         assert!(gtk_index("Olo-x").contains(GTK_INDEX_COMMENT));
     }
 }

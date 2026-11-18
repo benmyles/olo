@@ -7,6 +7,6 @@ license.workspace = true
 
 [dependencies]
 serde.workspace = true
-
-[dev-dependencies]
+# (A palette's colours merged, field by field, with what the person
+# changed of a theme: `looks::customized`.)
 serde_json.workspace = true

@@ -6259,7 +6259,9 @@ lint at a time).
   Quantum Foam; see "Theme wallpapers" in
   [ICONS.md](ICONS.md)); choosing a theme in Themes sets `wallpaper` to it
   too, so an agent switching looks over IPC sets both
-  `appearance.icon_theme` and `wallpaper` (`themes::wallpaper(id)`).
+  `appearance.look` and `wallpaper` (`themes::wallpaper(id)`, or the
+  theme's `wallpaper` in `Request::Looks`' answer: the one the person
+  gave it, if they did).
   A pack entry can be a tile (`|tile:N`: a desktop pattern, `tiles/NAME.webp`,
   `Wallpaper::tile`): app_server makes it N points wide at the
   display's scale and as tall as its picture says (a tile needn't be
@@ -6422,24 +6424,85 @@ lint at a time).
   pass the full buffer as `src` to `MemoryRenderBufferRenderElement::
   from_buffer`; without it the buffer counts as logical pixels and is
   drawn at twice its size on a 2× screen.
-* Themes (`themes.rs`): the two themes of `olo_xdg::themes::THEMES`,
-  Classic and Platinum, as two cards side by side, each drawn in its
-  theme (`icons::paint_in`): a preview
-  (its wallpaper as the mode is now, made at the preview's device width
-  on a worker, `pictures::thumbnail_soon`; a small window in its own
-  colours with a few of its icons; three of its icons on the desk), a
-  radio button with its name and the `olo` mark as it draws it (the
-  wordmark is the brand's, the same in both), a line about it, and a
-  row of seven of its icons. Anywhere on a card chooses it, and its
-  wallpaper (`choose`). Under them, Colors: the colour sets five across
-  (`colors`: the chosen theme's own, BeOS's, and the schemes from
-  elsewhere), each a swatch of its light palette and its dark one (its
-  panel, tab, document, a chosen row and six of its hues: `swatch`)
-  over a radio button with its name, and a line about the chosen one
-  under them. The previews are on grids of their own
-  (`review::own_grid`). The panel is as tall as the smallest screen
-  takes with the fifteen: the theme previews are 0.46 of their width,
-  their small window fitted to whole rows of its list.
+* Themes (`themes.rs`): **one list** (`olo_theme::looks::THEMES`; Ben,
+  2026-11-17: "the split between themes and colors doesn't make a lot
+  of sense. let's just have Classic, Platinum and BeOS as their own
+  themes (as well as all the other themes)"). A theme is the whole
+  look: its colours (light and dark), its icons (an icon set,
+  `looks::ICON_SETS`) and its wallpaper. Olo's three first (Classic,
+  Platinum, BeOS: R5's palette as shipped, `Palette::light`, and Olo's
+  dark version of it), then the schemes from elsewhere, each a theme
+  with the classic icons. The panel: the themes down the left (a
+  `ColumnListView`, each row its colours at a glance, light beside
+  dark, `paint_glance`, then its name, ", customized" after one the
+  person has changed), and the chosen one at the right, drawn in
+  itself: a preview (its wallpaper as the mode is now, made at the
+  preview's device width on a worker, `pictures::thumbnail_soon`; a
+  small window in its colours with a few of its icons; three of its
+  icons on the desk; on a grid of its own, `review::own_grid`), its
+  name with the `olo` mark, a line about it, seven of its icons, what
+  it comes with ("Classic icons. Wallpaper: Dunes."), and
+  **Customize…**. Selecting a row chooses the theme and its wallpaper
+  (`choose`: `appearance.look` and `wallpaper`,
+  `Appearance::wallpaper_of`), everywhere at once. The palettes the
+  rows and the preview draw are made as the panel is built, not as a
+  row is drawn.
+  **Customize…** (Ben: "click on a theme then press Customize and then
+  i can change everything about it -- any of the colors, the icon set,
+  the wallpaper etc.") shows the chosen theme's three tabs in the
+  panel's place, with Revert to its own and Done under them. *Colors*:
+  light or dark (the mode in effect to begin with), the colours that
+  can be changed (`looks::ROLES`: the palette's seeds, panels to the
+  ten hues; each row its colour now, a changed one in bold), and the
+  chosen one's `ColorControl` with The Theme's Own to put it back.
+  *Icons*: the icon sets, each with a few of its icons. *Wallpaper*:
+  the theme's own, or any of the pack's pictures, a collection at a
+  time. What's changed is kept by theme in `appearance.custom`
+  (`looks::Custom`: `light` and `dark`, role → `#rrggbb`; `icons`;
+  `wallpaper`), only what differs from the theme (a colour set back to
+  the theme's own is removed), and shows everywhere as it's changed.
+  **How a changed colour becomes a palette** (`looks::customized`): the
+  theme's seeds with the person's colours make a palette
+  (`looks::build`), the theme's seeds alone make another, and every
+  colour that differs between the two is taken into the theme's real
+  palette (`merge`), so what follows from a seed (bevels, frames, the
+  tab's edges, a list's selection, text kept readable) follows, and
+  nothing else moves: BeOS's palette and a scheme's are not just what
+  their seeds make. A palette says it is changed (`Palette::custom`,
+  `Custom::key`, a hash of the colours), which names the GTK theme
+  written for it (`Olo-beos-3fa91c02-dark`: a new name is what makes
+  GTK programs take new colours) and tells Terminal its look moved.
+  `Palette::other_terminal` is the look's terminal in its other mode
+  (a Terminal kept dark on a light desktop). app_server publishes a
+  look to other toolkits one at a time, the latest asked for
+  (`toolkits::publish`: a colour dragged asks many times a second, and
+  two at once each cleared the other's themes).
+  **Settings from before** (`appearance.icon_theme` and
+  `appearance.colors`: a theme, Classic or Platinum, in a colour set)
+  are read as the theme the set is now (`looks::migrate`,
+  `Appearance::keep_current`, as app_server loads or is given
+  settings): BeOS's colours are BeOS, a scheme's the scheme, and
+  Platinum's icons in another's colours are kept as that theme
+  customized. `look` still reads `icon_theme` (a serde alias);
+  `colors` is read and never written.
+  **Each theme's wallpaper** is the pack's picture that suits it best,
+  chosen by eye from all of them (`Theme::wallpaper`; Ben: "pick from
+  the wallpapers that olo comes with the best matching default
+  wallpaper for each theme"): Classic Olo's Dunes, Platinum Quantum
+  Foam, BeOS Olo's Be Blue (Be's desktop was one blue), Catppuccin's
+  flavours Flow, Dandelion Seeds and Lines Plum, GitHub Tiger Graphite,
+  One Dark Snowy Hills, Dracula Abstract 5, Ayu Flowing Rock, Monokai
+  Superstring, Winter is Coming Moraine Lake, Night Owl Midsummer
+  Night, Tokyo Night Hong Kong at Night, Palenight Oasis in Baja,
+  SynthWave '84 Boing, Solarized Agave, Gruvbox Burmese Claypots, Nord
+  Water, Rosé Pine Lotus, Everforest Garden, Kanagawa Zen Garden,
+  Tomorrow Lines Blue, Zenburn Stones, Cobalt2 Olo's Ribbons, Oceanic
+  Next Tranquil Surface.
+  **Each theme's icons**: Classic's the drawings as written; Platinum's
+  and BeOS's the same drawings each its own way (`ICON_SETS`,
+  docs/ICONS.md "An icon set's colours": BeOS's as R5 drew its icons,
+  flat faces in its 8-bit palette, black outlines; Ben: "create a
+  complete custom icon set for BeOS"); the schemes' the classic set.
   **Colour schemes from elsewhere** (`olo_theme::schemes`; Ben,
   2026-11-17: "bake in support for all the catppuccin color schemes
   and also go find the top 10 color schemes for vscode/cursor … all
@@ -6450,41 +6513,51 @@ lint at a time).
   withdrawn Material Theme left out): GitHub (20.7 million), One Dark
   Pro (12.9), Dracula (11.2), Ayu (4.2), Monokai (4.2), Winter is
   Coming (3.8), Night Owl (3.6), Tokyo Night (3.0), Palenight (2.7)
-  and SynthWave '84 (2.6). Each is a pair, light and dark: its makers'
+  and SynthWave '84 (2.6). And ten more (Ben, 2026-11-17: "pick 10 more
+  of the most popular themes online and add support for them too"):
+  the ones people carry from editor to editor and terminal to
+  terminal, with ports nearly everywhere: Solarized, Gruvbox, Nord,
+  Rosé Pine, Everforest, Kanagawa, Tomorrow, Zenburn, Cobalt2 and
+  Oceanic Next. Each is a pair, light and dark: its makers'
   where they publish both (GitHub's, One Light, Dracula's Alucard,
-  Ayu's, Winter is Coming's, Light Owl, Tokyo Night Light), else Olo's
+  Ayu's, Winter is Coming's, Light Owl, Tokyo Night Light, Solarized's
+  and Gruvbox's, Rosé Pine and its Dawn, Everforest's, Kanagawa's Wave
+  and Lotus, Tomorrow and Tomorrow Night), else Olo's
   from the same hues (Monokai on warm paper, Palenight on Material's
-  Lighter, SynthWave's "Dawn"). A scheme is a `Variant` a mode: its
+  Lighter, SynthWave's "Dawn", Nord on its Snow Storm, Zenburn on
+  paper, Cobalt2 and Oceanic Next on white). A scheme is a `Variant` a mode: its
   grounds, ink, grey, accent, tab colour, eight hues and a terminal's
   blacks and whites; `Scheme::seeds` makes a look's seeds of it and
-  `looks::build` the palette, as for a theme's own, and
+  `looks::build` the palette, as for Classic's, and
   `Scheme::terminal` its sixteen terminal colours. **Tuned for Olo**:
   whatever wouldn't read is moved until it does (`readable`: text 7 to
   1 on panels and in a terminal, fills' text 4.5, a terminal's colours
   3 to 1 on its ground), Winter is Coming's dark ground is a shade
   bluer than Night Owl's (their makers' are the same), and the theme
-  crate's tests hold every scheme to what every look is held to
-  (`text_reads_everywhere`, `terminals_read`). A scheme is the same in
-  either theme (the theme is its icons, wordmark and wallpaper).
-  `ColorSet::Scheme` is one; `ColorSet::all()` lists them for
-  Preferences and for agents (`Request::Looks`). Looked at one by one
-  in both themes, light and dark, with `tools/dev/scheme-shots OUT`:
-  one headless session with Tracker, Terminal (its sixteen colours, a
-  listing, a diff) and Preferences ▸ Themes open, pictured in every
-  set (`--only ID,…`, `--theme`, `--scale`). The
-  choice is `Appearance::icon_theme` (an id; unknown ones, the eight
-  themes there were before Classic and Platinum among them, draw the
-  default, `classic`), so agents set it with `SetSettings` like any
-  other.
-  Every process draws in one theme, `olo_xdg::themes::current()`: the
-  kit sets it from the settings before the first frame
-  (`theme_watch::initial_palette`) and on every `SettingsChanged`
-  (`Kit::set_icon_theme`, which redraws every window; the icon caches
-  are keyed by theme and drop the old one's), and
-  app_server sets it on load and in `set_settings`, where Twitcher looks
-  its apps' icons up again (`twitcher::theme_changed`). Outside Olo,
-  `OLO_ICON_THEME=id` picks one. `find_icon` looks in the theme's
-  `themes/<id>/icons` in every data directory, then in `icons`.
+  crate's tests hold every theme to the same (`text_reads_everywhere`,
+  `terminals_read`). Looked at one by one, light and dark, with
+  `tools/dev/scheme-shots OUT`: one headless session with Tracker,
+  Terminal (its sixteen colours, a listing, a diff) and Preferences ▸
+  Themes open, pictured in every theme (`--only ID,…`, `--scale`).
+  **For agents**: `Request::Looks` lists the themes (each with its
+  icons and wallpaper as the person has them, its terminals' ids, and
+  whether it's customized), the icon sets and the colours that can be
+  changed; `Request::Palette { theme, mode }` is any theme's palette as
+  the person has it; choosing and customizing are `SetSettings`
+  (`appearance.look`, `appearance.custom`, `wallpaper`), like any
+  other setting. Unknown theme ids (the eight themes there were before
+  Classic and Platinum among them) draw the default, `classic`.
+  Every process draws its icons in one icon set,
+  `olo_xdg::themes::current()` (`Appearance::icons`: the theme's, or
+  the one the person gave it): the kit sets it from the settings before
+  the first frame and on every `SettingsChanged` (`theme::look`, which
+  redraws every window when the colours or the icons changed; the icon
+  caches are keyed by set and drop the old one's), and app_server sets
+  it on load and in `set_settings`, where Twitcher looks its apps'
+  icons up again (`twitcher::theme_changed`). Outside Olo,
+  `OLO_ICON_THEME=id` picks an icon set and `OLO_LOOK=id` a theme.
+  `find_icon` looks in the set's `themes/<id>/icons` in every data
+  directory, then in `icons` (docs/ICONS.md).
 * About (`about.rs`) has Restart Olo: SIGHUP to `$OLO_SESSION_PID`,
   the same in-place reload as `olo-session reload` (disabled outside
   a session).
@@ -6546,7 +6619,7 @@ hairline of the selection's edge above and below (`style::lit_edges`,
 painted after the rows), its heading in the selection's `text`. The
 rows in it shade that ground for their focus, hover and separators
 (`Deskbar::ground`) as the others shade the panel's, so it follows every
-theme and colour set, light, dark and night; the other workspaces stay
+theme, light, dark and night; the other workspaces stay
 on the plain panel.
 Clicking a heading goes to that workspace on its display
 (`SwitchWorkspace` with `output`); on the one showing it opens the
@@ -16098,12 +16171,12 @@ has no code for them.)
 **Colours** (`src/colors.rs`, View ▸ Colors). Match Appearance,
 Always Light or Always Dark picks which of two schemes shows; Light
 Colors and Dark Colors each have "As in Themes" (the look's own: the
-theme's, or the colour scheme chosen in Preferences ▸ Themes, followed
-as it changes; the default) and then every scheme to choose here: the
-theme's (`Classic Light`, `Platinum Dark`, …), BeOS's and the schemes'
-(`Catppuccin Latte`, `Dracula`, `GitHub Dark`, `One Light`, …:
+theme chosen in Preferences ▸ Themes, as the person has it, followed
+as it changes; the default) and then every theme's to choose here
+(`Classic Light`, `Platinum Dark`, `BeOS Light`, `Catppuccin Latte`,
+`Dracula`, `GitHub Dark`, `One Light`, …:
 `olo_theme::looks::terminals`). **One chosen here stays** through a
-change of theme or colour set (Ben: "we want to support the terminal
+change of theme (Ben: "we want to support the terminal
 being set independently as well b/c some users have strong preferences
 for terminal colors"; a new look used to put both back to its own).
 The choices are `Settings::light_colors` / `dark_colors` (ids,

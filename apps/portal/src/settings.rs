@@ -54,7 +54,7 @@ pub fn values(a: &olo_protocol::Appearance) -> Values {
     appearance.insert("color-scheme".into(), owned(Value::U32(if mode == ThemeMode::Dark { 1 } else { 0 })));
     appearance.insert("accent-color".into(), owned(Value::from(toolkit::ACCENT_BLUE)));
     appearance.insert("contrast".into(), owned(Value::U32(0)));
-    for s in toolkit::desktop_settings(&a.icon_theme, &a.colors, mode, olo_xdg::CURSOR_THEME, olo_xdg::CURSOR_SIZE) {
+    for s in toolkit::desktop_settings(&a.look, &a.custom_key(), mode, olo_xdg::CURSOR_THEME, olo_xdg::CURSOR_SIZE) {
         let value = match s.value {
             toolkit::DesktopValue::Str(v) => owned(Value::from(v)),
             toolkit::DesktopValue::Int(v) => owned(Value::I32(v)),

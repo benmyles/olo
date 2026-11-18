@@ -218,7 +218,7 @@ mod tests {
         println!("found as it would be in {:.2} ms", t.elapsed().as_secs_f64() * 1e3);
         assert_eq!(std::fs::metadata(&file).unwrap().modified().unwrap(), written);
         // Another look: the same drawings in its colours.
-        let other = olo_xdg::themes::THEMES.iter().find(|t| t.id != olo_xdg::themes::CLASSIC).unwrap().id;
+        let other = olo_xdg::themes::ICON_SETS.iter().find(|t| t.id != olo_xdg::themes::CLASSIC).unwrap().id;
         write(&dir, other).unwrap();
         assert!(std::fs::read_to_string(theme.join("index.theme")).unwrap().contains(&format!("X-Olo-Look={other}\n")));
         assert_ne!(std::fs::read(&file).unwrap(), classic, "{other}'s folder is the classic one");

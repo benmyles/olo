@@ -569,7 +569,7 @@ mod tests {
         let mut rows = Vec::new();
         for scale in [1.0, 1.25, 1.5, 1.75, 2.0] {
             for mode in [olo_theme::ThemeMode::Light, olo_theme::ThemeMode::Dark] {
-                theme::set(olo_theme::looks::palette(olo_theme::looks::DEFAULT, "", mode));
+                theme::set(olo_theme::looks::palette(olo_theme::looks::DEFAULT, mode));
                 rows.push(inds.iter().map(|i| draw(i, scale)).collect::<Vec<_>>());
             }
         }
