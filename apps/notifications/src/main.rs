@@ -132,6 +132,11 @@ pub struct Notifications {
     pub history: History,
     /// What apps say is waiting in them (red): not notifications.
     pub waiting: waiting::WaitingApps,
+    /// Who sent each notification still open at its app (its id: the
+    /// sender's unique name on the bus), to know when that app has gone
+    /// ([`Notifications::sender_gone`]). Not kept: after a restart none is
+    /// open at its app.
+    senders: HashMap<u32, String>,
     /// What has left the history (faded away, dismissed, cleared,
     /// forgotten): the History window's Archived view.
     pub archive: History,
@@ -375,6 +380,14 @@ impl Notifications {
 
     fn show(&mut self, mut note: Note) {
         self.refresh_settings();
+        match &note.sender {
+            Some(s) => {
+                self.senders.insert(note.id, s.clone());
+            }
+            None => {
+                self.senders.remove(&note.id);
+            }
+        }
         // One of each (Preferences ▸ Notifications): the same again from
         // the same app takes the earlier one's place.
         if self.settings.one_of_each && !note.replaces {
@@ -505,11 +518,57 @@ impl Notifications {
         later(&self.proxy, after + Duration::from_millis(20), Msg::Tick);
     }
 
-    /// What waits in an app (`id`: its `Waiting`) gone to: its app comes
-    /// forward (which puts it off, as going there by any way does).
+    /// The connection `sender` (a unique name on the bus) has gone: the app
+    /// quit, or started again (an upgrade re-executes Olo's apps), and
+    /// knows nothing of what it sent. Those notes are no longer open at
+    /// their app: a click on one shows what it's about the way a closed
+    /// one's does (`x-olo-show`, else the app), instead of an action
+    /// nobody hears (Ben, 2026-11-18: a click on a waiting tab's note
+    /// "only took me to the last active window/tab in terminal").
+    fn sender_gone(&mut self, sender: &str) {
+        let ids: Vec<u32> = self.senders.iter().filter(|(_, s)| s.as_str() == sender).map(|(id, _)| *id).collect();
+        if ids.is_empty() {
+            return;
+        }
+        let mut kept = false;
+        for id in &ids {
+            self.senders.remove(id);
+            if let Some(e) = self.history.get_mut(*id)
+                && e.live
+            {
+                e.live = false;
+                kept = true;
+            }
+        }
+        // (On screen still: its buttons can't do anything now; a click on
+        // it shows what it's about.)
+        for c in self.cards.iter_mut().filter(|c| ids.contains(&c.note.id)) {
+            c.note.actions.clear();
+            c.note.reply = None;
+            c.replying = false;
+        }
+        tracing::info!(sender, notes = ids.len(), "notifications: their sender left the bus: no longer open at their app");
+        self.publish(kept);
+        self.changed();
+    }
+
+    /// What waits in an app (`id`: its `Waiting`) gone to: the thing
+    /// that waits, where the app said what it is in a notification of
+    /// its own (that window, that tab: `waiting::about`), as a click on
+    /// that notification; else its app comes forward. Either puts it
+    /// off, as going there by any way does.
     pub fn open_waiting(&mut self, id: u32) {
         let Some(w) = self.waiting.get(id).cloned() else { return };
-        raise_app(Some(&w.app), &w.name);
+        match waiting::about(&self.history.entries, &w.app).cloned() {
+            Some(e) if e.live => self.invoke(None, e.id, "default".into()),
+            Some(e) => {
+                self.set_read(e.id, true);
+                if !show_what(e.desktop_entry.as_deref(), &e.show) {
+                    raise_app(Some(&w.app), &w.name);
+                }
+            }
+            None => raise_app(Some(&w.app), &w.name),
+        }
         if self.waiting.later(id) {
             self.publish(false);
             self.changed();
@@ -542,6 +601,7 @@ impl Notifications {
     /// it was seen to elsewhere, or is no longer true); otherwise the
     /// app hears why it closed.
     pub fn remove(&mut self, id: u32, reason: Reason) {
+        self.senders.remove(&id);
         let on_screen = self.take(id);
         let kept = self.history.get_mut(id).is_some();
         if reason == Reason::Closed && self.history.newest(id).is_some_and(|e| e.live && !e.pinned) {
@@ -831,13 +891,21 @@ impl Notifications {
                 }
             }
             Control::Invoke(id, key) => {
-                // From a program, not a click: no token to hand on. One
-                // in the history as a click on it there (open at its app
-                // or not); one only on screen, its action.
-                if let Some(i) = self.history.entries.iter().position(|e| e.id == id) {
-                    self.open_entry(None, i, Some(key));
+                // From a program, not a click (Deskbar's Inbox, the command
+                // line, an agent): no token to hand on. One in the history
+                // as a click on it there (open at its app or not), by its
+                // id, whichever list the window last showed (by its place
+                // in that list it opened another's, 2026-11-18); one only
+                // on screen, its action; one in the Cleared list, what
+                // it's about, else its app.
+                if let Some(e) = self.history.newest(id).cloned() {
+                    self.open_note(None, e, Some(key));
                 } else if self.cards.iter().any(|c| c.note.id == id) {
                     self.invoke(None, id, key);
+                } else if let Some(e) = self.archive.newest(id).cloned()
+                    && !show_what(e.desktop_entry.as_deref(), &e.show)
+                {
+                    raise_app(e.desktop_entry.as_deref(), &e.app);
                 }
             }
             Control::Dismiss(id) => self.clear(id),
@@ -1018,6 +1086,7 @@ impl Notifications {
             }
             Msg::In(In::Show(note)) => self.show(*note),
             Msg::In(In::Close(id)) => self.remove(id, Reason::Closed),
+            Msg::In(In::SenderGone(sender)) => self.sender_gone(&sender),
             Msg::In(In::Control(c, done)) => {
                 self.control(c);
                 if let Some(done) = done {
@@ -1465,6 +1534,7 @@ fn main() -> std::process::ExitCode {
                 settings_read: None,
                 history,
                 waiting: waiting::WaitingApps::load(Some(waiting::WaitingApps::path())),
+                senders: HashMap::new(),
                 archive,
                 history_win: None,
                 view: history::HistoryState::default(),

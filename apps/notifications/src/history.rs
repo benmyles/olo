@@ -1799,7 +1799,6 @@ impl Notifications {
     /// comes forward.
     pub fn open_entry(&mut self, window: Option<&WindowCx>, i: usize, key: Option<String>) {
         let Some(e) = self.listed().entries.get(i).cloned() else { return };
-        let key = key.unwrap_or_else(|| "default".into());
         // One in the archive: what it's about, if it said how to show
         // that; else its app.
         if self.view.archived {
@@ -1808,11 +1807,20 @@ impl Notifications {
             }
             return;
         }
-        // (It keeps its place among the unread while the window is open;
-        // opened from elsewhere, an agent's or the Inbox's, with no
+        self.open_note(window, e, key);
+    }
+
+    /// Run history entry `e`'s action (`None`: its default), whichever
+    /// list the window shows (`open_entry`'s, and by its id from the
+    /// Inbox or the command line). Still open at the app, that is what a
+    /// click on it does there; otherwise what it's about, else its app.
+    pub fn open_note(&mut self, window: Option<&WindowCx>, e: crate::Entry, key: Option<String>) {
+        let key = key.unwrap_or_else(|| "default".into());
+        // (It keeps its place among the unread while the window shows
+        // them; opened from elsewhere, an agent's or the Inbox's, with no
         // window, there's no place to keep: it sat among the unread,
         // read, when the window next opened.)
-        if e.unread && self.history_win.is_some() {
+        if e.unread && self.history_win.is_some() && !self.view.archived {
             self.view.held.insert(e.id);
         }
         if e.live && e.actions.iter().any(|(k, _)| *k == key) {

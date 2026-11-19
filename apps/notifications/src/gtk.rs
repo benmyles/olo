@@ -167,6 +167,8 @@ pub fn note(number: u32, replaces: bool, app_id: &str, gtk_id: &str, n: &HashMap
     }
     let note = Note {
         id: number,
+        // (GLib's interface reaches the app however it is: by its id.)
+        sender: None,
         replaces,
         app_name,
         desktop_entry: Some(app_id.to_owned()),

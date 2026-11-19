@@ -11,7 +11,7 @@
 
 use olo_protocol::NoteStyle;
 
-use crate::server::{Kind, Note};
+use crate::server::Note;
 
 /// Browsers whose notes carry a site: (desktop entry, name).
 const BROWSERS: &[(&str, &str)] = &[
@@ -154,7 +154,7 @@ mod tests {
     use zbus::zvariant::OwnedValue;
 
     use super::*;
-    use crate::{markup, server};
+    use crate::{markup, server, server::Kind};
 
     fn chrome(body: &str, hints: &HashMap<String, OwnedValue>) -> Note {
         let mut h = hints.clone();

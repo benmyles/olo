@@ -62,6 +62,11 @@ pub enum Sound {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Note {
     pub id: u32,
+    /// Who sent it: its connection's unique name on the bus (":1.42").
+    /// Its actions reach the app only while that connection is there: an
+    /// app that quit, or started again (an upgrade re-executes Olo's
+    /// apps), knows nothing of it ([`In::SenderGone`]).
+    pub sender: Option<String>,
     /// It replaces the one with this id (shown in its place).
     pub replaces: bool,
     pub app_name: String,
@@ -108,6 +113,9 @@ pub struct Note {
 pub enum In {
     Show(Box<Note>),
     Close(u32),
+    /// A connection that sent notifications left the bus (its unique
+    /// name): what it sent can't be acted on there any more.
+    SenderGone(String),
     /// Told once it has been done (so `List` reflects it).
     Control(Control, Option<Done>),
 }
@@ -146,6 +154,9 @@ pub enum Reason {
 
 struct Service {
     next: std::sync::Arc<AtomicU32>,
+    /// The connections that have sent notifications (their unique
+    /// names): only their leaving is told to the UI.
+    senders: Senders,
     /// Ids by (app, tag) for the hints that say "replace the last one with
     /// this tag" (volume and brightness pop-ups, a download's progress).
     tags: olo_sync::Mutex<HashMap<(String, String), u32>>,
@@ -163,7 +174,18 @@ impl Service {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn notify(&self, app_name: String, replaces_id: u32, app_icon: String, summary: String, body: String, actions: Vec<String>, hints: HashMap<String, OwnedValue>, expire_timeout: i32) -> u32 {
+    fn notify(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        app_name: String,
+        replaces_id: u32,
+        app_icon: String,
+        summary: String,
+        body: String,
+        actions: Vec<String>,
+        hints: HashMap<String, OwnedValue>,
+        expire_timeout: i32,
+    ) -> u32 {
         let tag = ["x-canonical-private-synchronous", "synchronous", "x-dunst-stack-tag"]
             .iter()
             .find_map(|k| hints.get(*k).and_then(|v| String::try_from(v.try_clone().ok()?).ok()))
@@ -181,7 +203,12 @@ impl Service {
         if let Some(t) = tag {
             self.tags.lock().unwrap().insert((app_name.clone(), t), id);
         }
-        (self.to_ui)(In::Show(Box::new(note(id, replaces, app_name, app_icon, summary, body, actions, &hints, expire_timeout))));
+        let mut note = note(id, replaces, app_name, app_icon, summary, body, actions, &hints, expire_timeout);
+        note.sender = header.sender().map(|s| s.to_string());
+        if let Some(s) = &note.sender {
+            self.senders.lock().unwrap().insert(s.clone());
+        }
+        (self.to_ui)(In::Show(Box::new(note)));
         id
     }
 
@@ -372,6 +399,7 @@ pub fn note(id: u32, replaces: bool, app_name: String, app_icon: String, summary
     };
     let mut note = Note {
         id,
+        sender: None,
         replaces,
         app_name,
         desktop_entry,
@@ -467,10 +495,12 @@ impl Bus {
         };
         let to_ui: std::sync::Arc<dyn Fn(In) + Send + Sync> = std::sync::Arc::new(to_ui);
         let ui = to_ui.clone();
-        let service = Service { next: next.clone(), tags: Default::default(), to_ui: Box::new(move |m| ui(m)) };
+        let senders: Senders = Default::default();
+        let service = Service { next: next.clone(), senders: senders.clone(), tags: Default::default(), to_ui: Box::new(move |m| ui(m)) };
         let gtk: crate::gtk::Shared = Default::default();
         let ui = to_ui.clone();
         let gtk_service = crate::gtk::Service { next, registry: gtk.clone(), to_ui: Box::new(move |m| ui(m)) };
+        let to_ui_gone = to_ui.clone();
         let controls = Controls { snapshot, archived, to_ui };
         let conn = builder.serve_at(PATH, service)?.serve_at(crate::gtk::PATH, gtk_service)?.serve_at(CONTROL_PATH, controls)?.build()?;
         // (The builder's `name` counts "someone else has it" as success.)
@@ -485,6 +515,7 @@ impl Bus {
         if let Err(e) = conn.request_name_with_flags(crate::gtk::NAME, flags) {
             tracing::info!("notifications: no {}: {e}", crate::gtk::NAME);
         }
+        follow_senders(&conn, senders, to_ui_gone);
         Ok(Bus { conn, gtk })
     }
 
@@ -520,6 +551,26 @@ impl Bus {
     pub fn replied(&self, id: u32, text: &str) {
         let _ = self.conn.emit_signal(None::<()>, PATH, NAME, "NotificationReplied", &(id, text));
     }
+}
+
+/// The connections that have sent notifications, by unique name.
+type Senders = std::sync::Arc<olo_sync::Mutex<std::collections::HashSet<String>>>;
+
+/// Tell the UI of each connection that leaves the bus having sent
+/// notifications (asleep between them; any other leaving is passed over
+/// here): what it sent stops being open at its app.
+fn follow_senders(conn: &zbus::blocking::Connection, senders: Senders, to_ui: std::sync::Arc<dyn Fn(In) + Send + Sync>) {
+    let Ok(dbus) = zbus::blocking::fdo::DBusProxy::new(conn) else { return };
+    // (Only names left without an owner: a connection gone.)
+    let Ok(changes) = dbus.receive_name_owner_changed_with_args(&[(2, "")]) else { return };
+    let _ = std::thread::Builder::new().name("notes-senders".into()).spawn(move || {
+        for c in changes {
+            let Ok(args) = c.args() else { continue };
+            if args.new_owner().is_none() && args.name().starts_with(':') && senders.lock().unwrap().remove(args.name().as_str()) {
+                to_ui(In::SenderGone(args.name().to_string()));
+            }
+        }
+    });
 }
 
 /// The command line's side: a call to the running service.

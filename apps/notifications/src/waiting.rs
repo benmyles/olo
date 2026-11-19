@@ -191,9 +191,57 @@ impl WaitingApps {
     }
 }
 
+/// What waits in app `app` (its launcher badge's name), as the app itself
+/// said it in a notification, to go to instead of to the app as it was
+/// last left (Ben, 2026-11-18: "it should go to the specific window and
+/// specific tab in that window for which it is referencing … it only
+/// took me to the last active window/tab in terminal"). The one still
+/// open at the app that has waited longest (an app closes its note as
+/// the thing stops waiting: Terminal's tab looked at, its agent gone
+/// on); else the newest unread one that says how to show what it's
+/// about. None: the app said nothing of it, and it's the app that's
+/// gone to.
+pub fn about<'a>(entries: &'a [store::Entry], app: &str) -> Option<&'a store::Entry> {
+    let its = |e: &&store::Entry| store::is_app(&store::app_ids(e.desktop_entry.as_deref(), &e.app), app);
+    let open = entries.iter().filter(its).filter(|e| e.live && e.actions.iter().any(|(key, _)| key == "default")).min_by_key(|e| (e.time, e.id));
+    open.or_else(|| entries.iter().filter(its).filter(|e| e.unread && !e.show.is_empty()).max_by_key(|e| (e.time, e.id)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A click on what waits in an app goes to the thing that waits:
+    /// the app's own open note about it (the one waiting longest), else
+    /// its newest unread one that says how to show it; never another
+    /// app's, nor one read and closed (what it was about has moved on).
+    #[test]
+    fn what_waits_is_gone_to_itself() {
+        let note = |id: u32, app: &str, time: u64, live: bool, unread: bool, show: &[&str]| store::Entry {
+            id,
+            app: app.into(),
+            desktop_entry: Some(format!("olo-{}", app.to_lowercase())),
+            time,
+            live,
+            unread,
+            actions: if live { vec![("default".into(), "Show".into())] } else { Vec::new() },
+            show: show.iter().map(|s| (*s).to_owned()).collect(),
+            ..store::Entry::default()
+        };
+        let entries = vec![
+            note(1, "Terminal", 100, false, false, &["--show-shell", "7"]),
+            note(2, "Terminal", 300, true, true, &["--show-shell", "9"]),
+            note(3, "Terminal", 200, true, true, &["--show-shell", "8"]),
+            note(4, "Slack", 400, true, true, &[]),
+            note(5, "Calendar", 500, false, true, &["--show", "x"]),
+            note(6, "Calendar", 600, false, true, &[]),
+        ];
+        assert_eq!(about(&entries, "olo-terminal").map(|e| e.id), Some(3), "the one waiting longest");
+        assert_eq!(about(&entries, "olo-slack").map(|e| e.id), Some(4));
+        assert_eq!(about(&entries, "olo-calendar").map(|e| e.id), Some(5), "closed at its app: the unread one that says how to show it");
+        assert_eq!(about(&entries[..1], "olo-terminal").map(|e| e.id), None, "read and closed: the app itself");
+        assert_eq!(about(&entries, "olo-mail").map(|e| e.id), None);
+    }
 
     fn badge(app: &str, count: u64, urgent: bool) -> Attention {
         Attention { app: app.into(), count, urgent }

@@ -223,6 +223,7 @@ impl Entry {
     pub fn to_note(&self, timeout: Option<std::time::Duration>) -> Note {
         Note {
             id: self.id,
+            sender: None,
             replaces: false,
             app_name: self.app.clone(),
             desktop_entry: self.desktop_entry.clone(),

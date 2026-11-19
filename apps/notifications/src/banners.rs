@@ -294,8 +294,13 @@ impl Banners {
             // (Its ×: cleared, as × is everywhere.)
             Did::Dismiss => n.clear(id),
             Did::Action(key) => n.invoke(Some(&**cx), id, key),
+            // (No action to run: not open at its app, a banner brought
+            // back after a restart, or its app gone since. What it's
+            // about, if it says how to show that; else its app.)
             Did::Raise => {
-                if let Some(card) = n.cards.iter().find(|c| c.note.id == id) {
+                if let Some(card) = n.cards.iter().find(|c| c.note.id == id)
+                    && !crate::show_what(card.note.desktop_entry.as_deref(), &card.note.show)
+                {
                     raise_app(card.note.desktop_entry.as_deref(), &card.note.app_name);
                 }
                 n.remove(id, Reason::Dismissed);

@@ -17399,6 +17399,37 @@ answered, and after the centre was ended and started again, each
 brought the second window forward with that tab selected (before:
 nothing moved).
 
+**Open at its app only while its sender is** (Ben, 2026-11-18: a
+click on a waiting tab's note "only took me to the last active
+window/tab in terminal"; root-caused with a second investigator, each
+cause reproduced headless). A note is open at its app while the bus
+connection that sent it is there: the centre notes each one's sender
+(its unique name, from the `Notify` call's header) and follows
+`NameOwnerChanged` for the connections that have sent notes
+(`server::follow_senders`, asleep between them; any other connection
+leaving is passed over there). One that leaves (the app quit, or
+re-executed itself in an upgrade, which every Olo app does) takes its
+notes out of being open at it (`Notifications::sender_gone`: no longer
+`live`, their banners' buttons gone), so a click shows what each is
+about instead of sending an action nobody hears (before: the new
+Terminal didn't know the old id, and the window in front stayed). And
+three more ways a click missed: Deskbar's Inbox and
+`olo-notifications --invoke ID` opened the entry at that id's place in
+the history in whichever list the window last showed (the Cleared
+list, often: another note's, or none), now by its id (`open_note`); a
+banner brought back after a restart, having no action, brought its
+app forward as it was left (`Did::Raise`), now shows what it's about
+first; and Terminal's window kept the old tab's title when a click
+chose a tab (`show_shell` retitles). "Waiting in apps" (red) goes to
+the app's own open note about it, else its newest unread one that says
+how to show it (`waiting::about`), and only then to the app. Measured
+(release): at rest 0 wakeups a second; twenty short-lived connections
+coming and going in five seconds woke only the bus's own threads (0.0%
+of a core), not the UI. Tried headless: a note from `gdbus call` (gone
+at once) not open at its app; one from `notify-send --wait` open while
+it waited and not once it was stopped. Tested: `waiting`'s
+`what_waits_is_gone_to_itself`.
+
 **Read by going there** (Ben, 2026-11-18: "if there is an
 unread/unseen/activity style notification from an app and i go to the
 app and see the screen/tab that notification references, then that

@@ -1171,6 +1171,9 @@ impl Terminal {
         let Some((win, i)) = self.find_shell(shell) else { return false };
         if let Some(Win::Term(t)) = self.windows.get_mut(&win) {
             t.select(i);
+            // (Its window says the tab now shown: it said the one before
+            // until the shell next printed.)
+            retitle(cx, win, t);
         }
         cx.activate_with(win, token);
         cx.redraw(win);
