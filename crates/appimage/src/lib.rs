@@ -471,7 +471,9 @@ pub fn launch(path: &Path) -> std::io::Result<()> {
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode | ((mode & 0o444) >> 2)))?;
     }
     use std::os::unix::process::CommandExt as _;
-    std::process::Command::new(path).current_dir(std::env::var_os("HOME").unwrap_or_else(|| "/".into())).stdin(std::process::Stdio::null()).process_group(0).spawn().map(drop)
+    let child = std::process::Command::new(path).current_dir(std::env::var_os("HOME").unwrap_or_else(|| "/".into())).stdin(std::process::Stdio::null()).process_group(0).spawn()?;
+    olo_xdg::reap_child(child);
+    Ok(())
 }
 
 #[cfg(test)]

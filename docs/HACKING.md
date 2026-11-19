@@ -18463,8 +18463,13 @@ put it away.
   items (`olo_keychain::Request::Search` while unlocked; choosing one
   is `Request::Show`), files under home by name (`sources::Index`: an
   `ignore` walk on start, at most 400,000, then each folder followed,
-  `olo_kit::watch`, and only one that changed listed again, so a new file
-  is found at once; the watch gains and loses the folders that came and
+  `olo_kit::watch::watch_dir_entries`: told of names that come, go or
+  move, and of edits to the files that decide what's listed (`.gitignore`,
+  `.ignore`), never of a document written (each write listed its folder
+  again: 62 % of a core with one file of 12,000 rewritten 25 times a
+  second, 0.1 % now; 2026-11-19), and only one that changed listed
+  again, so a new file is found at once; the watch gains and loses the
+  folders that came and
   went, `Index::take_moved`, not every folder again; past an eighth of
   the kernel's inotify watches it is
   walked again when asked and five minutes old instead; matched on their

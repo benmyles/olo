@@ -49,18 +49,10 @@ const GATHER: Duration = Duration::from_millis(25);
 /// replaced (its link count dropping: a rename over it).
 const FILE_MASK: u32 = libc::IN_MODIFY | libc::IN_ATTRIB | libc::IN_CLOSE_WRITE | libc::IN_DELETE_SELF | libc::IN_MOVE_SELF;
 
+const ENTRY_CHANGES: u32 = libc::IN_CREATE | libc::IN_DELETE | libc::IN_MOVED_FROM | libc::IN_MOVED_TO;
+
 /// Events that say a folder's items (or a file's contents) changed.
-const MASK: u32 = libc::IN_CREATE
-    | libc::IN_DELETE
-    | libc::IN_MOVED_FROM
-    | libc::IN_MOVED_TO
-    | libc::IN_MODIFY
-    | libc::IN_ATTRIB
-    | libc::IN_CLOSE_WRITE
-    | libc::IN_DELETE_SELF
-    | libc::IN_MOVE_SELF
-    | libc::IN_ONLYDIR
-    | libc::IN_EXCL_UNLINK;
+const MASK: u32 = ENTRY_CHANGES | libc::IN_MODIFY | libc::IN_ATTRIB | libc::IN_CLOSE_WRITE | libc::IN_DELETE_SELF | libc::IN_MOVE_SELF | libc::IN_ONLYDIR | libc::IN_EXCL_UNLINK;
 
 type Changed = Arc<dyn Fn(&[PathBuf]) + Send + Sync>;
 
@@ -141,6 +133,17 @@ impl Drop for Watch {
 /// too (after it), so a caller can pass over what isn't its business.
 /// None if the kernel has no inotify to give.
 pub fn watch(paths: impl IntoIterator<Item = PathBuf>, changed: impl Fn(&[PathBuf]) + Send + Sync + 'static) -> Option<Watch> {
+    watch_with(paths, None, Arc::new(changed))
+}
+
+/// Follow directories for entries appearing, disappearing or changing names.
+/// A write to one of `content_files` (such as a file of ignore rules) also
+/// reports its directory. A lost event reports every watched directory.
+pub fn watch_dir_entries(paths: impl IntoIterator<Item = PathBuf>, content_files: &'static [&'static str], changed: impl Fn(&[PathBuf]) + Send + Sync + 'static) -> Option<Watch> {
+    watch_with(paths, Some(content_files), Arc::new(changed))
+}
+
+fn watch_with(paths: impl IntoIterator<Item = PathBuf>, entry_files: Option<&'static [&'static str]>, changed: Changed) -> Option<Watch> {
     let s = service()?;
     let mut st = s.state.lock().unwrap_or_else(|e| e.into_inner());
     st.next += 1;
@@ -149,7 +152,7 @@ pub fn watch(paths: impl IntoIterator<Item = PathBuf>, changed: impl Fn(&[PathBu
     for p in &paths.list {
         st.follow(p);
     }
-    st.watchers.insert(id, Watcher { paths, changed: Arc::new(changed) });
+    st.watchers.insert(id, Watcher { paths, changed, entry_files });
     drop(st);
     s.wake();
     Some(Watch { id })
@@ -195,6 +198,7 @@ impl Places {
 
 struct Watcher {
     paths: Places,
+    entry_files: Option<&'static [&'static str]>,
     changed: Changed,
 }
 
@@ -256,6 +260,8 @@ struct State {
 /// What a burst of events said.
 #[derive(Default)]
 struct Burst {
+    /// Directories whose entries or own identity changed.
+    listings: HashSet<PathBuf>,
     /// What was touched: a folder's item, or the folder itself.
     touched: HashSet<PathBuf>,
     /// Folders that came or went (made, removed, moved in or out).
@@ -410,6 +416,7 @@ impl State {
 
     /// Read every event waiting into `burst`.
     fn read(&mut self, burst: &mut Burst) {
+        let track_entries = self.watchers.values().any(|w| w.entry_files.is_some());
         let mut buf = [0u8; 16 * 1024];
         loop {
             // SAFETY: reading into our own buffer from a non-blocking fd.
@@ -444,6 +451,9 @@ impl State {
                         self.by_wd.get(&ev.wd).cloned().unwrap_or_default()
                     };
                     for n in names {
+                        if track_entries {
+                            burst.listings.insert(n.clone());
+                        }
                         burst.touched.insert(n.clone());
                         burst.moved.push(n);
                     }
@@ -457,13 +467,21 @@ impl State {
                     if name.is_empty() {
                         burst.touched.insert(dir.clone());
                         if ev.mask & libc::IN_ATTRIB != 0 {
+                            if track_entries {
+                                burst.listings.insert(dir.clone());
+                            }
                             burst.moved.push(dir.clone());
                         }
                         continue;
                     }
                     let item = dir.join(OsStr::from_bytes(name));
-                    if ev.mask & (libc::IN_CREATE | libc::IN_DELETE | libc::IN_MOVED_FROM | libc::IN_MOVED_TO) != 0 && ev.mask & libc::IN_ISDIR != 0 {
-                        burst.moved.push(item.clone());
+                    if ev.mask & ENTRY_CHANGES != 0 {
+                        if track_entries {
+                            burst.listings.insert(dir.clone());
+                        }
+                        if ev.mask & libc::IN_ISDIR != 0 {
+                            burst.moved.push(item.clone());
+                        }
                     }
                     burst.touched.insert(item);
                     burst.touched.insert(dir.clone());
@@ -476,7 +494,7 @@ impl State {
     /// replaced, an item in it changed) or come or gone, in its order, and
     /// then the items that changed in its folders.
     fn calls(&mut self, burst: Burst) -> Vec<(Changed, Vec<PathBuf>)> {
-        let Burst { mut touched, mut moved, overflow } = burst;
+        let Burst { mut touched, mut moved, overflow, listings } = burst;
         let mut flipped = HashSet::new();
         if overflow {
             // Too much to say what: everything followed changed, and is
@@ -504,7 +522,17 @@ impl State {
         }
         let mut out = Vec::new();
         for w in self.watchers.values() {
-            let mut hit: Vec<usize> = touched.iter().chain(&flipped).filter_map(|p| w.paths.at.get(p).copied()).collect();
+            let selected = if w.entry_files.is_some() && !overflow { &listings } else { &touched };
+            let mut hit: Vec<usize> = selected.iter().chain(&flipped).filter_map(|p| w.paths.at.get(p).copied()).collect();
+            if let Some(files) = w.entry_files {
+                for p in &touched {
+                    if p.file_name().and_then(OsStr::to_str).is_some_and(|n| files.contains(&n))
+                        && let Some(i) = p.parent().and_then(|d| w.paths.at.get(d))
+                    {
+                        hit.push(*i);
+                    }
+                }
+            }
             if hit.is_empty() {
                 continue;
             }
@@ -512,7 +540,9 @@ impl State {
             hit.dedup();
             let mut paths: Vec<PathBuf> = hit.into_iter().map(|i| w.paths.list[i].clone()).collect();
             // The items that changed in folders followed.
-            paths.extend(touched.iter().filter(|t| t.parent().is_some_and(|d| w.paths.at.contains_key(d)) && !w.paths.at.contains_key(*t)).cloned());
+            if w.entry_files.is_none() {
+                paths.extend(touched.iter().filter(|t| t.parent().is_some_and(|d| w.paths.at.contains_key(d)) && !w.paths.at.contains_key(*t)).cloned());
+            }
             out.push((w.changed.clone(), paths));
         }
         out
@@ -635,6 +665,35 @@ mod tests {
 
     fn next(rx: &mpsc::Receiver<Vec<PathBuf>>) -> Vec<PathBuf> {
         rx.recv_timeout(Duration::from_secs(2)).unwrap_or_default()
+    }
+
+    #[test]
+    fn directory_entries_and_ignore_rules() {
+        let dir = std::env::temp_dir().join(format!("olo-entry-watch-{}", std::process::id()));
+        std::fs::create_dir(&dir).unwrap();
+        let file = dir.join("item");
+        let rules = dir.join(".gitignore");
+        std::fs::write(&file, "first").unwrap();
+        std::fs::write(&rules, "").unwrap();
+        let (tx, entries) = mpsc::channel();
+        let _entries = watch_dir_entries([dir.clone()], &[".gitignore"], move |p| tx.send(p.to_vec()).unwrap()).unwrap();
+        let (tx, files) = mpsc::channel();
+        let _files = watch([file.clone()], move |p| tx.send(p.to_vec()).unwrap()).unwrap();
+
+        std::fs::write(&file, "second").unwrap();
+        assert_eq!(next(&files), [file.clone()]);
+        assert!(entries.recv_timeout(Duration::from_millis(150)).is_err());
+        std::fs::write(&rules, "ignored").unwrap();
+        assert_eq!(next(&entries), [dir.clone()]);
+        std::fs::rename(&file, dir.join("renamed")).unwrap();
+        assert_eq!(next(&entries), [dir.clone()]);
+        std::fs::remove_file(dir.join("renamed")).unwrap();
+        assert_eq!(next(&entries), [dir.clone()]);
+        std::fs::write(&file, "new").unwrap();
+        assert_eq!(next(&entries), [dir.clone()]);
+
+        drop((_files, _entries));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

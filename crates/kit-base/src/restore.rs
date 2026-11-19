@@ -28,10 +28,10 @@ fn slot() -> &'static Mutex<Option<String>> {
 
 /// Takes the file the previous version left, if any, now: kept for
 /// [`take`], the file gone; and waits, on a thread, for the children the
-/// previous self left (see [`reap_inherited`]).
+/// previous self left (see [`reap_inherited_except`]).
 pub fn claim() {
     slot();
-    reap_inherited();
+    reap_inherited_except(&[]);
 }
 
 /// A program re-executed in place (an upgrade, the compositor or the GPU
@@ -46,11 +46,14 @@ pub fn claim() {
 /// All at once, not one after another: waited for in turn, the first
 /// (Deskbar's oldest app, an agent screen running for days) held the
 /// rest, and an app that quit behind it stayed a zombie (2026-11-19).
-fn reap_inherited() {
+///
+/// `owned` lists children whose exit status the new image handles itself.
+pub fn reap_inherited_except(owned: &[libc::pid_t]) {
     // (Each of our threads' children: after an exec there is one thread.)
     let Ok(tasks) = std::fs::read_dir("/proc/self/task") else { return };
-    let pids: Vec<libc::pid_t> =
+    let mut pids: Vec<libc::pid_t> =
         tasks.flatten().filter_map(|t| std::fs::read_to_string(t.path().join("children")).ok()).flat_map(|list| list.split_whitespace().filter_map(|p| p.parse().ok()).collect::<Vec<_>>()).collect();
+    pids.retain(|pid| !owned.contains(pid));
     if pids.is_empty() {
         return;
     }
@@ -267,7 +270,7 @@ mod tests {
         let child = Command::new("true").spawn().expect("true runs");
         let pid = child.id();
         std::mem::forget(child);
-        reap_inherited();
+        reap_inherited_except(&[]);
         let gone = (0..300).any(|_| {
             std::thread::sleep(std::time::Duration::from_millis(10));
             !std::path::Path::new(&format!("/proc/{pid}")).exists()

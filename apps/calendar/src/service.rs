@@ -240,7 +240,7 @@ pub fn run() -> std::process::ExitCode {
                 if let Some(token) = token {
                     cmd.env("XDG_ACTIVATION_TOKEN", token);
                 }
-                let _ = cmd.spawn();
+                let _ = cmd.spawn().map(olo_xdg::reap_child);
             }
             NoteEvent::Closed { id } => {
                 showing.lock().unwrap().remove(&id);

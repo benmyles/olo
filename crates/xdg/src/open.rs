@@ -923,10 +923,7 @@ fn spawn_pid(argv: &[OsString]) -> io::Result<u32> {
             Ok(())
         });
     }
-    let mut child = c.spawn()?;
-    let pid = child.id();
-    std::thread::spawn(move || child.wait());
-    Ok(pid)
+    c.spawn().map(crate::reap_child)
 }
 
 #[cfg(test)]

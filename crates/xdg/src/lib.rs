@@ -433,6 +433,13 @@ pub fn spawn_detached_app_with(cmd: &str, app_id: &str, env: &[(&str, &str)]) ->
 /// then, and clears it, so what the copy starts isn't one too.
 pub const NEW_INSTANCE: &str = "OLO_NEW_INSTANCE";
 
+/// Wait for a launched child on a worker and return its pid to the launcher.
+pub fn reap_child(mut child: std::process::Child) -> u32 {
+    let pid = child.id();
+    std::thread::spawn(move || child.wait());
+    pid
+}
+
 fn spawn_detached_pid(cmd: &str, env: &[(&str, &str)]) -> std::io::Result<u32> {
     use std::os::unix::process::CommandExt;
     let mut c = std::process::Command::new("/bin/sh");
@@ -465,10 +472,7 @@ fn spawn_detached_pid(cmd: &str, env: &[(&str, &str)]) -> std::io::Result<u32> {
             Ok(())
         });
     }
-    let mut child = c.spawn()?;
-    let pid = child.id();
-    std::thread::spawn(move || child.wait());
-    Ok(pid)
+    c.spawn().map(reap_child)
 }
 
 /// Olo's settings directory (`$XDG_CONFIG_HOME/olo`); apps keep their

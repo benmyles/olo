@@ -786,7 +786,7 @@ pub fn perform(action: Action, front: Option<u64>) {
                 if olo_keychain::call(&olo_keychain::Request::Show { vault: vault.clone(), id: id.clone() }).is_err()
                     && let Some(p) = olo_xdg::find_program("olo-passwords")
                 {
-                    let _ = std::process::Command::new(p).spawn();
+                    let _ = std::process::Command::new(p).spawn().map(olo_xdg::reap_child);
                     for _ in 0..40 {
                         std::thread::sleep(Duration::from_millis(250));
                         if olo_keychain::call(&olo_keychain::Request::Show { vault: vault.clone(), id: id.clone() }).is_ok() {
@@ -873,7 +873,7 @@ pub fn workers(proxy: Proxy) -> Workers {
         let follow = folders.len() <= budget;
         let watch = if follow {
             let tx = changed_tx.clone();
-            olo_kit::watch::watch(folders.clone(), move |dirs| {
+            olo_kit::watch::watch_dir_entries(folders.clone(), &[".ignore", ".gitignore", ".git"], move |dirs| {
                 let _ = tx.send(dirs.to_vec());
             })
         } else {

@@ -374,6 +374,20 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Done, waiting for Ben to try or confirm
 
+- **Stuck processes: olo-phoned spinning, Deskbar's zombies, the
+  palette** (Ben, 2026-11-19, with Olo's supervisor's "Seems stuck:
+  olo-phoned" and "Leaves zombies: olo-deskbar": "can you root cause and
+  fix these?", and "i think pallette was spinning too but i just stopped
+  it"). Done: the phone service's loop waited on a deadline its `tick`
+  never moved while a retry was pending (a core and a half between
+  retries); an upgraded Deskbar waited for the apps it had started one
+  after another, the oldest holding the rest; the palette's file index
+  listed a folder again at every write in it; Terminal's daemon spun
+  through its last three seconds; a few launches never waited for their
+  child. Each reproduced and fixed, the first two seen in his session.
+  To try: upgrade from Deskbar's tray (the phone service and Deskbar
+  restart in place; the zombie goes as Deskbar does), then Activity
+  Monitor ▸ Supervisor should stay quiet.
 - **A Chrome app window's download popup opened at its top left, half on
   the next display** (Ben, 2026-11-19, downloading a file in Slack, Olo's
   Chrome in app mode zoomed on a display with another to its left: "it

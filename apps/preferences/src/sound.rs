@@ -535,7 +535,9 @@ fn play_startup(chime: olo_protocol::StartupChime) {
     }
     let Ok(exe) = std::env::current_exe() else { return };
     let notifications = std::path::PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)")).with_file_name("olo-notifications");
-    if let Err(e) = std::process::Command::new(&notifications).arg("--startup-sound").arg(chime.id()).stdin(std::process::Stdio::null()).spawn() {
+    let mut cmd = std::process::Command::new(&notifications);
+    cmd.arg("--startup-sound").arg(chime.id()).stdin(std::process::Stdio::null());
+    if let Err(e) = cmd.spawn().map(olo_xdg::reap_child) {
         tracing::warn!("{}: {e}", notifications.display());
     }
 }

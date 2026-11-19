@@ -682,7 +682,7 @@ fn start_recorder(name: &str, pid: i32) {
         }
         rec.stderr(log);
     }
-    if let Err(e) = rec.spawn() {
+    if let Err(e) = rec.spawn().map(olo_xdg::reap_child) {
         tracing::warn!("screen {name}'s frames won't be kept: {e}");
     }
 }

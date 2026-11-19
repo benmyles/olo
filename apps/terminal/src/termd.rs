@@ -1472,6 +1472,7 @@ fn run(st: St, events: mpsc::Receiver<Ev>, mut listener: UnixListener, lock: Fil
             continue;
         }
         if s.shells.is_empty() {
+            relaunch_at = None;
             let since = *idle_since.get_or_insert(now);
             if now.duration_since(since) >= LINGER {
                 if ino(&path) == ours {
@@ -1589,6 +1590,10 @@ fn main() {
                     Err(e) => log(format!("lost shell {}: {e}", sh.id)),
                 }
             }
+            // Each restored PTY reader collects its shell's exit status.
+            // Relaunched Terminal windows also remain children across exec.
+            let shells: Vec<_> = s.shells.values().map(|sh| sh.pid).collect();
+            olo_kit_base::restore::reap_inherited_except(&shells);
             log(format!("upgraded, with {} shells", s.shells.len()));
             (listener, lock)
         }
