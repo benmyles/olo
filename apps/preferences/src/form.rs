@@ -321,7 +321,9 @@ impl<'a, 'b, 'c> Ui<'a, 'b, 'c> {
     /// A pop-up menu of values: `choices` (value, name), the one equal to
     /// `current` chosen (one not among them shown by `other`'s name).
     pub fn choose<T: Clone + PartialEq + 'static>(&mut self, id: &str, choices: &[(T, &str)], current: &T, with: impl FnOnce(MenuField) -> MenuField, set: impl Fn(&mut Settings, T) + 'static) {
-        let mut names: Vec<SharedString> = choices.iter().map(|(_, n)| SharedString::from(n.to_string())).collect();
+        // (The choices' names are the panel's own words: in the person's
+        // language, found by what they say.)
+        let mut names: Vec<SharedString> = choices.iter().map(|(_, n)| olo_kit::words::of_text(n)).collect();
         let selected = choices.iter().position(|(v, _)| v == current).unwrap_or_else(|| {
             names.push("Other".into());
             names.len() - 1

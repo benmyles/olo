@@ -32,6 +32,8 @@ pub enum Panel {
     /// Each GPU's tuning.
     Integrations,
     Keyboard,
+    /// Olo's language (and, later, the formats).
+    Language,
     Network,
     Notifications,
     Performance,
@@ -63,6 +65,7 @@ impl Panel {
         Panel::Display,
         Panel::Integrations,
         Panel::Keyboard,
+        Panel::Language,
         Panel::Network,
         Panel::Notifications,
         Panel::Performance,
@@ -100,6 +103,7 @@ impl Panel {
             "notification" | "dnd" | "do-not-disturb" => Some(Panel::Notifications),
             "supervisor" | "responsiveness" | "watchdog" | "pointer-thread" | "input-thread" | "kernel" | "kernel-tuning" => Some(Panel::Performance),
             "time" | "date" | "clock" | "date-time" => Some(Panel::DateTime),
+            "languages" | "locale" | "region" | "translation" | "translations" | "language-region" => Some(Panel::Language),
             "open-with" | "file-types" | "filetypes" | "default-applications" => Some(Panel::DefaultApps),
             "passwords" | "privacy" => Some(Panel::Security),
             "smart-tiling" | "models" => Some(Panel::Ai),
@@ -125,6 +129,7 @@ impl Panel {
             Panel::Display => "display",
             Panel::Integrations => "integrations",
             Panel::Keyboard => "keyboard",
+            Panel::Language => "language",
             Panel::Network => "network",
             Panel::Notifications => "notifications",
             Panel::Performance => "performance",
@@ -158,6 +163,7 @@ impl Panel {
             Panel::Display => "Display",
             Panel::Integrations => "Integrations",
             Panel::Keyboard => "Keyboard",
+            Panel::Language => "Language & Region",
             Panel::Network => "Network",
             Panel::Notifications => "Notifications",
             Panel::Performance => "Performance",
@@ -193,6 +199,7 @@ impl Panel {
             Panel::Display => "display",
             Panel::Integrations => "integrations",
             Panel::Keyboard => "keyboard",
+            Panel::Language => "language",
             Panel::Network => "network-prefs",
             Panel::Notifications => "notifications",
             Panel::Performance => "performance",
@@ -236,6 +243,7 @@ impl Panel {
             // GitHub and Mail beside Telegram.
             Panel::Integrations => (900, 480),
             Panel::Keyboard => (520, 736),
+            Panel::Language => (460, 240),
             // Seven tabs; Hosts' four columns; Shaping's two ways side by side.
             Panel::Network => (640, 420),
             Panel::Notifications => (440, 700),
@@ -347,6 +355,10 @@ impl Panel {
             Panel::Terminal => settings.terminal = from.terminal.clone(),
             Panel::Workspaces => settings.workspace_count = from.workspace_count,
             Panel::DateTime => settings.clock = from.clock.clone(),
+            Panel::Language => {
+                settings.language = from.language.clone();
+                crate::language::tell_others(&settings.language);
+            }
             Panel::Deskbar => settings.deskbar = from.deskbar.clone(),
             Panel::Power => settings.power = from.power.clone(),
             Panel::ScreenSaver => settings.screen_saver = from.screen_saver.clone(),
@@ -476,6 +488,7 @@ pub fn render(v: &mut PanelView, cx: &mut Cx<PanelView>) -> Element {
             (Panel::Sound, State::Sound(st)) => sound::ui(&mut ui, st),
             (Panel::Security, State::Security(st)) => security::ui(&mut ui, st),
             (Panel::Ai, _) => ai::ui(&mut ui),
+            (Panel::Language, _) => crate::language::ui(&mut ui),
             (Panel::Themes, State::Themes(st)) => themes::ui(&mut ui, st),
             (Panel::DateTime, State::DateTime(st)) => datetime::ui(&mut ui, st),
             (Panel::DefaultApps, State::DefaultApps(st)) => default_apps::ui(&mut ui, st),

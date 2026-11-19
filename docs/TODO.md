@@ -51,8 +51,22 @@ something nobody here has is in "Blocked", with what it waits for.
   2× and zoomed in, and whatever it finds put right
   (`tools/dev/scheme-shots` pictures every theme).
 
-
 ## Not started (highest priority first)
+
+- **Agent Screens: every action says what the screen looks like after
+  it** (Ben, 2026-11-18: "can you improve olo agent screens reliability
+  by having it always include a new / up to date screenshot of the
+  screen after each command is run (as well as the widget tree and
+  whatever else we already give it)? i want the agent to always know
+  what the latest state is"). Each `olo-screen` action (click, set,
+  select, key, type, scroll, wheel, drag, invoke, the window commands,
+  run) waits for the screen to settle (as `wait --idle` does), takes a
+  picture of it, and gives its path in the action's JSON beside the
+  focused window's widget tree as it is then (today an action says
+  only what it matched and what has the focus), so an agent never acts
+  on what it last saw. What it costs an action measured (the picture's
+  and the settling's milliseconds), and a way to leave it out for a
+  run of quick actions.
 
 - **Find what removes dependency build units from `target/release`**
   (2026-11-18: a workspace build failed to link because about 1,040
@@ -85,22 +99,17 @@ something nobody here has is in "Blocked", with what it waits for.
   language"): the kit's layer (`olo_kit::words`: catalogs by the
   English, literals handed to widgets translated with nothing said,
   `tr!` and `count` for sentences, twelve languages named,
-  `Settings::language` applied to every running app). **Left**: the
-  choice in Preferences (and `LANGUAGE` for other programs); the
-  translations themselves (the catalogs hold a few German words to
-  try it with); sentences made with `format!` turned to `tr!`; what
-  apps paint themselves; the lint run in each language; Arabic
-  (right-to-left layout).
-  **So far** (2026-11-18; HACKING.md, "Words in the person's
-  language"): the kit's layer (`olo_kit::words`: catalogs by the
-  English, literals handed to widgets translated with nothing said,
-  `tr!` and `count` for sentences, twelve languages named,
-  `Settings::language` applied to every running app). **Left**: the
-  choice in Preferences (and `LANGUAGE` for other programs); the
-  translations themselves (the catalogs hold a few German words to
-  try it with); sentences made with `format!` turned to `tr!`; what
-  apps paint themselves; the lint run in each language; Arabic
-  (right-to-left layout).
+  `Settings::language` applied to every running app). Then the choice:
+  Preferences ▸ Language & Region (its own icon, a globe and a speech
+  bubble), each language by its own name, how much of Olo is in it so
+  far, and other programs given it as they start (`LANGUAGE` in the
+  person's locale.conf); and Olo's word list whole (1,081: tabs, menu
+  fields' choices and boxes' titles counted too, `words/en.txt`).
+  **Left**: the translations themselves (German first, under way; the
+  catalogs hold a few words each); sentences made with `format!` turned
+  to `tr!`; what apps paint themselves; the lint run in each language;
+  formats (dates, numbers, the week's first day); Arabic (right-to-left
+  layout).
 - **A sign-in's mailed code is found every time** (Ben, 2026-11-18,
   signing in at claude.ai, which mails a link and takes a "verification
   code" in its place: "i tried to login to claude and it didn't manage
@@ -135,35 +144,6 @@ something nobody here has is in "Blocked", with what it waits for.
   "non-existent source" warnings (a display's timer cancelled in the
   round it came due). **Left**: another pass once these are in Ben's
   session a day.
-- **Desktop icons gone after Deskbar is collapsed and expanded** (Ben,
-  2026-11-18: "i tried the new collapse deskbar then expand again. it
-  worked but the desktop icons all disappeared and didn't come back").
-  **Found and fixed**: neither Deskbar nor Tracker, but app_server out
-  of file descriptors (696 open of a limit of 1,024; the fold made
-  every window draw anew): the kernel dropped what Terminal and
-  Tracker sent and both were disconnected, 13:16:26. Every Olo program
-  raises its limit as it starts now, and Olo Doctor raises it for
-  those running (HACKING.md, "Open files"). **Still to find**: why
-  Tracker, unlike Terminal, didn't re-execute and reconnect when its
-  connection went: **found and fixed** too (a loop ended in an error
-  was asked whether its socket had hung up yet; HACKING.md, "What a
-  day's logs showed").
-- **The pointer vanishes over a video in Chrome and Chrome-based apps**
-  (Ben, 2026-11-18: "sometimes when a cursor goes over a video on
-  chrome or a chrome based app like slack then the cursor doesn't show
-  again until i move the mouse completely out of the window and back.
-  the cursor shouldn't disappear when over a video at all, it should
-  only ever disappear if in full screen and hasn't moved for 5s and then
-  come back if it moves again"). Tried before, still there.
-  **Done so far**: Olo holds that rule itself now (`pointer_hide`,
-  HACKING.md "A program hiding the pointer"), so a rested pointer comes
-  back on the first move whatever the program does. **The cause, found
-  and fixed** (by the Codex helper, `olo-debug-help`, checked and
-  applied): olo-wlproxy couldn't make Chrome's cursor-shape device
-  again after app_server restarted, and dropped every shape from then
-  on (HACKING.md, the proxy's "An object is made again…";
-  `tools/dev/cursor-replay-check`). A Chrome or Slack already running
-  gets the mended proxy when it's next started.
 - **One account for Mail and Calendar** (Ben, 2026-11-18: "can the
   calendar and mail just use the same integration connection so we
   don't have to set it up twice? like can it just be Mail & Calendar").
@@ -206,6 +186,17 @@ something nobody here has is in "Blocked", with what it waits for.
   only once the person approves each: nothing but reading without
   asking. Olo's own: notifications, the Inbox widget, the palette, the
   phone, an agents' API, in-place reload, native in Rust.
+  **How it's built** (Ben, 2026-11-18: "when you write the mail app, i'd
+  like you to utilize codex astra 6.2 instances (on xhigh effort) to
+  help you do the work -- you should own all ux and design decisions and
+  orchestrate, but have codex instances work on the different pieces
+  for you in parallel just be very specific to it what you want for each
+  one"): the design, the UX and how the pieces fit are mine; each piece
+  (the engine's IMAP/SMTP and its store, threads and search, the
+  composer, the views, the assistant, the widget…) goes to a Codex
+  instance (gpt-6.2-astra, xhigh) with a precise spec of what it builds,
+  how it looks and behaves, and how it's tested, working in parallel in
+  worktrees of its own; I review, fit together and judge every picture.
 
 - **Calendar and Mail in Deskbar: widgets of their own** (Ben,
   2026-11-17: "both the calendar and email should also integrate with
@@ -226,16 +217,6 @@ something nobody here has is in "Blocked", with what it waits for.
   (what's due, a list's next few), styled as Weather's and the Inbox
   are. Olo's own: the palette, an agents' API, in-place reload, native
   in Rust.
-
-- **Done, 2026-11-18** (extension 1.15.5; HACKING.md, "The toolbar
-  button's list", "Check for Codes", "A link to sign in with, sent by
-  mail"): the extension's Open Passwords goes to the login chosen in
-  its list; a mailed code's offer says "From …, in mail to ADDRESS";
-  Passwords ▸ Check for Codes in a field's menu reads the mail afresh
-  at once. **Left of it**: how long a mailed code takes from arriving
-  to being offered isn't measured against a real server (with the
-  stand-in it's offered as it's delivered); the phone's messages
-  aren't asked again by Check for Codes (they come as they're sent).
 
 - **Chrome with several profiles: agents' trees and codes reach one
   profile** (found 2026-11-18, mending links). Chrome's socket for
@@ -301,21 +282,6 @@ something nobody here has is in "Blocked", with what it waits for.
   what order, named how), written down in HACKING.md and held by the
   window review where it can be.
 
-- **The file picker hands several files over in order** (Ben,
-  2026-11-18: "in the olo file picker e.g. when in slack or chrome or
-  wherever and adding files and you get the picker, when you multi
-  select files and add them they should be given to the target app
-  ordered lexographically asc, with tie breaker being creation time
-  asc. this is important with e.g. screenshots where you want them to
-  be ordered properly so the target app shows them sequenced right").
-  Whatever order they were clicked in, the files chosen go to the
-  program by name ascending (as the list sorts names, so "Shot 2" is
-  before "Shot 10"), then by when they were made. *Done* for the
-  picker other programs get (the portal's Open:
-  `olo_kit::files::in_handing_order`, tested with files clicked in no
-  order); it's in the next build. Olo's own programs' Open panels with
-  several files, where there are any, take the same function.
-
 - **Deskbar folded and unfolded from the keyboard, and the palette**
   (Ben, 2026-11-18: "the collapse/expand deskbar needs a keyboard
   toggle to cycle it and it should be ctrl+cmd+d by default (but
@@ -341,6 +307,62 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Desktop icons gone after Deskbar is collapsed and expanded** (Ben,
+  2026-11-18: "i tried the new collapse deskbar then expand again. it
+  worked but the desktop icons all disappeared and didn't come back").
+  **Found and fixed**: neither Deskbar nor Tracker, but app_server out
+  of file descriptors (696 open of a limit of 1,024; the fold made
+  every window draw anew): the kernel dropped what Terminal and
+  Tracker sent and both were disconnected, 13:16:26. Every Olo program
+  raises its limit as it starts now, and Olo Doctor raises it for
+  those running (HACKING.md, "Open files"). **Still to find**: why
+  Tracker, unlike Terminal, didn't re-execute and reconnect when its
+  connection went: **found and fixed** too (a loop ended in an error
+  was asked whether its socket had hung up yet; HACKING.md, "What a
+  day's logs showed").
+
+- **The pointer vanishes over a video in Chrome and Chrome-based apps**
+  (Ben, 2026-11-18: "sometimes when a cursor goes over a video on
+  chrome or a chrome based app like slack then the cursor doesn't show
+  again until i move the mouse completely out of the window and back.
+  the cursor shouldn't disappear when over a video at all, it should
+  only ever disappear if in full screen and hasn't moved for 5s and then
+  come back if it moves again"). Tried before, still there.
+  **Done so far**: Olo holds that rule itself now (`pointer_hide`,
+  HACKING.md "A program hiding the pointer"), so a rested pointer comes
+  back on the first move whatever the program does. **The cause, found
+  and fixed** (by the Codex helper, `olo-debug-help`, checked and
+  applied): olo-wlproxy couldn't make Chrome's cursor-shape device
+  again after app_server restarted, and dropped every shape from then
+  on (HACKING.md, the proxy's "An object is made again…";
+  `tools/dev/cursor-replay-check`). A Chrome or Slack already running
+  gets the mended proxy when it's next started.
+
+- **The extension's code offers: Open Passwords to the login, "From …", Check for Codes** (Done, 2026-11-18; extension 1.15.5; HACKING.md, "The toolbar
+  button's list", "Check for Codes", "A link to sign in with, sent by
+  mail"): the extension's Open Passwords goes to the login chosen in
+  its list; a mailed code's offer says "From …, in mail to ADDRESS";
+  Passwords ▸ Check for Codes in a field's menu reads the mail afresh
+  at once. **Left of it**: how long a mailed code takes from arriving
+  to being offered isn't measured against a real server (with the
+  stand-in it's offered as it's delivered); the phone's messages
+  aren't asked again by Check for Codes (they come as they're sent).
+
+- **The file picker hands several files over in order** (Ben,
+  2026-11-18: "in the olo file picker e.g. when in slack or chrome or
+  wherever and adding files and you get the picker, when you multi
+  select files and add them they should be given to the target app
+  ordered lexographically asc, with tie breaker being creation time
+  asc. this is important with e.g. screenshots where you want them to
+  be ordered properly so the target app shows them sequenced right").
+  Whatever order they were clicked in, the files chosen go to the
+  program by name ascending (as the list sorts names, so "Shot 2" is
+  before "Shot 10"), then by when they were made. *Done* for the
+  picker other programs get (the portal's Open:
+  `olo_kit::files::in_handing_order`, tested with files clicked in no
+  order); it's in the next build. Olo's own programs' Open panels with
+  several files, where there are any, take the same function.
 
 - **One Google integration: each account its own "Olo (address)" app,
   a grid of what it's used for** (Ben, 2026-11-18: "we need a Google

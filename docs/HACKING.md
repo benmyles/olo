@@ -13012,9 +13012,20 @@ said: `Paired::signed`).
 
 Ben, 2026-11-18: "we should add a language setting and also let's
 translate all olo apps and prefs and ux to support all the major
-languages (defaulting to us english)". **The layer is in; the
-translations and the setting's place in Preferences are not yet**
-(docs/TODO.md).
+languages (defaulting to us english)". **The layer and the choice are
+in; the translations are under way** (docs/TODO.md).
+
+**Preferences ▸ Language & Region** (`apps/preferences/src/language.rs`;
+its icon `language`, a globe with a speech bubble standing before it,
+drawn as the clock and calendar of Date & Time are): Olo's language,
+each language by its own name ("Deutsch (German)"; never translated),
+saying how much of Olo is in it so far (`words::covered` against
+`words::english()`, the list in `crates/kit-base/words/en.txt`), and
+that other programs take it as they next start: `LANGUAGE` (gettext's,
+"de_DE:de") in the person's own `~/.config/locale.conf`
+(`olo_xdg::locale::set_language`, the rest of the file kept), which
+`locale::give` hands every program Olo starts, over what the starter
+had. Formats (dates, numbers) follow the system's region for now.
 
 The words stay in the code, in English, as they always were. Each
 language has a catalog of them (`crates/kit-base/words/CODE.txt`,
@@ -13053,65 +13064,13 @@ Portuguese, Russian, Spanish; Arabic waits for right-to-left layout),
 applied by the kit to every running app as the look is
 (`theme::init`, `look`: the windows say their words again);
 `OLO_LANGUAGE=de` for a test or a picture. `OLO_WORDS_SEEN=FILE`
-writes every literal asked for to FILE, each once: run the layout
-lint with it (it opens every window of every app) for the list of
-what there is to translate (683 at the first count; sentences made
-with `format!` aren't in it until they're `tr!`). Tests run in
-English. Tested: `words`' `a_catalog_read`, `a_sentence_filled`,
-`counting`, `the_catalogs` (every translation keeps its English's
-parts), `words_in_a_language_and_back`; Preferences ▸ Power looked at
-in German with a few words (`OLO_LANGUAGE=de`): tabs, radio buttons,
-menus and buttons in German, the layout following their widths.
-
-## Words in the person's language (`olo_kit::words`)
-
-Ben, 2026-11-18: "we should add a language setting and also let's
-translate all olo apps and prefs and ux to support all the major
-languages (defaulting to us english)". **The layer is in; the
-translations and the setting's place in Preferences are not yet**
-(docs/TODO.md).
-
-The words stay in the code, in English, as they always were. Each
-language has a catalog of them (`crates/kit-base/words/CODE.txt`,
-built into every program: pages of which only the chosen language's
-are touched): blocks apart by an empty line, the English then the
-translation; a sentence that counts something has the English with
-`{n}`, then a line for each form the language has (`one:`, `few:`,
-`many:`, `other:`; `Counting` is CLDR's rule for each language). `\n`
-is a new line, `#` a comment.
-
-- **A literal handed to a widget is translated with nothing said**
-  (`olo_kit::words::of`, called where the kit's widgets take their
-  words: a button's label, a menu's title and items, a check box, a
-  radio button, tabs, a menu field's label and choices, a box's
-  title, a `StringView`, a field's hint, a tip, a window's title, a
-  list's column, an empty state, a sidebar's rows, a banner, a card).
-  A literal is told from what's made as the program goes by
-  `SharedString::as_static`: `Button::new("Save")` is looked up, a
-  file's name, an event's title or a `format!` never is. A
-  translation is no literal, so it's never looked up twice.
-- **Words given as plain text but always the app's own** (an alert's
-  title, message and buttons; a Preferences box's title) are found by
-  what they say (`of_text`).
-- **A sentence with parts**: `tr!("Updated {} ago", when)` (the
-  catalog's translation may order them, `{1}` before `{0}`);
-  **one that counts**: `words::count(n, "{n} window", "{n} windows")`.
-- **What an app paints itself** (`style::label`) is its own to ask
-  for: `tr!("…")`. The kit doesn't translate at the paint, where a
-  width measured from the English would no longer fit.
-- In English nothing is looked up or read: one load of a flag.
-
-The language is `Settings::language` ("de", "pt-BR"; empty: English;
-`words::LANGUAGES` lists them: Chinese simplified and traditional,
-Dutch, French, German, Hindi, Italian, Japanese, Korean, Brazilian
-Portuguese, Russian, Spanish; Arabic waits for right-to-left layout),
-applied by the kit to every running app as the look is
-(`theme::init`, `look`: the windows say their words again);
-`OLO_LANGUAGE=de` for a test or a picture. `OLO_WORDS_SEEN=FILE`
-writes every literal asked for to FILE, each once: run the layout
-lint with it (it opens every window of every app) for the list of
-what there is to translate (683 at the first count; sentences made
-with `format!` aren't in it until they're `tr!`). Tests run in
+writes every word asked for to FILE, each once (literals, and in
+English too what's otherwise left as it is: a tab view's tabs, a menu
+field's choices, a box's title, an alert's words: `words::note`): run
+the layout lint with it (it opens every window of every app), then
+`LC_ALL=C sort -u FILE > crates/kit-base/words/en.txt`: Olo's word list
+(1,081 on 2026-11-18; sentences made with `format!` aren't in it until
+they're `tr!`). A catalog's entries are by that list's English. Tests run in
 English. Tested: `words`' `a_catalog_read`, `a_sentence_filled`,
 `counting`, `the_catalogs` (every translation keeps its English's
 parts), `words_in_a_language_and_back`; Preferences ▸ Power looked at

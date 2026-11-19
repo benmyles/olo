@@ -33,6 +33,7 @@ mod google;
 mod gpus;
 mod integrations;
 mod keyboard;
+mod language;
 #[cfg(test)]
 mod lint;
 mod mail;

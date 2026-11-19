@@ -224,9 +224,24 @@ pub fn current() -> &'static Language {
 /// Every word asked for is written to the file `$OLO_WORDS_SEEN` names,
 /// each once (the list of what there is to translate: run the layout
 /// lint with it, which opens every window of every app).
+/// Whether every word asked for is being written down (`OLO_WORDS_SEEN`).
+pub fn recording() -> bool {
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("OLO_WORDS_SEEN").is_some_and(|p| !p.is_empty()))
+}
+
+/// `text` written down as one of Olo's words, if they're being
+/// (`recording`): for words handed on as plain text or kept as they are
+/// in English (a tab view's tabs, a menu field's choices, a box's title).
+pub fn note(text: &str) {
+    if recording() {
+        seen(text);
+    }
+}
+
 #[inline]
-fn seen(text: &'static str) {
-    static SEEN: OnceLock<Option<Mutex<(HashSet<&'static str>, std::fs::File)>>> = OnceLock::new();
+fn seen(text: &str) {
+    static SEEN: OnceLock<Option<Mutex<(HashSet<String>, std::fs::File)>>> = OnceLock::new();
     // (Not asked for, as nearly always: one load, and on.)
     let Some(seen) = SEEN.get_or_init(|| {
         let path = std::env::var_os("OLO_WORDS_SEEN").filter(|p| !p.is_empty())?;
@@ -236,7 +251,7 @@ fn seen(text: &'static str) {
         return;
     };
     let mut seen = seen.lock().unwrap_or_else(|e| e.into_inner());
-    if seen.0.insert(text) {
+    if !seen.0.contains(text) && seen.0.insert(text.to_owned()) {
         use std::io::Write;
         let _ = writeln!(seen.1, "{}", text.replace('\n', "\\n"));
     }
@@ -257,6 +272,7 @@ pub fn tr(text: &'static str) -> &'static str {
 /// (an alert's message, handed on as `&str`): None in English, and
 /// where the language has none.
 pub fn lookup(text: &str) -> Option<&'static str> {
+    note(text);
     if !TRANSLATING.load(Ordering::Acquire) {
         return None;
     }
@@ -329,6 +345,15 @@ pub fn count(n: u64, one: &'static str, other: &'static str) -> String {
         Some(pattern) => said(pattern),
         None => said(if n == 1 { one } else { other }),
     }
+}
+
+/// Olo's words, in English: every literal the kit was asked for across
+/// the layout lint's windows (`crates/kit-base/words/en.txt`, made with
+/// `OLO_WORDS_SEEN`: HACKING.md, "Words in the person's language"),
+/// for saying how far a translation has got and as what's to translate.
+pub fn english() -> &'static [&'static str] {
+    static LIST: OnceLock<Vec<&'static str>> = OnceLock::new();
+    LIST.get_or_init(|| include_str!("../words/en.txt").lines().filter(|l| !l.trim().is_empty() && !l.starts_with('#')).map(plain).collect())
 }
 
 /// How many of a language's words `asked` (the English) has: for

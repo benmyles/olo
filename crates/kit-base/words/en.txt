@@ -1,0 +1,1081 @@
+
+%
+*.qcow2, *.vdi, *.vmdk (large, changing while in use)
+*.swp, *~, .#*
+0.3 seconds
+0.5 seconds
+1
+1 GB a screen
+1 hour
+1 minute
+1 second
+10 minutes
+10 ms frame
+10 seconds
+12 hours
+12 months
+12 weeks
+128 MB a screen
+14 days
+15 minutes
+2 GB a screen
+2 hours
+2 minutes
+2 seconds
+24 hours
+24 months
+24-hour clock
+256 MB a screen
+26 weeks
+3 days
+3 events
+3 hours
+30 days
+30 minutes
+30 seconds
+3G
+4 hours
+4 weeks
+48 hours
+5 days
+5 events
+5 minutes
+5 seconds
+5 years
+512 MB a screen
+52 weeks
+6 hours
+6 months
+7 days
+8 events
+8 weeks
+9
+90 days
+A GPU's encoder takes a 4K screen in about 15 ms a frame, the processor about 110: recordings of a lot of motion keep every frame on the GPU, about nine a second on the processor.
+A WireGuard file (from the server, or wg-quick's) is kept with its keys; its DNS servers are asked alone while it's connected.
+A backup reads one file at a time, and leaves what it read out of memory: it never takes much of either.
+A battery kept full wears faster: for a computer that's mostly plugged in.
+A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.
+A day
+A dotted line
+A letter goes on everything you can pick: controls, menu items, windows, Deskbar. Type one to pick it, or to letter what’s inside; Backspace goes back, Esc puts them away.
+A little room
+A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can't pass it.
+A lot of room
+A month
+A notch scrolls as far in Chrome and other programs as in Olo’s apps.
+A picture of your own
+A red dot for an app with something unread in it
+A resting palm can't click (its pressure doesn't count)
+A rising swell
+A row of dots
+A terminal’s job busy for a minute and more is lowered too. Batch scheduling and idle I/O are put back when this is turned off; a raised nice stays until the program ends.
+A thick line
+A thin line
+A touch of a security key (a YubiKey) can stand for your password once you're signed in: sudo in Terminal, Passwords and administrator requests. Not to unlock the computer or sign in: someone who found it with the key plugged in could.
+A touch starts at pressure
+A touch types nothing unless something is waiting for the key; three in a row type its one-time code where you are, for a web form Olo doesn’t know.
+A week
+AI
+AI features use OpenAI’s models through the Token Pool’s Codex accounts, spent in its order.
+API ID:
+API hash:
+About Olo Desktop
+Accent
+Account
+Accounts:
+Adaptive
+Adaptive:
+Add
+Add Fingerprint
+Add Kind
+Add a Folder…
+Add a Google Account…
+Add a Kind
+Add an Account…
+Add an App…
+After BeOS: glossy, bright and friendly.
+After BeOS: glossy, bright and friendly. Sky grey by day and ocean blue by night.
+After Mac OS 9: black outlines, lilac greys.
+After Mac OS X's Aqua: shinier and bluer, with soft outlines.
+After the active window
+Again:
+Agent Screens
+AirPlay
+AirPods
+AirPods (Call Quality)
+AirPods (High Quality)
+AirPods Settings…
+AirPods keep playing at music quality while you record.
+All Apps
+All accounts together
+Also leave out:
+Also when running on battery
+Alt
+Always Left
+Always Right
+Always a palm when as large as
+An etched line
+Answer 1Password’s op command
+Any touch
+App
+App caches
+Appearance
+Applications
+Apply
+Applying asks for an administrator's password once while this window is open.
+Apps That Always Float
+Apps With Their Own Workspace
+As BeOS R5 drew its icons: flat faces in its 8-bit colours, black outlines.
+As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
+As fast as the computer goes: the processors kept quick and the firmware's power limits raised, the fans as needed. The battery runs down sooner.
+As the Mode
+As the other mice
+As wide as the widgets
+Ask
+Ask Me First
+Astra 6
+At full speed
+At the Bottom
+Auto
+Auto-Tiling
+Auto-tiling layout:
+Automatic
+Automatic Ear Detection: pause when you take an AirPod out
+Automatic wakes NVIDIA's GPU on battery too
+Automatically
+Automatically, every
+Back Up Now
+Back Up These Folders
+Back up to a disk or folder from now on; the backups in Google Drive stay as they are
+Back up to your Google Drive from now on; the backups in this folder stay as they are
+Back up:
+Background noise:
+Background:
+Backgrounds
+Backlight
+Backup
+Backups
+Backups Kept
+Balanced
+Bandwidth:
+Banners
+Bars
+Bars show:
+Basics
+Battery
+Battery & Idle
+Be the SSH agent (ssh, git)
+Beside the widget before it
+Blue
+Blue:
+Bluetooth
+Bluetooth…
+Bottom Half
+Bottom Left Quarter
+Bottom Right Quarter
+Bottom Two Thirds
+Bright
+Brightness
+Brown
+Busy Wi-Fi
+Buttons
+By hand
+C, C++, Zig, Haskell, Elixir and Dart build output
+CMakeFiles, .zig-cache, .stack-work, _build, .dart_tool
+CPU
+Caffeinated
+Calendar
+Calendar: Next Event
+Calendar: The Day Ahead
+Calendars
+Calendar’s assistant is handed the events of the calendars you show. It can draft events; nothing is added until you save it.
+Calls
+Cancel
+Cancel echo from the speakers
+Caps Lock is another Control key
+Case
+Center Third
+Center Two Thirds
+Chance of rain
+Check Again
+Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
+Choose Another Folder…
+Choose a network to join it.
+Choose a widget to change it, or add one.
+Choose:
+Choose…
+Chosen for the whole computer and kept across restarts. It's the computer's, not this account's, so choosing asks for an administrator's password.
+City or region
+Classic
+Claude
+Claude Code
+Claude Code and Codex are told, as they start, to test and use desktop apps and web pages on screens of their own that you can watch and take over, never on yours, and how: Olo’s Chrome included, so they never start one on your screen.
+Claude Code and Codex get a tool to title their tab with what they’re working on, and are asked to keep it current. They see the tool from their next start.
+Claude Code and Codex started in a tab of a group whose tabs are in more than one repository are told the group’s name and those repositories and worktrees, theirs marked. Codex asks you once to trust Terminal’s hook (/hooks).
+Clean up the microphone's sound
+Clear copied secrets after:
+Click
+Click and hold
+Click pressure:
+Click with two fingers for a secondary click
+Click with your thumb
+Clicking and Dragging
+Clicks
+Clock
+Close
+Close Tab
+Cloud cover
+Cloudflare (1.1.1.1)
+Codex
+Coding Agents
+Collection:
+Color
+Colors
+Colors in:
+Colour
+Colour:
+Coloured by use: green unused, red used up.
+Column View
+Columns
+Command Suggestions
+Command key:
+Connect automatically when you put them in near this computer
+Connect with a Token…
+Container images and Flatpak runtimes
+Control
+Cool
+Cooler
+Cooler and Quieter
+Coolest
+Copy
+Copy a code no tab is waiting for
+Count accounts turned off or signed out
+Custom
+Customize…
+Czech
+D0 Built-in Display
+DNS
+DNS servers:
+DSL
+Danish
+Dark
+Date & Time
+Dates, times and numbers follow this computer’s region for now (its LANG). Date & Time sets the clock’s 12 or 24 hours.
+Days:
+Decode on:
+DeepFilterNet3
+DeepFilterNet3 Low Delay
+Default
+Default Apps
+Default Keys
+Default mode:
+Defaults
+Delay
+Delay until repeat
+Delay:
+Delete
+Deskbar
+Deskbar clock
+Desktop Colour
+Destination
+Details
+Device
+Dim the display while you look away
+Disconnect
+Disconnect…
+Disk
+Disk Space
+Disk:
+DiskBackup
+Display
+Divider
+Do Not Disturb
+Documents
+Done
+Double-press speed
+Down (received)
+Download at most:
+Drag with:
+Drop on lift
+Dutch
+Each Network's Own
+Each account
+Each agent screen keeps what was done on it and the frames it drew, to replay or export as a video. The oldest goes first.
+Each display has workspaces of its own.
+Each display is drawn by the graphics it's wired to, so no frame crosses between them; the second sleeps while nothing uses it.
+Each is judged from several signals together; a finding says how sure it is and why.
+Each is the computer's, not this account's, so switching one asks for an administrator's password. Olo Doctor suggests each, with what was measured for it.
+Each kind opens in this app wherever you open it, in Olo and in other programs. Tracker's Open With ▸ Always Open With chooses too.
+Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
+Each other display is one row in a display’s Deskbar, with an arrow that shows its applications and puts them away again.
+Each setting tried shows here.
+Each shows in the Deskbar as it changes. Click one there for Activity Monitor (a Token Pool one, Token Pool; an app's, its app).
+Edge
+Edge to edge
+Edit
+Editors’ swap and backup files
+Either AirPod
+Emoji
+Enable Screen Saver
+Encode on:
+English (Australia)
+English (UK)
+English (US)
+Erase All Backups…
+Ethernet
+Even out the voice's level
+Events:
+Every day at set times
+Every disk
+Every interface
+Everything
+Everything Else
+Everything else's brightness
+Export
+Export…
+Extensions
+Extensions:
+Extra High
+Fable 5.1
+Face Unlock
+Fade
+Fade Colors
+Fast
+Fast when there is work, frugal when there isn't, the processors kept out of their hottest top speed. The usual choice.
+Fastest
+File
+Files
+Files with these extensions are this kind wherever Olo looks at them, and open in its app. An extension another kind had is this one's now.
+Fill It In
+Fills
+Finger
+Fingers moving
+Fingers scrolling
+Fingers taken for palms
+Finnish
+Firm
+Firmer
+First, as the main window
+Fix in Olo Doctor…
+Focus
+Focus follows the pointer
+Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
+Font Size
+For Every Link
+For ever
+For the mice set to follow the others, and any you connect.
+For:
+Forever
+Forget My Model
+Forget…
+Form
+Format:
+Formats
+Four fingers
+French
+French (Canada)
+From:
+GPU
+GPU:
+Game saves
+Gently, below my own work
+German
+Gestures
+Git Worktrees
+GitHub
+GitHub & Telegram
+Glide
+Glow new windows for
+Google
+Google (8.8.8.8)
+Go’s downloaded modules and build cache
+Gradle’s and Maven’s downloads and caches
+Graph
+Graph shows:
+Graphics
+Gray
+Green
+Green:
+Grid
+H.264 (plays everywhere)
+HEVC (about half the size)
+Haiku 5.5
+Halves
+Heatmap
+Hides
+High
+High dynamic range (HDR)
+Highest clock
+History
+Hold Fn (🌐) for F1 to F12.
+Hold duration:
+Hosts
+Hotspot
+Hours:
+Icon View
+Icons
+Identify
+Ignore hovering fingers and palms
+Ignore the touchpad while the pointing stick is used
+Ignore the touchpad while typing
+Immediately needs a small helper that only the administrator can install. Until it's installed, Immediately restarts or shuts down as Restart and Shut Down do.
+Import
+Import WireGuard…
+In HDR on a display whose HDR is on: its lights shine brighter than the rest.
+In an agent’s tab:
+In place of the blue dot of its notifications, for as long as the app says something is unread or waiting in it.
+In the Tray
+In the command palette, type /ask and a question: the answer shows there with code to copy (its number, then Return). Space asks a follow-up.
+Include passwords and sign-ins, sealed with a password
+Input
+Input level
+Install just
+Install the Helper…
+Integrations
+Intel Graphics
+Intel Graphics (AV1 and VP9)
+Intel Graphics (VA-API)
+Interface:
+It lasts until it's turned off, the link goes away or the computer restarts. Changing it asks for an administrator's password once while this window is open.
+It plays at a quarter of full volume, whatever yours is set to, and not while the sound is muted.
+It takes only what nothing else wants, the processor’s time and the disk’s: never in your way, though slower while you work.
+It's in use now, in place of Olo's own.
+Italian
+Its decoder, on its battery preset (Power Modes), costs less than the processor's cores; off, the processor decodes on battery.
+Its own
+Its power limit is the computer's to set, as a laptop's is.
+Its work starts sooner, but it never sleeps: more power, more warmth.
+Japanese
+JavaScript packages and build output
+Jitter:
+Kache: Build Cache
+Keep It Going says
+Keep It Going says:
+Keep It Going, in a tab’s menu, types this to the coding agent in the tab when it has stopped: after two quiet minutes, at most once an hour. Left empty, it says “Please continue”.
+Keep Key in Passwords
+Keep Them Off
+Keep a core for the window server
+Keep briefly
+Keep its driver ready
+Keep scrolling after a flick
+Keep until tapped
+Keep up to:
+Keep windows' graphics memory out of swap
+Kept Core
+Kept for this computer and set again at every start.
+Kept in step with network time servers.
+Kernel
+Kernel:
+Key
+Key Repeat
+Keyboard
+Keyboard Hints
+Keyboard Profile
+Keyboard Shortcuts
+Keyboards
+Kind
+Kind:
+LAVD
+LTE
+Language
+Language & Region
+Large
+Larger
+Last
+Layout:
+Leave Out What Can Be Downloaded or Built Again
+Left
+Left Half
+Left Third
+Left Two Thirds
+Left-handed (swap the buttons)
+Less noise
+Let coding agents keep their tab’s title current
+Level
+Light
+Like this
+Like:
+Limit what waits to be written to them
+Line:
+Link:
+Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
+List View
+Listening
+Lock the Screen
+Lock the screen when the display turns off
+Lock when the screen locks
+Lock when you walk away:
+Log Out
+Logitech G309 LIGHTSPEED
+Long
+Longest window title
+Look ahead:
+Look for codes in:
+Look:
+Looking…
+Loss:
+Low
+Lower this computer's sound while you speak
+Lower to nice
+Lowers builds and other background work so the active window’s app and Olo itself stay quick, and watches for stuck processes, leaks and memory hogs. What it does is in Activity Monitor’s Supervisor section, and Deskbar’s gauge turns it on and off.
+Lowest clock
+Luna 6
+MacBook
+Machine:
+Magic Keyboard with Touch ID and Numeric Keypad
+Magic Trackpad
+Mail
+Mail & Calendars
+Mail is read only while a page waits for a code, for up to a minute.
+Main and Stack
+Main display: the desktop is here.
+Main window:
+Make one at my.telegram.org ▸ API development tools (sign in there with your phone number), then copy its App api_id and api_hash here.
+Max
+Medium
+Memory
+Memory:
+Messages: each as it comes, answered in place
+Meter
+Microphone boost:
+Microphone:
+Middle click (three: secondary)
+Mini Icon View
+Model:
+Models
+Moderate
+Modern and flat: each thing seen straight on, in plain faces, no outlines.
+Module settings
+Modules
+Month
+More noise
+Mouse
+Mouse speed
+Move Down
+Move Up
+Move the pointer
+Move the pointer on a thread of its own
+Moves
+Mute
+NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU
+NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU (NVDEC)
+NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU (NVENC)
+Name
+Name:
+Named, it's a heading: its name at the left, the line going on from it.
+Natural scrolling (content follows your fingers)
+Network
+Never
+Never Warned About
+New
+New Windows Open In
+New ones go in
+New ones go in:
+New windows go:
+Newest first
+News (blue)
+Next Month
+Next step
+Night Mode
+No VPNs. Import a WireGuard configuration, or add one with its maker's app.
+No app opens these yet: add one.
+No banners and no sounds (errors still show).
+No space around an auto-tiled window alone
+No widgets: add one below.
+Noise
+Noise Cancellation
+Noise Control
+Noise control:
+Noise model:
+None
+None (flat)
+None. An alert’s Ignore This Process adds one here.
+None. To add an app, choose Float Window ▸ Always in the window menu of one of its windows.
+None. To give an app one, choose Always Open on Workspace in the window menu of one of its windows.
+Norwegian
+Not enough touches to learn from
+Nothing
+Nothing changed: Olo's own model is still in use.
+Notifications
+Notifications: Inbox
+November 2026
+Num Lock on when Olo starts
+Number
+Number of main windows:
+Off
+Offer a code in the browser tab waiting for it
+Offline (Everything Lost)
+Offset
+Older ones go, and the space only they took is freed, once a day. Delete any yourself under Backups.
+Oldest first
+Olo Desktop
+Olo saying its name
+Olo's Choice
+Olo's own model is still in use.
+Olo’s language:
+Olo’s windows change at once. Other programs take it as they next start, in the languages they have.
+On
+On Battery
+On This Computer
+On a PC keyboard, Alt is where a Mac's ⌘ is: swapped, the key beside the space bar is ⌘ (with the Mac profile) and the Windows key is Option. Each keyboard keeps its own setting, so an Apple keyboard plugged in stays as it is.
+One a day for:
+One a month for:
+One a week for:
+One an hour for:
+One like it again from the same app (its title and text) takes the earlier one's place while that's still showing or unread.
+One-Time Codes
+Only on battery power
+Only the latest of the same notification
+Only when I choose Sync Now
+Only when I click Back Up Now
+Only when the computer is idle
+Open Olo Doctor…
+Open Phone
+Open Power
+Open With
+Open With Offers
+Open in Google Drive
+Open my.telegram.org
+Opens in:
+Opus 5.5
+Orange
+Orange, then red, as it runs low
+Order:
+Original
+Other
+Other Mice
+Other displays’ applications start collapsed
+Output
+Palm-proof clicks, hovering fingers ignored, Mac-like scrolling
+Palms
+Palms and Hovering Fingers
+Palms caught
+Palms while typing
+Panel
+Panels
+Password lock
+Password:
+Passwords
+Passwords: Clipboard
+Passwords: Command line
+Passwords: Locking
+Passwords: Syncing with 1Password
+Performance
+Phone
+Phone Settings…
+Photographs and Home Videos 2026
+Picks
+Pictures, Movies and Music
+Pinch to zoom
+Pink
+Play
+Play Sound Through It
+Play a sound when Olo starts
+Play sound through:
+Please continue
+Point with a palm at the edge
+Point with your hand resting low
+Pointer
+Polish
+Portuguese
+Portuguese (Brazil)
+Power
+Power Button
+Power Mode
+Power Modes
+Power Saver
+Power-saving profile
+Preemption
+Presence
+Press Control twice for keyboard hints
+Press and Hold
+Press and hold a stem to switch between:
+Press both buttons for a middle click
+Press speed:
+Press 🌐 alone to show emoji
+Previous Month
+Priorities
+Processed
+Processor:
+Profile:
+Program names, comma separated
+Programs’ Secrets
+Provider:
+Purple
+Puts what you choose from a backup in place of what's here; the rest stays as it is. What you have now is saved first.
+Python bytecode and virtual environments
+Quad9 (9.9.9.9)
+Quit
+Quit, dropping the touches
+Quotas:
+Reaches:
+Read every byte the backups chosen need back from where they’re kept, and check each piece, as a restore would
+Read ones fade, then move to Cleared; unread ones stay.
+Reading /etc/hosts…
+Reads
+Received
+Receiver
+Recommended for it
+Record
+Record Again
+Record a few seconds as you talk on a call, with the room as it is; then hear and see what each setting does to it. The recording stays in memory and goes when you close this.
+Record from:
+Recording
+Red
+Red:
+Refresh rate:
+Removable Disks
+Remove
+Repeat rate
+Reset
+Reset Thresholds
+Resolution:
+Rest your palms
+Restart
+Restart Immediately
+Restart Olo
+Restart and Shut Down end every program and stop the system in order, as Deskbar's menu does; Immediately doesn't wait for that. Held long, most computers' own firmware cuts the power whatever is set here (often after 4 to 10 seconds).
+Restart, Asking First
+Restore…
+Rests
+Revert
+Right
+Right Half
+Right Third
+Right Two Thirds
+Room:
+Rows
+Rtkit isn't running
+Russian
+Rust build output and downloaded crates
+Samsung SSD 990 PRO with Heatsink 4TB
+Save
+Save As…
+Saves Olo's settings and what apps keep between runs in one file, to bring back here or to another computer. What goes in:
+Saving Power
+Saving Power slows the processors and turns turbo off, Balanced speeds them up for work (leaning to saving on battery), Fastest keeps them quick; Top speed caps them (Balanced's 75% leaves out their hottest quarter). A GPU's Cooler and Quieter caps its clocks (Custom: its own, on Graphics), an SSD's Cooler and Coolest the power it may draw (a SATA SSD's, how deeply its link may sleep between commands), the fans' Cool, Cooler and Coolest how early they speed up (Auto: the computer's own way). On battery, a row not As the Mode holds whatever the mode.
+Saving it with your settings…
+Schedule
+Scheduled
+Scheduler
+Screen Recordings
+Screen Saver
+Scroll
+Scroll while the middle button is held
+Scrolling
+Scrolling speed
+Search
+Search domains:
+Search:
+Searching…
+Secondary click (three: middle)
+Security
+Security Keys
+Security…
+Select All
+Select None
+Send with BBRv3
+Sensor:
+Sent
+Servers of Your Own
+Servers of your own are asked in place of what each network hands out, on every link. Search domains are tried after a short name: nas, then nas.corp.example.
+Service
+Service Order
+Set Time Zone
+Set Up Again…
+Set date and time automatically
+Set the Time
+Setting
+Settings
+Shaping
+Shares this computer's connection as a Wi-Fi network of its own; the adapter leaves the network it's on while it does.
+Shift gradually, starting at From
+Shift over
+Shirt touches
+Short
+Short, in the middle
+Shortcuts
+Shorter
+Shortest
+Show DiskBackup in Deskbar
+Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
+Show banners for:
+Show icons in the Deskbar menu
+Show in Tracker
+Show its name
+Show its value
+Show seconds
+Show the date in the menu bar
+Show the day of the week
+Show the phone’s other notifications
+Show what a message says
+Show what's used, not what's left
+Show:
+Shows:
+Shut Down
+Shut Down Immediately
+Shut Down, Asking First
+Sign In
+Sign In Again
+Signal
+Size
+Size:
+Skip this step
+Slow
+Slower
+Slower, cooler and quieter: the processors favour saving energy and the firmware lowers its power limits. The battery lasts longest.
+Slowest
+Small
+Small: one line. Medium and Large: all it shows, Large's sky bigger.
+Smaller
+Snooze for:
+Sol 6.1
+Some room
+Sonnet 5.5
+Sound
+Sound:
+Sounds
+Space Around Arranged Windows
+Space at the edges
+Space between windows
+Space only
+Spanish
+Speed & Resources
+Spiral
+Standard
+Start
+Start this step over
+Starting Up
+Status
+Stay awake: no display sleep, sleep, screen saver or lock
+Stop
+Stop Recording
+Strip
+Strong
+Suggest commands from a model of your own
+SuperString, by Jon Watte
+Supervisor
+Swap Alt and the Windows Key
+Swap too
+Swedish
+Swiss
+Switch automatically between this computer and your iPhone
+Switch to a woken program at once
+Tabs
+Take calls on this computer
+Tap
+Tap and drag
+Tap to click
+Taps
+Teal
+Telegram
+Tell coding agents about the repositories in their tab group
+Tell coding agents to use Olo’s Agent Screens
+Tell me of:
+Tell me when it runs out, and when it's back
+Tell palms apart with a palm model
+Temperature
+Terminal
+Terra 6.1
+Test
+Text:
+Texts
+The Theme’s Own
+The account answering now
+The bell's count in:
+The coming days, each its sky, low and high.
+The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
+The kernel's own (recommended)
+The key is only on this computer: keep it in Passwords, to restore anywhere else.
+The last 12 hours
+The last 6 hours
+The look of every icon, window and control, in every app, and a wallpaper to match.
+The look's own
+The model wasn't good enough to keep
+The most powerful (NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU)
+The next 12 hours
+The next 3 hours
+The next 6 hours
+The next hours, each its sky and temperature, with the chance of rain or the cloud.
+The one it started on
+The pointer keeps moving, and none of its motion is lost, while the desktop is busy: a slow frame, or a wait in the graphics driver under load. New, and being tried: if the mouse, touchpad or keyboard misbehaves with it on, turn it off.
+The power mode (Power Saver, Balanced or Performance) is set in Power.
+The processor
+The processor (OpenH264)
+The right edge
+The sky and temperature now, and what's coming.
+The system's services (updates, indexing) can still run there.
+Theme
+Themes
+There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugged in.
+ThinkPad
+Thinking:
+This Computer
+This Computer's Microphones
+This Touchpad
+This computer's sensor sees when someone is in front of it.
+This is the recommended profile for this touchpad.
+This step is done
+This touchpad doesn't report pressure, so it is left to libinput.
+Three fingers
+Three months
+Three touches type a code
+Thumb clicks
+Tidy away read notifications after
+Tiling, zooming, Tile All, cascading and fanning out all leave this space.
+Time
+Time Zone
+Time zone
+Time:
+Title and preview
+Title only
+To:
+Today
+Today and tomorrow
+Token Pool
+Took
+Top Half
+Top Left Quarter
+Top Right Quarter
+Top Two Thirds
+Touch
+Touch ID
+Touch ID isn't used here: its sensor works only with the Mac it's paired to, whose Secure Enclave alone can read what it senses. Use the computer's own fingerprint reader, or your password.
+Touch screen
+Touchpad
+Touchpad & Mouse
+TrackPoint
+Tracker
+Tracker's Open With ▸ offers these for this kind, in this order.
+Tracking speed
+Traffic goes through the first service in this list that's connected; the others stand by. Networks joined later fall in line.
+Train
+Train again
+Train for Your Palm
+Train for Your Palm…
+Transparency
+Try It…
+Try Voice Processing
+Try it
+Tuned for:
+Turn Off
+Turn On
+Turn off screen
+Turn the touchpad off while a mouse is plugged in
+Two fingers
+Type
+Type here to try the settings
+Type with your palms down
+Typing test:
+USB mice may sleep
+Under the Tray
+Unless the app says; kept while the pointer is over it.
+Unread notifications put a blue dot beside their app.
+Up (sent)
+Update every:
+Updated a long while ago, longer than there is room to say
+Upload at most:
+Uploading is backing up; downloading is restoring, and tidying. A limit holds at once, for a backup under way too.
+Uptime:
+Use Default
+Use F1, F2, etc. as standard function keys
+Use Google Drive Instead…
+Use Music Quality
+Use Passwords for ssh
+Use Suggested
+Use This Setting
+Use a Folder Instead…
+Use the Usual Order
+Use:
+VPN
+Validate Fully…
+Validated
+Variable refresh rate
+Very Bad Network
+Video Playback
+Virtual machines’ disk images
+Voice Only
+Voice Processing
+Volume
+Volume:
+Waits
+Wake the display when you come back
+Wallpaper
+Warmer
+Warmth
+Watchdog
+Weather
+Weather: Next Days
+Weather: Next Hours
+Weather: Now
+Weather’s assistant is handed the whole forecast for the place you’re looking at, every layer hour by hour, to answer from.
+What Each Mode Sets
+What is made from it (shades, edges, text that has to read on it) follows.
+What it draws from the battery; on power, it says so.
+What's made for sRGB (nearly everything) looks as it was made; wider colours are for what has them.
+What's next (or on now): when, what and where, and what comes after it.
+What's still to come today, in order, each in its calendar's colour; then the days after.
+What's unread and what waits in apps, as cards to work through.
+What's waiting (red)
+Whatever the model says: it adds palms, never takes these away.
+What’s in the Trash
+Wheel
+When
+When Idle
+When Olo starts Claude Code for a task (DiskBackup’s Agent Setup), in a Terminal window you can follow, it uses this model.
+When held for:
+When pressed:
+When to Back Up
+Where Backups Go
+Where:
+While Typing
+While sharing or recording the screen (errors wait too)
+Wi-Fi
+Wi-Fi (Intel Wi-Fi 7 BE200 320MHz)
+Wide
+Widget
+Widget name
+Widgets
+Window title size
+Windowing Mode
+Windows
+With AirPods:
+Workspace:
+Workspaces
+Worst
+Writes
+Yellow
+Your Kinds
+Your Own Kinds
+Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
+Your own:
+Your palm model couldn't be saved
+Your palm model is ready: saving…
+Your palm model is saved, and in use
+Your palm over the left edge
+Your palm over the right edge
+Your shirt against the touchpad
+Your touchpad
+__pycache__, .venv, .mypy_cache, .pytest_cache, .tox
+day
+ghp_… or github_pat_…
+hour
+iPhone
+kbit/s
+libinput's default
+ms
+node_modules, .next, .turbo, .parcel-cache, ~/.npm
+sav, sv2
+scx_lavd, made for a computer someone is sitting at: what it judges is being waited for runs first, with builds and other long work around it. It gives a program's priority little weight, and under heavy work the window server waited for the processor three times as long as with the kernel's own. It is loaded over the kernel's own, which takes over again by itself if LAVD ever stops.
+target/debug, target/release, ~/.cargo/registry, ~/.rustup
+~/.cache, browsers’ caches, thumbnails
+~/.gradle, ~/.m2/repository, a project’s .gradle
+~/.local/share/Trash
+~/.local/share/containers, ~/.local/share/flatpak
+~/Videos/raw, **/*.iso
+~/go/pkg/mod, ~/.cache/go-build
+~/worktrees
+¼ second
+½ second
+⌘ Command (the Super key)

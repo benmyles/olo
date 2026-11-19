@@ -31,7 +31,16 @@ pub fn of(text: impl Into<SharedString>) -> SharedString {
 /// Each of `texts` as a widget shows it (a tab view's tabs, a menu
 /// field's choices): the same list in English.
 pub fn of_all(texts: std::rc::Rc<[SharedString]>) -> std::rc::Rc<[SharedString]> {
-    if current().code == "en" { texts } else { texts.iter().cloned().map(of).collect() }
+    if current().code != "en" {
+        return texts.iter().cloned().map(of).collect();
+    }
+    // (In English as they are; written down if Olo's words are being.)
+    if recording() {
+        for t in texts.iter().filter_map(|t| t.as_static()) {
+            note(t);
+        }
+    }
+    texts
 }
 
 /// Words that reach a widget as plain text but are the app's own, by

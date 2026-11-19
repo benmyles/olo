@@ -43,7 +43,16 @@ pub const NONE_CHOSEN: usize = usize::MAX;
 impl MenuField {
     pub fn new(id: impl Into<SharedString>, options: Vec<SharedString>, selected: usize) -> MenuField {
         // (Choices written in the code are in the person's language.)
-        let options = if crate::words::current().code == "en" { options } else { options.into_iter().map(crate::words::of).collect() };
+        let options = if crate::words::current().code == "en" {
+            if crate::words::recording() {
+                for o in options.iter().filter_map(|o| o.as_static()) {
+                    crate::words::note(o);
+                }
+            }
+            options
+        } else {
+            options.into_iter().map(crate::words::of).collect()
+        };
         MenuField { id: id.into(), label: None, name: None, quiet: false, divider: None, options, selected, width: None, enabled: true, on_change: None, many: None }
     }
 

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Language & Region: a globe, a speech bubble standing before it with an A on it. -->
+<style>.o{paint-order:stroke;stroke:#1b1b1f;stroke-width:1.2;stroke-linejoin:round}.h{fill:none;stroke:#fff;stroke-linecap:round}</style>
+<defs>
+<radialGradient id="shadow" cx="32" cy="59.8" r="27" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 52.03) scale(1 .13)"><stop offset="0" stop-opacity="0.32"/><stop offset="1" stop-opacity="0"/></radialGradient>
+<radialGradient id="sea" cx="15" cy="14" r="34" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6db1ff"/><stop offset="0.45" stop-color="#2479f0"/><stop offset="1" stop-color="#0a43ad"/></radialGradient>
+<radialGradient id="land" cx="15" cy="14" r="34" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#8be07a"/><stop offset="0.5" stop-color="#3fae47"/><stop offset="1" stop-color="#1f7a33"/></radialGradient>
+<clipPath id="ball"><circle cx="24" cy="25" r="21"/></clipPath>
+<linearGradient id="leaf" x1="0" y1="0" x2="18" y2="21" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e1e4ec"/></linearGradient>
+<linearGradient id="edge" x1="22" y1="-3" x2="-2" y2="19" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#c9ccd5"/><stop offset="1" stop-color="#6b6f7b"/></linearGradient>
+<linearGradient id="ink" x1="0" y1="3" x2="0" y2="15" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2a7cf5"/><stop offset="1" stop-color="#0b4cc0"/></linearGradient>
+</defs>
+<ellipse class="from48" cx="32" cy="59.8" rx="27" ry="3.4" fill="url(#shadow)"/>
+<!-- The globe. -->
+<circle class="o" cx="24" cy="25" r="21" fill="url(#sea)"/>
+<g clip-path="url(#ball)" fill="url(#land)">
+<path d="M10.5 9.5C15.2 6.4 21.5 7.4 22.6 12.1C23.6 16.8 19.4 18.9 19.4 23.6C19.4 28.3 24.1 30.4 22.6 36.2C21.5 40.4 16.8 41.5 15.7 36.8C14.7 32.6 11 30 10 25.8C8.9 21.1 6.3 13.7 10.5 9.5Z"/>
+<path d="M29.4 8.9C34.1 6.8 39.9 8.9 42 13.7C43.6 17.3 39.4 18.9 38.3 22C37.3 25.2 40.4 27.8 39.4 32C38.3 35.2 33.6 34.6 32.6 31C31.5 27.3 27.8 24.7 28.9 20C29.9 16.3 26.8 12.6 29.4 8.9Z"/>
+<path class="from32" d="M26.3 41.5C29.4 39.9 33.6 41 34.1 43.6C32.6 46.2 27.8 46.7 25.7 45.2Z"/>
+</g>
+<g class="from32" clip-path="url(#ball)" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width=".7">
+<ellipse cx="24" cy="25" rx="21" ry="7.56"/>
+<ellipse cx="24" cy="25" rx="9" ry="21"/>
+<path d="M3.5 17C12.5 19.6 35.5 19.6 44.5 17M3.5 33C12.5 30.4 35.5 30.4 44.5 33"/>
+</g>
+<path class="h from48" stroke-opacity=".75" stroke-width=".6" d="M5.9 20.6A19.3 19.3 0 0 1 19.4 6.3"/>
+<!-- The speech bubble, standing in the front plane, its depth to the left and above. -->
+<g transform="matrix(1 -.25 0 1 33.5 39)">
+<path class="o" fill="url(#edge)" transform="translate(-3 -2.25)" d="M3.2 0H22.8Q26 0 26 3.2V14.8Q26 18 22.8 18H10.2L3.8 22.5L5.4 18H3.2Q0 18 0 14.8V3.2Q0 0 3.2 0Z"/>
+<path class="o" fill="url(#leaf)" d="M3.2 0H22.8Q26 0 26 3.2V14.8Q26 18 22.8 18H10.2L3.8 22.5L5.4 18H3.2Q0 18 0 14.8V3.2Q0 0 3.2 0Z"/>
+<path fill="url(#ink)" fill-rule="evenodd" d="M7.3 15.1L11.8 2.6H14.2L18.7 15.1H15.9L15 12.4H11L10.1 15.1ZM11.8 9.9H14.2L13 6.1Z"/>
+</g>
+</svg>

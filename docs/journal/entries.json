@@ -5074,5 +5074,17 @@
   "title": "One Google integration, and a grid of what each account is for",
   "caption": "Preferences \u25b8 Integrations \u25b8 Google: each Google account connected through an app of its own, \u201cOlo (its address)\u201d, which an agent makes for you in Google Cloud (Add a Google Account\u2026). Tick Mail, Calendar and DiskBackup for each. DiskBackup's older app can be brought in as it is (Bring It Into Olo\u2026), so its backups stay where they are.",
   "image": "2026-11-18/203819-one-google-integration-and-a-grid-of-what-each-a.png"
+ },
+ {
+  "time": "2026-11-18T21:23:06",
+  "title": "DiskBackup says when it's paused, and its backups stay listed",
+  "caption": "DiskBackup's window says Paused (or Waiting for power, or for the network) with when the last backup was, and Resume takes Back Up Now's place. A paused DiskBackup still lists its backups and can restore from them: pausing only stops it backing up and sending.",
+  "image": "2026-11-18/212306-diskbackup-says-when-it-s-paused-and-its-backups.png"
+ },
+ {
+  "time": "2026-11-18T21:23:07",
+  "title": "Language & Region in Preferences",
+  "caption": "Preferences \u25b8 Language & Region chooses the language Olo's words are in, each language by its own name, and says how much of Olo is in it so far. Olo's windows change at once; other programs take it as they next start. The translations are coming, German first.",
+  "image": "2026-11-18/212307-language-region-in-preferences.png"
  }
 ]

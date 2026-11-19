@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Language & Region in Preferences
+
+*21:23* — Preferences ▸ Language & Region chooses the language Olo's words are in, each language by its own name, and says how much of Olo is in it so far. Olo's windows change at once; other programs take it as they next start. The translations are coming, German first.
+
+![Language & Region in Preferences](2026-11-18/212307-language-region-in-preferences.png)
+
+### DiskBackup says when it's paused, and its backups stay listed
+
+*21:23* — DiskBackup's window says Paused (or Waiting for power, or for the network) with when the last backup was, and Resume takes Back Up Now's place. A paused DiskBackup still lists its backups and can restore from them: pausing only stops it backing up and sending.
+
+![DiskBackup says when it's paused, and its backups stay listed](2026-11-18/212306-diskbackup-says-when-it-s-paused-and-its-backups.png)
+
 ### One Google integration, and a grid of what each account is for
 
 *20:38* — Preferences ▸ Integrations ▸ Google: each Google account connected through an app of its own, “Olo (its address)”, which an agent makes for you in Google Cloud (Add a Google Account…). Tick Mail, Calendar and DiskBackup for each. DiskBackup's older app can be brought in as it is (Bring It Into Olo…), so its backups stay where they are.

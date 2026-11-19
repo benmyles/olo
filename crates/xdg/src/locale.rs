@@ -84,11 +84,43 @@ pub fn missing_here() -> Vec<(&'static str, String)> {
 
 /// A program being started is given the language this one has none of
 /// to hand down (two small files read, as it's started): everything
-/// Olo starts for the person goes through this.
+/// Olo starts for the person goes through this. And the language for
+/// its words the person chose in Olo (`LANGUAGE`, in their own file:
+/// Preferences ▸ Language & Region), over what this program was
+/// started with, which may be from before they chose it.
 pub fn give(cmd: &mut std::process::Command) {
     for (name, value) in missing_here() {
         cmd.env(name, value);
     }
+    if let Some((_, chosen)) = read(&std::fs::read_to_string(own_conf()).unwrap_or_default()).into_iter().find(|(n, _)| *n == "LANGUAGE") {
+        cmd.env("LANGUAGE", chosen);
+    }
+}
+
+/// The language for programs' words (`LANGUAGE`, gettext's: "de_DE:de")
+/// kept in the person's own file, or taken out of it (None); the rest of
+/// the file as it was. Written whole, then put in place.
+pub fn set_language(value: Option<&str>) -> std::io::Result<()> {
+    set_language_in(&own_conf(), value)
+}
+
+/// [`set_language`] in the file at `path`.
+pub fn set_language_in(path: &Path, value: Option<&str>) -> std::io::Result<()> {
+    let before = std::fs::read_to_string(path).unwrap_or_default();
+    let mut lines: Vec<String> = before.lines().filter(|l| l.trim().split_once('=').is_none_or(|(n, _)| n.trim() != "LANGUAGE")).map(str::to_owned).collect();
+    if let Some(v) = value.filter(|v| !v.is_empty() && !v.contains(['\0', '\n', '"'])) {
+        lines.push(format!("LANGUAGE=\"{v}\""));
+    }
+    let after = if lines.is_empty() { String::new() } else { lines.join("\n") + "\n" };
+    if after == before {
+        return Ok(());
+    }
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let new = path.with_extension("conf.new");
+    std::fs::write(&new, after)?;
+    std::fs::rename(new, path)
 }
 
 /// The locale for this process and what it starts, where the login gave
@@ -104,6 +136,27 @@ pub fn set() {
 mod tests {
     use super::*;
 
+    /// The language for programs' words kept in the person's file, the
+    /// rest of it as it was; changed, the old line goes; taken out, the
+    /// file as it was before; nothing that isn't a value written.
+    #[test]
+    fn the_language_kept_for_programs() {
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-locale-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let file = dir.join("locale.conf");
+        set_language_in(&file, Some("de_DE:de")).unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "LANGUAGE=\"de_DE:de\"\n");
+        std::fs::write(&file, "# mine\nLC_TIME=nl_NL.UTF-8\nLANGUAGE=fr\n").unwrap();
+        set_language_in(&file, Some("ja_JP:ja")).unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "# mine\nLC_TIME=nl_NL.UTF-8\nLANGUAGE=\"ja_JP:ja\"\n");
+        assert_eq!(read(&std::fs::read_to_string(&file).unwrap()), [("LC_TIME", "nl_NL.UTF-8".to_owned()), ("LANGUAGE", "ja_JP:ja".to_owned())]);
+        set_language_in(&file, None).unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "# mine\nLC_TIME=nl_NL.UTF-8\n");
+        set_language_in(&file, Some("evil\nPATH=/x")).unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "# mine\nLC_TIME=nl_NL.UTF-8\n");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn a_locale_file_read() {
         let text = "# Written by localectl\nLANG=\"en_US.UTF-8\"\nLC_TIME=nl_NL.UTF-8\n LC_PAPER = 'en_GB.UTF-8' \nPATH=/evil\nLC_ALL=C\nLANG=\nnonsense\n";
@@ -112,18 +165,23 @@ mod tests {
     }
 
     /// A program started is given what its starter lacks, and nothing
-    /// where the starter has a language to hand down. (This computer's
-    /// files are what they are: only that `give` and `missing_here`
-    /// agree is checked.)
+    /// where the starter has a language to hand down; and the language
+    /// for its words the person chose, whatever the starter has. (This
+    /// computer's files are what they are: only that `give` agrees with
+    /// `missing_here` and the person's own file is checked.)
     #[test]
     fn a_started_program_is_given_what_is_missing() {
         let mut cmd = std::process::Command::new("true");
         give(&mut cmd);
-        let given: Vec<(String, String)> = cmd.get_envs().filter_map(|(k, v)| Some((k.to_str()?.to_owned(), v?.to_str()?.to_owned()))).collect();
-        let missing: Vec<(String, String)> = missing_here().into_iter().map(|(k, v)| (k.to_owned(), v)).collect();
-        assert_eq!(given, missing);
+        let given: std::collections::BTreeMap<String, String> = cmd.get_envs().filter_map(|(k, v)| Some((k.to_str()?.to_owned(), v?.to_str()?.to_owned()))).collect();
+        let mut wanted: std::collections::BTreeMap<String, String> = missing_here().into_iter().map(|(k, v)| (k.to_owned(), v)).collect();
+        let chosen = read(&std::fs::read_to_string(own_conf()).unwrap_or_default()).into_iter().find(|(n, _)| *n == "LANGUAGE");
+        if let Some((_, v)) = &chosen {
+            wanted.insert("LANGUAGE".to_owned(), v.clone());
+        }
+        assert_eq!(given, wanted);
         if std::env::var_os("LANG").is_some_and(|v| !v.is_empty()) {
-            assert!(given.is_empty());
+            assert!(given.keys().all(|k| k == "LANGUAGE"), "{given:?}");
         }
     }
 
