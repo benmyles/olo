@@ -13,12 +13,27 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-- **Deskbar: other workspaces' applications can start collapsed too**
-  (Ben, 2026-11-18, in Preferences ▸ Deskbar: "in addition to the other
+- **Deskbar: other workspaces' applications start collapsed** (Ben,
+  2026-11-18, in Preferences ▸ Deskbar: "in addition to the other
   displays workspaces start collapsed we should have other workspace on
-  the same display start collapsed too"): beside "Other displays'
-  applications start collapsed", the same for the other workspaces of
-  a display.
+  the same display start collapsed too"; then, 2026-11-19, instead of a
+  second option: "change this existing option to Other workspaces'
+  applications start collapsed and it should apply to every other
+  workspace when checked regardless of what display they are on (same
+  or other) so that only the active workspace for a given display is
+  the one expanded by default"): "Other displays' applications start
+  collapsed" becomes "Other workspaces' applications start collapsed";
+  ticked, every workspace but each display's active one starts
+  collapsed, on that display or another. A setting kept from before
+  stays as it was (ticked stays ticked).
+- **DiskBackup: "Only when connected to ethernet"** (Ben, 2026-11-19:
+  "add an option to diskbackup next to "[ ] Also when running on
+  battery" to be "[ ] Only when connected to ethernet" default
+  unchecked (and make it work of course)"): in Schedule ▸ When to Back
+  Up, beside "Also when running on battery", unticked at first; ticked,
+  automatic backups happen only while the computer has a wired
+  connection (what a backup under way does when the wire comes out, and
+  whether Back Up Now waits too, as the battery option does).
 - **Calendar: a preview pane** (Ben, 2026-11-18: "there should also be
   a preview pane where if i single click an event i see the details in
   the bottom 1/3 of the main area"): one click on an event shows what
@@ -325,8 +340,8 @@ something nobody here has is in "Blocked", with what it waits for.
   Try: a long note in an event.
 
 - **Integrations: a tab for each provider, Fastmail's like Google's**
-  (Ben, 2026-11-18, after the Mail & Calendars tab showed his Google
-  account where his Fastmail one of the same address should have been,
+  (Ben, 2026-11-18, after the Mail & Calendars tab showed their Google
+  account where their Fastmail one of the same address should have been,
   and an account ticked under Google wasn't listed: "keep the Google tab
   as google, add a Fastmail tab modelled after google where you add
   fastmail accounts and choose what they integrate with, and then just
@@ -347,8 +362,8 @@ something nobody here has is in "Blocked", with what it waits for.
   accounts first after the upgrade (tested both ways), and an old Gmail
   app-password entry let go of once Google has its address; every list
   follows its file. Looked at headless in light and dark, 1× to 2×.
-  Try: after Upgrade, Integrations ▸ Fastmail should list ben@2q31.com
-  with Mail ticked (Calendar can be ticked there too).
+  Try: after Upgrade, Integrations ▸ Fastmail should list the Fastmail
+  account Mail had, with Mail ticked (Calendar can be ticked there too).
 
 - **A passkey shared with an agent screen wasn't offered there** (Ben,
   2026-11-18, the google-setup screen: "google showed its own qr code
@@ -456,7 +471,7 @@ something nobody here has is in "Blocked", with what it waits for.
   want in prefs -> integrations and then choose which ones are enabled
   for mail, calendar, diskbackup in like a grid"; and "i will also need
   you to help me transition my old olo diskbackup drive app to my new
-  olo app in ben@2q31.com without losing files/state"). *Done*
+  olo app in [an address] without losing files/state"). *Done*
   (HACKING.md, "Google accounts"): Preferences ▸ Integrations ▸ Google
   (the panel in three tabs now): the grid; Add a Google Account… (the
   agent, moved here from DiskBackup: it makes the account's app in
@@ -465,17 +480,17 @@ something nobody here has is in "Blocked", with what it waits for.
   Calendar and DiskBackup all sign in through it; DiskBackup's Back Up
   To ▸ Google Drive… chooses among the connected accounts.
   **For Ben, to try** (after Upgrade; nothing changes until you do):
-  1. **ben@2q31.com, keeping DiskBackup as it is**: Preferences ▸
-     Integrations ▸ Google shows "DiskBackup backs up to ben@2q31.com’s
-     Google Drive with an app it made itself…": Bring It Into Olo…,
-     choose that account's login, Start the Agent. It renames your
-     "Olo DiskBackup" app to "Olo (ben@2q31.com)" and lets it serve Mail
+  1. **The account DiskBackup uses, keeping DiskBackup as it is**:
+     Preferences ▸ Integrations ▸ Google shows "DiskBackup backs up to
+     (its address)’s Google Drive with an app it made itself…": Bring It
+     Into Olo…, choose that account's login, Start the Agent. It renames
+     your "Olo DiskBackup" app to "Olo (its address)" and lets it serve Mail
      and Calendar too (the same project and client: Google shows the
      backups only to the app that wrote them, so a new app would start
      an empty backup). Its last step checks the app still sees the
      backups, and says so in Terminal.
-  2. **ben@shiftupai.com**: Add a Google Account…, its login, Start the
-     Agent: a project and an Internal app "Olo (ben@shiftupai.com)" in
+  2. **The Workspace account**: Add a Google Account…, its login, Start
+     the Agent: a project and an Internal app "Olo (its address)" in
      your Workspace (if the Workspace doesn't let accounts make
      projects, the agent says so: allow it in the Admin console, or
      make the client there yourself and use Set Up by Hand…).
@@ -4285,8 +4300,8 @@ need Ben".)
   project, the Drive API, the sign-in (Internal: Google now publishes an
   External app only with a homepage and privacy-policy address, so the
   steps say so), the client (`~/Downloads/client_secret_161753405295-…
-  .json`), and DiskBackup signed in as ben@2q31.com; the test stopped
-  there (no backup made in his Drive with a test's key). Left (Ben):
+  .json`), and DiskBackup signed in to that account; the test stopped
+  there (no backup made in that Drive with a test's key). Left (Ben):
   upgrade, then finish with that client (Back Up To ▸ Google Drive… ▸
   Choose File…, or Agent Setup again, which finds it made), or run Agent
   Setup from scratch and follow along; the testing screen (`agent`) still

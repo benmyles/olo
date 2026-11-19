@@ -13155,7 +13155,7 @@ Ben, 2026-11-18: "we need a Google Workspace integration where for each
 google workspace account you add you setup the "Olo" google app …
 that should handle DiskBackup, Email, Calendar, anything else we add
 later … for each google workspace we should have it be e.g. "Olo
-(ben@shiftupai.com)" so that it is separated for the user … add as
+([an address])" so that it is separated for the user … add as
 many google workspaces as we want in prefs -> integrations and then
 choose which ones are enabled for mail, calendar, diskbackup in like a
 grid". (And not a published app of Olo's own: Google's review of mail

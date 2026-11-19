@@ -3,7 +3,7 @@
 //! "for each google workspace account you add you setup the "Olo"
 //! google app … and that should handle DiskBackup, Email, Calendar,
 //! anything else we add later … for each google workspace we should
-//! have it be e.g. "Olo (ben@shiftupai.com)" … add as many google
+//! have it be e.g. "Olo ([an address])" … add as many google
 //! workspaces as we want in prefs -> integrations and then choose which
 //! ones are enabled for mail, calendar, diskbackup in like a grid").
 //!
