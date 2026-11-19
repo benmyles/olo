@@ -71,8 +71,10 @@ usage: olo-screen                         open Agent Screens (watch, take contro
        olo-screen stats [NAME] [--json]   when each screen was started and last used, how long it
                                              ran and was in use, its actions by kind, its programs
        olo-screen env NAME                its environment, for a shell (eval \"$(…)\")
-       olo-screen run NAME PROGRAM [ARGS…]
-                                             start a program on it; prints its pid
+       olo-screen run NAME [--quick] PROGRAM [ARGS…]
+                                             start a program on it; prints its pid and, under
+                                             after, the screen once it shows (a window opens or
+                                             the focused one changes; at most 5 s)
        olo-screen take NAME|--new --window ID…
                                              the person's windows (ids on their display) onto the
                                              screen (--new: a new one), their programs running on
@@ -83,7 +85,8 @@ usage: olo-screen                         open Agent Screens (watch, take contro
                                              one showing) of OUTPUT (default: the active display)
        olo-screen look NAME [OUT.png] [--window ID] [--crop X,Y,W,H] [--no-pointer]
                                              a picture of the screen (or one window, or part);
-                                             without OUT, a new file by the logs; prints its path
+                                             without OUT, a new file among the screen's pictures
+                                             (the newest 20 kept); prints its path
        olo-screen windows NAME            its windows (id, app, title, focused, frame, content,
                                              popups: open menus' frames), as JSON
        olo-screen tree NAME [--window ID] [--json] [--role R] [--contains TEXT]
@@ -134,8 +137,17 @@ it (windows, tree, look) still answers.
 
 FIND is --name NAME (exact, else part of it; a value counts too), --role ROLE,
 --match ROLE:TEXT, --text TEXT (in the name or value), --index N (from 0, when
-several match) and --window ID. Actions print JSON: what they matched, and
-after: the focused window and element.
+several match) and --window ID.
+
+Actions print JSON: what they matched and, under after, how the screen is
+once it has settled (nothing changed for a quarter of a second and no page
+loading; at most 2 s, or 8 s while a page loads): the focused window and
+element; settled (false: still changing when it was read); picture, a PNG
+of the whole screen then; windows; and tree, the focused window's as
+`tree --visible-only` gives it (its first 150 lines). So you act on what is
+there now. --quick (anywhere after NAME; for run, before PROGRAM) or
+OLO_SCREEN_QUICK=1, for a run of quick actions: the focus alone, at once
+(move, down, up, drag, scroll and wheel then print nothing).
 
 A moved program keeps running: an Olo app re-executes there with its
 state (one window of several by a copy of the app, where it can), any
@@ -202,7 +214,7 @@ fn cli(args: &[String]) -> Option<Result<(), String>> {
     let result = run_command(args)?;
     if history::ACTIONS.contains(&command.as_str()) {
         let rest = &args[1..];
-        let answer = ANSWER.with(|a| a.borrow_mut().take());
+        let answer = ANSWER.with(|a| a.borrow_mut().take()).map(for_history);
         // The screen: as named, or the one `start` chose.
         let named = rest.first().filter(|a| !a.starts_with("--")).cloned();
         let name = if matches!(command.as_str(), "start" | "take") { answer.as_ref().and_then(|v| v["name"].as_str().map(str::to_owned)).or(named.clone()) } else { named.clone() };
@@ -219,6 +231,214 @@ fn cli(args: &[String]) -> Option<Result<(), String>> {
     Some(result)
 }
 
+/// An action's answer as its history keeps it: what the screen was after
+/// it, but not its picture, tree and windows (the frames are kept; they'd
+/// fill the history, which is kept under 8 MB by dropping the oldest).
+fn for_history(mut v: serde_json::Value) -> serde_json::Value {
+    if let Some(after) = v.get_mut("after").and_then(|a| a.as_object_mut()) {
+        for k in ["picture", "tree", "windows"] {
+            after.remove(k);
+        }
+    }
+    v
+}
+
+/// The screen has settled once nothing it shows has changed for this long
+/// (as `wait --idle` has it): a page's answer to a click a moment later
+/// (300 ms in the test) is what an action says, not the page before it.
+const QUIET: Duration = Duration::from_millis(250);
+/// How long an action waits at most for the screen to settle before it
+/// says how it is; while a page is loading (`UiNode::busy`), longer.
+const SETTLE_AT_MOST: Duration = Duration::from_secs(2);
+const LOADING_AT_MOST: Duration = Duration::from_secs(8);
+/// How long `run` waits at most for its program to show.
+const SHOW_AT_MOST: Duration = Duration::from_secs(5);
+/// The most lines of the focused window's tree an action gives.
+const AFTER_TREE_LINES: usize = 150;
+/// The pictures kept for each screen (`picture_path`).
+const PICTURES_KEPT: usize = 20;
+
+/// How the screen is after an action (Ben, 2026-11-18: "i want the agent
+/// to always know what the latest state is"), once it has stopped
+/// changing: the focus, a picture of the whole screen, the focused
+/// window's tree as `tree --visible-only` gives it, and the windows. So
+/// an agent acts on what is there, never on what it last saw. Quick (the
+/// focus alone, as soon as the app has taken it in), for a run of quick
+/// actions: `--quick`, OLO_SCREEN_QUICK=1.
+#[derive(Serialize)]
+struct Afterwards {
+    #[serde(flatten)]
+    focus: find::After,
+    /// For `run`: something changed within `SHOW_AT_MOST` (a window
+    /// opened, the focused one changed); false, it shows nothing yet.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shown: Option<bool>,
+    /// It stopped changing within `SETTLE_AT_MOST` (else, how it was then).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    settled: Option<bool>,
+    /// The picture's path (a PNG among the screen's pictures).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    picture: Option<String>,
+    /// The screen's windows, front first: id, title, app, focused.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    windows: Vec<String>,
+    /// The focused window's tree, its first `AFTER_TREE_LINES` lines.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tree: Vec<String>,
+    /// What couldn't be read or taken.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+    /// What it took: settling (and, for `run`, showing) and the picture.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ms: Option<serde_json::Value>,
+}
+
+impl Afterwards {
+    fn focus(focus: find::After) -> Afterwards {
+        Afterwards { focus, shown: None, settled: None, picture: None, windows: Vec::new(), tree: Vec::new(), error: None, ms: None }
+    }
+}
+
+/// What is read of the screen while it settles: its windows, the focused
+/// one's trees, and the two as one text to compare.
+struct Seen {
+    windows: Vec<WindowInfo>,
+    trees: Vec<ScreenTree>,
+    key: String,
+    /// A window still to draw a size it was given.
+    settling: bool,
+    /// Something in it still coming (`UiNode::busy`: a page loading).
+    busy: bool,
+}
+
+fn seen(s: &screens::Screen) -> Result<Seen, String> {
+    let windows = s.windows()?;
+    let trees = windows.iter().find(|w| w.focused).and_then(|w| trees(s, Some(w.id)).ok()).unwrap_or_default();
+    let key = format!("{}{}", windows_key(&windows), outline(&trees, &Filter::default()));
+    let settling = windows.iter().any(|w| w.settling);
+    let busy = trees.iter().any(|t| t.nodes.iter().any(|n| n.busy));
+    Ok(Seen { windows, trees, key, settling, busy })
+}
+
+/// The windows as a text that changes when one comes, goes, moves, is
+/// retitled or takes the focus.
+fn windows_key(windows: &[WindowInfo]) -> String {
+    windows.iter().map(|w| format!("{} {:?} {} {} {:?}\n", w.id, w.title, w.focused, w.minimized, w.frame)).collect()
+}
+
+/// A window, as `after.windows` lists it.
+fn window_line(w: &WindowInfo) -> String {
+    let mut l = format!("{} {:?} ({})", w.id, w.title, w.app_id);
+    for (on, word) in [(w.focused, "focused"), (w.minimized, "minimized")] {
+        if on {
+            l.push(' ');
+            l.push_str(word);
+        }
+    }
+    l
+}
+
+/// The screen once it has settled after an action (`Afterwards`); for
+/// `run`, once its program has shown first (the windows or the focused
+/// one's tree no longer as `shows_from`, `Seen::key`).
+fn afterwards(s: &screens::Screen, quick: bool, shows_from: Option<&str>) -> Afterwards {
+    if quick {
+        return Afterwards::focus(find::after(s));
+    }
+    let began = std::time::Instant::now();
+    let mut shown = None;
+    if let Some(before) = shows_from {
+        let mut changed = false;
+        while !changed && began.elapsed() < SHOW_AT_MOST {
+            std::thread::sleep(Duration::from_millis(100));
+            changed = seen(s).is_ok_and(|now| now.key != before);
+        }
+        shown = Some(changed);
+    }
+    // The app takes it in over a frame or two; then read until nothing
+    // has changed for `QUIET`, no window still to draw a size it was
+    // given and no page still loading.
+    let from = std::time::Instant::now();
+    std::thread::sleep(Duration::from_millis(40));
+    let mut last = seen(s);
+    let mut changed = std::time::Instant::now();
+    let mut settled = false;
+    loop {
+        let (busy, loading) = last.as_ref().map_or((false, false), |v| (v.settling || v.busy, v.busy));
+        if last.is_ok() && !busy && changed.elapsed() >= QUIET {
+            settled = true;
+            break;
+        }
+        if from.elapsed() >= if loading { LOADING_AT_MOST } else { SETTLE_AT_MOST } {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+        let now = seen(s);
+        if !matches!((&last, &now), (Ok(a), Ok(b)) if a.key == b.key) {
+            changed = std::time::Instant::now();
+        }
+        last = now;
+    }
+    let settling_ms = began.elapsed().as_millis() as u64;
+    let taken = std::time::Instant::now();
+    let picture = picture_path(&s.name, "after").and_then(|p| s.picture(&p, None, true, ImageFormat::Png).map(|()| p.display().to_string()));
+    let picture_ms = taken.elapsed().as_millis() as u64;
+    let mut a = match &last {
+        Ok(seen) => {
+            let mut a = Afterwards::focus(find::focus_of(&seen.windows, &seen.trees));
+            a.windows = seen.windows.iter().map(window_line).collect();
+            let filter = Filter { visible_only: true, max_len: Some(80), ..Default::default() };
+            a.tree = outline(&seen.trees, &filter).lines().map(str::to_owned).collect();
+            if a.tree.len() > AFTER_TREE_LINES {
+                let more = a.tree.len() - AFTER_TREE_LINES;
+                a.tree.truncate(AFTER_TREE_LINES);
+                let id = seen.trees.first().map_or(0, |t| t.window);
+                a.tree.push(format!("… {more} lines more: olo-screen tree {} --window {id} --visible-only", s.name));
+            }
+            a
+        }
+        Err(e) => {
+            let mut a = Afterwards::focus(find::After { window: None, focused: None });
+            a.error = Some(format!("the screen wasn't read: {e}"));
+            a
+        }
+    };
+    a.settled = Some(settled);
+    a.shown = shown;
+    match picture {
+        Ok(p) => a.picture = Some(p),
+        Err(e) => a.error = Some(a.error.map_or(String::new(), |x| format!("{x}; ")) + &format!("no picture: {e}")),
+    }
+    a.ms = Some(json!({ "settling": settling_ms, "picture": picture_ms }));
+    a
+}
+
+/// Print, for an action that said nothing before, how the screen is
+/// after it (`quick`: still nothing).
+fn tell_after(s: &screens::Screen, quick: bool) -> Result<(), String> {
+    if !quick {
+        print_json(&json!({ "after": afterwards(s, false, None) }));
+    }
+    Ok(())
+}
+
+/// Where a picture of screen `name` goes when no file is given (`kind`:
+/// "after" an action, a "look"): among its pictures, on disk beside its
+/// history (the runtime folder is memory: looks piled up there), named by
+/// when, the newest `PICTURES_KEPT` kept.
+fn picture_path(name: &str, kind: &str) -> Result<PathBuf, String> {
+    let dir = history::dir(name).join("pictures");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let mut kept: Vec<PathBuf> = std::fs::read_dir(&dir).map(|d| d.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "png")).collect()).unwrap_or_default();
+    if kept.len() >= PICTURES_KEPT {
+        kept.sort();
+        for p in &kept[..kept.len() + 1 - PICTURES_KEPT] {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+    Ok(dir.join(format!("{}-{kind}.png", history::now_ms())))
+}
+
 /// Keep `v` as the command's answer, for its history.
 fn answered(v: serde_json::Value) {
     ANSWER.with(|a| *a.borrow_mut() = Some(v));
@@ -233,7 +453,23 @@ fn controlled_answer(name: &str) -> String {
 
 fn run_command(args: &[String]) -> Option<Result<(), String>> {
     let command = args.first()?.as_str();
-    let rest = &args[1..];
+    // `--quick` (anywhere after the name; for `run`, before the program),
+    // or OLO_SCREEN_QUICK=1 for a run of them: an action answers with the
+    // focus alone, at once, as before 2026-11-18, not with how the screen
+    // is once settled (`afterwards`).
+    let mut rest: Vec<String> = args[1..].to_vec();
+    let mut quick = std::env::var("OLO_SCREEN_QUICK").is_ok_and(|v| !v.is_empty() && v != "0");
+    if command == "run" {
+        if rest.get(1).map(String::as_str) == Some("--quick") {
+            rest.remove(1);
+            quick = true;
+        }
+    } else if history::ACTIONS.contains(&command) || command == "maximize" {
+        let n = rest.len();
+        rest.retain(|a| a != "--quick");
+        quick |= rest.len() != n;
+    }
+    let rest = &rest[..];
     let name = || rest.first().cloned().ok_or_else(|| format!("{command} needs a screen's name"));
     // While the person has the screen, an agent's actions wait for them
     // (reading it still answers): two hands on one pointer made a mess.
@@ -325,9 +561,15 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             if outcome.went.is_empty() { Err(stayed_why(&outcome)) } else { Ok(()) }
         }),
         "run" => screen().and_then(|s| {
+            // (What it shows is waited for: a window that opens, or the
+            // focused one changing, as Chrome's given a page in a tab.)
+            let before = (!quick).then(|| seen(&s).map(|v| v.key).unwrap_or_default());
             let pid = s.run(&rest[1..])?;
-            println!("{pid}");
-            answered(json!({ "pid": pid }));
+            let mut v = json!({ "pid": pid });
+            if let Some(before) = before {
+                v["after"] = json!(afterwards(&s, false, Some(&before)));
+            }
+            print_json(&v);
             Ok(())
         }),
         // (Started with each screen: its frames for its history.)
@@ -546,10 +788,7 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             // Where to: as given, or a new file beside the screen's logs.
             let out = match positionals(rest).get(1) {
                 Some(out) => std::path::absolute(PathBuf::from(out)).map_err(|e| e.to_string())?,
-                None => {
-                    let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
-                    screens::dir().join(format!("{}-look-{ms}.png", s.name))
-                }
+                None => picture_path(&s.name, "look")?,
             };
             let window = window_arg(rest)?;
             let pointer = !has(rest, "--no-pointer");
@@ -605,6 +844,9 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             let w = app_window(&s, window_arg(rest)?)?;
             let pid = pid_of(&w)?;
             if commands::invoke(pid, &command) {
+                if !quick {
+                    print_json(&json!({ "invoked": command, "after": afterwards(&s, false, None) }));
+                }
                 return Ok(());
             }
             // Why not, and what there is like it.
@@ -616,7 +858,11 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                 && e.enabled
                 && commands::invoke(pid, &e.command)
             {
-                print_json(&json!({ "invoked": e.command, "label": e.label }));
+                let mut v = json!({ "invoked": e.command, "label": e.label });
+                if !quick {
+                    v["after"] = json!(afterwards(&s, false, None));
+                }
+                print_json(&v);
                 return Ok(());
             }
             if let Some(e) = entries.iter().find(|e| e.command == command).or(named.first().copied()) {
@@ -667,23 +913,30 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                 }
             };
             s.input(screens::click(x, y, button(rest), if has(rest, "--double") { 2 } else { 1 }))?;
-            print_json(&json!({ "clicked": [x, y], "matched": matched, "after": find::after(&s) }));
+            print_json(&json!({ "clicked": [x, y], "matched": matched, "after": afterwards(&s, quick, None) }));
             Ok(())
         })(),
         "move" => (|| {
             let (x, y) = point(rest, "move")?;
-            input(vec![SyntheticEvent::Move { x, y }])
+            input(vec![SyntheticEvent::Move { x, y }])?;
+            tell_after(&screen()?, quick)
         })(),
         "down" => (|| {
             let (x, y) = point(rest, "down")?;
-            input(vec![SyntheticEvent::Move { x, y }, SyntheticEvent::Button { button: button(rest), pressed: true }])
+            input(vec![SyntheticEvent::Move { x, y }, SyntheticEvent::Button { button: button(rest), pressed: true }])?;
+            tell_after(&screen()?, quick)
         })(),
-        "up" => input(vec![SyntheticEvent::Button { button: button(rest), pressed: false }]),
+        "up" => (|| {
+            input(vec![SyntheticEvent::Button { button: button(rest), pressed: false }])?;
+            tell_after(&screen()?, quick)
+        })(),
         "drag" => (|| {
             let n = |i: usize, w: &str| number(rest.get(i), w);
             let steps = option(rest, "--steps").map(|s| s.parse::<u32>().map_err(|_| "--steps is a number")).transpose()?.unwrap_or(20);
             let ms = option(rest, "--duration").map(|s| s.parse::<u64>().map_err(|_| "--duration is milliseconds")).transpose()?.unwrap_or(300);
-            screen()?.input_paced(screens::drag((n(1, "x1")?, n(2, "y1")?), (n(3, "x2")?, n(4, "y2")?), steps, Duration::from_millis(ms)))
+            let s = screen()?;
+            s.input_paced(screens::drag((n(1, "x1")?, n(2, "y1")?), (n(3, "x2")?, n(4, "y2")?), steps, Duration::from_millis(ms)))?;
+            tell_after(&s, quick)
         })(),
         "scroll" => (|| {
             // DX DY, or --dx/--dy (either alone), and --at X,Y for where.
@@ -704,12 +957,15 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                 let (x, y) = pair(a).ok_or("--at is X,Y")?;
                 s.input(vec![SyntheticEvent::Move { x, y }])?;
             }
-            s.input_paced(screens::scroll(dx, dy, !has(rest, "--no-end")))
+            s.input_paced(screens::scroll(dx, dy, !has(rest, "--no-end")))?;
+            tell_after(&s, quick)
         })(),
         "wheel" => (|| {
             let dy = number(rest.get(1), "notches")? as i32;
             let dx = rest.get(2).filter(|a| !a.starts_with("--")).map(|_| number(rest.get(2), "horizontal notches")).transpose()?.unwrap_or(0.0) as i32;
-            screen()?.input_paced(screens::wheel(dx, dy))
+            let s = screen()?;
+            s.input_paced(screens::wheel(dx, dy))?;
+            tell_after(&s, quick)
         })(),
         "key" => (|| {
             let chords = rest.get(1..).filter(|c| !c.is_empty()).ok_or("key needs a chord, such as Cmd+S")?;
@@ -719,14 +975,14 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             }
             let s = screen()?;
             s.input(events)?;
-            print_json(&json!({ "after": find::after(&s) }));
+            print_json(&json!({ "after": afterwards(&s, quick, None) }));
             Ok(())
         })(),
         "type" => (|| {
             let s = screen()?;
             s.type_text(&rest.get(1..).filter(|t| !t.is_empty()).ok_or("type needs text")?.join(" "))?;
-            let after = find::after(&s);
-            warn_if_not_text(&after);
+            let after = afterwards(&s, quick, None);
+            warn_if_not_text(&after.focus);
             print_json(&json!({ "after": after }));
             Ok(())
         })(),
@@ -753,8 +1009,8 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             events.extend(screens::chord(&screens::parse_chord("Delete")?));
             s.input(events)?;
             s.type_text(&text)?;
-            let after = find::after(&s);
-            warn_if_not_text(&after);
+            let after = afterwards(&s, quick, None);
+            warn_if_not_text(&after.focus);
             print_json(&json!({ "field": f, "after": after }));
             Ok(())
         })(),
@@ -779,7 +1035,7 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                     std::thread::sleep(Duration::from_millis(150));
                     s.input(screens::chord(&screens::parse_chord("Enter")?))?;
                 }
-                let after = find::after(&s);
+                let after = afterwards(&s, quick, None);
                 let now = find::find(&s, &find::Query { index: 0, ..q.clone() }).ok().filter(|n| n.window == field.window);
                 let says = now.as_ref().and_then(|n| n.value.clone()).unwrap_or_default();
                 if find::plain(&says) != find::plain(&want) {
@@ -821,7 +1077,7 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                 std::thread::sleep(Duration::from_millis(120));
             };
             s.input(screens::click(chosen.center.0 as f64, chosen.center.1 as f64, screens::LEFT, 1))?;
-            print_json(&json!({ "field": field, "chose": chosen, "after": find::after(&s) }));
+            print_json(&json!({ "field": field, "chose": chosen, "after": afterwards(&s, quick, None) }));
             Ok(())
         })(),
         "wait" => (|| {
@@ -872,7 +1128,11 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                 })
                 .transpose()?;
             let f = scroll_to(&s, &q, at)?;
-            print_json(&json!({ "found": f }));
+            let mut v = json!({ "found": f });
+            if !quick {
+                v["after"] = json!(afterwards(&s, false, None));
+            }
+            print_json(&v);
             Ok(())
         })(),
         "focus" | "close" | "minimize" | "zoom" | "maximize" => (|| {
@@ -886,7 +1146,7 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                 _ => Request::ToggleZoom { id },
             };
             ok(s.request(&request)?)?;
-            print_json(&json!({ "window": id, "after": find::after(&s) }));
+            print_json(&json!({ "window": id, "after": afterwards(&s, quick, None) }));
             Ok(())
         })(),
         "resize" | "place" => (|| {
@@ -912,9 +1172,18 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                 }
             }
             ok(s.request(&Request::Place { id: w.id, frame: to })?)?;
-            std::thread::sleep(Duration::from_millis(150));
+            let after = if quick {
+                std::thread::sleep(Duration::from_millis(150));
+                None
+            } else {
+                Some(afterwards(&s, false, None))
+            };
             let now = s.windows()?.into_iter().find(|x| x.id == w.id);
-            print_json(&json!({ "window": now }));
+            let mut v = json!({ "window": now });
+            if let Some(after) = after {
+                v["after"] = json!(after);
+            }
+            print_json(&v);
             Ok(())
         })(),
         other => Err(format!("unknown command {other:?}\n{USAGE}")),
@@ -1415,6 +1684,7 @@ fn outline(trees: &[ScreenTree], filter: &Filter) -> String {
                 (n.checked == Some(true), "checked"),
                 (n.selected == Some(true), "selected"),
                 (n.minimized, "minimized"),
+                (n.busy, "busy"),
             ] {
                 if on {
                     let _ = write!(o, " {word}");
@@ -1475,6 +1745,25 @@ mod tests {
 
     fn args(a: &[&str]) -> Vec<String> {
         a.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    /// An action's history keeps how the screen was after it, but not
+    /// its picture, tree and windows (the frames are kept).
+    #[test]
+    fn the_history_leaves_the_picture_and_tree_out() {
+        let v = json!({ "clicked": [1, 2], "after": { "window": { "id": 1 }, "settled": true, "picture": "/p.png", "tree": ["window 1"], "windows": ["1 \"A\" (a) focused"], "ms": { "settling": 300, "picture": 5 } } });
+        assert_eq!(for_history(v), json!({ "clicked": [1, 2], "after": { "window": { "id": 1 }, "settled": true, "ms": { "settling": 300, "picture": 5 } } }));
+        assert_eq!(for_history(json!({ "pid": 4 })), json!({ "pid": 4 }));
+    }
+
+    /// The windows an action lists: id, title, app, and how each is.
+    #[test]
+    fn a_window_in_a_line() {
+        let w = |focused: bool, minimized: bool| -> WindowInfo {
+            serde_json::from_value(json!({ "id": 3, "app_id": "olo.tracker", "title": "Home", "pid": null, "workspace": 0, "minimized": minimized, "focused": focused })).unwrap()
+        };
+        assert_eq!(window_line(&w(true, false)), "3 \"Home\" (olo.tracker) focused");
+        assert_eq!(window_line(&w(false, true)), "3 \"Home\" (olo.tracker) minimized");
     }
 
     /// An open menu's items are in its window's tree: the program's tree

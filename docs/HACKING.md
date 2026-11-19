@@ -18842,7 +18842,12 @@ action (the history's file changing) and once a second otherwise, and
 keeps the 64-pixel tiles that changed since the frame before,
 zstd-compressed, with a whole keyframe every 30 s, in five-minute
 segments (`frames-START.olof`; the format is in the module's comment),
-the oldest dropped past 512 MB. `record::index` reads the records'
+the oldest dropped past 512 MB. Each picture comes through a file in the
+runtime folder (`screens::recorder_frame`, 5 MB at 1440 × 900, in
+memory): the recorder removes it as it ends, `stop` does for one ended
+with its screen's process group, and `start` and `stop` sweep those of
+screens not running (six stopped screens' were left, 31 MB, until
+2026-11-18). `record::index` reads the records'
 heads, `frame_at` builds the screen as it was at a time from its
 keyframe; `history NAME --look N [OUT.png]` writes it as it was when
 action N ended. In the window, History (a tab beside Live and Stats;
@@ -19003,9 +19008,38 @@ clicked where nothing is, and `set` failed 14 times on one screen. A
 point is `X Y`, `X,Y` or `--at X,Y`, `scroll` takes `--dx`/`--dy` and
 `--at`, and keys go by X11's and the web's names too (`Page_Down`,
 `Next`, `ArrowDown`, `KP_Enter`): what agents write, which failed
-"x must be a number" and "unknown key" 21 times on that screen. Actions
-print JSON with `after`,
-the focused window and element. Popups are in the trees: a kit program
+"x must be a number" and "unknown key" 21 times on that screen.
+
+**Every action says how the screen is after it** (Ben, 2026-11-18: "i
+want the agent to always know what the latest state is"; `afterwards`
+in main.rs). Its answer's `after` is read once the screen has settled:
+nothing in the windows or the focused window's tree changed for a
+quarter of a second (`QUIET`, as `wait --idle` has it), no window still
+drawing a size it was given, no page loading (`UiNode::busy`: the
+extension marks a tab's `Document` busy while `tab.status` is
+"loading"); at most 2 s, or 8 s while a page loads, `settled` false if
+it was still changing. Then: the focus (`find::focus_of`, from what was
+read), `picture` (the whole screen, a PNG among the screen's pictures,
+`history::dir(NAME)/pictures`, the newest 20 kept; on disk, as the
+runtime folder is memory, and `look` without a file writes there too),
+`windows`, and `tree`, the focused window's outline as `tree
+--visible-only --max-len 80` gives it, its first 150 lines. `run` waits
+first for what it starts to show (the windows or the focused tree
+changing, at most 5 s: `shown`), and prints JSON now, its pid with it.
+The history keeps the answer without the picture, tree and windows (the
+frames are kept), with `settled` and what it took (`ms`); History says
+"still changing" where it was. Before, an action said only the focus,
+read as soon as the app had taken it in: a click whose page answered
+300 ms later, or a link's new page, was answered with the page before.
+Measured (release, a 1280 × 800 screen, StyledEdit): an action takes
+~305 ms (~295 settling, 5 for the picture) against 76 ms quick; the app
+~1 ms more CPU an action (the reads; 2.1 ms against 1.1 ms over its
+threads), olo-screen 13 M instructions against 9 M; the answer ~3.8 KB.
+In Chrome, a click on a button whose text changes 300 ms later: 610 ms,
+with the new text; on a link to a page that takes 1.5 s: 1.8 s, with
+the new page. `--quick` (anywhere after the name; for `run`, before the
+program) or `OLO_SCREEN_QUICK=1`: the focus alone, at once, as before.
+Popups are in the trees: a kit program
 gives an open menu or dropdown as a window's tree of its own (a menu's
 with no title, a submenu's titled by its item; its nodes placed within
 the popup), and `olo-screen` puts each under the window it opened from
@@ -19023,8 +19057,9 @@ every window's open popups' frames, GTK's too (smithay's
 rows carry their place (`UiNode::row`/`rows`, printed `row 13/61`)
 and whether they're `selected`, as tabs and column headers do. `focus`/`close`/`minimize`/`zoom` are the window
 requests; `resize` and `place` are `Request::Place` (a frame, as
-`set_frame` gives tiles). `look` writes beside the logs when given no
-file, and `--crop` cuts an RGBA picture down in process (png crate).
+`set_frame` gives tiles). `look` writes among the screen's pictures
+when given no file (above), and `--crop` cuts an RGBA picture down in
+process (png crate).
 
 The person's side is the window (`olo-screen`, or `olo-screen
 watch NAME`; on the kit): the screens in a sidebar and the chosen

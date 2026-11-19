@@ -6,6 +6,7 @@
 use std::time::{Duration, Instant};
 
 use olo_kit::commands::UiNode;
+use olo_protocol::WindowInfo;
 use serde::Serialize;
 
 use crate::{ScreenTree, option, screens::Screen, trees};
@@ -327,8 +328,16 @@ pub fn after(s: &Screen) -> After {
 
 /// The focused window and what in it has the focus, as they are now.
 fn focus_now(s: &Screen) -> After {
-    let Some(w) = s.windows().ok().and_then(|ws| ws.into_iter().find(|w| w.focused)) else { return After { window: None, focused: None } };
-    let focused = trees(s, Some(w.id)).ok().and_then(|ts| ts.iter().find_map(|t| t.nodes.iter().find(|n| n.focused).map(|n| Found::new(t.window, n))));
+    let Ok(windows) = s.windows() else { return After { window: None, focused: None } };
+    let trees = windows.iter().find(|w| w.focused).and_then(|w| trees(s, Some(w.id)).ok()).unwrap_or_default();
+    focus_of(&windows, &trees)
+}
+
+/// The focus as `windows` and the focused window's `trees` have it (read
+/// already: `crate::afterwards`).
+pub fn focus_of(windows: &[WindowInfo], trees: &[ScreenTree]) -> After {
+    let Some(w) = windows.iter().find(|w| w.focused) else { return After { window: None, focused: None } };
+    let focused = trees.iter().find_map(|t| t.nodes.iter().find(|n| n.focused).map(|n| Found::new(t.window, n)));
     After { window: Some(serde_json::json!({ "id": w.id, "app_id": w.app_id, "title": w.title })), focused }
 }
 

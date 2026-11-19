@@ -312,6 +312,10 @@ pub fn outcome(a: &Action) -> Option<String> {
     if let Some(title) = r.pointer("/after/window/title").and_then(|t| t.as_str()) {
         parts.push(format!("then “{title}” in front"));
     }
+    // (Its answer read while the screen was still changing.)
+    if r.pointer("/after/settled").and_then(|v| v.as_bool()) == Some(false) {
+        parts.push("still changing".into());
+    }
     (!parts.is_empty()).then(|| parts.join(" · "))
 }
 

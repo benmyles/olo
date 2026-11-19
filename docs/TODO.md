@@ -53,21 +53,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Agent Screens: every action says what the screen looks like after
-  it** (Ben, 2026-11-18: "can you improve olo agent screens reliability
-  by having it always include a new / up to date screenshot of the
-  screen after each command is run (as well as the widget tree and
-  whatever else we already give it)? i want the agent to always know
-  what the latest state is"). Each `olo-screen` action (click, set,
-  select, key, type, scroll, wheel, drag, invoke, the window commands,
-  run) waits for the screen to settle (as `wait --idle` does), takes a
-  picture of it, and gives its path in the action's JSON beside the
-  focused window's widget tree as it is then (today an action says
-  only what it matched and what has the focus), so an agent never acts
-  on what it last saw. What it costs an action measured (the picture's
-  and the settling's milliseconds), and a way to leave it out for a
-  run of quick actions.
-
 - **Find what removes dependency build units from `target/release`**
   (2026-11-18: a workspace build failed to link because about 1,040
   unit folders vanished while it ran; docs/AGENT-NOTES.md, "Dependency
@@ -307,6 +292,32 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Agent Screens: every action says what the screen looks like after
+  it** (Ben, 2026-11-18: "can you improve olo agent screens reliability
+  by having it always include a new / up to date screenshot of the
+  screen after each command is run (as well as the widget tree and
+  whatever else we already give it)? i want the agent to always know
+  what the latest state is"). Each `olo-screen` action (click, set,
+  select, key, type, scroll, wheel, drag, invoke, the window commands,
+  run) waits for the screen to settle (as `wait --idle` does), takes a
+  picture of it, and gives its path in the action's JSON beside the
+  focused window's widget tree as it is then (today an action says
+  only what it matched and what has the focus), so an agent never acts
+  on what it last saw. What it costs an action measured (the picture's
+  and the settling's milliseconds), and a way to leave it out for a
+  run of quick actions. **Done** (HACKING.md, "Every action says how
+  the screen is after it"): every action's `after` is read once the
+  screen has stopped changing for a quarter of a second and no page is
+  loading (the extension now says when a tab is, so a link's click
+  answers with the new page), with a `picture` of the screen, the
+  focused window's `tree` and the `windows`; ~305 ms an action against
+  76 quick (`--quick`, `OLO_SCREEN_QUICK=1`). Also found: each screen's
+  recorder left a 5 MB frame in memory once its screen stopped (31 MB
+  of six stopped screens'), and `look` piled its pictures up in memory:
+  both on disk or removed now. Try: any agent's next actions on a
+  screen, once upgraded (Chrome takes the extension's 1.15.6 as it
+  next starts).
 
 - **Desktop icons gone after Deskbar is collapsed and expanded** (Ben,
   2026-11-18: "i tried the new collapse deskbar then expand again. it

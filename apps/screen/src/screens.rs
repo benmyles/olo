@@ -562,6 +562,7 @@ pub fn start(name: &str, opts: &Options) -> Result<Screen, String> {
     }
     // (One of this name nothing lists would be a second, unreachable.)
     end_strays(Some(name));
+    sweep_recorder_frames();
     if !(320..=7680).contains(&opts.width) || !(240..=4320).contains(&opts.height) {
         return Err(format!("{}x{} isn't a size a screen can have", opts.width, opts.height));
     }
@@ -767,6 +768,38 @@ fn stop_pid(pid: i32) {
     }
 }
 
+/// Where screen `name`'s recorder has app_server put each frame it reads
+/// (`record::run`).
+pub fn recorder_frame(name: &str) -> PathBuf {
+    dir().join("views").join(format!("record-{name}.rgba"))
+}
+
+/// A file removed when this goes.
+pub struct Removed(pub PathBuf);
+
+impl Drop for Removed {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+/// Remove the recorders' frames of screens not running: a recorder ended
+/// with its screen's process group leaves its frame behind, and the
+/// runtime folder is memory (six stopped screens' frames were there,
+/// 31 MB, 2026-11-18).
+fn sweep_recorder_frames() {
+    let Ok(rd) = std::fs::read_dir(dir().join("views")) else { return };
+    let running: Vec<String> = list().into_iter().map(|s| s.name).collect();
+    for e in rd.flatten() {
+        let file = e.file_name().to_string_lossy().into_owned();
+        if let Some(screen) = file.strip_prefix("record-").and_then(|f| f.strip_suffix(".rgba"))
+            && !running.iter().any(|r| r == screen)
+        {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+}
+
 /// End a screen and everything started on it.
 pub fn stop(name: &str) -> Result<(), String> {
     let screen = get(name)?;
@@ -785,6 +818,7 @@ pub fn stop(name: &str) -> Result<(), String> {
     let _ = std::fs::remove_file(entry(name));
     let _ = std::fs::remove_file(dir().join(format!("{name}-settings.json")));
     let _ = std::fs::remove_file(control_file(&dir(), name));
+    sweep_recorder_frames();
     Ok(())
 }
 

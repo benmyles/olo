@@ -388,8 +388,12 @@ pub fn run(name: &str) -> Result<(), String> {
     // (Held until this process ends or becomes its new version, which
     // takes it again itself.)
     let Some(_lock) = screens::take_recorder_lock(name) else { return Ok(()) };
-    let picture = screens::dir().join("views").join(format!("record-{name}.rgba"));
+    let picture = screens::recorder_frame(name);
     let _ = std::fs::create_dir_all(picture.parent().unwrap());
+    // (The frame read through it is gone with the recorder: in the
+    // runtime folder, it's memory, 5 MB a screen. Ended with its screen's
+    // process group, `screens::stop` removes it.)
+    let _frame = screens::Removed(picture.clone());
     let actions = history::dir(name).join("actions.jsonl");
     // The limits in Preferences, and what is past them already gone.
     let (max_bytes, max_age) = history::limits(Some(&screen));

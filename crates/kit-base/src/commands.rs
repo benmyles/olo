@@ -118,6 +118,12 @@ pub struct UiNode {
     /// what shows, so a click at its middle lands on it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub offscreen: bool,
+    /// Still coming: what it shows will change by itself (a web page
+    /// whose tab is loading, from Olo's Chrome extension). Agent Screens
+    /// wait for it to finish before saying how the screen is after an
+    /// action.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub busy: bool,
 }
 
 /// What one window shows.

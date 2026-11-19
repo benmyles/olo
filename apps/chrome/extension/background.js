@@ -1111,7 +1111,9 @@ async function windowTrees() {
       // The page fills the bottom of the window, full width.
       const ph = page ? page.height * zoom : 0;
       const top = page ? Math.max(0, w.height - ph) : 0;
-      out.nodes.push({ id: 2, parent: 1, role: "Document", name: tab.title || "", value: tab.url || "", x: 0, y: top, width: w.width, height: ph, enabled: true });
+      // (Busy while its tab loads: Agent Screens wait for the page an
+      // action brought, not answer with the one it left.)
+      out.nodes.push({ id: 2, parent: 1, role: "Document", name: tab.title || "", value: tab.url || "", x: 0, y: top, width: w.width, height: ph, enabled: true, busy: tab.status === "loading" });
       for (const n of page?.nodes || []) {
         out.nodes.push({
           ...n,

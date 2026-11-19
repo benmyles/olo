@@ -22,7 +22,7 @@ Coordinates are the screen's logical pixels from its top left. Cmd is ⌘
 ```sh
 olo-screen start                    # prints JSON; the name is "agent" (or agent-2, …)
 olo-screen start review --size 1280x800
-olo-screen run agent olo-styled-edit notes.txt     # prints the pid
+olo-screen run agent olo-styled-edit notes.txt     # prints its pid, and the screen once it shows
 olo-screen list                     # every screen, each with its "state": running, stopped, archived
 olo-screen stop agent               # ends the screen and everything on it; the screen is kept, stopped
 olo-screen start agent              # a stopped (or archived) one again, at the size it had
@@ -292,12 +292,29 @@ olo-screen key agent Cmd+S          # also Ctrl+Shift+T, Enter, Esc, Tab, Down, 
 olo-screen key agent Cmd+A Delete   # several chords in turn
 ```
 
-Actions print JSON: what they matched and, under `after`, the focused
-window and element, read once they've settled (as soon as the app has
-taken it in, at most 0.4 s). Typing goes to the focused element; `type`
-and `set` warn when that isn't a text field (a list takes ⌘A as Select
-All). `set` types into a field that moves as it takes the focus (a
-label floating up, a page scrolling it into view).
+Every action answers with how the screen is after it, so you always
+act on what is there now, never on what you last saw. Under `after`,
+once the screen has settled (nothing changed for a quarter of a second,
+no page still loading; at most 2 s, 8 s while a page loads):
+
+- `window` and `focused`: the focused window and element;
+- `picture`: a PNG of the whole screen then. Look at it when the tree
+  doesn't say enough (a non-Olo app, a canvas, how something looks);
+- `tree`: the focused window's widgets as `tree --visible-only` gives
+  them (the first 150 lines; `tree` has the rest);
+- `windows`: the screen's windows, the focused one marked;
+- `settled`: false when it was still changing as it was read (a page
+  that keeps loading, a timer): `wait` for what you need, then look.
+
+A click on a link waits for the page it brings. Something that takes
+longer than that (a search, a sign-in, a download) still needs `wait`.
+For a run of quick actions you'll check at the end, add `--quick` (for
+`run`, before the program) or set `OLO_SCREEN_QUICK=1`: each then
+answers with the focus alone, at once (about 80 ms against 300).
+Typing goes to the focused element; `type` and `set` warn when that
+isn't a text field (a list takes ⌘A as Select All). `set` types into a
+field that moves as it takes the focus (a label floating up, a page
+scrolling it into view).
 
 Windows: `focus`, `close`, `minimize`, `zoom` (`--window ID`, else the
 focused or only one), `resize agent 1200x800` (the content's size) and
@@ -374,10 +391,9 @@ have changed what's on it. Reading the screen works throughout.
 
 ## Working well
 
-- After each action, check the result (`tree`, or `look` for non-Olo
-  apps) before the next; windows take a frame or two to update. Use
-  `wait` rather than sleeps: some things take seconds (a search, Show in
-  Context).
+- After each action, read its `after` (the tree, and the picture when
+  the tree isn't enough) before the next. Use `wait` rather than sleeps:
+  some things take seconds (a search, Show in Context).
 - A dropdown opens with its current item over the field, so the other
   items are above and below it; `select` finds them for you.
 - New windows open focused; `windows` shows which one is.
