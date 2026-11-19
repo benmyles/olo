@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Calendar: invitations
+
+*16:25* — An invitation shows what you answered: not answered is pale with a line round it (Interview), declined is struck through (Budget call), accepted looks like any event. Edit ▸ Reply answers the one selected (Yes, Maybe, No), and so does Going in its window, which lists the guests with each one's answer. Also: the SSD rows' "As It Is" in Preferences ▸ Power is now called Auto.
+
+![Calendar: invitations](2026-11-18/162546-calendar-invitations.png)
+
 ### Calendar: events are dragged among the days
 
 *16:02* — In the month, and in the week's all-day strip, an event is dragged to other days: it keeps its time and its length, where it was stays faint, and where it would go is drawn across its days (here the Conference dragged across a week's end, and Release 2.4 from Thursday to Monday). A moved event stays selected.

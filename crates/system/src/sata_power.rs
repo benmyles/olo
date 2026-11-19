@@ -15,10 +15,10 @@
 //! its host is its own.
 //!
 //! The presets are the NVMe drives' (`nvme_power::NvmePreset`), so every
-//! SSD's row has the same choices: As It Is leaves the link as found,
+//! SSD's row has the same choices: Auto leaves the link as found,
 //! Cooler is `med_power_with_dipm`, Coolest `min_power`. Written by the
 //! follower (`olo-gpu-tune`, root's), which keeps the policy it found so
-//! As It Is puts that back; read from /sys without root ([`drives`]).
+//! Auto puts that back; read from /sys without root ([`drives`]).
 
 use std::path::{Path, PathBuf};
 

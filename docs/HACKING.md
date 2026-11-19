@@ -10241,7 +10241,8 @@ configurable with reasonable defaults"), in three tabs:
   by its serial; `Drive::size` from its namespaces) (`olo_system::nvme_power`; Ben, 2026-11-13:
   "add the ability to adjust/customize nvme power for each profile for
   when a user wants to get their nvme drive to run a bit cooler (but
-  default should be whatever it is now / by default)"): As It Is (the
+  default should be whatever it is now / by default)"): Auto (called
+  As It Is until 2026-11-18; the
   default: the drive untouched), Cooler (its second working power
   state) or Coolest (its lowest), each with the most it draws in it
   ("Cooler (6.3 W)") once the follower has read the drive's own table,
@@ -10250,7 +10251,7 @@ configurable with reasonable defaults"), in three tabs:
   /dev/nvmeN, natively); a drive with one working state offers only As
   It Is. The follower sets the state with Set Features (Power
   Management, not saved on the drive); APST's resting states are the
-  drive's own and it comes back to the state set. As It Is touches a
+  drive's own and it comes back to the state set. Auto touches a
   drive only to put back PS0 on one the follower had lowered
   (`Followed::limited`). A controller reset (some resumes) puts a drive
   back on PS0, so the follower sets the drives again as logind says the
@@ -10266,7 +10267,7 @@ configurable with reasonable defaults"), in three tabs:
   sleeps"), set on its host adapter's
   `link_power_management_policy` by the follower (version 4), which
   keeps the policy it found before it first changed one
-  (`Followed::sata_found`) and puts that back for As It Is. Tried with a
+  (`Followed::sata_found`) and puts that back for Auto. Tried with a
   fake /sys (a SATA SSD, a spinning disk, a USB stick: only the SSD);
   this ThinkPad has none. The names' column is as wide as the longest
   name (a drive's model, a GPU's), on the 4-point grid, 152 to 216
@@ -21144,6 +21145,38 @@ frames (one a quarter hour crossed) of 601 µs on average, the slowest
 Tried against the demo: Dentist's end from 4 PM to 5:15 PM, undone;
 dragged above its start, it's a quarter hour long. Tested:
 `week::tests::an_end_dragged_by_quarter_hours`.
+
+**Invitations** (an event with `ATTENDEE`s; "me" is the accounts'
+addresses, `Shown::going`). How one looks says what the person
+answered (`view::ground`, `view::struck`, in the week, the strip, the
+month and the agenda alike): not answered, pale with a line round it
+in its calendar's colour (in the month and the agenda, a hollow mark);
+declined, paler with its title struck through; maybe, lighter;
+accepted, as any event. An agent reads it in the item's name (", not
+answered", ", declined", ", maybe") and in `--print`'s `"going"`.
+Answering: Edit ▸ Reply ▸ Yes, Maybe, No for the event selected
+(commands `answer:yes`, `answer:maybe`, `answer:no`; the one given is
+checked), or Going in the event's window, which says it at once
+(`Msg::Answer` → `answer_event`): the person's `ATTENDEE` line gets
+the answer (`olo_calendar::event::answer`: `PARTSTAT`, and `RSVP`
+gone, in the event and every occurrence changed by itself; nothing
+else touched) and the event is written to its server, which is what
+tells the organizer on a server that schedules (RFC 6638: Google's,
+Fastmail's, iCloud's). It's a step like any change: "Undo Reply to
+“Interview”". The event's window lists the guests (`editor::Guest`,
+`guest_list`): who asked first, then the person, then the others by
+name, each with a mark for their answer (a check, a cross:
+`style::cross_mark`, new in the kit beside `check_mark`; a question
+mark; a dash for none yet) and what they are to it ("organizer",
+"you", "optional"); five show, more scroll. Not yet: inviting people
+to an event of one's own, and answering one occurrence of a repeating
+event differently from the rest. Not tried against a real server's
+scheduling: the stand-in keeps what's written and sends nothing.
+Tested: `event::tests::an_invitation_answered`,
+`model::tests::what_the_person_answered`,
+`editor::tests::a_guest_said`; tried against the demo (Design review,
+accepted, with six guests; Interview, not answered: Maybe from the
+menu, undone, Yes from its window; Budget call, declined).
 
 **Find** (Edit ▸ Find… ⌘F puts the caret in the search field at the
 navigation row's right, the kit's `SearchField`; an agent just sets its

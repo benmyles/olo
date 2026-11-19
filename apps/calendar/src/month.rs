@@ -147,34 +147,41 @@ pub fn view(cx: &mut Cx<Calendar>) -> Element {
                 let words_at = xs[piece.from] + px(INSET);
                 if s.bar() || chosen {
                     // On its calendar's colour (lighter, taking no time).
-                    let fill = if moving {
-                        olo_theme::mix(hue, p.document_background, 0.7)
-                    } else if s.free && !chosen {
-                        olo_theme::mix(hue, p.document_background, 0.45)
-                    } else {
-                        hue
-                    };
+                    let (ground, lined) = crate::view::ground(&p, s, chosen);
+                    let fill = if moving { olo_theme::mix(hue, p.document_background, 0.7) } else { ground };
                     style::fill_rect(g, r, style::c(fill));
                     if chosen && !moving {
                         style::frame_rect(g, r, text);
+                    } else if lined && !moving {
+                        style::frame_rect(g, r, style::c(hue));
                     }
                     let ink = style::c(p.ink_on(fill));
                     let said = if s.all_day { s.title.to_string() } else { format!("{} {}", words::time(s.start.time(), v.h24), s.title) };
-                    style::label_fit(g, words_at, mid, style::Align::Left, said, style::DETAIL_SIZE, regular.clone(), ink, room.max(px(0.0)));
+                    let t = style::label_fit(g, words_at, mid, style::Align::Left, said, style::DETAIL_SIZE, regular.clone(), ink, room.max(px(0.0)));
+                    crate::view::struck(g, s, t, ink);
                 } else {
                     // A mark in its calendar's colour, its time, its title.
+                    // (An invitation not answered: the mark hollow; one
+                    // declined: its title quiet, with a line through it.)
+                    let going = s.going;
                     let mark = style::snap_centred(g, point(words_at + px(3.5), mid), 7.0, 7.0);
-                    style::fill_rect(g, mark, style::c(hue));
+                    if going == Some(olo_calendar::event::Answer::NotYet) {
+                        style::frame_rect(g, mark, style::c(hue));
+                    } else {
+                        style::fill_rect(g, mark, style::c(hue));
+                    }
                     let x = words_at + px(7.0 + PAD);
                     let time = words::time(s.start.time(), v.h24);
                     let t = style::label_fit(g, x, mid, style::Align::Left, time, style::DETAIL_SIZE, regular.clone(), quiet, (r.right() - x).max(px(0.0)));
                     let x = t.right() + px(4.0);
                     if r.right() - x > px(12.0) {
-                        style::label_fit(g, x, mid, style::Align::Left, s.title.to_string(), style::DETAIL_SIZE, regular.clone(), text, r.right() - x);
+                        let ink = if going == Some(olo_calendar::event::Answer::No) { quiet } else { text };
+                        let t = style::label_fit(g, x, mid, style::Align::Left, s.title.to_string(), style::DETAIL_SIZE, regular.clone(), ink, r.right() - x);
+                        crate::view::struck(g, s, t, ink);
                     }
                 }
                 let calendar = v.book.cals.get(s.cal).map(|c| c.kept.name.clone()).unwrap_or_default();
-                let name = format!("{}, {}, {calendar}", s.title, words::when(s.start, s.end, s.all_day, v.h24));
+                let name = format!("{}, {}, {calendar}{}", s.title, words::when(s.start, s.end, s.all_day, v.h24), crate::view::going_said(s));
                 g.agent(agent::Node { role: "ListItem", name: Some(name.into()), bounds: r, enabled: true, clickable: true, selected: Some(chosen), ..Default::default() });
                 parts.push((r, Part::Event(s.key())));
             }

@@ -200,7 +200,7 @@ mod tests {
             id: None,
             repeats: false,
             tentative: false,
-            unanswered: false,
+            going: None,
             free: false,
         }
     }

@@ -248,6 +248,44 @@ impl Person {
     }
 }
 
+impl Answer {
+    /// As iCalendar says it (`PARTSTAT`).
+    pub fn partstat(self) -> &'static str {
+        match self {
+            Answer::NotYet => "NEEDS-ACTION",
+            Answer::Yes => "ACCEPTED",
+            Answer::No => "DECLINED",
+            Answer::Maybe => "TENTATIVE",
+        }
+    }
+}
+
+/// Whether `line` (an `ATTENDEE`, an `ORGANIZER`) is of one of the
+/// addresses `me`.
+fn is_of(line: &Line, me: &[String]) -> bool {
+    let value = line.value.trim();
+    let address = if value.len() >= 7 && value[..7].eq_ignore_ascii_case("mailto:") { &value[7..] } else { value };
+    me.iter().any(|m| m.eq_ignore_ascii_case(address))
+}
+
+/// An invitation answered: in every event of `cal` (a whole `VCALENDAR`:
+/// an event and the occurrences changed by themselves), the `ATTENDEE`
+/// that is one of the addresses `me` says `answer` (`PARTSTAT`), and no
+/// longer asks for one (`RSVP`). Nothing else changes: on a server that
+/// schedules (RFC 6638: Google's, Fastmail's, iCloud's), writing this is
+/// what sends the organizer the reply. Err: none of `me` is invited.
+pub fn answer(cal: &mut Component, me: &[String], answer: Answer) -> Result<(), &'static str> {
+    let mut any = false;
+    for event in cal.children.iter_mut().filter(|c| c.name == "VEVENT") {
+        for line in event.lines.iter_mut().filter(|l| l.name == "ATTENDEE" && is_of(l, me)) {
+            line.params.retain(|(n, _)| n != "PARTSTAT" && n != "RSVP");
+            line.params.push(("PARTSTAT".to_owned(), vec![answer.partstat().to_owned()]));
+            any = true;
+        }
+    }
+    if any { Ok(()) } else { Err("You aren’t among this event’s guests.") }
+}
+
 /// An event as a calendar shows and changes it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Event {
@@ -812,6 +850,54 @@ END:VEVENT
             assert_eq!(duration(&duration_text(secs)), Some(secs), "{}", duration_text(secs));
         }
         assert_eq!((duration_text(900).as_str(), duration_text(-5400).as_str(), duration_text(86400).as_str()), ("PT15M", "-PT1H30M", "P1D"));
+    }
+
+    /// An invitation answered: my line says so, in the event and in an
+    /// occurrence changed by itself, whatever the address's case; it no
+    /// longer asks for an answer; nobody else's line, and nothing else,
+    /// changes. Not invited: nothing written.
+    #[test]
+    fn an_invitation_answered() {
+        let text = "BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:review@example.org
+DTSTART:20261120T140000Z
+DTEND:20261120T150000Z
+RRULE:FREQ=WEEKLY
+SUMMARY:Review
+ORGANIZER;CN=Kim:mailto:kim@example.org
+ATTENDEE;CN=Ben;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;ROLE=REQ-PARTICIPANT:mailto:Ben@Example.org
+ATTENDEE;CN=Dana;PARTSTAT=ACCEPTED:mailto:dana@example.org
+X-KEPT:as it is
+END:VEVENT
+BEGIN:VEVENT
+UID:review@example.org
+RECURRENCE-ID:20261127T140000Z
+DTSTART:20261127T150000Z
+DTEND:20261127T160000Z
+SUMMARY:Review, later
+ATTENDEE;CN=Ben;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:ben@example.org
+END:VEVENT
+END:VCALENDAR
+";
+        let me = ["other@example.org".to_owned(), "ben@example.org".to_owned()];
+        let mut cal = ical::parse(text).remove(0);
+        assert_eq!(answer(&mut cal, &me, Answer::Maybe), Ok(()));
+        // (As written, its long lines' folds undone.)
+        let written = ical::unfold(&cal.write()).join("\n");
+        assert!(written.contains("ATTENDEE;CN=Ben;ROLE=REQ-PARTICIPANT;PARTSTAT=TENTATIVE:mailto:Ben@Example.org"), "{written}");
+        assert!(written.contains("ATTENDEE;CN=Ben;PARTSTAT=TENTATIVE:mailto:ben@example.org"), "{written}");
+        assert!(written.contains("ATTENDEE;CN=Dana;PARTSTAT=ACCEPTED:mailto:dana@example.org") && written.contains("X-KEPT:as it is") && !written.contains("RSVP"), "{written}");
+        // (Read back: that's my answer; and changed again.)
+        let mine = |cal: &ical::Component| Event::read(&cal.children[0]).unwrap().attendees.iter().find(|p| p.address.eq_ignore_ascii_case("ben@example.org")).map(|p| p.answer);
+        assert_eq!(mine(&cal), Some(Answer::Maybe));
+        answer(&mut cal, &me, Answer::No).unwrap();
+        assert_eq!(mine(&cal), Some(Answer::No));
+        assert_eq!(cal.write().matches("PARTSTAT=DECLINED").count(), 2);
+        // Not one of the guests: nothing changes.
+        let before = cal.clone();
+        assert!(answer(&mut cal, &["sam@example.org".to_owned()], Answer::Yes).is_err());
+        assert_eq!(cal, before);
     }
 
     /// An event changed is written back into the component it came from:

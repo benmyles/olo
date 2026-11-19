@@ -110,7 +110,9 @@ impl NvmePreset {
 
     pub fn name(self) -> &'static str {
         match self {
-            NvmePreset::AsIs => "As It Is",
+            // ("Auto", as the fans' and every such row's untouched choice
+            // is called: Ben, 2026-11-18. It was "As It Is".)
+            NvmePreset::AsIs => "Auto",
             NvmePreset::Cooler => "Cooler",
             NvmePreset::Coolest => "Coolest",
         }

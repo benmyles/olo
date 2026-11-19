@@ -1243,6 +1243,19 @@ pub fn check_mark(g: &mut Painter, r: Bounds<Pixels>, color: Hsla) {
     }
 }
 
+/// A cross to go with [`check_mark`] (no, where that's yes): two strokes
+/// corner to corner of `r`, as wide as the check's.
+pub fn cross_mark(g: &mut Painter, r: Bounds<Pixels>, color: Hsla) {
+    for (from, to) in [(r.origin, r.bottom_right()), (point(r.right(), r.top()), point(r.left(), r.bottom()))] {
+        let mut path = PathBuilder::stroke(px(1.6));
+        path.move_to(from);
+        path.line_to(to);
+        if let Ok(path) = path.build() {
+            g.paint_path(path, color);
+        }
+    }
+}
+
 /// `color` in a sunken well filling `b`: a colour well's look, and a
 /// colour's in a menu (`Menu::swatch`) or a tool bar's colour picker.
 pub fn paint_swatch(g: &mut Painter, b: Bounds<Pixels>, color: Hsla, p: &Palette) {

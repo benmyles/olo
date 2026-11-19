@@ -529,7 +529,7 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
                 .collect();
             row(ui, &e.gpu.pci, short_name(&e.gpu), cells);
         }
-        // Each SSD by its own name (`nvme_power::titles`): As It Is unless
+        // Each SSD by its own name (`nvme_power::titles`): Auto unless
         // chosen; an NVMe drive's choices with the watts each allows once
         // the follower has read them, a SATA drive's by how its link
         // sleeps.

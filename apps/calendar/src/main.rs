@@ -190,6 +190,9 @@ pub enum Msg {
     Move(Key, jiff::civil::DateTime),
     /// Its end dragged, let go: it ends then, starting when it did.
     Stretch(Key, jiff::civil::DateTime),
+    /// An invitation answered: the event at this address of this
+    /// calendar (its place in the book).
+    Answer(usize, String, olo_calendar::event::Answer),
     /// What a search found (answer `n`).
     Found(u64, model::Found),
     /// One of what was found chosen (a click), or gone to (twice, Return).
@@ -506,8 +509,18 @@ impl Calendar {
         }
         // The calendar the last one went in, if it's still there.
         let calendar = self.settings.calendar.as_ref().and_then(|href| calendars.iter().position(|(i, _)| self.book.cals[*i].kept.href == *href)).unwrap_or(0);
-        let opening =
-            editor::Opening { target: editor::Target::New, draft: edit::Draft::new(start, all_day), calendars, calendar, today: self.today, h24: self.h24, month_first: month_first(), clock: None };
+        let opening = editor::Opening {
+            target: editor::Target::New,
+            draft: edit::Draft::new(start, all_day),
+            calendars,
+            calendar,
+            today: self.today,
+            h24: self.h24,
+            month_first: month_first(),
+            clock: None,
+            guests: Vec::new(),
+            going: None,
+        };
         self.open_editor(opening, cx);
     }
 
@@ -549,6 +562,24 @@ impl Calendar {
         self.moved_to = (self.selected.as_ref() == Some(key) && shown.id.is_none()).then(|| (key.0, key.1.clone(), start));
         self.naming = Some(("Move".to_owned(), olo_kit::undo::Purpose::Do));
         cx.send(Msg::Save(Box::new(editor::Saving { target: opening.target, draft, cal: shown.cal })));
+    }
+
+    /// An invitation answered: the person's line among the event's guests
+    /// says so, in the event and every occurrence of it (written to its
+    /// server, which is what tells the organizer).
+    fn answer_event(&mut self, cal: usize, href: String, answer: olo_calendar::event::Answer, cx: &mut Cx<Self>) {
+        let me: Vec<String> = self.sources.iter().map(|s| s.account.address.clone()).collect();
+        self.naming = Some(("Reply to".to_owned(), olo_kit::undo::Purpose::Do));
+        self.write(cal, sync::Job::Change(href, Box::new(move |c| olo_calendar::event::answer(c, &me, answer))), cx);
+    }
+
+    /// The occurrence selected, if it's an invitation of the person's:
+    /// its calendar, its address, and what they've answered.
+    fn selected_invitation(&self) -> Option<(usize, String, olo_calendar::event::Answer)> {
+        let key = self.selected.as_ref()?;
+        let shown = self.shown.iter().find(|s| s.key() == *key)?;
+        let going = shown.going.filter(|_| self.changeable(key))?;
+        Some((shown.cal, shown.href.to_string(), going))
     }
 
     /// An event pressed among the days, on `pressed`, where it's drawn in
@@ -632,7 +663,19 @@ impl Calendar {
         // (How it repeats is the event's own, whichever occurrence is opened.)
         let series = edit::Draft::of(&stored.event, start, end);
         let draft = edit::Draft { repeat: series.repeat, until: series.until, ..edit::Draft::of(event, start, end) };
-        Some(editor::Opening { target, draft, calendars: vec![(shown.cal, name)], calendar: 0, today: self.today, h24: self.h24, month_first: month_first(), clock })
+        // Who's asked, and what each has answered: who asks first, then
+        // the person, then the others by name.
+        let is_me = |address: &str| self.sources.iter().any(|s| s.account.address.eq_ignore_ascii_case(address));
+        let asks = |address: &str| event.organizer.as_ref().is_some_and(|o| o.address.eq_ignore_ascii_case(address));
+        let named = |p: &olo_calendar::event::Person| if p.name.trim().is_empty() { p.address.clone() } else { p.name.trim().to_owned() };
+        let mut guests: Vec<editor::Guest> =
+            event.attendees.iter().map(|p| editor::Guest { name: named(p), answer: Some(p.answer), organizer: asks(&p.address), optional: p.optional, me: is_me(&p.address) }).collect();
+        if let Some(o) = event.organizer.as_ref().filter(|o| !event.attendees.is_empty() && !event.attendees.iter().any(|p| p.address.eq_ignore_ascii_case(&o.address))) {
+            guests.push(editor::Guest { name: named(o), answer: None, organizer: true, optional: false, me: is_me(&o.address) });
+        }
+        guests.sort_by_key(|g| (!g.organizer, !g.me, g.name.to_lowercase()));
+        let going = shown.going.filter(|_| self.changeable(key));
+        Some(editor::Opening { target, draft, calendars: vec![(shown.cal, name)], calendar: 0, today: self.today, h24: self.h24, month_first: month_first(), clock, guests, going })
     }
 
     fn open_editor(&mut self, opening: editor::Opening, cx: &mut Cx<Self>) {
@@ -1042,9 +1085,11 @@ impl Calendar {
     }
 
     pub fn menus(&self) -> Vec<olo_kit::Menu> {
+        use olo_calendar::event::Answer;
         use olo_kit::Menu;
         let mode = self.settings.mode;
         let start = self.week_start();
+        let going = self.selected_invitation().map(|(.., going)| going);
         let mut week = Menu::new("Week Starts On");
         for (day, name) in [(0u8, "Monday"), (6, "Sunday"), (5, "Saturday")] {
             week = week
@@ -1077,14 +1122,31 @@ impl Calendar {
             self.history
                 .edit_items(Menu::new("Edit"))
                 .separator()
-                .find_items(false)
+                // (Find… alone: ⌘F puts the caret in the search field,
+                // and what's found is a list, with no next to go to.)
+                .item("Find…", "find")
+                .key("f")
                 .separator()
                 .item("Edit Event…", "edit-event")
                 .key("e")
                 .enabled(self.selected.is_some())
                 .item("Delete Event", "delete-event")
                 .key("backspace")
-                .enabled(self.selected.is_some()),
+                .enabled(self.selected.is_some())
+                .separator()
+                // An invitation selected: what the person answers.
+                .submenu(
+                    Menu::new("Reply")
+                        .item("Yes", "answer:yes")
+                        .checked(going == Some(Answer::Yes))
+                        .enabled(going.is_some())
+                        .item("Maybe", "answer:maybe")
+                        .checked(going == Some(Answer::Maybe))
+                        .enabled(going.is_some())
+                        .item("No", "answer:no")
+                        .checked(going == Some(Answer::No))
+                        .enabled(going.is_some()),
+                ),
             Menu::new("View")
                 .item("Day", "mode:day")
                 .key("1")
@@ -1167,6 +1229,7 @@ impl View for Calendar {
             }
             Msg::Move(key, start) => return self.move_event(&key, start, cx),
             Msg::Stretch(key, end) => return self.stretch_event(&key, end, cx),
+            Msg::Answer(cal, href, answer) => return self.answer_event(cal, href, answer, cx),
             Msg::Found(n, found) => {
                 if n != self.finding_n.load(std::sync::atomic::Ordering::Relaxed) {
                     return;
@@ -1347,6 +1410,19 @@ impl View for Calendar {
                 cx.invalidate();
             }
             "close" | "quit" => olo_kit::quit(),
+            c if c.starts_with("answer:") => {
+                use olo_calendar::event::Answer;
+                let answer = match &c[7..] {
+                    "yes" => Answer::Yes,
+                    "maybe" => Answer::Maybe,
+                    "no" => Answer::No,
+                    _ => return false,
+                };
+                let Some((cal, href, going)) = self.selected_invitation() else { return false };
+                if going != answer {
+                    self.answer_event(cal, href, answer, cx);
+                }
+            }
             c if c.starts_with("mode:") => match Mode::ALL.into_iter().find(|m| m.name().eq_ignore_ascii_case(&c[5..])) {
                 Some(mode) => self.set_mode(mode, cx),
                 None => return false,
@@ -1425,6 +1501,13 @@ fn print(args: &[String]) -> std::process::ExitCode {
                 "all_day": s.all_day,
                 "location": &*s.location,
                 "repeats": s.repeats,
+                // (An invitation: what the person has answered.)
+                "going": s.going.map(|a| match a {
+                    olo_calendar::event::Answer::NotYet => "not answered",
+                    olo_calendar::event::Answer::Yes => "yes",
+                    olo_calendar::event::Answer::No => "no",
+                    olo_calendar::event::Answer::Maybe => "maybe",
+                }),
             })
         })
         .collect();

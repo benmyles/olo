@@ -40,6 +40,44 @@ pub fn in_drawing(at: olo_kit::Point<olo_kit::Pixels>, painted: olo_kit::Point<o
     olo_kit::point(at.x - (now.left() - painted.x), at.y - (now.top() - painted.y))
 }
 
+/// How an occurrence's ground is drawn, among the hours and across the
+/// days: its fill, and whether a line in its calendar's colour goes
+/// round it. An invitation not answered is pale with the line (asked,
+/// not yet on); one declined paler still (its title struck through,
+/// [`struck`]); one answered maybe, a tentative event and one that takes
+/// no time are lighter; the one chosen is always its colour.
+pub fn ground(p: &olo_theme::Palette, s: &crate::model::Shown, chosen: bool) -> (olo_theme::Rgba, bool) {
+    use olo_calendar::event::Answer;
+    let hue = p.hue(s.hue);
+    match s.going {
+        _ if chosen => (hue, false),
+        Some(Answer::NotYet) => (olo_theme::mix(hue, p.document_background, 0.85), true),
+        Some(Answer::No) => (olo_theme::mix(hue, p.document_background, 0.75), false),
+        Some(Answer::Maybe) => (olo_theme::mix(hue, p.document_background, 0.45), false),
+        _ if s.free || s.tentative => (olo_theme::mix(hue, p.document_background, 0.45), false),
+        _ => (hue, false),
+    }
+}
+
+/// An invitation declined: a line through its title (drawn at `title`).
+pub fn struck(g: &mut olo_kit::Painter, s: &crate::model::Shown, title: olo_kit::Bounds<olo_kit::Pixels>, ink: Hsla) {
+    if s.going == Some(olo_calendar::event::Answer::No) {
+        style::hline(g, title.left(), title.right(), title.center().y, ink);
+    }
+}
+
+/// What an invitation's answer adds to its name, for an agent (and
+/// nothing, of what isn't one, or is accepted).
+pub fn going_said(s: &crate::model::Shown) -> &'static str {
+    use olo_calendar::event::Answer;
+    match s.going {
+        Some(Answer::NotYet) => ", not answered",
+        Some(Answer::No) => ", declined",
+        Some(Answer::Maybe) => ", maybe",
+        _ => "",
+    }
+}
+
 /// A sunken well of `ground` with `content` inside its lines.
 fn well(e: f32, ground: Hsla, content: impl olo_kit::IntoElement) -> Element {
     let back = canvas(move |g, b| {

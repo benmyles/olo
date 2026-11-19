@@ -177,14 +177,21 @@ fn list(v: &mut Calendar, cx: &mut Cx<Calendar>, all: Vec<Line>, found: bool) ->
                             "all day".to_owned()
                         };
                         style::label(g, x0, mid, style::Align::Left, when, style::PLAIN_SIZE, regular.clone(), dim);
+                        // (An invitation not answered: the mark hollow; one
+                        // declined: a line through its title.)
                         let mark = style::snap_centred(g, point(x0 + px(TIMES + 4.0), mid), 8.0, 8.0);
-                        style::fill_rect(g, mark, style::c(p.hue(s.hue)));
+                        if s.going == Some(olo_calendar::event::Answer::NotYet) {
+                            style::frame_rect(g, mark, style::c(p.hue(s.hue)));
+                        } else {
+                            style::fill_rect(g, mark, style::c(p.hue(s.hue)));
+                        }
                         let x = x0 + px(TIMES + 8.0 + m::TIGHT + 2.0);
                         // The calendar's name at the right; the title and where, as far as there's room.
                         let calendar = v.book.cals.get(s.cal).map(|c| c.kept.name.clone()).unwrap_or_default();
                         let c = style::label(g, right, mid, style::Align::Right, calendar.clone(), style::SMALL_SIZE, regular.clone(), dim);
                         let room = (c.left() - px(m::SPACING) - x).max(px(0.0));
                         let t = style::label_fit(g, x, mid, style::Align::Left, s.title.to_string(), style::PLAIN_SIZE, regular.clone(), ink, room);
+                        crate::view::struck(g, s, t, ink);
                         let after = t.right() + px(m::SPACING);
                         if !s.location.is_empty() && c.left() - px(m::SPACING) - after > px(40.0) {
                             style::label_on_baseline_fit(
@@ -199,7 +206,7 @@ fn list(v: &mut Calendar, cx: &mut Cx<Calendar>, all: Vec<Line>, found: bool) ->
                                 c.left() - px(m::SPACING) - after,
                             );
                         }
-                        let name = format!("{}, {}, {calendar}", s.title, words::when(s.start, s.end, s.all_day, v.h24));
+                        let name = format!("{}, {}, {calendar}{}", s.title, words::when(s.start, s.end, s.all_day, v.h24), crate::view::going_said(s));
                         g.agent(agent::Node { role: "ListItem", name: Some(name.into()), bounds: band, enabled: true, clickable: true, selected: Some(chosen), ..Default::default() });
                         parts.push((band, s.key(), i));
                     }

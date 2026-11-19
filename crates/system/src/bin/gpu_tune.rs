@@ -173,9 +173,9 @@ fn failures(out: &[(String, gpu_tuning::Applied)]) -> Vec<String> {
 }
 
 /// Each NVMe drive on the plan's preset for `mode` and the supply: a
-/// lower working state set, or, As It Is, put back on PS0 only if the
+/// lower working state set, or, Auto, put back on PS0 only if the
 /// follower had lowered it (`limited`, by serial: else it's left quite
-/// alone). Each SATA SSD likewise, its link's policy: As It Is puts back
+/// alone). Each SATA SSD likewise, its link's policy: Auto puts back
 /// the policy found before the follower first changed it
 /// (`sata_found`). What was done, each drive as it is now, those
 /// lowered, and the SATA policies found.

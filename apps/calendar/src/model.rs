@@ -102,8 +102,9 @@ pub struct Shown {
     pub id: Option<When>,
     pub repeats: bool,
     pub tentative: bool,
-    /// The person has been asked to it and hasn't said yes.
-    pub unanswered: bool,
+    /// The person is one of its guests: what they've answered (not yet,
+    /// too). None: it isn't an invitation of theirs.
+    pub going: Option<olo_calendar::event::Answer>,
     /// Takes no time (shown lighter).
     pub free: bool,
 }
@@ -143,7 +144,7 @@ struct Said {
     title: Arc<str>,
     location: Arc<str>,
     tentative: bool,
-    unanswered: bool,
+    going: Option<olo_calendar::event::Answer>,
     free: bool,
 }
 
@@ -241,7 +242,7 @@ impl Book {
                         title: Arc::from(if e.summary.trim().is_empty() { "(No title)" } else { e.summary.trim() }),
                         location: Arc::from(e.location.trim()),
                         tentative: e.status == Status::Tentative,
-                        unanswered: mine.is_some_and(|p| p.answer == olo_calendar::event::Answer::NotYet),
+                        going: mine.map(|p| p.answer),
                         free: e.free,
                     })
                 };
@@ -265,7 +266,7 @@ impl Book {
                         id: o.id,
                         repeats,
                         tentative: it.tentative,
-                        unanswered: it.unanswered,
+                        going: it.going,
                         free: it.free,
                     });
                 }
@@ -331,6 +332,31 @@ mod tests {
         assert_eq!((late.list.iter().map(|s| s.start.day()).collect::<Vec<_>>(), late.upcoming), (vec![19, 20], 2));
         // Overtaken: given up.
         assert!(book.find(&q, (from, to), today, &zone, &[], &all, 100, || true).list.is_empty());
+    }
+
+    /// An invitation says what the person answered (whichever of their
+    /// addresses was asked, whatever its case); an event they aren't a
+    /// guest of says nothing.
+    #[test]
+    fn what_the_person_answered() {
+        let zone = TimeZone::get("Europe/Amsterdam").unwrap();
+        let at = |h: u8, more: &str| format!("DTSTART;TZID=Europe/Amsterdam:20261118T{h:02}0000\nDTEND;TZID=Europe/Amsterdam:20261118T{h:02}3000\n{more}");
+        let work = kept(
+            "Work",
+            None,
+            &[
+                &at(9, "SUMMARY:Mine"),
+                &at(10, "SUMMARY:Asked\nORGANIZER:mailto:kim@example.org\nATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:Me@Example.org"),
+                &at(11, "SUMMARY:Declined\nATTENDEE;PARTSTAT=DECLINED:mailto:me@example.org\nATTENDEE;PARTSTAT=ACCEPTED:mailto:kim@example.org"),
+                &at(12, "SUMMARY:Others\nATTENDEE;PARTSTAT=ACCEPTED:mailto:kim@example.org"),
+            ],
+        );
+        let book = Book::new(vec![Arc::new(Cal::read(work))], &["a".to_owned()]);
+        let day = jiff::civil::date(2026, 11, 18);
+        let shown = book.shown(day, day.tomorrow().unwrap(), &zone, &["me@example.org".to_owned()], &Choices::default());
+        use olo_calendar::event::Answer;
+        let going: Vec<(&str, Option<Answer>)> = shown.iter().map(|s| (&*s.title, s.going)).collect();
+        assert_eq!(going, [("Mine", None), ("Asked", Some(Answer::NotYet)), ("Declined", Some(Answer::No)), ("Others", None)]);
     }
 
     #[test]

@@ -82,10 +82,10 @@ pub struct Followed {
     /// Each NVMe drive: its power states and the one it's on.
     pub drives: Vec<crate::nvme_power::DriveState>,
     /// The drives the follower put on a lower state (by serial): back on
-    /// PS0 when the plan says As It Is again.
+    /// PS0 when the plan says Auto again.
     pub limited: Vec<String>,
     /// Each SATA SSD's link policy as the follower found it before it
-    /// first changed it (by serial): put back when the plan says As It Is
+    /// first changed it (by serial): put back when the plan says Auto
     /// again (`crate::sata_power`).
     pub sata_found: std::collections::BTreeMap<String, String>,
 }
@@ -293,7 +293,7 @@ impl Plan {
     }
 
     /// NVMe drive `serial`'s preset `when` (on battery, None: the
-    /// mode's). Unless chosen, As It Is: the drive left alone.
+    /// mode's). Unless chosen, Auto: the drive left alone.
     pub fn nvme(&self, when: When, serial: &str) -> Option<crate::nvme_power::NvmePreset> {
         match self.chosen.get(&format!("{}/nvme:{serial}", when.key())) {
             Some(id) => crate::nvme_power::NvmePreset::parse(id),
@@ -836,7 +836,7 @@ mod tests {
     }
 
     /// NVMe drives: left as they are unless chosen; on battery the
-    /// mode's; a choice back on As It Is leaves nothing kept.
+    /// mode's; a choice back on Auto leaves nothing kept.
     #[test]
     fn the_plan_s_drives() {
         use crate::{nvme_power::NvmePreset, power_profile::Mode};

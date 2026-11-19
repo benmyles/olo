@@ -3,14 +3,16 @@
 //! until when, a reminder, notes. Days and times are typed as people
 //! write them ("Nov 20", "fri", "2:30pm": `edit::date`, `edit::time`);
 //! moving the start moves the end with it. Save hands the main window a
-//! draft, and it does the rest (which occurrences, the server).
+//! draft, and it does the rest (which occurrences, the server). An
+//! event with guests lists them with what each has answered; where the
+//! person is one of them, Going says theirs, and changes it at once.
 
 use jiff::civil::{Date, DateTime};
-use olo_calendar::event::When;
+use olo_calendar::event::{Answer, When};
 use olo_kit::{
-    Child, Cx, Element, InteractiveElement as _, IntoElement as _, KeyDownEvent, Messenger, ParentElement as _, SharedString, Styled as _, View, WindowHandle, WindowOptions, canvas, div,
-    metrics as m, px, style, theme,
-    widgets::{Button, CheckBox, MenuField, StringView, TextControl, TextField, TextFieldEvent, button_row, button_width, text_field},
+    Bounds, Child, Cx, Element, FontWeight, InteractiveElement as _, IntoElement as _, KeyDownEvent, Messenger, ParentElement as _, ScrollHandle, SharedString, Styled as _, View, WindowHandle,
+    WindowOptions, agent, canvas, div, metrics as m, point, px, style, theme,
+    widgets::{Button, CheckBox, MenuField, ScrollView, StringView, TextControl, TextField, TextFieldEvent, button_row, button_width, text_field},
 };
 
 use crate::{
@@ -37,6 +39,50 @@ pub enum Target {
     Existing { cal: usize, href: String, id: Option<When>, from: DateTime, repeats: bool },
 }
 
+/// One of an event's guests (or who asked them, where that's not one of
+/// them), as the window lists them.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Guest {
+    /// Their name, or their address where no name is given.
+    pub name: String,
+    /// What they've answered (None: the organizer, where they aren't
+    /// among the guests).
+    pub answer: Option<Answer>,
+    pub organizer: bool,
+    pub optional: bool,
+    /// The person themselves.
+    pub me: bool,
+}
+
+impl Guest {
+    /// What's said of them beside their name: "organizer", "you",
+    /// "optional".
+    fn note(&self) -> String {
+        [(self.me, "you"), (self.organizer, "organizer"), (self.optional, "optional")].iter().filter(|(on, _)| *on).map(|(_, word)| *word).collect::<Vec<_>>().join(", ")
+    }
+
+    /// Their answer in a word.
+    fn answered(&self) -> &'static str {
+        match self.answer {
+            Some(Answer::Yes) => "yes",
+            Some(Answer::No) => "no",
+            Some(Answer::Maybe) => "maybe",
+            Some(Answer::NotYet) => "not answered",
+            None => "",
+        }
+    }
+}
+
+/// The most guests listed before the list scrolls.
+const GUEST_ROWS: usize = 5;
+/// What Going offers, in order.
+const GOING: [(Answer, &str); 3] = [(Answer::Yes, "Yes"), (Answer::Maybe, "Maybe"), (Answer::No, "No")];
+
+/// How many of `n` guests show at once.
+fn guests_shown(n: usize) -> usize {
+    n.clamp(1, GUEST_ROWS)
+}
+
 /// What Save hands over.
 #[derive(Debug, Clone)]
 pub struct Saving {
@@ -60,6 +106,10 @@ pub struct Opening {
     /// Its times are on another clock than the person's: said ("Times in
     /// New York").
     pub clock: Option<String>,
+    /// Its guests (none: an event of one's own), and what the person has
+    /// answered, where they're one of them and can say.
+    pub guests: Vec<Guest>,
+    pub going: Option<Answer>,
 }
 
 pub struct Editor {
@@ -89,6 +139,9 @@ pub struct Editor {
     /// The draft it was opened with: what isn't a field of the window
     /// stays as it was.
     wrong: Option<String>,
+    guests: Vec<Guest>,
+    going: Option<Answer>,
+    guests_scroll: ScrollHandle,
     to_main: Messenger<Msg>,
 }
 
@@ -100,6 +153,8 @@ pub enum Edit {
     Reminder(usize),
     /// The start was typed in: the end follows.
     StartTyped,
+    /// Going chosen (its place among what's offered).
+    Going(usize),
     Save,
     Delete,
     Cancel,
@@ -157,6 +212,9 @@ impl Editor {
                 clock: o.clock.clone(),
                 start: d.start,
                 wrong: None,
+                guests: o.guests.clone(),
+                going: o.going,
+                guests_scroll: ScrollHandle::new(),
                 to_main,
             }
         })
@@ -203,6 +261,69 @@ impl Editor {
         }
     }
 
+    /// The guests: each with a mark for their answer (a check, a cross,
+    /// a question mark, a dash for none yet), their name, and what they
+    /// are to it; in a list that scrolls past a few.
+    fn guest_list(&self) -> Element {
+        let guests = self.guests.clone();
+        let tall = guests.len() as f32 * m::LIST_ROW;
+        let rows = canvas(move |g, b| {
+            let p = theme::palette();
+            let (text, quiet) = (style::c(p.document_text), style::secondary_text(&p));
+            let (regular, bold) = (style::ui_font(FontWeight::NORMAL), style::ui_font(FontWeight::BOLD));
+            for (i, guest) in guests.iter().enumerate() {
+                let row = Bounds::from_corners(point(b.left(), b.top() + px(i as f32 * m::LIST_ROW)), point(b.right(), b.top() + px((i + 1) as f32 * m::LIST_ROW)));
+                let mid = row.center().y;
+                let mark = style::snap_centred(g, point(row.left() + px(m::TIGHT + 5.0), mid), 9.0, 9.0);
+                match guest.answer {
+                    Some(Answer::Yes) => style::check_mark(g, mark, style::c(p.success)),
+                    Some(Answer::No) => style::cross_mark(g, style::inset(g, mark, 1.0), style::c(p.failure)),
+                    Some(Answer::Maybe) => {
+                        style::label(g, mark.center().x, mid, style::Align::Center, "?", style::PLAIN_SIZE, bold.clone(), quiet);
+                    }
+                    Some(Answer::NotYet) => style::hline(g, mark.left() + px(1.0), mark.right() - px(1.0), mid, quiet),
+                    None => {}
+                }
+                let x = row.left() + px(m::TIGHT + 10.0 + m::SPACING);
+                let note = guest.note();
+                let noted = style::label(g, row.right() - px(m::TIGHT), mid, style::Align::Right, note.clone(), style::SMALL_SIZE, regular.clone(), quiet);
+                let room = (if note.is_empty() { row.right() - px(m::TIGHT) } else { noted.left() - px(m::SPACING) } - x).max(px(0.0));
+                style::label_fit(g, x, mid, style::Align::Left, guest.name.clone(), style::PLAIN_SIZE, regular.clone(), text, room);
+                let said: Vec<&str> = [guest.name.as_str(), note.as_str(), guest.answered()].into_iter().filter(|w| !w.is_empty()).collect();
+                g.agent(agent::Node { role: "ListItem", name: Some(said.join(", ").into()), bounds: row, enabled: true, ..Default::default() });
+            }
+        })
+        .w_full()
+        .h(px(tall))
+        .flex_shrink_0();
+        let p = theme::palette();
+        let shown = guests_shown(self.guests.len()) as f32 * m::LIST_ROW + 4.0;
+        // (The well drawn here, the list two points inside it, and the
+        // label two points down at a row's height: label and first
+        // guest are laid out alike, so they're level at every scale.)
+        let well = canvas(|g, b| {
+            let p = theme::palette();
+            style::fill_rect(g, style::inset(g, b, 2.0), style::c(p.document_background));
+            style::sunken(g, b, &p, false);
+        })
+        .absolute()
+        .inset_0();
+        div()
+            .w_full()
+            .flex()
+            .flex_row()
+            .child(div().w(px(DIVIDER)).flex_shrink_0().pt(px(2.0)).child(StringView::new("Guests:").height(m::LIST_ROW)))
+            .child(
+                div()
+                    .relative()
+                    .flex_1()
+                    .h(px(shown))
+                    .child(well)
+                    .child(div().absolute().inset(px(2.0)).child(ScrollView::new(&self.guests_scroll).border(false).auto_hide(true).background(p.document_background).child(rows))),
+            )
+            .into_element()
+    }
+
     fn set(&self, field: &Child<TextField>, text: String, cx: &mut Cx<Self>) {
         if field.read(cx).text() != text {
             field.update(cx, |f, cx| f.set_text(text, cx));
@@ -234,6 +355,23 @@ impl View for Editor {
                     self.set(&self.end_time, words::time(end.time(), self.h24), cx);
                 }
                 return;
+            }
+            Edit::Going(i) => {
+                // (While it isn't answered, "Not Answered" is the first
+                // offered: choosing it again changes nothing.)
+                let offset = usize::from(self.going == Some(Answer::NotYet));
+                let Some((answer, _)) = i.checked_sub(offset).and_then(|i| GOING.get(i)) else { return };
+                let Target::Existing { cal, href, .. } = &self.target else { return };
+                if self.going == Some(*answer) {
+                    return;
+                }
+                // Said at once (it's an answer, not a change to the
+                // event that Save would make), and shown in the list.
+                self.to_main.send(Msg::Answer(*cal, href.clone(), *answer));
+                self.going = Some(*answer);
+                for g in self.guests.iter_mut().filter(|g| g.me) {
+                    g.answer = Some(*answer);
+                }
             }
             Edit::Save => match self.draft(cx) {
                 Ok(draft) => {
@@ -268,7 +406,9 @@ impl View for Editor {
             .flex()
             .flex_col()
             .gap(px(m::STACK))
-            .on_key_down(cx.listener(|_: &mut Editor, e: &KeyDownEvent, cx| {
+            // (Escape wherever the keyboard is in the window: after a
+            // menu's choice it's in no field.)
+            .on_window_key_down(cx.listener(|_: &mut Editor, e: &KeyDownEvent, cx| {
                 if e.keystroke.key == "escape" && !e.keystroke.modifiers.modified() {
                     cx.stop_propagation();
                     cx.send(Edit::Cancel);
@@ -305,6 +445,21 @@ impl View for Editor {
         // (One it has that isn't offered shows as the nearest longer.)
         let reminder = REMINDERS.iter().position(|r| r.0 == self.reminder).or_else(|| REMINDERS.iter().position(|r| r.0 >= self.reminder)).unwrap_or(0);
         col = col.child(MenuField::new("event-reminder", reminders, reminder).label("Reminder:").divider(DIVIDER).width(DIVIDER + DAY_FIELD).on_change(cx.msg_with(|i: &usize| Edit::Reminder(*i))));
+        // An invitation: what the person answers, and who else is asked.
+        if let Some(going) = self.going {
+            let mut offered: Vec<SharedString> = GOING.iter().map(|(_, name)| SharedString::from(*name)).collect();
+            let at = match GOING.iter().position(|(answer, _)| *answer == going) {
+                Some(i) => i,
+                None => {
+                    offered.insert(0, SharedString::from("Not Answered"));
+                    0
+                }
+            };
+            col = col.child(MenuField::new("event-going", offered, at).label("Going:").divider(DIVIDER).width(DIVIDER + DAY_FIELD).on_change(cx.msg_with(|i: &usize| Edit::Going(*i))));
+        }
+        if !self.guests.is_empty() {
+            col = col.child(self.guest_list());
+        }
         // Notes: several lines, in a well.
         let well = canvas(|g, b| {
             let p = theme::palette();
@@ -336,5 +491,22 @@ impl View for Editor {
                 .child(Button::new("Save").id("save").default(true).min_width(wide).on_click(cx.msg(Edit::Save))),
         );
         col.child(buttons).into_element()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// What's said beside a guest's name, and their answer in a word;
+    /// the list shows up to five before it scrolls.
+    #[test]
+    fn a_guest_said() {
+        let guest = |organizer, optional, me, answer| Guest { name: "Kim".into(), answer, organizer, optional, me };
+        assert_eq!((guest(true, false, false, Some(Answer::Yes)).note().as_str(), guest(true, false, false, Some(Answer::Yes)).answered()), ("organizer", "yes"));
+        assert_eq!((guest(true, true, true, Some(Answer::NotYet)).note().as_str(), guest(true, true, true, Some(Answer::NotYet)).answered()), ("you, organizer, optional", "not answered"));
+        assert_eq!((guest(false, false, false, None).note().as_str(), guest(false, false, false, None).answered()), ("", ""));
+        assert_eq!((guest(false, true, false, Some(Answer::No)).answered(), guest(false, false, false, Some(Answer::Maybe)).answered()), ("no", "maybe"));
+        assert_eq!([0, 1, 3, 5, 9].map(guests_shown), [1, 1, 3, 5, 5]);
     }
 }

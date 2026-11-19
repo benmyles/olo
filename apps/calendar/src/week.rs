@@ -274,19 +274,16 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                 let hue = p.hue(s.hue);
                 // (Being dragged to other days: where it was, faint.)
                 let moving = v.day_drag.as_ref().is_some_and(|d| d.to.is_some() && d.key == s.key());
-                let fill = if moving {
-                    olo_theme::mix(hue, p.document_background, 0.7)
-                } else if s.free && !chosen {
-                    olo_theme::mix(hue, p.document_background, 0.45)
-                } else {
-                    hue
-                };
+                let (ground, lined) = crate::view::ground(&p, s, chosen);
+                let fill = if moving { olo_theme::mix(hue, p.document_background, 0.7) } else { ground };
                 style::fill_rect(g, r, style::c(fill));
                 if chosen && !moving {
                     style::frame_rect(g, r, text);
+                } else if lined && !moving {
+                    style::frame_rect(g, r, style::c(hue));
                 }
                 let said = if s.all_day { s.title.to_string() } else { format!("{} {}", words::time(s.start.time(), v.h24), s.title) };
-                style::label_fit(
+                let t = style::label_fit(
                     g,
                     xs[piece.from] + px(EDGE + PAD),
                     r.center().y,
@@ -297,8 +294,9 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                     style::c(p.ink_on(fill)),
                     (r.size.width - px(2.0 * PAD)).max(px(0.0)),
                 );
+                crate::view::struck(g, s, t, style::c(p.ink_on(fill)));
                 let calendar = v.book.cals.get(s.cal).map(|c| c.kept.name.clone()).unwrap_or_default();
-                let name = format!("{}, {}, {calendar}", s.title, words::when(s.start, s.end, s.all_day, v.h24));
+                let name = format!("{}, {}, {calendar}{}", s.title, words::when(s.start, s.end, s.all_day, v.h24), crate::view::going_said(s));
                 g.agent(agent::Node { role: "ListItem", name: Some(name.into()), bounds: r, enabled: true, clickable: true, selected: Some(chosen), ..Default::default() });
                 parts.push((r, Part::Event(s.key())));
             }
@@ -389,17 +387,14 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                     let hue = p.hue(s.hue);
                     // (Being dragged elsewhere: where it was, faint.)
                     let moving = v.drag.as_ref().is_some_and(|d| d.to.is_some() && d.key == s.key());
-                    let fill = if moving {
-                        olo_theme::mix(hue, p.document_background, 0.7)
-                    } else if (s.free || s.tentative) && !chosen {
-                        olo_theme::mix(hue, p.document_background, 0.45)
-                    } else {
-                        hue
-                    };
+                    let (ground, lined) = crate::view::ground(&p, s, chosen);
+                    let fill = if moving { olo_theme::mix(hue, p.document_background, 0.7) } else { ground };
                     style::fill_rect(g, r, style::c(fill));
                     if chosen && !moving {
                         style::frame_rect(g, r, text);
                         style::frame_rect(g, style::inset(g, r, 1.0), text);
+                    } else if lined && !moving {
+                        style::frame_rect(g, r, style::c(hue));
                     }
                     let ink = style::c(p.ink_on(fill));
                     let (x, room) = (r.left() + px(PAD), (r.size.width - px(2.0 * PAD)).max(px(0.0)));
@@ -417,12 +412,14 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                             // One line, in its middle: its title, then its start.
                             let mid = r.center().y;
                             let t = style::label_fit(g, x, mid, style::Align::Left, s.title.to_string(), style::DETAIL_SIZE, bold.clone(), ink, room);
+                            crate::view::struck(g, s, t, ink);
                             let after = t.right() + px(6.0);
                             if r.right() - after > px(40.0) {
                                 style::label_fit(g, after, mid, style::Align::Left, words::time(s.start.time(), v.h24), style::DETAIL_SIZE, regular.clone(), ink, r.right() - after - px(PAD));
                             }
                         } else {
-                            style::label_fit(g, x, r.top() + px(9.0), style::Align::Left, s.title.to_string(), style::DETAIL_SIZE, bold.clone(), ink, room);
+                            let t = style::label_fit(g, x, r.top() + px(9.0), style::Align::Left, s.title.to_string(), style::DETAIL_SIZE, bold.clone(), ink, room);
+                            crate::view::struck(g, s, t, ink);
                             style::label_fit(g, x, r.top() + px(9.0 + 14.0), style::Align::Left, when.clone(), style::SMALL_SIZE, regular.clone(), ink, room);
                             if tall >= 46.0 && !s.location.is_empty() {
                                 style::label_fit(g, x, r.top() + px(9.0 + 28.0), style::Align::Left, s.location.to_string(), style::SMALL_SIZE, regular.clone(), ink, room);
@@ -430,7 +427,7 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                         }
                     });
                     let calendar = v.book.cals.get(s.cal).map(|c| c.kept.name.clone()).unwrap_or_default();
-                    let name = format!("{}, {}, {calendar}", s.title, words::when(s.start, s.end, s.all_day, v.h24));
+                    let name = format!("{}, {}, {calendar}{}", s.title, words::when(s.start, s.end, s.all_day, v.h24), crate::view::going_said(s));
                     g.agent(agent::Node { role: "ListItem", name: Some(name.into()), bounds: r, enabled: true, clickable: true, selected: Some(chosen), ..Default::default() });
                     parts.push((r, Part::Event(s.key())));
                     // Its bottom edge drags its end, where it ends on this

@@ -166,10 +166,41 @@ impl Standin {
         put("personal", timed(at(9, 18, 10), at(9, 20, 25), "Flight to Lisbon", &format!("LOCATION:AMS → LIS\n{}\n{}", remind("P1D"), remind("PT3H"))));
         put("work", timed(at(-7, 9, 30), at(-7, 9, 45), "Standup", &format!("RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR\n{}", remind("PT5M"))));
         put("work", timed(at(0, 13, 0), at(0, 15, 0), "Planning", "LOCATION:Room 4"));
-        put("work", timed(at(0, 14, 0), at(0, 15, 0), "Budget call", ""));
+        // Invitations (the demo's account is "demo"): one declined, one
+        // accepted with its guests' answers, one not answered yet.
+        let me = |answer: &str| format!("ATTENDEE;CN=Demo;PARTSTAT={answer}{}:mailto:demo", if answer == "NEEDS-ACTION" { ";RSVP=TRUE" } else { "" });
+        put(
+            "work",
+            timed(
+                at(0, 14, 0),
+                at(0, 15, 0),
+                "Budget call",
+                &format!("ORGANIZER;CN=Sam de Vries:mailto:sam@example.org\n{}\nATTENDEE;CN=Kim Bakker;PARTSTAT=ACCEPTED:mailto:kim@example.org", me("DECLINED")),
+            ),
+        );
         put("work", timed(at(1, 11, 0), at(1, 11, 30), "1:1 with Kim", "RRULE:FREQ=WEEKLY"));
-        put("work", timed(at(2, 14, 0), at(2, 15, 30), "Design review", &format!("LOCATION:Room 2\nDESCRIPTION:The new month view\\, and what’s left of the week’s.\n{}", remind("PT15M"))));
-        put("work", timed(at(2, 15, 0), at(2, 15, 45), "Interview", ""));
+        put(
+            "work",
+            timed(
+                at(2, 14, 0),
+                at(2, 15, 30),
+                "Design review",
+                &format!(
+                    "LOCATION:Room 2\nDESCRIPTION:The new month view\\, and what’s left of the week’s.\nORGANIZER;CN=Kim Bakker:mailto:kim@example.org\nATTENDEE;CN=Kim Bakker;PARTSTAT=ACCEPTED:mailto:kim@example.org\n{}\nATTENDEE;CN=\"Jansen, Dana\";PARTSTAT=ACCEPTED:mailto:dana@example.org\nATTENDEE;CN=Sam de Vries;PARTSTAT=TENTATIVE:mailto:sam@example.org\nATTENDEE;CN=Lee Wong;PARTSTAT=DECLINED;ROLE=OPT-PARTICIPANT:mailto:lee@example.org\nATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:robin@example.org\n{}",
+                    me("ACCEPTED"),
+                    remind("PT15M")
+                ),
+            ),
+        );
+        put(
+            "work",
+            timed(
+                at(2, 15, 0),
+                at(2, 15, 45),
+                "Interview",
+                &format!("ORGANIZER;CN=\"Jansen, Dana\":mailto:dana@example.org\nATTENDEE;CN=\"Jansen, Dana\";PARTSTAT=ACCEPTED:mailto:dana@example.org\n{}", me("NEEDS-ACTION")),
+            ),
+        );
         put("work", timed(at(2, 15, 30), at(2, 16, 30), "Retro", ""));
         put("work", days(date(3), date(4), "Release 2.4", ""));
         put("work", days(date(8), date(11), "Conference", "LOCATION:Lisbon"));

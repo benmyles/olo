@@ -108,8 +108,11 @@ something nobody here has is in "Blocked", with what it waits for.
   deletion asks nothing now). Find (⌘F: every calendar shown, from a
   year back to two years on, listed by day from today). An event's
   end is dragged by its bottom edge (how long it lasts), and events
-  are dragged among the month's days and the whole-day strip. **Next**: invitations (who's coming,
-  answering); the Deskbar widget, the palette, the assistant. Reminders are shown
+  are dragged among the month's days and the whole-day strip.
+  Invitations: how each looks says what you answered, Edit ▸ Reply and
+  the event window's Going answer them, and the window lists the
+  guests with their answers (not yet: inviting people yourself).
+  **Next**: the Deskbar widget, the palette, the assistant. Reminders are shown
   (`olo-calendar --service`, a session service; Show goes to the
   event). (Its cost
   is measured and in-place reload tried: HACKING.md, "Calendar".)
@@ -329,6 +332,28 @@ something nobody here has is in "Blocked", with what it waits for.
   that's grown unwieldy, to one set of patterns (what's grouped, in
   what order, named how), written down in HACKING.md and held by the
   window review where it can be.
+
+- **Fans: a row of each power mode, with more than Auto** (Ben,
+  2026-11-18: "in the power -> battery -> fans move the fans option to
+  be another mode row setting in the power modes tab instead, and also
+  provide more options, i.e. default is Auto, but then have Cool, Very
+  Cool, Coolest where Cool is about +10% more aggressive than Auto at
+  ramping up fans, Very Cool is +20% and Coolest is +30%. if you can
+  think of a better name for the 3 options you can use that instead").
+  Preferences ▸ Power: the Fans setting leaves the Battery tab and
+  becomes a row of the Power Modes tab, set for each mode like its
+  other rows. Auto (the default: the firmware's own curve), and three
+  that bring the fans up sooner and further than Auto: about 10%, 20%
+  and 30% more. Names (Ben, after: "and maybe we use
+  Auto/Cool/Cooler/Coolest"): Auto, Cool, Cooler, Coolest, a ladder
+  that ends as the SSD rows' Cooler and Coolest do; whatever today's
+  options are called is carried over to the nearest. Ben, the same day: "also
+  standardise the ssd one on the names too, so change As It Is to
+  Auto": *done* (the SSD rows' untouched choice is Auto; its stored id
+  is the same, so nothing set is lost). The curve each one makes is measured on this computer
+  (temperatures and fan speeds under the same load, each setting) and
+  the numbers written down; what a computer's fans can't be told is
+  said rather than offered.
 
 - **Last, once everything above that isn't blocked is done: the website,
   the README and the docs refreshed, and a new GitHub release** (Ben,
