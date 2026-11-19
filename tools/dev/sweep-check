@@ -1,0 +1,93 @@
+#!/usr/bin/python3
+"""The sweep (tools/dev/sweep) against a stand-in target folder: it keeps
+a unit a build still uses, removes one none has, and never sweeps under a
+build.
+
+  tools/dev/sweep-check
+
+A profile's units, as cargo lays them out (build/<package>/<hash>/, its
+fingerprint's files and its out/): one compiled five days ago and read by
+a build an hour ago (a crate from outside the workspace: cargo writes its
+invoked.timestamp only when it compiles it, and reads its fingerprint's
+files each build), which stays; one neither compiled nor read in five
+days, which goes; and in another profile, one unused that a "build"
+holds the locks of, which stays until the build ends. (2026-11-19: the
+sweep took the stamp for a unit's last use and held no lock; at 00:37 on
+2026-11-18 it removed 4,284 live release units under a build that then
+failed to link.) Scratch in a folder of its own under /var/tmp, removed
+at the end. Exits 1 if anything's wrong.
+"""
+import fcntl, os, shutil, subprocess, sys, time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+SWEEP = os.path.join(HERE, "sweep")
+DAY = 86400
+
+
+def unit(target, profile, package, h, compiled, read):
+    """A unit of PACKAGE in PROFILE: compiled (written) at COMPILED, its
+    fingerprint's files last read by a build at READ."""
+    d = os.path.join(target, profile, "build", package, h)
+    fp = os.path.join(d, "fingerprint")
+    os.makedirs(fp)
+    os.makedirs(os.path.join(d, "out"))
+    for name in ("invoked.timestamp", f"lib-{package}", f"dep-lib-{package}", f"output-lib-{package}", f"lib-{package}.json"):
+        with open(os.path.join(fp, name), "w") as f:
+            f.write('{"rustc": 1}' if name.endswith(".json") else "x")
+    with open(os.path.join(d, "out", f"lib{package}-{h}.rlib"), "w") as f:
+        f.write("x" * 1000)
+    for name in os.listdir(fp):
+        # (What a build reads, read then; the stamp and the .json not.)
+        cargo_reads = name != "invoked.timestamp" and not name.endswith(".json")
+        os.utime(os.path.join(fp, name), (read if cargo_reads else compiled, compiled))
+    os.utime(fp, (compiled, compiled))
+    os.utime(d, (compiled, compiled))
+    for lock in (".cargo-lock", ".cargo-build-lock", ".cargo-artifact-lock"):
+        open(os.path.join(target, profile, lock), "a").close()
+    return d
+
+
+def run(target):
+    out = subprocess.run([sys.executable, SWEEP, "--wait", "2", target], capture_output=True, text=True)
+    return out.stdout + out.stderr
+
+
+def main():
+    scratch = os.path.join("/var/tmp", f"olo-sweep-check-{os.getpid()}")
+    target = os.path.join(scratch, "target")
+    os.makedirs(target)
+    failed = []
+
+    def check(what, ok):
+        print(f"{'ok' if ok else 'WRONG'}: {what}")
+        if not ok:
+            failed.append(what)
+
+    try:
+        with open(os.path.join(target, "CACHEDIR.TAG"), "w") as f:
+            f.write("Signature: 8a477f597d28d172789f06886806bc55\n")
+        now = time.time()
+        live = unit(target, "release", "serde", "2c2a059026367121", now - 5 * DAY, now - 3600)
+        unused = unit(target, "release", "oldcrate", "1111111111111111", now - 5 * DAY, now - 5 * DAY)
+        under_build = unit(target, "debug", "oldcrate", "2222222222222222", now - 5 * DAY, now - 5 * DAY)
+        # A build: debug's lock held.
+        held = open(os.path.join(target, "debug", ".cargo-build-lock"), "a")
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        said = run(target)
+        check("a unit a build read an hour ago stays, compiled five days ago", os.path.isdir(live))
+        check("a unit no build has used for five days goes", not os.path.isdir(unused))
+        check("nothing goes from a profile a build holds", os.path.isdir(under_build))
+        check("it says the held profile is left for the next sweep", "left for the next sweep" in said)
+        held.close()
+        run(target)
+        check("once the build's over, its unused unit goes", not os.path.isdir(under_build))
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+    if failed:
+        print(f"sweep-check: {len(failed)} wrong")
+        sys.exit(1)
+    print("sweep-check: all right")
+
+
+if __name__ == "__main__":
+    main()

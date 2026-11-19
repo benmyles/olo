@@ -728,77 +728,15 @@ Doctor check, try its fix and look again: the finding must be gone.
   notifications still go to the session's own bus). To find such a
   program again, look in `/proc/PID/environ` for the folder: started
   through `env`, `ps`'s command line doesn't show Olo's path.
-- **Dependency build units vanish from `target/release` now and then
-  (not explained yet).** 2026-11-18 00:37: a `cargo build --release
-  --workspace` that had passed nine minutes before failed to link
-  (`mold: fatal: cannot open …/build/arrayref/HASH/out/libarrayref-HASH.rlib`,
-  the same for a dozen programs): about 1,040 of the 1,110 unit folders
-  under `target/release/build` (every crate from outside the workspace;
-  Olo's own stayed) had gone while the build ran, and the next cargo
-  made them again (kache's events: `local_hit` for each; the same
-  crates were restored once before, 2026-11-17 18:45). Running the
-  build again is all it needs, and costs seven minutes. What it isn't:
-  the compiler or the settings changed (they didn't); kache's daily
-  sweep, which ran at 00:34 and freed nothing (`~/.cache/kache/gc_stats.json`:
-  0 evicted; its store is over its 300 GiB limit, most of it held by
-  target folders); kache's unit pruning under disk pressure (the volume
-  has 944 GB free, and a unit armed as kache arms it does show a no-op
-  build's read). Still to find: what removes them (kache's fork is
-  `~/src/kache`, branch `olo`: `unit_prune.rs`, `target_cleanup.rs`,
-  `target_liveness.rs`). `tools/dev/unit-watch` (bpftrace, as root)
-  names whoever removes a unit folder, one line a removal with its pid,
-  program and parent: leave it running into a log until it happens
-  again (`sudo tools/dev/unit-watch >> /var/tmp/NAME/rmdir.log`; it
-  showed a folder removed by hand at once). What kache's own log adds
-  (`~/.cache/kache/kache.log`, in UTC): three minutes before the links
-  failed, a build's wrapper found the store over its limit and ran its
-  sweep ("store … over the automatic trigger … running LRU eviction",
-  08:34:17Z; "auto-gc: store at 356866656428 after the sweep,
-  125790266679 of it held by target directories that no sweep can
-  free", 08:34:20Z), and nothing is logged of units. kache's unit
-  pruning (`unit_prune::prune`, or `target_liveness::prune` where that
-  is on) removes units no build read for `auto_clean_unused_units_days`
-  (30 by default), a day on a volume under its free-space floor, with
-  Cargo's locks held: a build that only needed a third-party unit to be
-  fresh reads its fingerprint and nothing else, which is how those and
-  not Olo's own (written by the build) would be the ones to go. Not
-  shown yet.
-
-## A long command of yours across the person's upgrade
-
-- A command you leave running (a watcher through `sudo`, which is
-  olo-sudo here; an `olo-screen wait`) is still the old version after the
-  person upgrades Olo: its program file was replaced under it. That's as
-  it should be: olo-session leaves a program another program started
-  (its log says "left alone (started by bash…)"), and since 2026-11-18
-  Olo Doctor does too (it used to list it under "still running an older
-  version" with Quit Them: if the person asks about such a finding from
-  an older build, look at `/proc/PID/exe` and its parent before
-  answering). The session's log is the user journal: `journalctl --user
-  --since "HH:MM" | grep olo-session`.
-- To try something that needs an Agent Screen without it showing in the
-  person's Agent Screens window, give it a runtime folder and home of its
-  own: `env XDG_RUNTIME_DIR=/var/tmp/you/run HOME=/var/tmp/you/home
-  /var/tmp/you/bin/olo-screen start t` (the folder mode 700; a copy of
-  the build under test in `bin`), and find its processes by that
-  `XDG_RUNTIME_DIR` in `/proc/PID/environ`, never by name.
-
-## Pushing in the background
-
-**Commit `&&` push, never commit `;` push.** A commit the pre-commit
-hook refuses (the layout lint) followed by `; git push` pushes nothing,
-says "Everything up-to-date" and exits 0: the job looks done and the
-work is still only staged (2026-11-18: Calendar's assistant, refused
-for Preferences ▸ AI no longer fitting). Chain them with `&&`, and
-after the job look at `git log --oneline | head -1` and `git status
---short`, not only at the push's exit.
-
-- Run the push so that the command's own exit is the push's, and read
-  its last lines when it ends: `git push origin main > LOG 2>&1; rc=$?;
-  echo "push exit $rc" >> LOG; exit $rc`. With a trailing `echo` as the
-  last command the task "completed (exit code 0)" though the hook had
-  refused (2026-11-18: an hour's work thought pushed that wasn't).
-- The pre-push hook refuses when anything is uncommitted. After adding a
-  dependency, `Cargo.lock` at the repository's root has changed: a
-  `git add` of `apps crates docs` leaves it behind. `git status --short`
-  before pushing; it must print nothing.
+- **Dependency build units vanishing from `target/release`: explained
+  (2026-11-19).** It was Olo's own nightly sweep (`tools/dev/sweep`,
+  `olo-sweep.timer`, between 00:00 and 01:00): it took a unit's
+  `invoked.timestamp` for its last use, which cargo writes only when it
+  compiles one, so every crate from outside the workspace looked unused
+  two days after it was compiled, and it swept with a build running
+  (2026-11-18 00:37: 4,284 release units, a build's link failed). It
+  now reads a unit's last use from its fingerprint files' access times
+  and holds cargo's build locks while it sweeps. If units vanish again,
+  `tools/dev/unit-watch` (bpftrace, as root) names whoever removes a
+  unit folder: `sudo tools/dev/unit-watch >> /var/tmp/NAME/rmdir.log`;
+  the sweep's own runs are in `journalctl --user -u olo-sweep`.

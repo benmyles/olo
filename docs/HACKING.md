@@ -1060,10 +1060,20 @@ deletes an artifact, so every edit to a flag, feature or dependency leaves
 the old crate's rlib, binaries and build script behind under a new hash
 (olo's `target/` reached 435 GB; one build's live set is ~110 GB, debug
 and release together). The sweep removes every unit no build has
-considered for two days (cargo touches `.fingerprint/<unit>/invoked.timestamp`
-on each build that wants a unit, compiled or fresh), with everything in
-`deps/`, `build/`, `examples/` and `incremental/` carrying its hash; the
-first run freed 172 GB in 11 s. Cargo 1.100 keeps each unit in a folder
+considered for two days, with everything in `deps/`, `build/`,
+`examples/` and `incremental/` carrying its hash; the first run freed
+172 GB in 11 s. A build that considers a unit, compiled or fresh, reads
+its fingerprint's files (`lib-NAME`, `dep-lib-NAME`, `output-lib-NAME`),
+so their access time (`relatime`: at least once a day) is when it was
+last used; `invoked.timestamp` is written only when it's compiled.
+(Taken for its last use, every crate from outside the workspace,
+compiled once and fresh since, looked unused two days on: 4,284 live
+release units went at 00:37 on 2026-11-18. And the sweep holds a
+profile's build locks, `.cargo-lock`, `.cargo-build-lock` and
+`.cargo-artifact-lock`, while it sweeps it: that night it ran under a
+build, which failed to link. A build holding them is waited for, at
+most `--wait` seconds, 1800, else the profile is left for the next
+sweep. `tools/dev/sweep-check` tries both on a stand-in target folder.) Cargo 1.100 keeps each unit in a folder
 of its own (`build/<package>/<hash>/`: its `fingerprint/`, `out/`, a
 build script's `run/`), which the sweep didn't see until 2026-11-15
 (`target/` had reached 564 GB); it sweeps both layouts. A unit built by

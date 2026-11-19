@@ -53,18 +53,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Find what removes dependency build units from `target/release`**
-  (2026-11-18: a workspace build failed to link because about 1,040
-  unit folders vanished while it ran; docs/AGENT-NOTES.md, "Dependency
-  build units vanish"). Not root-caused: the build was run again to
-  keep going. Watch the folder for removals with something that names
-  the process, catch it, and fix it there (kache's fork if it is
-  kache). **So far** (2026-11-18): `tools/dev/unit-watch` names whoever
-  removes a unit folder, and has to be running when it next happens
-  (twice in two days so far); kache's log shows its store sweep ran in
-  a build's wrapper three minutes before the loss, and nothing of
-  units (AGENT-NOTES has the rest).
-
 - **A Language setting, and Olo in every major language** (Ben,
   2026-11-18: "we should add a language setting and also let's translate
   all olo apps and prefs and ux to support all the major languages
@@ -6859,6 +6847,26 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Find what removes dependency build units from `target/release`**~~
+  (done 2026-11-19, the commit after 1962ab500; 2026-11-18: a workspace
+  build failed to link because about 1,040 unit folders vanished while
+  it ran). It was Olo's own nightly sweep (`tools/dev/sweep`,
+  `olo-sweep.timer`): at 00:37:26 on 2026-11-18, the minute the build
+  failed, it removed 4,284 release units; `tools/dev/unit-watch` named
+  it at its next run (00:13 on 2026-11-19, python3 under systemd, 4,978
+  folders). It took a unit's `invoked.timestamp` for its last use, but
+  cargo writes that only when it compiles a unit, so every crate from
+  outside the workspace, compiled once and fresh since, looked unused
+  two days on; and it swept with a build running. Now a unit's last use
+  is also when cargo last read its fingerprint's files (as it does for
+  every unit a build considers: their access time, `relatime`), and a
+  profile is swept only holding cargo's build locks (a build running:
+  waited for, at most half an hour, else left for the next night). Tried
+  on a stand-in target folder: a unit compiled five days ago and read an
+  hour ago stays (the old sweep removed it), one unused for five days
+  goes, nothing goes while a "build" holds the lock, and it goes once
+  the build's over (the old sweep removed it under the build).
 
 - ~~**Deskbar: a widget's popover sometimes didn't come under the
   pointer**~~ (done 2026-11-18, the commit after 35e02b3ff; Ben,

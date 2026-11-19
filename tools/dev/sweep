@@ -2,20 +2,27 @@
 """Sweep: remove the build artifacts no recent build used, so target/
 stays about one build's size instead of growing with every edit.
 
-  tools/dev/sweep [--days N] [--dry-run] [--install] [DIR...]
+  tools/dev/sweep [--days N] [--wait SECONDS] [--dry-run] [--install] [DIR...]
 
 Cargo never deletes anything: each edit, flag or dependency change
 leaves the previous crate's rlib, binary and incremental state behind
 under a new hash, and this workspace's target/ reached 435 GB that way
 (2026-11-01). Each profile directory (target/debug, target/release, a
 custom profile, target/<triple>/<profile>) keeps a fingerprint for every
-unit it built, .fingerprint/<unit>-<hash>/invoked.timestamp, which cargo
-touches on every build that considers the unit, whether or not it
-recompiles it. A unit whose stamp is older than --days (2) is one no
-build has wanted since; its fingerprint, and everything in deps/,
-build/, examples/ and incremental/ named with its hash, go. Outputs
-without a hash (target/release/olo-deskcalc, lib*.rlib) are the
-uplifted copies, hard links of the live units, and stay.
+unit it built (.fingerprint/<unit>-<hash>/). A unit is last used when a
+build last considered it: cargo reads its fingerprint's files then
+(lib-NAME, dep-lib-NAME, output-lib-NAME), whether or not it recompiles
+it, so their access time moves on (at least once a day, `relatime`);
+invoked.timestamp is written only when it's compiled. (Taken for the
+other, the stamp left every crate from outside the workspace, compiled
+once and fresh ever since, looking unused after two days: 4,284 live
+release units went at 00:37 on 2026-11-18, under a build that then
+failed to link. On a `noatime` mount the stamp is all there is.) A unit
+last used more than --days (2) ago is one no build has wanted since; its
+fingerprint, and everything in deps/, build/, examples/ and incremental/
+named with its hash, go. Outputs without a hash
+(target/release/olo-deskcalc, lib*.rlib) are the uplifted copies, hard
+links of the live units, and stay.
 
 Cargo 1.100's layout keeps each unit in a folder of its own instead,
 build/<package>/<hash>/ (its fingerprint/, its out/, a build script's
@@ -31,11 +38,15 @@ built (no stamp, no fingerprint yet) is judged by its folder's age.
 With no DIR it sweeps this workspace's target directory (or
 $CARGO_TARGET_DIR) and its rust-analyzer one. A directory is only swept
 when it has cargo's CACHEDIR.TAG, so nothing else can be hit by a typo.
+A profile is only swept holding its build locks (.cargo-lock,
+.cargo-build-lock, .cargo-artifact-lock: a build holds them while it
+runs), so never under a build; one held for half an hour (--wait) is
+left for the next sweep, and said so.
 
 --install puts a timer in the person's systemd (user) that runs this
 sweep every day; tools/setup.sh does the same. --dry-run only reports.
 """
-import argparse, json, os, re, shutil, subprocess, sys, time
+import argparse, fcntl, json, os, re, shutil, subprocess, sys, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HASHED = re.compile(r"^(?:lib)?(.+?)-([0-9a-f]{16})(?:[.-].*)?$")
@@ -95,16 +106,20 @@ def profile_dirs(target):
 
 
 class Unit:
-    """A unit cargo built: its hash, when a build last wanted it, the
-    compiler that built it (None: not known yet), and what's its."""
+    """A unit cargo built: its hash, when a build last wanted it (`used`),
+    the compiler that built it (None: not known yet), and what's its."""
 
     def __init__(self, h, stamp, rustc, made, paths):
         self.hash, self.stamp, self.rustc, self.made, self.paths = h, stamp, rustc, made, paths
 
 
 def fingerprint_of(fp_dir, fallback):
-    """(stamp, compiler, when its fingerprint was written) of a unit's
-    fingerprint folder; the stamp `fallback`'s mtime if it has none."""
+    """(when a build last used it, compiler, when its fingerprint was
+    written) of a unit's fingerprint folder: the later of its stamp
+    (invoked.timestamp, written when it's compiled; `fallback`'s mtime if
+    it has none) and when cargo last read its fingerprint's own files
+    (lib-NAME, dep-lib-NAME, output-lib-NAME: read by every build that
+    considers it). Not the .json's reading: this sweep reads that."""
     try:
         stamp = os.stat(os.path.join(fp_dir, "invoked.timestamp")).st_mtime
     except OSError:
@@ -112,6 +127,15 @@ def fingerprint_of(fp_dir, fallback):
             stamp = os.stat(fallback).st_mtime
         except OSError:
             stamp = 0.0
+    try:
+        for e in os.scandir(fp_dir):
+            if e.name != "invoked.timestamp" and not e.name.endswith(".json"):
+                try:
+                    stamp = max(stamp, e.stat(follow_symlinks=False).st_atime)
+                except OSError:
+                    pass
+    except OSError:
+        pass
     rustc, made = None, 0.0
     try:
         for e in os.scandir(fp_dir):
@@ -212,7 +236,35 @@ def sweep_profile(units, cutoff, dry_run, compiler):
     return len(stale), freed
 
 
-def sweep(target, days, dry_run):
+LOCKS = (".cargo-lock", ".cargo-build-lock", ".cargo-artifact-lock")
+
+
+def locked(profile, wait):
+    """PROFILE's build locks, all of them held (open files, to close when
+    done), else None once `wait` seconds have gone by with a build holding
+    one. Each taken without waiting, all or none, and tried again every
+    10 s: never stuck behind cargo, and cargo never behind half of them."""
+    deadline = time.monotonic() + wait
+    while True:
+        held = []
+        try:
+            for name in LOCKS:
+                path = os.path.join(profile, name)
+                if not os.path.exists(path):
+                    continue
+                f = open(path, "a")
+                held.append(f)
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return held
+        except BlockingIOError:
+            for f in held:
+                f.close()
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(min(10.0, max(0.0, deadline - time.monotonic())))
+
+
+def sweep(target, days, dry_run, wait=1800):
     if not os.path.isfile(os.path.join(target, "CACHEDIR.TAG")):
         print(f"sweep: {target}: not a cargo target directory (no CACHEDIR.TAG); left alone", file=sys.stderr)
         return 0
@@ -225,7 +277,17 @@ def sweep(target, days, dry_run):
     compiler = current_compiler([u for units in found.values() for u in units.values()])
     total = 0
     for profile in profiles:
-        units, freed = sweep_profile(found[profile], cutoff, dry_run, compiler)
+        # (Never under a build: its locks held while this profile is swept,
+        # what's in it read again then.)
+        held = [] if dry_run else locked(profile, wait)
+        if held is None:
+            print(f"sweep: {os.path.relpath(profile)}: a build has held it for {int(wait // 60)} minutes; left for the next sweep", file=sys.stderr)
+            continue
+        try:
+            units, freed = sweep_profile(units_of(profile), cutoff, dry_run, compiler)
+        finally:
+            for f in held:
+                f.close()
         total += freed
         if units:
             verb = "would free" if dry_run else "freed"
@@ -268,6 +330,7 @@ WantedBy=timers.target
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--days", type=float, default=2, help="keep units a build used within this many days (2)")
+    ap.add_argument("--wait", type=float, default=1800, help="seconds to wait for a build holding a profile's locks (1800)")
     ap.add_argument("--dry-run", "-n", action="store_true", help="report, remove nothing")
     ap.add_argument("--install", action="store_true", help="put a daily sweep in systemd (user)")
     ap.add_argument("dirs", nargs="*", help="target directories (default: this workspace's)")
@@ -282,7 +345,7 @@ def main():
     total = 0
     for d in dirs:
         if os.path.isdir(d):
-            total += sweep(d, args.days, args.dry_run)
+            total += sweep(d, args.days, args.dry_run, args.wait)
     print(f"{'would free' if args.dry_run else 'freed'} {total / 1e9:.1f} GB in all")
 
 
