@@ -706,6 +706,16 @@ Doctor check, try its fix and look again: the finding must be gone.
 
 ## Working with the repository
 
+- **A test session's Passwords can show a lock that checks the person's
+  real login password.** A session's config folder
+  (/var/tmp/olo-dev/NAME/config) outlives `tsession stop`: started again
+  under the same name with a new `OLO_PASSWORDS_KEYFILE`, Passwords finds
+  the old vault, can't open it, and shows "Passwords is locked", whose
+  field goes to PAM as the person. Never type into it (failed attempts
+  count against their account: `sudo faillock --user ben` shows them);
+  remove the session's folder before starting it again, and check for
+  the lock before typing (2026-11-19: a script typed four item names
+  into it, unsent; the tally stayed empty).
 - **kache can hand a build script another worktree's path.** It keys a
   workspace's paths as `<WORKSPACE>`, so worktrees share its cache, but a
   build script's `env!("CARGO_MANIFEST_DIR")` is compiled into the

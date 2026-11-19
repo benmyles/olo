@@ -29,7 +29,7 @@ use olo_kit::{
     style::{self, c},
     theme,
     widgets::{
-        Button, CheckBox, Column, ColumnListView, ListModel, ScrollView, Sidebar, StringView, TextControl, TextField, TextFieldEvent, button_row,
+        ArrowButton, Button, CheckBox, Column, ColumnListView, ListModel, MenuField, ScrollView, Sidebar, StringView, TextControl, TextField, TextFieldEvent, button_row,
         sidebar::{self, Row},
         text_field,
     },
@@ -88,6 +88,59 @@ pub fn icon(c: ItemCategory) -> &'static str {
 
 const SOURCES_WIDTH: f32 = 184.0;
 const LIST_WIDTH: f32 = 290.0;
+/// The item keeps this beside the items; with less, the sources give way
+/// to a menu over the items, and with less still the items and the item
+/// show one at a time (CLAUDE.md, "Every tiling layout": it asked for 680
+/// points across, the sources and the items alone more than a third of a
+/// screen).
+const DETAIL_LEAST: f32 = 280.0;
+/// The least the search field keeps in the toolbar.
+const SEARCH_LEAST: f32 = 140.0;
+/// An item's pane less wide than this has its Edit button under its title.
+const HEADER_NARROW: f32 = 420.0;
+/// The sources show as a list beside the items in a window at least this
+/// tall; in a shorter one, in the menu over the items.
+const SOURCES_ROOM: f32 = 420.0;
+/// A panel (the welcome, the lock) in a window less tall than this has no
+/// picture: its words and buttons have the room (a third of a screen high
+/// cut them off).
+const PANEL_ROOM: f32 = 440.0;
+
+/// How the three panes share the window.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Panes {
+    /// The sources, the items, the item.
+    All,
+    /// The items, a menu of the sources over them, and the item.
+    ListAndItem,
+    /// The items (the menu over them) or the item, one at a time.
+    One,
+}
+
+/// How the panes share a window `width` × `height` points (in one less
+/// tall than `SOURCES_ROOM`, a third of a screen's height, the sources go
+/// into the menu: their list showed three rows there).
+fn panes_for(width: f32, height: f32) -> Panes {
+    let inner = width - 2.0 * m::SPACING;
+    if inner >= SOURCES_WIDTH + LIST_WIDTH + DETAIL_LEAST + 2.0 * m::SPACING && height >= SOURCES_ROOM {
+        Panes::All
+    } else if inner >= LIST_WIDTH + DETAIL_LEAST + m::SPACING {
+        Panes::ListAndItem
+    } else {
+        Panes::One
+    }
+}
+
+/// How wide the item's pane's content is in a window `width` wide (`e`:
+/// its well's edge), as `panes_for` shares it.
+fn detail_width(width: f32, height: f32, e: f32) -> f32 {
+    let beside = match panes_for(width, height) {
+        Panes::All => SOURCES_WIDTH + LIST_WIDTH + 2.0 * m::SPACING,
+        Panes::ListAndItem => LIST_WIDTH + m::SPACING,
+        Panes::One => 0.0,
+    };
+    width - beside - 2.0 * m::SPACING - 2.0 * e
+}
 const ITEM_ROW: f32 = 42.0;
 const STATUS_HEIGHT: f32 = 22.0;
 const FIELD_ROW: f32 = 44.0;
@@ -143,38 +196,38 @@ fn rule(cx: &WindowCx) -> Element {
 }
 
 /// A centred column: icon, heading, message, then `extra`.
-fn panel(icon_name: &'static str, heading: &str, message: String, extra: impl IntoElement) -> Element {
+/// `short`: a window less tall than `PANEL_ROOM`, where the picture gives
+/// way, the column is wider (its words in fewer lines) and starts near the
+/// top, and the whole scrolls (`scroll`) where it's still too tall.
+fn panel(icon_name: &'static str, heading: &str, message: String, extra: impl IntoElement, short: bool, scroll: &ScrollHandle) -> Element {
     let heading: SharedString = heading.to_owned().into();
-    let key = style::key((icon_name, &heading));
+    let key = style::key((icon_name, &heading, short));
+    let face_h = if short { 22.0 } else { 64.0 + 2.0 * m::SPACING + 22.0 };
     let face = canvas(move |g, b| {
         let p = theme::palette();
-        icons::paint(g, style::snap_centred(g, point(b.center().x, b.top() + px(32.0)), 64.0, 64.0), icon_name);
-        let t = style::label_fit(
-            g,
-            b.center().x,
-            b.top() + px(64.0 + 2.0 * m::SPACING + 11.0),
-            style::Align::Center,
-            heading.clone(),
-            16.0,
-            style::ui_font(FontWeight::BOLD),
-            c(p.panel_text),
-            b.size.width,
-        );
+        if !short {
+            icons::paint(g, style::snap_centred(g, point(b.center().x, b.top() + px(32.0)), 64.0, 64.0), icon_name);
+        }
+        let t = style::label_fit(g, b.center().x, b.top() + px(face_h - 11.0), style::Align::Center, heading.clone(), 16.0, style::ui_font(FontWeight::BOLD), c(p.panel_text), b.size.width);
         agent::record(g, agent::Node { role: "Heading", name: Some(heading.clone()), bounds: t, enabled: true, ..Default::default() });
     })
     .paint_key(key)
     .w_full()
-    .h(px(64.0 + 2.0 * m::SPACING + 22.0));
+    .h(px(face_h));
     let column = div()
-        .w(px(380.0))
+        .w(px(if short { 560.0 } else { 380.0 }))
         .max_w_full()
         .flex()
         .flex_col()
         .gap(px(m::SPACING))
         .child(face)
         .child(div().w_full().text_center().child(StringView::new(message).wrap(true)))
-        .child(div().h(px(m::SPACING)))
+        .children((!short).then(|| div().h(px(m::SPACING))))
         .child(extra);
+    if short {
+        let content = div().w_full().flex().flex_col().items_center().px(px(m::WINDOW_INSET)).py(px(m::WINDOW_INSET)).child(column);
+        return ScrollView::new(scroll).border(false).auto_hide(true).child(content).into_any_element();
+    }
     div().size_full().flex().flex_col().items_center().px(px(m::WINDOW_INSET)).child(div().w_full().h(relative(0.22)).min_h(px(m::WINDOW_INSET)).flex_shrink_0()).child(column).into_any_element()
 }
 
@@ -268,6 +321,17 @@ pub struct MainView {
     listed_for: Option<(u64, Source, String)>,
     /// When "Synced 5 minutes ago" next reads differently.
     wake: Due,
+    /// The window shows one pane at a time (`Panes::One`), and the item
+    /// is the one in front, a way back to the items over it.
+    one: bool,
+    item_alone: bool,
+    /// A panel's, in a short window (`panel`).
+    panel_scroll: ScrollHandle,
+}
+
+/// Whether a panel in this window goes without its picture.
+fn short(cx: &WindowCx) -> bool {
+    f32::from(cx.viewport_size().height) < PANEL_ROOM
 }
 
 impl MainView {
@@ -319,6 +383,9 @@ impl MainView {
             searched: String::new(),
             listed_for: None,
             wake: Due::default(),
+            one: false,
+            item_alone: false,
+            panel_scroll: ScrollHandle::new(),
         }
     }
 
@@ -440,7 +507,7 @@ impl MainView {
         if !any && cancel_to {
             extra = extra.child(note("With no account chosen, Passwords keeps its items only on this computer."));
         }
-        panel("passwords", "Sync with 1Password?", message.to_owned(), extra)
+        panel("passwords", "Sync with 1Password?", message.to_owned(), extra, short(cx), &self.panel_scroll)
     }
 
     fn locked(&mut self, a: &mut Passwords, cx: &mut Cx<Self>) -> Element {
@@ -473,7 +540,7 @@ impl MainView {
         let label = if a.lock.checking { "Checking…" } else { "Unlock" };
         let ready = !a.lock.checking && !a.lock.password.is_empty();
         extra = extra.child(button_row().child(Button::new(label).default(true).enabled(ready).on_click(|_: &ClickEvent, _| app().submit_password())));
-        panel(icon_name, "Passwords is locked", message, extra)
+        panel(icon_name, "Passwords is locked", message, extra, short(cx), &self.panel_scroll)
     }
 
     /// The toolbar, the three panes and the status line.
@@ -501,7 +568,7 @@ impl MainView {
             }))
             .child(Button::new("Generator").on_click(|_: &ClickEvent, _| app().open_generator(None)))
             .child(div().flex_1())
-            .child(div().w(px(280.0)).child(&self.search));
+            .child(div().w(px(280.0)).min_w(px(SEARCH_LEAST)).flex_shrink().child(&self.search));
 
         // The status line: what's going on, and the sync's state on the
         // right (a click shows a problem in full, or the changes waiting).
@@ -604,20 +671,93 @@ impl MainView {
         let _ = p;
 
         // The three panes: the sources and the items here, the item a
-        // view of its own.
-        let sources = self.sources(a, cx);
-        let items = self.items(a, cx);
-        let panes = div()
-            .flex_1()
-            .min_h_0()
-            .flex()
-            .flex_row()
-            .gap(px(m::SPACING))
-            .p(px(m::SPACING))
-            .child(div().w(px(SOURCES_WIDTH)).h_full().flex_shrink_0().child(sources))
-            .child(div().w(px(LIST_WIDTH)).h_full().flex_shrink_0().child(items))
-            .child(div().flex_1().min_w_0().h_full().child(&self.detail));
+        // view of its own. Where the window hasn't room for the three, the
+        // sources give way to a menu of them over the items; where it
+        // hasn't room for the items and the item either, they show one at
+        // a time, the items first, an item chosen in front of them with a
+        // way back (as Phone's conversations do).
+        let shape = panes_for(f32::from(cx.viewport_size().width), f32::from(cx.viewport_size().height));
+        self.one = shape == Panes::One;
+        if !self.one || a.selected.is_none() {
+            self.item_alone = false;
+        }
+        let column = if shape == Panes::One { f32::from(cx.viewport_size().width) - 2.0 * m::SPACING } else { LIST_WIDTH };
+        let lead = (shape != Panes::All).then(|| self.source_menu(a));
+        let items = self.items(a, column, shape == Panes::All, lead, cx);
+        let row = div().flex_1().min_h_0().flex().flex_row().gap(px(m::SPACING)).p(px(m::SPACING));
+        let panes = match shape {
+            Panes::All => {
+                let sources = self.sources(a, cx);
+                row.child(div().w(px(SOURCES_WIDTH)).h_full().flex_shrink_0().child(sources))
+                    .child(div().w(px(LIST_WIDTH)).h_full().flex_shrink_0().child(items))
+                    .child(div().flex_1().min_w_0().h_full().child(&self.detail))
+            }
+            Panes::ListAndItem => row.child(div().w(px(LIST_WIDTH)).h_full().flex_shrink_0().child(items)).child(div().flex_1().min_w_0().h_full().child(&self.detail)),
+            Panes::One if self.item_alone => {
+                let back = ArrowButton::back("Back to the Items").on_click(cx.listener(|v: &mut MainView, _: &ClickEvent, cx| {
+                    v.item_alone = false;
+                    cx.invalidate();
+                }));
+                // (Beside it, where it goes back to: the source the items
+                // are from, as Weather's places and Phone's conversations
+                // name theirs.)
+                let source: SharedString = match &a.source {
+                    Source::All => "All Items".into(),
+                    Source::Vault(id) => a.vaults.iter().find(|v| &v.id == id).map(|v| v.title.clone()).unwrap_or_default().into(),
+                    Source::Category(cat) => plural(*cat).into(),
+                    Source::Archive => "Archive".into(),
+                };
+                let back =
+                    div().flex().flex_row().items_center().gap(px(m::TIGHT)).h(px(m::CONTROL_HEIGHT)).child(back).child(div().flex_1().min_w_0().child(StringView::new(source).bold(true).cut(true)));
+                row.child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .h_full()
+                        .flex()
+                        .flex_col()
+                        .gap(px(m::SPACING))
+                        .child(div().w_full().flex().flex_shrink_0().child(back.w_full()))
+                        .child(div().flex_1().min_h_0().child(&self.detail)),
+                )
+            }
+            Panes::One => row.child(div().flex_1().min_w_0().h_full().child(items)),
+        };
         div().size_full().flex().flex_col().child(toolbar).child(rule(cx)).child(panes).child(rule(cx)).child(status).into_any_element()
+    }
+
+    /// The sources as a menu over the items, where they've given way:
+    /// All Items, each vault, each category there is and the Archive, as
+    /// `sources` lists them ("Source" for agents).
+    fn source_menu(&mut self, a: &mut Passwords) -> Element {
+        let active = |i: &&ItemOverview| i.state == ItemState::Active;
+        let mut names: Vec<SharedString> = vec![SharedString::from("All Items")];
+        let mut of: Vec<Source> = vec![Source::All];
+        for v in &a.vaults {
+            names.push(v.title.clone().into());
+            of.push(Source::Vault(v.id.clone()));
+        }
+        let mut categories: Vec<ItemCategory> = a.items.iter().filter(active).map(|i| i.category).collect();
+        categories.sort_by_key(|c| c.label());
+        categories.dedup();
+        for cat in categories {
+            names.push(plural(cat).into());
+            of.push(Source::Category(cat));
+        }
+        if a.items.iter().any(|i| i.state == ItemState::Archived) {
+            names.push(SharedString::from("Archive"));
+            of.push(Source::Archive);
+        }
+        let at = of.iter().position(|s| *s == a.source).unwrap_or(0);
+        div()
+            .flex()
+            .flex_shrink_0()
+            .child(MenuField::new("passwords-source", names, at).name("Source").on_change(move |i: &usize, _| {
+                if let Some(s) = of.get(*i) {
+                    app().set_source(s.clone());
+                }
+            }))
+            .into_any_element()
     }
 
     /// The sources: All Items, the vaults (under their accounts' names
@@ -691,18 +831,21 @@ impl MainView {
 
     /// The filters over the list and the list: each item's icon, title
     /// and what tells it apart (the search's finds marked).
-    fn items(&mut self, a: &mut Passwords, cx: &mut Cx<Self>) -> Element {
+    /// The filters and the items, `width` points across; `beside`: the
+    /// sources beside them; else `lead`, the sources' menu, first in the
+    /// filters' row (they go under it where they don't fit beside it).
+    fn items(&mut self, a: &mut Passwords, width: f32, beside: bool, lead: Option<Element>, cx: &mut Cx<Self>) -> Element {
         let visible = a.visible();
         // The filters over the list (tags, what items have); the rest are
         // typed (`type:`, `vault:`, `site:`, `user:`), suggested as they are.
         let line = edge(cx);
         // Their text over the list's icons, level with the sources' first
-        // row beside them (inside its well's lines).
-        let indent = line + m::SPACING - m::TEXT_INSET;
-        let top = line + m::TIGHT + (sidebar::ROW - m::CONTROL_HEIGHT) / 2.0;
+        // row beside them (inside its well's lines); under the sources'
+        // menu, where it starts and a spacing under it.
+        let (indent, top) = if beside { (line + m::SPACING - m::TEXT_INSET, line + m::TIGHT + (sidebar::ROW - m::CONTROL_HEIGHT) / 2.0) } else { (0.0, 0.0) };
         // (What the menus choose goes into the search field, which the app
         // follows: `FilterBar::drives`.)
-        let filters = FilterBar::new("passwords", a.search.clone(), self.facets.clone()).no_clear().max_width(LIST_WIDTH - indent).drives(&self.search);
+        let filters = FilterBar::new("passwords", a.search.clone(), self.facets.clone()).no_clear().max_width(width - indent).drives(&self.search);
 
         // The list, its selection the app's.
         let selected = visible.iter().position(|i| Some(&i.id) == a.selected.as_ref());
@@ -760,11 +903,16 @@ impl MainView {
         .no_header()
         .row_height(ITEM_ROW)
         .empty_text(empty)
-        .on_select(cx.listener(|v: &mut MainView, _: &(), _| {
+        .on_select(cx.listener(|v: &mut MainView, _: &(), cx| {
             let row = v.list.state().single();
             if let Some(item) = row.and_then(|r| v.rows.get(r)) {
                 let id = item.id.clone();
                 app().select(Some(id));
+                // (One at a time: the item chosen comes in front.)
+                if v.one {
+                    v.item_alone = true;
+                    cx.invalidate();
+                }
             }
         }))
         .on_open(|_: &usize, _| app().open_website())
@@ -787,7 +935,10 @@ impl MainView {
             .size_full()
             .flex()
             .flex_col()
-            .child(div().pt(px(top)).pl(px(indent)).h(px(top + m::CONTROL_HEIGHT)).flex_shrink_0().child(filters))
+            .child(match lead {
+                Some(lead) => div().flex().flex_wrap().gap(px(m::SPACING)).flex_shrink_0().child(lead).child(filters).into_any_element(),
+                None => div().pt(px(top)).pl(px(indent)).h(px(top + m::CONTROL_HEIGHT)).flex_shrink_0().child(filters).into_any_element(),
+            })
             .child(div().relative().flex_1().min_h_0().mt(px(m::SPACING)).child(list).child(grid))
             .into_any_element()
     }
@@ -828,16 +979,25 @@ impl View for MainView {
             self.locked(&mut a, cx)
         } else {
             match a.conn.clone() {
-                Conn::Connecting if a.items.is_empty() => panel("passwords", "Opening your passwords…", olo_kit::words::tr("The key is in your login keyring.").into(), div()),
+                Conn::Connecting if a.items.is_empty() => {
+                    panel("passwords", "Opening your passwords…", olo_kit::words::tr("The key is in your login keyring.").into(), div(), short(cx), &self.panel_scroll)
+                }
                 Conn::Failed(message) if a.items.is_empty() => {
                     // (Locked: Unlock asks for the login password again.)
                     let label = if message == crate::vault::LOCKED { "Unlock…" } else { "Try Again" };
-                    panel("warning", "Can’t open your passwords", message, button_row().child(Button::new(label).default(true).on_click(|_: &ClickEvent, _| app().connect())))
+                    panel(
+                        "warning",
+                        "Can’t open your passwords",
+                        message,
+                        button_row().child(Button::new(label).default(true).on_click(|_: &ClickEvent, _| app().connect())),
+                        short(cx),
+                        &self.panel_scroll,
+                    )
                 }
                 Conn::Ready if a.items.is_empty() && a.sync == Some(SyncState::Running) => {
                     let account = a.account_label();
                     let message = olo_kit::tr!("Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).", account);
-                    panel("passwords", "Bringing in your items…", message, div())
+                    panel("passwords", "Bringing in your items…", message, div(), short(cx), &self.panel_scroll)
                 }
                 _ => self.browser(&mut a, cx),
             }
@@ -925,18 +1085,22 @@ fn italic_note(text: &'static str) -> Element {
 }
 
 /// An item's header: its icon, title, kind and vault, and its Edit
-/// button, whose label the title shares a baseline with.
-fn header(title: &str, category: ItemCategory, vault: &str, edit: Option<Button>) -> Element {
+/// button, whose label the title shares a baseline with. `narrow` (a pane
+/// less than `HEADER_NARROW` across): the button on the kind's line, so
+/// the title has the row ("Weather S…" beside it in a pane of 280).
+fn header(title: &str, category: ItemCategory, vault: &str, edit: Option<Button>, narrow: bool) -> Element {
     let title: SharedString = title.to_owned().into();
     let sub: SharedString = if vault.is_empty() { category.label().to_string() } else { format!("{}  ·  {vault}", category.label()) }.into();
     let has_button = edit.is_some();
+    let beside_title = has_button && !narrow;
+    let edit_w = if has_button && narrow { olo_kit::widgets::button_width("Edit", false).max(64.0) + m::SPACING } else { 0.0 };
     let inset = m::WINDOW_INSET;
     let x = inset * 2.0 + 48.0;
     let (face_title, face_sub) = (title.clone(), sub.clone());
     let face = canvas(move |g, b| {
         let p = theme::palette();
         icons::paint(g, Bounds { origin: b.origin + point(px(inset), px(inset)), size: size(px(48.0), px(48.0)) }, icon(category));
-        if !has_button {
+        if !beside_title {
             // The title's capitals centred on TITLE_MIDDLE.
             let room = (b.right() - b.left() - px(x + inset)).max(px(0.0));
             let font = style::ui_font(FontWeight::BOLD);
@@ -944,14 +1108,20 @@ fn header(title: &str, category: ItemCategory, vault: &str, edit: Option<Button>
             let t = style::label_on_baseline_fit(g, b.left() + px(x), baseline, style::Align::Left, face_title.clone(), TITLE_SIZE, font, c(p.document_text), room);
             agent::record(g, agent::Node { role: "Heading", name: Some(face_title.clone()), bounds: t, enabled: true, ..Default::default() });
         }
-        let s = style::label(g, b.left() + px(x), b.top() + px(inset + 38.0), style::Align::Left, face_sub.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim(&p));
+        let sub_room = (b.right() - b.left() - px(x + inset + edit_w)).max(px(0.0));
+        let s = style::label_fit(g, b.left() + px(x), b.top() + px(inset + 38.0), style::Align::Left, face_sub.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim(&p), sub_room);
         agent::record(g, agent::Node::label(face_sub.clone(), s));
         style::hline_above(g, b.left() + px(inset), b.right() - px(inset), b.bottom(), style::shade(&p, p.document_background, 1.15));
     })
-    .paint_key(style::key((&title, &sub, category.as_str(), has_button)))
+    .paint_key(style::key((&title, &sub, category.as_str(), beside_title, edit_w.to_bits())))
     .absolute()
     .inset_0();
     let mut out = div().relative().w_full().h(px(48.0 + 2.0 * inset)).flex_shrink_0().child(face);
+    if narrow && let Some(button) = edit {
+        // On the kind's line, at its right: its middle on that line's.
+        let top = inset + 38.0 - m::CONTROL_HEIGHT / 2.0;
+        return out.child(div().absolute().right(px(inset)).top(px(top)).child(button));
+    }
     if let Some(button) = edit {
         // The button lower than the title's middle, so its label shares
         // the title's baseline; the title drawn in the button's row, its
@@ -1287,8 +1457,9 @@ impl View for Detail {
         let e = edge(cx);
         let mut a = app();
         self.take_asks(&mut a, cx);
-        // How wide the pane's content is.
-        let pane = f32::from(cx.viewport_size().width) - SOURCES_WIDTH - LIST_WIDTH - 4.0 * m::SPACING - 2.0 * e;
+        // How wide the pane's content is, as the main view shares the
+        // window (`panes_for`).
+        let pane = detail_width(f32::from(cx.viewport_size().width), f32::from(cx.viewport_size().height), e);
         if a.editor.is_some() && self.form.is_some() {
             let focus_title = std::mem::take(&mut a.focus_title);
             let focus_field = a.focus_field.take();
@@ -1328,7 +1499,7 @@ impl View for Detail {
             let content = div()
                 .flex()
                 .flex_col()
-                .child(header(&overview.title, overview.category, &vault, None))
+                .child(header(&overview.title, overview.category, &vault, None, pane < HEADER_NARROW))
                 .child(div().px(px(m::WINDOW_INSET)).pt(px(m::SPACING)).child(StringView::new(text).wrap(true).color(color)));
             return well(e, p.document_background, content);
         };
@@ -1343,7 +1514,7 @@ impl View for Detail {
 
         let archived = overview.state == ItemState::Archived;
         let edit_button = (!archived && !crate::on_screen()).then(|| Button::new("Edit").min_width(64.0).on_click(|_: &ClickEvent, _| app().edit_selected()));
-        let mut col = div().w_full().flex().flex_col().child(header(&item.title, item.category, &vault, edit_button));
+        let mut col = div().w_full().flex().flex_col().child(header(&item.title, item.category, &vault, edit_button, pane < HEADER_NARROW));
         if archived {
             col = col.child(italic_note("This item is in the Archive."));
         }

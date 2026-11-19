@@ -52,11 +52,13 @@ something nobody here has is in "Blocked", with what it waits for.
   or give way, its filter menus wrap into rows, its Choose links fold
   into a pull-down; the kit's `FilterBar` and `chosen::bar_within` do the
   wrapping and folding); Log Viewer (its detail gives way in a short
-  window, least size 400 × 220). To do: Disk Usage (the rings over the list
-  in a narrow window, the Collector giving way in a short one),
-  Passwords (its welcome's picture gives way; its three columns one at
-  a time, pictured with a made-up vault), Activity Monitor and Viewer
-  (least sizes); then the pre-push hook runs `--tiles` too (not
+  window, least size 400 × 220); Activity Monitor (a sections menu
+  where its sidebar gives way; Codex subagent), Disk Usage (rings over
+  the list where narrow, the Collector folding where short; Codex
+  subagent), Passwords (sources into a menu, the items and an item one
+  at a time where narrow, its welcome without its picture where short).
+  To do: Viewer's PDF window (its toolbar folds: a Codex subagent's
+  work, in review); then the pre-push hook runs `--tiles` too (not
   before: it would refuse every push until they pass), on the smallest
   screen and the person's.
 - **Themes: one list (Classic, Platinum, BeOS and every scheme), each

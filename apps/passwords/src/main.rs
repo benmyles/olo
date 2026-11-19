@@ -64,6 +64,10 @@ use crate::{
 };
 
 const APP_ID: &str = "olo.passwords";
+/// The main window's least: a third of the smallest screen, either way
+/// (CLAUDE.md, "Every tiling layout"; it asked for 680 × 420).
+const MIN_WIDTH: f32 = 400.0;
+const MIN_HEIGHT: f32 = 220.0;
 
 /// A 1Password account Passwords syncs with.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -2053,7 +2057,7 @@ impl Passwords {
             return;
         }
         let (w, h) = self.settings.size.unwrap_or((920, 580));
-        self.main = Some(olo_kit::open_window(WindowOptions::new("Passwords", w as f32, h as f32).min_size(680.0, 420.0).keep_size("main"), MainView::new));
+        self.main = Some(olo_kit::open_window(WindowOptions::new("Passwords", w as f32, h as f32).min_size(MIN_WIDTH, MIN_HEIGHT).keep_size("main"), MainView::new));
     }
 
     /// The main window's close: asks about an edit first; else Passwords

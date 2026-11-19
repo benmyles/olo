@@ -388,6 +388,7 @@ Back to Chats
 Back to Conversations
 Back to the Days
 Back to the Forecast
+Back to the Items
 Back up this computer
 Back up to a disk or folder from now on; the backups in Google Drive stay as they are
 Back up to the Drive of:
@@ -2410,6 +2411,7 @@ Read
 Read Quota Now
 Read every byte the backups chosen need back from where they’re kept, and check each piece, as a restore would
 Read ones fade, then move to Cleared; unread ones stay.
+Read only
 Reading /etc/hosts…
 Reading battery…
 Reading hardware…
@@ -2816,6 +2818,7 @@ Sound
 Sound Settings…
 Sound:
 Sounds
+Source
 Space Around Arranged Windows
 Space at the edges
 Space between windows
@@ -3215,6 +3218,7 @@ Token Pool: its accounts came in paused. Turn them on here once the other comput
 Token:
 Tomorrow
 Took
+Tool
 Tools
 Top Half
 Top Left Quarter
@@ -3574,6 +3578,7 @@ Your home folder
 Your home folder is backed up every hour, leaving out what can be downloaded or built again. Once it’s set up, you can change any of it.
 Your messages, your contacts and the one-time codes texted to you, on this computer: over Bluetooth, with nothing between and nothing else to install.
 Your notes, files and forwarded messages
+Your own files and folders
 Your own:
 Your palm model couldn't be saved
 Your palm model is ready: saving…

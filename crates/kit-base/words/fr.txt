@@ -1177,6 +1177,9 @@ Retour aux jours
 Back to the Forecast
 Retour aux prévisions
 
+Back to the Items
+Retour aux éléments
+
 Back up this computer
 Sauvegarder cet ordinateur
 
@@ -7259,6 +7262,9 @@ Relire là où elles sont gardées chaque octet dont les sauvegardes choisies on
 Read ones fade, then move to Cleared; unread ones stay.
 Les lues pâlissent puis passent dans Effacées.
 
+Read only
+Lecture seule
+
 Reading /etc/hosts…
 Lecture de /etc/hosts…
 
@@ -8478,6 +8484,9 @@ Son :
 Sounds
 Sons
 
+Source
+Source
+
 Space Around Arranged Windows
 Espace autour des fenêtres rangées
 
@@ -9677,6 +9686,9 @@ Demain
 Took
 A pris
 
+Tool
+Outil
+
 Tools
 Outils
 
@@ -10753,6 +10765,9 @@ Vos messages, vos contacts et les codes à usage unique reçus par SMS, sur cet 
 
 Your notes, files and forwarded messages
 Vos notes, fichiers et messages transférés
+
+Your own files and folders
+Vos propres fichiers et dossiers
 
 Your own:
 La vôtre :

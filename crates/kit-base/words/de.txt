@@ -1177,6 +1177,9 @@ Zurück zu den Tagen
 Back to the Forecast
 Zurück zur Vorhersage
 
+Back to the Items
+Zurück zu den Objekten
+
 Back up this computer
 Diesen Computer sichern
 
@@ -7259,6 +7262,9 @@ Jedes Byte, das die gewählten Backups brauchen, von dort zurücklesen, wo sie l
 Read ones fade, then move to Cleared; unread ones stay.
 Gelesene verblassen, dann „Erledigt“; ungelesene bleiben.
 
+Read only
+Nur lesen
+
 Reading /etc/hosts…
 /etc/hosts wird gelesen …
 
@@ -8478,6 +8484,9 @@ Ton:
 Sounds
 Töne
 
+Source
+Quelle
+
 Space Around Arranged Windows
 Abstand um angeordnete Fenster
 
@@ -9677,6 +9686,9 @@ Morgen
 Took
 Dauer
 
+Tool
+Werkzeug
+
 Tools
 Werkzeuge
 
@@ -10753,6 +10765,9 @@ Ihre Nachrichten, Ihre Kontakte und die Ihnen per SMS gesendeten Einmalcodes auf
 
 Your notes, files and forwarded messages
 Ihre Notizen, Dateien und weitergeleiteten Nachrichten
+
+Your own files and folders
+Ihre eigenen Dateien und Ordner
 
 Your own:
 Eigene:

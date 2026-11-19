@@ -1177,6 +1177,9 @@ Volver a los días
 Back to the Forecast
 Volver al pronóstico
 
+Back to the Items
+Volver a los elementos
+
 Back up this computer
 Haz copias de este ordenador
 
@@ -7259,6 +7262,9 @@ Releer desde donde se guardan todos los bytes que necesitan las copias elegidas 
 Read ones fade, then move to Cleared; unread ones stay.
 Las leídas se apagan y van a Borradas; las demás se quedan.
 
+Read only
+Solo lectura
+
 Reading /etc/hosts…
 Leyendo /etc/hosts…
 
@@ -8478,6 +8484,9 @@ Sonido:
 Sounds
 Sonidos
 
+Source
+Origen
+
 Space Around Arranged Windows
 Espacio alrededor de las ventanas ordenadas
 
@@ -9677,6 +9686,9 @@ Mañana
 Took
 Tardó
 
+Tool
+Herramienta
+
 Tools
 Herramientas
 
@@ -10753,6 +10765,9 @@ Tus mensajes, tus contactos y los códigos de un solo uso que te llegan por SMS,
 
 Your notes, files and forwarded messages
 Tus notas, archivos y mensajes reenviados
+
+Your own files and folders
+Tus propios archivos y carpetas
 
 Your own:
 Tuyo:
